@@ -238,7 +238,7 @@ const JEST_CONFIG_GLOBS = [
 
 const ALIAS_BLOCK_PATTERN = /alias\s*:\s*\{([\s\S]*?)\}/g;
 const ALIAS_ENTRY_PATTERN =
-  /["']?([@\w$./-]+)["']?\s*:\s*(?:path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:["'][^"']+["'][\s,]*)+)\)|fileURLToPath\(\s*new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)\s*\)|["']([^"']+)["'])/g;
+  /["']?([@\w$./*-]+)["']?\s*:\s*(?:path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:["'][^"']+["'][\s,]*)+)\)|fileURLToPath\(\s*new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)\s*\)|["']([^"']+)["'])/g;
 const JEST_MODULE_NAME_MAPPER_BLOCK_PATTERN = /moduleNameMapper\s*:\s*\{([\s\S]*?)\}/g;
 const JEST_MODULE_NAME_MAPPER_ENTRY_PATTERN = /["']([^"']+)["']\s*:\s*["']([^"']+)["']/g;
 const STRING_LITERAL_PATTERN = /["']([^"']+)["']/g;
@@ -365,7 +365,7 @@ const extractBundlerAliases = (content: string, configDirectory: string): Bundle
       const fileUrlTarget = aliasEntryMatch[3];
       const stringTarget = aliasEntryMatch[4];
       const isExact = rawName.endsWith("$");
-      const name = isExact ? rawName.slice(0, -1) : rawName.replace(/\/$/, "");
+      const name = rawName.replace(/\$$/, "").replace(/\/\*$/, "").replace(/\/$/, "");
 
       let targetDirectory: string;
       if (pathCallSegments) {
@@ -373,7 +373,10 @@ const extractBundlerAliases = (content: string, configDirectory: string): Bundle
       } else if (fileUrlTarget) {
         targetDirectory = resolve(configDirectory, fileUrlTarget);
       } else if (stringTarget) {
-        targetDirectory = resolveConfigPathValue(stringTarget, configDirectory);
+        targetDirectory = resolveConfigPathValue(
+          stringTarget.replace(/\/\*$/, ""),
+          configDirectory,
+        );
       } else {
         continue;
       }

@@ -1,13 +1,19 @@
 import { dirname } from "node:path";
 import { existsSync } from "node:fs";
 import fg from "fast-glob";
-import type { ProjectAnalysisError, ResolvedEntries, SourceFile } from "../types.js";
+import type {
+  ImportReference,
+  ProjectAnalysisError,
+  ResolvedEntries,
+  SourceFile,
+} from "../types.js";
 import { ResolverError, WorkspaceError, describeUnknownError } from "../errors.js";
 import { parseSourceFile, type ParsedSource } from "../collect/parse.js";
 import type { ResolvedImport } from "../resolver/resolve.js";
 import type { ModuleLinkInput } from "./build.js";
 import { isProjectAnalysisExcludedPath } from "../utils/is-project-analysis-excluded-path.js";
 import { normalizeProjectRootGlobSpecifier } from "../utils/normalize-project-root-glob-specifier.js";
+import { createImportGlobFilter } from "../utils/create-import-glob-filter.js";
 
 interface BuildModuleLinkInputsOptions {
   projectRootDirectories: ReadonlyArray<string>;
@@ -67,17 +73,21 @@ const resolveImport = (
 };
 
 const expandImportGlob = (
-  specifier: string,
+  importReference: ImportReference,
   fromFilePath: string,
   errors: ProjectAnalysisError[],
 ): string[] => {
+  const specifier = importReference.specifier;
   try {
-    return fg.sync(specifier, {
-      cwd: dirname(fromFilePath),
-      absolute: true,
-      onlyFiles: true,
-      ignore: ["**/node_modules/**"],
-    });
+    const importGlobFilter = createImportGlobFilter(importReference, fromFilePath);
+    return fg
+      .sync(specifier, {
+        cwd: dirname(fromFilePath),
+        absolute: true,
+        onlyFiles: true,
+        ignore: ["**/node_modules/**"],
+      })
+      .filter(importGlobFilter);
   } catch (globError) {
     errors.push(
       new WorkspaceError({
@@ -99,11 +109,7 @@ const collectSourceImports = (
   const resolvedImports = new Map<string, ResolvedImport>();
   for (const importInfo of parsedModule.imports) {
     if (importInfo.isGlob) {
-      for (const expandedFilePath of expandImportGlob(
-        importInfo.specifier,
-        filePath,
-        context.errors,
-      )) {
+      for (const expandedFilePath of expandImportGlob(importInfo, filePath, context.errors)) {
         resolvedImports.set(expandedFilePath, {
           resolvedPath: expandedFilePath,
           isExternal: false,

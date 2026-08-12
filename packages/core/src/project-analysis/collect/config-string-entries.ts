@@ -36,6 +36,7 @@ const CONFIG_STRING_ENTRY_GLOBS = [
   ".umirc.{js,ts,mjs,mts,cjs,cts}",
   "config/config.{js,ts,mjs,mts,cjs,cts}",
   "config/routes*.{js,ts,mjs,mts,cjs,cts}",
+  "config/router.config.{js,ts,mjs,mts,cjs,cts}",
   "**/scripts/build.ts",
   "**/scripts/utils/createJestConfig.js",
 ];
@@ -246,9 +247,10 @@ const extractUmiRouteComponentPaths = (content: string, isRouteModule: boolean):
           if (
             (ts.isStringLiteral(componentExpression) ||
               ts.isNoSubstitutionTemplateLiteral(componentExpression)) &&
-            componentExpression.text.startsWith("@/")
+            (componentExpression.text.startsWith("@/") ||
+              (isRouteModule && componentExpression.text.startsWith(".")))
           ) {
-            routeComponentPaths.push(componentExpression.text.slice(2));
+            routeComponentPaths.push(componentExpression.text);
           }
         }
         if (propertyName === "routes" && ts.isPropertyAssignment(property)) {
@@ -273,6 +275,28 @@ const extractUmiRouteComponentPaths = (content: string, isRouteModule: boolean):
   return routeComponentPaths;
 };
 
+const extractUmiLoadingComponentPaths = (content: string): string[] => {
+  const sourceFile = ts.createSourceFile(
+    "umi-config.ts",
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const loadingComponentPaths: string[] = [];
+  const visitNode = (node: ts.Node): void => {
+    if (ts.isPropertyAssignment(node) && getPropertyName(node) === "loadingComponent") {
+      const initializer = unwrapConfigExpression(node.initializer);
+      if (ts.isStringLiteral(initializer) || ts.isNoSubstitutionTemplateLiteral(initializer)) {
+        loadingComponentPaths.push(initializer.text);
+      }
+    }
+    ts.forEachChild(node, visitNode);
+  };
+  visitNode(sourceFile);
+  return loadingComponentPaths;
+};
+
 export const extractConfigStringReferencedEntries = (directory: string): string[] => {
   const entries = new Set<string>();
   let hasDeclaredUmiAccessPlugin = false;
@@ -295,9 +319,21 @@ export const extractConfigStringReferencedEntries = (directory: string): string[
     try {
       const content = readFileSync(configPath, "utf-8");
       collectResolvedPathsFromStrings(content, dirname(configPath), directory, entries);
-      const isUmiRouteModule = /(?:^|[\\/])config[\\/]routes[^\\/]*\.[^\\/]+$/.test(configPath);
+      const isUmiRouteModule =
+        /(?:^|[\\/])config[\\/](?:routes[^\\/]*|router\.config)\.[^\\/]+$/.test(configPath);
       for (const routeComponentPath of extractUmiRouteComponentPaths(content, isUmiRouteModule)) {
-        addResolvedConfigPath(`src/${routeComponentPath}`, directory, directory, entries);
+        const sourceRelativePath = routeComponentPath.startsWith("@/")
+          ? `src/${routeComponentPath.slice(2)}`
+          : `src/pages/${routeComponentPath}`;
+        addResolvedConfigPath(sourceRelativePath, directory, directory, entries);
+      }
+      if (/(?:^|[\\/])(?:\.umirc\.|config[\\/]config\.)/.test(configPath)) {
+        for (const loadingComponentPath of extractUmiLoadingComponentPaths(content)) {
+          const sourceRelativePath = loadingComponentPath.startsWith("@/")
+            ? `src/${loadingComponentPath.slice(2)}`
+            : `src/${loadingComponentPath.replace(/^\.\//, "")}`;
+          addResolvedConfigPath(sourceRelativePath, directory, directory, entries);
+        }
       }
       if (
         /(?:^|[\\/])(?:\.umirc\.|config[\\/]config\.)/.test(configPath) &&

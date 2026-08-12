@@ -7,6 +7,7 @@ export const DEFAULT_EXTENSIONS = [
   ".mjs",
   ".cts",
   ".cjs",
+  ".es6",
   ".mdx",
   ".astro",
   ".graphql",
@@ -16,6 +17,8 @@ export const DEFAULT_EXTENSIONS = [
   ".vue",
   ".svelte",
 ];
+
+export const LEGACY_GRAPH_ONLY_PATTERNS = ["**/*.es6"];
 
 export const STANDALONE_PROJECT_LOCKFILES = [
   "package-lock.json",
@@ -120,6 +123,7 @@ export const KNOWN_CONFIG_PREFIXES = [
   "commitlint.config.",
   "next.config.",
   "next-sitemap.config.",
+  "gatsby-config.",
   "nuxt.config.",
   "astro.config.",
   "sanity.config.",

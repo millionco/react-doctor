@@ -12,6 +12,7 @@ import type { ResolvedImport } from "../resolver/resolve.js";
 import { isConfigFile } from "../utils/is-config-file.js";
 import { toPosixPath } from "../utils/to-posix-path.js";
 import { compileGlobPattern } from "../../utils/match-glob-pattern.js";
+import { createImportGlobFilter } from "../utils/create-import-glob-filter.js";
 
 export interface ModuleLinkInput {
   fileId: SourceFile;
@@ -105,9 +106,10 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
         const sourceDir = path.dirname(input.fileId.path);
         const globPattern = importInfo.specifier;
         const globExpression = compileGlobPattern(globPattern);
+        const importGlobFilter = createImportGlobFilter(importInfo, input.fileId.path);
         for (const [filePath] of fileIdMap) {
           const relativePath = toPosixPath(path.relative(sourceDir, filePath));
-          if (globExpression.test(relativePath)) {
+          if (globExpression.test(relativePath) && importGlobFilter(filePath)) {
             const targetIndex = fileIdMap.get(filePath);
             if (targetIndex !== undefined) {
               addEdge(sourceIndex, targetIndex, [], false, [], [], true);
@@ -156,7 +158,7 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
       const targetIndex = fileIdMap.get(toPosixPath(resolved.resolvedPath));
       if (targetIndex === undefined) continue;
 
-      const exportedName = exportInfo.isNamespaceReExport ? "*" : exportInfo.name;
+      const exportedName = exportInfo.name;
       const originalName = exportInfo.isNamespaceReExport
         ? "*"
         : (exportInfo.reExportOriginalName ?? exportInfo.name);

@@ -296,13 +296,13 @@ const collectLocalIdentifierReferences = (statements: Statement[]): string[] => 
     }
   };
 
-  // Exported declarations are visited through their VALUE side only
-  // (initializers, function/class bodies) — never their binding names —
-  // so a same-file call to another exported symbol counts as a local
-  // reference without every export marking itself referenced.
   const visitExportedDeclarationValues = (declaration: unknown): void => {
     if (!declaration || typeof declaration !== "object") return;
     const record = declaration as Record<string, unknown>;
+    if (typeof record.type === "string" && TS_VALUE_WRAPPER_NODE_TYPES.has(record.type)) {
+      visitNode(record.expression);
+      return;
+    }
     if (record.type === "VariableDeclaration" && Array.isArray(record.declarations)) {
       for (const declarator of record.declarations) {
         if (declarator && typeof declarator === "object") {
@@ -315,6 +315,25 @@ const collectLocalIdentifierReferences = (statements: Statement[]): string[] => 
       visitNode(record.params);
       visitNode(record.superClass);
       visitNode(record.body);
+      return;
+    }
+    if (record.type === "TSTypeAliasDeclaration") {
+      visitNode(record.typeParameters);
+      visitNode(record.typeAnnotation);
+      return;
+    }
+    if (record.type === "TSInterfaceDeclaration") {
+      visitNode(record.typeParameters);
+      visitNode(record.extends);
+      visitNode(record.body);
+      return;
+    }
+    if (record.type === "TSEnumDeclaration" && Array.isArray(record.members)) {
+      for (const member of record.members) {
+        if (member && typeof member === "object") {
+          visitNode((member as Record<string, unknown>).initializer);
+        }
+      }
       return;
     }
     if (typeof record.type === "string" && !record.type.startsWith("TS")) {
@@ -340,8 +359,6 @@ const collectLocalIdentifierReferences = (statements: Statement[]): string[] => 
   return references;
 };
 
-// TS wrapper expressions whose inner `.expression` is still a VALUE evaluated
-// at runtime; every other `TS*` node is an erased type position.
 const TS_VALUE_WRAPPER_NODE_TYPES = new Set([
   "TSAsExpression",
   "TSSatisfiesExpression",
@@ -350,7 +367,6 @@ const TS_VALUE_WRAPPER_NODE_TYPES = new Set([
   "TSTypeAssertion",
 ]);
 
-// TS declarations that survive emit and evaluate at module init.
 const TS_RUNTIME_DECLARATION_NODE_TYPES = new Set([
   "TSEnumDeclaration",
   "TSModuleDeclaration",
@@ -854,6 +870,7 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
 const REFERENCED_FILENAME_LITERAL_PATTERN =
   /(?<![./@\w-])(?:["'`])([a-z][\w-]*\.(?:ts|tsx|js|jsx|mts|mjs|cts|cjs))(?:["'`])/g;
 const REFERENCED_MODULE_PATH_PATTERN = /^[a-zA-Z0-9_@-][a-zA-Z0-9_@.-]*(?:\/[a-zA-Z0-9_@.-]+)+$/;
+const REFERENCED_MODULE_STEM_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/;
 
 const extractReferencedFilenames = (
   sourceText: string,
@@ -891,7 +908,8 @@ const extractReferencedFilenames = (
           const literalValue = callArgument.value;
           if (
             typeof literalValue === "string" &&
-            REFERENCED_MODULE_PATH_PATTERN.test(literalValue)
+            (REFERENCED_MODULE_PATH_PATTERN.test(literalValue) ||
+              REFERENCED_MODULE_STEM_PATTERN.test(literalValue))
           ) {
             captured.add(literalValue);
           }
@@ -1222,7 +1240,7 @@ const extractExportAllDeclaration = (
     isSynthetic: false,
     reExportSource,
     reExportOriginalName: "*",
-    isNamespaceReExport: !exportedName,
+    isNamespaceReExport: true,
     line: getLineFromOffset(sourceText, node.start),
     column: getColumnFromOffset(sourceText, node.start),
   });
@@ -1366,6 +1384,12 @@ const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
 const isWalkableNode = (value: unknown): value is WalkableNode =>
   isObjectRecord(value) && typeof value.type === "string";
 
+const isImportMeta = (value: unknown): boolean =>
+  isWalkableNode(value) &&
+  value.type === "MetaProperty" &&
+  getIdentifierName(value.meta) === "import" &&
+  getIdentifierName(value.property) === "meta";
+
 const getTemplateCookedValues = (expression: WalkableNode): string[] | undefined => {
   if (!Array.isArray(expression.quasis)) return undefined;
   const cookedValues: string[] = [];
@@ -1430,7 +1454,16 @@ const extractGlobPatterns = (callArguments: unknown): string[] => {
   return [];
 };
 
-const extractRequireContextPattern = (callArguments: unknown): string | undefined => {
+interface WebpackContextMetadata {
+  specifier: string;
+  globBaseDirectory: string;
+  globFilterPattern: string | undefined;
+  globFilterFlags: string | undefined;
+}
+
+const extractRequireContextMetadata = (
+  callArguments: unknown,
+): WebpackContextMetadata | undefined => {
   if (!Array.isArray(callArguments)) return undefined;
   const directoryArgument = callArguments[0];
   const recursiveArgument = callArguments[1];
@@ -1442,66 +1475,48 @@ const extractRequireContextPattern = (callArguments: unknown): string | undefine
     (!directoryArgument.value.startsWith("./") &&
       !directoryArgument.value.startsWith("../") &&
       directoryArgument.value !== "." &&
-      directoryArgument.value !== "..") ||
-    !isWalkableNode(regularExpressionArgument) ||
-    !isObjectRecord(regularExpressionArgument.regex) ||
-    typeof regularExpressionArgument.regex.pattern !== "string"
+      directoryArgument.value !== "..")
   ) {
     return undefined;
   }
-  const regularExpressionPattern = regularExpressionArgument.regex.pattern;
-  if (!regularExpressionPattern.startsWith("^\\.\\/") || !regularExpressionPattern.endsWith("$")) {
-    return undefined;
+
+  let isRecursive = true;
+  if (recursiveArgument !== undefined) {
+    if (
+      !isWalkableNode(recursiveArgument) ||
+      recursiveArgument.type !== "Literal" ||
+      typeof recursiveArgument.value !== "boolean"
+    ) {
+      return undefined;
+    }
+    isRecursive = recursiveArgument.value;
   }
-  const relativePattern = regularExpressionPattern.slice("^\\.\\/".length, -1);
-  const filePatternMatch = relativePattern.match(/^(.*)\\\.\(([^()]+)\)$/);
-  if (!filePatternMatch) return undefined;
-  const pathPattern = filePatternMatch[1]
-    .replace(/\[[^\]/]+\]\+\?/g, "*")
-    .replace(/\[[^\]/]+\]\+/g, "*")
-    .replaceAll("\\/", "/");
-  if (!/^[A-Za-z0-9_@./*-]+$/.test(pathPattern)) return undefined;
-  const isRecursive =
-    isWalkableNode(recursiveArgument) &&
-    recursiveArgument.type === "Literal" &&
-    recursiveArgument.value === true;
-  if (!isRecursive && pathPattern.includes("/")) return undefined;
+
+  let globFilterPattern: string | undefined;
+  let globFilterFlags: string | undefined;
+  if (regularExpressionArgument !== undefined) {
+    if (
+      !isWalkableNode(regularExpressionArgument) ||
+      regularExpressionArgument.type !== "Literal" ||
+      !isObjectRecord(regularExpressionArgument.regex) ||
+      typeof regularExpressionArgument.regex.pattern !== "string"
+    ) {
+      return undefined;
+    }
+    globFilterPattern = regularExpressionArgument.regex.pattern;
+    globFilterFlags =
+      typeof regularExpressionArgument.regex.flags === "string"
+        ? regularExpressionArgument.regex.flags
+        : undefined;
+  }
+
   const directory = directoryArgument.value.replace(/\/$/, "");
-  const extensions = filePatternMatch[2].split("|");
-  if (
-    extensions.length === 0 ||
-    extensions.some((extension) => !/^[A-Za-z0-9]+$/.test(extension))
-  ) {
-    return undefined;
-  }
-  const extensionPattern = extensions.length === 1 ? extensions[0] : `{${extensions.join(",")}}`;
-  return `${directory}/${pathPattern}.${extensionPattern}`;
-};
-
-interface RegexMetadata {
-  pattern: string;
-}
-
-const isRegexMetadata = (value: unknown): value is RegexMetadata =>
-  value !== null &&
-  typeof value === "object" &&
-  "pattern" in value &&
-  typeof value.pattern === "string";
-
-const extractRegexGlobSuffix = (callArguments: unknown): string | undefined => {
-  if (!Array.isArray(callArguments)) return undefined;
-  const thirdArgument = callArguments[2];
-  if (!isWalkableNode(thirdArgument) || thirdArgument.type === "SpreadElement") return undefined;
-  if (thirdArgument.type !== "Literal") return undefined;
-  if (!isRegexMetadata(thirdArgument.regex)) return undefined;
-  const pattern = thirdArgument.regex.pattern;
-  const extensionMatch = pattern.match(/^\\\.([\w|]+)\$$/);
-  if (extensionMatch) {
-    const extensions = extensionMatch[1].split("|");
-    if (extensions.length === 1) return `*.${extensions[0]}`;
-    return `*.{${extensions.join(",")}}`;
-  }
-  return undefined;
+  return {
+    specifier: `${directory}/${isRecursive ? "**/*" : "*"}`,
+    globBaseDirectory: directoryArgument.value,
+    globFilterPattern,
+    globFilterFlags,
+  };
 };
 
 const hasMockFactoryArgument = (callArguments: unknown): boolean => {
@@ -1537,7 +1552,7 @@ const collectDynamicImports = (
   sourceText: string,
   imports: ImportReference[],
 ): void => {
-  const walkNode = (node: WalkableNode): void => {
+  const walkNode = (node: WalkableNode, parentNode?: WalkableNode): void => {
     if (node.type === "ImportExpression") {
       const sourceExpression = isWalkableNode(node.source) ? node.source : undefined;
       if (!sourceExpression) return;
@@ -1579,9 +1594,32 @@ const collectDynamicImports = (
       if (getIdentifierName(callee) === "require") {
         const requireSpecifier = extractStringLiteralFromArgument(node.arguments);
         if (requireSpecifier) {
+          const parentMemberExpression =
+            parentNode?.type === "MemberExpression" && parentNode.object === node
+              ? parentNode
+              : undefined;
+          const importedMemberName = parentMemberExpression
+            ? parentMemberExpression.computed
+              ? isWalkableNode(parentMemberExpression.property) &&
+                parentMemberExpression.property.type === "Literal" &&
+                typeof parentMemberExpression.property.value === "string"
+                ? parentMemberExpression.property.value
+                : undefined
+              : getIdentifierName(parentMemberExpression.property)
+            : undefined;
           imports.push({
             specifier: requireSpecifier,
-            importedNames: [createNamespaceImportBinding()],
+            importedNames: importedMemberName
+              ? [
+                  {
+                    name: importedMemberName,
+                    alias: undefined,
+                    isNamespace: false,
+                    isDefault: importedMemberName === "default",
+                    isTypeOnly: false,
+                  },
+                ]
+              : [createNamespaceImportBinding()],
             isTypeOnly: false,
             isDynamic: true,
             isSideEffect: false,
@@ -1596,10 +1634,10 @@ const collectDynamicImports = (
         const propertyName = getIdentifierName(callee.property);
 
         if (objectName === "require" && propertyName === "context") {
-          const contextPattern = extractRequireContextPattern(node.arguments);
-          if (contextPattern) {
+          const contextMetadata = extractRequireContextMetadata(node.arguments);
+          if (contextMetadata) {
             imports.push({
-              specifier: contextPattern,
+              ...contextMetadata,
               importedNames: [createNamespaceImportBinding()],
               isTypeOnly: false,
               isDynamic: true,
@@ -1654,11 +1692,7 @@ const collectDynamicImports = (
             }
           }
         }
-        if (
-          isWalkableNode(callee.object) &&
-          callee.object.type === "MetaProperty" &&
-          propertyName === "glob"
-        ) {
+        if (isImportMeta(callee.object) && propertyName === "glob") {
           const globPatterns = extractGlobPatterns(node.arguments);
           for (const globPattern of globPatterns) {
             imports.push({
@@ -1673,45 +1707,6 @@ const collectDynamicImports = (
             });
           }
         }
-
-        if (objectName === "require" && propertyName === "context") {
-          const directoryArgument = extractStringLiteralFromArgument(node.arguments);
-          if (
-            directoryArgument &&
-            (directoryArgument.startsWith("./") || directoryArgument.startsWith("../"))
-          ) {
-            const hasRegexArgument =
-              Array.isArray(node.arguments) &&
-              node.arguments.length >= 3 &&
-              isWalkableNode(node.arguments[2]) &&
-              node.arguments[2].type !== "SpreadElement";
-            const regexSuffix = extractRegexGlobSuffix(node.arguments);
-            const canResolveFilter = !hasRegexArgument || Boolean(regexSuffix);
-            if (canResolveFilter) {
-              const isRecursive =
-                Array.isArray(node.arguments) &&
-                isWalkableNode(node.arguments[1]) &&
-                node.arguments[1].type === "Literal" &&
-                node.arguments[1].value === true;
-              const contextGlobPrefix = isRecursive
-                ? `${directoryArgument}/**/`
-                : `${directoryArgument}/`;
-              const contextGlobPattern = regexSuffix
-                ? `${contextGlobPrefix}${regexSuffix}`
-                : `${contextGlobPrefix}*`;
-              imports.push({
-                specifier: contextGlobPattern,
-                importedNames: [createNamespaceImportBinding()],
-                isTypeOnly: false,
-                isDynamic: true,
-                isSideEffect: false,
-                isGlob: true,
-                line: getLineFromOffset(sourceText, node.start),
-                column: getColumnFromOffset(sourceText, node.start),
-              });
-            }
-          }
-        }
       }
     }
 
@@ -1721,8 +1716,7 @@ const collectDynamicImports = (
         const secondArgument = isWalkableNode(node.arguments[1]) ? node.arguments[1] : undefined;
         const isImportMetaUrl =
           secondArgument?.type === "MemberExpression" &&
-          isWalkableNode(secondArgument.object) &&
-          secondArgument.object.type === "MetaProperty" &&
+          isImportMeta(secondArgument.object) &&
           getIdentifierName(secondArgument.property) === "url";
         if (isImportMetaUrl) {
           const urlSpecifier = extractStringLiteralFromArgument(node.arguments);
@@ -1814,10 +1808,10 @@ const collectDynamicImports = (
     for (const value of Object.values(node)) {
       if (Array.isArray(value)) {
         for (const element of value) {
-          if (isWalkableNode(element)) walkNode(element);
+          if (isWalkableNode(element)) walkNode(element, node);
         }
       } else if (isWalkableNode(value)) {
-        walkNode(value);
+        walkNode(value, node);
       }
     }
   };

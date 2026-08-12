@@ -112,6 +112,51 @@ const resolveImportedScriptPath = (
   return resolvedImportedPath;
 };
 
+const collectWebpackEntrySpecifiers = (filePath: string): string[] => {
+  let sourceText: string;
+  try {
+    sourceText = readFileSync(filePath, "utf8");
+  } catch {
+    return [];
+  }
+
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const specifiers = new Set<string>();
+  const collectStringLiterals = (node: ts.Node): void => {
+    if (ts.isStringLiteralLike(node) && node.text.startsWith(".")) {
+      specifiers.add(node.text);
+      return;
+    }
+    ts.forEachChild(node, collectStringLiterals);
+  };
+  const visitNode = (node: ts.Node): void => {
+    if (
+      ts.isPropertyAssignment(node) &&
+      ((ts.isIdentifier(node.name) && node.name.text === "entry") ||
+        (ts.isStringLiteralLike(node.name) && node.name.text === "entry"))
+    ) {
+      collectStringLiterals(node.initializer);
+    }
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === "concat" &&
+      node.getText(sourceFile).includes(".entry")
+    ) {
+      collectStringLiterals(node);
+    }
+    ts.forEachChild(node, visitNode);
+  };
+  visitNode(sourceFile);
+  return [...specifiers];
+};
+
 const readJson = (filePath: string): unknown => {
   try {
     return JSON.parse(readFileSync(filePath, "utf8"));
@@ -274,19 +319,30 @@ const expandInvokedScriptFiles = (
   for (let scriptIndex = 0; scriptIndex < pendingScriptFiles.length; scriptIndex++) {
     const scriptFile = pendingScriptFiles[scriptIndex];
     const parsedScript = parseSourceFile(scriptFile.filePath);
-    for (const importInfo of parsedScript.imports) {
+    const staticScriptSpecifiers = parsedScript.imports.flatMap((importInfo) => {
       const hasOnlyTypeBindings =
         importInfo.importedNames.length > 0 &&
         importInfo.importedNames.every((importedName) => importedName.isTypeOnly);
-      if (importInfo.isTypeOnly || hasOnlyTypeBindings) continue;
-      const resolvedImportedPath = resolveImportedScriptPath(
-        importInfo.specifier,
+      return importInfo.isTypeOnly || hasOnlyTypeBindings ? [] : [importInfo.specifier];
+    });
+    const webpackEntrySpecifiers = collectWebpackEntrySpecifiers(scriptFile.filePath);
+    for (const scriptSpecifier of [...staticScriptSpecifiers, ...webpackEntrySpecifiers]) {
+      let resolvedImportedPath = resolveImportedScriptPath(
+        scriptSpecifier,
         scriptFile,
         projectRoot,
       );
-      if (!resolvedImportedPath) {
-        continue;
+      if (!resolvedImportedPath && webpackEntrySpecifiers.includes(scriptSpecifier)) {
+        resolvedImportedPath = resolveImportedScriptPath(
+          scriptSpecifier,
+          {
+            filePath: join(scriptFile.workingDirectory, "webpack-entry.js"),
+            workingDirectory: scriptFile.workingDirectory,
+          },
+          projectRoot,
+        );
       }
+      if (!resolvedImportedPath) continue;
       const importedScriptFile = {
         filePath: resolvedImportedPath,
         workingDirectory: scriptFile.workingDirectory,
@@ -952,6 +1008,30 @@ const collectRegistryMetadataConsumedFiles = (
       }
     }
   }
+
+  const hasStyleRegistryFanout = [...analyses.values()].some((analysis) =>
+    analysis.sourceFile.text.includes("src/registry/${style.name}/"),
+  );
+  if (!hasStyleRegistryFanout) return;
+
+  const registryPaths = new Set<string>();
+  const styleNames = new Set<string>();
+  for (const analysis of analyses.values()) {
+    for (const pathMatch of analysis.sourceFile.text.matchAll(/\bpath\s*:\s*["']([^"']+)["']/g)) {
+      registryPaths.add(pathMatch[1]);
+    }
+    for (const styleMatch of analysis.sourceFile.text.matchAll(/\bname\s*:\s*["']([^"']+)["']/g)) {
+      styleNames.add(styleMatch[1]);
+    }
+  }
+  for (const styleName of styleNames) {
+    for (const registryPath of registryPaths) {
+      const resolvedPath = resolveEntryWithExtensions(
+        resolve(projectRoot, "src", "registry", styleName, registryPath),
+      );
+      if (resolvedPath) consumedFiles.add(resolvedPath);
+    }
+  }
 };
 
 const nodeContainsNode = (rootNode: ts.Node, targetNode: ts.Node): boolean => {
@@ -1184,6 +1264,14 @@ const collectShadcnRegistryFiles = (
       }
     }
   }
+};
+
+export const extractInvokedBuildScriptPaths = (projectRoot: string): string[] => {
+  const packageJsonPaths = collectPackageJsonPaths(projectRoot);
+  return expandInvokedScriptFiles(
+    extractInvokedScriptFiles(projectRoot, packageJsonPaths),
+    projectRoot,
+  ).map((scriptFile) => toPosixPath(scriptFile.filePath));
 };
 
 export const extractBuildScriptConsumedFiles = (projectRoot: string): string[] => {

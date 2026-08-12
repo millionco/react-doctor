@@ -13,10 +13,12 @@ interface PackageJsonEntryFields {
   private?: boolean | string;
   description?: string;
   exports?: unknown;
+  imports?: unknown;
   bin?: unknown;
   sideEffects?: unknown;
   build?: unknown;
   jest?: unknown;
+  scripts?: unknown;
 }
 
 interface TypeScriptBuildDirectories {
@@ -199,7 +201,8 @@ const resolveEntryPath = (entryPath: string, rootDirectory: string): string => {
     const heuristicMatch = resolveEntryPathViaHeuristic(normalizedEntry, rootDirectory);
     if (heuristicMatch) return heuristicMatch;
   }
-  if (existsSync(absolutePath)) return absolutePath;
+  const directlyResolvedPath = resolveEntryWithExtensions(absolutePath);
+  if (directlyResolvedPath) return directlyResolvedPath;
   return (
     resolveBuiltPathToSource(absolutePath, rootDirectory) ??
     findSourceFile(rootDirectory, normalizedEntry) ??
@@ -363,6 +366,54 @@ const collectJestEntries = (jestValue: unknown, rootDirectory: string, entries: 
   }
 };
 
+const TYPE_TEST_DIRECTORY_PATTERN = /^(?:public-types|type-tests?|types-tests?|typetests|tsd)$/;
+const TYPE_TEST_SCRIPT_PATTERN = /(?:^|\s)(?:tsc|tsgo)(?:\s|$)/;
+
+const collectTypeTestFixtureEntries = (
+  packageJson: PackageJsonEntryFields,
+  rootDirectory: string,
+  entries: string[],
+): void => {
+  const directoryName = rootDirectory.slice(rootDirectory.lastIndexOf(sep) + 1);
+  const isPrivate = packageJson.private === true || packageJson.private === "true";
+  if (!isPrivate || !TYPE_TEST_DIRECTORY_PATTERN.test(directoryName)) return;
+  if (!packageJson.scripts || typeof packageJson.scripts !== "object") return;
+  const invokesTypeScript = Object.values(packageJson.scripts).some(
+    (scriptValue) => typeof scriptValue === "string" && TYPE_TEST_SCRIPT_PATTERN.test(scriptValue),
+  );
+  if (!invokesTypeScript) return;
+
+  const tsconfigPath = join(rootDirectory, "tsconfig.json");
+  if (!existsSync(tsconfigPath)) return;
+  try {
+    const tsconfigSource = readFileSync(tsconfigPath, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1")
+      .replace(/,(\s*[}\]])/g, "$1");
+    const tsconfig = JSON.parse(tsconfigSource);
+    if (tsconfig.compilerOptions?.noEmit !== true || !Array.isArray(tsconfig.include)) return;
+    const includePatterns = tsconfig.include.filter(
+      (includePattern: unknown): includePattern is string => typeof includePattern === "string",
+    );
+    if (includePatterns.length === 0) return;
+    const excludePatterns = Array.isArray(tsconfig.exclude)
+      ? tsconfig.exclude.filter(
+          (excludePattern: unknown): excludePattern is string => typeof excludePattern === "string",
+        )
+      : [];
+    entries.push(
+      ...fg
+        .sync(includePatterns, {
+          cwd: rootDirectory,
+          absolute: true,
+          onlyFiles: true,
+          ignore: ["**/node_modules/**", ...excludePatterns],
+        })
+        .filter(isImportableSourceFile),
+    );
+  } catch {}
+};
+
 const collectComponentCompositionRegistryEntries = (
   packageJson: PackageJsonEntryFields,
   rootDirectory: string,
@@ -383,10 +434,12 @@ export const extractPackageJsonEntries = async (packageJsonPath: string): Promis
 
     collectFieldEntries(packageJson, rootDirectory, entries);
     collectPackageExportEntries(packageJson.exports, rootDirectory, entries);
+    collectPackageExportEntries(packageJson.imports, rootDirectory, entries);
     collectPackageBinEntries(packageJson.bin, rootDirectory, entries);
     collectSideEffectEntries(packageJson.sideEffects, rootDirectory, entries);
     collectBuildEntries(packageJson.build, rootDirectory, entries);
     collectJestEntries(packageJson.jest, rootDirectory, entries);
+    collectTypeTestFixtureEntries(packageJson, rootDirectory, entries);
     collectComponentCompositionRegistryEntries(packageJson, rootDirectory, entries);
   } catch {}
 

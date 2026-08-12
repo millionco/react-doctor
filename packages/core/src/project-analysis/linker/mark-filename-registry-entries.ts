@@ -43,6 +43,11 @@ const buildRegistryModuleLookup = (moduleGraph: DependencyGraph): RegistryModule
       basenameFromPath(module.fileId.path),
       module.fileId.index,
     );
+    recordUniqueModuleIndex(
+      basenameToModuleIndex,
+      normalizeRegistryModulePath(basenameFromPath(module.fileId.path)),
+      module.fileId.index,
+    );
 
     const extensionlessPath = normalizeRegistryModulePath(module.fileId.path);
     let slashIndex = extensionlessPath.indexOf("/");

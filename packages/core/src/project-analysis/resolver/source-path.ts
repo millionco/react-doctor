@@ -1,7 +1,8 @@
 import { resolve, relative, dirname, basename } from "node:path";
 import { existsSync } from "node:fs";
+import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
 
-const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mts", ".mjs"];
+const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mts", ".mjs", ".cts", ".cjs", ".es6"];
 
 const OUTPUT_DIR_PREFIXES = [
   "dist/esm/",
@@ -24,7 +25,8 @@ const matchesOutputDirectory = (relativePath: string): boolean =>
   DIST_WILDCARD_PATTERN.test(relativePath);
 
 export const resolveSourcePath = (distPath: string, directory: string): string | undefined => {
-  if (existsSync(distPath)) return distPath;
+  const directSourcePath = resolveEntryWithExtensions(distPath);
+  if (directSourcePath) return directSourcePath;
 
   const relativeToDist = relative(directory, distPath);
   const sourceReplacements = ["src/"];

@@ -7,12 +7,15 @@ import type {
   ProjectAnalysisConfig,
   MemberAccess,
 } from "../types.js";
+import { collectConventionConsumedExportKeys } from "../utils/collect-convention-consumed-export-keys.js";
 
 export const detectDeadExports = (
   graph: DependencyGraph,
   config: ProjectAnalysisConfig,
+  platformSiblingIndex: ReadonlyMap<number, ReadonlyArray<number>> = new Map(),
 ): UnusedExport[] => {
-  const usageMap = buildUsageMap(graph);
+  const usageMap = buildUsageMap(graph, platformSiblingIndex);
+  const conventionConsumedExportKeys = collectConventionConsumedExportKeys(graph, config.rootDir);
   const unusedExports: UnusedExport[] = [];
 
   for (const module of graph.modules) {
@@ -40,6 +43,7 @@ export const detectDeadExports = (
 
       const usageKey = `${module.fileId.path}::${exportInfo.name}`;
       if (usageMap.has(usageKey)) continue;
+      if (conventionConsumedExportKeys.has(usageKey)) continue;
 
       if (module.localIdentifierReferences.includes(exportInfo.name)) continue;
 
@@ -70,9 +74,12 @@ export const detectDeadExports = (
   return unusedExports;
 };
 
-const buildUsageMap = (graph: DependencyGraph): Set<string> => {
+const buildUsageMap = (
+  graph: DependencyGraph,
+  platformSiblingIndex: ReadonlyMap<number, ReadonlyArray<number>>,
+): Set<string> => {
   const usedExportKeys = new Set<string>();
-  const sourceToTargetMap = buildSourceToTargetsMap(graph);
+  const sourceToTargetMap = buildSourceToTargetsMap(graph, platformSiblingIndex);
 
   // Indexed by source so the entry-point pass is O(edges), not
   // O(entry points × edges) — on a large repo with thousands of entry
@@ -92,11 +99,56 @@ const buildUsageMap = (graph: DependencyGraph): Set<string> => {
     if (!module.isEntryPoint) continue;
 
     for (const edge of reExportEdgesBySource.get(module.fileId.index) ?? []) {
-      const targetModule = graph.modules[edge.target];
+      const isWildcardReExport = edge.reExportedNames.includes("*");
+      for (const targetIndex of platformSiblingIndex.get(edge.target) ?? [edge.target]) {
+        const targetModule = graph.modules[targetIndex];
+        if (!targetModule) continue;
+
+        if (isWildcardReExport) {
+          markAllExportsUsedRecursive(
+            targetModule,
+            graph,
+            sourceToTargetMap,
+            usedExportKeys,
+            new Set(),
+          );
+        } else {
+          for (const mapping of edge.reExportMappings) {
+            if (mapping.originalName === "*") {
+              markAllExportsUsedRecursive(
+                targetModule,
+                graph,
+                sourceToTargetMap,
+                usedExportKeys,
+                new Set(),
+              );
+            } else {
+              markExportUsedRecursive(
+                targetModule.fileId.path,
+                mapping.originalName,
+                graph,
+                sourceToTargetMap,
+                usedExportKeys,
+                new Set(),
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (const edge of graph.edges) {
+    const sourceModule = graph.modules[edge.source];
+    for (const targetIndex of platformSiblingIndex.get(edge.target) ?? [edge.target]) {
+      const targetModule = graph.modules[targetIndex];
       if (!targetModule) continue;
 
-      const isWildcardReExport = edge.reExportedNames.includes("*");
-      if (isWildcardReExport) {
+      // `import()` consumers are opaque: `lazy(() => import("./page"))` takes
+      // the default, `.then((m) => m.X)` takes named members, and neither shows
+      // up as an imported symbol. Treat every export of a dynamically imported
+      // module as used rather than flag exports we cannot trace.
+      if (edge.isDynamic && edge.importedSymbols.length === 0) {
         markAllExportsUsedRecursive(
           targetModule,
           graph,
@@ -104,78 +156,48 @@ const buildUsageMap = (graph: DependencyGraph): Set<string> => {
           usedExportKeys,
           new Set(),
         );
-      } else {
-        for (const mapping of edge.reExportMappings) {
+        continue;
+      }
+
+      for (const symbol of edge.importedSymbols) {
+        if (symbol.isNamespace) {
+          handleNamespaceImport(
+            sourceModule,
+            targetModule,
+            symbol.localName,
+            graph,
+            sourceToTargetMap,
+            usedExportKeys,
+          );
+        } else {
+          const importName = symbol.isDefault ? "default" : symbol.importedName;
           markExportUsedRecursive(
             targetModule.fileId.path,
-            mapping.originalName,
+            importName,
             graph,
             sourceToTargetMap,
             usedExportKeys,
             new Set(),
           );
-        }
-      }
-    }
-  }
 
-  for (const edge of graph.edges) {
-    const targetModule = graph.modules[edge.target];
-    if (!targetModule) continue;
-
-    const sourceModule = graph.modules[edge.source];
-
-    // `import()` consumers are opaque: `lazy(() => import("./page"))` takes
-    // the default, `.then((m) => m.X)` takes named members, and neither shows
-    // up as an imported symbol. Treat every export of a dynamically imported
-    // module as used rather than flag exports we cannot trace.
-    if (edge.isDynamic && edge.importedSymbols.length === 0) {
-      markAllExportsUsedRecursive(
-        targetModule,
-        graph,
-        sourceToTargetMap,
-        usedExportKeys,
-        new Set(),
-      );
-      continue;
-    }
-
-    for (const symbol of edge.importedSymbols) {
-      if (symbol.isNamespace) {
-        handleNamespaceImport(
-          sourceModule,
-          targetModule,
-          symbol.localName,
-          graph,
-          sourceToTargetMap,
-          usedExportKeys,
-        );
-      } else {
-        const importName = symbol.isDefault ? "default" : symbol.importedName;
-        markExportUsedRecursive(
-          targetModule.fileId.path,
-          importName,
-          graph,
-          sourceToTargetMap,
-          usedExportKeys,
-          new Set(),
-        );
-
-        if (symbol.isDefault) {
-          const hasDefaultExport = targetModule.exports.some((exportInfo) => exportInfo.isDefault);
-          if (!hasDefaultExport && symbol.localName !== "default") {
-            const matchingNamedExport = targetModule.exports.find(
-              (exportInfo) => exportInfo.name === symbol.localName,
+          if (symbol.isDefault) {
+            const hasDefaultExport = targetModule.exports.some(
+              (exportInfo) => exportInfo.isDefault,
             );
-            if (matchingNamedExport) {
-              markExportUsedRecursive(
-                targetModule.fileId.path,
-                symbol.localName,
-                graph,
-                sourceToTargetMap,
-                usedExportKeys,
-                new Set(),
+            if (!hasDefaultExport && symbol.localName !== "default") {
+              const matchingNamedExport = targetModule.exports.find(
+                (exportInfo) => exportInfo.name === symbol.localName,
               );
+              if (matchingNamedExport) {
+                markExportUsedRecursive(
+                  targetModule.fileId.path,
+                  symbol.localName,
+                  graph,
+                  sourceToTargetMap,
+                  usedExportKeys,
+                  new Set(),
+                );
+              }
             }
           }
         }
@@ -221,7 +243,7 @@ const handleNamespaceImport = (
     return;
   }
 
-  if (isNamespaceReExported && !sourceModule.isEntryPoint) {
+  if (isNamespaceReExported) {
     markAllExportsUsedRecursive(targetModule, graph, sourceToTargets, usedKeys, new Set());
     return;
   }
@@ -253,18 +275,23 @@ const extractAccessedMemberNames = (
   return memberNames;
 };
 
-const buildSourceToTargetsMap = (graph: DependencyGraph): Map<number, number[]> => {
+const buildSourceToTargetsMap = (
+  graph: DependencyGraph,
+  platformSiblingIndex: ReadonlyMap<number, ReadonlyArray<number>>,
+): Map<number, number[]> => {
   const sourceToTargets = new Map<number, number[]>();
 
   for (const edge of graph.edges) {
     if (!edge.isReExportEdge) continue;
-    const existing = sourceToTargets.get(edge.source);
-    if (existing) {
-      if (!existing.includes(edge.target)) {
-        existing.push(edge.target);
+    for (const targetIndex of platformSiblingIndex.get(edge.target) ?? [edge.target]) {
+      const existing = sourceToTargets.get(edge.source);
+      if (existing) {
+        if (!existing.includes(targetIndex)) {
+          existing.push(targetIndex);
+        }
+      } else {
+        sourceToTargets.set(edge.source, [targetIndex]);
       }
-    } else {
-      sourceToTargets.set(edge.source, [edge.target]);
     }
   }
 
@@ -348,14 +375,7 @@ const followReExportChain = (
     if (!targetModule) continue;
 
     if (originalName === "*" || exportInfo.isNamespaceReExport) {
-      markExportUsedRecursive(
-        targetModule.fileId.path,
-        exportInfo.name,
-        graph,
-        sourceToTargets,
-        usedKeys,
-        visited,
-      );
+      markAllExportsUsedRecursive(targetModule, graph, sourceToTargets, usedKeys, visited);
     } else {
       const targetHasExport = targetModule.exports.some(
         (targetExport) =>

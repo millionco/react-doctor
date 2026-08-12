@@ -34,6 +34,12 @@ const buildAdjacencyList = (graph: DependencyGraph): number[][] => {
   const targetSets: Set<number>[] = Array.from({ length: graph.modules.length }, () => new Set());
 
   for (const edge of graph.edges) {
+    const sourceModule = graph.modules[edge.source];
+    const targetModule = graph.modules[edge.target];
+    if (sourceModule?.isAnalysisExcluded || targetModule?.isAnalysisExcluded) {
+      continue;
+    }
+
     // A lazy `import()` / `require()` edge only evaluates at call time, after
     // module init, so it cannot close an initialization-order cycle.
     if (edge.isDynamic) {

@@ -12,6 +12,7 @@ import {
   DEFAULT_EXTENSIONS,
   DEFAULT_EXCLUSIONS,
   HIDDEN_DIRECTORY_ALLOWLIST,
+  LEGACY_GRAPH_ONLY_PATTERNS,
   SCRIPT_FILE_PATTERN,
   SCRIPT_EXTENSIONLESS_FILE_PATTERN,
   SCRIPT_CONFIG_FILE_PATTERN,
@@ -27,10 +28,18 @@ import { extractGraphqlCodegenEntries } from "./graphql-codegen-entries.js";
 import { extractTaroPageEntries } from "./taro-page-entries.js";
 import { extractSectionsModuleEntries } from "./sections-module-entries.js";
 import { extractSiblingWorkspaceImportEntries } from "./sibling-workspace-import-entries.js";
+import { extractUmiDvaModelEntries } from "./umi-dva-model-entries.js";
+import { extractCoffeeScriptRequireEntries } from "./coffee-script-require-entries.js";
+import { extractRuntimeConsumedDirectoryFiles } from "./runtime-consumed-directory-files.js";
+import { extractSupabaseFunctionEntries } from "./supabase-function-entries.js";
+import { extractStaticGlobbyEntries } from "./static-globby-entries.js";
+import { extractNetlifyFunctionEntries } from "./netlify-function-entries.js";
+import { extractMuiDocsMetadataEntries } from "./mui-docs-metadata-entries.js";
 import { extractPackageJsonEntries, findDefaultIndexEntry } from "./package-json-entries.js";
 import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
 import { toPosixPath } from "../utils/to-posix-path.js";
 import { maskJavaScriptStringsAndComments } from "../utils/mask-javascript-strings-and-comments.js";
+import { extractLocalScriptFileReference } from "../utils/extract-local-script-file-reference.js";
 
 export const collectSourceFiles = async (config: ProjectAnalysisConfig): Promise<SourceFile[]> => {
   const extensions =
@@ -309,6 +318,13 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
 
   const sectionsModuleEntries = extractSectionsModuleEntries(absoluteRoot);
 
+  const coffeeScriptRequireEntries = extractCoffeeScriptRequireEntries(absoluteRoot);
+  for (const workspacePackage of entryEligiblePackages) {
+    coffeeScriptRequireEntries.push(
+      ...extractCoffeeScriptRequireEntries(workspacePackage.directory),
+    );
+  }
+
   const siblingWorkspaceImportEntries = extractSiblingWorkspaceImportEntries(absoluteRoot);
 
   const wranglerEntries = extractWranglerEntries(absoluteRoot);
@@ -328,7 +344,37 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
 
   const testRunnerDiscovery = discoverTestRunnerEntryPoints(absoluteRoot, entryEligiblePackages);
   const toolingDiscovery = discoverToolingEntryPoints(absoluteRoot, entryEligiblePackages);
+  for (const toolingEntry of [...toolingDiscovery.entryFiles]) {
+    if (toolingEntry.endsWith(".html")) {
+      toolingDiscovery.entryFiles.push(...extractScriptTagsFromHtmlFile(toolingEntry));
+    }
+  }
+  const runtimeConsumedDirectoryFiles = extractRuntimeConsumedDirectoryFiles(absoluteRoot);
+  for (const workspacePackage of entryEligiblePackages) {
+    runtimeConsumedDirectoryFiles.push(
+      ...extractRuntimeConsumedDirectoryFiles(workspacePackage.directory),
+    );
+  }
+  const umiDvaModelEntries = extractUmiDvaModelEntries(absoluteRoot, rootPackageDependencies);
+  for (const workspacePackage of entryEligiblePackages) {
+    umiDvaModelEntries.push(
+      ...extractUmiDvaModelEntries(
+        workspacePackage.directory,
+        readPackageJsonDependencies(join(workspacePackage.directory, "package.json")),
+      ),
+    );
+  }
   const ciEntries = extractCiWorkflowEntries(absoluteRoot);
+  const supabaseFunctionEntries = extractSupabaseFunctionEntries(absoluteRoot);
+  for (const workspacePackage of entryEligiblePackages) {
+    supabaseFunctionEntries.push(...extractSupabaseFunctionEntries(workspacePackage.directory));
+  }
+  const staticGlobbyEntries = extractStaticGlobbyEntries(
+    [...packageJsonEntries, ...workspaceEntries, ...frameworkEntries],
+    absoluteRoot,
+  );
+  const netlifyFunctionEntries = extractNetlifyFunctionEntries(absoluteRoot);
+  const muiDocsMetadataEntries = extractMuiDocsMetadataEntries(absoluteRoot);
 
   const testEntries = [
     ...new Set([...testRunnerDiscovery.entryFiles, ...testSetupEntries].map(toPosixPath)),
@@ -355,19 +401,27 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
         ...taroPageEntries,
         ...expoConfigPluginEntries,
         ...sectionsModuleEntries,
+        ...coffeeScriptRequireEntries,
         ...siblingWorkspaceImportEntries,
         ...wranglerEntries,
         ...pluginFileEntries,
         ...toolingDiscovery.entryFiles,
+        ...umiDvaModelEntries,
         ...ciEntries,
+        ...supabaseFunctionEntries,
+        ...staticGlobbyEntries,
+        ...netlifyFunctionEntries,
+        ...muiDocsMetadataEntries,
       ].map(toPosixPath),
     ),
   ].filter((entryPath) => !testEntryPathSet.has(entryPath));
   const alwaysUsedFiles = [
     ...new Set(
-      [...toolingDiscovery.alwaysUsedFiles, ...testRunnerDiscovery.alwaysUsedFiles].map(
-        toPosixPath,
-      ),
+      [
+        ...toolingDiscovery.alwaysUsedFiles,
+        ...testRunnerDiscovery.alwaysUsedFiles,
+        ...runtimeConsumedDirectoryFiles,
+      ].map(toPosixPath),
     ),
   ];
 
@@ -375,9 +429,20 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
     ...new Set(graphqlCodegenEntries.documentEntries.map(toPosixPath)),
   ];
 
+  const legacyGraphOnlyFiles = fg.sync(LEGACY_GRAPH_ONLY_PATTERNS, {
+    cwd: absoluteRoot,
+    absolute: true,
+    onlyFiles: true,
+    ignore: [...DEFAULT_EXCLUSIONS, ...config.ignorePatterns],
+  });
+
   const analysisExcludedFiles = [
     ...new Set(
-      [...graphqlCodegenEntries.generatedEntries, ...workspacePublicAssetFiles].map(toPosixPath),
+      [
+        ...graphqlCodegenEntries.generatedEntries,
+        ...workspacePublicAssetFiles,
+        ...legacyGraphOnlyFiles,
+      ].map(toPosixPath),
     ),
   ];
 
@@ -657,6 +722,23 @@ const resolveExtensionlessScriptPath = (basePath: string): string | undefined =>
   return undefined;
 };
 
+const extractExtensionlessScriptImports = (scriptPath: string): string[] => {
+  const entries: string[] = [];
+  let source = "";
+  try {
+    source = readFileSync(scriptPath, "utf-8");
+  } catch {
+    return entries;
+  }
+  const relativeRequirePattern = /\brequire\s*\(\s*["'](\.{1,2}\/[^"']+)["']\s*\)/g;
+  let requireMatch: RegExpExecArray | null;
+  while ((requireMatch = relativeRequirePattern.exec(source)) !== null) {
+    const resolvedEntry = resolveEntryWithExtensions(resolve(dirname(scriptPath), requireMatch[1]));
+    if (resolvedEntry) entries.push(resolvedEntry);
+  }
+  return entries;
+};
+
 const extractScriptEntries = (directory: string): string[] => {
   const packageJsonPath = resolve(directory, "package.json");
   if (!existsSync(packageJsonPath)) return [];
@@ -669,6 +751,14 @@ const extractScriptEntries = (directory: string): string[] => {
     if (scripts && typeof scripts === "object") {
       for (const scriptCommand of Object.values(scripts)) {
         if (typeof scriptCommand !== "string") continue;
+
+        const localScriptReference = extractLocalScriptFileReference(scriptCommand);
+        if (localScriptReference) {
+          const localScriptPath = resolve(directory, localScriptReference);
+          if (existsSync(localScriptPath)) {
+            entries.push(...extractExtensionlessScriptImports(localScriptPath));
+          }
+        }
 
         const match = scriptCommand.match(SCRIPT_FILE_PATTERN);
         if (match?.[1]) {
@@ -1572,11 +1662,15 @@ const ANGULAR_ENTRY_KEYS = ["main", "polyfills", "styles"] as const;
 
 const extractAngularEntryPoints = (directory: string): string[] => {
   const entries: string[] = [];
-  const angularJsonPaths = fg.sync(["angular.json", ".angular-cli.json"], {
-    cwd: directory,
-    absolute: true,
-    onlyFiles: true,
-  });
+  const angularJsonPaths = fg.sync(
+    ["angular.json", ".angular-cli.json", "**/angular.json", "**/.angular-cli.json"],
+    {
+      cwd: directory,
+      absolute: true,
+      onlyFiles: true,
+      ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"],
+    },
+  );
 
   for (const angularJsonPath of angularJsonPaths) {
     try {
@@ -1994,6 +2088,17 @@ const TEST_FRAMEWORK_PATTERNS: TestRunnerDefinition[] = [
     alwaysUsed: [".mocharc.*"],
   },
   {
+    enablers: ["jasmine", "jasmine-core", "jasmine-tagged"],
+    configFileActivators: ["jasmine.json", "spec/support/jasmine.json"],
+    entryPatterns: [
+      "spec/**/*.{ts,tsx,js,jsx}",
+      "**/*-spec.{ts,tsx,js,jsx}",
+      "**/*.spec.{ts,tsx,js,jsx}",
+    ],
+    fixturePatterns: ["**/fixtures/**/*.{ts,tsx,js,jsx,json}"],
+    alwaysUsed: ["jasmine.json", "spec/support/jasmine.json"],
+  },
+  {
     enablers: ["ava", "@ava/typescript"],
     configFileActivators: ["ava.config.js", "ava.config.cjs", "ava.config.mjs"],
     entryPatterns: [
@@ -2209,7 +2314,10 @@ const FRAMEWORK_PATTERNS: ToolingPluginDefinition[] = [
       "config/routes*.{ts,tsx,js,jsx,mts,mjs,cts,cjs}",
       "config/router.config.{ts,tsx,js,jsx,mts,mjs,cts,cjs}",
       "src/app.{ts,tsx,js,jsx}",
+      "src/global.{ts,tsx,js,jsx}",
+      "src/loading.{ts,tsx,js,jsx}",
       "src/locales/**/*.{ts,tsx,js,jsx}",
+      "mock/**/*.{ts,tsx,js,jsx}",
       "src/pages/**/*.{ts,tsx,js,jsx}",
     ],
     alwaysUsed: [],
@@ -2359,6 +2467,12 @@ const FRAMEWORK_PATTERNS: ToolingPluginDefinition[] = [
     enablerPrefixes: [],
     entryPatterns: [],
     alwaysUsed: [".changeset/**/*"],
+  },
+  {
+    enablers: ["@mui/internal-bundle-size-checker"],
+    enablerPrefixes: [],
+    entryPatterns: [],
+    alwaysUsed: ["bundle-size-checker.config.{ts,mts,cts,js,mjs,cjs}"],
   },
   {
     enablers: ["next"],
@@ -2698,6 +2812,7 @@ const FRAMEWORK_PATTERNS: ToolingPluginDefinition[] = [
       "electron/main.{ts,js}",
       "main/index.{ts,tsx,js,jsx}",
       "renderer/pages/**/*.{ts,tsx,js,jsx}",
+      "static/index.html",
     ],
     alwaysUsed: [
       "electron-builder.{yml,yaml,json,json5,toml}",
@@ -2979,6 +3094,7 @@ const FRAMEWORK_SCRIPT_BINARIES: Record<string, string[]> = {
   "@angular/core": ["ng"],
   "@nestjs/core": ["nest"],
   storybook: ["storybook", "start-storybook", "build-storybook"],
+  gulp: ["gulp"],
 };
 
 const detectFrameworkFromScripts = (scripts: Record<string, unknown> | undefined): Set<string> => {
@@ -3065,6 +3181,16 @@ const discoverToolingEntryPoints = (
     };
     if (directory === rootDir) {
       Object.assign(mergedDependencies, rootDependencies);
+    }
+
+    if (scriptDetectedEnablers.has("gulp") && "gulp" in mergedDependencies) {
+      allAlwaysUsed.push(
+        ...fg.sync("gulpfile.{js,ts,mjs,cjs}", {
+          cwd: directory,
+          absolute: true,
+          onlyFiles: true,
+        }),
+      );
     }
 
     for (const enabler of scriptDetectedEnablers) {

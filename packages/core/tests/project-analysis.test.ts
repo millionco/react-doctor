@@ -109,6 +109,30 @@ describe("analyzeProject", () => {
     ).toEqual(expect.arrayContaining(["src/cycle-a.ts", "src/cycle-b.ts"]));
   });
 
+  it("keeps exported types referenced by other exported type declarations", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts":
+          'import type { PublicShape } from "./library"; console.log({} as PublicShape);',
+        "src/library.ts": `
+          export interface SharedShape { value: string }
+          export type PublicShape = SharedShape & { enabled: boolean };
+          export interface ExtendedShape extends SharedShape { count: number }
+          export type UnusedShape = { stale: boolean };
+        `,
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedExportNames = result.unusedExports.map((unusedExport) => unusedExport.name);
+
+    expect(unusedExportNames).not.toContain("SharedShape");
+    expect(unusedExportNames).not.toContain("PublicShape");
+    expect(unusedExportNames).toContain("ExtendedShape");
+    expect(unusedExportNames).toContain("UnusedShape");
+  });
+
   it("tracks namespace members without treating type-only edges as runtime cycles", async () => {
     const rootDirectory = createProject(
       {
@@ -362,6 +386,248 @@ describe("analyzeProject", () => {
     },
   );
 
+  it("discovers Umi runtime, mock, and enabled DVA model conventions", async () => {
+    const rootDirectory = createProject(
+      {
+        "config/config.ts": "export default { dva: { hmr: true } };",
+        "src/global.tsx": 'import "./global-value";',
+        "src/global-value.ts": "export const globalValue = true;",
+        "src/loading.tsx": "export default () => null;",
+        "mock/users.ts": 'import "../src/mock-value"; export default {};',
+        "src/mock-value.ts": "export const mockValue = true;",
+        "src/models/session.ts": 'import "../model-value"; export default {};',
+        "src/model-value.ts": "export const modelValue = true;",
+        "src/orphan.ts": "export const orphan = true;",
+      },
+      { dependencies: { react: "1.0.0", umi: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("keeps Umi models authored when DVA is only mentioned in comments", async () => {
+    const rootDirectory = createProject(
+      {
+        "config/config.ts": "// dva: { hmr: true }\nexport default {};",
+        "src/pages/index.tsx": "export default () => null;",
+        "src/models/manual.ts": "export const manual = true;",
+      },
+      { dependencies: { react: "1.0.0", umi: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain("src/models/manual.ts");
+  });
+
+  it("resolves relative Umi route and loading component contracts", async () => {
+    const rootDirectory = createProject(
+      {
+        "config/config.js": `export default {
+          dynamicImport: { loadingComponent: "./components/PageLoading" },
+        };`,
+        "config/router.config.js": `export default [
+          { component: "../layouts/BasicLayout" },
+          { component: "./Dashboard/Home" },
+        ];`,
+        "src/components/PageLoading.tsx": "export default () => null;",
+        "src/layouts/BasicLayout.tsx": "export default () => null;",
+        "src/pages/Dashboard/Home.tsx": "export default () => null;",
+        "src/orphan.ts": "export const orphan = true;",
+      },
+      { dependencies: { react: "1.0.0", umi: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("discovers gulpfiles only when package scripts invoke Gulp", async () => {
+    const invokedRootDirectory = createProject(
+      {
+        "src/index.ts": "export const application = true;",
+        "gulpfile.js": 'import "./tasks/build";',
+        "tasks/build.js": "export const build = true;",
+      },
+      { scripts: { build: "gulp compile" }, devDependencies: { gulp: "1.0.0" } },
+    );
+    const dormantRootDirectory = createProject(
+      {
+        "src/index.ts": "export const application = true;",
+        "gulpfile.js": "export const dormant = true;",
+      },
+      { devDependencies: { gulp: "1.0.0" } },
+    );
+
+    const invokedResult = await analyzeProject({ rootDirectory: invokedRootDirectory });
+    const dormantResult = await analyzeProject({ rootDirectory: dormantRootDirectory });
+
+    expect(relativePaths(invokedRootDirectory, invokedResult.unusedFiles)).toEqual([]);
+    expect(relativePaths(dormantRootDirectory, dormantResult.unusedFiles)).toContain("gulpfile.js");
+  });
+
+  it("discovers entry points from nested Angular project configuration", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "export const application = true;",
+        "examples/angular/angular.json": JSON.stringify({
+          projects: {
+            demo: {
+              architect: {
+                build: { options: { main: "src/main.ts" } },
+              },
+            },
+          },
+        }),
+        "examples/angular/src/main.ts": 'import "./app";',
+        "examples/angular/src/app.ts": "export const app = true;",
+        "examples/angular/src/orphan.ts": "export const orphan = true;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual([
+      "examples/angular/src/orphan.ts",
+    ]);
+  });
+
+  it("discovers Jasmine spec and fixture conventions", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "export const application = true;",
+        "spec/component-spec.jsx": 'import fixture from "./fixtures/user"; console.log(fixture);',
+        "spec/fixtures/user.js": "export default { name: 'Ada' };",
+        "src/manual-spec.jsx": "export const manual = true;",
+        "src/orphan.jsx": "export const orphan = true;",
+      },
+      { devDependencies: { "jasmine-tagged": "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.jsx"]);
+  });
+
+  it("discovers static entries from CoffeeScript interpolated require factories", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "export const application = true;",
+        "src/registry.coffee": `
+          class Registry
+            @load = (name, modulePath) ->
+              require "../components/#{modulePath}"
+            @load "Menu", "menu"
+          # @load "Dormant", "dormant"
+          # require "../components/dormant"
+          active = true # require "../components/dormant"
+          require "../components/static"
+        `,
+        "components/menu.jsx": 'import "./menu-value"; export default () => null;',
+        "components/menu-value.ts": "export const menuValue = true;",
+        "components/static.jsx": "export default () => null;",
+        "components/dormant.jsx": "export default () => null;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["components/dormant.jsx"]);
+  });
+
+  it("discovers unique extensionless filename registry arguments", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `
+          registerStore("FeatureUsageStore", "feature-usage-store");
+          registerStore("AmbiguousStore", "ambiguous-store");
+        `,
+        "src/stores/feature-usage-store.ts": "export const store = true;",
+        "src/first/ambiguous-store.ts": "export const first = true;",
+        "src/second/ambiguous-store.ts": "export const second = true;",
+        "src/unrelated-store.ts": "export const unrelated = true;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual([
+      "src/first/ambiguous-store.ts",
+      "src/second/ambiguous-store.ts",
+      "src/unrelated-store.ts",
+    ]);
+  });
+
+  it("discovers imports from extensionless package script executables", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "export const application = true;",
+        "script/task": `#!/usr/bin/env node\nconst helper = require("./helper"); helper();`,
+        "script/helper.js": "module.exports = () => true;",
+        "script/orphan.js": "module.exports = () => false;",
+      },
+      { scripts: { build: "script/task build" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["script/orphan.js"]);
+  });
+
+  it("discovers renderer scripts from Electron static index HTML", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "export const main = true;",
+        "static/index.html": '<script src="index.js"></script>',
+        "static/index.js": "export const renderer = true;",
+        "static/orphan.js": "export const orphan = true;",
+      },
+      { dependencies: { electron: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["static/orphan.js"]);
+  });
+
+  it("discovers source directories consumed through runtime enumeration and copying", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `
+          const extensionsPath = path.join(rootDirectory, "src", "extensions");
+          fs.readdirSync(extensionsPath).forEach(filePath => require(filePath));
+          const templatePath = path.join(rootDirectory, "static", "template");
+          fs.copySync(templatePath, outputPath);
+          const cwdAssetsPath = path.resolve(process.cwd(), "src", "cwd-assets");
+          fs.readdirSync(cwdAssetsPath);
+          const dormantPath = path.join(rootDirectory, "src", "dormant");
+          console.log(dormantPath);
+          const uncertainPath = path.join(options.directory, "src", "uncertain");
+          fs.readdirSync(uncertainPath);
+        `,
+        "src/extensions/logger.ts": "export default class Logger {}",
+        "static/template/main.ts": "export const template = true;",
+        "src/cwd-assets/main.ts": "export const cwdAsset = true;",
+        "src/dormant/manual.ts": "export const manual = true;",
+        "src/uncertain/manual.ts": "export const uncertain = true;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual([
+      "src/dormant/manual.ts",
+      "src/uncertain/manual.ts",
+    ]);
+  });
+
   it("discovers Taro application, config, and page convention entries", async () => {
     const rootDirectory = createProject(
       {
@@ -447,6 +713,44 @@ describe("analyzeProject", () => {
     const result = await analyzeProject({ rootDirectory });
 
     expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("ignores commented and unrelated route-shaped strings in Taro config", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/app.tsx": "export default () => null;",
+        "src/app.config.ts": `
+          const pages = ["pages/home/index"];
+          if (process.env.TARO_ENV === "rn") {
+            pages.push("pages/native/index");
+          }
+          // pages.push("pages/commented/index");
+          const metadata = {
+            preview: "pages/metadata/index",
+            examples: ["pages/examples/index"],
+          };
+          export default {
+            pages,
+            metadata,
+            tabBar: { list: [{ pagePath: "pages/home/index" }] },
+          };
+        `,
+        "src/pages/home/index.tsx": "export default () => null;",
+        "src/pages/native/index.tsx": "export default () => null;",
+        "src/pages/commented/index.tsx": "export default () => null;",
+        "src/pages/metadata/index.tsx": "export default () => null;",
+        "src/pages/examples/index.tsx": "export default () => null;",
+      },
+      { dependencies: { "@tarojs/react": "1.0.0", react: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual([
+      "src/pages/commented/index.tsx",
+      "src/pages/examples/index.tsx",
+      "src/pages/metadata/index.tsx",
+    ]);
   });
 
   it("discovers Remix routes from a custom app directory", async () => {
@@ -1132,6 +1436,32 @@ describe("analyzeProject", () => {
     expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain(
       "packages/compositions/src/composition.tsx",
     );
+  });
+
+  it("resolves extensionless entry fields from implicitly discovered packages", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "export const root = 1;",
+        "internal_packages/composer/package.json": JSON.stringify({
+          name: "composer",
+          private: true,
+          main: "./lib/main",
+        }),
+        "internal_packages/composer/lib/main.es6":
+          'import { View } from "./view"; export const Legacy = View;',
+        "internal_packages/composer/lib/view.jsx":
+          'import { Legacy } from "./main"; export const View = Legacy;',
+        "internal_packages/composer/lib/orphan.jsx": "export const Orphan = () => null;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual([
+      "internal_packages/composer/lib/orphan.jsx",
+    ]);
+    expect(result.circularDependencies).toEqual([]);
   });
 
   it("suppresses public assets at workspace roots without suppressing nested source folders", async () => {

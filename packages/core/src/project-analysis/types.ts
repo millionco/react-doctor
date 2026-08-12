@@ -28,6 +28,9 @@ export interface ImportReference {
   isDynamic: boolean;
   isSideEffect: boolean;
   isGlob?: boolean;
+  globBaseDirectory?: string;
+  globFilterPattern?: string;
+  globFilterFlags?: string;
   line: number;
   column: number;
 }

@@ -1,45 +1,4 @@
 import type { DependencyGraph, Edge } from "../types.js";
-import { PLATFORM_SUFFIXES } from "../constants.js";
-
-const PLATFORM_DIRECTORY_NAMES = new Set([
-  "web",
-  "native",
-  "ios",
-  "android",
-  "desktop",
-  "windows",
-  "macos",
-]);
-
-const stripPlatformSuffix = (
-  filePath: string,
-  platformSuffixes: ReadonlyArray<string>,
-): string | undefined => {
-  for (const suffix of platformSuffixes) {
-    const extensionIndex = filePath.lastIndexOf(".");
-    if (extensionIndex === -1) continue;
-
-    const withoutExtension = filePath.slice(0, extensionIndex);
-    if (withoutExtension.endsWith(suffix)) {
-      return withoutExtension.slice(0, -suffix.length) + filePath.slice(extensionIndex);
-    }
-  }
-  return undefined;
-};
-
-const stripPlatformDirectory = (filePath: string): string | undefined => {
-  const segments = filePath.split("/");
-  for (let segmentIndex = segments.length - 2; segmentIndex >= 0; segmentIndex--) {
-    if (PLATFORM_DIRECTORY_NAMES.has(segments[segmentIndex])) {
-      const withoutPlatformDir = [
-        ...segments.slice(0, segmentIndex),
-        ...segments.slice(segmentIndex + 1),
-      ].join("/");
-      return withoutPlatformDir;
-    }
-  }
-  return undefined;
-};
 
 interface ReachabilityQueueItem {
   moduleIndex: number;
@@ -48,7 +7,7 @@ interface ReachabilityQueueItem {
 
 export const traceReachability = (
   graph: DependencyGraph,
-  additionalPlatformSuffixesForFile: (filePath: string) => ReadonlyArray<string> = () => [],
+  platformSiblingIndex: ReadonlyMap<number, ReadonlyArray<number>> = new Map(),
 ): void => {
   const totalModules = graph.modules.length;
   const visited = new Uint8Array(totalModules);
@@ -153,52 +112,13 @@ export const traceReachability = (
     }
   }
 
-  const platformSiblingGroups = new Map<string, number[]>();
-  const addToSiblingGroup = (groupKey: string, moduleIndex: number): void => {
-    const existingSiblings = platformSiblingGroups.get(groupKey);
-    if (existingSiblings) {
-      existingSiblings.push(moduleIndex);
-    } else {
-      platformSiblingGroups.set(groupKey, [moduleIndex]);
-    }
-  };
-
-  for (let moduleIndex = 0; moduleIndex < totalModules; moduleIndex++) {
-    const modulePath = graph.modules[moduleIndex].fileId.path;
-
-    const basePathFromSuffix = stripPlatformSuffix(modulePath, [
-      ...PLATFORM_SUFFIXES,
-      ...additionalPlatformSuffixesForFile(modulePath),
-    ]);
-    if (basePathFromSuffix) {
-      addToSiblingGroup(basePathFromSuffix, moduleIndex);
-    }
-
-    const basePathFromDirectory = stripPlatformDirectory(modulePath);
-    if (basePathFromDirectory) {
-      addToSiblingGroup("dir:" + basePathFromDirectory, moduleIndex);
-    }
-  }
-
-  for (let moduleIndex = 0; moduleIndex < totalModules; moduleIndex++) {
-    const modulePath = graph.modules[moduleIndex].fileId.path;
-    const declarationBasePath = modulePath.replace(/\.d(?=\.[^./]+$)/, "");
-    const siblingGroup =
-      platformSiblingGroups.get(modulePath) ?? platformSiblingGroups.get(declarationBasePath);
-    if (siblingGroup) {
-      siblingGroup.push(moduleIndex);
-    }
-  }
-
   const platformQueue: ReachabilityQueueItem[] = [];
-  for (const siblingIndices of platformSiblingGroups.values()) {
-    const hasReachableSibling = siblingIndices.some((index) => Boolean(visited[index]));
-    if (hasReachableSibling) {
-      for (const siblingIndex of siblingIndices) {
-        if (!visited[siblingIndex]) {
-          visited[siblingIndex] = 1;
-          platformQueue.push({ moduleIndex: siblingIndex, demandedSymbols: "all" });
-        }
+  for (let moduleIndex = 0; moduleIndex < totalModules; moduleIndex++) {
+    if (!visited[moduleIndex]) continue;
+    for (const siblingIndex of platformSiblingIndex.get(moduleIndex) ?? []) {
+      if (!visited[siblingIndex]) {
+        visited[siblingIndex] = 1;
+        platformQueue.push({ moduleIndex: siblingIndex, demandedSymbols: "all" });
       }
     }
   }

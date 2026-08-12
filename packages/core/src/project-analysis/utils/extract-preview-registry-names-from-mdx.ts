@@ -47,8 +47,9 @@ export const extractPreviewRegistryNamesFromMdx = (sourceText: string): string[]
       }
       const commentStart = Math.min(...commentStarts);
       renderedLine += remainingLine.slice(0, commentStart);
+      const commentStartMarker = commentStart === htmlCommentStart ? "<!--" : "{/*";
       commentEndMarker = commentStart === htmlCommentStart ? "-->" : "*/}";
-      remainingLine = remainingLine.slice(commentStart + 4);
+      remainingLine = remainingLine.slice(commentStart + commentStartMarker.length);
     }
     renderedLines.push(renderedLine);
   }

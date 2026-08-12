@@ -15,7 +15,8 @@ export const resolveReExportChains = (graph: DependencyGraph): void => {
         (exportInfo) =>
           exportInfo.isReExport &&
           exportInfo.reExportSource !== undefined &&
-          exportInfo.isNamespaceReExport,
+          exportInfo.isNamespaceReExport &&
+          exportInfo.name === "*",
       );
       if (!namespaceReExport) continue;
 

@@ -112,6 +112,7 @@ describe("build-script filesystem consumers", () => {
           items: [],
         }),
         "content/components.mdx": [
+          "{/**/}",
           "<PreviewComponents",
           '  registryName="published"',
           "/>",

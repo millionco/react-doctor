@@ -24,6 +24,9 @@ import { matchesNodeModulesPackageReference } from "../utils/matches-node-module
 import { collectStylesheetImportSpecifiers } from "../utils/collect-stylesheet-import-specifiers.js";
 import { findMonorepoRoot } from "../utils/find-monorepo-root.js";
 import { extractExpoConfigPluginEntries } from "../collect/expo-config-plugin-entries.js";
+import { extractKarmaConfigPackageReferences } from "../utils/extract-karma-config-package-references.js";
+import { hasExpoReactServerFunctions } from "../utils/has-expo-react-server-functions.js";
+import { extractInvokedBuildScriptPaths } from "../collect/build-script-consumed-files.js";
 
 interface PackageFileGlobOptions {
   readonly ignore: ReadonlyArray<string>;
@@ -157,6 +160,20 @@ export const detectStalePackages = (
       declaredNames,
     );
     for (const packageName of packageJsonReferenced) markPackageUsed(packageName);
+  }
+
+  for (const buildScriptPath of extractInvokedBuildScriptPaths(config.rootDir)) {
+    try {
+      for (const packageName of matchPackageNamesInFile(
+        buildScriptPath,
+        declaredNames,
+        matchesPackageImportReference,
+      )) {
+        markPackageUsed(packageName);
+      }
+    } catch {
+      continue;
+    }
   }
 
   const nxProjectReferences = collectNxProjectJsonReferences(
@@ -635,9 +652,12 @@ const CONFIG_FILE_GLOBS = [
   ".storybook/main.{js,ts,mjs,cjs}",
   ".storybook/preview.{js,ts,mjs,cjs,tsx,jsx}",
   "docusaurus.config.{js,ts,mjs}",
+  "gatsby-config.{js,ts,mjs,cjs}",
   "next.config.{js,ts,mjs,mts}",
   "tailwind.config.{js,ts,cjs,mjs}",
   "jest.config.{js,ts,mjs,cjs}",
+  "karma.{conf,config}.{js,ts,mjs,cjs}",
+  "**/karma.{conf,config}.{js,ts,mjs,cjs}",
   "vitest.config.{js,ts,mjs,mts}",
   "app.json",
   "forge.config.{js,ts,cjs}",
@@ -697,9 +717,22 @@ const collectConfigReferencedPackages = (
     }
   };
 
+  const addKarmaConfigMatches = (filePath: string): void => {
+    if (!/^karma\.(?:conf|config)\.[cm]?[jt]s$/.test(basename(filePath))) return;
+    try {
+      const content = readFileSync(filePath, "utf-8");
+      for (const packageName of extractKarmaConfigPackageReferences(content, declaredNames)) {
+        referenced.add(packageName);
+      }
+    } catch {
+      return;
+    }
+  };
+
   for (const module of graph.modules) {
     if (!module.isConfigFile) continue;
     addMatchesFromFile(module.fileId.path, containsPackageName);
+    addKarmaConfigMatches(module.fileId.path);
   }
 
   const configFiles = globPackageFiles(rootDir, CONFIG_FILE_GLOBS, {
@@ -710,6 +743,7 @@ const collectConfigReferencedPackages = (
 
   for (const configPath of configFiles) {
     addMatchesFromFile(configPath, containsPackageName);
+    addKarmaConfigMatches(configPath);
     if (
       declaredNames.has("release-it") &&
       RELEASE_IT_CONFIG_FILE_PATTERN.test(basename(configPath))
@@ -1158,6 +1192,14 @@ const collectProjectConventionReferencedPackages = (
     }).length > 0
   ) {
     referenced.add("prisma");
+  }
+
+  if (
+    declaredNames.has("react-server-dom-webpack") &&
+    usedPackageNames.has("expo-router") &&
+    hasExpoReactServerFunctions(rootDir)
+  ) {
+    referenced.add("react-server-dom-webpack");
   }
 
   return referenced;

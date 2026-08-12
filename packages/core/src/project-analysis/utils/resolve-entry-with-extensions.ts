@@ -1,7 +1,17 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-const RESOLVABLE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".cjs", ".cts"];
+const RESOLVABLE_EXTENSIONS = [
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".mts",
+  ".cjs",
+  ".cts",
+  ".es6",
+];
 
 export const resolveEntryWithExtensions = (basePath: string): string | undefined => {
   if (existsSync(basePath)) return basePath;

@@ -40,6 +40,7 @@ import { runSafeDetector } from "./utils/run-safe-detector.js";
 import { collectGitLinguistIgnoredPaths } from "../utils/collect-git-linguist-ignored-paths.js";
 import { toPosixPath } from "./utils/to-posix-path.js";
 import { extractBuildScriptConsumedFiles } from "./collect/build-script-consumed-files.js";
+import { buildPlatformSiblingIndex } from "./utils/build-platform-sibling-index.js";
 
 export interface AnalyzeProjectInput {
   readonly rootDirectory: string;
@@ -375,8 +376,9 @@ const analyzeProjectConfig = async (
 
   markFilenameRegistryEntries(moduleGraph);
 
+  let platformSiblingIndex = new Map<number, number[]>();
   try {
-    traceReachability(moduleGraph, (filePath) => {
+    platformSiblingIndex = buildPlatformSiblingIndex(moduleGraph, (filePath) => {
       const containingCapabilityRoots = platformCapabilityRoots.filter((capabilityRoot) =>
         isPathInsideDirectory(filePath, capabilityRoot.directory),
       );
@@ -389,6 +391,7 @@ const analyzeProjectConfig = async (
           : []),
       ];
     });
+    traceReachability(moduleGraph, platformSiblingIndex);
   } catch (reachabilityError) {
     setupErrors.push(
       new DetectorError({
@@ -420,7 +423,7 @@ const analyzeProjectConfig = async (
   );
   const unusedExports = runReportDetector(
     "detectDeadExports",
-    () => detectDeadExports(moduleGraph, config),
+    () => detectDeadExports(moduleGraph, config, platformSiblingIndex),
     [],
   );
   const stalePackageReport = runReportDetector(

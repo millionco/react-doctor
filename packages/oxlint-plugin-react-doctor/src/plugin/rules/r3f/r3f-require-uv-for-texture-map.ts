@@ -53,7 +53,7 @@ export const r3fRequireUvForTextureMap = defineRule({
             getActiveR3fMaterialTexturePropertyNames(
               child.openingElement,
               getR3fConstructorName(elementType),
-            ).length > 0 &&
+            ).size > 0 &&
             !getAuthoritativeJsxAttribute(child.openingElement.attributes, "attach"),
           );
         });
@@ -91,7 +91,7 @@ export const r3fRequireUvForTextureMap = defineRule({
         );
         context.report({
           node: geometry.openingElement,
-          message: `${resolveJsxElementType(material.openingElement) ?? "This material"} samples ${texturePropertyNames.join(", ")}, but this custom bufferGeometry defines positions without any UV attribute`,
+          message: `${resolveJsxElementType(material.openingElement) ?? "This material"} samples ${[...texturePropertyNames].join(", ")}, but this custom bufferGeometry defines positions without any UV attribute`,
         });
       },
     };

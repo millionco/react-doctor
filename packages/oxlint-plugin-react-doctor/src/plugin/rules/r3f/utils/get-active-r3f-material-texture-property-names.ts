@@ -7,12 +7,16 @@ import { getJsxAttributeExpression } from "./get-jsx-attribute-expression.js";
 export const getActiveR3fMaterialTexturePropertyNames = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
   materialConstructorName: string,
-): ReadonlyArray<string> =>
-  [...(UV_TEXTURE_PROPERTY_NAMES_BY_MATERIAL.get(materialConstructorName) ?? [])].filter(
-    (propertyName) => {
-      const attribute = getAuthoritativeJsxAttribute(node.attributes, propertyName);
-      if (!attribute) return false;
-      const expression = getJsxAttributeExpression(node, propertyName);
-      return expression === null || (expression !== undefined && !isNullishExpression(expression));
-    },
+): ReadonlySet<string> =>
+  new Set(
+    [...(UV_TEXTURE_PROPERTY_NAMES_BY_MATERIAL.get(materialConstructorName) ?? [])].filter(
+      (propertyName) => {
+        const attribute = getAuthoritativeJsxAttribute(node.attributes, propertyName);
+        if (!attribute) return false;
+        const expression = getJsxAttributeExpression(node, propertyName);
+        return (
+          expression === null || (expression !== undefined && !isNullishExpression(expression))
+        );
+      },
+    ),
   );

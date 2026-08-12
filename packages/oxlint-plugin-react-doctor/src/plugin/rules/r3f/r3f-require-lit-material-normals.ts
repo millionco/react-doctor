@@ -54,7 +54,7 @@ export const r3fRequireLitMaterialNormals = defineRule({
             getActiveR3fMaterialTexturePropertyNames(
               child.openingElement,
               materialConstructorName,
-            ).includes("normalMap") &&
+            ).has("normalMap") &&
             !getAuthoritativeJsxAttribute(child.openingElement.attributes, "attach"),
           );
         });

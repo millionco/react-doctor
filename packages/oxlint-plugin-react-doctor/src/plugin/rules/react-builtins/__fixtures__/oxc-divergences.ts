@@ -12,10 +12,16 @@
 export interface OxcDivergence {
   passSkips?: ReadonlyArray<number>;
   failSkips?: ReadonlyArray<number>;
+  canonicalPassSkips?: ReadonlyArray<number>;
   reason: string;
 }
 
 export const DIVERGENCES: Record<string, OxcDivergence> = {
+  "rules-of-hooks": {
+    canonicalPassSkips: [17, 19],
+    reason:
+      "Canonical eslint-plugin-react-hooks treats Hooks in try blocks as conditional because an earlier throw changes Hook order; OXC 1.77 incorrectly accepts them.",
+  },
   "button-has-type": {
     failSkips: [0, 15, 16, 27],
     reason:

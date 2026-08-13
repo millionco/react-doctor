@@ -12,6 +12,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { fileImportsNonReactJsxDialect } from "../../utils/non-react-jsx-dialect.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
@@ -92,6 +93,7 @@ export const noUnknownProperty = defineRule({
     "Use the prop name React expects, like `className`, `htmlFor`, or `tabIndex`, so the attribute is applied correctly.",
   create: (context) => {
     const { ignore = [], requireDataLowercase = false } = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const ignoreSet = new Set(ignore);
     let fileIsNonReactJsx = false;
 
@@ -126,15 +128,25 @@ export const noUnknownProperty = defineRule({
         if (!isLowercaseStart || elementType === "fbt" || elementType === "fbs") return;
 
         let isValidHtmlTag = isKnownDomTag(elementType);
+        let hasCustomizedBuiltInAttribute = false;
         if (isValidHtmlTag) {
           for (const attribute of node.attributes) {
             if (!isNodeOfType(attribute, "JSXAttribute")) continue;
             if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
             if (attribute.name.name === "is") {
               isValidHtmlTag = false;
+              hasCustomizedBuiltInAttribute = true;
               break;
             }
           }
+        }
+
+        if (
+          !isValidHtmlTag &&
+          !shouldUseCuratedBehavior &&
+          (hasCustomizedBuiltInAttribute || elementType.includes("-"))
+        ) {
+          return;
         }
 
         for (const attribute of node.attributes) {
@@ -154,12 +166,12 @@ export const noUnknownProperty = defineRule({
           }
 
           if (isValidDomAriaProperty(actualName)) continue;
-          if (!isValidHtmlTag) continue;
+          if (shouldUseCuratedBehavior && !isValidHtmlTag) continue;
 
           const normalizedName = normalizeAttributeCase(actualName);
           const allowedTags = DOM_PROPERTY_TO_ALLOWED_TAGS.get(normalizedName);
           if (allowedTags) {
-            if (isSyntheticEventHandlerName(normalizedName)) continue;
+            if (shouldUseCuratedBehavior && isSyntheticEventHandlerName(normalizedName)) continue;
             if (!allowedTags.has(elementType)) {
               context.report({
                 node: attribute.name,
@@ -178,6 +190,7 @@ export const noUnknownProperty = defineRule({
           // this prop" would be false. Renaming to the camelCase form is
           // purely stylistic; stay silent on SVG hosts.
           if (
+            shouldUseCuratedBehavior &&
             SVG_TAGS.has(elementType) &&
             actualName.includes("-") &&
             !hasUppercaseChar(actualName) &&
@@ -207,7 +220,7 @@ export const noUnknownProperty = defineRule({
             !hasUppercaseChar(actualName) &&
             !actualName.startsWith("aria-") &&
             !actualName.startsWith("data-");
-          if (isRenderedVerbatimByReact) continue;
+          if (shouldUseCuratedBehavior && isRenderedVerbatimByReact) continue;
 
           context.report({ node: attribute.name, message: UNKNOWN_PROP_GENERIC });
         }

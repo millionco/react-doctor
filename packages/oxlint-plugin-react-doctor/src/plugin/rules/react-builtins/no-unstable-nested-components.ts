@@ -8,6 +8,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { ControlFlowAnalysis } from "../../semantic/control-flow-graph.js";
@@ -36,6 +37,7 @@ const NESTED_FUNCTION_TYPES: ReadonlySet<string> = new Set([
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
+  shouldUseCuratedBehavior: boolean,
 ): Required<NoUnstableNestedComponentsSettings> => {
   const reactDoctor = settings?.["react-doctor"];
   const ruleSettings =
@@ -49,7 +51,7 @@ const resolveSettings = (
     // tldraw's `components={{HelperButtons: () => ...}}`, etc.) is the
     // canonical React composition pattern. Users who want strict
     // enforcement opt back in via `allowAsProps: false`.
-    allowAsProps: ruleSettings.allowAsProps ?? true,
+    allowAsProps: ruleSettings.allowAsProps ?? shouldUseCuratedBehavior,
     customValidators: ruleSettings.customValidators ?? [],
     propNamePattern: ruleSettings.propNamePattern ?? "render*",
   };
@@ -468,7 +470,8 @@ export const noUnstableNestedComponents = defineRule({
   category: "Performance",
   tags: ["react-jsx-only"],
   create: (context) => {
-    const settings = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
+    const settings = resolveSettings(context.settings, shouldUseCuratedBehavior);
     const renderPropRegex = compileGlob(settings.propNamePattern);
 
     // Bindings actually INSTANTIATED as React elements (`<Name/>` or

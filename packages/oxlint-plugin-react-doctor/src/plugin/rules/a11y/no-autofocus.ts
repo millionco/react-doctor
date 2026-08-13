@@ -9,6 +9,7 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const MESSAGE =
   "`autoFocus` moves focus on load, which can disrupt screen reader and keyboard users. Remove it and let users choose where to focus.";
@@ -32,7 +33,9 @@ const resolveSettings = (
   // be flagged) — flagging the consumer creates noise for every
   // design-system input that forwards the prop. Match jsx-a11y's
   // multi-year default.
-  return { ignoreNonDOM: ruleSettings.ignoreNonDOM ?? true };
+  return {
+    ignoreNonDOM: ruleSettings.ignoreNonDOM ?? shouldUseCuratedPortBehavior(settings),
+  };
 };
 
 // Strip parens around an expression — OXC's ESTree parser doesn't
@@ -103,6 +106,7 @@ const isModalDialogElement = (
   settings: Readonly<Record<string, unknown>> | undefined,
 ): boolean => {
   if (flattenJsxName(openingElement.name as EsTreeNode) === "dialog") return true;
+  if (hasJsxPropIgnoreCase(openingElement.attributes, "popover")) return true;
   if (hasJsxPropIgnoreCase(openingElement.attributes, "aria-modal")) return true;
   const roleAttribute = hasJsxPropIgnoreCase(openingElement.attributes, "role");
   if (roleAttribute) {
@@ -119,8 +123,11 @@ const isModalDialogElement = (
 const isInsideModalDialog = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
   settings: Readonly<Record<string, unknown>> | undefined,
+  shouldIncludeCurrentElement: boolean,
 ): boolean => {
-  let current: EsTreeNode | null | undefined = node.parent;
+  let current: EsTreeNode | null | undefined = shouldIncludeCurrentElement
+    ? node.parent
+    : node.parent?.parent;
   while (current) {
     if (
       isNodeOfType(current, "JSXElement") &&
@@ -176,10 +183,11 @@ export const noAutofocus = defineRule({
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const isTestlikeFile = isTestlikeFilename(context.filename);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         const autoFocusAttribute = node.attributes.find((attribute) => {
           if (!isNodeOfType(attribute as EsTreeNode, "JSXAttribute")) return false;
           const attributeName = (attribute as EsTreeNodeOfType<"JSXAttribute">).name;
@@ -192,13 +200,13 @@ export const noAutofocus = defineRule({
         const attributeValue = (autoFocusAttribute as EsTreeNodeOfType<"JSXAttribute">)
           .value as EsTreeNode | null;
         if (attributeValue && isFalseAttributeValue(attributeValue)) return;
-        if (isDynamicAttributeValue(attributeValue)) return;
+        if (shouldUseCuratedBehavior && isDynamicAttributeValue(attributeValue)) return;
         if (settings.ignoreNonDOM) {
           const tag = getElementType(node, context.settings);
           if (!HTML_TAGS.has(tag)) return;
         }
-        if (isInsideModalDialog(node, context.settings)) return;
-        if (isConditionallyRendered(node)) return;
+        if (isInsideModalDialog(node, context.settings, shouldUseCuratedBehavior)) return;
+        if (shouldUseCuratedBehavior && isConditionallyRendered(node)) return;
         context.report({ node: autoFocusAttribute as EsTreeNode, message: MESSAGE });
       },
     };

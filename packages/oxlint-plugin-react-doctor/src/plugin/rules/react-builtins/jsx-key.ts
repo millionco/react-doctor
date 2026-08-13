@@ -19,6 +19,7 @@ import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import type { Rule } from "../../utils/rule.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const ITERATOR_METHOD_NAMES = new Set(["map", "flatMap", "from"]);
 const RENDERING_CALL_NAMES = new Set(["createPortal", "hydrate", "hydrateRoot", "render"]);
@@ -676,6 +677,28 @@ const checkKeyBeforeSpread = (
   }
 };
 
+const checkUpstreamKeyBeforeSpread = (
+  context: Parameters<Rule["create"]>[0],
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): void => {
+  let firstSpreadIndex: number | null = null;
+  for (const [attributeIndex, attribute] of openingElement.attributes.entries()) {
+    if (isNodeOfType(attribute, "JSXSpreadAttribute") && firstSpreadIndex === null) {
+      firstSpreadIndex = attributeIndex;
+      continue;
+    }
+    if (
+      firstSpreadIndex !== null &&
+      isNodeOfType(attribute, "JSXAttribute") &&
+      isNodeOfType(attribute.name, "JSXIdentifier") &&
+      attribute.name.name === "key"
+    ) {
+      context.report({ node: attribute, message: KEY_BEFORE_SPREAD });
+      return;
+    }
+  }
+};
+
 const getKeyAttributeValueString = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
 ): { keyValue: string; node: EsTreeNode } | null => {
@@ -724,11 +747,13 @@ export const jsxKey = defineRule({
     "Add a stable `key` prop so React can keep list items matched to the right data when the list changes.",
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     return {
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         const openingElement = node.openingElement;
         if (settings.checkKeyMustBeforeSpread) {
-          checkKeyBeforeSpread(context, openingElement);
+          if (shouldUseCuratedBehavior) checkKeyBeforeSpread(context, openingElement);
+          else checkUpstreamKeyBeforeSpread(context, openingElement);
         }
         if (settings.warnOnDuplicates) {
           // Duplicate keys among children of this element.
@@ -757,6 +782,16 @@ export const jsxKey = defineRule({
         }
         context.report({
           node: openingElement,
+          message: enclosingContext.kind === "array" ? MISSING_KEY_ARRAY : MISSING_KEY_ITERATOR,
+        });
+      },
+      JSXFragment(node: EsTreeNodeOfType<"JSXFragment">) {
+        if (shouldUseCuratedBehavior) return;
+        const enclosingContext = findEnclosingIteratorContext(node, context.scopes);
+        if (!enclosingContext) return;
+        if (isWithinChildrenToArray(node)) return;
+        context.report({
+          node,
           message: enclosingContext.kind === "array" ? MISSING_KEY_ARRAY : MISSING_KEY_ITERATOR,
         });
       },

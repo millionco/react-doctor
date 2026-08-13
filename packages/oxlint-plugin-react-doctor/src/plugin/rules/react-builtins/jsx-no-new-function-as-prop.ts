@@ -4,7 +4,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { hasCustomMemoComparator } from "../../utils/has-custom-memo-comparator.js";
 import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
-import { isJsxAttributeOnIntrinsicHtmlElement } from "../../utils/is-on-intrinsic-html-element.js";
 import {
   buildSameFileMemoRegistry,
   memoStatusForJsxOpeningName,
@@ -12,6 +11,8 @@ import {
 } from "../../utils/build-same-file-memo-registry.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { shouldSkipReactPerfNativeAttribute } from "../../utils/should-skip-react-perf-native-attribute.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import {
   ACCESSOR_PREDICATE_PREFIXES,
@@ -91,6 +92,7 @@ const isFunctionProducingExpression = (expression: EsTreeNode): boolean => {
 const followsRenderLocalFunctionBinding = (
   expression: EsTreeNode,
   jsxAttribute: EsTreeNode,
+  shouldUseCuratedBehavior: boolean,
 ): boolean => {
   const stripped = stripParenExpression(expression);
   if (!isNodeOfType(stripped, "Identifier")) return false;
@@ -109,13 +111,15 @@ const followsRenderLocalFunctionBinding = (
   // naming it and passing it as `onClick={handleX}` is no different
   // from passing the inline arrow `onClick={() => fn()}`. `useCallback`
   // can't help in either shape, so don't flag.
-  if (isParameterBindingWrapper(binding.initializer as EsTreeNode)) return false;
+  if (shouldUseCuratedBehavior && isParameterBindingWrapper(binding.initializer as EsTreeNode)) {
+    return false;
+  }
   // Also skip when the binding is a hooked-up handler from a hook
   // call — `const handleSubmit = useSubmit(...)` style. The hook
   // is responsible for its own memoisation (most React hooks
   // return stable refs for callbacks).
   const init = binding.initializer as EsTreeNode;
-  if (isNodeOfType(init, "CallExpression")) {
+  if (shouldUseCuratedBehavior && isNodeOfType(init, "CallExpression")) {
     const callee = init.callee;
     if (isNodeOfType(callee, "Identifier") && callee.name.startsWith("use")) {
       return false;
@@ -508,22 +512,32 @@ export const jsxNoNewFunctionAsProp = defineRule({
     "Wrap the callback in `useCallback` or move it outside the component so memoized children do not redraw every render.",
   category: "Performance",
   create: (context) => {
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const isTestlikeFile = isTestlikeFilename(context.filename);
     let memoRegistry: Map<string, MemoStatus> | null = null;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         memoRegistry = buildSameFileMemoRegistry(node as EsTreeNode);
       },
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         // Intrinsic HTML elements (`<button onClick={...}>`) aren't
         // memoized — neither the browser nor React caches DOM event
         // listeners, so a new function per render has no measurable
         // cost. Flagging them is unactionable noise. The rule still
         // fires on custom-component props where downstream `React.memo`
         // bails on the new reference.
-        if (isJsxAttributeOnIntrinsicHtmlElement(node)) return;
+        if (
+          shouldSkipReactPerfNativeAttribute(
+            node,
+            context.settings,
+            "jsxNoNewFunctionAsProp",
+            shouldUseCuratedBehavior,
+          )
+        ) {
+          return;
+        }
         // Consumer-memo gate. The `useCallback`/extract-handler fix
         // ONLY produces a measurable render saving when the consumer
         // component is wrapped in `React.memo` / `memo` / `forwardRef`
@@ -546,18 +560,28 @@ export const jsxNoNewFunctionAsProp = defineRule({
           parentJsxOpening && isNodeOfType(parentJsxOpening, "JSXOpeningElement")
             ? (parentJsxOpening.name as EsTreeNode)
             : null;
-        if (memoStatusForJsxOpeningName(memoRegistry, openingName) !== "memoised") return;
+        if (
+          shouldUseCuratedBehavior &&
+          memoStatusForJsxOpeningName(memoRegistry, openingName) !== "memoised"
+        ) {
+          return;
+        }
         // `memo(fn, arePropsEqual)` compares props with the author's own
         // function, which routinely ignores reference identity — a fresh
         // function cannot break that bailout.
-        if (hasCustomMemoComparator(openingName, context.scopes)) return;
+        if (shouldUseCuratedBehavior && hasCustomMemoComparator(openingName, context.scopes))
+          return;
         // One-shot lifecycle handlers (onMount / onError / onClose /
         // etc.) and render-prop slots (`fallback`, `render*`, `*Render`,
         // `*Renderer`, etc.) accept inline functions by design — they
         // either fire at most once per lifecycle or are used by the
         // parent for opaque rendering. New function reference per
         // render has zero measurable perf impact.
-        if (isNodeOfType(node.name, "JSXIdentifier") && isOneShotHandlerName(node.name.name)) {
+        if (
+          shouldUseCuratedBehavior &&
+          isNodeOfType(node.name, "JSXIdentifier") &&
+          isOneShotHandlerName(node.name.name)
+        ) {
           return;
         }
         if (!isInsideFunctionScope(node)) return;
@@ -568,10 +592,10 @@ export const jsxNoNewFunctionAsProp = defineRule({
         const expressionNode = expression as EsTreeNode;
         // Parameter-binding wrappers (`() => fn(arg1, arg2)`) can't be
         // useCallback-ed — the closure must capture `arg1`/`arg2`.
-        if (isParameterBindingWrapper(expressionNode)) return;
+        if (shouldUseCuratedBehavior && isParameterBindingWrapper(expressionNode)) return;
         if (
           !isFunctionProducingExpression(expressionNode) &&
-          !followsRenderLocalFunctionBinding(expressionNode, node)
+          !followsRenderLocalFunctionBinding(expressionNode, node, shouldUseCuratedBehavior)
         ) {
           return;
         }

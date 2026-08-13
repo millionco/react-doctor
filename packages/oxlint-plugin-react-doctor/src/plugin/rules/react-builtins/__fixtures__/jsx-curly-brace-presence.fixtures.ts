@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/jsx_curly_brace_presence.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/react/jsx_curly_brace_presence.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -260,6 +260,18 @@ export const passCases: ReadonlyArray<OxcFixture> = [
   { code: `<App>{\`\${label}\`}</App>`, oxcOptions: ["never"] },
   { code: `<div>{\`Nobody's "here"\`}</div>` },
   { code: `<Foo bar={\`a "x" 'y'\`} />;`, oxcOptions: ["never"] },
+  { code: `<App>{<Component>{/* keep */}</Component>}</App>` },
+  { code: `<Component name={/* This is a comment */ 'test'} />` },
+  {
+    code: `
+                    <ComponentA>
+                        {
+                            // This is another comment
+                            <ComponentB />
+                        }
+                    </ComponentA>;
+                  `,
+  },
 ];
 
 export const failCases: ReadonlyArray<OxcFixture> = [

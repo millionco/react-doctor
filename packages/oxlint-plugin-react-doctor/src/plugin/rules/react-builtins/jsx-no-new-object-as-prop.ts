@@ -9,9 +9,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { hasCustomMemoComparator } from "../../utils/has-custom-memo-comparator.js";
 import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
-import { isJsxAttributeOnIntrinsicHtmlElement } from "../../utils/is-on-intrinsic-html-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { shouldSkipReactPerfNativeAttribute } from "../../utils/should-skip-react-perf-native-attribute.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import {
   ALWAYS_FRESH_OBJECT_PROPS,
@@ -45,7 +46,10 @@ const isEmptyObjectLiteralExpression = (expression: EsTreeNode): boolean => {
   return isNodeOfType(stripped, "ObjectExpression") && (stripped.properties ?? []).length === 0;
 };
 
-const isObjectProducingExpression = (expression: EsTreeNode): boolean => {
+const isObjectProducingExpression = (
+  expression: EsTreeNode,
+  shouldUseCuratedBehavior: boolean,
+): boolean => {
   const stripped = stripParenExpression(expression);
   if (isNodeOfType(stripped, "ObjectExpression")) return true;
   if (isNodeOfType(stripped, "NewExpression")) {
@@ -80,20 +84,25 @@ const isObjectProducingExpression = (expression: EsTreeNode): boolean => {
     // `style={opts ?? makeDefaults()}` where `makeDefaults()` itself
     // allocates an object), the expression always allocates so we
     // check both.
-    if (stripped.operator === "??" || stripped.operator === "||") {
+    if (shouldUseCuratedBehavior && (stripped.operator === "??" || stripped.operator === "||")) {
       const leftIsEmptyFallback = isEmptyObjectLiteralExpression(stripped.left);
       const rightIsEmptyFallback = isEmptyObjectLiteralExpression(stripped.right);
-      if (leftIsEmptyFallback) return isObjectProducingExpression(stripped.right);
-      if (rightIsEmptyFallback) return isObjectProducingExpression(stripped.left);
+      if (leftIsEmptyFallback) {
+        return isObjectProducingExpression(stripped.right, shouldUseCuratedBehavior);
+      }
+      if (rightIsEmptyFallback) {
+        return isObjectProducingExpression(stripped.left, shouldUseCuratedBehavior);
+      }
     }
     return (
-      isObjectProducingExpression(stripped.left) || isObjectProducingExpression(stripped.right)
+      isObjectProducingExpression(stripped.left, shouldUseCuratedBehavior) ||
+      isObjectProducingExpression(stripped.right, shouldUseCuratedBehavior)
     );
   }
   if (isNodeOfType(stripped, "ConditionalExpression")) {
     return (
-      isObjectProducingExpression(stripped.consequent) ||
-      isObjectProducingExpression(stripped.alternate)
+      isObjectProducingExpression(stripped.consequent, shouldUseCuratedBehavior) ||
+      isObjectProducingExpression(stripped.alternate, shouldUseCuratedBehavior)
     );
   }
   return false;
@@ -102,6 +111,7 @@ const isObjectProducingExpression = (expression: EsTreeNode): boolean => {
 const followsRenderLocalObjectBinding = (
   expression: EsTreeNode,
   jsxAttribute: EsTreeNode,
+  shouldUseCuratedBehavior: boolean,
 ): boolean => {
   const stripped = stripParenExpression(expression);
   if (!isNodeOfType(stripped, "Identifier")) return false;
@@ -115,7 +125,7 @@ const followsRenderLocalObjectBinding = (
     }
     walker = walker.parent ?? null;
   }
-  return isObjectProducingExpression(binding.initializer);
+  return isObjectProducingExpression(binding.initializer, shouldUseCuratedBehavior);
 };
 
 // Port of `oxc_linter::rules::react_perf::jsx_no_new_object_as_prop`.
@@ -137,19 +147,29 @@ export const jsxNoNewObjectAsProp = defineRule({
     "Wrap the object in `useMemo` or move it outside the component so memoized children do not redraw every render.",
   category: "Performance",
   create: (context) => {
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const isTestlikeFile = isTestlikeFilename(context.filename);
     let memoRegistry: Map<string, MemoStatus> | null = null;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         memoRegistry = buildSameFileMemoRegistry(node as EsTreeNode);
       },
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         // Intrinsic HTML elements aren't memoized; flagging inline
         // object literals on them is unactionable. See the same skip
         // in `jsx-no-new-function-as-prop` for the full rationale.
-        if (isJsxAttributeOnIntrinsicHtmlElement(node)) return;
+        if (
+          shouldSkipReactPerfNativeAttribute(
+            node,
+            context.settings,
+            "jsxNoNewObjectAsProp",
+            shouldUseCuratedBehavior,
+          )
+        ) {
+          return;
+        }
         // Same-file plain-function consumer — `React.memo` rationale
         // doesn't apply.
         const parentJsxOpening = node.parent;
@@ -160,30 +180,36 @@ export const jsxNoNewObjectAsProp = defineRule({
         // Only fire when same-file analysis PROVES the consumer is
         // memoised. "unknown" and "not-memoised" both short-circuit —
         // see jsx-no-new-function-as-prop for the audit data.
-        if (memoStatusForJsxOpeningName(memoRegistry, openingName) !== "memoised") return;
+        if (
+          shouldUseCuratedBehavior &&
+          memoStatusForJsxOpeningName(memoRegistry, openingName) !== "memoised"
+        ) {
+          return;
+        }
         // `memo(fn, arePropsEqual)` compares props with the author's own
         // function, which routinely ignores reference identity (antd's
         // MemoInput, json-edit-react's CollectionNode) — a fresh object
         // cannot break that bailout.
-        if (hasCustomMemoComparator(openingName, context.scopes)) return;
+        if (shouldUseCuratedBehavior && hasCustomMemoComparator(openingName, context.scopes))
+          return;
         if (!isInsideFunctionScope(node)) return;
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-        if (ALWAYS_FRESH_OBJECT_PROPS.has(node.name.name)) return;
+        if (shouldUseCuratedBehavior && ALWAYS_FRESH_OBJECT_PROPS.has(node.name.name)) return;
         // Configuration-shape props (`options`, `config`, `theme`,
         // `wrapperProps`, etc. + `*Props` / `*Config` / `*Options`
         // suffixes) receive inline literals by design — chart libs,
         // animation libs, design systems all use this pattern. The
         // perf footgun the rule targets is hot-path identity changes;
         // config slots aren't that.
-        if (isConfigObjectPropName(node.name.name)) return;
+        if (shouldUseCuratedBehavior && isConfigObjectPropName(node.name.name)) return;
         const value = node.value;
         if (!value || !isNodeOfType(value, "JSXExpressionContainer")) return;
         const expression = value.expression;
         if (!expression || expression.type === "JSXEmptyExpression") return;
         const expressionNode = expression as EsTreeNode;
         if (
-          !isObjectProducingExpression(expressionNode) &&
-          !followsRenderLocalObjectBinding(expressionNode, node)
+          !isObjectProducingExpression(expressionNode, shouldUseCuratedBehavior) &&
+          !followsRenderLocalObjectBinding(expressionNode, node, shouldUseCuratedBehavior)
         ) {
           return;
         }

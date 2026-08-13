@@ -282,6 +282,7 @@ export const createOxlintConfig = ({
     jsPlugins: [...jsPlugins, pluginPath],
     settings: {
       "react-doctor": {
+        portedRuleMode: "curated",
         framework: project.framework,
         rootDirectory: settingsRootDirectory,
         // The framework-capability vocabulary, available to any rule via

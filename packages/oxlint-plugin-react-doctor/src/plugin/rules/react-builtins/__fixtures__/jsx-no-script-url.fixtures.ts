@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/jsx_no_script_url.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/react/jsx_no_script_url.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -52,6 +52,7 @@ export const failCases: ReadonlyArray<OxcFixture> = [
   { code: `<a href="javascript:void(0)"></a>` },
   {
     code: `<a href="j
+
 
 			a
 v	ascript:"></a>`,

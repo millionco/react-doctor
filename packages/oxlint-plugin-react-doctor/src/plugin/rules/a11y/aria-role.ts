@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
@@ -33,7 +34,7 @@ const resolveSettings = (
   // verify corpus every custom-component hit was a false positive.
   return {
     allowedInvalidRoles: ruleSettings.allowedInvalidRoles ?? [],
-    ignoreNonDOM: ruleSettings.ignoreNonDOM ?? true,
+    ignoreNonDOM: ruleSettings.ignoreNonDOM ?? shouldUseCuratedPortBehavior(settings),
   };
 };
 

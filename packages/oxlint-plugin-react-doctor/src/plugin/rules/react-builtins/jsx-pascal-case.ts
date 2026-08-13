@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const buildMessage = (componentName: string, allowAllCaps: boolean): string =>
   allowAllCaps
@@ -31,7 +32,8 @@ const resolveSettings = (
     // generates noise on every consumer of those libraries.
     allowAllCaps: ruleSettings.allowAllCaps ?? false,
     allowNamespace: ruleSettings.allowNamespace ?? false,
-    allowLeadingUnderscore: ruleSettings.allowLeadingUnderscore ?? true,
+    allowLeadingUnderscore:
+      ruleSettings.allowLeadingUnderscore ?? shouldUseCuratedPortBehavior(settings),
     ignore: ruleSettings.ignore ?? [],
   };
 };

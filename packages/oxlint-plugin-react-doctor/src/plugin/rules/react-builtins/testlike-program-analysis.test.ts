@@ -28,6 +28,7 @@ describe("testlike Program analysis gates", () => {
       let didReadScopes = false;
       const visitors = rule.create({
         filename: "component.test.tsx",
+        settings: { "react-doctor": { portedRuleMode: "curated" } },
         report: () => {},
         get scopes(): never {
           didReadScopes = true;

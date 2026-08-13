@@ -144,6 +144,11 @@ const checkedRequiresTranslator = (fixture: OxcFixtureLike): Record<string, unkn
 const stylePropObjectTranslator = (fixture: OxcFixtureLike): Record<string, unknown> | null =>
   wrapForReactDoctor("stylePropObject", passthroughTopLevelObject(fixture.oxcOptions));
 
+const reactPerfTranslator =
+  (settingsKey: string) =>
+  (fixture: OxcFixtureLike): Record<string, unknown> | null =>
+    wrapForReactDoctor(settingsKey, passthroughTopLevelObject(fixture.oxcOptions));
+
 const hookUseStateTranslator = (fixture: OxcFixtureLike): Record<string, unknown> | null =>
   wrapForReactDoctor("hookUseState", passthroughTopLevelObject(fixture.oxcOptions));
 
@@ -257,6 +262,10 @@ export const TRANSLATORS: Record<
   "jsx-key": jsxKeyTranslator,
   "rules-of-hooks": rulesOfHooksTranslator,
   "jsx-max-depth": jsxMaxDepthTranslator,
+  "jsx-no-jsx-as-prop": reactPerfTranslator("jsxNoJsxAsProp"),
+  "jsx-no-new-array-as-prop": reactPerfTranslator("jsxNoNewArrayAsProp"),
+  "jsx-no-new-function-as-prop": reactPerfTranslator("jsxNoNewFunctionAsProp"),
+  "jsx-no-new-object-as-prop": reactPerfTranslator("jsxNoNewObjectAsProp"),
   "jsx-no-script-url": jsxNoScriptUrlTranslator,
   "jsx-no-useless-fragment": jsxNoUselessFragmentTranslator,
   "jsx-pascal-case": jsxPascalCaseTranslator,

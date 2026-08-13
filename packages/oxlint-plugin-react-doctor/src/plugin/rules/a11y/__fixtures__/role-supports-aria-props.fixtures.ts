@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/role_supports_aria_props.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/jsx_a11y/role_supports_aria_props.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -266,6 +266,9 @@ export const passCases: ReadonlyArray<OxcFixture> = [
   { code: `<input type="tel" aria-disabled />` },
   { code: `<input type="url" aria-disabled />` },
   { code: `<input aria-disabled />` },
+  { code: `<h2 role="presentation" aria-level={null} />` },
+  { code: `<h2 role="presentation" aria-level={undefined} />` },
+  { code: `<button aria-pressed />` },
   { code: `<form aria-hidden />` },
   { code: `<h1 aria-hidden />` },
   { code: `<h2 aria-hidden />` },

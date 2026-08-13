@@ -50,6 +50,17 @@ const tailwindViteWebProject = buildProject({
 });
 
 describe("createOxlintConfig settings", () => {
+  it("uses curated behavior for faithfully ported rules", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+    });
+
+    expect(config.settings).toMatchObject({
+      "react-doctor": { portedRuleMode: "curated" },
+    });
+  });
+
   it("enables the Valtio rule only when the project declares Valtio", () => {
     const withoutValtio = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

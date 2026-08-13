@@ -10,9 +10,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { hasCustomMemoComparator } from "../../utils/has-custom-memo-comparator.js";
 import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
-import { isJsxAttributeOnIntrinsicHtmlElement } from "../../utils/is-on-intrinsic-html-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { shouldSkipReactPerfNativeAttribute } from "../../utils/should-skip-react-perf-native-attribute.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 // The harm — a defeated `React.memo` bailout — is only PROVEN when the
@@ -348,21 +349,31 @@ export const jsxNoJsxAsProp = defineRule({
     "Move the JSX outside the component or wrap it in `useMemo` so memoized children do not redraw every render.",
   category: "Performance",
   create: (context) => {
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const isTestlikeFile = isTestlikeFilename(context.filename);
     let memoRegistry: Map<string, MemoStatus> | null = null;
     let jsxSlotPropRegistry: Map<number, ReadonlySet<string>> | null = null;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         memoRegistry = buildSameFileMemoRegistry(node as EsTreeNode);
         jsxSlotPropRegistry = buildSameFileJsxSlotPropRegistry(node, memoRegistry, context.scopes);
       },
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         // Intrinsic HTML elements aren't memoized; flagging inline JSX
         // passed as a prop on them is unactionable. See
         // `jsx-no-new-function-as-prop` for the full rationale.
-        if (isJsxAttributeOnIntrinsicHtmlElement(node)) return;
+        if (
+          shouldSkipReactPerfNativeAttribute(
+            node,
+            context.settings,
+            "jsxNoJsxAsProp",
+            shouldUseCuratedBehavior,
+          )
+        ) {
+          return;
+        }
         // Only fire when same-file analysis PROVES the consumer is
         // memoised. "unknown" (imported) and "not-memoised" both
         // short-circuit — same gate as the sibling react_perf ports.
@@ -372,16 +383,18 @@ export const jsxNoJsxAsProp = defineRule({
             ? (parentJsxOpening.name as EsTreeNode)
             : null;
         const memoStatus = memoStatusForJsxOpeningName(memoRegistry, openingName);
-        if (memoStatus !== "memoised") return;
+        if (shouldUseCuratedBehavior && memoStatus !== "memoised") return;
         // `memo(fn, arePropsEqual)` compares props with the author's own
         // function, which routinely ignores reference identity — fresh JSX
         // cannot break that bailout.
-        if (hasCustomMemoComparator(openingName, context.scopes)) return;
+        if (shouldUseCuratedBehavior && hasCustomMemoComparator(openingName, context.scopes))
+          return;
         const openingSymbol =
           openingName && isNodeOfType(openingName, "JSXIdentifier")
             ? context.scopes.symbolFor(openingName)
             : null;
         if (
+          shouldUseCuratedBehavior &&
           openingSymbol &&
           isNodeOfType(node.name, "JSXIdentifier") &&
           jsxSlotPropRegistry?.get(openingSymbol.id)?.has(node.name.name)
@@ -391,7 +404,11 @@ export const jsxNoJsxAsProp = defineRule({
         // Known slot prop names (icon, tooltip, fallback, header, etc.)
         // and slot suffixes (*Button, *Icon, *Component, *Element, ...)
         // are designed to receive JSX. Flagging them is unactionable.
-        if (isNodeOfType(node.name, "JSXIdentifier") && isSlotPropName(node.name.name)) {
+        if (
+          shouldUseCuratedBehavior &&
+          isNodeOfType(node.name, "JSXIdentifier") &&
+          isSlotPropName(node.name.name)
+        ) {
           return;
         }
         if (!isInsideFunctionScope(node)) return;

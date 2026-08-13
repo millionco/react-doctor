@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isAllLiteralArrayExpression } from "../../utils/is-all-literal-array-expression.js";
 import { isGlobalMethodCall } from "../../utils/is-global-method-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const MESSAGE = "Your users can see & submit the wrong data when this list reorders.";
@@ -131,6 +132,37 @@ const findIndexParameterBinding = (node: EsTreeNode): EsTreeNodeOfType<"Identifi
   return null;
 };
 
+const findUpstreamIndexParameterBinding = (
+  node: EsTreeNode,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  let ancestor = node.parent;
+  while (ancestor) {
+    if (isNodeOfType(ancestor, "CallExpression")) {
+      const callee = ancestor.callee;
+      if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+        const methodName = callee.property.name;
+        let indexParameterPosition: number | null = null;
+        if (SECOND_INDEX_METHODS.has(methodName)) indexParameterPosition = 1;
+        else if (THIRD_INDEX_METHODS.has(methodName)) indexParameterPosition = 2;
+        const callback = ancestor.arguments[0] as EsTreeNode | undefined;
+        if (
+          indexParameterPosition !== null &&
+          callback &&
+          (isNodeOfType(callback, "ArrowFunctionExpression") ||
+            isNodeOfType(callback, "FunctionExpression"))
+        ) {
+          const indexParameter = callback.params[indexParameterPosition] as EsTreeNode | undefined;
+          return indexParameter && isNodeOfType(indexParameter, "Identifier")
+            ? indexParameter
+            : null;
+        }
+      }
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  return null;
+};
+
 // Returns the index Identifier when `callback` is an iterator callback
 // (and the source isn't positionally stable). Returns undefined when
 // `callback` isn't an iterator at all; returns null when we recognise
@@ -238,28 +270,52 @@ export const noArrayIndexKey = defineRule({
   recommendation:
     "Use a stable `key` from your data so reordered items keep the right state and DOM.",
   category: "Performance",
-  create: (context) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isReactCloneElement(node)) return;
-      if (node.arguments.length < 2 || node.arguments.length > 3) return;
-      const propsArgument = node.arguments[1] as EsTreeNode;
-      if (!isNodeOfType(propsArgument, "ObjectExpression")) return;
-      const indexBinding = findIndexParameterBinding(node as EsTreeNode);
-      if (!indexBinding) return;
-      for (const property of propsArgument.properties) {
-        if (!isNodeOfType(property, "Property")) continue;
-        if (property.computed) continue;
-        const propKey = property.key as EsTreeNode;
-        let propName: string | null = null;
-        if (isNodeOfType(propKey, "Identifier")) propName = propKey.name;
-        else if (isNodeOfType(propKey, "Literal") && typeof propKey.value === "string") {
-          propName = propKey.value;
+  create: (context) => {
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
+    const findRelevantIndexParameter = shouldUseCuratedBehavior
+      ? findIndexParameterBinding
+      : findUpstreamIndexParameterBinding;
+    return {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (shouldUseCuratedBehavior) return;
+        const indexBinding = findRelevantIndexParameter(node as EsTreeNode);
+        if (!indexBinding) return;
+        for (const attribute of node.attributes) {
+          if (!isNodeOfType(attribute, "JSXAttribute")) continue;
+          if (!isNodeOfType(attribute.name, "JSXIdentifier") || attribute.name.name !== "key") {
+            continue;
+          }
+          const value = attribute.value;
+          if (!value || !isNodeOfType(value, "JSXExpressionContainer")) continue;
+          const expression = value.expression;
+          if (!expression || expression.type === "JSXEmptyExpression") continue;
+          if (expressionUsesIndex(expression as EsTreeNode, indexBinding.name)) {
+            context.report({ node: attribute, message: MESSAGE });
+          }
         }
-        if (propName !== "key") continue;
-        if (expressionUsesIndex(property.value as EsTreeNode, indexBinding.name)) {
-          context.report({ node: property, message: MESSAGE });
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isReactCloneElement(node)) return;
+        if (node.arguments.length < 2 || node.arguments.length > 3) return;
+        const propsArgument = node.arguments[1] as EsTreeNode;
+        if (!isNodeOfType(propsArgument, "ObjectExpression")) return;
+        const indexBinding = findRelevantIndexParameter(node as EsTreeNode);
+        if (!indexBinding) return;
+        for (const property of propsArgument.properties) {
+          if (!isNodeOfType(property, "Property")) continue;
+          if (property.computed) continue;
+          const propKey = property.key as EsTreeNode;
+          let propName: string | null = null;
+          if (isNodeOfType(propKey, "Identifier")) propName = propKey.name;
+          else if (isNodeOfType(propKey, "Literal") && typeof propKey.value === "string") {
+            propName = propKey.value;
+          }
+          if (propName !== "key") continue;
+          if (expressionUsesIndex(property.value as EsTreeNode, indexBinding.name)) {
+            context.report({ node: property, message: MESSAGE });
+          }
         }
-      }
-    },
-  }),
+      },
+    };
+  },
 });

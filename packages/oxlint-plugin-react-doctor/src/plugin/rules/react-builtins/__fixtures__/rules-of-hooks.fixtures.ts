@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/rules_of_hooks.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/react/rules_of_hooks.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -184,6 +184,172 @@ export const passCases: ReadonlyArray<OxcFixture> = [
   {
     code: `const Foo = hoc((props) => { if (props.cond) { const [_a, _b] = useState(false); } });`,
   },
+  {
+    code: `
+        async (_, use) => {
+          await use();
+        };
+    `,
+  },
+  {
+    code: `
+        function Foo() {
+          try {
+            useCustomHook();
+          } catch (error) {
+            console.error(error);
+          }
+        }
+    `,
+  },
+  {
+    code: `
+        function Foo() {
+          try {
+            f();
+          } catch {}
+          useState();
+        }
+    `,
+  },
+  {
+    code: `
+        function Foo() {
+          try {
+            const value = 1;
+            useState(value);
+          } catch {}
+        }
+    `,
+  },
+  {
+    code: `
+            function MyComponent({ theme }) {
+              const onClick = useEffectEvent(() => {
+                showNotification(theme);
+              });
+              useEffect(() => {
+                onClick();
+              });
+              React.useEffect(() => {
+                onClick();
+              });
+            }
+        `,
+  },
+  {
+    code: `
+            function MyComponent({ theme }) {
+              const onClick = useEffectEvent(() => {
+                showNotification(theme);
+              });
+              const onClick2 = useEffectEvent(() => {
+                debounce(onClick);
+                debounce(() => onClick());
+                debounce(() => { onClick() });
+                deboucne(() => debounce(onClick));
+              });
+              useEffect(() => {
+                let id = setInterval(() => onClick(), 100);
+                return () => clearInterval(onClick);
+              }, []);
+              React.useEffect(() => {
+                let id = setInterval(() => onClick(), 100);
+                return () => clearInterval(onClick);
+              }, []);
+              return null;
+            }
+        `,
+  },
+  {
+    code: `
+            function MyComponent({ theme }) {
+              useEffect(() => {
+                onClick();
+              });
+              const onClick = useEffectEvent(() => {
+                showNotification(theme);
+              });
+            }
+        `,
+  },
+  {
+    code: `
+            function MyComponent({ theme }) {
+              const onEvent = useEffectEvent((text) => {
+                console.log(text);
+              });
+              useEffect(() => {
+                onEvent('Hello world');
+              });
+              React.useEffect(() => {
+                onEvent('Hello world');
+              });
+            }
+        `,
+  },
+  {
+    code: `
+            function MyComponent({ theme }) {
+              const onClick = useEffectEvent(() => {
+                showNotification(theme);
+              });
+              useLayoutEffect(() => {
+                onClick();
+              });
+              React.useLayoutEffect(() => {
+                onClick();
+              });
+            }
+        `,
+  },
+  {
+    code: `
+            function MyComponent({ theme }) {
+              const onClick = useEffectEvent(() => {
+                showNotification(theme);
+              });
+              useInsertionEffect(() => {
+                onClick();
+              });
+              React.useInsertionEffect(() => {
+                onClick();
+              });
+            }
+        `,
+  },
+  {
+    code: `
+            function MyComponent({ theme }) {
+              const onClick = useEffectEvent(() => {
+                showNotification(theme);
+              });
+              const onClick2 = useEffectEvent(() => {
+                debounce(onClick);
+                debounce(() => onClick());
+                debounce(() => { onClick() });
+                deboucne(() => debounce(onClick));
+              });
+              useLayoutEffect(() => {
+                let id = setInterval(() => onClick(), 100);
+                return () => clearInterval(onClick);
+              }, []);
+              React.useLayoutEffect(() => {
+                let id = setInterval(() => onClick(), 100);
+                return () => clearInterval(onClick);
+              }, []);
+              useInsertionEffect(() => {
+                let id = setInterval(() => onClick(), 100);
+                return () => clearInterval(onClick);
+              }, []);
+              React.useInsertionEffect(() => {
+                let id = setInterval(() => onClick(), 100);
+                return () => clearInterval(onClick);
+              }, []);
+              return null;
+            }
+        `,
+  },
 ];
 
 export const failCases: ReadonlyArray<OxcFixture> = [
@@ -235,6 +401,61 @@ export const failCases: ReadonlyArray<OxcFixture> = [
   },
   {
     code: `
+                function useHook() {
+                    try {
+                        const value = f();
+                        useState(value);
+                    } catch {}
+                }
+        `,
+  },
+  {
+    code: `
+                function useHook() {
+                    try {
+                        f(), useState();
+                    } catch {}
+                }
+        `,
+  },
+  {
+    code: `
+                function useHook() {
+                    try {
+                        throw err;
+                        useState();
+                    } catch {}
+                }
+        `,
+  },
+  {
+    code: `
+                function App({p1, p2}) {
+                    try {
+                        use(p1);
+                    } catch (error) {
+                        console.error(error);
+                    }
+                    use(p2);
+                    return <div>App</div>;
+                }
+        `,
+  },
+  {
+    code: `
+                function App({p1, p2}) {
+                    try {
+                        doSomething();
+                    } catch {
+                        use(p1);
+                    }
+                    use(p2);
+                    return <div>App</div>;
+                }
+        `,
+  },
+  {
+    code: `
                 const AsyncComponent = async () => {
                     useState();
                 }
@@ -271,5 +492,129 @@ export const failCases: ReadonlyArray<OxcFixture> = [
   },
   {
     code: `const Foo3 = hoc(function NamedComp(props) { if (props.cond) { const [_a, _b] = useState(false); } });`,
+  },
+  {
+    code: `
+            function MyComponent({ theme }) {
+              const onClick = useEffectEvent(() => {
+                showNotification(theme);
+              });
+              useCustomHook(() => {
+                onClick();
+              });
+            }
+        `,
+  },
+  {
+    code: `
+            function MyComponent({ theme }) {
+                const onClick = useEffectEvent(() => {
+                    showNotification(theme);
+                });
+                return <Child onClick={onClick}></Child>;
+            }
+        `,
+  },
+  {
+    code: `
+            function MyComponent({ theme }) {
+                return <Child onClick={useEffectEvent(() => {
+                    showNotification(theme);
+                })} />;
+            }
+        `,
+  },
+  {
+    code: `
+            function MyComponent({theme}) {
+                const onClick = useEffectEvent(() => {
+                    showNotification(theme)
+                });
+                return <Child onClick={onClick} />
+            }
+
+            function MyOtherComponent({theme}) {
+                const onClick = useEffectEvent(() => {
+                    showNotification(theme)
+                });
+                return <Child onClick={() => onClick()} />
+            }
+
+            function MyLastComponent({theme}) {
+                const onClick = useEffectEvent(() => {
+                    showNotification(theme)
+                });
+                useEffect(() => {
+                    onClick();
+                    onClick;
+                })
+                return <Child />
+            }
+        `,
+  },
+  {
+    code: `
+            const MyComponent = ({ theme }) => {
+              const onClick = useEffectEvent(() => {
+                showNotification(theme);
+              });
+              return <Child onClick={onClick}></Child>;
+            }
+        `,
+  },
+  {
+    code: `
+            function MyComponent({ theme }) {
+              const onClick = useEffectEvent(() => {
+                showNotification(theme);
+              });
+              let foo = onClick;
+              return <Bar onClick={foo} />
+            }
+        `,
+  },
+  {
+    code: `
+            function MyComponent({ theme }) {
+              const onClick = useEffectEvent(() => {
+                showNotification(theme);
+              });
+              useEffect(() => {
+                setTimeout(onClick, 100);
+              });
+              return <Child onClick={onClick} />
+            }
+        `,
+  },
+  {
+    code: `
+            function MyComponent({ theme }) {
+              const onClick = useEffectEvent(() => {
+                showNotification(theme);
+              });
+              const onClick2 = () => { onClick() };
+              const onClick3 = useCallback(() => onClick(), []);
+              const onClick4 = onClick;
+              return <>
+                <Child onClick={onClick}></Child>
+                <Child onClick={onClick2}></Child>
+                <Child onClick={onClick3}></Child>
+              </>;
+            }
+        `,
+  },
+  {
+    code: `
+            function useCustomHook() {
+                const onEvent = useEffectEvent(() => {});
+                return { onEvent };
+            }
+        `,
+  },
+  {
+    code: `function notAComponent() {
+  const onEvent = useEffectEvent(() => {});
+  return onEvent;
+}`,
   },
 ];

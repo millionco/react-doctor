@@ -10990,7 +10990,7 @@
     "originallyExternal": false,
     "rule": {
       "id": "rendering-hydration-no-flicker",
-      "title": "useEffect setState flashes on mount",
+      "title": "useEffect state synchronization flashes after paint",
       "severity": "warn",
       "recommendation": "Initialize state from a render-safe value before the first paint, or read external mutable values with `useSyncExternalStore`.",
       "category": "Performance",

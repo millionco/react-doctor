@@ -1,7 +1,0 @@
-{
-  "name": "config-file-imports",
-  "main": "src/index.ts",
-  "dependencies": {
-    "vite": "*"
-  }
-}

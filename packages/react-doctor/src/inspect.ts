@@ -134,7 +134,7 @@ const inspectWithOxlintRuntime = async (
         } catch (error) {
           // Emit the canonical wide event on the failure path too: the scan threw
           // before finalizing, so there's no `result` — just the error taxonomy
-          // plus the config it ran with. The lint/dead-code outcome isn't known
+          // plus the config it ran with. The lint/maintainability outcome isn't known
           // here, so it's omitted rather than asserted as a benign default.
           // Rethrow so error handling is unchanged.
           recordRunEvent(rootSpan, {
@@ -229,7 +229,7 @@ const runInspectWithRuntime = async (
   const cachedResult = scanResultCacheLifecycle.replay();
   if (cachedResult !== null) return cachedResult;
 
-  // Suppress the orchestrator-owned lint + dead-code spinners when
+  // Suppress the orchestrator-owned lint + maintainability spinners when
   // the CLI is in score-only / silent / suppressed-rendering mode (or
   // when lint is skipped entirely) — suppressed-rendering scans run
   // concurrently in multi-project batches, where interleaved spinners
@@ -264,6 +264,7 @@ const runInspectWithRuntime = async (
       directory,
       precomputedSourceFileCount: options.precomputedSourceFileCount,
       includePaths: options.includePaths,
+      changedLineRanges: options.changedLineRanges ?? undefined,
       customRulesOnly: options.customRulesOnly,
       respectInlineDisables: options.respectInlineDisables,
       warnings: options.warnings,
@@ -364,6 +365,7 @@ const runInspectWithRuntime = async (
     options.baseline &&
     isDiffMode &&
     !didLintFail &&
+    !output.didDeadCodeFail &&
     countIncompleteLintFiles(output.lintPartialFailures) === 0
   ) {
     const comparison = await runBaselineComparison({

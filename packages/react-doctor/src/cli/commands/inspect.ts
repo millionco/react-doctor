@@ -525,7 +525,9 @@ export const inspectAction = async (
       isRootDeadCodeEnabled: scanOptions.deadCode ?? rootProjectScan?.config?.deadCode ?? true,
     });
     if (workspaceDeadCodeOwner !== null) {
-      recordCount(METRIC.scanWorkspaceDeadCodeShared, 1, { projectCount: projectScans.length });
+      recordCount(METRIC.scanWorkspaceMaintainabilityShared, 1, {
+        projectCount: projectScans.length,
+      });
     }
     const precomputedSourceFileCounts =
       isMultiProject && !isDiffMode

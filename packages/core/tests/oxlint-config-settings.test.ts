@@ -359,6 +359,22 @@ describe("createOxlintConfig settings", () => {
     expect(config.rules).not.toHaveProperty("react-doctor/no-all-caps-body-text");
   });
 
+  it("keeps project rules out of the generated oxlint config", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: {
+        rules: {
+          "react-doctor/duplicate-jsx-subtree": "warn",
+          "react-doctor/unused-export": "error",
+        },
+      },
+    });
+
+    expect(config.rules).not.toHaveProperty("react-doctor/duplicate-jsx-subtree");
+    expect(config.rules).not.toHaveProperty("react-doctor/unused-export");
+  });
+
   it("runs only an explicitly included tag and activates that tag's opt-in rules", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

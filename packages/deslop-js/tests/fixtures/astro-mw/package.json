@@ -1,7 +1,0 @@
-{
-  "name": "astro-middleware",
-  "version": "1.0.0",
-  "dependencies": {
-    "astro": "^4.0.0"
-  }
-}

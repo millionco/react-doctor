@@ -1,7 +1,0 @@
-{
-  "name": "storybook-project",
-  "version": "1.0.0",
-  "devDependencies": {
-    "@storybook/react": "^7.0.0"
-  }
-}

@@ -5,6 +5,7 @@
 export interface InspectFlags {
   design?: boolean;
   lint?: boolean;
+  /** @deprecated Compatibility shim for the removed dead-code analyzer. */
   deadCode?: boolean;
   // Resolved against `supplyChain.enabled` (this flag wins), like lint/deadCode.
   supplyChain?: boolean;

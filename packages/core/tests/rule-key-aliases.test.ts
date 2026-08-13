@@ -31,6 +31,14 @@ describe("rule-key-aliases", () => {
       );
     });
 
+    it("matches legacy deslop project rules to canonical React Doctor keys", () => {
+      expect(isSameRuleKey("deslop/unused-export", "react-doctor/unused-export")).toBe(true);
+      expect(isSameRuleKey("deslop/unused-file", "react-doctor/unused-file")).toBe(true);
+      expect(isSameRuleKey("deslop/circular-dependency", "react-doctor/circular-dependency")).toBe(
+        true,
+      );
+    });
+
     it("matches short id to qualified key", () => {
       expect(isSameRuleKey("jsx-key", "react-doctor/jsx-key")).toBe(true);
       expect(isSameRuleKey("alt-text", "react-doctor/alt-text")).toBe(true);
@@ -102,6 +110,13 @@ describe("rule-key-aliases", () => {
       const keys = getEquivalentRuleKeys("react-doctor/jsx-key");
       expect(keys).toContain("react-doctor/jsx-key");
       expect(keys).toContain("react/jsx-key");
+    });
+
+    it("returns canonical project-rule keys and their deslop aliases", () => {
+      expect(getEquivalentRuleKeys("react-doctor/unused-dependency")).toEqual([
+        "react-doctor/unused-dependency",
+        "deslop/unused-dependency",
+      ]);
     });
 
     it("returns only the key itself for unknown keys", () => {

@@ -332,13 +332,13 @@ describe("runScanApp", () => {
     mockState.inspectResults.set(rootDirectory, {
       ...buildInspectResult(rootDirectory),
       skippedChecks: ["dead-code"],
-      skippedCheckReasons: { "dead-code": "Dead-code analysis failed." },
+      skippedCheckReasons: { "dead-code": "Maintainability analysis failed." },
     });
 
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 
     expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).toContain(
-      "lint or dead-code analysis could not complete",
+      "lint or maintainability analysis could not complete",
     );
     expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).not.toContain(
       "score API",
@@ -363,7 +363,7 @@ describe("runScanApp", () => {
 
     expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).toContain("score API");
     expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).not.toContain(
-      "lint or dead-code analysis could not complete",
+      "lint or maintainability analysis could not complete",
     );
   });
 
@@ -378,7 +378,12 @@ describe("runScanApp", () => {
     );
     mockState.scanTargets.set(
       webDirectory,
-      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+      buildScanTarget(
+        webDirectory,
+        webDirectory,
+        { rules: { "react-doctor/unused-export": "warn" } },
+        webDirectory,
+      ),
     );
     mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
     mockState.inspectResults.set(webDirectory, buildInspectResult(webDirectory));
@@ -400,6 +405,7 @@ describe("runScanApp", () => {
       webDirectory,
       expect.objectContaining({
         deadCode: false,
+        configOverride: { rules: { "react-doctor/unused-export": "warn" } },
         excludedProjectDirectories: [],
         retainExcludedProjectDeadCodeDiagnostics: false,
       }),

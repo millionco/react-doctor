@@ -9,7 +9,7 @@
 
 Your agent writes bad React, this catches it.
 
-React Doctor deterministically scans your codebase and finds issues across state & effects, performance, architecture, security, and accessibility.
+React Doctor deterministically scans your codebase and finds issues across state and effects, performance, architecture, security, accessibility, and maintainability. It highlights overly complex React functions and repeated JSX trees that are good candidates for composition.
 
 Works across React frameworks and React-enabled sites - Next.js, Vite, Astro, TanStack, React Native, Expo, you name it.
 

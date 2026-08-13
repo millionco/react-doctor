@@ -5,7 +5,7 @@ import type { ScoreResult } from "./score.js";
 
 export interface DiagnoseOptions {
   lint?: boolean;
-  /** See `ReactDoctorConfig.deadCode`. Ignored in diff mode. */
+  /** @deprecated Compatibility alias for React maintainability analysis. */
   deadCode?: boolean;
   verbose?: boolean;
   /** Restrict linting to supported JS/TS files and inline scripts in HTML files. */
@@ -26,11 +26,7 @@ export interface DiagnoseOptions {
 export interface DiagnoseResult {
   diagnostics: Diagnostic[];
   score: ScoreResult | null;
-  /**
-   * Checks that did not run to completion (e.g. `"dead-code"` when the
-   * `deslop-js` native binding crashed). Empty when everything ran.
-   * Mirrors `InspectResult.skippedChecks`.
-   */
+  /** Checks that did not run to completion. Mirrors `InspectResult.skippedChecks`. */
   skippedChecks: string[];
   /** See `InspectResult.skippedCheckReasons`. */
   skippedCheckReasons?: Record<string, string>;
@@ -55,7 +51,7 @@ export interface DiagnoseResult {
 
 /**
  * A single project to scan as part of a `diagnose({ projects })` batch.
- * Scan options (`deadCode`, `lint`, etc.) are flat on the entry and
+ * Scan options (`lint`, etc.) are flat on the entry and
  * layer on top of the global defaults — omitted fields fall through.
  */
 export interface ProjectDefinition extends DiagnoseOptions {

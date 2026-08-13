@@ -1,7 +1,0 @@
-{
-  "name": "angular-workspace",
-  "private": true,
-  "dependencies": {
-    "@angular/core": "^17.0.0"
-  }
-}

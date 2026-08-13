@@ -37,11 +37,7 @@ export class LintPhaseTimeoutMs extends Context.Reference<number | null>(
   },
 ) {}
 
-/**
- * Optional Effect-side cap on the dead-code phase. Unbounded unless explicitly
- * configured through the env var or a test layer. Tests override via
- * `Layer.succeed(DeadCodePhaseTimeoutMs, ...)`.
- */
+/** @deprecated Compatibility-named timeout for the maintainability phase. */
 export class DeadCodePhaseTimeoutMs extends Context.Reference<number | null>(
   "react-doctor/DeadCodePhaseTimeoutMs",
   {
@@ -130,25 +126,7 @@ export class OxlintSpawnSlots extends Context.Reference<WorkerSlots | null>(
   },
 ) {}
 
-/**
- * Three-state control for overlapping the dead-code pass with the lint pass —
- * forking dead-code as a child fiber that runs DURING lint instead of strictly
- * after it.
- *
- *   - `"auto"` (default) / `"off"` → strictly SEQUENTIAL: dead-code runs after
- *     lint with the full core budget. Both deslop's parse pool and the oxlint
- *     pool are CPU-bound and each size themselves to all cores, so overlapping
- *     them only oversubscribes (~2x the cores) and starves the parse pass past
- *     its timeout — for no wall-clock win, since there are no spare cores to
- *     absorb the second pass. Sequential is both faster per-phase and safe.
- *   - `"on"` → force the overlap anyway. The orchestrator then SPLITS the core
- *     budget (`DEAD_CODE_OVERLAP_PARSE_SHARE`): deslop's parse pool is capped
- *     and lint shrinks to the remainder, so the two sum to the cores instead of
- *     doubling them, and the dead-code timeout scales up for the reduced share.
- *
- * Seeded from `REACT_DOCTOR_DEAD_CODE_OVERLAP` so operators get a redeploy-free
- * switch; tests pin it via `Layer.succeed(DeadCodeOverlap, ...)`.
- */
+/** @deprecated Retained for configuration compatibility and ignored by scans. */
 export class DeadCodeOverlap extends Context.Reference<"auto" | "on" | "off">(
   "react-doctor/DeadCodeOverlap",
   {
@@ -236,31 +214,6 @@ export class SidecarLintCacheEnabled extends Context.Reference<boolean>(
       const noSidecarCache = process.env["REACT_DOCTOR_NO_SIDECAR_CACHE"]?.toLowerCase() ?? "";
       if (CACHE_DISABLED_VALUES.has(noCache)) return false;
       if (CACHE_DISABLED_VALUES.has(noSidecarCache)) return false;
-      return true;
-    },
-  },
-) {}
-
-/**
- * Whether the whole-project dead-code result cache
- * (`dead-code/dead-code-result-cache.ts`) is active. Defaults ON — a rescan
- * whose inputs (source tree, manifests, configs, analyzer version) are
- * unchanged replays the stored diagnostics instead of re-running the
- * analysis worker. Opt-OUT, two knobs (matching the per-file lint cache):
- *
- *   - `REACT_DOCTOR_NO_CACHE` — the global off-switch.
- *   - `REACT_DOCTOR_NO_DEAD_CODE_CACHE` — granular: bust only this cache.
- *
- * Tests override via `Layer.succeed(DeadCodeResultCacheEnabled, false)`.
- */
-export class DeadCodeResultCacheEnabled extends Context.Reference<boolean>(
-  "react-doctor/DeadCodeResultCacheEnabled",
-  {
-    defaultValue: () => {
-      const noCache = process.env["REACT_DOCTOR_NO_CACHE"]?.toLowerCase() ?? "";
-      const noDeadCodeCache = process.env["REACT_DOCTOR_NO_DEAD_CODE_CACHE"]?.toLowerCase() ?? "";
-      if (CACHE_DISABLED_VALUES.has(noCache)) return false;
-      if (CACHE_DISABLED_VALUES.has(noDeadCodeCache)) return false;
       return true;
     },
   },

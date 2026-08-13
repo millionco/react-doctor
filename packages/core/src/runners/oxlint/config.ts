@@ -194,7 +194,7 @@ export const createOxlintConfig = ({
     }
     // Scan rules run via core's check-security-scan environment
     // check, not oxlint — registering them would only add dead visitors.
-    if (rule.isScanRule) continue;
+    if (rule.isScanRule || rule.isProjectRule === true) continue;
     if (registryEntry.id === "no-multi-component-file" && shouldUseExplicitNoMultiCompPolicy)
       continue;
     // `customRulesOnly` mirrors the historical behavior of the pre-port

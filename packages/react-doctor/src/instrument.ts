@@ -7,8 +7,7 @@ import { isTelemetryEnabled } from "./cli/utils/is-telemetry-enabled.js";
 import { scrubSentryEvent } from "./cli/utils/scrub-sentry-event.js";
 import { resolveSentryEnvironment, resolveSentryRelease } from "./cli/utils/sentry-config.js";
 
-// Re-exported for back-compat: these resolvers moved to `sentry-config.ts` so
-// the editor LSP can reuse them without importing this CLI-only module.
+// Re-exported for back-compat after these resolvers moved to `sentry-config.ts`.
 export { resolveSentryEnvironment, resolveSentryRelease };
 
 let isInitialized = false;

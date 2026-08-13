@@ -1,7 +1,0 @@
-{
-  "name": "jest-test-match-fixture",
-  "main": "src/index.ts",
-  "dependencies": {
-    "jest": "*"
-  }
-}

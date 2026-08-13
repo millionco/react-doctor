@@ -2,9 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { effectNeedsCleanup } from "./effect-needs-cleanup.js";
 
-const SMALL_HANDLER_COUNT = 100;
-const LARGE_HANDLER_COUNT = 500;
-const MEASUREMENT_SAMPLE_COUNT = 3;
+const SMALL_HANDLER_COUNT = 500;
+const LARGE_HANDLER_COUNT = 2500;
+const MEASUREMENT_SAMPLE_COUNT = 7;
 const MAXIMUM_SCALING_MULTIPLIER = 15;
 
 const buildRetainedHandlersSource = (
@@ -35,8 +35,7 @@ const measureDuration = (
     expect(result.diagnostics).toHaveLength(handlerCount);
     return Number(process.hrtime.bigint() - startedAt);
   });
-  sampleDurations.sort((firstDuration, secondDuration) => firstDuration - secondDuration);
-  return sampleDurations[Math.floor(sampleDurations.length / 2)] ?? Number.POSITIVE_INFINITY;
+  return Math.min(...sampleDurations);
 };
 
 describe("effect-needs-cleanup performance", () => {
@@ -53,6 +52,7 @@ describe("effect-needs-cleanup performance", () => {
   ]) {
     it(`scales near-linearly across retained ${performanceCase.name}`, () => {
       measureDuration(SMALL_HANDLER_COUNT, performanceCase.buildRegistration);
+      measureDuration(LARGE_HANDLER_COUNT, performanceCase.buildRegistration);
       const smallDuration = measureDuration(SMALL_HANDLER_COUNT, performanceCase.buildRegistration);
       const largeDuration = measureDuration(LARGE_HANDLER_COUNT, performanceCase.buildRegistration);
       expect(largeDuration).toBeLessThan(smallDuration * MAXIMUM_SCALING_MULTIPLIER);

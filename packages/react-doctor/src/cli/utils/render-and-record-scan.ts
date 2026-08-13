@@ -120,7 +120,6 @@ export const renderAndRecordScan = async (
     didDeadCodeFail: input.payload.didDeadCodeFail,
     supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
     securityScanFailed: input.payload.securityScanFailed,
-    deadCodeOverlapped: input.payload.deadCodeOverlapped,
     suppressedRuleCounts: input.payload.suppressedRuleCounts ?? [],
   });
   return result;

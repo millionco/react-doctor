@@ -37,6 +37,12 @@ export const DEFAULT_SHOW_WARNINGS = true;
 
 export const MILLISECONDS_PER_SECOND = 1000;
 
+export const PROJECT_ANALYSIS_WORKER_TIMEOUT_MS = 120_000;
+export const PROJECT_ANALYSIS_WORKER_TIMEOUT_MS_PER_SOURCE_FILE = 30;
+export const PROJECT_ANALYSIS_WORKER_TIMEOUT_CEILING_MS = 600_000;
+export const PROJECT_ANALYSIS_WORKER_MAX_OLD_SPACE_MB = 8192;
+export const PROJECT_ANALYSIS_WORKER_MEMORY_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
+
 export const HTTP_SUCCESS_STATUS_CODE_MIN = 200;
 export const HTTP_SUCCESS_STATUS_CODE_MAX_EXCLUSIVE = 300;
 
@@ -574,8 +580,6 @@ export const COOPERATIVE_YIELD_BUDGET_MS = 12;
 // so the bin (parent) and the spawned oxlint batches (children) share one tree.
 export const NODE_COMPILE_CACHE_DIR_NAME = "node-compile-cache";
 
-export const DEAD_CODE_WORKER_TIMEOUT_MS = 120_000;
-
 // Cumulative wall-clock budget across ALL binary-split retries of one
 // batch pass. A pathological file recurses through ~log2(200)≈8
 // split levels, and each level re-waits a full OXLINT_SPAWN_TIMEOUT_MS;
@@ -610,48 +614,6 @@ export const ABORT_EXIT_CODES: ReadonlySet<number> = new Set([134, 0xc0000409]);
 // 60 s rescues dozens of healthy files while at most one
 // still-pathological file can burn the budget.
 export const OXLINT_OOM_RESCUE_BUDGET_MS = 60_000;
-
-// deslop's semantic pass builds a full TypeScript program and walks
-// every identifier through the type checker. On type-heavy projects
-// (large tRPC routers, Effect/Zod schemas, deep generics) the checker
-// instantiates enormous types and the child can exceed Node's default
-// ~4 GB heap, dying with an uncatchable "heap out of memory" — which
-// surfaces as a silent "Scanning failed (dead-code analysis)". Raise
-// the child's heap so those projects complete instead of crashing.
-export const DEAD_CODE_WORKER_MAX_OLD_SPACE_MB = 8192;
-
-// Memory budgeted per concurrent dead-code worker when sizing the global
-// `withDeadCodeWorkerSlot` semaphore (`resolveDeadCodeConcurrency`). Deliberately
-// well below the worker's `--max-old-space-size` ceiling above (that's a crash
-// guard, not steady-state use): a deslop graph on a few-hundred-file project
-// peaks around 1–1.5 GB, so 2 GB leaves headroom while still collapsing the
-// concurrency toward 1 on a small CI runner — capping how many 8 GB-ceiling
-// children a multi-project scan starts at once.
-export const DEAD_CODE_WORKER_MEM_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
-
-// Dead-code timeout scales with the work. deslop is CPU-bound and roughly
-// linear in source-file count, so a single fixed timeout is at once too
-// generous for a small repo and too tight for a large one — on a multi-thousand
-// file repo the graph build legitimately approaches the old fixed 120s cap, so
-// any contention (a still-running supply-chain pass, an overlapped lint pool)
-// tips it over and the findings are silently dropped. The worker timeout is
-// `max(DEAD_CODE_WORKER_TIMEOUT_MS floor, fileCount * this)` capped at the
-// ceiling; the phase timeout sits a margin above it.
-export const DEAD_CODE_TIMEOUT_MS_PER_SOURCE_FILE = 30;
-export const DEAD_CODE_TIMEOUT_CEILING_MS = 600_000;
-
-// When dead-code is explicitly overlapped with lint (`DeadCodeOverlap="on"`),
-// the two CPU-bound worker pools must SHARE the cores rather than each claiming
-// all of them — uncoordinated, deslop's parse pool (`os.availableParallelism()`)
-// and the oxlint pool (one child per core) sum to ~2x the cores and thrash,
-// starving the parse pass past its timeout. The dead-code parse pool gets this
-// fraction of the scan's worker budget and lint gets the rest, so the two sum to
-// the budget instead of doubling it. (Overlap is OFF by default: dead-code is
-// CPU-bound, so a sequential full-core pass is both faster per-phase and never
-// oversubscribes — overlapping it with lint buys no wall-clock and only risks
-// the starvation. This split exists for operators who force overlap on.)
-export const DEAD_CODE_OVERLAP_PARSE_SHARE = 0.4;
-export const MIN_DEAD_CODE_PARSE_CONCURRENCY = 1;
 
 // HACK: lookahead cap for JSX opener-span scanning; bounds worst-case
 // work on pathological files. Real openers stay well under this.
@@ -693,7 +655,7 @@ export const VERCEL_NEXTJS_SECURITY_RELEASE_URL =
 // The closed set of user-facing diagnostic categories. Every rule
 // (collapsed at codegen via `CATEGORY_BUCKET` in
 // `generate-rule-registry.mjs`) and every directly-constructed
-// diagnostic (dead-code, reduced-motion, pnpm-hardening) must report one
+// diagnostic (maintainability, reduced-motion, pnpm-hardening) must report one
 // of these — the renderer, JSON output, and `categories` severity
 // overrides all assume this set is exhaustive. `rule-metadata.test.ts`
 // asserts the registry never drifts outside it.
@@ -839,7 +801,7 @@ export const MAX_GLOB_PATTERN_WILDCARD_COUNT = 24;
 // repeated `inspect()` calls (one per project in a monorepo loop) don't
 // reload the same `react-doctor.config.json` each time. Capacity bounds
 // memory on monorepos with hundreds of workspace packages; TTL handles
-// long-running consumers (watch-mode tools, language servers).
+// long-running consumers such as watch-mode tools.
 export const CONFIG_CACHE_CAPACITY = 16;
 
 export const CONFIG_CACHE_TTL_MS = 5 * 60 * 1_000;
@@ -920,22 +882,6 @@ export const PLUGIN_FINGERPRINT_LENGTH_CHARS = 16;
 // so an upgrade must never replay entries shaped by an older core.
 export const CORE_PACKAGE_VERSION = process.env.REACT_DOCTOR_CORE_VERSION ?? "0.0.0";
 
-// Whole-project dead-code result cache (`dead-code/dead-code-result-cache.ts`).
-// Replays deslop's diagnostics — skipping the analysis worker entirely — when
-// nothing the analysis reads has changed since the stored run.
-// Bumped to 2: entries carry a per-file `files` map (mtime, size, content
-// hash) instead of folding the file stats into the key, so a fresh checkout's
-// bumped mtimes can be repaired against unchanged content.
-export const DEAD_CODE_CACHE_SCHEMA_VERSION = 2;
-
-export const DEAD_CODE_CACHE_FILENAME = "dead-code-cache.json";
-
-// deslop's incremental analysis store (`DeslopConfig.incrementalCachePath`) —
-// per-file parse summaries + collect/resolution/package-fact layers, written
-// by the analysis WORKER for the changed-files case the whole-result cache
-// above can't serve. Lives in the same per-project cache directory.
-export const DEAD_CODE_SUMMARY_CACHE_FILENAME = "dead-code-summaries.json";
-
 // Plugin / rule / category identity for the diagnostics the supply-chain
 // check emits. `plugin: "socket"` keeps Socket findings visually distinct
 // from the `react-doctor` lint surface in the printed list and JSON report.
@@ -1000,3 +946,20 @@ export const SPACE_UTF8_BYTE = 32;
 
 export const EXPO_PLATFORM_TREE_SHAKING_MINIMUM_SDK_VERSION = 54;
 export const REANIMATED_WORKLETS_MINIMUM_MAJOR_VERSION = 4;
+
+export const JSX_DUPLICATION_DEFAULT_MAX_SOURCE_FILES = 5_000;
+export const JSX_DUPLICATION_DEFAULT_MAX_SOURCE_LENGTH_CHARS = 1_000_000;
+export const UTF8_MAX_BYTES_PER_UTF16_CODE_UNIT = 3;
+export const JSX_DUPLICATION_SOURCE_READ_SENTINEL_BYTES = 1;
+export const JSX_DUPLICATION_DEFAULT_MAX_JSX_NODES = 50_000;
+export const JSX_DUPLICATION_DEFAULT_MAX_FAMILIES = 20;
+export const JSX_DUPLICATION_FAMILY_PROCESSING_MULTIPLIER = 10;
+export const JSX_DUPLICATION_MAX_COMPOSITION_PATH_DEPTH = 20;
+export const JSX_DUPLICATION_DEFAULT_MINIMUM_NODE_COUNT = 6;
+export const JSX_DUPLICATION_DEFAULT_MINIMUM_DEPTH = 3;
+export const JSX_DUPLICATION_DEFAULT_MINIMUM_OCCURRENCES = 2;
+export const JSX_DUPLICATION_DEFAULT_MINIMUM_DISTINCT_FILES = 1;
+export const JSX_DUPLICATION_SOURCE_FILE_PATTERN = /\.[cm]?[jt]sx?$/;
+export const MAINTAINABILITY_PLUGIN = "react-doctor";
+export const MAINTAINABILITY_DUPLICATE_JSX_RULE = "duplicate-jsx-subtree";
+export const MAINTAINABILITY_CATEGORY = "Maintainability";

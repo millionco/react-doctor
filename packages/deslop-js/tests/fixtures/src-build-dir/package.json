@@ -1,5 +1,0 @@
-{
-  "name": "source-build-directory-test",
-  "private": true,
-  "main": "src/index.ts"
-}

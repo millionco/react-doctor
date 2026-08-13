@@ -21,13 +21,22 @@ interface StringRecord {
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
 const FIXTURE_DIRECTORY = path.resolve(REPOSITORY_ROOT, "packages/core/tests/fixtures/basic-react");
+const PACKED_PACKAGE_NAMES: readonly string[] = ["react-doctor", "oxlint-plugin-react-doctor"];
 const FORBIDDEN_INSTALLED_PACKAGES: readonly string[] = [
   "ini",
   "effect",
   "@effect/platform-node-shared",
+  "deslop-cli",
+  "deslop-js",
   "ink",
   "ink-link",
   "ink-spinner",
+  "vscode-jsonrpc",
+  "vscode-languageserver",
+  "vscode-languageserver-protocol",
+  "vscode-languageserver-textdocument",
+  "vscode-languageserver-types",
+  "vscode-uri",
   "react-devtools-core",
   "react-reconciler",
 ];
@@ -125,23 +134,12 @@ const main = (): void => {
       )}\n`,
     );
 
-    // Pack the CLI together with its unbundled workspace dependencies:
-    // changesets version-bumps and publishes them as a pinned set, so
-    // installing the tarballs mirrors what a release ships. The CLI keeps
-    // `oxlint-plugin-react-doctor` and `deslop-js` external (neverBundle —
-    // both wrap native binaries), so installing only the CLI tarball would
-    // resolve them from the registry and reject any PR before their matching
-    // versions are published (e.g. a workspace-locked `deslop-js@0.5.x` that
-    // npm has never seen).
+    // Pack the CLI with its unbundled rule plugin so the install mirrors the
+    // version-pinned packages that Changesets publishes together.
     runCommand({
       command: "pnpm",
       args: [
-        "--filter",
-        "react-doctor",
-        "--filter",
-        "oxlint-plugin-react-doctor",
-        "--filter",
-        "deslop-js",
+        ...PACKED_PACKAGE_NAMES.flatMap((packageName) => ["--filter", packageName]),
         "pack",
         "--pack-destination",
         packDirectory,
@@ -151,9 +149,9 @@ const main = (): void => {
     });
 
     const tarballs = fs.readdirSync(packDirectory).filter((fileName) => fileName.endsWith(".tgz"));
-    if (tarballs.length !== 3) {
+    if (tarballs.length !== PACKED_PACKAGE_NAMES.length) {
       console.error(
-        `Expected exactly three packed tarballs in ${packDirectory}, found ${tarballs.length}.`,
+        `Expected exactly ${PACKED_PACKAGE_NAMES.length} packed tarballs in ${packDirectory}, found ${tarballs.length}.`,
       );
       process.exit(1);
     }
@@ -169,6 +167,15 @@ const main = (): void => {
     const installedPackages = collectInstalledPackageNames(
       path.join(installDirectory, "node_modules"),
     );
+    const missingPackedPackages = PACKED_PACKAGE_NAMES.filter(
+      (packageName) => !installedPackages.has(packageName),
+    );
+    if (missingPackedPackages.length > 0) {
+      console.error(
+        `Packed install is missing expected package(s): ${missingPackedPackages.join(", ")}`,
+      );
+      process.exit(1);
+    }
     const forbiddenPackages = FORBIDDEN_INSTALLED_PACKAGES.filter((packageName) =>
       installedPackages.has(packageName),
     );
@@ -186,6 +193,17 @@ const main = (): void => {
       "bin",
       "react-doctor.js",
     );
+    const projectAnalysisWorkerPath = path.join(
+      installDirectory,
+      "node_modules",
+      "react-doctor",
+      "dist",
+      "project-analysis-worker.js",
+    );
+    if (!fs.existsSync(projectAnalysisWorkerPath)) {
+      console.error(`Packed install is missing ${projectAnalysisWorkerPath}.`);
+      process.exit(1);
+    }
     const versionResult = runCommand({
       command: process.execPath,
       args: [binaryPath, "--version"],
@@ -194,6 +212,52 @@ const main = (): void => {
     const version = versionResult.stdout.trim();
     if (version === "" || version === "0.0.0") {
       console.error(`Installed CLI version is missing or invalid: "${version}"`);
+      process.exit(1);
+    }
+
+    const projectAnalysisFixtureDirectory = path.join(installDirectory, "project-analysis");
+    const projectAnalysisSourceDirectory = path.join(projectAnalysisFixtureDirectory, "src");
+    fs.mkdirSync(projectAnalysisSourceDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectAnalysisFixtureDirectory, "package.json"),
+      `${JSON.stringify({ name: "project-analysis-smoke", private: true, main: "src/index.ts", dependencies: { react: "19.2.5" } })}\n`,
+    );
+    fs.writeFileSync(
+      path.join(projectAnalysisFixtureDirectory, "doctor.config.json"),
+      `${JSON.stringify({ rules: { "react-doctor/unused-export": "warn" } })}\n`,
+    );
+    fs.writeFileSync(
+      path.join(projectAnalysisSourceDirectory, "index.ts"),
+      'export { usedValue } from "./library.js";\n',
+    );
+    fs.writeFileSync(
+      path.join(projectAnalysisSourceDirectory, "library.ts"),
+      "export const usedValue = 1;\nexport const unusedValue = 2;\n",
+    );
+    const projectAnalysisResult = runCommand({
+      command: process.execPath,
+      args: [
+        binaryPath,
+        projectAnalysisFixtureDirectory,
+        "--no-score",
+        "--no-dead-code",
+        "--blocking",
+        "none",
+        "--json",
+      ],
+      cwd: installDirectory,
+      allowedStatuses: [0, 1],
+    });
+    const projectAnalysisReport = Schema.decodeUnknownSync(JsonReport)(
+      JSON.parse(projectAnalysisResult.stdout),
+    );
+    if (
+      !projectAnalysisReport.diagnostics.some((diagnostic) => diagnostic.rule === "unused-export")
+    ) {
+      console.error("Packed CLI did not run the opt-in project analysis worker.");
+      console.error(
+        `Received rules: ${projectAnalysisReport.diagnostics.map((diagnostic) => diagnostic.rule).join(", ")}`,
+      );
       process.exit(1);
     }
 

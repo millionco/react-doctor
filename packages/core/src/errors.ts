@@ -134,14 +134,14 @@ export class ProjectDiscoveryFailed extends Schema.TaggedErrorClass<ProjectDisco
   }
 }
 
-export class DeadCodeAnalysisFailed extends Schema.TaggedErrorClass<DeadCodeAnalysisFailed>()(
-  "DeadCodeAnalysisFailed",
+export class MaintainabilityAnalysisFailed extends Schema.TaggedErrorClass<MaintainabilityAnalysisFailed>()(
+  "MaintainabilityAnalysisFailed",
   {
     cause: Schema.Unknown,
   },
 ) {
   get message() {
-    return `Dead-code analysis failed: ${Cause.pretty(Cause.fail(this.cause))}`;
+    return `Maintainability analysis failed: ${Cause.pretty(Cause.fail(this.cause))}`;
   }
 }
 
@@ -191,7 +191,7 @@ export const ReactDoctorErrorReason = Schema.Union([
   NoReactDependency,
   AmbiguousProject,
   ProjectDiscoveryFailed,
-  DeadCodeAnalysisFailed,
+  MaintainabilityAnalysisFailed,
   GitInvocationFailed,
   GitBaseBranchMissing,
   GitBaseBranchInvalid,

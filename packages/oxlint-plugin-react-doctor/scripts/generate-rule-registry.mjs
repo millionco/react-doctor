@@ -102,6 +102,7 @@ const getRequiredCapabilities = (bucketName, ruleId) => {
 const BUCKET_TO_AUTO_TAGS = {
   design: ["design"],
   ink: ["ink"],
+  project: ["project-analysis"],
   "react-native": ["react-native"],
   r3f: ["r3f", "webgl"],
   webgl: ["webgl"],
@@ -217,6 +218,7 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   nextjs: "Next.js",
   performance: "Performance",
   preact: "Preact",
+  project: "Architecture",
   "react-builtins": "Correctness",
   "react-native": "React Native",
   r3f: "Performance",
@@ -498,6 +500,7 @@ const coreRuleEntries = ruleEntries.map((entry) => {
           : undefined,
       matchByOccurrence: sourceRule.matchByOccurrence,
       isScanRule: typeof sourceRule.scan === "function",
+      isProjectRule: sourceRule.execution === "project" ? true : undefined,
     },
   };
 });

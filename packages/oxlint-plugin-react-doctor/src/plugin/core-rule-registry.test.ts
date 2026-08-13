@@ -27,6 +27,9 @@ describe("core rule registry", () => {
       expect(coreEntry?.rule.defaultEnabled).toBe(fullEntry.rule.defaultEnabled);
       expect(coreEntry?.rule.matchByOccurrence).toBe(fullEntry.rule.matchByOccurrence);
       expect(coreEntry?.rule.isScanRule).toBe(typeof fullEntry.rule.scan === "function");
+      expect(coreEntry?.rule.isProjectRule).toBe(
+        fullEntry.rule.execution === "project" ? true : undefined,
+      );
       expect(Boolean(coreEntry?.rule.recommendationFor)).toBe(
         Boolean(fullEntry.rule.recommendationFor),
       );
@@ -64,6 +67,16 @@ describe("core rule registry", () => {
     expect(reactDoctorScanRules.map((entry) => entry.id)).toEqual(
       reactDoctorRules
         .filter((entry) => typeof entry.rule.scan === "function")
+        .map((entry) => entry.id),
+    );
+  });
+
+  it("contains exactly the full registry's project rules", () => {
+    expect(
+      CORE_REACT_DOCTOR_RULES.filter((entry) => entry.rule.isProjectRule).map((entry) => entry.id),
+    ).toEqual(
+      reactDoctorRules
+        .filter((entry) => entry.rule.execution === "project")
         .map((entry) => entry.id),
     );
   });

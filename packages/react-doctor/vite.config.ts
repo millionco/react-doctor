@@ -61,7 +61,10 @@ const copySkillsToDist = () => {
 export default defineConfig({
   pack: [
     {
-      entry: { cli: "./src/cli/index.ts" },
+      entry: {
+        cli: "./src/cli/index.ts",
+        "project-analysis-worker": "./src/project-analysis-worker.ts",
+      },
       deps: {
         // Inline pure-JS CLI deps and the Ink/React renderer so the inspected
         // project cannot supply a missing or incompatible React peer. Native
@@ -98,28 +101,14 @@ export default defineConfig({
           "confbox",
           "jiti",
           "magicast",
-          // The vscode-* LSP libs back `react-doctor experimental-lsp` (pulled
-          // in via @react-doctor/language-server). They MUST stay external:
-          // vscode-jsonrpc uses dynamic requires that break when bundled
-          // (the server would start and exit immediately). They're
-          // declared as runtime dependencies so the published tarball
-          // resolves them.
-          "vscode-languageserver",
-          "vscode-languageserver-protocol",
-          "vscode-languageserver-textdocument",
-          "vscode-jsonrpc",
-          "vscode-uri",
-          // HACK: deslop-js wraps oxc-parser / oxc-resolver, both of
-          // which load platform-specific NAPI bindings via require().
+          // HACK: oxc-parser / oxc-resolver load platform-specific NAPI bindings via require().
           // Rollup happily inlines the JS loader chain but rewrites
           // the native lookups to fingerprinted `./assets/*.node`
           // paths that never make it into the published tarball (and
           // also strips the standard `@oxc-{parser,resolver}/binding-
-          // <platform>` fallback). Keep deslop-js (and its native
-          // siblings) external so the loaders run untouched and Node
-          // resolves the bindings from the deslop-js node_modules
-          // tree on install — see issue #404.
-          "deslop-js",
+          // <platform>` fallback). Keep the native packages external so
+          // the loaders run untouched and Node resolves their bindings
+          // from node_modules on install — see issue #404.
           "oxc-parser",
           "oxc-resolver",
           "oxlint",
@@ -166,7 +155,6 @@ export default defineConfig({
           "confbox",
           "jiti",
           "magicast",
-          "deslop-js",
           "oxc-parser",
           "oxc-resolver",
           "oxlint",
@@ -180,51 +168,8 @@ export default defineConfig({
       platform: "node",
       fixedExtension: false,
     },
-    {
-      // Dedicated language-server entry the bin shim fast-paths to for
-      // `react-doctor experimental-lsp`. Inlines @react-doctor/language-server + core;
-      // keeps the engine + LSP transport external (the vscode-* libs use
-      // dynamic requires that break when bundled).
-      entry: { lsp: "./src/lsp.ts" },
-      deps: {
-        neverBundle: [
-          "@astrojs/compiler",
-          // Sentry telemetry for `experimental-lsp` — kept external for the
-          // same reason as the CLI pack (it resolves its own OTel/native deps
-          // via require() at runtime).
-          "@sentry/node",
-          "deslop-js",
-          "oxc-parser",
-          "oxc-resolver",
-          "oxlint",
-          "oxlint-plugin-react-doctor",
-          "typescript",
-          "vscode-languageserver",
-          "vscode-languageserver-protocol",
-          "vscode-languageserver-textdocument",
-          "vscode-jsonrpc",
-          "vscode-uri",
-        ],
-      },
-      dts: false,
-      target: "node20",
-      platform: "node",
-      fixedExtension: false,
-    },
   ],
   test: {
     testTimeout: TEST_TIMEOUT_MS,
-    // NOTE: do NOT pin Windows onto a single serial fork
-    // (`singleFork` / `maxWorkers: 1` / `fileParallelism: false`).
-    // This suite drives the real `oxlint` binary and per-test deslop
-    // `worker_threads` thousands of times; funneling all ~105 test
-    // files through one long-lived worker lets that process accumulate
-    // memory/handles across the whole run and crash near the end, which
-    // vitest reports as "Worker exited unexpectedly" (Worker forks
-    // emitted error) and fails the job with 0 failed assertions. The
-    // default parallel + isolated forks keep each worker short-lived so
-    // memory is reclaimed between files — Windows CI was green 16/16
-    // with this default and started crashing the moment the override
-    // landed. Keep Windows on the default pool.
   },
 });

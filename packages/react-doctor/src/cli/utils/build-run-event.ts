@@ -1,4 +1,6 @@
 import {
+  buildRuleSeverityControls,
+  countOptInProjectRuleSelections,
   filterDiagnosticsForSurface,
   HTML_FILE_PATTERN,
   isReactDoctorError,
@@ -49,8 +51,7 @@ export interface RunEventInput {
   readonly maxDurationMs: number | null;
   readonly lint: boolean;
   readonly deadCode: boolean;
-  // Whether the supply-chain scan is enabled by config/flag (the config analog
-  // of `lint`/`deadCode`) — not whether it ran; diff/staged mode skips it anyway.
+  // Whether the supply-chain scan is enabled by config or flag.
   readonly supplyChain: boolean;
   readonly scoreOnly: boolean;
   readonly noScore: boolean;
@@ -61,7 +62,7 @@ export interface RunEventInput {
   readonly ignoredTagCount: number;
   readonly hasCustomConfig: boolean;
   readonly userConfig: ReactDoctorConfig | null;
-  // Lint / dead-code outcome — only known on the success path. The failure path
+  // Lint and maintainability outcomes are only known on the success path. The failure path
   // (the scan threw) omits these rather than asserting a benign default.
   readonly didLintFail?: boolean;
   readonly lintFailureReasonKind?: string | null;
@@ -92,12 +93,6 @@ export interface RunEventInput {
   // a cache hit reports the healthy `false`; omitted (null) on payloads from
   // before the field and on the failure path.
   readonly securityScanFailed?: boolean;
-  /**
-   * Whether the dead-code pass ran concurrently with lint this scan. Lets a
-   * query compare `runInspect` wall-clock grouped by overlap, and watch for
-   * an OOM/timeout regression on overlapped scans.
-   */
-  readonly deadCodeOverlapped?: boolean;
   // A degraded baseline run (no delta computed) skips the CI gate, so the
   // `wouldBlock` prediction must match — never block on its plain-diff findings.
   readonly gateExempt?: boolean;
@@ -111,7 +106,7 @@ export interface RunEventInput {
   readonly suppressedRuleCounts?: ReadonlyArray<SuppressedRuleCount>;
   /**
    * `true` only when this run replayed a whole-repo scan-result payload (the
-   * "turbo" path, where no lint / dead-code / score work ran). The explicit
+   * "turbo" path, where no lint, maintainability, or score work ran). The explicit
    * marker for `cache.temperature = "turbo"` — never inferred from the
    * per-subsystem cache dims being null, which is also what a cache-off run
    * looks like. Omitted on the failure path.
@@ -154,18 +149,6 @@ const ratioOf = (
 ): number | null =>
   denominator != null && denominator > 0 ? (numerator ?? 0) / denominator : null;
 
-// The dead-code pass's reuse fraction: a whole-result replay is total reuse;
-// a fresh analysis reuses whatever fraction of its file summaries the
-// incremental store served; a consulted-but-missed result cache with no
-// summary stats is zero reuse. `null` when the pass never consulted a cache.
-const resolveDeadCodeReuseRatio = (result: InspectResult): number | null => {
-  if (result.deadCodeCacheHit === true) return 1;
-  const summaryTotal =
-    (result.deadCodeSummaryCacheHits ?? 0) + (result.deadCodeSummaryCacheMisses ?? 0);
-  if (summaryTotal > 0) return (result.deadCodeSummaryCacheHits ?? 0) / summaryTotal;
-  return result.deadCodeCacheHit === false ? 0 : null;
-};
-
 /**
  * One queryable cache temperature per scan, derived from the whole stack:
  *
@@ -173,8 +156,7 @@ const resolveDeadCodeReuseRatio = (result: InspectResult): number | null => {
  *                    `wholeRepoCacheHit` flag from the CLI's cachedPayload
  *                    branch; no scan work ran).
  *   - `"warm"`     — any incremental reuse: per-file lint hits, sidecar
- *                    replays, a dead-code whole-result hit, or dead-code
- *                    summary-cache hits.
+ *                    replays.
  *   - `"disabled"` — zero reuse because the global `REACT_DOCTOR_NO_CACHE`
  *                    off-switch is on. Granular per-cache opt-outs
  *                    (`REACT_DOCTOR_NO_FILE_CACHE`, …) still read warm/cold,
@@ -183,7 +165,7 @@ const resolveDeadCodeReuseRatio = (result: InspectResult): number | null => {
  *
  * `cache.warmth` is the headline reuse magnitude in [0, 1]: the plain mean of
  * the subsystem reuse fractions known this run (lint hit ratio, sidecar
- * replay ratio, dead-code reuse), skipping subsystems that never consulted a
+ * replay ratio), skipping subsystems that never consulted a
  * cache; `1` on turbo, dropped when nothing consulted any cache. Deliberately
  * unweighted — the per-subsystem dims stay the precise signal; warmth is the
  * p50/p90-able summary. Emitted only on the success path.
@@ -197,7 +179,6 @@ const buildCacheAttributes = (input: RunEventInput): RunEventAttributes => {
   const subsystemReuseRatios = [
     ratioOf(result.lintCacheHitFileCount, result.lintCacheTotalFileCount),
     ratioOf(result.lintSidecarReplayedFileCount, result.lintSidecarTotalFileCount),
-    resolveDeadCodeReuseRatio(result),
   ];
   let knownSubsystemCount = 0;
   let reuseRatioSum = 0;
@@ -429,19 +410,8 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
         result.lintSidecarTotalFileCount,
       ),
     }),
-    ...withNamespace("deadCode", {
+    ...withNamespace("maintainability", {
       failed: input.didDeadCodeFail,
-      overlapped: input.deadCodeOverlapped,
-      // Dead-code result cache outcome; absent when the pass never consulted
-      // the cache, so "no cache" reads distinctly from a miss.
-      cacheHit: result.deadCodeCacheHit,
-      // Incremental summary-cache outcome for the analysis that ran (the
-      // kill-criterion metric for the fill overhead: if warm scans are rare,
-      // hits stay near zero). Numeric so Sentry can aggregate; absent when no
-      // analysis consulted the incremental store (whole-result hit, cache
-      // off, or dead-code skipped).
-      summaryCacheHits: result.deadCodeSummaryCacheHits,
-      summaryCacheMisses: result.deadCodeSummaryCacheMisses,
     }),
     ...withNamespace("supplyChain", {
       overlapTimedOut: input.supplyChainOverlapTimedOut,
@@ -507,7 +477,7 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     workerCount: input.workerCount,
     maxDurationMs: input.maxDurationMs,
     lint: input.lint,
-    deadCode: input.deadCode,
+    maintainability: input.deadCode,
     supplyChain: input.supplyChain,
     scoreOnly: input.scoreOnly,
     noScore: input.noScore,
@@ -518,6 +488,9 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     hasCustomConfig: input.hasCustomConfig,
     rulesConfigured: ruleKeys.length,
     rulesDisabled: ruleKeys.filter((key) => ruleOverrides[key] === "off").length,
+    projectAnalysisRuleCount: countOptInProjectRuleSelections(
+      buildRuleSeverityControls(input.userConfig),
+    ),
     // Scan extent — how many files this run covered (the denominator for
     // `diag.affectedFiles`). Known only on the success path.
     fileCount: input.result?.scannedFileCount,
@@ -537,7 +510,7 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
  * Projects a scan into the namespaced attribute set for its root span — the
  * canonical per-scan "wide event". Every attribute carries a dotted namespace
  * that groups it by concept (`scan.*` config, `action.*` CI knobs, `outcome.*`
- * verdict, `diag.*` findings, `score.*`, `lint.*`, `deadCode.*`, `cache.*`,
+ * verdict, `diag.*` findings, `score.*`, `lint.*`, `maintainability.*`, `cache.*`,
  * `supplyChain.*`, `timing.*`, `migration.*`, `baseline.*`) so the attributes
  * tree up in Sentry's attribute browser and stay filter-/group-/aggregate-able
  * in the Spans dataset. Pure and exported so the projection (outcome

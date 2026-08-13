@@ -2,8 +2,10 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isTypeOnlyImport } from "./is-type-only-import.js";
+import { walkAst } from "./walk-ast.js";
 
 export interface JsxRuntimeImports {
+  readonly hasNonReactMarker: boolean;
   readonly hasNonReactRuntime: boolean;
   readonly hasReactRuntime: boolean;
 }
@@ -53,7 +55,17 @@ export const collectJsxRuntimeImports = (
 
   let hasNonReactRuntime = false;
   let hasReactRuntime = false;
+  let hasNonReactMarker = false;
   for (const statement of program.body) {
+    if (!hasNonReactMarker) {
+      walkAst(statement as EsTreeNode, (node) => {
+        if (hasNonReactMarker) return false;
+        if (isNodeOfType(node, "JSXOpeningElement") && jsxAttributeIsNonReactDialectMarker(node)) {
+          hasNonReactMarker = true;
+          return false;
+        }
+      });
+    }
     if (!isNodeOfType(statement as EsTreeNode, "ImportDeclaration")) continue;
     const importDeclaration = statement as EsTreeNodeOfType<"ImportDeclaration">;
     if (isTypeOnlyImport(importDeclaration)) continue;
@@ -73,7 +85,7 @@ export const collectJsxRuntimeImports = (
       hasReactRuntime = true;
     }
   }
-  const runtimeImports = { hasNonReactRuntime, hasReactRuntime };
+  const runtimeImports = { hasNonReactMarker, hasNonReactRuntime, hasReactRuntime };
   runtimeImportsByProgram.set(program, runtimeImports);
   return runtimeImports;
 };
@@ -96,11 +108,13 @@ export const jsxAttributeIsNonReactDialectMarker = (
   for (const attribute of openingNode.attributes) {
     if (!isNodeOfType(attribute, "JSXAttribute")) continue;
     if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
-    // `classList` (Solid), `class:hover` (svelte-jsx style — rare in
-    // React), `bind:value` (svelte) — collectively non-React markers.
     const attributeName = attribute.name.name;
+    const isObjectClassList =
+      attributeName === "classList" &&
+      isNodeOfType(attribute.value, "JSXExpressionContainer") &&
+      isNodeOfType(attribute.value.expression, "ObjectExpression");
     if (
-      attributeName === "classList" ||
+      isObjectClassList ||
       attributeName.startsWith("class:") ||
       attributeName.startsWith("bind:")
     ) {

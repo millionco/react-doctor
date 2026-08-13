@@ -3,7 +3,7 @@
 // as that handle is open — even though the only thing that ever reads
 // stdin is an interactive prompt. When the CLI is spawned by a parent
 // that holds the stdin write-end open (eval runners, CI harnesses,
-// editor integrations), the scan finishes and the `--json` report
+// process harnesses), the scan finishes and the `--json` report
 // flushes, yet the process never exits: the inherited `Socket fd=0`
 // refs the loop. Unref-ing fd 0 up front makes an idle pipe/socket
 // incapable of holding the process open.

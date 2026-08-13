@@ -1,3 +1,5 @@
+import { REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD } from "../constants/thresholds.js";
+
 // One positive-control fixture per registered rule: a minimal snippet the
 // rule MUST report at least one finding on (see liveness.test.ts). Most
 // snippets are lifted from the rule's own unit tests; the rest are the
@@ -25,6 +27,16 @@ const giantComponentCode = [
     (_, statementIndex) => `  const value${statementIndex} = ${statementIndex};`,
   ),
   "  return <main />;",
+  "}",
+].join("\n");
+
+const complexReactFunctionCode = [
+  "function ComplexComponent({ value }) {",
+  ...Array.from(
+    { length: REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD },
+    (_, branchIndex) => `  if (value === ${branchIndex}) return <p>${branchIndex}</p>;`,
+  ),
+  "  return <p>fallback</p>;",
   "}",
 ].join("\n");
 
@@ -877,6 +889,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-giant-component": {
     code: giantComponentCode,
+  },
+  "no-high-complexity-react-function": {
+    code: complexReactFunctionCode,
   },
   "no-global-css-variable-animation": {
     code: 'requestAnimationFrame(() => {\n  document.documentElement.style.setProperty("--scroll", String(window.scrollY));\n});',

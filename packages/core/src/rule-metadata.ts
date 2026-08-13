@@ -2,10 +2,9 @@ import { REACT_DOCTOR_RULE_REGISTRY } from "oxlint-plugin-react-doctor/core";
 
 /**
  * Static, presentation-oriented metadata for a single rule, resolved
- * from the bundled `oxlint-plugin-react-doctor` registry. Editor
- * integrations use this to enrich hovers and code actions (rule tags,
- * canonical recommendation, owning category) without importing the
- * plugin themselves — `@react-doctor/core` already loads it.
+ * from the bundled `oxlint-plugin-react-doctor` registry. CLI and API
+ * consumers use this to resolve rule tags, recommendations, categories,
+ * and default activation without importing the plugin themselves.
  */
 export interface RuleMetadata {
   readonly id: string;

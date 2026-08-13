@@ -1,1 +1,0 @@
-export const useAssets = () => ({ data: [] });

@@ -634,7 +634,7 @@ const runMultiProjectScan = async (
     isRootDeadCodeEnabled: input.options?.deadCode ?? rootProjectScan?.config?.deadCode ?? true,
   });
   if (workspaceDeadCodeOwner !== null) {
-    recordCount(METRIC.scanWorkspaceDeadCodeShared, 1, {
+    recordCount(METRIC.scanWorkspaceMaintainabilityShared, 1, {
       projectCount: discoveredProjectScans.length,
     });
   }

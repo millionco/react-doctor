@@ -32,7 +32,6 @@ export const buildBenchmarkEnvironment = (
   return {
     ...input.baseEnvironment,
     CI: "1",
-    DESLOP_PARSE_CONCURRENCY: undefined,
     GIT_TERMINAL_PROMPT: "0",
     LC_ALL: "C",
     NODE_COMPILE_CACHE: path.join(input.cacheDirectory, "node-compile"),

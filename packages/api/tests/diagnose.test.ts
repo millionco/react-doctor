@@ -351,6 +351,55 @@ describe("diagnose({ projects })", () => {
     expect(result.projects[0].ok).toBe(true);
   });
 
+  it("runs explicitly enabled project rules through the public API", async () => {
+    const projectDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rdc-project-analysis-"));
+    const sourceDirectory = path.join(projectDirectory, "src");
+    fs.mkdirSync(sourceDirectory);
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "project-analysis-api-test",
+        main: "src/index.ts",
+        dependencies: { react: "19.2.5" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(sourceDirectory, "index.ts"),
+      'import { usedValue } from "./library.js";\nconsole.log(usedValue);\n',
+    );
+    fs.writeFileSync(
+      path.join(sourceDirectory, "library.ts"),
+      "export const usedValue = 1;\nexport const unusedValue = 2;\n",
+    );
+    try {
+      const result = await diagnose({
+        projects: [
+          {
+            directory: projectDirectory,
+            config: { rules: { "react-doctor/unused-export": "warn" } },
+          },
+        ],
+        deadCode: false,
+        lint: false,
+      });
+
+      const projectResult = result.projects[0];
+      expect(projectResult.ok).toBe(true);
+      if (!projectResult.ok) return;
+      expect(projectResult.diagnostics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            plugin: "react-doctor",
+            rule: "unused-export",
+            message: expect.stringContaining("unusedValue"),
+          }),
+        ]),
+      );
+    } finally {
+      fs.rmSync(projectDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("respects batch config lint: false", async () => {
     const result = await diagnose({
       projects: [{ directory: path.join(FIXTURES_DIRECTORY, "basic-react") }],

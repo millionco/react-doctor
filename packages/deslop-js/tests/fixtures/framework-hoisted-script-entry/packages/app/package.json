@@ -1,9 +1,0 @@
-{
-  "name": "test-hoisted-next-app",
-  "scripts": {
-    "dev": "next dev"
-  },
-  "dependencies": {
-    "react": "*"
-  }
-}

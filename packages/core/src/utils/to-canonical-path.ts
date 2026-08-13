@@ -5,15 +5,8 @@ import * as fs from "node:fs";
  * the input when it cannot be realpath'd (broken symlink, permission
  * error) so a best-effort normalization never throws.
  *
- * deslop's dead-code module graph is collected with `fast-glob` (which
- * keeps the scan root's symlinks intact) while imports are resolved
- * through `oxc-resolver` (which returns realpath'd targets). When the
- * project root sits behind a symlink — e.g. macOS iCloud-synced
- * `~/Documents` / `~/Desktop`, or a symlinked checkout — those two path
- * spaces diverge: every resolved import misses the graph and the files
- * they point at (commonly every `@/…` alias target) are mis-reported as
- * unreachable. Canonicalizing the root before the scan keeps both path
- * spaces in agreement.
+ * Canonicalizing the root keeps file discovery and module resolution in the
+ * same path space when a project sits behind a symlink.
  */
 export const toCanonicalPath = (filePath: string): string => {
   try {

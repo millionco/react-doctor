@@ -108,12 +108,12 @@ ${formatExampleLines([
 
 ${highlighter.dim("Scope:")}
   Runs every rule tagged ${highlighter.info("design")}; all design rules stay opt-in during a general health scan.
-  Dead-code, supply-chain, external lint-config, custom-plugin, and health-score passes are skipped.
+  Whole-project maintainability, supply-chain, external lint-config, custom-plugin, and health-score passes are skipped.
   Standard scan flags such as ${highlighter.info("--scope")}, ${highlighter.info("--project")}, ${highlighter.info("--verbose")}, and ${highlighter.info("--json")} still work.
 `;
 
 const MAX_DURATION_OPTION_DESCRIPTION =
-  "scan time budget for the whole run, shared across workspace projects: past it, queued projects, remaining lint batches, and dead-code are skipped and partial results are reported (skipped files and projects are listed in the JSON report)";
+  "scan time budget for the whole run, shared across workspace projects: past it, queued projects, remaining lint batches, and maintainability analysis are skipped and partial results are reported (skipped files and projects are listed in the JSON report)";
 
 const renderCiHelpEpilog = (): string => `
 ${highlighter.dim("Examples:")}
@@ -146,11 +146,8 @@ const program = new Command()
   .argument("[directory]", "project directory to scan", ".")
   .option("--lint", "enable linting")
   .option("--no-lint", "skip linting")
-  .option("--dead-code", "enable dead-code analysis (default)")
-  .option(
-    "--no-dead-code",
-    "skip dead-code analysis (unused files / exports / dependencies, circular imports)",
-  )
+  .addOption(new Option("--dead-code").hideHelp())
+  .addOption(new Option("--no-dead-code").hideHelp())
   .option("--supply-chain", "enable the dependency supply-chain scan (default)")
   .option(
     "--no-supply-chain",
@@ -462,19 +459,6 @@ rules
     return rulesUnignoreTagAction(tag, command.optsWithGlobals());
   });
 
-// NOTE: `react-doctor experimental-lsp` is intentionally NOT wired through
-// commander. The bin shim (bin/react-doctor.js) fast-paths it to a dedicated
-// server entry so the CLI layer (commander / prompts / ora) never touches
-// process.stdin before the LSP stdio transport attaches. This command is
-// registered only so `--help` lists it; its body never runs in practice.
-// It's gated behind the `experimental-` prefix because the editor language
-// server is still unstable (protocol, caching, and diagnostics may change).
-program
-  .command("experimental-lsp", { hidden: false })
-  .description("[experimental] run the React Doctor language server over stdio (for editors)")
-  .allowUnknownOption()
-  .action(() => {});
-
 program
   .command("experimental-tui [directory]", { hidden: true })
   .description("[experimental] interactive, scrollable scan report")
@@ -484,7 +468,7 @@ program
   )
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
-  .option("--no-dead-code", "skip dead-code analysis")
+  .addOption(new Option("--no-dead-code").hideHelp())
   .option("--no-supply-chain", "skip the dependency supply-chain scan")
   .option("--score", "only print the numeric score (for scripts and CI)")
   .option("--no-score", "skip the score API, the share URL, and crash reporting")

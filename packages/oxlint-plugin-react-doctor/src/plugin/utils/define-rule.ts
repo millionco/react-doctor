@@ -9,23 +9,23 @@ import type { Rule } from "./rule.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 
 // A rule definition has exactly one execution mode. An AST rule provides
-// `create` (per-file visitors, hosted by oxlint/ESLint); a scan rule
-// provides `scan` (a project-level file scan, executed by
-// @react-doctor/core's check-security-scan environment check) and gets an
-// inert visitor factory injected for host compatibility. Metadata,
-// registration, tags, and severity flow identically either way.
-export type RuleDefinition = Rule | (Omit<Rule, "create"> & { scan: FileScan });
+// `create` (per-file visitors, hosted by oxlint/ESLint); a scan rule provides
+// `scan`; and a project rule carries `execution: "project"` for a core-owned
+// whole-project analyzer. Non-AST modes get an inert visitor factory for host
+// compatibility while sharing the same metadata and configuration surface.
+export type RuleDefinition =
+  | Rule
+  | (Omit<Rule, "create" | "execution"> & { scan: FileScan })
+  | (Omit<Rule, "create" | "scan"> & { execution: "project" });
 
 // Rules tagged `"react-jsx-only"` apply React-flavoured semantics
 // (a11y semantics tuned for React's synthetic-event listener naming,
 // React-cased prop names, etc.) and should pass through for files
 // authored in non-React JSX dialects: Solid.js, Qwik, Voby, Vidode.
-// Detection happens lazily — we snapshot the dialect status from the
-// program's import declarations on the Program visit, then short-
-// circuit every other visitor when the file is Solid/Qwik. A late
-// `classList=` / `class:` / `bind:` marker upgrades the dialect mid-
-// file (some files import Solid via re-export and don't have an
-// obvious `solid-js` import).
+// Detection snapshots imports and dialect-specific JSX markers on the
+// Program visit, then short-circuits every other visitor when the file is
+// Solid/Qwik. The JSXOpeningElement guard preserves the same behavior for
+// hosts that invoke visitors without a Program pass.
 type GenericVisitors = Record<string, unknown>;
 
 const wrapCreateForReactJsxOnly = <
@@ -58,7 +58,9 @@ const wrapCreateForReactJsxOnly = <
         wrappedVisitors.Program = (node: EsTreeNodeOfType<"Program">) => {
           const runtimeImports = collectJsxRuntimeImports(node);
           fileImportsReactRuntime = runtimeImports.hasReactRuntime;
-          fileIsNonReactJsx = runtimeImports.hasNonReactRuntime && !runtimeImports.hasReactRuntime;
+          fileIsNonReactJsx =
+            !runtimeImports.hasReactRuntime &&
+            (runtimeImports.hasNonReactRuntime || runtimeImports.hasNonReactMarker);
           (visitor as (n: EsTreeNodeOfType<"Program">) => void)(node);
         };
         continue;
@@ -86,7 +88,9 @@ const wrapCreateForReactJsxOnly = <
       wrappedVisitors.Program = (node: EsTreeNodeOfType<"Program">) => {
         const runtimeImports = collectJsxRuntimeImports(node);
         fileImportsReactRuntime = runtimeImports.hasReactRuntime;
-        fileIsNonReactJsx = runtimeImports.hasNonReactRuntime && !runtimeImports.hasReactRuntime;
+        fileIsNonReactJsx =
+          !runtimeImports.hasReactRuntime &&
+          (runtimeImports.hasNonReactRuntime || runtimeImports.hasNonReactMarker);
       };
     }
     return wrappedVisitors;

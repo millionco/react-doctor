@@ -428,6 +428,24 @@
     }
   },
   {
+    "key": "react-doctor/circular-dependency",
+    "id": "circular-dependency",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "circular-dependency",
+      "title": "Runtime import cycle",
+      "severity": "warn",
+      "recommendation": "Break the runtime cycle by extracting shared code into a lower-level module or inverting one dependency.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "defaultEnabled": false,
+      "isScanRule": false,
+      "isProjectRule": true
+    }
+  },
+  {
     "key": "react-doctor/class-component-missing-component-will-unmount-teardown",
     "id": "class-component-missing-component-will-unmount-teardown",
     "source": "react-doctor",
@@ -782,6 +800,23 @@
       "requires": ["react"],
       "defaultEnabled": false,
       "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/duplicate-jsx-subtree",
+    "id": "duplicate-jsx-subtree",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "duplicate-jsx-subtree",
+      "title": "Duplicated JSX structure",
+      "severity": "warn",
+      "recommendation": "Extract a shared component when the repeated JSX trees represent the same UI concept and should evolve together.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "isScanRule": false,
+      "isProjectRule": true
     }
   },
   {
@@ -5038,6 +5073,22 @@
       "framework": "global",
       "tags": ["design", "test-noise"],
       "defaultEnabled": false,
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/no-high-complexity-react-function",
+    "id": "no-high-complexity-react-function",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-high-complexity-react-function",
+      "title": "React function has high control-flow complexity",
+      "severity": "warn",
+      "recommendation": "Extract independent render branches and state logic into focused components or hooks until the control flow is easy to follow.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["test-noise", "react-jsx-only"],
       "isScanRule": false
     }
   },
@@ -10939,7 +10990,7 @@
     "originallyExternal": false,
     "rule": {
       "id": "rendering-hydration-no-flicker",
-      "title": "useEffect setState flashes on mount",
+      "title": "useEffect state synchronization flashes after paint",
       "severity": "warn",
       "recommendation": "Initialize state from a render-safe value before the first paint, or read external mutable values with `useSyncExternalStore`.",
       "category": "Performance",
@@ -14470,6 +14521,96 @@
       "framework": "global",
       "tags": ["security-scan"],
       "isScanRule": true
+    }
+  },
+  {
+    "key": "react-doctor/unused-dependency",
+    "id": "unused-dependency",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "unused-dependency",
+      "title": "Dependency has no discovered use",
+      "severity": "warn",
+      "recommendation": "Remove the dependency after checking source, scripts, configuration, generated code, and dynamic loading paths.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "defaultEnabled": false,
+      "isScanRule": false,
+      "isProjectRule": true
+    }
+  },
+  {
+    "key": "react-doctor/unused-dev-dependency",
+    "id": "unused-dev-dependency",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "unused-dev-dependency",
+      "title": "Development dependency has no discovered use",
+      "severity": "warn",
+      "recommendation": "Remove the development dependency after checking scripts, configuration, CI, generators, and indirect tool loading.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "defaultEnabled": false,
+      "isScanRule": false,
+      "isProjectRule": true
+    }
+  },
+  {
+    "key": "react-doctor/unused-export",
+    "id": "unused-export",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "unused-export",
+      "title": "Value export has no importer",
+      "severity": "warn",
+      "recommendation": "Remove the export or make it module-private after confirming that no external, generated, or dynamic consumer uses it.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "defaultEnabled": false,
+      "isScanRule": false,
+      "isProjectRule": true
+    }
+  },
+  {
+    "key": "react-doctor/unused-file",
+    "id": "unused-file",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "unused-file",
+      "title": "Source file is unreachable",
+      "severity": "warn",
+      "recommendation": "Delete the file after confirming that no application, package, framework, or dynamic entry point reaches it.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "defaultEnabled": false,
+      "isScanRule": false,
+      "isProjectRule": true
+    }
+  },
+  {
+    "key": "react-doctor/unused-type",
+    "id": "unused-type",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "unused-type",
+      "title": "Type export has no importer",
+      "severity": "warn",
+      "recommendation": "Remove the export or declaration after confirming that it is not part of a package's public type surface.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "defaultEnabled": false,
+      "isScanRule": false,
+      "isProjectRule": true
     }
   },
   {

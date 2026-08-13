@@ -85,7 +85,7 @@ describe("runProjectMigrations", () => {
         settingsPath,
         JSON.stringify({
           hooks: {
-            PostToolBatch: [
+            Stop: [
               {
                 hooks: [
                   {
@@ -106,9 +106,9 @@ describe("runProjectMigrations", () => {
       const report = await runProjectMigrations(projectRoot);
 
       expect(report).toContainEqual({ id: "agent-hooks-sh-to-mjs", ran: true, applied: true });
-      const settings: { hooks: { PostToolBatch: Array<{ hooks: Array<{ command: string }> }> } } =
+      const settings: { hooks: { Stop: Array<{ hooks: Array<{ command: string }> }> } } =
         JSON.parse(fs.readFileSync(path.join(projectRoot, ".claude/settings.json"), "utf8"));
-      const hookCommands = settings.hooks.PostToolBatch.flatMap((group) =>
+      const hookCommands = settings.hooks.Stop.flatMap((group) =>
         group.hooks.map((hook) => hook.command),
       );
       expect(hookCommands).toHaveLength(1);
@@ -143,7 +143,7 @@ describe("runProjectMigrations", () => {
       const userConfig = JSON.stringify({
         version: 1,
         hooks: {
-          postToolUse: [{ command: "bash scripts/hooks/react-doctor.sh", matcher: "Write" }],
+          stop: [{ command: "bash scripts/hooks/react-doctor.sh" }],
         },
       });
       fs.writeFileSync(configPath, userConfig);

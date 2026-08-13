@@ -18,10 +18,7 @@ interface AgentHookJsonOutput {
 }
 
 interface ClaudeAgentHookJsonOutput {
-  readonly hookSpecificOutput: {
-    readonly hookEventName: string;
-    readonly additionalContext: string;
-  };
+  readonly followup_message: string;
 }
 
 interface FakeBinaryOptions {
@@ -115,7 +112,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     fixture.cleanup();
   });
 
-  it("installs a Claude Code PostToolBatch hook without duplicating existing hooks", () => {
+  it("installs a Claude Code Stop hook without duplicating existing hooks", () => {
     const settingsPath = path.join(fixture.projectRoot, ".claude/settings.json");
     const hookPath = path.join(fixture.projectRoot, ".claude/hooks/react-doctor.mjs");
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
@@ -124,7 +121,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       JSON.stringify({
         permissions: { allow: ["Bash(git status)"] },
         hooks: {
-          PostToolBatch: [
+          Stop: [
             {
               hooks: [{ type: "command", command: "echo existing" }],
             },
@@ -144,9 +141,9 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
 
     const settings = readJson<{
       permissions: { allow: string[] };
-      hooks: { PostToolBatch: Array<{ hooks: Array<{ command: string }> }> };
+      hooks: { Stop: Array<{ hooks: Array<{ command: string }> }> };
     }>(settingsPath);
-    const hookCommands = settings.hooks.PostToolBatch.flatMap((group) =>
+    const hookCommands = settings.hooks.Stop.flatMap((group) =>
       group.hooks.map((hook) => hook.command),
     );
     const hookContent = fs.readFileSync(hookPath, "utf8");
@@ -173,7 +170,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       settingsPath,
       JSON.stringify({
         hooks: {
-          PostToolBatch: [
+          Stop: [
             {
               hooks: [
                 {
@@ -193,9 +190,9 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     });
 
     const settings = readJson<{
-      hooks: { PostToolBatch: Array<{ hooks: Array<{ command: string }> }> };
+      hooks: { Stop: Array<{ hooks: Array<{ command: string }> }> };
     }>(settingsPath);
-    const hookCommands = settings.hooks.PostToolBatch.flatMap((group) =>
+    const hookCommands = settings.hooks.Stop.flatMap((group) =>
       group.hooks.map((hook) => hook.command),
     );
 
@@ -211,7 +208,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       configPath,
       JSON.stringify({
         version: 1,
-        hooks: { postToolUse: [{ matcher: "Write" }] },
+        hooks: { stop: [{ command: "" }] },
       }),
     );
 
@@ -222,9 +219,9 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       });
     }).not.toThrow();
 
-    const config = readJson<{ hooks: { postToolUse: Array<{ command?: string }> } }>(configPath);
+    const config = readJson<{ hooks: { stop: Array<{ command?: string }> } }>(configPath);
     expect(
-      config.hooks.postToolUse.some((handler) => handler.command?.includes("react-doctor.mjs")),
+      config.hooks.stop.some((handler) => handler.command?.includes("react-doctor.mjs")),
     ).toBe(true);
   });
 
@@ -238,7 +235,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       JSON.stringify({
         version: 1,
         hooks: {
-          postToolUse: [{ command: ".cursor/hooks/react-doctor.sh", matcher: "Write" }],
+          stop: [{ command: ".cursor/hooks/react-doctor.sh" }],
         },
       }),
     );
@@ -249,11 +246,11 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     });
 
     const config = readJson<{
-      hooks: { postToolUse: Array<{ command: string }> };
+      hooks: { stop: Array<{ command: string }> };
     }>(configPath);
 
-    expect(config.hooks.postToolUse).toHaveLength(1);
-    expect(config.hooks.postToolUse[0].command).toContain("react-doctor.mjs");
+    expect(config.hooks.stop).toHaveLength(1);
+    expect(config.hooks.stop[0].command).toContain("react-doctor.mjs");
     expect(fs.existsSync(legacyScriptPath)).toBe(false);
   });
 
@@ -264,7 +261,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       settingsPath,
       JSON.stringify({
         hooks: {
-          PostToolBatch: [{ matcher: "Bash" }, { matcher: "Write", hooks: [] }],
+          Stop: [{ matcher: "Bash" }, { matcher: "Write", hooks: [] }],
         },
       }),
     );
@@ -275,14 +272,14 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     });
 
     const settings = readJson<{
-      hooks: { PostToolBatch: Array<{ matcher?: string; hooks?: Array<{ command: string }> }> };
+      hooks: { Stop: Array<{ matcher?: string; hooks?: Array<{ command: string }> }> };
     }>(settingsPath);
 
-    expect(settings.hooks.PostToolBatch).toHaveLength(3);
-    expect(settings.hooks.PostToolBatch[0]).toEqual({ matcher: "Bash" });
-    expect(settings.hooks.PostToolBatch[1]).toEqual({ matcher: "Write", hooks: [] });
+    expect(settings.hooks.Stop).toHaveLength(3);
+    expect(settings.hooks.Stop[0]).toEqual({ matcher: "Bash" });
+    expect(settings.hooks.Stop[1]).toEqual({ matcher: "Write", hooks: [] });
     expect(
-      settings.hooks.PostToolBatch[2].hooks?.some((hook) =>
+      settings.hooks.Stop[2].hooks?.some((hook) =>
         hook.command.includes("react-doctor.mjs"),
       ),
     ).toBe(true);
@@ -297,7 +294,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       settingsPath,
       JSON.stringify({
         hooks: {
-          PostToolBatch: [
+          Stop: [
             {
               hooks: [
                 {
@@ -316,7 +313,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       configPath,
       JSON.stringify({
         version: 1,
-        hooks: { postToolUse: [{ command: ".cursor/hooks/react-doctor.sh", matcher: "Write" }] },
+        hooks: { stop: [{ command: ".cursor/hooks/react-doctor.sh" }] },
       }),
     );
     expect(findAgentsWithLegacyShellHooks(fixture.projectRoot)).toEqual(["claude-code", "cursor"]);
@@ -334,7 +331,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       configPath,
       JSON.stringify({
         version: 1,
-        hooks: { postToolUse: [{ command: userWrapperCommand, matcher: "Write" }] },
+        hooks: { stop: [{ command: userWrapperCommand }] },
       }),
     );
 
@@ -343,13 +340,13 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       agents: ["cursor"],
     });
 
-    const config = readJson<{ hooks: { postToolUse: Array<{ command: string }> } }>(configPath);
-    const commands = config.hooks.postToolUse.map((handler) => handler.command);
+    const config = readJson<{ hooks: { stop: Array<{ command: string }> } }>(configPath);
+    const commands = config.hooks.stop.map((handler) => handler.command);
     expect(commands).toContain(userWrapperCommand);
     expect(commands.some((command) => command.includes("react-doctor.mjs"))).toBe(true);
   });
 
-  it("installs a Cursor postToolUse hook and preserves existing hook config", () => {
+  it("installs a Cursor stop hook and preserves existing hook config", () => {
     const configPath = path.join(fixture.projectRoot, ".cursor/hooks.json");
     const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.mjs");
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
@@ -376,7 +373,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       version: number;
       hooks: {
         sessionStart: Array<{ command: string }>;
-        postToolUse: Array<{ command: string; matcher: string; timeout: number }>;
+        stop: Array<{ command: string; timeout: number }>;
       };
     }>(configPath);
 
@@ -384,10 +381,9 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     const hookContent = fs.readFileSync(hookPath, "utf8");
     expect(config.version).toBe(1);
     expect(config.hooks.sessionStart).toEqual([{ command: ".cursor/hooks/bootstrap.sh" }]);
-    expect(config.hooks.postToolUse).toHaveLength(1);
-    expect(config.hooks.postToolUse[0]).toEqual({
+    expect(config.hooks.stop).toHaveLength(1);
+    expect(config.hooks.stop[0]).toEqual({
       command: "node .cursor/hooks/react-doctor.mjs",
-      matcher: "Write|Edit|MultiEdit|ApplyPatch",
       timeout: 120,
     });
     expect(fs.existsSync(hookPath)).toBe(true);
@@ -409,7 +405,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     const output = execFileSync(process.execPath, [hookPath], {
       cwd: nestedDirectory,
       input: JSON.stringify({
-        tool_name: "Write",
+        hook_event_name: "stop",
       }),
       encoding: "utf8",
     });
@@ -447,8 +443,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
         CLAUDE_PROJECT_DIR: fixture.projectRoot,
       },
       input: JSON.stringify({
-        hook_event_name: "PostToolBatch",
-        tool_calls: [{ tool_name: "Write" }],
+        hook_event_name: "Stop",
       }),
       encoding: "utf8",
     });
@@ -461,11 +456,8 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
           .trim(),
       ),
     ).toBe(fs.realpathSync(fixture.projectRoot));
-    expect(parsedOutput.hookSpecificOutput).toEqual({
-      hookEventName: "PostToolBatch",
-      additionalContext: expect.stringContaining("fake scan output"),
-    });
-    expect(parsedOutput.hookSpecificOutput.additionalContext).toContain("create GitHub issues");
+    expect(parsedOutput.followup_message).toContain("fake scan output");
+    expect(parsedOutput.followup_message).toContain("create GitHub issues");
   });
 
   it("uses a PATH react-doctor binary when the local binary is missing", () => {
@@ -494,7 +486,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
         ].join(path.delimiter),
       },
       input: JSON.stringify({
-        tool_name: "Write",
+        hook_event_name: "stop",
       }),
       encoding: "utf8",
     });
@@ -525,7 +517,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
         PATH: "/usr/bin:/bin",
       },
       input: JSON.stringify({
-        tool_name: "Write",
+        hook_event_name: "stop",
       }),
       encoding: "utf8",
     });
@@ -534,28 +526,6 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     expect(fs.existsSync(invocationPath)).toBe(false);
   });
 
-  it("skips generated agent hooks for non-edit tool batches", () => {
-    const hookPath = path.join(fixture.projectRoot, ".claude/hooks/react-doctor.mjs");
-    const invocationPath = path.join(fixture.projectRoot, ".react-doctor/agent-hook-args.txt");
-    fs.mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
-    installReactDoctorAgentHooks({
-      projectRoot: fixture.projectRoot,
-      agents: ["claude-code"],
-    });
-    writeFakeReactDoctorBinary(fixture.projectRoot, { exitCode: 1 });
-
-    const output = execFileSync(process.execPath, [hookPath], {
-      cwd: path.join(fixture.projectRoot, ".claude/hooks"),
-      input: JSON.stringify({
-        hook_event_name: "PostToolBatch",
-        tool_calls: [{ tool_name: "Read" }],
-      }),
-      encoding: "utf8",
-    });
-
-    expect(output).toBe("");
-    expect(fs.existsSync(invocationPath)).toBe(false);
-  });
 
   it("returns no context when a generated agent hook scan succeeds", () => {
     const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.mjs");
@@ -569,7 +539,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     const output = execFileSync(process.execPath, [hookPath], {
       cwd: fixture.projectRoot,
       input: JSON.stringify({
-        tool_name: "Write",
+        hook_event_name: "stop",
       }),
       encoding: "utf8",
     });
@@ -580,27 +550,6 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     ).toContain("--verbose");
   });
 
-  it("skips generated agent hooks for non-edit single tool events", () => {
-    const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.mjs");
-    const invocationPath = path.join(fixture.projectRoot, ".react-doctor/agent-hook-args.txt");
-    fs.mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
-    installReactDoctorAgentHooks({
-      projectRoot: fixture.projectRoot,
-      agents: ["cursor"],
-    });
-    writeFakeReactDoctorBinary(fixture.projectRoot, { exitCode: 1 });
-
-    const output = execFileSync(process.execPath, [hookPath], {
-      cwd: fixture.projectRoot,
-      input: JSON.stringify({
-        tool_name: "Read",
-      }),
-      encoding: "utf8",
-    });
-
-    expect(output).toBe("");
-    expect(fs.existsSync(invocationPath)).toBe(false);
-  });
 
   it("scans when hook input is malformed instead of failing closed", () => {
     const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.mjs");

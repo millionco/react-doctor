@@ -51,7 +51,6 @@ const CLAUDE_HOOK_COMMAND = 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/react-docto
 const CURSOR_HOOKS_RELATIVE_PATH = ".cursor/hooks.json";
 const CURSOR_HOOK_RELATIVE_PATH = ".cursor/hooks/react-doctor.mjs";
 const CURSOR_HOOK_COMMAND = "node .cursor/hooks/react-doctor.mjs";
-const CURSOR_HOOK_MATCHER = "Write|Edit|MultiEdit|ApplyPatch";
 const CURSOR_HOOKS_SCHEMA_VERSION = 1;
 // Releases up to 0.5.8 installed a `react-doctor.sh` shell hook; re-installs
 // must replace those entries (and the orphaned script) instead of stacking a
@@ -100,16 +99,22 @@ const readJsonFileSafely = <Value>(filePath: string, fallback: Value): Value => 
 
 // Detection half of the `agent-hooks-sh-to-mjs` migration (cli-migrations.ts):
 // which supported agents still have a ≤0.5.8 shell hook registered. Checks
-// exactly the event keys the installers strip (Claude `PostToolBatch`, Cursor
-// `postToolUse`) so one install pass always clears the detection.
+// exactly the event keys the installers strip (Claude `Stop`, Cursor `stop`)
+// plus legacy `PostToolBatch`/`postToolUse` from ≤0.7.x so one install pass
+// always clears the detection.
 export const findAgentsWithLegacyShellHooks = (projectRoot: string): SkillAgentType[] => {
   const agents: SkillAgentType[] = [];
   const settings = readJsonFileSafely<ClaudeSettings>(
     path.join(projectRoot, CLAUDE_SETTINGS_RELATIVE_PATH),
     {},
   );
-  const hasLegacyClaudeHook = (settings.hooks?.PostToolBatch ?? []).some((group) =>
-    (group.hooks ?? []).some((hook) => isLegacyHookCommand(hook.command)),
+  const hasLegacyClaudeHook = (
+    (settings.hooks?.PostToolBatch ?? []).some((group) =>
+      (group.hooks ?? []).some((hook) => isLegacyHookCommand(hook.command)),
+    ) ||
+    (settings.hooks?.Stop ?? []).some((group) =>
+      (group.hooks ?? []).some((hook) => isLegacyHookCommand(hook.command)),
+    )
   );
   if (hasLegacyClaudeHook) agents.push(CLAUDE_AGENT);
 
@@ -117,8 +122,13 @@ export const findAgentsWithLegacyShellHooks = (projectRoot: string): SkillAgentT
     path.join(projectRoot, CURSOR_HOOKS_RELATIVE_PATH),
     {},
   );
-  const hasLegacyCursorHook = (config.hooks?.postToolUse ?? []).some((handler) =>
-    isLegacyHookCommand(handler.command),
+  const hasLegacyCursorHook = (
+    (config.hooks?.postToolUse ?? []).some((handler) =>
+      isLegacyHookCommand(handler.command),
+    ) ||
+    (config.hooks?.stop ?? []).some((handler) =>
+      isLegacyHookCommand(handler.command),
+    )
   );
   if (hasLegacyCursorHook) agents.push(CURSOR_AGENT);
   return agents;
@@ -171,18 +181,23 @@ const installClaudeHook = (projectRoot: string): readonly string[] => {
   const hookPath = path.join(projectRoot, CLAUDE_HOOK_RELATIVE_PATH);
   const settings = readJsonFile<ClaudeSettings>(settingsPath, {});
   const hooks = { ...(settings.hooks ?? {}) };
-  // Strip legacy entries, dropping a group only when that strip emptied it.
+  // Strip legacy entries from both Stop and PostToolBatch (PostToolBatch was
+  // the ≤0.7.x default), dropping a group only when that strip emptied it.
   // Groups react-doctor never touched (including empty or hook-less ones) pass
   // through verbatim — the installer must not rewrite settings it doesn't own.
-  const postToolBatchHooks = (hooks.PostToolBatch ?? []).flatMap((group) => {
-    const groupHooks = group.hooks ?? [];
-    const keptHooks = groupHooks.filter((hook) => !isLegacyHookCommand(hook.command));
-    if (keptHooks.length === groupHooks.length) return [group];
-    return keptHooks.length > 0 ? [{ ...group, hooks: keptHooks }] : [];
-  });
+  const stripLegacyHooks = (groups: readonly ClaudeHookGroup[]): ClaudeHookGroup[] =>
+    groups.flatMap((group) => {
+      const groupHooks = group.hooks ?? [];
+      const keptHooks = groupHooks.filter((hook) => !isLegacyHookCommand(hook.command));
+      if (keptHooks.length === groupHooks.length) return [group];
+      return keptHooks.length > 0 ? [{ ...group, hooks: keptHooks }] : [];
+    });
 
-  if (!hasClaudeHookCommand(postToolBatchHooks)) {
-    postToolBatchHooks.push({
+  const stopHooks = stripLegacyHooks(hooks.Stop ?? []);
+  hooks.PostToolBatch = stripLegacyHooks(hooks.PostToolBatch ?? []);
+
+  if (!hasClaudeHookCommand(stopHooks)) {
+    stopHooks.push({
       hooks: [
         {
           type: "command",
@@ -192,7 +207,7 @@ const installClaudeHook = (projectRoot: string): readonly string[] => {
     });
   }
 
-  hooks.PostToolBatch = postToolBatchHooks;
+  hooks.Stop = stopHooks;
   writeJsonFileWithDirectoryCheck(settingsPath, { ...settings, hooks });
   writeHookScript(hookPath);
 
@@ -207,19 +222,23 @@ const installCursorHook = (projectRoot: string): readonly string[] => {
   const hookPath = path.join(projectRoot, CURSOR_HOOK_RELATIVE_PATH);
   const config = readJsonFile<CursorHooksConfig>(configPath, {});
   const hooks = { ...(config.hooks ?? {}) };
-  const postToolUseHooks = (hooks.postToolUse ?? []).filter(
+  // Strip legacy entries from both stop and postToolUse (postToolUse was the
+  // ≤0.7.x default).
+  const stopHooks = (hooks.stop ?? []).filter(
+    (handler) => !isLegacyHookCommand(handler.command),
+  );
+  hooks.postToolUse = (hooks.postToolUse ?? []).filter(
     (handler) => !isLegacyHookCommand(handler.command),
   );
 
-  if (!hasCursorHookCommand(postToolUseHooks)) {
-    postToolUseHooks.push({
+  if (!hasCursorHookCommand(stopHooks)) {
+    stopHooks.push({
       command: CURSOR_HOOK_COMMAND,
-      matcher: CURSOR_HOOK_MATCHER,
       timeout: AGENT_HOOK_TIMEOUT_SECONDS,
     });
   }
 
-  hooks.postToolUse = postToolUseHooks;
+  hooks.stop = stopHooks;
   writeJsonFileWithDirectoryCheck(configPath, {
     ...config,
     version: config.version ?? CURSOR_HOOKS_SCHEMA_VERSION,
@@ -244,24 +263,12 @@ const buildAgentHookScript = (): string =>
     "// --verbose scans on large diffs can exceed spawnSync's 1 MiB default.",
     "const SPAWN_MAX_BUFFER_BYTES = 16 * 1024 * 1024;",
     "",
-    "const EDIT_TOOL_NAMES = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'ApplyPatch']);",
-    "",
     "const readFileOrEmpty = (source) => {",
     "  try {",
     "    return readFileSync(source, 'utf8');",
     "  } catch {",
     "    return '';",
     "  }",
-    "};",
-    "",
-    "const shouldScan = (input) => {",
-    "  const eventName = input.hook_event_name || input.eventName || input.event_name;",
-    "  if (eventName === 'PostToolBatch') {",
-    "    const toolCalls = Array.isArray(input.tool_calls) ? input.tool_calls : [];",
-    "    return toolCalls.some((toolCall) => EDIT_TOOL_NAMES.has(toolCall.tool_name));",
-    "  }",
-    "  const toolName = input.tool_name || input.toolName || input.tool;",
-    "  return !toolName || EDIT_TOOL_NAMES.has(toolName);",
     "};",
     "",
     "const runReactDoctor = (outputPath) => {",
@@ -310,10 +317,6 @@ const buildAgentHookScript = (): string =>
     "    input = {};",
     "  }",
     "",
-    "  if (!shouldScan(input)) {",
-    "    process.exit(0);",
-    "  }",
-    "",
     "  const projectRoot = process.env.CLAUDE_PROJECT_DIR || join(__dirname, '../..');",
     "  const outputPath = join(tmpdir(), `react-doctor-agent-hook-output-${process.pid}.txt`);",
     "",
@@ -340,8 +343,9 @@ const buildAgentHookScript = (): string =>
     "",
     "  const message = `React Doctor found issues in the changed files. Review this output and fix the regressions before finishing. For confirmed issues that cannot be fixed now, create GitHub issues with the rule, file/line, confidence, impact, and proposed fix.\\n\\n${scanOutput}`;",
     "",
-    "  if (input.hook_event_name === 'PostToolBatch') {",
-    "    console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolBatch', additionalContext: message } }));",
+    "  const eventName = input.hook_event_name || input.eventName || input.event_name;",
+    "  if (eventName === 'Stop') {",
+    "    console.log(JSON.stringify({ followup_message: message }));",
     "  } else {",
     "    console.log(JSON.stringify({ additional_context: message }));",
     "  }",

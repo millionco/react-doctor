@@ -172,6 +172,32 @@ describe("detectStalePackages", () => {
     },
   );
 
+  it("credits package keys in conditional PostCSS plugin maps", () => {
+    const rootDirectory = createProject(
+      {
+        "postcss.config.js": `
+          const isProduction = process.env.NODE_ENV === "production";
+          module.exports = {
+            plugins: {
+              autoprefixer: { nestedoption: true },
+              ...(isProduction ? { cssnano: {} } : {}),
+              ...(isProduction && { "postcss-preset-env": {} }),
+            },
+          };
+        `,
+      },
+      {
+        autoprefixer: "1.0.0",
+        cssnano: "1.0.0",
+        nestedoption: "1.0.0",
+        "postcss-preset-env": "1.0.0",
+        "unused-package": "1.0.0",
+      },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["nestedoption", "unused-package"]);
+  });
+
   it("does not credit package names from comments or strings in unrelated files", () => {
     const rootDirectory = createProject(
       {

@@ -1,5 +1,7 @@
 import { extname } from "node:path";
 import ts from "typescript";
+import { collectConfigPluginMapPackageNames } from "./collect-config-plugin-map-package-names.js";
+import { getObjectLiteralElementName } from "./get-object-literal-element-name.js";
 import { extractPackageName } from "./package-name.js";
 import { stripCoffeeScriptComment } from "./strip-coffee-script-comment.js";
 
@@ -31,6 +33,11 @@ export const collectPackageConfigReferences = (filePath: string, content: string
   );
   const packageNames = new Set<string>();
   const visit = (node: ts.Node): void => {
+    if (ts.isPropertyAssignment(node) && getObjectLiteralElementName(node) === "plugins") {
+      for (const packageName of collectConfigPluginMapPackageNames(node.initializer)) {
+        packageNames.add(packageName);
+      }
+    }
     if (ts.isStringLiteralLike(node)) {
       const packageName = extractPackageName(node.text);
       if (packageName) packageNames.add(packageName);

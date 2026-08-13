@@ -5,9 +5,8 @@ import ts from "typescript";
 import { extractScriptFileReferences } from "./extract-script-file-references.js";
 import { toPosixPath } from "./to-posix-path.js";
 import { buildExportKey } from "./build-export-key.js";
+import { findNearestPackageDirectory } from "./find-nearest-package-directory.js";
 import { getFileIdentityKey } from "./get-file-identity-key.js";
-import { isPathInsideDirectoryOrEqual } from "./is-path-inside-directory-or-equal.js";
-import { toFilesystemIdentityPath } from "./to-filesystem-identity-path.js";
 
 interface DynamicBuildFileCollection {
   excludedPathSubstrings: ReadonlyArray<string>;
@@ -420,6 +419,7 @@ const collectScriptConsumedExportKeys = (
   visitCollection(boundSourceFile);
 
   const consumedExportKeys = new Set<string>();
+  const packageManifestIdentity = getFileIdentityKey(resolve(packageDirectory, "package.json"));
   const visitMapCall = (node: ts.Node): void => {
     if (
       ts.isCallExpression(node) &&
@@ -455,10 +455,13 @@ const collectScriptConsumedExportKeys = (
             onlyFiles: true,
           });
           for (const matchedFilePath of matchedFilePaths) {
-            const canonicalFilePath = toFilesystemIdentityPath(resolve(matchedFilePath));
-            const normalizedFilePath = toPosixPath(canonicalFilePath);
+            const resolvedFilePath = resolve(matchedFilePath);
+            const normalizedFilePath = toPosixPath(resolvedFilePath);
+            const owningPackageDirectory = findNearestPackageDirectory(resolvedFilePath);
             if (
-              !isPathInsideDirectoryOrEqual(canonicalFilePath, packageDirectory) ||
+              owningPackageDirectory === undefined ||
+              getFileIdentityKey(resolve(owningPackageDirectory, "package.json")) !==
+                packageManifestIdentity ||
               collection.excludedPathSubstrings.some((excludedPathSubstring) =>
                 normalizedFilePath.includes(excludedPathSubstring),
               )
@@ -467,7 +470,7 @@ const collectScriptConsumedExportKeys = (
             }
             for (const exportName of exportNames) {
               consumedExportKeys.add(
-                buildExportKey(getFileIdentityKey(canonicalFilePath), exportName),
+                buildExportKey(getFileIdentityKey(resolvedFilePath), exportName),
               );
             }
           }
@@ -485,10 +488,17 @@ export const collectDynamicBuildConsumedExportKeys = (
   scripts: ReadonlyArray<string>,
 ): Set<string> => {
   const consumedExportKeys = new Set<string>();
+  const packageManifestIdentity = getFileIdentityKey(resolve(packageDirectory, "package.json"));
   for (const script of scripts) {
     for (const scriptFileReference of extractScriptFileReferences(script)) {
       const scriptPath = resolve(packageDirectory, scriptFileReference);
-      if (!isPathInsideDirectoryOrEqual(scriptPath, packageDirectory) || !existsSync(scriptPath)) {
+      const scriptPackageDirectory = findNearestPackageDirectory(scriptPath);
+      if (
+        !existsSync(scriptPath) ||
+        scriptPackageDirectory === undefined ||
+        getFileIdentityKey(resolve(scriptPackageDirectory, "package.json")) !==
+          packageManifestIdentity
+      ) {
         continue;
       }
       for (const consumedExportKey of collectScriptConsumedExportKeys(

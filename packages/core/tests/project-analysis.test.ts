@@ -1163,6 +1163,7 @@ describe("analyzeProject", () => {
       {
         "vite.config.mts": `
           import { join } from "node:path";
+          import { defineConfig } from "vite";
           const rendererRoot = join(__dirname, "src", "renderer");
           export default defineConfig(() => ({
             root: rendererRoot,

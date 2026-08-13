@@ -5,6 +5,43 @@ const SCRIPT_COMMAND_RUNNERS = new Set(["bunx", "npx", "pnpx"]);
 const SCRIPT_PACKAGE_MANAGERS = new Set(["npm", "pnpm", "yarn"]);
 const SCRIPT_PACKAGE_MANAGER_RUNNERS = new Set(["dlx", "exec"]);
 const SCRIPT_COMMAND_SHELLS = new Set(["bash", "dash", "fish", "sh", "zsh"]);
+const SCRIPT_NESTED_COMMAND_RUNNERS = new Set(["conc", "concurrently"]);
+const SCRIPT_NESTED_COMMAND_OPTIONS_WITH_VALUES = new Set([
+  "--default-input-target",
+  "--hide",
+  "--kill-signal",
+  "--kill-timeout",
+  "--max-processes",
+  "--name-separator",
+  "--names",
+  "--prefix",
+  "--prefix-colors",
+  "--prefix-length",
+  "--restart-after",
+  "--restart-delay",
+  "--restart-tries",
+  "--shell",
+  "--success",
+  "--timestamp-format",
+  "--timings-prefix",
+  "-c",
+  "-l",
+  "-m",
+  "-n",
+  "-p",
+  "-s",
+  "-t",
+]);
+const SCRIPT_NESTED_COMMAND_OPTIONS = new Set(["--teardown"]);
+const SCRIPT_NESTED_COMMAND_SHORT_OPTIONS_WITH_VALUES = new Set([
+  "c",
+  "l",
+  "m",
+  "n",
+  "p",
+  "s",
+  "t",
+]);
 const SCRIPT_OPTIONS_WITH_VALUES = new Set([
   "--call",
   "--chdir",
@@ -297,6 +334,33 @@ const collectScriptInvocations = (command: string, invocations: ScriptInvocation
       collectScriptInvocations(shellCommand, invocations);
     } else if (!SCRIPT_COMMAND_SHELLS.has(binaryName) && binaryName) {
       invocations.push({ binaryName, argumentValues: tokens.slice(binaryIndex + 1) });
+    }
+
+    if (SCRIPT_NESTED_COMMAND_RUNNERS.has(binaryName)) {
+      for (let argumentIndex = binaryIndex + 1; argumentIndex < tokens.length; argumentIndex++) {
+        const argumentValue = tokens[argumentIndex];
+        const optionName = argumentValue.split("=", 1)[0];
+        if (argumentValue.startsWith("-")) {
+          if (SCRIPT_NESTED_COMMAND_OPTIONS.has(optionName)) {
+            const commandValue = argumentValue.includes("=")
+              ? argumentValue.slice(argumentValue.indexOf("=") + 1)
+              : tokens[++argumentIndex];
+            if (commandValue) collectScriptInvocations(commandValue, invocations);
+            continue;
+          }
+          if (
+            (SCRIPT_NESTED_COMMAND_OPTIONS_WITH_VALUES.has(optionName) ||
+              (optionName.startsWith("-") &&
+                !optionName.startsWith("--") &&
+                SCRIPT_NESTED_COMMAND_SHORT_OPTIONS_WITH_VALUES.has(optionName.at(-1) ?? ""))) &&
+            !argumentValue.includes("=")
+          ) {
+            argumentIndex++;
+          }
+          continue;
+        }
+        collectScriptInvocations(argumentValue, invocations);
+      }
     }
 
     const execCommand = extractExecCommand(tokens, binaryIndex + 1);

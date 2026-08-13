@@ -39,6 +39,8 @@ import { hasExpoReactServerFunctions } from "../utils/has-expo-react-server-func
 import { hasAntfuEslintReactConfig } from "../utils/has-antfu-eslint-react-config.js";
 import { collectExecutableMarkdownFilePaths } from "../utils/collect-executable-markdown-file-paths.js";
 import { collectStencilCompanionPackageNames } from "../utils/collect-stencil-companion-package-names.js";
+import { hasSanityV2CoreContract } from "../utils/has-sanity-v2-core-contract.js";
+import { collectSanityV2PackageNames } from "../utils/collect-sanity-v2-package-names.js";
 import {
   expandBuildScriptPaths,
   extractInvokedBuildScriptPaths,
@@ -89,6 +91,7 @@ const collectDeclaredPackageNamesInFile = (
 interface PackageJsonDependencies {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  scripts?: Record<string, unknown>;
 }
 
 const discoverAllPackageJsonPaths = (rootDir: string): string[] => {
@@ -264,7 +267,7 @@ export const detectStalePackages = (
     );
     for (const packageName of configReferenced) markPackageUsed(packageName);
 
-    const tsconfigReferenced = collectTsconfigReferencedPackages(configSearchRoot);
+    const tsconfigReferenced = collectTsconfigReferencedPackages(configSearchRoot, declaredNames);
     for (const packageName of tsconfigReferenced) markPackageUsed(packageName);
 
     const { packageNames: expoPluginPackageNames } = extractExpoConfigPluginEntries(
@@ -276,6 +279,13 @@ export const detectStalePackages = (
         markPackageUsed(packageName);
       }
     }
+  }
+
+  if (
+    declaredNames.has("@sanity/core") &&
+    hasSanityV2CoreContract(config.rootDir, packageJson.scripts ?? {})
+  ) {
+    markPackageUsed("@sanity/core");
   }
 
   if (hasJsxFiles(graph)) {
@@ -807,6 +817,7 @@ const CONFIG_FILE_GLOBS = [
   ".dumirc.ts",
   ".dumirc.js",
   "dumi.config.{ts,js}",
+  "sanity.json",
 ];
 
 const collectConfigFilePaths = (rootDir: string): string[] =>
@@ -853,6 +864,14 @@ const collectConfigReferencedPackages = (
     }
   };
 
+  const addConfigMatchesFromFile = (filePath: string): void => {
+    addCollectedMatchesFromFile(filePath, (content) =>
+      basename(filePath) === "sanity.json"
+        ? collectSanityV2PackageNames(content)
+        : collectPackageConfigReferences(filePath, content),
+    );
+  };
+
   const addKarmaConfigMatches = (filePath: string): void => {
     if (!/^karma\.(?:conf|config)\.[cm]?[jt]s$/.test(basename(filePath))) return;
     try {
@@ -867,9 +886,7 @@ const collectConfigReferencedPackages = (
 
   for (const module of graph.modules) {
     if (!module.isConfigFile) continue;
-    addCollectedMatchesFromFile(module.fileId.path, (content) =>
-      collectPackageConfigReferences(module.fileId.path, content),
-    );
+    addConfigMatchesFromFile(module.fileId.path);
     addKarmaConfigMatches(module.fileId.path);
   }
 
@@ -879,9 +896,7 @@ const collectConfigReferencedPackages = (
   });
 
   for (const configPath of configFiles) {
-    addCollectedMatchesFromFile(configPath, (content) =>
-      collectPackageConfigReferences(configPath, content),
-    );
+    addConfigMatchesFromFile(configPath);
     addKarmaConfigMatches(configPath);
     if (
       declaredNames.has("release-it") &&
@@ -1153,7 +1168,10 @@ const TSCONFIG_GLOBS = [
   "**/tsconfig.*.json",
 ];
 
-const collectTsconfigReferencedPackages = (rootDir: string): Set<string> => {
+const collectTsconfigReferencedPackages = (
+  rootDir: string,
+  declaredPackageNames: ReadonlySet<string>,
+): Set<string> => {
   const referenced = new Set<string>();
 
   const tsconfigFiles = globPackageFiles(rootDir, TSCONFIG_GLOBS, {
@@ -1202,6 +1220,21 @@ const collectTsconfigReferencedPackages = (rootDir: string): Set<string> => {
             pluginName = pluginEntry.name;
           }
           if (pluginName) referenced.add(pluginName);
+        }
+      }
+      const nodeModulesReferenceValues = [
+        ...collectStringValues(parsed.files),
+        ...collectStringValues(parsed.include),
+        ...collectStringValues(parsed.references),
+        ...collectStringValues(compilerOptions?.paths),
+        ...collectStringValues(compilerOptions?.rootDirs),
+        ...collectStringValues(compilerOptions?.typeRoots),
+      ];
+      for (const stringValue of nodeModulesReferenceValues) {
+        for (const packageName of declaredPackageNames) {
+          if (matchesNodeModulesPackageReference(stringValue, packageName)) {
+            referenced.add(packageName);
+          }
         }
       }
     } catch {

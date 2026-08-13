@@ -9,7 +9,7 @@ export const matchesNodeModulesPackageReference = (
   const pattern = new RegExp(
     "(?:^|[^A-Za-z0-9_.-])node_modules[\\\\/](?:" +
       packagePathPattern +
-      "[\\\\/]|\\.bin[\\\\/]" +
+      "(?=$|[\\\\/])|\\.bin[\\\\/]" +
       binaryNamePattern +
       "(?=$|[^A-Za-z0-9_.-]))",
   );

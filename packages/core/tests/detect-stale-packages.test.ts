@@ -573,6 +573,185 @@ describe("detectStalePackages", () => {
     expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
   });
 
+  it("credits explicit node_modules references in TypeScript configuration", () => {
+    const rootDirectory = createProject(
+      {
+        "tsconfig.json": JSON.stringify({
+          include: ["./node_modules/@sanity/base/types/**/*.ts", "./src/**/*.ts"],
+        }),
+      },
+      { "@sanity/base": "1.0.0", "unused-package": "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
+  it("does not credit package names in TypeScript configuration without a node_modules path", () => {
+    const rootDirectory = createProject(
+      { "tsconfig.json": JSON.stringify({ exclude: ["examples/unused-package"] }) },
+      { "unused-package": "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
+  it("does not credit packages excluded through a node_modules path", () => {
+    const rootDirectory = createProject(
+      { "tsconfig.json": JSON.stringify({ exclude: ["./node_modules/unused-package/**"] }) },
+      { "unused-package": "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
+  it.each(["./node_modules/package-directory", "./node_modules/@scope/package-directory"])(
+    "credits terminal node_modules directory references in TypeScript configuration: %s",
+    (packagePath) => {
+      const packageName = packagePath.slice("./node_modules/".length);
+      const rootDirectory = createProject(
+        { "tsconfig.json": JSON.stringify({ include: [packagePath] }) },
+        { [packageName]: "1.0.0", "unused-package": "1.0.0" },
+      );
+
+      expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+    },
+  );
+
+  it("credits Sanity v2 plugins, core runtime, and required peers", () => {
+    const dependencies = {
+      "@sanity/base": "2.34.0",
+      "@sanity/core": "2.34.0",
+      "@sanity/default-layout": "2.34.0",
+      "@sanity/vision": "2.34.0",
+      "prop-types": "15.8.1",
+      react: "17.0.2",
+      "react-dom": "17.0.2",
+      "styled-components": "5.3.11",
+      "unused-package": "1.0.0",
+    };
+    const rootDirectory = createProject(
+      {
+        "package-lock.json": JSON.stringify({
+          lockfileVersion: 3,
+          packages: {
+            "": { dependencies },
+            "node_modules/@sanity/base": {
+              version: "2.34.0",
+              peerDependencies: {
+                "prop-types": "^15.6",
+                react: "^17",
+                "react-dom": "^17",
+                "styled-components": "^5",
+              },
+            },
+            "node_modules/@sanity/core": { version: "2.34.0" },
+            "node_modules/@sanity/default-layout": { version: "2.34.0" },
+            "node_modules/@sanity/vision": { version: "2.34.0" },
+            "node_modules/prop-types": { version: "15.8.1" },
+            "node_modules/react": { version: "17.0.2" },
+            "node_modules/react-dom": { version: "17.0.2" },
+            "node_modules/styled-components": { version: "5.3.11" },
+            "node_modules/unused-package": { version: "1.0.0" },
+          },
+        }),
+        "sanity.json": JSON.stringify({
+          root: true,
+          plugins: ["@sanity/base", "@sanity/default-layout"],
+          env: { development: { plugins: ["@sanity/vision"] } },
+        }),
+      },
+      dependencies,
+      { start: "sanity start" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
+  it("does not credit nested Sanity manifests or core without a Sanity script", () => {
+    const rootDirectory = createProject(
+      {
+        "examples/sanity.json": JSON.stringify({ root: true, plugins: ["@sanity/base"] }),
+        "sanity.json": JSON.stringify({
+          root: true,
+          project: { name: "unused-package" },
+          plugins: [],
+          parts: [{ name: "part:@sanity/base/schema", path: "./schemas/schema" }],
+        }),
+      },
+      {
+        "@sanity/base": "2.34.0",
+        "@sanity/core": "2.34.0",
+        "unused-package": "1.0.0",
+      },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["@sanity/core", "unused-package"]);
+  });
+
+  it("credits commands nested in concurrently scripts", () => {
+    const rootDirectory = createProject(
+      {},
+      { concurrently: "1.0.0", "wait-on": "1.0.0", "unused-package": "1.0.0" },
+      {
+        dev: `concurrently "BROWSER=none npm start" "wait-on http://127.0.0.1:3000 && npm run desktop"`,
+      },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
+  it("skips concurrently option values while crediting positional commands", () => {
+    const rootDirectory = createProject(
+      {},
+      { concurrently: "1.0.0", "wait-on": "1.0.0", "unused-package": "1.0.0" },
+      {
+        dev: `concurrently --names wait-on,web --prefix name "npm start" "wait-on http://127.0.0.1:3000"`,
+      },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
+  it("does not treat concurrently non-command option values as commands", () => {
+    const rootDirectory = createProject(
+      {},
+      { concurrently: "1.0.0", "wait-on": "1.0.0" },
+      { dev: `concurrently --hide wait-on --shell zsh "npm start"` },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["wait-on"]);
+  });
+
+  it("does not treat concurrently bundled short option values as commands", () => {
+    const rootDirectory = createProject(
+      {},
+      { concurrently: "1.0.0", "wait-on": "1.0.0" },
+      { dev: `concurrently -kn wait-on "npm start"` },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["wait-on"]);
+  });
+
+  it("credits concurrently teardown commands", () => {
+    const rootDirectory = createProject(
+      {},
+      { concurrently: "1.0.0", "wait-on": "1.0.0" },
+      { dev: `concurrently --teardown "wait-on http://127.0.0.1:3000" "npm start"` },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual([]);
+  });
+
+  it("does not treat quoted arguments of ordinary commands as nested commands", () => {
+    const rootDirectory = createProject(
+      {},
+      { "wait-on": "1.0.0" },
+      { dev: `echo "wait-on http://127.0.0.1:3000"` },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["wait-on"]);
+  });
+
   it.each([
     ["android/build.gradle", `apply from: "../node_modules/native-plugin/plugin.gradle"`],
     ["src/styles.scss", `@import "../node_modules/style-package/index";`],

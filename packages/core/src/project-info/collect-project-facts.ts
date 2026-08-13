@@ -14,6 +14,7 @@ import {
   resolveCatalogBackedDependencyVersion,
   resolveCatalogVersion,
   TAILWIND_ZOD_SECTIONS,
+  THREE_DEPENDENCY_NAMES,
 } from "./dependencies.js";
 import { isFile } from "./fs-utils.js";
 import { findMonorepoRoot } from "./monorepo-root.js";
@@ -56,7 +57,6 @@ const REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES = [
   ...REACT_THREE_FIBER_DEPENDENCY_NAMES,
   "@react-three/drei",
 ] as const;
-const THREE_DEPENDENCY_NAMES = [...REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES, "three"] as const;
 const REACT_ROUTER_DEPENDENCY_NAMES: readonly string[] = [
   "@react-router/dev",
   "react-router-dom",

@@ -29,6 +29,20 @@ describe("three-prefer-set-animation-loop", () => {
     expect(runRule(threePreferSetAnimationLoop, code).diagnostics).toHaveLength(1);
   });
 
+  it("reports a recursive loop that delegates rendering to an imported viewer", () => {
+    const code = `
+      import { Viewer } from "./scene/viewer";
+      const viewer = new Viewer(canvas);
+      function frame() {
+        viewer.frame();
+        app.tick();
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    `;
+    expect(runRule(threePreferSetAnimationLoop, code).diagnostics).toHaveLength(1);
+  });
+
   it("allows renderer-managed frames and unrelated or shadowed callbacks", () => {
     const code = `
       import { WebGLRenderer } from "three";
@@ -36,6 +50,21 @@ describe("three-prefer-set-animation-loop", () => {
       renderer.setAnimationLoop(() => renderer.render(scene, camera));
       requestAnimationFrame(() => updateDom());
       const run = (requestAnimationFrame) => requestAnimationFrame(() => renderer.render(scene, camera));
+    `;
+    expect(runRule(threePreferSetAnimationLoop, code).diagnostics).toHaveLength(0);
+  });
+
+  it("allows finite animation-frame work that only reschedules conditionally", () => {
+    const code = `
+      function runBuildChunk() {
+        while (stepIndex < steps.length && performance.now() < deadline) runStep();
+        if (stepIndex < steps.length) {
+          requestAnimationFrame(runBuildChunk);
+          return;
+        }
+        finishBuild();
+      }
+      requestAnimationFrame(runBuildChunk);
     `;
     expect(runRule(threePreferSetAnimationLoop, code).diagnostics).toHaveLength(0);
   });

@@ -10,4 +10,7 @@ import type { ProjectInfo } from "../types/index.js";
  * single source file has nothing to analyze.
  */
 export const isAnalyzableProject = (project: ProjectInfo): boolean =>
-  project.reactVersion !== null || project.preactVersion !== null || project.sourceFileCount > 0;
+  project.reactVersion !== null ||
+  project.preactVersion !== null ||
+  project.hasThree === true ||
+  project.sourceFileCount > 0;

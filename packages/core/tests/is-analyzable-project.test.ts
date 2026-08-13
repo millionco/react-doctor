@@ -43,6 +43,10 @@ describe("isAnalyzableProject", () => {
     expect(isAnalyzableProject({ ...baseProject, sourceFileCount: 12 })).toBe(true);
   });
 
+  it("is analyzable for a standalone Three.js project with no source files", () => {
+    expect(isAnalyzableProject({ ...baseProject, hasThree: true })).toBe(true);
+  });
+
   it("is not analyzable with no react, no preact, and no source files", () => {
     expect(isAnalyzableProject(baseProject)).toBe(false);
   });

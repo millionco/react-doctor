@@ -1,7 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isGlobalAnimationFrameCallee } from "../../utils/is-global-animation-frame-callee.js";
-import { resolveThreeAnimationLoopCallback } from "./utils/resolve-three-animation-loop-callback.js";
+import { resolveRecursiveAnimationFrameCallback } from "../../utils/resolve-recursive-animation-frame-callback.js";
 
 export const threePreferSetAnimationLoop = defineRule({
   id: "three-prefer-set-animation-loop",
@@ -15,13 +15,15 @@ export const threePreferSetAnimationLoop = defineRule({
     return {
       CallExpression(node) {
         if (!isGlobalAnimationFrameCallee(node.callee, context.scopes)) return;
-        const callback = resolveThreeAnimationLoopCallback(node, context.scopes);
+        const callback = resolveRecursiveAnimationFrameCallback(node, context.scopes, {
+          requireUnconditionalSchedule: true,
+        });
         if (!callback || reportedCallbacks.has(callback)) return;
         reportedCallbacks.add(callback);
         context.report({
           node,
           message:
-            "This Three.js render loop is driven by requestAnimationFrame. Use renderer.setAnimationLoop(callback) for renderer-managed timing and compatibility",
+            "This continuous Three.js animation loop is driven by requestAnimationFrame. Use renderer.setAnimationLoop(callback) for renderer-managed timing and compatibility",
         });
       },
     };

@@ -36,7 +36,10 @@ import {
 } from "./version.js";
 import { clearTargetBlankOpenerProtectionCache } from "./detect-target-blank-opener-protection.js";
 
-export { discoverReactSubprojects } from "./discover-react-subprojects.js";
+export {
+  discoverReactSubprojects,
+  discoverSupportedSubprojects,
+} from "./discover-react-subprojects.js";
 export { formatFrameworkName } from "./detect-framework.js";
 export { listWorkspacePackages } from "./workspaces.js";
 

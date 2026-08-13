@@ -2746,6 +2746,24 @@ describe("discoverProject", () => {
 });
 
 describe("listWorkspacePackages", () => {
+  it("includes standalone Three.js workspace packages", () => {
+    const rootDirectory = path.join(tempDirectory, "three-workspace");
+    const gameDirectory = path.join(rootDirectory, "games", "viewer");
+    fs.mkdirSync(gameDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "workspace", workspaces: ["games/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(gameDirectory, "package.json"),
+      JSON.stringify({ name: "viewer", dependencies: { three: "^0.180.0" } }),
+    );
+
+    expect(listWorkspacePackages(rootDirectory)).toEqual([
+      { name: "viewer", directory: gameDirectory },
+    ]);
+  });
+
   it("resolves nested workspace patterns like apps/*/ClientApp", () => {
     const packages = listWorkspacePackages(path.join(FIXTURES_DIRECTORY, "nested-workspaces"));
     const packageNames = packages.map((workspacePackage) => workspacePackage.name);
@@ -3243,6 +3261,21 @@ describe("discoverProject without a package.json", () => {
 });
 
 describe("discoverReactSubprojects", () => {
+  it("includes nested standalone Three.js packages", () => {
+    const rootDirectory = path.join(tempDirectory, "three-wrapper");
+    const gameDirectory = path.join(rootDirectory, "results", "viewer");
+    fs.mkdirSync(gameDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(gameDirectory, "package.json"),
+      JSON.stringify({ name: "viewer", dependencies: { three: "^0.180.0" } }),
+    );
+
+    expect(discoverReactSubprojects(rootDirectory)).toContainEqual({
+      name: "viewer",
+      directory: gameDirectory,
+    });
+  });
+
   it("skips subdirectories where package.json is a directory (EISDIR)", () => {
     const rootDirectory = path.join(tempDirectory, "eisdir-package-json");
     const subdirectory = path.join(rootDirectory, "broken-sub");

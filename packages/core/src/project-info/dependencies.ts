@@ -341,6 +341,12 @@ export const getDependencyDeclaration = ({
 };
 
 const REACT_DEPENDENCY_NAMES = new Set(["react", "react-native", "next", "preact"]);
+export const THREE_DEPENDENCY_NAMES = [
+  "three",
+  "@react-three/fiber",
+  "react-three-fiber",
+  "@react-three/drei",
+] as const;
 
 export const hasReactDependency = (packageJson: PackageJson): boolean => {
   const allDependencies = {
@@ -352,6 +358,12 @@ export const hasReactDependency = (packageJson: PackageJson): boolean => {
     REACT_DEPENDENCY_NAMES.has(packageName),
   );
 };
+
+export const hasReactOrThreeDependency = (packageJson: PackageJson): boolean =>
+  hasReactDependency(packageJson) ||
+  THREE_DEPENDENCY_NAMES.some(
+    (packageName) => getDependencySpec(packageJson, packageName) !== null,
+  );
 
 export const getPreactVersion = (packageJson: PackageJson): string | null =>
   getDependencySpec(packageJson, "preact");

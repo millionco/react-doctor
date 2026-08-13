@@ -6,7 +6,7 @@ import {
   clearPackageJsonCache,
   clearPackageRoleCache,
   clearProjectCache,
-  discoverReactSubprojects,
+  discoverSupportedSubprojects,
   messageFromUnknown,
 } from "@react-doctor/core";
 import { SILENT_LOGGER, type Logger, type ProjectGraph, type WorkspaceProject } from "../types.js";
@@ -27,7 +27,7 @@ const isInsideDirectory = (filePath: string, directory: string): boolean =>
   filePath === directory || filePath.startsWith(`${directory}/`);
 
 /**
- * Discovers and indexes every React project across the workspace roots,
+ * Discovers and indexes every supported project across the workspace roots,
  * and answers "which project owns this file?" with the deepest match.
  * Discovery is lazy + cached; `invalidate` also flushes the core
  * project / config / package.json caches so a config edit is honored on
@@ -42,7 +42,7 @@ export const createProjectGraph = (options: ProjectGraphOptions): ProjectGraph =
     const seen = new Map<string, WorkspaceProject>();
     for (const root of roots) {
       try {
-        for (const workspacePackage of discoverReactSubprojects(root)) {
+        for (const workspacePackage of discoverSupportedSubprojects(root)) {
           const directory = normalizeDirectory(workspacePackage.directory);
           if (!seen.has(directory)) seen.set(directory, { directory });
         }

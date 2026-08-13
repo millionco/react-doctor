@@ -2,6 +2,7 @@ export {
   discoverProject,
   clearProjectCache,
   discoverReactSubprojects,
+  discoverSupportedSubprojects,
   formatFrameworkName,
   listWorkspacePackages,
 } from "./discover-project.js";

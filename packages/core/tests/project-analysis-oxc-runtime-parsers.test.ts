@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { analyzeProject } from "../src/project-analysis/analyze-project.js";
+import { parseSourceFile } from "../src/project-analysis/collect/parse.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -172,5 +173,88 @@ describe("Oxc-backed project configuration discovery", () => {
       "src/library/value.ts",
     );
     expect(result.unusedExports.map((unusedExport) => unusedExport.name)).toEqual(["unused"]);
+  });
+});
+
+describe("embedded component source positions", () => {
+  it("preserves Astro frontmatter and later script positions", () => {
+    const rootDirectory = createProject({
+      "src/card.astro": [
+        "---",
+        'import Frontmatter from "./frontmatter";',
+        "export interface Props { title: string }",
+        "export const staleFrontmatter = true;",
+        "---",
+        "<main>😀</main>",
+        '<script src="./client.js" />',
+        "<script>",
+        'import Later from "./later";',
+        "export const staleLater = true;",
+        "</script>",
+      ].join("\r\n"),
+    });
+
+    const parsedSource = parseSourceFile(path.join(rootDirectory, "src/card.astro"));
+
+    expect(parsedSource.imports).toEqual([
+      expect.objectContaining({ specifier: "./frontmatter", line: 2, column: 0 }),
+      expect.objectContaining({ specifier: "./client.js", line: 7, column: 0 }),
+      expect.objectContaining({ specifier: "./later", line: 9, column: 0 }),
+    ]);
+    expect(parsedSource.exports).toEqual([
+      expect.objectContaining({ name: "staleFrontmatter", line: 4, column: 13 }),
+      expect.objectContaining({ name: "staleLater", line: 10, column: 13 }),
+    ]);
+  });
+
+  it("preserves positions across multiple Vue script blocks", () => {
+    const rootDirectory = createProject({
+      "src/card.vue": [
+        "<template>",
+        "  <main>😀</main>",
+        "</template>",
+        "<script>",
+        'import First from "./first";',
+        "</script>",
+        "<style>main { display: block }</style>",
+        '<script lang="ts">',
+        'import Second from "./second";',
+        "export const stale = true;",
+        "</script>",
+      ].join("\n"),
+    });
+
+    const parsedSource = parseSourceFile(path.join(rootDirectory, "src/card.vue"));
+
+    expect(parsedSource.imports).toEqual([
+      expect.objectContaining({ specifier: "./first", line: 5, column: 0 }),
+      expect.objectContaining({ specifier: "./second", line: 9, column: 0 }),
+    ]);
+    expect(parsedSource.exports).toEqual([
+      expect.objectContaining({ name: "stale", line: 10, column: 13 }),
+    ]);
+  });
+
+  it("preserves Svelte module and instance script positions", () => {
+    const rootDirectory = createProject({
+      "src/card.svelte": [
+        "<main>😀</main>",
+        '<script context="module">',
+        "export const staleModule = true;",
+        "</script>",
+        "<div>content</div>",
+        '<script lang="ts">',
+        "export let title: string;",
+        "export const staleInstance = true;",
+        "</script>",
+      ].join("\n"),
+    });
+
+    const parsedSource = parseSourceFile(path.join(rootDirectory, "src/card.svelte"));
+
+    expect(parsedSource.exports).toEqual([
+      expect.objectContaining({ name: "staleModule", line: 3, column: 13 }),
+      expect.objectContaining({ name: "staleInstance", line: 8, column: 13 }),
+    ]);
   });
 });

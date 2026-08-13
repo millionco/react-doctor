@@ -110,11 +110,30 @@ const ASTRO_SCRIPT_TAG_PATTERN =
 const ASTRO_SCRIPT_SRC_ATTRIBUTE_PATTERN = /\bsrc\s*=\s*["']([^"']+)["']/i;
 const ASTRO_PROPS_EXPORT_PATTERN = /\bexport\s+(?=(?:interface|type)\s+Props\b)/g;
 
+const createWhitespaceMask = (sourceText: string): string[] =>
+  sourceText
+    .split("")
+    .map((character) => (character === "\n" || character === "\r" ? character : " "));
+
+const restoreMaskedSourceRange = (
+  maskedSource: string[],
+  sourceSection: string,
+  startOffset: number,
+): void => {
+  for (let characterIndex = 0; characterIndex < sourceSection.length; characterIndex++) {
+    maskedSource[startOffset + characterIndex] = sourceSection[characterIndex];
+  }
+};
+
 const extractAstroSources = (sourceText: string): string => {
-  const sections: string[] = [];
+  const maskedSource = createWhitespaceMask(sourceText);
   const frontmatterMatch = sourceText.match(ASTRO_FRONTMATTER_PATTERN);
   if (frontmatterMatch) {
-    sections.push(frontmatterMatch[1].replace(ASTRO_PROPS_EXPORT_PATTERN, ""));
+    const frontmatter = frontmatterMatch[1].replace(ASTRO_PROPS_EXPORT_PATTERN, (match) =>
+      " ".repeat(match.length),
+    );
+    const frontmatterStart = frontmatterMatch[0].indexOf("\n") + 1;
+    restoreMaskedSourceRange(maskedSource, frontmatter, frontmatterStart);
   }
   ASTRO_SCRIPT_TAG_PATTERN.lastIndex = 0;
   let scriptMatch: RegExpExecArray | null;
@@ -125,28 +144,31 @@ const extractAstroSources = (sourceText: string): string => {
     const body = selfClosingAttributes === undefined ? (scriptMatch[3] ?? "") : "";
     const srcMatch = attributes.match(ASTRO_SCRIPT_SRC_ATTRIBUTE_PATTERN);
     if (srcMatch) {
-      sections.push(`import ${JSON.stringify(srcMatch[1])};`);
+      const syntheticImport = `import ${JSON.stringify(srcMatch[1])};`;
+      restoreMaskedSourceRange(maskedSource, syntheticImport, scriptMatch.index);
     }
     if (body) {
-      sections.push(body);
+      const bodyStart = scriptMatch.index + scriptMatch[0].indexOf(">") + 1;
+      restoreMaskedSourceRange(maskedSource, body, bodyStart);
     }
   }
-  return sections.join("\n");
+  return maskedSource.join("");
 };
 
 const VUE_SCRIPT_PATTERN =
   /<script[^>]*(?:lang=["'](?:ts|tsx)["'][^>]*)?>([\s\S]*?)<\/script\b[^>]*>/gi;
 
 const extractVueScriptContent = (sourceText: string): string => {
-  const scriptBlocks: string[] = [];
+  const maskedSource = createWhitespaceMask(sourceText);
   let scriptMatch: RegExpExecArray | null;
   VUE_SCRIPT_PATTERN.lastIndex = 0;
   while ((scriptMatch = VUE_SCRIPT_PATTERN.exec(sourceText)) !== null) {
     if (scriptMatch[1]) {
-      scriptBlocks.push(scriptMatch[1]);
+      const bodyStart = scriptMatch.index + scriptMatch[0].indexOf(">") + 1;
+      restoreMaskedSourceRange(maskedSource, scriptMatch[1], bodyStart);
     }
   }
-  return scriptBlocks.join("\n");
+  return maskedSource.join("");
 };
 
 const SVELTE_SCRIPT_PATTERN = /<script([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi;
@@ -155,20 +177,20 @@ const SVELTE_MODULE_SCRIPT_ATTRIBUTE_PATTERN =
 const SVELTE_PROP_EXPORT_PATTERN = /\bexport\s+(?=let\b)/g;
 
 const extractSvelteScriptContent = (sourceText: string): string => {
-  const scriptBlocks: string[] = [];
+  const maskedSource = createWhitespaceMask(sourceText);
   let scriptMatch: RegExpExecArray | null;
   SVELTE_SCRIPT_PATTERN.lastIndex = 0;
   while ((scriptMatch = SVELTE_SCRIPT_PATTERN.exec(sourceText)) !== null) {
     const attributes = scriptMatch[1] ?? "";
     const scriptBody = scriptMatch[2];
     if (!scriptBody) continue;
-    if (SVELTE_MODULE_SCRIPT_ATTRIBUTE_PATTERN.test(attributes)) {
-      scriptBlocks.push(scriptBody);
-      continue;
-    }
-    scriptBlocks.push(scriptBody.replace(SVELTE_PROP_EXPORT_PATTERN, ""));
+    const body = SVELTE_MODULE_SCRIPT_ATTRIBUTE_PATTERN.test(attributes)
+      ? scriptBody
+      : scriptBody.replace(SVELTE_PROP_EXPORT_PATTERN, (match) => " ".repeat(match.length));
+    const bodyStart = scriptMatch.index + scriptMatch[0].indexOf(">") + 1;
+    restoreMaskedSourceRange(maskedSource, body, bodyStart);
   }
-  return scriptBlocks.join("\n");
+  return maskedSource.join("");
 };
 
 const getModuleExportNameValue = (exportName: ModuleExportName): string => {

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { effectNeedsCleanup } from "./effect-needs-cleanup.js";
 
-const SMALL_HANDLER_COUNT = 100;
-const LARGE_HANDLER_COUNT = 500;
+const SMALL_HANDLER_COUNT = 500;
+const LARGE_HANDLER_COUNT = 2500;
 const MEASUREMENT_SAMPLE_COUNT = 7;
 const MAXIMUM_SCALING_MULTIPLIER = 15;
 

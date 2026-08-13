@@ -19,7 +19,9 @@ export const collectStaticModulePackageNames = (sourceText: string): Set<string>
       value.expressions.length === 0 &&
       Array.isArray(value.quasis) &&
       isOxcAstNode(value.quasis[0]) &&
-      isOxcAstNode(value.quasis[0].value) &&
+      value.quasis[0].value &&
+      typeof value.quasis[0].value === "object" &&
+      "cooked" in value.quasis[0].value &&
       typeof value.quasis[0].value.cooked === "string"
     ) {
       return value.quasis[0].value.cooked;

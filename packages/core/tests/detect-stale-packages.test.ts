@@ -1443,9 +1443,15 @@ import { visualizeAudio } from "@example/media-utils";
         ".agents/skills/media-skill/SKILL.md": `\`\`\`tsx
 return <Visualizer />;
 import { visualizeAudio } from "@example/media-utils";
+require(\`@example/require-template-utils\`);
+import(\`@example/dynamic-template-utils\`);
 \`\`\``,
       },
-      { "@example/media-utils": "1.0.0" },
+      {
+        "@example/media-utils": "1.0.0",
+        "@example/require-template-utils": "1.0.0",
+        "@example/dynamic-template-utils": "1.0.0",
+      },
     );
 
     expect(collectUnusedDependencyNames(rootDirectory)).toEqual([]);

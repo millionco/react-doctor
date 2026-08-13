@@ -2,6 +2,7 @@
 // cycle — dependencies.ts imports findMonorepoRoot while workspaces.ts imports
 // dependencies.ts.
 import * as path from "node:path";
+import { ancestorDirectories } from "../utils/ancestor-directories.js";
 import { isFile } from "./fs-utils.js";
 import { readPackageJson } from "./package-json.js";
 
@@ -15,11 +16,8 @@ export const isMonorepoRoot = (directory: string): boolean => {
 };
 
 export const findMonorepoRoot = (startDirectory: string): string | null => {
-  let currentDirectory = path.dirname(startDirectory);
-
-  while (currentDirectory !== path.dirname(currentDirectory)) {
-    if (isMonorepoRoot(currentDirectory)) return currentDirectory;
-    currentDirectory = path.dirname(currentDirectory);
+  for (const ancestorDirectory of ancestorDirectories(startDirectory, { includeStart: false })) {
+    if (isMonorepoRoot(ancestorDirectory)) return ancestorDirectory;
   }
 
   return null;

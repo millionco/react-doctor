@@ -36,7 +36,8 @@ describe("Files.layerInMemory", () => {
       }),
     );
     expect(lines).not.toBeNull();
-    expect((lines as string[]).length).toBeGreaterThan(0);
+    if (lines === null) throw new Error("Expected relative path read to return lines");
+    expect(lines.length).toBeGreaterThan(0);
   });
 
   it("readLines returns null when the path is absent", async () => {

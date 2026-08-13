@@ -67,11 +67,7 @@ const wrapAsEslintRule = (ruleName: string, ruleImpl: EslintAdapterRule): Eslint
   meta: {
     type: ruleImpl.severity === "warn" ? "suggestion" : "problem",
     docs: {
-      description:
-        ruleImpl.title ??
-        ruleName
-          .replaceAll("-", " ")
-          .replace(/\b\w/g, (innerCharacter) => innerCharacter.toUpperCase()),
+      description: ruleImpl.title ?? ruleName,
       url: `${RULE_DOCS_BASE_URL}/${PLUGIN_NAMESPACE}/${ruleName}`,
       recommended: recommendedRuleKeys.has(`${PLUGIN_NAMESPACE}/${ruleName}`),
     },

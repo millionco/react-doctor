@@ -25,7 +25,7 @@ import {
   SHOPIFY_FLASH_LIST_PACKAGE_NAME,
 } from "./collect-project-facts.js";
 import { resolveInstalledReactVersion } from "./resolve-installed-react-version.js";
-import { readPackageJson } from "./package-json.js";
+import { clearPackageJsonCache, readPackageJson } from "./package-json.js";
 import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
 import {
   getDependencyMajorWithinSupportedRange,
@@ -51,6 +51,7 @@ export interface DiscoverProjectOptions {
 // tsconfig.json / monorepo manifests change between diagnose() calls.
 export const clearProjectCache = (): void => {
   cachedProjectInfos.clear();
+  clearPackageJsonCache();
   clearTargetBlankOpenerProtectionCache();
 };
 

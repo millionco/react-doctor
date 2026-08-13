@@ -266,22 +266,14 @@ export const extractDependencyInfo = (packageJson: PackageJson): DependencyInfo 
     ...packageJson.dependencies,
     ...packageJson.devDependencies,
   };
-  const reactVersion = pickConcreteVersion(packageJson, "react", [
-    "dependencies",
-    "peerDependencies",
-    "devDependencies",
-  ]);
+  const reactVersion = pickConcreteVersion(packageJson, "react", REACT_SECTIONS);
   const tailwindVersion = pickConcreteVersion(
     packageJson,
     "tailwindcss",
-    ["dependencies", "devDependencies", "peerDependencies"],
+    TAILWIND_ZOD_SECTIONS,
     isTailwindPostcss7CompatAlias,
   );
-  const zodVersion = pickConcreteVersion(packageJson, "zod", [
-    "dependencies",
-    "devDependencies",
-    "peerDependencies",
-  ]);
+  const zodVersion = pickConcreteVersion(packageJson, "zod", TAILWIND_ZOD_SECTIONS);
   return {
     reactVersion,
     tailwindVersion,

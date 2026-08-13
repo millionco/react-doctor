@@ -7,8 +7,8 @@ import {
   UNUSED_FILE_UNSUPPORTED_FRAMEWORK_DEPENDENCIES,
 } from "../constants.js";
 import type { DependencyGraph, ProjectAnalysisError, SourceModule } from "../types.js";
-import { toCanonicalPath } from "../../utils/to-canonical-path.js";
 import { isPathInsideDirectoryOrEqual } from "./is-path-inside-directory-or-equal.js";
+import { toFilesystemIdentityPath } from "./to-filesystem-identity-path.js";
 
 export interface MarkCompletePackageGraphsInput {
   graph: DependencyGraph;
@@ -170,15 +170,15 @@ export const markCompletePackageGraphs = ({
   unresolvedImportingFilePaths,
   setupErrors,
 }: MarkCompletePackageGraphsInput): void => {
-  const sortedPackageRoots = [...new Set(packageRootDirectories.map(toCanonicalPath))].toSorted(
-    (leftDirectory, rightDirectory) => rightDirectory.length - leftDirectory.length,
-  );
+  const sortedPackageRoots = [
+    ...new Set(packageRootDirectories.map(toFilesystemIdentityPath)),
+  ].toSorted((leftDirectory, rightDirectory) => rightDirectory.length - leftDirectory.length);
   const canonicalFilePathByModule = new Map(
-    graph.modules.map((module) => [module, toCanonicalPath(module.fileId.path)]),
+    graph.modules.map((module) => [module, toFilesystemIdentityPath(module.fileId.path)]),
   );
   const canonicalPathBySetupError = new Map(
     setupErrors.flatMap((error) =>
-      error.path === undefined ? [] : [[error, toCanonicalPath(error.path)]],
+      error.path === undefined ? [] : [[error, toFilesystemIdentityPath(error.path)]],
     ),
   );
   const rootPackageContract = readPackageContract(

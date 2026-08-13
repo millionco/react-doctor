@@ -2,8 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import type { DependencyGraph } from "../types.js";
-import { toCanonicalPath } from "../../utils/to-canonical-path.js";
 import { resolveEntryWithExtensions } from "./resolve-entry-with-extensions.js";
+import { toFilesystemIdentityPath } from "./to-filesystem-identity-path.js";
 import { toPosixPath } from "./to-posix-path.js";
 import { extractReactEmailTemplateDirectories } from "./extract-react-email-template-directories.js";
 import { collectDynamicBuildConsumedExportKeys } from "./collect-dynamic-build-consumed-export-keys.js";
@@ -158,7 +158,9 @@ const collectReferencedNextraThemeConfigPaths = (packageDirectory: string): Set<
             resolve(dirname(configPath), node.initializer.text),
           );
           if (resolvedThemeConfigPath) {
-            referencedPaths.add(toPosixPath(resolve(resolvedThemeConfigPath)));
+            referencedPaths.add(
+              toPosixPath(toFilesystemIdentityPath(resolve(resolvedThemeConfigPath))),
+            );
           }
         }
       }
@@ -207,10 +209,10 @@ export const collectConventionConsumedExportKeys = (
   const packageDirectoryBySourceDirectory = new Map<string, string | undefined>();
   const themeConfigPathsByPackageDirectory = new Map<string, ReadonlySet<string>>();
   const dynamicBuildConsumedExportKeysByPackageDirectory = new Map<string, ReadonlySet<string>>();
-  const canonicalAnalysisRootDirectory = toCanonicalPath(resolve(analysisRootDirectory));
+  const canonicalAnalysisRootDirectory = toFilesystemIdentityPath(resolve(analysisRootDirectory));
 
   for (const module of graph.modules) {
-    const canonicalModuleFilePath = toCanonicalPath(resolve(module.fileId.path));
+    const canonicalModuleFilePath = toFilesystemIdentityPath(resolve(module.fileId.path));
     const packageDirectory = findOwningPackageDirectory(
       canonicalModuleFilePath,
       canonicalAnalysisRootDirectory,

@@ -10,7 +10,7 @@ import * as fs from "node:fs";
  */
 export const toCanonicalPath = (filePath: string): string => {
   try {
-    return fs.realpathSync.native(filePath);
+    return fs.realpathSync(filePath);
   } catch {
     return filePath;
   }

@@ -3,10 +3,10 @@ import { dirname, relative, resolve } from "node:path";
 import fg from "fast-glob";
 import ts from "typescript";
 import { extractScriptFileReferences } from "./extract-script-file-references.js";
-import { toCanonicalPath } from "../../utils/to-canonical-path.js";
 import { toPosixPath } from "./to-posix-path.js";
 import { buildExportKey } from "./build-export-key.js";
 import { isPathInsideDirectoryOrEqual } from "./is-path-inside-directory-or-equal.js";
+import { toFilesystemIdentityPath } from "./to-filesystem-identity-path.js";
 
 interface DynamicBuildFileCollection {
   excludedPathSubstrings: ReadonlyArray<string>;
@@ -454,7 +454,7 @@ const collectScriptConsumedExportKeys = (
             onlyFiles: true,
           });
           for (const matchedFilePath of matchedFilePaths) {
-            const canonicalFilePath = toCanonicalPath(resolve(matchedFilePath));
+            const canonicalFilePath = toFilesystemIdentityPath(resolve(matchedFilePath));
             const normalizedFilePath = toPosixPath(canonicalFilePath);
             if (
               !isPathInsideDirectoryOrEqual(canonicalFilePath, packageDirectory) ||

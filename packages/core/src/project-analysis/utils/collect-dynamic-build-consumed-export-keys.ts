@@ -5,6 +5,7 @@ import ts from "typescript";
 import { extractScriptFileReferences } from "./extract-script-file-references.js";
 import { toPosixPath } from "./to-posix-path.js";
 import { buildExportKey } from "./build-export-key.js";
+import { getFileIdentityKey } from "./get-file-identity-key.js";
 import { isPathInsideDirectoryOrEqual } from "./is-path-inside-directory-or-equal.js";
 import { toFilesystemIdentityPath } from "./to-filesystem-identity-path.js";
 
@@ -465,7 +466,9 @@ const collectScriptConsumedExportKeys = (
               continue;
             }
             for (const exportName of exportNames) {
-              consumedExportKeys.add(buildExportKey(canonicalFilePath, exportName));
+              consumedExportKeys.add(
+                buildExportKey(getFileIdentityKey(canonicalFilePath), exportName),
+              );
             }
           }
         }

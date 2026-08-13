@@ -8,6 +8,8 @@ import {
 } from "../constants.js";
 import type { DependencyGraph, ProjectAnalysisError, SourceModule } from "../types.js";
 import { isPathInsideDirectoryOrEqual } from "./is-path-inside-directory-or-equal.js";
+import { findNearestPackageDirectory } from "./find-nearest-package-directory.js";
+import { getFileIdentityKey } from "./get-file-identity-key.js";
 import { toFilesystemIdentityPath } from "./to-filesystem-identity-path.js";
 
 export interface MarkCompletePackageGraphsInput {
@@ -173,34 +175,32 @@ export const markCompletePackageGraphs = ({
   const sortedPackageRoots = [
     ...new Set(packageRootDirectories.map(toFilesystemIdentityPath)),
   ].toSorted((leftDirectory, rightDirectory) => rightDirectory.length - leftDirectory.length);
-  const canonicalFilePathByModule = new Map(
-    graph.modules.map((module) => [module, toFilesystemIdentityPath(module.fileId.path)]),
-  );
   const canonicalPathBySetupError = new Map(
     setupErrors.flatMap((error) =>
       error.path === undefined ? [] : [[error, toFilesystemIdentityPath(error.path)]],
     ),
   );
+  const packageManifestIdentityByRoot = new Map(
+    sortedPackageRoots.map((packageRootDirectory) => [
+      packageRootDirectory,
+      getFileIdentityKey(join(packageRootDirectory, "package.json")),
+    ]),
+  );
+  const owningPackageDirectoryByModule = new Map(
+    graph.modules.map((module) => [module, findNearestPackageDirectory(module.fileId.path)]),
+  );
   const rootPackageContract = readPackageContract(
     sortedPackageRoots[sortedPackageRoots.length - 1] ?? "",
   );
   for (const packageRootDirectory of sortedPackageRoots) {
-    const packageModules = graph.modules.filter(
-      (module) =>
-        isPathInsideDirectoryOrEqual(
-          canonicalFilePathByModule.get(module) ?? module.fileId.path,
-          packageRootDirectory,
-        ) &&
-        !sortedPackageRoots.some(
-          (nestedRootDirectory) =>
-            nestedRootDirectory !== packageRootDirectory &&
-            nestedRootDirectory.length > packageRootDirectory.length &&
-            isPathInsideDirectoryOrEqual(
-              canonicalFilePathByModule.get(module) ?? module.fileId.path,
-              nestedRootDirectory,
-            ),
-        ),
-    );
+    const packageModules = graph.modules.filter((module) => {
+      const owningPackageDirectory = owningPackageDirectoryByModule.get(module);
+      return (
+        owningPackageDirectory !== undefined &&
+        getFileIdentityKey(join(owningPackageDirectory, "package.json")) ===
+          packageManifestIdentityByRoot.get(packageRootDirectory)
+      );
+    });
     const packageContract = readPackageContract(packageRootDirectory);
     const declaredDependencies = new Set([
       ...(rootPackageContract?.declaredDependencies ?? []),
@@ -211,8 +211,8 @@ export const markCompletePackageGraphs = ({
       (module) =>
         module.isAuthoritativeEntryPoint &&
         isSupportedAutomaticEntry(
-          canonicalFilePathByModule.get(module) ?? module.fileId.path,
-          packageRootDirectory,
+          module.fileId.path,
+          owningPackageDirectoryByModule.get(module) ?? packageRootDirectory,
           declaredDependencies,
         ),
     );
@@ -248,8 +248,8 @@ export const markCompletePackageGraphs = ({
     const hasTestOrStoryContract = packageModules.some((module) =>
       TEST_OR_STORY_FILE_PATTERN.test(
         relative(
-          packageRootDirectory,
-          canonicalFilePathByModule.get(module) ?? module.fileId.path,
+          owningPackageDirectoryByModule.get(module) ?? packageRootDirectory,
+          module.fileId.path,
         ).replaceAll("\\", "/"),
       ),
     );

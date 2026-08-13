@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 import ts from "typescript";
 import type { DependencyGraph } from "../types.js";
 import { resolveEntryWithExtensions } from "./resolve-entry-with-extensions.js";
@@ -8,6 +8,9 @@ import { toPosixPath } from "./to-posix-path.js";
 import { extractReactEmailTemplateDirectories } from "./extract-react-email-template-directories.js";
 import { collectDynamicBuildConsumedExportKeys } from "./collect-dynamic-build-consumed-export-keys.js";
 import { buildExportKey } from "./build-export-key.js";
+import { findNearestPackageDirectory } from "./find-nearest-package-directory.js";
+import { getFileIdentityKey } from "./get-file-identity-key.js";
+import { isPathInsideDirectoryOrEqual } from "./is-path-inside-directory-or-equal.js";
 
 interface ConventionPackageJson {
   cromwell?: { type?: string };
@@ -58,58 +61,6 @@ const readPackageMetadata = (packageDirectory: string): ConventionPackageMetadat
     };
   } catch {
     return undefined;
-  }
-};
-
-const findOwningPackageDirectory = (
-  filePath: string,
-  analysisRootDirectory: string,
-  packageDirectoryBySourceDirectory: Map<string, string | undefined>,
-): string | undefined => {
-  const resolvedAnalysisRoot = resolve(analysisRootDirectory);
-  let currentDirectory = dirname(resolve(filePath));
-  const visitedDirectories: string[] = [];
-
-  while (true) {
-    if (packageDirectoryBySourceDirectory.has(currentDirectory)) {
-      const packageDirectory = packageDirectoryBySourceDirectory.get(currentDirectory);
-      for (const visitedDirectory of visitedDirectories) {
-        packageDirectoryBySourceDirectory.set(visitedDirectory, packageDirectory);
-      }
-      return packageDirectory;
-    }
-    const relativeToRoot = relative(resolvedAnalysisRoot, currentDirectory);
-    if (
-      relativeToRoot === ".." ||
-      relativeToRoot.startsWith(`..${sep}`) ||
-      isAbsolute(relativeToRoot)
-    ) {
-      for (const visitedDirectory of visitedDirectories) {
-        packageDirectoryBySourceDirectory.set(visitedDirectory, undefined);
-      }
-      return undefined;
-    }
-    visitedDirectories.push(currentDirectory);
-    if (existsSync(resolve(currentDirectory, "package.json"))) {
-      for (const visitedDirectory of visitedDirectories) {
-        packageDirectoryBySourceDirectory.set(visitedDirectory, currentDirectory);
-      }
-      return currentDirectory;
-    }
-    if (currentDirectory === resolvedAnalysisRoot) {
-      for (const visitedDirectory of visitedDirectories) {
-        packageDirectoryBySourceDirectory.set(visitedDirectory, undefined);
-      }
-      return undefined;
-    }
-    const parentDirectory = dirname(currentDirectory);
-    if (parentDirectory === currentDirectory) {
-      for (const visitedDirectory of visitedDirectories) {
-        packageDirectoryBySourceDirectory.set(visitedDirectory, undefined);
-      }
-      return undefined;
-    }
-    currentDirectory = parentDirectory;
   }
 };
 
@@ -206,19 +157,18 @@ export const collectConventionConsumedExportKeys = (
 ): Set<string> => {
   const consumedExportKeys = new Set<string>();
   const packageMetadataByDirectory = new Map<string, ConventionPackageMetadata | undefined>();
-  const packageDirectoryBySourceDirectory = new Map<string, string | undefined>();
   const themeConfigPathsByPackageDirectory = new Map<string, ReadonlySet<string>>();
   const dynamicBuildConsumedExportKeysByPackageDirectory = new Map<string, ReadonlySet<string>>();
   const canonicalAnalysisRootDirectory = toFilesystemIdentityPath(resolve(analysisRootDirectory));
 
   for (const module of graph.modules) {
     const canonicalModuleFilePath = toFilesystemIdentityPath(resolve(module.fileId.path));
-    const packageDirectory = findOwningPackageDirectory(
-      canonicalModuleFilePath,
-      canonicalAnalysisRootDirectory,
-      packageDirectoryBySourceDirectory,
-    );
+    const packageDirectory = findNearestPackageDirectory(module.fileId.path);
     if (!packageDirectory) continue;
+    const canonicalPackageDirectory = toFilesystemIdentityPath(packageDirectory);
+    if (!isPathInsideDirectoryOrEqual(canonicalPackageDirectory, canonicalAnalysisRootDirectory)) {
+      continue;
+    }
 
     if (!packageMetadataByDirectory.has(packageDirectory)) {
       packageMetadataByDirectory.set(packageDirectory, readPackageMetadata(packageDirectory));
@@ -226,7 +176,7 @@ export const collectConventionConsumedExportKeys = (
     const packageMetadata = packageMetadataByDirectory.get(packageDirectory);
     if (!packageMetadata) continue;
 
-    const packageRelativePath = toPosixPath(relative(packageDirectory, canonicalModuleFilePath));
+    const packageRelativePath = toPosixPath(relative(packageDirectory, module.fileId.path));
     const isNextRouteSegmentModule =
       hasDependency(packageMetadata, "next") &&
       NEXT_ROUTE_SEGMENT_MODULE_PATTERN.test(packageRelativePath);
@@ -269,7 +219,7 @@ export const collectConventionConsumedExportKeys = (
         (isNextRouteSegmentModule && exportInfo.name === "runtime") ||
         (isCromwellPluginFrontendEntry && exportInfo.name === "getStaticProps") ||
         dynamicBuildConsumedExportKeys?.has(
-          buildExportKey(canonicalModuleFilePath, exportInfo.name),
+          buildExportKey(getFileIdentityKey(module.fileId.path), exportInfo.name),
         ) ||
         (exportInfo.isDefault &&
           (isContentCollectionsConfig || isReactEmailTemplate || isReferencedNextraThemeConfig))

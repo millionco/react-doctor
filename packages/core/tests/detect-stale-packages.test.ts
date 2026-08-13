@@ -126,6 +126,27 @@ describe("detectStalePackages", () => {
     expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
   });
 
+  it("credits critters when a Next config function enables CSS optimization", () => {
+    const rootDirectory = createProject(
+      {
+        "next.config.ts": `
+          import type { NextConfig } from "next";
+          const nextConfig = (phase: string): NextConfig => {
+            const basePath = phase === "production" ? "/app" : "";
+            return {
+              basePath,
+              experimental: { optimizeCss: true },
+            };
+          };
+          export default nextConfig;
+        `,
+      },
+      { critters: "1.0.0", next: "1.0.0", "unused-package": "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
   it("does not credit critters for disabled or unexported Next config", () => {
     const rootDirectory = createProject(
       {

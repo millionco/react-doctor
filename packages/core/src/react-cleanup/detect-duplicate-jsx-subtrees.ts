@@ -15,6 +15,7 @@ import {
 import { getTypescriptScriptKind } from "../utils/get-typescript-script-kind.js";
 import { unwrapTypescriptExpression } from "../utils/unwrap-typescript-expression.js";
 import { yieldToEventLoop } from "../utils/yield-to-event-loop.js";
+import { isNonReactJsxSource } from "./utils/is-non-react-jsx-source.js";
 
 export interface JsxDuplicationSource {
   path: string;
@@ -535,6 +536,14 @@ const scanSource = (input: ScanJsxDuplicationSourceInput): ScannedJsxDuplication
     true,
     getTypescriptScriptKind(input.source.path),
   );
+  if (isNonReactJsxSource(sourceFile)) {
+    return {
+      candidates: [],
+      incompleteReason: null,
+      didAbort: false,
+      didScan: true,
+    };
+  }
   const collectedCandidates = collectCandidates(
     input.source,
     sourceFile,

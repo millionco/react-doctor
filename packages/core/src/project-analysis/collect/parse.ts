@@ -348,32 +348,126 @@ const collectTopLevelImportReferences = (
   const referencedNames = new Set<string>();
   if (importLocalNames.size === 0) return [];
 
-  const visitClassBody = (classBody: WalkableNode): void => {
-    const bodyElements = Array.isArray(classBody.body) ? classBody.body.filter(isWalkableNode) : [];
-    for (const element of bodyElements) {
-      if (element.type === "StaticBlock") {
-        visitValueNode(element.body);
-        continue;
+  const addBindingNames = (pattern: unknown, names: Set<string>): void => {
+    if (!isWalkableNode(pattern)) return;
+    if (pattern.type === "Identifier") {
+      if (typeof pattern.name === "string") names.add(pattern.name);
+      return;
+    }
+    if (pattern.type === "RestElement") {
+      addBindingNames(pattern.argument, names);
+      return;
+    }
+    if (pattern.type === "AssignmentPattern") {
+      addBindingNames(pattern.left, names);
+      return;
+    }
+    if (pattern.type === "ObjectPattern" && Array.isArray(pattern.properties)) {
+      for (const property of pattern.properties) {
+        if (!isWalkableNode(property)) continue;
+        addBindingNames(
+          property.type === "RestElement" ? property.argument : property.value,
+          names,
+        );
       }
-      const isComputedKey = Boolean(element.computed);
-      if (isComputedKey) visitValueNode(element.key);
-      const isStatic = Boolean(element.static);
-      if (element.type === "PropertyDefinition" && isStatic) {
-        visitValueNode(element.value);
-      }
-      visitValueNode(element.decorators);
+      return;
+    }
+    if (pattern.type === "ArrayPattern" && Array.isArray(pattern.elements)) {
+      for (const element of pattern.elements) addBindingNames(element, names);
     }
   };
 
-  const visitValueNode = (node: unknown): void => {
+  const collectDirectBlockBindings = (body: unknown): Set<string> => {
+    const names = new Set<string>();
+    if (!Array.isArray(body)) return names;
+    for (const statement of body) {
+      if (!isWalkableNode(statement)) continue;
+      if (statement.type === "VariableDeclaration" && statement.kind !== "var") {
+        for (const declaration of Array.isArray(statement.declarations)
+          ? statement.declarations
+          : []) {
+          if (isWalkableNode(declaration)) addBindingNames(declaration.id, names);
+        }
+      }
+      if (statement.type === "FunctionDeclaration" || statement.type === "ClassDeclaration") {
+        addBindingNames(statement.id, names);
+      }
+    }
+    return names;
+  };
+
+  const collectFunctionBindings = (functionNode: WalkableNode): Set<string> => {
+    const names = new Set<string>();
+    addBindingNames(functionNode.id, names);
+    for (const parameter of Array.isArray(functionNode.params) ? functionNode.params : []) {
+      addBindingNames(parameter, names);
+    }
+    const visitForVarBindings = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        for (const element of node) visitForVarBindings(element);
+        return;
+      }
+      if (!isWalkableNode(node)) return;
+      if (node !== functionNode && FUNCTION_NODE_TYPES.has(node.type)) return;
+      if (node.type === "VariableDeclaration" && node.kind === "var") {
+        for (const declaration of Array.isArray(node.declarations) ? node.declarations : []) {
+          if (isWalkableNode(declaration)) addBindingNames(declaration.id, names);
+        }
+      }
+      for (const value of Object.values(node)) visitForVarBindings(value);
+    };
+    visitForVarBindings(functionNode.body);
+    return names;
+  };
+
+  const unwrapFunctionExpression = (node: unknown): WalkableNode | undefined => {
+    let currentNode = isWalkableNode(node) ? node : undefined;
+    while (
+      currentNode &&
+      (currentNode.type === "ParenthesizedExpression" ||
+        TS_VALUE_WRAPPER_NODE_TYPES.has(currentNode.type))
+    ) {
+      currentNode = isWalkableNode(currentNode.expression) ? currentNode.expression : undefined;
+    }
+    return currentNode && FUNCTION_NODE_TYPES.has(currentNode.type) ? currentNode : undefined;
+  };
+
+  const mergeShadowedNames = (
+    shadowedNames: ReadonlySet<string>,
+    newNames: ReadonlySet<string>,
+  ): ReadonlySet<string> =>
+    newNames.size === 0 ? shadowedNames : new Set([...shadowedNames, ...newNames]);
+
+  const visitClassBody = (classBody: WalkableNode, shadowedNames: ReadonlySet<string>): void => {
+    const bodyElements = Array.isArray(classBody.body) ? classBody.body.filter(isWalkableNode) : [];
+    for (const element of bodyElements) {
+      if (element.type === "StaticBlock") {
+        visitValueNode(element, shadowedNames);
+        continue;
+      }
+      const isComputedKey = Boolean(element.computed);
+      if (isComputedKey) visitValueNode(element.key, shadowedNames);
+      const isStatic = Boolean(element.static);
+      if (element.type === "PropertyDefinition" && isStatic) {
+        visitValueNode(element.value, shadowedNames);
+      }
+      visitValueNode(element.decorators, shadowedNames);
+    }
+  };
+
+  const visitValueNode = (node: unknown, shadowedNames: ReadonlySet<string>): void => {
     if (Array.isArray(node)) {
-      for (const element of node) visitValueNode(element);
+      for (const element of node) visitValueNode(element, shadowedNames);
       return;
     }
     if (!isWalkableNode(node)) return;
 
     if (node.type === "Identifier" || node.type === "JSXIdentifier") {
-      if (typeof node.name === "string" && importLocalNames.has(node.name)) {
+      if (
+        typeof node.name === "string" &&
+        importLocalNames.has(node.name) &&
+        !shadowedNames.has(node.name)
+      ) {
         const identifierName = node.name;
         referencedNames.add(identifierName);
       }
@@ -382,7 +476,7 @@ const collectTopLevelImportReferences = (
 
     if (node.type.startsWith("TS")) {
       if (TS_VALUE_WRAPPER_NODE_TYPES.has(node.type)) {
-        visitValueNode(node.expression);
+        visitValueNode(node.expression, shadowedNames);
         return;
       }
       if (!TS_RUNTIME_DECLARATION_NODE_TYPES.has(node.type)) return;
@@ -390,40 +484,69 @@ const collectTopLevelImportReferences = (
 
     if (FUNCTION_NODE_TYPES.has(node.type)) return;
 
+    if (node.type === "BlockStatement" || node.type === "StaticBlock") {
+      const blockShadowedNames = mergeShadowedNames(
+        shadowedNames,
+        collectDirectBlockBindings(node.body),
+      );
+      visitValueNode(node.body, blockShadowedNames);
+      return;
+    }
+
+    if (node.type === "VariableDeclarator") {
+      visitValueNode(node.init, shadowedNames);
+      return;
+    }
+
+    if (node.type === "CatchClause") {
+      const catchBindingNames = new Set<string>();
+      addBindingNames(node.param, catchBindingNames);
+      const catchShadowedNames = mergeShadowedNames(shadowedNames, catchBindingNames);
+      visitValueNode(node.body, catchShadowedNames);
+      return;
+    }
+
     if (node.type === "ClassDeclaration" || node.type === "ClassExpression") {
-      visitValueNode(node.superClass);
-      visitValueNode(node.decorators);
-      if (isWalkableNode(node.body)) visitClassBody(node.body);
+      visitValueNode(node.superClass, shadowedNames);
+      visitValueNode(node.decorators, shadowedNames);
+      if (isWalkableNode(node.body)) visitClassBody(node.body, shadowedNames);
       return;
     }
 
     if (node.type === "CallExpression" || node.type === "NewExpression") {
-      if (isWalkableNode(node.callee) && FUNCTION_NODE_TYPES.has(node.callee.type)) {
-        visitValueNode(node.callee.body);
+      const calledFunction = unwrapFunctionExpression(node.callee);
+      if (calledFunction) {
+        const functionShadowedNames = mergeShadowedNames(
+          shadowedNames,
+          collectFunctionBindings(calledFunction),
+        );
+        visitValueNode(calledFunction.body, functionShadowedNames);
+        visitValueNode(node.arguments, shadowedNames);
+        return;
       }
     }
 
     if (node.type === "MemberExpression" || node.type === "JSXMemberExpression") {
-      visitValueNode(node.object);
+      visitValueNode(node.object, shadowedNames);
       if (node.computed) {
-        visitValueNode(node.property);
+        visitValueNode(node.property, shadowedNames);
       }
       return;
     }
 
     if (node.type === "Property") {
       if (node.computed) {
-        visitValueNode(node.key);
+        visitValueNode(node.key, shadowedNames);
       }
-      visitValueNode(node.value);
+      visitValueNode(node.value, shadowedNames);
       return;
     }
 
     for (const value of Object.values(node)) {
       if (Array.isArray(value)) {
-        for (const element of value) visitValueNode(element);
+        for (const element of value) visitValueNode(element, shadowedNames);
       } else if (value && typeof value === "object") {
-        visitValueNode(value);
+        visitValueNode(value, shadowedNames);
       }
     }
   };
@@ -436,10 +559,10 @@ const collectTopLevelImportReferences = (
       statement.type === "ExportNamedDeclaration" ||
       statement.type === "ExportDefaultDeclaration"
     ) {
-      visitValueNode((statement as { declaration?: unknown }).declaration);
+      visitValueNode((statement as { declaration?: unknown }).declaration, new Set());
       continue;
     }
-    visitValueNode(statement);
+    visitValueNode(statement, new Set());
   }
 
   return [...referencedNames];
@@ -1312,6 +1435,29 @@ const createNamespaceImportBinding = (): ImportBinding => ({
   isTypeOnly: false,
 });
 
+const createTypeImportBinding = (qualifier: unknown): ImportBinding => {
+  let importedName: string | undefined;
+  let currentQualifier = isWalkableNode(qualifier) ? qualifier : undefined;
+  while (currentQualifier?.type === "TSQualifiedName") {
+    currentQualifier = isWalkableNode(currentQualifier.left) ? currentQualifier.left : undefined;
+  }
+  if (currentQualifier?.type === "Identifier" && typeof currentQualifier.name === "string") {
+    importedName = currentQualifier.name;
+  }
+  return importedName
+    ? {
+        name: importedName,
+        alias: importedName,
+        isNamespace: false,
+        isDefault: false,
+        isTypeOnly: true,
+      }
+    : {
+        ...createNamespaceImportBinding(),
+        isTypeOnly: true,
+      };
+};
+
 interface WalkableNode {
   type: string;
   start: number;
@@ -1523,6 +1669,26 @@ const collectDynamicImports = (
     });
   }
   const walkNode = (node: WalkableNode, parentNode?: WalkableNode): void => {
+    if (node.type === "TSImportType") {
+      const sourceExpression = isWalkableNode(node.source) ? node.source : undefined;
+      if (
+        sourceExpression?.type === "Literal" &&
+        typeof sourceExpression.value === "string" &&
+        sourceExpression.value
+      ) {
+        imports.push({
+          specifier: sourceExpression.value,
+          importedNames: [createTypeImportBinding(node.qualifier)],
+          isTypeOnly: true,
+          isDynamic: false,
+          isSideEffect: false,
+          line: getLineFromOffset(sourceText, node.start),
+          column: getColumnFromOffset(sourceText, node.start),
+        });
+      }
+      return;
+    }
+
     if (node.type === "ImportExpression") {
       const sourceExpression = isWalkableNode(node.source) ? node.source : undefined;
       if (!sourceExpression) {

@@ -14,6 +14,7 @@ import { resolveSourcePath } from "./source-path.js";
 import { isPlatformBuiltinOrVirtualSpecifier } from "../utils/is-platform-builtin-or-virtual.js";
 import { toPosixPath } from "../utils/to-posix-path.js";
 import { sanitizeImportSpecifier } from "../utils/sanitize-import-specifier.js";
+import { extractBundlerAliases, type BundlerAlias } from "../utils/extract-bundler-aliases.js";
 
 const fileExistsCache = new Map<string, boolean>();
 const pathExistsCache = new Map<string, boolean>();
@@ -192,12 +193,6 @@ const COMMON_RESOLVER_OPTIONS = {
   extensionAlias: EXTENSION_ALIAS,
 };
 
-interface BundlerAlias {
-  name: string;
-  targetDirectory: string;
-  isExact: boolean;
-}
-
 interface BundlerAliasConfig {
   scopeDirectory: string;
   aliases: BundlerAlias[];
@@ -239,14 +234,8 @@ const JEST_CONFIG_GLOBS = [
   "**/jest.config.{js,ts,mjs,cjs,json}",
 ];
 
-const ALIAS_BLOCK_PATTERN = /alias\s*:\s*\{([\s\S]*?)\}/g;
-const ALIAS_ENTRY_PATTERN =
-  /["']?([@\w$./*-]+)["']?\s*:\s*(?:path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:["'][^"']+["'][\s,]*)+)\)|fileURLToPath\(\s*new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)\s*\)|["']([^"']+)["']|([\w$]+)\(\s*["']([^"']+)["']\s*\))/g;
-const LOCAL_PATH_HELPER_PATTERN =
-  /function\s+([\w$]+)\s*\(\s*([\w$]+)\s*\)\s*\{\s*return\s+path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:["'][^"']+["']\s*,\s*)*)\2\s*\)\s*;?\s*\}/g;
 const JEST_MODULE_NAME_MAPPER_BLOCK_PATTERN = /moduleNameMapper\s*:\s*\{([\s\S]*?)\}/g;
 const JEST_MODULE_NAME_MAPPER_ENTRY_PATTERN = /["']([^"']+)["']\s*:\s*["']([^"']+)["']/g;
-const STRING_LITERAL_PATTERN = /["']([^"']+)["']/g;
 
 const TSCONFIG_FILENAMES = [
   "tsconfig.json",
@@ -323,20 +312,8 @@ const isInsideDirectory = (filePath: string, directory: string): boolean => {
   return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
 };
 
-const extractQuotedSegments = (value: string): string[] => {
-  const segments: string[] = [];
-  let segmentMatch: RegExpExecArray | null;
-  STRING_LITERAL_PATTERN.lastIndex = 0;
-  while ((segmentMatch = STRING_LITERAL_PATTERN.exec(value)) !== null) {
-    segments.push(segmentMatch[1]);
-  }
-  return segments;
-};
-
-const resolveConfigPathValue = (value: string, configDirectory: string): string => {
-  if (isAbsolute(value)) return value;
-  return resolve(configDirectory, value);
-};
+const resolveConfigPathValue = (value: string, configDirectory: string): string =>
+  isAbsolute(value) ? value : resolve(configDirectory, value);
 
 const findConfigScope = (configPath: string, rootDir: string): string => {
   let currentDirectory = dirname(configPath);
@@ -352,60 +329,6 @@ const findConfigScope = (configPath: string, rootDir: string): string => {
   }
 
   return absoluteRoot;
-};
-
-const extractBundlerAliases = (content: string, configDirectory: string): BundlerAlias[] => {
-  const aliases: BundlerAlias[] = [];
-  const localPathHelperRoots = new Map<string, string>();
-  let localPathHelperMatch: RegExpExecArray | null;
-  LOCAL_PATH_HELPER_PATTERN.lastIndex = 0;
-  while ((localPathHelperMatch = LOCAL_PATH_HELPER_PATTERN.exec(content)) !== null) {
-    localPathHelperRoots.set(
-      localPathHelperMatch[1],
-      resolve(configDirectory, ...extractQuotedSegments(localPathHelperMatch[3])),
-    );
-  }
-  let aliasBlockMatch: RegExpExecArray | null;
-  ALIAS_BLOCK_PATTERN.lastIndex = 0;
-
-  while ((aliasBlockMatch = ALIAS_BLOCK_PATTERN.exec(content)) !== null) {
-    const aliasBlock = aliasBlockMatch[1];
-    let aliasEntryMatch: RegExpExecArray | null;
-    ALIAS_ENTRY_PATTERN.lastIndex = 0;
-
-    while ((aliasEntryMatch = ALIAS_ENTRY_PATTERN.exec(aliasBlock)) !== null) {
-      const rawName = aliasEntryMatch[1];
-      const pathCallSegments = aliasEntryMatch[2];
-      const fileUrlTarget = aliasEntryMatch[3];
-      const stringTarget = aliasEntryMatch[4];
-      const localPathHelperName = aliasEntryMatch[5];
-      const localPathHelperTarget = aliasEntryMatch[6];
-      const isExact = rawName.endsWith("$");
-      const name = rawName.replace(/\$$/, "").replace(/\/\*$/, "").replace(/\/$/, "");
-
-      let targetDirectory: string;
-      if (pathCallSegments) {
-        targetDirectory = resolve(configDirectory, ...extractQuotedSegments(pathCallSegments));
-      } else if (fileUrlTarget) {
-        targetDirectory = resolve(configDirectory, fileUrlTarget);
-      } else if (stringTarget) {
-        targetDirectory = resolveConfigPathValue(
-          stringTarget.replace(/\/\*$/, ""),
-          configDirectory,
-        );
-      } else if (localPathHelperName && localPathHelperTarget) {
-        const localPathHelperRoot = localPathHelperRoots.get(localPathHelperName);
-        if (!localPathHelperRoot) continue;
-        targetDirectory = resolve(localPathHelperRoot, localPathHelperTarget);
-      } else {
-        continue;
-      }
-
-      aliases.push({ name, targetDirectory, isExact });
-    }
-  }
-
-  return aliases;
 };
 
 const compileJestModuleNameMapperAlias = (

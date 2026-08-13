@@ -36,6 +36,29 @@ const relativeUnusedPaths = (
   );
 
 describe("legacy Webpack registries", () => {
+  it("resolves Vite alias-array entries", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.ts": `
+          import path from "node:path";
+          export default {
+            resolve: {
+              alias: [{ find: "@", replacement: path.resolve(__dirname, "src") }],
+            },
+          };
+        `,
+        "src/index.ts": 'import { value } from "@/lib"; console.log(value);',
+        "src/lib.ts": "export const value = 1; export const unused = 2;",
+      },
+      { devDependencies: { vite: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativeUnusedPaths(rootDirectory, result.unusedFiles)).not.toContain("src/lib.ts");
+    expect(result.unusedExports.map((unusedExport) => unusedExport.name)).toEqual(["unused"]);
+  });
+
   it("resolves aliases declared through local path helpers in build configs", async () => {
     const rootDirectory = createProject(
       {

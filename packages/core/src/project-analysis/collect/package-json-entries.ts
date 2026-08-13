@@ -7,6 +7,7 @@ import {
   resolveEntryPathWithExtensions,
   resolveEntryWithExtensions,
 } from "../utils/resolve-entry-with-extensions.js";
+import { parseTypeScriptConfig } from "../utils/parse-typescript-config.js";
 
 interface PackageJsonEntryFields {
   [key: string]: unknown;
@@ -106,20 +107,18 @@ const readTypeScriptBuildDirectories = (
 ): TypeScriptBuildDirectories | undefined => {
   const tsconfigPath = join(rootDirectory, "tsconfig.json");
   if (!existsSync(tsconfigPath)) return undefined;
-  const tsconfigContent = readFileSync(tsconfigPath, "utf-8")
-    .replace(/\/\/.*$/gm, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "");
-  const tsconfig = JSON.parse(tsconfigContent);
+  const tsconfig = parseTypeScriptConfig(tsconfigPath, readFileSync(tsconfigPath, "utf-8"));
   const outDirectory = tsconfig?.compilerOptions?.outDir;
-  if (!outDirectory) return undefined;
+  if (typeof outDirectory !== "string" || outDirectory.length === 0) return undefined;
 
   const configuredRootDirectory = tsconfig?.compilerOptions?.rootDir;
   return {
     absoluteOutDirectory: resolve(rootDirectory, outDirectory),
-    sourceRoot: configuredRootDirectory
-      ? resolve(rootDirectory, configuredRootDirectory)
-      : rootDirectory,
-    shouldSearchCommonSourceDirectories: !configuredRootDirectory,
+    sourceRoot:
+      typeof configuredRootDirectory === "string"
+        ? resolve(rootDirectory, configuredRootDirectory)
+        : rootDirectory,
+    shouldSearchCommonSourceDirectories: typeof configuredRootDirectory !== "string",
   };
 };
 
@@ -387,12 +386,8 @@ const collectTypeTestFixtureEntries = (
   const tsconfigPath = join(rootDirectory, "tsconfig.json");
   if (!existsSync(tsconfigPath)) return;
   try {
-    const tsconfigSource = readFileSync(tsconfigPath, "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/(^|[^:])\/\/.*$/gm, "$1")
-      .replace(/,(\s*[}\]])/g, "$1");
-    const tsconfig = JSON.parse(tsconfigSource);
-    if (tsconfig.compilerOptions?.noEmit !== true || !Array.isArray(tsconfig.include)) return;
+    const tsconfig = parseTypeScriptConfig(tsconfigPath, readFileSync(tsconfigPath, "utf8"));
+    if (tsconfig?.compilerOptions?.noEmit !== true || !Array.isArray(tsconfig.include)) return;
     const includePatterns = tsconfig.include.filter(
       (includePattern: unknown): includePattern is string => typeof includePattern === "string",
     );

@@ -48,6 +48,44 @@ describe("detectDuplicateJsxSubtrees", () => {
     });
   });
 
+  it("ignores JSX owned by non-React runtimes", () => {
+    const solidComponentSource = (componentName: string): string => `
+      import { createSignal } from "solid-js";
+      export const ${componentName} = () => (
+        <section classList={{ active: true }}>
+          <header><h2>Title</h2></header>
+          <main><Value /></main>
+          <footer><Button /></footer>
+        </section>
+      );
+    `;
+    const result = detectDuplicateJsxSubtrees([
+      { path: "src/first.tsx", sourceText: solidComponentSource("First") },
+      { path: "src/second.tsx", sourceText: solidComponentSource("Second") },
+    ]);
+
+    expect(result.families).toEqual([]);
+  });
+
+  it("lets an explicit React runtime override a non-React JSX marker", () => {
+    const reactComponentSource = (componentName: string): string => `
+      import React from "react";
+      export const ${componentName} = () => (
+        <section classList={{ active: true }}>
+          <header><h2>Title</h2></header>
+          <main><Value /></main>
+          <footer><Button /></footer>
+        </section>
+      );
+    `;
+    const result = detectDuplicateJsxSubtrees([
+      { path: "src/first.tsx", sourceText: reactComponentSource("First") },
+      { path: "src/second.tsx", sourceText: reactComponentSource("Second") },
+    ]);
+
+    expect(result.families).toHaveLength(1);
+  });
+
   it("reports a maximal duplicate shared by two components in one file", () => {
     const sourceText = [
       componentSource("AccountCard", "Account", "account"),

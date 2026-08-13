@@ -165,6 +165,34 @@ describe("analyzeProject", () => {
     expect(unusedExportNames).toContain("UnusedShape");
   });
 
+  it("tracks TypeScript import type queries as type-only graph edges", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `
+          export type PublicShape = import("./library").LibraryShape;
+          export type PublicNamespace = typeof import("./namespace");
+        `,
+        "src/library.ts": `
+          export interface LibraryShape { value: string }
+          export interface UnusedShape { stale: boolean }
+        `,
+        "src/namespace.ts": "export interface NamespaceShape { value: string }",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedFilePaths = relativePaths(rootDirectory, result.unusedFiles);
+    const unusedExportNames = result.unusedExports.map((unusedExport) => unusedExport.name);
+
+    expect(unusedFilePaths).not.toContain("src/library.ts");
+    expect(unusedFilePaths).not.toContain("src/namespace.ts");
+    expect(unusedExportNames).not.toContain("LibraryShape");
+    expect(unusedExportNames).not.toContain("NamespaceShape");
+    expect(unusedExportNames).toContain("UnusedShape");
+    expect(result.circularDependencies).toEqual([]);
+  });
+
   it("tracks namespace members without treating type-only edges as runtime cycles", async () => {
     const rootDirectory = createProject(
       {
@@ -338,6 +366,30 @@ describe("analyzeProject", () => {
 
     expect(relativePaths(rootDirectory, result.unusedFiles)).toContain("src/lib/orphan.ts");
     expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain("src/lib/value.ts");
+  });
+
+  it("parses JSONC tsconfig build directories without rewriting string contents", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "export const publicValue = 1;",
+        "src/orphan.ts": "export const orphan = 1;",
+        "tsconfig.json": `{
+          // Build output maps back to authored sources.
+          "compilerOptions": {
+            "outDir": "dist",
+            "rootDir": "src",
+            "sourceRoot": "https://example.com/source",
+          },
+        }`,
+      },
+      { main: "dist/index.js" },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+    const unusedFilePaths = relativePaths(rootDirectory, result.unusedFiles);
+
+    expect(unusedFilePaths).not.toContain("src/index.ts");
+    expect(unusedFilePaths).toContain("src/orphan.ts");
   });
 
   it("discovers config and test entries without explicit patterns", async () => {
@@ -2407,6 +2459,54 @@ describe("analyzeProject", () => {
     const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
 
     expect(result.circularDependencies).toEqual([]);
+  });
+
+  it("does not mistake shadowed import names for module-initialization reads", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": 'import { cycleA } from "./cycle-a"; console.log(cycleA);',
+        "src/cycle-a.ts": `
+          import { cycleB } from "./cycle-b";
+          {
+            const cycleB = 1;
+            console.log(cycleB);
+          }
+          ((cycleB) => console.log(cycleB))(1);
+          export const cycleA = () => cycleB();
+        `,
+        "src/cycle-b.ts": `
+          import { cycleA } from "./cycle-a";
+          export const cycleB = () => cycleA();
+        `,
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(result.circularDependencies).toEqual([]);
+  });
+
+  it("reports imported bindings read by an immediately invoked function", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": 'import { cycleA } from "./cycle-a"; console.log(cycleA);',
+        "src/cycle-a.ts": `
+          import { cycleB } from "./cycle-b";
+          (() => console.log(cycleB))();
+          export const cycleA = () => cycleB();
+        `,
+        "src/cycle-b.ts": `
+          import { cycleA } from "./cycle-a";
+          export const cycleB = () => cycleA();
+        `,
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(result.circularDependencies).toHaveLength(1);
   });
 
   it("suppresses cycles that pass through generated route trees", async () => {

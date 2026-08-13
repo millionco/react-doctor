@@ -186,10 +186,13 @@ export const markCompletePackageGraphs = ({
       getFileIdentityKey(join(packageRootDirectory, "package.json")),
     ]),
   );
+  const canonicalFilePathByModule = new Map(
+    graph.modules.map((module) => [module, toFilesystemIdentityPath(module.fileId.path)]),
+  );
   const owningPackageDirectoryByModule = new Map(
     graph.modules.map((module) => [
       module,
-      findNearestPackageDirectory(toFilesystemIdentityPath(module.fileId.path)),
+      findNearestPackageDirectory(canonicalFilePathByModule.get(module) ?? module.fileId.path),
     ]),
   );
   const rootPackageContract = readPackageContract(
@@ -204,29 +207,6 @@ export const markCompletePackageGraphs = ({
           packageManifestIdentityByRoot.get(packageRootDirectory)
       );
     });
-    if (
-      process.platform === "win32" &&
-      packageRootDirectory.includes("react-doctor-unused-file-completeness-")
-    ) {
-      process.stderr.write(
-        `${JSON.stringify({
-          packageRootDirectory,
-          packageManifestIdentity: packageManifestIdentityByRoot.get(packageRootDirectory),
-          modules: graph.modules.map((module) => ({
-            path: module.fileId.path,
-            canonicalPath: toFilesystemIdentityPath(module.fileId.path),
-            owningPackageDirectory: owningPackageDirectoryByModule.get(module),
-            owningPackageManifestIdentity:
-              owningPackageDirectoryByModule.get(module) === undefined
-                ? undefined
-                : getFileIdentityKey(
-                    join(owningPackageDirectoryByModule.get(module) ?? "", "package.json"),
-                  ),
-          })),
-          packageModulePaths: packageModules.map((module) => module.fileId.path),
-        })}\n`,
-      );
-    }
     const packageContract = readPackageContract(packageRootDirectory);
     const declaredDependencies = new Set([
       ...(rootPackageContract?.declaredDependencies ?? []),
@@ -237,7 +217,7 @@ export const markCompletePackageGraphs = ({
       (module) =>
         module.isAuthoritativeEntryPoint &&
         isSupportedAutomaticEntry(
-          module.fileId.path,
+          canonicalFilePathByModule.get(module) ?? module.fileId.path,
           owningPackageDirectoryByModule.get(module) ?? packageRootDirectory,
           declaredDependencies,
         ),
@@ -275,7 +255,7 @@ export const markCompletePackageGraphs = ({
       TEST_OR_STORY_FILE_PATTERN.test(
         relative(
           owningPackageDirectoryByModule.get(module) ?? packageRootDirectory,
-          module.fileId.path,
+          canonicalFilePathByModule.get(module) ?? module.fileId.path,
         ).replaceAll("\\", "/"),
       ),
     );

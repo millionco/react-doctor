@@ -8,6 +8,7 @@ import type {
   MemberAccess,
 } from "../types.js";
 import { collectConventionConsumedExportKeys } from "../utils/collect-convention-consumed-export-keys.js";
+import { buildExportKey } from "../utils/build-export-key.js";
 
 interface ReExportTarget {
   readonly targetIndex: number;
@@ -49,7 +50,9 @@ export const detectDeadExports = (
 
       const usageKey = `${module.fileId.path}::${exportInfo.name}`;
       if (usageMap.has(usageKey)) continue;
-      if (conventionConsumedExportKeys.has(usageKey)) continue;
+      if (conventionConsumedExportKeys.has(buildExportKey(module.fileId.path, exportInfo.name))) {
+        continue;
+      }
 
       if (module.localIdentifierReferences.includes(exportInfo.name)) continue;
 

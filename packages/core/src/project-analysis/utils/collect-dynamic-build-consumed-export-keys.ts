@@ -382,10 +382,13 @@ const collectScriptConsumedExportKeys = (
   const compilerOptions: ts.CompilerOptions = { noLib: true, noResolve: true };
   const sourceFile = ts.createSourceFile(scriptPath, source, ts.ScriptTarget.Latest, true);
   const compilerHost = ts.createCompilerHost(compilerOptions);
-  compilerHost.fileExists = (candidatePath) => candidatePath === scriptPath;
+  const scriptIdentity = getFileIdentityKey(scriptPath);
+  const isScriptPath = (candidatePath: string): boolean =>
+    getFileIdentityKey(candidatePath) === scriptIdentity;
+  compilerHost.fileExists = isScriptPath;
   compilerHost.getSourceFile = (candidatePath) =>
-    candidatePath === scriptPath ? sourceFile : undefined;
-  compilerHost.readFile = (candidatePath) => (candidatePath === scriptPath ? source : undefined);
+    isScriptPath(candidatePath) ? sourceFile : undefined;
+  compilerHost.readFile = (candidatePath) => (isScriptPath(candidatePath) ? source : undefined);
   const program = ts.createProgram({
     rootNames: [scriptPath],
     options: compilerOptions,

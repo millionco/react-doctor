@@ -349,6 +349,24 @@ describe("buildJsonReport", () => {
     expect(report.reactDetected).toBe(true);
   });
 
+  it("marks reactDetected true for Next.js without a direct React declaration", () => {
+    const nextProject: ProjectInfo = {
+      ...projectInfo,
+      reactVersion: null,
+      reactMajorVersion: null,
+      framework: "nextjs",
+    };
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [{ directory: "/repo", result: result({ project: nextProject }) }],
+      totalElapsedMilliseconds: 1200,
+    });
+    expect(report.reactDetected).toBe(true);
+  });
+
   it("omits reactDetected when nothing was scanned", () => {
     const report = buildJsonReport({
       version: "1.2.3",

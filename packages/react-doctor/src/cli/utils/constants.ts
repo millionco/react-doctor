@@ -283,10 +283,9 @@ export const METRIC = {
   // Kill metric for workspace-owned dead-code analysis. If this never fires,
   // multi-project scans do not include their root and cannot share the pass.
   scanWorkspaceDeadCodeShared: "scan.workspace_deadcode_shared",
-  // One count per completed scan where no project resolved a React /
-  // Preact runtime — the JSON report's `reactDetected: false` case. The
-  // kill metric for the vacuous-clean-scan signal: if it never fires,
-  // nobody points react-doctor at non-React targets and the surface can go.
+  // One count per completed scan where no project resolved a supported
+  // framework or library capability. The kill metric for the
+  // vacuous-clean-scan signal: if it never fires, the warning surface can go.
   scanNoReactDetected: "scan.no_react_detected",
   baselineDegraded: "baseline.degraded",
   ruleFired: "rule.fired",

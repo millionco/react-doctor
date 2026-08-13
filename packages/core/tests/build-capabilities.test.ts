@@ -5,6 +5,8 @@ import {
   getCapabilities,
   shouldEnableRule,
 } from "../src/project-info/capabilities.js";
+import { hasReactRuntime } from "../src/utils/has-react-runtime.js";
+import { hasSupportedFrameworkOrLibrary } from "../src/utils/has-supported-framework-or-library.js";
 
 const baseProject: ProjectInfo = {
   rootDirectory: "/tmp/project",
@@ -55,6 +57,91 @@ const baseProject: ProjectInfo = {
 };
 
 describe("buildCapabilities", () => {
+  it("recognizes every framework and library capability as a supported scan target", () => {
+    const plainProject: ProjectInfo = {
+      ...baseProject,
+      framework: "unknown",
+      reactVersion: null,
+      reactMajorVersion: null,
+      isPreES2023Target: true,
+    };
+    expect(hasSupportedFrameworkOrLibrary(plainProject)).toBe(false);
+
+    const supportedFrameworks: ReadonlyArray<ProjectInfo["framework"]> = [
+      "nextjs",
+      "astro",
+      "vite",
+      "cra",
+      "remix",
+      "gatsby",
+      "expo",
+      "react-native",
+      "tanstack-start",
+      "preact",
+    ];
+    for (const framework of supportedFrameworks) {
+      expect(hasSupportedFrameworkOrLibrary({ ...plainProject, framework })).toBe(true);
+    }
+
+    const supportedLibraryProjects: ReadonlyArray<ProjectInfo> = [
+      { ...plainProject, reactVersion: "19.0.0", reactMajorVersion: 19 },
+      { ...plainProject, tailwindVersion: "4.0.0" },
+      { ...plainProject, zodVersion: "4.0.0", zodMajorVersion: 4 },
+      { ...plainProject, mobxVersion: "6.0.0", mobxMajorVersion: 6 },
+      { ...plainProject, zustandVersion: "5.0.0", zustandMajorVersion: 5 },
+      { ...plainProject, hasReactCompiler: true },
+      { ...plainProject, reanimatedVersion: "4.0.0" },
+      { ...plainProject, hasTanStackQuery: true },
+      { ...plainProject, styledComponentsVersion: "6.0.0" },
+      { ...plainProject, hasI18nLibrary: true },
+      { ...plainProject, valtioVersion: "2.0.0", valtioMajorVersion: 2 },
+      { ...plainProject, hasRemotion: true },
+      { ...plainProject, hasThree: true },
+      { ...plainProject, hasReactThreeFiber: true },
+      { ...plainProject, preactVersion: "10.0.0", preactMajorVersion: 10 },
+      { ...plainProject, reactRouterVersion: "7.0.0" },
+      { ...plainProject, expoVersion: "54.0.0" },
+      { ...plainProject, hasReactNativeWorkspace: true },
+      { ...plainProject, hasSsrDependency: true },
+    ];
+    for (const project of supportedLibraryProjects) {
+      expect(hasSupportedFrameworkOrLibrary(project)).toBe(true);
+    }
+  });
+
+  it("treats React-backed frameworks as runtime evidence without a direct React version", () => {
+    for (const framework of [
+      "nextjs",
+      "tanstack-start",
+      "cra",
+      "remix",
+      "gatsby",
+      "expo",
+      "react-native",
+      "preact",
+    ] as const) {
+      const frameworkProject = {
+        ...baseProject,
+        framework,
+        reactVersion: null,
+        reactMajorVersion: null,
+      };
+      expect(hasReactRuntime(frameworkProject)).toBe(true);
+      expect(buildCapabilities(frameworkProject).has("react")).toBe(true);
+    }
+
+    for (const framework of ["vite", "astro"] as const) {
+      const frameworkProject = {
+        ...baseProject,
+        framework,
+        reactVersion: null,
+        reactMajorVersion: null,
+      };
+      expect(hasReactRuntime(frameworkProject)).toBe(false);
+      expect(buildCapabilities(frameworkProject).has("react")).toBe(false);
+    }
+  });
+
   it("emits Expo 54 only when tree shaking is enabled by default", () => {
     const expoFiftyThreeCapabilities = buildCapabilities({
       ...baseProject,

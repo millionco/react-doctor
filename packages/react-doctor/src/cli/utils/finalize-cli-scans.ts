@@ -61,10 +61,10 @@ export const finalizeCliScans = (input: FinalizeCliScansInput): void => {
     categoryFilters: input.categoryFilters,
   });
 
-  if (outcome.shouldWarnNoReactDetected) {
+  if (outcome.shouldWarnNoSupportedLibraryDetected) {
     recordCount(METRIC.scanNoReactDetected, 1);
     logger.warn(
-      `No React project detected at ${input.resolvedDirectory} — React rules were gated off; this is not the same as a clean scan.`,
+      `No supported framework or library detected at ${input.resolvedDirectory} — library-specific rules were gated off; framework-neutral rules still ran.`,
     );
   }
 

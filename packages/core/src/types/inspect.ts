@@ -389,14 +389,13 @@ export interface JsonReportV1 {
   mode: JsonReportMode;
   baselineDegraded?: boolean;
   /**
-   * Whether any scanned project resolved a React-compatible runtime (React
-   * or Preact). `false` means every React-runtime rule family was gated off,
-   * so an empty `diagnostics` array is vacuous — NOT the same as a clean
-   * React scan. Consumers gating on the report (CI, verifiers, hooks) should
-   * treat `reactDetected === false` as "wrong scan target", not "all clear"
-   * (per project, `projects[].project.reactVersion` / `preactVersion` say
-   * which roots were non-React). Absent when nothing was scanned (`projects`
-   * is empty), on error reports, and on reports from older CLI versions.
+   * Whether any scanned project resolved a React-compatible runtime directly
+   * or through a React-backed framework. `false` means every React-runtime
+   * rule family was gated off, not that the scan target was unsupported:
+   * other detected framework and library rule families still run, as do
+   * framework-neutral rules on any analyzable project. Absent when
+   * nothing was scanned (`projects` is empty), on error reports, and on
+   * reports from older CLI versions.
    */
   reactDetected?: boolean;
   diff: JsonReportDiffInfo | null;

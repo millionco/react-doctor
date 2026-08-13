@@ -205,6 +205,8 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     tanstackQueryVersion: options.tanstackQueryVersion ?? null,
     mobxVersion: null,
     styledComponentsVersion: null,
+    valtioVersion: null,
+    valtioMajorVersion: null,
     hasSsrDependency: options.hasSsrDependency ?? false,
     nextjsVersion,
     nextjsMajorVersion,

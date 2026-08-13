@@ -2,6 +2,7 @@ import { readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import fg from "fast-glob";
 import { parseSync } from "oxc-parser";
+import { MAX_PARSE_FILE_SIZE_BYTES } from "../constants.js";
 import { getIdentifierName, isOxcAstNode, type OxcAstNode } from "../utils/oxc-ast-node.js";
 
 const SOURCE_FILE_GLOB = "**/*.{ts,tsx,js,jsx,mts,mjs,cts,cjs,es6}";
@@ -214,7 +215,7 @@ const collectConsumedDirectories = (
       return;
     }
     if (!isOxcAstNode(node)) return;
-    let scope = new Map(inheritedScope);
+    let scope = inheritedScope;
     if ((node.type === "Program" || node.type === "BlockStatement") && Array.isArray(node.body)) {
       scope = extendScope(node.body, inheritedScope);
     }
@@ -224,10 +225,12 @@ const collectConsumedDirectories = (
         node.type === "ArrowFunctionExpression") &&
       Array.isArray(node.params)
     ) {
+      const functionScope = new Map(scope);
       for (const parameter of node.params) {
         const parameterName = getIdentifierName(parameter);
-        if (parameterName) scope.set(parameterName, null);
+        if (parameterName) functionScope.set(parameterName, null);
       }
+      scope = functionScope;
     }
     if (
       node.type === "CallExpression" &&
@@ -260,6 +263,7 @@ export const extractRuntimeConsumedDirectoryFiles = (directory: string): string[
   for (const sourcePath of sourcePaths) {
     let source: string;
     try {
+      if (statSync(sourcePath).size > MAX_PARSE_FILE_SIZE_BYTES) continue;
       source = readFileSync(sourcePath, "utf-8");
     } catch {
       continue;

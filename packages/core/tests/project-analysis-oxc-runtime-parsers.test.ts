@@ -4,6 +4,8 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { analyzeProject } from "../src/project-analysis/analyze-project.js";
 import { parseSourceFile } from "../src/project-analysis/collect/parse.js";
+import { extractRuntimeConsumedDirectoryFiles } from "../src/project-analysis/collect/runtime-consumed-directory-files.js";
+import { MAX_PARSE_FILE_SIZE_BYTES } from "../src/project-analysis/constants.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -96,6 +98,39 @@ describe("Oxc-backed project configuration discovery", () => {
 
     expect(result.analysisErrors).toEqual([]);
     expect(relativeUnusedPaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("skips runtime directory discovery in oversized source files", () => {
+    const rootDirectory = createProject({
+      "src/oversized-runtime.js": `
+        fs.readdirSync(path.join(process.cwd(), "src", "runtime"));
+        /* ${"x".repeat(MAX_PARSE_FILE_SIZE_BYTES)} */
+      `,
+      "src/runtime/discovered.ts": "export const discovered = true;",
+    });
+
+    expect(extractRuntimeConsumedDirectoryFiles(rootDirectory)).toEqual([]);
+  });
+
+  it("scans large scopes without copying bindings for every AST node", () => {
+    const largeScopeBindingCount = 20_000;
+    const largeScopeBindings = Array.from(
+      { length: largeScopeBindingCount },
+      (_, bindingIndex) => `const binding${bindingIndex} = ${bindingIndex};`,
+    ).join("\n");
+    const rootDirectory = createProject({
+      "src/runtime-loader.js": `
+        ${largeScopeBindings}
+        fs.readdirSync(path.join(process.cwd(), "src", "runtime"));
+      `,
+      "src/runtime/discovered.ts": "export const discovered = true;",
+    });
+
+    expect(
+      extractRuntimeConsumedDirectoryFiles(rootDirectory).map((filePath) =>
+        path.relative(rootDirectory, filePath).replaceAll("\\", "/"),
+      ),
+    ).toEqual(["src/runtime/discovered.ts"]);
   });
 
   it("resolves React Router appDirectory through static shorthand bindings", async () => {

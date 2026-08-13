@@ -157,7 +157,7 @@ export const collectConventionConsumedExportKeys = (graph: DependencyGraph): Set
   const dynamicBuildConsumedExportKeysByPackageDirectory = new Map<string, ReadonlySet<string>>();
   for (const module of graph.modules) {
     const canonicalModuleFilePath = toFilesystemIdentityPath(resolve(module.fileId.path));
-    const packageDirectory = findNearestPackageDirectory(module.fileId.path);
+    const packageDirectory = findNearestPackageDirectory(canonicalModuleFilePath);
     if (!packageDirectory) continue;
     if (!packageMetadataByDirectory.has(packageDirectory)) {
       packageMetadataByDirectory.set(packageDirectory, readPackageMetadata(packageDirectory));

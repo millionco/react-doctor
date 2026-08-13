@@ -187,7 +187,10 @@ export const markCompletePackageGraphs = ({
     ]),
   );
   const owningPackageDirectoryByModule = new Map(
-    graph.modules.map((module) => [module, findNearestPackageDirectory(module.fileId.path)]),
+    graph.modules.map((module) => [
+      module,
+      findNearestPackageDirectory(toFilesystemIdentityPath(module.fileId.path)),
+    ]),
   );
   const rootPackageContract = readPackageContract(
     sortedPackageRoots[sortedPackageRoots.length - 1] ?? "",

@@ -42,6 +42,7 @@ import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensio
 import { toPosixPath } from "../utils/to-posix-path.js";
 import { maskJavaScriptStringsAndComments } from "../utils/mask-javascript-strings-and-comments.js";
 import { extractLocalScriptFileReference } from "../utils/extract-local-script-file-reference.js";
+import { collectExecutableMarkdownFilePaths } from "../utils/collect-executable-markdown-file-paths.js";
 
 export const collectSourceFiles = async (config: ProjectAnalysisConfig): Promise<SourceFile[]> => {
   const extensions =
@@ -76,7 +77,11 @@ export const collectSourceFiles = async (config: ProjectAnalysisConfig): Promise
         })
       : [];
 
-  const files = [...new Set([...mainFiles, ...hiddenFiles].map(toPosixPath))];
+  const executableMarkdownFiles = collectExecutableMarkdownFilePaths(absoluteRoot, ignorePatterns);
+
+  const files = [
+    ...new Set([...mainFiles, ...hiddenFiles, ...executableMarkdownFiles].map(toPosixPath)),
+  ];
 
   const sortedFiles = files.sort();
 
@@ -2419,7 +2424,10 @@ const FRAMEWORK_PATTERNS: ToolingPluginDefinition[] = [
     enablers: ["@docusaurus/core"],
     enablerPrefixes: ["@docusaurus/"],
     entryPatterns: [
-      "**/*.{md,mdx}",
+      "**/*.mdx",
+      "docs/**/*.{md,mdx}",
+      "blog/**/*.{md,mdx}",
+      "versioned_docs/**/*.{md,mdx}",
       "src/pages/**/*.{ts,tsx,js,jsx}",
       "src/theme/**/*.{ts,tsx,js,jsx}",
       "src/theme/**/index.{ts,tsx,js,jsx}",

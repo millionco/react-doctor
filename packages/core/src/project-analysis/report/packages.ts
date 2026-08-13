@@ -29,11 +29,15 @@ import { matchesNodeModulesPackageReference } from "../utils/matches-node-module
 import { matchesExecutableNodeModulesPackageReference } from "../utils/matches-executable-node-modules-package-reference.js";
 import { matchesIconifyCollectionReference } from "../utils/matches-iconify-collection-reference.js";
 import { collectStylesheetImportSpecifiers } from "../utils/collect-stylesheet-import-specifiers.js";
+import { collectBindingGypPackageReferences } from "../utils/collect-binding-gyp-package-references.js";
+import { collectMarkdownModulePackageNames } from "../utils/collect-markdown-module-package-names.js";
 import { findMonorepoRoot } from "../utils/find-monorepo-root.js";
 import { extractExpoConfigPluginEntries } from "../collect/expo-config-plugin-entries.js";
 import { resolveWorkspaces } from "../collect/workspaces.js";
 import { extractKarmaConfigPackageReferences } from "../utils/extract-karma-config-package-references.js";
 import { hasExpoReactServerFunctions } from "../utils/has-expo-react-server-functions.js";
+import { hasAntfuEslintReactConfig } from "../utils/has-antfu-eslint-react-config.js";
+import { collectExecutableMarkdownFilePaths } from "../utils/collect-executable-markdown-file-paths.js";
 import {
   expandBuildScriptPaths,
   extractInvokedBuildScriptPaths,
@@ -884,6 +888,28 @@ const collectConfigReferencedPackages = (
     ) {
       referenced.add("release-it");
     }
+    if (
+      declaredNames.has("@antfu/eslint-config") &&
+      declaredNames.has("@eslint-react/eslint-plugin") &&
+      /^eslint\.config\.[cm]?[jt]s$/.test(basename(configPath))
+    ) {
+      try {
+        if (hasAntfuEslintReactConfig(readFileSync(configPath, "utf-8"))) {
+          referenced.add("@eslint-react/eslint-plugin");
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  const bindingGypFiles = globPackageFiles(rootDir, ["binding.gyp", "**/binding.gyp"], {
+    ignore: ["**/node_modules/**"],
+    dot: true,
+    deep: TOOLING_SOURCE_MAX_DEPTH,
+  });
+  for (const bindingGypPath of bindingGypFiles) {
+    addCollectedMatchesFromFile(bindingGypPath, collectBindingGypPackageReferences);
   }
 
   // Dot-directory tooling source trees (a dumi docs theme, storybook config
@@ -1195,7 +1221,7 @@ const extractExtendsPackageName = (extendsValue: string): string | undefined => 
 };
 
 const SOURCE_FILE_GLOBS = [
-  "**/*.{ts,tsx,js,jsx,mts,mjs,cts,cjs,css,scss,sass,less,styl,html,vue,svelte,astro,coffee,es6,sol,gradle,xml,yml,yaml,patch}",
+  "**/*.{ts,tsx,js,jsx,mts,mjs,cts,cjs,css,scss,sass,less,styl,html,mdx,vue,svelte,astro,coffee,es6,sol,gradle,xml,yml,yaml,patch}",
 ];
 
 const SOURCE_FILE_IGNORES = [
@@ -1215,11 +1241,14 @@ const scanSourceFilesForPackageImports = (
   const found = new Set<string>();
   if (candidatePackages.size === 0) return found;
 
-  const sourceFiles = globPackageFiles(rootDir, SOURCE_FILE_GLOBS, {
+  const regularSourceFiles = globPackageFiles(rootDir, SOURCE_FILE_GLOBS, {
     ignore: SOURCE_FILE_IGNORES,
     dot: true,
     deep: 15,
   });
+  const executableMarkdownFiles = collectExecutableMarkdownFilePaths(rootDir);
+  const executableMarkdownFileSet = new Set(executableMarkdownFiles);
+  const sourceFiles = [...new Set([...regularSourceFiles, ...executableMarkdownFiles])];
 
   for (const filePath of sourceFiles) {
     if (candidatePackages.size === 0) break;
@@ -1227,6 +1256,9 @@ const scanSourceFilesForPackageImports = (
       const content = readFileSync(filePath, "utf-8");
       const isPatchFile = filePath.endsWith(".patch");
       const isStylesheet = /\.(?:css|scss|sass)$/.test(filePath);
+      const isMarkdown = /\.mdx?$/.test(filePath);
+      const isExecutableMarkdown =
+        filePath.endsWith(".mdx") || executableMarkdownFileSet.has(filePath);
       const stylesheetPackages = isStylesheet
         ? new Set(
             collectStylesheetImportSpecifiers(content)
@@ -1235,7 +1267,11 @@ const scanSourceFilesForPackageImports = (
           )
         : new Set<string>();
       const importedPackageNames =
-        isStylesheet || isPatchFile ? new Set<string>() : collectPackageImportNames(content);
+        isStylesheet || isPatchFile || (isMarkdown && !isExecutableMarkdown)
+          ? new Set<string>()
+          : isExecutableMarkdown
+            ? collectMarkdownModulePackageNames(content)
+            : collectPackageImportNames(content);
       const usesJavaScriptSyntax = /\.(?:[cm]?[jt]sx?|coffee|es6|sol)$/.test(filePath);
       for (const packageName of candidatePackages) {
         const escapedPatchPackageName = packageName
@@ -1260,10 +1296,11 @@ const scanSourceFilesForPackageImports = (
           : isPatchFile
             ? hasPatchTargetReference
             : importedPackageNames.has(packageName) ||
-              (usesJavaScriptSyntax
-                ? matchesExecutableNodeModulesPackageReference(content, packageName)
-                : matchesNodeModulesPackageReference(content, packageName)) ||
-              matchesIconifyCollectionReference(content, packageName);
+              (!isMarkdown &&
+                ((usesJavaScriptSyntax
+                  ? matchesExecutableNodeModulesPackageReference(content, packageName)
+                  : matchesNodeModulesPackageReference(content, packageName)) ||
+                  matchesIconifyCollectionReference(content, packageName)));
         if (isReferenced) {
           found.add(packageName);
           candidatePackages.delete(packageName);

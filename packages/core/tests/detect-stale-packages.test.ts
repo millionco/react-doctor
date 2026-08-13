@@ -198,6 +198,69 @@ describe("detectStalePackages", () => {
     expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["nestedoption", "unused-package"]);
   });
 
+  it("credits the React plugin enabled by the Antfu ESLint config", () => {
+    const dependencies = {
+      "@antfu/eslint-config": "2.22.2",
+      "@eslint-react/eslint-plugin": "1.0.0",
+      "unused-package": "1.0.0",
+    };
+    const rootDirectory = createProject(
+      {
+        "eslint.config.mjs": `
+          import buildEslintConfig from "@antfu/eslint-config";
+          export default buildEslintConfig({ react: true });
+        `,
+      },
+      dependencies,
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
+  it("credits the React plugin enabled with Antfu React options", () => {
+    const rootDirectory = createProject(
+      {
+        "eslint.config.mjs": `
+          import antfu from "@antfu/eslint-config";
+          export default antfu({ react: { overrides: { "react/example": "off" } } });
+        `,
+      },
+      {
+        "@antfu/eslint-config": "2.22.2",
+        "@eslint-react/eslint-plugin": "1.0.0",
+      },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual([]);
+  });
+
+  it("does not infer the Antfu React plugin from false, nested, commented, or shadowed options", () => {
+    const dependencies = {
+      "@antfu/eslint-config": "2.22.2",
+      "@eslint-react/eslint-plugin": "1.0.0",
+    };
+    const rootDirectory = createProject(
+      {
+        "eslint.config.mjs": `
+          import buildEslintConfig from "@antfu/eslint-config";
+          // buildEslintConfig({ react: true });
+          const example = "buildEslintConfig({ react: true })";
+          const shadowedCall = () => {
+            const buildEslintConfig = () => [];
+            return buildEslintConfig({ react: true });
+          };
+          const uncalledExample = () => buildEslintConfig({ react: true });
+          if (false) buildEslintConfig({ react: true });
+          console.log(example, shadowedCall, uncalledExample);
+          export default buildEslintConfig({ react: false, options: { react: true } });
+        `,
+      },
+      dependencies,
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["@eslint-react/eslint-plugin"]);
+  });
+
   it("does not credit package names from comments or strings in unrelated files", () => {
     const rootDirectory = createProject(
       {
@@ -303,6 +366,70 @@ describe("detectStalePackages", () => {
     expect(collectUnusedDependencyNames(usedRootDirectory)).toEqual([]);
   });
 
+  it("credits node-addon-api required by authored binding.gyp files", () => {
+    const dependencies = {
+      "node-active-window": "1.0.0",
+      "node-addon-api": "8.2.2",
+      "unused-package": "1.0.0",
+    };
+    const rootDirectory = createProject(
+      {
+        "package.json": JSON.stringify({
+          dependencies,
+          overrides: {
+            "node-addon-api@<8.2.2": "8.2.2",
+            "node-active-window": {
+              "node-addon-api": "$node-addon-api",
+            },
+          },
+        }),
+        "src/modules/node-active-window/binding.gyp": `
+          {
+            "targets": [{
+              "include_dirs": [
+                "<!@(node -p \\"require('node-addon-api').include\\")"
+              ],
+              "dependencies": [
+                "<!(node -p \\"require('node-addon-api').gyp\\")",
+                "<!(node -p \\"require('node-addon-api').targets\\"):node_addon_api"
+              ]
+            }]
+          }
+        `,
+      },
+      dependencies,
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual([
+      "node-active-window",
+      "unused-package",
+    ]);
+  });
+
+  it("does not infer node-addon-api from overrides, comments, or inert binding.gyp strings", () => {
+    const dependencies = { "node-addon-api": "8.2.2" };
+    const rootDirectory = createProject(
+      {
+        "package.json": JSON.stringify({
+          dependencies,
+          overrides: { "node-addon-api@<8.2.2": "8.2.2" },
+        }),
+        "binding.gyp": `
+          {
+            "note": "require('node-addon-api').include",
+            "options": {
+              "command": "node -p require('node-addon-api').gyp"
+            }
+          } # "<!@(node -p \\"require('node-addon-api').include\\")"
+          {} // "<!(node -p \\"require('node-addon-api').gyp\\")"
+        `,
+      },
+      dependencies,
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["node-addon-api"]);
+  });
+
   it("credits dynamic imports in tracked HTML entry files", () => {
     const rootDirectory = createProject(
       { "index.html": `<script type="module">import("react-grab");</script>` },
@@ -395,6 +522,130 @@ describe("detectStalePackages", () => {
     expect(collectUnusedDependencyNames(rootDirectory)).toEqual([
       "documentation-only-package",
       "patch-text-only-package",
+    ]);
+  });
+
+  it.each(["md", "mdx"])(
+    "credits live imports in authored .%s documents without crediting examples or prose",
+    (extension) => {
+      const rootDirectory = createProject(
+        {
+          [`docs/player.${extension}`]: [
+            "---",
+            "title: Player",
+            "---",
+            'import ReactPlayer from "react-player";',
+            "",
+            "<!--",
+            'import CommentedPlayer from "commented-player";',
+            "-->",
+            "```tsx",
+            'import FencedPlayer from "fenced-player";',
+            "```",
+            '    import IndentedPlayer from "indented-player";',
+            '`import InlinePlayer from "inline-player";`',
+            "<ReactPlayer />",
+          ].join("\n"),
+        },
+        {
+          "@docusaurus/core": "1.0.0",
+          "commented-player": "1.0.0",
+          "fenced-player": "1.0.0",
+          "indented-player": "1.0.0",
+          "inline-player": "1.0.0",
+          "react-player": "1.0.0",
+        },
+      );
+
+      expect(collectUnusedDependencyNames(rootDirectory)).toEqual([
+        "commented-player",
+        "fenced-player",
+        "indented-player",
+        "inline-player",
+      ]);
+    },
+  );
+
+  it("does not credit import examples or frontmatter in plain Markdown", () => {
+    const rootDirectory = createProject(
+      {
+        "README.md": [
+          "---",
+          "description: |",
+          '  import FrontmatterExample from "frontmatter-package"',
+          "---",
+          'import Example from "example-package";',
+        ].join("\n"),
+      },
+      {
+        "example-package": "1.0.0",
+        "frontmatter-package": "1.0.0",
+      },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual([
+      "example-package",
+      "frontmatter-package",
+    ]);
+  });
+
+  it("credits multiline module statements in authored Markdown", () => {
+    const rootDirectory = createProject(
+      {
+        "docs/modules.mdx": [
+          "import {",
+          "  NamedPlayer",
+          "}",
+          'from "named-player"',
+          "",
+          "import DefaultPlayer",
+          'from "default-player"',
+          "",
+          "export {",
+          "  ExportedPlayer",
+          "}",
+          'from "exported-player"',
+        ].join("\n"),
+      },
+      {
+        "default-player": "1.0.0",
+        "exported-player": "1.0.0",
+        "named-player": "1.0.0",
+        "unused-package": "1.0.0",
+      },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
+  it("normalizes Babel module-prefixed preset specifiers only in Babel config", () => {
+    const rootDirectory = createProject(
+      {
+        "babel.config.js": `
+          module.exports = {
+            presets: [
+              "module:metro-react-native-babel-preset",
+              ["module:real-plugin", { plugins: ["module:nested-option-package"] }],
+            ],
+            label: "module:not-a-babel-preset",
+            // "module:commented-preset"
+          };
+        `,
+        "vite.config.js": `export default { label: "module:not-a-babel-preset" };`,
+      },
+      {
+        "commented-preset": "1.0.0",
+        "metro-react-native-babel-preset": "1.0.0",
+        "nested-option-package": "1.0.0",
+        "not-a-babel-preset": "1.0.0",
+        "real-plugin": "1.0.0",
+      },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual([
+      "commented-preset",
+      "nested-option-package",
+      "not-a-babel-preset",
     ]);
   });
 

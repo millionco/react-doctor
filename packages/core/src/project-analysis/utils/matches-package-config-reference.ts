@@ -6,6 +6,36 @@ import { extractPackageName } from "./package-name.js";
 import { stripCoffeeScriptComment } from "./strip-coffee-script-comment.js";
 
 const STRUCTURED_TEXT_EXTENSIONS = new Set([".toml", ".yaml", ".yml"]);
+const BABEL_CONFIG_FILE_PATTERN = /(?:^|[/\\])(?:babel\.config\.[^/\\]+|\.babelrc(?:\.[^/\\]+)?)$/;
+const BABEL_MODULE_PREFIX = "module:";
+
+const isBabelPluginOrPresetSpecifier = (node: ts.StringLiteralLike): boolean => {
+  const parent = ts.isArrayLiteralExpression(node.parent) ? node.parent : undefined;
+  if (!parent) return false;
+  const containingArray =
+    parent.elements[0] === node && ts.isArrayLiteralExpression(parent.parent)
+      ? parent.parent
+      : parent;
+  const property = containingArray.parent;
+  let ancestor: ts.Node | undefined = property;
+  while (ancestor && !ts.isSourceFile(ancestor)) {
+    const parentNode: ts.Node = ancestor.parent;
+    if (
+      ts.isObjectLiteralExpression(ancestor) &&
+      ts.isArrayLiteralExpression(parentNode) &&
+      parentNode.elements[0] !== ancestor &&
+      ts.isStringLiteralLike(parentNode.elements[0])
+    ) {
+      return false;
+    }
+    ancestor = parentNode;
+  }
+  return (
+    ts.isPropertyAssignment(property) &&
+    (getObjectLiteralElementName(property) === "plugins" ||
+      getObjectLiteralElementName(property) === "presets")
+  );
+};
 
 const collectStructuredTextPackageReferences = (content: string): Set<string> => {
   const uncommentedContent = content.split("\n").map(stripCoffeeScriptComment).join("\n");
@@ -39,7 +69,13 @@ export const collectPackageConfigReferences = (filePath: string, content: string
       }
     }
     if (ts.isStringLiteralLike(node)) {
-      const packageName = extractPackageName(node.text);
+      const specifier =
+        BABEL_CONFIG_FILE_PATTERN.test(filePath) &&
+        node.text.startsWith(BABEL_MODULE_PREFIX) &&
+        isBabelPluginOrPresetSpecifier(node)
+          ? node.text.slice(BABEL_MODULE_PREFIX.length)
+          : node.text;
+      const packageName = extractPackageName(specifier);
       if (packageName) packageNames.add(packageName);
       return;
     }

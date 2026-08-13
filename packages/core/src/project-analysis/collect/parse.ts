@@ -39,6 +39,7 @@ import { getIdentifierName } from "../utils/oxc-ast-node.js";
 import { isGeneratedSource } from "../utils/is-generated-source.js";
 import { collectStylesheetImportSpecifiers } from "../utils/collect-stylesheet-import-specifiers.js";
 import { extractJitiLoadReferences } from "../utils/extract-jiti-load-references.js";
+import { extractMarkdownModuleStatements } from "../utils/extract-markdown-module-statements.js";
 
 export interface ParsedSource extends SourceModuleAnalysis {
   errors: ProjectAnalysisError[];
@@ -101,76 +102,6 @@ const extractRecoveryImports = (filePath: string, sourceText: string): ImportRef
     });
   }
   return imports;
-};
-
-const extractMdxImportsExports = (sourceText: string): string => {
-  const statements: string[] = [];
-  let isInMultiline = false;
-  let braceDepth = 0;
-  let fenceMarker: string | undefined;
-  let fenceLength = 0;
-  let isInHtmlComment = false;
-
-  for (const line of sourceText.split("\n")) {
-    const trimmedLine = line.trim();
-    const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
-    if (fenceMatch) {
-      const nextFenceMarker = fenceMatch[1][0];
-      if (!fenceMarker) {
-        fenceMarker = nextFenceMarker;
-        fenceLength = fenceMatch[1].length;
-      } else if (
-        nextFenceMarker === fenceMarker &&
-        fenceMatch[1].length >= fenceLength &&
-        fenceMatch[2].trim().length === 0
-      ) {
-        fenceMarker = undefined;
-        fenceLength = 0;
-      }
-      continue;
-    }
-    if (fenceMarker) continue;
-    if (isInHtmlComment) {
-      if (line.includes("-->")) isInHtmlComment = false;
-      continue;
-    }
-    if (line.trimStart().startsWith("<!--")) {
-      isInHtmlComment = !line.includes("-->");
-      continue;
-    }
-    if (!isInMultiline && /^(?: {4}|\t)/.test(line)) continue;
-    if (isInMultiline) {
-      statements.push(line);
-      for (const character of trimmedLine) {
-        if (character === "{") braceDepth++;
-        if (character === "}") braceDepth--;
-      }
-      const hasFromClause =
-        trimmedLine.includes(" from ") ||
-        trimmedLine.includes(" from'") ||
-        trimmedLine.includes(' from"');
-      if (braceDepth <= 0 || trimmedLine.endsWith(";") || hasFromClause) {
-        isInMultiline = false;
-        braceDepth = 0;
-      }
-    } else if (
-      trimmedLine.startsWith("import ") ||
-      trimmedLine.startsWith("import{") ||
-      trimmedLine.startsWith("export ") ||
-      trimmedLine.startsWith("export{")
-    ) {
-      statements.push(line);
-      for (const character of trimmedLine) {
-        if (character === "{") braceDepth++;
-        if (character === "}") braceDepth--;
-      }
-      if (braceDepth > 0 && !trimmedLine.includes(" from ")) {
-        isInMultiline = true;
-      }
-    }
-  }
-
-  return statements.join("\n");
 };
 
 const ASTRO_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---/;
@@ -668,13 +599,13 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
   const imports: ImportReference[] = [];
   const exports: ExportReference[] = [];
 
-  const isMdx = filePath.endsWith(".mdx");
+  const isMdx = filePath.endsWith(".mdx") || filePath.endsWith(".md");
   const isAstro = filePath.endsWith(".astro");
   const isVue = filePath.endsWith(".vue");
   const isSvelte = filePath.endsWith(".svelte");
   const isPreprocessed = isMdx || isAstro || isVue || isSvelte;
   const textToParse = isMdx
-    ? extractMdxImportsExports(sourceText)
+    ? extractMarkdownModuleStatements(sourceText)
     : isAstro
       ? extractAstroSources(sourceText)
       : isVue
@@ -684,7 +615,7 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
           : sourceText;
   const parseFileName =
     isMdx || isAstro || isVue || isSvelte
-      ? filePath.replace(/\.(mdx|astro|vue|svelte)$/, ".tsx")
+      ? filePath.replace(/\.(md|mdx|astro|vue|svelte)$/, ".tsx")
       : filePath;
 
   let result: ReturnType<typeof parseSync>;

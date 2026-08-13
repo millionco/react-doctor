@@ -1817,6 +1817,40 @@ describe("analyzeProject", () => {
     );
   });
 
+  it("follows live imports from Docusaurus Markdown content without treating README examples as code", async () => {
+    const rootDirectory = createProject(
+      {
+        "docs/page.md": `import "../src/player";`,
+        "README.md": `import "./src/readme-example";`,
+        "src/player.ts": "export const player = true;",
+        "src/readme-example.ts": "export const example = true;",
+      },
+      { dependencies: { "@docusaurus/core": "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain("src/readme-example.ts");
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain("src/player.ts");
+  });
+
+  it("honors configured ignores when collecting executable Docusaurus Markdown", async () => {
+    const rootDirectory = createProject(
+      {
+        "docs/ignored/page.md": `import "../../src/ignored-player";`,
+        "src/ignored-player.ts": "export const player = true;",
+      },
+      { dependencies: { "@docusaurus/core": "1.0.0" } },
+    );
+
+    const result = await analyzeProject({
+      rootDirectory,
+      ignorePatterns: ["docs/ignored/**"],
+    });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain("src/ignored-player.ts");
+  });
+
   it("credits known binary aliases and release config plugins without guessing wrapper peers", async () => {
     const rootDirectory = createProject(
       {
@@ -2720,6 +2754,7 @@ describe("analyzeProject", () => {
           "export function FencedExample(",
           "```",
           'import { Demo } from "./demo";',
+          "",
           "<Demo />",
         ].join("\n"),
         "src/demo.tsx": "export const Demo = () => null;",

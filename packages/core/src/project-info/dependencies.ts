@@ -359,7 +359,7 @@ export const hasReactDependency = (packageJson: PackageJson): boolean => {
   );
 };
 
-export const hasReactOrThreeDependency = (packageJson: PackageJson): boolean =>
+export const hasSupportedProjectDependency = (packageJson: PackageJson): boolean =>
   hasReactDependency(packageJson) ||
   THREE_DEPENDENCY_NAMES.some(
     (packageName) => getDependencySpec(packageJson, packageName) !== null,

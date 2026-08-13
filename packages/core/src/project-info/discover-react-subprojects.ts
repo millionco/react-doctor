@@ -2,7 +2,7 @@ import * as path from "node:path";
 import { IGNORED_DIRECTORIES } from "./constants.js";
 import type { PackageJson, WorkspacePackage } from "../types/index.js";
 import { isDirectory, isFile, readDirectoryEntries } from "./fs-utils.js";
-import { hasReactOrThreeDependency } from "./dependencies.js";
+import { hasSupportedProjectDependency } from "./dependencies.js";
 import { readPackageJson } from "./package-json.js";
 import {
   getNxWorkspaceDirectories,
@@ -19,7 +19,7 @@ const toSupportedWorkspacePackages = (directories: string[]): WorkspacePackage[]
     if (!isFile(packageJsonPath)) continue;
 
     const packageJson: PackageJson = readPackageJson(packageJsonPath);
-    if (!hasReactOrThreeDependency(packageJson)) continue;
+    if (!hasSupportedProjectDependency(packageJson)) continue;
 
     const name = packageJson.name ?? path.basename(directory);
     packages.push({ name, directory });
@@ -79,7 +79,7 @@ const discoverSupportedSubprojectsByFilesystem = (rootDirectory: string): Worksp
     const packageJsonPath = path.join(currentDirectory, "package.json");
     if (isFile(packageJsonPath)) {
       const packageJson = readPackageJson(packageJsonPath);
-      if (hasReactOrThreeDependency(packageJson)) {
+      if (hasSupportedProjectDependency(packageJson)) {
         const name = packageJson.name ?? path.basename(currentDirectory);
         packages.push({ name, directory: currentDirectory });
       }

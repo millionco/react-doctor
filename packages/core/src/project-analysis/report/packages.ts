@@ -42,6 +42,7 @@ import { collectStencilCompanionPackageNames } from "../utils/collect-stencil-co
 import { hasSanityV2CoreContract } from "../utils/has-sanity-v2-core-contract.js";
 import { collectSanityV2PackageNames } from "../utils/collect-sanity-v2-package-names.js";
 import { collectReactNativeConfigPackageNames } from "../utils/collect-react-native-config-package-names.js";
+import { collectInstalledAgentSkillPackageNames } from "../utils/collect-installed-agent-skill-package-names.js";
 import {
   expandBuildScriptPaths,
   extractInvokedBuildScriptPaths,
@@ -268,7 +269,15 @@ export const detectStalePackages = (
     );
     for (const packageName of configReferenced) markPackageUsed(packageName);
 
-    const tsconfigReferenced = collectTsconfigReferencedPackages(configSearchRoot, declaredNames);
+    const tsconfigReferenced = collectTsconfigReferencedPackages(
+      configSearchRoot,
+      config.rootDir,
+      declaredNames,
+      {
+        ...dependencies,
+        ...devDependencies,
+      },
+    );
     for (const packageName of tsconfigReferenced) markPackageUsed(packageName);
 
     const { packageNames: expoPluginPackageNames } = extractExpoConfigPluginEntries(
@@ -348,6 +357,13 @@ export const detectStalePackages = (
     directlyImportedPackageNames,
   );
   for (const packageName of projectConventionReferenced) markPackageUsed(packageName);
+
+  for (const packageName of collectInstalledAgentSkillPackageNames(
+    nodeModulesSearchRoots,
+    declaredNames,
+  )) {
+    markPackageUsed(packageName);
+  }
 
   if (declaredNames.has("react") && declaredNames.has("react-dom")) {
     const packageJsonPath = resolve(config.rootDir, "package.json");
@@ -1179,12 +1195,14 @@ const TSCONFIG_GLOBS = [
 ];
 
 const collectTsconfigReferencedPackages = (
-  rootDir: string,
+  configSearchRoot: string,
+  manifestRoot: string,
   declaredPackageNames: ReadonlySet<string>,
+  declaredDependencySpecifiers: Readonly<Record<string, string>>,
 ): Set<string> => {
   const referenced = new Set<string>();
 
-  const tsconfigFiles = globPackageFiles(rootDir, TSCONFIG_GLOBS, {
+  const tsconfigFiles = globPackageFiles(configSearchRoot, TSCONFIG_GLOBS, {
     ignore: ["**/node_modules/**"],
     dot: false,
     deep: 4,
@@ -1210,6 +1228,33 @@ const collectTsconfigReferencedPackages = (
       }
 
       const compilerOptions = parsed.compilerOptions;
+      if (compilerOptions?.paths && typeof compilerOptions.paths === "object") {
+        const pathsBaseDirectory =
+          typeof compilerOptions.baseUrl === "string"
+            ? resolve(dirname(tsconfigPath), compilerOptions.baseUrl)
+            : dirname(tsconfigPath);
+        for (const [pathPattern, pathTargets] of Object.entries(compilerOptions.paths)) {
+          const packageName = pathPattern.endsWith("/*") ? pathPattern.slice(0, -2) : pathPattern;
+          const localSpecifier = declaredDependencySpecifiers[packageName];
+          if (!localSpecifier?.startsWith("file:") || !Array.isArray(pathTargets)) continue;
+          const localDependencyDirectory = resolve(
+            manifestRoot,
+            localSpecifier.slice("file:".length),
+          );
+          const hasTargetInsideLocalDependency = pathTargets.some((pathTarget) => {
+            if (typeof pathTarget !== "string") return false;
+            const targetRelativePath = relative(
+              localDependencyDirectory,
+              resolve(pathsBaseDirectory, pathTarget),
+            );
+            return (
+              !isAbsolute(targetRelativePath) &&
+              targetRelativePath.split(/[\\/]/).every((pathSegment) => pathSegment !== "..")
+            );
+          });
+          if (hasTargetInsideLocalDependency) referenced.add(packageName);
+        }
+      }
       if (compilerOptions?.jsxImportSource && typeof compilerOptions.jsxImportSource === "string") {
         referenced.add(compilerOptions.jsxImportSource);
       }

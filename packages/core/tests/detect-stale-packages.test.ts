@@ -1377,4 +1377,154 @@ describe("detectStalePackages", () => {
 
     expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["dormant"]);
   });
+
+  it("credits packages imported by installed agent skill code", () => {
+    const rootDirectory = createProject(
+      {
+        "skills-lock.json": JSON.stringify({ skills: { "media-skill": {} } }),
+        ".agents/skills/media-skill/SKILL.md": "Read the routed rule.",
+        ".agents/skills/media-skill/rules/audio.md": `Use this implementation:
+
+\`\`\`tsx
+import { visualizeAudio } from "@example/media-utils";
+\`\`\``,
+      },
+      { "@example/media-utils": "1.0.0", "unused-package": "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
+  it("does not credit code in an uninstalled agent skill", () => {
+    const rootDirectory = createProject(
+      {
+        "skills-lock.json": JSON.stringify({ skills: {} }),
+        ".agents/skills/media-skill/SKILL.md": `\`\`\`tsx
+import { visualizeAudio } from "@example/media-utils";
+\`\`\``,
+      },
+      { "@example/media-utils": "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["@example/media-utils"]);
+  });
+
+  it("credits packages imported by installed agent skill source files", () => {
+    const rootDirectory = createProject(
+      {
+        "skills-lock.json": JSON.stringify({ skills: { "media-skill": {} } }),
+        ".agents/skills/media-skill/SKILL.md": "Read the implementation.",
+        ".agents/skills/media-skill/assets/audio.tsx": [
+          'require("@example/require-utils");',
+          'import("@example/dynamic-utils");',
+          'type Media = import("@example/type-utils").Media;',
+          'import media = require("@example/import-equals-utils");',
+          "require(`@example/require-template-utils`);",
+          "import(`@example/dynamic-template-utils`);",
+        ].join("\n"),
+      },
+      {
+        "@example/require-utils": "1.0.0",
+        "@example/dynamic-utils": "1.0.0",
+        "@example/type-utils": "1.0.0",
+        "@example/import-equals-utils": "1.0.0",
+        "@example/require-template-utils": "1.0.0",
+        "@example/dynamic-template-utils": "1.0.0",
+      },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual([]);
+  });
+
+  it("credits imports in installed agent skill code fragments", () => {
+    const rootDirectory = createProject(
+      {
+        "skills-lock.json": JSON.stringify({ skills: { "media-skill": {} } }),
+        ".agents/skills/media-skill/SKILL.md": `\`\`\`tsx
+return <Visualizer />;
+import { visualizeAudio } from "@example/media-utils";
+\`\`\``,
+      },
+      { "@example/media-utils": "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual([]);
+  });
+
+  it("credits a local file dependency mapped to its source by tsconfig paths", () => {
+    const rootDirectory = createProject(
+      {
+        "packages/example/package.json": JSON.stringify({
+          dependencies: { "local-package": "file:.." },
+        }),
+        "packages/example/tsconfig.json": JSON.stringify({
+          compilerOptions: { paths: { "local-package": ["../src/index"] } },
+        }),
+        "packages/src/index.ts": "export const value = 1;",
+      },
+      {},
+    );
+    const exampleDirectory = path.join(rootDirectory, "packages/example");
+
+    expect(collectUnusedDependencyNames(exampleDirectory)).toEqual([]);
+  });
+
+  it("does not credit a local file dependency mapped outside its target", () => {
+    const rootDirectory = createProject(
+      {
+        "packages/example/package.json": JSON.stringify({
+          dependencies: { "local-package": "file:../local-package" },
+        }),
+        "packages/example/tsconfig.json": JSON.stringify({
+          compilerOptions: { paths: { "local-package": ["../../unrelated/index"] } },
+        }),
+        "packages/local-package/package.json": JSON.stringify({ name: "local-package" }),
+        "unrelated/index.ts": "export const value = 1;",
+      },
+      {},
+    );
+    const exampleDirectory = path.join(rootDirectory, "packages/example");
+
+    expect(collectUnusedDependencyNames(exampleDirectory)).toEqual(["local-package"]);
+  });
+
+  it("resolves local file dependency wildcard paths from tsconfig baseUrl", () => {
+    const rootDirectory = createProject(
+      {
+        "packages/example/package.json": JSON.stringify({
+          dependencies: { "local-package": "file:../local-package" },
+        }),
+        "packages/example/tsconfig.json": JSON.stringify({
+          compilerOptions: {
+            baseUrl: "../local-package",
+            paths: { "local-package/*": ["src/*"] },
+          },
+        }),
+        "packages/local-package/src/index.ts": "export const value = 1;",
+      },
+      {},
+    );
+    const exampleDirectory = path.join(rootDirectory, "packages/example");
+
+    expect(collectUnusedDependencyNames(exampleDirectory)).toEqual([]);
+  });
+
+  it("resolves local file dependencies from a monorepo tsconfig", () => {
+    const rootDirectory = createProject(
+      {
+        "pnpm-workspace.yaml": "packages:\n  - packages/*\n",
+        "tsconfig.json": JSON.stringify({
+          compilerOptions: { paths: { "local-package": ["packages/local-package/src/index"] } },
+        }),
+        "packages/example/package.json": JSON.stringify({
+          dependencies: { "local-package": "file:../local-package" },
+        }),
+        "packages/local-package/src/index.ts": "export const value = 1;",
+      },
+      {},
+    );
+    const exampleDirectory = path.join(rootDirectory, "packages/example");
+
+    expect(collectUnusedDependencyNames(exampleDirectory)).toEqual([]);
+  });
 });

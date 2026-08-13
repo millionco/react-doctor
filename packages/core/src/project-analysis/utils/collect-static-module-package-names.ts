@@ -37,12 +37,21 @@ export const collectStaticModulePackageNames = (sourceText: string): Set<string>
     }
   }
 
-  const visitNode = (value: unknown): void => {
+  const visitNode = (value: unknown, isInTypeScriptModuleBlock = false): void => {
     if (Array.isArray(value)) {
-      for (const child of value) visitNode(child);
+      for (const child of value) visitNode(child, isInTypeScriptModuleBlock);
       return;
     }
     if (!isOxcAstNode(value)) return;
+    if (
+      isInTypeScriptModuleBlock &&
+      (value.type === "ImportDeclaration" ||
+        value.type === "ExportNamedDeclaration" ||
+        value.type === "ExportAllDeclaration")
+    ) {
+      const sourceValue = getStaticSpecifier(value.source);
+      if (sourceValue) addSpecifier(sourceValue);
+    }
     if (value.type === "ImportExpression" || value.type === "TSImportType") {
       const sourceValue = getStaticSpecifier(value.source);
       if (sourceValue) addSpecifier(sourceValue);
@@ -62,7 +71,11 @@ export const collectStaticModulePackageNames = (sourceText: string): Set<string>
       const argumentValue = getStaticSpecifier(value.arguments[0]);
       if (argumentValue) addSpecifier(argumentValue);
     }
-    for (const child of Object.values(value)) visitNode(child);
+    const childIsInTypeScriptModuleBlock =
+      isInTypeScriptModuleBlock || value.type === "TSModuleBlock";
+    for (const child of Object.values(value)) {
+      visitNode(child, childIsInTypeScriptModuleBlock);
+    }
   };
   visitNode(parsedModule.program);
   return packageNames;

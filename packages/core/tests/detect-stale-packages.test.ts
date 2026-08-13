@@ -141,6 +141,22 @@ describe("detectStalePackages", () => {
     expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
   });
 
+  it("credits imports nested in ambient module declarations", () => {
+    const rootDirectory = createProject(
+      {
+        "types/turndown-plugin-gfm.d.ts": `
+          declare module "joplin-turndown-plugin-gfm" {
+            import { Plugin } from "turndown";
+            export const gfm: Plugin;
+          }
+        `,
+      },
+      { turndown: "1.0.0", "unused-package": "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
   it("credits critters when exported Next config enables CSS optimization", () => {
     const rootDirectory = createProject(
       {
@@ -971,6 +987,9 @@ describe("detectStalePackages", () => {
           "```ts twoslash",
           'import type { Node } from "@babel/types";',
           'import render from "estree-to-babel";',
+          "/**",
+          " * @import {File} from 'jsdoc-import-package'",
+          " */",
           "```",
           "",
           "```ts",
@@ -982,6 +1001,7 @@ describe("detectStalePackages", () => {
         "@babel/types": "1.0.0",
         "documentation-only-package": "1.0.0",
         "estree-to-babel": "1.0.0",
+        "jsdoc-import-package": "1.0.0",
       },
     );
 

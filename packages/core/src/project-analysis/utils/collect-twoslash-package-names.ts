@@ -1,5 +1,7 @@
 import { fromMarkdown } from "mdast-util-from-markdown";
+import ts from "typescript";
 import { collectStaticModulePackageNames } from "./collect-static-module-package-names.js";
+import { extractPackageName } from "./package-name.js";
 
 const collectTwoslashSources = (value: unknown, sources: string[]): void => {
   if (!value || typeof value !== "object") return;
@@ -27,6 +29,22 @@ export const collectTwoslashPackageNames = (sourceText: string): Set<string> => 
       for (const packageName of collectStaticModulePackageNames(source)) {
         packageNames.add(packageName);
       }
+      const sourceFile = ts.createSourceFile(
+        "twoslash-source.js",
+        source,
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.JS,
+      );
+      const visitNode = (node: ts.Node): void => {
+        for (const tag of ts.getJSDocTags(node)) {
+          if (!ts.isJSDocImportTag(tag) || !ts.isStringLiteralLike(tag.moduleSpecifier)) continue;
+          const packageName = extractPackageName(tag.moduleSpecifier.text);
+          if (packageName) packageNames.add(packageName);
+        }
+        ts.forEachChild(node, visitNode);
+      };
+      visitNode(sourceFile);
     } catch {
       continue;
     }

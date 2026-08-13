@@ -20,7 +20,7 @@ export const detectDeadExports = (
   platformSiblingIndex: ReadonlyMap<number, ReadonlyArray<number>> = new Map(),
 ): UnusedExport[] => {
   const usageMap = buildUsageMap(graph, platformSiblingIndex);
-  const conventionConsumedExportKeys = collectConventionConsumedExportKeys(graph, config.rootDir);
+  const conventionConsumedExportKeys = collectConventionConsumedExportKeys(graph);
   const unusedExports: UnusedExport[] = [];
 
   for (const module of graph.modules) {

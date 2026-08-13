@@ -1,11 +1,10 @@
-import { statSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { toPosixPath } from "./to-posix-path.js";
 
 export const getFileIdentityKey = (filePath: string): string => {
   try {
-    const fileStats = statSync(filePath);
-    return `${fileStats.dev}:${fileStats.ino}`;
+    return toPosixPath(realpathSync.native(filePath)).toLowerCase();
   } catch {
     return toPosixPath(resolve(filePath)).toLowerCase();
   }

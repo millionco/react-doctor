@@ -10,7 +10,6 @@ import { collectDynamicBuildConsumedExportKeys } from "./collect-dynamic-build-c
 import { buildExportKey } from "./build-export-key.js";
 import { findNearestPackageDirectory } from "./find-nearest-package-directory.js";
 import { getFileIdentityKey } from "./get-file-identity-key.js";
-import { isPathInsideDirectoryOrEqual } from "./is-path-inside-directory-or-equal.js";
 
 interface ConventionPackageJson {
   cromwell?: { type?: string };
@@ -151,25 +150,15 @@ const isReactEmailDevTemplate = (
   });
 };
 
-export const collectConventionConsumedExportKeys = (
-  graph: DependencyGraph,
-  analysisRootDirectory: string,
-): Set<string> => {
+export const collectConventionConsumedExportKeys = (graph: DependencyGraph): Set<string> => {
   const consumedExportKeys = new Set<string>();
   const packageMetadataByDirectory = new Map<string, ConventionPackageMetadata | undefined>();
   const themeConfigPathsByPackageDirectory = new Map<string, ReadonlySet<string>>();
   const dynamicBuildConsumedExportKeysByPackageDirectory = new Map<string, ReadonlySet<string>>();
-  const canonicalAnalysisRootDirectory = toFilesystemIdentityPath(resolve(analysisRootDirectory));
-
   for (const module of graph.modules) {
     const canonicalModuleFilePath = toFilesystemIdentityPath(resolve(module.fileId.path));
     const packageDirectory = findNearestPackageDirectory(module.fileId.path);
     if (!packageDirectory) continue;
-    const canonicalPackageDirectory = toFilesystemIdentityPath(packageDirectory);
-    if (!isPathInsideDirectoryOrEqual(canonicalPackageDirectory, canonicalAnalysisRootDirectory)) {
-      continue;
-    }
-
     if (!packageMetadataByDirectory.has(packageDirectory)) {
       packageMetadataByDirectory.set(packageDirectory, readPackageMetadata(packageDirectory));
     }

@@ -93,6 +93,7 @@ export const RUN_GIT_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 export const GIT_HOOK_EXECUTABLE_MODE = 0o755;
 
 export const AGENT_HOOK_TIMEOUT_SECONDS = 120;
+export const AGENT_HOOK_MAX_CONTINUATIONS = 1;
 
 // Hard cap on the `gh repo view` default-branch probe. A healthy gh answers
 // well under a second; a cold gh.exe on Windows CI has taken 30s+, and the

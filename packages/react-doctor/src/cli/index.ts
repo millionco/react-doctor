@@ -275,7 +275,7 @@ program
   .description("Install the react-doctor skill into your coding agents and optional git hook")
   .option("-y, --yes", "skip prompts, install for all detected agents")
   .option("--dry-run", "show what would be installed without writing files")
-  .option("--agent-hooks", "install native non-blocking agent hooks for Claude Code and Cursor")
+  .option("--agent-hooks", "install end-of-turn agent hooks for Claude Code and Cursor")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")

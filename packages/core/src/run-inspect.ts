@@ -5,6 +5,7 @@ import * as Filter from "effect/Filter";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import { REACT_DOCTOR_RULE_REGISTRY } from "oxlint-plugin-react-doctor/core";
 import type { Diagnostic, DiagnosticSurface } from "./types/index.js";
 import { assignFixGroups } from "./utils/assign-fix-groups.js";
 import { dedupeRelatedDiagnostics } from "./utils/dedupe-related-diagnostics.js";
@@ -38,6 +39,7 @@ import {
   ScanDeadlineExceeded,
 } from "./errors.js";
 import { filterDiagnosticsForSurface } from "./filter-for-surface.js";
+import { getCapabilities, shouldEnableRule } from "./project-info/capabilities.js";
 import { isAnalyzableProject } from "./project-info/index.js";
 import {
   DeadCodePhaseTimeoutMs,
@@ -492,15 +494,27 @@ export const runInspect = <HooksR = never>(
     const maintainabilityPhaseTimeoutMs = yield* DeadCodePhaseTimeoutMs;
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
+    const projectCapabilities = getCapabilities(project);
     const projectRuleSelections = resolveProjectRuleSelections(
       buildRuleSeverityControls(resolvedConfig.config),
-    ).filter(
-      (selection) =>
+    ).filter((selection) => {
+      const rule = REACT_DOCTOR_RULE_REGISTRY[selection.ruleId];
+      return (
+        rule !== undefined &&
+        shouldEnableRule(
+          rule.requires,
+          rule.tags,
+          projectCapabilities,
+          input.ignoredTags,
+          rule.disabledWhen,
+          input.includedTags,
+        ) &&
         (selection.ruleId === MAINTAINABILITY_DUPLICATE_JSX_RULE
           ? input.runDeadCode
           : !isDiffMode) &&
-        (showWarnings || projectRuleSelectionsMaySurfaceWhenWarningsAreHidden([selection])),
-    );
+        (showWarnings || projectRuleSelectionsMaySurfaceWhenWarningsAreHidden([selection]))
+      );
+    });
     const enabledProjectRuleIds = new Set(
       projectRuleSelections.map((selection) => selection.ruleId),
     );

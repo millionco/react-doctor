@@ -1162,6 +1162,54 @@ describe("runInspect — diff mode focuses maintainability", () => {
     expect(receivedWorkerTimeoutMs).toBe(PROJECT_ANALYSIS_WORKER_TIMEOUT_MS);
   });
 
+  it("skips project analysis when its tag is ignored", async () => {
+    const runMaintainability = vi.fn(() => Stream.fromIterable([deadCodeDiagnostic]));
+
+    await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        ignoredTags: new Set(["project-analysis"]),
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            layersOf({
+              reactDoctorConfig: {
+                rules: { "react-doctor/unused-export": "warn" },
+              },
+            }),
+            Layer.mock(DeadCode, { run: runMaintainability }),
+          ),
+        ),
+      ),
+    );
+
+    expect(runMaintainability).not.toHaveBeenCalled();
+  });
+
+  it("skips project analysis in design-only mode", async () => {
+    const runMaintainability = vi.fn(() => Stream.fromIterable([deadCodeDiagnostic]));
+
+    await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        includedTags: new Set(["design"]),
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            layersOf({
+              reactDoctorConfig: {
+                rules: { "react-doctor/unused-export": "warn" },
+              },
+            }),
+            Layer.mock(DeadCode, { run: runMaintainability }),
+          ),
+        ),
+      ),
+    );
+
+    expect(runMaintainability).not.toHaveBeenCalled();
+  });
+
   it("skips graph rules in partial scans", async () => {
     const runMaintainability = vi.fn(() => Stream.empty);
     const captureMaintainabilityInput = Layer.mock(DeadCode, { run: runMaintainability });

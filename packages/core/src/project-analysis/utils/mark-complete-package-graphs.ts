@@ -127,9 +127,14 @@ const hasUnparseableCompilerConfig = (packageRootDirectory: string): boolean => 
   }
   return configNames.some((configName) => {
     const configPath = join(packageRootDirectory, configName);
-    return (
-      existsSync(configPath) && ts.readConfigFile(configPath, ts.sys.readFile).error !== undefined
-    );
+    try {
+      return (
+        ts.parseConfigFileTextToJson(configPath, readFileSync(configPath, "utf8")).error !==
+        undefined
+      );
+    } catch {
+      return true;
+    }
   });
 };
 

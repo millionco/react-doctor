@@ -4,6 +4,7 @@ import fg from "fast-glob";
 import { parseYAML } from "confbox";
 import { STANDALONE_PROJECT_LOCKFILES } from "../constants.js";
 import { evaluateStaticConfig } from "../utils/evaluate-static-config.js";
+import { toPosixPath } from "../utils/to-posix-path.js";
 import { extractReactRouterRouteModuleEntries } from "./parse.js";
 
 export interface WorkspacePackage {
@@ -21,13 +22,14 @@ export interface WorkspaceDiscoveryResult {
 }
 
 export const resolveWorkspaces = (rootDir: string): WorkspaceDiscoveryResult => {
-  const rootPatterns = collectWorkspacePatterns(rootDir);
+  const rootDirectory = toPosixPath(resolve(rootDir));
+  const rootPatterns = collectWorkspacePatterns(rootDirectory);
   const hasRootLevelWorkspacePatterns = rootPatterns.length > 0;
   let expandedDirectories = hasRootLevelWorkspacePatterns
-    ? expandWorkspaceGlobs(rootPatterns, rootDir)
+    ? expandWorkspaceGlobs(rootPatterns, rootDirectory)
     : [];
 
-  const implicitSubProjects = discoverImplicitSubProjects(rootDir, expandedDirectories);
+  const implicitSubProjects = discoverImplicitSubProjects(rootDirectory, expandedDirectories);
 
   if (expandedDirectories.length === 0 && implicitSubProjects.length > 0) {
     for (const subProjectDirectory of implicitSubProjects) {
@@ -53,10 +55,10 @@ export const resolveWorkspaces = (rootDir: string): WorkspaceDiscoveryResult => 
     try {
       const packageContent = readFileSync(packageJsonPath, "utf-8");
       const packageJson = JSON.parse(packageContent);
-      const packageName = packageJson.name || relative(rootDir, directory);
+      const packageName = packageJson.name || relative(rootDirectory, directory);
       const entryFiles = extractWorkspaceEntries(packageJson, directory);
 
-      const relativePath = relative(rootDir, directory);
+      const relativePath = toPosixPath(relative(rootDirectory, directory));
       const depthFromRoot = relativePath.split("/").filter(Boolean).length;
       workspacePackages.push({
         name: packageName,
@@ -80,7 +82,10 @@ const discoverImplicitSubProjects = (
   rootDir: string,
   alreadyDiscoveredDirectories: string[],
 ): string[] => {
-  const knownDirectories = new Set(alreadyDiscoveredDirectories);
+  const normalizedRootDirectory = toPosixPath(resolve(rootDir));
+  const knownDirectories = new Set(
+    alreadyDiscoveredDirectories.map((directory) => toPosixPath(resolve(directory))),
+  );
   const hasDeclaredWorkspaces = alreadyDiscoveredDirectories.length > 0;
   const subProjectDirectories: string[] = [];
 
@@ -93,8 +98,8 @@ const discoverImplicitSubProjects = (
   });
 
   for (const packageJsonPath of subPackageJsonPaths) {
-    const directory = packageJsonPath.replace(/\/package\.json$/, "");
-    if (directory === rootDir) continue;
+    const directory = toPosixPath(resolve(dirname(packageJsonPath)));
+    if (directory === normalizedRootDirectory) continue;
     if (knownDirectories.has(directory)) continue;
     if (hasDeclaredWorkspaces && isStandaloneProject(directory)) continue;
 
@@ -181,13 +186,13 @@ const expandWorkspaceGlobs = (patterns: string[], rootDir: string): string[] => 
           onlyFiles: true,
         });
         for (const matchedPath of matchedFiles) {
-          directories.push(matchedPath.replace(/\/package\.json$/, ""));
+          directories.push(toPosixPath(resolve(dirname(matchedPath))));
         }
       } catch {}
     } else {
       const absoluteDirectory = resolve(rootDir, pattern);
       if (existsSync(join(absoluteDirectory, "package.json"))) {
-        directories.push(absoluteDirectory);
+        directories.push(toPosixPath(absoluteDirectory));
       }
     }
   }

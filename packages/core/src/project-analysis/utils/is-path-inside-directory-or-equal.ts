@@ -1,12 +1,15 @@
-import { isAbsolute, relative, sep } from "node:path";
+import { posix } from "node:path";
+import { toPosixPath } from "./to-posix-path.js";
 
 export const isPathInsideDirectoryOrEqual = (
   candidatePath: string,
   directoryPath: string,
 ): boolean => {
-  const relativePath = relative(directoryPath, candidatePath);
+  const normalizedCandidatePath = posix.normalize(toPosixPath(candidatePath));
+  const normalizedDirectoryPath = posix.normalize(toPosixPath(directoryPath));
+  const relativePath = posix.relative(normalizedDirectoryPath, normalizedCandidatePath);
   return (
     relativePath === "" ||
-    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
+    (relativePath !== ".." && !relativePath.startsWith("../") && !posix.isAbsolute(relativePath))
   );
 };

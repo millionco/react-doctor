@@ -9,6 +9,7 @@ import {
   PROJECT_ANALYSIS_WORKER_TIMEOUT_MS,
   TSCONFIG_FILENAMES,
 } from "./constants.js";
+import { withProjectAnalysisWorkerSlot } from "./project-analysis/project-analysis-worker-slots.js";
 import type { Diagnostic } from "./types/index.js";
 import { isRecord } from "./utils/is-record.js";
 import { toCanonicalPath } from "./utils/to-canonical-path.js";
@@ -432,10 +433,15 @@ export const checkProjectAnalysis = async (
     ...(tsConfigPath === undefined ? {} : { tsConfigPath }),
     ...(ignorePatterns.length === 0 ? {} : { ignorePatterns }),
   };
-  const workerHandle = (options.createWorker ?? createProjectAnalysisWorker)(workerInput);
-  const result = parseProjectAnalysisResult(
-    await runWorker(workerHandle, options.abortSignal, options.workerTimeoutMs),
-  );
+  const spawnAndRunWorker = async (): Promise<unknown> => {
+    const workerHandle = (options.createWorker ?? createProjectAnalysisWorker)(workerInput);
+    return runWorker(workerHandle, options.abortSignal, options.workerTimeoutMs);
+  };
+  const rawResult =
+    options.createWorker === undefined
+      ? await withProjectAnalysisWorkerSlot(spawnAndRunWorker, options.abortSignal)
+      : await spawnAndRunWorker();
+  const result = parseProjectAnalysisResult(rawResult);
   assertCompleteProjectAnalysis(result);
   return buildDiagnostics(rootDirectory, result, options.enabledRuleIds);
 };

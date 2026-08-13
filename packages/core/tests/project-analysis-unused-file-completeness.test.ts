@@ -202,18 +202,21 @@ describe("unused-file graph completeness", () => {
     expect(result.unusedFiles).toEqual([]);
   });
 
-  it("suppresses findings when an owning-package source is unreadable", async () => {
-    const rootDirectory = createProject({
-      "src/index.ts": "export const entry = true;",
-      "src/unreadable.ts": "export const unreadable = true;",
-      "src/orphan.ts": "export const orphan = true;",
-    });
-    fs.chmodSync(path.join(rootDirectory, "src/unreadable.ts"), 0);
+  it.skipIf(process.platform === "win32")(
+    "suppresses findings when an owning-package source is unreadable",
+    async () => {
+      const rootDirectory = createProject({
+        "src/index.ts": "export const entry = true;",
+        "src/unreadable.ts": "export const unreadable = true;",
+        "src/orphan.ts": "export const orphan = true;",
+      });
+      fs.chmodSync(path.join(rootDirectory, "src/unreadable.ts"), 0);
 
-    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+      const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
 
-    expect(result.unusedFiles).toEqual([]);
-  });
+      expect(result.unusedFiles).toEqual([]);
+    },
+  );
 
   it("does not treat ordinary computed calls as module-loader uncertainty", async () => {
     const rootDirectory = createProject(

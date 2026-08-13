@@ -71,11 +71,17 @@ describe("project analysis config parsers", () => {
       "apps/web/package.json": JSON.stringify({ name: "web" }),
     });
 
-    const declaredWorkspaceNames = resolveWorkspaces(rootDirectory)
-      .packages.filter((workspacePackage) => workspacePackage.isDeclaredWorkspace)
-      .map((workspacePackage) => workspacePackage.name);
+    const declaredWorkspaces = resolveWorkspaces(rootDirectory).packages.filter(
+      (workspacePackage) => workspacePackage.isDeclaredWorkspace,
+    );
 
-    expect(declaredWorkspaceNames).toEqual(["web"]);
+    expect(declaredWorkspaces).toEqual([
+      expect.objectContaining({
+        name: "web",
+        directory: path.join(rootDirectory, "apps/web").replaceAll("\\", "/"),
+        depthFromRoot: 2,
+      }),
+    ]);
   });
 
   it("parses pnpm override flow mappings, anchors, and comments", () => {

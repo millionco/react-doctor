@@ -252,12 +252,7 @@ export const markCompletePackageGraphs = ({
         ),
     );
     const hasTestOrStoryContract = packageModules.some((module) =>
-      TEST_OR_STORY_FILE_PATTERN.test(
-        relative(
-          owningPackageDirectoryByModule.get(module) ?? packageRootDirectory,
-          canonicalFilePathByModule.get(module) ?? module.fileId.path,
-        ).replaceAll("\\", "/"),
-      ),
+      TEST_OR_STORY_FILE_PATTERN.test(module.fileId.path.replaceAll("\\", "/")),
     );
     const hasSetupUncertainty = setupErrors.some(
       (error) =>

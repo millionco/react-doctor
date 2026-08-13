@@ -43,6 +43,7 @@ import { hasSanityV2CoreContract } from "../utils/has-sanity-v2-core-contract.js
 import { collectSanityV2PackageNames } from "../utils/collect-sanity-v2-package-names.js";
 import { collectReactNativeConfigPackageNames } from "../utils/collect-react-native-config-package-names.js";
 import { collectInstalledAgentSkillPackageNames } from "../utils/collect-installed-agent-skill-package-names.js";
+import { collectHtmlScriptPackageNames } from "../utils/collect-html-script-package-names.js";
 import { hasEnabledNextOptimizeCss } from "../utils/has-enabled-next-optimize-css.js";
 import { parseTypeScriptConfig } from "../utils/parse-typescript-config.js";
 import {
@@ -1384,6 +1385,7 @@ const scanSourceFilesForPackageImports = (
       const content = readFileSync(filePath, "utf-8");
       const isPatchFile = filePath.endsWith(".patch");
       const isStylesheet = /\.(?:css|scss|sass)$/.test(filePath);
+      const isHtml = filePath.endsWith(".html");
       const isMarkdown = /\.mdx?$/.test(filePath);
       const isExecutableMarkdown =
         filePath.endsWith(".mdx") || executableMarkdownFileSet.has(filePath);
@@ -1397,9 +1399,11 @@ const scanSourceFilesForPackageImports = (
       const importedPackageNames =
         isStylesheet || isPatchFile || (isMarkdown && !isExecutableMarkdown)
           ? new Set<string>()
-          : isExecutableMarkdown
-            ? collectMarkdownModulePackageNames(content)
-            : collectPackageImportNames(content);
+          : isHtml
+            ? collectHtmlScriptPackageNames(content)
+            : isExecutableMarkdown
+              ? collectMarkdownModulePackageNames(content)
+              : collectPackageImportNames(content);
       const usesJavaScriptSyntax = /\.(?:[cm]?[jt]sx?|coffee|es6|sol)$/.test(filePath);
       for (const packageName of candidatePackages) {
         const escapedPatchPackageName = packageName

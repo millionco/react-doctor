@@ -111,6 +111,36 @@ describe("detectStalePackages", () => {
     expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
   });
 
+  it("credits binaries after mixed-case environment assignments", () => {
+    const rootDirectory = createProject(
+      {},
+      { "start-server-and-test": "1.0.0", "unused-package": "1.0.0" },
+      {
+        acceptance:
+          "cross-env CYPRESS_baseUrl=http://localhost:8081 start-server-and-test server http://localhost:8081 test",
+      },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
+  it("credits declared packages passed as command option values", () => {
+    const rootDirectory = createProject(
+      {},
+      {
+        "@cucumber/pretty-formatter": "1.0.0",
+        playwright: "1.0.0",
+        "unused-package": "1.0.0",
+      },
+      {
+        acceptance: "cucumber-js --format @cucumber/pretty-formatter tests",
+        browser: "vitest run --browser.provider=playwright",
+      },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
   it("credits critters when exported Next config enables CSS optimization", () => {
     const rootDirectory = createProject(
       {
@@ -642,6 +672,17 @@ describe("detectStalePackages", () => {
     expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
   });
 
+  it("credits TypeScript type reference directives", () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `/// <reference types="@example/runtime-types" />\nexport const value = true;`,
+      },
+      { "@example/runtime-types": "1.0.0", "unused-package": "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
   it("credits explicit node_modules references in TypeScript configuration", () => {
     const rootDirectory = createProject(
       {
@@ -921,6 +962,30 @@ describe("detectStalePackages", () => {
       "documentation-only-package",
       "patch-text-only-package",
     ]);
+  });
+
+  it("credits imports in twoslash code fences without crediting ordinary examples", () => {
+    const rootDirectory = createProject(
+      {
+        "docs/examples.mdx": [
+          "```ts twoslash",
+          'import type { Node } from "@babel/types";',
+          'import render from "estree-to-babel";',
+          "```",
+          "",
+          "```ts",
+          'import Example from "documentation-only-package";',
+          "```",
+        ].join("\n"),
+      },
+      {
+        "@babel/types": "1.0.0",
+        "documentation-only-package": "1.0.0",
+        "estree-to-babel": "1.0.0",
+      },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["documentation-only-package"]);
   });
 
   it.each(["md", "mdx"])(

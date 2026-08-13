@@ -1,4 +1,4 @@
-const INLINE_ENV_VAR_PATTERN = /^[A-Z_][A-Z0-9_]*=/;
+const INLINE_ENV_VAR_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
 const SCRIPT_COMMAND_WRAPPERS = new Set(["cross-env", "cross-env-shell", "env"]);
 const SCRIPT_COMMAND_RUNNERS = new Set(["bunx", "npx", "pnpx"]);

@@ -165,7 +165,10 @@ export const collectConventionConsumedExportKeys = (graph: DependencyGraph): Set
     const packageMetadata = packageMetadataByDirectory.get(packageDirectory);
     if (!packageMetadata) continue;
 
-    const packageRelativePath = toPosixPath(relative(packageDirectory, module.fileId.path));
+    const canonicalPackageDirectory = toFilesystemIdentityPath(packageDirectory);
+    const packageRelativePath = toPosixPath(
+      relative(canonicalPackageDirectory, canonicalModuleFilePath),
+    );
     const isNextRouteSegmentModule =
       hasDependency(packageMetadata, "next") &&
       NEXT_ROUTE_SEGMENT_MODULE_PATTERN.test(packageRelativePath);

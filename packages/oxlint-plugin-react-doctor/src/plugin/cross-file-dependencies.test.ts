@@ -82,6 +82,28 @@ describe("collectCrossFileDependencyProbes — driver", () => {
   });
 });
 
+describe("no-hydration-branch-on-browser-global collector", () => {
+  it("records both imported helpers and the nearest manifest", () => {
+    const manifestPath = writeFixtureFile(
+      "package.json",
+      JSON.stringify({ dependencies: { react: "19.1.0" } }),
+    );
+    const helperPath = writeFixtureFile(
+      "src/environment.ts",
+      `export const isBrowser = () => typeof window !== "undefined";\n`,
+    );
+    const componentPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { isBrowser } from "./environment";\nexport const App = () => isBrowser() ? <main /> : null;\n`,
+    );
+
+    const trace = collectFor(componentPath, ["no-hydration-branch-on-browser-global"]);
+
+    expect(trace?.contentPaths.has(manifestPath)).toBe(true);
+    expect(trace?.contentPaths.has(helperPath)).toBe(true);
+  });
+});
+
 describe("no-barrel-import collector", () => {
   const setupBarrelFixture = (): string => {
     writeFixtureFile("src/components/Button.tsx", "export const Button = () => null;\n");

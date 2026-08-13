@@ -489,6 +489,11 @@ const collectNearestManifestDependencies: CrossFileDependencyCollector = ({ abso
   classifyPackagePlatform(absoluteFilePath);
 };
 
+const collectHydrationBrowserGuardDependencies: CrossFileDependencyCollector = (input) => {
+  collectNearestManifestDependencies(input);
+  collectBrowserGuardDependencies(input);
+};
+
 const collectBrowserRenderGuardDependencies: CrossFileDependencyCollector = (input) => {
   collectNearestManifestDependencies(input);
   collectFunctionExportDependencies(
@@ -539,7 +544,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],
     ["no-dynamic-import-path", collectNearestManifestDependencies],
     ["no-full-lodash-import", collectNearestManifestDependencies],
-    ["no-hydration-branch-on-browser-global", collectBrowserGuardDependencies],
+    ["no-hydration-branch-on-browser-global", collectHydrationBrowserGuardDependencies],
     ["no-indeterminate-attribute", collectNearestManifestDependencies],
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],

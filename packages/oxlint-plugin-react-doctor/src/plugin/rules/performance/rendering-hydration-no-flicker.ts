@@ -709,7 +709,7 @@ const isExactViewportSubscriptionEffect = (
 
 export const renderingHydrationNoFlicker = defineRule({
   id: "rendering-hydration-no-flicker",
-  title: "useEffect setState flashes on mount",
+  title: "useEffect state synchronization flashes after paint",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
@@ -761,11 +761,12 @@ export const renderingHydrationNoFlicker = defineRule({
       ) {
         const pairedState = findPairedStateBinding(context, expression, expression.callee.name);
         if (!pairedState) return;
-        const readsExternalDomSync = argumentsReadExternalDomSync(
-          context,
-          expression.arguments ?? [],
-        );
-        if (!isMountOnlyEffect && !readsExternalDomSync) return;
+        if (
+          !isMountOnlyEffect &&
+          !argumentsReadExternalDomSync(context, expression.arguments ?? [])
+        ) {
+          return;
+        }
         if (isSameMountStateValue(context, pairedState, expression)) return;
         if (!isStateUsedInFirstPaintOutput(context, pairedState)) return;
         if (argumentsReadReactRefCurrent(context, expression.arguments ?? [])) return;

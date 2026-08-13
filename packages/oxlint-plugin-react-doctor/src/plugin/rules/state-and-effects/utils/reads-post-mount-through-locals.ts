@@ -1,5 +1,6 @@
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
+import { collectFunctionReturnStatements } from "../../../utils/collect-function-return-statements.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { resolveExactLocalFunction } from "../../../utils/resolve-exact-local-function.js";
@@ -54,6 +55,14 @@ const findEffectLocalInitializer = (effectFn: EsTreeNode, name: string): EsTreeN
   return initializer;
 };
 
+const collectReturnedExpressions = (functionNode: EsTreeNode): ReadonlyArray<EsTreeNode> => {
+  if (!isFunctionLike(functionNode)) return [];
+  if (!isNodeOfType(functionNode.body, "BlockStatement")) return [functionNode.body];
+  return collectFunctionReturnStatements(functionNode).flatMap((returnStatement) =>
+    returnStatement.argument ? [returnStatement.argument] : [],
+  );
+};
+
 // The post-mount read is often hidden behind an effect-local variable —
 // `const { width } = ref.current.getBoundingClientRect(); setWidth(width)` or
 // `const anchors = Array.from(document.querySelectorAll(sel)); setAnchors(anchors)`.
@@ -78,12 +87,14 @@ export const readsPostMountValueThroughLocals = (
       if (isFunctionLike(localFunction) && !visitedFunctionNodes.has(localFunction)) {
         visitedFunctionNodes.add(localFunction);
         if (
-          readsPostMountValueThroughLocals(
-            localFunction.body,
-            localFunction.body,
-            options,
-            new Set(),
-            visitedFunctionNodes,
+          collectReturnedExpressions(localFunction).some((returnedExpression) =>
+            readsPostMountValueThroughLocals(
+              returnedExpression,
+              localFunction.body,
+              options,
+              new Set(),
+              visitedFunctionNodes,
+            ),
           )
         ) {
           found = true;

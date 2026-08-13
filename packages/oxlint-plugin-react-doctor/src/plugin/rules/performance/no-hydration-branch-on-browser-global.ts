@@ -51,8 +51,13 @@ interface HydrationConditionMatch {
   readonly predicateNode: EsTreeNode;
 }
 
+interface HydrationArgumentValue {
+  readonly context: RuleContext;
+  readonly expression: EsTreeNode;
+}
+
 interface HydrationResolutionState {
-  readonly parameterValuesBySymbolId: Map<number, EsTreeNode>;
+  readonly parameterValuesBySymbolId: Map<number, HydrationArgumentValue>;
   readonly visitedFunctionNodes: Set<EsTreeNode>;
   readonly visitedSymbolIds: Set<number>;
 }
@@ -134,6 +139,13 @@ const resolveImmutableHydrationArgument = (
     new Set(visitedSymbolIds).add(symbol.id),
   );
 };
+
+const createArgumentResolutionState = (
+  state: HydrationResolutionState,
+  argumentContext: RuleContext,
+  currentContext: RuleContext,
+): HydrationResolutionState =>
+  argumentContext === currentContext ? state : { ...state, visitedSymbolIds: new Set() };
 
 const findGuardingIfStatements = (
   node: EsTreeNode,
@@ -483,7 +495,12 @@ const readHydrationPrimitiveResult = (
     const parameterValue = symbol ? state.parameterValuesBySymbolId.get(symbol.id) : null;
     if (symbol && parameterValue && !state.visitedSymbolIds.has(symbol.id)) {
       state.visitedSymbolIds.add(symbol.id);
-      const result = readHydrationPrimitiveResult(parameterValue, context, runtime, state);
+      const result = readHydrationPrimitiveResult(
+        parameterValue.expression,
+        parameterValue.context,
+        runtime,
+        createArgumentResolutionState(state, parameterValue.context, context),
+      );
       state.visitedSymbolIds.delete(symbol.id);
       return result;
     }
@@ -583,7 +600,12 @@ const readHydrationConditionResult = (
     : null;
   if (expressionSymbol && parameterValue && !state.visitedSymbolIds.has(expressionSymbol.id)) {
     state.visitedSymbolIds.add(expressionSymbol.id);
-    const result = readHydrationConditionResult(parameterValue, context, runtime, state);
+    const result = readHydrationConditionResult(
+      parameterValue.expression,
+      parameterValue.context,
+      runtime,
+      createArgumentResolutionState(state, parameterValue.context, context),
+    );
     state.visitedSymbolIds.delete(expressionSymbol.id);
     return result;
   }
@@ -655,10 +677,10 @@ const readHydrationConditionResult = (
       if (!argument || !isNodeOfType(parameter, "Identifier")) continue;
       const parameterSymbol = helperContext.scopes.symbolFor(parameter);
       if (parameterSymbol) {
-        parameterValuesBySymbolId.set(
-          parameterSymbol.id,
-          resolveImmutableHydrationArgument(argument, context),
-        );
+        parameterValuesBySymbolId.set(parameterSymbol.id, {
+          context,
+          expression: resolveImmutableHydrationArgument(argument, context),
+        });
       }
     }
     return readHydrationFunctionResult(helperFunction, helperContext, runtime, {
@@ -992,7 +1014,11 @@ const matchHydrationConditionInternal = (
     const parameterValue = symbol ? state.parameterValuesBySymbolId.get(symbol.id) : null;
     if (symbol && parameterValue && !state.visitedSymbolIds.has(symbol.id)) {
       state.visitedSymbolIds.add(symbol.id);
-      const match = matchHydrationConditionInternal(parameterValue, context, state);
+      const match = matchHydrationConditionInternal(
+        parameterValue.expression,
+        parameterValue.context,
+        createArgumentResolutionState(state, parameterValue.context, context),
+      );
       state.visitedSymbolIds.delete(symbol.id);
       return match;
     }
@@ -1206,10 +1232,10 @@ const matchHydrationConditionInternal = (
       if (!argument || !isNodeOfType(parameter, "Identifier")) continue;
       const parameterSymbol = helperContext.scopes.symbolFor(parameter);
       if (parameterSymbol) {
-        parameterValuesBySymbolId.set(
-          parameterSymbol.id,
-          resolveImmutableHydrationArgument(argument, context),
-        );
+        parameterValuesBySymbolId.set(parameterSymbol.id, {
+          context,
+          expression: resolveImmutableHydrationArgument(argument, context),
+        });
       }
     }
     const match = matchHydrationFunctionResult(helperFunction, helperContext, {

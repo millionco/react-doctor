@@ -109,4 +109,17 @@ describe("no-hydration-branch-on-browser-global — imported helper provenance",
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("reports a caller browser predicate passed through an imported helper", () => {
+    writeFile("src/environment.ts", `export const identity = (value) => value;`);
+    const result = runConsumer(`
+      "use client";
+      import { identity } from "./environment";
+      const AnimatedBackgroundImage = () =>
+        identity(typeof window !== "undefined") ? <video /> : <Image />;
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

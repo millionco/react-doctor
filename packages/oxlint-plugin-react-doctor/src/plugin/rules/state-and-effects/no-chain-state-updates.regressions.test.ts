@@ -515,6 +515,49 @@ describe("no-chain-state-updates — docs-validation FP wave", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still reports className read from plain data", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `function Example({ treeNode }) {
+        const [step, setStep] = useState(0);
+        const [label, setLabel] = useState("");
+        useEffect(() => {
+          setLabel(treeNode.className);
+        }, [step, treeNode]);
+        return <button onClick={() => setStep(step + 1)}>{label}</button>;
+      }`,
+      { forceJsx: true },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["an unrelated member read", `treeNode.className;`],
+    ["an unrelated global DOM read", `document.querySelector("main");`],
+  ])("still reports a helper with %s outside its return value", (_, unrelatedRead) => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const calculateLabel = (treeNode) => {
+        ${unrelatedRead}
+        return "fixed";
+      };
+      function Example({ treeNode }) {
+        const [step, setStep] = useState(0);
+        const [label, setLabel] = useState("");
+        useEffect(() => {
+          setLabel(calculateLabel(treeNode));
+        }, [step, treeNode]);
+        return <button onClick={() => setStep(step + 1)}>{label}</button>;
+      }`,
+      { forceJsx: true },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent on focus bookkeeping that inspects live DOM attributes (rad-ui RovingFocusGroup)", () => {
     const result = runRule(
       noChainStateUpdates,

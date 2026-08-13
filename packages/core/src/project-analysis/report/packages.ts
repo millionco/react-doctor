@@ -268,6 +268,7 @@ export const detectStalePackages = (
       configSearchRoot,
       graph,
       declaredNames,
+      binToPackage,
     );
     for (const packageName of configReferenced) markPackageUsed(packageName);
 
@@ -335,6 +336,10 @@ export const detectStalePackages = (
     markPackageUsed("sharp");
   }
 
+  if (declaredNames.has("ajv") && usedPackageNames.has("@rjsf/validator-ajv8")) {
+    markPackageUsed("ajv");
+  }
+
   if (declaredNames.has("@next/mdx")) {
     if (declaredNames.has("@mdx-js/loader")) markPackageUsed("@mdx-js/loader");
     if (declaredNames.has("@mdx-js/react")) markPackageUsed("@mdx-js/react");
@@ -382,6 +387,10 @@ export const detectStalePackages = (
     } catch {
       // fall through
     }
+  }
+
+  for (const dependencyName of declaredNames) {
+    if (isAlwaysConsideredUsed(dependencyName)) usedPackageNames.add(dependencyName);
   }
 
   const initialPeerCollection = collectPeerSatisfiedPackages(
@@ -860,6 +869,7 @@ const collectConfigReferencedPackages = (
   rootDir: string,
   graph: DependencyGraph,
   declaredNames: Set<string>,
+  binToPackage: Map<string, Set<string>>,
 ): Set<string> => {
   const referenced = new Set<string>();
 
@@ -988,6 +998,18 @@ const collectConfigReferencedPackages = (
   for (const toolingExecutionPath of toolingExecutionFiles) {
     addCollectedMatchesFromFile(toolingExecutionPath, collectPackageImportNames);
     addMatchesFromFile(toolingExecutionPath, matchesNodeModulesPackageReference);
+    try {
+      const commandReferences = collectCommandReferencedPackages(
+        readFileSync(toolingExecutionPath, "utf-8"),
+        declaredNames,
+        binToPackage,
+      );
+      for (const packageName of commandReferences.referencedPackageNames) {
+        referenced.add(packageName);
+      }
+    } catch {
+      continue;
+    }
   }
 
   return referenced;

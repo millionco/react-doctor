@@ -76,6 +76,27 @@ describe("Oxc-backed project configuration discovery", () => {
     ]);
   });
 
+  it("ignores files passed to directory-copy APIs", async () => {
+    const rootDirectory = createProject({
+      "rollup.config.mjs": `
+        import fs from "fs-extra";
+        fs.copySync("./README.md", "./dist/README.md");
+        fs.copySync("./index.html", "./dist/index.html");
+        fs.copySync("./templates", "./dist/templates");
+      `,
+      "README.md": "# Example",
+      "index.html": "<main>Example</main>",
+      "templates/runtime.ts": "export const runtime = true;",
+      "src/index.ts": "export const entry = true;",
+      "src/orphan.ts": "export const orphan = true;",
+    });
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(result.analysisErrors).toEqual([]);
+    expect(relativeUnusedPaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
   it("resolves React Router appDirectory through static shorthand bindings", async () => {
     const rootDirectory = createProject(
       {

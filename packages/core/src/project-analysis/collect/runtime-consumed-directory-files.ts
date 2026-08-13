@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync, statSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
 import fg from "fast-glob";
 import { parseSync } from "oxc-parser";
 import { getIdentifierName, isOxcAstNode, type OxcAstNode } from "../utils/oxc-ast-node.js";
@@ -276,8 +276,16 @@ export const extractRuntimeConsumedDirectoryFiles = (directory: string): string[
       sourcePath,
       directory,
     )) {
+      const resolvedConsumedDirectory = isAbsolute(consumedDirectory)
+        ? consumedDirectory
+        : resolve(directory, consumedDirectory);
+      try {
+        if (!statSync(resolvedConsumedDirectory).isDirectory()) continue;
+      } catch {
+        continue;
+      }
       for (const consumedFile of fg.sync(SOURCE_FILE_GLOB, {
-        cwd: consumedDirectory,
+        cwd: resolvedConsumedDirectory,
         absolute: true,
         onlyFiles: true,
       })) {

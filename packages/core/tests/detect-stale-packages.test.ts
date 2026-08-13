@@ -633,6 +633,15 @@ describe("detectStalePackages", () => {
     expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
   });
 
+  it("credits package-runner commands in hook scripts", () => {
+    const rootDirectory = createProject(
+      { ".husky/pre-commit": `npx pretty-quick --staged` },
+      { "pretty-quick": "1.0.0", "unused-package": "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
   it("credits explicit node_modules references in TypeScript configuration", () => {
     const rootDirectory = createProject(
       {
@@ -1101,6 +1110,68 @@ describe("detectStalePackages", () => {
       detectStalePackages(graph, defineProjectAnalysisConfig({ rootDir: rootDirectory }))
         .unusedDependencies,
     ).toEqual([]);
+  });
+
+  it("credits required peers of conventionally used config packages", () => {
+    const rootDirectory = createProject(
+      {
+        "package-lock.json": JSON.stringify({
+          lockfileVersion: 3,
+          packages: {
+            "": {
+              devDependencies: {
+                "babel-eslint": "10.1.0",
+                "eslint-config-example": "1.0.0",
+              },
+            },
+            "node_modules/babel-eslint": { version: "10.1.0" },
+            "node_modules/eslint-config-example": {
+              version: "1.0.0",
+              peerDependencies: { "babel-eslint": "^10.0.0" },
+            },
+          },
+        }),
+      },
+      {},
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        devDependencies: {
+          "babel-eslint": "10.1.0",
+          "eslint-config-example": "1.0.0",
+        },
+      }),
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual([]);
+  });
+
+  it("credits Ajv as the implementation selected by the RJSF Ajv 8 validator", () => {
+    const rootDirectory = createProject(
+      { "src/index.ts": `import validator from "@rjsf/validator-ajv8"; console.log(validator);` },
+      { "@rjsf/validator-ajv8": "1.0.0", ajv: "8.18.0", "unused-package": "1.0.0" },
+    );
+
+    const graph = graphWithReachableImport(
+      path.join(rootDirectory, "src/index.ts"),
+      "@rjsf/validator-ajv8",
+    );
+
+    expect(
+      detectStalePackages(graph, defineProjectAnalysisConfig({ rootDir: rootDirectory }))
+        .unusedDependencies.map((dependency) => dependency.name)
+        .sort(),
+    ).toEqual(["unused-package"]);
+  });
+
+  it("does not credit Ajv without the RJSF Ajv 8 validator", () => {
+    const rootDirectory = createProject(
+      { "src/index.ts": `export const value = true;` },
+      { ajv: "8.18.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["ajv"]);
   });
 
   it("does not credit optional or stale-version lockfile peers", () => {

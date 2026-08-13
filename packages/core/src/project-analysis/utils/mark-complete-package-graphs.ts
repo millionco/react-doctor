@@ -275,8 +275,8 @@ export const markCompletePackageGraphs = ({
       (hasExplicitEntry ||
         (hasSupportedAutomaticEntry &&
           !packageContract.hasUnsupportedAutomaticContract &&
-          rootPackageContract?.hasUnsupportedAutomaticContract !== true &&
-          !hasTestOrStoryContract)) &&
+          rootPackageContract?.hasUnsupportedAutomaticContract !== true)) &&
+      !hasTestOrStoryContract &&
       !hasParseOrReadUncertainty &&
       !hasResolutionUncertainty &&
       !hasDynamicLoaderUncertainty &&

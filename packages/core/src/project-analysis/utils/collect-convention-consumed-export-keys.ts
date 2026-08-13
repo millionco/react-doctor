@@ -188,6 +188,24 @@ export const collectConventionConsumedExportKeys = (graph: DependencyGraph): Set
     const dynamicBuildConsumedExportKeys =
       dynamicBuildConsumedExportKeysByPackageDirectory.get(packageDirectory);
 
+    if (
+      process.platform === "win32" &&
+      module.fileId.path.includes("react-doctor-export-conventions-")
+    ) {
+      process.stderr.write(
+        `${JSON.stringify({
+          modulePath: module.fileId.path,
+          canonicalModuleFilePath,
+          packageDirectory,
+          canonicalPackageDirectory,
+          packageRelativePath,
+          dependencies: [...packageMetadata.dependencyNames],
+          moduleIdentity: getFileIdentityKey(module.fileId.path),
+          dynamicBuildConsumedExportKeys: [...(dynamicBuildConsumedExportKeys ?? [])],
+        })}\n`,
+      );
+    }
+
     let isReferencedNextraThemeConfig = false;
     if (
       hasDependency(packageMetadata, "nextra") &&

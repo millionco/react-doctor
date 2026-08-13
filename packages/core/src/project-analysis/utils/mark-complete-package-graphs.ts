@@ -204,6 +204,29 @@ export const markCompletePackageGraphs = ({
           packageManifestIdentityByRoot.get(packageRootDirectory)
       );
     });
+    if (
+      process.platform === "win32" &&
+      packageRootDirectory.includes("react-doctor-unused-file-completeness-")
+    ) {
+      process.stderr.write(
+        `${JSON.stringify({
+          packageRootDirectory,
+          packageManifestIdentity: packageManifestIdentityByRoot.get(packageRootDirectory),
+          modules: graph.modules.map((module) => ({
+            path: module.fileId.path,
+            canonicalPath: toFilesystemIdentityPath(module.fileId.path),
+            owningPackageDirectory: owningPackageDirectoryByModule.get(module),
+            owningPackageManifestIdentity:
+              owningPackageDirectoryByModule.get(module) === undefined
+                ? undefined
+                : getFileIdentityKey(
+                    join(owningPackageDirectoryByModule.get(module) ?? "", "package.json"),
+                  ),
+          })),
+          packageModulePaths: packageModules.map((module) => module.fileId.path),
+        })}\n`,
+      );
+    }
     const packageContract = readPackageContract(packageRootDirectory);
     const declaredDependencies = new Set([
       ...(rootPackageContract?.declaredDependencies ?? []),

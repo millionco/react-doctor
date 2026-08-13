@@ -1,5 +1,8 @@
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
+import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { resolveExactLocalFunction } from "../../../utils/resolve-exact-local-function.js";
 import {
   isPostMountGlobalRead,
   isPostMountMemberRead,
@@ -12,6 +15,7 @@ interface ReadsPostMountOptions {
   // only exempt genuine DOM-derived values (the chain rule) skip it;
   // `ref.current.scrollWidth` still matches through its layout member.
   ignoreBareRefCurrent?: boolean;
+  scopes?: ScopeAnalysis;
 }
 
 const isBareRefCurrentRead = (node: EsTreeNode): boolean =>
@@ -60,6 +64,7 @@ export const readsPostMountValueThroughLocals = (
   effectFn: EsTreeNode,
   options: ReadsPostMountOptions = {},
   visitedLocalNames: Set<string> = new Set(),
+  visitedFunctionNodes: Set<EsTreeNode> = new Set(),
 ): boolean => {
   let found = false;
   walkAst(root, (child: EsTreeNode): boolean | void => {
@@ -68,13 +73,37 @@ export const readsPostMountValueThroughLocals = (
       found = true;
       return false;
     }
+    if (isNodeOfType(child, "CallExpression") && options.scopes) {
+      const localFunction = resolveExactLocalFunction(child.callee, options.scopes);
+      if (isFunctionLike(localFunction) && !visitedFunctionNodes.has(localFunction)) {
+        visitedFunctionNodes.add(localFunction);
+        if (
+          readsPostMountValueThroughLocals(
+            localFunction.body,
+            localFunction.body,
+            options,
+            new Set(),
+            visitedFunctionNodes,
+          )
+        ) {
+          found = true;
+          return false;
+        }
+      }
+    }
     if (!isNodeOfType(child, "Identifier")) return;
     if (visitedLocalNames.has(child.name)) return;
     visitedLocalNames.add(child.name);
     const localInitializer = findEffectLocalInitializer(effectFn, child.name);
     if (
       localInitializer &&
-      readsPostMountValueThroughLocals(localInitializer, effectFn, options, visitedLocalNames)
+      readsPostMountValueThroughLocals(
+        localInitializer,
+        effectFn,
+        options,
+        visitedLocalNames,
+        visitedFunctionNodes,
+      )
     ) {
       found = true;
       return false;

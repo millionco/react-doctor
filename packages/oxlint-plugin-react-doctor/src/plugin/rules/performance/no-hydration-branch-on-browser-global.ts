@@ -1,10 +1,13 @@
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { REACT_RUNTIME_MODULE_SOURCES } from "../../constants/react.js";
+import { analyzeControlFlow, type ControlFlowAnalysis } from "../../semantic/control-flow-graph.js";
+import { analyzeScopes } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findEnclosingJsxOpeningElement } from "../../utils/find-enclosing-jsx-opening-element.js";
+import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getDirectFunctionBindingIdentifier } from "../../utils/get-direct-function-binding-identifier.js";
@@ -27,6 +30,7 @@ import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { readInitialStateBoolean } from "../../utils/read-initial-state-boolean.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -67,6 +71,69 @@ interface ReturnedStatePath {
   readonly kind: "direct" | "index" | "property";
   readonly key: string | null;
 }
+
+interface ImportedHydrationFunction {
+  readonly context: RuleContext;
+  readonly functionNode: EsTreeNode;
+}
+
+const importedScopeAnalysisByProgram = new WeakMap<EsTreeNode, ScopeAnalysis>();
+const importedControlFlowByProgram = new WeakMap<EsTreeNode, ControlFlowAnalysis>();
+
+const resolveImportedHydrationFunction = (
+  callee: EsTreeNode,
+  context: RuleContext,
+): ImportedHydrationFunction | null => {
+  if (!isNodeOfType(callee, "Identifier") || !context.filename) return null;
+  const symbol = context.scopes.symbolFor(callee);
+  if (!symbol || symbol.kind !== "import") return null;
+  const importBinding = getImportBindingForName(callee, callee.name);
+  if (!importBinding || importBinding.isNamespace || !importBinding.exportedName) return null;
+  const resolvedExport = resolveCrossFileExport(
+    context.filename,
+    importBinding.source,
+    importBinding.exportedName,
+  );
+  if (!resolvedExport || resolvedExport.kind !== "function") return null;
+  let scopes = importedScopeAnalysisByProgram.get(resolvedExport.programNode);
+  if (!scopes) {
+    scopes = analyzeScopes(resolvedExport.programNode);
+    importedScopeAnalysisByProgram.set(resolvedExport.programNode, scopes);
+  }
+  let cfg = importedControlFlowByProgram.get(resolvedExport.programNode);
+  if (!cfg) {
+    cfg = analyzeControlFlow(resolvedExport.programNode);
+    importedControlFlowByProgram.set(resolvedExport.programNode, cfg);
+  }
+  return {
+    context: { ...context, filename: resolvedExport.filePath, scopes, cfg },
+    functionNode: resolvedExport.node,
+  };
+};
+
+const resolveImmutableHydrationArgument = (
+  argument: EsTreeNode,
+  context: RuleContext,
+  visitedSymbolIds: ReadonlySet<number> = new Set(),
+): EsTreeNode => {
+  const unwrappedArgument = stripParenExpression(argument);
+  if (!isNodeOfType(unwrappedArgument, "Identifier")) return unwrappedArgument;
+  const symbol = context.scopes.symbolFor(unwrappedArgument);
+  if (
+    !symbol ||
+    symbol.kind !== "const" ||
+    !symbol.initializer ||
+    symbol.references.some((reference) => reference.flag !== "read") ||
+    visitedSymbolIds.has(symbol.id)
+  ) {
+    return unwrappedArgument;
+  }
+  return resolveImmutableHydrationArgument(
+    symbol.initializer,
+    context,
+    new Set(visitedSymbolIds).add(symbol.id),
+  );
+};
 
 const findGuardingIfStatements = (
   node: EsTreeNode,
@@ -562,7 +629,15 @@ const readHydrationConditionResult = (
     ) {
       return readHydrationConditionResult(callArguments[0], context, runtime, state);
     }
-    const helperFunction = resolveExactLocalFunction(callee, context.scopes);
+    let helperContext = context;
+    let helperFunction = resolveExactLocalFunction(callee, context.scopes);
+    const importedHelper = helperFunction
+      ? null
+      : resolveImportedHydrationFunction(callee, context);
+    if (importedHelper) {
+      helperContext = importedHelper.context;
+      helperFunction = importedHelper.functionNode;
+    }
     if (
       !isFunctionLike(helperFunction) ||
       helperFunction.async ||
@@ -578,12 +653,18 @@ const readHydrationConditionResult = (
       const parameter = helperFunction.params[parameterIndex];
       const argument = callArguments[parameterIndex];
       if (!argument || !isNodeOfType(parameter, "Identifier")) continue;
-      const parameterSymbol = context.scopes.symbolFor(parameter);
-      if (parameterSymbol) parameterValuesBySymbolId.set(parameterSymbol.id, argument);
+      const parameterSymbol = helperContext.scopes.symbolFor(parameter);
+      if (parameterSymbol) {
+        parameterValuesBySymbolId.set(
+          parameterSymbol.id,
+          resolveImmutableHydrationArgument(argument, context),
+        );
+      }
     }
-    return readHydrationFunctionResult(helperFunction, context, runtime, {
-      ...state,
+    return readHydrationFunctionResult(helperFunction, helperContext, runtime, {
       parameterValuesBySymbolId,
+      visitedFunctionNodes: state.visitedFunctionNodes,
+      visitedSymbolIds: helperContext === context ? state.visitedSymbolIds : new Set(),
     });
   }
   if (isNodeOfType(unwrappedExpression, "BinaryExpression")) {
@@ -1099,7 +1180,15 @@ const matchHydrationConditionInternal = (
     ) {
       return matchHydrationConditionInternal(callArguments[0], context, state);
     }
-    const helperFunction = resolveExactLocalFunction(callee, context.scopes);
+    let helperContext = context;
+    let helperFunction = resolveExactLocalFunction(callee, context.scopes);
+    const importedHelper = helperFunction
+      ? null
+      : resolveImportedHydrationFunction(callee, context);
+    if (importedHelper) {
+      helperContext = importedHelper.context;
+      helperFunction = importedHelper.functionNode;
+    }
     if (
       !isFunctionLike(helperFunction) ||
       helperFunction.async ||
@@ -1115,13 +1204,22 @@ const matchHydrationConditionInternal = (
       const parameter = helperFunction.params[parameterIndex];
       const argument = callArguments[parameterIndex];
       if (!argument || !isNodeOfType(parameter, "Identifier")) continue;
-      const parameterSymbol = context.scopes.symbolFor(parameter);
-      if (parameterSymbol) parameterValuesBySymbolId.set(parameterSymbol.id, argument);
+      const parameterSymbol = helperContext.scopes.symbolFor(parameter);
+      if (parameterSymbol) {
+        parameterValuesBySymbolId.set(
+          parameterSymbol.id,
+          resolveImmutableHydrationArgument(argument, context),
+        );
+      }
     }
-    return matchHydrationFunctionResult(helperFunction, context, {
-      ...state,
+    const match = matchHydrationFunctionResult(helperFunction, helperContext, {
       parameterValuesBySymbolId,
+      visitedFunctionNodes: state.visitedFunctionNodes,
+      visitedSymbolIds: helperContext === context ? state.visitedSymbolIds : new Set(),
     });
+    return match && importedHelper
+      ? { predicateMatch: match.predicateMatch, predicateNode: unwrappedExpression }
+      : match;
   }
   if (
     isNodeOfType(unwrappedExpression, "UnaryExpression") &&

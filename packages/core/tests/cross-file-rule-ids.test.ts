@@ -240,6 +240,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "remotion-no-native-media-elements",
       "remotion-no-next-image",
       "rendering-hydration-mismatch-time",
+      "rendering-hydration-no-flicker",
       "rerender-memo-with-default-value",
       "rn-no-legacy-shadow-styles",
       "rn-no-raw-text",

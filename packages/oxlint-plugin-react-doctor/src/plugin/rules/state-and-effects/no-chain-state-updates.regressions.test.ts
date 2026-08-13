@@ -468,6 +468,53 @@ describe("no-chain-state-updates — docs-validation FP wave", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on committed DOM context resolved through a helper", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `import { findUpUntil } from "@cloudscape-design/component-toolkit/dom";
+      const contextMatch = /awsui-context-([\\w-]+)/;
+      const getContextFromDom = (element) => {
+        if (!element) return "";
+        const contextParent = findUpUntil(element, node => Boolean(node.className.match(contextMatch)));
+        return contextParent?.className.match(contextMatch)?.[1] ?? "";
+      };
+      function useVisualContext(elementRef) {
+        const providedContext = useContext(VisualContextValue);
+        const [inheritedContext, setInheritedContext] = useState("");
+        useLayoutEffect(() => {
+          if (providedContext) return;
+          const nextContext = getContextFromDom(elementRef.current);
+          if (nextContext !== inheritedContext) setInheritedContext(nextContext);
+        }, [elementRef, providedContext, inheritedContext]);
+        return providedContext ?? inheritedContext;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports an external instance created from a mounted element", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `const createEditorFromElement = (element) => createEditor(element);
+      function Editor() {
+        const editorRef = useRef(null);
+        const [editor, setEditor] = useState(null);
+        useEffect(() => {
+          if (editor) return;
+          const nextEditor = createEditorFromElement(editorRef.current);
+          setEditor(nextEditor);
+        }, [editor]);
+        return <div ref={editorRef} />;
+      }`,
+      { forceJsx: true },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent on focus bookkeeping that inspects live DOM attributes (rad-ui RovingFocusGroup)", () => {
     const result = runRule(
       noChainStateUpdates,

@@ -38,6 +38,7 @@ const LAYOUT_MEASUREMENT_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "offsetWidth",
   "scrollHeight",
   "clientHeight",
+  "className",
   "offsetHeight",
   "scrollTop",
   "scrollLeft",

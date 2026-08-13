@@ -1,8 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import fg from "fast-glob";
 import ts from "typescript";
+import { unwrapTypescriptExpression as unwrapExpression } from "../../utils/unwrap-typescript-expression.js";
 import { DEFAULT_EXTENSIONS } from "../constants.js";
+import { isPathInsideDirectoryOrEqual } from "../utils/is-path-inside-directory-or-equal.js";
 
 interface GlobbyAnalysisContext {
   entryFilePath: string;
@@ -11,33 +13,11 @@ interface GlobbyAnalysisContext {
   variableDeclarations: ReadonlyMap<string, ts.Expression>;
 }
 
-const unwrapExpression = (expression: ts.Expression): ts.Expression => {
-  let unwrappedExpression = expression;
-  while (
-    ts.isParenthesizedExpression(unwrappedExpression) ||
-    ts.isAsExpression(unwrappedExpression) ||
-    ts.isSatisfiesExpression(unwrappedExpression) ||
-    ts.isTypeAssertionExpression(unwrappedExpression) ||
-    ts.isNonNullExpression(unwrappedExpression)
-  ) {
-    unwrappedExpression = unwrappedExpression.expression;
-  }
-  return unwrappedExpression;
-};
-
 const getCalledName = (expression: ts.LeftHandSideExpression): string | undefined => {
   const unwrappedExpression = unwrapExpression(expression);
   if (ts.isIdentifier(unwrappedExpression)) return unwrappedExpression.text;
   if (ts.isPropertyAccessExpression(unwrappedExpression)) return unwrappedExpression.name.text;
   return undefined;
-};
-
-const isPathInsideDirectory = (directoryPath: string, candidatePath: string): boolean => {
-  const relativePath = relative(directoryPath, candidatePath);
-  return (
-    relativePath === "" ||
-    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
-  );
 };
 
 const isImportMetaUrl = (expression: ts.Expression): boolean => {
@@ -223,7 +203,7 @@ const extractGlobbyEntriesFromFile = (entryFilePath: string, projectRoot: string
       if (
         patterns.length > 0 &&
         workingDirectory &&
-        isPathInsideDirectory(projectRoot, workingDirectory)
+        isPathInsideDirectoryOrEqual(workingDirectory, projectRoot)
       ) {
         for (const filePath of fg.sync(patterns, {
           cwd: workingDirectory,
@@ -232,7 +212,7 @@ const extractGlobbyEntriesFromFile = (entryFilePath: string, projectRoot: string
           ignore: ["**/node_modules/**"],
         })) {
           if (
-            isPathInsideDirectory(projectRoot, filePath) &&
+            isPathInsideDirectoryOrEqual(filePath, projectRoot) &&
             DEFAULT_EXTENSIONS.some((extension) => filePath.endsWith(extension))
           ) {
             entries.add(filePath);

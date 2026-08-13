@@ -61,12 +61,13 @@ const runService = (
   rootDirectory: string,
   focusPaths?: ReadonlyArray<string>,
   changedLineRanges?: ReadonlyArray<ChangedFileLineRanges>,
+  ignorePatterns?: ReadonlyArray<string>,
 ) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const maintainability = yield* Maintainability;
       return yield* Stream.runCollect(
-        maintainability.run({ rootDirectory, focusPaths, changedLineRanges }),
+        maintainability.run({ rootDirectory, focusPaths, changedLineRanges, ignorePatterns }),
       );
     }).pipe(Effect.provide(Maintainability.layerNode)),
   );
@@ -110,6 +111,15 @@ describe("Maintainability.layerNode", () => {
       filePath: "src/cards.tsx",
       message: expect.stringContaining("User > UserScreen > Page"),
     });
+  });
+
+  it("excludes ignored files from the duplicate JSX corpus", async () => {
+    const rootDirectory = createProject();
+    const diagnostics = Array.from(
+      await runService(rootDirectory, undefined, undefined, ["src/user.tsx"]),
+    );
+
+    expect(diagnostics).toEqual([]);
   });
 
   it("promotes a changed-line occurrence and suppresses unchanged matches", async () => {

@@ -1,16 +1,7 @@
-import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { dirname, join, relative } from "node:path";
 import type { ViteProjectScope } from "../types.js";
+import { isPathInsideDirectoryOrEqual } from "./is-path-inside-directory-or-equal.js";
 import { toPosixPath } from "./to-posix-path.js";
-
-const isPathInsideDirectory = (filePath: string, directory: string): boolean => {
-  const relativeFilePath = relative(directory, filePath);
-  return (
-    relativeFilePath === "" ||
-    (relativeFilePath !== ".." &&
-      !relativeFilePath.startsWith(`..${sep}`) &&
-      !isAbsolute(relativeFilePath))
-  );
-};
 
 export const normalizeProjectRootGlobSpecifier = (
   specifier: string,
@@ -21,12 +12,12 @@ export const normalizeProjectRootGlobSpecifier = (
   if (!specifier.startsWith("/")) return specifier;
   const matchingViteProjectScopes = viteProjectScopes.filter(
     (viteProjectScope) =>
-      isPathInsideDirectory(fromFilePath, viteProjectScope.rootDirectory) ||
-      isPathInsideDirectory(fromFilePath, viteProjectScope.configDirectory),
+      isPathInsideDirectoryOrEqual(fromFilePath, viteProjectScope.rootDirectory) ||
+      isPathInsideDirectoryOrEqual(fromFilePath, viteProjectScope.configDirectory),
   );
   const viteProjectRootDirectory = matchingViteProjectScopes.sort((leftScope, rightScope) => {
-    const leftContainsRoot = isPathInsideDirectory(fromFilePath, leftScope.rootDirectory);
-    const rightContainsRoot = isPathInsideDirectory(fromFilePath, rightScope.rootDirectory);
+    const leftContainsRoot = isPathInsideDirectoryOrEqual(fromFilePath, leftScope.rootDirectory);
+    const rightContainsRoot = isPathInsideDirectoryOrEqual(fromFilePath, rightScope.rootDirectory);
     if (leftContainsRoot !== rightContainsRoot) return leftContainsRoot ? -1 : 1;
     const leftOwnerDirectory = leftContainsRoot
       ? leftScope.rootDirectory
@@ -40,7 +31,7 @@ export const normalizeProjectRootGlobSpecifier = (
     viteProjectRootDirectory ??
     projectRootDirectories
       .filter((candidateRootDirectory) =>
-        isPathInsideDirectory(fromFilePath, candidateRootDirectory),
+        isPathInsideDirectoryOrEqual(fromFilePath, candidateRootDirectory),
       )
       .sort((leftRoot, rightRoot) => rightRoot.length - leftRoot.length)[0];
   if (!projectRootDirectory) return specifier;

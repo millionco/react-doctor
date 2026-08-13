@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import fg from "fast-glob";
 import ts from "typescript";
 import {
@@ -11,7 +11,9 @@ import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensio
 import { extractScriptFileReferences } from "../utils/extract-script-file-references.js";
 import { extractPreviewRegistryNamesFromMdx } from "../utils/extract-preview-registry-names-from-mdx.js";
 import { areSourceFilesStructurallyEquivalent } from "../utils/are-source-files-structurally-equivalent.js";
+import { isPathInsideDirectoryOrEqual } from "../utils/is-path-inside-directory-or-equal.js";
 import { toPosixPath } from "../utils/to-posix-path.js";
+import { unwrapTypescriptExpression as unwrapExpression } from "../../utils/unwrap-typescript-expression.js";
 
 interface InvokedScriptFile {
   filePath: string;
@@ -51,14 +53,6 @@ const GULP_INVOCATION_PATTERN = /(?:^|[\s;&|])gulp(?:\s|$)/;
 const buildScriptAnalysisKey = (scriptFile: InvokedScriptFile): string =>
   `${scriptFile.workingDirectory}\0${scriptFile.filePath}`;
 
-const isPathInsideDirectory = (directoryPath: string, candidatePath: string): boolean => {
-  const relativePath = relative(directoryPath, candidatePath);
-  return (
-    relativePath === "" ||
-    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
-  );
-};
-
 const resolveBuildReference = (
   reference: string,
   workingDirectory: string,
@@ -67,20 +61,6 @@ const resolveBuildReference = (
   reference.startsWith("/")
     ? resolve(projectRoot, reference.replace(/^\/+/, ""))
     : resolve(workingDirectory, reference);
-
-const unwrapExpression = (expression: ts.Expression): ts.Expression => {
-  let unwrappedExpression = expression;
-  while (
-    ts.isParenthesizedExpression(unwrappedExpression) ||
-    ts.isAsExpression(unwrappedExpression) ||
-    ts.isSatisfiesExpression(unwrappedExpression) ||
-    ts.isTypeAssertionExpression(unwrappedExpression) ||
-    ts.isNonNullExpression(unwrappedExpression)
-  ) {
-    unwrappedExpression = unwrappedExpression.expression;
-  }
-  return unwrappedExpression;
-};
 
 const getPropertyName = (expression: ts.Expression): string | undefined => {
   const unwrappedExpression = unwrapExpression(expression);
@@ -112,7 +92,7 @@ const resolveImportedScriptPath = (
       ? resolveEntryWithExtensions(join(importedPath, "index"))
       : (resolveEntryWithExtensions(importedPath) ??
         resolveEntryWithExtensions(sourceImportedPath));
-  if (!resolvedImportedPath || !isPathInsideDirectory(projectRoot, resolvedImportedPath)) {
+  if (!resolvedImportedPath || !isPathInsideDirectoryOrEqual(resolvedImportedPath, projectRoot)) {
     return undefined;
   }
   return resolvedImportedPath;
@@ -221,7 +201,7 @@ const expandManifestPaths = (
             normalizedPattern.slice(0, normalizedPattern.indexOf("*")),
           );
           if (
-            isPathInsideDirectory(projectRoot, wildcardDirectory) &&
+            isPathInsideDirectoryOrEqual(wildcardDirectory, projectRoot) &&
             existsSync(wildcardDirectory) &&
             statSync(wildcardDirectory).isDirectory()
           ) {
@@ -250,7 +230,7 @@ const expandManifestPaths = (
           deep: BUILD_SCRIPT_DIRECTORY_SCAN_MAX_DEPTH,
         })) {
           if (
-            isPathInsideDirectory(projectRoot, filePath) &&
+            isPathInsideDirectoryOrEqual(filePath, projectRoot) &&
             SOURCE_FILE_EXTENSION_PATTERN.test(filePath)
           ) {
             filePaths.add(filePath);
@@ -264,7 +244,7 @@ const expandManifestPaths = (
     for (const patternWorkingDirectory of patternWorkingDirectories) {
       const filePath = resolve(patternWorkingDirectory, normalizedPattern);
       if (
-        isPathInsideDirectory(projectRoot, filePath) &&
+        isPathInsideDirectoryOrEqual(filePath, projectRoot) &&
         existsSync(filePath) &&
         statSync(filePath).isFile() &&
         SOURCE_FILE_EXTENSION_PATTERN.test(filePath)
@@ -317,7 +297,7 @@ const extractInvokedScriptFiles = (
       for (const scriptReference of extractScriptFileReferences(command)) {
         const scriptPath = resolveBuildReference(scriptReference, workingDirectory, projectRoot);
         if (
-          isPathInsideDirectory(projectRoot, scriptPath) &&
+          isPathInsideDirectoryOrEqual(scriptPath, projectRoot) &&
           existsSync(scriptPath) &&
           statSync(scriptPath).isFile()
         ) {
@@ -386,7 +366,7 @@ const expandInvokedScriptFiles = (
 const findScriptWorkingDirectory = (filePath: string, projectRoot: string): string => {
   let currentDirectory = dirname(resolve(filePath));
   const absoluteProjectRoot = resolve(projectRoot);
-  while (isPathInsideDirectory(absoluteProjectRoot, currentDirectory)) {
+  while (isPathInsideDirectoryOrEqual(currentDirectory, absoluteProjectRoot)) {
     if (existsSync(join(currentDirectory, "package.json"))) return currentDirectory;
     if (currentDirectory === absoluteProjectRoot) break;
     const parentDirectory = dirname(currentDirectory);
@@ -578,7 +558,7 @@ const collectDirectorySourceFiles = (
   recursively: boolean,
 ): void => {
   if (
-    !isPathInsideDirectory(projectRoot, directoryPath) ||
+    !isPathInsideDirectoryOrEqual(directoryPath, projectRoot) ||
     !existsSync(directoryPath) ||
     !statSync(directoryPath).isDirectory()
   ) {
@@ -591,7 +571,7 @@ const collectDirectorySourceFiles = (
     ignore: ["**/node_modules/**"],
     deep: recursively ? BUILD_SCRIPT_DIRECTORY_SCAN_MAX_DEPTH : 1,
   })) {
-    if (isPathInsideDirectory(projectRoot, filePath)) consumedFiles.add(filePath);
+    if (isPathInsideDirectoryOrEqual(filePath, projectRoot)) consumedFiles.add(filePath);
   }
 };
 
@@ -932,7 +912,7 @@ const collectCopiedSourceFiles = (
             projectRoot,
           );
           if (
-            isPathInsideDirectory(projectRoot, sourcePath) &&
+            isPathInsideDirectoryOrEqual(sourcePath, projectRoot) &&
             existsSync(sourcePath) &&
             statSync(sourcePath).isFile() &&
             SOURCE_FILE_EXTENSION_PATTERN.test(sourcePath)
@@ -1106,7 +1086,7 @@ const collectResolvedRegistryFiles = (
     for (const registryFileReference of registryFileReferences) {
       const registryFilePath = resolve(registryRoot, styleName, registryFileReference);
       if (
-        isPathInsideDirectory(projectRoot, registryFilePath) &&
+        isPathInsideDirectoryOrEqual(registryFilePath, projectRoot) &&
         existsSync(registryFilePath) &&
         statSync(registryFilePath).isFile()
       ) {
@@ -1302,7 +1282,7 @@ const collectReferencedManifestFiles = (
     }
     const manifestPath = evaluatePathExpression(node.arguments[0], analysis, projectRoot);
     if (!manifestPath || basename(manifestPath) !== "registry.json") continue;
-    if (!isPathInsideDirectory(projectRoot, manifestPath)) continue;
+    if (!isPathInsideDirectoryOrEqual(manifestPath, projectRoot)) continue;
     if (!existsSync(manifestPath)) continue;
     for (const filePath of expandManifestPaths(
       manifestPath,
@@ -1374,7 +1354,7 @@ const collectShadcnRegistryFiles = (
         if (typeof sourcePath !== "string" || typeof sourceContent !== "string") continue;
         const absoluteSourcePath = resolve(workingDirectory, sourcePath);
         if (
-          isPathInsideDirectory(projectRoot, absoluteSourcePath) &&
+          isPathInsideDirectoryOrEqual(absoluteSourcePath, projectRoot) &&
           existsSync(absoluteSourcePath) &&
           statSync(absoluteSourcePath).isFile() &&
           SOURCE_FILE_EXTENSION_PATTERN.test(absoluteSourcePath) &&

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import fg from "fast-glob";
 import ts from "typescript";
+import { getObjectLiteralElementName } from "../utils/get-object-literal-element-name.js";
 import { maskJavaScriptStringsAndComments } from "../utils/mask-javascript-strings-and-comments.js";
 import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
 import { extractJitiLoadReferences } from "../utils/extract-jiti-load-references.js";
@@ -185,15 +186,6 @@ const unwrapConfigExpression = (expression: ts.Expression): ts.Expression => {
   return expression;
 };
 
-const getPropertyName = (property: ts.ObjectLiteralElementLike): string | undefined => {
-  if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) {
-    return undefined;
-  }
-  return ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
-    ? property.name.text
-    : undefined;
-};
-
 const extractUmiRouteComponentPaths = (content: string, isRouteModule: boolean): string[] => {
   const sourceFile = ts.createSourceFile(
     "umi-config.ts",
@@ -245,7 +237,7 @@ const extractUmiRouteComponentPaths = (content: string, isRouteModule: boolean):
       const resolvedRouteElement = resolveExpression(routeElement);
       if (!ts.isObjectLiteralExpression(resolvedRouteElement)) continue;
       for (const property of resolvedRouteElement.properties) {
-        const propertyName = getPropertyName(property);
+        const propertyName = getObjectLiteralElementName(property);
         if (propertyName === "component" && ts.isPropertyAssignment(property)) {
           const componentExpression = resolveExpression(property.initializer);
           if (
@@ -268,7 +260,7 @@ const extractUmiRouteComponentPaths = (content: string, isRouteModule: boolean):
     collectRouteObjects(exportedExpression);
   } else if (ts.isObjectLiteralExpression(exportedExpression)) {
     for (const property of exportedExpression.properties) {
-      if (getPropertyName(property) !== "routes") continue;
+      if (getObjectLiteralElementName(property) !== "routes") continue;
       if (ts.isPropertyAssignment(property)) collectRouteObjects(property.initializer);
       if (ts.isShorthandPropertyAssignment(property)) {
         const initializer = variableInitializers.get(property.name.text);
@@ -289,7 +281,7 @@ const extractUmiLoadingComponentPaths = (content: string): string[] => {
   );
   const loadingComponentPaths: string[] = [];
   const visitNode = (node: ts.Node): void => {
-    if (ts.isPropertyAssignment(node) && getPropertyName(node) === "loadingComponent") {
+    if (ts.isPropertyAssignment(node) && getObjectLiteralElementName(node) === "loadingComponent") {
       const initializer = unwrapConfigExpression(node.initializer);
       if (ts.isStringLiteral(initializer) || ts.isNoSubstitutionTemplateLiteral(initializer)) {
         loadingComponentPaths.push(initializer.text);

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   MAINTAINABILITY_CATEGORY,
   MAINTAINABILITY_PLUGIN,
+  PROJECT_ANALYSIS_WORKER_MAX_OLD_SPACE_MB,
   PROJECT_ANALYSIS_WORKER_TIMEOUT_MS,
   TSCONFIG_FILENAMES,
 } from "./constants.js";
@@ -29,6 +30,7 @@ export interface CheckProjectAnalysisOptions {
   readonly enabledRuleIds: ReadonlySet<string>;
   readonly abortSignal?: AbortSignal;
   readonly excludedProjectDirectories?: ReadonlyArray<string>;
+  readonly ignorePatterns?: ReadonlyArray<string>;
   readonly workerTimeoutMs?: number;
   readonly createWorker?: (input: ProjectAnalysisWorkerInput) => ProjectAnalysisWorkerHandle;
 }
@@ -219,10 +221,14 @@ const createProjectAnalysisWorker = (
     path.dirname(fileURLToPath(import.meta.url)),
     "project-analysis-worker.js",
   );
-  const child = spawn(process.execPath, [workerPath], {
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
-  });
+  const child = spawn(
+    process.execPath,
+    [`--max-old-space-size=${PROJECT_ANALYSIS_WORKER_MAX_OLD_SPACE_MB}`, workerPath],
+    {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    },
+  );
   const stdoutChunks: Buffer[] = [];
   const stderrChunks: Buffer[] = [];
   child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
@@ -415,9 +421,12 @@ export const checkProjectAnalysis = async (
   const rootDirectory = toCanonicalPath(options.rootDirectory);
   if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
   const tsConfigPath = resolveTsConfigPath(rootDirectory);
-  const ignorePatterns = (options.excludedProjectDirectories ?? []).map(
-    (directory) => `${toRelativeFilePath(rootDirectory, toCanonicalPath(directory))}/**`,
-  );
+  const ignorePatterns = [
+    ...(options.ignorePatterns ?? []),
+    ...(options.excludedProjectDirectories ?? []).map(
+      (directory) => `${toRelativeFilePath(rootDirectory, toCanonicalPath(directory))}/**`,
+    ),
+  ];
   const workerInput: ProjectAnalysisWorkerInput = {
     rootDirectory,
     ...(tsConfigPath === undefined ? {} : { tsConfigPath }),

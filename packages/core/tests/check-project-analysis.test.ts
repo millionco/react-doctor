@@ -90,12 +90,15 @@ describe("checkProjectAnalysis", () => {
       rootDirectory,
       enabledRuleIds: new Set(["unused-export", "unused-dev-dependency"]),
       excludedProjectDirectories: [path.join(rootDirectory, "packages/web")],
+      ignorePatterns: ["src/generated/**"],
       createWorker,
     });
 
     expect(createWorker).toHaveBeenCalledTimes(1);
     expect(createWorker).toHaveBeenCalledWith(
-      expect.objectContaining({ ignorePatterns: ["packages/web/**"] }),
+      expect.objectContaining({
+        ignorePatterns: ["src/generated/**", "packages/web/**"],
+      }),
     );
     expect(diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
       "unused-export",

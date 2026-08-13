@@ -39,6 +39,7 @@ import { Project } from "../src/services/project.js";
 import { Reporter, ReporterCapture } from "../src/services/reporter.js";
 import { Score } from "../src/services/score.js";
 import { SupplyChain } from "../src/services/supply-chain.js";
+import { PROJECT_ANALYSIS_WORKER_TIMEOUT_MS } from "../src/constants.js";
 
 const temporaryDirectories: string[] = [];
 afterAll(() => {
@@ -1130,8 +1131,12 @@ describe("runInspect — diff mode focuses maintainability", () => {
 
   it("keeps opt-in graph rules active when duplicate JSX is disabled", async () => {
     let receivedRuleIds: ReadonlySet<string> | undefined;
+    let receivedIgnorePatterns: ReadonlyArray<string> | undefined;
+    let receivedWorkerTimeoutMs: number | undefined;
     const runMaintainability = vi.fn((input) => {
       receivedRuleIds = input.enabledProjectRuleIds;
+      receivedIgnorePatterns = input.ignorePatterns;
+      receivedWorkerTimeoutMs = input.workerTimeoutMs;
       return Stream.empty;
     });
 
@@ -1142,6 +1147,7 @@ describe("runInspect — diff mode focuses maintainability", () => {
             layersOf({
               reactDoctorConfig: {
                 rules: { "react-doctor/unused-export": "warn" },
+                ignore: { files: ["src/generated/**"] },
               },
             }),
             Layer.mock(DeadCode, { run: runMaintainability }),
@@ -1152,6 +1158,8 @@ describe("runInspect — diff mode focuses maintainability", () => {
 
     expect(runMaintainability).toHaveBeenCalledTimes(1);
     expect([...(receivedRuleIds ?? new Set<string>())]).toEqual(["unused-export"]);
+    expect(receivedIgnorePatterns).toEqual(["src/generated/**"]);
+    expect(receivedWorkerTimeoutMs).toBe(PROJECT_ANALYSIS_WORKER_TIMEOUT_MS);
   });
 
   it("skips graph rules in partial scans", async () => {

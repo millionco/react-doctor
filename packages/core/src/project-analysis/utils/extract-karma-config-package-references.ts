@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { getObjectLiteralElementName } from "./get-object-literal-element-name.js";
 
 const KARMA_FRAMEWORK_PACKAGES = new Map<string, ReadonlyArray<string>>([
   ["chai", ["karma-chai"]],
@@ -33,15 +34,6 @@ const KARMA_BROWSER_PACKAGES = new Map<string, ReadonlyArray<string>>([
   ["PhantomJS", ["karma-phantomjs-launcher"]],
   ["Safari", ["karma-safari-launcher"]],
 ]);
-
-const getPropertyName = (property: ts.ObjectLiteralElementLike): string | undefined => {
-  if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) {
-    return undefined;
-  }
-  return ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
-    ? property.name.text
-    : undefined;
-};
 
 const collectExpressionStrings = (
   expression: ts.Expression,
@@ -141,7 +133,7 @@ export const extractKarmaConfigPackageReferences = (
   const visit = (node: ts.Node): void => {
     if (ts.isObjectLiteralExpression(node)) {
       for (const property of node.properties) {
-        const packageMap = propertyPackageMaps.get(getPropertyName(property) ?? "");
+        const packageMap = propertyPackageMaps.get(getObjectLiteralElementName(property) ?? "");
         if (!packageMap) continue;
         for (const token of collectPropertyStrings(property, identifierStrings)) {
           for (const packageName of packageMap.get(token) ?? []) {

@@ -1,11 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import fg from "fast-glob";
 import ts from "typescript";
 import { extractScriptFileReferences } from "./extract-script-file-references.js";
 import { toCanonicalPath } from "../../utils/to-canonical-path.js";
 import { toPosixPath } from "./to-posix-path.js";
 import { buildExportKey } from "./build-export-key.js";
+import { isPathInsideDirectoryOrEqual } from "./is-path-inside-directory-or-equal.js";
 
 interface DynamicBuildFileCollection {
   excludedPathSubstrings: ReadonlyArray<string>;
@@ -30,14 +31,6 @@ const hasMatchingSymbol = (
 ): boolean => {
   const symbol = typeChecker.getSymbolAtLocation(node);
   return symbol !== undefined && symbols.has(symbol);
-};
-
-const isPathInsideDirectory = (filePath: string, directory: string): boolean => {
-  const relativePath = relative(directory, filePath);
-  return (
-    relativePath === "" ||
-    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
-  );
 };
 
 const collectDynamicBuildImports = (
@@ -464,7 +457,7 @@ const collectScriptConsumedExportKeys = (
             const canonicalFilePath = toCanonicalPath(resolve(matchedFilePath));
             const normalizedFilePath = toPosixPath(canonicalFilePath);
             if (
-              !isPathInsideDirectory(canonicalFilePath, packageDirectory) ||
+              !isPathInsideDirectoryOrEqual(canonicalFilePath, packageDirectory) ||
               collection.excludedPathSubstrings.some((excludedPathSubstring) =>
                 normalizedFilePath.includes(excludedPathSubstring),
               )
@@ -492,7 +485,9 @@ export const collectDynamicBuildConsumedExportKeys = (
   for (const script of scripts) {
     for (const scriptFileReference of extractScriptFileReferences(script)) {
       const scriptPath = resolve(packageDirectory, scriptFileReference);
-      if (!isPathInsideDirectory(scriptPath, packageDirectory) || !existsSync(scriptPath)) continue;
+      if (!isPathInsideDirectoryOrEqual(scriptPath, packageDirectory) || !existsSync(scriptPath)) {
+        continue;
+      }
       for (const consumedExportKey of collectScriptConsumedExportKeys(
         scriptPath,
         packageDirectory,

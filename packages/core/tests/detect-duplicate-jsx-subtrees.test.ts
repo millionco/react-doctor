@@ -334,9 +334,9 @@ export const Formatted = () => (
       incompleteReasons: [{ kind: "jsx-node-limit", limit: 1, path: "src/card.tsx" }],
     });
     expect(familyLimited).toMatchObject({
-      incomplete: true,
+      incomplete: false,
       families: [],
-      incompleteReasons: [{ kind: "family-limit", limit: 0, observed: 1 }],
+      incompleteReasons: [],
     });
   });
 

@@ -1,4 +1,4 @@
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { relative, resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import type {
   CircularDependency,
@@ -30,6 +30,7 @@ import { buildModuleLinkInputs } from "./linker/build-module-link-inputs.js";
 import { markFilenameRegistryEntries } from "./linker/mark-filename-registry-entries.js";
 import { traceReachability } from "./linker/reachability.js";
 import { resolveReExportChains } from "./linker/re-exports.js";
+import { isPathInsideDirectoryOrEqual } from "./utils/is-path-inside-directory-or-equal.js";
 import { detectCycles } from "./report/cycles.js";
 import { detectDeadExports } from "./report/exports.js";
 import { detectOrphanFiles } from "./report/files.js";
@@ -100,14 +101,6 @@ const detectPlatformCapabilities = (directory: string): PlatformCapabilities => 
       dependencyName.startsWith(TARO_ENABLER_PREFIX),
     ),
   };
-};
-
-const isPathInsideDirectory = (filePath: string, directory: string): boolean => {
-  const relativePath = relative(directory, filePath);
-  return (
-    relativePath === "" ||
-    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
-  );
 };
 
 const buildEmptyProjectAnalysisResult = (
@@ -402,7 +395,7 @@ const analyzeProjectConfig = async (
   try {
     platformSiblingIndex = buildPlatformSiblingIndex(moduleGraph, (filePath) => {
       const containingCapabilityRoots = platformCapabilityRoots.filter((capabilityRoot) =>
-        isPathInsideDirectory(filePath, capabilityRoot.directory),
+        isPathInsideDirectoryOrEqual(filePath, capabilityRoot.directory),
       );
       return [
         ...(containingCapabilityRoots.some((capabilityRoot) => capabilityRoot.hasReactNative)

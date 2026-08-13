@@ -65,6 +65,7 @@ import { SupplyChain } from "./services/supply-chain.js";
 import type { ScoreRequestMetadata } from "./calculate-score.js";
 import { resolveGithubActionsScoreMetadata } from "./utils/resolve-github-actions-score-metadata.js";
 import { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
+import { resolveProjectAnalysisTimeout } from "./utils/resolve-project-analysis-timeout.js";
 import { toNormalizedRelativePath } from "./utils/to-normalized-relative-path.js";
 
 export type { InspectHooks, InspectInput, InspectOutput } from "./types/run-inspect.js";
@@ -183,6 +184,11 @@ export const runInspect = <HooksR = never>(
 
     const resolvedConfig: ResolvedConfig = yield* configService.resolve(input.directory);
     const scanDirectory = resolvedConfig.resolvedDirectory;
+    const ignoredFilePatterns = Array.isArray(resolvedConfig.config?.ignore?.files)
+      ? resolvedConfig.config.ignore.files.filter(
+          (pattern): pattern is string => typeof pattern === "string",
+        )
+      : [];
     const excludedProjectDirectories = (input.excludedProjectDirectories ?? [])
       .map((excludedDirectory) => path.resolve(excludedDirectory))
       .filter((excludedDirectory) => isPathInsideDirectory(excludedDirectory, scanDirectory));
@@ -511,6 +517,8 @@ export const runInspect = <HooksR = never>(
                 input.maintainabilityFocusPaths ?? (isDiffMode ? input.includePaths : undefined),
               changedLineRanges: input.changedLineRanges,
               excludedProjectDirectories: input.excludedProjectDirectories,
+              ignorePatterns: ignoredFilePatterns,
+              workerTimeoutMs: resolveProjectAnalysisTimeout(project.sourceFileCount),
               signal: input.signal,
               onIncomplete: (reasons) => {
                 incompleteReason = describeMaintainabilityIncompleteness(reasons);

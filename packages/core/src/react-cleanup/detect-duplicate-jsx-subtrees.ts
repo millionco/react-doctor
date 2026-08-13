@@ -69,7 +69,7 @@ export interface DuplicateJsxSubtreeFamily {
 }
 
 export interface JsxDuplicationIncompleteReason {
-  kind: "source-file-limit" | "source-length-limit" | "jsx-node-limit" | "family-limit" | "aborted";
+  kind: "source-file-limit" | "source-length-limit" | "jsx-node-limit" | "aborted";
   limit?: number;
   observed: number;
   path?: string;
@@ -141,8 +141,6 @@ interface BuildDuplicateJsxResultInput {
 
 interface BuiltDuplicateJsxFamilies {
   families: DuplicateJsxSubtreeFamily[];
-  didReachProcessingLimit: boolean;
-  observedFamilyCount: number;
 }
 
 interface FunctionIdentity {
@@ -648,7 +646,6 @@ const buildFamilies = (
     options.maxFamilies * JSX_DUPLICATION_FAMILY_PROCESSING_MULTIPLIER,
     options.maxFamilies + 1,
   );
-  let didReachProcessingLimit = false;
   for (const bucket of bucketsByFingerprint.values()) {
     if (bucket.occurrences.length < options.minimumOccurrences) continue;
     bucket.occurrences.sort(compareOccurrences);
@@ -682,31 +679,16 @@ const buildFamilies = (
       relatedOccurrences: bucket.occurrences.slice(1),
     });
     if (families.length > familyProcessingLimit) {
-      didReachProcessingLimit = true;
       break;
     }
   }
   return {
     families: suppressNestedFamilies(families).sort(compareFamilies),
-    didReachProcessingLimit,
-    observedFamilyCount: families.length,
   };
 };
 
 const buildResult = (input: BuildDuplicateJsxResultInput): DuplicateJsxSubtreesResult => {
   const builtFamilies = buildFamilies(input.candidates, input.options);
-  if (
-    builtFamilies.didReachProcessingLimit ||
-    builtFamilies.families.length > input.options.maxFamilies
-  ) {
-    input.incompleteReasons.push({
-      kind: "family-limit",
-      limit: input.options.maxFamilies,
-      observed: builtFamilies.didReachProcessingLimit
-        ? builtFamilies.observedFamilyCount
-        : builtFamilies.families.length,
-    });
-  }
   return {
     families: builtFamilies.families.slice(0, input.options.maxFamilies),
     scannedSourceFileCount: input.scannedSourceFileCount,

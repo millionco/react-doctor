@@ -1,12 +1,13 @@
 import { builtinModules } from "node:module";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import ts from "typescript";
 import {
   UNUSED_FILE_INCOMPLETE_CONTAINER_EXTENSIONS,
   UNUSED_FILE_UNSUPPORTED_FRAMEWORK_DEPENDENCIES,
 } from "../constants.js";
 import type { DependencyGraph, ProjectAnalysisError, SourceModule } from "../types.js";
+import { isPathInsideDirectoryOrEqual } from "./is-path-inside-directory-or-equal.js";
 
 export interface MarkCompletePackageGraphsInput {
   graph: DependencyGraph;
@@ -25,14 +26,6 @@ const BUILTIN_MODULE_SPECIFIERS = new Set([
   ...builtinModules,
   ...builtinModules.map((moduleName) => `node:${moduleName}`),
 ]);
-
-const isPathInsideDirectory = (filePath: string, directory: string): boolean => {
-  const relativePath = relative(directory, filePath);
-  return (
-    relativePath === "" ||
-    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
-  );
-};
 
 const packageNameFromSpecifier = (specifier: string): string =>
   specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0];
@@ -180,12 +173,12 @@ export const markCompletePackageGraphs = ({
   for (const packageRootDirectory of sortedPackageRoots) {
     const packageModules = graph.modules.filter(
       (module) =>
-        isPathInsideDirectory(module.fileId.path, packageRootDirectory) &&
+        isPathInsideDirectoryOrEqual(module.fileId.path, packageRootDirectory) &&
         !sortedPackageRoots.some(
           (nestedRootDirectory) =>
             nestedRootDirectory !== packageRootDirectory &&
             nestedRootDirectory.length > packageRootDirectory.length &&
-            isPathInsideDirectory(module.fileId.path, nestedRootDirectory),
+            isPathInsideDirectoryOrEqual(module.fileId.path, nestedRootDirectory),
         ),
     );
     const packageContract = readPackageContract(packageRootDirectory);
@@ -237,7 +230,8 @@ export const markCompletePackageGraphs = ({
       (error) =>
         error.severity !== "info" &&
         error.code !== "gitignore-check-failed" &&
-        (error.path === undefined || isPathInsideDirectory(error.path, packageRootDirectory)),
+        (error.path === undefined ||
+          isPathInsideDirectoryOrEqual(error.path, packageRootDirectory)),
     );
     const isComplete =
       !hasSetupUncertainty &&

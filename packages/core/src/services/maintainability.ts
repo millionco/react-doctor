@@ -29,6 +29,9 @@ import { readTextFileUpToCharacterLimit } from "../utils/read-text-file-up-to-ch
 import { toNormalizedRelativePath } from "../utils/to-normalized-relative-path.js";
 import { MaintainabilityAnalysisFailed, ReactDoctorError } from "../errors.js";
 import { classifyFileContext } from "../classify-file-context.js";
+import { compileGlobPatternsLenient } from "../utils/match-glob-pattern.js";
+import { isFileIgnoredByPatterns } from "../is-ignored-file.js";
+import { warnConfigIssue } from "../utils/warn-config-issue.js";
 
 export interface MaintainabilityInput {
   readonly rootDirectory: string;
@@ -36,6 +39,8 @@ export interface MaintainabilityInput {
   readonly focusPaths?: ReadonlyArray<string>;
   readonly changedLineRanges?: ReadonlyArray<ChangedFileLineRanges>;
   readonly excludedProjectDirectories?: ReadonlyArray<string>;
+  readonly ignorePatterns?: ReadonlyArray<string>;
+  readonly workerTimeoutMs?: number;
   readonly signal?: AbortSignal;
   readonly onIncomplete?: (reasons: ReadonlyArray<JsxDuplicationIncompleteReason>) => void;
 }
@@ -43,12 +48,16 @@ export interface MaintainabilityInput {
 const buildJsxSourceReader = async (
   input: MaintainabilityInput,
 ): Promise<JsxDuplicationSourceReader> => {
+  const ignoredFilePatterns = compileGlobPatternsLenient(input.ignorePatterns ?? [], (error) =>
+    warnConfigIssue(`ignore.files: ${error.message}`),
+  );
   const sourceFiles = (
     await listSourceFilesWithSizeCooperative(input.rootDirectory, input.signal)
   ).filter(
     (sourceFile) =>
       JSX_DUPLICATION_SOURCE_FILE_PATTERN.test(sourceFile.path) &&
-      classifyFileContext(sourceFile.path) === "production",
+      classifyFileContext(sourceFile.path) === "production" &&
+      !isFileIgnoredByPatterns(sourceFile.path, input.rootDirectory, ignoredFilePatterns),
   );
   const sourceSizeByPath = new Map(
     sourceFiles.map((sourceFile) => [
@@ -198,6 +207,8 @@ const runMaintainability = async (input: MaintainabilityInput): Promise<Diagnost
       enabledRuleIds: enabledGraphRuleIds,
       abortSignal: input.signal,
       excludedProjectDirectories: input.excludedProjectDirectories,
+      ignorePatterns: input.ignorePatterns,
+      workerTimeoutMs: input.workerTimeoutMs,
     }),
   ]);
   return [...duplicateJsxDiagnostics, ...projectGraphDiagnostics];

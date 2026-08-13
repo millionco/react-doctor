@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, resolve } from "node:path";
 import fg from "fast-glob";
 import ts from "typescript";
 import type { ImportReference, SourceFile } from "../types.js";
+import { isPathInsideDirectoryOrEqual } from "../utils/is-path-inside-directory-or-equal.js";
 import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
 import {
   collectUnpluginAutoImportGlobalScopes,
@@ -102,21 +103,15 @@ const collectUnboundGlobalNames = (
   return unboundGlobalNames;
 };
 
-const isPathInsideDirectory = (filePath: string, directory: string): boolean => {
-  const relativePath = relative(directory, filePath);
-  return (
-    relativePath === "" ||
-    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
-  );
-};
-
 const findOwningScope = (
   filePath: string,
   scopes: ReadonlyArray<UnpluginAutoImportGlobalScope>,
   rootDirectory: string,
 ): UnpluginAutoImportGlobalScope | undefined =>
   scopes
-    .filter((scope) => isPathInsideDirectory(filePath, resolve(rootDirectory, scope.directory)))
+    .filter((scope) =>
+      isPathInsideDirectoryOrEqual(filePath, resolve(rootDirectory, scope.directory)),
+    )
     .toSorted(
       (leftScope, rightScope) => rightScope.directory.length - leftScope.directory.length,
     )[0];
@@ -156,7 +151,7 @@ const collectSourceBindings = (
       if (
         !sourcePath ||
         !existsSync(sourcePath) ||
-        !isPathInsideDirectory(sourcePath, absoluteScopeDirectory)
+        !isPathInsideDirectoryOrEqual(sourcePath, absoluteScopeDirectory)
       ) {
         continue;
       }

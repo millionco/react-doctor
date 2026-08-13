@@ -2,6 +2,7 @@ import fg from "fast-glob";
 import { parseJSONC, parseTOML, parseYAML } from "confbox";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
+import { parseSync } from "oxc-parser";
 import ts from "typescript";
 import type {
   SourceFile,
@@ -40,6 +41,7 @@ import { extractWordPressScriptEntries } from "./wordpress-script-entries.js";
 import { extractReactEmailTemplateEntries } from "./react-email-template-entries.js";
 import { extractPackageJsonEntries, findDefaultIndexEntry } from "./package-json-entries.js";
 import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
+import { toCanonicalPath } from "../../utils/to-canonical-path.js";
 import { toPosixPath } from "../utils/to-posix-path.js";
 import { extractLocalScriptFileReference } from "../utils/extract-local-script-file-reference.js";
 import { collectExecutableMarkdownFilePaths } from "../utils/collect-executable-markdown-file-paths.js";
@@ -47,6 +49,8 @@ import { collectStringProperties } from "../utils/collect-string-properties.js";
 import { collectHtmlElementAttributes } from "../utils/collect-html-element-attributes.js";
 import { evaluateStaticConfig } from "../utils/evaluate-static-config.js";
 import { extractScriptInvocations } from "../utils/extract-script-binary-names.js";
+import { getIdentifierName, isOxcAstNode, type OxcAstNode } from "../utils/oxc-ast-node.js";
+import { visitOxcAstWithBindings } from "../utils/visit-oxc-ast-with-bindings.js";
 
 export const collectSourceFiles = async (config: ProjectAnalysisConfig): Promise<SourceFile[]> => {
   const extensions =
@@ -395,8 +399,16 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
     reactEmailTemplateEntries.push(...extractReactEmailTemplateEntries(workspacePackage.directory));
   }
 
+  const normalizedEntryPathByPath = new Map<string, string>();
+  const normalizeEntryPath = (entryPath: string): string => {
+    const cachedEntryPath = normalizedEntryPathByPath.get(entryPath);
+    if (cachedEntryPath) return cachedEntryPath;
+    const normalizedEntryPath = toPosixPath(toCanonicalPath(entryPath));
+    normalizedEntryPathByPath.set(entryPath, normalizedEntryPath);
+    return normalizedEntryPath;
+  };
   const testEntries = [
-    ...new Set([...testRunnerDiscovery.entryFiles, ...testSetupEntries].map(toPosixPath)),
+    ...new Set([...testRunnerDiscovery.entryFiles, ...testSetupEntries].map(normalizeEntryPath)),
   ];
   const testEntryPathSet = new Set(testEntries);
   const productionEntries = [
@@ -433,7 +445,7 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
         ...muiDocsMetadataEntries,
         ...wordPressScriptEntries,
         ...reactEmailTemplateEntries,
-      ].map(toPosixPath),
+      ].map(normalizeEntryPath),
     ),
   ].filter((entryPath) => !testEntryPathSet.has(entryPath));
   const authoritativeProductionEntries = [
@@ -469,7 +481,7 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
         ...muiDocsMetadataEntries,
         ...wordPressScriptEntries,
         ...reactEmailTemplateEntries,
-      ].map(toPosixPath),
+      ].map(normalizeEntryPath),
     ),
   ].filter((entryPath) => !testEntryPathSet.has(entryPath));
   const alwaysUsedFiles = [
@@ -478,12 +490,12 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
         ...toolingDiscovery.alwaysUsedFiles,
         ...testRunnerDiscovery.alwaysUsedFiles,
         ...runtimeConsumedDirectoryFiles,
-      ].map(toPosixPath),
+      ].map(normalizeEntryPath),
     ),
   ];
 
   const externallyConsumedFiles = [
-    ...new Set(graphqlCodegenEntries.documentEntries.map(toPosixPath)),
+    ...new Set(graphqlCodegenEntries.documentEntries.map(normalizeEntryPath)),
   ];
 
   const legacyGraphOnlyFiles = fg.sync(LEGACY_GRAPH_ONLY_PATTERNS, {
@@ -499,14 +511,16 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
         ...graphqlCodegenEntries.generatedEntries,
         ...workspacePublicAssetFiles,
         ...legacyGraphOnlyFiles,
-      ].map(toPosixPath),
+      ].map(normalizeEntryPath),
     ),
   ];
 
   return {
     productionEntries,
     authoritativeProductionEntries,
-    explicitProductionEntries: config.hasExplicitEntryPatterns ? entryFiles.map(toPosixPath) : [],
+    explicitProductionEntries: config.hasExplicitEntryPatterns
+      ? entryFiles.map(normalizeEntryPath)
+      : [],
     testEntries,
     alwaysUsedFiles,
     externallyConsumedFiles,
@@ -753,20 +767,61 @@ const resolveExtensionlessScriptPath = (basePath: string): string | undefined =>
   return undefined;
 };
 
+const parseOxcProgram = (filePath: string, sourceText: string): OxcAstNode | undefined => {
+  try {
+    const parsedModule = parseSync(filePath, sourceText, { sourceType: "unambiguous" });
+    if (parsedModule.errors.some((error) => error.severity === "Error")) return undefined;
+    return isOxcAstNode(parsedModule.program) ? parsedModule.program : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const getOxcStaticString = (value: unknown): string | undefined => {
+  if (!isOxcAstNode(value)) return undefined;
+  if (value.type === "Literal" && typeof value.value === "string") return value.value;
+  if (
+    value.type === "TemplateLiteral" &&
+    Array.isArray(value.expressions) &&
+    value.expressions.length === 0 &&
+    Array.isArray(value.quasis) &&
+    value.quasis.length === 1 &&
+    isOxcAstNode(value.quasis[0]) &&
+    value.quasis[0].value &&
+    typeof value.quasis[0].value === "object" &&
+    "cooked" in value.quasis[0].value &&
+    typeof value.quasis[0].value.cooked === "string"
+  ) {
+    return value.quasis[0].value.cooked;
+  }
+  return undefined;
+};
+
 const extractExtensionlessScriptImports = (scriptPath: string): string[] => {
   const entries: string[] = [];
-  let source = "";
+  let sourceText = "";
   try {
-    source = readFileSync(scriptPath, "utf-8");
+    sourceText = readFileSync(scriptPath, "utf-8");
   } catch {
     return entries;
   }
-  const relativeRequirePattern = /\brequire\s*\(\s*["'](\.{1,2}\/[^"']+)["']\s*\)/g;
-  let requireMatch: RegExpExecArray | null;
-  while ((requireMatch = relativeRequirePattern.exec(source)) !== null) {
-    const resolvedEntry = resolveEntryWithExtensions(resolve(dirname(scriptPath), requireMatch[1]));
-    if (resolvedEntry) entries.push(resolvedEntry);
-  }
+  const program = parseOxcProgram(scriptPath, sourceText);
+  if (!program) return entries;
+  visitOxcAstWithBindings(program, (node, bindingNames) => {
+    if (
+      node.type === "CallExpression" &&
+      getIdentifierName(node.callee) === "require" &&
+      !bindingNames.has("require") &&
+      Array.isArray(node.arguments) &&
+      node.arguments.length === 1
+    ) {
+      const requirePath = getOxcStaticString(node.arguments[0]);
+      if (requirePath && (requirePath.startsWith("./") || requirePath.startsWith("../"))) {
+        const resolvedEntry = resolveEntryWithExtensions(resolve(dirname(scriptPath), requirePath));
+        if (resolvedEntry) entries.push(resolvedEntry);
+      }
+    }
+  });
   return entries;
 };
 
@@ -1007,12 +1062,25 @@ const extractBundlerConfigEntryPoints = (directory: string): string[] => {
   return entries;
 };
 
-const WEBPACK_ENTRY_BLOCK_PATTERN =
-  /entry\s*:\s*(?:\{[^}]*\}|\[[^\]]*\]|['"][^'"]+['"]|path\.(?:join|resolve)\([^)]*\))/gs;
-const WEBPACK_ENTRY_FILE_PATTERN = /['"]([^'"]+)['"]/g;
-const WEBPACK_PATH_JOIN_PATTERN =
-  /path\.(?:join|resolve)\(\s*__dirname\s*,\s*((?:['"][^'"]*['"][\s,]*)+)\)/g;
-const REQUIRE_RESOLVE_PATTERN = /require\.resolve\(\s*['"]([^'"]+)['"]\s*\)/g;
+const extractLiteralWebpackEntries = (
+  sourceText: string,
+  configPath: string,
+  projectDirectory: string,
+): string[] => {
+  const entries: string[] = [];
+  const staticConfig = evaluateStaticConfig(sourceText, configPath);
+  const entryPaths = collectStaticConfigObjects(staticConfig).flatMap((configObject) =>
+    collectStaticStringValues(getStaticConfigValue(configObject, ["entry"])),
+  );
+  for (const entryPath of entryPaths) {
+    const absoluteEntryPath = isAbsolute(entryPath)
+      ? entryPath
+      : resolve(projectDirectory, entryPath);
+    const resolvedEntry = resolveEntryWithExtensions(absoluteEntryPath);
+    if (resolvedEntry) entries.push(resolvedEntry);
+  }
+  return entries;
+};
 
 const collectWebpackConfigModules = (configPath: string): string[] => {
   const configModulePaths: string[] = [];
@@ -1050,12 +1118,33 @@ const collectWebpackConfigModules = (configPath: string): string[] => {
 const extractComputedWebpackEntries = (configPath: string, projectDirectory: string): string[] => {
   const entries: string[] = [];
   for (const modulePath of collectWebpackConfigModules(configPath)) {
-    const sourceFile = ts.createSourceFile(
-      modulePath,
-      readFileSync(modulePath, "utf-8"),
-      ts.ScriptTarget.Latest,
-      true,
-    );
+    const sourceText = readFileSync(modulePath, "utf-8");
+    const sourceFile = ts.createSourceFile(modulePath, sourceText, ts.ScriptTarget.Latest, true);
+    const program = parseOxcProgram(modulePath, sourceText);
+    if (program) {
+      visitOxcAstWithBindings(program, (node, bindingNames) => {
+        if (
+          node.type === "FunctionDeclaration" ||
+          node.type === "FunctionExpression" ||
+          node.type === "ArrowFunctionExpression"
+        ) {
+          return false;
+        }
+        if (
+          node.type !== "CallExpression" ||
+          getIdentifierName(node.callee) !== "require" ||
+          bindingNames.has("require") ||
+          !Array.isArray(node.arguments) ||
+          node.arguments.length !== 1
+        ) {
+          return;
+        }
+        const requirePath = getOxcStaticString(node.arguments[0]);
+        if (!requirePath?.startsWith(".")) return;
+        const resolvedEntry = resolveEntryWithExtensions(resolve(dirname(modulePath), requirePath));
+        if (resolvedEntry) entries.push(resolvedEntry);
+      });
+    }
     const objectInitializers = new Map<string, ts.ObjectLiteralExpression>();
     for (const statement of sourceFile.statements) {
       if (!ts.isVariableStatement(statement)) continue;
@@ -1070,10 +1159,24 @@ const extractComputedWebpackEntries = (configPath: string, projectDirectory: str
       }
     }
     const exportedObjects = sourceFile.statements.flatMap((statement) => {
-      if (!ts.isExportAssignment(statement)) return [];
-      if (ts.isObjectLiteralExpression(statement.expression)) return [statement.expression];
-      if (ts.isIdentifier(statement.expression)) {
-        const objectInitializer = objectInitializers.get(statement.expression.text);
+      let exportedExpression: ts.Expression | undefined;
+      if (ts.isExportAssignment(statement)) {
+        exportedExpression = statement.expression;
+      } else if (
+        ts.isExpressionStatement(statement) &&
+        ts.isBinaryExpression(statement.expression) &&
+        statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isPropertyAccessExpression(statement.expression.left) &&
+        ts.isIdentifier(statement.expression.left.expression) &&
+        statement.expression.left.expression.text === "module" &&
+        statement.expression.left.name.text === "exports"
+      ) {
+        exportedExpression = statement.expression.right;
+      }
+      if (!exportedExpression) return [];
+      if (ts.isObjectLiteralExpression(exportedExpression)) return [exportedExpression];
+      if (ts.isIdentifier(exportedExpression)) {
+        const objectInitializer = objectInitializers.get(exportedExpression.text);
         return objectInitializer ? [objectInitializer] : [];
       }
       return [];
@@ -1093,24 +1196,37 @@ const extractComputedWebpackEntries = (configPath: string, projectDirectory: str
           }
         }
       }
+      const entryCallExpression =
+        entryProperty && ts.isCallExpression(entryProperty.initializer)
+          ? entryProperty.initializer
+          : undefined;
+      const entryPathObjectName =
+        entryCallExpression &&
+        ts.isPropertyAccessExpression(entryCallExpression.expression) &&
+        ts.isIdentifier(entryCallExpression.expression.expression)
+          ? entryCallExpression.expression.expression.text
+          : undefined;
+      const entryPathMethodName =
+        entryCallExpression && ts.isPropertyAccessExpression(entryCallExpression.expression)
+          ? entryCallExpression.expression.name.text
+          : undefined;
       if (
         !entryProperty ||
-        !ts.isCallExpression(entryProperty.initializer) ||
-        !ts.isPropertyAccessExpression(entryProperty.initializer.expression) ||
-        !ts.isIdentifier(entryProperty.initializer.expression.expression) ||
-        !/path/i.test(entryProperty.initializer.expression.expression.text) ||
-        pathSegments.length !== entryProperty.initializer.arguments.length
+        !entryCallExpression ||
+        !entryPathObjectName ||
+        !entryPathMethodName ||
+        !/path/i.test(entryPathObjectName) ||
+        pathSegments.length !== entryCallExpression.arguments.length
       ) {
         continue;
       }
-      const pathObjectName = entryProperty.initializer.expression.expression.text;
-      const pathMethodName = entryProperty.initializer.expression.name.text;
       const candidatePaths =
-        pathObjectName === "path" && (pathMethodName === "join" || pathMethodName === "resolve")
+        entryPathObjectName === "path" &&
+        (entryPathMethodName === "join" || entryPathMethodName === "resolve")
           ? [resolve(dirname(modulePath), ...pathSegments)]
           : [
-              resolve(projectDirectory, pathMethodName, ...pathSegments),
-              resolve(projectDirectory, "src", pathMethodName, ...pathSegments),
+              resolve(projectDirectory, entryPathMethodName, ...pathSegments),
+              resolve(projectDirectory, "src", entryPathMethodName, ...pathSegments),
             ];
       for (const candidatePath of candidatePaths) {
         const resolvedEntry = resolveEntryWithExtensions(candidatePath);
@@ -1144,57 +1260,7 @@ const extractWebpackEntryPoints = (directory: string): string[] => {
     try {
       entries.push(...extractComputedWebpackEntries(configPath, directory));
       const content = readFileSync(configPath, "utf-8");
-      const configDirectory = dirname(configPath);
-
-      let pathJoinMatch: RegExpExecArray | null;
-      WEBPACK_PATH_JOIN_PATTERN.lastIndex = 0;
-      while ((pathJoinMatch = WEBPACK_PATH_JOIN_PATTERN.exec(content)) !== null) {
-        const segmentsRaw = pathJoinMatch[1];
-        const segments = [...segmentsRaw.matchAll(/['"]([^'"]*)['"]/g)].map((match) => match[1]);
-        if (segments.length > 0) {
-          const joinedPath = resolve(configDirectory, ...segments);
-          const resolvedEntry = resolveEntryWithExtensions(joinedPath);
-          if (resolvedEntry) {
-            entries.push(resolvedEntry);
-          }
-        }
-      }
-
-      let requireResolveMatch: RegExpExecArray | null;
-      REQUIRE_RESOLVE_PATTERN.lastIndex = 0;
-      while ((requireResolveMatch = REQUIRE_RESOLVE_PATTERN.exec(content)) !== null) {
-        const requirePath = requireResolveMatch[1];
-        if (requirePath.startsWith("./") || requirePath.startsWith("../")) {
-          const absoluteRequirePath = resolve(configDirectory, requirePath);
-          const resolvedEntry = resolveEntryWithExtensions(absoluteRequirePath);
-          if (resolvedEntry) {
-            entries.push(resolvedEntry);
-          }
-        }
-      }
-
-      let entryMatch: RegExpExecArray | null;
-      WEBPACK_ENTRY_BLOCK_PATTERN.lastIndex = 0;
-      while ((entryMatch = WEBPACK_ENTRY_BLOCK_PATTERN.exec(content)) !== null) {
-        const entryBlock = entryMatch[0];
-        if (entryBlock.includes("path.join") || entryBlock.includes("path.resolve")) continue;
-        let valueMatch: RegExpExecArray | null;
-        WEBPACK_ENTRY_FILE_PATTERN.lastIndex = 0;
-        while ((valueMatch = WEBPACK_ENTRY_FILE_PATTERN.exec(entryBlock)) !== null) {
-          const entryPath = valueMatch[1];
-          if (
-            entryPath.startsWith("./") ||
-            entryPath.startsWith("../") ||
-            !entryPath.startsWith("/")
-          ) {
-            const absoluteEntryPath = resolve(directory, entryPath);
-            const resolvedEntry = resolveEntryWithExtensions(absoluteEntryPath);
-            if (resolvedEntry) {
-              entries.push(resolvedEntry);
-            }
-          }
-        }
-      }
+      entries.push(...extractLiteralWebpackEntries(content, configPath, directory));
     } catch {}
   }
 
@@ -1639,9 +1705,13 @@ const extractAngularEntryPoints = (directory: string): string[] => {
   return entries;
 };
 
-const PLUGIN_FILE_ARGUMENT_PATTERN =
-  /(?:createNextIntlPlugin|createMDX|withContentlayer|withPlaiceholder)\s*\(\s*['"]([^'"]+)['"]/g;
-const NEXT_INTL_IMPORT_PATTERN = /createNextIntlPlugin/;
+const NEXT_CONFIG_PLUGIN_EXPORTS_BY_MODULE: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["next-intl/plugin", new Set(["createNextIntlPlugin"])],
+  ["@next/mdx", new Set(["createMDX"])],
+  ["next-contentlayer/hooks", new Set(["withContentlayer"])],
+  ["next-contentlayer2/hooks", new Set(["withContentlayer"])],
+  ["@plaiceholder/next", new Set(["withPlaiceholder"])],
+]);
 const NEXT_INTL_DEFAULT_PATHS = [
   "src/i18n/request.ts",
   "src/i18n/request.tsx",
@@ -1652,6 +1722,140 @@ const NEXT_INTL_DEFAULT_PATHS = [
   "i18n.ts",
   "i18n.tsx",
 ];
+
+const collectNextConfigPluginFileArguments = (
+  sourceText: string,
+  configPath: string,
+): readonly [ReadonlyArray<string>, boolean] => {
+  const program = parseOxcProgram(configPath, sourceText);
+  if (!program || !Array.isArray(program.body)) return [[], false];
+  const pluginNameByLocalBinding = new Map<string, string>();
+  const initializerByLocalBinding = new Map<string, OxcAstNode>();
+  const exportedConfigRoots: OxcAstNode[] = [];
+  for (const statementValue of program.body) {
+    if (!isOxcAstNode(statementValue)) continue;
+    if (statementValue.type === "ImportDeclaration") {
+      const supportedExports = NEXT_CONFIG_PLUGIN_EXPORTS_BY_MODULE.get(
+        getOxcStaticString(statementValue.source) ?? "",
+      );
+      if (!supportedExports) continue;
+      const specifiers = Array.isArray(statementValue.specifiers) ? statementValue.specifiers : [];
+      for (const specifier of specifiers) {
+        if (!isOxcAstNode(specifier)) continue;
+        const localName = getIdentifierName(specifier.local);
+        if (!localName) continue;
+        if (specifier.type === "ImportDefaultSpecifier" && supportedExports.size === 1) {
+          pluginNameByLocalBinding.set(localName, [...supportedExports][0] ?? "");
+        }
+        if (specifier.type === "ImportSpecifier") {
+          const importedName = getIdentifierName(specifier.imported);
+          if (importedName && supportedExports.has(importedName)) {
+            pluginNameByLocalBinding.set(localName, importedName);
+          }
+        }
+      }
+      continue;
+    }
+    if (statementValue.type === "VariableDeclaration") {
+      const declarations = Array.isArray(statementValue.declarations)
+        ? statementValue.declarations
+        : [];
+      for (const declaration of declarations) {
+        if (!isOxcAstNode(declaration) || !isOxcAstNode(declaration.init)) continue;
+        const localName = getIdentifierName(declaration.id);
+        if (localName) initializerByLocalBinding.set(localName, declaration.init);
+        if (
+          declaration.init.type !== "CallExpression" ||
+          getIdentifierName(declaration.init.callee) !== "require" ||
+          !Array.isArray(declaration.init.arguments) ||
+          declaration.init.arguments.length !== 1
+        ) {
+          continue;
+        }
+        const moduleName = getOxcStaticString(declaration.init.arguments[0]);
+        const supportedExports = moduleName
+          ? NEXT_CONFIG_PLUGIN_EXPORTS_BY_MODULE.get(moduleName)
+          : undefined;
+        if (localName && supportedExports?.size === 1) {
+          pluginNameByLocalBinding.set(localName, [...supportedExports][0] ?? "");
+        }
+      }
+      continue;
+    }
+    if (
+      (statementValue.type === "FunctionDeclaration" ||
+        statementValue.type === "ClassDeclaration") &&
+      getIdentifierName(statementValue.id)
+    ) {
+      initializerByLocalBinding.set(getIdentifierName(statementValue.id) ?? "", statementValue);
+      continue;
+    }
+    if (
+      statementValue.type === "ExportDefaultDeclaration" &&
+      isOxcAstNode(statementValue.declaration)
+    ) {
+      exportedConfigRoots.push(statementValue.declaration);
+      continue;
+    }
+    if (
+      statementValue.type === "ExpressionStatement" &&
+      isOxcAstNode(statementValue.expression) &&
+      statementValue.expression.type === "AssignmentExpression" &&
+      isOxcAstNode(statementValue.expression.left) &&
+      statementValue.expression.left.type === "MemberExpression" &&
+      getIdentifierName(statementValue.expression.left.object) === "module" &&
+      getIdentifierName(statementValue.expression.left.property) === "exports" &&
+      isOxcAstNode(statementValue.expression.right)
+    ) {
+      exportedConfigRoots.push(statementValue.expression.right);
+    }
+  }
+  const filePaths: string[] = [];
+  let didCallNextIntlPlugin = false;
+  let didCallNextIntlPluginWithPath = false;
+  const visitedInitializers = new Set<OxcAstNode>();
+  const visitReachableConfig = (root: OxcAstNode): void => {
+    visitOxcAstWithBindings(
+      root,
+      (node, bindingNames, parentNode) => {
+        const identifierName = getIdentifierName(node);
+        const isNonReferenceIdentifier =
+          parentNode?.type === "MemberExpression" &&
+          parentNode.property === node &&
+          !parentNode.computed;
+        if (identifierName && !bindingNames.has(identifierName) && !isNonReferenceIdentifier) {
+          const initializer = initializerByLocalBinding.get(identifierName);
+          if (initializer && !visitedInitializers.has(initializer)) {
+            visitedInitializers.add(initializer);
+            visitReachableConfig(initializer);
+          }
+        }
+        if (
+          node.type === "CallExpression" &&
+          Array.isArray(node.arguments) &&
+          isOxcAstNode(node.callee)
+        ) {
+          const calleeName = getIdentifierName(node.callee);
+          const pluginName = calleeName ? pluginNameByLocalBinding.get(calleeName) : undefined;
+          const filePath = getOxcStaticString(node.arguments[0]);
+          if (calleeName && pluginName && !bindingNames.has(calleeName)) {
+            if (filePath !== undefined) filePaths.push(filePath);
+            if (pluginName === "createNextIntlPlugin") {
+              didCallNextIntlPlugin = true;
+              if (filePath !== undefined) didCallNextIntlPluginWithPath = true;
+            }
+          }
+        }
+      },
+      new Set(),
+      false,
+    );
+  };
+  for (const exportedConfigRoot of exportedConfigRoots) {
+    visitReachableConfig(exportedConfigRoot);
+  }
+  return [filePaths, didCallNextIntlPlugin && !didCallNextIntlPluginWithPath];
+};
 
 const extractNextConfigPluginFiles = (directory: string): string[] => {
   const entries: string[] = [];
@@ -1665,22 +1869,15 @@ const extractNextConfigPluginFiles = (directory: string): string[] => {
   for (const configPath of nextConfigPaths) {
     try {
       const content = readFileSync(configPath, "utf-8");
-      const configDirectory = configPath.replace(/\/[^/]+$/, "");
-      let pluginMatch: RegExpExecArray | null;
-      PLUGIN_FILE_ARGUMENT_PATTERN.lastIndex = 0;
-      let didMatchNextIntlWithPath = false;
-      while ((pluginMatch = PLUGIN_FILE_ARGUMENT_PATTERN.exec(content)) !== null) {
-        const filePath = pluginMatch[1];
-        const absolutePath = resolve(configDirectory, filePath);
-        if (existsSync(absolutePath)) {
-          entries.push(absolutePath);
-        }
-        if (pluginMatch[0].includes("createNextIntlPlugin")) {
-          didMatchNextIntlWithPath = true;
-        }
+      const configDirectory = dirname(configPath);
+      const [pluginFileArguments, shouldUseNextIntlDefaultPath] =
+        collectNextConfigPluginFileArguments(content, configPath);
+      for (const filePath of pluginFileArguments) {
+        const resolvedPluginPath = resolveEntryWithExtensions(resolve(configDirectory, filePath));
+        if (resolvedPluginPath) entries.push(resolvedPluginPath);
       }
 
-      if (!didMatchNextIntlWithPath && NEXT_INTL_IMPORT_PATTERN.test(content)) {
+      if (shouldUseNextIntlDefaultPath) {
         for (const defaultPath of NEXT_INTL_DEFAULT_PATHS) {
           const absolutePath = resolve(configDirectory, defaultPath);
           if (existsSync(absolutePath)) {

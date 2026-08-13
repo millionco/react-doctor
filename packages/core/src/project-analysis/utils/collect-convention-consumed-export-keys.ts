@@ -210,15 +210,7 @@ export const collectConventionConsumedExportKeys = (
   const canonicalAnalysisRootDirectory = toCanonicalPath(resolve(analysisRootDirectory));
 
   for (const module of graph.modules) {
-    const resolvedModuleFilePath = resolve(module.fileId.path);
-    const relativeModulePath = relative(canonicalAnalysisRootDirectory, resolvedModuleFilePath);
-    const isModulePathInsideCanonicalRoot =
-      relativeModulePath !== ".." &&
-      !relativeModulePath.startsWith(`..${sep}`) &&
-      !isAbsolute(relativeModulePath);
-    const canonicalModuleFilePath = isModulePathInsideCanonicalRoot
-      ? resolvedModuleFilePath
-      : toCanonicalPath(resolvedModuleFilePath);
+    const canonicalModuleFilePath = toCanonicalPath(resolve(module.fileId.path));
     const packageDirectory = findOwningPackageDirectory(
       canonicalModuleFilePath,
       canonicalAnalysisRootDirectory,

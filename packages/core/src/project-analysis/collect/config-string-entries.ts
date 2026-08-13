@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import fg from "fast-glob";
-import ts from "typescript";
-import { getObjectLiteralElementName } from "../utils/get-object-literal-element-name.js";
-import { maskJavaScriptStringsAndComments } from "../utils/mask-javascript-strings-and-comments.js";
-import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
+import { parseSync } from "oxc-parser";
 import { extractJitiLoadReferences } from "../utils/extract-jiti-load-references.js";
+import { getIdentifierName, isOxcAstNode, type OxcAstNode } from "../utils/oxc-ast-node.js";
+import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
+import { visitOxcAstWithBindings } from "../utils/visit-oxc-ast-with-bindings.js";
 
 const CONFIG_STRING_ENTRY_GLOBS = [
   "webpack.config.{js,ts,mjs,cjs}",
@@ -45,39 +45,44 @@ const CONFIG_STRING_ENTRY_GLOBS = [
 ];
 
 const NEXT_CONFIG_LOADER_GLOBS = ["next.config.{js,ts,mjs,mts,cjs,cts}"];
+const PATH_MODULE_NAMES = new Set(["node:path", "path"]);
+const SPECIAL_PATH_PROPERTY_NAMES = new Set(["entryPoints", "entrypoint", "environment", "input"]);
+const TRANSPARENT_EXPRESSION_TYPES = new Set([
+  "ChainExpression",
+  "ParenthesizedExpression",
+  "TSAsExpression",
+  "TSInstantiationExpression",
+  "TSNonNullExpression",
+  "TSSatisfiesExpression",
+  "TSTypeAssertion",
+]);
 
-const CONFIG_RELATIVE_PATH_PATTERN = /['"`]((\.{1,2}\/|\.\.\/)[^'"`\n]+?|\.\/[^'"`\n]+?)['"`]/g;
+interface ConfigAstState {
+  configDirectory: string;
+  entries: Set<string>;
+  isUmiRouteModule: boolean;
+  pathFunctionBindings: Set<string>;
+  pathNamespaceBindings: Set<string>;
+  projectRootDirectory: string;
+}
 
-const JEST_ROOT_DIR_PATH_PATTERN = /<rootDir>\/([^'"`\n]+?)(?:['"`]|$)/g;
+interface ConfigExpressionContext {
+  initializers: ReadonlyMap<string, OxcAstNode>;
+  isRouteCollection: boolean;
+  shadowedBindings: ReadonlySet<string>;
+  visitedIdentifiers: ReadonlySet<string>;
+}
 
-const RESOLVE_CALL_PATH_PATTERN = /resolve\s*\(\s*['"`]([^'"`\n]+?)['"`]\s*\)/g;
+interface ConfigAstResult {
+  hasAccessConfig: boolean;
+  loadingComponentPaths: string[];
+  routeComponentPaths: string[];
+}
 
-const PATH_JOIN_STRING_PATTERN = /path\.(?:join|resolve)\(\s*[^,]+,\s*['"`]([^'"`\n]+?)['"`]/g;
-
-const ENTRY_POINTS_STRING_PATTERN = /entryPoints:\s*\[\s*['"`]([^'"`\n]+?)['"`]/g;
-
-const ADD_PREAMBLE_PATTERN = /addPreamble\s*\(\s*['"`]([^'"`\n]+?)['"`]\s*\)/g;
-
-const ROLLUP_INPUT_PATTERN = /\binput\s*:\s*['"`]([^'"`\n]+?)['"`]/g;
-
-const VITEST_ENVIRONMENT_PATTERN = /environment\s*:\s*['"`](\.\/[^'"`\n]+?)['"`]/g;
-
-const ASTRO_ENTRYPOINT_PATTERN = /entrypoint\s*:\s*['"`](\.\/[^'"`\n]+?)['"`]/g;
-
-const WEBPACK_PATH_JOIN_ENTRY_PATTERN = /path\.join\(\s*[^,]+,\s*['"`]([^'"`\n]+?)['"`]\s*\)/g;
-
-const WEBPACK_RENDERER_PATH_JOIN_PATTERN =
-  /path\.join\(\s*webpackPaths\.srcRendererPath\s*,\s*['"`]([^'"`\n]+?)['"`]\s*\)/g;
-
-const WEBPACK_MAIN_PATH_JOIN_PATTERN =
-  /path\.join\(\s*webpackPaths\.srcMainPath\s*,\s*['"`]([^'"`\n]+?)['"`]\s*\)/g;
-
-const BARE_CONFIG_PATH_PATTERN = /['"`](config\/[^'"`\n]+?)['"`]/g;
-
-const stripModuleImportStatements = (content: string): string =>
-  content
-    .replace(/^\s*import\s+(?:type\s+)?[\s\S]*?\sfrom\s+['"`][^'"`\n]+['"`]\s*;?\s*$/gm, "")
-    .replace(/^\s*import\s+['"`][^'"`\n]+['"`]\s*;?\s*$/gm, "");
+interface PathBindings {
+  pathFunctionBindings: Set<string>;
+  pathNamespaceBindings: Set<string>;
+}
 
 const shouldSkipConfigPath = (rawPath: string): boolean => {
   if (rawPath.includes("*") || rawPath.includes("?")) return true;
@@ -96,7 +101,7 @@ const addResolvedConfigPath = (
   if (shouldSkipConfigPath(rawPath)) return;
 
   const rootDirectory = rawPath.startsWith(".") ? configDirectory : projectRootDirectory;
-  const normalizedPath = rawPath.startsWith(".") ? rawPath : `./${rawPath}`;
+  const normalizedPath = rawPath.startsWith(".") || isAbsolute(rawPath) ? rawPath : `./${rawPath}`;
   const absolutePath = resolve(rootDirectory, normalizedPath);
   const resolvedEntry = resolveEntryWithExtensions(absolutePath);
   if (resolvedEntry) {
@@ -112,185 +117,583 @@ const addResolvedConfigPath = (
   }
 };
 
-const collectResolvedPathsFromStrings = (
-  content: string,
-  configDirectory: string,
-  projectRootDirectory: string,
-  entries: Set<string>,
-): void => {
-  const contentWithoutImports = stripModuleImportStatements(content);
-
-  const patterns = [
-    CONFIG_RELATIVE_PATH_PATTERN,
-    RESOLVE_CALL_PATH_PATTERN,
-    PATH_JOIN_STRING_PATTERN,
-    ENTRY_POINTS_STRING_PATTERN,
-    ADD_PREAMBLE_PATTERN,
-    ROLLUP_INPUT_PATTERN,
-    VITEST_ENVIRONMENT_PATTERN,
-    ASTRO_ENTRYPOINT_PATTERN,
-    WEBPACK_PATH_JOIN_ENTRY_PATTERN,
-    BARE_CONFIG_PATH_PATTERN,
-  ];
-
-  for (const pattern of patterns) {
-    let pathMatch: RegExpExecArray | null;
-    pattern.lastIndex = 0;
-    while ((pathMatch = pattern.exec(contentWithoutImports)) !== null) {
-      addResolvedConfigPath(pathMatch[1], configDirectory, projectRootDirectory, entries);
-    }
-  }
-
-  let rendererEntryMatch: RegExpExecArray | null;
-  WEBPACK_RENDERER_PATH_JOIN_PATTERN.lastIndex = 0;
-  while (
-    (rendererEntryMatch = WEBPACK_RENDERER_PATH_JOIN_PATTERN.exec(contentWithoutImports)) !== null
-  ) {
-    addResolvedConfigPath(
-      `src/renderer/${rendererEntryMatch[1]}`,
-      configDirectory,
-      projectRootDirectory,
-      entries,
+const getStaticString = (
+  expression: unknown,
+  initializers: ReadonlyMap<string, OxcAstNode>,
+  visitedIdentifiers = new Set<string>(),
+  shadowedBindings: ReadonlySet<string> = new Set(),
+): string | undefined => {
+  if (!isOxcAstNode(expression)) return undefined;
+  if (TRANSPARENT_EXPRESSION_TYPES.has(expression.type)) {
+    return getStaticString(
+      expression.expression,
+      initializers,
+      visitedIdentifiers,
+      shadowedBindings,
     );
   }
-
-  let mainEntryMatch: RegExpExecArray | null;
-  WEBPACK_MAIN_PATH_JOIN_PATTERN.lastIndex = 0;
-  while ((mainEntryMatch = WEBPACK_MAIN_PATH_JOIN_PATTERN.exec(contentWithoutImports)) !== null) {
-    addResolvedConfigPath(
-      `src/main/${mainEntryMatch[1]}`,
-      configDirectory,
-      projectRootDirectory,
-      entries,
-    );
+  if (expression.type === "Literal" && typeof expression.value === "string") {
+    return expression.value;
   }
+  if (expression.type === "TemplateLiteral") {
+    const expressions = Array.isArray(expression.expressions) ? expression.expressions : [];
+    const quasis = Array.isArray(expression.quasis) ? expression.quasis : [];
+    if (expressions.length > 0 || quasis.length !== 1 || !isOxcAstNode(quasis[0])) return undefined;
+    const quasiValue = quasis[0].value;
+    if (!quasiValue || typeof quasiValue !== "object") return undefined;
+    const cookedValue = Object.entries(quasiValue).find(([key]) => key === "cooked")?.[1];
+    return typeof cookedValue === "string" ? cookedValue : undefined;
+  }
+  if (expression.type === "BinaryExpression" && expression.operator === "+") {
+    const leftValue = getStaticString(
+      expression.left,
+      initializers,
+      visitedIdentifiers,
+      shadowedBindings,
+    );
+    const rightValue = getStaticString(
+      expression.right,
+      initializers,
+      visitedIdentifiers,
+      shadowedBindings,
+    );
+    return leftValue === undefined || rightValue === undefined ? undefined : leftValue + rightValue;
+  }
+  const identifierName = getIdentifierName(expression);
+  if (!identifierName || visitedIdentifiers.has(identifierName)) {
+    return undefined;
+  }
+  const initializer = initializers.get(identifierName);
+  if (shadowedBindings.has(identifierName) && !initializer) return undefined;
+  return initializer
+    ? getStaticString(
+        initializer,
+        initializers,
+        new Set(visitedIdentifiers).add(identifierName),
+        shadowedBindings,
+      )
+    : undefined;
+};
 
-  let rootDirMatch: RegExpExecArray | null;
-  JEST_ROOT_DIR_PATH_PATTERN.lastIndex = 0;
-  while ((rootDirMatch = JEST_ROOT_DIR_PATH_PATTERN.exec(content)) !== null) {
-    addResolvedConfigPath(rootDirMatch[1], configDirectory, projectRootDirectory, entries);
+const getPropertyName = (property: OxcAstNode): string | undefined => {
+  if (property.type !== "Property" || property.computed === true) return undefined;
+  const identifierName = getIdentifierName(property.key);
+  if (identifierName) return identifierName;
+  return isOxcAstNode(property.key) &&
+    property.key.type === "Literal" &&
+    typeof property.key.value === "string"
+    ? property.key.value
+    : undefined;
+};
+
+const getMemberPath = (expression: unknown): string[] => {
+  if (!isOxcAstNode(expression)) return [];
+  const identifierName = getIdentifierName(expression);
+  if (identifierName) return [identifierName];
+  if (expression.type !== "MemberExpression" || expression.computed === true) return [];
+  const objectPath = getMemberPath(expression.object);
+  const propertyName = getIdentifierName(expression.property);
+  return propertyName ? [...objectPath, propertyName] : [];
+};
+
+const collectPatternBindingNames = (pattern: unknown, bindingNames: Set<string>): void => {
+  if (!isOxcAstNode(pattern)) return;
+  const identifierName = getIdentifierName(pattern);
+  if (identifierName) {
+    bindingNames.add(identifierName);
+    return;
+  }
+  if (pattern.type === "AssignmentPattern") {
+    collectPatternBindingNames(pattern.left, bindingNames);
+    return;
+  }
+  if (pattern.type === "RestElement") {
+    collectPatternBindingNames(pattern.argument, bindingNames);
+    return;
+  }
+  const childValues =
+    pattern.type === "ArrayPattern"
+      ? pattern.elements
+      : pattern.type === "ObjectPattern"
+        ? pattern.properties
+        : [];
+  if (!Array.isArray(childValues)) return;
+  for (const childValue of childValues) {
+    if (!isOxcAstNode(childValue)) continue;
+    collectPatternBindingNames(
+      childValue.type === "Property" ? childValue.value : childValue.argument,
+      bindingNames,
+    );
   }
 };
 
-const unwrapConfigExpression = (expression: ts.Expression): ts.Expression => {
-  if (
-    ts.isParenthesizedExpression(expression) ||
-    ts.isAsExpression(expression) ||
-    ts.isSatisfiesExpression(expression)
-  ) {
-    return unwrapConfigExpression(expression.expression);
+const collectVariableInitializers = (
+  statements: unknown[],
+  inheritedInitializers: ReadonlyMap<string, OxcAstNode> = new Map(),
+): Map<string, OxcAstNode> => {
+  const initializers = new Map(inheritedInitializers);
+  for (const statementValue of statements) {
+    if (!isOxcAstNode(statementValue)) continue;
+    const statement =
+      statementValue.type === "ExportNamedDeclaration" && isOxcAstNode(statementValue.declaration)
+        ? statementValue.declaration
+        : statementValue;
+    if (statement.type !== "VariableDeclaration") continue;
+    const declarations = Array.isArray(statement.declarations) ? statement.declarations : [];
+    for (const declaration of declarations) {
+      if (!isOxcAstNode(declaration) || !isOxcAstNode(declaration.init)) continue;
+      const identifierName = getIdentifierName(declaration.id);
+      if (identifierName) initializers.set(identifierName, declaration.init);
+    }
   }
-  if (ts.isCallExpression(expression) && expression.arguments[0]) {
-    return unwrapConfigExpression(expression.arguments[0]);
-  }
-  return expression;
+  return initializers;
 };
 
-const extractUmiRouteComponentPaths = (content: string, isRouteModule: boolean): string[] => {
-  const sourceFile = ts.createSourceFile(
-    "umi-config.ts",
-    content,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
-  const variableInitializers = new Map<string, ts.Expression>();
-  for (const statement of sourceFile.statements) {
-    if (!ts.isVariableStatement(statement)) continue;
-    for (const declaration of statement.declarationList.declarations) {
-      if (ts.isIdentifier(declaration.name) && declaration.initializer) {
-        variableInitializers.set(declaration.name.text, declaration.initializer);
+const getRequiredModuleName = (expression: unknown): string | undefined => {
+  if (!isOxcAstNode(expression) || expression.type !== "CallExpression") return undefined;
+  if (getIdentifierName(expression.callee) !== "require") return undefined;
+  const argumentsList = Array.isArray(expression.arguments) ? expression.arguments : [];
+  return getStaticString(argumentsList[0], new Map());
+};
+
+const collectPathBindings = (statements: unknown[]): PathBindings => {
+  const pathFunctionBindings = new Set<string>();
+  const pathNamespaceBindings = new Set<string>();
+  for (const statement of statements) {
+    if (!isOxcAstNode(statement)) continue;
+    if (statement.type === "ImportDeclaration") {
+      const moduleName = getStaticString(statement.source, new Map());
+      if (!moduleName || !PATH_MODULE_NAMES.has(moduleName)) continue;
+      const specifiers = Array.isArray(statement.specifiers) ? statement.specifiers : [];
+      for (const specifier of specifiers) {
+        if (!isOxcAstNode(specifier)) continue;
+        const localName = getIdentifierName(specifier.local);
+        if (!localName) continue;
+        if (
+          specifier.type === "ImportDefaultSpecifier" ||
+          specifier.type === "ImportNamespaceSpecifier"
+        ) {
+          pathNamespaceBindings.add(localName);
+          continue;
+        }
+        const importedName = getIdentifierName(specifier.imported);
+        if (importedName === "join" || importedName === "resolve") {
+          pathFunctionBindings.add(localName);
+        }
       }
+      continue;
     }
-  }
-  const resolveExpression = (
-    expression: ts.Expression,
-    visitedIdentifiers = new Set<string>(),
-  ): ts.Expression => {
-    const unwrappedExpression = unwrapConfigExpression(expression);
-    if (ts.isIdentifier(unwrappedExpression) && !visitedIdentifiers.has(unwrappedExpression.text)) {
-      const initializer = variableInitializers.get(unwrappedExpression.text);
-      if (initializer) {
-        return resolveExpression(
-          initializer,
-          new Set(visitedIdentifiers).add(unwrappedExpression.text),
-        );
-      }
-    }
-    return unwrappedExpression;
-  };
-  const exportAssignment = sourceFile.statements.find(
-    (statement): statement is ts.ExportAssignment =>
-      ts.isExportAssignment(statement) && !statement.isExportEquals,
-  );
-  if (!exportAssignment) return [];
-  const exportedExpression = resolveExpression(exportAssignment.expression);
-  const routeComponentPaths: string[] = [];
-  const collectRouteObjects = (expression: ts.Expression): void => {
-    const resolvedExpression = resolveExpression(expression);
-    if (!ts.isArrayLiteralExpression(resolvedExpression)) return;
-    for (const routeElement of resolvedExpression.elements) {
-      if (ts.isSpreadElement(routeElement)) {
-        collectRouteObjects(routeElement.expression);
+    if (statement.type !== "VariableDeclaration") continue;
+    const declarations = Array.isArray(statement.declarations) ? statement.declarations : [];
+    for (const declaration of declarations) {
+      if (!isOxcAstNode(declaration) || !isOxcAstNode(declaration.init)) continue;
+      const moduleName = getRequiredModuleName(declaration.init);
+      const identifierName = getIdentifierName(declaration.id);
+      if (moduleName && PATH_MODULE_NAMES.has(moduleName) && identifierName) {
+        pathNamespaceBindings.add(identifierName);
         continue;
       }
-      const resolvedRouteElement = resolveExpression(routeElement);
-      if (!ts.isObjectLiteralExpression(resolvedRouteElement)) continue;
-      for (const property of resolvedRouteElement.properties) {
-        const propertyName = getObjectLiteralElementName(property);
-        if (propertyName === "component" && ts.isPropertyAssignment(property)) {
-          const componentExpression = resolveExpression(property.initializer);
-          if (
-            (ts.isStringLiteral(componentExpression) ||
-              ts.isNoSubstitutionTemplateLiteral(componentExpression)) &&
-            (componentExpression.text.startsWith("@/") ||
-              (isRouteModule && componentExpression.text.startsWith(".")))
-          ) {
-            routeComponentPaths.push(componentExpression.text);
-          }
-        }
-        if (propertyName === "routes" && ts.isPropertyAssignment(property)) {
-          collectRouteObjects(property.initializer);
-        }
+      if (!moduleName || !PATH_MODULE_NAMES.has(moduleName) || !isOxcAstNode(declaration.id)) {
+        continue;
       }
-    }
-  };
-
-  if (isRouteModule) {
-    collectRouteObjects(exportedExpression);
-  } else if (ts.isObjectLiteralExpression(exportedExpression)) {
-    for (const property of exportedExpression.properties) {
-      if (getObjectLiteralElementName(property) !== "routes") continue;
-      if (ts.isPropertyAssignment(property)) collectRouteObjects(property.initializer);
-      if (ts.isShorthandPropertyAssignment(property)) {
-        const initializer = variableInitializers.get(property.name.text);
-        if (initializer) collectRouteObjects(initializer);
+      const properties =
+        declaration.id.type === "ObjectPattern" && Array.isArray(declaration.id.properties)
+          ? declaration.id.properties
+          : [];
+      for (const property of properties) {
+        if (!isOxcAstNode(property) || property.type !== "Property") continue;
+        const importedName = getIdentifierName(property.key);
+        const localName = getIdentifierName(property.value);
+        if ((importedName === "join" || importedName === "resolve") && localName) {
+          pathFunctionBindings.add(localName);
+        }
       }
     }
   }
-  return routeComponentPaths;
+  return { pathFunctionBindings, pathNamespaceBindings };
 };
 
-const extractUmiLoadingComponentPaths = (content: string): string[] => {
-  const sourceFile = ts.createSourceFile(
-    "umi-config.ts",
-    content,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
+const isTrustedPathCall = (
+  callExpression: OxcAstNode,
+  state: ConfigAstState,
+  shadowedBindings: ReadonlySet<string>,
+): boolean => {
+  if (callExpression.type !== "CallExpression" || !isOxcAstNode(callExpression.callee)) {
+    return false;
+  }
+  const directCalleeName = getIdentifierName(callExpression.callee);
+  if (directCalleeName) {
+    return (
+      state.pathFunctionBindings.has(directCalleeName) && !shadowedBindings.has(directCalleeName)
+    );
+  }
+  const memberPath = getMemberPath(callExpression.callee);
+  return (
+    memberPath.length === 2 &&
+    state.pathNamespaceBindings.has(memberPath[0]) &&
+    !shadowedBindings.has(memberPath[0]) &&
+    (memberPath[1] === "join" || memberPath[1] === "resolve")
   );
-  const loadingComponentPaths: string[] = [];
-  const visitNode = (node: ts.Node): void => {
-    if (ts.isPropertyAssignment(node) && getObjectLiteralElementName(node) === "loadingComponent") {
-      const initializer = unwrapConfigExpression(node.initializer);
-      if (ts.isStringLiteral(initializer) || ts.isNoSubstitutionTemplateLiteral(initializer)) {
-        loadingComponentPaths.push(initializer.text);
+};
+
+const evaluatePathExpression = (
+  expression: unknown,
+  state: ConfigAstState,
+  context: ConfigExpressionContext,
+): string | undefined => {
+  if (!isOxcAstNode(expression)) return undefined;
+  if (getIdentifierName(expression) === "__dirname" && !context.shadowedBindings.has("__dirname")) {
+    return state.configDirectory;
+  }
+  const staticString = getStaticString(expression, context.initializers);
+  if (staticString !== undefined) return staticString;
+  if (!isTrustedPathCall(expression, state, context.shadowedBindings)) return undefined;
+  const argumentsList = Array.isArray(expression.arguments) ? expression.arguments : [];
+  const pathSegments = argumentsList.map((argument) =>
+    evaluatePathExpression(argument, state, context),
+  );
+  if (pathSegments.some((segment) => segment === undefined)) return undefined;
+  const resolvedSegments = pathSegments.flatMap((segment) => (segment ? [segment] : []));
+  return resolve(state.configDirectory, ...resolvedSegments);
+};
+
+const addStaticConfigPath = (rawPath: string, state: ConfigAstState): void => {
+  const rootDirectoryMarker = "<rootDir>/";
+  const normalizedPath = rawPath.startsWith(rootDirectoryMarker)
+    ? rawPath.slice(rootDirectoryMarker.length)
+    : rawPath;
+  if (!normalizedPath.startsWith(".") && !normalizedPath.startsWith("config/")) {
+    return;
+  }
+  addResolvedConfigPath(
+    normalizedPath,
+    state.configDirectory,
+    state.projectRootDirectory,
+    state.entries,
+  );
+};
+
+const collectStaticStrings = (
+  expression: unknown,
+  state: ConfigAstState,
+  context: ConfigExpressionContext,
+): void => {
+  if (!isOxcAstNode(expression)) return;
+  const staticString = getStaticString(
+    expression,
+    context.initializers,
+    new Set(),
+    context.shadowedBindings,
+  );
+  if (staticString !== undefined) {
+    addResolvedConfigPath(
+      staticString,
+      state.configDirectory,
+      state.projectRootDirectory,
+      state.entries,
+    );
+    return;
+  }
+  if (expression.type !== "ArrayExpression") return;
+  const elements = Array.isArray(expression.elements) ? expression.elements : [];
+  for (const element of elements) {
+    if (!isOxcAstNode(element)) continue;
+    collectStaticStrings(
+      element.type === "SpreadElement" ? element.argument : element,
+      state,
+      context,
+    );
+  }
+};
+
+const collectFunctionBindings = (functionExpression: OxcAstNode): Set<string> => {
+  const bindingNames = new Set<string>();
+  const parameters = Array.isArray(functionExpression.params) ? functionExpression.params : [];
+  for (const parameter of parameters) collectPatternBindingNames(parameter, bindingNames);
+  if (!isOxcAstNode(functionExpression.body) || functionExpression.body.type !== "BlockStatement") {
+    return bindingNames;
+  }
+  const statements = Array.isArray(functionExpression.body.body)
+    ? functionExpression.body.body
+    : [];
+  for (const statement of statements) {
+    if (!isOxcAstNode(statement)) continue;
+    if (statement.type === "VariableDeclaration") {
+      const declarations = Array.isArray(statement.declarations) ? statement.declarations : [];
+      for (const declaration of declarations) {
+        if (isOxcAstNode(declaration)) collectPatternBindingNames(declaration.id, bindingNames);
       }
+    } else if (statement.type === "FunctionDeclaration" || statement.type === "ClassDeclaration") {
+      collectPatternBindingNames(statement.id, bindingNames);
     }
-    ts.forEachChild(node, visitNode);
+  }
+  return bindingNames;
+};
+
+const collectReturnedConfigExpressions = (
+  value: unknown,
+  collectExpression: (expression: unknown) => void,
+): void => {
+  if (Array.isArray(value)) {
+    for (const child of value) collectReturnedConfigExpressions(child, collectExpression);
+    return;
+  }
+  if (!isOxcAstNode(value)) return;
+  if (value.type === "ReturnStatement") {
+    collectExpression(value.argument);
+    return;
+  }
+  if (
+    value.type === "ArrowFunctionExpression" ||
+    value.type === "FunctionExpression" ||
+    value.type === "FunctionDeclaration"
+  ) {
+    return;
+  }
+  for (const child of Object.values(value)) {
+    collectReturnedConfigExpressions(child, collectExpression);
+  }
+};
+
+const collectConfigExpression = (
+  expression: unknown,
+  state: ConfigAstState,
+  result: ConfigAstResult,
+  context: ConfigExpressionContext,
+): void => {
+  if (!isOxcAstNode(expression)) return;
+  if (TRANSPARENT_EXPRESSION_TYPES.has(expression.type)) {
+    collectConfigExpression(expression.expression, state, result, context);
+    return;
+  }
+  const identifierName = getIdentifierName(expression);
+  if (identifierName) {
+    if (context.visitedIdentifiers.has(identifierName)) {
+      return;
+    }
+    const initializer = context.initializers.get(identifierName);
+    if (context.shadowedBindings.has(identifierName) && !initializer) return;
+    if (!initializer) return;
+    collectConfigExpression(initializer, state, result, {
+      ...context,
+      visitedIdentifiers: new Set(context.visitedIdentifiers).add(identifierName),
+    });
+    return;
+  }
+  const staticString = getStaticString(
+    expression,
+    context.initializers,
+    new Set(),
+    context.shadowedBindings,
+  );
+  if (staticString !== undefined) {
+    addStaticConfigPath(staticString, state);
+    return;
+  }
+  if (isTrustedPathCall(expression, state, context.shadowedBindings)) {
+    const pathValue = evaluatePathExpression(expression, state, context);
+    if (pathValue) {
+      addResolvedConfigPath(
+        pathValue,
+        state.configDirectory,
+        state.projectRootDirectory,
+        state.entries,
+      );
+    }
+    const argumentsList = Array.isArray(expression.arguments) ? expression.arguments : [];
+    const firstArgumentPath = getMemberPath(argumentsList[0]);
+    const trailingPath = getStaticString(
+      argumentsList[1],
+      context.initializers,
+      new Set(),
+      context.shadowedBindings,
+    );
+    if (trailingPath && firstArgumentPath.join(".") === "webpackPaths.srcRendererPath") {
+      addResolvedConfigPath(
+        `src/renderer/${trailingPath}`,
+        state.configDirectory,
+        state.projectRootDirectory,
+        state.entries,
+      );
+    }
+    if (trailingPath && firstArgumentPath.join(".") === "webpackPaths.srcMainPath") {
+      addResolvedConfigPath(
+        `src/main/${trailingPath}`,
+        state.configDirectory,
+        state.projectRootDirectory,
+        state.entries,
+      );
+    }
+    return;
+  }
+  if (expression.type === "ArrayExpression") {
+    const elements = Array.isArray(expression.elements) ? expression.elements : [];
+    for (const element of elements) {
+      if (!isOxcAstNode(element)) continue;
+      collectConfigExpression(
+        element.type === "SpreadElement" ? element.argument : element,
+        state,
+        result,
+        context,
+      );
+    }
+    return;
+  }
+  if (expression.type === "ObjectExpression") {
+    const properties = Array.isArray(expression.properties) ? expression.properties : [];
+    for (const property of properties) {
+      if (!isOxcAstNode(property)) continue;
+      if (property.type === "SpreadElement") {
+        collectConfigExpression(property.argument, state, result, context);
+        continue;
+      }
+      const propertyName = getPropertyName(property);
+      if (!propertyName) continue;
+      if (SPECIAL_PATH_PROPERTY_NAMES.has(propertyName)) {
+        collectStaticStrings(property.value, state, context);
+      }
+      const propertyString = getStaticString(
+        property.value,
+        context.initializers,
+        new Set(),
+        context.shadowedBindings,
+      );
+      if (
+        propertyName === "component" &&
+        context.isRouteCollection &&
+        propertyString &&
+        (propertyString.startsWith("@/") ||
+          (state.isUmiRouteModule && propertyString.startsWith(".")))
+      ) {
+        result.routeComponentPaths.push(propertyString);
+      }
+      if (propertyName === "loadingComponent" && propertyString) {
+        result.loadingComponentPaths.push(propertyString);
+      }
+      if (
+        propertyName === "access" &&
+        isOxcAstNode(property.value) &&
+        property.value.type === "ObjectExpression"
+      ) {
+        result.hasAccessConfig = true;
+      }
+      collectConfigExpression(property.value, state, result, {
+        ...context,
+        isRouteCollection: propertyName === "routes",
+      });
+    }
+    return;
+  }
+  if (
+    expression.type === "ArrowFunctionExpression" ||
+    expression.type === "FunctionExpression" ||
+    expression.type === "FunctionDeclaration"
+  ) {
+    const shadowedBindings = new Set(context.shadowedBindings);
+    const functionBindings = collectFunctionBindings(expression);
+    for (const functionBinding of functionBindings) shadowedBindings.add(functionBinding);
+    const inheritedInitializers = new Map(context.initializers);
+    for (const functionBinding of functionBindings) inheritedInitializers.delete(functionBinding);
+    if (!isOxcAstNode(expression.body)) return;
+    if (expression.body.type !== "BlockStatement") {
+      collectConfigExpression(expression.body, state, result, {
+        ...context,
+        initializers: inheritedInitializers,
+        shadowedBindings,
+      });
+      return;
+    }
+    const statements = Array.isArray(expression.body.body) ? expression.body.body : [];
+    const localInitializers = collectVariableInitializers(statements);
+    const initializers = new Map(inheritedInitializers);
+    for (const [bindingName, initializer] of localInitializers) {
+      initializers.set(bindingName, initializer);
+    }
+    collectReturnedConfigExpressions(expression.body, (returnedExpression) => {
+      collectConfigExpression(returnedExpression, state, result, {
+        ...context,
+        initializers,
+        shadowedBindings,
+      });
+    });
+    return;
+  }
+  if (expression.type === "CallExpression") {
+    const argumentsList = Array.isArray(expression.arguments) ? expression.arguments : [];
+    for (const argument of argumentsList) {
+      collectConfigExpression(argument, state, result, context);
+    }
+    return;
+  }
+  for (const [key, value] of Object.entries(expression)) {
+    if (["callee", "key", "type"].includes(key)) continue;
+    if (Array.isArray(value)) {
+      for (const childValue of value) {
+        if (isOxcAstNode(childValue)) collectConfigExpression(childValue, state, result, context);
+      }
+    } else if (isOxcAstNode(value)) {
+      collectConfigExpression(value, state, result, context);
+    }
+  }
+};
+
+const isModuleExportsAssignment = (expression: OxcAstNode): boolean =>
+  expression.type === "AssignmentExpression" &&
+  expression.operator === "=" &&
+  getMemberPath(expression.left).join(".") === "module.exports";
+
+const collectConfigAstEntries = (
+  content: string,
+  configPath: string,
+  projectRootDirectory: string,
+  entries: Set<string>,
+  isUmiRouteModule: boolean,
+): ConfigAstResult => {
+  const result: ConfigAstResult = {
+    hasAccessConfig: false,
+    loadingComponentPaths: [],
+    routeComponentPaths: [],
   };
-  visitNode(sourceFile);
-  return loadingComponentPaths;
+  const parsedModule = parseSync(configPath, content, { sourceType: "unambiguous" });
+  if (parsedModule.errors.some((error) => error.severity === "Error")) return result;
+  const statements = parsedModule.program.body;
+  const topLevelInitializers = collectVariableInitializers(statements);
+  const { pathFunctionBindings, pathNamespaceBindings } = collectPathBindings(statements);
+  const state: ConfigAstState = {
+    configDirectory: dirname(configPath),
+    entries,
+    isUmiRouteModule,
+    pathFunctionBindings,
+    pathNamespaceBindings,
+    projectRootDirectory,
+  };
+  const context: ConfigExpressionContext = {
+    initializers: topLevelInitializers,
+    isRouteCollection: isUmiRouteModule,
+    shadowedBindings: new Set(),
+    visitedIdentifiers: new Set(),
+  };
+  for (const statement of statements) {
+    if (!isOxcAstNode(statement)) continue;
+    if (statement.type === "ExportDefaultDeclaration") {
+      collectConfigExpression(statement.declaration, state, result, context);
+    } else if (
+      statement.type === "ExpressionStatement" &&
+      isOxcAstNode(statement.expression) &&
+      isModuleExportsAssignment(statement.expression)
+    ) {
+      collectConfigExpression(statement.expression.right, state, result, context);
+    }
+  }
+  visitOxcAstWithBindings(parsedModule.program, (node, bindingNames) => {
+    if (node.type === "ImportDeclaration") return false;
+    if (node.type !== "CallExpression") return;
+    const calleeName = getIdentifierName(node.callee);
+    if (calleeName !== "addPreamble" || bindingNames.has("addPreamble")) return;
+    const argumentsList = Array.isArray(node.arguments) ? node.arguments : [];
+    collectStaticStrings(argumentsList[0], state, context);
+  });
+  return result;
 };
 
 export const extractConfigStringReferencedEntries = (directory: string): string[] => {
@@ -333,28 +736,31 @@ export const extractConfigStringReferencedEntries = (directory: string): string[
   for (const configPath of configPaths) {
     try {
       const content = readFileSync(configPath, "utf-8");
-      collectResolvedPathsFromStrings(content, dirname(configPath), directory, entries);
       const isUmiRouteModule =
         /(?:^|[\\/])config[\\/](?:routes[^\\/]*|router\.config)\.[^\\/]+$/.test(configPath);
-      for (const routeComponentPath of extractUmiRouteComponentPaths(content, isUmiRouteModule)) {
+      const astResult = collectConfigAstEntries(
+        content,
+        configPath,
+        directory,
+        entries,
+        isUmiRouteModule,
+      );
+      for (const routeComponentPath of astResult.routeComponentPaths) {
         const sourceRelativePath = routeComponentPath.startsWith("@/")
           ? `src/${routeComponentPath.slice(2)}`
           : `src/pages/${routeComponentPath}`;
         addResolvedConfigPath(sourceRelativePath, directory, directory, entries);
       }
-      if (/(?:^|[\\/])(?:\.umirc\.|config[\\/]config\.)/.test(configPath)) {
-        for (const loadingComponentPath of extractUmiLoadingComponentPaths(content)) {
+      const isUmiConfig = /(?:^|[\\/])(?:\.umirc\.|config[\\/]config\.)/.test(configPath);
+      if (isUmiConfig) {
+        for (const loadingComponentPath of astResult.loadingComponentPaths) {
           const sourceRelativePath = loadingComponentPath.startsWith("@/")
             ? `src/${loadingComponentPath.slice(2)}`
             : `src/${loadingComponentPath.replace(/^\.\//, "")}`;
           addResolvedConfigPath(sourceRelativePath, directory, directory, entries);
         }
       }
-      if (
-        /(?:^|[\\/])(?:\.umirc\.|config[\\/]config\.)/.test(configPath) &&
-        (hasDeclaredUmiAccessPlugin ||
-          /\baccess\s*:\s*\{/.test(maskJavaScriptStringsAndComments(content)))
-      ) {
+      if (isUmiConfig && (hasDeclaredUmiAccessPlugin || astResult.hasAccessConfig)) {
         addResolvedConfigPath("src/access", directory, directory, entries);
       }
     } catch {

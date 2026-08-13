@@ -39,6 +39,59 @@ const relativeUnusedPaths = (
   );
 
 describe("Oxc-backed project configuration discovery", () => {
+  it("recognizes imported test APIs without trusting shadowed lookalikes", () => {
+    const rootDirectory = createProject({
+      "src/mocks.ts": `
+        import { vi as vitestApi } from "vitest";
+        import { jest as jestApi } from "@jest/globals";
+        vitestApi.mock("./from-vitest", () => ({}));
+        jestApi.mock("./from-jest", () => ({}));
+        {
+          const vitestApi = { mock: () => undefined };
+          vitestApi.mock("./shadowed-vitest", () => ({}));
+        }
+        const vi = { mock: () => undefined };
+        const jest = { mock: () => undefined };
+        vi.mock("./local-vi", () => ({}));
+        jest.mock("./local-jest", () => ({}));
+      `,
+    });
+
+    const parsedSource = parseSourceFile(path.join(rootDirectory, "src/mocks.ts"));
+    const relativeDynamicSpecifiers = parsedSource.imports
+      .filter((importReference) => importReference.isDynamic)
+      .map((importReference) => importReference.specifier);
+
+    expect(relativeDynamicSpecifiers).toEqual(["./from-vitest", "./from-jest"]);
+  });
+
+  it("hoists var bindings only to their containing function or program", () => {
+    const rootDirectory = createProject({
+      "src/function-scope.cjs": `
+        require("./global-runtime");
+        function loadLocally() {
+          require("./shadowed-before-declaration");
+          if (false) var require = localLoader;
+        }
+        console.log(loadLocally);
+      `,
+      "src/program-scope.cjs": `
+        require("./shadowed-at-program-scope");
+        if (false) var require = localLoader;
+      `,
+    });
+
+    const functionScopeSource = parseSourceFile(path.join(rootDirectory, "src/function-scope.cjs"));
+    const programScopeSource = parseSourceFile(path.join(rootDirectory, "src/program-scope.cjs"));
+
+    expect(
+      functionScopeSource.imports
+        .filter((importReference) => importReference.isDynamic)
+        .map((importReference) => importReference.specifier),
+    ).toEqual(["./global-runtime"]);
+    expect(programScopeSource.imports).toEqual([]);
+  });
+
   it("discovers statically bound directories read through fs.promises", async () => {
     const rootDirectory = createProject({
       "src/index.ts": `
@@ -212,6 +265,30 @@ describe("Oxc-backed project configuration discovery", () => {
 });
 
 describe("embedded component source positions", () => {
+  it("finds top-level scripts after self-closing custom elements", () => {
+    const rootDirectory = createProject({
+      "src/card.vue": [
+        "<CustomElement />",
+        "<Container>",
+        "  <script>import Nested from './nested';</script>",
+        "</Container>",
+        "<script>",
+        'import Actual from "./actual";',
+        "export const stale = true;",
+        "</script>",
+      ].join("\n"),
+    });
+
+    const parsedSource = parseSourceFile(path.join(rootDirectory, "src/card.vue"));
+
+    expect(parsedSource.imports).toEqual([
+      expect.objectContaining({ specifier: "./actual", line: 6, column: 0 }),
+    ]);
+    expect(parsedSource.exports).toEqual([
+      expect.objectContaining({ name: "stale", line: 7, column: 13 }),
+    ]);
+  });
+
   it("preserves Astro frontmatter and later script positions", () => {
     const rootDirectory = createProject({
       "src/card.astro": [
@@ -239,6 +316,51 @@ describe("embedded component source positions", () => {
     expect(parsedSource.exports).toEqual([
       expect.objectContaining({ name: "staleFrontmatter", line: 4, column: 13 }),
       expect.objectContaining({ name: "staleLater", line: 10, column: 13 }),
+    ]);
+  });
+
+  it("uses Astro syntax nodes for frontmatter and script extraction", () => {
+    const rootDirectory = createProject({
+      "src/card.astro": [
+        "---",
+        'import Frontmatter from "./frontmatter";',
+        'const description = "export interface Props { ignored: true }";',
+        "export interface Props { title: string }",
+        "---",
+        '<!-- <script src="./commented.js" /> -->',
+        '<script data-note=">">',
+        'import Actual from "./actual";',
+        "export const stale = true;",
+        "</script>",
+      ].join("\n"),
+    });
+
+    const parsedSource = parseSourceFile(path.join(rootDirectory, "src/card.astro"));
+
+    expect(parsedSource.imports).toEqual([
+      expect.objectContaining({ specifier: "./frontmatter", line: 2, column: 0 }),
+      expect.objectContaining({ specifier: "./actual", line: 8, column: 0 }),
+    ]);
+    expect(parsedSource.exports).toEqual([
+      expect.objectContaining({ name: "stale", line: 9, column: 13 }),
+    ]);
+  });
+
+  it("follows Astro compiler semantics for frontmatter delimiter suffixes", () => {
+    const rootDirectory = createProject({
+      "src/card.astro": [
+        "---",
+        'import BeforeSuffix from "./before-suffix";',
+        "---suffix",
+        'import AfterSuffix from "./after-suffix";',
+        "---",
+      ].join("\n"),
+    });
+
+    const parsedSource = parseSourceFile(path.join(rootDirectory, "src/card.astro"));
+
+    expect(parsedSource.imports).toEqual([
+      expect.objectContaining({ specifier: "./before-suffix", line: 2, column: 0 }),
     ]);
   });
 
@@ -270,6 +392,30 @@ describe("embedded component source positions", () => {
     ]);
   });
 
+  it("ignores commented Vue scripts and quoted greater-than attributes", () => {
+    const rootDirectory = createProject({
+      "src/card.vue": [
+        '<!-- <script>import Commented from "./commented";</script> -->',
+        "<template>",
+        '  <!-- <script>import NestedComment from "./nested-comment";</script> -->',
+        "</template>",
+        '<script lang="ts" data-note=">">',
+        'import Actual from "./actual";',
+        "export const stale = true;",
+        "</script>",
+      ].join("\n"),
+    });
+
+    const parsedSource = parseSourceFile(path.join(rootDirectory, "src/card.vue"));
+
+    expect(parsedSource.imports).toEqual([
+      expect.objectContaining({ specifier: "./actual", line: 6, column: 0 }),
+    ]);
+    expect(parsedSource.exports).toEqual([
+      expect.objectContaining({ name: "stale", line: 7, column: 13 }),
+    ]);
+  });
+
   it("preserves Svelte module and instance script positions", () => {
     const rootDirectory = createProject({
       "src/card.svelte": [
@@ -290,6 +436,28 @@ describe("embedded component source positions", () => {
     expect(parsedSource.exports).toEqual([
       expect.objectContaining({ name: "staleModule", line: 3, column: 13 }),
       expect.objectContaining({ name: "staleInstance", line: 8, column: 13 }),
+    ]);
+  });
+
+  it("recognizes only real Svelte module attributes", () => {
+    const rootDirectory = createProject({
+      "src/card.svelte": [
+        "<!-- <script module>export const commented = true;</script> -->",
+        '<script data-note=\'context="module"\' data-symbol=">">',
+        "export let instanceProp: string;",
+        "export const staleInstance = true;",
+        "</script>",
+        '<script module data-symbol=">">',
+        "export let moduleValue: string;",
+        "</script>",
+      ].join("\n"),
+    });
+
+    const parsedSource = parseSourceFile(path.join(rootDirectory, "src/card.svelte"));
+
+    expect(parsedSource.exports).toEqual([
+      expect.objectContaining({ name: "staleInstance", line: 4, column: 13 }),
+      expect.objectContaining({ name: "moduleValue", line: 7, column: 11 }),
     ]);
   });
 });

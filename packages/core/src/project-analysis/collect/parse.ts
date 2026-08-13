@@ -1,5 +1,8 @@
+import { parse as parseAstro } from "@astrojs/compiler/sync";
+import type { Node as AstroNode } from "@astrojs/compiler/types";
 import { parseSync } from "oxc-parser";
 import { readFileSync, statSync } from "node:fs";
+import { parseFragment, type DefaultTreeAdapterMap } from "parse5";
 import ts from "typescript";
 import {
   BINARY_DETECTION_NULL_BYTE_THRESHOLD,
@@ -35,7 +38,8 @@ import type {
 } from "../types.js";
 import { getLineFromOffset, getColumnFromOffset } from "../utils/line-column.js";
 import { extractDefaultExportLocalName } from "../utils/extract-default-export-local-name.js";
-import { getIdentifierName } from "../utils/oxc-ast-node.js";
+import { getIdentifierName, isOxcAstNode } from "../utils/oxc-ast-node.js";
+import { visitOxcAstWithBindings } from "../utils/visit-oxc-ast-with-bindings.js";
 import { isGeneratedSource } from "../utils/is-generated-source.js";
 import { collectStylesheetImportSpecifiers } from "../utils/collect-stylesheet-import-specifiers.js";
 import { extractJitiLoadReferences } from "../utils/extract-jiti-load-references.js";
@@ -104,12 +108,6 @@ const extractRecoveryImports = (filePath: string, sourceText: string): ImportRef
   return imports;
 };
 
-const ASTRO_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---/;
-const ASTRO_SCRIPT_TAG_PATTERN =
-  /<script\b([^>]*?)\/>|<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi;
-const ASTRO_SCRIPT_SRC_ATTRIBUTE_PATTERN = /\bsrc\s*=\s*["']([^"']+)["']/i;
-const ASTRO_PROPS_EXPORT_PATTERN = /\bexport\s+(?=(?:interface|type)\s+Props\b)/g;
-
 const createWhitespaceMask = (sourceText: string): string[] =>
   sourceText
     .split("")
@@ -125,73 +123,165 @@ const restoreMaskedSourceRange = (
   }
 };
 
+const maskSelectedExportKeywords = (
+  sourceText: string,
+  shouldMaskStatement: (statement: ts.Statement) => boolean,
+): string => {
+  const sourceFile = ts.createSourceFile(
+    "embedded-component.tsx",
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const maskedSource = sourceText.split("");
+  for (const statement of sourceFile.statements) {
+    if (!shouldMaskStatement(statement) || !ts.canHaveModifiers(statement)) continue;
+    const exportModifier = ts
+      .getModifiers(statement)
+      ?.find((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
+    if (!exportModifier) continue;
+    for (
+      let characterIndex = exportModifier.getStart(sourceFile);
+      characterIndex < exportModifier.end;
+      characterIndex++
+    ) {
+      maskedSource[characterIndex] = " ";
+    }
+  }
+  return maskedSource.join("");
+};
+
+const maskAstroPropsExports = (sourceText: string): string =>
+  maskSelectedExportKeywords(
+    sourceText,
+    (statement) =>
+      (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) &&
+      statement.name.text === "Props",
+  );
+
+const maskSvelteInstancePropExports = (sourceText: string): string =>
+  maskSelectedExportKeywords(
+    sourceText,
+    (statement) =>
+      ts.isVariableStatement(statement) &&
+      (statement.declarationList.flags & ts.NodeFlags.Let) !== 0,
+  );
+
 const extractAstroSources = (sourceText: string): string => {
   const maskedSource = createWhitespaceMask(sourceText);
-  const frontmatterMatch = sourceText.match(ASTRO_FRONTMATTER_PATTERN);
-  if (frontmatterMatch) {
-    const frontmatter = frontmatterMatch[1].replace(ASTRO_PROPS_EXPORT_PATTERN, (match) =>
-      " ".repeat(match.length),
+  let astroRoot: ReturnType<typeof parseAstro>["ast"];
+  try {
+    astroRoot = parseAstro(sourceText, { position: true }).ast;
+  } catch {
+    return maskedSource.join("");
+  }
+
+  const sourceOffsetByByteOffset = new Map<number, number>();
+  let byteOffset = 0;
+  let sourceOffset = 0;
+  for (const character of sourceText) {
+    sourceOffsetByByteOffset.set(byteOffset, sourceOffset);
+    byteOffset += Buffer.byteLength(character);
+    sourceOffset += character.length;
+  }
+  sourceOffsetByByteOffset.set(byteOffset, sourceOffset);
+
+  const getSourceOffset = (node: AstroNode): number | undefined => {
+    const nodeByteOffset = node.position?.start.offset;
+    return nodeByteOffset === undefined ? undefined : sourceOffsetByByteOffset.get(nodeByteOffset);
+  };
+  const restoreNodeValue = (
+    node: AstroNode,
+    sourceValue: string,
+    maskedValue = sourceValue,
+  ): void => {
+    const nodeStartOffset = getSourceOffset(node);
+    if (nodeStartOffset === undefined) return;
+    const valueStartOffset = sourceText.indexOf(sourceValue, nodeStartOffset);
+    if (valueStartOffset === -1) return;
+    restoreMaskedSourceRange(maskedSource, maskedValue, valueStartOffset);
+  };
+  const visitNode = (node: AstroNode): void => {
+    if (node.type === "frontmatter") {
+      restoreNodeValue(node, node.value, maskAstroPropsExports(node.value));
+      return;
+    }
+    if (node.type === "element" && node.name.toLowerCase() === "script") {
+      const sourceAttribute = node.attributes.find(
+        (attribute) => attribute.name.toLowerCase() === "src" && attribute.kind === "quoted",
+      );
+      const nodeStartOffset = getSourceOffset(node);
+      if (sourceAttribute && nodeStartOffset !== undefined) {
+        restoreMaskedSourceRange(
+          maskedSource,
+          `import ${JSON.stringify(sourceAttribute.value)};`,
+          nodeStartOffset,
+        );
+      }
+      for (const childNode of node.children) {
+        if (childNode.type === "text") restoreNodeValue(childNode, childNode.value);
+      }
+    }
+    if ("children" in node) {
+      for (const childNode of node.children) visitNode(childNode);
+    }
+  };
+  visitNode(astroRoot);
+  return maskedSource.join("");
+};
+
+const extractHtmlLikeTopLevelScriptContent = (
+  sourceText: string,
+  transformScriptBody: (
+    scriptBody: string,
+    scriptElement: DefaultTreeAdapterMap["element"],
+  ) => string,
+): string => {
+  const maskedSource = createWhitespaceMask(sourceText);
+  const documentFragment = parseFragment(sourceText, { sourceCodeLocationInfo: true });
+  const visitNode = (node: DefaultTreeAdapterMap["node"], isLexicallyTopLevel: boolean): void => {
+    if (!("tagName" in node)) return;
+    if (isLexicallyTopLevel && node.tagName.toLowerCase() === "script") {
+      const bodyStartOffset = node.sourceCodeLocation?.startTag?.endOffset;
+      const bodyEndOffset = node.sourceCodeLocation?.endTag?.startOffset;
+      if (bodyStartOffset !== undefined && bodyEndOffset !== undefined) {
+        const scriptBody = sourceText.slice(bodyStartOffset, bodyEndOffset);
+        restoreMaskedSourceRange(
+          maskedSource,
+          transformScriptBody(scriptBody, node),
+          bodyStartOffset,
+        );
+      }
+      return;
+    }
+    const startTagLocation = node.sourceCodeLocation?.startTag;
+    const hasSelfClosingStartTag =
+      startTagLocation !== undefined &&
+      sourceText
+        .slice(startTagLocation.startOffset, startTagLocation.endOffset)
+        .trimEnd()
+        .endsWith("/>");
+    for (const childNode of node.childNodes) {
+      visitNode(childNode, isLexicallyTopLevel && hasSelfClosingStartTag);
+    }
+  };
+  for (const childNode of documentFragment.childNodes) visitNode(childNode, true);
+  return maskedSource.join("");
+};
+
+const extractVueScriptContent = (sourceText: string): string =>
+  extractHtmlLikeTopLevelScriptContent(sourceText, (scriptBody) => scriptBody);
+
+const extractSvelteScriptContent = (sourceText: string): string =>
+  extractHtmlLikeTopLevelScriptContent(sourceText, (scriptBody, scriptElement) => {
+    const isModuleScript = scriptElement.attrs.some(
+      (attribute) =>
+        attribute.name === "module" ||
+        (attribute.name === "context" && attribute.value === "module"),
     );
-    const frontmatterStart = frontmatterMatch[0].indexOf("\n") + 1;
-    restoreMaskedSourceRange(maskedSource, frontmatter, frontmatterStart);
-  }
-  ASTRO_SCRIPT_TAG_PATTERN.lastIndex = 0;
-  let scriptMatch: RegExpExecArray | null;
-  while ((scriptMatch = ASTRO_SCRIPT_TAG_PATTERN.exec(sourceText)) !== null) {
-    const selfClosingAttributes = scriptMatch[1];
-    const pairedAttributes = scriptMatch[2];
-    const attributes = selfClosingAttributes ?? pairedAttributes ?? "";
-    const body = selfClosingAttributes === undefined ? (scriptMatch[3] ?? "") : "";
-    const srcMatch = attributes.match(ASTRO_SCRIPT_SRC_ATTRIBUTE_PATTERN);
-    if (srcMatch) {
-      const syntheticImport = `import ${JSON.stringify(srcMatch[1])};`;
-      restoreMaskedSourceRange(maskedSource, syntheticImport, scriptMatch.index);
-    }
-    if (body) {
-      const bodyStart = scriptMatch.index + scriptMatch[0].indexOf(">") + 1;
-      restoreMaskedSourceRange(maskedSource, body, bodyStart);
-    }
-  }
-  return maskedSource.join("");
-};
-
-const VUE_SCRIPT_PATTERN =
-  /<script[^>]*(?:lang=["'](?:ts|tsx)["'][^>]*)?>([\s\S]*?)<\/script\b[^>]*>/gi;
-
-const extractVueScriptContent = (sourceText: string): string => {
-  const maskedSource = createWhitespaceMask(sourceText);
-  let scriptMatch: RegExpExecArray | null;
-  VUE_SCRIPT_PATTERN.lastIndex = 0;
-  while ((scriptMatch = VUE_SCRIPT_PATTERN.exec(sourceText)) !== null) {
-    if (scriptMatch[1]) {
-      const bodyStart = scriptMatch.index + scriptMatch[0].indexOf(">") + 1;
-      restoreMaskedSourceRange(maskedSource, scriptMatch[1], bodyStart);
-    }
-  }
-  return maskedSource.join("");
-};
-
-const SVELTE_SCRIPT_PATTERN = /<script([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi;
-const SVELTE_MODULE_SCRIPT_ATTRIBUTE_PATTERN =
-  /(?:^|\s)(?:context\s*=\s*["']module["']|module)(?:\s|$)/i;
-const SVELTE_PROP_EXPORT_PATTERN = /\bexport\s+(?=let\b)/g;
-
-const extractSvelteScriptContent = (sourceText: string): string => {
-  const maskedSource = createWhitespaceMask(sourceText);
-  let scriptMatch: RegExpExecArray | null;
-  SVELTE_SCRIPT_PATTERN.lastIndex = 0;
-  while ((scriptMatch = SVELTE_SCRIPT_PATTERN.exec(sourceText)) !== null) {
-    const attributes = scriptMatch[1] ?? "";
-    const scriptBody = scriptMatch[2];
-    if (!scriptBody) continue;
-    const body = SVELTE_MODULE_SCRIPT_ATTRIBUTE_PATTERN.test(attributes)
-      ? scriptBody
-      : scriptBody.replace(SVELTE_PROP_EXPORT_PATTERN, (match) => " ".repeat(match.length));
-    const bodyStart = scriptMatch.index + scriptMatch[0].indexOf(">") + 1;
-    restoreMaskedSourceRange(maskedSource, body, bodyStart);
-  }
-  return maskedSource.join("");
-};
+    return isModuleScript ? scriptBody : maskSvelteInstancePropExports(scriptBody);
+  });
 
 const getModuleExportNameValue = (exportName: ModuleExportName): string => {
   if (exportName.type === "Identifier") return exportName.name;
@@ -1674,6 +1764,128 @@ const collectDynamicImports = (
   sourceText: string,
   imports: ImportReference[],
 ): boolean => {
+  const trustedTestApiBindingNames = new Set<string>();
+  const trustedCreateRequireFactoryNames = new Set<string>();
+  const trustedModuleNamespaceNames = new Set<string>();
+  for (const statement of bodyNodes) {
+    if (statement.type !== "ImportDeclaration") continue;
+    const moduleName =
+      isWalkableNode(statement.source) && typeof statement.source.value === "string"
+        ? statement.source.value
+        : undefined;
+    const isNodeModule = moduleName === "module" || moduleName === "node:module";
+    const trustedImportName =
+      moduleName === "vitest" ? "vi" : moduleName === "@jest/globals" ? "jest" : undefined;
+    if (!Array.isArray(statement.specifiers)) continue;
+    for (const specifier of statement.specifiers) {
+      if (!isWalkableNode(specifier)) continue;
+      const localName = getIdentifierName(specifier.local);
+      if (!localName) continue;
+      if (
+        trustedImportName &&
+        specifier.type === "ImportSpecifier" &&
+        getIdentifierName(specifier.imported) === trustedImportName
+      )
+        trustedTestApiBindingNames.add(localName);
+      if (!isNodeModule) continue;
+      if (
+        specifier.type === "ImportSpecifier" &&
+        getIdentifierName(specifier.imported) === "createRequire"
+      )
+        trustedCreateRequireFactoryNames.add(localName);
+      if (specifier.type === "ImportNamespaceSpecifier") {
+        trustedModuleNamespaceNames.add(localName);
+      }
+    }
+  }
+  let isGlobalRequireAvailable = true;
+  visitOxcAstWithBindings(
+    { type: "Program", start: 0, end: sourceText.length, body: bodyNodes },
+    (_node, bindingNames) => {
+      isGlobalRequireAvailable = !bindingNames.has("require");
+      return false;
+    },
+  );
+  const unwrapExpression = (value: unknown): WalkableNode | undefined => {
+    let expression = isWalkableNode(value) ? value : undefined;
+    while (
+      expression &&
+      (expression.type === "ParenthesizedExpression" ||
+        expression.type === "TSAsExpression" ||
+        expression.type === "TSTypeAssertion" ||
+        expression.type === "TSNonNullExpression" ||
+        expression.type === "ChainExpression")
+    ) {
+      expression = isWalkableNode(expression.expression) ? expression.expression : undefined;
+    }
+    return expression;
+  };
+  const isTrustedNodeModuleRequireCall = (value: unknown): boolean => {
+    const expression = unwrapExpression(value);
+    if (!isGlobalRequireAvailable || expression?.type !== "CallExpression") return false;
+    if (getIdentifierName(unwrapExpression(expression.callee)) !== "require") return false;
+    const moduleName = extractStringLiteralFromArgument(expression.arguments);
+    return moduleName === "module" || moduleName === "node:module";
+  };
+  for (const statement of bodyNodes) {
+    if (statement.type !== "VariableDeclaration" || statement.kind !== "const") continue;
+    const declarations = Array.isArray(statement.declarations) ? statement.declarations : [];
+    for (const declaration of declarations) {
+      if (!isWalkableNode(declaration)) continue;
+      const initializer = unwrapExpression(declaration.init);
+      if (isTrustedNodeModuleRequireCall(initializer)) {
+        const namespaceName = getIdentifierName(declaration.id);
+        if (namespaceName) trustedModuleNamespaceNames.add(namespaceName);
+        if (isWalkableNode(declaration.id) && declaration.id.type === "ObjectPattern") {
+          const properties = Array.isArray(declaration.id.properties)
+            ? declaration.id.properties
+            : [];
+          for (const property of properties) {
+            if (
+              isWalkableNode(property) &&
+              property.type === "Property" &&
+              !property.computed &&
+              getIdentifierName(property.key) === "createRequire"
+            ) {
+              const factoryName = getIdentifierName(property.value);
+              if (factoryName) trustedCreateRequireFactoryNames.add(factoryName);
+            }
+          }
+        }
+      }
+      if (
+        initializer?.type === "MemberExpression" &&
+        !initializer.computed &&
+        getIdentifierName(initializer.property) === "createRequire" &&
+        isTrustedNodeModuleRequireCall(initializer.object)
+      ) {
+        const factoryName = getIdentifierName(declaration.id);
+        if (factoryName) trustedCreateRequireFactoryNames.add(factoryName);
+      }
+    }
+  }
+  const isTrustedCreateRequireCall = (value: unknown): boolean => {
+    const expression = unwrapExpression(value);
+    if (expression?.type !== "CallExpression") return false;
+    const callee = unwrapExpression(expression.callee);
+    const directCalleeName = getIdentifierName(callee);
+    if (directCalleeName && trustedCreateRequireFactoryNames.has(directCalleeName)) return true;
+    if (callee?.type !== "MemberExpression" || callee.computed) return false;
+    if (getIdentifierName(callee.property) !== "createRequire") return false;
+    const namespaceName = getIdentifierName(unwrapExpression(callee.object));
+    if (namespaceName && trustedModuleNamespaceNames.has(namespaceName)) return true;
+    return isTrustedNodeModuleRequireCall(callee.object);
+  };
+  const trustedRequireBindingNames = new Set<string>();
+  for (const statement of bodyNodes) {
+    if (statement.type !== "VariableDeclaration" || statement.kind !== "const") continue;
+    const declarations = Array.isArray(statement.declarations) ? statement.declarations : [];
+    for (const declaration of declarations) {
+      if (!isWalkableNode(declaration) || !isTrustedCreateRequireCall(declaration.init)) continue;
+      const localName = getIdentifierName(declaration.id);
+      if (localName) trustedRequireBindingNames.add(localName);
+    }
+  }
   const jitiLoadReferences = extractJitiLoadReferences(sourceText);
   let hasUnknownDynamicModuleLoad = jitiLoadReferences.some(
     (jitiLoadReference) => jitiLoadReference.path === undefined,
@@ -1690,7 +1902,13 @@ const collectDynamicImports = (
       column: jitiLoadReference.column,
     });
   }
-  const walkNode = (node: WalkableNode, parentNode?: WalkableNode): void => {
+  const walkNode = (
+    node: WalkableNode,
+    bindingNames: ReadonlySet<string>,
+    parentNode: WalkableNode | undefined,
+    nestedBindingNames: ReadonlySet<string>,
+  ): boolean | void => {
+    const isGlobalRequire = !bindingNames.has("require");
     if (node.type === "TSImportType") {
       const sourceExpression = isWalkableNode(node.source) ? node.source : undefined;
       if (
@@ -1771,7 +1989,12 @@ const collectDynamicImports = (
       ) {
         hasUnknownDynamicModuleLoad = true;
       }
-      if (getIdentifierName(callee) === "require") {
+      const isTrustedDirectRequire =
+        (directCalleeName === "require" && (isGlobalRequire || bindingNames.size === 0)) ||
+        (directCalleeName !== undefined &&
+          trustedRequireBindingNames.has(directCalleeName) &&
+          !nestedBindingNames.has(directCalleeName));
+      if (isTrustedDirectRequire) {
         const requireSpecifier = extractStringLiteralFromArgument(node.arguments);
         if (requireSpecifier) {
           const parentMemberExpression =
@@ -1814,8 +2037,13 @@ const collectDynamicImports = (
       if (callee?.type === "MemberExpression" && !callee.computed) {
         const objectName = getIdentifierName(callee.object);
         const propertyName = getIdentifierName(callee.property);
+        const isTrustedRequireObject =
+          (objectName === "require" && isGlobalRequire) ||
+          (objectName !== undefined &&
+            trustedRequireBindingNames.has(objectName) &&
+            !nestedBindingNames.has(objectName));
 
-        if (objectName === "require" && propertyName === "context") {
+        if (objectName === "require" && propertyName === "context" && isGlobalRequire) {
           const contextMetadata = extractRequireContextMetadata(node.arguments);
           if (contextMetadata) {
             imports.push({
@@ -1833,7 +2061,7 @@ const collectDynamicImports = (
           }
         }
 
-        if (objectName === "require" && propertyName === "resolve") {
+        if (propertyName === "resolve" && isTrustedRequireObject) {
           const resolveSpecifier = extractStringLiteralFromArgument(node.arguments);
           if (resolveSpecifier) {
             imports.push({
@@ -1850,7 +2078,12 @@ const collectDynamicImports = (
           }
         }
 
-        if ((objectName === "vi" || objectName === "jest") && propertyName === "mock") {
+        const isUnshadowedTestApi =
+          objectName !== undefined &&
+          (trustedTestApiBindingNames.has(objectName)
+            ? !nestedBindingNames.has(objectName)
+            : (objectName === "vi" || objectName === "jest") && !bindingNames.has(objectName));
+        if (isUnshadowedTestApi && propertyName === "mock") {
           const mockSpecifier = extractStringLiteralFromArgument(node.arguments);
           if (mockSpecifier) {
             imports.push({
@@ -1994,20 +2227,18 @@ const collectDynamicImports = (
       }
     }
 
-    for (const value of Object.values(node)) {
-      if (Array.isArray(value)) {
-        for (const element of value) {
-          if (isWalkableNode(element)) walkNode(element, node);
-        }
-      } else if (isWalkableNode(value)) {
-        walkNode(value, node);
-      }
-    }
+    return true;
   };
 
-  for (const topLevelNode of bodyNodes) {
-    if (isWalkableNode(topLevelNode)) walkNode(topLevelNode);
-  }
+  visitOxcAstWithBindings(bodyNodes, (node, bindingNames, parentNode, nestedBindingNames) => {
+    if (!isWalkableNode(node)) return;
+    return walkNode(
+      node,
+      bindingNames,
+      parentNode && isOxcAstNode(parentNode) && isWalkableNode(parentNode) ? parentNode : undefined,
+      nestedBindingNames,
+    );
+  });
   return hasUnknownDynamicModuleLoad;
 };
 

@@ -7,6 +7,7 @@ import {
   UNUSED_FILE_UNSUPPORTED_FRAMEWORK_DEPENDENCIES,
 } from "../constants.js";
 import type { DependencyGraph, ProjectAnalysisError, SourceModule } from "../types.js";
+import { toCanonicalPath } from "../../utils/to-canonical-path.js";
 import { isPathInsideDirectoryOrEqual } from "./is-path-inside-directory-or-equal.js";
 
 export interface MarkCompletePackageGraphsInput {
@@ -169,8 +170,16 @@ export const markCompletePackageGraphs = ({
   unresolvedImportingFilePaths,
   setupErrors,
 }: MarkCompletePackageGraphsInput): void => {
-  const sortedPackageRoots = [...new Set(packageRootDirectories)].toSorted(
+  const sortedPackageRoots = [...new Set(packageRootDirectories.map(toCanonicalPath))].toSorted(
     (leftDirectory, rightDirectory) => rightDirectory.length - leftDirectory.length,
+  );
+  const canonicalFilePathByModule = new Map(
+    graph.modules.map((module) => [module, toCanonicalPath(module.fileId.path)]),
+  );
+  const canonicalPathBySetupError = new Map(
+    setupErrors.flatMap((error) =>
+      error.path === undefined ? [] : [[error, toCanonicalPath(error.path)]],
+    ),
   );
   const rootPackageContract = readPackageContract(
     sortedPackageRoots[sortedPackageRoots.length - 1] ?? "",
@@ -178,12 +187,18 @@ export const markCompletePackageGraphs = ({
   for (const packageRootDirectory of sortedPackageRoots) {
     const packageModules = graph.modules.filter(
       (module) =>
-        isPathInsideDirectoryOrEqual(module.fileId.path, packageRootDirectory) &&
+        isPathInsideDirectoryOrEqual(
+          canonicalFilePathByModule.get(module) ?? module.fileId.path,
+          packageRootDirectory,
+        ) &&
         !sortedPackageRoots.some(
           (nestedRootDirectory) =>
             nestedRootDirectory !== packageRootDirectory &&
             nestedRootDirectory.length > packageRootDirectory.length &&
-            isPathInsideDirectoryOrEqual(module.fileId.path, nestedRootDirectory),
+            isPathInsideDirectoryOrEqual(
+              canonicalFilePathByModule.get(module) ?? module.fileId.path,
+              nestedRootDirectory,
+            ),
         ),
     );
     const packageContract = readPackageContract(packageRootDirectory);
@@ -195,7 +210,11 @@ export const markCompletePackageGraphs = ({
     const hasSupportedAutomaticEntry = packageModules.some(
       (module) =>
         module.isAuthoritativeEntryPoint &&
-        isSupportedAutomaticEntry(module.fileId.path, packageRootDirectory, declaredDependencies),
+        isSupportedAutomaticEntry(
+          canonicalFilePathByModule.get(module) ?? module.fileId.path,
+          packageRootDirectory,
+          declaredDependencies,
+        ),
     );
     const hasParseOrReadUncertainty = packageModules.some(
       (module) => !module.isAnalysisExcluded && module.parseErrors.length > 0,
@@ -228,7 +247,10 @@ export const markCompletePackageGraphs = ({
     );
     const hasTestOrStoryContract = packageModules.some((module) =>
       TEST_OR_STORY_FILE_PATTERN.test(
-        relative(packageRootDirectory, module.fileId.path).replaceAll("\\", "/"),
+        relative(
+          packageRootDirectory,
+          canonicalFilePathByModule.get(module) ?? module.fileId.path,
+        ).replaceAll("\\", "/"),
       ),
     );
     const hasSetupUncertainty = setupErrors.some(
@@ -236,7 +258,10 @@ export const markCompletePackageGraphs = ({
         error.severity !== "info" &&
         error.code !== "gitignore-check-failed" &&
         (error.path === undefined ||
-          isPathInsideDirectoryOrEqual(error.path, packageRootDirectory)),
+          isPathInsideDirectoryOrEqual(
+            canonicalPathBySetupError.get(error) ?? error.path,
+            packageRootDirectory,
+          )),
     );
     const isComplete =
       !hasSetupUncertainty &&

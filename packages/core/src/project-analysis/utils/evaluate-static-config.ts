@@ -432,6 +432,8 @@ const evaluateExpression = (
   const memberObjectBinding = memberObjectName ? bindings.get(memberObjectName) : undefined;
   const isGlobalObjectFreeze =
     memberObjectName === "Object" && memberPropertyName === "freeze" && !memberObjectBinding;
+  const isGlobalRequireResolve =
+    memberObjectName === "require" && memberPropertyName === "resolve" && !memberObjectBinding;
   const isConfigNamespaceCall =
     memberObjectBinding?.kind === "config-namespace" &&
     typeof memberObjectBinding.moduleSource === "string" &&
@@ -445,6 +447,18 @@ const evaluateExpression = (
       configDirectory,
       visitedIdentifiers,
     );
+  }
+  if (isGlobalRequireResolve) {
+    const requiredPath = evaluateExpression(
+      argumentsList[0],
+      variableInitializers,
+      bindings,
+      configDirectory,
+      visitedIdentifiers,
+    );
+    return typeof requiredPath === "string" && requiredPath.startsWith(".")
+      ? resolve(configDirectory, requiredPath)
+      : undefined;
   }
   const isPathCall =
     directBinding?.kind === "path-function" ||

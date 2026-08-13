@@ -946,6 +946,33 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("keeps the score face intact beside a long project name", async () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "threejs-scaffolding-with-a-long-project-name",
+      rootDirectory: process.cwd(),
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
+    resizeTerminal(stdout, { columns: 120, rows: 44 });
+    await flush();
+    stdin.write("\r");
+    await flush();
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("┌─────┐");
+    expect(frame).toContain("└─────┘");
+    expect(frame).not.toMatch(/^\s*┘$/m);
+    unmount();
+  });
+
   it("shows only usable controls when a clean report has no actions", async () => {
     const store = createScanStore();
     store.setReport({

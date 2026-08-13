@@ -3,47 +3,40 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { threePreferSetAnimationLoop } from "./three-prefer-set-animation-loop.js";
 
 describe("three-prefer-set-animation-loop", () => {
-  it("reports recursive animation frames in a WebXR renderer", () => {
+  it("reports recursive animation frames that render with Three.js", () => {
     const code = `
       import { WebGLRenderer } from "three";
       const renderer = new WebGLRenderer();
-      renderer.xr.enabled = true;
       function frame() { renderer.render(scene, camera); requestAnimationFrame(frame); }
       requestAnimationFrame(frame);
     `;
     expect(runRule(threePreferSetAnimationLoop, code).diagnostics).toHaveLength(1);
   });
 
-  it("allows non-XR manual frames, renderer-managed frames, and unrelated callbacks", () => {
+  it("reports the standalone Three.js scaffold animation loop", () => {
+    const code = `
+      import * as THREE from "three";
+      const canvas = document.querySelector("#view");
+      const renderer = new THREE.WebGLRenderer({ canvas });
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera();
+      function frame() {
+        renderer.render(scene, camera);
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    `;
+    expect(runRule(threePreferSetAnimationLoop, code).diagnostics).toHaveLength(1);
+  });
+
+  it("allows renderer-managed frames and unrelated or shadowed callbacks", () => {
     const code = `
       import { WebGLRenderer } from "three";
       const renderer = new WebGLRenderer();
-      function frame() { renderer.render(scene, camera); requestAnimationFrame(frame); }
-      requestAnimationFrame(frame);
       renderer.setAnimationLoop(() => renderer.render(scene, camera));
       requestAnimationFrame(() => updateDom());
       const run = (requestAnimationFrame) => requestAnimationFrame(() => renderer.render(scene, camera));
     `;
     expect(runRule(threePreferSetAnimationLoop, code).diagnostics).toHaveLength(0);
-  });
-
-  it("recognizes an imported WebXR session button without trusting unrelated xr properties", () => {
-    const webXr = `
-      import { WebGLRenderer } from "three";
-      import { VRButton } from "three/addons/webxr/VRButton.js";
-      const renderer = new WebGLRenderer();
-      function frame() { renderer.render(scene, camera); requestAnimationFrame(frame); }
-      requestAnimationFrame(frame);
-      document.body.append(VRButton.createButton(renderer));
-    `;
-    const unrelated = `
-      import { WebGLRenderer } from "three";
-      const renderer = new WebGLRenderer();
-      state.xr.enabled = true;
-      function frame() { renderer.render(scene, camera); requestAnimationFrame(frame); }
-      requestAnimationFrame(frame);
-    `;
-    expect(runRule(threePreferSetAnimationLoop, webXr).diagnostics).toHaveLength(1);
-    expect(runRule(threePreferSetAnimationLoop, unrelated).diagnostics).toHaveLength(0);
   });
 });

@@ -617,6 +617,24 @@ describe("detectStalePackages", () => {
     },
   );
 
+  it.each([
+    ["font-awesome", "../node_modules/font-awesome/css/font-awesome.min.css"],
+    ["@scope/styles", "../node_modules/@scope/styles/index.css"],
+  ])("credits explicit node_modules source imports for %s", (packageName, specifier) => {
+    const rootDirectory = createProject(
+      { "src/index.js": `import ${JSON.stringify(specifier)};` },
+      { [packageName]: "1.0.0", "unused-package": "1.0.0" },
+    );
+    const graph = graphWithReachableImport(path.join(rootDirectory, "src/index.js"), specifier);
+
+    expect(
+      detectStalePackages(
+        graph,
+        defineProjectAnalysisConfig({ rootDir: rootDirectory }),
+      ).unusedDependencies.map((dependency) => dependency.name),
+    ).toEqual(["unused-package"]);
+  });
+
   it("credits Sanity v2 plugins, core runtime, and required peers", () => {
     const dependencies = {
       "@sanity/base": "2.34.0",
@@ -1299,5 +1317,64 @@ describe("detectStalePackages", () => {
         defineProjectAnalysisConfig({ rootDir: rootDirectory }),
       ).unusedDependencies.map((dependency) => dependency.name),
     ).toEqual(["stylus"]);
+  });
+
+  it("credits the Supabase CLI from its root project config", () => {
+    const rootDirectory = createProject(
+      { "supabase/config.toml": 'project_id = "example"' },
+      { supabase: "1.0.0", "unused-package": "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
+  it("does not credit the Supabase CLI from a nested config", () => {
+    const rootDirectory = createProject(
+      { "examples/app/supabase/config.toml": 'project_id = "example"' },
+      { supabase: "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["supabase"]);
+  });
+
+  it.each(["js", "cjs", "mjs", "ts", "cts", "mts"])(
+    "credits declared package keys in react-native.config.%s",
+    (extension) => {
+      const rootDirectory = createProject(
+        {
+          [`react-native.config.${extension}`]: `
+            module.exports = {
+              dependencies: {
+                expo: { platforms: { android: null, ios: null } },
+                "@scope/native-tool": { platforms: { android: null } },
+                undeclared: {},
+              },
+            };
+          `,
+        },
+        {
+          expo: "1.0.0",
+          "@scope/native-tool": "1.0.0",
+          "unused-package": "1.0.0",
+        },
+      );
+
+      expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+    },
+  );
+
+  it("does not credit nested dependency-shaped objects in React Native config", () => {
+    const rootDirectory = createProject(
+      {
+        "react-native.config.js": `
+          module.exports = {
+            project: { dependencies: { dormant: {} } },
+          };
+        `,
+      },
+      { dormant: "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["dormant"]);
   });
 });

@@ -41,6 +41,7 @@ import { collectExecutableMarkdownFilePaths } from "../utils/collect-executable-
 import { collectStencilCompanionPackageNames } from "../utils/collect-stencil-companion-package-names.js";
 import { hasSanityV2CoreContract } from "../utils/has-sanity-v2-core-contract.js";
 import { collectSanityV2PackageNames } from "../utils/collect-sanity-v2-package-names.js";
+import { collectReactNativeConfigPackageNames } from "../utils/collect-react-native-config-package-names.js";
 import {
   expandBuildScriptPaths,
   extractInvokedBuildScriptPaths,
@@ -144,7 +145,7 @@ export const detectStalePackages = (
   }
 
   const declaredNames = new Set(declaredDependencies.keys());
-  const directlyImportedPackageNames = collectUsedPackages(graph);
+  const directlyImportedPackageNames = collectUsedPackages(graph, declaredNames);
   const observedPackageNames = new Set(directlyImportedPackageNames);
   const usedPackageNames = new Set(observedPackageNames);
   const ambiguousBinaryPackageNames = new Set<string>();
@@ -472,7 +473,10 @@ export const detectStalePackages = (
   return { unusedDependencies, skippedDependencies };
 };
 
-const collectUsedPackages = (graph: DependencyGraph): Set<string> => {
+const collectUsedPackages = (
+  graph: DependencyGraph,
+  declaredPackageNames: ReadonlySet<string>,
+): Set<string> => {
   const usedPackages = new Set<string>();
 
   for (const module of graph.modules) {
@@ -480,6 +484,12 @@ const collectUsedPackages = (graph: DependencyGraph): Set<string> => {
       const packageName = extractPackageName(importInfo.specifier);
       if (packageName) {
         usedPackages.add(packageName);
+        continue;
+      }
+      for (const declaredPackageName of declaredPackageNames) {
+        if (matchesNodeModulesPackageReference(importInfo.specifier, declaredPackageName)) {
+          usedPackages.add(declaredPackageName);
+        }
       }
     }
   }
@@ -1384,6 +1394,23 @@ const collectProjectConventionReferencedPackages = (
   directlyImportedPackageNames: Set<string>,
 ): Set<string> => {
   const referenced = collectStencilCompanionPackageNames(rootDir, declaredNames);
+
+  if (declaredNames.has("supabase") && existsSync(join(rootDir, "supabase/config.toml"))) {
+    referenced.add("supabase");
+  }
+
+  for (const configPath of globPackageFiles(
+    rootDir,
+    ["react-native.config.{js,cjs,mjs,ts,cts,mts}"],
+    { ignore: [], deep: 1 },
+  )) {
+    for (const packageName of collectReactNativeConfigPackageNames(
+      readFileSync(configPath, "utf8"),
+      declaredNames,
+    )) {
+      referenced.add(packageName);
+    }
+  }
 
   const hasCapacitorConfig =
     fg.sync(["capacitor.config.{ts,js,json,mts,mjs,cts,cjs}"], {

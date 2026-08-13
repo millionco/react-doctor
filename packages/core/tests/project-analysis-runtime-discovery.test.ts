@@ -364,6 +364,31 @@ describe("runtime-discovered project entries", () => {
     ]);
   });
 
+  it("discovers React Email templates through default export aliases", async () => {
+    const rootDirectory = createProject(
+      {
+        "emails/welcome.tsx": `
+          const Welcome = () => null;
+          export { Welcome as default };
+        `,
+        "emails/comment-only.tsx": `
+          // export default () => null;
+          export const helper = true;
+        `,
+      },
+      {
+        scripts: { dev: "email dev" },
+        devDependencies: { "react-email": "1.0.0" },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: [] });
+
+    expect(relativeUnusedPaths(rootDirectory, result.unusedFiles)).toEqual([
+      "emails/comment-only.tsx",
+    ]);
+  });
+
   it("maps sibling workspace imports from missing build output to source", async () => {
     const monorepoDirectory = createProject(
       {

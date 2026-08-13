@@ -1,13 +1,23 @@
 import ts from "typescript";
 
 export interface ParsedTypeScriptConfig {
+  extends?: unknown;
+  files?: unknown;
   compilerOptions?: {
     outDir?: unknown;
     rootDir?: unknown;
     noEmit?: unknown;
+    paths?: unknown;
+    baseUrl?: unknown;
+    jsxImportSource?: unknown;
+    types?: unknown;
+    plugins?: unknown;
+    rootDirs?: unknown;
+    typeRoots?: unknown;
   };
   include?: unknown;
   exclude?: unknown;
+  references?: unknown;
 }
 
 export const parseTypeScriptConfig = (

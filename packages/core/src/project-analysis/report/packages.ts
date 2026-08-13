@@ -44,6 +44,7 @@ import { collectSanityV2PackageNames } from "../utils/collect-sanity-v2-package-
 import { collectReactNativeConfigPackageNames } from "../utils/collect-react-native-config-package-names.js";
 import { collectInstalledAgentSkillPackageNames } from "../utils/collect-installed-agent-skill-package-names.js";
 import { hasEnabledNextOptimizeCss } from "../utils/has-enabled-next-optimize-css.js";
+import { parseTypeScriptConfig } from "../utils/parse-typescript-config.js";
 import {
   expandBuildScriptPaths,
   extractInvokedBuildScriptPaths,
@@ -1222,8 +1223,8 @@ const collectTsconfigReferencedPackages = (
   for (const tsconfigPath of tsconfigFiles) {
     try {
       const content = readFileSync(tsconfigPath, "utf-8");
-      const cleaned = content.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
-      const parsed = JSON.parse(cleaned);
+      const parsed = parseTypeScriptConfig(tsconfigPath, content);
+      if (!parsed) continue;
 
       if (typeof parsed.extends === "string") {
         const extendsPackage = extractExtendsPackageName(parsed.extends);
@@ -1282,7 +1283,12 @@ const collectTsconfigReferencedPackages = (
           let pluginName: string | undefined;
           if (typeof pluginEntry === "string") {
             pluginName = pluginEntry;
-          } else if (pluginEntry && typeof pluginEntry.name === "string") {
+          } else if (
+            pluginEntry &&
+            typeof pluginEntry === "object" &&
+            "name" in pluginEntry &&
+            typeof pluginEntry.name === "string"
+          ) {
             pluginName = pluginEntry.name;
           }
           if (pluginName) referenced.add(pluginName);

@@ -625,6 +625,22 @@ describe("detectStalePackages", () => {
     expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
   });
 
+  it("credits packages in JSONC TypeScript configuration containing URL strings", () => {
+    const rootDirectory = createProject(
+      {
+        "tsconfig.json": `{
+          "$schema": "https://json.schemastore.org/tsconfig",
+          "compilerOptions": {
+            "plugins": [{ "name": "typescript-plugin-css-modules" }],
+          },
+        }`,
+      },
+      { "typescript-plugin-css-modules": "1.0.0", "unused-package": "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
   it("does not credit package names in TypeScript configuration without a node_modules path", () => {
     const rootDirectory = createProject(
       { "tsconfig.json": JSON.stringify({ exclude: ["examples/unused-package"] }) },

@@ -2,8 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import fg from "fast-glob";
 import { extractReactEmailTemplateDirectories } from "../utils/extract-react-email-template-directories.js";
-
-const DEFAULT_EXPORT_PATTERN = /\bexport\s+default\b/;
+import { parseSourceFile } from "./parse.js";
 
 export const extractReactEmailTemplateEntries = (directory: string): string[] => {
   const packageJsonPath = resolve(directory, "package.json");
@@ -29,7 +28,11 @@ export const extractReactEmailTemplateEntries = (directory: string): string[] =>
           onlyFiles: true,
           ignore: ["**/_*/**", "**/_*.*"],
         })
-        .filter((templatePath) => DEFAULT_EXPORT_PATTERN.test(readFileSync(templatePath, "utf8"))),
+        .filter((templatePath) =>
+          parseSourceFile(templatePath).exports.some(
+            (exportReference) => exportReference.isDefault && !exportReference.isTypeOnly,
+          ),
+        ),
     );
   } catch {
     return [];

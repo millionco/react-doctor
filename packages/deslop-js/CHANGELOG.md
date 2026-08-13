@@ -1,5 +1,11 @@
 # deslop-js
 
+## 0.9.12
+
+### Patch Changes
+
+- [#1617](https://github.com/millionco/react-doctor/pull/1617) [`51e198d`](https://github.com/millionco/react-doctor/commit/51e198db8bcbd61ad896098bb4985376641a0f69) Thanks [@aidenybai](https://github.com/aidenybai)! - Upgrade the Oxc toolchain to the latest releases.
+
 ## 0.9.11
 
 ## 0.9.10

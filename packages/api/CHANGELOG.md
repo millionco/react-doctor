@@ -1,5 +1,16 @@
 # @react-doctor/api
 
+## 0.9.12
+
+### Patch Changes
+
+- [#1617](https://github.com/millionco/react-doctor/pull/1617) [`51e198d`](https://github.com/millionco/react-doctor/commit/51e198db8bcbd61ad896098bb4985376641a0f69) Thanks [@aidenybai](https://github.com/aidenybai)! - Reduce `diagnose({ projects })` wall time by inventorying sibling workspace projects once, reusing their sized source-file lists through discovery and lint planning, and scanning larger projects first while preserving result order.
+
+- [#1643](https://github.com/millionco/react-doctor/pull/1643) [`0f3995b`](https://github.com/millionco/react-doctor/commit/0f3995b822ad9fdbd355eda05c8568f67643a31c) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize every detected framework and library capability as a supported scan target, including plain Three.js projects and React-backed frameworks without direct React declarations, and anchor remote-installer diagnostics on the executable download command.
+
+- Updated dependencies [[`51e198d`](https://github.com/millionco/react-doctor/commit/51e198db8bcbd61ad896098bb4985376641a0f69), [`0f3995b`](https://github.com/millionco/react-doctor/commit/0f3995b822ad9fdbd355eda05c8568f67643a31c)]:
+  - @react-doctor/core@0.9.12
+
 ## 0.9.11
 
 ### Patch Changes

@@ -1,5 +1,17 @@
 # @react-doctor/core
 
+## 0.9.12
+
+### Patch Changes
+
+- [#1617](https://github.com/millionco/react-doctor/pull/1617) [`51e198d`](https://github.com/millionco/react-doctor/commit/51e198db8bcbd61ad896098bb4985376641a0f69) Thanks [@aidenybai](https://github.com/aidenybai)! - Reduce `diagnose({ projects })` wall time by inventorying sibling workspace projects once, reusing their sized source-file lists through discovery and lint planning, and scanning larger projects first while preserving result order.
+
+- [#1643](https://github.com/millionco/react-doctor/pull/1643) [`0f3995b`](https://github.com/millionco/react-doctor/commit/0f3995b822ad9fdbd355eda05c8568f67643a31c) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize every detected framework and library capability as a supported scan target, including plain Three.js projects and React-backed frameworks without direct React declarations, and anchor remote-installer diagnostics on the executable download command.
+
+- Updated dependencies [[`f1899d2`](https://github.com/millionco/react-doctor/commit/f1899d2e57ad35f016323e77592e000dce293439), [`7b7bfe7`](https://github.com/millionco/react-doctor/commit/7b7bfe7c1ecc1d31a5fb591756ef34060fd916f1), [`d908bb1`](https://github.com/millionco/react-doctor/commit/d908bb115210e3b412a83ae66780d8596125f838), [`51e198d`](https://github.com/millionco/react-doctor/commit/51e198db8bcbd61ad896098bb4985376641a0f69), [`0f3995b`](https://github.com/millionco/react-doctor/commit/0f3995b822ad9fdbd355eda05c8568f67643a31c), [`bea01b8`](https://github.com/millionco/react-doctor/commit/bea01b8cf5e6d29db7793f86ce6a13f0b3c7823e), [`8dfb013`](https://github.com/millionco/react-doctor/commit/8dfb01306772760201e75ea1478368390eddf58f), [`b49f499`](https://github.com/millionco/react-doctor/commit/b49f49984055a505b80de2bb1530efe7e7286619)]:
+  - oxlint-plugin-react-doctor@0.9.12
+  - deslop-js@0.9.12
+
 ## 0.9.11
 
 ### Patch Changes

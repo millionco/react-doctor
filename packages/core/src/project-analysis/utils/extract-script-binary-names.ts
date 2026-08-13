@@ -312,7 +312,59 @@ const extractShellCommand = (tokens: string[], binaryIndex: number): string => {
   return "";
 };
 
+const extractCommandSubstitutions = (command: string): string[] => {
+  const substitutions: string[] = [];
+  let quote = "";
+  for (let characterIndex = 0; characterIndex < command.length; characterIndex++) {
+    const character = command[characterIndex];
+    if (character === "\\" && quote !== "'" && characterIndex + 1 < command.length) {
+      characterIndex++;
+      continue;
+    }
+    if (character === "'" && quote !== '"') {
+      quote = quote === "'" ? "" : "'";
+      continue;
+    }
+    if (character === '"' && quote !== "'") {
+      quote = quote === '"' ? "" : '"';
+      continue;
+    }
+    if (quote === "'" || character !== "$" || command[characterIndex + 1] !== "(") continue;
+
+    const contentStart = characterIndex + 2;
+    let nestedDepth = 1;
+    let nestedQuote = "";
+    for (let nestedIndex = contentStart; nestedIndex < command.length; nestedIndex++) {
+      const nestedCharacter = command[nestedIndex];
+      if (nestedCharacter === "\\" && nestedQuote !== "'" && nestedIndex + 1 < command.length) {
+        nestedIndex++;
+        continue;
+      }
+      if (nestedCharacter === "'" && nestedQuote !== '"') {
+        nestedQuote = nestedQuote === "'" ? "" : "'";
+        continue;
+      }
+      if (nestedCharacter === '"' && nestedQuote !== "'") {
+        nestedQuote = nestedQuote === '"' ? "" : '"';
+        continue;
+      }
+      if (nestedQuote) continue;
+      if (nestedCharacter === "(") nestedDepth++;
+      if (nestedCharacter !== ")") continue;
+      nestedDepth--;
+      if (nestedDepth !== 0) continue;
+      substitutions.push(command.slice(contentStart, nestedIndex));
+      characterIndex = nestedIndex;
+      break;
+    }
+  }
+  return substitutions;
+};
+
 const collectScriptInvocations = (command: string, invocations: ScriptInvocation[]): void => {
+  for (const substitution of extractCommandSubstitutions(command)) {
+    collectScriptInvocations(substitution, invocations);
+  }
   for (const segment of splitShellCommand(command)) {
     const tokens = tokenizeShellSegment(segment);
     if (tokens.length === 0) continue;

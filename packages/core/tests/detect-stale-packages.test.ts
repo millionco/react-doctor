@@ -101,6 +101,45 @@ const collectUnusedDependencyNames = (rootDirectory: string): string[] =>
     .sort();
 
 describe("detectStalePackages", () => {
+  it("credits the cli-glob binary alias in package scripts", () => {
+    const rootDirectory = createProject(
+      {},
+      { "cli-glob": "1.0.0", "unused-package": "1.0.0" },
+      { prose: "write-good $(glob 'content/**/*.md')" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
+  it("credits critters when exported Next config enables CSS optimization", () => {
+    const rootDirectory = createProject(
+      {
+        "next.config.ts": `
+          import type { NextConfig } from "next";
+          const nextConfig: NextConfig = { experimental: { optimizeCss: true } };
+          export default nextConfig;
+        `,
+      },
+      { critters: "1.0.0", next: "1.0.0", "unused-package": "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["unused-package"]);
+  });
+
+  it("does not credit critters for disabled or unexported Next config", () => {
+    const rootDirectory = createProject(
+      {
+        "next.config.ts": `
+          const dormantConfig = { experimental: { optimizeCss: true } };
+          export default { experimental: { optimizeCss: false } };
+        `,
+      },
+      { critters: "1.0.0" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["critters"]);
+  });
+
   it("fails closed when a used package has no authoritative peer metadata", () => {
     const rootDirectory = createProject(
       {

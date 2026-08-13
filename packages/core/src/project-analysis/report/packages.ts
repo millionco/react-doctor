@@ -43,6 +43,7 @@ import { hasSanityV2CoreContract } from "../utils/has-sanity-v2-core-contract.js
 import { collectSanityV2PackageNames } from "../utils/collect-sanity-v2-package-names.js";
 import { collectReactNativeConfigPackageNames } from "../utils/collect-react-native-config-package-names.js";
 import { collectInstalledAgentSkillPackageNames } from "../utils/collect-installed-agent-skill-package-names.js";
+import { hasEnabledNextOptimizeCss } from "../utils/has-enabled-next-optimize-css.js";
 import {
   expandBuildScriptPaths,
   extractInvokedBuildScriptPaths,
@@ -597,6 +598,7 @@ const KNOWN_PACKAGE_BIN_NAMES = new Map<string, ReadonlyArray<string>>([
   ["flow-bin", ["flow"]],
   ["parcel-bundler", ["parcel"]],
   ["react-email", ["email"]],
+  ["cli-glob", ["glob"]],
   ["firebase-tools", ["firebase"]],
   ["@rc-component/np", ["rc-np"]],
   ["@electron/rebuild", ["electron-rebuild"]],
@@ -938,6 +940,15 @@ const collectConfigReferencedPackages = (
       try {
         if (hasAntfuEslintReactConfig(readFileSync(configPath, "utf-8"))) {
           referenced.add("@eslint-react/eslint-plugin");
+        }
+      } catch {
+        continue;
+      }
+    }
+    if (declaredNames.has("critters") && /^next\.config\.[cm]?[jt]s$/.test(basename(configPath))) {
+      try {
+        if (hasEnabledNextOptimizeCss(readFileSync(configPath, "utf-8"))) {
+          referenced.add("critters");
         }
       } catch {
         continue;

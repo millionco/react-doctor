@@ -406,6 +406,122 @@ describe("detectStalePackages", () => {
     ]);
   });
 
+  it("credits runtime and test companions required by configured Stencil tooling", () => {
+    const dependencies = {
+      "@angular/core": "20.3.18",
+      "@revolist/stencil-angular-output": "1.1.3",
+      "@stencil/angular-output-target": "1.3.0",
+      "@stencil/core": "4.43.2",
+      "@stencil/vue-output-target": "0.8.9",
+      "@types/jest": "29.5.14",
+      jest: "29.7.0",
+      "jest-cli": "29.7.0",
+      rxjs: "7.8.2",
+      vue: "3.5.13",
+    };
+    const rootDirectory = createProject(
+      {
+        "package-lock.json": JSON.stringify({
+          lockfileVersion: 3,
+          packages: {
+            "": { dependencies },
+            ...Object.fromEntries(
+              Object.entries(dependencies).map(([dependencyName, version]) => [
+                `node_modules/${dependencyName}`,
+                { version },
+              ]),
+            ),
+            "node_modules/@angular/core": {
+              version: "20.3.18",
+              peerDependencies: { rxjs: "^6.5.3 || ^7.4.0" },
+            },
+            "node_modules/rxjs": { version: "7.8.2" },
+          },
+        }),
+        "stencil.config.ts": `
+          import { angularOutputTarget } from "@revolist/stencil-angular-output";
+          import { Config } from "@stencil/core";
+          import { vueOutputTarget as buildVueOutput } from "@stencil/vue-output-target";
+          export const config: Config = {
+            outputTargets: [angularOutputTarget({}), buildVueOutput({})],
+          };
+        `,
+      },
+      dependencies,
+      { test: "stencil test --spec" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["@stencil/angular-output-target"]);
+  });
+
+  it("does not infer Stencil companions from uncalled, shadowed, or unrelated configuration", () => {
+    const rootDirectory = createProject(
+      {
+        "stencil.config.ts": `
+          import { angularOutputTarget } from "@revolist/stencil-angular-output";
+          import { Config } from "@stencil/core";
+          import { vueOutputTarget } from "@stencil/vue-output-target";
+          const deferred = () => {
+            const angularOutputTarget = () => ({});
+            const vueOutputTarget = () => ({});
+            return [angularOutputTarget({}), vueOutputTarget({})];
+          };
+          {
+            const angularOutputTarget = () => ({});
+            const vueOutputTarget = () => ({});
+            angularOutputTarget({});
+            vueOutputTarget({});
+          }
+          export const unrelated = [angularOutputTarget({}), vueOutputTarget({})];
+          export const config: Config = { outputTargets: [], deferred };
+        `,
+      },
+      {
+        "@angular/core": "20.3.18",
+        "@revolist/stencil-angular-output": "1.1.3",
+        "@stencil/core": "4.43.2",
+        "@stencil/vue-output-target": "0.8.9",
+        "@types/jest": "29.5.14",
+        jest: "29.7.0",
+        "jest-cli": "29.7.0",
+        rxjs: "7.8.2",
+        vue: "3.5.13",
+      },
+      { test: "stencil build --test" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual([
+      "@angular/core",
+      "jest",
+      "jest-cli",
+      "rxjs",
+      "vue",
+    ]);
+  });
+
+  it.each([
+    "stencil build && echo stencil test",
+    "echo 'stencil test' && stencil build",
+    "stencil build; printf 'stencil test'",
+  ])("does not infer Jest companions from unrelated shell text in %s", (testScript) => {
+    const rootDirectory = createProject(
+      {
+        "stencil.config.ts": `
+          import type { Config } from "@stencil/core";
+          export const config: Config = {};
+        `,
+      },
+      {
+        "@stencil/core": "4.43.2",
+        jest: "29.7.0",
+        "jest-cli": "29.7.0",
+      },
+      { test: testScript },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual(["jest", "jest-cli"]);
+  });
+
   it("does not infer node-addon-api from overrides, comments, or inert binding.gyp strings", () => {
     const dependencies = { "node-addon-api": "8.2.2" };
     const rootDirectory = createProject(

@@ -38,6 +38,7 @@ import { extractKarmaConfigPackageReferences } from "../utils/extract-karma-conf
 import { hasExpoReactServerFunctions } from "../utils/has-expo-react-server-functions.js";
 import { hasAntfuEslintReactConfig } from "../utils/has-antfu-eslint-react-config.js";
 import { collectExecutableMarkdownFilePaths } from "../utils/collect-executable-markdown-file-paths.js";
+import { collectStencilCompanionPackageNames } from "../utils/collect-stencil-companion-package-names.js";
 import {
   expandBuildScriptPaths,
   extractInvokedBuildScriptPaths,
@@ -1349,7 +1350,8 @@ const collectProjectConventionReferencedPackages = (
   usedPackageNames: Set<string>,
   directlyImportedPackageNames: Set<string>,
 ): Set<string> => {
-  const referenced = new Set<string>();
+  const referenced = collectStencilCompanionPackageNames(rootDir, declaredNames);
+
   const hasCapacitorConfig =
     fg.sync(["capacitor.config.{ts,js,json,mts,mjs,cts,cjs}"], {
       cwd: rootDir,

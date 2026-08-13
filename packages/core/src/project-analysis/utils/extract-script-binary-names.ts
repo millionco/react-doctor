@@ -29,6 +29,11 @@ interface HeredocMarker {
   shouldTrimLeadingTabs: boolean;
 }
 
+export interface ScriptInvocation {
+  readonly binaryName: string;
+  readonly argumentValues: ReadonlyArray<string>;
+}
+
 const collectHeredocMarkers = (line: string): HeredocMarker[] => {
   const markers: HeredocMarker[] = [];
   let quote = "";
@@ -270,7 +275,7 @@ const extractShellCommand = (tokens: string[], binaryIndex: number): string => {
   return "";
 };
 
-const collectScriptBinaryNames = (command: string, binaryNames: Set<string>): void => {
+const collectScriptInvocations = (command: string, invocations: ScriptInvocation[]): void => {
   for (const segment of splitShellCommand(command)) {
     const tokens = tokenizeShellSegment(segment);
     if (tokens.length === 0) continue;
@@ -282,25 +287,32 @@ const collectScriptBinaryNames = (command: string, binaryNames: Set<string>): vo
       .slice(0, binaryIndex)
       .some((token) => normalizeBinaryToken(token) === "cross-env-shell");
     if (usesCrossEnvShell) {
-      collectScriptBinaryNames(tokens.slice(binaryIndex).join(" "), binaryNames);
+      collectScriptInvocations(tokens.slice(binaryIndex).join(" "), invocations);
       continue;
     }
 
     const binaryName = normalizeBinaryToken(tokens[binaryIndex]);
     const shellCommand = extractShellCommand(tokens, binaryIndex);
     if (shellCommand) {
-      collectScriptBinaryNames(shellCommand, binaryNames);
+      collectScriptInvocations(shellCommand, invocations);
     } else if (!SCRIPT_COMMAND_SHELLS.has(binaryName) && binaryName) {
-      binaryNames.add(binaryName);
+      invocations.push({ binaryName, argumentValues: tokens.slice(binaryIndex + 1) });
     }
 
     const execCommand = extractExecCommand(tokens, binaryIndex + 1);
-    if (execCommand) collectScriptBinaryNames(execCommand, binaryNames);
+    if (execCommand) collectScriptInvocations(execCommand, invocations);
   }
 };
 
+export const extractScriptInvocations = (command: string): ScriptInvocation[] => {
+  const invocations: ScriptInvocation[] = [];
+  collectScriptInvocations(stripHeredocBodies(command), invocations);
+  return invocations;
+};
+
 export const extractScriptBinaryNames = (command: string): string[] => {
-  const binaryNames = new Set<string>();
-  collectScriptBinaryNames(stripHeredocBodies(command), binaryNames);
+  const binaryNames = new Set(
+    extractScriptInvocations(command).map((invocation) => invocation.binaryName),
+  );
   return [...binaryNames];
 };

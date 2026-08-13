@@ -4,7 +4,7 @@ import { effectNeedsCleanup } from "./effect-needs-cleanup.js";
 
 const SMALL_HANDLER_COUNT = 100;
 const LARGE_HANDLER_COUNT = 500;
-const MEASUREMENT_REPETITION_COUNT = 3;
+const MEASUREMENT_SAMPLE_COUNT = 3;
 const MAXIMUM_SCALING_MULTIPLIER = 15;
 
 const buildRetainedHandlersSource = (
@@ -28,13 +28,15 @@ const measureDuration = (
   buildRegistration: (handlerIndex: number) => string,
 ): number => {
   const source = buildRetainedHandlersSource(handlerCount, buildRegistration);
-  const startedAt = process.hrtime.bigint();
-  for (let repetition = 0; repetition < MEASUREMENT_REPETITION_COUNT; repetition += 1) {
+  const sampleDurations = Array.from({ length: MEASUREMENT_SAMPLE_COUNT }, () => {
+    const startedAt = process.hrtime.bigint();
     const result = runRule(effectNeedsCleanup, source);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(handlerCount);
-  }
-  return Number(process.hrtime.bigint() - startedAt);
+    return Number(process.hrtime.bigint() - startedAt);
+  });
+  sampleDurations.sort((firstDuration, secondDuration) => firstDuration - secondDuration);
+  return sampleDurations[Math.floor(sampleDurations.length / 2)] ?? Number.POSITIVE_INFINITY;
 };
 
 describe("effect-needs-cleanup performance", () => {

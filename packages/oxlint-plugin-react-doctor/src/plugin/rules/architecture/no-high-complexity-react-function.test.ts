@@ -29,6 +29,10 @@ const runComplexityRule = (code: string, filename = "fixture.tsx") => {
 };
 
 describe("architecture/no-high-complexity-react-function", () => {
+  it("remains a warning", () => {
+    expect(noHighComplexityReactFunction.severity).toBe("warn");
+  });
+
   it("reports a component whose CFG has too many independent paths", () => {
     const diagnostics = runComplexityRule(`
       function Checkout({ value }) {

@@ -15,6 +15,7 @@ import { isPlatformBuiltinOrVirtualSpecifier } from "../utils/is-platform-builti
 import { toPosixPath } from "../utils/to-posix-path.js";
 import { sanitizeImportSpecifier } from "../utils/sanitize-import-specifier.js";
 import { extractBundlerAliases, type BundlerAlias } from "../utils/extract-bundler-aliases.js";
+import { evaluateStaticConfig } from "../utils/evaluate-static-config.js";
 
 const fileExistsCache = new Map<string, boolean>();
 const pathExistsCache = new Map<string, boolean>();
@@ -234,9 +235,6 @@ const JEST_CONFIG_GLOBS = [
   "**/jest.config.{js,ts,mjs,cjs,json}",
 ];
 
-const JEST_MODULE_NAME_MAPPER_BLOCK_PATTERN = /moduleNameMapper\s*:\s*\{([\s\S]*?)\}/g;
-const JEST_MODULE_NAME_MAPPER_ENTRY_PATTERN = /["']([^"']+)["']\s*:\s*["']([^"']+)["']/g;
-
 const TSCONFIG_FILENAMES = [
   "tsconfig.json",
   "tsconfig.web.json",
@@ -356,20 +354,28 @@ const extractJestModuleNameMapperAliases = (
   content: string,
   configDirectory: string,
 ): BundlerAlias[] => {
-  const aliases: BundlerAlias[] = [];
-  let blockMatch: RegExpExecArray | null;
-  JEST_MODULE_NAME_MAPPER_BLOCK_PATTERN.lastIndex = 0;
-
-  while ((blockMatch = JEST_MODULE_NAME_MAPPER_BLOCK_PATTERN.exec(content)) !== null) {
-    const block = blockMatch[1];
-    let entryMatch: RegExpExecArray | null;
-    JEST_MODULE_NAME_MAPPER_ENTRY_PATTERN.lastIndex = 0;
-    while ((entryMatch = JEST_MODULE_NAME_MAPPER_ENTRY_PATTERN.exec(block)) !== null) {
-      const alias = compileJestModuleNameMapperAlias(entryMatch[1], entryMatch[2], configDirectory);
-      if (alias) aliases.push(alias);
-    }
+  let config: unknown;
+  try {
+    config = JSON.parse(content);
+  } catch {
+    config = evaluateStaticConfig(content, join(configDirectory, "jest.config.ts"));
   }
-
+  if (!config || typeof config !== "object" || Array.isArray(config)) return [];
+  if (!("moduleNameMapper" in config)) return [];
+  const moduleNameMapper = config.moduleNameMapper;
+  if (
+    !moduleNameMapper ||
+    typeof moduleNameMapper !== "object" ||
+    Array.isArray(moduleNameMapper)
+  ) {
+    return [];
+  }
+  const aliases: BundlerAlias[] = [];
+  for (const [pattern, target] of Object.entries(moduleNameMapper)) {
+    if (typeof target !== "string") continue;
+    const alias = compileJestModuleNameMapperAlias(pattern, target, configDirectory);
+    if (alias) aliases.push(alias);
+  }
   return aliases;
 };
 

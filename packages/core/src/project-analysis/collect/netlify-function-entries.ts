@@ -1,23 +1,32 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import fg from "fast-glob";
+import { parseTOML } from "confbox";
 
 const NETLIFY_FUNCTION_SOURCE_PATTERN = "**/*.{ts,tsx,js,jsx,mts,mjs,cts,cjs}";
-const NETLIFY_FUNCTIONS_SECTION_PATTERN = /^\s*\[functions\]\s*$([\s\S]*?)(?=^\s*\[|(?![\s\S]))/m;
-const NETLIFY_FUNCTIONS_DIRECTORY_PATTERN = /^\s*directory\s*=\s*["']([^"']+)["']/m;
 
 export const extractNetlifyFunctionEntries = (projectRoot: string): string[] => {
   const configPath = resolve(projectRoot, "netlify.toml");
   if (!existsSync(configPath)) return [];
 
-  let configSource: string;
+  let config: unknown;
   try {
-    configSource = readFileSync(configPath, "utf8");
+    config = parseTOML<unknown>(readFileSync(configPath, "utf8"));
   } catch {
     return [];
   }
-  const functionsSection = configSource.match(NETLIFY_FUNCTIONS_SECTION_PATTERN)?.[1];
-  const configuredDirectory = functionsSection?.match(NETLIFY_FUNCTIONS_DIRECTORY_PATTERN)?.[1];
+  const functionsConfig =
+    config && typeof config === "object" && !Array.isArray(config) && "functions" in config
+      ? config.functions
+      : undefined;
+  const configuredDirectory =
+    functionsConfig &&
+    typeof functionsConfig === "object" &&
+    !Array.isArray(functionsConfig) &&
+    "directory" in functionsConfig &&
+    typeof functionsConfig.directory === "string"
+      ? functionsConfig.directory
+      : undefined;
   const functionsDirectory = resolve(
     dirname(configPath),
     configuredDirectory ?? "netlify/functions",

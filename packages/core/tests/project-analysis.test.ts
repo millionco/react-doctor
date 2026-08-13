@@ -1141,6 +1141,23 @@ describe("analyzeProject", () => {
     expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
   });
 
+  it("resolves unquoted Vite HTML entries with query strings", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.ts": `export default {};`,
+        "index.html": `<script type=module src=/src/main.ts?v=1></script>`,
+        "src/main.ts": `import { value } from "./value"; console.log(value);`,
+        "src/value.ts": "export const value = 1;",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      { devDependencies: { vite: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
   it("resolves a Vite callback root without selecting nested test roots", async () => {
     const rootDirectory = createProject(
       {

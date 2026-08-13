@@ -1316,6 +1316,23 @@ describe("detectStalePackages", () => {
     expect(collectUnusedDependencyNames(rootDirectory)).toEqual([]);
   });
 
+  it("credits Sass from an unquoted Parcel HTML stylesheet link", () => {
+    const rootDirectory = createProject(
+      {
+        "src/build.js": `
+          const Bundler = require("parcel-bundler");
+          new Bundler(path.join(__dirname, "./html/index.html"), {});
+        `,
+        "src/html/index.html": "<link rel=stylesheet href=../styles/app.scss>",
+        "src/styles/app.scss": "$color: red;",
+      },
+      { "parcel-bundler": "1.0.0", sass: "1.0.0" },
+      { build: "node src/build.js" },
+    );
+
+    expect(collectUnusedDependencyNames(rootDirectory)).toEqual([]);
+  });
+
   it("does not credit Sass from an unconsumed Parcel HTML path", () => {
     const rootDirectory = createProject(
       {

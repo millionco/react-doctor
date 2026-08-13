@@ -1,9 +1,10 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
+import { parseYAML } from "confbox";
 import fg from "fast-glob";
 import ts from "typescript";
 import { GRAPHQL_CODEGEN_CONFIG_SCAN_MAX_DEPTH, SOURCE_EXTENSIONS } from "../constants.js";
-import { maskJavaScriptStringsAndComments } from "../utils/mask-javascript-strings-and-comments.js";
+import { evaluateStaticConfig } from "../utils/evaluate-static-config.js";
 
 const GRAPHQL_CODEGEN_CONFIG_GLOBS = [
   "codegen.{ts,js,mts,mjs,cts,cjs,yml,yaml}",
@@ -16,210 +17,25 @@ const GRAPHQL_CODEGEN_CONFIG_GLOBS = [
   "**/vite.config.{ts,js,mts,mjs,cts,cjs}",
 ];
 
-const DOCUMENTS_ARRAY_PATTERN = /^[ \t]*documents\s*:\s*\[([\s\S]*?)\]/gm;
-const DOCUMENTS_STRING_PATTERN = /^[ \t]*documents\s*:\s*['"`]([^'"`\n]+)['"`]/gm;
-const SCHEMA_ARRAY_PATTERN = /^[ \t]*schema\s*:\s*\[([\s\S]*?)\]/gm;
-const SCHEMA_STRING_PATTERN = /^[ \t]*schema\s*:\s*['"`]([^'"`\n]+)['"`]/gm;
-const QUOTED_STRING_PATTERN = /['"`]([^'"`\n]+)['"`]/g;
-const DOCUMENTS_YAML_BLOCK_PATTERN = /^[ \t]*documents\s*:\s*(?:#.*)?$/;
-const SCHEMA_YAML_BLOCK_PATTERN = /^[ \t]*schema\s*:\s*(?:#.*)?$/;
-const YAML_LIST_ITEM_PATTERN = /^[ \t]*-[ \t]*(.+)$/;
-const GENERATES_PROPERTY_PATTERN = /^[ \t]*generates\s*:\s*(?:\{\s*)?(?:#.*)?$/;
-const GENERATED_OUTPUT_KEY_PATTERN = /^(?:(["'`])(.*?)\1|([^:]+?))\s*:/;
-const GENERATES_OBJECT_PATTERN = /\bgenerates\s*:\s*\{/g;
-
 export interface GraphqlCodegenEntries {
   documentEntries: string[];
   generatedEntries: string[];
   schemaEntries: string[];
 }
 
-const collectCodegenPatterns = (
-  content: string,
-  arrayPropertyPattern: RegExp,
-  stringPropertyPattern: RegExp,
-): string[] => {
-  const patterns: string[] = [];
-
-  for (const propertyMatch of content.matchAll(arrayPropertyPattern)) {
-    for (const valueMatch of propertyMatch[1].matchAll(QUOTED_STRING_PATTERN)) {
-      patterns.push(valueMatch[1]);
-    }
-  }
-
-  for (const propertyMatch of content.matchAll(stringPropertyPattern)) {
-    patterns.push(propertyMatch[1]);
-  }
-
-  return patterns.filter(
-    (pattern) =>
-      !pattern.includes("://") && !pattern.startsWith("@") && !pattern.startsWith("node:"),
-  );
-};
-
-const extractYamlListValue = (rawValue: string): string | undefined => {
-  const trimmedValue = rawValue.trim();
-  const quotedValueMatch = trimmedValue.match(/^(['"])(.*?)\1(?:\s+#.*)?$/);
-  if (quotedValueMatch) return quotedValueMatch[2];
-
-  const inlineCommentIndex = trimmedValue.search(/\s+#/);
-  const value = (
-    inlineCommentIndex === -1 ? trimmedValue : trimmedValue.slice(0, inlineCommentIndex)
-  ).trim();
-  return value.length > 0 ? value : undefined;
-};
-
-const collectYamlBlockPatterns = (content: string, propertyPattern: RegExp): string[] => {
-  const patterns: string[] = [];
-  let propertyIndent: number | undefined;
-
-  for (const line of content.split(/\r?\n/)) {
-    const trimmedLine = line.trim();
-    if (trimmedLine.length === 0 || trimmedLine.startsWith("#")) continue;
-
-    const lineIndent = line.length - line.trimStart().length;
-    if (propertyIndent !== undefined && lineIndent > propertyIndent) {
-      const listItemMatch = line.match(YAML_LIST_ITEM_PATTERN);
-      const listValue = listItemMatch ? extractYamlListValue(listItemMatch[1]) : undefined;
-      if (listValue) patterns.push(listValue);
-      continue;
-    }
-
-    propertyIndent = propertyPattern.test(line) ? lineIndent : undefined;
-  }
-
-  return patterns.filter(
-    (pattern) =>
-      !pattern.includes("://") && !pattern.startsWith("@") && !pattern.startsWith("node:"),
-  );
-};
-
 const resolveCodegenPatterns = (patterns: string[], configDirectory: string): string[] =>
-  fg.sync(patterns, {
-    cwd: configDirectory,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/node_modules/**"],
-  });
-
-const extractGeneratedOutputKey = (line: string): string | undefined => {
-  const match = line.trim().match(GENERATED_OUTPUT_KEY_PATTERN);
-  const outputPath = (match?.[2] ?? match?.[3])?.trim();
-  if (
-    !outputPath ||
-    outputPath.includes("://") ||
-    outputPath.startsWith("@") ||
-    outputPath.startsWith("node:") ||
-    outputPath.includes("*") ||
-    outputPath.includes("?")
-  ) {
-    return undefined;
-  }
-  return outputPath;
-};
-
-const collectGeneratedObjectOutputPatterns = (content: string): string[] => {
-  const outputPatterns: string[] = [];
-  const syntaxContent = maskJavaScriptStringsAndComments(content);
-  GENERATES_OBJECT_PATTERN.lastIndex = 0;
-  let generatesMatch: RegExpExecArray | null;
-  while ((generatesMatch = GENERATES_OBJECT_PATTERN.exec(syntaxContent)) !== null) {
-    const openBraceIndex = content.indexOf("{", generatesMatch.index);
-    let braceDepth = 1;
-    let quote: string | undefined;
-    let quoteStart = 0;
-    let isEscaped = false;
-    let isLineComment = false;
-    let isBlockComment = false;
-
-    for (let position = openBraceIndex + 1; position < content.length; position++) {
-      const character = content[position];
-      const nextCharacter = content[position + 1];
-      if (isLineComment) {
-        if (character === "\n") isLineComment = false;
-        continue;
-      }
-      if (isBlockComment) {
-        if (character === "*" && nextCharacter === "/") {
-          isBlockComment = false;
-          position++;
-        }
-        continue;
-      }
-      if (quote) {
-        if (isEscaped) {
-          isEscaped = false;
-        } else if (character === "\\") {
-          isEscaped = true;
-        } else if (character === quote) {
-          if (braceDepth === 1) {
-            let nextTokenPosition = position + 1;
-            while (/\s/.test(content[nextTokenPosition] ?? "")) nextTokenPosition++;
-            if (content[nextTokenPosition] === ":") {
-              const outputPath = extractGeneratedOutputKey(
-                content.slice(quoteStart, nextTokenPosition + 1),
-              );
-              if (outputPath) outputPatterns.push(outputPath);
-            }
-          }
-          quote = undefined;
-        }
-        continue;
-      }
-      if (character === "/" && nextCharacter === "/") {
-        isLineComment = true;
-        position++;
-        continue;
-      }
-      if (character === "/" && nextCharacter === "*") {
-        isBlockComment = true;
-        position++;
-        continue;
-      }
-      if (character === '"' || character === "'" || character === "`") {
-        quote = character;
-        quoteStart = position;
-        continue;
-      }
-      if (character === "{") braceDepth++;
-      if (character === "}") braceDepth--;
-      if (braceDepth === 0) break;
-    }
-  }
-  return outputPatterns;
-};
-
-const collectGeneratedOutputPatterns = (content: string): string[] => {
-  const outputPatterns = collectGeneratedObjectOutputPatterns(content);
-  let generatesIndent: number | undefined;
-  let outputIndent: number | undefined;
-
-  for (const line of content.split(/\r?\n/)) {
-    const trimmedLine = line.trim();
-    if (trimmedLine.length === 0 || trimmedLine.startsWith("//") || trimmedLine.startsWith("#")) {
-      continue;
-    }
-
-    const lineIndent = line.length - line.trimStart().length;
-    if (generatesIndent === undefined) {
-      if (GENERATES_PROPERTY_PATTERN.test(line)) generatesIndent = lineIndent;
-      continue;
-    }
-
-    if (lineIndent <= generatesIndent) {
-      generatesIndent = GENERATES_PROPERTY_PATTERN.test(line) ? lineIndent : undefined;
-      outputIndent = undefined;
-      continue;
-    }
-
-    const outputPath = extractGeneratedOutputKey(line);
-    if (!outputPath) continue;
-    if (outputIndent === undefined) outputIndent = lineIndent;
-    if (lineIndent === outputIndent) outputPatterns.push(outputPath);
-  }
-
-  return outputPatterns;
-};
+  fg.sync(
+    patterns.filter(
+      (pattern) =>
+        !pattern.includes("://") && !pattern.startsWith("@") && !pattern.startsWith("node:"),
+    ),
+    {
+      cwd: configDirectory,
+      absolute: true,
+      onlyFiles: true,
+      ignore: ["**/node_modules/**"],
+    },
+  );
 
 const resolveGeneratedOutputs = (patterns: string[], configDirectory: string): string[] => {
   const generatedEntries = new Set<string>();
@@ -303,7 +119,15 @@ const extractVitePluginConfigContents = (content: string): string[] => {
     ) {
       const configArgument = unwrappedExpression.arguments[0];
       if (configArgument && !isPluginNameShadowed) {
-        pluginConfigContents.push(configArgument.getText(sourceFile));
+        const bindingStatements = [...variableInitializers.entries()]
+          .map(
+            ([variableName, initializer]) =>
+              `const ${variableName} = (${initializer.getText(sourceFile)});`,
+          )
+          .join("\n");
+        pluginConfigContents.push(
+          `${bindingStatements}\nexport default (${configArgument.getText(sourceFile)});`,
+        );
       }
       return;
     }
@@ -446,36 +270,48 @@ const extractVitePluginConfigContents = (content: string): string[] => {
   return pluginConfigContents;
 };
 
-const collectJsonCodegenPatterns = (content: string): GraphqlCodegenEntries => {
+const collectStructuredCodegenPatterns = (config: unknown): GraphqlCodegenEntries => {
   const documentEntries: string[] = [];
   const generatedEntries: string[] = [];
   const schemaEntries: string[] = [];
+  const visitedValues = new WeakSet<object>();
+  const visitedPatternValues = new WeakSet<object>();
+  const visitedNestedStringValues = new WeakSet<object>();
+  const collectNestedStringValues = (value: unknown): string[] => {
+    if (typeof value === "string") return [value];
+    if (typeof value !== "object" || value === null) return [];
+    if (visitedNestedStringValues.has(value)) return [];
+    visitedNestedStringValues.add(value);
+    if (Array.isArray(value)) return value.flatMap(collectNestedStringValues);
+    return Object.values(value).flatMap(collectNestedStringValues);
+  };
+  const collectPatternValues = (value: unknown): string[] => {
+    if (typeof value === "string") return [value];
+    if (typeof value !== "object" || value === null) return [];
+    if (visitedPatternValues.has(value)) return [];
+    visitedPatternValues.add(value);
+    if (Array.isArray(value)) return value.flatMap(collectPatternValues);
+    return [...Object.keys(value), ...Object.values(value).flatMap(collectNestedStringValues)];
+  };
   const visitValue = (value: unknown): void => {
     if (Array.isArray(value)) {
       for (const item of value) visitValue(item);
       return;
     }
-    if (typeof value !== "object" || value === null) return;
+    if (typeof value !== "object" || value === null || visitedValues.has(value)) return;
+    visitedValues.add(value);
     for (const [key, nestedValue] of Object.entries(value)) {
       if (key === "generates" && typeof nestedValue === "object" && nestedValue !== null) {
         generatedEntries.push(...Object.keys(nestedValue));
       } else if (key === "documents") {
-        documentEntries.push(
-          ...(Array.isArray(nestedValue) ? nestedValue : [nestedValue]).filter(
-            (item): item is string => typeof item === "string",
-          ),
-        );
+        documentEntries.push(...collectPatternValues(nestedValue));
       } else if (key === "schema") {
-        schemaEntries.push(
-          ...(Array.isArray(nestedValue) ? nestedValue : [nestedValue]).filter(
-            (item): item is string => typeof item === "string",
-          ),
-        );
+        schemaEntries.push(...collectPatternValues(nestedValue));
       }
       visitValue(nestedValue);
     }
   };
-  visitValue(JSON.parse(content));
+  visitValue(config);
   return { documentEntries, generatedEntries, schemaEntries };
 };
 
@@ -496,30 +332,41 @@ export const extractGraphqlCodegenEntries = (directory: string): GraphqlCodegenE
       const rawContent = readFileSync(configPath, "utf-8");
       const isViteConfig = basename(configPath).startsWith("vite.config.");
       const isJsonConfig = configPath.endsWith(".json");
-      const relevantContent = isViteConfig
-        ? extractVitePluginConfigContents(rawContent).join("\n")
-        : rawContent;
-      if (relevantContent.length === 0) continue;
-      const content = relevantContent
-        .replace(/^[ \t]*\/\*[\s\S]*?\*\/[ \t]*\r?$/gm, "")
-        .replace(/^[ \t]*(?:\/\/|#).*$/gm, "");
+      const isYamlConfig = configPath.endsWith(".yml") || configPath.endsWith(".yaml");
+      const isJavaScriptConfig = /\.[cm]?[jt]s$/.test(configPath);
+      const relevantContents = isViteConfig
+        ? extractVitePluginConfigContents(rawContent)
+        : [rawContent];
+      if (relevantContents.length === 0) continue;
       const configDirectory = dirname(configPath);
-      const jsonPatterns = isJsonConfig
-        ? collectJsonCodegenPatterns(content)
-        : { documentEntries: [], generatedEntries: [], schemaEntries: [] };
-      const documentPatterns = isJsonConfig
-        ? jsonPatterns.documentEntries
-        : collectCodegenPatterns(content, DOCUMENTS_ARRAY_PATTERN, DOCUMENTS_STRING_PATTERN);
-      const schemaPatterns = isJsonConfig
-        ? jsonPatterns.schemaEntries
-        : collectCodegenPatterns(content, SCHEMA_ARRAY_PATTERN, SCHEMA_STRING_PATTERN);
-      const generatedOutputPatterns = isJsonConfig
-        ? jsonPatterns.generatedEntries
-        : collectGeneratedOutputPatterns(content);
-      if (configPath.endsWith(".yml") || configPath.endsWith(".yaml")) {
-        documentPatterns.push(...collectYamlBlockPatterns(content, DOCUMENTS_YAML_BLOCK_PATTERN));
-        schemaPatterns.push(...collectYamlBlockPatterns(content, SCHEMA_YAML_BLOCK_PATTERN));
+      const structuredPatterns: GraphqlCodegenEntries = {
+        documentEntries: [],
+        generatedEntries: [],
+        schemaEntries: [],
+      };
+      if (isJsonConfig) {
+        const patterns = collectStructuredCodegenPatterns(JSON.parse(rawContent));
+        structuredPatterns.documentEntries.push(...patterns.documentEntries);
+        structuredPatterns.generatedEntries.push(...patterns.generatedEntries);
+        structuredPatterns.schemaEntries.push(...patterns.schemaEntries);
+      } else if (isYamlConfig) {
+        const patterns = collectStructuredCodegenPatterns(parseYAML<unknown>(rawContent));
+        structuredPatterns.documentEntries.push(...patterns.documentEntries);
+        structuredPatterns.generatedEntries.push(...patterns.generatedEntries);
+        structuredPatterns.schemaEntries.push(...patterns.schemaEntries);
+      } else if (isJavaScriptConfig) {
+        for (const relevantContent of relevantContents) {
+          const patterns = collectStructuredCodegenPatterns(
+            evaluateStaticConfig(relevantContent, configPath),
+          );
+          structuredPatterns.documentEntries.push(...patterns.documentEntries);
+          structuredPatterns.generatedEntries.push(...patterns.generatedEntries);
+          structuredPatterns.schemaEntries.push(...patterns.schemaEntries);
+        }
       }
+      const documentPatterns = structuredPatterns.documentEntries;
+      const schemaPatterns = structuredPatterns.schemaEntries;
+      const generatedOutputPatterns = structuredPatterns.generatedEntries;
       for (const entryPath of resolveCodegenPatterns(documentPatterns, configDirectory)) {
         documentEntries.add(entryPath);
       }

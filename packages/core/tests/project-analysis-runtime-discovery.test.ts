@@ -343,6 +343,23 @@ describe("runtime-discovered project entries", () => {
     ]);
   });
 
+  it("discovers a quoted React Email preview directory", async () => {
+    const rootDirectory = createProject(
+      {
+        "email templates/welcome.tsx": "export default () => null;",
+        "src/orphan.ts": "export const orphan = true;",
+      },
+      {
+        scripts: { dev: `email dev --dir "email templates"` },
+        devDependencies: { "react-email": "1.0.0" },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: [] });
+
+    expect(relativeUnusedPaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
   it("keeps the default React Email preview directory exact", async () => {
     const rootDirectory = createProject(
       {

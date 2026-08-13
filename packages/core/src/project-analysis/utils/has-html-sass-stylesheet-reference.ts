@@ -5,9 +5,8 @@ import ts from "typescript";
 import { BUILD_SCRIPT_PACKAGE_SCAN_MAX_DEPTH } from "../constants.js";
 import { extractScriptBinaryNames } from "./extract-script-binary-names.js";
 import { extractInvokedBuildScriptPaths } from "../collect/build-script-consumed-files.js";
+import { collectHtmlElementAttributes } from "./collect-html-element-attributes.js";
 
-const HTML_COMMENT_PATTERN = /<!--[\s\S]*?-->/g;
-const HTML_LINK_PATTERN = /<link\b[^>]*>/gi;
 const SASS_PATH_PATTERN = /\.(?:scss|sass)$/i;
 const PARCEL_BINARY_NAMES = new Set(["parcel", "parcel-bundler"]);
 
@@ -247,11 +246,6 @@ const collectParcelHtmlEntryPaths = (rootDirectory: string): string[] => {
   return [...htmlEntryPaths];
 };
 
-const getHtmlAttribute = (tag: string, attributeName: string): string | undefined => {
-  const attributePattern = new RegExp(`\\b${attributeName}\\s*=\\s*(["'])(.*?)\\1`, "i");
-  return tag.match(attributePattern)?.[2];
-};
-
 export const hasHtmlSassStylesheetReference = (rootDirectory: string): boolean => {
   for (const htmlFile of collectParcelHtmlEntryPaths(rootDirectory)) {
     let content: string;
@@ -261,22 +255,9 @@ export const hasHtmlSassStylesheetReference = (rootDirectory: string): boolean =
       continue;
     }
 
-    const commentRanges = [...content.matchAll(HTML_COMMENT_PATTERN)].map((commentMatch) => ({
-      start: commentMatch.index,
-      end: commentMatch.index + commentMatch[0].length,
-    }));
-    for (const linkTagMatch of content.matchAll(HTML_LINK_PATTERN)) {
-      if (
-        commentRanges.some(
-          (commentRange) =>
-            linkTagMatch.index >= commentRange.start && linkTagMatch.index < commentRange.end,
-        )
-      ) {
-        continue;
-      }
-      const linkTag = linkTagMatch[0];
-      const relation = getHtmlAttribute(linkTag, "rel");
-      const href = getHtmlAttribute(linkTag, "href")?.split(/[?#]/, 1)[0];
+    for (const attributes of collectHtmlElementAttributes(content, "link")) {
+      const relation = attributes.get("rel");
+      const href = attributes.get("href")?.split(/[?#]/, 1)[0];
       if (
         !relation?.toLowerCase().split(/\s+/).includes("stylesheet") ||
         !href ||

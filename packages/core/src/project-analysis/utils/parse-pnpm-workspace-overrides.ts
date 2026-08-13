@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { parseYAML } from "confbox";
 import {
   collectOverrideMappingsFromRecord,
   type OverrideMapping,
@@ -7,78 +8,21 @@ import {
 
 const PNPM_WORKSPACE_FILENAMES = ["pnpm-workspace.yaml", "pnpm-workspace.yml"] as const;
 
-interface ParsedYamlMapping {
-  entries: Record<string, unknown>;
-  endLineIndex: number;
-}
-
-const parseIndentedYamlMapping = (
-  lines: string[],
-  startLineIndex: number,
-  sectionIndent: number,
-): ParsedYamlMapping => {
-  const entries: Record<string, unknown> = {};
-  let lineIndex = startLineIndex;
-
-  while (lineIndex < lines.length) {
-    const line = lines[lineIndex];
-    const trimmedLine = line.trim();
-
-    if (trimmedLine.length === 0 || trimmedLine.startsWith("#")) {
-      lineIndex++;
-      continue;
-    }
-
-    const indent = line.length - line.trimStart().length;
-    if (indent <= sectionIndent) break;
-
-    const colonIndex = trimmedLine.indexOf(":");
-    if (colonIndex === -1) {
-      lineIndex++;
-      continue;
-    }
-
-    const key = trimmedLine
-      .slice(0, colonIndex)
-      .trim()
-      .replace(/^["']|["']$/g, "");
-    const rawValue = trimmedLine.slice(colonIndex + 1).trim();
-
-    if (!key) {
-      lineIndex++;
-      continue;
-    }
-
-    if (rawValue.length === 0) {
-      const nestedMapping = parseIndentedYamlMapping(lines, lineIndex + 1, indent);
-      entries[key] = nestedMapping.entries;
-      lineIndex = nestedMapping.endLineIndex;
-      continue;
-    }
-
-    entries[key] = rawValue.replace(/^["']|["']$/g, "");
-    lineIndex++;
-  }
-
-  return { entries, endLineIndex: lineIndex };
-};
-
 const parsePnpmWorkspaceOverrideRecords = (yamlContent: string): Record<string, unknown>[] => {
-  const lines = yamlContent.split("\n");
-  const overrideRecords: Record<string, unknown>[] = [];
-
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    const trimmedLine = lines[lineIndex].trim();
-    if (trimmedLine !== "overrides:") continue;
-
-    const sectionIndent = lines[lineIndex].length - lines[lineIndex].trimStart().length;
-    const parsedMapping = parseIndentedYamlMapping(lines, lineIndex + 1, sectionIndent);
-    if (Object.keys(parsedMapping.entries).length > 0) {
-      overrideRecords.push(parsedMapping.entries);
-    }
+  const workspaceConfig = parseYAML<unknown>(yamlContent);
+  if (
+    !workspaceConfig ||
+    typeof workspaceConfig !== "object" ||
+    Array.isArray(workspaceConfig) ||
+    !("overrides" in workspaceConfig) ||
+    !workspaceConfig.overrides ||
+    typeof workspaceConfig.overrides !== "object" ||
+    Array.isArray(workspaceConfig.overrides)
+  ) {
+    return [];
   }
 
-  return overrideRecords;
+  return [Object.fromEntries(Object.entries(workspaceConfig.overrides))];
 };
 
 export const collectPnpmWorkspaceOverrideMappings = (rootDir: string): OverrideMapping[] => {

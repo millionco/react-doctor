@@ -1,4 +1,5 @@
 import fg from "fast-glob";
+import { parseJSONC, parseTOML, parseYAML } from "confbox";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import ts from "typescript";
@@ -40,9 +41,12 @@ import { extractReactEmailTemplateEntries } from "./react-email-template-entries
 import { extractPackageJsonEntries, findDefaultIndexEntry } from "./package-json-entries.js";
 import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
 import { toPosixPath } from "../utils/to-posix-path.js";
-import { maskJavaScriptStringsAndComments } from "../utils/mask-javascript-strings-and-comments.js";
 import { extractLocalScriptFileReference } from "../utils/extract-local-script-file-reference.js";
 import { collectExecutableMarkdownFilePaths } from "../utils/collect-executable-markdown-file-paths.js";
+import { collectStringProperties } from "../utils/collect-string-properties.js";
+import { collectHtmlElementAttributes } from "../utils/collect-html-element-attributes.js";
+import { evaluateStaticConfig } from "../utils/evaluate-static-config.js";
+import { extractScriptInvocations } from "../utils/extract-script-binary-names.js";
 
 export const collectSourceFiles = async (config: ProjectAnalysisConfig): Promise<SourceFile[]> => {
   const extensions =
@@ -518,8 +522,6 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
   };
 };
 
-const SHELL_OPERATORS_PATTERN = /\s*(?:&&|\|\||[;&|])\s*/;
-
 const SCRIPT_MULTIPLEXERS = new Set([
   "concurrently",
   "run-s",
@@ -545,8 +547,6 @@ const CONFIG_LIKE_FLAGS = new Set([
   "--setup",
   "--global-setup",
 ]);
-
-const ENV_WRAPPER_BINARIES = new Set(["cross-env", "dotenv", "dotenv-flow", "env-cmd"]);
 
 const IGNORED_CLI_TOOLS = new Set([
   "prettier",
@@ -660,42 +660,18 @@ const isGlobPattern = (token: string): boolean => {
 
 const extractScriptFileArguments = (scriptCommand: string, directory: string): string[] => {
   const entries: string[] = [];
-  const segments = scriptCommand.split(SHELL_OPERATORS_PATTERN);
-
-  for (const segment of segments) {
-    const trimmedSegment = segment.trim();
-    if (!trimmedSegment) continue;
-
-    const tokens = trimmedSegment.split(/\s+/);
-    if (tokens.length === 0) continue;
-
-    let startIndex = 0;
-    const firstBinary = tokens[0].replace(/^.*\//, "");
-    if (ENV_WRAPPER_BINARIES.has(firstBinary)) {
-      startIndex = 1;
-      while (startIndex < tokens.length && /^[A-Z_][A-Z0-9_]*=/.test(tokens[startIndex])) {
-        startIndex++;
-      }
-      if (startIndex >= tokens.length) continue;
-    }
-
-    const binaryName = tokens[startIndex].replace(/^.*\//, "");
+  for (const invocation of extractScriptInvocations(scriptCommand)) {
+    const binaryName = invocation.binaryName;
     if (SCRIPT_MULTIPLEXERS.has(binaryName)) continue;
+    const isNonEntryBinary = IGNORED_CLI_TOOLS.has(binaryName);
+    const tokens = invocation.argumentValues;
 
-    const effectiveBinaryName =
-      binaryName === "npx" || binaryName === "pnpx" || binaryName === "bunx"
-        ? (tokens[startIndex + 1]?.replace(/^.*\//, "") ?? "")
-        : binaryName;
-    const isNonEntryBinary =
-      IGNORED_CLI_TOOLS.has(binaryName) ||
-      (effectiveBinaryName !== "" && IGNORED_CLI_TOOLS.has(effectiveBinaryName));
-
-    for (let tokenIndex = startIndex + 1; tokenIndex < tokens.length; tokenIndex++) {
-      const token = tokens[tokenIndex].replace(/^['"]|['"]$/g, "");
+    for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex++) {
+      const token = tokens[tokenIndex];
 
       if (CONFIG_LIKE_FLAGS.has(token)) {
         if (tokenIndex + 1 < tokens.length && !tokens[tokenIndex + 1].startsWith("-")) {
-          const configPath = tokens[tokenIndex + 1].replace(/^['"]|['"]$/g, "");
+          const configPath = tokens[tokenIndex + 1];
           if (looksLikeFilePath(configPath)) {
             const absoluteConfigPath = resolve(directory, configPath);
             if (existsSync(absoluteConfigPath)) {
@@ -858,55 +834,9 @@ const extractScriptEntries = (directory: string): string[] => {
   return entries;
 };
 
-const isYamlMapping = (line: string): boolean => {
-  const firstWord = line.split(/\s/)[0];
-  if (!firstWord) return false;
-  return firstWord.endsWith(":") && !firstWord.startsWith("http") && !firstWord.startsWith("ftp");
-};
-
 const extractCiRunCommands = (content: string): string[] => {
-  const commands: string[] = [];
-  let inMultilineRun = false;
-  let multilineIndent = 0;
-
-  for (const line of content.split("\n")) {
-    const trimmedLine = line.trim();
-    if (trimmedLine === "" || trimmedLine.startsWith("#")) continue;
-
-    if (inMultilineRun) {
-      const indent = line.length - line.trimStart().length;
-      if (indent > multilineIndent && trimmedLine !== "") {
-        commands.push(trimmedLine);
-        continue;
-      }
-      inMultilineRun = false;
-    }
-
-    const runMatch = trimmedLine.match(/^(?:-\s+)?run:\s*(.*)$/);
-    if (runMatch) {
-      const runValue = runMatch[1].trim();
-      if (runValue === "|" || runValue === "|-" || runValue === "|+") {
-        inMultilineRun = true;
-        multilineIndent = line.length - line.trimStart().length;
-      } else if (runValue !== "") {
-        commands.push(runValue);
-      }
-      continue;
-    }
-
-    if (trimmedLine.startsWith("- ")) {
-      const listItem = trimmedLine.slice(2).trim();
-      if (
-        listItem !== "" &&
-        !listItem.startsWith("{") &&
-        !listItem.startsWith("[") &&
-        !isYamlMapping(listItem)
-      ) {
-        commands.push(listItem);
-      }
-    }
-  }
-  return commands;
+  const workflow = parseYAML<unknown>(content);
+  return collectStringProperties(workflow, "run");
 };
 
 const extractCiWorkflowEntries = (rootDir: string): string[] => {
@@ -959,130 +889,43 @@ const extractCiWorkflowEntries = (rootDir: string): string[] => {
   return entries;
 };
 
-const VITE_INPUT_BLOCK_PATTERN = /input\s*:\s*(?:\{[^}]*\}|\[[^\]]*\]|['"][^'"]+['"])/gs;
-const BUNDLER_ENTRY_FILE_PATTERN =
-  /['"]([^'"]+\.(?:js|ts|tsx|jsx|mjs|mts|less|scss|css|sass|html))['"]/g;
-const VITE_PATH_VARIABLE_PATTERN =
-  /const\s+(\w+)\s*=\s*(?:path\.)?(?:join|resolve)\(\s*__dirname\s*,\s*((?:['"][^'"]*['"][\s,]*)+)\)/g;
+interface StaticConfigObject {
+  [propertyName: string]: unknown;
+}
 
-const resolveVitePathSegments = (rawSegments: string, configDirectory: string): string => {
-  const pathSegments = [...rawSegments.matchAll(/['"]([^'"]*)['"]/g)].map(
-    (segmentMatch) => segmentMatch[1],
-  );
-  return resolve(configDirectory, ...pathSegments);
+const isStaticConfigObject = (value: unknown): value is StaticConfigObject =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const collectStaticConfigObjects = (value: unknown): StaticConfigObject[] => {
+  if (Array.isArray(value)) return value.flatMap(collectStaticConfigObjects);
+  return isStaticConfigObject(value) ? [value] : [];
 };
 
-const unwrapViteConfigExpression = (expression: ts.Expression): ts.Expression => {
-  if (
-    ts.isParenthesizedExpression(expression) ||
-    ts.isAsExpression(expression) ||
-    ts.isSatisfiesExpression(expression)
-  ) {
-    return unwrapViteConfigExpression(expression.expression);
+const getStaticConfigValue = (value: unknown, propertyPath: string[]): unknown => {
+  let currentValue = value;
+  for (const propertyName of propertyPath) {
+    if (!isStaticConfigObject(currentValue)) return undefined;
+    currentValue = currentValue[propertyName];
   }
-  return expression;
+  return currentValue;
 };
 
-const resolveViteConfigObject = (
-  expression: ts.Expression,
-  variableInitializers: ReadonlyMap<string, ts.Expression>,
-  visitedIdentifiers = new Set<string>(),
-): ts.ObjectLiteralExpression | undefined => {
-  const unwrappedExpression = unwrapViteConfigExpression(expression);
-  if (ts.isObjectLiteralExpression(unwrappedExpression)) return unwrappedExpression;
-  if (ts.isIdentifier(unwrappedExpression) && !visitedIdentifiers.has(unwrappedExpression.text)) {
-    const initializer = variableInitializers.get(unwrappedExpression.text);
-    if (!initializer) return undefined;
-    return resolveViteConfigObject(
-      initializer,
-      variableInitializers,
-      new Set(visitedIdentifiers).add(unwrappedExpression.text),
-    );
-  }
-  if (!ts.isCallExpression(unwrappedExpression)) return undefined;
-  const calledExpression = unwrapViteConfigExpression(unwrappedExpression.expression);
-  if (!ts.isIdentifier(calledExpression) || calledExpression.text !== "defineConfig") {
-    return undefined;
-  }
-  const configArgument = unwrappedExpression.arguments[0];
-  if (!configArgument) return undefined;
-  const unwrappedArgument = unwrapViteConfigExpression(configArgument);
-  if (ts.isArrowFunction(unwrappedArgument) || ts.isFunctionExpression(unwrappedArgument)) {
-    if (!ts.isBlock(unwrappedArgument.body)) {
-      return resolveViteConfigObject(unwrappedArgument.body, variableInitializers);
-    }
-    const callbackVariableInitializers = new Map(variableInitializers);
-    for (const statement of unwrappedArgument.body.statements) {
-      if (ts.isVariableStatement(statement)) {
-        for (const declaration of statement.declarationList.declarations) {
-          if (ts.isIdentifier(declaration.name) && declaration.initializer) {
-            callbackVariableInitializers.set(declaration.name.text, declaration.initializer);
-          }
-        }
-      }
-      if (ts.isReturnStatement(statement) && statement.expression) {
-        return resolveViteConfigObject(statement.expression, callbackVariableInitializers);
-      }
-    }
-    return undefined;
-  }
-  return resolveViteConfigObject(unwrappedArgument, variableInitializers);
+const collectStaticStringValues = (value: unknown): string[] => {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(collectStaticStringValues);
+  if (!isStaticConfigObject(value)) return [];
+  return Object.values(value).flatMap(collectStaticStringValues);
 };
 
-const extractViteRoot = (content: string, configDirectory: string): string => {
-  const syntaxContent = maskJavaScriptStringsAndComments(content);
-  const resolvedVariables = new Map<string, string>();
-  const variableInitializers = new Map<string, ts.Expression>();
-  const sourceFile = ts.createSourceFile(
-    "vite.config.ts",
-    content,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
-  for (const statement of sourceFile.statements) {
-    if (!ts.isVariableStatement(statement)) continue;
-    for (const declaration of statement.declarationList.declarations) {
-      if (ts.isIdentifier(declaration.name) && declaration.initializer) {
-        variableInitializers.set(declaration.name.text, declaration.initializer);
-      }
-    }
-  }
-  VITE_PATH_VARIABLE_PATTERN.lastIndex = 0;
-  let variableMatch: RegExpExecArray | null;
-  while ((variableMatch = VITE_PATH_VARIABLE_PATTERN.exec(content)) !== null) {
-    if (syntaxContent.slice(variableMatch.index, variableMatch.index + 5) !== "const") continue;
-    resolvedVariables.set(
-      variableMatch[1],
-      resolveVitePathSegments(variableMatch[2], configDirectory),
-    );
-  }
-
-  const exportAssignment = sourceFile.statements.find(
-    (statement): statement is ts.ExportAssignment =>
-      ts.isExportAssignment(statement) && !statement.isExportEquals,
-  );
-  if (!exportAssignment) return configDirectory;
-  const configObject = resolveViteConfigObject(exportAssignment.expression, variableInitializers);
-  if (!configObject) return configDirectory;
-  const rootProperty = configObject.properties.find(
-    (property): property is ts.PropertyAssignment =>
-      ts.isPropertyAssignment(property) &&
-      ((ts.isIdentifier(property.name) && property.name.text === "root") ||
-        (ts.isStringLiteral(property.name) && property.name.text === "root")),
-  );
-  if (!rootProperty) return configDirectory;
-  const rootExpression = unwrapViteConfigExpression(rootProperty.initializer);
-  if (ts.isStringLiteral(rootExpression) || ts.isNoSubstitutionTemplateLiteral(rootExpression)) {
-    return resolve(configDirectory, rootExpression.text);
-  }
-  if (ts.isIdentifier(rootExpression)) {
-    return resolvedVariables.get(rootExpression.text) ?? configDirectory;
-  }
-  if (ts.isCallExpression(rootExpression)) {
-    return resolveVitePathSegments(rootExpression.getText(sourceFile), configDirectory);
-  }
-  return configDirectory;
+const extractViteRoot = (config: unknown, configDirectory: string): string => {
+  const rootValue = collectStaticConfigObjects(config)
+    .map((configObject) => getStaticConfigValue(configObject, ["root"]))
+    .find((value): value is string => typeof value === "string");
+  return rootValue
+    ? isAbsolute(rootValue)
+      ? rootValue
+      : resolve(configDirectory, rootValue)
+    : configDirectory;
 };
 
 const extractViteProjectScopes = (directory: string): ViteProjectScope[] => {
@@ -1098,23 +941,20 @@ const extractViteProjectScopes = (directory: string): ViteProjectScope[] => {
       const entries: string[] = [];
       const content = readFileSync(configPath, "utf-8");
       const configDirectory = dirname(configPath);
-      const viteRoot = extractViteRoot(content, configDirectory);
+      const config = evaluateStaticConfig(content, configPath);
+      const viteRoot = extractViteRoot(config, configDirectory);
       const defaultHtmlEntry = resolve(viteRoot, "index.html");
       if (existsSync(defaultHtmlEntry)) entries.push(defaultHtmlEntry);
-      let inputMatch: RegExpExecArray | null;
-      VITE_INPUT_BLOCK_PATTERN.lastIndex = 0;
-      while ((inputMatch = VITE_INPUT_BLOCK_PATTERN.exec(content)) !== null) {
-        const inputBlock = inputMatch[0];
-        let valueMatch: RegExpExecArray | null;
-        BUNDLER_ENTRY_FILE_PATTERN.lastIndex = 0;
-        while ((valueMatch = BUNDLER_ENTRY_FILE_PATTERN.exec(inputBlock)) !== null) {
-          const entryPath = valueMatch[1];
-          const absoluteEntryPath =
-            isAbsolute(entryPath) && existsSync(entryPath)
-              ? entryPath
-              : resolve(viteRoot, entryPath.replace(/^\//, ""));
-          if (existsSync(absoluteEntryPath)) entries.push(absoluteEntryPath);
-        }
+      const inputPaths = collectStaticConfigObjects(config).flatMap((configObject) =>
+        collectStaticStringValues(
+          getStaticConfigValue(configObject, ["build", "rollupOptions", "input"]),
+        ),
+      );
+      for (const entryPath of inputPaths) {
+        const absoluteEntryPath = isAbsolute(entryPath)
+          ? entryPath
+          : resolve(viteRoot, entryPath.replace(/^\//, ""));
+        if (existsSync(absoluteEntryPath)) entries.push(absoluteEntryPath);
       }
       viteProjectScopes.push({
         configPath,
@@ -1128,9 +968,6 @@ const extractViteProjectScopes = (directory: string): ViteProjectScope[] => {
   return viteProjectScopes;
 };
 
-const BUNDLER_CONFIG_ENTRY_BLOCK_PATTERN = /entry\s*:\s*\[([^\]]*)\]/gs;
-const BUNDLER_CONFIG_ENTRY_STRING_PATTERN = /['"]([^'"]+)['"]/g;
-
 const extractBundlerConfigEntryPoints = (directory: string): string[] => {
   const entries: string[] = [];
   const configPaths = fg.sync(["tsdown.config.{ts,js,cjs,mjs}", "tsup.config.{ts,js,cjs,mjs}"], {
@@ -1142,30 +979,26 @@ const extractBundlerConfigEntryPoints = (directory: string): string[] => {
   for (const configPath of configPaths) {
     try {
       const content = readFileSync(configPath, "utf-8");
-      let blockMatch: RegExpExecArray | null;
-      BUNDLER_CONFIG_ENTRY_BLOCK_PATTERN.lastIndex = 0;
-      while ((blockMatch = BUNDLER_CONFIG_ENTRY_BLOCK_PATTERN.exec(content)) !== null) {
-        const arrayContent = blockMatch[1];
-        let stringMatch: RegExpExecArray | null;
-        BUNDLER_CONFIG_ENTRY_STRING_PATTERN.lastIndex = 0;
-        while ((stringMatch = BUNDLER_CONFIG_ENTRY_STRING_PATTERN.exec(arrayContent)) !== null) {
-          const entryPath = stringMatch[1];
-          if (entryPath.includes("*")) {
-            entries.push(
-              ...fg.sync(entryPath, {
-                cwd: directory,
-                absolute: true,
-                onlyFiles: true,
-                ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"],
-              }),
-            );
-            continue;
-          }
-          const absoluteEntryPath = resolve(directory, entryPath);
-          const resolvedPath = resolveEntryWithExtensions(absoluteEntryPath);
-          if (resolvedPath) {
-            entries.push(resolvedPath);
-          }
+      const config = evaluateStaticConfig(content, configPath);
+      const entryPaths = collectStaticConfigObjects(config).flatMap((configObject) =>
+        collectStaticStringValues(getStaticConfigValue(configObject, ["entry"])),
+      );
+      for (const entryPath of entryPaths) {
+        if (entryPath.includes("*")) {
+          entries.push(
+            ...fg.sync(entryPath, {
+              cwd: directory,
+              absolute: true,
+              onlyFiles: true,
+              ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"],
+            }),
+          );
+          continue;
+        }
+        const absoluteEntryPath = isAbsolute(entryPath) ? entryPath : resolve(directory, entryPath);
+        const resolvedPath = resolveEntryWithExtensions(absoluteEntryPath);
+        if (resolvedPath) {
+          entries.push(resolvedPath);
         }
       }
     } catch {}
@@ -1368,8 +1201,13 @@ const extractWebpackEntryPoints = (directory: string): string[] => {
   return entries;
 };
 
-const HTML_SCRIPT_SRC_PATTERN =
-  /<script[^>]+src=["']([^"']+\.(?:ts|tsx|js|jsx|mts|mjs))["'][^>]*>/gi;
+const HTML_SCRIPT_SOURCE_EXTENSION_PATTERN = /\.(?:ts|tsx|js|jsx|mts|mjs)$/i;
+
+const extractHtmlScriptSources = (content: string): string[] =>
+  collectHtmlElementAttributes(content, "script").flatMap((attributes) => {
+    const source = attributes.get("src")?.split(/[?#]/, 1)[0];
+    return source && HTML_SCRIPT_SOURCE_EXTENSION_PATTERN.test(source) ? [source] : [];
+  });
 
 const extractHtmlScriptEntries = (directory: string): string[] => {
   const entries: string[] = [];
@@ -1384,10 +1222,8 @@ const extractHtmlScriptEntries = (directory: string): string[] => {
   for (const htmlPath of htmlFiles) {
     try {
       const content = readFileSync(htmlPath, "utf-8");
-      let scriptMatch: RegExpExecArray | null;
-      HTML_SCRIPT_SRC_PATTERN.lastIndex = 0;
-      while ((scriptMatch = HTML_SCRIPT_SRC_PATTERN.exec(content)) !== null) {
-        const scriptSrc = scriptMatch[1].replace(/^\//, "");
+      for (const source of extractHtmlScriptSources(content)) {
+        const scriptSrc = source.replace(/^\//, "");
         const htmlDirectory = htmlPath.replace(/\/[^/]+$/, "");
         const absoluteScriptPath = resolve(htmlDirectory, scriptSrc);
         if (existsSync(absoluteScriptPath)) {
@@ -1404,10 +1240,8 @@ const extractScriptTagsFromHtmlFile = (htmlFilePath: string): string[] => {
   const entries: string[] = [];
   try {
     const content = readFileSync(htmlFilePath, "utf-8");
-    let scriptMatch: RegExpExecArray | null;
-    HTML_SCRIPT_SRC_PATTERN.lastIndex = 0;
-    while ((scriptMatch = HTML_SCRIPT_SRC_PATTERN.exec(content)) !== null) {
-      const scriptSrc = scriptMatch[1].replace(/^\//, "");
+    for (const source of extractHtmlScriptSources(content)) {
+      const scriptSrc = source.replace(/^\//, "");
       const htmlDirectory = dirname(htmlFilePath);
       const absoluteScriptPath = resolve(htmlDirectory, scriptSrc);
       if (existsSync(absoluteScriptPath)) {
@@ -1533,10 +1367,6 @@ const expandTsConfigProjectEntries = (tsconfigAbsolutePath: string): string[] =>
   return entries;
 };
 
-const WRANGLER_TOML_MAIN_PATTERN = /^\s*main\s*=\s*['"]([^'"\n]+)['"]/m;
-const WRANGLER_JSON_MAIN_PATTERN = /"main"\s*:\s*"([^"]+)"/;
-const WRANGLER_SERVICE_BINDINGS_PATTERN = /entry_point\s*=\s*['"]([^'"\n]+)['"]/g;
-
 const extractWranglerEntries = (directory: string): string[] => {
   const entries: string[] = [];
   const wranglerPaths = fg.sync(["wrangler.toml", "wrangler.json", "wrangler.jsonc"], {
@@ -1551,22 +1381,23 @@ const extractWranglerEntries = (directory: string): string[] => {
     try {
       const content = readFileSync(wranglerPath, "utf-8");
       const wranglerDir = dirname(wranglerPath);
-      const isToml = wranglerPath.endsWith(".toml");
-      const mainMatch = isToml
-        ? content.match(WRANGLER_TOML_MAIN_PATTERN)
-        : content.match(WRANGLER_JSON_MAIN_PATTERN);
-      if (mainMatch?.[1]) {
-        const candidatePath = resolve(wranglerDir, mainMatch[1]);
+      const workerConfig = wranglerPath.endsWith(".toml")
+        ? parseTOML<unknown>(content)
+        : parseJSONC<unknown>(content, { allowTrailingComma: true });
+      if (!workerConfig || typeof workerConfig !== "object" || Array.isArray(workerConfig)) {
+        continue;
+      }
+      if ("main" in workerConfig && typeof workerConfig.main === "string") {
+        const candidatePath = resolve(wranglerDir, workerConfig.main);
         if (existsSync(candidatePath)) entries.push(candidatePath);
         else {
           const sourceCandidate = resolveSourcePath(candidatePath, wranglerDir);
           if (sourceCandidate) entries.push(sourceCandidate);
         }
       }
-      let entryPointMatch: RegExpExecArray | null;
-      WRANGLER_SERVICE_BINDINGS_PATTERN.lastIndex = 0;
-      while ((entryPointMatch = WRANGLER_SERVICE_BINDINGS_PATTERN.exec(content)) !== null) {
-        const candidatePath = resolve(wranglerDir, entryPointMatch[1]);
+      const serviceEntryPoints = collectStringProperties(workerConfig, "entry_point");
+      for (const serviceEntryPoint of serviceEntryPoints) {
+        const candidatePath = resolve(wranglerDir, serviceEntryPoint);
         if (existsSync(candidatePath)) entries.push(candidatePath);
       }
     } catch {}
@@ -1864,33 +1695,6 @@ const extractNextConfigPluginFiles = (directory: string): string[] => {
   return entries;
 };
 
-const VITEST_INCLUDE_ITEM_PATTERN = /['"]([^'"]+)['"]/g;
-const COVERAGE_BLOCK_PATTERN = /coverage\s*:\s*\{/g;
-const TEST_BLOCK_PATTERN = /\btest\s*:\s*\{/g;
-const INCLUDE_PROPERTY_PATTERN = /\binclude\s*:/g;
-
-const findPropertyArrayRanges = (content: string, propertyPattern: RegExp): [number, number][] => {
-  const ranges: [number, number][] = [];
-  const syntaxContent = maskJavaScriptStringsAndComments(content);
-  propertyPattern.lastIndex = 0;
-  let propertyMatch: RegExpExecArray | null;
-  while ((propertyMatch = propertyPattern.exec(syntaxContent)) !== null) {
-    let openBracketIndex = propertyMatch.index + propertyMatch[0].length;
-    while (/\s/.test(syntaxContent[openBracketIndex] ?? "")) openBracketIndex++;
-    if (syntaxContent[openBracketIndex] !== "[") continue;
-    for (let position = openBracketIndex + 1; position < content.length; position++) {
-      if (syntaxContent[position] === "]") {
-        ranges.push([openBracketIndex, position]);
-        propertyPattern.lastIndex = position + 1;
-        break;
-      }
-    }
-  }
-  return ranges;
-};
-const TEST_MATCH_ARRAY_PATTERN = /testMatch\s*:\s*\[([^\]]*)\]/;
-const STRING_LITERAL_PATTERN = /['"]([^'"]+)['"]/g;
-
 const extractJestTestMatchPatterns = (directory: string): string[] => {
   const configPaths = fg.sync(["jest.config.{ts,js,mjs,cjs}"], {
     cwd: directory,
@@ -1914,16 +1718,10 @@ const extractJestTestMatchPatterns = (directory: string): string[] => {
   for (const configPath of configPaths) {
     try {
       const content = readFileSync(configPath, "utf-8");
-      const testMatchMatch = TEST_MATCH_ARRAY_PATTERN.exec(content);
-      if (!testMatchMatch) continue;
-
-      const arrayContent = testMatchMatch[1];
-      const patterns: string[] = [];
-      STRING_LITERAL_PATTERN.lastIndex = 0;
-      let itemMatch: RegExpExecArray | null;
-      while ((itemMatch = STRING_LITERAL_PATTERN.exec(arrayContent)) !== null) {
-        patterns.push(itemMatch[1]);
-      }
+      const config = evaluateStaticConfig(content, configPath);
+      const patterns = collectStaticConfigObjects(config).flatMap((configObject) =>
+        collectStaticStringValues(getStaticConfigValue(configObject, ["testMatch"])),
+      );
       if (patterns.length > 0) {
         return convertJestTestMatchToGlobs(patterns);
       }
@@ -1970,58 +1768,23 @@ const extractVitestIncludePatterns = (directory: string): string[] => {
   for (const configPath of configPaths) {
     try {
       const content = readFileSync(configPath, "utf-8");
-      const coverageBlockRanges = findNestedBlockRanges(content, COVERAGE_BLOCK_PATTERN);
-      const testBlockRanges = findNestedBlockRanges(content, TEST_BLOCK_PATTERN);
-      const requiresTestBlock = basename(configPath).startsWith("vite.");
-      for (const [arrayStart, arrayEnd] of findPropertyArrayRanges(
-        content,
-        INCLUDE_PROPERTY_PATTERN,
-      )) {
-        const matchStart = arrayStart;
-        const isInsideCoverageBlock = coverageBlockRanges.some(
-          ([blockStart, blockEnd]) => matchStart > blockStart && matchStart < blockEnd,
-        );
-        if (isInsideCoverageBlock) continue;
-        const isInsideTestBlock = testBlockRanges.some(
-          ([blockStart, blockEnd]) => matchStart > blockStart && matchStart < blockEnd,
-        );
-        if ((requiresTestBlock || testBlockRanges.length > 0) && !isInsideTestBlock) continue;
-
-        const arrayContent = content.slice(arrayStart + 1, arrayEnd);
-        VITEST_INCLUDE_ITEM_PATTERN.lastIndex = 0;
-        let itemMatch: RegExpExecArray | null;
-        while ((itemMatch = VITEST_INCLUDE_ITEM_PATTERN.exec(arrayContent)) !== null) {
-          patterns.push(itemMatch[1]);
-        }
-      }
+      const config = evaluateStaticConfig(content, configPath);
+      patterns.push(
+        ...collectStaticConfigObjects(config).flatMap((configObject) =>
+          collectStaticStringValues(getStaticConfigValue(configObject, ["test", "include"])),
+        ),
+      );
     } catch {}
   }
   return patterns;
 };
 
-const findNestedBlockRanges = (content: string, blockStartPattern: RegExp): [number, number][] => {
-  const ranges: [number, number][] = [];
-  const syntaxContent = maskJavaScriptStringsAndComments(content);
-  blockStartPattern.lastIndex = 0;
-  let blockMatch: RegExpExecArray | null;
-  while ((blockMatch = blockStartPattern.exec(syntaxContent)) !== null) {
-    const openBraceIndex = syntaxContent.indexOf("{", blockMatch.index);
-    if (openBraceIndex === -1) continue;
-    let braceDepth = 1;
-    let position = openBraceIndex + 1;
-    while (position < syntaxContent.length && braceDepth > 0) {
-      if (syntaxContent[position] === "{") braceDepth++;
-      if (syntaxContent[position] === "}") braceDepth--;
-      position++;
-    }
-    ranges.push([blockMatch.index, position]);
-  }
-  return ranges;
-};
-
-const SETUP_FILES_PATTERN =
-  /(?:setupFiles|setupFilesAfterEnv|globalSetup|globalTeardown)\s*:\s*(?:\[([^\]]*)\]|['"]([^'"]+)['"])/gs;
-const SETUP_FILE_PATH_PATTERN = /['"]([^'"]+)['"]/g;
+const TEST_SETUP_PROPERTY_NAMES = [
+  "setupFiles",
+  "setupFilesAfterEnv",
+  "globalSetup",
+  "globalTeardown",
+];
 
 const extractTestSetupFiles = (directory: string): string[] => {
   const entries: string[] = [];
@@ -2045,24 +1808,17 @@ const extractTestSetupFiles = (directory: string): string[] => {
   for (const configPath of configPaths) {
     try {
       const content = readFileSync(configPath, "utf-8");
-      const configDirectory = configPath.replace(/\/[^/]+$/, "");
-      let setupMatch: RegExpExecArray | null;
-      SETUP_FILES_PATTERN.lastIndex = 0;
-      while ((setupMatch = SETUP_FILES_PATTERN.exec(content)) !== null) {
-        const arrayContent = setupMatch[1];
-        const singleValue = setupMatch[2];
-
-        if (singleValue) {
-          const absolutePath = resolve(configDirectory, singleValue);
-          const resolvedPath = resolveEntryWithExtensions(absolutePath);
-          if (resolvedPath) entries.push(resolvedPath);
-        }
-
-        if (arrayContent) {
-          let pathMatch: RegExpExecArray | null;
-          SETUP_FILE_PATH_PATTERN.lastIndex = 0;
-          while ((pathMatch = SETUP_FILE_PATH_PATTERN.exec(arrayContent)) !== null) {
-            const absolutePath = resolve(configDirectory, pathMatch[1]);
+      const config = evaluateStaticConfig(content, configPath);
+      const isJestConfig = basename(configPath).startsWith("jest.config.");
+      for (const configObject of collectStaticConfigObjects(config)) {
+        for (const propertyName of TEST_SETUP_PROPERTY_NAMES) {
+          const propertyPath = isJestConfig ? [propertyName] : ["test", propertyName];
+          for (const setupPath of collectStaticStringValues(
+            getStaticConfigValue(configObject, propertyPath),
+          )) {
+            const absolutePath = isAbsolute(setupPath)
+              ? setupPath
+              : resolve(dirname(configPath), setupPath);
             const resolvedPath = resolveEntryWithExtensions(absolutePath);
             if (resolvedPath) entries.push(resolvedPath);
           }

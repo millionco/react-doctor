@@ -1,13 +1,12 @@
 import fg from "fast-glob";
 import { join, resolve } from "node:path";
 import { readFileSync } from "node:fs";
+import { parseSync } from "oxc-parser";
 import ts from "typescript";
 import { findMonorepoRoot } from "../utils/find-monorepo-root.js";
+import { getIdentifierName, isOxcAstNode } from "../utils/oxc-ast-node.js";
 import { resolveWorkspaces } from "./workspaces.js";
 import { resolveWorkspaceSubpath, trySourceFallback } from "../resolver/resolve.js";
-
-const IMPORT_SPECIFIER_PATTERN =
-  /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)["']([^"'\n]+)["']/g;
 
 const SIBLING_SOURCE_GLOB = "**/*.{ts,tsx,js,jsx,mts,mjs,cts,cjs}";
 
@@ -29,11 +28,107 @@ const readPackageName = (directory: string): string | undefined => {
 };
 
 const extractImportSpecifiers = (sourceText: string): string[] => {
-  const specifiers: string[] = [];
-  for (const specifierMatch of sourceText.matchAll(IMPORT_SPECIFIER_PATTERN)) {
-    specifiers.push(specifierMatch[1]);
+  let parsedModule: ReturnType<typeof parseSync>;
+  try {
+    parsedModule = parseSync("sibling-source.tsx", sourceText, { sourceType: "unambiguous" });
+  } catch {
+    return [];
   }
-  return specifiers;
+  if (parsedModule.errors.some((error) => error.severity === "Error")) return [];
+
+  const specifiers = new Set<string>();
+  const getStaticSpecifier = (node: unknown): string | undefined => {
+    if (!isOxcAstNode(node)) return undefined;
+    if (node.type === "Literal" && typeof node.value === "string") return node.value;
+    if (
+      node.type === "TemplateLiteral" &&
+      Array.isArray(node.expressions) &&
+      node.expressions.length === 0 &&
+      Array.isArray(node.quasis) &&
+      isOxcAstNode(node.quasis[0]) &&
+      node.quasis[0].value &&
+      typeof node.quasis[0].value === "object" &&
+      "cooked" in node.quasis[0].value &&
+      typeof node.quasis[0].value.cooked === "string"
+    ) {
+      return node.quasis[0].value.cooked;
+    }
+    return undefined;
+  };
+  const statementsBindRequire = (statements: unknown[]): boolean =>
+    statements.some((statement) => {
+      if (!isOxcAstNode(statement)) return false;
+      if (
+        (statement.type === "FunctionDeclaration" || statement.type === "ClassDeclaration") &&
+        getIdentifierName(statement.id) === "require"
+      ) {
+        return true;
+      }
+      if (statement.type === "VariableDeclaration" && Array.isArray(statement.declarations)) {
+        return statement.declarations.some(
+          (declaration) =>
+            isOxcAstNode(declaration) && getIdentifierName(declaration.id) === "require",
+        );
+      }
+      if (statement.type === "ImportDeclaration" && Array.isArray(statement.specifiers)) {
+        return statement.specifiers.some(
+          (specifier) =>
+            isOxcAstNode(specifier) && getIdentifierName(specifier.local) === "require",
+        );
+      }
+      return false;
+    });
+  const addSpecifier = (node: unknown): void => {
+    const specifier = getStaticSpecifier(node);
+    if (specifier) specifiers.add(specifier);
+  };
+  const visitNode = (node: unknown, isRequireShadowed: boolean): void => {
+    if (Array.isArray(node)) {
+      for (const child of node) visitNode(child, isRequireShadowed);
+      return;
+    }
+    if (!isOxcAstNode(node)) return;
+    let isRequireShadowedInNode = isRequireShadowed;
+    if ((node.type === "Program" || node.type === "BlockStatement") && Array.isArray(node.body)) {
+      isRequireShadowedInNode ||= statementsBindRequire(node.body);
+    }
+    if (
+      (node.type === "FunctionDeclaration" ||
+        node.type === "FunctionExpression" ||
+        node.type === "ArrowFunctionExpression") &&
+      Array.isArray(node.params)
+    ) {
+      isRequireShadowedInNode ||= node.params.some(
+        (parameter) => getIdentifierName(parameter) === "require",
+      );
+    }
+    if (node.type === "CatchClause" && getIdentifierName(node.param) === "require") {
+      isRequireShadowedInNode = true;
+    }
+    if (
+      node.type === "ImportDeclaration" ||
+      node.type === "ExportNamedDeclaration" ||
+      node.type === "ExportAllDeclaration"
+    ) {
+      addSpecifier(node.source);
+    }
+    if (node.type === "ImportExpression" || node.type === "TSImportType") {
+      addSpecifier(node.source);
+    }
+    if (node.type === "CallExpression" && !isRequireShadowedInNode && isOxcAstNode(node.callee)) {
+      const argumentsList = Array.isArray(node.arguments) ? node.arguments : [];
+      const isDirectRequire = getIdentifierName(node.callee) === "require";
+      const isRequireResolve =
+        node.callee.type === "MemberExpression" &&
+        node.callee.computed !== true &&
+        getIdentifierName(node.callee.object) === "require" &&
+        getIdentifierName(node.callee.property) === "resolve";
+      if (isDirectRequire || isRequireResolve) addSpecifier(argumentsList[0]);
+    }
+    for (const child of Object.values(node)) visitNode(child, isRequireShadowedInNode);
+  };
+  visitNode(parsedModule.program, false);
+  return [...specifiers];
 };
 
 const extractStylelintPluginSpecifiers = (sourceText: string): string[] => {

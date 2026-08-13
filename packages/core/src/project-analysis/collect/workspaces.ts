@@ -1,7 +1,9 @@
 import { resolve, join, relative, dirname } from "node:path";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import fg from "fast-glob";
+import { parseYAML } from "confbox";
 import { STANDALONE_PROJECT_LOCKFILES } from "../constants.js";
+import { evaluateStaticConfig } from "../utils/evaluate-static-config.js";
 import { extractReactRouterRouteModuleEntries } from "./parse.js";
 
 export interface WorkspacePackage {
@@ -147,31 +149,21 @@ const collectWorkspacePatterns = (rootDir: string): string[] => {
 };
 
 const extractPnpmWorkspacePackages = (yamlContent: string): string[] => {
-  const packages: string[] = [];
-  let inPackagesSection = false;
-
-  for (const line of yamlContent.split("\n")) {
-    const trimmedLine = line.trim();
-    if (trimmedLine === "packages:") {
-      inPackagesSection = true;
-      continue;
-    }
-    if (inPackagesSection) {
-      if (trimmedLine.startsWith("- ")) {
-        const pattern = trimmedLine
-          .slice(2)
-          .trim()
-          .replace(/^["']|["']$/g, "");
-        if (pattern && !pattern.startsWith("!")) {
-          packages.push(pattern);
-        }
-      } else if (trimmedLine && !trimmedLine.startsWith("#")) {
-        break;
-      }
-    }
+  const workspaceConfig = parseYAML<unknown>(yamlContent);
+  if (
+    !workspaceConfig ||
+    typeof workspaceConfig !== "object" ||
+    Array.isArray(workspaceConfig) ||
+    !("packages" in workspaceConfig) ||
+    !Array.isArray(workspaceConfig.packages)
+  ) {
+    return [];
   }
 
-  return packages;
+  return workspaceConfig.packages.filter(
+    (packagePattern): packagePattern is string =>
+      typeof packagePattern === "string" && !packagePattern.startsWith("!"),
+  );
 };
 
 const expandWorkspaceGlobs = (patterns: string[], rootDir: string): string[] => {
@@ -440,12 +432,18 @@ const extractRouterAppDirectory = (directory: string): string => {
 
     try {
       const content = readFileSync(configPath, "utf-8");
-      const appDirectoryMatch = content.match(/appDirectory\s*:\s*['"`]([^'"`]+)['"`]/);
-      if (appDirectoryMatch) {
-        return appDirectoryMatch[1].replace(/^\.\//, "");
+      const config = evaluateStaticConfig(content, configPath);
+      if (
+        config &&
+        typeof config === "object" &&
+        !Array.isArray(config) &&
+        "appDirectory" in config &&
+        typeof config.appDirectory === "string"
+      ) {
+        return config.appDirectory.replace(/^\.\//, "");
       }
     } catch {
-      // fall through
+      continue;
     }
   }
 

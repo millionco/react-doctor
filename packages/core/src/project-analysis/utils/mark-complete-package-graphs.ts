@@ -251,8 +251,13 @@ export const markCompletePackageGraphs = ({
           resolvedLocalImportSpecifiersByFilePath.get(module.fileId.path) ?? new Set(),
         ),
     );
-    const hasTestOrStoryContract = packageModules.some((module) =>
-      TEST_OR_STORY_FILE_PATTERN.test(module.fileId.path.replaceAll("\\", "/")),
+    const hasTestOrStoryContract = graph.modules.some(
+      (module) =>
+        TEST_OR_STORY_FILE_PATTERN.test(module.fileId.path.replaceAll("\\", "/")) &&
+        isPathInsideDirectoryOrEqual(
+          canonicalFilePathByModule.get(module) ?? module.fileId.path,
+          packageRootDirectory,
+        ),
     );
     const hasSetupUncertainty = setupErrors.some(
       (error) =>

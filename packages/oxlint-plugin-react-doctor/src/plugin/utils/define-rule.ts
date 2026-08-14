@@ -5,6 +5,7 @@ import {
   jsxAttributeIsNonReactDialectMarker,
 } from "./non-react-jsx-dialect.js";
 import { skipNonProductionFiles } from "./skip-non-production-files.js";
+import { shouldCreateRuleVisitors } from "./should-create-rule-visitors.js";
 import type { Rule } from "./rule.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 
@@ -27,6 +28,13 @@ export type RuleDefinition =
 // Solid/Qwik. The JSXOpeningElement guard preserves the same behavior for
 // hosts that invoke visitors without a Program pass.
 type GenericVisitors = Record<string, unknown>;
+
+const wrapCreateForCapabilities =
+  (create: Rule["create"], disabledWhen: Rule["disabledWhen"]): Rule["create"] =>
+  (context) =>
+    shouldCreateRuleVisitors(context.settings, disabledWhen)
+      ? create(context)
+      : EMPTY_RULE_VISITORS;
 
 const wrapCreateForReactJsxOnly = <
   CreateFn extends (context: { filename?: string }) => GenericVisitors,
@@ -114,6 +122,9 @@ export const defineRule = (rule: RuleDefinition): Rule => {
   }
   if (honorsTestNoise) {
     wrappedCreate = skipNonProductionFiles(wrappedCreate);
+  }
+  if (rule.disabledWhen) {
+    wrappedCreate = wrapCreateForCapabilities(wrappedCreate, rule.disabledWhen);
   }
   if (wrappedCreate === rule.create) return rule;
   return {

@@ -39,12 +39,23 @@ describe("buildSentryProjectContext", () => {
     const { tags } = buildSentryProjectContext(projectInfo);
     expect(tags).toEqual({
       "project.framework": "nextjs",
+      "project.runtime": "react",
       "project.reactMajor": 18,
       "project.typescript": true,
       "project.reactCompiler": false,
       "project.expo": false,
       "project.reactNative": false,
     });
+  });
+
+  it("classifies supported runtime combinations without project identity", () => {
+    expect(
+      buildSentryProjectContext({
+        ...projectInfo,
+        hasRemotion: true,
+        hasThree: true,
+      }).tags["project.runtime"],
+    ).toBe("react+three+remotion");
   });
 
   it("includes the anonymous project shape (no source code) in the context block", () => {

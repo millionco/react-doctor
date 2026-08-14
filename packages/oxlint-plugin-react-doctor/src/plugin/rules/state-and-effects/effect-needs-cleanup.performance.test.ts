@@ -35,7 +35,8 @@ const measureDuration = (
     expect(result.diagnostics).toHaveLength(handlerCount);
     return Number(process.hrtime.bigint() - startedAt);
   });
-  return Math.min(...sampleDurations);
+  sampleDurations.sort((firstDuration, secondDuration) => firstDuration - secondDuration);
+  return sampleDurations[Math.floor(sampleDurations.length / 2)] ?? Number.POSITIVE_INFINITY;
 };
 
 describe("effect-needs-cleanup performance", () => {

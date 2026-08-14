@@ -2,6 +2,15 @@ packages:
   - "packages/*"
 
 minimumReleaseAge: 7200
+minimumReleaseAgeExclude:
+  - "@oxc-parser/*"
+  - "@oxc-project/*"
+  - "@oxc-resolver/*"
+  - "@oxlint-tsgolint/*"
+  - "@oxlint/*"
+  - "oxc-*"
+  - "oxlint"
+  - "oxlint-*"
 trustPolicy: no-downgrade
 blockExoticSubdeps: true
 

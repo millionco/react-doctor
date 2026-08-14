@@ -62,7 +62,7 @@
     "eslint-scope": "^9.1.2",
     "eslint-visitor-keys": "^5.0.1",
     "lightningcss": "^1.33.0",
-    "oxc-parser": "^0.143.0"
+    "oxc-parser": "^0.144.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

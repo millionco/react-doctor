@@ -29,7 +29,7 @@ interface MutableScriptHotspot {
   totalDurationMs: number;
   maxDurationMs: number;
   forcedStyleAndLayoutDurationMs: number;
-  frameStartTimes: Set<number>;
+  frameCount: number;
 }
 
 interface MutableComponentHotspot {
@@ -77,6 +77,7 @@ const buildScriptHotspots = (
 ): ReadonlyArray<RuntimeScanScriptHotspot> => {
   const hotspots = new Map<string, MutableScriptHotspot>();
   for (const longAnimationFrame of snapshot.longAnimationFrames) {
+    const hotspotKeysInFrame = new Set<string>();
     for (const script of longAnimationFrame.scripts) {
       const key = `${script.sourceUrl}\u0000${script.sourceFunctionName}\u0000${script.sourceCharPosition}\u0000${script.invoker}`;
       const existing = hotspots.get(key);
@@ -89,23 +90,20 @@ const buildScriptHotspots = (
           totalDurationMs: script.durationMs,
           maxDurationMs: script.durationMs,
           forcedStyleAndLayoutDurationMs: script.forcedStyleAndLayoutDurationMs,
-          frameStartTimes: new Set([longAnimationFrame.startTime]),
+          frameCount: 1,
         });
-        continue;
+      } else {
+        existing.totalDurationMs += script.durationMs;
+        existing.maxDurationMs = Math.max(existing.maxDurationMs, script.durationMs);
+        existing.forcedStyleAndLayoutDurationMs += script.forcedStyleAndLayoutDurationMs;
+        if (!hotspotKeysInFrame.has(key)) existing.frameCount += 1;
       }
-      existing.totalDurationMs += script.durationMs;
-      existing.maxDurationMs = Math.max(existing.maxDurationMs, script.durationMs);
-      existing.forcedStyleAndLayoutDurationMs += script.forcedStyleAndLayoutDurationMs;
-      existing.frameStartTimes.add(longAnimationFrame.startTime);
+      hotspotKeysInFrame.add(key);
     }
   }
   return [...hotspots.values()]
     .sort((left, right) => right.totalDurationMs - left.totalDurationMs)
-    .slice(0, RUNTIME_SCAN_MAX_HOTSPOTS)
-    .map(({ frameStartTimes, ...hotspot }) => ({
-      ...hotspot,
-      frameCount: frameStartTimes.size,
-    }));
+    .slice(0, RUNTIME_SCAN_MAX_HOTSPOTS);
 };
 
 const buildComponentHotspots = (

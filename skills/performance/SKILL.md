@@ -27,7 +27,7 @@ Run the scan in an interactive terminal:
 npx react-doctor@latest scan http://localhost:3000 --format json
 ```
 
-React Doctor opens an isolated Chrome profile. Perform the planned interaction while purple outlines identify rendered components. Press Enter after the interaction settles.
+React Doctor opens an isolated Chrome profile. Perform the planned interaction while purple outlines identify rendered components. Press Enter after the interaction settles; recordings stop automatically after five minutes.
 
 For an authenticated session, connect through the Chrome DevTools Protocol (CDP):
 
@@ -37,7 +37,7 @@ npx react-doctor@latest scan https://app.example.com \
   --format json
 ```
 
-Use CDP only when Chrome already exposes a remote debugging endpoint. Never request cookies, copy a browser profile, or close an externally managed browser.
+Use a dedicated debug profile for CDP because Chrome tracing is browser-wide. Sign in, close every non-blank tab, and then start the scan. React Doctor closes leftover blank tabs before tracing. Never request cookies, copy a browser profile, or close an externally managed browser.
 
 The compressed `.json.gz` trace can contain URLs, source paths, and application behavior. Keep it local unless an upload is explicitly approved.
 

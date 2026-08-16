@@ -16,7 +16,11 @@ import {
   RUNTIME_SCAN_MAX_INTERACTIONS,
   RUNTIME_SCAN_MAX_LOAF_ENTRIES,
   RUNTIME_SCAN_MAX_SCRIPTS_PER_LOAF,
+  RUNTIME_SCAN_MAX_STRING_LENGTH,
   RUNTIME_SCAN_MIN_COMPONENT_DURATION_MS,
+  RUNTIME_SCAN_PROBE_SNAPSHOT_ATTRIBUTE_NAME_PLACEHOLDER,
+  RUNTIME_SCAN_PROBE_SNAPSHOT_TOKEN_PLACEHOLDER,
+  RUNTIME_SCAN_SNAPSHOT_CATEGORY_BUDGET_BYTES,
 } from "./constants.js";
 import type {
   RuntimeScanComponentEvent,
@@ -81,28 +85,54 @@ interface RuntimeScanPerformanceObserver {
   readonly listener: (entry: PerformanceEntry) => void;
 }
 
+interface RuntimeScanBoundedEntries<Entry> {
+  readonly entries: Entry[];
+  nextIndex: number;
+  dropped: number;
+}
+
+interface RuntimeScanBudgetedEntries<Entry> {
+  readonly entries: ReadonlyArray<Entry>;
+  readonly dropped: number;
+}
+
 declare global {
   interface Window {
     __REACT_DOCTOR_RUNTIME_SCAN__?: RuntimeScanBrowserController;
-    __REACT_DOCTOR_RUNTIME_SCAN_CAPTURE__?: (snapshot: string) => void;
   }
 }
 
 const performanceObservers: RuntimeScanPerformanceObserver[] = [];
-const longAnimationFrames: RuntimeScanLongAnimationFrame[] = [];
-const componentEvents: RuntimeScanComponentEvent[] = [];
-const interactions: RuntimeScanInteraction[] = [];
+const snapshotTextEncoder = new TextEncoder();
+const setSnapshotAttribute = Element.prototype.setAttribute;
+const removeSnapshotAttribute = Element.prototype.removeAttribute;
+const queueSnapshotAttributeRemoval = window.queueMicrotask.bind(window);
+const longAnimationFrames: RuntimeScanBoundedEntries<RuntimeScanLongAnimationFrame> = {
+  entries: [],
+  nextIndex: 0,
+  dropped: 0,
+};
+const componentEvents: RuntimeScanBoundedEntries<RuntimeScanComponentEvent> = {
+  entries: [],
+  nextIndex: 0,
+  dropped: 0,
+};
+const interactions: RuntimeScanBoundedEntries<RuntimeScanInteraction> = {
+  entries: [],
+  nextIndex: 0,
+  dropped: 0,
+};
 let cumulativeLayoutShift = 0;
 let largestContentfulPaintMs: number | null = null;
-let droppedLongAnimationFrames = 0;
 let droppedScriptTimings = 0;
-let droppedComponentEvents = 0;
-let droppedInteractions = 0;
 let reactDetected = false;
 let reactVersion: string | null = null;
 let reactBuildType: "development" | "production" | null = null;
 let nativeReactTracks = false;
 let bippyComponentTracks = false;
+let didCaptureCurrentPageState = false;
+
+const limitString = (value: string): string => value.slice(0, RUNTIME_SCAN_MAX_STRING_LENGTH);
 
 const sanitizeUrl = (rawUrl: string): string => {
   try {
@@ -111,26 +141,92 @@ const sanitizeUrl = (rawUrl: string): string => {
     parsedUrl.password = "";
     parsedUrl.search = "";
     parsedUrl.hash = "";
-    return parsedUrl.href;
+    return limitString(parsedUrl.href);
   } catch {
     return "";
   }
 };
 
-const pushLongAnimationFrame = (entry: RuntimeScanLongAnimationFrame): void => {
-  if (longAnimationFrames.length >= RUNTIME_SCAN_MAX_LOAF_ENTRIES) {
-    droppedLongAnimationFrames += 1;
-    return;
+const pushBoundedEntry = <Entry>(
+  boundedEntries: RuntimeScanBoundedEntries<Entry>,
+  limit: number,
+  entry: Entry,
+): void => {
+  if (boundedEntries.entries.length < limit) {
+    boundedEntries.entries.push(entry);
+  } else {
+    boundedEntries.entries[boundedEntries.nextIndex] = entry;
+    boundedEntries.nextIndex = (boundedEntries.nextIndex + 1) % limit;
+    boundedEntries.dropped += 1;
   }
-  longAnimationFrames.push(entry);
+};
+
+const readBoundedEntries = <Entry>(
+  boundedEntries: RuntimeScanBoundedEntries<Entry>,
+): ReadonlyArray<Entry> => {
+  if (boundedEntries.nextIndex === 0) return [...boundedEntries.entries];
+  return [
+    ...boundedEntries.entries.slice(boundedEntries.nextIndex),
+    ...boundedEntries.entries.slice(0, boundedEntries.nextIndex),
+  ];
+};
+
+const takeLatestEntriesWithinByteBudget = <Entry>(
+  entries: ReadonlyArray<Entry>,
+): RuntimeScanBudgetedEntries<Entry> => {
+  let minimumEntryCount = 0;
+  let maximumEntryCount = entries.length;
+  while (minimumEntryCount < maximumEntryCount) {
+    const candidateEntryCount = Math.ceil((minimumEntryCount + maximumEntryCount) / 2);
+    const candidateEntries = entries.slice(entries.length - candidateEntryCount);
+    const candidateBytes = snapshotTextEncoder.encode(JSON.stringify(candidateEntries)).byteLength;
+    if (candidateBytes <= RUNTIME_SCAN_SNAPSHOT_CATEGORY_BUDGET_BYTES) {
+      minimumEntryCount = candidateEntryCount;
+    } else {
+      maximumEntryCount = candidateEntryCount - 1;
+    }
+  }
+  return {
+    entries: entries.slice(entries.length - minimumEntryCount),
+    dropped: entries.length - minimumEntryCount,
+  };
+};
+
+const pushLongAnimationFrame = (entry: RuntimeScanLongAnimationFrame): void => {
+  pushBoundedEntry(longAnimationFrames, RUNTIME_SCAN_MAX_LOAF_ENTRIES, entry);
 };
 
 const pushComponentEvent = (entry: RuntimeScanComponentEvent): void => {
-  if (componentEvents.length >= RUNTIME_SCAN_MAX_COMPONENT_EVENTS) {
-    droppedComponentEvents += 1;
+  pushBoundedEntry(componentEvents, RUNTIME_SCAN_MAX_COMPONENT_EVENTS, entry);
+};
+
+const pushInteraction = (entry: RuntimeScanInteraction): void => {
+  pushBoundedEntry(interactions, RUNTIME_SCAN_MAX_INTERACTIONS, entry);
+};
+
+const captureSnapshot = (snapshot: RuntimeScanProbeSnapshot): void => {
+  const documentElement = document.documentElement;
+  if (documentElement === null) return;
+  try {
+    setSnapshotAttribute.call(
+      documentElement,
+      RUNTIME_SCAN_PROBE_SNAPSHOT_ATTRIBUTE_NAME_PLACEHOLDER,
+      JSON.stringify({
+        token: RUNTIME_SCAN_PROBE_SNAPSHOT_TOKEN_PLACEHOLDER,
+        snapshot,
+      }),
+    );
+    queueSnapshotAttributeRemoval(() => {
+      try {
+        removeSnapshotAttribute.call(
+          documentElement,
+          RUNTIME_SCAN_PROBE_SNAPSHOT_ATTRIBUTE_NAME_PLACEHOLDER,
+        );
+      } catch {}
+    });
+  } catch {
     return;
   }
-  componentEvents.push(entry);
 };
 
 const observe = (
@@ -158,10 +254,10 @@ const observe = (
 const mapScriptTiming = (
   scriptTiming: LongAnimationFrameScriptTiming,
 ): RuntimeScanScriptTiming => ({
-  invoker: scriptTiming.invoker ?? "",
-  invokerType: scriptTiming.invokerType ?? "",
+  invoker: limitString(scriptTiming.invoker ?? ""),
+  invokerType: limitString(scriptTiming.invokerType ?? ""),
   sourceUrl: sanitizeUrl(scriptTiming.sourceURL ?? ""),
-  sourceFunctionName: scriptTiming.sourceFunctionName ?? "",
+  sourceFunctionName: limitString(scriptTiming.sourceFunctionName ?? ""),
   sourceCharPosition: scriptTiming.sourceCharPosition ?? 0,
   executionStart: scriptTiming.executionStart ?? 0,
   durationMs: scriptTiming.duration ?? 0,
@@ -190,18 +286,17 @@ observe(
     const interactionEntry = performanceEntry as InteractionPerformanceEntry;
     const interactionId = interactionEntry.interactionId ?? 0;
     if (interactionId === 0) return;
-    if (interactions.length >= RUNTIME_SCAN_MAX_INTERACTIONS) {
-      droppedInteractions += 1;
-      return;
-    }
-    interactions.push({
-      name: interactionEntry.name,
+    pushInteraction({
+      name: limitString(interactionEntry.name),
       startTime: interactionEntry.startTime,
       durationMs: interactionEntry.duration,
       processingStart: interactionEntry.processingStart ?? interactionEntry.startTime,
       processingEnd: interactionEntry.processingEnd ?? interactionEntry.startTime,
       interactionId,
-      targetTag: interactionEntry.target?.tagName ?? null,
+      targetTag:
+        interactionEntry.target === null || interactionEntry.target === undefined
+          ? null
+          : limitString(interactionEntry.target.tagName),
     });
   },
   RUNTIME_SCAN_INTERACTION_DURATION_THRESHOLD_MS,
@@ -224,7 +319,7 @@ observe("measure", (performanceEntry) => {
   if (devtools.reactDoctorSource === "bippy") return;
   nativeReactTracks = true;
   pushComponentEvent({
-    name: measure.name.replace(/^\u200B/, ""),
+    name: limitString(measure.name.replace(/^\u200B/, "")),
     startTime: measure.startTime,
     durationMs: measure.duration,
     depth: 0,
@@ -241,14 +336,14 @@ const versionHasNativeTracks = (version: string): boolean => {
 
 const attachRenderer = (renderer: ReactRenderer): void => {
   reactDetected = true;
-  reactVersion = renderer.version;
+  reactVersion = typeof renderer.version === "string" ? limitString(renderer.version) : null;
   reactBuildType = detectReactBuildType(renderer);
 };
 
 const recordFallbackComponent = (fiber: Fiber, depth: number): void => {
   const { selfTime } = getTimings(fiber);
   if (selfTime < RUNTIME_SCAN_MIN_COMPONENT_DURATION_MS) return;
-  const name = getDisplayName(fiber.type) ?? "Anonymous";
+  const name = limitString(getDisplayName(fiber.type) ?? "Anonymous");
   const startTime = fiber.actualStartTime ?? performance.now() - selfTime;
   pushComponentEvent({
     name,
@@ -307,6 +402,13 @@ const snapshot = (): RuntimeScanProbeSnapshot => {
   for (const { observer, listener } of performanceObservers) {
     for (const entry of observer.takeRecords()) listener(entry);
   }
+  const budgetedLongAnimationFrames = takeLatestEntriesWithinByteBudget(
+    readBoundedEntries(longAnimationFrames),
+  );
+  const budgetedComponentEvents = takeLatestEntriesWithinByteBudget(
+    readBoundedEntries(componentEvents),
+  );
+  const budgetedInteractions = takeLatestEntriesWithinByteBudget(readBoundedEntries(interactions));
   return {
     timeOrigin: performance.timeOrigin,
     finalUrl: sanitizeUrl(window.location.href),
@@ -318,15 +420,15 @@ const snapshot = (): RuntimeScanProbeSnapshot => {
       bippyComponentTracks,
       loaf: loafSupported,
     },
-    longAnimationFrames: [...longAnimationFrames],
-    componentEvents: [...componentEvents],
-    interactions: [...interactions],
+    longAnimationFrames: budgetedLongAnimationFrames.entries,
+    componentEvents: budgetedComponentEvents.entries,
+    interactions: budgetedInteractions.entries,
     cumulativeLayoutShift,
     largestContentfulPaintMs,
-    droppedLongAnimationFrames,
+    droppedLongAnimationFrames: longAnimationFrames.dropped + budgetedLongAnimationFrames.dropped,
     droppedScriptTimings,
-    droppedComponentEvents,
-    droppedInteractions,
+    droppedComponentEvents: componentEvents.dropped + budgetedComponentEvents.dropped,
+    droppedInteractions: interactions.dropped + budgetedInteractions.dropped,
   };
 };
 
@@ -335,14 +437,20 @@ window.__REACT_DOCTOR_RUNTIME_SCAN__ = {
 };
 
 const captureNavigationSnapshot = (): void => {
-  if (window !== window.top) return;
-  const captureSnapshot = window.__REACT_DOCTOR_RUNTIME_SCAN_CAPTURE__;
-  if (captureSnapshot === undefined) return;
-  captureSnapshot(JSON.stringify(snapshot()));
+  if (window !== window.top || didCaptureCurrentPageState) return;
+  didCaptureCurrentPageState = true;
+  captureSnapshot(snapshot());
 };
 
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") captureNavigationSnapshot();
+  if (document.visibilityState === "hidden") {
+    captureNavigationSnapshot();
+  } else {
+    didCaptureCurrentPageState = false;
+  }
+});
+window.addEventListener("pageshow", () => {
+  didCaptureCurrentPageState = false;
 });
 window.addEventListener("beforeunload", captureNavigationSnapshot);
 window.addEventListener("pagehide", captureNavigationSnapshot);

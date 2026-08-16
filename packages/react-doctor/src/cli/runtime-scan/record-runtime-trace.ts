@@ -9,17 +9,28 @@ import { chromium } from "playwright-core";
 import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core";
 import { activeScanAbortRegistry } from "../utils/active-scan-abort-registry.js";
 import { CliInputError } from "../utils/cli-input-error.js";
+import { assertRuntimeScanCdpProfile } from "./assert-runtime-scan-cdp-profile.js";
 import { assertRuntimeScanInteractive } from "./assert-runtime-scan-interactive.js";
 import {
   RUNTIME_SCAN_BROWSER_HEIGHT_PX,
   RUNTIME_SCAN_BROWSER_WIDTH_PX,
-  RUNTIME_SCAN_PROBE_SNAPSHOT_BINDING_NAME,
+  RUNTIME_SCAN_MAX_DOCUMENT_SNAPSHOTS,
+  RUNTIME_SCAN_MAX_SNAPSHOT_PAYLOAD_BYTES,
+  RUNTIME_SCAN_MAX_TRACE_BYTES,
   RUNTIME_SCAN_PROBE_RELATIVE_PATH,
+  RUNTIME_SCAN_PROBE_SNAPSHOT_ATTRIBUTE_NAME_PLACEHOLDER,
+  RUNTIME_SCAN_PROBE_SNAPSHOT_BINDING_NAME_PLACEHOLDER,
+  RUNTIME_SCAN_PROBE_SNAPSHOT_TOKEN_PLACEHOLDER,
+  RUNTIME_SCAN_SNAPSHOT_TIMEOUT_MS,
   RUNTIME_SCAN_TRACE_CATEGORIES,
   RUNTIME_SCAN_TRACE_FILE_MODE,
   RUNTIME_SCAN_TRACING_COMPLETE_TIMEOUT_MS,
 } from "./constants.js";
 import { mergeRuntimeScanProbeSnapshots } from "./merge-runtime-scan-probe-snapshots.js";
+import {
+  isRuntimeScanProbeSnapshot,
+  parseRuntimeScanSnapshotPayload,
+} from "./parse-runtime-scan-snapshot-payload.js";
 import { resolveRuntimeTracePath } from "./resolve-runtime-trace-path.js";
 import { sanitizeRuntimeUrl } from "./sanitize-runtime-url.js";
 import type { RuntimeScanProbeSnapshot } from "./types.js";
@@ -51,13 +62,77 @@ const resolveProbePath = (): string => {
   return probePath;
 };
 
-const readProbeSnapshot = async (page: Page): Promise<RuntimeScanProbeSnapshot> => {
-  const snapshot = await page.evaluate(() => window.__REACT_DOCTOR_RUNTIME_SCAN__?.snapshot());
-  if (snapshot === undefined) {
-    throw new Error("The runtime scan browser probe did not initialize.");
+const buildSnapshotRelaySource = (attributeName: string, bindingName: string): string => `
+(() => {
+  let didRelaySnapshot = false;
+  const getSnapshotAttribute = Element.prototype.getAttribute;
+  const removeSnapshotAttribute = Element.prototype.removeAttribute;
+  const relaySnapshot = () => {
+    const documentElement = document.documentElement;
+    if (documentElement === null) return;
+    const payload = getSnapshotAttribute.call(documentElement, ${JSON.stringify(attributeName)});
+    removeSnapshotAttribute.call(documentElement, ${JSON.stringify(attributeName)});
+    if (
+      didRelaySnapshot ||
+      typeof payload !== "string" ||
+      payload.length > ${RUNTIME_SCAN_MAX_SNAPSHOT_PAYLOAD_BYTES}
+    ) return;
+    if (new TextEncoder().encode(payload).byteLength > ${
+      RUNTIME_SCAN_MAX_SNAPSHOT_PAYLOAD_BYTES
+    }) return;
+    const captureBinding = Reflect.get(globalThis, ${JSON.stringify(bindingName)});
+    if (typeof captureBinding !== "function") return;
+    didRelaySnapshot = true;
+    captureBinding(payload);
+  };
+  new MutationObserver(relaySnapshot).observe(document, {
+    attributes: true,
+    subtree: true,
+    attributeFilter: [${JSON.stringify(attributeName)}],
+  });
+})();
+`;
+
+const readProbeSnapshot = async (page: Page): Promise<RuntimeScanProbeSnapshot | null> => {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const snapshotTimeout = new Promise<null>((resolve) => {
+    timeoutHandle = setTimeout(() => resolve(null), RUNTIME_SCAN_SNAPSHOT_TIMEOUT_MS);
+  });
+  try {
+    const snapshot = await Promise.race([
+      page.evaluate(() => window.__REACT_DOCTOR_RUNTIME_SCAN__?.snapshot()).catch(() => null),
+      snapshotTimeout,
+    ]);
+    return isRuntimeScanProbeSnapshot(snapshot) ? snapshot : null;
+  } finally {
+    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
   }
-  return snapshot;
 };
+
+const createFallbackSnapshot = (
+  timeOrigin: number,
+  finalUrl: string,
+): RuntimeScanProbeSnapshot => ({
+  timeOrigin,
+  finalUrl,
+  support: {
+    reactDetected: false,
+    reactVersion: null,
+    reactBuildType: null,
+    nativeReactTracks: false,
+    bippyComponentTracks: false,
+    loaf: false,
+  },
+  longAnimationFrames: [],
+  componentEvents: [],
+  interactions: [],
+  cumulativeLayoutShift: 0,
+  largestContentfulPaintMs: null,
+  droppedLongAnimationFrames: 0,
+  droppedScriptTimings: 0,
+  droppedComponentEvents: 0,
+  droppedInteractions: 0,
+});
 
 const startDevtoolsTrace = async (cdpSession: CDPSession): Promise<void> => {
   try {
@@ -105,10 +180,18 @@ const readDevtoolsTrace = async function* (
   stream: string,
 ): AsyncGenerator<Buffer> {
   let isComplete = false;
+  let traceBytes = 0;
   try {
     while (!isComplete) {
       const result = await cdpSession.send("IO.read", { handle: stream });
-      yield Buffer.from(result.data, result.base64Encoded === true ? "base64" : "utf8");
+      const chunk = Buffer.from(result.data, result.base64Encoded === true ? "base64" : "utf8");
+      traceBytes += chunk.byteLength;
+      if (traceBytes > RUNTIME_SCAN_MAX_TRACE_BYTES) {
+        throw new CliInputError(
+          "The DevTools trace exceeded the 512 MB safety limit. Record a shorter, focused interaction and retry.",
+        );
+      }
+      yield chunk;
       isComplete = result.eof === true;
     }
   } finally {
@@ -123,21 +206,20 @@ const writeDevtoolsTrace = async (
 ): Promise<void> => {
   await fsp.mkdir(path.dirname(tracePath), { recursive: true });
   const temporaryTracePath = `${tracePath}.${randomUUID()}.tmp`;
-  const fileHandle = await fsp.open(temporaryTracePath, "wx", RUNTIME_SCAN_TRACE_FILE_MODE);
   let didMoveTrace = false;
   try {
-    await fileHandle.chmod(RUNTIME_SCAN_TRACE_FILE_MODE);
     await pipeline(
       readDevtoolsTrace(cdpSession, stream),
       createGzip(),
-      fileHandle.createWriteStream({ autoClose: false }),
+      fs.createWriteStream(temporaryTracePath, {
+        flags: "wx",
+        mode: RUNTIME_SCAN_TRACE_FILE_MODE,
+        flush: true,
+      }),
     );
-    await fileHandle.sync();
-    await fileHandle.close();
     await fsp.rename(temporaryTracePath, tracePath);
     didMoveTrace = true;
   } finally {
-    await fileHandle.close().catch(() => {});
     if (!didMoveTrace) await fsp.rm(temporaryTracePath, { force: true }).catch(() => {});
   }
 };
@@ -182,27 +264,50 @@ const navigateToRuntimeUrl = async (page: Page, url: string): Promise<void> => {
 export const recordRuntimeTrace = async (
   input: RecordRuntimeTraceInput,
 ): Promise<RecordRuntimeTraceResult> => {
-  sanitizeRuntimeUrl(input.url);
+  const sanitizedRequestedUrl = sanitizeRuntimeUrl(input.url);
   assertRuntimeScanInteractive();
   const tracePath = resolveRuntimeTracePath(input.traceOut, new Date());
-  const probeSource = await fsp.readFile(resolveProbePath(), "utf8");
+  const snapshotIdentifier = randomUUID().replaceAll("-", "");
+  const snapshotBindingName = `${RUNTIME_SCAN_PROBE_SNAPSHOT_BINDING_NAME_PLACEHOLDER}_${snapshotIdentifier}`;
+  const snapshotAttributeName = `${RUNTIME_SCAN_PROBE_SNAPSHOT_ATTRIBUTE_NAME_PLACEHOLDER}-${snapshotIdentifier}`;
+  const snapshotRelayWorldName = `react-doctor-runtime-scan-${snapshotIdentifier}`;
+  const snapshotToken = randomUUID();
+  const probeSource = (await fsp.readFile(resolveProbePath(), "utf8"))
+    .replaceAll(RUNTIME_SCAN_PROBE_SNAPSHOT_ATTRIBUTE_NAME_PLACEHOLDER, snapshotAttributeName)
+    .replaceAll(RUNTIME_SCAN_PROBE_SNAPSHOT_TOKEN_PLACEHOLDER, snapshotToken);
+  const snapshotRelaySource = buildSnapshotRelaySource(snapshotAttributeName, snapshotBindingName);
   const { browser, connection } = await connectToBrowser(input.cdpUrl);
-  const navigationSnapshots: RuntimeScanProbeSnapshot[] = [];
+  const navigationSnapshotsByTimeOrigin = new Map<number, RuntimeScanProbeSnapshot>();
   let context: BrowserContext | undefined;
   let page: Page | undefined;
-  let cdpSession: CDPSession | undefined;
+  let pageCdpSession: CDPSession | undefined;
+  let traceCdpSession: CDPSession | undefined;
   let didCreateContext = false;
   let isTracing = false;
   let traceStreamPromise: Promise<string> | undefined;
   let cleanupPromise: Promise<void> | undefined;
+  let preexistingCdpPages: Page[] = [];
 
+  const storeNavigationSnapshot = (snapshot: RuntimeScanProbeSnapshot): void => {
+    const didReplaceSnapshot = navigationSnapshotsByTimeOrigin.delete(snapshot.timeOrigin);
+    if (
+      !didReplaceSnapshot &&
+      navigationSnapshotsByTimeOrigin.size >= RUNTIME_SCAN_MAX_DOCUMENT_SNAPSHOTS
+    ) {
+      const oldestTimeOrigin = navigationSnapshotsByTimeOrigin.keys().next().value;
+      if (oldestTimeOrigin !== undefined) {
+        navigationSnapshotsByTimeOrigin.delete(oldestTimeOrigin);
+      }
+    }
+    navigationSnapshotsByTimeOrigin.set(snapshot.timeOrigin, snapshot);
+  };
   const stopTracing = async (): Promise<void> => {
-    if (!isTracing || cdpSession === undefined) return;
+    if (!isTracing || traceCdpSession === undefined) return;
     try {
-      traceStreamPromise ??= endDevtoolsTrace(cdpSession);
+      traceStreamPromise ??= endDevtoolsTrace(traceCdpSession);
       const traceStream = await traceStreamPromise;
       isTracing = false;
-      await cdpSession.send("IO.close", { handle: traceStream });
+      await traceCdpSession.send("IO.close", { handle: traceStream });
     } catch {}
   };
   const closeBrowserResources = async (): Promise<void> => {
@@ -220,6 +325,8 @@ export const recordRuntimeTrace = async (
 
   try {
     if (connection === "cdp") {
+      preexistingCdpPages = browser.contexts().flatMap((browserContext) => browserContext.pages());
+      assertRuntimeScanCdpProfile(preexistingCdpPages.map((browserPage) => browserPage.url()));
       context = browser.contexts()[0];
     }
     if (context === undefined) {
@@ -232,44 +339,57 @@ export const recordRuntimeTrace = async (
       didCreateContext = true;
     }
     page = await context.newPage();
+    if (connection === "cdp") {
+      await Promise.all(
+        preexistingCdpPages.map(async (browserPage) => {
+          if (!browserPage.isClosed()) await browserPage.close();
+        }),
+      );
+    }
     await page.addInitScript({ content: probeSource });
-    cdpSession = await context.newCDPSession(page);
-    cdpSession.on("Runtime.bindingCalled", (event) => {
-      if (event.name !== RUNTIME_SCAN_PROBE_SNAPSHOT_BINDING_NAME) return;
-      try {
-        const snapshot: RuntimeScanProbeSnapshot = JSON.parse(event.payload);
-        if (
-          typeof snapshot.timeOrigin !== "number" ||
-          !Array.isArray(snapshot.longAnimationFrames) ||
-          !Array.isArray(snapshot.componentEvents) ||
-          !Array.isArray(snapshot.interactions)
-        ) {
-          return;
-        }
-        navigationSnapshots.push(snapshot);
-      } catch {}
+    pageCdpSession = await context.newCDPSession(page);
+    traceCdpSession = await browser.newBrowserCDPSession();
+    await pageCdpSession.send("Page.enable");
+    pageCdpSession.on("Runtime.bindingCalled", (event) => {
+      if (event.name !== snapshotBindingName) return;
+      const snapshot = parseRuntimeScanSnapshotPayload(event.payload, snapshotToken);
+      if (snapshot !== null) storeNavigationSnapshot(snapshot);
     });
-    await cdpSession.send("Runtime.enable");
-    await cdpSession.send("Runtime.addBinding", {
-      name: RUNTIME_SCAN_PROBE_SNAPSHOT_BINDING_NAME,
+    await pageCdpSession.send("Runtime.enable");
+    await pageCdpSession.send("Runtime.addBinding", {
+      name: snapshotBindingName,
+      executionContextName: snapshotRelayWorldName,
     });
-    await startDevtoolsTrace(cdpSession);
+    await pageCdpSession.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: snapshotRelaySource,
+      worldName: snapshotRelayWorldName,
+    });
+    await startDevtoolsTrace(traceCdpSession);
     isTracing = true;
     const capturedAt = new Date().toISOString();
     const recordingStartedAt = performance.now();
     await navigateToRuntimeUrl(page, input.url);
     await waitForRuntimeScanStop();
     const finalSnapshot = await readProbeSnapshot(page);
-    traceStreamPromise = endDevtoolsTrace(cdpSession);
+    if (finalSnapshot !== null) storeNavigationSnapshot(finalSnapshot);
+    traceStreamPromise = endDevtoolsTrace(traceCdpSession);
     const traceStream = await traceStreamPromise;
     const durationMs = performance.now() - recordingStartedAt;
     isTracing = false;
-    await writeDevtoolsTrace(cdpSession, traceStream, tracePath);
+    await writeDevtoolsTrace(traceCdpSession, traceStream, tracePath);
+    const capturedSnapshots = [...navigationSnapshotsByTimeOrigin.values()];
+    let fallbackFinalUrl = sanitizedRequestedUrl;
+    try {
+      if (!page.isClosed()) fallbackFinalUrl = sanitizeRuntimeUrl(page.url());
+    } catch {}
     return {
       tracePath,
       capturedAt,
       durationMs,
-      snapshot: mergeRuntimeScanProbeSnapshots([...navigationSnapshots, finalSnapshot]),
+      snapshot:
+        capturedSnapshots.length > 0
+          ? mergeRuntimeScanProbeSnapshots(capturedSnapshots)
+          : createFallbackSnapshot(Date.parse(capturedAt), fallbackFinalUrl),
       connection,
     };
   } finally {

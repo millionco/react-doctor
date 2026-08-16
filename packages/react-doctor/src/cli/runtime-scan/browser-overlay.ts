@@ -1,4 +1,4 @@
-import { getDisplayName, getFiberId, getNearestHostFibers, isCompositeFiber } from "bippy";
+import { getDisplayName, getFiberId, isCompositeFiber, isHostFiber } from "bippy";
 import type { Fiber } from "bippy";
 import {
   RUNTIME_SCAN_OVERLAY_COLOR_RGB,
@@ -10,6 +10,7 @@ import {
   RUNTIME_SCAN_OVERLAY_LINE_WIDTH_PX,
   RUNTIME_SCAN_OVERLAY_MAX_ACTIVE_OUTLINES,
   RUNTIME_SCAN_OVERLAY_MAX_DEVICE_PIXEL_RATIO,
+  RUNTIME_SCAN_OVERLAY_MAX_HOST_ELEMENTS,
   RUNTIME_SCAN_OVERLAY_MAX_LABEL_LENGTH,
   RUNTIME_SCAN_OVERLAY_VISIBLE_FRAME_COUNT,
   RUNTIME_SCAN_OVERLAY_Z_INDEX,
@@ -50,6 +51,27 @@ let flushAnimationFrameId: number | null = null;
 let drawAnimationFrameId: number | null = null;
 let previousScrollX = window.scrollX;
 let previousScrollY = window.scrollY;
+
+const getNearestHostElements = (fiber: Fiber): ReadonlyArray<Element> => {
+  const elements: Element[] = [];
+  const fibersToVisit: Fiber[] = [];
+  if (isHostFiber(fiber)) {
+    fibersToVisit.push(fiber);
+  } else if (fiber.child !== null) {
+    fibersToVisit.push(fiber.child);
+  }
+  while (fibersToVisit.length > 0 && elements.length < RUNTIME_SCAN_OVERLAY_MAX_HOST_ELEMENTS) {
+    const currentFiber = fibersToVisit.pop();
+    if (currentFiber === undefined) break;
+    if (isHostFiber(currentFiber)) {
+      if (currentFiber.stateNode instanceof Element) elements.push(currentFiber.stateNode);
+    } else if (currentFiber.child !== null) {
+      fibersToVisit.push(currentFiber.child);
+    }
+    if (currentFiber.sibling !== null) fibersToVisit.push(currentFiber.sibling);
+  }
+  return elements;
+};
 
 const mergeRects = (rects: ReadonlyArray<DOMRect>): DOMRect => {
   const firstRect = rects[0];
@@ -245,19 +267,19 @@ const flushPendingOutlines = (): void => {
 
 export const recordRuntimeScanOverlayRender = (fiber: Fiber): void => {
   if (!isCompositeFiber(fiber)) return;
-  const name = getDisplayName(fiber.type);
-  if (name === null) return;
-  const elements = getNearestHostFibers(fiber)
-    .map((hostFiber) => hostFiber.stateNode)
-    .filter((stateNode) => stateNode instanceof Element);
-  if (elements.length === 0) return;
   const id = getFiberId(fiber);
   const existing = pendingOutlines.get(id);
-  if (existing === undefined) {
-    pendingOutlines.set(id, { id, name, elements, count: 1 });
-  } else {
+  if (existing !== undefined) {
     existing.count += 1;
+    return;
   }
+  if (pendingOutlines.size >= RUNTIME_SCAN_OVERLAY_MAX_ACTIVE_OUTLINES) return;
+  const displayName = getDisplayName(fiber.type);
+  if (displayName === null) return;
+  const name = displayName.slice(0, RUNTIME_SCAN_OVERLAY_MAX_LABEL_LENGTH);
+  const elements = getNearestHostElements(fiber);
+  if (elements.length === 0) return;
+  pendingOutlines.set(id, { id, name, elements, count: 1 });
   if (flushAnimationFrameId === null) {
     flushAnimationFrameId = requestAnimationFrame(flushPendingOutlines);
   }

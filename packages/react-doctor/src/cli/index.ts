@@ -127,24 +127,25 @@ ${formatExampleLines([
   ],
   [
     "react-doctor scan https://app.example.com --cdp http://127.0.0.1:9222",
-    "reuse a debug-enabled Chrome session",
+    "reuse a dedicated debug-enabled Chrome profile",
   ],
 ])}
 
 ${highlighter.dim("How recording works:")}
   1. Start the app. Prefer a production build for representative timings.
   2. Run this command. React Doctor opens an isolated Chrome profile.
-  3. Reproduce one slow interaction. Purple labels show which components render.
+  3. Reproduce one slow interaction within five minutes. Purple labels show component renders.
   4. Return here and press Enter. React Doctor prints the report and trace path.
 
 ${highlighter.dim("Authenticated apps:")}
   The default temporary profile starts signed out. Start a separate Chrome profile with remote
-  debugging, sign in there, then pass ${highlighter.info("--cdp <url>")}.
-  React Doctor closes only the tab it creates. The attached browser stays open.
+  debugging, sign in there, close its non-blank tabs, then pass ${highlighter.info("--cdp <url>")}.
+  React Doctor closes blank startup tabs and its scan tab. The attached browser stays open.
 
 ${highlighter.dim("Output and privacy:")}
   ${highlighter.info("text")} summarizes the evidence for people. ${highlighter.info("json")} returns one report; ${highlighter.info("jsonl")} returns one record per line.
-  The compressed ${highlighter.info(".json.gz")} DevTools trace stays local. It can contain page URLs, source paths, and profiling data.
+  Chrome tracing is browser-wide, so ${highlighter.info("--cdp")} rejects profiles with open pages. The compressed
+  ${highlighter.info(".json.gz")} trace stays local and can contain page URLs, source paths, and profiling data.
 `;
 
 const MAX_DURATION_OPTION_DESCRIPTION =

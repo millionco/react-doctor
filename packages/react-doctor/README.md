@@ -63,21 +63,22 @@ Record a Chrome DevTools performance trace while you interact with a running Rea
 npx react-doctor@latest scan http://localhost:3000
 ```
 
-React Doctor opens system Chrome in a temporary isolated profile, records until you press Enter,
-and flashes purple outlines with component names as React renders. It then returns a readable
-summary plus the path to a compressed DevTools trace. Use `--format json` or `--format jsonl` for
-coding agents.
+React Doctor opens system Chrome in a temporary isolated profile, records until you press Enter
+(up to five minutes), and flashes purple outlines with component names as React renders. It then
+returns a readable summary plus the path to a compressed DevTools trace. Use `--format json` or
+`--format jsonl` for coding agents.
 
-An already-open normal browser is left alone. To reuse an authenticated browser, start Chrome with
-remote debugging and pass its endpoint:
+An already-open normal browser is left alone. To reuse an authenticated session, start a dedicated
+Chrome profile with remote debugging, sign in, close its non-blank tabs, and pass its endpoint:
 
 ```bash
 npx react-doctor@latest scan https://app.example.com --cdp http://127.0.0.1:9222
 ```
 
-React Doctor creates and closes only its own tab when attached over CDP. The trace is stored
-locally and is never uploaded, but it can contain page URLs, source paths, and React profiling
-details. Treat it as sensitive application data.
+Chrome performance tracing is browser-wide, so React Doctor rejects attached profiles with open
+pages. It closes blank startup tabs before tracing and closes its scan tab afterward; the attached
+browser stays open. The trace is stored locally and is never uploaded, but it can contain page
+URLs, source paths, and React profiling details. Treat it as sensitive application data.
 
 ## Telemetry
 

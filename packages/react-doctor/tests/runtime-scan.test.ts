@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
+import { assertRuntimeScanCdpProfile } from "../src/cli/runtime-scan/assert-runtime-scan-cdp-profile.js";
 import { buildRuntimeScanReport } from "../src/cli/runtime-scan/build-runtime-scan-report.js";
-import { RUNTIME_SCAN_MAX_LOAF_ENTRIES } from "../src/cli/runtime-scan/constants.js";
+import {
+  RUNTIME_SCAN_MAX_COMPONENT_EVENTS,
+  RUNTIME_SCAN_MAX_LOAF_ENTRIES,
+  RUNTIME_SCAN_MAX_SNAPSHOT_PAYLOAD_BYTES,
+  RUNTIME_SCAN_MAX_STRING_LENGTH,
+} from "../src/cli/runtime-scan/constants.js";
 import { formatRuntimeScanReport } from "../src/cli/runtime-scan/format-runtime-scan-report.js";
 import { mergeRuntimeScanProbeSnapshots } from "../src/cli/runtime-scan/merge-runtime-scan-probe-snapshots.js";
+import {
+  isRuntimeScanProbeSnapshot,
+  parseRuntimeScanSnapshotPayload,
+} from "../src/cli/runtime-scan/parse-runtime-scan-snapshot-payload.js";
 import { resolveRuntimeScanFormat } from "../src/cli/runtime-scan/resolve-runtime-scan-format.js";
 import { resolveRuntimeTracePath } from "../src/cli/runtime-scan/resolve-runtime-trace-path.js";
 import { sanitizeRuntimeUrl } from "../src/cli/runtime-scan/sanitize-runtime-url.js";
@@ -196,6 +206,23 @@ describe("runtime scan report", () => {
     expect(report.scriptHotspots[0].frameCount).toBe(1);
   });
 
+  it("counts frames separately when normalized timestamps collide", () => {
+    const mergedSnapshot = mergeRuntimeScanProbeSnapshots([
+      snapshot,
+      {
+        ...snapshot,
+        timeOrigin: 1_100,
+        longAnimationFrames: [
+          {
+            ...snapshot.longAnimationFrames[0],
+            startTime: 0,
+          },
+        ],
+      },
+    ]);
+    expect(buildReport(mergedSnapshot).scriptHotspots[0].frameCount).toBe(2);
+  });
+
   it("merges probe evidence across document navigations", () => {
     const mergedSnapshot = mergeRuntimeScanProbeSnapshots([
       snapshot,
@@ -301,6 +328,22 @@ describe("runtime scan report", () => {
     expect(jsonlRecords.some((record) => record.kind === "long-animation-frame")).toBe(true);
     expect(jsonlRecords.some((record) => record.kind === "interaction")).toBe(true);
   });
+
+  it("removes terminal control characters from text output", () => {
+    const report = buildReport({
+      ...snapshot,
+      componentEvents: [
+        {
+          ...snapshot.componentEvents[0],
+          name: "Save\u001B]52;c;clipboard\u0007Button",
+        },
+      ],
+    });
+    const textReport = formatRuntimeScanReport(report, "text");
+    expect(textReport).not.toContain("\u001B");
+    expect(textReport).not.toContain("\u0007");
+    expect(formatRuntimeScanReport(report, "json")).toContain("\\u001b");
+  });
 });
 
 describe("runtime scan input", () => {
@@ -309,6 +352,13 @@ describe("runtime scan input", () => {
     expect(resolveRuntimeScanFormat("jsonl")).toBe("jsonl");
     expect(() => resolveRuntimeScanFormat("xml")).toThrow("--format must be one of");
     expect(() => sanitizeRuntimeUrl("file:///tmp/index.html")).toThrow("http(s)");
+  });
+
+  it("requires a dedicated blank CDP profile", () => {
+    expect(() => assertRuntimeScanCdpProfile(["about:blank", "chrome://newtab/"])).not.toThrow();
+    expect(() =>
+      assertRuntimeScanCdpProfile(["about:blank", "https://example.com/private"]),
+    ).toThrow("includes every open tab");
   });
 
   it("creates unpredictable default trace paths", () => {
@@ -329,5 +379,80 @@ describe("runtime scan input", () => {
         "--callback=https://example.internal/private",
       ]),
     ).toBe("scan <url> --cdp <url> --callback=<url>");
+  });
+
+  it("rejects malformed and oversized browser snapshot payloads", () => {
+    const token = "expected-token";
+    const validPayloadSnapshot = {
+      ...snapshot,
+      finalUrl: "https://example.com/dashboard",
+    };
+    expect(
+      parseRuntimeScanSnapshotPayload(
+        JSON.stringify({ token, snapshot: validPayloadSnapshot }),
+        token,
+      ),
+    ).toEqual(validPayloadSnapshot);
+    expect(
+      parseRuntimeScanSnapshotPayload(
+        JSON.stringify({
+          token,
+          snapshot: {
+            ...validPayloadSnapshot,
+            droppedInteractions: -1,
+          },
+        }),
+        token,
+      ),
+    ).toBeNull();
+    expect(
+      parseRuntimeScanSnapshotPayload(
+        JSON.stringify({ token: "wrong-token", snapshot: validPayloadSnapshot }),
+        token,
+      ),
+    ).toBeNull();
+    expect(
+      parseRuntimeScanSnapshotPayload(
+        "x".repeat(RUNTIME_SCAN_MAX_SNAPSHOT_PAYLOAD_BYTES + 1),
+        token,
+      ),
+    ).toBeNull();
+    expect(
+      isRuntimeScanProbeSnapshot({
+        ...validPayloadSnapshot,
+        timeOrigin: Number.POSITIVE_INFINITY,
+      }),
+    ).toBe(false);
+    expect(
+      isRuntimeScanProbeSnapshot({
+        ...validPayloadSnapshot,
+        longAnimationFrames: [
+          {
+            ...snapshot.longAnimationFrames[0],
+            scripts: [
+              {
+                ...snapshot.longAnimationFrames[0].scripts[0],
+                sourceCharPosition: -1,
+              },
+            ],
+          },
+        ],
+      }),
+    ).toBe(true);
+    expect(
+      isRuntimeScanProbeSnapshot({
+        ...validPayloadSnapshot,
+        componentEvents: Array.from(
+          { length: RUNTIME_SCAN_MAX_COMPONENT_EVENTS },
+          (_unusedValue, index) => ({
+            name: `${index}${"x".repeat(RUNTIME_SCAN_MAX_STRING_LENGTH - String(index).length)}`,
+            startTime: index,
+            durationMs: 1,
+            depth: 0,
+            source: "native",
+          }),
+        ),
+      }),
+    ).toBe(false);
   });
 });

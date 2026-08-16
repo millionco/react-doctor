@@ -75,13 +75,13 @@ const snapshot: RuntimeScanProbeSnapshot = {
   droppedInteractions: 0,
 };
 
-const buildReport = () =>
+const buildReport = (probeSnapshot: RuntimeScanProbeSnapshot = snapshot) =>
   buildRuntimeScanReport({
     requestedUrl: "https://user:password@example.com/dashboard?token=secret#private",
     tracePath: "/tmp/runtime.json.gz",
     capturedAt: "2026-08-15T00:00:00.000Z",
     durationMs: 5_000,
-    snapshot,
+    snapshot: probeSnapshot,
     connection: "isolated",
   });
 
@@ -108,6 +108,53 @@ describe("runtime scan report", () => {
     expect(report.finalUrl).toBe("https://example.com/dashboard");
     expect(JSON.stringify(report)).not.toContain("secret");
     expect(JSON.stringify(report)).not.toContain("password");
+  });
+
+  it("groups browser events that belong to one interaction", () => {
+    const report = buildReport({
+      ...snapshot,
+      interactions: [
+        {
+          name: "pointerdown",
+          startTime: 90,
+          durationMs: 130,
+          processingStart: 100,
+          processingEnd: 110,
+          interactionId: 1,
+          targetTag: "BUTTON",
+        },
+        {
+          name: "pointerup",
+          startTime: 91,
+          durationMs: 130,
+          processingStart: 111,
+          processingEnd: 120,
+          interactionId: 1,
+          targetTag: "BUTTON",
+        },
+        {
+          name: "click",
+          startTime: 91,
+          durationMs: 130,
+          processingStart: 121,
+          processingEnd: 180,
+          interactionId: 1,
+          targetTag: "BUTTON",
+        },
+      ],
+    });
+    expect(report.summary.interactionCount).toBe(1);
+    expect(report.interactions).toEqual([
+      {
+        name: "click",
+        startTime: 90,
+        durationMs: 130,
+        processingStart: 100,
+        processingEnd: 180,
+        interactionId: 1,
+        targetTag: "BUTTON",
+      },
+    ]);
   });
 
   it("formats text, JSON, and JSONL outputs", () => {

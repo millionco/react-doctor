@@ -64,8 +64,9 @@ npx react-doctor@latest scan http://localhost:3000
 ```
 
 React Doctor opens system Chrome in a temporary isolated profile, records until you press Enter,
-and returns a readable summary plus the path to a compressed DevTools trace. Use
-`--format json` or `--format jsonl` for coding agents.
+and flashes purple outlines with component names as React renders. It then returns a readable
+summary plus the path to a compressed DevTools trace. Use `--format json` or `--format jsonl` for
+coding agents.
 
 An already-open normal browser is left alone. To reuse an authenticated browser, start Chrome with
 remote debugging and pass its endpoint:

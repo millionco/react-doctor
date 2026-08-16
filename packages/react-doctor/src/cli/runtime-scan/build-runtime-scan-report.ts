@@ -6,6 +6,7 @@ import {
 import { sanitizeRuntimeUrl } from "./sanitize-runtime-url.js";
 import type {
   RuntimeScanComponentHotspot,
+  RuntimeScanInteraction,
   RuntimeScanProbeSnapshot,
   RuntimeScanReport,
   RuntimeScanScriptHotspot,
@@ -37,6 +38,36 @@ interface MutableComponentHotspot {
   totalDurationMs: number;
   maxDurationMs: number;
 }
+
+interface MutableRuntimeScanInteraction {
+  name: string;
+  startTime: number;
+  durationMs: number;
+  processingStart: number;
+  processingEnd: number;
+  interactionId: number;
+  targetTag: string | null;
+}
+
+const buildInteractions = (
+  snapshot: RuntimeScanProbeSnapshot,
+): ReadonlyArray<RuntimeScanInteraction> => {
+  const interactionsById = new Map<number, MutableRuntimeScanInteraction>();
+  for (const interaction of snapshot.interactions) {
+    const existing = interactionsById.get(interaction.interactionId);
+    if (existing === undefined) {
+      interactionsById.set(interaction.interactionId, { ...interaction });
+      continue;
+    }
+    existing.name = interaction.name;
+    existing.startTime = Math.min(existing.startTime, interaction.startTime);
+    existing.durationMs = Math.max(existing.durationMs, interaction.durationMs);
+    existing.processingStart = Math.min(existing.processingStart, interaction.processingStart);
+    existing.processingEnd = Math.max(existing.processingEnd, interaction.processingEnd);
+    existing.targetTag ??= interaction.targetTag;
+  }
+  return [...interactionsById.values()].sort((left, right) => left.startTime - right.startTime);
+};
 
 const buildScriptHotspots = (
   snapshot: RuntimeScanProbeSnapshot,
@@ -137,9 +168,8 @@ export const buildRuntimeScanReport = (input: BuildRuntimeScanReportInput): Runt
   const longAnimationFrames = [...input.snapshot.longAnimationFrames].sort(
     (left, right) => right.durationMs - left.durationMs,
   );
-  const interactionDurations = input.snapshot.interactions.map(
-    (interaction) => interaction.durationMs,
-  );
+  const interactions = buildInteractions(input.snapshot);
+  const interactionDurations = interactions.map((interaction) => interaction.durationMs);
   return {
     schemaVersion: RUNTIME_SCAN_SCHEMA_VERSION,
     kind: "react-doctor-runtime-scan",
@@ -157,7 +187,7 @@ export const buildRuntimeScanReport = (input: BuildRuntimeScanReportInput): Runt
         (total, longAnimationFrame) => total + longAnimationFrame.blockingDurationMs,
         0,
       ),
-      interactionCount: input.snapshot.interactions.length,
+      interactionCount: interactions.length,
       worstInteractionDurationMs:
         interactionDurations.length === 0 ? 0 : Math.max(...interactionDurations),
       cumulativeLayoutShift: input.snapshot.cumulativeLayoutShift,
@@ -166,7 +196,7 @@ export const buildRuntimeScanReport = (input: BuildRuntimeScanReportInput): Runt
     scriptHotspots: buildScriptHotspots(input.snapshot),
     componentHotspots: buildComponentHotspots(input.snapshot),
     longAnimationFrames,
-    interactions: input.snapshot.interactions,
+    interactions,
     warnings: buildWarnings(input.snapshot),
   };
 };

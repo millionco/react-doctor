@@ -14,6 +14,19 @@ export const RUNTIME_SCAN_TRACE_FILE_MODE = 0o600;
 export const RUNTIME_SCAN_TEMP_DIRECTORY_NAME = "react-doctor-traces";
 export const RUNTIME_SCAN_TRACE_FILE_EXTENSION = ".json.gz";
 export const RUNTIME_SCAN_PROBE_RELATIVE_PATH = "runtime-scan/browser-probe.iife.js";
+export const RUNTIME_SCAN_OVERLAY_COLOR_RGB = "115,97,230";
+export const RUNTIME_SCAN_OVERLAY_FONT =
+  "Menlo,Consolas,Monaco,Liberation Mono,Lucida Console,monospace";
+export const RUNTIME_SCAN_OVERLAY_VISIBLE_FRAME_COUNT = 45;
+export const RUNTIME_SCAN_OVERLAY_MAX_DEVICE_PIXEL_RATIO = 2;
+export const RUNTIME_SCAN_OVERLAY_MAX_ACTIVE_OUTLINES = 200;
+export const RUNTIME_SCAN_OVERLAY_MAX_LABEL_LENGTH = 40;
+export const RUNTIME_SCAN_OVERLAY_FONT_SIZE_PX = 11;
+export const RUNTIME_SCAN_OVERLAY_LABEL_PADDING_PX = 2;
+export const RUNTIME_SCAN_OVERLAY_LABEL_GAP_PX = 4;
+export const RUNTIME_SCAN_OVERLAY_LINE_WIDTH_PX = 1;
+export const RUNTIME_SCAN_OVERLAY_FILL_ALPHA = 0.1;
+export const RUNTIME_SCAN_OVERLAY_Z_INDEX = 2_147_483_646;
 
 export const RUNTIME_SCAN_TRACE_CATEGORIES = [
   "-*",

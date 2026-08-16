@@ -24,6 +24,7 @@ import type {
   RuntimeScanProbeSnapshot,
   RuntimeScanScriptTiming,
 } from "./types.js";
+import { recordRuntimeScanOverlayRender } from "./browser-overlay.js";
 
 interface LongAnimationFrameScriptTiming {
   readonly invoker?: string;
@@ -252,11 +253,17 @@ onRendererInject(attachRenderer);
 instrument({
   name: "react-doctor-runtime-scan",
   onCommitFiberRoot: (_rendererId, root) => {
-    if (reactVersion !== null && versionHasNativeTracks(reactVersion)) return;
+    const shouldRecordFallbackTracks =
+      reactVersion === null || !versionHasNativeTracks(reactVersion);
     let componentCount = 0;
     traverseRenderedFibers(root, (fiber) => {
       if (!isCompositeFiber(fiber)) return;
       if (componentCount >= RUNTIME_SCAN_MAX_COMPONENTS_PER_COMMIT) return;
+      recordRuntimeScanOverlayRender(fiber);
+      if (!shouldRecordFallbackTracks) {
+        componentCount += 1;
+        return;
+      }
       let depth = 0;
       let parentFiber = fiber.return;
       while (parentFiber !== null) {

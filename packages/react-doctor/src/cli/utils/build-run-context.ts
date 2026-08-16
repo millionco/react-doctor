@@ -13,6 +13,7 @@ import { isGitHookEnvironment } from "./is-git-hook-environment.js";
 import { isNonInteractiveEnvironment } from "./is-non-interactive-environment.js";
 import { isJsonModeActive } from "./json-mode.js";
 import { getRunId } from "./run-id.js";
+import { scrubRunArguments } from "./scrub-run-arguments.js";
 import { VERSION } from "./version.js";
 
 export interface RunContext {
@@ -54,7 +55,7 @@ export interface RunContext {
   lintBatchOrdering: "cost" | "arrival";
 }
 
-const ROOT_SUBCOMMANDS = new Set(["design", "install", "setup"]);
+const ROOT_SUBCOMMANDS = new Set(["design", "install", "scan", "setup"]);
 
 // `npm_config_user_agent` looks like "pnpm/9.1.0 npm/? node/v22.0.0 ...";
 // the leading token names the package manager that spawned the process.
@@ -104,7 +105,7 @@ export const buildRunContext = (): RunContext => {
     // Scrub home-directory paths so the OS username never rides along in the
     // argument string or working directory (e.g. a directory positional, or
     // `--changed-files-from /Users/<name>/…`).
-    argv: scrubSensitivePaths(userArguments.join(" ")),
+    argv: scrubRunArguments(userArguments),
     cwd: scrubSensitivePaths(process.cwd()),
     node: process.version,
     nodeMajor: detectNodeMajor(),

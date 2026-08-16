@@ -113,6 +113,7 @@ export default defineConfig({
           "oxc-resolver",
           "oxlint",
           "oxlint-plugin-react-doctor",
+          "playwright-core",
           "prompts",
           "typescript",
           "yoga-layout",
@@ -167,6 +168,18 @@ export default defineConfig({
       target: "node20",
       platform: "node",
       fixedExtension: false,
+    },
+    {
+      entry: { "runtime-scan/browser-probe": "./src/cli/runtime-scan/browser-probe.ts" },
+      deps: {
+        alwaysBundle: ["bippy", "react"],
+      },
+      clean: false,
+      dts: false,
+      format: ["iife"],
+      target: "es2022",
+      platform: "browser",
+      outDir: "./dist",
     },
   ],
   test: {

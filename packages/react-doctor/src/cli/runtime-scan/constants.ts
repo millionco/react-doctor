@@ -1,0 +1,33 @@
+export const RUNTIME_SCAN_SCHEMA_VERSION = 1;
+export const RUNTIME_SCAN_MAX_LOAF_ENTRIES = 100;
+export const RUNTIME_SCAN_MAX_SCRIPTS_PER_LOAF = 100;
+export const RUNTIME_SCAN_MAX_COMPONENT_EVENTS = 2_000;
+export const RUNTIME_SCAN_MAX_COMPONENTS_PER_COMMIT = 250;
+export const RUNTIME_SCAN_MAX_INTERACTIONS = 500;
+export const RUNTIME_SCAN_MAX_HOTSPOTS = 10;
+export const RUNTIME_SCAN_MIN_COMPONENT_DURATION_MS = 0.05;
+export const RUNTIME_SCAN_LAYOUT_THRASH_RATIO = 0.25;
+export const RUNTIME_SCAN_BROWSER_WIDTH_PX = 1_440;
+export const RUNTIME_SCAN_BROWSER_HEIGHT_PX = 900;
+export const RUNTIME_SCAN_DURATION_PRECISION_DIGITS = 1;
+export const RUNTIME_SCAN_TRACE_FILE_MODE = 0o600;
+export const RUNTIME_SCAN_TEMP_DIRECTORY_NAME = "react-doctor-traces";
+export const RUNTIME_SCAN_TRACE_FILE_EXTENSION = ".json.gz";
+export const RUNTIME_SCAN_PROBE_RELATIVE_PATH = "runtime-scan/browser-probe.iife.js";
+
+export const RUNTIME_SCAN_TRACE_CATEGORIES = [
+  "-*",
+  "blink.console",
+  "blink.user_timing",
+  "devtools.timeline",
+  "disabled-by-default-devtools.timeline",
+  "disabled-by-default-devtools.timeline.invalidationTracking",
+  "disabled-by-default-devtools.timeline.frame",
+  "disabled-by-default-devtools.timeline.stack",
+  "disabled-by-default-v8.cpu_profiler",
+  "disabled-by-default-v8.cpu_profiler.hires",
+  "latencyInfo",
+  "loading",
+  "v8",
+  "v8.execute",
+] as const;

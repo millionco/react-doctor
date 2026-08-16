@@ -55,6 +55,29 @@ You can configure which rules to run and how to run them in `doctor.config.ts`.
 
 [Learn more →](https://react.doctor/docs/configuration/config-files)
 
+## Runtime performance traces
+
+Record a Chrome DevTools performance trace while you interact with a running React app:
+
+```bash
+npx react-doctor@latest scan http://localhost:3000
+```
+
+React Doctor opens system Chrome in a temporary isolated profile, records until you press Enter,
+and returns a readable summary plus the path to a compressed DevTools trace. Use
+`--format json` or `--format jsonl` for coding agents.
+
+An already-open normal browser is left alone. To reuse an authenticated browser, start Chrome with
+remote debugging and pass its endpoint:
+
+```bash
+npx react-doctor@latest scan https://app.example.com --cdp http://127.0.0.1:9222
+```
+
+React Doctor creates and closes only its own tab when attached over CDP. The trace is stored
+locally and is never uploaded, but it can contain page URLs, source paths, and React profiling
+details. Treat it as sensitive application data.
+
 ## Telemetry
 
 The CLI reports crashes, basic run traces, and anonymous usage counters to [Sentry](https://sentry.io/) to help us fix bugs and prioritize work.

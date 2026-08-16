@@ -58,6 +58,7 @@ ${highlighter.dim("Examples:")}
 ${formatExampleLines([
   ["react-doctor", "scan the current project"],
   ["react-doctor ./apps/web", "scan a specific directory"],
+  ["react-doctor scan http://localhost:3000", "record a live browser performance trace"],
   ["react-doctor --scope changed --base main", "scan only new issues vs. main"],
   ["react-doctor --project modules/a,modules/b", "score each module separately (names or paths)"],
   ["react-doctor --staged", "scan staged files (pre-commit hook)"],
@@ -252,6 +253,17 @@ program
   .action(async (directory, _options, command) => {
     const { designAction } = await import("./commands/design.js");
     return designAction(directory ?? ".", command.optsWithGlobals());
+  });
+
+program
+  .command("scan <url>")
+  .description("Record a Chrome performance trace with React component context")
+  .option("-f, --format <format>", "output format: text, json, or jsonl", "text")
+  .option("--cdp <url>", "attach to an existing Chrome remote-debugging endpoint")
+  .option("--trace-out <path>", "write the compressed DevTools trace to this path")
+  .action(async (url, options) => {
+    const { runtimeScanAction } = await import("./commands/runtime-scan.js");
+    return runtimeScanAction(url, options);
   });
 
 program

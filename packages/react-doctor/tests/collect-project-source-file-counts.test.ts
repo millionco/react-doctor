@@ -12,14 +12,14 @@ describe("collectProjectSourceFileCounts", () => {
     rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-source-counts-"));
   });
 
-  afterEach(() => {
-    activeScanAbortRegistry.abortAll();
+  afterEach(async () => {
+    await activeScanAbortRegistry.abortAll();
     fs.rmSync(rootDirectory, { recursive: true, force: true });
   });
 
   it("stops workspace enumeration when active scans are cancelled", async () => {
     const sourceFileCounts = collectProjectSourceFileCounts(rootDirectory, [rootDirectory]);
-    activeScanAbortRegistry.abortAll();
+    await activeScanAbortRegistry.abortAll();
 
     await expect(sourceFileCounts).rejects.toThrow();
   });

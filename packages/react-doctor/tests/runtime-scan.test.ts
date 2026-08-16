@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import { buildRuntimeScanReport } from "../src/cli/runtime-scan/build-runtime-scan-report.js";
 import { formatRuntimeScanReport } from "../src/cli/runtime-scan/format-runtime-scan-report.js";
+import { mergeRuntimeScanProbeSnapshots } from "../src/cli/runtime-scan/merge-runtime-scan-probe-snapshots.js";
 import { resolveRuntimeScanFormat } from "../src/cli/runtime-scan/resolve-runtime-scan-format.js";
+import { resolveRuntimeTracePath } from "../src/cli/runtime-scan/resolve-runtime-trace-path.js";
 import { sanitizeRuntimeUrl } from "../src/cli/runtime-scan/sanitize-runtime-url.js";
 import type { RuntimeScanProbeSnapshot } from "../src/cli/runtime-scan/types.js";
 import { scrubRunArguments } from "../src/cli/utils/scrub-run-arguments.js";
@@ -90,8 +92,10 @@ describe("runtime scan report", () => {
     const report = buildReport();
     expect(report.summary.worstFrameDurationMs).toBe(120);
     expect(report.summary.totalBlockingDurationMs).toBe(70);
+    expect(report.timeOrigin).toBe(1_000);
     expect(report.scriptHotspots[0]).toMatchObject({
       functionName: "save",
+      sourceCharPosition: 42,
       totalDurationMs: 80,
       forcedStyleAndLayoutDurationMs: 30,
     });
@@ -157,6 +161,95 @@ describe("runtime scan report", () => {
     ]);
   });
 
+  it("keeps script hotspots at different source positions separate", () => {
+    const report = buildReport({
+      ...snapshot,
+      longAnimationFrames: [
+        snapshot.longAnimationFrames[0],
+        {
+          ...snapshot.longAnimationFrames[0],
+          scripts: [
+            {
+              ...snapshot.longAnimationFrames[0].scripts[0],
+              sourceCharPosition: 84,
+            },
+          ],
+        },
+      ],
+    });
+    expect(report.scriptHotspots).toHaveLength(2);
+    expect(report.scriptHotspots.map((hotspot) => hotspot.sourceCharPosition)).toEqual([42, 84]);
+  });
+
+  it("counts distinct long frames for repeated script invocations", () => {
+    const repeatedScript = snapshot.longAnimationFrames[0].scripts[0];
+    const report = buildReport({
+      ...snapshot,
+      longAnimationFrames: [
+        {
+          ...snapshot.longAnimationFrames[0],
+          scripts: [repeatedScript, repeatedScript],
+        },
+      ],
+    });
+    expect(report.scriptHotspots[0].frameCount).toBe(1);
+  });
+
+  it("merges probe evidence across document navigations", () => {
+    const mergedSnapshot = mergeRuntimeScanProbeSnapshots([
+      snapshot,
+      {
+        ...snapshot,
+        timeOrigin: 2_000,
+        finalUrl: "https://example.com/settings",
+        longAnimationFrames: [
+          {
+            ...snapshot.longAnimationFrames[0],
+            startTime: 10,
+          },
+        ],
+        componentEvents: [
+          {
+            ...snapshot.componentEvents[0],
+            startTime: 20,
+          },
+        ],
+        interactions: [
+          {
+            ...snapshot.interactions[0],
+            startTime: 30,
+            interactionId: 1,
+          },
+        ],
+      },
+      {
+        ...snapshot,
+        finalUrl: "https://example.com/dashboard-returned",
+        componentEvents: [
+          ...snapshot.componentEvents,
+          {
+            ...snapshot.componentEvents[0],
+            startTime: 200,
+          },
+        ],
+      },
+    ]);
+    expect(mergedSnapshot.finalUrl).toBe("https://example.com/dashboard-returned");
+    expect(
+      mergedSnapshot.longAnimationFrames.some(
+        (longAnimationFrame) => longAnimationFrame.startTime === 1_010,
+      ),
+    ).toBe(true);
+    expect(mergedSnapshot.componentEvents).toHaveLength(4);
+    expect(
+      mergedSnapshot.componentEvents.some((componentEvent) => componentEvent.startTime === 1_020),
+    ).toBe(true);
+    expect(mergedSnapshot.interactions.map((interaction) => interaction.documentIndex)).toEqual([
+      0, 1,
+    ]);
+    expect(buildReport(mergedSnapshot).summary.interactionCount).toBe(2);
+  });
+
   it("formats text, JSON, and JSONL outputs", () => {
     const report = buildReport();
     expect(formatRuntimeScanReport(report, "text")).toContain("React component hotspots");
@@ -180,6 +273,14 @@ describe("runtime scan input", () => {
     expect(resolveRuntimeScanFormat("jsonl")).toBe("jsonl");
     expect(() => resolveRuntimeScanFormat("xml")).toThrow("--format must be one of");
     expect(() => sanitizeRuntimeUrl("file:///tmp/index.html")).toThrow("http(s)");
+  });
+
+  it("creates unpredictable default trace paths", () => {
+    const capturedAt = new Date("2026-08-15T00:00:00.000Z");
+    const firstPath = resolveRuntimeTracePath(undefined, capturedAt);
+    const secondPath = resolveRuntimeTracePath(undefined, capturedAt);
+    expect(firstPath).not.toBe(secondPath);
+    expect(firstPath.endsWith(".json.gz")).toBe(true);
   });
 
   it("removes runtime URLs from telemetry arguments", () => {

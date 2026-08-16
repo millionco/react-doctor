@@ -40,8 +40,12 @@ const formatTextReport = (report: RuntimeScanReport): string => {
     lines.push("", highlighter.info("Script hotspots"));
     for (const [index, hotspot] of report.scriptHotspots.entries()) {
       const prefix = index === report.scriptHotspots.length - 1 ? "└─" : "├─";
-      const location = hotspot.sourceUrl
-        ? `${hotspot.sourceUrl}${hotspot.functionName ? ` · ${hotspot.functionName}` : ""}`
+      const sourceLocation =
+        hotspot.sourceCharPosition > 0
+          ? `${hotspot.sourceUrl} @ char ${hotspot.sourceCharPosition}`
+          : hotspot.sourceUrl;
+      const location = sourceLocation
+        ? `${sourceLocation}${hotspot.functionName ? ` · ${hotspot.functionName}` : ""}`
         : hotspot.functionName;
       lines.push(
         `  ${prefix} ${formatMilliseconds(hotspot.totalDurationMs)} ${location}`,
@@ -82,6 +86,7 @@ const formatJsonlReport = (report: RuntimeScanReport): string => {
         finalUrl: report.finalUrl,
         tracePath: report.tracePath,
         capturedAt: report.capturedAt,
+        timeOrigin: report.timeOrigin,
         connection: report.connection,
         support: report.support,
         warnings: report.warnings,

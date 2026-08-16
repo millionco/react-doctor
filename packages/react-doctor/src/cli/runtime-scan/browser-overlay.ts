@@ -15,7 +15,7 @@ import {
   RUNTIME_SCAN_OVERLAY_Z_INDEX,
 } from "./constants.js";
 
-interface RuntimeScanOverlayBlueprint {
+interface RuntimeScanPendingOutline {
   readonly id: number;
   readonly name: string;
   readonly elements: ReadonlyArray<Element>;
@@ -30,7 +30,7 @@ interface RuntimeScanActiveOutline {
   y: number;
   width: number;
   height: number;
-  frame: number;
+  elapsedFrameCount: number;
 }
 
 interface RuntimeScanOutlineGroup {
@@ -42,7 +42,7 @@ interface RuntimeScanOutlineGroup {
   readonly alpha: number;
 }
 
-const blueprints = new Map<number, RuntimeScanOverlayBlueprint>();
+const pendingOutlines = new Map<number, RuntimeScanPendingOutline>();
 const activeOutlines = new Map<number, RuntimeScanActiveOutline>();
 let canvas: HTMLCanvasElement | null = null;
 let context: CanvasRenderingContext2D | null = null;
@@ -145,13 +145,15 @@ const groupOutlines = (): ReadonlyArray<RuntimeScanOutlineGroup> => {
       width: firstOutline.width,
       height: firstOutline.height,
       alpha: Math.max(
-        ...outlines.map((outline) => 1 - outline.frame / RUNTIME_SCAN_OVERLAY_VISIBLE_FRAME_COUNT),
+        ...outlines.map(
+          (outline) => 1 - outline.elapsedFrameCount / RUNTIME_SCAN_OVERLAY_VISIBLE_FRAME_COUNT,
+        ),
       ),
     };
   });
 };
 
-const draw = (): void => {
+const drawActiveOutlines = (): void => {
   drawAnimationFrameId = null;
   if (canvas === null || context === null) return;
   context.clearRect(0, 0, window.innerWidth, window.innerHeight);
@@ -186,56 +188,58 @@ const draw = (): void => {
   }
 
   for (const outline of activeOutlines.values()) {
-    outline.frame += 1;
-    if (outline.frame > RUNTIME_SCAN_OVERLAY_VISIBLE_FRAME_COUNT) {
+    outline.elapsedFrameCount += 1;
+    if (outline.elapsedFrameCount > RUNTIME_SCAN_OVERLAY_VISIBLE_FRAME_COUNT) {
       activeOutlines.delete(outline.id);
     }
   }
-  if (activeOutlines.size > 0) drawAnimationFrameId = requestAnimationFrame(draw);
+  if (activeOutlines.size > 0) {
+    drawAnimationFrameId = requestAnimationFrame(drawActiveOutlines);
+  }
 };
 
-const flushBlueprints = (): void => {
+const flushPendingOutlines = (): void => {
   flushAnimationFrameId = null;
   if (!ensureCanvas()) return;
   const rectByElement = new Map<Element, DOMRect>();
-  for (const blueprint of blueprints.values()) {
-    for (const element of blueprint.elements) {
+  for (const pendingOutline of pendingOutlines.values()) {
+    for (const element of pendingOutline.elements) {
       if (!element.isConnected || rectByElement.has(element)) continue;
       rectByElement.set(element, element.getBoundingClientRect());
     }
   }
-  for (const blueprint of blueprints.values()) {
-    const rects = blueprint.elements
+  for (const pendingOutline of pendingOutlines.values()) {
+    const rects = pendingOutline.elements
       .map((element) => rectByElement.get(element))
       .filter((rect) => rect !== undefined)
       .filter((rect) => rect.width > 0 && rect.height > 0);
     if (rects.length === 0) continue;
     const rect = mergeRects(rects);
-    const existing = activeOutlines.get(blueprint.id);
+    const existing = activeOutlines.get(pendingOutline.id);
     if (existing === undefined) {
       if (activeOutlines.size >= RUNTIME_SCAN_OVERLAY_MAX_ACTIVE_OUTLINES) continue;
-      activeOutlines.set(blueprint.id, {
-        id: blueprint.id,
-        name: blueprint.name,
-        count: blueprint.count,
+      activeOutlines.set(pendingOutline.id, {
+        id: pendingOutline.id,
+        name: pendingOutline.name,
+        count: pendingOutline.count,
         x: rect.x,
         y: rect.y,
         width: rect.width,
         height: rect.height,
-        frame: 0,
+        elapsedFrameCount: 0,
       });
     } else {
-      existing.count += blueprint.count;
+      existing.count += pendingOutline.count;
       existing.x = rect.x;
       existing.y = rect.y;
       existing.width = rect.width;
       existing.height = rect.height;
-      existing.frame = 0;
+      existing.elapsedFrameCount = 0;
     }
   }
-  blueprints.clear();
+  pendingOutlines.clear();
   if (drawAnimationFrameId === null && activeOutlines.size > 0) {
-    drawAnimationFrameId = requestAnimationFrame(draw);
+    drawAnimationFrameId = requestAnimationFrame(drawActiveOutlines);
   }
 };
 
@@ -248,14 +252,14 @@ export const recordRuntimeScanOverlayRender = (fiber: Fiber): void => {
     .filter((stateNode) => stateNode instanceof Element);
   if (elements.length === 0) return;
   const id = getFiberId(fiber);
-  const existing = blueprints.get(id);
+  const existing = pendingOutlines.get(id);
   if (existing === undefined) {
-    blueprints.set(id, { id, name, elements, count: 1 });
+    pendingOutlines.set(id, { id, name, elements, count: 1 });
   } else {
     existing.count += 1;
   }
   if (flushAnimationFrameId === null) {
-    flushAnimationFrameId = requestAnimationFrame(flushBlueprints);
+    flushAnimationFrameId = requestAnimationFrame(flushPendingOutlines);
   }
 };
 
@@ -272,7 +276,7 @@ window.addEventListener(
       outline.y -= deltaY;
     }
     if (drawAnimationFrameId === null && activeOutlines.size > 0) {
-      drawAnimationFrameId = requestAnimationFrame(draw);
+      drawAnimationFrameId = requestAnimationFrame(drawActiveOutlines);
     }
   },
   { passive: true },

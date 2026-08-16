@@ -35,6 +35,7 @@ export interface RuntimeScanInteraction {
   readonly processingStart: number;
   readonly processingEnd: number;
   readonly interactionId: number;
+  readonly documentIndex?: number;
   readonly targetTag: string | null;
 }
 
@@ -65,6 +66,7 @@ export interface RuntimeScanProbeSnapshot {
 export interface RuntimeScanScriptHotspot {
   readonly sourceUrl: string;
   readonly functionName: string;
+  readonly sourceCharPosition: number;
   readonly invoker: string;
   readonly totalDurationMs: number;
   readonly maxDurationMs: number;
@@ -98,6 +100,7 @@ export interface RuntimeScanReport {
   readonly finalUrl: string;
   readonly tracePath: string;
   readonly capturedAt: string;
+  readonly timeOrigin: number;
   readonly connection: "isolated" | "cdp";
   readonly support: RuntimeScanProbeSupport;
   readonly summary: RuntimeScanSummary;

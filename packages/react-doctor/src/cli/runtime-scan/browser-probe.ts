@@ -10,6 +10,7 @@ import {
 } from "bippy";
 import type { Fiber, ReactRenderer } from "bippy";
 import {
+  RUNTIME_SCAN_INTERACTION_DURATION_THRESHOLD_MS,
   RUNTIME_SCAN_MAX_COMPONENT_EVENTS,
   RUNTIME_SCAN_MAX_COMPONENTS_PER_COMMIT,
   RUNTIME_SCAN_MAX_INTERACTIONS,
@@ -71,12 +72,23 @@ interface RuntimeScanBrowserController {
   readonly snapshot: () => RuntimeScanProbeSnapshot;
 }
 
+interface RuntimeScanPerformanceObserverInit extends PerformanceObserverInit {
+  readonly durationThreshold?: number;
+}
+
+interface RuntimeScanPerformanceObserver {
+  readonly observer: PerformanceObserver;
+  readonly listener: (entry: PerformanceEntry) => void;
+}
+
 declare global {
   interface Window {
     __REACT_DOCTOR_RUNTIME_SCAN__?: RuntimeScanBrowserController;
+    __REACT_DOCTOR_RUNTIME_SCAN_CAPTURE__?: (snapshot: string) => void;
   }
 }
 
+const performanceObservers: RuntimeScanPerformanceObserver[] = [];
 const longAnimationFrames: RuntimeScanLongAnimationFrame[] = [];
 const componentEvents: RuntimeScanComponentEvent[] = [];
 const interactions: RuntimeScanInteraction[] = [];
@@ -121,11 +133,22 @@ const pushComponentEvent = (entry: RuntimeScanComponentEvent): void => {
   componentEvents.push(entry);
 };
 
-const observe = (entryType: string, listener: (entry: PerformanceEntry) => void): boolean => {
+const observe = (
+  entryType: string,
+  listener: (entry: PerformanceEntry) => void,
+  durationThresholdMs?: number,
+): boolean => {
   try {
-    new PerformanceObserver((entryList) => {
+    const options: RuntimeScanPerformanceObserverInit = {
+      type: entryType,
+      buffered: true,
+      durationThreshold: durationThresholdMs,
+    };
+    const observer = new PerformanceObserver((entryList) => {
       for (const entry of entryList.getEntries()) listener(entry);
-    }).observe({ type: entryType, buffered: true });
+    });
+    observer.observe(options);
+    performanceObservers.push({ observer, listener });
     return true;
   } catch {
     return false;
@@ -161,24 +184,28 @@ const loafSupported = observe("long-animation-frame", (performanceEntry) => {
   });
 });
 
-observe("event", (performanceEntry) => {
-  const interactionEntry = performanceEntry as InteractionPerformanceEntry;
-  const interactionId = interactionEntry.interactionId ?? 0;
-  if (interactionId === 0) return;
-  if (interactions.length >= RUNTIME_SCAN_MAX_INTERACTIONS) {
-    droppedInteractions += 1;
-    return;
-  }
-  interactions.push({
-    name: interactionEntry.name,
-    startTime: interactionEntry.startTime,
-    durationMs: interactionEntry.duration,
-    processingStart: interactionEntry.processingStart ?? interactionEntry.startTime,
-    processingEnd: interactionEntry.processingEnd ?? interactionEntry.startTime,
-    interactionId,
-    targetTag: interactionEntry.target?.tagName ?? null,
-  });
-});
+observe(
+  "event",
+  (performanceEntry) => {
+    const interactionEntry = performanceEntry as InteractionPerformanceEntry;
+    const interactionId = interactionEntry.interactionId ?? 0;
+    if (interactionId === 0) return;
+    if (interactions.length >= RUNTIME_SCAN_MAX_INTERACTIONS) {
+      droppedInteractions += 1;
+      return;
+    }
+    interactions.push({
+      name: interactionEntry.name,
+      startTime: interactionEntry.startTime,
+      durationMs: interactionEntry.duration,
+      processingStart: interactionEntry.processingStart ?? interactionEntry.startTime,
+      processingEnd: interactionEntry.processingEnd ?? interactionEntry.startTime,
+      interactionId,
+      targetTag: interactionEntry.target?.tagName ?? null,
+    });
+  },
+  RUNTIME_SCAN_INTERACTION_DURATION_THRESHOLD_MS,
+);
 
 observe("layout-shift", (performanceEntry) => {
   const layoutShiftEntry = performanceEntry as LayoutShiftPerformanceEntry;
@@ -276,8 +303,11 @@ instrument({
   },
 });
 
-window.__REACT_DOCTOR_RUNTIME_SCAN__ = {
-  snapshot: () => ({
+const snapshot = (): RuntimeScanProbeSnapshot => {
+  for (const { observer, listener } of performanceObservers) {
+    for (const entry of observer.takeRecords()) listener(entry);
+  }
+  return {
     timeOrigin: performance.timeOrigin,
     finalUrl: sanitizeUrl(window.location.href),
     support: {
@@ -297,5 +327,22 @@ window.__REACT_DOCTOR_RUNTIME_SCAN__ = {
     droppedScriptTimings,
     droppedComponentEvents,
     droppedInteractions,
-  }),
+  };
 };
+
+window.__REACT_DOCTOR_RUNTIME_SCAN__ = {
+  snapshot,
+};
+
+const captureNavigationSnapshot = (): void => {
+  if (window !== window.top) return;
+  const captureSnapshot = window.__REACT_DOCTOR_RUNTIME_SCAN_CAPTURE__;
+  if (captureSnapshot === undefined) return;
+  captureSnapshot(JSON.stringify(snapshot()));
+};
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") captureNavigationSnapshot();
+});
+window.addEventListener("beforeunload", captureNavigationSnapshot);
+window.addEventListener("pagehide", captureNavigationSnapshot);

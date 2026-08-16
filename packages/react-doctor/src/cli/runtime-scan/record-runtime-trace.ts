@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
@@ -6,15 +7,19 @@ import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 import { chromium } from "playwright-core";
 import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core";
+import { activeScanAbortRegistry } from "../utils/active-scan-abort-registry.js";
 import { CliInputError } from "../utils/cli-input-error.js";
 import { assertRuntimeScanInteractive } from "./assert-runtime-scan-interactive.js";
 import {
   RUNTIME_SCAN_BROWSER_HEIGHT_PX,
   RUNTIME_SCAN_BROWSER_WIDTH_PX,
+  RUNTIME_SCAN_PROBE_SNAPSHOT_BINDING_NAME,
   RUNTIME_SCAN_PROBE_RELATIVE_PATH,
   RUNTIME_SCAN_TRACE_CATEGORIES,
   RUNTIME_SCAN_TRACE_FILE_MODE,
+  RUNTIME_SCAN_TRACING_COMPLETE_TIMEOUT_MS,
 } from "./constants.js";
+import { mergeRuntimeScanProbeSnapshots } from "./merge-runtime-scan-probe-snapshots.js";
 import { resolveRuntimeTracePath } from "./resolve-runtime-trace-path.js";
 import { sanitizeRuntimeUrl } from "./sanitize-runtime-url.js";
 import type { RuntimeScanProbeSnapshot } from "./types.js";
@@ -55,18 +60,42 @@ const readProbeSnapshot = async (page: Page): Promise<RuntimeScanProbeSnapshot> 
 };
 
 const startDevtoolsTrace = async (cdpSession: CDPSession): Promise<void> => {
-  await cdpSession.send("Tracing.start", {
-    categories: RUNTIME_SCAN_TRACE_CATEGORIES.join(","),
-    transferMode: "ReturnAsStream",
-  });
+  try {
+    await cdpSession.send("Tracing.start", {
+      categories: RUNTIME_SCAN_TRACE_CATEGORIES.join(","),
+      transferMode: "ReturnAsStream",
+    });
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    if (/Tracing (?:has )?already (?:been )?started/i.test(message)) {
+      throw new CliInputError(
+        "Chrome is already recording a performance trace. Stop the existing DevTools recording and retry.",
+      );
+    }
+    throw cause;
+  }
 };
 
 const endDevtoolsTrace = async (cdpSession: CDPSession): Promise<string> => {
   const traceComplete = new Promise<{ stream?: string }>((resolve) => {
     cdpSession.once("Tracing.tracingComplete", resolve);
   });
-  await cdpSession.send("Tracing.end");
-  const { stream } = await traceComplete;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const traceTimeout = new Promise<never>((_resolve, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error("Chrome did not finish the performance trace in time."));
+    }, RUNTIME_SCAN_TRACING_COMPLETE_TIMEOUT_MS);
+  });
+  let stream: string | undefined;
+  try {
+    const finishTrace = async (): Promise<{ stream?: string }> => {
+      await cdpSession.send("Tracing.end");
+      return traceComplete;
+    };
+    ({ stream } = await Promise.race([finishTrace(), traceTimeout]));
+  } finally {
+    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+  }
   if (stream === undefined) throw new Error("Chrome returned a trace without a data stream.");
   return stream;
 };
@@ -93,22 +122,24 @@ const writeDevtoolsTrace = async (
   tracePath: string,
 ): Promise<void> => {
   await fsp.mkdir(path.dirname(tracePath), { recursive: true });
-  const fileHandle = await fsp.open(tracePath, "w", RUNTIME_SCAN_TRACE_FILE_MODE);
+  const temporaryTracePath = `${tracePath}.${randomUUID()}.tmp`;
+  const fileHandle = await fsp.open(temporaryTracePath, "wx", RUNTIME_SCAN_TRACE_FILE_MODE);
+  let didMoveTrace = false;
   try {
     await fileHandle.chmod(RUNTIME_SCAN_TRACE_FILE_MODE);
     await pipeline(
       readDevtoolsTrace(cdpSession, stream),
       createGzip(),
-      fileHandle.createWriteStream(),
+      fileHandle.createWriteStream({ autoClose: false }),
     );
+    await fileHandle.sync();
+    await fileHandle.close();
+    await fsp.rename(temporaryTracePath, tracePath);
+    didMoveTrace = true;
   } finally {
     await fileHandle.close().catch(() => {});
+    if (!didMoveTrace) await fsp.rm(temporaryTracePath, { force: true }).catch(() => {});
   }
-};
-
-const discardDevtoolsTrace = async (cdpSession: CDPSession): Promise<void> => {
-  const stream = await endDevtoolsTrace(cdpSession);
-  await cdpSession.send("IO.close", { handle: stream });
 };
 
 const connectToBrowser = async (
@@ -129,15 +160,21 @@ const connectToBrowser = async (
       }),
       connection: "isolated",
     };
-  } catch (cause) {
+  } catch {
     const guidance =
       cdpUrl === undefined
         ? "Install Google Chrome, or pass --cdp <url> for a browser started with remote debugging."
         : "Confirm the browser is running with remote debugging and that the CDP URL is reachable.";
+    throw new CliInputError(`Could not connect to Chrome. ${guidance}`);
+  }
+};
+
+const navigateToRuntimeUrl = async (page: Page, url: string): Promise<void> => {
+  try {
+    await page.goto(url, { waitUntil: "load" });
+  } catch {
     throw new CliInputError(
-      `Could not connect to Chrome. ${guidance} ${
-        cause instanceof Error ? cause.message : String(cause)
-      }`,
+      "Could not load the target URL. Confirm the app is running and reachable from Chrome.",
     );
   }
 };
@@ -147,17 +184,39 @@ export const recordRuntimeTrace = async (
 ): Promise<RecordRuntimeTraceResult> => {
   sanitizeRuntimeUrl(input.url);
   assertRuntimeScanInteractive();
-  const capturedAtDate = new Date();
-  const capturedAt = capturedAtDate.toISOString();
-  const tracePath = resolveRuntimeTracePath(input.traceOut, capturedAtDate);
+  const tracePath = resolveRuntimeTracePath(input.traceOut, new Date());
   const probeSource = await fsp.readFile(resolveProbePath(), "utf8");
-  const startedAt = performance.now();
   const { browser, connection } = await connectToBrowser(input.cdpUrl);
+  const navigationSnapshots: RuntimeScanProbeSnapshot[] = [];
   let context: BrowserContext | undefined;
   let page: Page | undefined;
   let cdpSession: CDPSession | undefined;
   let didCreateContext = false;
   let isTracing = false;
+  let traceStreamPromise: Promise<string> | undefined;
+  let cleanupPromise: Promise<void> | undefined;
+
+  const stopTracing = async (): Promise<void> => {
+    if (!isTracing || cdpSession === undefined) return;
+    try {
+      traceStreamPromise ??= endDevtoolsTrace(cdpSession);
+      const traceStream = await traceStreamPromise;
+      isTracing = false;
+      await cdpSession.send("IO.close", { handle: traceStream });
+    } catch {}
+  };
+  const closeBrowserResources = async (): Promise<void> => {
+    await page?.close().catch(() => {});
+    if (connection === "cdp" && didCreateContext) {
+      await context?.close().catch(() => {});
+    }
+    await browser.close().catch(() => {});
+  };
+  const cleanup = (): Promise<void> => {
+    cleanupPromise ??= stopTracing().then(closeBrowserResources);
+    return cleanupPromise;
+  };
+  const unregisterCleanup = activeScanAbortRegistry.registerCleanup(cleanup);
 
   try {
     if (connection === "cdp") {
@@ -175,29 +234,46 @@ export const recordRuntimeTrace = async (
     page = await context.newPage();
     await page.addInitScript({ content: probeSource });
     cdpSession = await context.newCDPSession(page);
+    cdpSession.on("Runtime.bindingCalled", (event) => {
+      if (event.name !== RUNTIME_SCAN_PROBE_SNAPSHOT_BINDING_NAME) return;
+      try {
+        const snapshot: RuntimeScanProbeSnapshot = JSON.parse(event.payload);
+        if (
+          typeof snapshot.timeOrigin !== "number" ||
+          !Array.isArray(snapshot.longAnimationFrames) ||
+          !Array.isArray(snapshot.componentEvents) ||
+          !Array.isArray(snapshot.interactions)
+        ) {
+          return;
+        }
+        navigationSnapshots.push(snapshot);
+      } catch {}
+    });
+    await cdpSession.send("Runtime.enable");
+    await cdpSession.send("Runtime.addBinding", {
+      name: RUNTIME_SCAN_PROBE_SNAPSHOT_BINDING_NAME,
+    });
     await startDevtoolsTrace(cdpSession);
     isTracing = true;
-    await page.goto(input.url, { waitUntil: "load" });
+    const capturedAt = new Date().toISOString();
+    const recordingStartedAt = performance.now();
+    await navigateToRuntimeUrl(page, input.url);
     await waitForRuntimeScanStop();
-    const snapshot = await readProbeSnapshot(page);
-    const traceStream = await endDevtoolsTrace(cdpSession);
+    const finalSnapshot = await readProbeSnapshot(page);
+    traceStreamPromise = endDevtoolsTrace(cdpSession);
+    const traceStream = await traceStreamPromise;
+    const durationMs = performance.now() - recordingStartedAt;
     isTracing = false;
     await writeDevtoolsTrace(cdpSession, traceStream, tracePath);
     return {
       tracePath,
       capturedAt,
-      durationMs: performance.now() - startedAt,
-      snapshot,
+      durationMs,
+      snapshot: mergeRuntimeScanProbeSnapshots([...navigationSnapshots, finalSnapshot]),
       connection,
     };
   } finally {
-    if (isTracing && cdpSession !== undefined) {
-      await discardDevtoolsTrace(cdpSession).catch(() => {});
-    }
-    await page?.close().catch(() => {});
-    if (connection === "cdp" && didCreateContext) {
-      await context?.close().catch(() => {});
-    }
-    await browser.close().catch(() => {});
+    await cleanup();
+    unregisterCleanup();
   }
 };

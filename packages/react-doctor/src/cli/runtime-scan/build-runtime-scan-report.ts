@@ -24,11 +24,12 @@ export interface BuildRuntimeScanReportInput {
 interface MutableScriptHotspot {
   sourceUrl: string;
   functionName: string;
+  sourceCharPosition: number;
   invoker: string;
   totalDurationMs: number;
   maxDurationMs: number;
   forcedStyleAndLayoutDurationMs: number;
-  frameCount: number;
+  frameStartTimes: Set<number>;
 }
 
 interface MutableComponentHotspot {
@@ -46,17 +47,19 @@ interface MutableRuntimeScanInteraction {
   processingStart: number;
   processingEnd: number;
   interactionId: number;
+  documentIndex?: number;
   targetTag: string | null;
 }
 
 const buildInteractions = (
   snapshot: RuntimeScanProbeSnapshot,
 ): ReadonlyArray<RuntimeScanInteraction> => {
-  const interactionsById = new Map<number, MutableRuntimeScanInteraction>();
+  const interactionsById = new Map<string, MutableRuntimeScanInteraction>();
   for (const interaction of snapshot.interactions) {
-    const existing = interactionsById.get(interaction.interactionId);
+    const key = `${interaction.documentIndex ?? 0}:${interaction.interactionId}`;
+    const existing = interactionsById.get(key);
     if (existing === undefined) {
-      interactionsById.set(interaction.interactionId, { ...interaction });
+      interactionsById.set(key, { ...interaction });
       continue;
     }
     existing.name = interaction.name;
@@ -75,29 +78,34 @@ const buildScriptHotspots = (
   const hotspots = new Map<string, MutableScriptHotspot>();
   for (const longAnimationFrame of snapshot.longAnimationFrames) {
     for (const script of longAnimationFrame.scripts) {
-      const key = `${script.sourceUrl}\u0000${script.sourceFunctionName}\u0000${script.invoker}`;
+      const key = `${script.sourceUrl}\u0000${script.sourceFunctionName}\u0000${script.sourceCharPosition}\u0000${script.invoker}`;
       const existing = hotspots.get(key);
       if (existing === undefined) {
         hotspots.set(key, {
           sourceUrl: script.sourceUrl,
           functionName: script.sourceFunctionName || "(anonymous)",
+          sourceCharPosition: script.sourceCharPosition,
           invoker: script.invoker,
           totalDurationMs: script.durationMs,
           maxDurationMs: script.durationMs,
           forcedStyleAndLayoutDurationMs: script.forcedStyleAndLayoutDurationMs,
-          frameCount: 1,
+          frameStartTimes: new Set([longAnimationFrame.startTime]),
         });
         continue;
       }
       existing.totalDurationMs += script.durationMs;
       existing.maxDurationMs = Math.max(existing.maxDurationMs, script.durationMs);
       existing.forcedStyleAndLayoutDurationMs += script.forcedStyleAndLayoutDurationMs;
-      existing.frameCount += 1;
+      existing.frameStartTimes.add(longAnimationFrame.startTime);
     }
   }
   return [...hotspots.values()]
     .sort((left, right) => right.totalDurationMs - left.totalDurationMs)
-    .slice(0, RUNTIME_SCAN_MAX_HOTSPOTS);
+    .slice(0, RUNTIME_SCAN_MAX_HOTSPOTS)
+    .map(({ frameStartTimes, ...hotspot }) => ({
+      ...hotspot,
+      frameCount: frameStartTimes.size,
+    }));
 };
 
 const buildComponentHotspots = (
@@ -129,7 +137,7 @@ const buildComponentHotspots = (
 const buildWarnings = (snapshot: RuntimeScanProbeSnapshot): ReadonlyArray<string> => {
   const warnings: string[] = [];
   if (!snapshot.support.reactDetected) {
-    warnings.push("No React renderer was detected on the final page.");
+    warnings.push("No React renderer was detected during the recording.");
   } else if (!snapshot.support.nativeReactTracks && !snapshot.support.bippyComponentTracks) {
     warnings.push(
       "React component timings were unavailable. Production builds require react-dom/profiling.",
@@ -177,6 +185,7 @@ export const buildRuntimeScanReport = (input: BuildRuntimeScanReportInput): Runt
     finalUrl: sanitizeRuntimeUrl(input.snapshot.finalUrl),
     tracePath: input.tracePath,
     capturedAt: input.capturedAt,
+    timeOrigin: input.snapshot.timeOrigin,
     connection: input.connection,
     support: input.snapshot.support,
     summary: {

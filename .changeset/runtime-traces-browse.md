@@ -2,4 +2,4 @@
 "react-doctor": patch
 ---
 
-Add an interactive URL scan that records Chrome DevTools traces, flashes live component render outlines, and returns agent-readable React performance context.
+Add an interactive URL scan and `/performance` skill that record Chrome DevTools traces, flash live component render outlines, and return agent-readable React performance context.

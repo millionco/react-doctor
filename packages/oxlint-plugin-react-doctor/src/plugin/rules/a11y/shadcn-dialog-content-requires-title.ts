@@ -189,7 +189,7 @@ export const shadcnDialogContentRequiresTitle = defineRule({
   severity: "warn",
   requires: ["shadcn"],
   recommendation:
-    "Give every DialogContent, SheetContent, and AlertDialogContent a matching title part — wrap it in an sr-only element when the design shows no heading — or name the dialog with aria-label.",
+    "Give every DialogContent, SheetContent, and AlertDialogContent a matching title part (wrapped in an sr-only element when the design shows no heading) or name the dialog with aria-label.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       for (const contract of DIALOG_SURFACE_CONTRACTS) {

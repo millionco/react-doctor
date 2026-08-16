@@ -126,7 +126,7 @@ export const shadcnInputGroupNoRawControls = defineRule({
   requires: ["shadcn"],
   matchByOccurrence: true,
   recommendation:
-    "Compose InputGroup from its own parts — InputGroupInput, InputGroupTextarea, and InputGroupAddon with InputGroupButton — so the group owns one border, focus ring, and error state.",
+    "Compose InputGroup from its own parts (InputGroupInput, InputGroupTextarea, and InputGroupAddon with InputGroupButton) so the group owns one border, focus ring, and error state.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (

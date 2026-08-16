@@ -2385,6 +2385,15 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "shadcn-tabs-trigger-requires-list": {
     code: 'import { TabsTrigger } from "./tabs";\nconst Trigger = () => <TabsTrigger value="a" />;',
   },
+  "shadcn-command-item-state-variant-requires-value": {
+    code: 'import { CommandItem } from "cmdk";\nconst Item = () => <CommandItem className="data-[selected]:bg-accent" />;',
+  },
+  "shadcn-dialog-content-requires-title": {
+    code: 'import { DialogContent } from "./dialog";\nconst Confirm = () => <DialogContent><p>Are you sure?</p></DialogContent>;',
+  },
+  "shadcn-input-group-no-raw-controls": {
+    code: 'import { InputGroup } from "./input-group";\nconst Search = () => <InputGroup><input /></InputGroup>;',
+  },
   "data-table-requires-accessible-name": {
     code: "const Results = () => <table><tr><th>Name</th></tr></table>;",
   },

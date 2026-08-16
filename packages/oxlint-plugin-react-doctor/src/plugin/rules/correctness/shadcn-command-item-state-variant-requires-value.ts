@@ -121,7 +121,7 @@ export const shadcnCommandItemStateVariantRequiresValue = defineRule({
   requires: ["shadcn"],
   matchByOccurrence: true,
   recommendation:
-    'Style command items with value-aware variants — data-[selected=true]: and data-[disabled=true]: — because cmdk renders both attributes on every item as "true" or "false".',
+    'Style command items with the value-aware variants data-[selected=true]: and data-[disabled=true]:, because cmdk renders both attributes on every item as "true" or "false".',
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isCommandItemElement(node.name, context)) return;

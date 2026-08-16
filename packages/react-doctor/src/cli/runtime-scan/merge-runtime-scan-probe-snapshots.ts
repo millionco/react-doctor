@@ -10,8 +10,18 @@ import type {
   RuntimeScanProbeSnapshot,
 } from "./types.js";
 
+interface RuntimeScanTimestampedEntry {
+  readonly startTime: number;
+}
+
 const shiftOptionalTimestamp = (timestamp: number, offset: number): number =>
   timestamp === 0 ? 0 : timestamp + offset;
+
+const takeLatestEntries = <Entry extends RuntimeScanTimestampedEntry>(
+  entries: ReadonlyArray<Entry>,
+  limit: number,
+): ReadonlyArray<Entry> =>
+  [...entries].sort((left, right) => left.startTime - right.startTime).slice(-limit);
 
 const shiftLongAnimationFrame = (
   frame: RuntimeScanLongAnimationFrame,
@@ -62,6 +72,13 @@ export const mergeRuntimeScanProbeSnapshots = (
     throw new Error("At least one runtime scan probe snapshot is required.");
   }
   const timeOrigin = Math.min(...snapshots.map((snapshot) => snapshot.timeOrigin));
+  const documentIndexByTimeOrigin = new Map<number, number>();
+  const snapshotsInCreationOrder = [...snapshots].sort(
+    (left, right) => left.timeOrigin - right.timeOrigin,
+  );
+  for (const [documentIndex, snapshot] of snapshotsInCreationOrder.entries()) {
+    documentIndexByTimeOrigin.set(snapshot.timeOrigin, documentIndex);
+  }
 
   const longAnimationFrames = snapshots.flatMap((snapshot) => {
     const offset = snapshot.timeOrigin - timeOrigin;
@@ -73,8 +90,9 @@ export const mergeRuntimeScanProbeSnapshots = (
       shiftComponentEvent(componentEvent, offset),
     );
   });
-  const interactions = snapshots.flatMap((snapshot, documentIndex) => {
+  const interactions = snapshots.flatMap((snapshot) => {
     const offset = snapshot.timeOrigin - timeOrigin;
+    const documentIndex = documentIndexByTimeOrigin.get(snapshot.timeOrigin) ?? 0;
     return snapshot.interactions.map((interaction) =>
       shiftInteraction(interaction, offset, documentIndex),
     );
@@ -94,13 +112,10 @@ export const mergeRuntimeScanProbeSnapshots = (
       bippyComponentTracks: snapshots.some((snapshot) => snapshot.support.bippyComponentTracks),
       loaf: snapshots.some((snapshot) => snapshot.support.loaf),
     },
-    longAnimationFrames: longAnimationFrames.slice(0, RUNTIME_SCAN_MAX_LOAF_ENTRIES),
-    componentEvents: componentEvents.slice(0, RUNTIME_SCAN_MAX_COMPONENT_EVENTS),
-    interactions: interactions.slice(0, RUNTIME_SCAN_MAX_INTERACTIONS),
-    cumulativeLayoutShift: snapshots.reduce(
-      (total, snapshot) => total + snapshot.cumulativeLayoutShift,
-      0,
-    ),
+    longAnimationFrames: takeLatestEntries(longAnimationFrames, RUNTIME_SCAN_MAX_LOAF_ENTRIES),
+    componentEvents: takeLatestEntries(componentEvents, RUNTIME_SCAN_MAX_COMPONENT_EVENTS),
+    interactions: takeLatestEntries(interactions, RUNTIME_SCAN_MAX_INTERACTIONS),
+    cumulativeLayoutShift: Math.max(...snapshots.map((snapshot) => snapshot.cumulativeLayoutShift)),
     largestContentfulPaintMs: finalSnapshot.largestContentfulPaintMs,
     droppedLongAnimationFrames:
       snapshots.reduce((total, snapshot) => total + snapshot.droppedLongAnimationFrames, 0) +

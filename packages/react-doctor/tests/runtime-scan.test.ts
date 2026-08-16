@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { buildRuntimeScanReport } from "../src/cli/runtime-scan/build-runtime-scan-report.js";
+import { RUNTIME_SCAN_MAX_LOAF_ENTRIES } from "../src/cli/runtime-scan/constants.js";
 import { formatRuntimeScanReport } from "../src/cli/runtime-scan/format-runtime-scan-report.js";
 import { mergeRuntimeScanProbeSnapshots } from "../src/cli/runtime-scan/merge-runtime-scan-probe-snapshots.js";
 import { resolveRuntimeScanFormat } from "../src/cli/runtime-scan/resolve-runtime-scan-format.js";
@@ -247,7 +248,42 @@ describe("runtime scan report", () => {
     expect(mergedSnapshot.interactions.map((interaction) => interaction.documentIndex)).toEqual([
       0, 1,
     ]);
+    expect(mergedSnapshot.cumulativeLayoutShift).toBe(0.02);
     expect(buildReport(mergedSnapshot).summary.interactionCount).toBe(2);
+  });
+
+  it("retains the latest long animation frames when navigation exceeds the limit", () => {
+    const earliestFrames = Array.from(
+      { length: RUNTIME_SCAN_MAX_LOAF_ENTRIES },
+      (_unusedValue, index) => ({
+        ...snapshot.longAnimationFrames[0],
+        startTime: index,
+      }),
+    );
+    const mergedSnapshot = mergeRuntimeScanProbeSnapshots([
+      {
+        ...snapshot,
+        longAnimationFrames: earliestFrames,
+      },
+      {
+        ...snapshot,
+        timeOrigin: 2_000,
+        longAnimationFrames: [
+          {
+            ...snapshot.longAnimationFrames[0],
+            startTime: 100,
+          },
+        ],
+      },
+    ]);
+    expect(mergedSnapshot.longAnimationFrames).toHaveLength(RUNTIME_SCAN_MAX_LOAF_ENTRIES);
+    expect(
+      mergedSnapshot.longAnimationFrames.some(
+        (longAnimationFrame) => longAnimationFrame.startTime === 0,
+      ),
+    ).toBe(false);
+    expect(mergedSnapshot.longAnimationFrames.at(-1)?.startTime).toBe(1_100);
+    expect(mergedSnapshot.droppedLongAnimationFrames).toBe(1);
   });
 
   it("formats text, JSON, and JSONL outputs", () => {

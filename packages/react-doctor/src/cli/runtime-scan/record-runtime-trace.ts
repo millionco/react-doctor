@@ -370,11 +370,14 @@ export const recordRuntimeTrace = async (
     const recordingStartedAt = performance.now();
     await navigateToRuntimeUrl(page, input.url);
     await waitForRuntimeScanStop();
-    const finalSnapshot = await readProbeSnapshot(page);
-    if (finalSnapshot !== null) storeNavigationSnapshot(finalSnapshot);
-    traceStreamPromise = endDevtoolsTrace(traceCdpSession);
-    const traceStream = await traceStreamPromise;
     const durationMs = performance.now() - recordingStartedAt;
+    const finalSnapshotPromise = readProbeSnapshot(page);
+    traceStreamPromise = endDevtoolsTrace(traceCdpSession);
+    const [finalSnapshot, traceStream] = await Promise.all([
+      finalSnapshotPromise,
+      traceStreamPromise,
+    ]);
+    if (finalSnapshot !== null) storeNavigationSnapshot(finalSnapshot);
     isTracing = false;
     await writeDevtoolsTrace(traceCdpSession, traceStream, tracePath);
     const capturedSnapshots = [...navigationSnapshotsByTimeOrigin.values()];

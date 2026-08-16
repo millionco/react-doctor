@@ -183,6 +183,7 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
       capabilities.add("tailwind:4");
     }
   }
+  if (project.hasShadcnUi === true) capabilities.add("shadcn");
   if (project.zodVersion !== null) capabilities.add("zod");
   if (project.zodMajorVersion !== null && project.zodMajorVersion >= 4) capabilities.add("zod:4");
   if (

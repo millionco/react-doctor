@@ -1,0 +1,138 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { shadcnDialogContentRequiresTitle } from "./shadcn-dialog-content-requires-title.js";
+
+describe("shadcn-dialog-content-requires-title", () => {
+  it("reports dialog content composed of intrinsic elements without a title", () => {
+    const result = runRule(
+      shadcnDialogContentRequiresTitle,
+      `import { Dialog, DialogContent } from "@/components/ui/dialog";
+       const View = () => (
+         <Dialog>
+           <DialogContent>
+             <p>Are you sure?</p>
+             <button type="button">Confirm</button>
+           </DialogContent>
+         </Dialog>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("DialogTitle");
+  });
+
+  it("reports sheet and alert-dialog content without their titles", () => {
+    const result = runRule(
+      shadcnDialogContentRequiresTitle,
+      `import { SheetContent } from "./sheet";
+       import { AlertDialogContent, AlertDialogDescription } from "~/ui/alert-dialog";
+       const View = () => (
+         <>
+           <SheetContent><nav><a href="/">Home</a></nav></SheetContent>
+           <AlertDialogContent>
+             <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+           </AlertDialogContent>
+         </>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("reports content whose only components are same-module parts and ui-module leaves", () => {
+    const result = runRule(
+      shadcnDialogContentRequiresTitle,
+      `import { DialogContent, DialogHeader, DialogFooter } from "@/components/ui/dialog";
+       import { Button } from "@/components/ui/button";
+       const View = () => (
+         <DialogContent>
+           <DialogHeader>{"Careful"}</DialogHeader>
+           <DialogFooter>
+             <Button variant="destructive">Delete</Button>
+           </DialogFooter>
+         </DialogContent>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("supports renamed and namespace imports and static conditional children", () => {
+    const result = runRule(
+      shadcnDialogContentRequiresTitle,
+      `import { DialogContent as Content } from "./dialog";
+       import * as Sheet from "@/components/ui/sheet";
+       const View = ({ isBusy }) => (
+         <>
+           <Content>{isBusy ? <p>Working</p> : <p>Idle</p>}</Content>
+           <Sheet.SheetContent><div /></Sheet.SheetContent>
+         </>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("accepts a title part anywhere in the static subtree", () => {
+    const result = runRule(
+      shadcnDialogContentRequiresTitle,
+      `import { DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+       import { SheetContent, SheetTitle as Heading } from "./sheet";
+       const View = () => (
+         <>
+           <DialogContent>
+             <DialogHeader><DialogTitle>Delete file</DialogTitle></DialogHeader>
+           </DialogContent>
+           <SheetContent><Heading>Filters</Heading></SheetContent>
+         </>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a title rendered through a wrapper, a map callback, or a name-alike component", () => {
+    const result = runRule(
+      shadcnDialogContentRequiresTitle,
+      `import { DialogContent, DialogTitle } from "@/components/ui/dialog";
+       import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+       const View = ({ headings }) => (
+         <>
+           <DialogContent>
+             <VisuallyHidden><DialogTitle>Search</DialogTitle></VisuallyHidden>
+           </DialogContent>
+           <DialogContent>{headings.map((heading) => <DialogTitle key={heading}>{heading}</DialogTitle>)}</DialogContent>
+         </>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when the content is named, spread, or not statically enumerable", () => {
+    const result = runRule(
+      shadcnDialogContentRequiresTitle,
+      `import { DialogContent } from "@/components/ui/dialog";
+       const Wrapper = ({ children, ...props }) => (
+         <>
+           <DialogContent aria-label="Settings"><p>Body</p></DialogContent>
+           <DialogContent {...props}><p>Body</p></DialogContent>
+           <DialogContent>{children}</DialogContent>
+           <DialogContent><ConfirmHeader /><p>Body</p></DialogContent>
+           <DialogContent />
+         </>
+       );
+       const ConfirmHeader = () => null;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("skips other-library, local, and type-only dialog components", () => {
+    const result = runRule(
+      shadcnDialogContentRequiresTitle,
+      `import { DialogContent } from "some-modal-kit";
+       const LocalDialogContent = ({ children }) => <div>{children}</div>;
+       const View = () => (
+         <>
+           <DialogContent><p>Body</p></DialogContent>
+           <LocalDialogContent><p>Body</p></LocalDialogContent>
+         </>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});

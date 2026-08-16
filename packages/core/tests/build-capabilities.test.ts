@@ -731,6 +731,12 @@ describe("buildCapabilities", () => {
     );
   });
 
+  it("emits `shadcn` only when the project carries a shadcn components config", () => {
+    expect(buildCapabilities(baseProject).has("shadcn")).toBe(false);
+    expect(buildCapabilities({ ...baseProject, hasShadcnUi: false }).has("shadcn")).toBe(false);
+    expect(buildCapabilities({ ...baseProject, hasShadcnUi: true }).has("shadcn")).toBe(true);
+  });
+
   it("emits `tailwind`, `tailwind:3.4`, and `tailwind:4` for a Tailwind 4 project", () => {
     const capabilities = buildCapabilities({ ...baseProject, tailwindVersion: "^4.0.0" });
     expect(capabilities.has("tailwind")).toBe(true);

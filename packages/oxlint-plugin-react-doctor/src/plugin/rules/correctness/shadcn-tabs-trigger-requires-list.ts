@@ -1,59 +1,11 @@
-import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getImportedName } from "../../utils/get-imported-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
-import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { resolveShadcnUiComponentName } from "../../utils/resolve-shadcn-ui-component-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-const getTabsImportSource = (symbol: SymbolDescriptor): string | null => {
-  if (symbol.kind !== "import") return null;
-  const declaration = symbol.declarationNode.parent;
-  if (
-    !declaration ||
-    !isNodeOfType(declaration, "ImportDeclaration") ||
-    isTypeOnlyImport(declaration) ||
-    (isNodeOfType(symbol.declarationNode, "ImportSpecifier") &&
-      symbol.declarationNode.importKind === "type")
-  ) {
-    return null;
-  }
-  const source = declaration.source.value;
-  return typeof source === "string" && (source === "tabs" || /(?:^|\/)tabs$/.test(source))
-    ? source
-    : null;
-};
-
-const isImportedTabsComponent = (
-  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
-  componentName: string,
-  context: RuleContext,
-): boolean => {
-  const elementName = openingElement.name;
-  if (isNodeOfType(elementName, "JSXIdentifier")) {
-    const symbol = resolveConstIdentifierAlias(elementName, context.scopes);
-    return Boolean(
-      symbol &&
-      getTabsImportSource(symbol) &&
-      getImportedName(symbol.declarationNode) === componentName,
-    );
-  }
-  if (
-    !isNodeOfType(elementName, "JSXMemberExpression") ||
-    !isNodeOfType(elementName.object, "JSXIdentifier") ||
-    elementName.property.name !== componentName
-  ) {
-    return false;
-  }
-  const symbol = resolveConstIdentifierAlias(elementName.object, context.scopes);
-  return Boolean(
-    symbol &&
-    getTabsImportSource(symbol) &&
-    isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier"),
-  );
-};
+const TABS_MODULE_PATTERN = /(?:^|\/)tabs$/;
 
 const hasTabsListAncestor = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
@@ -63,7 +15,8 @@ const hasTabsListAncestor = (
   while (ancestor) {
     if (
       isNodeOfType(ancestor, "JSXElement") &&
-      isImportedTabsComponent(ancestor.openingElement, "TabsList", context)
+      resolveShadcnUiComponentName(ancestor.openingElement.name, TABS_MODULE_PATTERN, context) ===
+        "TabsList"
     ) {
       return true;
     }
@@ -77,13 +30,14 @@ export const shadcnTabsTriggerRequiresList = defineRule({
   title: "Tabs trigger is outside TabsList",
   severity: "warn",
   category: "Correctness",
-  defaultEnabled: false,
+  requires: ["shadcn"],
+  matchByOccurrence: true,
   recommendation:
     "Render each imported TabsTrigger inside its library TabsList so keyboard navigation and tablist semantics share one scope.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (
-        !isImportedTabsComponent(node, "TabsTrigger", context) ||
+        resolveShadcnUiComponentName(node.name, TABS_MODULE_PATTERN, context) !== "TabsTrigger" ||
         hasTabsListAncestor(node, context)
       ) {
         return;

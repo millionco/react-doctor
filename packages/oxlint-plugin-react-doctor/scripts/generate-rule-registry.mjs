@@ -163,6 +163,7 @@ const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "no-skipped-heading-level",
   "no-static-motion-config-never",
   "no-ungated-tailwind-animation",
+  "shadcn-dialog-content-requires-title",
   "no-uninformative-aria-label",
   "dialog-has-accessible-name",
   "no-create-ref-in-function-component",

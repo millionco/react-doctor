@@ -136,6 +136,16 @@ export interface ProjectInfo {
    */
   reanimatedVersion: string | null;
   /**
+   * `true` when the project (or an ancestor up to the repository boundary)
+   * carries a shadcn `components.json` config. Drives the `shadcn`
+   * capability, which gates the `shadcn-*` component-composition rules —
+   * their part names (`DialogTitle`, `InputGroupInput`, `TabsList`, …) only
+   * carry shadcn's contract in a project that actually generated those
+   * files. Optional so existing `ProjectInfo` consumers remain
+   * source-compatible.
+   */
+  hasShadcnUi?: boolean;
+  /**
    * `true` when the project's `tsconfig.json` `compilerOptions.target` or
    * `compilerOptions.lib` indicates the output environment predates ES2023
    * (e.g. `target: "es2022"` or `lib: ["es2022"]`). Drives the `pre-es2023`

@@ -12254,6 +12254,56 @@
     }
   },
   {
+    "key": "react-doctor/shadcn-command-item-state-variant-requires-value",
+    "id": "shadcn-command-item-state-variant-requires-value",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "shadcn-command-item-state-variant-requires-value",
+      "title": "Command item styled by presence-only state variant",
+      "severity": "warn",
+      "recommendation": "Style command items with value-aware variants — data-[selected=true]: and data-[disabled=true]: — because cmdk renders both attributes on every item as \"true\" or \"false\".",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["shadcn"],
+      "matchByOccurrence": true,
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/shadcn-dialog-content-requires-title",
+    "id": "shadcn-dialog-content-requires-title",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "shadcn-dialog-content-requires-title",
+      "title": "Dialog content without a title",
+      "severity": "warn",
+      "recommendation": "Give every DialogContent, SheetContent, and AlertDialogContent a matching title part — wrap it in an sr-only element when the design shows no heading — or name the dialog with aria-label.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react", "shadcn"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/shadcn-input-group-no-raw-controls",
+    "id": "shadcn-input-group-no-raw-controls",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "shadcn-input-group-no-raw-controls",
+      "title": "Raw control directly inside InputGroup",
+      "severity": "warn",
+      "recommendation": "Compose InputGroup from its own parts — InputGroupInput, InputGroupTextarea, and InputGroupAddon with InputGroupButton — so the group owns one border, focus ring, and error state.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["shadcn"],
+      "matchByOccurrence": true,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/shadcn-tabs-trigger-requires-list",
     "id": "shadcn-tabs-trigger-requires-list",
     "source": "react-doctor",
@@ -12265,7 +12315,8 @@
       "recommendation": "Render each imported TabsTrigger inside its library TabsList so keyboard navigation and tablist semantics share one scope.",
       "category": "Bugs",
       "framework": "global",
-      "defaultEnabled": false,
+      "requires": ["shadcn"],
+      "matchByOccurrence": true,
       "isScanRule": false
     }
   },

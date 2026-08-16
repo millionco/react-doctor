@@ -744,6 +744,9 @@ import { serverFetchWithoutRevalidate } from "./rules/server/server-fetch-withou
 import { serverHoistStaticIo } from "./rules/server/server-hoist-static-io.js";
 import { serverNoMutableModuleState } from "./rules/server/server-no-mutable-module-state.js";
 import { serverSequentialIndependentAwait } from "./rules/server/server-sequential-independent-await.js";
+import { shadcnCommandItemStateVariantRequiresValue } from "./rules/correctness/shadcn-command-item-state-variant-requires-value.js";
+import { shadcnDialogContentRequiresTitle } from "./rules/a11y/shadcn-dialog-content-requires-title.js";
+import { shadcnInputGroupNoRawControls } from "./rules/correctness/shadcn-input-group-no-raw-controls.js";
 import { shadcnTabsTriggerRequiresList } from "./rules/correctness/shadcn-tabs-trigger-requires-list.js";
 import { stateInConstructor } from "./rules/react-builtins/state-in-constructor.js";
 import { stylePropObject } from "./rules/react-builtins/style-prop-object.js";
@@ -10038,6 +10041,42 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       tags: [...new Set(["server-action", ...(serverSequentialIndependentAwait.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/shadcn-command-item-state-variant-requires-value",
+    id: "shadcn-command-item-state-variant-requires-value",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...shadcnCommandItemStateVariantRequiresValue,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/shadcn-dialog-content-requires-title",
+    id: "shadcn-dialog-content-requires-title",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...shadcnDialogContentRequiresTitle,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(shadcnDialogContentRequiresTitle.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/shadcn-input-group-no-raw-controls",
+    id: "shadcn-input-group-no-raw-controls",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...shadcnInputGroupNoRawControls,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {

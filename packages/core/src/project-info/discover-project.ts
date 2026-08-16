@@ -7,6 +7,7 @@ import { countSourceFiles } from "./count-source-files.js";
 import { detectNextjsStaticExport } from "./detect-nextjs-static-export.js";
 import { detectReactCompiler, detectReactCompilerLintPlugin } from "./detect-react-compiler.js";
 import { detectPreES2023Target } from "./detect-pre-es2023-target.js";
+import { detectShadcnUi } from "./detect-shadcn-ui.js";
 import {
   extractDependencyInfo,
   getDependencyDeclaration,
@@ -148,6 +149,7 @@ const discoverProjectWithoutPackageJson = (
     shopifyFlashListMajorVersion: null,
     hasReanimated: false,
     reanimatedVersion: null,
+    hasShadcnUi: detectShadcnUi(directory),
     isPreES2023Target: hasOwnTsConfig && detectPreES2023Target(directory),
     isStaticExport: false,
     sourceFileCount,
@@ -412,6 +414,7 @@ export const discoverProject = (
       shopifyFlashListVersion === null ? null : getLowestDependencyMajor(shopifyFlashListVersion),
     hasReanimated,
     reanimatedVersion,
+    hasShadcnUi: detectShadcnUi(directory),
     isPreES2023Target,
     // The static-export probe reads `next.config.*` next to the manifest
     // that supplied the `next` dependency signal — the scan root when it

@@ -43,6 +43,7 @@ export type Capability =
   | "tailwind"
   | "tailwind:3.4"
   | "tailwind:4"
+  | "shadcn"
   | "zod"
   | "zod:4"
   | "mobx"

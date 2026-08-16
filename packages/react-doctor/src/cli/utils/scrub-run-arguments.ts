@@ -1,4 +1,4 @@
-import { anonymizeText } from "./anonymize-text.js";
+import { anonymizeText } from "@react-doctor/core";
 
 export const scrubRunArguments = (argumentsList: ReadonlyArray<string>): string =>
   anonymizeText(

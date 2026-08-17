@@ -54,7 +54,20 @@ describe("shadcn-tabs-trigger-requires-list", () => {
   it("skips local, unrelated, and type-only components", () => {
     const result = runRule(
       shadcnTabsTriggerRequiresList,
-      `import { Tabs } from "./tabs"; import { TabsTrigger } from "other-library"; import { type TabsTrigger as TriggerType } from "./tabs"; const LocalTrigger = () => null; const View = () => <Tabs><TabsTrigger /><TriggerType /><LocalTrigger /></Tabs>;`,
+      `import { Tabs } from "./tabs"; import { Tabs as FeatureTabs, TabsTrigger as FeatureTrigger } from "@/features/search/tabs"; import { TabsTrigger } from "other-library"; import { type TabsTrigger as TriggerType } from "./tabs"; const LocalTrigger = () => null; const View = () => <><Tabs><TabsTrigger /><TriggerType /><LocalTrigger /></Tabs><FeatureTabs><FeatureTrigger /></FeatureTabs></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores JSX returned from a non-render callback attribute", () => {
+    const result = runRule(
+      shadcnTabsTriggerRequiresList,
+      `import { Tabs, TabsTrigger } from "@/components/ui/tabs";
+       const View = () => (
+         <Tabs>
+           <button onClick={() => <TabsTrigger value="a">A</TabsTrigger>}>Open</button>
+         </Tabs>
+       );`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

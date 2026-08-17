@@ -18,6 +18,21 @@ describe("shadcn-icon-button-requires-label", () => {
     expect(result.diagnostics[0]?.message).toContain("aria-label");
   });
 
+  it("supports nested component-library layouts below the ui directory", () => {
+    const result = runRule(
+      shadcnIconButtonRequiresLabel,
+      `import { Button as DefaultButton } from "@/components/ui/shadcn-default/button";
+       import { Button as PrimitiveButton } from "~/ui/primitives/button";
+       const View = () => (
+         <>
+           <DefaultButton size="icon"><svg /></DefaultButton>
+           <PrimitiveButton size="icon"><svg /></PrimitiveButton>
+         </>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("reports every icon size variant, name-pattern icons, and inline svg", () => {
     const result = runRule(
       shadcnIconButtonRequiresLabel,
@@ -73,12 +88,14 @@ describe("shadcn-icon-button-requires-label", () => {
       shadcnIconButtonRequiresLabel,
       `import { Button } from "@/components/ui/button";
        import { Button as AntButton } from "antd";
+       import { Button as AcmeButton } from "@acme/button";
        import { Plus } from "lucide-react";
        const View = () => (
          <>
            <Button size="sm"><Plus />Add item</Button>
            <Button><Plus /></Button>
            <AntButton size="icon"><Plus /></AntButton>
+           <AcmeButton size="icon"><Plus /></AcmeButton>
          </>
        );`,
     );
@@ -115,12 +132,23 @@ describe("shadcn-icon-button-requires-label", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("counts aria-hidden text as no name", () => {
+  it("uses rendered hidden state and non-empty naming evidence", () => {
     const result = runRule(
       shadcnIconButtonRequiresLabel,
       `import { Button } from "@/components/ui/button";
-       const View = () => <Button size="icon"><span aria-hidden>×</span></Button>;`,
+       const View = () => (
+         <>
+           <Button size="icon"><span aria-hidden>×</span></Button>
+           <Button size="icon"><span hidden>Close</span></Button>
+           <Button size="icon" asChild={false}><svg /></Button>
+           <Button size="icon" slot="toolbar"><svg /></Button>
+           <Button size="icon" aria-label=""><svg /></Button>
+           <Button size="icon"><img src="/close.svg" alt="" /></Button>
+           <Button size="icon"><span aria-hidden={false}>Close</span></Button>
+           <Button size="icon"><img src="/close.svg" alt="Close" /></Button>
+         </>
+       );`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(6);
   });
 });

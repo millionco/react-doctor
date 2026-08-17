@@ -61,10 +61,12 @@ describe("shadcn-command-item-state-variant-requires-value", () => {
     const result = runRule(
       shadcnCommandItemStateVariantRequiresValue,
       `import { CommandItem } from "another-palette";
+       import { CommandItem as FeatureItem } from "@/features/search/command";
        const View = () => (
          <>
            <div className="data-[selected]:bg-accent" />
            <CommandItem className="data-[selected]:bg-accent" />
+           <FeatureItem className="data-[selected]:bg-accent" />
          </>
        );`,
     );

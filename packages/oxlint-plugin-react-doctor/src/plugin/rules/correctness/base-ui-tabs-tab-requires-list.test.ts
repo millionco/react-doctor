@@ -57,4 +57,17 @@ describe("base-ui-tabs-tab-requires-list", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("ignores JSX returned from a non-render callback attribute", () => {
+    const result = runRule(
+      baseUiTabsTabRequiresList,
+      `import { Tabs } from "@base-ui/react/tabs";
+       const View = () => (
+         <Tabs.Root>
+           <button onClick={() => <Tabs.Tab value="a">A</Tabs.Tab>}>Open</button>
+         </Tabs.Root>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

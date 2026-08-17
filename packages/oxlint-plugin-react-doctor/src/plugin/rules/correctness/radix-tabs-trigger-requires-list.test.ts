@@ -66,4 +66,17 @@ describe("radix-tabs-trigger-requires-list", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("ignores JSX returned from a non-render callback attribute", () => {
+    const result = runRule(
+      radixTabsTriggerRequiresList,
+      `import * as Tabs from "@radix-ui/react-tabs";
+       const View = () => (
+         <Tabs.Root>
+           <button onClick={() => <Tabs.Trigger value="a">A</Tabs.Trigger>}>Open</button>
+         </Tabs.Root>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

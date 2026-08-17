@@ -75,4 +75,24 @@ describe("detectShadcnUi", () => {
     const capabilities = buildCapabilities(discoverProject(projectDirectory));
     expect(capabilities.has("shadcn")).toBe(true);
   });
+
+  it("finds a components.json inside a workspace during a root scan", () => {
+    const projectDirectory = setupProject("workspace-capability", {
+      "package.json": JSON.stringify({
+        name: "workspace-root",
+        private: true,
+        workspaces: ["apps/*"],
+      }),
+      "apps/web/package.json": JSON.stringify({
+        name: "web",
+        dependencies: { react: "^19.0.0", "react-dom": "^19.0.0" },
+      }),
+      "apps/web/components.json": JSON.stringify({ style: "new-york" }),
+      "apps/web/src/index.tsx": "export const noop = () => null;",
+    });
+    fs.mkdirSync(path.join(projectDirectory, ".git"), { recursive: true });
+
+    const capabilities = buildCapabilities(discoverProject(projectDirectory));
+    expect(capabilities.has("shadcn")).toBe(true);
+  });
 });

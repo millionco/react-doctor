@@ -4,7 +4,7 @@ import { findRequiredAncestorPlacement } from "../../utils/find-required-ancesto
 import { resolveShadcnUiComponentName } from "../../utils/resolve-shadcn-ui-component-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-const TABS_MODULE_PATTERN = /(?:^|\/)tabs$/;
+const TABS_MODULE_PATTERN = /(?:^|\/)ui\/(?:.*\/)?tabs$|^\.\.?\/(?:.*\/)?tabs$/;
 
 export const shadcnTabsTriggerRequiresList = defineRule({
   id: "shadcn-tabs-trigger-requires-list",

@@ -12,7 +12,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { visitStaticJsxChildren } from "../../utils/visit-static-jsx-children.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
-const FORM_MODULE_PATTERN = /(?:^|\/)form$/;
+const FORM_MODULE_PATTERN = /(?:^|\/)ui\/(?:.*\/)?form$|^\.\.?\/(?:.*\/)?form$/;
 const LABEL_ATTRIBUTES = ["aria-label", "aria-labelledby"] as const;
 
 // react-hook-form's render prop hands the control its wiring as
@@ -51,6 +51,25 @@ interface FormItemScan {
   sawUnprovableContent: boolean;
 }
 
+const isInsideFormControl = (
+  node: EsTreeNode,
+  formItemElement: EsTreeNodeOfType<"JSXElement">,
+  context: RuleContext,
+): boolean => {
+  let ancestor = node.parent;
+  while (ancestor && ancestor !== formItemElement) {
+    if (
+      isNodeOfType(ancestor, "JSXElement") &&
+      resolveShadcnUiComponentName(ancestor.openingElement.name, FORM_MODULE_PATTERN, context) ===
+        "FormControl"
+    ) {
+      return true;
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
 const scanFormItem = (
   formItemElement: EsTreeNodeOfType<"JSXElement">,
   context: RuleContext,
@@ -64,7 +83,14 @@ const scanFormItem = (
         scan.hasLabel = true;
         return false;
       }
+      const resolvedPartName = resolveShadcnUiComponentName(
+        elementName,
+        FORM_MODULE_PATTERN,
+        context,
+      );
       if (
+        (resolvedPartName === "FormControl" ||
+          isInsideFormControl(openingElement, formItemElement, context)) &&
         LABEL_ATTRIBUTES.some((attribute) =>
           hasJsxPropIgnoreCase(openingElement.attributes, attribute),
         )
@@ -77,9 +103,7 @@ const scanFormItem = (
         // A spread can deliver aria-label to the control at runtime.
         scan.sawUnprovableContent = true;
       }
-      if (
-        resolveShadcnUiComponentName(elementName, FORM_MODULE_PATTERN, context) === "FormControl"
-      ) {
+      if (resolvedPartName === "FormControl") {
         scan.hasControl = true;
         return true;
       }

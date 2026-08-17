@@ -65,6 +65,20 @@ describe("base-ui-field-requires-label", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not use aria naming from an unrelated sibling", () => {
+    const result = runRule(
+      baseUiFieldRequiresLabel,
+      `import { Field } from "@base-ui/react/field";
+       const View = () => (
+         <Field.Root>
+           <div aria-label="Group">Help</div>
+           <Field.Control />
+         </Field.Root>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet without a provable control or with unprovable content", () => {
     const result = runRule(
       baseUiFieldRequiresLabel,

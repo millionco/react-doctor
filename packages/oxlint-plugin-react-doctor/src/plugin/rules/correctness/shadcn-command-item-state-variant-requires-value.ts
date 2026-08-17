@@ -14,7 +14,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 
 const CMDK_MODULE = "cmdk";
 const CMDK_MODULE_PATTERN = /^cmdk$/;
-const COMMAND_MODULE_PATTERN = /(?:^|\/)command$/;
+const COMMAND_MODULE_PATTERN = /(?:^|\/)ui\/(?:.*\/)?command$|^\.\.?\/(?:.*\/)?command$/;
 
 // Matches a presence-only Tailwind data variant for the two boolean states —
 // `data-[selected]:` / `data-[disabled]:` — anywhere in a token's variant

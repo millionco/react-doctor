@@ -2,31 +2,123 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
-import { hasImportFromModules } from "../../utils/find-import-source-for-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
-const TANSTACK_FORM_MODULES = ["@tanstack/react-form"];
+const TANSTACK_FORM_MODULE = "@tanstack/react-form";
+const TANSTACK_FORM_HOOK_NAMES: ReadonlySet<string> = new Set(["useForm"]);
+const CONTROL_FLOW_NODE_TYPES: ReadonlySet<string> = new Set([
+  "ConditionalExpression",
+  "DoWhileStatement",
+  "ForInStatement",
+  "ForOfStatement",
+  "ForStatement",
+  "IfStatement",
+  "LogicalExpression",
+  "ReturnStatement",
+  "SwitchStatement",
+  "SwitchCase",
+  "ThrowStatement",
+  "TryStatement",
+  "WhileStatement",
+]);
 
-const isStaticMethodCall = (expression: EsTreeNode, methodName: string): boolean =>
-  isNodeOfType(expression, "CallExpression") &&
-  isNodeOfType(expression.callee, "MemberExpression") &&
-  !expression.callee.computed &&
-  isNodeOfType(expression.callee.property, "Identifier") &&
-  expression.callee.property.name === methodName;
+const isTanstackFormHookCall = (node: EsTreeNode, context: RuleContext): boolean => {
+  const expression = stripParenExpression(node);
+  if (!isNodeOfType(expression, "CallExpression")) return false;
+  const reference = resolveImportedApiReference(expression.callee, context.scopes);
+  return Boolean(
+    reference?.source === TANSTACK_FORM_MODULE &&
+    reference.importedName &&
+    TANSTACK_FORM_HOOK_NAMES.has(reference.importedName),
+  );
+};
+
+const isTanstackFormInstance = (node: EsTreeNode, context: RuleContext): boolean => {
+  const expression = stripParenExpression(node);
+  if (isTanstackFormHookCall(expression, context)) return true;
+  if (!isNodeOfType(expression, "Identifier")) return false;
+  const symbol = resolveConstIdentifierAlias(expression, context.scopes);
+  return Boolean(
+    symbol?.kind === "const" &&
+    symbol.initializer &&
+    isTanstackFormHookCall(symbol.initializer, context),
+  );
+};
+
+const isTanstackHandleSubmitReference = (
+  rawExpression: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const expression = stripParenExpression(rawExpression);
+  return (
+    isNodeOfType(expression, "MemberExpression") &&
+    getStaticPropertyName(expression) === "handleSubmit" &&
+    isTanstackFormInstance(expression.object, context)
+  );
+};
 
 interface SubmitHandlerScan {
   callsHandleSubmit: boolean;
-  callsPreventDefault: boolean;
+  definitelyPreventsDefault: boolean;
 }
 
-const scanInlineSubmitHandler = (handlerFunction: EsTreeNode): SubmitHandlerScan => {
-  const scan: SubmitHandlerScan = { callsHandleSubmit: false, callsPreventDefault: false };
-  walkAst(handlerFunction, (node) => {
-    if (isStaticMethodCall(node, "handleSubmit")) scan.callsHandleSubmit = true;
-    if (isStaticMethodCall(node, "preventDefault")) scan.callsPreventDefault = true;
+const functionDefinitelyPreventsDefault = (
+  handlerFunction: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (!isFunctionLike(handlerFunction)) return false;
+  const eventParameter = handlerFunction.params?.[0];
+  if (!eventParameter || !isNodeOfType(eventParameter, "Identifier")) return false;
+  const eventSymbol = context.scopes.symbolFor(eventParameter);
+  if (!eventSymbol) return false;
+  let foundPrevention = false;
+  let hasControlFlow = false;
+  walkAst(handlerFunction.body, (node) => {
+    if (node !== handlerFunction.body && isFunctionLike(node)) return false;
+    if (CONTROL_FLOW_NODE_TYPES.has(node.type)) hasControlFlow = true;
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callee = stripParenExpression(node.callee);
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      getStaticPropertyName(callee) === "preventDefault"
+    ) {
+      const receiver = stripParenExpression(callee.object);
+      if (
+        isNodeOfType(receiver, "Identifier") &&
+        context.scopes.referenceFor(receiver)?.resolvedSymbol?.id === eventSymbol.id
+      ) {
+        foundPrevention = true;
+      }
+    }
+  });
+  return foundPrevention && !hasControlFlow;
+};
+
+const scanSubmitHandler = (
+  handlerFunction: EsTreeNode,
+  context: RuleContext,
+): SubmitHandlerScan => {
+  const scan: SubmitHandlerScan = {
+    callsHandleSubmit: false,
+    definitelyPreventsDefault: functionDefinitelyPreventsDefault(handlerFunction, context),
+  };
+  if (!isFunctionLike(handlerFunction)) return scan;
+  walkAst(handlerFunction.body, (node) => {
+    if (node !== handlerFunction.body && isFunctionLike(node)) return false;
+    if (
+      isNodeOfType(node, "CallExpression") &&
+      isTanstackHandleSubmitReference(node.callee, context)
+    ) {
+      scan.callsHandleSubmit = true;
+    }
   });
   return scan;
 };
@@ -51,25 +143,16 @@ export const tanstackFormOnSubmitRequiresPreventDefault = defineRule({
         return;
       }
       const handler = stripParenExpression(onSubmitAttribute.value.expression);
-      // `onSubmit={form.handleSubmit}` hands React the bare method — the
-      // event is treated as submit meta, the default is never prevented,
-      // and the browser performs a full-page form submission.
-      const isBareHandleSubmitReference =
-        isNodeOfType(handler, "MemberExpression") &&
-        !handler.computed &&
-        isNodeOfType(handler.property, "Identifier") &&
-        handler.property.name === "handleSubmit";
+      const isBareHandleSubmitReference = isTanstackHandleSubmitReference(handler, context);
       let firesUnpreventedSubmit = isBareHandleSubmitReference;
-      if (
-        !firesUnpreventedSubmit &&
-        (isNodeOfType(handler, "ArrowFunctionExpression") ||
-          isNodeOfType(handler, "FunctionExpression"))
-      ) {
-        const scan = scanInlineSubmitHandler(handler);
-        firesUnpreventedSubmit = scan.callsHandleSubmit && !scan.callsPreventDefault;
+      if (!firesUnpreventedSubmit) {
+        const handlerFunction = resolveExactLocalFunction(handler, context.scopes);
+        if (handlerFunction) {
+          const scan = scanSubmitHandler(handlerFunction, context);
+          firesUnpreventedSubmit = scan.callsHandleSubmit && !scan.definitelyPreventsDefault;
+        }
       }
       if (!firesUnpreventedSubmit) return;
-      if (!hasImportFromModules(node, TANSTACK_FORM_MODULES)) return;
       context.report({
         node: onSubmitAttribute,
         message:

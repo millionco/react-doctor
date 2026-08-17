@@ -71,6 +71,20 @@ describe("base-ui-dialog-popup-requires-title", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat a statically unnamed render target as naming evidence", () => {
+    const result = runRule(
+      baseUiDialogPopupRequiresTitle,
+      `import { Dialog } from "@base-ui/react/dialog";
+       const View = () => (
+         <>
+           <Dialog.Popup render={<section />}><p>Body</p></Dialog.Popup>
+           <Dialog.Popup render={(props) => <section {...props} />}><p>Body</p></Dialog.Popup>
+         </>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("skips other-library namespaces and other Base UI components", () => {
     const result = runRule(
       baseUiDialogPopupRequiresTitle,

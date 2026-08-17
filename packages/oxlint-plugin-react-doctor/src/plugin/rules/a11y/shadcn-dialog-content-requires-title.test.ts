@@ -83,6 +83,19 @@ describe("shadcn-dialog-content-requires-title", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat the canonical DialogHeader layout as a title", () => {
+    const result = runRule(
+      shadcnDialogContentRequiresTitle,
+      `import { DialogContent, DialogHeader } from "@/components/ui/dialog";
+       const View = () => (
+         <DialogContent>
+           <DialogHeader>Delete file?</DialogHeader>
+         </DialogContent>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts a title supplied through a render prop", () => {
     const result = runRule(
       shadcnDialogContentRequiresTitle,
@@ -170,10 +183,12 @@ describe("shadcn-dialog-content-requires-title", () => {
     const result = runRule(
       shadcnDialogContentRequiresTitle,
       `import { DialogContent } from "some-modal-kit";
+       import { DialogContent as AcmeDialogContent } from "@acme/dialog";
        const LocalDialogContent = ({ children }) => <div>{children}</div>;
        const View = () => (
          <>
            <DialogContent><p>Body</p></DialogContent>
+           <AcmeDialogContent><p>Body</p></AcmeDialogContent>
            <LocalDialogContent><p>Body</p></LocalDialogContent>
          </>
        );`,

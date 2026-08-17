@@ -426,7 +426,7 @@ export const discoverProject = (
       shopifyFlashListVersion === null ? null : getLowestDependencyMajor(shopifyFlashListVersion),
     hasReanimated,
     reanimatedVersion,
-    hasShadcnUi: detectShadcnUi(directory),
+    hasShadcnUi: workspaceFacts.hasShadcnUi,
     isPreES2023Target,
     // The static-export probe reads `next.config.*` next to the manifest
     // that supplied the `next` dependency signal — the scan root when it

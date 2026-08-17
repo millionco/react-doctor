@@ -9,7 +9,8 @@ import { resolveShadcnUiComponentName } from "../../utils/resolve-shadcn-ui-comp
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
-const INPUT_GROUP_MODULE_PATTERN = /(?:^|\/)input-group$/;
+const INPUT_GROUP_MODULE_PATTERN =
+  /(?:^|\/)ui\/(?:.*\/)?input-group$|^\.\.?\/(?:.*\/)?input-group$/;
 
 interface RawControlContract {
   readonly uiComponent: string;
@@ -25,19 +26,19 @@ interface RawControlContract {
 const RAW_CONTROL_CONTRACTS: ReadonlyArray<RawControlContract> = [
   {
     uiComponent: "Input",
-    uiModuleSourcePattern: /(?:^|\/)input$/,
+    uiModuleSourcePattern: /(?:^|\/)ui\/(?:.*\/)?input$|^\.\.?\/(?:.*\/)?input$/,
     nativeTag: "input",
     replacement: "InputGroupInput",
   },
   {
     uiComponent: "Textarea",
-    uiModuleSourcePattern: /(?:^|\/)textarea$/,
+    uiModuleSourcePattern: /(?:^|\/)ui\/(?:.*\/)?textarea$|^\.\.?\/(?:.*\/)?textarea$/,
     nativeTag: "textarea",
     replacement: "InputGroupTextarea",
   },
   {
     uiComponent: "Button",
-    uiModuleSourcePattern: /(?:^|\/)button$/,
+    uiModuleSourcePattern: /(?:^|\/)ui\/(?:.*\/)?button$|^\.\.?\/(?:.*\/)?button$/,
     nativeTag: "button",
     replacement: "InputGroupButton inside an InputGroupAddon",
   },

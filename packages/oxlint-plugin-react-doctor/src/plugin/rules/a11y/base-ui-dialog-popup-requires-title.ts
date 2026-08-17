@@ -10,6 +10,7 @@ import { resolveNamespacedPartName } from "../../utils/resolve-namespaced-part-n
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { scanJsxSubtreeForPart } from "../../utils/scan-jsx-subtree-for-part.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 interface BaseUiDialogSurface {
   readonly namespaceName: string;
@@ -34,6 +35,17 @@ const BASE_UI_DIALOG_SURFACES: ReadonlyArray<BaseUiDialogSurface> = [
 ];
 
 const NAME_PROVIDING_ATTRIBUTES = ["aria-label", "aria-labelledby", "title"] as const;
+
+const renderPropMayProvideName = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
+  if (!attribute.value || !isNodeOfType(attribute.value, "JSXExpressionContainer")) return true;
+  const expression = stripParenExpression(attribute.value.expression);
+  if (!isNodeOfType(expression, "JSXElement")) return true;
+  const renderedAttributes = expression.openingElement.attributes;
+  return (
+    hasJsxSpreadAttribute(renderedAttributes) ||
+    NAME_PROVIDING_ATTRIBUTES.some((name) => hasJsxPropIgnoreCase(renderedAttributes, name))
+  );
+};
 
 const isTitleElementName = (
   elementName: EsTreeNode,
@@ -76,9 +88,9 @@ export const baseUiDialogPopupRequiresTitle = defineRule({
         }
         // A spread can supply aria-label; a `render` prop swaps in an
         // element that may carry the name itself.
-        if (hasJsxSpreadAttribute(node.attributes) || findJsxAttribute(node.attributes, "render")) {
-          return;
-        }
+        if (hasJsxSpreadAttribute(node.attributes)) return;
+        const renderAttribute = findJsxAttribute(node.attributes, "render");
+        if (renderAttribute && renderPropMayProvideName(renderAttribute)) return;
         if (
           NAME_PROVIDING_ATTRIBUTES.some((attribute) =>
             hasJsxPropIgnoreCase(node.attributes, attribute),

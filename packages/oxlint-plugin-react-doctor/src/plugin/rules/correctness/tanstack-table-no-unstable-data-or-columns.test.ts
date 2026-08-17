@@ -94,4 +94,69 @@ describe("tanstack-table-no-unstable-data-or-columns", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("suppresses allocating method names on proven custom objects", () => {
+    const result = runRule(
+      tanstackTableNoUnstableDataOrColumns,
+      `import { useReactTable } from "@tanstack/react-table";
+       const stableData = [];
+       const cache = { filter: () => stableData };
+       const Table = () => useReactTable({ data: cache.filter(), columns: [] });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("columns");
+  });
+
+  it("reports allocating methods on typed table inputs", () => {
+    const result = runRule(
+      tanstackTableNoUnstableDataOrColumns,
+      `import { useReactTable, type ColumnDef } from "@tanstack/react-table";
+       interface TableProps { columns: ReadonlyArray<ColumnDef<unknown>>; data: ReadonlyArray<unknown> }
+       const Table = ({ columns, data }: TableProps) =>
+         useReactTable({
+           data: data ?? [],
+           columns: columns.map((column) => ({ ...column })),
+         });`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("resolves table hook aliases and namespace imports without matching shadows", () => {
+    const result = runRule(
+      tanstackTableNoUnstableDataOrColumns,
+      `import * as TableApi from "@tanstack/react-table";
+       import { useReactTable } from "@tanstack/react-table";
+       const aliasedHook = useReactTable;
+       const FalsePositive = () => {
+         const useReactTable = (options) => options;
+         return useReactTable({ data: [], columns: [] });
+       };
+       const Table = () => {
+         TableApi.useReactTable({ data: [], columns: [] });
+         aliasedHook({ data: [], columns: [] });
+         return null;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(4);
+  });
+
+  it("checks render-scoped options and fresh values behind local aliases", () => {
+    const result = runRule(
+      tanstackTableNoUnstableDataOrColumns,
+      `import { useReactTable } from "@tanstack/react-table";
+       const sharedColumns = [];
+       const Table = ({ rows, ready, columnMap }) => {
+         const data = rows ?? [];
+         const columns = ready ? sharedColumns : [];
+         const options = { data, columns };
+         useReactTable(options);
+         useReactTable({
+           data: Array.from(rows),
+           columns: Object.values(columnMap),
+         });
+         return null;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(4);
+  });
 });

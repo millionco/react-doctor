@@ -3,20 +3,23 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { reactAriaDialogRequiresHeading } from "./react-aria-dialog-requires-heading.js";
 
 describe("react-aria-dialog-requires-heading", () => {
-  it("reports a dialog composed without a heading", () => {
+  it("uses the DialogTrigger label fallback but reports an unnamed standalone dialog", () => {
     const result = runRule(
       reactAriaDialogRequiresHeading,
       `import { DialogTrigger, Modal, Dialog, Button } from "react-aria-components";
        const View = () => (
-         <DialogTrigger>
-           <Button>Delete…</Button>
-           <Modal>
-             <Dialog>
-               <p>This file will be permanently deleted.</p>
-               <Button slot="close">Cancel</Button>
-             </Dialog>
-           </Modal>
-         </DialogTrigger>
+         <>
+           <DialogTrigger>
+             <Button>Delete…</Button>
+             <Modal>
+               <Dialog>
+                 <p>This file will be permanently deleted.</p>
+                 <Button slot="close">Cancel</Button>
+               </Dialog>
+             </Modal>
+           </DialogTrigger>
+           <Dialog><p>Standalone body</p></Dialog>
+         </>
        );`,
     );
     expect(result.diagnostics).toHaveLength(1);
@@ -59,6 +62,22 @@ describe("react-aria-dialog-requires-heading", () => {
        );`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("requires imported headings to use the title slot", () => {
+    const result = runRule(
+      reactAriaDialogRequiresHeading,
+      `import { Dialog, Heading } from "react-aria-components";
+       const View = () => (
+         <>
+           <Dialog><Heading>Missing slot</Heading></Dialog>
+           <Dialog><Heading slot="description">Wrong slot</Heading></Dialog>
+           <Dialog><Heading slot={null}>Null slot</Heading></Dialog>
+           <Dialog><Heading slot={dynamicSlot}>Dynamic slot</Heading></Dialog>
+         </>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
   });
 
   it("stays quiet when the dialog is named, spread, or not statically enumerable", () => {

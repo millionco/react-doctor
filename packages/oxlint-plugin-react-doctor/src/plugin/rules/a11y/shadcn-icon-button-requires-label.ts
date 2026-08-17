@@ -3,18 +3,22 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getIconLibraryFamily } from "../../utils/get-icon-library-family.js";
+import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
 import { getTrailingJsxNameSegment } from "../../utils/get-trailing-jsx-name-segment.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
+import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
+import { jsxAttributeMayHaveNonEmptyValue } from "../../utils/jsx-attribute-may-have-non-empty-value.js";
+import { readStaticBoolean } from "../../utils/read-static-boolean.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveShadcnUiComponentName } from "../../utils/resolve-shadcn-ui-component-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { visitStaticJsxChildren } from "../../utils/visit-static-jsx-children.js";
 
-const BUTTON_MODULE_PATTERN = /(?:^|\/)button$/;
+const BUTTON_MODULE_PATTERN = /(?:^|\/)ui\/(?:.*\/)?button$|^\.\.?\/(?:.*\/)?button$/;
 const ICON_SIZE_PREFIX = "icon";
 const ICON_COMPONENT_NAME_PATTERN = /(?:Icon$|^Icon(?:[A-Z0-9]|$)|^Spinner|^Loader)/;
 const NAME_PROVIDING_ATTRIBUTES = ["aria-label", "aria-labelledby", "title"] as const;
@@ -72,12 +76,13 @@ const scanButtonContent = (
   visitStaticJsxChildren(buttonElement.children, {
     onElement: (element) => {
       const openingElement = element.openingElement;
-      // aria-hidden content is excluded from the accessible name; skip its
-      // text entirely.
-      if (hasJsxPropIgnoreCase(openingElement.attributes, "aria-hidden")) return false;
+      if (isHiddenFromScreenReader(openingElement, context.settings)) return false;
       if (
         NAME_PROVIDING_ATTRIBUTES.some((attribute) =>
-          hasJsxPropIgnoreCase(openingElement.attributes, attribute),
+          jsxAttributeMayHaveNonEmptyValue(
+            hasJsxPropIgnoreCase(openingElement.attributes, attribute),
+            { scopes: context.scopes },
+          ),
         )
       ) {
         scan.hasAccessibleText = true;
@@ -86,6 +91,16 @@ const scanButtonContent = (
       const elementName = openingElement.name;
       if (isIconElement(elementName, context)) return false;
       const trailingSegment = getTrailingJsxNameSegment(elementName);
+      if (trailingSegment === "img") {
+        if (
+          jsxAttributeMayHaveNonEmptyValue(hasJsxPropIgnoreCase(openingElement.attributes, "alt"), {
+            scopes: context.scopes,
+          })
+        ) {
+          scan.hasAccessibleText = true;
+        }
+        return false;
+      }
       const isCustomComponent = trailingSegment !== null && /^[A-Z]/.test(trailingSegment);
       if (isCustomComponent && trailingSegment !== "Fragment") {
         // A non-icon custom component may render label text.
@@ -119,16 +134,23 @@ export const shadcnIconButtonRequiresLabel = defineRule({
       // often the name) to the slotted child; a react-aria `slot` lets the
       // surrounding component wire a default accessible name (the TagGroup
       // remove slot announces "Remove").
-      if (
-        hasJsxSpreadAttribute(node.attributes) ||
-        findJsxAttribute(node.attributes, "asChild") ||
-        findJsxAttribute(node.attributes, "slot")
-      ) {
-        return;
+      if (hasJsxSpreadAttribute(node.attributes)) return;
+      const asChildAttribute = findJsxAttribute(node.attributes, "asChild");
+      if (asChildAttribute) {
+        if (!asChildAttribute.value) return;
+        if (!isNodeOfType(asChildAttribute.value, "JSXExpressionContainer")) return;
+        if (readStaticBoolean(asChildAttribute.value.expression) !== false) return;
+      }
+      const slotAttribute = findJsxAttribute(node.attributes, "slot");
+      if (slotAttribute) {
+        const slotValue = getJsxPropStringValue(slotAttribute);
+        if (slotValue === null || slotValue === "remove") return;
       }
       if (
         NAME_PROVIDING_ATTRIBUTES.some((attribute) =>
-          hasJsxPropIgnoreCase(node.attributes, attribute),
+          jsxAttributeMayHaveNonEmptyValue(hasJsxPropIgnoreCase(node.attributes, attribute), {
+            scopes: context.scopes,
+          }),
         )
       ) {
         return;

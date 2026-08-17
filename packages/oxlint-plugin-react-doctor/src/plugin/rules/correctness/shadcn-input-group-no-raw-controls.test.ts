@@ -89,10 +89,13 @@ describe("shadcn-input-group-no-raw-controls", () => {
       shadcnInputGroupNoRawControls,
       `import { InputGroup } from "antd";
        import { Input } from "antd";
+       import { InputGroup as FeatureInputGroup } from "@/features/search/input-group";
+       import { Input as FeatureInput } from "@/features/search/input";
        import { InputGroup as UiInputGroup } from "@/components/ui/input-group";
        const View = () => (
          <>
            <InputGroup><Input /></InputGroup>
+           <FeatureInputGroup><FeatureInput /></FeatureInputGroup>
            <UiInputGroup><SearchField /></UiInputGroup>
          </>
        );

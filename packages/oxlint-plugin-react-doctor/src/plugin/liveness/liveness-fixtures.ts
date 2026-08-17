@@ -2386,13 +2386,13 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { Dialog } from "react-aria-components";\nconst Confirm = () => <Dialog><p>Are you sure?</p></Dialog>;',
   },
   "tanstack-form-on-submit-requires-prevent-default": {
-    code: 'import { useForm } from "@tanstack/react-form";\nconst View = ({ form }) => <form onSubmit={form.handleSubmit} />;',
+    code: 'import { useForm } from "@tanstack/react-form";\nconst View = () => { const form = useForm({ defaultValues: {} }); return <form onSubmit={form.handleSubmit} />; };',
   },
   "tanstack-table-no-unstable-data-or-columns": {
     code: 'import { useReactTable } from "@tanstack/react-table";\nconst Table = () => { useReactTable({ data: [], columns: [] }); return null; };',
   },
   "tanstack-virtual-measure-element-requires-data-index": {
-    code: 'import { useVirtualizer } from "@tanstack/react-virtual";\nconst Row = ({ virtualizer }) => <div ref={virtualizer.measureElement}>Row</div>;',
+    code: 'import { useVirtualizer } from "@tanstack/react-virtual";\nconst Row = ({ parentRef }) => { const virtualizer = useVirtualizer({ count: 1, getScrollElement: () => parentRef.current, estimateSize: () => 40 }); return <div ref={virtualizer.measureElement}>Row</div>; };',
   },
   "radix-dialog-content-requires-title": {
     code: 'import * as Dialog from "@radix-ui/react-dialog";\nconst Confirm = () => <Dialog.Content><p>Are you sure?</p></Dialog.Content>;',

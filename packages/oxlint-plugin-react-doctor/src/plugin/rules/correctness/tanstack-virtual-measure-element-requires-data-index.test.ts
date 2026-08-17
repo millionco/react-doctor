@@ -32,59 +32,94 @@ describe("tanstack-virtual-measure-element-requires-data-index", () => {
     const result = runRule(
       tanstackVirtualMeasureElementRequiresDataIndex,
       `import { useVirtualizer } from "@tanstack/react-virtual";
-       const List = ({ virtualizer }) => {
+       const List = ({ parentRef }) => {
+         const virtualizer = useVirtualizer({
+           count: 10,
+           getScrollElement: () => parentRef.current,
+           estimateSize: () => 40,
+         });
          const { measureElement } = virtualizer;
+         const measure = virtualizer.measureElement;
          return (
            <>
              <li ref={measureElement}>Row</li>
              <li ref={(node) => virtualizer.measureElement(node)}>Row</li>
+             <li ref={(node) => { virtualizer.measureElement(node); }}>Row</li>
+             <li ref={measure}>Row</li>
+             <li ref={virtualizer["measureElement"]}>Row</li>
            </>
          );
        };`,
     );
-    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toHaveLength(5);
   });
 
   it("accepts measured elements carrying data-index", () => {
     const result = runRule(
       tanstackVirtualMeasureElementRequiresDataIndex,
       `import { useVirtualizer } from "@tanstack/react-virtual";
-       const List = ({ virtualizer, virtualItem }) => (
-         <div ref={virtualizer.measureElement} data-index={virtualItem.index}>
-           Row
-         </div>
-       );`,
-    );
-    expect(result.diagnostics).toHaveLength(0);
-  });
-
-  it("stays quiet for spreads and custom indexAttribute configurations", () => {
-    const result = runRule(
-      tanstackVirtualMeasureElementRequiresDataIndex,
-      `import { useVirtualizer } from "@tanstack/react-virtual";
-       const List = ({ virtualizer, itemProps, items, parentRef }) => {
-         const windowVirtualizer = useVirtualizer({
-           count: items.length,
+       const List = ({ parentRef, virtualItem }) => {
+         const virtualizer = useVirtualizer({
+           count: 10,
            getScrollElement: () => parentRef.current,
            estimateSize: () => 40,
-           indexAttribute: "data-row-index",
          });
          return (
-           <>
-             <div ref={virtualizer.measureElement} {...itemProps}>Row</div>
-             <div ref={windowVirtualizer.measureElement} data-row-index={0}>Row</div>
-           </>
+           <div ref={virtualizer.measureElement} data-index={virtualItem.index}>
+             Row
+           </div>
          );
        };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("ignores measureElement refs in files that never import the virtualizer", () => {
+  it("checks the index attribute configured by each virtualizer", () => {
     const result = runRule(
       tanstackVirtualMeasureElementRequiresDataIndex,
-      `const measureElement = (node) => node?.getBoundingClientRect();
-       const View = () => <div ref={measureElement}>Row</div>;`,
+      `import { useVirtualizer } from "@tanstack/react-virtual";
+       const List = ({ itemProps, items, parentRef }) => {
+         const customVirtualizer = useVirtualizer({
+           count: items.length,
+           getScrollElement: () => parentRef.current,
+           estimateSize: () => 40,
+           indexAttribute: "data-row-index",
+         });
+         const defaultVirtualizer = useVirtualizer({
+           count: items.length,
+           getScrollElement: () => parentRef.current,
+           estimateSize: () => 40,
+         });
+         return (
+           <>
+             <div ref={customVirtualizer.measureElement} data-row-index={0}>Row</div>
+             <div ref={customVirtualizer.measureElement}>Row</div>
+             <div ref={defaultVirtualizer.measureElement}>Row</div>
+             <div ref={defaultVirtualizer.measureElement} {...itemProps}>Row</div>
+           </>
+         );
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+      expect.stringContaining("data-row-index"),
+      expect.stringContaining("data-index"),
+    ]);
+  });
+
+  it("ignores unrelated measureElement refs even when the virtualizer is imported", () => {
+    const result = runRule(
+      tanstackVirtualMeasureElementRequiresDataIndex,
+      `import { useVirtualizer } from "@tanstack/react-virtual";
+       import type { Virtualizer } from "@tanstack/react-virtual";
+       const measureElement = (node) => node?.getBoundingClientRect();
+       const resizeObserver = { measureElement };
+       const View = () => (
+         <>
+           <div ref={measureElement}>Row</div>
+           <div ref={resizeObserver.measureElement}>Row</div>
+         </>
+       );`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

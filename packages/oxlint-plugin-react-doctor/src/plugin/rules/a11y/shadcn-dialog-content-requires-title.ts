@@ -27,22 +27,22 @@ const DIALOG_SURFACE_CONTRACTS: ReadonlyArray<DialogSurfaceContract> = [
   {
     contentComponent: "DialogContent",
     titleComponent: "DialogTitle",
-    moduleSourcePattern: /(?:^|\/)dialog$/,
+    moduleSourcePattern: /(?:^|\/)ui\/(?:.*\/)?dialog$|^\.\.?\/(?:.*\/)?dialog$/,
   },
   {
     contentComponent: "SheetContent",
     titleComponent: "SheetTitle",
-    moduleSourcePattern: /(?:^|\/)sheet$/,
+    moduleSourcePattern: /(?:^|\/)ui\/(?:.*\/)?sheet$|^\.\.?\/(?:.*\/)?sheet$/,
   },
   {
     contentComponent: "AlertDialogContent",
     titleComponent: "AlertDialogTitle",
-    moduleSourcePattern: /(?:^|\/)alert-dialog$/,
+    moduleSourcePattern: /(?:^|\/)ui\/(?:.*\/)?alert-dialog$|^\.\.?\/(?:.*\/)?alert-dialog$/,
   },
   {
     contentComponent: "DrawerContent",
     titleComponent: "DrawerTitle",
-    moduleSourcePattern: /(?:^|\/)drawer$/,
+    moduleSourcePattern: /(?:^|\/)ui\/(?:.*\/)?drawer$|^\.\.?\/(?:.*\/)?drawer$/,
   },
 ];
 
@@ -85,7 +85,12 @@ const scanContentForTitle = (
         context,
       );
       if (resolvedPartName !== null) {
-        return resolvedPartName.endsWith("Header") && element.children.length > 0;
+        return (
+          resolvedPartName === "DrawerHeader" &&
+          element.children.some(
+            (child) => isNodeOfType(child, "JSXText") && child.value.trim().length > 0,
+          )
+        );
       }
       const trailingSegment = getTrailingJsxNameSegment(elementName);
       return (

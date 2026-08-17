@@ -20,6 +20,7 @@ export const findRequiredAncestorPlacement = (
 ): RequiredAncestorPlacement => {
   let ancestor: EsTreeNode | null | undefined = node.parent?.parent;
   while (ancestor) {
+    if (isNodeOfType(ancestor, "JSXAttribute")) return "unprovable";
     if (isNodeOfType(ancestor, "JSXElement")) {
       const ancestorName = ancestor.openingElement.name;
       const classification = classifyAncestorName(ancestorName);

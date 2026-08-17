@@ -2,10 +2,11 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
-import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
@@ -27,12 +28,68 @@ const ARRAY_PRODUCING_METHOD_NAMES = new Set([
   "with",
 ]);
 
-const isArrayProducingCall = (expression: EsTreeNode): boolean =>
-  isNodeOfType(expression, "CallExpression") &&
-  isNodeOfType(expression.callee, "MemberExpression") &&
-  !expression.callee.computed &&
-  isNodeOfType(expression.callee.property, "Identifier") &&
-  ARRAY_PRODUCING_METHOD_NAMES.has(expression.callee.property.name);
+const STATIC_ARRAY_PRODUCERS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["Array", new Set(["from", "of"])],
+  ["Object", new Set(["entries", "keys", "values"])],
+]);
+
+const isTanstackTableHookCall = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const reference = resolveImportedApiReference(callExpression.callee, context.scopes);
+  return Boolean(
+    reference?.source === TANSTACK_TABLE_MODULE &&
+    reference.importedName &&
+    TABLE_HOOK_NAMES.has(reference.importedName),
+  );
+};
+
+const isKnownNonArrayObjectValue = (
+  rawExpression: EsTreeNode,
+  context: RuleContext,
+  visitedSymbolIds = new Set<number>(),
+): boolean => {
+  const expression = stripParenExpression(rawExpression);
+  if (isNodeOfType(expression, "ObjectExpression")) return true;
+  if (isNodeOfType(expression, "ArrayExpression")) return false;
+  if (!isNodeOfType(expression, "Identifier")) return false;
+  const symbol = resolveConstIdentifierAlias(expression, context.scopes);
+  if (symbol?.kind !== "const" || !symbol.initializer || visitedSymbolIds.has(symbol.id)) {
+    return false;
+  }
+  visitedSymbolIds.add(symbol.id);
+  return isKnownNonArrayObjectValue(symbol.initializer, context, visitedSymbolIds);
+};
+
+const isStaticArrayProducerCall = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "MemberExpression") || !isNodeOfType(callee.object, "Identifier")) {
+    return false;
+  }
+  const producerMethods = STATIC_ARRAY_PRODUCERS.get(callee.object.name);
+  const methodName = getStaticPropertyName(callee);
+  return Boolean(
+    producerMethods &&
+    methodName &&
+    producerMethods.has(methodName) &&
+    context.scopes.isGlobalReference(callee.object),
+  );
+};
+
+const isArrayProducingCall = (expression: EsTreeNode, context: RuleContext): boolean => {
+  if (!isNodeOfType(expression, "CallExpression")) return false;
+  if (isStaticArrayProducerCall(expression, context)) return true;
+  const callee = stripParenExpression(expression.callee);
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    ARRAY_PRODUCING_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") &&
+    !isKnownNonArrayObjectValue(callee.object, context)
+  );
+};
 
 // The expression (or branch) that provably produces a fresh array identity
 // on every render, or null when the reference may be stable. Identifiers
@@ -42,32 +99,54 @@ const findFreshArrayNode = (
   rawExpression: EsTreeNode,
   enclosingComponent: EsTreeNode,
   context: RuleContext,
+  visitedSymbolIds = new Set<number>(),
 ): EsTreeNode | null => {
   const expression = stripParenExpression(rawExpression);
   if (isNodeOfType(expression, "ArrayExpression")) return expression;
-  if (isArrayProducingCall(expression)) return expression;
+  if (isArrayProducingCall(expression, context)) return expression;
   if (isNodeOfType(expression, "LogicalExpression")) {
     // `data ?? []` allocates the fallback on every render the left side is
     // nullish; either branch being fresh makes the option unstable.
     return (
-      findFreshArrayNode(expression.left, enclosingComponent, context) ??
-      findFreshArrayNode(expression.right, enclosingComponent, context)
+      findFreshArrayNode(expression.left, enclosingComponent, context, visitedSymbolIds) ??
+      findFreshArrayNode(expression.right, enclosingComponent, context, visitedSymbolIds)
     );
   }
   if (isNodeOfType(expression, "ConditionalExpression")) {
     return (
-      findFreshArrayNode(expression.consequent, enclosingComponent, context) ??
-      findFreshArrayNode(expression.alternate, enclosingComponent, context)
+      findFreshArrayNode(expression.consequent, enclosingComponent, context, visitedSymbolIds) ??
+      findFreshArrayNode(expression.alternate, enclosingComponent, context, visitedSymbolIds)
     );
   }
   if (!isNodeOfType(expression, "Identifier")) return null;
   const symbol = resolveConstIdentifierAlias(expression, context.scopes);
   if (!symbol || symbol.kind !== "const" || !symbol.initializer) return null;
   if (findEnclosingFunction(symbol.declarationNode) !== enclosingComponent) return null;
-  const initializer = stripParenExpression(symbol.initializer);
-  return isNodeOfType(initializer, "ArrayExpression") || isArrayProducingCall(initializer)
+  if (visitedSymbolIds.has(symbol.id)) return null;
+  visitedSymbolIds.add(symbol.id);
+  return findFreshArrayNode(symbol.initializer, enclosingComponent, context, visitedSymbolIds)
     ? expression
     : null;
+};
+
+const getRenderScopedOptionsObject = (
+  rawExpression: EsTreeNode,
+  enclosingComponent: EsTreeNode,
+  context: RuleContext,
+): EsTreeNodeOfType<"ObjectExpression"> | null => {
+  const expression = stripParenExpression(rawExpression);
+  if (isNodeOfType(expression, "ObjectExpression")) return expression;
+  if (!isNodeOfType(expression, "Identifier")) return null;
+  const symbol = resolveConstIdentifierAlias(expression, context.scopes);
+  if (
+    symbol?.kind !== "const" ||
+    !symbol.initializer ||
+    findEnclosingFunction(symbol.declarationNode) !== enclosingComponent
+  ) {
+    return null;
+  }
+  const initializer = stripParenExpression(symbol.initializer);
+  return isNodeOfType(initializer, "ObjectExpression") ? initializer : null;
 };
 
 export const tanstackTableNoUnstableDataOrColumns = defineRule({
@@ -80,15 +159,18 @@ export const tanstackTableNoUnstableDataOrColumns = defineRule({
     "Give the table's data and columns options stable references: useMemo or useState inside the component, or a module-scope constant, so row and column models are not rebuilt on every render.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const callee = node.callee;
-      if (!isNodeOfType(callee, "Identifier")) return;
-      const importedName = getImportedNameFromModule(node, callee.name, TANSTACK_TABLE_MODULE);
-      if (importedName === null || !TABLE_HOOK_NAMES.has(importedName)) return;
-      const optionsArgument = node.arguments[0];
-      if (!optionsArgument || !isNodeOfType(optionsArgument, "ObjectExpression")) return;
+      if (!isTanstackTableHookCall(node, context)) return;
       const enclosingComponent = findEnclosingFunction(node);
       if (!enclosingComponent) return;
-      for (const property of optionsArgument.properties) {
+      const optionsArgument = node.arguments[0];
+      if (!optionsArgument) return;
+      const optionsObject = getRenderScopedOptionsObject(
+        optionsArgument,
+        enclosingComponent,
+        context,
+      );
+      if (!optionsObject) return;
+      for (const property of optionsObject.properties) {
         if (!isNodeOfType(property, "Property")) continue;
         const optionName = getStaticPropertyKeyName(property);
         if (optionName === null || !CHECKED_OPTION_NAMES.has(optionName)) continue;

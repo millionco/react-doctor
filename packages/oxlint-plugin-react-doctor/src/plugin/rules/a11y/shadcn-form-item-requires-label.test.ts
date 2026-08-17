@@ -70,6 +70,20 @@ describe("shadcn-form-item-requires-label", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not use aria naming from an unrelated sibling", () => {
+    const result = runRule(
+      shadcnFormItemRequiresLabel,
+      `import { FormControl, FormItem } from "@/components/ui/form";
+       const View = () => (
+         <FormItem>
+           <div aria-label="Help">?</div>
+           <FormControl><input /></FormControl>
+         </FormItem>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet without a provable control or with unprovable content", () => {
     const result = runRule(
       shadcnFormItemRequiresLabel,
@@ -90,7 +104,13 @@ describe("shadcn-form-item-requires-label", () => {
     const result = runRule(
       shadcnFormItemRequiresLabel,
       `import { FormItem, FormControl } from "some-form-kit";
-       const View = () => <FormItem><FormControl><input /></FormControl></FormItem>;`,
+       import { FormItem as FeatureItem, FormControl as FeatureControl } from "@acme/form";
+       const View = () => (
+         <>
+           <FormItem><FormControl><input /></FormControl></FormItem>
+           <FeatureItem><FeatureControl><input /></FeatureControl></FeatureItem>
+         </>
+       );`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -35,6 +35,24 @@ interface FieldScan {
   sawUnprovableContent: boolean;
 }
 
+const isInsideFieldControl = (
+  node: EsTreeNode,
+  fieldRootElement: EsTreeNodeOfType<"JSXElement">,
+  context: RuleContext,
+): boolean => {
+  let ancestor = node.parent;
+  while (ancestor && ancestor !== fieldRootElement) {
+    if (
+      isNodeOfType(ancestor, "JSXElement") &&
+      resolveFieldPartName(ancestor.openingElement.name, context) === "Control"
+    ) {
+      return true;
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
 const scanFieldRoot = (
   fieldRootElement: EsTreeNodeOfType<"JSXElement">,
   context: RuleContext,
@@ -48,7 +66,10 @@ const scanFieldRoot = (
         scan.hasLabel = true;
         return false;
       }
+      const resolvedPart = resolveFieldPartName(elementName, context);
       if (
+        (resolvedPart === "Control" ||
+          isInsideFieldControl(openingElement, fieldRootElement, context)) &&
         LABEL_ATTRIBUTES.some((attribute) =>
           hasJsxPropIgnoreCase(openingElement.attributes, attribute),
         )
@@ -77,7 +98,6 @@ const scanFieldRoot = (
           }
         });
       }
-      const resolvedPart = resolveFieldPartName(elementName, context);
       if (resolvedPart === "Control") {
         scan.hasControl = true;
         return true;

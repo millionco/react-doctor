@@ -2382,6 +2382,21 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-ungated-tailwind-animation": {
     code: 'const Spinner = () => <span className="animate-spin" />;',
   },
+  "radix-dialog-content-requires-title": {
+    code: 'import * as Dialog from "@radix-ui/react-dialog";\nconst Confirm = () => <Dialog.Content><p>Are you sure?</p></Dialog.Content>;',
+  },
+  "radix-tabs-trigger-requires-list": {
+    code: 'import * as Tabs from "@radix-ui/react-tabs";\nconst View = () => <Tabs.Root><Tabs.Trigger value="a" /></Tabs.Root>;',
+  },
+  "base-ui-dialog-popup-requires-title": {
+    code: 'import { Dialog } from "@base-ui/react/dialog";\nconst Confirm = () => <Dialog.Popup><p>Are you sure?</p></Dialog.Popup>;',
+  },
+  "base-ui-tabs-tab-requires-list": {
+    code: 'import { Tabs } from "@base-ui/react/tabs";\nconst View = () => <Tabs.Root><Tabs.Tab value="a" /></Tabs.Root>;',
+  },
+  "base-ui-field-requires-label": {
+    code: 'import { Field } from "@base-ui/react/field";\nconst View = () => <Field.Root><Field.Control /></Field.Root>;',
+  },
   "shadcn-tabs-trigger-requires-list": {
     code: 'import { Tabs, TabsTrigger } from "./tabs";\nconst View = () => <Tabs><TabsTrigger value="a" /></Tabs>;',
   },

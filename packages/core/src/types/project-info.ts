@@ -36,6 +36,20 @@ export interface ProjectInfo {
   remotionVersion?: string | null;
   remotionMajorVersion?: number | null;
   hasI18nLibrary?: boolean;
+  /**
+   * `true` when the project (or a workspace package) declares the unified
+   * `radix-ui` package or any `@radix-ui/react-*` primitive (icons excluded).
+   * Drives the `radix-ui` capability, which gates the `radix-*` composition
+   * rules for apps that assemble Radix parts directly.
+   */
+  hasRadixUi?: boolean;
+  /**
+   * `true` when the project (or a workspace package) declares Base UI
+   * (`@base-ui-components/react` or its 1.0 rename `@base-ui/react`).
+   * Drives the `base-ui` capability, which gates the `base-ui-*`
+   * composition rules.
+   */
+  hasBaseUi?: boolean;
   tanstackQueryVersion?: string | null;
   styledComponentsVersion?: string | null;
   /** Whether the project or one of its workspaces declares Three.js, Fiber, or Drei. */

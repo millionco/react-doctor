@@ -34,6 +34,8 @@ import {
   parseThreeRelease,
 } from "./version.js";
 import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
+import { hasBaseUiDependency } from "./has-base-ui-dependency.js";
+import { hasRadixUiDependency } from "./has-radix-ui-dependency.js";
 import { getStyledComponentsVersion } from "./get-styled-components-version.js";
 import { hasI18nDependency } from "./has-i18n-dependency.js";
 
@@ -109,6 +111,8 @@ export interface WorkspaceFacts {
   styledComponentsVersion: string | null;
   // Any-of predicates over the scan root + every workspace manifest.
   hasI18nLibrary: boolean;
+  hasRadixUi: boolean;
+  hasBaseUi: boolean;
   hasReactNativeAwarePackage: boolean;
   hasReanimatedAwarePackage: boolean;
   hasSsrDependency: boolean;
@@ -393,6 +397,8 @@ const evaluateManifestFacts = (
     facts.styledComponentsVersion = styledComponentsVersion;
   }
   facts.hasI18nLibrary = facts.hasI18nLibrary || hasI18nDependency(packageJson);
+  facts.hasRadixUi = facts.hasRadixUi || hasRadixUiDependency(packageJson);
+  facts.hasBaseUi = facts.hasBaseUi || hasBaseUiDependency(packageJson);
   for (const packageName of REACT_THREE_FIBER_DEPENDENCY_NAMES) {
     const dependencyDeclaration = getDependencyDeclaration({
       packageName,
@@ -517,6 +523,8 @@ export const collectWorkspaceFacts = (
     tanstackQueryVersion: null,
     styledComponentsVersion: null,
     hasI18nLibrary: false,
+    hasRadixUi: false,
+    hasBaseUi: false,
     hasReactNativeAwarePackage: false,
     hasReanimatedAwarePackage: false,
     hasSsrDependency: false,

@@ -44,6 +44,8 @@ export type Capability =
   | "tailwind:3.4"
   | "tailwind:4"
   | "shadcn"
+  | "radix-ui"
+  | "base-ui"
   | "zod"
   | "zod:4"
   | "mobx"

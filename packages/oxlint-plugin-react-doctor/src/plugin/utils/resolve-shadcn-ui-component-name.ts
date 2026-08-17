@@ -1,8 +1,7 @@
-import type { SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getImportedName } from "./get-imported-name.js";
+import { getValueImportSource } from "./get-value-import-declaration.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { isTypeOnlyImport } from "./is-type-only-import.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import type { RuleContext } from "./rule-context.js";
 
@@ -12,32 +11,12 @@ import type { RuleContext } from "./rule-context.js";
 // content they cannot reason about.
 export const SHADCN_UI_MODULE_SOURCE_PATTERN = /(?:^|\/)ui\/(?:components\/)?[^/]+$/;
 
-const getValueImportDeclaration = (symbol: SymbolDescriptor): EsTreeNode | null => {
-  if (symbol.kind !== "import") return null;
-  const declaration = symbol.declarationNode.parent;
-  if (
-    !declaration ||
-    !isNodeOfType(declaration, "ImportDeclaration") ||
-    isTypeOnlyImport(declaration) ||
-    (isNodeOfType(symbol.declarationNode, "ImportSpecifier") &&
-      symbol.declarationNode.importKind === "type")
-  ) {
-    return null;
-  }
-  return declaration;
-};
-
-const importSourceMatches = (declaration: EsTreeNode, moduleSourcePattern: RegExp): boolean => {
-  if (!isNodeOfType(declaration, "ImportDeclaration")) return false;
-  const source = declaration.source.value;
-  return typeof source === "string" && moduleSourcePattern.test(source);
-};
-
 /**
  * Resolves a JSX element name to the originally-exported component name of a
  * value import whose module specifier matches `moduleSourcePattern` — the
- * shape shadcn ui modules are imported through (`@/components/ui/dialog`,
- * `~/ui/dialog`, `./dialog`). Handles renamed named imports
+ * shape shadcn ui modules (and per-primitive headless packages) are imported
+ * through (`@/components/ui/dialog`, `~/ui/dialog`, `./dialog`,
+ * `@radix-ui/react-dialog`). Handles renamed named imports
  * (`import { DialogTitle as Title }` resolves to `"DialogTitle"`) and
  * namespace member access (`import * as Dialog from "./dialog"` with
  * `<Dialog.DialogTitle>` resolves to `"DialogTitle"`). Returns null for
@@ -52,8 +31,8 @@ export const resolveShadcnUiComponentName = (
   if (isNodeOfType(elementName, "JSXIdentifier")) {
     const symbol = resolveConstIdentifierAlias(elementName, context.scopes);
     if (!symbol) return null;
-    const declaration = getValueImportDeclaration(symbol);
-    if (!declaration || !importSourceMatches(declaration, moduleSourcePattern)) return null;
+    const source = getValueImportSource(symbol);
+    if (source === null || !moduleSourcePattern.test(source)) return null;
     return getImportedName(symbol.declarationNode) ?? null;
   }
   if (
@@ -64,7 +43,7 @@ export const resolveShadcnUiComponentName = (
   }
   const symbol = resolveConstIdentifierAlias(elementName.object, context.scopes);
   if (!symbol || !isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier")) return null;
-  const declaration = getValueImportDeclaration(symbol);
-  if (!declaration || !importSourceMatches(declaration, moduleSourcePattern)) return null;
+  const source = getValueImportSource(symbol);
+  if (source === null || !moduleSourcePattern.test(source)) return null;
   return elementName.property.name;
 };

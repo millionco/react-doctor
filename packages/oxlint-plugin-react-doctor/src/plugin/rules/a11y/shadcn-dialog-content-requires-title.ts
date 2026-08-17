@@ -10,8 +10,8 @@ import {
   resolveShadcnUiComponentName,
 } from "../../utils/resolve-shadcn-ui-component-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { visitStaticJsxChildren } from "../../utils/visit-static-jsx-children.js";
-import { walkAst } from "../../utils/walk-ast.js";
+import type { JsxSubtreePartScan } from "../../utils/scan-jsx-subtree-for-part.js";
+import { scanJsxSubtreeForPart } from "../../utils/scan-jsx-subtree-for-part.js";
 
 interface DialogSurfaceContract {
   readonly contentComponent: string;
@@ -51,11 +51,6 @@ const DIALOG_SURFACE_CONTRACTS: ReadonlyArray<DialogSurfaceContract> = [
 // counts as named.
 const NAME_PROVIDING_ATTRIBUTES = ["aria-label", "aria-labelledby", "title"] as const;
 
-interface DialogSubtreeScan {
-  foundTitle: boolean;
-  sawOpaqueContent: boolean;
-}
-
 const isTitleElementName = (
   elementName: EsTreeNode,
   contract: DialogSurfaceContract,
@@ -72,48 +67,24 @@ const scanContentForTitle = (
   contentElement: EsTreeNodeOfType<"JSXElement">,
   contract: DialogSurfaceContract,
   context: RuleContext,
-): DialogSubtreeScan => {
-  const scan: DialogSubtreeScan = { foundTitle: false, sawOpaqueContent: false };
-  visitStaticJsxChildren(contentElement.children, {
-    onElement: (element) => {
+): JsxSubtreePartScan =>
+  scanJsxSubtreeForPart(contentElement.children, {
+    isPartElementName: (elementName) => isTitleElementName(elementName, contract, context),
+    // An unresolved custom component may render the title itself
+    // (`<ConfirmDialogHeader/>`), so a missing-title claim is unprovable;
+    // components generated into `ui/` modules are known leaves. Opaque
+    // elements still recurse, so a title nested through them counts.
+    isOpaqueElement: (element) => {
       const elementName = element.openingElement.name;
-      if (isTitleElementName(elementName, contract, context)) {
-        scan.foundTitle = true;
-        return false;
-      }
       const trailingSegment = getTrailingJsxNameSegment(elementName);
-      const isCustomComponent =
+      return (
         trailingSegment !== null &&
         /^[A-Z]/.test(trailingSegment) &&
-        trailingSegment !== "Fragment";
-      if (
-        isCustomComponent &&
+        trailingSegment !== "Fragment" &&
         resolveShadcnUiComponentName(elementName, SHADCN_UI_MODULE_SOURCE_PATTERN, context) === null
-      ) {
-        // An unresolved custom component may render the title itself
-        // (`<ConfirmDialogHeader/>`), so a missing-title claim is unprovable.
-        // Still recurse: a title nested through it should count.
-        scan.sawOpaqueContent = true;
-      }
-      return true;
-    },
-    onOpaqueExpression: (expression) => {
-      scan.sawOpaqueContent = true;
-      // The expression renders content we can't statically enumerate, but any
-      // JSX literally written inside it (map callbacks, IIFE branches) is
-      // still visible — finding a title there keeps the report honest.
-      walkAst(expression, (node) => {
-        if (
-          isNodeOfType(node, "JSXOpeningElement") &&
-          isTitleElementName(node.name, contract, context)
-        ) {
-          scan.foundTitle = true;
-        }
-      });
+      );
     },
   });
-  return scan;
-};
 
 export const shadcnDialogContentRequiresTitle = defineRule({
   id: "shadcn-dialog-content-requires-title",
@@ -145,7 +116,7 @@ export const shadcnDialogContentRequiresTitle = defineRule({
           return;
         }
         const scan = scanContentForTitle(element, contract, context);
-        if (scan.foundTitle || scan.sawOpaqueContent) return;
+        if (scan.foundPart || scan.sawOpaqueContent) return;
         context.report({
           node: node.name,
           message: `This ${contract.contentComponent} renders no ${contract.titleComponent}, so the dialog has no accessible name and assistive technology announces an unnamed dialog. Add a ${contract.titleComponent} (visually hidden if the design shows no heading) or an aria-label.`,

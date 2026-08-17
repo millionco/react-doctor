@@ -184,6 +184,8 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
     }
   }
   if (project.hasShadcnUi === true) capabilities.add("shadcn");
+  if (project.hasRadixUi === true) capabilities.add("radix-ui");
+  if (project.hasBaseUi === true) capabilities.add("base-ui");
   if (project.zodVersion !== null) capabilities.add("zod");
   if (project.zodMajorVersion !== null && project.zodMajorVersion >= 4) capabilities.add("zod:4");
   if (

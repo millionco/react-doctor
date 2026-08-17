@@ -32,6 +32,9 @@ import { asyncDeferAwait } from "./rules/performance/async-defer-await.js";
 import { asyncParallel } from "./rules/js-performance/async-parallel.js";
 import { authTokenInWebStorage } from "./rules/security/auth-token-in-web-storage.js";
 import { autocompleteValid } from "./rules/a11y/autocomplete-valid.js";
+import { baseUiDialogPopupRequiresTitle } from "./rules/a11y/base-ui-dialog-popup-requires-title.js";
+import { baseUiFieldRequiresLabel } from "./rules/a11y/base-ui-field-requires-label.js";
+import { baseUiTabsTabRequiresList } from "./rules/correctness/base-ui-tabs-tab-requires-list.js";
 import { buildPipelineSecretBoundary } from "./rules/security-scan/build-pipeline-secret-boundary.js";
 import { buttonHasType } from "./rules/react-builtins/button-has-type.js";
 import { checkedRequiresOnchangeOrReadonly } from "./rules/react-builtins/checked-requires-onchange-or-readonly.js";
@@ -612,6 +615,8 @@ import { r3fWebgpuNoLegacyMaterialApi } from "./rules/r3f/r3f-webgpu-no-legacy-m
 import { r3fWebgpuNoUnregisteredPipelinePass } from "./rules/r3f/r3f-webgpu-no-unregistered-pipeline-pass.js";
 import { r3fWebgpuRequireAsyncInit } from "./rules/r3f/r3f-webgpu-require-async-init.js";
 import { radioInputMissingName } from "./rules/correctness/radio-input-missing-name.js";
+import { radixDialogContentRequiresTitle } from "./rules/a11y/radix-dialog-content-requires-title.js";
+import { radixTabsTriggerRequiresList } from "./rules/correctness/radix-tabs-trigger-requires-list.js";
 import { rawSqlInjectionRisk } from "./rules/security-scan/raw-sql-injection-risk.js";
 import { reactCompilerNoManualMemoization } from "./rules/architecture/react-compiler-no-manual-memoization.js";
 import { reactInJsxScope } from "./rules/react-builtins/react-in-jsx-scope.js";
@@ -1183,6 +1188,43 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(autocompleteValid.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/base-ui-dialog-popup-requires-title",
+    id: "base-ui-dialog-popup-requires-title",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...baseUiDialogPopupRequiresTitle,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(baseUiDialogPopupRequiresTitle.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/base-ui-field-requires-label",
+    id: "base-ui-field-requires-label",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...baseUiFieldRequiresLabel,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(baseUiFieldRequiresLabel.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/base-ui-tabs-tab-requires-list",
+    id: "base-ui-tabs-tab-requires-list",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...baseUiTabsTabRequiresList,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {
@@ -8480,6 +8522,31 @@ export const reactDoctorRules = [
       ...radioInputMissingName,
       framework: "global",
       category: "Accessibility",
+    },
+  },
+  {
+    key: "react-doctor/radix-dialog-content-requires-title",
+    id: "radix-dialog-content-requires-title",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...radixDialogContentRequiresTitle,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(radixDialogContentRequiresTitle.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/radix-tabs-trigger-requires-list",
+    id: "radix-tabs-trigger-requires-list",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...radixTabsTriggerRequiresList,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {

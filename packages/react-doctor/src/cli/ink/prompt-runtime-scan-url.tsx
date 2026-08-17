@@ -107,8 +107,8 @@ export const RuntimeScanUrlPrompt = ({
       <Text color="magenta" bold>
         React Doctor
       </Text>
-      <Text bold>Choose an app to profile</Text>
-      <Text dimColor>We’ll open Chrome and record one interaction.</Text>
+      <Text bold>Choose an app to scan</Text>
+      <Text dimColor>We’ll open Chrome and scan one interaction.</Text>
 
       {mode === "select" ? (
         <Box flexDirection="column" marginTop={RUNTIME_SCAN_PROMPT_SECTION_GAP_ROWS}>

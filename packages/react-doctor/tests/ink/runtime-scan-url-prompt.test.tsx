@@ -24,7 +24,7 @@ describe("RuntimeScanUrlPrompt", () => {
     );
     await flush();
 
-    expect(lastFrame()).toContain("Choose an app to profile");
+    expect(lastFrame()).toContain("Choose an app to scan");
     expect(lastFrame()).toContain("http://localhost:3000 detected");
     expect(lastFrame()).toContain("Enter another URL");
 

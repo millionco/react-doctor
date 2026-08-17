@@ -9,7 +9,7 @@ export interface ShouldUseTuiInput extends TuiEnvironment {
 export const isTuiEnvironmentSupported = (input: TuiEnvironment): boolean =>
   !input.isNonInteractiveEnvironment &&
   input.stdinIsTty &&
-  input.stdoutIsTty &&
+  input.outputIsTty &&
   input.supportsRawMode &&
   input.nodeMajorVersion >= TUI_MIN_NODE_MAJOR_VERSION &&
   input.terminalName !== "dumb";

@@ -35,7 +35,8 @@ const writeRuntimeScanErrorReport = (
 
 const resolveRuntimeScanUrl = async (url: string | undefined): Promise<string | null> => {
   if (url !== undefined) return url;
-  if (!isTuiEnvironmentSupported(resolveTuiEnvironment())) {
+  const tuiEnvironment = resolveTuiEnvironment(process.stderr.isTTY === true);
+  if (!isTuiEnvironmentSupported(tuiEnvironment)) {
     throw new CliInputError(
       "A URL is required outside an interactive terminal. Run `react-doctor scan <url>`.",
     );

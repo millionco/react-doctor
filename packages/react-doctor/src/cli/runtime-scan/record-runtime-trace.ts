@@ -50,6 +50,13 @@ export interface RecordRuntimeTraceResult {
   readonly connection: "isolated" | "cdp";
 }
 
+interface RuntimeScanDroppedEvidence {
+  droppedLongAnimationFrames: number;
+  droppedScriptTimings: number;
+  droppedComponentEvents: number;
+  droppedInteractions: number;
+}
+
 const resolveProbePath = (): string => {
   const candidates = [
     path.join(import.meta.dirname, RUNTIME_SCAN_PROBE_RELATIVE_PATH),
@@ -278,9 +285,17 @@ export const recordRuntimeTrace = async (
   const snapshotRelaySource = buildSnapshotRelaySource(snapshotAttributeName, snapshotBindingName);
   const { browser, connection } = await connectToBrowser(input.cdpUrl);
   const navigationSnapshotsByTimeOrigin = new Map<number, RuntimeScanProbeSnapshot>();
+  const discardedSnapshotEvidence: RuntimeScanDroppedEvidence = {
+    droppedLongAnimationFrames: 0,
+    droppedScriptTimings: 0,
+    droppedComponentEvents: 0,
+    droppedInteractions: 0,
+  };
+  const scanPages = new Set<Page>();
+  const pageSetupPromises = new Map<Page, Promise<void>>();
   let context: BrowserContext | undefined;
   let page: Page | undefined;
-  let pageCdpSession: CDPSession | undefined;
+  let latestPage: Page | undefined;
   let traceCdpSession: CDPSession | undefined;
   let didCreateContext = false;
   let isTracing = false;
@@ -296,10 +311,63 @@ export const recordRuntimeTrace = async (
     ) {
       const oldestTimeOrigin = navigationSnapshotsByTimeOrigin.keys().next().value;
       if (oldestTimeOrigin !== undefined) {
+        const discardedSnapshot = navigationSnapshotsByTimeOrigin.get(oldestTimeOrigin);
+        if (discardedSnapshot !== undefined) {
+          discardedSnapshotEvidence.droppedLongAnimationFrames +=
+            discardedSnapshot.longAnimationFrames.length +
+            discardedSnapshot.droppedLongAnimationFrames;
+          discardedSnapshotEvidence.droppedScriptTimings +=
+            discardedSnapshot.longAnimationFrames.reduce(
+              (scriptCount, longAnimationFrame) => scriptCount + longAnimationFrame.scripts.length,
+              0,
+            ) + discardedSnapshot.droppedScriptTimings;
+          discardedSnapshotEvidence.droppedComponentEvents +=
+            discardedSnapshot.componentEvents.length + discardedSnapshot.droppedComponentEvents;
+          discardedSnapshotEvidence.droppedInteractions +=
+            discardedSnapshot.interactions.length + discardedSnapshot.droppedInteractions;
+        }
         navigationSnapshotsByTimeOrigin.delete(oldestTimeOrigin);
       }
     }
     navigationSnapshotsByTimeOrigin.set(snapshot.timeOrigin, snapshot);
+  };
+  const initializeRuntimeScanPage = async (runtimePage: Page): Promise<void> => {
+    if (context === undefined) throw new Error("The runtime scan browser context is unavailable.");
+    const cdpSession = await context.newCDPSession(runtimePage);
+    await cdpSession.send("Page.enable");
+    cdpSession.on("Runtime.bindingCalled", (event) => {
+      if (event.name !== snapshotBindingName) return;
+      const snapshot = parseRuntimeScanSnapshotPayload(event.payload, snapshotToken);
+      if (snapshot !== null) storeNavigationSnapshot(snapshot);
+    });
+    await cdpSession.send("Runtime.enable");
+    await cdpSession.send("Runtime.addBinding", {
+      name: snapshotBindingName,
+      executionContextName: snapshotRelayWorldName,
+    });
+    await cdpSession.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: snapshotRelaySource,
+      worldName: snapshotRelayWorldName,
+    });
+    const frameTree = await cdpSession.send("Page.getFrameTree");
+    const isolatedWorld = await cdpSession.send("Page.createIsolatedWorld", {
+      frameId: frameTree.frameTree.frame.id,
+      worldName: snapshotRelayWorldName,
+    });
+    await cdpSession.send("Runtime.evaluate", {
+      expression: snapshotRelaySource,
+      contextId: isolatedWorld.executionContextId,
+    });
+  };
+  const registerRuntimeScanPage = (runtimePage: Page): Promise<void> => {
+    latestPage = runtimePage;
+    scanPages.add(runtimePage);
+    const existingSetup = pageSetupPromises.get(runtimePage);
+    if (existingSetup !== undefined) return existingSetup;
+    const setupPromise = initializeRuntimeScanPage(runtimePage);
+    pageSetupPromises.set(runtimePage, setupPromise);
+    void setupPromise.catch(() => {});
+    return setupPromise;
   };
   const stopTracing = async (): Promise<void> => {
     if (!isTracing || traceCdpSession === undefined) return;
@@ -311,7 +379,7 @@ export const recordRuntimeTrace = async (
     } catch {}
   };
   const closeBrowserResources = async (): Promise<void> => {
-    await page?.close().catch(() => {});
+    await Promise.all([...scanPages].map((runtimePage) => runtimePage.close().catch(() => {})));
     if (connection === "cdp" && didCreateContext) {
       await context?.close().catch(() => {});
     }
@@ -338,6 +406,10 @@ export const recordRuntimeTrace = async (
       });
       didCreateContext = true;
     }
+    context.on("page", (runtimePage) => {
+      void registerRuntimeScanPage(runtimePage);
+    });
+    await context.addInitScript({ content: probeSource });
     page = await context.newPage();
     if (connection === "cdp") {
       await Promise.all(
@@ -346,24 +418,8 @@ export const recordRuntimeTrace = async (
         }),
       );
     }
-    await page.addInitScript({ content: probeSource });
-    pageCdpSession = await context.newCDPSession(page);
+    await registerRuntimeScanPage(page);
     traceCdpSession = await browser.newBrowserCDPSession();
-    await pageCdpSession.send("Page.enable");
-    pageCdpSession.on("Runtime.bindingCalled", (event) => {
-      if (event.name !== snapshotBindingName) return;
-      const snapshot = parseRuntimeScanSnapshotPayload(event.payload, snapshotToken);
-      if (snapshot !== null) storeNavigationSnapshot(snapshot);
-    });
-    await pageCdpSession.send("Runtime.enable");
-    await pageCdpSession.send("Runtime.addBinding", {
-      name: snapshotBindingName,
-      executionContextName: snapshotRelayWorldName,
-    });
-    await pageCdpSession.send("Page.addScriptToEvaluateOnNewDocument", {
-      source: snapshotRelaySource,
-      worldName: snapshotRelayWorldName,
-    });
     await startDevtoolsTrace(traceCdpSession);
     isTracing = true;
     const capturedAt = new Date().toISOString();
@@ -371,28 +427,45 @@ export const recordRuntimeTrace = async (
     await navigateToRuntimeUrl(page, input.url);
     await waitForRuntimeScanStop();
     const durationMs = performance.now() - recordingStartedAt;
-    const finalSnapshotPromise = readProbeSnapshot(page);
+    await Promise.allSettled([...pageSetupPromises.values()]);
+    const finalSnapshotsPromise = Promise.all([...scanPages].map(readProbeSnapshot));
     traceStreamPromise = endDevtoolsTrace(traceCdpSession);
-    const [finalSnapshot, traceStream] = await Promise.all([
-      finalSnapshotPromise,
+    const [finalSnapshots, traceStream] = await Promise.all([
+      finalSnapshotsPromise,
       traceStreamPromise,
     ]);
-    if (finalSnapshot !== null) storeNavigationSnapshot(finalSnapshot);
+    for (const finalSnapshot of finalSnapshots) {
+      if (finalSnapshot !== null) storeNavigationSnapshot(finalSnapshot);
+    }
     isTracing = false;
     await writeDevtoolsTrace(traceCdpSession, traceStream, tracePath);
     const capturedSnapshots = [...navigationSnapshotsByTimeOrigin.values()];
     let fallbackFinalUrl = sanitizedRequestedUrl;
     try {
-      if (!page.isClosed()) fallbackFinalUrl = sanitizeRuntimeUrl(page.url());
+      if (latestPage !== undefined && !latestPage.isClosed()) {
+        fallbackFinalUrl = sanitizeRuntimeUrl(latestPage.url());
+      }
     } catch {}
+    const mergedSnapshot =
+      capturedSnapshots.length > 0
+        ? mergeRuntimeScanProbeSnapshots(capturedSnapshots)
+        : createFallbackSnapshot(Date.parse(capturedAt), fallbackFinalUrl);
     return {
       tracePath,
       capturedAt,
       durationMs,
-      snapshot:
-        capturedSnapshots.length > 0
-          ? mergeRuntimeScanProbeSnapshots(capturedSnapshots)
-          : createFallbackSnapshot(Date.parse(capturedAt), fallbackFinalUrl),
+      snapshot: {
+        ...mergedSnapshot,
+        droppedLongAnimationFrames:
+          mergedSnapshot.droppedLongAnimationFrames +
+          discardedSnapshotEvidence.droppedLongAnimationFrames,
+        droppedScriptTimings:
+          mergedSnapshot.droppedScriptTimings + discardedSnapshotEvidence.droppedScriptTimings,
+        droppedComponentEvents:
+          mergedSnapshot.droppedComponentEvents + discardedSnapshotEvidence.droppedComponentEvents,
+        droppedInteractions:
+          mergedSnapshot.droppedInteractions + discardedSnapshotEvidence.droppedInteractions,
+      },
       connection,
     };
   } finally {

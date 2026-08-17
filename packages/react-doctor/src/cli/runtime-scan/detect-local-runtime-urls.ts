@@ -9,35 +9,45 @@ export interface RuntimeScanLocalUrlSuggestion {
   readonly url: string;
 }
 
-const probeLocalHttpPort = (port: number): Promise<RuntimeScanLocalUrlSuggestion | null> =>
+const LOCAL_HTTP_HOSTS: ReadonlyArray<string> = ["127.0.0.1", "::1"];
+
+const probeLocalHttpHost = (port: number, host: string): Promise<boolean> =>
   new Promise((resolve) => {
     let didResolve = false;
-    const resolveOnce = (suggestion: RuntimeScanLocalUrlSuggestion | null): void => {
+    const resolveOnce = (isReachable: boolean): void => {
       if (didResolve) return;
       didResolve = true;
-      resolve(suggestion);
+      resolve(isReachable);
     };
     const request = http.request(
       {
         agent: false,
-        host: "127.0.0.1",
+        host,
         method: "HEAD",
         path: "/",
         port,
       },
       (response) => {
         response.resume();
-        resolveOnce({
-          port,
-          url: `http://localhost:${port}`,
-        });
+        resolveOnce(true);
       },
     );
     request.setTimeout(RUNTIME_SCAN_LOCAL_SERVER_PROBE_TIMEOUT_MS, () => request.destroy());
-    request.on("error", () => resolveOnce(null));
-    request.on("close", () => resolveOnce(null));
+    request.on("error", () => resolveOnce(false));
+    request.on("close", () => resolveOnce(false));
     request.end();
   });
+
+const probeLocalHttpPort = async (port: number): Promise<RuntimeScanLocalUrlSuggestion | null> => {
+  const reachableHosts = await Promise.all(
+    LOCAL_HTTP_HOSTS.map((host) => probeLocalHttpHost(port, host)),
+  );
+  if (!reachableHosts.some(Boolean)) return null;
+  return {
+    port,
+    url: `http://localhost:${port}`,
+  };
+};
 
 export const detectLocalRuntimeUrls = async (
   ports: ReadonlyArray<number> = RUNTIME_SCAN_LOCAL_DEV_PORTS,

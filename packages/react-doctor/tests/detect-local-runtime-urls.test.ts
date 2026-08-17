@@ -2,10 +2,10 @@ import * as http from "node:http";
 import { describe, expect, it } from "vite-plus/test";
 import { detectLocalRuntimeUrls } from "../src/cli/runtime-scan/detect-local-runtime-urls.js";
 
-const listen = (server: http.Server): Promise<void> =>
+const listen = (server: http.Server, host: string): Promise<void> =>
   new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
+    server.listen(0, host, resolve);
   });
 
 const close = (server: http.Server): Promise<void> =>
@@ -17,12 +17,12 @@ const close = (server: http.Server): Promise<void> =>
   });
 
 describe("detectLocalRuntimeUrls", () => {
-  it("finds HTTP apps listening on localhost", async () => {
+  it.each(["127.0.0.1", "::1"])("finds HTTP apps listening on %s", async (host) => {
     const server = http.createServer((_request, response) => {
       response.writeHead(200, { "content-type": "text/html" });
       response.end("<title>Local app</title>");
     });
-    await listen(server);
+    await listen(server, host);
     try {
       const address = server.address();
       if (address === null || typeof address === "string") {

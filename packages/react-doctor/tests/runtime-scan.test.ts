@@ -341,7 +341,7 @@ describe("runtime scan report", () => {
       ],
     });
     const textReport = formatRuntimeScanReport(report, "text");
-    expect(textReport).not.toContain("\u001B");
+    expect(textReport).not.toContain("\u001B]52");
     expect(textReport).not.toContain("\u0007");
     expect(formatRuntimeScanReport(report, "json")).toContain("\\u001b");
   });

@@ -53,18 +53,18 @@ Inspect what the scene actually renders. Every visual finding needs evidence: a 
 
 Apply the mini rubric. A row fails only when the evidence shows the failure condition:
 
-| Area | Check | Fail when |
-| --- | --- | --- |
-| Render sanity | The scene reaches a stable frame after load | Black canvas, WebGL context errors, or content that never appears |
-| Geometry | Move the camera along seams, edges, and boundaries | Gaps, missing faces, visible backfaces, or two surfaces flickering at the same depth (z-fighting) |
-| Transparency and depth | Cross depth-order boundaries with overlapping or transmissive surfaces | Wrong sort order, halos, opaque surfaces that should transmit, or flicker at grazing angles |
-| Textures | View mapped surfaces close, far, and at grazing angles | Missing textures, stretching, seams, moiré, shimmer, or washed-out colors from a wrong color space |
-| Materials and lighting | Change light and view direction on lit surfaces | Surfaces that ignore light direction, or reflective metals with no environment to reflect |
-| Shadows | Move casters, receivers, and the light through their range | Acne, detached or floating shadows, flicker at rest, or shadows that outlive their caster |
-| Camera | Follow the primary subject through movement and transitions | Subject leaves frame, camera clips into geometry, or foreground blocks the play area |
-| Scale and contact | Compare object scale and resting contact against surroundings | Objects float above, sink into, or intersect their support surface, or sit at implausible scale |
-| Image stability | Pan the camera slowly at supported resolutions | Silhouettes, thin geometry, or highlights that crawl, sparkle, or ghost |
-| Resize and DPR | Change viewport size, zoom, and device pixel ratio | Distortion, blur, stretched output, or content leaving the viewport |
+| Area                   | Check                                                                  | Fail when                                                                                          |
+| ---------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Render sanity          | The scene reaches a stable frame after load                            | Black canvas, WebGL context errors, or content that never appears                                  |
+| Geometry               | Move the camera along seams, edges, and boundaries                     | Gaps, missing faces, visible backfaces, or two surfaces flickering at the same depth (z-fighting)  |
+| Transparency and depth | Cross depth-order boundaries with overlapping or transmissive surfaces | Wrong sort order, halos, opaque surfaces that should transmit, or flicker at grazing angles        |
+| Textures               | View mapped surfaces close, far, and at grazing angles                 | Missing textures, stretching, seams, moiré, shimmer, or washed-out colors from a wrong color space |
+| Materials and lighting | Change light and view direction on lit surfaces                        | Surfaces that ignore light direction, or reflective metals with no environment to reflect          |
+| Shadows                | Move casters, receivers, and the light through their range             | Acne, detached or floating shadows, flicker at rest, or shadows that outlive their caster          |
+| Camera                 | Follow the primary subject through movement and transitions            | Subject leaves frame, camera clips into geometry, or foreground blocks the play area               |
+| Scale and contact      | Compare object scale and resting contact against surroundings          | Objects float above, sink into, or intersect their support surface, or sit at implausible scale    |
+| Image stability        | Pan the camera slowly at supported resolutions                         | Silhouettes, thin geometry, or highlights that crawl, sparkle, or ghost                            |
+| Resize and DPR         | Change viewport size, zoom, and device pixel ratio                     | Distortion, blur, stretched output, or content leaving the viewport                                |
 
 Each rubric row has a small set of usual code-level causes. Check these first when a row fails:
 

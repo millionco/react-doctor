@@ -1,4 +1,5 @@
 import { DoctorFace } from "./doctor-face";
+import { ThreeClaudeCode } from "./three-claude-code";
 import { ThreeCodeCard } from "./three-code-card";
 import { ThreeDonutStage } from "./three-donut-stage";
 import { ThreeFindingRow } from "./three-finding-row";
@@ -9,6 +10,7 @@ import { interpolateNumber } from "../utils/interpolate-number";
 import { FONT_FAMILY, GREEN_COLOR, RED_COLOR, WHITE_COLOR, YELLOW_COLOR } from "../constants";
 import {
   THREE_BAD_CODE_LINES,
+  THREE_CLAUDE_END_FRAME,
   THREE_FINDING_FADE_DURATION_FRAMES,
   THREE_FINDING_INTERVAL_FRAMES,
   THREE_FINDINGS,
@@ -51,10 +53,18 @@ export const ThreeTimeline = ({ frame }: ThreeTimelineProps) => {
     outputEnd: 1,
     easing: easeInOutCubic,
   });
-  const optimizationProgress = interpolateNumber({
+  const claudeProgress = interpolateNumber({
     value: frame,
     inputStart: THREE_SCAN_END_FRAME - THREE_TRANSITION_DURATION_FRAMES,
-    inputEnd: THREE_SCAN_END_FRAME + 34,
+    inputEnd: THREE_SCAN_END_FRAME,
+    outputStart: 0,
+    outputEnd: 1,
+    easing: easeInOutCubic,
+  });
+  const optimizationProgress = interpolateNumber({
+    value: frame,
+    inputStart: THREE_CLAUDE_END_FRAME - THREE_TRANSITION_DURATION_FRAMES,
+    inputEnd: THREE_CLAUDE_END_FRAME + 34,
     outputStart: 0,
     outputEnd: 1,
     easing: easeInOutCubic,
@@ -67,7 +77,7 @@ export const ThreeTimeline = ({ frame }: ThreeTimelineProps) => {
     outputEnd: 1,
     easing: easeOutCubic,
   });
-  const scanExitProgress = interpolateNumber({
+  const claudeExitProgress = interpolateNumber({
     value: optimizationProgress,
     inputStart: 0,
     inputEnd: 0.7,
@@ -77,7 +87,8 @@ export const ThreeTimeline = ({ frame }: ThreeTimelineProps) => {
   });
   const introOpacity = 1 - problemProgress;
   const problemOpacity = problemProgress * (1 - scanProgress);
-  const scanOpacity = scanProgress * (1 - scanExitProgress);
+  const scanOpacity = scanProgress * (1 - claudeProgress);
+  const claudeOpacity = claudeProgress * (1 - claudeExitProgress);
   const optimizedOpacity = optimizationProgress * (1 - finalProgress);
   const warningOpacity = interpolateNumber({
     value: frame,
@@ -201,8 +212,8 @@ export const ThreeTimeline = ({ frame }: ThreeTimelineProps) => {
                 finding={finding}
                 fixProgress={interpolateNumber({
                   value: frame,
-                  inputStart: THREE_SCAN_END_FRAME + findingIndex * THREE_FIX_INTERVAL_FRAMES,
-                  inputEnd: THREE_SCAN_END_FRAME + findingIndex * THREE_FIX_INTERVAL_FRAMES + 6,
+                  inputStart: THREE_CLAUDE_END_FRAME + findingIndex * THREE_FIX_INTERVAL_FRAMES,
+                  inputEnd: THREE_CLAUDE_END_FRAME + findingIndex * THREE_FIX_INTERVAL_FRAMES + 6,
                   outputStart: 0,
                   outputEnd: 1,
                   easing: easeOutCubic,
@@ -213,6 +224,10 @@ export const ThreeTimeline = ({ frame }: ThreeTimelineProps) => {
           </div>
         </div>
       </section>
+
+      {claudeOpacity > 0 && (
+        <ThreeClaudeCode localFrame={frame - THREE_SCAN_END_FRAME} opacity={claudeOpacity} />
+      )}
 
       <section
         className="three-final-layout"

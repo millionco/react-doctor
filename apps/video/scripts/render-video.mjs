@@ -8,7 +8,7 @@ import { preview } from "vite";
 const VIDEO_WIDTH_PX = 1920;
 const VIDEO_HEIGHT_PX = 1080;
 const VIDEO_FPS = 30;
-const VIDEO_FRAME_COUNT = 390;
+const VIDEO_FRAME_COUNT = 526;
 const PREVIEW_PORT = 4173;
 const FRAME_EVENT_NAME = "react-doctor:set-frame";
 const CHROMIUM_EXECUTABLE_PATH = process.env.CHROMIUM_PATH ?? "/usr/bin/chromium";

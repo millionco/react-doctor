@@ -116,7 +116,7 @@ ${highlighter.dim("Scope:")}
 const renderRuntimeScanHelpEpilog = (): string => `
 ${highlighter.dim("Examples:")}
 ${formatExampleLines([
-  ["react-doctor scan", "enter the app URL in an interactive prompt"],
+  ["react-doctor scan", "choose a detected local app or enter its URL"],
   ["react-doctor scan http://localhost:3000", "record one interaction in isolated Chrome"],
   [
     "react-doctor scan http://localhost:3000 --format json",
@@ -134,7 +134,7 @@ ${formatExampleLines([
 
 ${highlighter.dim("How recording works:")}
   1. Start the app. Prefer a production build for representative timings.
-  2. Run this command. If you omit the URL, React Doctor asks for it interactively.
+  2. Run this command. If you omit the URL, React Doctor suggests running localhost apps.
   3. Reproduce one slow interaction within five minutes. Purple labels show component renders.
   4. Return here and press Enter. React Doctor prints the report and trace path.
 
@@ -294,7 +294,7 @@ program
 program
   .command("scan")
   .description("Record a React interaction in Chrome until you press Enter")
-  .argument("[url]", "HTTP(S) URL of the running React app; prompts when omitted")
+  .argument("[url]", "HTTP(S) URL of the running React app; detects local apps when omitted")
   .option("-f, --format <format>", "report format: text, json, or jsonl", "text")
   .option("--cdp <url>", "reuse Chrome at this remote-debugging endpoint")
   .option("--trace-out <path>", "save the compressed .json.gz DevTools trace at this path")

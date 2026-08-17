@@ -21,6 +21,22 @@ export const RUNTIME_SCAN_INTERACTION_DURATION_THRESHOLD_MS = 16;
 export const RUNTIME_SCAN_LAYOUT_THRASH_RATIO = 0.25;
 export const RUNTIME_SCAN_MAX_RECORDING_DURATION_MS = 5 * 60 * 1_000;
 export const RUNTIME_SCAN_SNAPSHOT_TIMEOUT_MS = 10_000;
+export const RUNTIME_SCAN_LOCAL_SERVER_PROBE_TIMEOUT_MS = 300;
+export const RUNTIME_SCAN_PROMPT_PADDING_COLUMNS = 1;
+export const RUNTIME_SCAN_PROMPT_SECTION_GAP_ROWS = 1;
+export const RUNTIME_SCAN_LOCAL_DEV_PORTS = [
+  1_234,
+  ...Array.from({ length: 11 }, (_unusedValue, portOffset) => 3_000 + portOffset),
+  ...Array.from({ length: 11 }, (_unusedValue, portOffset) => 4_000 + portOffset),
+  4_173,
+  4_200,
+  4_321,
+  ...Array.from({ length: 11 }, (_unusedValue, portOffset) => 5_000 + portOffset),
+  ...Array.from({ length: 11 }, (_unusedValue, portOffset) => 5_173 + portOffset),
+  ...Array.from({ length: 11 }, (_unusedValue, portOffset) => 8_000 + portOffset),
+  ...Array.from({ length: 11 }, (_unusedValue, portOffset) => 8_080 + portOffset),
+  8_888,
+] as const;
 export const RUNTIME_SCAN_BROWSER_WIDTH_PX = 1_440;
 export const RUNTIME_SCAN_BROWSER_HEIGHT_PX = 900;
 export const RUNTIME_SCAN_DURATION_PRECISION_DIGITS = 1;

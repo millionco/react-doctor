@@ -164,6 +164,8 @@ const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "no-static-motion-config-never",
   "no-ungated-tailwind-animation",
   "shadcn-dialog-content-requires-title",
+  "shadcn-form-item-requires-label",
+  "shadcn-icon-button-requires-label",
   "no-uninformative-aria-label",
   "dialog-has-accessible-name",
   "no-create-ref-in-function-component",

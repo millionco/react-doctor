@@ -20,21 +20,36 @@ describe("shadcn-dialog-content-requires-title", () => {
     expect(result.diagnostics[0]?.message).toContain("DialogTitle");
   });
 
-  it("reports sheet and alert-dialog content without their titles", () => {
+  it("reports sheet, alert-dialog, and drawer content without their titles", () => {
     const result = runRule(
       shadcnDialogContentRequiresTitle,
       `import { SheetContent } from "./sheet";
        import { AlertDialogContent, AlertDialogDescription } from "~/ui/alert-dialog";
+       import { DrawerContent } from "@/components/ui/drawer";
        const View = () => (
          <>
            <SheetContent><nav><a href="/">Home</a></nav></SheetContent>
            <AlertDialogContent>
              <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
            </AlertDialogContent>
+           <DrawerContent><p>Pick a date</p></DrawerContent>
          </>
        );`,
     );
-    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("accepts a drawer with its title part", () => {
+    const result = runRule(
+      shadcnDialogContentRequiresTitle,
+      `import { DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+       const View = () => (
+         <DrawerContent>
+           <DrawerHeader><DrawerTitle>Pick a date</DrawerTitle></DrawerHeader>
+         </DrawerContent>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("reports content whose only components are same-module parts and ui-module leaves", () => {

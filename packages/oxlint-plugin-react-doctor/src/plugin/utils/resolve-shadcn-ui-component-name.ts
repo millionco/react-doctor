@@ -6,6 +6,12 @@ import { isTypeOnlyImport } from "./is-type-only-import.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import type { RuleContext } from "./rule-context.js";
 
+// Any module under a `ui/` directory is a shadcn-generated part
+// (`@/components/ui/button`, `~/ui/card`). Rules use this to tell generated
+// leaf building blocks apart from arbitrary custom components whose rendered
+// content they cannot reason about.
+export const SHADCN_UI_MODULE_SOURCE_PATTERN = /(?:^|\/)ui\/(?:components\/)?[^/]+$/;
+
 const getValueImportDeclaration = (symbol: SymbolDescriptor): EsTreeNode | null => {
   if (symbol.kind !== "import") return null;
   const declaration = symbol.declarationNode.parent;

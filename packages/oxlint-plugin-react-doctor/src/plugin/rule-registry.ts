@@ -746,6 +746,8 @@ import { serverNoMutableModuleState } from "./rules/server/server-no-mutable-mod
 import { serverSequentialIndependentAwait } from "./rules/server/server-sequential-independent-await.js";
 import { shadcnCommandItemStateVariantRequiresValue } from "./rules/correctness/shadcn-command-item-state-variant-requires-value.js";
 import { shadcnDialogContentRequiresTitle } from "./rules/a11y/shadcn-dialog-content-requires-title.js";
+import { shadcnFormItemRequiresLabel } from "./rules/a11y/shadcn-form-item-requires-label.js";
+import { shadcnIconButtonRequiresLabel } from "./rules/a11y/shadcn-icon-button-requires-label.js";
 import { shadcnInputGroupNoRawControls } from "./rules/correctness/shadcn-input-group-no-raw-controls.js";
 import { shadcnTabsTriggerRequiresList } from "./rules/correctness/shadcn-tabs-trigger-requires-list.js";
 import { stateInConstructor } from "./rules/react-builtins/state-in-constructor.js";
@@ -10065,6 +10067,34 @@ export const reactDoctorRules = [
       category: "Accessibility",
       requires: [
         ...new Set<Capability>(["react", ...(shadcnDialogContentRequiresTitle.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/shadcn-form-item-requires-label",
+    id: "shadcn-form-item-requires-label",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...shadcnFormItemRequiresLabel,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(shadcnFormItemRequiresLabel.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/shadcn-icon-button-requires-label",
+    id: "shadcn-icon-button-requires-label",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...shadcnIconButtonRequiresLabel,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(shadcnIconButtonRequiresLabel.requires ?? [])]),
       ],
     },
   },

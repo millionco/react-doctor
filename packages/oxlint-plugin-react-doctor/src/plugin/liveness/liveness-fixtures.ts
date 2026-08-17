@@ -2383,13 +2383,19 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'const Spinner = () => <span className="animate-spin" />;',
   },
   "shadcn-tabs-trigger-requires-list": {
-    code: 'import { TabsTrigger } from "./tabs";\nconst Trigger = () => <TabsTrigger value="a" />;',
+    code: 'import { Tabs, TabsTrigger } from "./tabs";\nconst View = () => <Tabs><TabsTrigger value="a" /></Tabs>;',
   },
   "shadcn-command-item-state-variant-requires-value": {
     code: 'import { CommandItem } from "cmdk";\nconst Item = () => <CommandItem className="data-[selected]:bg-accent" />;',
   },
   "shadcn-dialog-content-requires-title": {
     code: 'import { DialogContent } from "./dialog";\nconst Confirm = () => <DialogContent><p>Are you sure?</p></DialogContent>;',
+  },
+  "shadcn-form-item-requires-label": {
+    code: 'import { FormControl, FormItem } from "./form";\nconst Field = () => <FormItem><FormControl><input /></FormControl></FormItem>;',
+  },
+  "shadcn-icon-button-requires-label": {
+    code: 'import { Button } from "./button";\nconst Remove = () => <Button size="icon"><TrashIcon /></Button>;',
   },
   "shadcn-input-group-no-raw-controls": {
     code: 'import { InputGroup } from "./input-group";\nconst Search = () => <InputGroup><input /></InputGroup>;',

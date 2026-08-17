@@ -12279,7 +12279,39 @@
       "id": "shadcn-dialog-content-requires-title",
       "title": "Dialog content without a title",
       "severity": "warn",
-      "recommendation": "Give every DialogContent, SheetContent, and AlertDialogContent a matching title part (wrapped in an sr-only element when the design shows no heading) or name the dialog with aria-label.",
+      "recommendation": "Give every DialogContent, SheetContent, AlertDialogContent, and DrawerContent a matching title part (wrapped in an sr-only element when the design shows no heading) or name the dialog with aria-label.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react", "shadcn"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/shadcn-form-item-requires-label",
+    "id": "shadcn-form-item-requires-label",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "shadcn-form-item-requires-label",
+      "title": "FormItem control without a label",
+      "severity": "warn",
+      "recommendation": "Give every FormItem that wraps a FormControl a FormLabel (sr-only when the design shows no visible label) or name the control directly with aria-label.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react", "shadcn"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/shadcn-icon-button-requires-label",
+    "id": "shadcn-icon-button-requires-label",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "shadcn-icon-button-requires-label",
+      "title": "Icon-only Button without accessible name",
+      "severity": "warn",
+      "recommendation": "Give every icon-sized Button an aria-label or an sr-only text child so assistive technology announces what the button does.",
       "category": "Accessibility",
       "framework": "global",
       "requires": ["react", "shadcn"],

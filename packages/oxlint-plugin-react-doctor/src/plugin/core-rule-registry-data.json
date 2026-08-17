@@ -12607,7 +12607,7 @@
       "id": "tanstack-form-on-submit-requires-prevent-default",
       "title": "Form submit reloads the page around handleSubmit",
       "severity": "warn",
-      "recommendation": "Wrap the submit handler: onSubmit={(event) => { event.preventDefault(); form.handleSubmit(); }} — TanStack Form's handleSubmit never cancels the native submit itself.",
+      "recommendation": "Wrap the submit handler as onSubmit={(event) => { event.preventDefault(); form.handleSubmit(); }} because TanStack Form's handleSubmit never cancels the native submit itself.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["tanstack-form"],

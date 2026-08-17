@@ -39,7 +39,7 @@ export const tanstackFormOnSubmitRequiresPreventDefault = defineRule({
   requires: ["tanstack-form"],
   matchByOccurrence: true,
   recommendation:
-    "Wrap the submit handler: onSubmit={(event) => { event.preventDefault(); form.handleSubmit(); }} — TanStack Form's handleSubmit never cancels the native submit itself.",
+    "Wrap the submit handler as onSubmit={(event) => { event.preventDefault(); form.handleSubmit(); }} because TanStack Form's handleSubmit never cancels the native submit itself.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "form") return;

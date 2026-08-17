@@ -27,7 +27,6 @@ import type { ReactDoctorInspectOptions } from "../../inspect-options.js";
 import { buildNoScoreMessage } from "../utils/build-no-score-message.js";
 import { hasIncompleteScoreAnalysis } from "../utils/has-incomplete-score-analysis.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";
-import { registerActiveTuiRenderer } from "../utils/active-tui-renderer.js";
 import { buildEmptyReportMessage } from "../utils/build-empty-report-message.js";
 import { computeProjectedScore } from "../utils/compute-score-projection.js";
 import { countUniqueScannedFiles } from "../utils/count-unique-scanned-files.js";
@@ -67,6 +66,7 @@ import {
 import { selectReportDiagnostics } from "../utils/select-report-diagnostics.js";
 import { shouldFailScanGate } from "../utils/should-fail-scan-gate.js";
 import { ProjectSelect } from "./components/project-select.js";
+import { registerMountedTuiRenderer } from "./register-mounted-tui-renderer.js";
 import { ScanApp } from "./scan-app.js";
 import { progressLayerForStore, reporterLayerForStore } from "./scan-bridge-layers.js";
 import { createScanStore } from "./scan-store.js";
@@ -180,23 +180,6 @@ const resolveSelectedDirectories = async (
   }
 
   return promptProjectSelection(packages, rootDirectory);
-};
-
-const registerMountedTuiRenderer = (instance: ReturnType<typeof render>): (() => void) => {
-  let didDisposeRenderer = false;
-  const disposeRenderer = (shouldClearOutput: boolean): void => {
-    if (didDisposeRenderer) return;
-    didDisposeRenderer = true;
-    if (shouldClearOutput) instance.clear();
-    instance.unmount();
-  };
-  const unregisterActiveTuiRenderer = registerActiveTuiRenderer({
-    preserveOutput: () => disposeRenderer(false),
-  });
-  return () => {
-    unregisterActiveTuiRenderer();
-    disposeRenderer(true);
-  };
 };
 
 const promptProjectSelection = (

@@ -4,9 +4,9 @@ import { inspectAction } from "./inspect.js";
 import { runProjectMigrations } from "../utils/cli-migrations.js";
 import { METRIC } from "../utils/constants.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";
-import { isNonInteractiveEnvironment } from "../utils/is-non-interactive-environment.js";
 import { recordCount } from "../utils/record-metric.js";
 import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
+import { resolveTuiEnvironment } from "../utils/resolve-tui-environment.js";
 import { warnDeprecatedDiff } from "../utils/resolve-scope.js";
 import { shouldUseTui } from "../utils/should-use-tui.js";
 import { validateModeFlags } from "../utils/validate-mode-flags.js";
@@ -20,15 +20,9 @@ export interface RunScanCommandInput {
 
 export const runScanCommand = async (input: RunScanCommandInput): Promise<void> => {
   if (input.flags.cache === false) process.env.REACT_DOCTOR_NO_CACHE = "1";
-  const nodeMajorVersion = Number(process.versions.node.split(".")[0]);
   const tuiEnvironment = {
     flags: input.flags,
-    isNonInteractiveEnvironment: isNonInteractiveEnvironment(),
-    nodeMajorVersion,
-    stdinIsTty: process.stdin.isTTY === true,
-    stdoutIsTty: process.stdout.isTTY === true,
-    supportsRawMode: typeof process.stdin.setRawMode === "function",
-    terminalName: process.env.TERM,
+    ...resolveTuiEnvironment(),
   };
 
   if (!shouldUseTui(tuiEnvironment)) {

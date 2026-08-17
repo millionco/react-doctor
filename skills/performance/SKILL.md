@@ -29,6 +29,8 @@ npx react-doctor@latest scan http://localhost:3000 --format json
 
 React Doctor opens an isolated Chrome profile. Perform the planned interaction while purple outlines identify rendered components. Press Enter after the interaction settles; recordings stop automatically after five minutes.
 
+Interactive users can omit the URL and enter it in the terminal prompt. Agents must always pass the explicit URL so automated runs never wait for input.
+
 For an authenticated session, connect through the Chrome DevTools Protocol (CDP):
 
 ```bash

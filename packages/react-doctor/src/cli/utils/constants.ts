@@ -315,6 +315,7 @@ export const METRIC = {
   ciConfigured: "ci.configured",
   rulesChanged: "rules.changed",
   rulesQueried: "rules.queried",
+  runtimeScanUrlPromptShown: "runtime_scan.url_prompt_shown",
   tuiCompactReportShown: "tui.compact_report_shown",
   tuiFindingNavigated: "tui.finding_navigated",
   tuiIssueStreamShown: "tui.issue_stream_shown",

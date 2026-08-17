@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { runtimeScanAction } from "../src/cli/commands/runtime-scan.js";
 import { assertRuntimeScanCdpProfile } from "../src/cli/runtime-scan/assert-runtime-scan-cdp-profile.js";
 import { buildRuntimeScanReport } from "../src/cli/runtime-scan/build-runtime-scan-report.js";
 import {
@@ -347,6 +348,12 @@ describe("runtime scan report", () => {
 });
 
 describe("runtime scan input", () => {
+  it("requires an explicit URL outside an interactive terminal", async () => {
+    await expect(runtimeScanAction(undefined, { format: "text" })).rejects.toThrow(
+      "A URL is required outside an interactive terminal",
+    );
+  });
+
   it("validates formats and URL protocols", () => {
     expect(resolveRuntimeScanFormat(undefined)).toBe("text");
     expect(resolveRuntimeScanFormat("jsonl")).toBe("jsonl");

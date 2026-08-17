@@ -9,6 +9,8 @@ import { METRIC } from "../utils/constants.js";
 import { enableJsonMode } from "../utils/json-mode.js";
 import { recordCount } from "../utils/record-metric.js";
 import { reportErrorToSentry } from "../utils/report-error.js";
+import { resolveTuiEnvironment } from "../utils/resolve-tui-environment.js";
+import { isTuiEnvironmentSupported } from "../utils/should-use-tui.js";
 import { resetSentryRunState, withRunSpan } from "../utils/with-run-span.js";
 
 const writeRuntimeScanErrorReport = (
@@ -31,7 +33,22 @@ const writeRuntimeScanErrorReport = (
   );
 };
 
-export const runtimeScanAction = async (url: string, flags: RuntimeScanFlags): Promise<void> => {
+const resolveRuntimeScanUrl = async (url: string | undefined): Promise<string | null> => {
+  if (url !== undefined) return url;
+  if (!isTuiEnvironmentSupported(resolveTuiEnvironment())) {
+    throw new CliInputError(
+      "A URL is required outside an interactive terminal. Run `react-doctor scan <url>`.",
+    );
+  }
+  recordCount(METRIC.runtimeScanUrlPromptShown);
+  const { promptRuntimeScanUrl } = await import("../ink/prompt-runtime-scan-url.js");
+  return promptRuntimeScanUrl();
+};
+
+export const runtimeScanAction = async (
+  url: string | undefined,
+  flags: RuntimeScanFlags,
+): Promise<void> => {
   const format = resolveRuntimeScanFormat(flags.format);
   if (format !== "text") {
     enableJsonMode({
@@ -45,15 +62,20 @@ export const runtimeScanAction = async (url: string, flags: RuntimeScanFlags): P
   recordCount(METRIC.cliInvoked, 1, { command: "scan" });
   resetSentryRunState();
   try {
+    const resolvedUrl = await resolveRuntimeScanUrl(url);
+    if (resolvedUrl === null) {
+      resetSentryRunState();
+      return;
+    }
     await withRunSpan(
       async () => {
         const capture = await recordRuntimeTrace({
-          url,
+          url: resolvedUrl,
           traceOut: flags.traceOut,
           cdpUrl: flags.cdp,
         });
         const report = buildRuntimeScanReport({
-          requestedUrl: url,
+          requestedUrl: resolvedUrl,
           tracePath: capture.tracePath,
           capturedAt: capture.capturedAt,
           durationMs: capture.durationMs,

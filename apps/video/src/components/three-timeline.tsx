@@ -190,7 +190,7 @@ export const ThreeTimeline = ({ frame }: ThreeTimelineProps) => {
       <section className="three-optimized-layout" style={{ opacity: optimizedOpacity }}>
         <div className="three-copy three-optimized-copy">
           <div className="three-step-label" style={{ color: GREEN_COLOR }}>
-            03 / OPTIMIZED
+            04 / OPTIMIZED
           </div>
           <h2>Reuse. Batch. Move by delta.</h2>
           <ThreeCodeCard

@@ -1,62 +1,24 @@
-import { FONT_FAMILY, GREEN_COLOR, WHITE_COLOR } from "../constants";
+import { GREEN_COLOR, WHITE_COLOR } from "../constants";
 import { easeOutCubic } from "../utils/ease-out-cubic";
 import { interpolateNumber } from "../utils/interpolate-number";
 import {
   THREE_CLAUDE_ACCENT_COLOR,
-  THREE_CLAUDE_BACKGROUND_COLOR,
   THREE_CLAUDE_FIX_FADE_FRAMES,
-  THREE_CLAUDE_FIX_ROW_HEIGHT_PX,
   THREE_CLAUDE_FIX_START_FRAME,
   THREE_CLAUDE_FIX_STAGGER_FRAMES,
   THREE_CLAUDE_FIXES,
-  THREE_CLAUDE_FONT_SIZE_PX,
   THREE_CLAUDE_INTRO_FRAMES,
-  THREE_CLAUDE_LOGO_LINE_1,
-  THREE_CLAUDE_LOGO_LINE_2,
-  THREE_CLAUDE_LOGO_LINE_3,
-  THREE_CLAUDE_MUTED_COLOR,
   THREE_CLAUDE_PROMPT,
   THREE_CLAUDE_SCORE_END,
   THREE_CLAUDE_SCORE_START,
-  THREE_CLAUDE_TEXT_COLOR,
   THREE_CLAUDE_TYPING_CHAR_FRAMES,
   THREE_CLAUDE_TYPING_START_FRAME,
-  THREE_CLAUDE_VISIBLE_FIX_ROWS,
 } from "../three-constants";
 
 const LAST_FIX_FRAME =
   THREE_CLAUDE_FIX_START_FRAME + (THREE_CLAUDE_FIXES.length - 1) * THREE_CLAUDE_FIX_STAGGER_FRAMES;
 const TYPING_END_FRAME =
   THREE_CLAUDE_TYPING_START_FRAME + THREE_CLAUDE_PROMPT.length * THREE_CLAUDE_TYPING_CHAR_FRAMES;
-const SCROLL_START_FRAME =
-  THREE_CLAUDE_FIX_START_FRAME + THREE_CLAUDE_VISIBLE_FIX_ROWS * THREE_CLAUDE_FIX_STAGGER_FRAMES;
-const VIEWPORT_HEIGHT_PX = THREE_CLAUDE_VISIBLE_FIX_ROWS * THREE_CLAUDE_FIX_ROW_HEIGHT_PX;
-const MAX_SCROLL_PX = Math.max(
-  0,
-  THREE_CLAUDE_FIXES.length * THREE_CLAUDE_FIX_ROW_HEIGHT_PX - VIEWPORT_HEIGHT_PX,
-);
-
-const FixCheck = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    style={{
-      width: THREE_CLAUDE_FONT_SIZE_PX,
-      height: THREE_CLAUDE_FONT_SIZE_PX,
-      flexShrink: 0,
-    }}
-    aria-hidden="true"
-  >
-    <path
-      d="M5 12 L10 17 L19 8"
-      stroke={GREEN_COLOR}
-      strokeWidth={3}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
 
 export interface ThreeClaudeCodeProps {
   localFrame: number;
@@ -65,7 +27,7 @@ export interface ThreeClaudeCodeProps {
 
 export const ThreeClaudeCode = ({ localFrame: rawLocalFrame, opacity }: ThreeClaudeCodeProps) => {
   const localFrame = Math.max(0, rawLocalFrame);
-  const introOpacity = interpolateNumber({
+  const cardOpacity = interpolateNumber({
     value: localFrame,
     inputStart: 0,
     inputEnd: THREE_CLAUDE_INTRO_FRAMES,
@@ -100,14 +62,6 @@ export const ThreeClaudeCode = ({ localFrame: rawLocalFrame, opacity }: ThreeCla
   ).length;
   const allFixed = localFrame >= LAST_FIX_FRAME + THREE_CLAUDE_FIX_FADE_FRAMES;
 
-  const scrollOffsetPx = interpolateNumber({
-    value: localFrame,
-    inputStart: SCROLL_START_FRAME,
-    inputEnd: LAST_FIX_FRAME,
-    outputStart: 0,
-    outputEnd: MAX_SCROLL_PX,
-  });
-
   const score = Math.round(
     interpolateNumber({
       value: localFrame,
@@ -122,106 +76,74 @@ export const ThreeClaudeCode = ({ localFrame: rawLocalFrame, opacity }: ThreeCla
   const dotCount = (Math.floor(localFrame / 6) % 3) + 1;
 
   return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        zIndex: 6,
-        backgroundColor: THREE_CLAUDE_BACKGROUND_COLOR,
-        fontFamily: FONT_FAMILY,
-        fontSize: THREE_CLAUDE_FONT_SIZE_PX,
-        color: THREE_CLAUDE_TEXT_COLOR,
-        padding: "72px 90px",
-        opacity,
-      }}
-    >
-      <div style={{ opacity: introOpacity, lineHeight: 1.35, whiteSpace: "pre", marginBottom: 28 }}>
-        <div>
-          <span style={{ color: THREE_CLAUDE_ACCENT_COLOR }}>{THREE_CLAUDE_LOGO_LINE_1}</span>
-          <span style={{ color: WHITE_COLOR }}>{"  Claude Code"}</span>
-        </div>
-        <div>
-          <span style={{ color: THREE_CLAUDE_ACCENT_COLOR }}>{THREE_CLAUDE_LOGO_LINE_2}</span>
-          <span style={{ color: THREE_CLAUDE_MUTED_COLOR }}>{"  Opus 4.6 · Claude API"}</span>
-        </div>
-        <div>
-          <span style={{ color: THREE_CLAUDE_ACCENT_COLOR }}>{THREE_CLAUDE_LOGO_LINE_3}</span>
-          <span style={{ color: THREE_CLAUDE_MUTED_COLOR }}>{"   ~/my-3d-app"}</span>
-        </div>
-      </div>
-
-      <div style={{ opacity: introOpacity, marginBottom: 22, whiteSpace: "pre" }}>
-        <span style={{ color: THREE_CLAUDE_ACCENT_COLOR }}>{"> "}</span>
-        <span style={{ color: WHITE_COLOR }}>{typedPrompt}</span>
-        <span
-          style={{
-            display: "inline-block",
-            width: THREE_CLAUDE_FONT_SIZE_PX * 0.55,
-            height: THREE_CLAUDE_FONT_SIZE_PX * 1.05,
-            verticalAlign: "text-bottom",
-            backgroundColor: isCursorVisible ? THREE_CLAUDE_TEXT_COLOR : "transparent",
-          }}
-        />
-      </div>
-
-      <div style={{ marginBottom: 26, opacity: statusOpacity }}>
-        {allFixed ? (
-          <span style={{ color: GREEN_COLOR }}>
-            {`All ${THREE_CLAUDE_FIXES.length} issues fixed · score ${THREE_CLAUDE_SCORE_START} → ${score}`}
-          </span>
-        ) : (
-          <span style={{ color: THREE_CLAUDE_ACCENT_COLOR }}>
-            {`Fixing issues${".".repeat(dotCount)}`}
-            <span style={{ color: THREE_CLAUDE_MUTED_COLOR }}>
-              {`  ${fixedCount}/${THREE_CLAUDE_FIXES.length} · score ${score}`}
-            </span>
-          </span>
-        )}
-      </div>
-
-      <div style={{ position: "relative", height: VIEWPORT_HEIGHT_PX, overflow: "hidden" }}>
-        <div style={{ transform: `translateY(-${scrollOffsetPx}px)` }}>
-          {THREE_CLAUDE_FIXES.map((fix, fixIndex) => {
-            const fixFrame =
-              THREE_CLAUDE_FIX_START_FRAME + fixIndex * THREE_CLAUDE_FIX_STAGGER_FRAMES;
-            const rowOpacity = interpolateNumber({
-              value: localFrame,
-              inputStart: fixFrame,
-              inputEnd: fixFrame + THREE_CLAUDE_FIX_FADE_FRAMES,
-              outputStart: 0,
-              outputEnd: 1,
-            });
-            return (
-              <div
-                key={fix.path + fix.note}
-                style={{
-                  height: THREE_CLAUDE_FIX_ROW_HEIGHT_PX,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 16,
-                  opacity: rowOpacity,
-                  whiteSpace: "pre",
-                }}
-              >
-                <FixCheck />
-                <span style={{ color: WHITE_COLOR }}>{fix.path}</span>
-                <span style={{ color: THREE_CLAUDE_MUTED_COLOR }}>{fix.note}</span>
-              </div>
-            );
-          })}
-        </div>
+    <section className="three-claude-layout" style={{ opacity }}>
+      <div className="three-copy three-claude-copy">
+        <div className="three-step-label">03 / IMPROVE-THREEJS</div>
+        <h2>Your agent fixes what it finds.</h2>
         <div
+          className="three-code-card"
           style={{
-            position: "absolute",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: 80,
-            background: `linear-gradient(to top, ${THREE_CLAUDE_BACKGROUND_COLOR}, transparent)`,
-            pointerEvents: "none",
+            borderColor: "rgba(215, 119, 87, 0.32)",
+            opacity: cardOpacity,
+            transform: `translateY(${(1 - cardOpacity) * 20}px)`,
           }}
-        />
+        >
+          <div className="three-code-card-header">
+            <span>claude code</span>
+            <span style={{ color: THREE_CLAUDE_ACCENT_COLOR }}>~/my-3d-app</span>
+          </div>
+          <div className="three-claude-body">
+            <div className="three-claude-prompt">
+              <span style={{ color: THREE_CLAUDE_ACCENT_COLOR }}>{"> "}</span>
+              <span style={{ color: WHITE_COLOR }}>{typedPrompt}</span>
+              <span
+                className="three-claude-cursor"
+                style={{
+                  backgroundColor: isCursorVisible ? THREE_CLAUDE_ACCENT_COLOR : "transparent",
+                }}
+              />
+            </div>
+            <div className="three-claude-status" style={{ opacity: statusOpacity }}>
+              {allFixed ? (
+                <span style={{ color: GREEN_COLOR }}>
+                  {`All ${THREE_CLAUDE_FIXES.length} issues fixed · score ${THREE_CLAUDE_SCORE_START} → ${score}`}
+                </span>
+              ) : (
+                <span style={{ color: THREE_CLAUDE_ACCENT_COLOR }}>
+                  {`Fixing issues${".".repeat(dotCount)}`}
+                  <span className="three-claude-status-count">
+                    {`  ${fixedCount}/${THREE_CLAUDE_FIXES.length} · score ${score}`}
+                  </span>
+                </span>
+              )}
+            </div>
+            <div className="three-claude-fixes">
+              {THREE_CLAUDE_FIXES.map((fix, fixIndex) => {
+                const fixFrame =
+                  THREE_CLAUDE_FIX_START_FRAME + fixIndex * THREE_CLAUDE_FIX_STAGGER_FRAMES;
+                const rowOpacity = interpolateNumber({
+                  value: localFrame,
+                  inputStart: fixFrame,
+                  inputEnd: fixFrame + THREE_CLAUDE_FIX_FADE_FRAMES,
+                  outputStart: 0,
+                  outputEnd: 1,
+                });
+                return (
+                  <div
+                    key={fix.path + fix.note}
+                    className="three-claude-fix-row"
+                    style={{ opacity: rowOpacity }}
+                  >
+                    <span style={{ color: GREEN_COLOR }}>✓</span>
+                    <span style={{ color: WHITE_COLOR }}>{fix.path}</span>
+                    <span className="three-claude-fix-note">{fix.note}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
   );
 };

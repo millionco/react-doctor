@@ -371,6 +371,68 @@ input {
   font-size: 14px;
 }
 
+.three-claude-layout {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+}
+
+.three-claude-copy {
+  top: 74px;
+}
+
+.three-claude-copy h2 {
+  width: 760px;
+  margin-top: 18px;
+  font-size: 60px;
+}
+
+.three-claude-copy .three-code-card {
+  margin-top: 30px;
+}
+
+.three-claude-body {
+  padding: 20px 26px 24px;
+  font-size: 22px;
+}
+
+.three-claude-prompt {
+  color: #e4e4e7;
+  white-space: pre;
+}
+
+.three-claude-cursor {
+  display: inline-block;
+  width: 13px;
+  height: 26px;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+}
+
+.three-claude-status {
+  margin-top: 14px;
+  white-space: pre;
+}
+
+.three-claude-status-count,
+.three-claude-fix-note {
+  color: #737373;
+}
+
+.three-claude-fixes {
+  display: flex;
+  margin-top: 16px;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.three-claude-fix-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  white-space: pre;
+}
+
 .three-final-layout {
   display: flex;
   align-items: center;

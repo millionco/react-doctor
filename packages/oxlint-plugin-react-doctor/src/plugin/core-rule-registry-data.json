@@ -10121,6 +10121,22 @@
     }
   },
   {
+    "key": "react-doctor/react-aria-dialog-requires-heading",
+    "id": "react-aria-dialog-requires-heading",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "react-aria-dialog-requires-heading",
+      "title": "React Aria dialog without a heading",
+      "severity": "warn",
+      "recommendation": "Give every React Aria Dialog a <Heading slot=\"title\"> child or name the dialog with aria-label / aria-labelledby.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react", "react-aria"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/react-compiler-no-manual-memoization",
     "id": "react-compiler-no-manual-memoization",
     "source": "react-doctor",
@@ -12834,6 +12850,39 @@
       "framework": "tanstack-start",
       "requires": ["tanstack-start"],
       "tags": ["test-noise"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/tanstack-table-no-unstable-data-or-columns",
+    "id": "tanstack-table-no-unstable-data-or-columns",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "tanstack-table-no-unstable-data-or-columns",
+      "title": "Table data or columns recreated every render",
+      "severity": "warn",
+      "recommendation": "Give the table's data and columns options stable references: useMemo or useState inside the component, or a module-scope constant, so row and column models are not rebuilt on every render.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["tanstack-table"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/tanstack-virtual-measure-element-requires-data-index",
+    "id": "tanstack-virtual-measure-element-requires-data-index",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "tanstack-virtual-measure-element-requires-data-index",
+      "title": "Measured virtual item without data-index",
+      "severity": "warn",
+      "recommendation": "Add data-index={virtualItem.index} to every element whose ref is the virtualizer's measureElement, so dynamic measurement can attribute the size to the right row.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["tanstack-virtual"],
+      "matchByOccurrence": true,
       "isScanRule": false
     }
   },

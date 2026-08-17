@@ -618,6 +618,7 @@ import { radioInputMissingName } from "./rules/correctness/radio-input-missing-n
 import { radixDialogContentRequiresTitle } from "./rules/a11y/radix-dialog-content-requires-title.js";
 import { radixTabsTriggerRequiresList } from "./rules/correctness/radix-tabs-trigger-requires-list.js";
 import { rawSqlInjectionRisk } from "./rules/security-scan/raw-sql-injection-risk.js";
+import { reactAriaDialogRequiresHeading } from "./rules/a11y/react-aria-dialog-requires-heading.js";
 import { reactCompilerNoManualMemoization } from "./rules/architecture/react-compiler-no-manual-memoization.js";
 import { reactInJsxScope } from "./rules/react-builtins/react-in-jsx-scope.js";
 import { reactMarkdownUnsanitizedRawHtml } from "./rules/security/react-markdown-unsanitized-raw-html.js";
@@ -779,6 +780,8 @@ import { tanstackStartRedirectInTryCatch } from "./rules/tanstack-start/tanstack
 import { tanstackStartRoutePropertyOrder } from "./rules/tanstack-start/tanstack-start-route-property-order.js";
 import { tanstackStartServerFnMethodOrder } from "./rules/tanstack-start/tanstack-start-server-fn-method-order.js";
 import { tanstackStartServerFnValidateInput } from "./rules/tanstack-start/tanstack-start-server-fn-validate-input.js";
+import { tanstackTableNoUnstableDataOrColumns } from "./rules/correctness/tanstack-table-no-unstable-data-or-columns.js";
+import { tanstackVirtualMeasureElementRequiresDataIndex } from "./rules/correctness/tanstack-virtual-measure-element-requires-data-index.js";
 import { tenantStaticProxyRisk } from "./rules/security-scan/tenant-static-proxy-risk.js";
 import { threeCapDevicePixelRatio } from "./rules/r3f/three-cap-device-pixel-ratio.js";
 import { threeEffectComposerOutputPassLast } from "./rules/r3f/three-effect-composer-output-pass-last.js";
@@ -8562,6 +8565,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/react-aria-dialog-requires-heading",
+    id: "react-aria-dialog-requires-heading",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactAriaDialogRequiresHeading,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(reactAriaDialogRequiresHeading.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/react-compiler-no-manual-memoization",
     id: "react-compiler-no-manual-memoization",
     source: "react-doctor",
@@ -10457,6 +10474,28 @@ export const reactDoctorRules = [
     rule: {
       ...tanstackStartServerFnValidateInput,
       framework: "tanstack-start",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/tanstack-table-no-unstable-data-or-columns",
+    id: "tanstack-table-no-unstable-data-or-columns",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...tanstackTableNoUnstableDataOrColumns,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/tanstack-virtual-measure-element-requires-data-index",
+    id: "tanstack-virtual-measure-element-requires-data-index",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...tanstackVirtualMeasureElementRequiresDataIndex,
+      framework: "global",
       category: "Bugs",
     },
   },

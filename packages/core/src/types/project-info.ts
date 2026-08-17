@@ -50,6 +50,12 @@ export interface ProjectInfo {
    * composition rules.
    */
   hasBaseUi?: boolean;
+  /** `true` when `react-aria-components` is declared. Drives the `react-aria` capability. */
+  hasReactAriaComponents?: boolean;
+  /** `true` when `@tanstack/react-table` is declared. Drives the `tanstack-table` capability. */
+  hasTanstackTable?: boolean;
+  /** `true` when `@tanstack/react-virtual` is declared. Drives the `tanstack-virtual` capability. */
+  hasTanstackVirtual?: boolean;
   tanstackQueryVersion?: string | null;
   styledComponentsVersion?: string | null;
   /** Whether the project or one of its workspaces declares Three.js, Fiber, or Drei. */

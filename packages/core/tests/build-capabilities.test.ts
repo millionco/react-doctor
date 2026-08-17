@@ -744,6 +744,21 @@ describe("buildCapabilities", () => {
     expect(buildCapabilities({ ...baseProject, hasBaseUi: true }).has("base-ui")).toBe(true);
   });
 
+  it("emits `react-aria`, `tanstack-table`, and `tanstack-virtual` from their dependencies", () => {
+    expect(buildCapabilities(baseProject).has("react-aria")).toBe(false);
+    expect(buildCapabilities(baseProject).has("tanstack-table")).toBe(false);
+    expect(buildCapabilities(baseProject).has("tanstack-virtual")).toBe(false);
+    expect(
+      buildCapabilities({ ...baseProject, hasReactAriaComponents: true }).has("react-aria"),
+    ).toBe(true);
+    expect(
+      buildCapabilities({ ...baseProject, hasTanstackTable: true }).has("tanstack-table"),
+    ).toBe(true);
+    expect(
+      buildCapabilities({ ...baseProject, hasTanstackVirtual: true }).has("tanstack-virtual"),
+    ).toBe(true);
+  });
+
   it("emits `tailwind`, `tailwind:3.4`, and `tailwind:4` for a Tailwind 4 project", () => {
     const capabilities = buildCapabilities({ ...baseProject, tailwindVersion: "^4.0.0" });
     expect(capabilities.has("tailwind")).toBe(true);

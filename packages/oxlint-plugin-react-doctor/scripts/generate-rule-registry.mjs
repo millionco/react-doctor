@@ -169,6 +169,7 @@ const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "radix-dialog-content-requires-title",
   "base-ui-dialog-popup-requires-title",
   "base-ui-field-requires-label",
+  "react-aria-dialog-requires-heading",
   "no-uninformative-aria-label",
   "dialog-has-accessible-name",
   "no-create-ref-in-function-component",

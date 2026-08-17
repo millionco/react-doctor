@@ -2382,6 +2382,15 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-ungated-tailwind-animation": {
     code: 'const Spinner = () => <span className="animate-spin" />;',
   },
+  "react-aria-dialog-requires-heading": {
+    code: 'import { Dialog } from "react-aria-components";\nconst Confirm = () => <Dialog><p>Are you sure?</p></Dialog>;',
+  },
+  "tanstack-table-no-unstable-data-or-columns": {
+    code: 'import { useReactTable } from "@tanstack/react-table";\nconst Table = () => { useReactTable({ data: [], columns: [] }); return null; };',
+  },
+  "tanstack-virtual-measure-element-requires-data-index": {
+    code: 'import { useVirtualizer } from "@tanstack/react-virtual";\nconst Row = ({ virtualizer }) => <div ref={virtualizer.measureElement}>Row</div>;',
+  },
   "radix-dialog-content-requires-title": {
     code: 'import * as Dialog from "@radix-ui/react-dialog";\nconst Confirm = () => <Dialog.Content><p>Are you sure?</p></Dialog.Content>;',
   },

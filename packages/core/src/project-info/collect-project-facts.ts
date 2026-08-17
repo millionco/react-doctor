@@ -34,8 +34,13 @@ import {
   parseThreeRelease,
 } from "./version.js";
 import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
+import { hasAnyDependency } from "./has-any-dependency.js";
 import { hasBaseUiDependency } from "./has-base-ui-dependency.js";
 import { hasRadixUiDependency } from "./has-radix-ui-dependency.js";
+
+const REACT_ARIA_COMPONENT_PACKAGES = ["react-aria-components"];
+const TANSTACK_TABLE_PACKAGES = ["@tanstack/react-table"];
+const TANSTACK_VIRTUAL_PACKAGES = ["@tanstack/react-virtual"];
 import { getStyledComponentsVersion } from "./get-styled-components-version.js";
 import { hasI18nDependency } from "./has-i18n-dependency.js";
 
@@ -113,6 +118,9 @@ export interface WorkspaceFacts {
   hasI18nLibrary: boolean;
   hasRadixUi: boolean;
   hasBaseUi: boolean;
+  hasReactAriaComponents: boolean;
+  hasTanstackTable: boolean;
+  hasTanstackVirtual: boolean;
   hasReactNativeAwarePackage: boolean;
   hasReanimatedAwarePackage: boolean;
   hasSsrDependency: boolean;
@@ -399,6 +407,12 @@ const evaluateManifestFacts = (
   facts.hasI18nLibrary = facts.hasI18nLibrary || hasI18nDependency(packageJson);
   facts.hasRadixUi = facts.hasRadixUi || hasRadixUiDependency(packageJson);
   facts.hasBaseUi = facts.hasBaseUi || hasBaseUiDependency(packageJson);
+  facts.hasReactAriaComponents =
+    facts.hasReactAriaComponents || hasAnyDependency(packageJson, REACT_ARIA_COMPONENT_PACKAGES);
+  facts.hasTanstackTable =
+    facts.hasTanstackTable || hasAnyDependency(packageJson, TANSTACK_TABLE_PACKAGES);
+  facts.hasTanstackVirtual =
+    facts.hasTanstackVirtual || hasAnyDependency(packageJson, TANSTACK_VIRTUAL_PACKAGES);
   for (const packageName of REACT_THREE_FIBER_DEPENDENCY_NAMES) {
     const dependencyDeclaration = getDependencyDeclaration({
       packageName,
@@ -525,6 +539,9 @@ export const collectWorkspaceFacts = (
     hasI18nLibrary: false,
     hasRadixUi: false,
     hasBaseUi: false,
+    hasReactAriaComponents: false,
+    hasTanstackTable: false,
+    hasTanstackVirtual: false,
     hasReactNativeAwarePackage: false,
     hasReanimatedAwarePackage: false,
     hasSsrDependency: false,

@@ -9,6 +9,23 @@ const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 
 const discoverNoLocalUrls = async () => [];
 
 describe("RuntimeScanUrlPrompt", () => {
+  it("centers the chooser in a full-terminal view", async () => {
+    const { stdout, lastFrame, unmount } = render(
+      <RuntimeScanUrlPrompt discoverLocalUrls={discoverNoLocalUrls} onSubmit={vi.fn()} />,
+    );
+    Object.defineProperty(stdout, "columns", { configurable: true, get: () => 100 });
+    Object.defineProperty(stdout, "rows", { configurable: true, get: () => 20 });
+    stdout.emit("resize");
+    await flush();
+
+    const renderedLines = lastFrame()?.split("\n") ?? [];
+    const headerRow = renderedLines.findIndex((line) => line.includes("React Doctor"));
+    expect(renderedLines).toHaveLength(20);
+    expect(headerRow).toBeGreaterThan(0);
+    expect(headerRow).toBeLessThan(19);
+    unmount();
+  });
+
   it("offers detected local apps before custom entry", async () => {
     const onSubmit = vi.fn();
     const { stdin, lastFrame, unmount } = render(

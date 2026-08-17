@@ -757,6 +757,10 @@ describe("buildCapabilities", () => {
     expect(
       buildCapabilities({ ...baseProject, hasTanstackVirtual: true }).has("tanstack-virtual"),
     ).toBe(true);
+    expect(buildCapabilities(baseProject).has("tanstack-form")).toBe(false);
+    expect(buildCapabilities({ ...baseProject, hasTanstackForm: true }).has("tanstack-form")).toBe(
+      true,
+    );
   });
 
   it("emits `tailwind`, `tailwind:3.4`, and `tailwind:4` for a Tailwind 4 project", () => {

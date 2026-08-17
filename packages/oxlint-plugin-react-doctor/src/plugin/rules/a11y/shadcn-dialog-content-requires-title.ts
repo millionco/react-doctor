@@ -76,6 +76,17 @@ const scanContentForTitle = (
     // elements still recurse, so a title nested through them counts.
     isOpaqueElement: (element) => {
       const elementName = element.openingElement.name;
+      // Some shadcn-compatible distributions render the header part's text
+      // AS the dialog title (Intent UI's DrawerHeader), so a same-module
+      // header with content makes the missing-title claim unprovable.
+      const resolvedPartName = resolveShadcnUiComponentName(
+        elementName,
+        contract.moduleSourcePattern,
+        context,
+      );
+      if (resolvedPartName !== null) {
+        return resolvedPartName.endsWith("Header") && element.children.length > 0;
+      }
       const trailingSegment = getTrailingJsxNameSegment(elementName);
       return (
         trailingSegment !== null &&

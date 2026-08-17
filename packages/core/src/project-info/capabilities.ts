@@ -189,6 +189,7 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   if (project.hasReactAriaComponents === true) capabilities.add("react-aria");
   if (project.hasTanstackTable === true) capabilities.add("tanstack-table");
   if (project.hasTanstackVirtual === true) capabilities.add("tanstack-virtual");
+  if (project.hasTanstackForm === true) capabilities.add("tanstack-form");
   if (project.zodVersion !== null) capabilities.add("zod");
   if (project.zodMajorVersion !== null && project.zodMajorVersion >= 4) capabilities.add("zod:4");
   if (

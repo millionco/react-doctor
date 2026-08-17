@@ -41,6 +41,7 @@ import { hasRadixUiDependency } from "./has-radix-ui-dependency.js";
 const REACT_ARIA_COMPONENT_PACKAGES = ["react-aria-components"];
 const TANSTACK_TABLE_PACKAGES = ["@tanstack/react-table"];
 const TANSTACK_VIRTUAL_PACKAGES = ["@tanstack/react-virtual"];
+const TANSTACK_FORM_PACKAGES = ["@tanstack/react-form"];
 import { getStyledComponentsVersion } from "./get-styled-components-version.js";
 import { hasI18nDependency } from "./has-i18n-dependency.js";
 
@@ -121,6 +122,7 @@ export interface WorkspaceFacts {
   hasReactAriaComponents: boolean;
   hasTanstackTable: boolean;
   hasTanstackVirtual: boolean;
+  hasTanstackForm: boolean;
   hasReactNativeAwarePackage: boolean;
   hasReanimatedAwarePackage: boolean;
   hasSsrDependency: boolean;
@@ -413,6 +415,8 @@ const evaluateManifestFacts = (
     facts.hasTanstackTable || hasAnyDependency(packageJson, TANSTACK_TABLE_PACKAGES);
   facts.hasTanstackVirtual =
     facts.hasTanstackVirtual || hasAnyDependency(packageJson, TANSTACK_VIRTUAL_PACKAGES);
+  facts.hasTanstackForm =
+    facts.hasTanstackForm || hasAnyDependency(packageJson, TANSTACK_FORM_PACKAGES);
   for (const packageName of REACT_THREE_FIBER_DEPENDENCY_NAMES) {
     const dependencyDeclaration = getDependencyDeclaration({
       packageName,
@@ -542,6 +546,7 @@ export const collectWorkspaceFacts = (
     hasReactAriaComponents: false,
     hasTanstackTable: false,
     hasTanstackVirtual: false,
+    hasTanstackForm: false,
     hasReactNativeAwarePackage: false,
     hasReanimatedAwarePackage: false,
     hasSsrDependency: false,

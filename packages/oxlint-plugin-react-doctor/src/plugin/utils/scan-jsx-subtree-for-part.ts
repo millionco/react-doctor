@@ -1,5 +1,6 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { findJsxAttribute } from "./find-jsx-attribute.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { visitStaticJsxChildren } from "./visit-static-jsx-children.js";
 import { walkAst } from "./walk-ast.js";
@@ -27,22 +28,30 @@ export const scanJsxSubtreeForPart = (
   options: JsxSubtreePartScanOptions,
 ): JsxSubtreePartScan => {
   const scan: JsxSubtreePartScan = { foundPart: false, sawOpaqueContent: false };
+  const findPartInsideExpression = (expression: EsTreeNode): void => {
+    walkAst(expression, (node) => {
+      if (isNodeOfType(node, "JSXOpeningElement") && options.isPartElementName(node.name)) {
+        scan.foundPart = true;
+      }
+    });
+  };
   visitStaticJsxChildren(children, {
     onElement: (element) => {
       if (options.isPartElementName(element.openingElement.name)) {
         scan.foundPart = true;
         return false;
       }
+      // Base UI-style composition swaps the rendered element through a
+      // `render` prop (`<QuestionnaireTitle render={<DialogTitle />}>`), so
+      // a required part written there still counts.
+      const renderAttribute = findJsxAttribute(element.openingElement.attributes, "render");
+      if (renderAttribute?.value) findPartInsideExpression(renderAttribute.value);
       if (options.isOpaqueElement(element)) scan.sawOpaqueContent = true;
       return true;
     },
     onOpaqueExpression: (expression) => {
       scan.sawOpaqueContent = true;
-      walkAst(expression, (node) => {
-        if (isNodeOfType(node, "JSXOpeningElement") && options.isPartElementName(node.name)) {
-          scan.foundPart = true;
-        }
-      });
+      findPartInsideExpression(expression);
     },
   });
   return scan;

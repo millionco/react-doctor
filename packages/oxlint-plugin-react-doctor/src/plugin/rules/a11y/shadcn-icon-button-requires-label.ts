@@ -55,6 +55,15 @@ interface IconButtonContentScan {
   hasUnprovableContent: boolean;
 }
 
+const isInsideJsxAttribute = (node: EsTreeNode): boolean => {
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor) {
+    if (isNodeOfType(ancestor, "JSXAttribute")) return true;
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
 const scanButtonContent = (
   buttonElement: EsTreeNodeOfType<"JSXElement">,
   context: RuleContext,
@@ -107,8 +116,14 @@ export const shadcnIconButtonRequiresLabel = defineRule({
         return;
       }
       // A spread can supply aria-label; asChild delegates semantics (and
-      // often the name) to the slotted child.
-      if (hasJsxSpreadAttribute(node.attributes) || findJsxAttribute(node.attributes, "asChild")) {
+      // often the name) to the slotted child; a react-aria `slot` lets the
+      // surrounding component wire a default accessible name (the TagGroup
+      // remove slot announces "Remove").
+      if (
+        hasJsxSpreadAttribute(node.attributes) ||
+        findJsxAttribute(node.attributes, "asChild") ||
+        findJsxAttribute(node.attributes, "slot")
+      ) {
         return;
       }
       if (
@@ -128,6 +143,11 @@ export const shadcnIconButtonRequiresLabel = defineRule({
       ) {
         return;
       }
+      // A Button passed through an attribute (`render={<Button size="icon" />}`,
+      // Base UI / react-aria composition) receives its children — including
+      // any sr-only label — from the wrapping component, so its content is
+      // not statically knowable here.
+      if (isInsideJsxAttribute(node)) return;
       const buttonElement = node.parent;
       const scan =
         buttonElement && isNodeOfType(buttonElement, "JSXElement")

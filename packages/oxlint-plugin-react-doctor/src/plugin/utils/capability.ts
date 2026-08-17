@@ -49,6 +49,7 @@ export type Capability =
   | "react-aria"
   | "tanstack-table"
   | "tanstack-virtual"
+  | "tanstack-form"
   | "zod"
   | "zod:4"
   | "mobx"

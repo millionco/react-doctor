@@ -56,6 +56,8 @@ export interface ProjectInfo {
   hasTanstackTable?: boolean;
   /** `true` when `@tanstack/react-virtual` is declared. Drives the `tanstack-virtual` capability. */
   hasTanstackVirtual?: boolean;
+  /** `true` when `@tanstack/react-form` is declared. Drives the `tanstack-form` capability. */
+  hasTanstackForm?: boolean;
   tanstackQueryVersion?: string | null;
   styledComponentsVersion?: string | null;
   /** Whether the project or one of its workspaces declares Three.js, Fiber, or Drei. */

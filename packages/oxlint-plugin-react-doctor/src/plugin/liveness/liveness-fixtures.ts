@@ -2385,6 +2385,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "react-aria-dialog-requires-heading": {
     code: 'import { Dialog } from "react-aria-components";\nconst Confirm = () => <Dialog><p>Are you sure?</p></Dialog>;',
   },
+  "tanstack-form-on-submit-requires-prevent-default": {
+    code: 'import { useForm } from "@tanstack/react-form";\nconst View = ({ form }) => <form onSubmit={form.handleSubmit} />;',
+  },
   "tanstack-table-no-unstable-data-or-columns": {
     code: 'import { useReactTable } from "@tanstack/react-table";\nconst Table = () => { useReactTable({ data: [], columns: [] }); return null; };',
   },

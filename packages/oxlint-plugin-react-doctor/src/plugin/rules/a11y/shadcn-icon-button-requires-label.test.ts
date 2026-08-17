@@ -85,6 +85,36 @@ describe("shadcn-icon-button-requires-label", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet for buttons composed through render props", () => {
+    const result = runRule(
+      shadcnIconButtonRequiresLabel,
+      `import { Button } from "@/components/ui/button";
+       import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+       import { Sun } from "lucide-react";
+       const View = () => (
+         <DropdownMenuTrigger render={<Button variant="outline" size="icon" />}>
+           <Sun />
+           <span className="sr-only">Toggle theme</span>
+         </DropdownMenuTrigger>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for react-aria slotted buttons whose context names them", () => {
+    const result = runRule(
+      shadcnIconButtonRequiresLabel,
+      `import { Button } from "@/registry/bases/aria/ui/button";
+       import { X } from "lucide-react";
+       const Chip = () => (
+         <Button slot="remove" variant="ghost" size="icon-xs">
+           <X />
+         </Button>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("counts aria-hidden text as no name", () => {
     const result = runRule(
       shadcnIconButtonRequiresLabel,

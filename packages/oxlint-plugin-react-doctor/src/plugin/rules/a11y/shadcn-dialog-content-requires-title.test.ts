@@ -55,11 +55,11 @@ describe("shadcn-dialog-content-requires-title", () => {
   it("reports content whose only components are same-module parts and ui-module leaves", () => {
     const result = runRule(
       shadcnDialogContentRequiresTitle,
-      `import { DialogContent, DialogHeader, DialogFooter } from "@/components/ui/dialog";
+      `import { DialogContent, DialogDescription, DialogFooter } from "@/components/ui/dialog";
        import { Button } from "@/components/ui/button";
        const View = () => (
          <DialogContent>
-           <DialogHeader>{"Careful"}</DialogHeader>
+           <DialogDescription>This cannot be undone.</DialogDescription>
            <DialogFooter>
              <Button variant="destructive">Delete</Button>
            </DialogFooter>
@@ -67,6 +67,36 @@ describe("shadcn-dialog-content-requires-title", () => {
        );`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet when a same-module header with content may supply the title", () => {
+    const result = runRule(
+      shadcnDialogContentRequiresTitle,
+      `import { DrawerContent, DrawerHeader, DrawerBody } from "@/components/ui/drawer";
+       const View = () => (
+         <DrawerContent>
+           <DrawerHeader>The Beatles</DrawerHeader>
+           <DrawerBody><p>Terms of use.</p></DrawerBody>
+         </DrawerContent>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a title supplied through a render prop", () => {
+    const result = runRule(
+      shadcnDialogContentRequiresTitle,
+      `import { DialogContent, DialogTitle } from "@/components/ui/dialog";
+       import { QuestionnaireTitle } from "@/components/ui/questionnaire";
+       const View = () => (
+         <DialogContent>
+           <QuestionnaireTitle render={<DialogTitle />}>
+             Which files are in scope?
+           </QuestionnaireTitle>
+         </DialogContent>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("supports renamed and namespace imports and static conditional children", () => {

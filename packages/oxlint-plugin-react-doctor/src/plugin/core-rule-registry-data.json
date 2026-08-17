@@ -12599,6 +12599,23 @@
     }
   },
   {
+    "key": "react-doctor/tanstack-form-on-submit-requires-prevent-default",
+    "id": "tanstack-form-on-submit-requires-prevent-default",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "tanstack-form-on-submit-requires-prevent-default",
+      "title": "Form submit reloads the page around handleSubmit",
+      "severity": "warn",
+      "recommendation": "Wrap the submit handler: onSubmit={(event) => { event.preventDefault(); form.handleSubmit(); }} — TanStack Form's handleSubmit never cancels the native submit itself.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["tanstack-form"],
+      "matchByOccurrence": true,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/tanstack-start-get-mutation",
     "id": "tanstack-start-get-mutation",
     "source": "react-doctor",

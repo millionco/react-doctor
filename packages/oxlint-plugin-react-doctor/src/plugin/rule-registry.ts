@@ -765,6 +765,7 @@ import { supabaseRlsPolicyRisk } from "./rules/security-scan/supabase-rls-policy
 import { supabaseTableMissingRls } from "./rules/security-scan/supabase-table-missing-rls.js";
 import { svgFilterClickjackingRisk } from "./rules/security-scan/svg-filter-clickjacking-risk.js";
 import { tabindexNoPositive } from "./rules/a11y/tabindex-no-positive.js";
+import { tanstackFormOnSubmitRequiresPreventDefault } from "./rules/correctness/tanstack-form-on-submit-requires-prevent-default.js";
 import { tanstackStartGetMutation } from "./rules/tanstack-start/tanstack-start-get-mutation.js";
 import { tanstackStartLoaderParallelFetch } from "./rules/tanstack-start/tanstack-start-loader-parallel-fetch.js";
 import { tanstackStartMissingHeadContent } from "./rules/tanstack-start/tanstack-start-missing-head-content.js";
@@ -10310,6 +10311,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(tabindexNoPositive.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/tanstack-form-on-submit-requires-prevent-default",
+    id: "tanstack-form-on-submit-requires-prevent-default",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...tanstackFormOnSubmitRequiresPreventDefault,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {

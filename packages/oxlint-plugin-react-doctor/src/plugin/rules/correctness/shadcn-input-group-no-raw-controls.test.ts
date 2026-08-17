@@ -22,12 +22,13 @@ describe("shadcn-input-group-no-raw-controls", () => {
   it("reports native controls and ui Buttons, one diagnostic per control", () => {
     const result = runRule(
       shadcnInputGroupNoRawControls,
-      `import { InputGroup } from "./input-group";
+      `import { InputGroup, InputGroupAddon } from "./input-group";
        import { Button } from "@/components/ui/button";
        const View = () => (
          <InputGroup>
            <textarea rows={3} />
            <Button size="sm">Send</Button>
+           <InputGroupAddon align="inline-end">Actions</InputGroupAddon>
          </InputGroup>
        );`,
     );
@@ -42,6 +43,7 @@ describe("shadcn-input-group-no-raw-controls", () => {
        const View = ({ isEditable }) => (
          <Group.InputGroup>
            <>{isEditable && <TextInput />}</>
+           <Group.InputGroupAddon align="inline-end">Edit</Group.InputGroupAddon>
          </Group.InputGroup>
        );`,
     );
@@ -78,6 +80,24 @@ describe("shadcn-input-group-no-raw-controls", () => {
          <InputGroup>
            <InputGroupAddon><Button size="icon-xs">Go</Button></InputGroupAddon>
            <input type="hidden" name="token" value="abc" />
+         </InputGroup>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("skips custom or legacy groups without canonical InputGroup parts", () => {
+    const result = runRule(
+      shadcnInputGroupNoRawControls,
+      `import { InputGroup } from "@/components/ui/input-group";
+       import { Input } from "@/components/ui/input";
+       import { Textarea } from "@/components/ui/textarea";
+       import { Button } from "@/components/ui/button";
+       const View = () => (
+         <InputGroup>
+           <Input />
+           <Textarea />
+           <Button>Send</Button>
          </InputGroup>
        );`,
     );

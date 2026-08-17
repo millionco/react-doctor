@@ -11,6 +11,11 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const INPUT_GROUP_MODULE_PATTERN =
   /(?:^|\/)ui\/(?:.*\/)?input-group$|^\.\.?\/(?:.*\/)?input-group$/;
+const CANONICAL_INPUT_GROUP_PARTS: ReadonlySet<string> = new Set([
+  "InputGroupAddon",
+  "InputGroupInput",
+  "InputGroupTextarea",
+]);
 
 interface RawControlContract {
   readonly uiComponent: string;
@@ -113,6 +118,18 @@ const getRawControlContract = (
   return null;
 };
 
+const isCanonicalInputGroupPart = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
+): boolean => {
+  const componentName = resolveShadcnUiComponentName(
+    openingElement.name,
+    INPUT_GROUP_MODULE_PATTERN,
+    context,
+  );
+  return componentName !== null && CANONICAL_INPUT_GROUP_PARTS.has(componentName);
+};
+
 // A hidden input renders nothing, so it cannot double-frame the group.
 const isHiddenInput = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   const typeAttribute = findJsxAttribute(openingElement.attributes, "type");
@@ -140,6 +157,13 @@ export const shadcnInputGroupNoRawControls = defineRule({
       if (!groupElement || !isNodeOfType(groupElement, "JSXElement")) return;
       const directChildElements: Array<EsTreeNodeOfType<"JSXElement">> = [];
       collectDirectRenderedElements(groupElement.children, directChildElements);
+      if (
+        !directChildElements.some((childElement) =>
+          isCanonicalInputGroupPart(childElement.openingElement, context),
+        )
+      ) {
+        return;
+      }
       for (const childElement of directChildElements) {
         const contract = getRawControlContract(childElement.openingElement, context);
         if (!contract || isHiddenInput(childElement.openingElement)) continue;

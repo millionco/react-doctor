@@ -2425,7 +2425,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { Button } from "./button";\nconst Remove = () => <Button size="icon"><TrashIcon /></Button>;',
   },
   "shadcn-input-group-no-raw-controls": {
-    code: 'import { InputGroup } from "./input-group";\nconst Search = () => <InputGroup><input /></InputGroup>;',
+    code: 'import { InputGroup, InputGroupAddon } from "./input-group";\nconst Search = () => <InputGroup><input /><InputGroupAddon>Search</InputGroupAddon></InputGroup>;',
   },
   "data-table-requires-accessible-name": {
     code: "const Results = () => <table><tr><th>Name</th></tr></table>;",

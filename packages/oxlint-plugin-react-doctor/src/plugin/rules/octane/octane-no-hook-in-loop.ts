@@ -1,4 +1,5 @@
 import { LOOP_TYPES } from "../../constants/js.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -11,7 +12,6 @@ import { isOctaneModule } from "../../utils/is-octane-module.js";
 import { isOctanePackageSource } from "../../utils/is-octane-package-source.js";
 import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 const SLOT_KEYED_HOOK_NAME_PATTERN = /^use[A-Z]/;
 const LOOP_DISPLAY_NAMES: Readonly<Record<string, string>> = {
@@ -76,9 +76,7 @@ const getSlotKeyedHookName = (
   else if (isNodeOfType(callee, "MemberExpression") && !callee.optional) {
     hookName = getStaticPropertyName(callee);
   }
-  return hookName &&
-    SLOT_KEYED_HOOK_NAME_PATTERN.test(hookName) &&
-    hookName !== "useContext"
+  return hookName && SLOT_KEYED_HOOK_NAME_PATTERN.test(hookName) && hookName !== "useContext"
     ? hookName
     : null;
 };
@@ -93,7 +91,7 @@ export const octaneNoHookInLoop = defineRule({
     let fileIsOctaneModule = false;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        fileIsOctaneModule = isOctaneModule(node, context.sourceCode.getText());
+        fileIsOctaneModule = isOctaneModule(node, context.sourceCode?.getText?.() ?? "");
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!fileIsOctaneModule) return;

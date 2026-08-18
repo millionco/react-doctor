@@ -5,20 +5,14 @@ import { isNodeOfType } from "./is-node-of-type.js";
 const OCTANE_JSX_IMPORT_SOURCE_PATTERN =
   /@jsxImportSource\s+(?:octane(?:\/[^\s*]+)?|@octanejs\/[^\s*]+\/intrinsics)\b/;
 
-const hasRuntimeImportSpecifier = (
-  declaration: EsTreeNodeOfType<"ImportDeclaration">,
-): boolean =>
+const hasRuntimeImportSpecifier = (declaration: EsTreeNodeOfType<"ImportDeclaration">): boolean =>
   declaration.importKind !== "type" &&
   (declaration.specifiers.length === 0 ||
     declaration.specifiers.some(
-      (specifier) =>
-        !isNodeOfType(specifier, "ImportSpecifier") || specifier.importKind !== "type",
+      (specifier) => !isNodeOfType(specifier, "ImportSpecifier") || specifier.importKind !== "type",
     ));
 
-export const isOctaneModule = (
-  program: EsTreeNodeOfType<"Program">,
-  sourceText: string,
-): boolean =>
+export const isOctaneModule = (program: EsTreeNodeOfType<"Program">, sourceText: string): boolean =>
   OCTANE_JSX_IMPORT_SOURCE_PATTERN.test(sourceText) ||
   program.body.some(
     (statement) =>

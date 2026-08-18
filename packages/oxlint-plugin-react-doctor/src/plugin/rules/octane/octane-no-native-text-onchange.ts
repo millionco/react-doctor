@@ -1,13 +1,14 @@
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isOctaneModule } from "../../utils/is-octane-module.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 const NON_TEXT_INPUT_TYPES = new Set([
   "button",
@@ -26,13 +27,13 @@ const NON_TEXT_INPUT_TYPES = new Set([
   "time",
   "week",
 ]);
-const NON_DOM_OCTANE_RENDERER_PATTERN =
-  /@jsxImportSource\s+@octanejs\/[^\s*]+\/intrinsics\b/;
+const NON_DOM_OCTANE_RENDERER_PATTERN = /@jsxImportSource\s+@octanejs\/[^\s*]+\/intrinsics\b/;
 const UNKNOWN_STATIC_VALUE = Symbol("unknown-static-value");
 
 const findLastAttribute = (
   attributes: ReadonlyArray<EsTreeNode>,
-  attributeNames: ReadonlySet<string>,
+  attributeName: string,
+  alias?: string,
 ): EsTreeNodeOfType<"JSXAttribute"> | null => {
   for (let attributeIndex = attributes.length - 1; attributeIndex >= 0; attributeIndex -= 1) {
     const attribute = attributes[attributeIndex];
@@ -40,7 +41,7 @@ const findLastAttribute = (
       attribute &&
       isNodeOfType(attribute, "JSXAttribute") &&
       isNodeOfType(attribute.name, "JSXIdentifier") &&
-      attributeNames.has(attribute.name.name)
+      (attribute.name.name === attributeName || attribute.name.name === alias)
     ) {
       return attribute;
     }
@@ -48,9 +49,7 @@ const findLastAttribute = (
   return null;
 };
 
-const getAttributeStaticValue = (
-  attribute: EsTreeNodeOfType<"JSXAttribute">,
-): unknown => {
+const getAttributeStaticValue = (attribute: EsTreeNodeOfType<"JSXAttribute">): unknown => {
   if (!attribute.value) return true;
   if (isNodeOfType(attribute.value, "Literal")) return attribute.value.value;
   if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return UNKNOWN_STATIC_VALUE;
@@ -66,9 +65,7 @@ const getAttributeStaticValue = (
   return UNKNOWN_STATIC_VALUE;
 };
 
-const getAttributeExpression = (
-  attribute: EsTreeNodeOfType<"JSXAttribute">,
-): EsTreeNode | null => {
+const getAttributeExpression = (attribute: EsTreeNodeOfType<"JSXAttribute">): EsTreeNode | null => {
   if (!attribute.value || !isNodeOfType(attribute.value, "JSXExpressionContainer")) return null;
   return stripParenExpression(attribute.value.expression);
 };
@@ -83,7 +80,9 @@ const isProvenCallableAttribute = (
   if (!isNodeOfType(expression, "Identifier")) return false;
   const symbol = scopes.symbolFor(expression);
   return Boolean(
-    symbol?.kind === "const" && symbol.initializer && isFunctionLike(stripParenExpression(symbol.initializer)),
+    symbol?.kind === "const" &&
+    symbol.initializer &&
+    isFunctionLike(stripParenExpression(symbol.initializer)),
   );
 };
 
@@ -130,7 +129,7 @@ export const octaneNoNativeTextOnchange = defineRule({
     let fileIsOctaneModule = false;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        const sourceText = context.sourceCode.getText();
+        const sourceText = context.sourceCode?.getText?.() ?? "";
         fileIsOctaneModule =
           isOctaneModule(node, sourceText) && !NON_DOM_OCTANE_RENDERER_PATTERN.test(sourceText);
       },
@@ -143,22 +142,19 @@ export const octaneNoNativeTextOnchange = defineRule({
         }
 
         const changeAttributes = [
-          findLastAttribute(node.attributes, new Set(["onChange"])),
-          findLastAttribute(node.attributes, new Set(["onChangeCapture"])),
+          findLastAttribute(node.attributes, "onChange"),
+          findLastAttribute(node.attributes, "onChangeCapture"),
         ].filter(isPresentChangeHandler);
         if (changeAttributes.length === 0) return;
 
-        const typeAttribute = findLastAttribute(node.attributes, new Set(["type"]));
+        const typeAttribute = findLastAttribute(node.attributes, "type");
         if (elementType === "input" && isStaticallyTextEntryInput(typeAttribute) !== true) return;
 
-        const readOnlyAttribute = findLastAttribute(
-          node.attributes,
-          new Set(["readOnly", "readonly"]),
-        );
-        const disabledAttribute = findLastAttribute(node.attributes, new Set(["disabled"]));
+        const readOnlyAttribute = findLastAttribute(node.attributes, "readOnly", "readonly");
+        const disabledAttribute = findLastAttribute(node.attributes, "disabled");
         const suppressionAttribute = findLastAttribute(
           node.attributes,
-          new Set(["suppressNativeChangeWarning"]),
+          "suppressNativeChangeWarning",
         );
         const readOnlyState = isKnownTruthyHostBoolean(readOnlyAttribute);
         const disabledState = isKnownTruthyHostBoolean(disabledAttribute);
@@ -167,31 +163,28 @@ export const octaneNoNativeTextOnchange = defineRule({
         if (readOnlyState === null || disabledState === null || suppressionState === null) return;
 
         const inputAttributes = [
-          findLastAttribute(node.attributes, new Set(["onInput"])),
-          findLastAttribute(node.attributes, new Set(["onInputCapture"])),
+          findLastAttribute(node.attributes, "onInput"),
+          findLastAttribute(node.attributes, "onInputCapture"),
         ];
         if (
           inputAttributes.some(
             (attribute) => attribute && isProvenCallableAttribute(attribute, context.scopes),
           ) ||
-          inputAttributes.some((attribute) =>
-            hasUnresolvedInputHandler(attribute, context.scopes),
-          )
+          inputAttributes.some((attribute) => hasUnresolvedInputHandler(attribute, context.scopes))
         ) {
           return;
         }
 
         const firstChangeAttribute = changeAttributes.toSorted(
-          (left, right) => node.attributes.indexOf(left) - node.attributes.indexOf(right),
+          (left, right) => getNodeStartIndex(left) - getNodeStartIndex(right),
         )[0];
         if (!firstChangeAttribute) return;
         const changeAttributeName = isNodeOfType(firstChangeAttribute.name, "JSXIdentifier")
           ? firstChangeAttribute.name.name
           : "onChange";
-        const replacement = changeAttributeName === "onChangeCapture" ? "onInputCapture" : "onInput";
-        const hasControlledValue = Boolean(
-          findLastAttribute(node.attributes, new Set(["value"])),
-        );
+        const replacement =
+          changeAttributeName === "onChangeCapture" ? "onInputCapture" : "onInput";
+        const hasControlledValue = Boolean(findLastAttribute(node.attributes, "value"));
         context.report({
           node: firstChangeAttribute,
           message: `\`${changeAttributeName}\` is a native commit event in Octane, so it does not run for each text edit. Use \`${replacement}\` for per-edit updates or add \`suppressNativeChangeWarning\` for intentional commit-on-blur behavior.${hasControlledValue ? " This control also has `value`, so use `defaultValue` if commit-only editing should remain uncontrolled." : ""}`,

@@ -8081,6 +8081,39 @@
     }
   },
   {
+    "key": "react-doctor/octane-no-hook-in-loop",
+    "id": "octane-no-hook-in-loop",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "octane-no-hook-in-loop",
+      "title": "Octane hook called inside a plain loop",
+      "severity": "error",
+      "recommendation": "Render repeated hook state with Octane's keyed `@for` directive or extract the loop body into a child component.",
+      "category": "Bugs",
+      "framework": "global",
+      "tags": ["octane"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/octane-no-native-text-onchange",
+    "id": "octane-no-native-text-onchange",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "octane-no-native-text-onchange",
+      "title": "React-style text onChange used in Octane",
+      "severity": "warn",
+      "recommendation": "Use `onInput` for per-edit text updates, or add `suppressNativeChangeWarning` when native commit-on-blur behavior is intentional.",
+      "category": "Bugs",
+      "framework": "global",
+      "tags": ["octane"],
+      "matchByOccurrence": true,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/only-export-components",
     "id": "only-export-components",
     "source": "react-doctor",

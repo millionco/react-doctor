@@ -15,6 +15,7 @@ export const RENDER_PROP_PROLIFERATION_THRESHOLD = 3;
 export const BOOLEAN_PROP_VARIANT_BRANCH_THRESHOLD = 2;
 export const GET_HANDLER_BINDING_RESOLUTION_DEPTH = 3;
 export const SYNCHRONOUS_THROW_RESOLUTION_DEPTH = 3;
+export const FUNCTION_RESOLUTION_MAX_DEPTH = 15;
 // How many identifier→initializer hops jsx-key follows when proving a
 // `{...spread}` after an explicit `key` cannot carry a `key` of its own
 // (`const tokenProps = { ... }` chains). Bounded so a pathological

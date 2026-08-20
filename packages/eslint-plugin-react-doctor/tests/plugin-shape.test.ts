@@ -71,4 +71,55 @@ describe("eslint-plugin-react-doctor", () => {
     );
     expect(eslintRule.meta.type).toBe(oxlintRule.severity === "warn" ? "suggestion" : "problem");
   });
+
+  it("respects disabledWhen: ['react-compiler'] when capability is present", () => {
+    const ruleName = "jsx-no-new-function-as-prop";
+    const oxlintRule = oxlintPlugin.rules[ruleName];
+    const eslintRule = eslintPlugin.rules[ruleName];
+    expect(oxlintRule).toBeDefined();
+    expect(eslintRule).toBeDefined();
+    if (!oxlintRule || !eslintRule) return;
+
+    expect(oxlintRule.disabledWhen).toContain("react-compiler");
+
+    const mockContext = {
+      report: () => {},
+      filename: "test.tsx",
+      settings: { "react-doctor": { capabilities: ["react-compiler"] } },
+    };
+
+    const visitors = eslintRule.create(mockContext);
+    expect(Object.keys(visitors)).toHaveLength(0);
+  });
+
+  it("enables rules when disabledWhen capability is not present", () => {
+    const ruleName = "jsx-no-new-function-as-prop";
+    const eslintRule = eslintPlugin.rules[ruleName];
+    expect(eslintRule).toBeDefined();
+    if (!eslintRule) return;
+
+    const mockContext = {
+      report: () => {},
+      filename: "test.tsx",
+      settings: { "react-doctor": { capabilities: [] } },
+    };
+
+    const visitors = eslintRule.create(mockContext);
+    expect(Object.keys(visitors).length).toBeGreaterThan(0);
+  });
+
+  it("enables rules when settings are missing", () => {
+    const ruleName = "jsx-no-new-function-as-prop";
+    const eslintRule = eslintPlugin.rules[ruleName];
+    expect(eslintRule).toBeDefined();
+    if (!eslintRule) return;
+
+    const mockContext = {
+      report: () => {},
+      filename: "test.tsx",
+    };
+
+    const visitors = eslintRule.create(mockContext);
+    expect(Object.keys(visitors).length).toBeGreaterThan(0);
+  });
 });

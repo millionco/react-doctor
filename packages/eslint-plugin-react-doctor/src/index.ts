@@ -7,7 +7,13 @@ import oxlintPlugin, {
   TANSTACK_QUERY_RULES,
   TANSTACK_START_RULES,
 } from "oxlint-plugin-react-doctor";
-import type { EsTreeNode, OxlintRuleSeverity, RuleVisitors } from "oxlint-plugin-react-doctor";
+import type {
+  Capability,
+  EsTreeNode,
+  OxlintRuleSeverity,
+  Rule,
+  RuleVisitors,
+} from "oxlint-plugin-react-doctor";
 
 interface EslintRuleContext {
   report: (descriptor: { node: EsTreeNode; message: string }) => void;
@@ -15,6 +21,11 @@ interface EslintRuleContext {
   readonly filename?: string;
   /** @deprecated Use `filename`. Kept only for host compatibility. */
   getFilename?: () => string | undefined;
+  settings?: {
+    "react-doctor"?: {
+      capabilities?: ReadonlyArray<string>;
+    };
+  };
 }
 
 interface EslintAdapterRule {
@@ -68,7 +79,26 @@ const RULE_DOCS_BASE_URL = "https://react.doctor/docs/rules";
 
 const recommendedRuleKeys = new Set(Object.keys(RECOMMENDED_RULES));
 
-const wrapAsEslintRule = (ruleName: string, ruleImpl: EslintAdapterRule): EslintRule => ({
+const EMPTY_VISITORS: RuleVisitors = {};
+
+const hasCapability = (
+  settings: EslintRuleContext["settings"],
+  capability: Capability,
+): boolean => {
+  const capabilities = settings?.["react-doctor"]?.capabilities;
+  if (!Array.isArray(capabilities)) return false;
+  return capabilities.includes(capability);
+};
+
+const shouldCreateRuleVisitors = (
+  settings: EslintRuleContext["settings"],
+  disabledWhen: ReadonlyArray<Capability> | undefined,
+): boolean => !disabledWhen?.some((capability) => hasCapability(settings, capability));
+
+const wrapAsEslintRule = (
+  ruleName: string,
+  ruleImpl: EslintAdapterRule & Pick<Rule, "disabledWhen">,
+): EslintRule => ({
   meta: {
     type: ruleImpl.severity === "warn" ? "suggestion" : "problem",
     docs: {
@@ -82,7 +112,10 @@ const wrapAsEslintRule = (ruleName: string, ruleImpl: EslintAdapterRule): Eslint
     },
     schema: [],
   },
-  create: ruleImpl.create,
+  create: (context: EslintRuleContext) =>
+    shouldCreateRuleVisitors(context.settings, ruleImpl.disabledWhen)
+      ? ruleImpl.create(context)
+      : EMPTY_VISITORS,
 });
 
 const eslintShapedRules: Record<string, EslintRule> = Object.fromEntries(

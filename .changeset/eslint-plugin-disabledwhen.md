@@ -9,11 +9,11 @@ Users can enable this by adding to their ESLint config:
 ```js
 export default {
   settings: {
-    'react-doctor': {
-      capabilities: ['react-compiler']
-    }
-  }
-}
+    "react-doctor": {
+      capabilities: ["react-compiler"],
+    },
+  },
+};
 ```
 
 This matches the CLI behavior where these rules are automatically disabled when React Compiler is detected in `next.config.ts`/`vite.config.ts`.

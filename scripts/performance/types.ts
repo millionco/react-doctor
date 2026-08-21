@@ -10,6 +10,7 @@ export interface BenchmarkCliOptions {
   cliPath: string;
   profile: boolean;
   heapProfile: boolean;
+  ruleTimings: boolean;
 }
 
 export interface CreateStressProjectInput {
@@ -35,6 +36,7 @@ export interface PerformanceCommandOptions {
   readonly compare?: string;
   readonly profile: boolean;
   readonly heapProfile: boolean;
+  readonly ruleTimings: boolean;
 }
 
 export interface StressPerformanceCommandOptions extends PerformanceCommandOptions {
@@ -232,6 +234,35 @@ export interface HeapProfileAnalysis {
   sampledBytes: number;
   processes: HeapProfileProcessSummary[];
   aggregateTopFrames: HeapProfileFrameSummary[];
+}
+
+export interface OxlintRuleTiming {
+  rule: string;
+  timeMilliseconds: number;
+  relativePercent: number;
+  calls: number;
+  source: string;
+}
+
+export interface CapturedRulePerformanceTiming {
+  rule: string;
+  selector: string;
+  timeNanoseconds: string;
+  calls: number;
+}
+
+export interface OxlintTimingProcessSummary {
+  file: string;
+  totalTimeMilliseconds: number;
+  rules: OxlintRuleTiming[];
+}
+
+export interface OxlintTimingAnalysis {
+  generatedAt: string;
+  profileDirectory: string;
+  totalTimeMilliseconds: number;
+  processes: OxlintTimingProcessSummary[];
+  aggregateRules: OxlintRuleTiming[];
 }
 
 export type BenchmarkMode = "lint" | "full";

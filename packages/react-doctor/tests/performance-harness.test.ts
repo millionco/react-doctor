@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { analyzeCpuProfiles } from "../../../scripts/performance/analyze-cpu-profile.ts";
 import { analyzeHeapProfiles } from "../../../scripts/performance/analyze-heap-profile.ts";
+import { analyzeOxlintTimings } from "../../../scripts/performance/analyze-oxlint-timings.ts";
 import { buildBenchmarkComparisons } from "../../../scripts/performance/build-benchmark-comparisons.ts";
 import { buildBenchmarkEnvironment } from "../../../scripts/performance/build-benchmark-environment.ts";
 import type { BuildBenchmarkEnvironmentInput } from "../../../scripts/performance/build-benchmark-environment.ts";
@@ -94,6 +95,7 @@ const createResult = (series: BenchmarkSeries[]): PerformanceResult => ({
     cliPath: "/tmp/react-doctor.js",
     profile: false,
     heapProfile: false,
+    ruleTimings: false,
   },
   series,
   comparisons: [],
@@ -122,6 +124,7 @@ describe("performance harness", () => {
       "all",
       "--profile",
       "--heap-profile",
+      "--rule-timings",
     ]);
     expect(options.directories).toEqual([
       path.resolve("./packages/react-doctor"),
@@ -134,6 +137,7 @@ describe("performance harness", () => {
     expect(options.cacheCohorts).toEqual(["no-cache", "cold", "hot"]);
     expect(options.profile).toBe(true);
     expect(options.heapProfile).toBe(true);
+    expect(options.ruleTimings).toBe(true);
   });
 
   it("rejects invalid arguments", () => {
@@ -162,6 +166,7 @@ describe("performance harness", () => {
       workerCount: "auto",
       cpuProfile: true,
       heapProfile: true,
+      ruleTimings: true,
       profileDirectory,
     };
     const coldEnvironment = buildBenchmarkEnvironment({
@@ -179,6 +184,7 @@ describe("performance harness", () => {
     expect(coldEnvironment.NODE_DISABLE_COMPILE_CACHE).toBeUndefined();
     expect(coldEnvironment.REACT_DOCTOR_LINT_BATCH_ORDERING).toBeUndefined();
     expect(coldEnvironment.REACT_DOCTOR_NO_FILE_CACHE).toBeUndefined();
+    expect(coldEnvironment.REACT_DOCTOR_OXLINT_TIMINGS_DIR).toBe(profileDirectory);
     expect(coldEnvironment.NODE_OPTIONS?.split(" ").includes("--cpu-prof")).toBe(
       process.allowedNodeEnvironmentFlags.has("--cpu-prof"),
     );
@@ -250,6 +256,7 @@ describe("performance harness", () => {
     expect(options.warmups).toBe(0);
     expect(options.workers).toBe("1,auto");
     expect(options.profile).toBe(true);
+    expect(options.ruleTimings).toBe(false);
     expect(parseStressPerformanceArguments([]).cache).toBe("cold");
   });
 
@@ -414,6 +421,7 @@ describe("performance harness", () => {
           cliPath: builtCliPath,
           profile: false,
           heapProfile: false,
+          ruleTimings: false,
         });
 
         expect(result.series).toHaveLength(1);
@@ -453,10 +461,12 @@ describe("performance harness", () => {
           cliPath: builtCliPath,
           profile: true,
           heapProfile: true,
+          ruleTimings: true,
         });
 
         const cpuAnalysis = analyzeCpuProfiles(outputDirectory);
         const heapAnalysis = analyzeHeapProfiles(outputDirectory);
+        const ruleAnalysis = analyzeOxlintTimings(outputDirectory);
         const cpuProcessRoles = new Set(
           cpuAnalysis.processes.map((processSummary) => processSummary.role),
         );
@@ -464,6 +474,10 @@ describe("performance harness", () => {
         expect(cpuProcessRoles).toContain("oxlint");
         expect(cpuProcessRoles.size).toBeGreaterThanOrEqual(2);
         expect(heapAnalysis.processes.length).toBeGreaterThanOrEqual(2);
+        expect(ruleAnalysis.processes.length).toBeGreaterThanOrEqual(1);
+        expect(
+          ruleAnalysis.aggregateRules.some((rule) => rule.rule.startsWith("react-doctor/")),
+        ).toBe(true);
       },
     );
   });

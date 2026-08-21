@@ -4,6 +4,7 @@ import type { HostRule, RulePlugin } from "./utils/rule-plugin.js";
 import { wrapInkRule } from "./utils/wrap-ink-rule.js";
 import { wrapNextjsRule } from "./utils/wrap-nextjs-rule.js";
 import { wrapReactNativeRule } from "./utils/wrap-react-native-rule.js";
+import { wrapRuleWithPerformanceTiming } from "./utils/wrap-rule-with-performance-timing.js";
 import { wrapWithSemanticContext } from "./utils/wrap-with-semantic-context.js";
 
 // Wraps every `framework: "react-native"` rule with the shared package-
@@ -28,7 +29,10 @@ const applyFrameworkGate = (rule: Rule): Rule => {
 const applyFrameworkRuleWrappers = (registry: Record<string, Rule>): Record<string, HostRule> => {
   const wrapped: Record<string, HostRule> = {};
   for (const [ruleId, rule] of Object.entries(registry)) {
-    wrapped[ruleId] = wrapWithSemanticContext(applyFrameworkGate(rule));
+    wrapped[ruleId] = wrapRuleWithPerformanceTiming(
+      ruleId,
+      wrapWithSemanticContext(applyFrameworkGate(rule)),
+    );
   }
   return wrapped;
 };

@@ -204,6 +204,7 @@ const runSeries = (
     sampleIndex: number,
     cpuProfile: boolean,
     heapProfile: boolean,
+    ruleTimings: boolean,
   ): BenchmarkSample =>
     runBenchmarkSample({
       repositoryRoot: REPOSITORY_ROOT,
@@ -217,20 +218,21 @@ const runSeries = (
       sampleIndex,
       cpuProfile,
       heapProfile,
+      ruleTimings,
     });
   for (let warmupIndex = 0; warmupIndex < options.warmups; warmupIndex += 1) {
-    runSample(`warmup-${warmupIndex + 1}`, warmupIndex + 1, false, false);
+    runSample(`warmup-${warmupIndex + 1}`, warmupIndex + 1, false, false, false);
   }
   const samples: BenchmarkSample[] = [];
   for (let sampleIndex = 1; sampleIndex <= options.samples; sampleIndex += 1) {
-    const sample = runSample(`sample-${sampleIndex}`, sampleIndex, false, false);
+    const sample = runSample(`sample-${sampleIndex}`, sampleIndex, false, false, false);
     samples.push(sample);
     process.stderr.write(
       `[${target.label}] sample ${sampleIndex}/${options.samples}: ${sample.wallMilliseconds.toFixed(1)} ms\n`,
     );
   }
-  if (options.profile || options.heapProfile) {
-    runSample("profile", 0, options.profile, options.heapProfile);
+  if (options.profile || options.heapProfile || options.ruleTimings) {
+    runSample("profile", 0, options.profile, options.heapProfile, options.ruleTimings);
   }
   const diagnosticHashes = new Set(samples.map((sample) => sample.diagnosticHash));
   if (diagnosticHashes.size !== 1) {
@@ -332,6 +334,7 @@ export const runPerformance = (options: BenchmarkCliOptions): PerformanceResult 
       cliPath: options.cliPath,
       profile: options.profile,
       heapProfile: options.heapProfile,
+      ruleTimings: options.ruleTimings,
     },
     series,
     comparisons: buildBenchmarkComparisons(series, baseline),

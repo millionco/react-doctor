@@ -809,4 +809,37 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not flag type parameters that happen to be named window", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `type MapState<window> = (state: window) => window;`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag type-only intersection/union member keys", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `type Config = { window: number } | { navigator: string } & { localStorage: boolean };`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag method signature return types", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `interface API {
+         getWindow(): window;
+       }
+       type window = { width: number };`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

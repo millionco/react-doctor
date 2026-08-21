@@ -1,0 +1,431 @@
+// rule: dangerous-html-sink
+// file-path: src/ui.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit abe2cb7efe8c89e25f4cf00b42baa333f1de91c9eddc5f7651207621bc99e4ed
+import {
+  FILTERS,
+  LANE_BY_ID,
+  ROUTES,
+  STAGE_BY_ID,
+  TRANSFER,
+  formatDuration,
+  formatMoney,
+  type CheckpointNode,
+  type RouteTotals,
+} from "./data";
+
+/**
+ * Analytical read-out surrounding the scene. Everything the pointer and
+ * keyboard can reach is mirrored here, and every number shown is derived from
+ * the same fictional dataset that drives the geometry.
+ */
+
+export interface RouteView {
+  id: string;
+  label: string;
+  blurb: string;
+  lane: string;
+  available: boolean;
+  blockedBy: string[];
+  totals: RouteTotals;
+  active: boolean;
+  compared: boolean;
+}
+
+export interface UICallbacks {
+  toggleFilter(id: string): void;
+  chooseRoute(id: string): void;
+  compareRoute(id: string): void;
+  trace(): void;
+  clear(): void;
+  reset(): void;
+  focus(): void;
+  toggleLabels(): void;
+  toggleHelp(): void;
+  selectNode(id: string): void;
+}
+
+const SUPPORT_WORD = ["No desk", "Business hours", "Extended hours", "Around the clock"];
+
+export class UI {
+  private readonly root: HTMLDivElement;
+  private readonly filterList: HTMLDivElement;
+  private readonly routeList: HTMLDivElement;
+  private readonly inspector: HTMLDivElement;
+  private readonly status: HTMLDivElement;
+  private readonly timeline: HTMLDivElement;
+  private readonly help: HTMLDivElement;
+  private readonly cb: UICallbacks;
+
+  constructor(parent: HTMLElement, cb: UICallbacks) {
+    this.cb = cb;
+    this.root = document.createElement("div");
+    this.root.className = "ui";
+    this.root.innerHTML = `
+      <header class="masthead">
+        <div class="masthead-main">
+          <h1>Mobile Payment Journey</h1>
+          <p class="lede">A transfer of <b>${formatMoney(TRANSFER.amount, 0)} ${TRANSFER.currency}</b>
+          traced across a fictional cross-border network — ${TRANSFER.label}.</p>
+        </div>
+        <p class="disclaimer">Invented institutions, rates and service levels, built to demonstrate a
+        visualisation technique. Not advice of any kind.</p>
+      </header>
+
+      <section class="panel panel-left">
+        <div class="panel-block">
+          <h2>Constraints <span class="hint">1 – 5</span></h2>
+          <div class="filters"></div>
+        </div>
+        <div class="panel-block grow">
+          <h2>Route choices <span class="hint">[ ] to cycle · C to compare</span></h2>
+          <div class="routes"></div>
+        </div>
+      </section>
+
+      <section class="panel panel-right">
+        <div class="inspector"></div>
+      </section>
+
+      <footer class="dock">
+        <div class="timeline"></div>
+        <div class="statusbar"></div>
+        <div class="toolbar">
+          <button data-act="trace">Trace <kbd>T</kbd></button>
+          <button data-act="focus">Focus <kbd>F</kbd></button>
+          <button data-act="clear">Clear <kbd>X</kbd></button>
+          <button data-act="reset">Reset <kbd>R</kbd></button>
+          <button data-act="labels">Labels <kbd>L</kbd></button>
+          <button data-act="help">Keys <kbd>H</kbd></button>
+        </div>
+      </footer>
+
+      <div class="help" hidden>
+        <div class="help-inner">
+          <h2>Controls</h2>
+          <ul>
+            <li><kbd>drag</kbd> orbit the network</li>
+            <li><kbd>right-drag</kbd> / <kbd>shift</kbd>+<kbd>arrows</kbd> pan</li>
+            <li><kbd>wheel</kbd> / <kbd>+</kbd> <kbd>−</kbd> dolly</li>
+            <li><kbd>arrows</kbd> orbit by keyboard</li>
+            <li><kbd>click</kbd> a checkpoint to open it, a route to select it</li>
+            <li><kbd>tab</kbd> step through checkpoints in depth order</li>
+            <li><kbd>,</kbd> <kbd>.</kbd> step between journey stages</li>
+            <li><kbd>1</kbd>–<kbd>5</kbd> toggle constraint filters</li>
+            <li><kbd>[</kbd> <kbd>]</kbd> cycle route choice</li>
+            <li><kbd>T</kbd> trace · <kbd>C</kbd> compare · <kbd>F</kbd> focus</li>
+            <li><kbd>X</kbd> clear · <kbd>R</kbd> reset · <kbd>L</kbd> labels · <kbd>H</kbd> this list</li>
+          </ul>
+          <p class="fine">Every checkpoint, charge, rate and service level in this piece is invented.</p>
+        </div>
+      </div>
+    `;
+    parent.appendChild(this.root);
+
+    this.filterList = this.root.querySelector(".filters") as HTMLDivElement;
+    this.routeList = this.root.querySelector(".routes") as HTMLDivElement;
+    this.inspector = this.root.querySelector(".inspector") as HTMLDivElement;
+    this.status = this.root.querySelector(".statusbar") as HTMLDivElement;
+    this.timeline = this.root.querySelector(".timeline") as HTMLDivElement;
+    this.help = this.root.querySelector(".help") as HTMLDivElement;
+
+    this.buildFilters();
+    this.bind();
+  }
+
+  private buildFilters(): void {
+    this.filterList.innerHTML = FILTERS.map(
+      (f) => `
+      <button class="filter" data-filter="${f.id}" title="${f.detail}">
+        <span class="key">${f.key}</span>
+        <span class="filter-label">${f.label}</span>
+        <span class="pip"></span>
+      </button>`,
+    ).join("");
+  }
+
+  private bind(): void {
+    this.root.addEventListener("click", (ev) => {
+      const target = ev.target as HTMLElement;
+      const filter = target.closest("[data-filter]") as HTMLElement | null;
+      if (filter) {
+        this.cb.toggleFilter(filter.dataset.filter!);
+        return;
+      }
+      const compare = target.closest("[data-compare]") as HTMLElement | null;
+      if (compare) {
+        ev.stopPropagation();
+        this.cb.compareRoute(compare.dataset.compare!);
+        return;
+      }
+      const route = target.closest("[data-route]") as HTMLElement | null;
+      if (route) {
+        this.cb.chooseRoute(route.dataset.route!);
+        return;
+      }
+      const node = target.closest("[data-node]") as HTMLElement | null;
+      if (node) {
+        this.cb.selectNode(node.dataset.node!);
+        return;
+      }
+      const act = target.closest("[data-act]") as HTMLElement | null;
+      if (!act) return;
+      switch (act.dataset.act) {
+        case "trace":
+          this.cb.trace();
+          break;
+        case "focus":
+          this.cb.focus();
+          break;
+        case "clear":
+          this.cb.clear();
+          break;
+        case "reset":
+          this.cb.reset();
+          break;
+        case "labels":
+          this.cb.toggleLabels();
+          break;
+        case "help":
+          this.cb.toggleHelp();
+          break;
+      }
+    });
+  }
+
+  setFilters(active: Set<string>): void {
+    for (const el of this.filterList.querySelectorAll<HTMLElement>("[data-filter]")) {
+      el.classList.toggle("on", active.has(el.dataset.filter!));
+    }
+  }
+
+  setRoutes(views: RouteView[]): void {
+    this.routeList.innerHTML = views
+      .map((v) => {
+        const t = v.totals;
+        const state = v.available ? "" : " unavailable";
+        const flags = v.blockedBy.length
+          ? `<div class="route-block">withdrawn — ${v.blockedBy.join(", ")} filtered out</div>`
+          : "";
+        return `
+        <div class="route${state}${v.active ? " active" : ""}${v.compared ? " compared" : ""}" data-route="${v.id}">
+          <div class="route-head">
+            <span class="swatch" style="--hue:${Math.round((ROUTES.find((r) => r.id === v.id)?.hue ?? 0.5) * 360)}"></span>
+            <span class="route-name">${v.label}</span>
+            <button class="cmp" data-compare="${v.id}" title="Hold against the active route">vs</button>
+          </div>
+          <div class="route-blurb">${v.blurb}</div>
+          <div class="route-stats">
+            <span><i>charge</i>${formatMoney(t.fee)}</span>
+            <span><i>spread</i>${t.spreadBps} bps</span>
+            <span><i>median</i>${formatDuration(t.medianMin)}</span>
+          </div>
+          ${flags}
+        </div>`;
+      })
+      .join("");
+  }
+
+  setStatus(html: string): void {
+    this.status.innerHTML = html;
+  }
+
+  setTimeline(hops: { id: string; label: string; state: "past" | "current" | "future" | "idle" }[]): void {
+    if (!hops.length) {
+      this.timeline.innerHTML = `<div class="timeline-empty">Choose a route, then press <kbd>T</kbd> to trace the transfer through it.</div>`;
+      return;
+    }
+    this.timeline.innerHTML = hops
+      .map(
+        (h, i) =>
+          `<button class="hop ${h.state}" data-node="${h.id}"><span class="hop-i">${i + 1}</span>${h.label}</button>`,
+      )
+      .join('<span class="hop-link"></span>');
+  }
+
+  showCheckpoint(node: CheckpointNode | null, extra: { blocked: string[]; routes: string[] } | null): void {
+    if (!node) {
+      this.inspector.innerHTML = `
+        <div class="inspector-idle">
+          <h2>Checkpoint</h2>
+          <p>Click any checkpoint in the network — or press <kbd>tab</kbd> — to open its charges,
+          holding time, conversion terms and support cover.</p>
+          <dl class="legend">
+            <dt><span class="glyph glyph-prism"></span></dt><dd>Scheme and account endpoints</dd>
+            <dt><span class="glyph glyph-drum"></span></dt><dd>Review, clearing and correspondent desks</dd>
+            <dt><span class="glyph glyph-stack"></span></dt><dd>Conversion venues and pooled liquidity</dd>
+            <dt><span class="glyph glyph-cross"></span></dt><dd>Routes that overlap on screen but sit apart in depth</dd>
+            <dt><span class="glyph glyph-gate"></span></dt><dd>A limit that binds against this transfer</dd>
+          </dl>
+          <p class="axis-note">Left to right: journey stage. Height: cost of holding the transfer here.
+          Depth: corridor separation.</p>
+        </div>`;
+      return;
+    }
+
+    const charge = node.fee.fixed + (TRANSFER.amount * node.fee.bps) / 10000;
+    const stage = STAGE_BY_ID.get(node.stage);
+    const lanes = node.lanes.map((l) => LANE_BY_ID.get(l)?.label ?? l).join(" · ");
+    const blocked = extra?.blocked ?? [];
+
+    this.inspector.innerHTML = `
+      <article class="card">
+        <div class="card-top">
+          <span class="card-stage">${stage?.label ?? node.stage}</span>
+          <h2>${node.name}</h2>
+          <p class="card-detail">${node.detail}</p>
+        </div>
+
+        ${blocked.length ? `<div class="alert">${blocked.map((b) => `<span>${b}</span>`).join("")}</div>` : ""}
+
+        <div class="metric-grid">
+          <div class="metric">
+            <i>Charge on this transfer</i>
+            <b>${formatMoney(charge)} <em>${TRANSFER.currency}</em></b>
+            <s>${formatMoney(node.fee.fixed)} fixed${node.fee.bps ? ` + ${node.fee.bps} bps` : ""}</s>
+          </div>
+          <div class="metric">
+            <i>Time held here</i>
+            <b>${formatDuration(node.timing.medianMin)}</b>
+            <s>95th percentile ${formatDuration(node.timing.p95Min)}</s>
+          </div>
+          <div class="metric">
+            <i>Support cover</i>
+            <b>${SUPPORT_WORD[node.support.coverage]}</b>
+            <s>${node.support.channels} · first reply ~${formatDuration(node.support.responseMin)} · ${node.support.languages} languages</s>
+          </div>
+          <div class="metric">
+            <i>Completion rate</i>
+            <b>${(node.reliability * 100).toFixed(2)}%</b>
+            <s>modelled across this corridor set</s>
+          </div>
+        </div>
+
+        ${
+          node.fx
+            ? `<div class="fx">
+                <i>Conversion</i>
+                <div class="fx-row"><span>${node.fx.pair} reference</span><b>${node.fx.reference.toFixed(4)}</b></div>
+                <div class="fx-row"><span>Published spread</span><b>${node.fx.spreadBps} bps</b></div>
+                <div class="fx-row"><span>Rate held for</span><b>${formatDuration(node.fx.lockMin)}</b></div>
+                <div class="fx-row total"><span>Effective on ${formatMoney(TRANSFER.amount, 0)}</span>
+                  <b>−${formatMoney((TRANSFER.amount * node.fx.spreadBps) / 10000)}</b></div>
+              </div>`
+            : ""
+        }
+
+        <div class="constraints">
+          <i>Constraints</i>
+          <div class="chip-row">
+            <span class="chip${node.constraints.kycTier > TRANSFER.senderTier ? " bad" : ""}">verification tier ${node.constraints.kycTier}</span>
+            <span class="chip${TRANSFER.amount > node.constraints.maxAmount ? " bad" : ""}">ceiling ${formatMoney(node.constraints.maxAmount, 0)}</span>
+            <span class="chip${TRANSFER.weekend && !node.constraints.weekend ? " bad" : ""}">${node.constraints.weekend ? "weekend capable" : "business days only"}</span>
+            ${node.constraints.cutoff !== "—" ? `<span class="chip">cut-off ${node.constraints.cutoff}</span>` : ""}
+          </div>
+        </div>
+
+        <div class="serves"><i>Serves</i><span>${lanes}</span></div>
+        ${
+          extra && extra.routes.length
+            ? `<div class="serves"><i>On routes</i><span>${extra.routes.join(" · ")}</span></div>`
+            : ""
+        }
+      </article>`;
+  }
+
+  showCompare(
+    a: { label: string; totals: RouteTotals; path: string[] },
+    b: { label: string; totals: RouteTotals; path: string[] },
+  ): void {
+    const sharedSet = new Set(a.path.filter((p) => b.path.includes(p)));
+    const rows: [string, string, string, string][] = [
+      ["Total charge", `${formatMoney(a.totals.fee)}`, `${formatMoney(b.totals.fee)}`, delta(a.totals.fee, b.totals.fee, true)],
+      ["Conversion spread", `${a.totals.spreadBps} bps`, `${b.totals.spreadBps} bps`, delta(a.totals.spreadBps, b.totals.spreadBps, true)],
+      [
+        "Recipient receives",
+        formatMoney(a.totals.received),
+        formatMoney(b.totals.received),
+        delta(a.totals.received, b.totals.received, false),
+      ],
+      [
+        "Median delivery",
+        formatDuration(a.totals.medianMin),
+        formatDuration(b.totals.medianMin),
+        delta(a.totals.medianMin, b.totals.medianMin, true),
+      ],
+      [
+        "Slow tail (95th)",
+        formatDuration(a.totals.p95Min),
+        formatDuration(b.totals.p95Min),
+        delta(a.totals.p95Min, b.totals.p95Min, true),
+      ],
+      [
+        "Weakest support",
+        SUPPORT_WORD[a.totals.minSupport] ?? "—",
+        SUPPORT_WORD[b.totals.minSupport] ?? "—",
+        a.totals.minSupport === b.totals.minSupport ? "same" : a.totals.minSupport > b.totals.minSupport ? "left" : "right",
+      ],
+      [
+        "Completion rate",
+        `${(a.totals.reliability * 100).toFixed(2)}%`,
+        `${(b.totals.reliability * 100).toFixed(2)}%`,
+        delta(a.totals.reliability, b.totals.reliability, false),
+      ],
+      ["Shared checkpoints", `${sharedSet.size} of ${a.path.length}`, `${sharedSet.size} of ${b.path.length}`, ""],
+    ];
+
+    this.inspector.innerHTML = `
+      <article class="card compare">
+        <div class="card-top">
+          <span class="card-stage">Comparison</span>
+          <h2>${a.label} <em>vs</em> ${b.label}</h2>
+          <p class="card-detail">Shared checkpoints are pulled to the centre line; the parts that
+          differ are separated in depth, one route to each side.</p>
+        </div>
+        <table class="cmp-table">
+          <thead><tr><th></th><th>${a.label}</th><th>${b.label}</th><th></th></tr></thead>
+          <tbody>
+            ${rows
+              .map(
+                ([k, av, bv, d]) =>
+                  `<tr><th>${k}</th><td>${av}</td><td>${bv}</td><td class="d ${d === "left" || d === "right" ? d : ""}">${
+                    d === "left" ? "◀" : d === "right" ? "▶" : d
+                  }</td></tr>`,
+              )
+              .join("")}
+          </tbody>
+        </table>
+        <p class="fine">Figures are invented for this demonstration and describe nothing real.</p>
+      </article>`;
+  }
+
+  /** Screen footprints of the opaque panels, so labels can avoid them. */
+  reservedRects(): { x0: number; y0: number; x1: number; y1: number }[] {
+    const out: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    for (const sel of [".masthead", ".panel-left", ".panel-right", ".dock"]) {
+      const el = this.root.querySelector(sel);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) continue;
+      out.push({ x0: r.left - 6, y0: r.top - 6, x1: r.right + 6, y1: r.bottom + 6 });
+    }
+    return out;
+  }
+
+  toggleHelp(force?: boolean): boolean {
+    const next = force ?? this.help.hidden;
+    this.help.hidden = !next;
+    return next;
+  }
+
+  dispose(): void {
+    this.root.remove();
+  }
+}
+
+function delta(a: number, b: number, lowerIsBetter: boolean): string {
+  if (Math.abs(a - b) < 1e-9) return "same";
+  const better = lowerIsBetter ? a < b : a > b;
+  return better ? "left" : "right";
+}

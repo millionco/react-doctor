@@ -5,6 +5,7 @@ import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 
 export interface BaseRuleSourceCode {
   readonly ast?: EsTreeNode;
+  getText?: (node?: EsTreeNode | null) => string;
 }
 
 // The "base" context the host (oxlint at runtime, ESLint via the

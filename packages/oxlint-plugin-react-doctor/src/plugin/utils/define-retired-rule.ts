@@ -3,7 +3,7 @@ import { EMPTY_RULE_VISITORS } from "./empty-rule-visitors.js";
 import type { Rule } from "./rule.js";
 
 export const defineRetiredRule = (
-  rule: Omit<Rule, "create" | "defaultEnabled" | "lifecycle">,
+  rule: Omit<Rule, "create" | "defaultEnabled" | "execution" | "lifecycle">,
 ): Rule =>
   defineRule({
     ...rule,

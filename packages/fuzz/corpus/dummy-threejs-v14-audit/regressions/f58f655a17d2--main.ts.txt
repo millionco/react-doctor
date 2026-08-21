@@ -1,0 +1,789 @@
+// rule: three-effect-composer-require-size-on-resize
+// file-path: src/main.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit f58f655a17d264828211b0d4178b941afddf8993270eae45fc0d5d4b8f2f9e56
+/**
+ * THROUGHCUBE — entry point.
+ *
+ * Wires the renderer, the diorama, the match simulation, the HUD and the audio
+ * into one loop, and owns input arbitration (a press on a receiver charges a
+ * throw; a press on empty space orbits the camera).
+ */
+
+import "./style.css";
+import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+import { buildMaterials } from "./art/materials";
+import { configureTextureQuality } from "./art/textures";
+import { AudioEngine } from "./audio/audio";
+import { BRIEFING_FRAMING, OrbitCamera, PRESET_LABEL, type PresetName } from "./core/orbit";
+import { damp } from "./core/mathx";
+import { GOAL, PALETTE } from "./game/config";
+import { Match, type MatchEvent } from "./game/match";
+import { Hud } from "./ui/hud";
+import { Arena } from "./world/arena";
+import { Figure, Objective, RelayPad, Trail, type FigureState } from "./world/entities";
+import { LaneVisual, Shockwaves, Sparks } from "./world/fx";
+
+// ---------------------------------------------------------------------------
+// Renderer
+// ---------------------------------------------------------------------------
+
+const canvas = document.querySelector("#view") as HTMLCanvasElement;
+
+/**
+ * Software rasterisers (headless CI, machines with no GPU) cannot afford
+ * multisampling, a full-resolution backbuffer or the post stack. Probe for one
+ * on a throwaway context so the real renderer can be built to suit.
+ */
+function detectSoftwareRenderer(): boolean {
+  try {
+    const probe = document.createElement("canvas");
+    const gl = probe.getContext("webgl2") ?? probe.getContext("webgl");
+    if (!gl) return true;
+    const info = gl.getExtension("WEBGL_debug_renderer_info");
+    const name = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : "";
+    return /swiftshader|llvmpipe|softpipe|software|mesa offscreen|angle \(google/i.test(name);
+  } catch {
+    return false;
+  }
+}
+
+const params = new URLSearchParams(location.search);
+const lowPower = params.has("low") || (!params.has("high") && detectSoftwareRenderer());
+
+// Software rendering also gets a paced loop: it leaves the compositor room to
+// breathe, which keeps input and the page itself responsive.
+const minFrameInterval = lowPower ? 1 / 6 : 0;
+
+/** Software rendering gets a small backbuffer; the diorama itself is unchanged. */
+function pixelScale(): number {
+  if (lowPower) return 0.34;
+  return Math.min(window.devicePixelRatio || 1, 1.75);
+}
+
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: !lowPower,
+  alpha: false,
+  powerPreference: "high-performance",
+});
+renderer.setPixelRatio(pixelScale());
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = lowPower ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+configureTextureQuality(renderer);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(PALETTE.fog, 0.0135);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envRT = pmrem.fromScene(new RoomEnvironment(), 0.05);
+scene.environment = envRT.texture;
+
+// Graded backdrop — keeps the cube's silhouette legible from every angle.
+const backdrop = new THREE.Mesh(
+  new THREE.SphereGeometry(110, 32, 20),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+    uniforms: {
+      uTop: { value: new THREE.Color(0x0b1220) },
+      uBottom: { value: new THREE.Color(0x020306) },
+      uGlow: { value: new THREE.Color(0x123049) },
+    },
+    vertexShader: /* glsl */ `
+      varying vec3 vPos;
+      void main() {
+        vPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uTop; uniform vec3 uBottom; uniform vec3 uGlow;
+      varying vec3 vPos;
+      void main() {
+        vec3 d = normalize(vPos);
+        float h = clamp(d.y * 0.5 + 0.5, 0.0, 1.0);
+        vec3 c = mix(uBottom, uTop, pow(h, 1.4));
+        c += uGlow * pow(max(0.0, 1.0 - abs(d.y)), 6.0) * 0.5;
+        gl_FragColor = vec4(c, 1.0);
+      }
+    `,
+  }),
+);
+backdrop.frustumCulled = false;
+scene.add(backdrop);
+
+// ---------------------------------------------------------------------------
+// Lighting
+// ---------------------------------------------------------------------------
+
+const hemi = new THREE.HemisphereLight(0x3a5b8c, 0x24180f, 1.05);
+scene.add(hemi);
+
+const key = new THREE.DirectionalLight(0xfff0dc, 3.8);
+key.position.set(8.5, 13, 8);
+key.castShadow = true;
+const shadowSize = lowPower ? 1024 : 2048;
+key.shadow.mapSize.set(shadowSize, shadowSize);
+key.shadow.camera.left = -12;
+key.shadow.camera.right = 12;
+key.shadow.camera.top = 12;
+key.shadow.camera.bottom = -12;
+key.shadow.camera.near = 1;
+key.shadow.camera.far = 46;
+key.shadow.bias = -0.0007;
+key.shadow.normalBias = 0.032;
+key.shadow.radius = 1.6;
+scene.add(key);
+scene.add(key.target);
+
+const rim = new THREE.DirectionalLight(0x74b6ff, 1.7);
+rim.position.set(-10, 6, -11);
+scene.add(rim);
+
+const underFill = new THREE.DirectionalLight(0x35507f, 0.7);
+underFill.position.set(-2, -9, 4);
+scene.add(underFill);
+
+const emberLamp = new THREE.PointLight(PALETTE.ember, 48, 15, 2);
+emberLamp.position.set(0, 1.4, 5.6);
+scene.add(emberLamp);
+
+const frostLamp = new THREE.PointLight(PALETTE.frost, 62, 16, 2);
+frostLamp.position.set(0, 0.8, -5.4);
+scene.add(frostLamp);
+
+// ---------------------------------------------------------------------------
+// World
+// ---------------------------------------------------------------------------
+
+const materials = buildMaterials();
+const arena = new Arena(materials);
+scene.add(arena.group);
+
+const orbit = new OrbitCamera(window.innerWidth / window.innerHeight);
+scene.add(orbit.camera);
+
+const audio = new AudioEngine();
+const sparks = new Sparks(materials.sparkTexture);
+scene.add(sparks.points);
+const waves = new Shockwaves();
+scene.add(waves.group);
+const lane = new LaneVisual();
+scene.add(lane.group);
+
+const objective = new Objective(materials);
+scene.add(objective.group);
+scene.add(objective.shadowMesh);
+const trail = new Trail();
+scene.add(trail.mesh);
+
+const match = new Match(handleEvent);
+
+const runnerFigures = new Map<string, Figure>();
+const pads = new Map<string, RelayPad>();
+const pickProxies: Array<{ mesh: THREE.Mesh; key: string }> = [];
+const pickGroup = new THREE.Group();
+scene.add(pickGroup);
+const proxyGeometry = new THREE.SphereGeometry(0.95, 10, 8);
+const proxyMaterial = new THREE.MeshBasicMaterial({ visible: false });
+
+for (const receiver of match.receivers) {
+  const figure = new Figure("runner", materials);
+  runnerFigures.set(receiver.node.id, figure);
+  scene.add(figure.group);
+  scene.add(figure.shadow.mesh);
+  if (receiver.layer > 0) {
+    const pad = new RelayPad(materials);
+    pads.set(receiver.node.id, pad);
+    scene.add(pad.group);
+    scene.add(pad.shadow.mesh);
+  }
+  const proxy = new THREE.Mesh(proxyGeometry, proxyMaterial);
+  pickGroup.add(proxy);
+  pickProxies.push({ mesh: proxy, key: receiver.node.id });
+}
+
+const goalProxy = new THREE.Mesh(new THREE.SphereGeometry(1.6, 12, 10), proxyMaterial);
+goalProxy.position.set(GOAL.x, GOAL.y, GOAL.z + 0.5);
+pickGroup.add(goalProxy);
+pickProxies.push({ mesh: goalProxy, key: "goal" });
+
+const wardenFigures = match.wardens.map((w) => {
+  const figure = new Figure(w.def.role === "keeper" ? "keeper" : "warden", materials);
+  scene.add(figure.group);
+  scene.add(figure.shadow.mesh);
+  return figure;
+});
+
+// Idle crew on both terraces — presence without clutter.
+const spectators: Array<{ figure: Figure; phase: number }> = [];
+for (const spec of [
+  { kind: "runner" as const, x: -5.3, y: -5.05, z: 5.3, ry: 0.25 },
+  { kind: "runner" as const, x: 5.3, y: -5.05, z: 5.3, ry: -0.25 },
+  { kind: "keeper" as const, x: -4.7, y: -1.2, z: -5.1, ry: 0.3 },
+  { kind: "keeper" as const, x: 4.7, y: -1.2, z: -5.1, ry: -0.3 },
+]) {
+  const figure = new Figure(spec.kind, materials);
+  figure.setPosition(spec.x, spec.y, spec.z);
+  figure.group.rotation.y = spec.ry + (spec.z > 0 ? Math.PI : 0);
+  scene.add(figure.group);
+  scene.add(figure.shadow.mesh);
+  spectators.push({ figure, phase: Math.random() * 6 });
+}
+
+// ---------------------------------------------------------------------------
+// Post-processing
+// ---------------------------------------------------------------------------
+
+const quality = { ao: !lowPower, bloom: !lowPower, aa: !lowPower };
+
+let composer: EffectComposer | null = null;
+let gtao: GTAOPass | null = null;
+let bloom: UnrealBloomPass | null = null;
+let smaa: SMAAPass | null = null;
+
+function buildComposer(): void {
+  // With every effect disabled the composer only adds an offscreen copy, so
+  // render straight to the canvas instead.
+  if (!quality.ao && !quality.bloom && !quality.aa) {
+    composer = null;
+    return;
+  }
+  try {
+    const built = new EffectComposer(renderer);
+    built.addPass(new RenderPass(scene, orbit.camera));
+    if (quality.ao) {
+      const pass = new GTAOPass(scene, orbit.camera, window.innerWidth, window.innerHeight);
+      pass.updateGtaoMaterial({
+        radius: 0.36,
+        distanceExponent: 1.1,
+        thickness: 0.6,
+        scale: 1.05,
+        samples: 12,
+        screenSpaceRadius: false,
+      });
+      pass.blendIntensity = 0.85;
+      built.addPass(pass);
+      gtao = pass;
+    }
+    if (quality.bloom) {
+      const pass = new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        0.62,
+        0.72,
+        0.8,
+      );
+      built.addPass(pass);
+      bloom = pass;
+    }
+    built.addPass(new OutputPass());
+    if (quality.aa) {
+      const pass = new SMAAPass();
+      built.addPass(pass);
+      smaa = pass;
+    }
+    composer = built;
+  } catch {
+    composer = null;
+  }
+}
+buildComposer();
+
+function rebuildComposer(): void {
+  composer?.dispose();
+  composer = null;
+  gtao = null;
+  bloom = null;
+  smaa = null;
+  buildComposer();
+  resize();
+}
+
+// ---------------------------------------------------------------------------
+// HUD + input
+// ---------------------------------------------------------------------------
+
+const hud = new Hud({
+  onBegin: () => beginMatch(),
+  onReplay: () => beginMatch(),
+  onSelect: (index) => {
+    match.select(index);
+    wakeAudio();
+  },
+});
+
+function beginMatch(): void {
+  wakeAudio();
+  hud.showBriefing(false);
+  hud.hideResult();
+  match.start();
+  orbit.setPreset("play");
+  trail.clear();
+}
+
+let pressedTargetKey: string | null = null;
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let throwAnim = 0;
+let hitStop = 0;
+
+function pickAt(clientX: number, clientY: number): string | null {
+  pointer.x = (clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, orbit.camera);
+  const hits = raycaster.intersectObjects(pickGroup.children, false);
+  if (hits.length === 0) return null;
+  const first = hits[0]!.object;
+  const entry = pickProxies.find((p) => p.mesh === first);
+  return entry ? entry.key : null;
+}
+
+/** Maps a proxy key to the index of that lane in the current target list. */
+function targetIndexForKey(key: string): number {
+  return match.targets.findIndex((t) => (t.goal ? "goal" : t.receiver!.node.id) === key);
+}
+
+orbit.shouldOrbit = (event) => {
+  if (match.phase !== "aim") {
+    pressedTargetKey = null;
+    return true;
+  }
+  const key = pickAt(event.clientX, event.clientY);
+  pressedTargetKey = key !== null && targetIndexForKey(key) >= 0 ? key : null;
+  return pressedTargetKey === null;
+};
+
+orbit.attach(canvas);
+
+canvas.addEventListener("pointerdown", (event) => {
+  wakeAudio();
+  if (event.button !== 0 || pressedTargetKey === null) return;
+  const index = targetIndexForKey(pressedTargetKey);
+  if (index < 0) return;
+  match.select(index);
+  match.startCharge();
+  audio.chargeStart();
+});
+
+window.addEventListener("pointerup", () => {
+  if (match.charging) {
+    audio.chargeStop();
+    match.releaseCharge();
+  }
+  pressedTargetKey = null;
+});
+
+canvas.addEventListener("pointermove", (event) => {
+  if (match.phase !== "aim") {
+    canvas.classList.remove("aiming");
+    return;
+  }
+  const key = pickAt(event.clientX, event.clientY);
+  canvas.classList.toggle("aiming", key !== null && targetIndexForKey(key) >= 0);
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.repeat) {
+    if (event.code === "Space") event.preventDefault();
+    return;
+  }
+  wakeAudio();
+  switch (event.code) {
+    case "Space":
+      event.preventDefault();
+      if (match.phase === "briefing" || match.phase === "over") beginMatch();
+      else if (match.phase === "aim") {
+        match.startCharge();
+        audio.chargeStart();
+      }
+      break;
+    case "Enter":
+      if (match.phase === "briefing" || match.phase === "over") beginMatch();
+      break;
+    case "KeyR":
+      beginMatch();
+      break;
+    case "KeyC":
+      orbit.cyclePreset();
+      break;
+    case "KeyV":
+      setPreset(orbit.preset === "sightline" ? "play" : "sightline");
+      break;
+    case "KeyM":
+      audio.setMuted(!audio.isMuted);
+      break;
+    case "KeyQ":
+      match.cycleSelection(-1);
+      break;
+    case "KeyE":
+      match.cycleSelection(1);
+      break;
+    default:
+      if (event.code.startsWith("Digit")) {
+        const n = Number(event.code.slice(5));
+        if (n >= 1 && n <= match.targets.length) match.select(n - 1);
+      }
+  }
+});
+
+window.addEventListener("keyup", (event) => {
+  if (event.code === "Space" && match.charging) {
+    audio.chargeStop();
+    match.releaseCharge();
+  }
+});
+
+function setPreset(name: PresetName): void {
+  orbit.setPreset(name);
+}
+
+let audioWoken = false;
+function wakeAudio(): void {
+  if (audioWoken) return;
+  audioWoken = true;
+  audio.init(orbit.camera, scene);
+}
+
+// ---------------------------------------------------------------------------
+// Match events → sound, particles, camera
+// ---------------------------------------------------------------------------
+
+function handleEvent(event: MatchEvent): void {
+  switch (event.type) {
+    case "launch": {
+      throwAnim = 1;
+      trail.clear();
+      audio.playAt(
+        event.loud ? "throwHard" : "throwSoft",
+        event.position,
+        event.loud ? 1 : 0.7,
+        0.9 + event.power * 0.35,
+      );
+      sparks.burst(event.position, event.loud ? 26 : 10, {
+        color: event.loud ? PALETTE.ember : PALETTE.objective,
+        speed: 3 + event.power * 5,
+        spread: 0.7,
+        size: 0.4,
+        life: 0.5,
+        direction: event.direction.clone().multiplyScalar(1.6),
+      });
+      if (event.loud) {
+        waves.emit(event.position, event.direction, {
+          color: PALETTE.ember,
+          to: 3.4,
+          life: 0.5,
+        });
+        hud.pulse("rgba(255,138,68,0.35)", 0.28);
+      }
+      break;
+    }
+    case "gate": {
+      audio.playAt("gate", event.position, 0.55, 1 + event.plate * 0.08);
+      waves.emit(event.position, new THREE.Vector3(0, 0, 1), {
+        color: PALETTE.objective,
+        from: 0.5,
+        to: 1.9,
+        life: 0.45,
+      });
+      sparks.burst(event.position, 12, {
+        color: PALETTE.objectiveRim,
+        speed: 2.6,
+        size: 0.32,
+        life: 0.45,
+      });
+      break;
+    }
+    case "reject": {
+      audio.playAt("reject", event.position, 1, 0.95);
+      waves.emit(event.position, event.normal, { color: PALETTE.hazard, to: 2.6, life: 0.55 });
+      sparks.burst(event.position, 34, {
+        color: 0xffc48a,
+        speed: 6.5,
+        size: 0.44,
+        life: 0.8,
+        direction: event.normal.clone(),
+      });
+      hitStop = 0.09;
+      hud.pulse("rgba(255,77,102,0.4)", 0.4);
+      break;
+    }
+    case "blocked": {
+      audio.playAt("reject", event.position, 0.85, 0.72);
+      sparks.burst(event.position, 26, { color: 0xbfd0e4, speed: 5, size: 0.4, life: 0.7 });
+      hitStop = 0.07;
+      hud.pulse("rgba(255,77,102,0.32)", 0.32);
+      break;
+    }
+    case "intercept": {
+      audio.playAt("intercept", event.position, 1, 1);
+      sparks.burst(event.position, 30, {
+        color: PALETTE.frost,
+        speed: 5.5,
+        size: 0.42,
+        life: 0.75,
+      });
+      waves.emit(event.position, orbit.camera.position.clone().sub(event.position).normalize(), {
+        color: PALETTE.frost,
+        to: 2.8,
+        life: 0.5,
+      });
+      hitStop = 0.11;
+      hud.pulse("rgba(79,210,255,0.4)", 0.42);
+      break;
+    }
+    case "catch": {
+      audio.playAt("catch", event.position, 0.8, event.quiet ? 1.12 : 0.94);
+      sparks.burst(event.position, event.quiet ? 20 : 12, {
+        color: event.quiet ? PALETTE.safe : PALETTE.objective,
+        speed: 2.4,
+        size: 0.34,
+        life: 0.5,
+      });
+      waves.emit(event.position, orbit.camera.position.clone().sub(event.position).normalize(), {
+        color: event.quiet ? PALETTE.safe : PALETTE.objective,
+        to: 1.7,
+        life: 0.4,
+      });
+      break;
+    }
+    case "score": {
+      audio.play("score", 0.9);
+      arena.flashGoal();
+      hud.pulse("rgba(255,230,163,0.5)", 0.55);
+      sparks.burst(event.position, 90, {
+        color: PALETTE.objective,
+        speed: 8,
+        size: 0.55,
+        life: 1.5,
+        drag: 1.2,
+      });
+      waves.emit(event.position, new THREE.Vector3(0, 0, 1), {
+        color: PALETTE.objective,
+        to: 5,
+        life: 1.1,
+      });
+      orbit.playCinematic(new THREE.Vector3(GOAL.x, GOAL.y, GOAL.z + 1.6), 13.5, 1.15, 2.5);
+      break;
+    }
+    case "miss": {
+      audio.playAt("deny", event.position, 0.8);
+      sparks.burst(event.position, 16, { color: 0x9fb4d0, speed: 3, size: 0.3, life: 0.6 });
+      break;
+    }
+    case "spot":
+      audio.playAt("spot", event.position, 0.55, 1);
+      break;
+    case "select":
+      audio.play("select", 0.5);
+      break;
+    case "tick":
+      audio.play("tick", event.remaining <= 3 ? 0.7 : 0.4, 1 + (5 - event.remaining) * 0.06);
+      break;
+    case "turnover":
+      trail.clear();
+      break;
+    case "over": {
+      audio.play(event.won ? "score" : "fail", 1);
+      hud.showResult(event.won, match.stats);
+      orbit.playCinematic(new THREE.Vector3(0, 0, 0), 24, event.won ? 1.6 : -0.9, 2.6);
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Resize
+// ---------------------------------------------------------------------------
+
+function resize(): void {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  renderer.setSize(w, h);
+  orbit.resize(w / h);
+  // EffectComposer already scales every pass by the renderer pixel ratio.
+  composer?.setSize(w, h);
+}
+window.addEventListener("resize", resize);
+
+// ---------------------------------------------------------------------------
+// Loop
+// ---------------------------------------------------------------------------
+
+const clock = new THREE.Clock();
+const figureState: FigureState = { alert: 0, holding: false, lookAt: null, throwPhase: 0 };
+const lookTmp = new THREE.Vector3();
+let frameAvg = 16;
+let frameCount = 0;
+let threatLevel = 0;
+
+hud.showBriefing(true);
+orbit.applyFraming(BRIEFING_FRAMING);
+
+/** Where the thrower looks while lining a pass up. */
+function aimLookPoint(): THREE.Vector3 {
+  const target = match.selectedTarget;
+  if (!target) return objective.group.position;
+  return match.targetPoint(target, 0, lookTmp);
+}
+
+let pending = 0;
+
+function frame(): void {
+  requestAnimationFrame(frame);
+  const elapsed = clock.getDelta();
+  // Software rasterisers monopolise the compositor; leaving gaps between frames
+  // keeps the page responsive (and screenshot-able) without stalling the match.
+  if (minFrameInterval > 0) {
+    pending = Math.min(0.6, pending + elapsed);
+    if (pending < minFrameInterval) return;
+    pending = 0;
+  }
+  const raw = Math.min(0.05, elapsed);
+  const dt = hitStop > 0 ? raw * 0.2 : raw;
+  if (hitStop > 0) hitStop = Math.max(0, hitStop - raw);
+
+  match.update(dt);
+  const time = match.time;
+
+  // -- ember crew ------------------------------------------------------------
+  throwAnim = Math.max(0, throwAnim - dt * 3.4);
+  for (const receiver of match.receivers) {
+    const figure = runnerFigures.get(receiver.node.id)!;
+    figure.setPosition(receiver.position.x, receiver.position.y, receiver.position.z);
+    const carrying = match.carrier === receiver;
+    figureState.alert = 0;
+    figureState.holding = carrying && match.phase !== "flight";
+    figureState.throwPhase = carrying ? 1 - throwAnim : 0;
+    if (carrying && match.phase === "aim") figureState.lookAt = aimLookPoint();
+    else figureState.lookAt = lookTmp.copy(objective.group.position);
+    figure.update(dt, time, figureState);
+
+    const pad = pads.get(receiver.node.id);
+    if (pad) {
+      pad.group.position.set(receiver.position.x, receiver.position.y, receiver.position.z);
+      const selectedTarget = match.selectedTarget;
+      const isSelected =
+        selectedTarget !== null &&
+        !selectedTarget.goal &&
+        selectedTarget.receiver === receiver &&
+        match.phase === "aim";
+      pad.update(dt, time, isSelected ? 1 : carrying ? 0.55 : 0);
+    }
+  }
+
+  // Pick proxies ride along with the receivers.
+  for (let i = 0; i < match.receivers.length; i++) {
+    pickProxies[i]!.mesh.position.copy(match.receivers[i]!.hold);
+  }
+
+  // -- frost crew ------------------------------------------------------------
+  let peakAlert = 0;
+  for (let i = 0; i < match.wardens.length; i++) {
+    const warden = match.wardens[i]!;
+    const figure = wardenFigures[i]!;
+    figure.group.visible = warden.active;
+    figure.shadow.mesh.visible = warden.active;
+    if (!warden.active) continue;
+    figure.setPosition(warden.position.x, warden.position.y, warden.position.z);
+    figureState.alert = warden.awareness;
+    figureState.holding = false;
+    figureState.throwPhase = 0;
+    figureState.lookAt = lookTmp.copy(objective.group.position);
+    figure.update(dt, time, figureState);
+    peakAlert = Math.max(peakAlert, warden.awareness);
+  }
+  threatLevel = damp(threatLevel, peakAlert, 4, dt);
+
+  for (const spec of spectators) {
+    figureState.alert = 0.12 + Math.sin(time * 0.6 + spec.phase) * 0.1;
+    figureState.holding = false;
+    figureState.throwPhase = 0;
+    figureState.lookAt = null;
+    spec.figure.update(dt, time, figureState);
+  }
+
+  // -- objective -------------------------------------------------------------
+  objective.group.position.copy(match.corePosition);
+  objective.setCharge(match.charging ? match.power : 0);
+  objective.update(dt, time, match.coreVelocity.length());
+  if (match.phase === "flight") {
+    trail.push(match.corePosition);
+    trail.update(orbit.camera.position, 0.13);
+  } else if (match.phase !== "resolve") {
+    trail.clear();
+  }
+
+  // -- aiming lane -----------------------------------------------------------
+  const prediction = match.prediction;
+  if (prediction && match.phase === "aim") {
+    lane.show(
+      prediction.samples,
+      orbit.camera.position,
+      match.power,
+      prediction.legal,
+      prediction.gates.map((g) => ({ point: g.point, open: g.open })),
+    );
+  } else {
+    lane.hide();
+  }
+  lane.update(time);
+
+  // -- world + fx ------------------------------------------------------------
+  arena.update(dt, time, match.field, threatLevel);
+  materials.update(time);
+  sparks.update(dt);
+  waves.update(dt);
+
+  emberLamp.intensity = 44 + Math.sin(time * 1.7) * 5;
+  frostLamp.intensity = 54 + threatLevel * 40 + Math.sin(time * 2.3) * 6;
+  key.target.position.set(0, 0, match.corePosition.z * 0.3);
+  key.target.updateMatrixWorld();
+  audio.setAmbientIntensity(threatLevel);
+
+  if (match.phase !== "briefing" && match.phase !== "over") orbit.frameDepth(match.corePosition.z);
+  orbit.update(dt);
+
+  hud.update(dt, match, {
+    presetLabel: PRESET_LABEL[orbit.preset],
+    zoom: orbit.zoomFraction,
+    muted: audio.isMuted,
+  });
+
+  if (composer) composer.render(dt);
+  else renderer.render(scene, orbit.camera);
+
+  // -- adaptive quality ------------------------------------------------------
+  frameAvg = frameAvg * 0.94 + raw * 1000 * 0.06;
+  frameCount++;
+  if (!lowPower && frameCount > 150 && frameCount % 150 === 0) {
+    if (frameAvg > 38 && quality.ao) {
+      quality.ao = false;
+      rebuildComposer();
+    } else if (frameAvg > 44 && quality.bloom) {
+      quality.bloom = false;
+      quality.aa = false;
+      rebuildComposer();
+    }
+  }
+}
+
+resize();
+requestAnimationFrame(frame);

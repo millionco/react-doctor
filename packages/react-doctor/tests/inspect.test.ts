@@ -21,6 +21,21 @@ const FIXTURES_DIRECTORY = path.resolve(
   "fixtures",
 );
 
+const buildDuplicateCard = (
+  componentName: string,
+  title: string,
+  valueName: string,
+  rootElementName = "section",
+): string => `
+export const ${componentName} = () => (
+  <${rootElementName} className="card">
+    <header><h2>${title}</h2></header>
+    <main><Value value={${valueName}} /></main>
+    <footer><Button /></footer>
+  </${rootElementName}>
+);
+`;
+
 vi.mock("ora", () => ({
   default: () => ({
     text: "",
@@ -346,6 +361,205 @@ module.exports = {
     } finally {
       consoleSpy.mockRestore();
       fs.rmSync(monorepoDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("compares focused JSX duplication against the complete baseline source tree", async () => {
+    clearConfigCache();
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-baseline-jsx-"));
+    try {
+      const projectDirectory = setupReactProject(projectRoot, "app", {
+        files: {
+          "src/AccountCard.tsx": buildDuplicateCard("AccountCard", "Account", "account"),
+          "src/UserCard.tsx": buildDuplicateCard("UserCard", "User", "user"),
+        },
+      });
+      initGitRepo(projectDirectory);
+      const baseRef = commitAll(projectDirectory, "base includes duplicated cards");
+      writeFile(
+        path.join(projectDirectory, "src", "AccountCard.tsx"),
+        buildDuplicateCard("AccountCard", "Account", "customer"),
+      );
+
+      const result = await inspect(projectDirectory, {
+        lint: true,
+        deadCode: true,
+        noScore: true,
+        silent: true,
+        includePaths: ["src/AccountCard.tsx"],
+        baseline: { ref: baseRef },
+      });
+
+      expect(result.baselineDelta?.baseTotalCount).toBeGreaterThan(0);
+      expect(
+        result.diagnostics.filter((diagnostic) => diagnostic.rule === "duplicate-jsx-subtree"),
+      ).toEqual([]);
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("surfaces a structurally different duplicate family with the same summary", async () => {
+    clearConfigCache();
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-baseline-jsx-change-"));
+    try {
+      const projectDirectory = setupReactProject(projectRoot, "app", {
+        files: {
+          "src/AccountCard.tsx": buildDuplicateCard("AccountCard", "Account", "account"),
+          "src/UserCard.tsx": buildDuplicateCard("UserCard", "User", "user"),
+        },
+      });
+      initGitRepo(projectDirectory);
+      const baseRef = commitAll(projectDirectory, "base includes duplicated sections");
+      writeFile(
+        path.join(projectDirectory, "src", "AccountCard.tsx"),
+        buildDuplicateCard("AccountCard", "Account", "account", "article"),
+      );
+      writeFile(
+        path.join(projectDirectory, "src", "UserCard.tsx"),
+        buildDuplicateCard("UserCard", "User", "user", "article"),
+      );
+
+      const result = await inspect(projectDirectory, {
+        lint: true,
+        deadCode: true,
+        noScore: true,
+        silent: true,
+        includePaths: ["src/AccountCard.tsx", "src/UserCard.tsx"],
+        baseline: { ref: baseRef },
+      });
+
+      expect(
+        result.diagnostics.filter((diagnostic) => diagnostic.rule === "duplicate-jsx-subtree"),
+      ).toHaveLength(1);
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("surfaces a new occurrence added to an existing duplicate family", async () => {
+    clearConfigCache();
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-baseline-jsx-growth-"));
+    try {
+      const projectDirectory = setupReactProject(projectRoot, "app", {
+        files: {
+          "src/AccountCard.tsx": buildDuplicateCard("AccountCard", "Account", "account"),
+          "src/UserCard.tsx": buildDuplicateCard("UserCard", "User", "user"),
+        },
+      });
+      initGitRepo(projectDirectory);
+      const baseRef = commitAll(projectDirectory, "base includes two duplicated cards");
+      writeFile(
+        path.join(projectDirectory, "src", "TeamCard.tsx"),
+        buildDuplicateCard("TeamCard", "Team", "team"),
+      );
+
+      const result = await inspect(projectDirectory, {
+        lint: true,
+        deadCode: true,
+        noScore: true,
+        silent: true,
+        includePaths: ["src/TeamCard.tsx"],
+        baseline: { ref: baseRef },
+      });
+
+      expect(
+        result.diagnostics.filter((diagnostic) => diagnostic.rule === "duplicate-jsx-subtree"),
+      ).toHaveLength(1);
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a pure file addition in baseline diff mode", async () => {
+    clearConfigCache();
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-baseline-add-"));
+    try {
+      const projectDirectory = setupReactProject(projectRoot, "app", {
+        files: {
+          "src/AccountCard.tsx": buildDuplicateCard("AccountCard", "Account", "account"),
+          "src/UserCard.tsx": buildDuplicateCard("UserCard", "User", "user"),
+        },
+      });
+      initGitRepo(projectDirectory);
+      const baseRef = commitAll(projectDirectory, "base includes unrelated duplication");
+      writeFile(
+        path.join(projectDirectory, "src", "Added.tsx"),
+        "export const Added = () => <main><p>New page</p></main>;\n",
+      );
+
+      const result = await inspect(projectDirectory, {
+        lint: true,
+        deadCode: true,
+        noScore: true,
+        silent: true,
+        includePaths: ["src/Added.tsx"],
+        baseline: { ref: baseRef },
+      });
+
+      expect(result.baselineDelta?.baseTotalCount).toBe(0);
+      expect(
+        result.diagnostics.filter((diagnostic) => diagnostic.rule === "duplicate-jsx-subtree"),
+      ).toEqual([]);
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps workspace-owned maintainability baselines across excluded projects", async () => {
+    clearConfigCache();
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const projectDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "react-doctor-baseline-workspace-jsx-"),
+    );
+    const nestedProjectDirectory = path.join(projectDirectory, "packages", "web");
+    try {
+      writeJson(path.join(projectDirectory, "package.json"), {
+        name: "workspace-root",
+        dependencies: { react: "^19.0.0", "react-dom": "^19.0.0" },
+      });
+      writeFile(
+        path.join(nestedProjectDirectory, "src", "AccountCard.tsx"),
+        buildDuplicateCard("AccountCard", "Account", "account"),
+      );
+      writeFile(
+        path.join(nestedProjectDirectory, "src", "UserCard.tsx"),
+        buildDuplicateCard("UserCard", "User", "user"),
+      );
+      initGitRepo(projectDirectory);
+      const baseRef = commitAll(projectDirectory, "base includes nested duplication");
+      const changedPath = "packages/web/src/AccountCard.tsx";
+      writeFile(
+        path.join(projectDirectory, changedPath),
+        buildDuplicateCard("AccountCard", "Account", "customer"),
+      );
+
+      const result = await inspect(projectDirectory, {
+        lint: true,
+        deadCode: true,
+        noScore: true,
+        silent: true,
+        includePaths: [changedPath],
+        baseline: { ref: baseRef },
+        excludedProjectDirectories: [nestedProjectDirectory],
+        retainExcludedProjectDeadCodeDiagnostics: true,
+      });
+
+      expect(result.baselineDelta?.baseTotalCount).toBeGreaterThan(0);
+      expect(
+        result.diagnostics.filter((diagnostic) => diagnostic.rule === "duplicate-jsx-subtree"),
+      ).toEqual([]);
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(projectDirectory, { recursive: true, force: true });
     }
   });
 

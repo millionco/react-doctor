@@ -1,0 +1,199 @@
+// rule: dangerous-html-sink
+// file-path: src/game/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit f2c4e0f38786dbea87a73f87dec2b625a90082c6ac8e0c5ad1b5832dcc69a43a
+export interface DoorReading {
+  label: string;
+  strokesSeen: number;
+  strokesMost: number;
+  showStrokes: boolean;
+  showRing: boolean;
+  ringError: number;
+  ringClosed: boolean;
+  ringShort: boolean;
+  selected: boolean;
+}
+
+const el = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  text?: string,
+): HTMLElementTagNameMap[K] => {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+
+export class Hud {
+  readonly root: HTMLDivElement;
+
+  private readonly hallName: HTMLDivElement;
+  private readonly riddle: HTMLDivElement;
+  private readonly choicePips: HTMLDivElement;
+  private readonly hallPips: HTMLDivElement;
+  private readonly readings: HTMLDivElement;
+  private readonly hint: HTMLDivElement;
+  private readonly controls: HTMLDivElement;
+  private readonly flash: HTMLDivElement;
+  private readonly overlay: HTMLDivElement;
+  private readonly overlayCard: HTMLDivElement;
+  private readonly loader: HTMLDivElement;
+  private readonly loaderBar: HTMLDivElement;
+  private readonly loaderLabel: HTMLDivElement;
+
+  onDismiss: (() => void) | null = null;
+  private readingsHtml = "";
+
+  constructor(parent: HTMLElement) {
+    this.root = el("div", "hud");
+
+    const topLeft = el("div", "panel panel-hall");
+    this.hallName = el("div", "hall-name", "—");
+    this.riddle = el("div", "riddle", "");
+    topLeft.append(this.hallName, this.riddle);
+
+    const topRight = el("div", "panel panel-tally");
+    const c1 = el("div", "meter");
+    c1.append(el("span", "meter-label", "DOORS LEFT TO TRY"));
+    this.choicePips = el("div", "pips");
+    c1.append(this.choicePips);
+    const c2 = el("div", "meter");
+    c2.append(el("span", "meter-label", "HALLS ANSWERED"));
+    this.hallPips = el("div", "pips pips-halls");
+    c2.append(this.hallPips);
+    topRight.append(c1, c2);
+
+    this.readings = el("div", "panel panel-readings");
+    this.hint = el("div", "status");
+    this.controls = el("div", "controls");
+    this.controls.innerHTML = [
+      "<b>drag</b> orbit",
+      "<b>wheel</b> zoom",
+      "<b>click</b> inspect / take",
+      "<b>Q E</b> turn view or piece",
+      "<b>Space</b> test",
+      "<b>Esc</b> stand back",
+    ]
+      .map((s) => `<span>${s}</span>`)
+      .join("");
+
+    this.flash = el("div", "flash");
+    this.overlay = el("div", "overlay");
+    this.overlayCard = el("div", "overlay-card");
+    this.overlay.append(this.overlayCard);
+    this.overlay.addEventListener("pointerdown", () => {
+      if (this.overlay.classList.contains("open")) this.onDismiss?.();
+    });
+
+    this.loader = el("div", "loader");
+    const lc = el("div", "loader-card");
+    lc.append(el("div", "loader-title", "ONE DOOR LIES"));
+    this.loaderLabel = el("div", "loader-label", "quarrying…");
+    const track = el("div", "loader-track");
+    this.loaderBar = el("div", "loader-bar");
+    track.append(this.loaderBar);
+    lc.append(this.loaderLabel, track);
+    this.loader.append(lc);
+
+    this.root.append(topLeft, topRight, this.readings, this.hint, this.controls, this.flash, this.overlay, this.loader);
+    parent.append(this.root);
+  }
+
+  setLoading(t: number, label: string): void {
+    this.loaderBar.style.width = `${Math.round(t * 100)}%`;
+    this.loaderLabel.textContent = `${label}…`;
+  }
+
+  finishLoading(): void {
+    this.loader.classList.add("done");
+    window.setTimeout(() => this.loader.remove(), 900);
+  }
+
+  setHall(name: string, riddle: string): void {
+    this.hallName.textContent = name;
+    this.riddle.textContent = riddle;
+    this.riddle.classList.remove("engrave");
+    void this.riddle.offsetWidth;
+    this.riddle.classList.add("engrave");
+  }
+
+  setCounters(choicesLeft: number, choicesTotal: number, hallsDone: number, hallsTotal: number): void {
+    this.renderPips(this.choicePips, choicesTotal, choicesLeft);
+    this.renderPips(this.hallPips, hallsTotal, hallsDone);
+  }
+
+  private renderPips(host: HTMLElement, total: number, filled: number): void {
+    while (host.childElementCount > total) host.lastElementChild?.remove();
+    while (host.childElementCount < total) host.append(el("i"));
+    for (let i = 0; i < total; i++) {
+      const pip = host.children[i] as HTMLElement;
+      pip.classList.toggle("on", i < filled);
+    }
+  }
+
+  setStatus(text: string): void {
+    if (this.hint.innerHTML === text) return;
+    this.hint.innerHTML = text;
+    this.hint.classList.remove("pulse");
+    void this.hint.offsetWidth;
+    this.hint.classList.add("pulse");
+  }
+
+  setReadings(rows: DoorReading[], dialText: string | null): void {
+    const parts: string[] = [];
+    for (const r of rows) {
+      const bits: string[] = [];
+      if (r.showStrokes) {
+        bits.push(
+          `<span class="k">strokes in view</span><span class="v">${r.strokesSeen}</span>` +
+            `<span class="k">most ever seen</span><span class="v${r.strokesMost > 4 ? " bad" : ""}">${r.strokesMost}</span>`,
+        );
+      }
+      if (r.showRing) {
+        const fit = Math.max(0, 1 - Math.min(r.ringError, 1.4) / 1.4);
+        const state = r.ringClosed
+          ? '<span class="v good">closed</span>'
+          : r.ringShort && r.ringError < 0.35
+            ? '<span class="v bad">short — a notch remains</span>'
+            : '<span class="v">not registered</span>';
+        bits.push(
+          `<span class="k">ring</span>${state}` +
+            `<span class="k">registration</span><span class="bar"><i style="width:${(fit * 100).toFixed(0)}%"></i></span>`,
+        );
+      }
+      parts.push(
+        `<div class="reading${r.selected ? " sel" : ""}"><h4>${r.label}${r.selected ? " <em>· taken</em>" : ""}</h4><div class="grid">${bits.join("")}</div></div>`,
+      );
+    }
+    if (dialText) parts.push(`<div class="reading dial"><h4>Dial</h4><div class="grid">${dialText}</div></div>`);
+    const html = parts.join("");
+    if (html !== this.readingsHtml) {
+      this.readingsHtml = html;
+      this.readings.innerHTML = html;
+    }
+    this.readings.classList.toggle("empty", parts.length === 0);
+  }
+
+  flashScreen(kind: "wrong" | "right"): void {
+    this.flash.className = `flash show ${kind}`;
+    window.setTimeout(() => {
+      this.flash.className = "flash";
+    }, 620);
+  }
+
+  showOverlay(title: string, body: string, footer: string, kind = ""): void {
+    this.overlayCard.className = `overlay-card ${kind}`;
+    this.overlayCard.innerHTML = `<h1>${title}</h1><div class="body">${body}</div><div class="footer">${footer}</div>`;
+    this.overlay.classList.add("open");
+  }
+
+  hideOverlay(): void {
+    this.overlay.classList.remove("open");
+  }
+
+  get overlayOpen(): boolean {
+    return this.overlay.classList.contains("open");
+  }
+}

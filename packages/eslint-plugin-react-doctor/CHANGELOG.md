@@ -1,5 +1,20 @@
 # eslint-plugin-react-doctor
 
+## 0.9.12
+
+### Patch Changes
+
+- [#1642](https://github.com/millionco/react-doctor/pull/1642) [`7b7bfe7`](https://github.com/millionco/react-doctor/commit/7b7bfe7c1ecc1d31a5fb591756ef34060fd916f1) Thanks [@aidenybai](https://github.com/aidenybai)! - Make every ported React and accessibility rule match its pinned upstream test contract while preserving React Doctor's lower-noise curated defaults.
+
+- [#1644](https://github.com/millionco/react-doctor/pull/1644) [`d908bb1`](https://github.com/millionco/react-doctor/commit/d908bb115210e3b412a83ae66780d8596125f838) Thanks [@aidenybai](https://github.com/aidenybai)! - Trace hydration decisions through imported browser helpers, report passive media-capability branch flicker, preserve committed-DOM state synchronization through local helpers, and exclude test-only dependency stubs from production diagnostics.
+
+- [#1633](https://github.com/millionco/react-doctor/pull/1633) [`bea01b8`](https://github.com/millionco/react-doctor/commit/bea01b8cf5e6d29db7793f86ce6a13f0b3c7823e) Thanks [@aidenybai](https://github.com/aidenybai)! - Add precise Three.js and React Three Fiber diagnostics for missing custom-geometry UVs, normal-mapped geometry without normals, unlit PBR materials, and strongly metallic materials without environment lighting.
+
+- [#1629](https://github.com/millionco/react-doctor/pull/1629) [`8dfb013`](https://github.com/millionco/react-doctor/commit/8dfb01306772760201e75ea1478368390eddf58f) Thanks [@aidenybai](https://github.com/aidenybai)! - Add comprehensive React Three Fiber, Three.js, WebGPU, GLSL, postprocessing, and GPU-computation diagnostics covering scene and camera setup, renderer lifecycle, resize behavior, loading, animation, controls, materials, uniforms, textures, lighting, shadows, render targets, buffer uploads, instancing, cleanup, and GPU-oriented performance patterns.
+
+- Updated dependencies [[`f1899d2`](https://github.com/millionco/react-doctor/commit/f1899d2e57ad35f016323e77592e000dce293439), [`7b7bfe7`](https://github.com/millionco/react-doctor/commit/7b7bfe7c1ecc1d31a5fb591756ef34060fd916f1), [`d908bb1`](https://github.com/millionco/react-doctor/commit/d908bb115210e3b412a83ae66780d8596125f838), [`51e198d`](https://github.com/millionco/react-doctor/commit/51e198db8bcbd61ad896098bb4985376641a0f69), [`0f3995b`](https://github.com/millionco/react-doctor/commit/0f3995b822ad9fdbd355eda05c8568f67643a31c), [`bea01b8`](https://github.com/millionco/react-doctor/commit/bea01b8cf5e6d29db7793f86ce6a13f0b3c7823e), [`8dfb013`](https://github.com/millionco/react-doctor/commit/8dfb01306772760201e75ea1478368390eddf58f), [`b49f499`](https://github.com/millionco/react-doctor/commit/b49f49984055a505b80de2bb1530efe7e7286619)]:
+  - oxlint-plugin-react-doctor@0.9.12
+
 ## 0.9.11
 
 ### Patch Changes

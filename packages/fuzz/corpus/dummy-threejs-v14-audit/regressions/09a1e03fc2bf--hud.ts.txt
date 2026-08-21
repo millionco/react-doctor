@@ -1,0 +1,1030 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 09a1e03fc2bf6a1a1f4587463d235bae32127aed40ad7ad6e522e1eafb4275d0
+import type { CompareMode, Entity, LightPreset, ParamDef, Report, Substance, ToolId } from "../core/types";
+import type { Store, Validation } from "../core/store";
+import { PARAM_DEFS, PARAM_GROUPS, SUBSTANCES, measuredValue } from "../materials/substances";
+import { matchCeiling, synthTint } from "../core/report";
+import { rgbToCss } from "../core/color";
+import { LIGHT_PRESETS } from "../scene/environment";
+
+/* ---------------- tiny DOM helpers ---------------- */
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  text?: string,
+): HTMLElementTagNameMap[K] {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+function icon(path: string): string {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
+}
+
+const ICONS: Record<string, string> = {
+  select: '<path d="M5 3l6 15 2.2-5.6L19 10z"/>',
+  move: '<path d="M12 3v18M3 12h18M12 3l-2.5 2.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5"/>',
+  tune: '<path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.2"/><circle cx="10" cy="16" r="2.2"/>',
+  note: '<path d="M12 21s-1.5-2-1.5-3.2c0-.9.7-1.6 1.5-1.6s1.5.7 1.5 1.6C13.5 19 12 21 12 21z"/><circle cx="12" cy="8" r="5"/><path d="M12 16v-3"/>',
+  undo: '<path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 010 12h-1"/>',
+  redo: '<path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 000 12h1"/>',
+  focus: '<circle cx="12" cy="12" r="3.2"/><path d="M4 8V5h3M20 8V5h-3M4 16v3h3M20 16v3h-3"/>',
+  guides: '<path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>',
+  warn: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.5"/>',
+  block: '<circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/>',
+};
+
+/* ---------------- light head parameters ---------------- */
+
+export const LIGHT_PARAMS: ParamDef[] = [
+  {
+    key: "intensity",
+    label: "Intensity",
+    group: "Head",
+    min: 0,
+    max: 6,
+    step: 0.01,
+    digits: 2,
+    about: "Output of this head before the lighting preset multiplier.",
+  },
+  {
+    key: "kelvin",
+    label: "Colour temp",
+    group: "Head",
+    min: 2000,
+    max: 9000,
+    step: 10,
+    digits: 0,
+    unit: "K",
+    about: "Correlated colour temperature. Normalised for luminance, so it tints without changing exposure.",
+  },
+  {
+    key: "az",
+    label: "Azimuth",
+    group: "Placement",
+    min: -180,
+    max: 180,
+    step: 0.5,
+    digits: 1,
+    unit: "°",
+    about: "Rotation of the head around the stage. Drag the head itself for the same result.",
+  },
+  {
+    key: "el",
+    label: "Elevation",
+    group: "Placement",
+    min: 6,
+    max: 81,
+    step: 0.5,
+    digits: 1,
+    unit: "°",
+    about: "Height on the rig shell. Clamped to 6°–81°: the rig cannot reach the floor or the stage's own axis.",
+  },
+];
+
+/* ---------------- callbacks ---------------- */
+
+export interface HudCallbacks {
+  tool(t: ToolId): void;
+  select(id: string | null): void;
+  hover(id: string | null): void;
+  substance(id: string): void;
+  paramBegin(key: string): void;
+  paramInput(key: string, v: number): void;
+  paramCommit(key: string): void;
+  activeParam(key: string): void;
+  lightBegin(light: string, key: string): void;
+  lightInput(light: string, key: string, v: number): void;
+  lightCommit(light: string, key: string): void;
+  compare(m: CompareMode): void;
+  lighting(p: LightPreset): void;
+  undo(): void;
+  redo(): void;
+  jump(i: number): void;
+  focus(): void;
+  guides(): void;
+  reset(): void;
+  reconcile(): void;
+  exportJson(): void;
+  exportPng(): void;
+  help(open: boolean): void;
+  deleteNote(id: string): void;
+  selectNote(id: string): void;
+}
+
+interface ParamRow {
+  root: HTMLElement;
+  label: HTMLElement;
+  num: HTMLElement;
+  input: HTMLInputElement;
+  target: HTMLElement;
+  limitLo: HTMLElement;
+  limitHi: HTMLElement;
+}
+
+const TOOL_DEFS: { id: ToolId; key: string; title: string }[] = [
+  { id: "select", key: "V", title: "Select / inspect — click any object" },
+  { id: "move", key: "M", title: "Move — drag lights on the rig shell, specimens in their sockets" },
+  { id: "tune", key: "T", title: "Tune — drag across the specimen: horizontal roughness, vertical metalness" },
+  { id: "note", key: "N", title: "Note — click the synthetic specimen to pin a deviation" },
+];
+
+const COMPARE_DEFS: { id: CompareMode; label: string }[] = [
+  { id: "side", label: "Side" },
+  { id: "split", label: "Split" },
+  { id: "diff", label: "Diff" },
+  { id: "solo", label: "Solo" },
+];
+
+const LIGHTING_DEFS: LightPreset[] = ["studio", "reduced", "flat"];
+
+export class Hud {
+  private cb: HudCallbacks;
+  private store: Store;
+  root: HTMLElement;
+
+  private toolBtns = new Map<ToolId, HTMLButtonElement>();
+  private libItems = new Map<string, HTMLElement>();
+  private outItems = new Map<string, HTMLElement>();
+  private paramRows = new Map<string, ParamRow>();
+  private lightRows = new Map<string, ParamRow>();
+  private groupBlocks = new Map<string, HTMLElement>();
+  private reportRows = new Map<string, HTMLElement>();
+
+  private toolReadout!: HTMLElement;
+  private compareReadout!: HTMLElement;
+  private lightReadout!: HTMLElement;
+  private scoreVal!: HTMLElement;
+  private scoreBar!: HTMLElement;
+  private scoreCeil!: HTMLElement;
+  private inspTitle!: HTMLElement;
+  private inspTag!: HTMLElement;
+  private inspMeta!: HTMLElement;
+  private inspBlurb!: HTMLElement;
+  private inspLock!: HTMLElement;
+  private paramWrap!: HTMLElement;
+  private lightWrap!: HTMLElement;
+  private reportBody!: HTMLElement;
+  private reportTag!: HTMLElement;
+  private notesBody!: HTMLElement;
+  private notesTag!: HTMLElement;
+  private historyList!: HTMLElement;
+  private historyTag!: HTMLElement;
+  private undoBtn!: HTMLButtonElement;
+  private redoBtn!: HTMLButtonElement;
+  private guidesBtn!: HTMLButtonElement;
+  private vstate!: HTMLElement;
+  private vmsg!: HTMLElement;
+  private reconcileBtn!: HTMLButtonElement;
+  private perf!: HTMLElement;
+  private compareBtns = new Map<CompareMode, HTMLButtonElement>();
+  private lightingBtns = new Map<LightPreset, HTMLButtonElement>();
+  private toastWrap!: HTMLElement;
+  private helpEl!: HTMLElement;
+  splitBar!: HTMLElement;
+  labelLayer!: HTMLElement;
+
+  private historySig = "";
+  private notesSig = "";
+  private reportSig = "";
+  private entities: Entity[] = [];
+
+  constructor(store: Store, cb: HudCallbacks) {
+    this.store = store;
+    this.cb = cb;
+    this.root = el("div");
+    this.root.id = "ui";
+    document.body.appendChild(this.root);
+
+    this.buildTopBar();
+    this.buildRail();
+    this.buildLeft();
+    this.buildRight();
+    this.buildHistory();
+    this.buildStatus();
+
+    this.labelLayer = el("div");
+    this.labelLayer.id = "labels";
+    this.root.appendChild(this.labelLayer);
+
+    this.splitBar = el("div");
+    this.splitBar.id = "splitbar";
+    this.splitBar.className = "hidden";
+    this.splitBar.innerHTML = `<div class="ln"></div><div class="gr"><i></i><i></i><i></i></div><div class="ln"></div>`;
+    this.root.appendChild(this.splitBar);
+
+    this.toastWrap = el("div");
+    this.toastWrap.id = "toasts";
+    this.root.appendChild(this.toastWrap);
+
+    this.buildHelp();
+  }
+
+  /* ---------------- construction ---------------- */
+
+  private buildTopBar(): void {
+    const bar = el("header");
+    bar.id = "topbar";
+
+    const brand = el("div", "brand");
+    brand.innerHTML = `<span class="mark"></span>Material Match Lab<span class="ver">1.0</span>`;
+    bar.appendChild(brand);
+
+    this.toolReadout = el("div", "readout");
+    bar.appendChild(this.toolReadout);
+
+    const compareGroup = el("div", "seg");
+    for (const c of COMPARE_DEFS) {
+      const b = el("button", "", c.label);
+      b.title = `Compare: ${c.label}`;
+      b.addEventListener("click", () => this.cb.compare(c.id));
+      this.compareBtns.set(c.id, b);
+      compareGroup.appendChild(b);
+    }
+    this.compareReadout = el("div", "readout");
+    bar.appendChild(this.compareReadout);
+    bar.appendChild(compareGroup);
+
+    const lightGroup = el("div", "seg");
+    for (const p of LIGHTING_DEFS) {
+      const b = el("button", "", LIGHT_PRESETS[p].label);
+      b.title = LIGHT_PRESETS[p].note;
+      b.addEventListener("click", () => this.cb.lighting(p));
+      this.lightingBtns.set(p, b);
+      lightGroup.appendChild(b);
+    }
+    this.lightReadout = el("div", "readout");
+    bar.appendChild(this.lightReadout);
+    bar.appendChild(lightGroup);
+
+    bar.appendChild(el("div", "spacer"));
+
+    const score = el("div");
+    score.id = "score";
+    score.title = "Weighted agreement with the measurement. The tick marks the ceiling the shading model allows.";
+    this.scoreVal = el("span", "val", "—");
+    this.scoreBar = el("i");
+    const barWrap = el("div", "bar");
+    barWrap.appendChild(this.scoreBar);
+    this.scoreCeil = el("span", "", "");
+    score.appendChild(el("span", "", "MATCH"));
+    score.appendChild(this.scoreVal);
+    score.appendChild(barWrap);
+    score.appendChild(this.scoreCeil);
+    bar.appendChild(score);
+
+    const mk = (label: string, title: string, fn: () => void) => {
+      const b = el("button", "", label);
+      b.title = title;
+      b.addEventListener("click", fn);
+      bar.appendChild(b);
+      return b;
+    };
+    mk("Export report", "Write the match report as JSON  ·  E", () => this.cb.exportJson());
+    mk("Frame", "Save the current view as PNG  ·  Shift+E", () => this.cb.exportPng());
+    mk("Reset", "Return the synthetic material to stock values  ·  R", () => this.cb.reset());
+    mk("?", "Keyboard and pointer reference  ·  H", () => this.cb.help(true));
+
+    this.root.appendChild(bar);
+  }
+
+  private buildRail(): void {
+    const rail = el("nav", "panel");
+    rail.id = "rail";
+
+    for (const t of TOOL_DEFS) {
+      const b = el("button", "tool");
+      b.innerHTML = `${icon(ICONS[t.id] ?? "")}<span class="k">${t.key}</span>`;
+      b.title = t.title;
+      b.addEventListener("click", () => this.cb.tool(t.id));
+      this.toolBtns.set(t.id, b);
+      rail.appendChild(b);
+    }
+
+    rail.appendChild(el("div", "rail-div"));
+
+    this.undoBtn = el("button", "tool");
+    this.undoBtn.innerHTML = `${icon(ICONS.undo ?? "")}<span class="k">⌘Z</span>`;
+    this.undoBtn.title = "Undo";
+    this.undoBtn.addEventListener("click", () => this.cb.undo());
+    rail.appendChild(this.undoBtn);
+
+    this.redoBtn = el("button", "tool");
+    this.redoBtn.innerHTML = `${icon(ICONS.redo ?? "")}<span class="k">⇧⌘Z</span>`;
+    this.redoBtn.title = "Redo";
+    this.redoBtn.addEventListener("click", () => this.cb.redo());
+    rail.appendChild(this.redoBtn);
+
+    rail.appendChild(el("div", "rail-div"));
+
+    const focusBtn = el("button", "tool");
+    focusBtn.innerHTML = `${icon(ICONS.focus ?? "")}<span class="k">F</span>`;
+    focusBtn.title = "Frame the selection";
+    focusBtn.addEventListener("click", () => this.cb.focus());
+    rail.appendChild(focusBtn);
+
+    this.guidesBtn = el("button", "tool");
+    this.guidesBtn.innerHTML = `${icon(ICONS.guides ?? "")}<span class="k">G</span>`;
+    this.guidesBtn.title = "Labels and constraint guides";
+    this.guidesBtn.addEventListener("click", () => this.cb.guides());
+    rail.appendChild(this.guidesBtn);
+
+    this.root.appendChild(rail);
+  }
+
+  private section(parent: HTMLElement, title: string): { body: HTMLElement; tag: HTMLElement } {
+    const sect = el("section", "sect");
+    const hd = el("div", "sect-hd");
+    hd.appendChild(el("span", "", title));
+    hd.appendChild(el("span", "rule"));
+    const tag = el("span", "tag");
+    hd.appendChild(tag);
+    sect.appendChild(hd);
+    const body = el("div", "sect-body");
+    sect.appendChild(body);
+    parent.appendChild(sect);
+    return { body, tag };
+  }
+
+  private buildLeft(): void {
+    const left = el("aside", "panel scroll");
+    left.id = "left";
+
+    const lib = this.section(left, "Reference library");
+    lib.tag.textContent = `${SUBSTANCES.length} scans`;
+    const list = el("div", "lib");
+    for (let i = 0; i < SUBSTANCES.length; i++) {
+      const s = SUBSTANCES[i] as Substance;
+      const item = el("div", "lib-item clickable");
+      const chip = el("div", "chip");
+      chip.style.background = s.swatch;
+      item.appendChild(chip);
+      const mid = el("div", "", "");
+      mid.className = "nm";
+      mid.textContent = s.name;
+      const wrap = el("div");
+      wrap.style.flex = "1";
+      wrap.style.minWidth = "0";
+      wrap.appendChild(mid);
+      wrap.appendChild(el("div", "id", `${s.code}   ·   ${i + 1}`));
+      item.appendChild(wrap);
+      item.appendChild(el("div", "cls", s.cls === "metal" ? "cond" : "diel"));
+      item.title = s.blurb;
+      item.addEventListener("click", () => this.cb.substance(s.id));
+      this.libItems.set(s.id, item);
+      list.appendChild(item);
+    }
+    lib.body.appendChild(list);
+
+    const out = this.section(left, "Workspace");
+    this.outlinerBody = el("div", "olist");
+    out.body.appendChild(this.outlinerBody);
+    this.outlinerTag = out.tag;
+
+    this.root.appendChild(left);
+  }
+
+  private outlinerBody!: HTMLElement;
+  private outlinerTag!: HTMLElement;
+
+  private makeParamRow(def: ParamDef, onBegin: () => void, onInput: (v: number) => void, onCommit: () => void, onActive: () => void): ParamRow {
+    const root = el("div", "prow clickable");
+    const label = el("div", "lbl", def.label);
+    const track = el("div", "track");
+    const limitLo = el("div", "limit");
+    const limitHi = el("div", "limit");
+    const target = el("div", "target");
+    const input = el("input");
+    input.type = "range";
+    input.min = String(def.min);
+    input.max = String(def.max);
+    input.step = String(def.step);
+    const num = el("div", "num", "—");
+
+    track.appendChild(limitLo);
+    track.appendChild(limitHi);
+    track.appendChild(input);
+    track.appendChild(target);
+    root.appendChild(label);
+    root.appendChild(track);
+    root.appendChild(num);
+
+    let dragging = false;
+    const begin = () => {
+      if (dragging) return;
+      dragging = true;
+      onActive();
+      onBegin();
+    };
+    const end = () => {
+      if (!dragging) return;
+      dragging = false;
+      onCommit();
+    };
+    input.addEventListener("pointerdown", begin);
+    input.addEventListener("keydown", begin);
+    input.addEventListener("input", () => {
+      begin();
+      onInput(parseFloat(input.value));
+    });
+    input.addEventListener("pointerup", end);
+    input.addEventListener("blur", end);
+    input.addEventListener("keyup", end);
+    window.addEventListener("pointerup", end);
+    root.addEventListener("pointerdown", (e) => {
+      if (e.target !== input) onActive();
+    });
+
+    return { root, label, num, input, target, limitLo, limitHi };
+  }
+
+  private buildRight(): void {
+    const right = el("aside", "panel scroll");
+    right.id = "right";
+
+    /* inspector */
+    const insp = this.section(right, "Inspector");
+    this.inspTag = insp.tag;
+    const head = el("div");
+    this.inspTitle = el("div", "", "—");
+    this.inspTitle.style.fontSize = "12px";
+    this.inspTitle.style.color = "var(--txt-bright)";
+    this.inspTitle.style.padding = "2px 0 1px";
+    head.appendChild(this.inspTitle);
+    insp.body.appendChild(head);
+
+    this.inspBlurb = el("div", "blurb");
+    insp.body.appendChild(this.inspBlurb);
+
+    this.inspMeta = el("dl", "meta-grid");
+    insp.body.appendChild(this.inspMeta);
+
+    this.inspLock = el("div", "locked-note");
+    this.inspLock.style.display = "none";
+    insp.body.appendChild(this.inspLock);
+
+    this.paramWrap = el("div");
+    insp.body.appendChild(this.paramWrap);
+
+    for (const g of PARAM_GROUPS) {
+      const block = el("div", "pgroup");
+      const hd = el("div", "pgroup-hd");
+      hd.appendChild(el("span", "", g));
+      hd.appendChild(el("span", "rule"));
+      block.appendChild(hd);
+      for (const def of PARAM_DEFS) {
+        if (def.group !== g) continue;
+        const row = this.makeParamRow(
+          def,
+          () => this.cb.paramBegin(def.key),
+          (v) => this.cb.paramInput(def.key, v),
+          () => this.cb.paramCommit(def.key),
+          () => this.cb.activeParam(def.key),
+        );
+        row.root.title = def.about;
+        this.paramRows.set(def.key, row);
+        block.appendChild(row.root);
+      }
+      this.groupBlocks.set(g, block);
+      this.paramWrap.appendChild(block);
+    }
+
+    this.lightWrap = el("div");
+    insp.body.appendChild(this.lightWrap);
+    let currentGroup = "";
+    for (const def of LIGHT_PARAMS) {
+      if (def.group !== currentGroup) {
+        currentGroup = def.group;
+        const hd = el("div", "pgroup-hd");
+        hd.appendChild(el("span", "", def.group));
+        hd.appendChild(el("span", "rule"));
+        this.lightWrap.appendChild(hd);
+      }
+      const row = this.makeParamRow(
+        def,
+        () => this.cb.lightBegin(this.currentLight(), def.key),
+        (v) => this.cb.lightInput(this.currentLight(), def.key, v),
+        () => this.cb.lightCommit(this.currentLight(), def.key),
+        () => this.cb.activeParam(def.key),
+      );
+      row.root.title = def.about;
+      this.lightRows.set(def.key, row);
+      this.lightWrap.appendChild(row.root);
+    }
+
+    /* deviation report */
+    const rep = this.section(right, "Deviation report");
+    this.reportTag = rep.tag;
+    this.reportBody = el("div");
+    rep.body.appendChild(this.reportBody);
+    const legend = el("div", "legend");
+    legend.innerHTML =
+      `<span><i style="background:var(--ok)"></i>in tolerance</span>` +
+      `<span><i style="background:var(--warn)"></i>drifting</span>` +
+      `<span><i style="background:var(--block)"></i>out</span>` +
+      `<span><i style="border:1.5px solid var(--scan);background:transparent"></i>model limit</span>`;
+    rep.body.appendChild(legend);
+
+    /* observations */
+    const notes = this.section(right, "Observations");
+    this.notesTag = notes.tag;
+    this.notesBody = el("div");
+    notes.body.appendChild(this.notesBody);
+
+    this.root.appendChild(right);
+  }
+
+  private currentLightId = "key";
+  private currentLight(): string {
+    return this.currentLightId;
+  }
+
+  private buildHistory(): void {
+    const panel = el("div", "panel");
+    panel.id = "history";
+    const sect = this.section(panel, "History");
+    this.historyTag = sect.tag;
+    this.historyList = el("div", "hlist scroll");
+    sect.body.appendChild(this.historyList);
+    this.root.appendChild(panel);
+  }
+
+  private buildStatus(): void {
+    const bar = el("footer");
+    bar.id = "status";
+
+    this.vstate = el("div");
+    this.vstate.id = "vstate";
+    this.vstate.innerHTML = `<span class="led"></span><span class="t">OK</span>`;
+    bar.appendChild(this.vstate);
+
+    this.vmsg = el("div");
+    this.vmsg.id = "vmsg";
+    bar.appendChild(this.vmsg);
+
+    this.reconcileBtn = el("button", "", "Reconcile");
+    this.reconcileBtn.title = "Clamp every conflicting parameter to this substance's limit";
+    this.reconcileBtn.style.display = "none";
+    this.reconcileBtn.addEventListener("click", () => this.cb.reconcile());
+    bar.appendChild(this.reconcileBtn);
+
+    const hint = el("div");
+    hint.id = "hint";
+    hint.innerHTML =
+      `<span><kbd>Space</kbd> peek reference</span>` +
+      `<span><kbd>C</kbd> compare</span>` +
+      `<span><kbd>F</kbd> focus</span>` +
+      `<span><kbd>H</kbd> help</span>`;
+    bar.appendChild(hint);
+
+    this.perf = el("div");
+    this.perf.id = "perf";
+    bar.appendChild(this.perf);
+
+    this.root.appendChild(bar);
+  }
+
+  private buildHelp(): void {
+    const wrap = el("div");
+    wrap.id = "help";
+    wrap.className = "hidden";
+    const card = el("div", "panel help-card");
+
+    const groups: [string, [string, string][]][] = [
+      [
+        "Camera",
+        [
+          ["drag", "Orbit"],
+          ["right-drag / ⌥drag", "Pan"],
+          ["← ↑ → ↓", "Pan"],
+          ["wheel", "Dolly"],
+          ["F", "Frame selection"],
+          ["⇧F", "Frame the bench"],
+          [", .", "Rotate stage"],
+          ["P", "Slow turntable"],
+        ],
+      ],
+      [
+        "Tools",
+        [
+          ["V", "Select / inspect"],
+          ["M", "Move"],
+          ["T", "Tune on surface"],
+          ["N", "Pin a deviation note"],
+          ["Tab / [ ]", "Cycle selection"],
+          ["Esc", "Clear selection"],
+        ],
+      ],
+      [
+        "Editing",
+        [
+          ["drag slider", "Set a parameter"],
+          ["- =", "Nudge active parameter"],
+          ["⇧- ⇧=", "Coarse nudge"],
+          ["1…6", "Load reference scan"],
+          ["⌘Z / Ctrl+Z", "Undo"],
+          ["⇧⌘Z / Ctrl+Y", "Redo"],
+          ["click history", "Scrub to that state"],
+          ["R", "Reset synthetic material"],
+        ],
+      ],
+      [
+        "Comparing",
+        [
+          ["C", "Cycle compare mode"],
+          ["Space (hold)", "Peek the reference"],
+          ["drag divider", "Move the split"],
+          ["L", "Cycle lighting preset"],
+          ["G", "Labels and guides"],
+          ["E", "Export match report"],
+          ["⇧E", "Export frame"],
+          ["⇧R", "Reset the view"],
+        ],
+      ],
+    ];
+
+    card.innerHTML =
+      `<h1>Material Match Lab</h1>` +
+      `<p class="sub">A scanned substance sits on the left of the turntable, replayed with the terms its capture actually recorded. ` +
+      `On the right is the same geometry and the same maps under a stock <b>MeshPhysicalMaterial</b>. Tune the right until it agrees with the left, ` +
+      `and record what refuses to agree — the deviation report separates error you can still remove from limits the shading model imposes.</p>`;
+
+    const cols = el("div", "help-cols");
+    for (const [title, rows] of groups) {
+      const g = el("div", "help-grp");
+      g.appendChild(el("h2", "", title));
+      for (const [k, d] of rows) {
+        const r = el("div", "help-row");
+        const keys = el("div", "keys");
+        for (const part of k.split(" ")) {
+          keys.innerHTML += part === "/" ? `<span class="dimtxt">/</span>` : `<kbd>${part}</kbd>`;
+        }
+        r.appendChild(keys);
+        r.appendChild(el("span", "", d));
+        g.appendChild(r);
+      }
+      cols.appendChild(g);
+    }
+    card.appendChild(cols);
+
+    const close = el("button", "help-close", "Close");
+    close.addEventListener("click", () => this.cb.help(false));
+    card.appendChild(close);
+
+    wrap.appendChild(card);
+    wrap.addEventListener("pointerdown", (e) => {
+      if (e.target === wrap) this.cb.help(false);
+    });
+    this.helpEl = wrap;
+    this.root.appendChild(wrap);
+  }
+
+  /* ---------------- outliner ---------------- */
+
+  setEntities(entities: Entity[]): void {
+    this.entities = entities;
+    this.outlinerBody.textContent = "";
+    this.outItems.clear();
+    for (const e of entities) {
+      const item = el("div", "oitem clickable");
+      item.appendChild(el("span", "dot"));
+      item.appendChild(el("span", "", e.label));
+      const lk = el("span", "lk");
+      lk.textContent = e.editable ? "edit" : e.movable ? "move" : "locked";
+      if (!e.editable && !e.movable) lk.classList.add("lock");
+      item.appendChild(lk);
+      item.title = e.lockReason ?? "";
+      item.addEventListener("click", () => this.cb.select(e.id));
+      item.addEventListener("pointerenter", () => this.cb.hover(e.id));
+      item.addEventListener("pointerleave", () => this.cb.hover(null));
+      this.outItems.set(e.id, item);
+      this.outlinerBody.appendChild(item);
+    }
+    this.outlinerTag.textContent = `${entities.length} items`;
+  }
+
+  /* ---------------- per-frame-ish update ---------------- */
+
+  render(sub: Substance, report: Report, validation: Validation): void {
+    const s = this.store.state;
+
+    for (const [id, b] of this.toolBtns) b.classList.toggle("on", s.tool === id);
+    for (const [id, b] of this.compareBtns) b.classList.toggle("on", s.compare === id);
+    for (const [id, b] of this.lightingBtns) b.classList.toggle("on", s.lighting === id);
+    this.guidesBtn.classList.toggle("on", s.guides);
+
+    const toolLabel = TOOL_DEFS.find((t) => t.id === s.tool)?.id ?? "select";
+    this.toolReadout.innerHTML = `TOOL <b>${toolLabel.toUpperCase()}</b>`;
+    this.toolReadout.classList.toggle("live", s.tool !== "select");
+    this.compareReadout.innerHTML = s.peek
+      ? `COMPARE <b>PEEK · REFERENCE</b>`
+      : `COMPARE <b>${s.compare.toUpperCase()}</b>`;
+    this.compareReadout.classList.toggle("live", s.peek || s.compare !== "side");
+    this.lightReadout.innerHTML = `LIGHT <b>${LIGHT_PRESETS[s.lighting].label.toUpperCase()}</b>`;
+    this.lightReadout.classList.toggle("live", s.lighting !== "studio");
+
+    for (const [id, item] of this.libItems) item.classList.toggle("on", id === s.substanceId);
+    for (const [id, item] of this.outItems) {
+      item.classList.toggle("sel", id === s.selection);
+      item.classList.toggle("hov", id === s.hover && id !== s.selection);
+    }
+
+    /* score */
+    const ceiling = matchCeiling(report);
+    this.scoreVal.textContent = report.score.toFixed(0);
+    this.scoreBar.style.width = `${Math.max(2, report.score)}%`;
+    this.scoreBar.style.background =
+      report.score >= 80 ? "var(--accent)" : report.score >= 55 ? "var(--warn)" : "var(--block)";
+    this.scoreCeil.textContent = `/ ${ceiling.toFixed(0)} max`;
+
+    this.renderInspector(sub, report, validation);
+    this.renderReport(report);
+    this.renderNotes();
+    this.renderHistory();
+    this.renderValidation(validation);
+
+    this.undoBtn.disabled = !this.store.canUndo();
+    this.redoBtn.disabled = !this.store.canRedo();
+  }
+
+  private renderInspector(sub: Substance, report: Report, validation: Validation): void {
+    const s = this.store.state;
+    const sel = s.selection;
+    const entity = this.entities.find((e) => e.id === sel) ?? null;
+
+    const isSynth = sel === "specimen.synth";
+    const isScan = sel === "specimen.scan";
+    const isLight = !!sel && sel.startsWith("light.");
+
+    this.paramWrap.style.display = isSynth ? "" : "none";
+    this.lightWrap.style.display = isLight ? "" : "none";
+
+    this.inspTitle.textContent = entity ? entity.label : "Nothing selected";
+    this.inspTag.textContent = entity ? entity.kind : "—";
+
+    /* meta */
+    this.inspMeta.textContent = "";
+    const addMeta = (k: string, v: string) => {
+      this.inspMeta.appendChild(el("dt", "", k));
+      this.inspMeta.appendChild(el("dd", "", v));
+    };
+
+    if (isSynth || isScan) {
+      addMeta("Substance", sub.code);
+      addMeta("Class", sub.cls === "metal" ? "conductor" : "dielectric");
+      addMeta("Shading", isScan ? "measurement replay" : "MeshPhysicalMaterial");
+      if (isSynth) {
+        addMeta("Tint", rgbToCss(synthTint(s.synth)));
+        addMeta("Match", `${report.score.toFixed(0)} / ${matchCeiling(report).toFixed(0)}`);
+      } else {
+        addMeta("Capture", `${sub.capture.split("·")[1]?.trim() ?? "4096 px/m"}`);
+      }
+      this.inspBlurb.textContent = isScan ? sub.blurb : "";
+      this.inspBlurb.style.display = isScan ? "" : "none";
+    } else if (isLight && sel) {
+      const id = sel.split(".")[1] ?? "key";
+      this.currentLightId = id;
+      const st = s.lights[id];
+      addMeta("Head", id);
+      addMeta("Shadow", id === "key" ? "casting" : "none");
+      addMeta("Preset ×", LIGHT_PRESETS[s.lighting][id as "key" | "fill" | "rim"].toFixed(2));
+      if (st) addMeta("Effective", (st.intensity * LIGHT_PRESETS[s.lighting][id as "key" | "fill" | "rim"]).toFixed(2));
+      this.inspBlurb.textContent = LIGHT_PRESETS[s.lighting].note;
+      this.inspBlurb.style.display = "";
+    } else if (entity) {
+      addMeta("Kind", entity.kind);
+      this.inspBlurb.textContent = entity.lockReason ?? "Workspace prop. Present for scale and for judging the room, not editable.";
+      this.inspBlurb.style.display = "";
+    } else {
+      this.inspBlurb.textContent = "Click an object in the workspace, or pick a row in Workspace above.";
+      this.inspBlurb.style.display = "";
+    }
+
+    /* lock explanation */
+    if (entity && !entity.editable && entity.lockReason && !isLight) {
+      this.inspLock.style.display = "";
+      this.inspLock.innerHTML = `${icon(ICONS.lock ?? "")}<span>${entity.lockReason}</span>`;
+    } else {
+      this.inspLock.style.display = "none";
+    }
+
+    if (isSynth) this.renderSynthParams(sub, validation);
+    if (isLight && sel) this.renderLightParams(sel.split(".")[1] ?? "key");
+  }
+
+  private renderSynthParams(sub: Substance, validation: Validation): void {
+    const s = this.store.state;
+    const bad = new Map(validation.violations.map((v) => [v.key, v.level]));
+
+    for (const def of PARAM_DEFS) {
+      const row = this.paramRows.get(def.key);
+      if (!row) continue;
+      const v = s.synth[def.key] ?? def.min;
+      if (document.activeElement !== row.input) row.input.value = String(v);
+
+      const unit = def.unit ? ` ${def.unit}` : "";
+      row.num.textContent = v.toFixed(def.digits) + unit;
+
+      const lvl = bad.get(def.key);
+      row.root.classList.toggle("warn", lvl === "soft");
+      row.root.classList.toggle("blocked", lvl === "hard");
+      row.root.classList.toggle("active", s.activeParam === def.key);
+
+      const span = def.max - def.min;
+      const target = measuredValue(sub, def.key);
+      if (target === null) {
+        row.target.style.display = "none";
+      } else {
+        row.target.style.display = "";
+        row.target.style.left = `${(((target - def.min) / span) * 100).toFixed(2)}%`;
+        row.target.title = `measured ${target.toFixed(def.digits)}${unit}`;
+      }
+
+      const b = sub.bounds[def.key];
+      const lo = b?.hardMin;
+      const hi = b?.hardMax;
+      if (lo !== undefined && lo > def.min) {
+        row.limitLo.style.display = "";
+        row.limitLo.style.left = "0%";
+        row.limitLo.style.width = `${(((lo - def.min) / span) * 100).toFixed(2)}%`;
+      } else row.limitLo.style.display = "none";
+      if (hi !== undefined && hi < def.max) {
+        row.limitHi.style.display = "";
+        row.limitHi.style.left = `${(((hi - def.min) / span) * 100).toFixed(2)}%`;
+        row.limitHi.style.width = `${(((def.max - hi) / span) * 100).toFixed(2)}%`;
+      } else row.limitHi.style.display = "none";
+    }
+  }
+
+  private renderLightParams(id: string): void {
+    const st = this.store.state.lights[id];
+    if (!st) return;
+    const vals: Record<string, number> = {
+      intensity: st.intensity,
+      kelvin: st.kelvin,
+      az: (st.az * 180) / Math.PI,
+      el: (st.el * 180) / Math.PI,
+    };
+    for (const def of LIGHT_PARAMS) {
+      const row = this.lightRows.get(def.key);
+      if (!row) continue;
+      const v = vals[def.key] ?? 0;
+      if (document.activeElement !== row.input) row.input.value = String(v);
+      row.num.textContent = v.toFixed(def.digits) + (def.unit ? ` ${def.unit}` : "");
+      row.root.classList.toggle("active", this.store.state.activeParam === def.key);
+      row.target.style.display = "none";
+      row.limitLo.style.display = "none";
+      row.limitHi.style.display = "none";
+    }
+  }
+
+  private renderReport(report: Report): void {
+    const sig = report.rows.map((r) => r.key).join("|");
+    if (sig !== this.reportSig) {
+      this.reportSig = sig;
+      this.reportBody.textContent = "";
+      this.reportRows.clear();
+      for (const r of report.rows) {
+        const row = el("div", "rrow");
+        row.appendChild(el("div", "rl", r.label));
+        row.appendChild(el("div", "rv", ""));
+        row.appendChild(el("div", "rt", ""));
+        row.appendChild(el("div", "rs"));
+        this.reportRows.set(r.key, row);
+        this.reportBody.appendChild(row);
+      }
+    }
+    let out = 0;
+    for (const r of report.rows) {
+      const row = this.reportRows.get(r.key);
+      if (!row) continue;
+      const [, rv, rt, rs] = Array.from(row.children) as HTMLElement[];
+      if (rv) rv.textContent = r.reducible ? r.deltaText : r.deltaText;
+      if (rt) rt.textContent = r.reducible ? r.tolText : "model";
+      if (rs) rs.className = `rs ${r.status}`;
+      row.classList.toggle("model", !r.reducible);
+      row.title = `${r.label} — measured ${r.measured}, authored ${r.authored}. ${r.note}`;
+      if (r.reducible && r.status !== "ok") out++;
+    }
+    this.reportTag.textContent = out === 0 ? "in tolerance" : `${out} out`;
+  }
+
+  private renderNotes(): void {
+    const s = this.store.state;
+    const sig = s.notes.map((n) => n.id).join(",") + "|" + (s.selection ?? "");
+    if (sig === this.notesSig) return;
+    this.notesSig = sig;
+
+    this.notesBody.textContent = "";
+    this.notesTag.textContent = s.notes.length ? `${s.notes.length} pinned` : "none";
+
+    if (!s.notes.length) {
+      const empty = el("div", "empty");
+      empty.innerHTML = `No observations yet. Pick the <b>Note</b> tool (<kbd>N</kbd>) and click the synthetic specimen where the two disagree — the pin records the metric that was worst at that moment.`;
+      this.notesBody.appendChild(empty);
+      return;
+    }
+
+    for (let i = 0; i < s.notes.length; i++) {
+      const n = s.notes[i];
+      if (!n) continue;
+      const item = el("div", "note clickable");
+      item.classList.toggle("sel", s.selection === `note.${n.id}`);
+      item.appendChild(el("div", "idx", String(i + 1)));
+      const body = el("div", "body");
+      body.appendChild(el("div", "txt", n.text));
+      body.appendChild(el("div", "sub", `${n.substanceId.toUpperCase()} · ${n.metric}`));
+      item.appendChild(body);
+      const del = el("button", "del", "×");
+      del.title = "Remove this observation";
+      del.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.cb.deleteNote(n.id);
+      });
+      item.appendChild(del);
+      item.addEventListener("click", () => this.cb.selectNote(n.id));
+      this.notesBody.appendChild(item);
+    }
+  }
+
+  private renderHistory(): void {
+    const h = this.store.history;
+    const sig = `${h.length}:${this.store.index}:${h.map((e) => e.label).join("|")}`;
+    if (sig === this.historySig) return;
+    this.historySig = sig;
+
+    this.historyList.textContent = "";
+    this.historyTag.textContent = `${this.store.index + 1} / ${h.length}`;
+
+    const base = el("div", "hitem clickable");
+    base.classList.toggle("cur", this.store.index === -1);
+    base.classList.toggle("future", this.store.index < -1);
+    base.appendChild(el("span", "pip"));
+    base.appendChild(el("span", "n", "Session opened"));
+    base.appendChild(el("span", "c", "base"));
+    base.addEventListener("click", () => this.cb.jump(-1));
+    this.historyList.appendChild(base);
+
+    for (let i = 0; i < h.length; i++) {
+      const e = h[i];
+      if (!e) continue;
+      const item = el("div", "hitem clickable");
+      item.classList.toggle("cur", i === this.store.index);
+      item.classList.toggle("future", i > this.store.index);
+      item.appendChild(el("span", "pip"));
+      item.appendChild(el("span", "n", e.label));
+      item.appendChild(el("span", "c", e.detail));
+      item.title = `${e.label} — ${e.detail}`;
+      item.addEventListener("click", () => this.cb.jump(i));
+      this.historyList.appendChild(item);
+    }
+    this.historyList.scrollTop = this.historyList.scrollHeight;
+  }
+
+  private renderValidation(v: Validation): void {
+    const t = this.vstate.querySelector(".t");
+    const word = v.level === "ok" ? "valid" : v.level === "warn" ? "advisory" : "blocked";
+    if (t) t.textContent = word;
+    this.vstate.className = v.level;
+    this.vmsg.textContent = v.message;
+    this.reconcileBtn.style.display = v.level === "blocked" ? "" : "none";
+  }
+
+  /* ---------------- transient UI ---------------- */
+
+  setPerf(text: string): void {
+    if (this.perf.textContent !== text) this.perf.textContent = text;
+  }
+
+  setHelp(open: boolean): void {
+    this.helpEl.classList.toggle("hidden", !open);
+  }
+
+  helpOpen(): boolean {
+    return !this.helpEl.classList.contains("hidden");
+  }
+
+  toast(kind: "info" | "warn" | "blocked", html: string, ms = 4200): void {
+    while (this.toastWrap.children.length > 2) this.toastWrap.firstChild?.remove();
+    const t = el("div", `toast ${kind}`);
+    const ic = el("div", "ic");
+    ic.innerHTML = icon(ICONS[kind === "blocked" ? "block" : kind === "warn" ? "warn" : "info"] ?? "");
+    t.appendChild(ic);
+    const body = el("div");
+    body.innerHTML = html;
+    t.appendChild(body);
+    this.toastWrap.appendChild(t);
+    setTimeout(() => {
+      t.classList.add("out");
+      setTimeout(() => t.remove(), 220);
+    }, ms);
+  }
+}

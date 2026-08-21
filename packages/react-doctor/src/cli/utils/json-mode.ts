@@ -14,6 +14,7 @@ interface JsonModeContext {
   directory: string;
   mode: JsonReportMode;
   outputFile: string | null;
+  writeCancellationError?: () => void;
 }
 
 let context: JsonModeContext | null = null;
@@ -22,6 +23,7 @@ interface EnableJsonModeInput {
   compact: boolean;
   directory: string;
   outputFile?: string;
+  writeCancellationError?: () => void;
 }
 
 /**
@@ -54,13 +56,19 @@ const installSilentConsole = (): void => {
   }
 };
 
-export const enableJsonMode = ({ compact, directory, outputFile }: EnableJsonModeInput): void => {
+export const enableJsonMode = ({
+  compact,
+  directory,
+  outputFile,
+  writeCancellationError,
+}: EnableJsonModeInput): void => {
   context = {
     compact,
     directory,
     startTime: performance.now(),
     mode: "full",
     outputFile: null,
+    writeCancellationError,
   };
   installSilentConsole();
   if (outputFile) {
@@ -109,4 +117,12 @@ export const writeJsonErrorReport = (error: unknown, sentryEventId?: string | nu
   } catch {
     process.stdout.write(INTERNAL_ERROR_JSON_FALLBACK);
   }
+};
+
+export const writeJsonCancellationReport = (): void => {
+  if (context?.writeCancellationError !== undefined) {
+    context.writeCancellationError();
+    return;
+  }
+  writeJsonErrorReport(new Error("Scan cancelled by user (SIGINT/SIGTERM)"));
 };

@@ -106,16 +106,16 @@ describe("runProjectMigrations", () => {
       const report = await runProjectMigrations(projectRoot);
 
       expect(report).toContainEqual({ id: "agent-hooks-sh-to-mjs", ran: true, applied: true });
-      const settings: { hooks: { PostToolBatch: Array<{ hooks: Array<{ command: string }> }> } } =
+      const settings: { hooks: { Stop: Array<{ hooks: Array<{ command: string }> }> } } =
         JSON.parse(fs.readFileSync(path.join(projectRoot, ".claude/settings.json"), "utf8"));
-      const hookCommands = settings.hooks.PostToolBatch.flatMap((group) =>
+      const hookCommands = settings.hooks.Stop.flatMap((group) =>
         group.hooks.map((hook) => hook.command),
       );
       expect(hookCommands).toHaveLength(1);
       expect(hookCommands[0]).toContain("react-doctor.mjs");
       expect(fs.existsSync(path.join(projectRoot, ".claude/hooks/react-doctor.sh"))).toBe(false);
       expect(fs.existsSync(path.join(projectRoot, ".claude/hooks/react-doctor.mjs"))).toBe(true);
-      expect(capturedOutput()).toContain("Upgraded the legacy react-doctor.sh agent hook");
+      expect(capturedOutput()).toContain("Moved React Doctor agent hooks to end-of-turn checks");
     });
 
     it("stays pending with no legacy hooks and doesn't touch agent settings", async () => {
@@ -135,6 +135,59 @@ describe("runProjectMigrations", () => {
 
       expect(second).toContainEqual({ id: "agent-hooks-sh-to-mjs", ran: false, applied: true });
       expect(logSpy.mock.calls.length).toBe(0);
+    });
+
+    it("moves installed Node hooks from per-tool events to Stop events", async () => {
+      const settingsPath = path.join(projectRoot, ".claude/settings.json");
+      const configPath = path.join(projectRoot, ".cursor/hooks.json");
+      fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+      fs.mkdirSync(path.dirname(configPath), { recursive: true });
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify({
+          hooks: {
+            PostToolBatch: [
+              {
+                hooks: [
+                  {
+                    type: "command",
+                    command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/react-doctor.mjs"',
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      );
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify({
+          version: 1,
+          hooks: {
+            postToolUse: [
+              {
+                command: "node .cursor/hooks/react-doctor.mjs",
+                matcher: "Write|Edit|MultiEdit|ApplyPatch",
+                timeout: 120,
+              },
+            ],
+          },
+        }),
+      );
+
+      const report = await runProjectMigrations(projectRoot);
+      const settings: { hooks: { PostToolBatch: unknown[]; Stop: unknown[] } } = JSON.parse(
+        fs.readFileSync(settingsPath, "utf8"),
+      );
+      const config: { hooks: { postToolUse: unknown[]; stop: unknown[] } } = JSON.parse(
+        fs.readFileSync(configPath, "utf8"),
+      );
+
+      expect(report).toContainEqual({ id: "agent-hooks-sh-to-mjs", ran: true, applied: true });
+      expect(settings.hooks.PostToolBatch).toEqual([]);
+      expect(settings.hooks.Stop).toHaveLength(1);
+      expect(config.hooks.postToolUse).toEqual([]);
+      expect(config.hooks.stop).toHaveLength(1);
     });
 
     it("ignores a user's own wrapper outside our install paths (anchored detection)", async () => {

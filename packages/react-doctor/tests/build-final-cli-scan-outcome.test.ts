@@ -9,7 +9,9 @@ import { buildDiagnostic, buildTestProject } from "./regressions/_helpers.js";
 interface BuildCompletedScanOptions {
   readonly directory: string;
   readonly diagnostics?: Diagnostic[];
+  readonly framework?: InspectResult["project"]["framework"];
   readonly hasReact?: boolean;
+  readonly hasThree?: boolean;
   readonly baselineDelta?: InspectResult["baselineDelta"];
 }
 
@@ -20,11 +22,15 @@ const buildCompletedScan = (options: BuildCompletedScanOptions): CompletedScan =
     diagnostics: options.diagnostics ?? [],
     score: null,
     skippedChecks: [],
-    project: buildTestProject({
-      rootDirectory: options.directory,
-      reactMajorVersion: options.hasReact === false ? null : 19,
-      reactVersion: options.hasReact === false ? null : "^19.0.0",
-    }),
+    project: {
+      ...buildTestProject({
+        rootDirectory: options.directory,
+        framework: options.framework,
+        reactMajorVersion: options.hasReact === false ? null : 19,
+        reactVersion: options.hasReact === false ? null : "^19.0.0",
+      }),
+      hasThree: options.hasThree === true,
+    },
     elapsedMilliseconds: 1,
     baselineDelta: options.baselineDelta,
   },
@@ -85,18 +91,37 @@ describe("buildFinalCliScanOutcome", () => {
     expect(outcome.baseline).toBeUndefined();
   });
 
-  it("detects completed scans where React rules were gated off", () => {
+  it("warns only when no supported framework or library was detected", () => {
     expect(
       buildOutcome([buildCompletedScan({ directory: "/repo", hasReact: false })])
-        .shouldWarnNoReactDetected,
+        .shouldWarnNoSupportedLibraryDetected,
     ).toBe(true);
     expect(
       buildOutcome([
         buildCompletedScan({ directory: "/repo/plain", hasReact: false }),
         buildCompletedScan({ directory: "/repo/react" }),
-      ]).shouldWarnNoReactDetected,
+      ]).shouldWarnNoSupportedLibraryDetected,
     ).toBe(false);
-    expect(buildOutcome([]).shouldWarnNoReactDetected).toBe(false);
+    expect(
+      buildOutcome([
+        buildCompletedScan({ directory: "/repo/three", hasReact: false, hasThree: true }),
+      ]).shouldWarnNoSupportedLibraryDetected,
+    ).toBe(false);
+    expect(
+      buildOutcome([
+        buildCompletedScan({
+          directory: "/repo/next",
+          framework: "nextjs",
+          hasReact: false,
+        }),
+      ]).shouldWarnNoSupportedLibraryDetected,
+    ).toBe(false);
+    expect(
+      buildOutcome([
+        buildCompletedScan({ directory: "/repo/vite", framework: "vite", hasReact: false }),
+      ]).shouldWarnNoSupportedLibraryDetected,
+    ).toBe(false);
+    expect(buildOutcome([]).shouldWarnNoSupportedLibraryDetected).toBe(false);
   });
 
   it("filters only the JSON report diagnostics by category", () => {

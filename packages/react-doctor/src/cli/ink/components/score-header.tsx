@@ -5,6 +5,7 @@ import { doctorFace } from "../../utils/doctor-face.js";
 import {
   SCORE_BAR_MIN_WIDTH_CHARS,
   TUI_HORIZONTAL_PADDING_COLUMNS,
+  TUI_SCORE_FACE_WIDTH_COLUMNS,
   TUI_SCORE_FACE_OFFSET_COLUMNS,
   TUI_SCORE_RIGHT_EDGE_SAFETY_COLUMNS,
 } from "../../utils/constants.js";
@@ -113,12 +114,17 @@ export const ScoreHeader = ({
   const [eyes, mouth] = doctorFace(score.score);
 
   return (
-    <Box flexDirection="column">
-      <Box paddingLeft={TUI_HORIZONTAL_PADDING_COLUMNS}>
-        <Box flexDirection="column" marginRight={TUI_HORIZONTAL_PADDING_COLUMNS}>
+    <Box flexDirection="column" width={availableWidth}>
+      <Box paddingLeft={TUI_HORIZONTAL_PADDING_COLUMNS} width={availableWidth}>
+        <Box
+          flexDirection="column"
+          flexShrink={0}
+          width={TUI_SCORE_FACE_WIDTH_COLUMNS}
+          marginRight={TUI_HORIZONTAL_PADDING_COLUMNS}
+        >
           <Text color={scoreColor}>{`┌─────┐\n│ ${eyes} │\n│ ${mouth} │\n└─────┘`}</Text>
         </Box>
-        <Box flexDirection="column">
+        <Box flexDirection="column" width={availableWidth - TUI_SCORE_FACE_OFFSET_COLUMNS}>
           {scoreSummaryLine}
           <Text wrap="truncate-end">
             <Text color={scoreColor}>{"█".repeat(filledBarWidth)}</Text>

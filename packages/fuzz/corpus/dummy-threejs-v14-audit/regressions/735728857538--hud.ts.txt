@@ -1,0 +1,412 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 735728857538f1ce4becc71c5893793054f6dec9650828c98bdb7d5ffd4286f4
+/**
+ * Screens and heads-up display.
+ *
+ * The HUD only ever reflects state the simulation already owns — the meter, the
+ * alarm level, the objective ledger — so nothing here can disagree with what is
+ * happening in the world.
+ */
+
+import { clamp01, formatTime } from "../core/math";
+import { CreatureDef, CreatureId } from "../art/creature-build";
+import {
+  EMBLEMS,
+  iconAlarm,
+  iconArmour,
+  iconCorridor,
+  iconMark,
+  iconPower,
+  iconRampage,
+  iconReach,
+  iconSpeed,
+  iconTarget,
+  iconTimer,
+  reticleSvg,
+} from "./icons";
+
+export interface ObjectiveView {
+  label: string;
+  kind: "target" | "corridor";
+  done: boolean;
+  progress: number;
+}
+
+export interface EndStats {
+  structures: number;
+  corridors: number;
+  survived: number;
+  peak: number;
+  units: number;
+  alarm: number;
+}
+
+const ALARM_NAMES = ["", "LOCAL RESPONSE", "PRECINCT ALERT", "DIVISION CALL", "CORDON DOCTRINE", "TOTAL RESPONSE"];
+
+export type ToastKind = "amber" | "teal" | "alarm" | "good";
+
+export class Hud {
+  private root: HTMLElement;
+  private screenHost: HTMLElement;
+  private hud: HTMLElement;
+  private toasts: HTMLElement;
+  private reticle: HTMLElement;
+  private staggerEl: HTMLElement | null = null;
+
+  private meterFill!: HTMLElement;
+  private meterGhost!: HTMLElement;
+  private meterBox!: HTMLElement;
+  private meterVal!: HTMLElement;
+  private timerEl!: HTMLElement;
+  private chevrons: HTMLElement[] = [];
+  private alarmName!: HTMLElement;
+  private objList!: HTMLElement;
+  private objRows: HTMLElement[] = [];
+
+  private ghostTimer = 0;
+  private lastMeter = 1;
+
+  constructor(container: HTMLElement) {
+    this.root = document.createElement("div");
+    this.root.id = "ui";
+    container.appendChild(this.root);
+
+    for (const cls of ["tl", "tr", "bl", "br"]) {
+      const m = document.createElement("div");
+      m.className = `frame-mark ${cls}`;
+      this.root.appendChild(m);
+    }
+
+    this.hud = document.createElement("div");
+    this.hud.id = "hud";
+    this.root.appendChild(this.hud);
+    this.buildHud();
+
+    this.toasts = document.createElement("div");
+    this.toasts.id = "toasts";
+    this.root.appendChild(this.toasts);
+
+    this.reticle = document.createElement("div");
+    this.reticle.id = "reticle";
+    this.reticle.innerHTML = reticleSvg();
+    this.root.appendChild(this.reticle);
+
+    this.screenHost = document.createElement("div");
+    this.root.appendChild(this.screenHost);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* HUD chrome                                                          */
+  /* ------------------------------------------------------------------ */
+
+  private buildHud(): void {
+    this.hud.innerHTML = `
+      <div class="hud-tl">
+        <div class="meter-head">
+          ${iconRampage(20)}
+          <span>Rampage</span>
+          <span class="val" data-val>100%</span>
+        </div>
+        <div class="meter" data-meter>
+          <div class="meter-ghost" data-ghost></div>
+          <div class="meter-fill" data-fill></div>
+          <div class="meter-ticks"></div>
+        </div>
+        <div class="timer-row">
+          ${iconTimer(16)}
+          <div class="big" data-timer>2:30</div>
+          <div class="cap">Hold the city</div>
+        </div>
+      </div>
+
+      <div class="hud-tr">
+        <div class="alarm-label">Bulwark Response</div>
+        <div class="chevrons" data-chevrons>
+          <div class="chev"></div><div class="chev"></div><div class="chev"></div>
+          <div class="chev"></div><div class="chev"></div>
+        </div>
+        <div class="alarm-name" data-alarmname>LOCAL RESPONSE</div>
+      </div>
+
+      <div class="hud-bl">
+        <div class="obj-head">${iconTarget(15)}<span>Demolition ledger</span></div>
+        <div data-objectives></div>
+      </div>
+
+      <div class="hud-br">
+        <div><kbd>WASD</kbd>Move</div>
+        <div><kbd>Aim</kbd>Pointer</div>
+        <div><kbd>Space</kbd>Smash</div>
+        <div><kbd>R</kbd>Roar &nbsp; <kbd>Tab</kbd>Route &nbsp; <kbd>M</kbd>Mute</div>
+      </div>
+    `;
+    this.meterFill = this.hud.querySelector("[data-fill]") as HTMLElement;
+    this.meterGhost = this.hud.querySelector("[data-ghost]") as HTMLElement;
+    this.meterBox = this.hud.querySelector("[data-meter]") as HTMLElement;
+    this.meterVal = this.hud.querySelector("[data-val]") as HTMLElement;
+    this.timerEl = this.hud.querySelector("[data-timer]") as HTMLElement;
+    this.alarmName = this.hud.querySelector("[data-alarmname]") as HTMLElement;
+    this.objList = this.hud.querySelector("[data-objectives]") as HTMLElement;
+    this.chevrons = Array.from(this.hud.querySelectorAll(".chev")) as HTMLElement[];
+  }
+
+  setHudVisible(on: boolean): void {
+    this.hud.classList.toggle("on", on);
+  }
+
+  setMeter(value01: number, dt: number): void {
+    const v = clamp01(value01);
+    this.meterFill.style.width = `${v * 100}%`;
+    this.meterVal.textContent = `${Math.round(v * 100)}%`;
+    this.meterBox.classList.toggle("danger", v < 0.22);
+    // Ghost bar trails a drop so damage reads without a number.
+    if (v < this.lastMeter) this.ghostTimer = 0.45;
+    else this.meterGhost.style.width = `${v * 100}%`;
+    this.ghostTimer -= dt;
+    if (this.ghostTimer <= 0) this.meterGhost.style.width = `${v * 100}%`;
+    this.lastMeter = v;
+  }
+
+  setTimer(seconds: number): void {
+    this.timerEl.textContent = formatTime(seconds);
+    this.timerEl.style.color = seconds < 20 ? "var(--alarm)" : "var(--bone)";
+  }
+
+  setAlarm(level: number): void {
+    this.chevrons.forEach((c, i) => c.classList.toggle("on", i < level));
+    this.alarmName.textContent = ALARM_NAMES[Math.min(5, Math.max(1, level))] ?? "";
+  }
+
+  setObjectives(list: ObjectiveView[]): void {
+    if (this.objRows.length !== list.length) {
+      this.objList.innerHTML = "";
+      this.objRows = list.map((o) => {
+        const row = document.createElement("div");
+        row.className = `obj ${o.kind === "corridor" ? "corridor" : ""}`;
+        row.innerHTML = `${o.kind === "corridor" ? iconCorridor(15) : iconTarget(15)}<span data-label></span><span class="pct" data-pct></span>`;
+        this.objList.appendChild(row);
+        return row;
+      });
+    }
+    list.forEach((o, i) => {
+      const row = this.objRows[i];
+      if (!row) return;
+      const label = row.querySelector("[data-label]") as HTMLElement;
+      const pct = row.querySelector("[data-pct]") as HTMLElement;
+      label.textContent = o.label;
+      pct.textContent = o.done ? "DOWN" : `${Math.round(o.progress * 100)}%`;
+      row.classList.toggle("done", o.done);
+    });
+  }
+
+  setReticle(x: number, y: number, hot: boolean, visible: boolean): void {
+    this.reticle.style.left = `${x}px`;
+    this.reticle.style.top = `${y}px`;
+    this.reticle.classList.toggle("hot", hot);
+    this.reticle.classList.toggle("on", visible);
+  }
+
+  toast(text: string, kind: ToastKind = "amber"): void {
+    const el = document.createElement("div");
+    el.className = `toast ${kind === "amber" ? "" : kind}`;
+    el.textContent = text;
+    this.toasts.appendChild(el);
+    window.setTimeout(() => {
+      el.classList.add("out");
+      window.setTimeout(() => el.remove(), 320);
+    }, 1900);
+    while (this.toasts.children.length > 5) this.toasts.firstChild?.remove();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Stagger overlay                                                     */
+  /* ------------------------------------------------------------------ */
+
+  showStagger(presses: number, target: number, revivesLeft: number): void {
+    if (!this.staggerEl) {
+      const el = document.createElement("div");
+      el.id = "stagger";
+      el.innerHTML = `
+        <h2>Down</h2>
+        <div class="mash">Hammer <b>Space</b> to get back up</div>
+        <div class="pips" data-pips></div>
+        <div class="lives" data-lives></div>
+      `;
+      this.root.appendChild(el);
+      this.staggerEl = el;
+    }
+    const pips = this.staggerEl.querySelector("[data-pips]") as HTMLElement;
+    if (pips.children.length !== target) {
+      pips.innerHTML = "";
+      for (let i = 0; i < target; i++) {
+        const p = document.createElement("div");
+        p.className = "pip";
+        pips.appendChild(p);
+      }
+    }
+    Array.from(pips.children).forEach((p, i) => p.classList.toggle("on", i < presses));
+    const lives = this.staggerEl.querySelector("[data-lives]") as HTMLElement;
+    lives.textContent = revivesLeft > 0 ? `${revivesLeft} recovery remaining` : "Last stand — no recoveries left";
+  }
+
+  hideStagger(): void {
+    this.staggerEl?.remove();
+    this.staggerEl = null;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Screens                                                             */
+  /* ------------------------------------------------------------------ */
+
+  private screen(html: string, transparent = false): HTMLElement {
+    this.screenHost.innerHTML = "";
+    const el = document.createElement("div");
+    el.className = `screen${transparent ? " transparent" : ""}`;
+    el.innerHTML = html;
+    this.screenHost.appendChild(el);
+    return el;
+  }
+
+  clearScreen(): void {
+    this.screenHost.innerHTML = "";
+  }
+
+  showLoading(): { set(progress: number, label: string): void } {
+    const el = this.screen(`
+      <div class="title-mark">${iconMark(72)}</div>
+      <h1 class="game-title">Big<em>Trouble</em></h1>
+      <div class="subtitle">Halverstrand Incident Feed</div>
+      <div class="load-bar"><div class="load-fill" data-fill></div></div>
+      <div class="load-label" data-label>Waking the archive</div>
+    `);
+    const fill = el.querySelector("[data-fill]") as HTMLElement;
+    const label = el.querySelector("[data-label]") as HTMLElement;
+    return {
+      set(progress: number, text: string): void {
+        fill.style.width = `${clamp01(progress) * 100}%`;
+        label.textContent = text;
+      },
+    };
+  }
+
+  showTitle(onStart: () => void): void {
+    const el = this.screen(`
+      <div class="title-mark">${iconMark(84)}<div>
+        <h1 class="game-title">Big<em>Trouble</em></h1>
+      </div></div>
+      <div class="subtitle">A Halverstrand demolition report</div>
+      <div class="rule"></div>
+      <p class="blurb">
+        Something enormous came up the estuary tonight. Pick which one, flatten six marked
+        structures, force two blocked corridors open, and stay loud enough that the city
+        keeps believing in you for two and a half minutes. BULWARK DIVISION will be along
+        shortly to discuss it.
+      </p>
+      <button class="btn" data-start>Choose your titan</button>
+    `);
+    (el.querySelector("[data-start]") as HTMLElement).addEventListener("click", onStart);
+  }
+
+  showSelect(defs: CreatureDef[], onPick: (id: CreatureId) => void, onHover: () => void): void {
+    const cards = defs
+      .map((d) => {
+        const emblem = EMBLEMS[d.id]?.(74, d.accent) ?? "";
+        const stat = (name: string, icon: string, v: number, color: string): string => `
+          <div class="stat">
+            <div class="stat-icon">${icon}</div>
+            <div class="stat-name">${name}</div>
+            <div class="stat-track"><div class="stat-fill" data-fill style="background:${color}" data-target="${Math.round(v * 100)}"></div></div>
+          </div>`;
+        return `
+        <div class="card" data-id="${d.id}" style="border-color:${d.accentDark}">
+          <div class="emblem">${emblem}</div>
+          <h3 style="color:${d.accent}">${d.name}</h3>
+          <div class="epithet">${d.epithet}</div>
+          <p>${d.dossier}</p>
+          ${stat("Power", iconPower(15), d.stats.power, d.accent)}
+          ${stat("Speed", iconSpeed(15), d.stats.speed, d.accent)}
+          ${stat("Reach", iconReach(15), d.stats.reach, d.accent)}
+          ${stat("Armour", iconArmour(15), d.stats.armour, d.accent)}
+        </div>`;
+      })
+      .join("");
+
+    const el = this.screen(`
+      <div class="subtitle">Select subject</div>
+      <div class="rule" style="margin:16px 0 22px"></div>
+      <div class="card-row">${cards}</div>
+      <div class="blurb" style="margin-top:24px;font-size:13px;opacity:0.8">
+        WASD moves. The pointer aims. Space smashes. Everything you knock down feeds the rampage meter —
+        let it empty and the city stops watching.
+      </div>
+    `);
+
+    window.requestAnimationFrame(() => {
+      el.querySelectorAll<HTMLElement>("[data-fill]").forEach((f) => {
+        f.style.width = `${f.dataset.target}%`;
+      });
+    });
+
+    el.querySelectorAll<HTMLElement>(".card").forEach((card) => {
+      card.addEventListener("mouseenter", () => {
+        card.style.borderColor = card.querySelector("h3")?.getAttribute("style")?.split(":")[1] ?? "";
+        onHover();
+      });
+      card.addEventListener("click", () => {
+        const id = card.dataset.id as CreatureId;
+        onPick(id);
+      });
+    });
+  }
+
+  showBriefing(def: CreatureDef, targets: number, corridors: number, seconds: number, onSkip: () => void): HTMLElement {
+    const el = this.screen(
+      `
+      <div class="brief">
+        <h2 style="color:${def.accent}">${def.name} makes landfall</h2>
+        <div class="subtitle">Route preview — Halverstrand central grid</div>
+        <div class="lines">
+          <div class="line">${iconTarget(19)}${targets} marked structures</div>
+          <div class="line">${iconCorridor(19)}${corridors} cordons to force</div>
+          <div class="line">${iconTimer(19)}${formatTime(seconds)} on the meter</div>
+          <div class="line">${iconAlarm(19)}Bulwark inbound</div>
+        </div>
+        <div class="skip">Press space to begin</div>
+      </div>`,
+      true,
+    );
+    el.addEventListener("click", onSkip);
+    return el;
+  }
+
+  showEnd(win: boolean, stats: EndStats, onRestart: () => void, onMenu: () => void): void {
+    const el = this.screen(`
+      <div class="subtitle">${win ? "Incident closed" : "Subject subdued"}</div>
+      <h1 class="verdict ${win ? "win" : "lose"}">${win ? "City Flattened" : "Rampage Over"}</h1>
+      <p class="blurb">
+        ${
+          win
+            ? "Six structures down, both cordons forced, and the meter never went quiet. Halverstrand will be rebuilding for a decade and talking about it for a century."
+            : "The crowd stopped watching, and BULWARK got their cordon back. The estuary is quiet again — for now."
+        }
+      </p>
+      <div class="end-stats">
+        <div class="end-stat"><div class="num">${stats.structures}/6</div><div class="cap">Structures</div></div>
+        <div class="end-stat"><div class="num">${stats.corridors}/2</div><div class="cap">Corridors</div></div>
+        <div class="end-stat"><div class="num">${formatTime(stats.survived)}</div><div class="cap">Held</div></div>
+        <div class="end-stat"><div class="num">${Math.round(stats.peak * 100)}%</div><div class="cap">Peak fervour</div></div>
+        <div class="end-stat"><div class="num">${stats.units}</div><div class="cap">Bulwark losses</div></div>
+        <div class="end-stat"><div class="num">${stats.alarm}</div><div class="cap">Alarm reached</div></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" data-again>Go again</button>
+        <button class="btn ghost" data-menu>Change titan</button>
+      </div>
+    `);
+    (el.querySelector("[data-again]") as HTMLElement).addEventListener("click", onRestart);
+    (el.querySelector("[data-menu]") as HTMLElement).addEventListener("click", onMenu);
+  }
+}

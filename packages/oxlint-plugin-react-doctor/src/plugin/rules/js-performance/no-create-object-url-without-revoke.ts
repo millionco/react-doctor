@@ -952,13 +952,32 @@ const isGuaranteedScheduledRevoke = (
     return false;
   }
   const scheduler = stripParenExpression(schedulerCall.callee);
-  if (
-    !isNodeOfType(scheduler, "Identifier") ||
-    (scheduler.name !== "queueMicrotask" && scheduler.name !== "setTimeout") ||
-    !isProvenGlobalNamespaceReference(scheduler, scheduler.name, context.scopes)
-  ) {
-    return false;
-  }
+  const schedulerName = isNodeOfType(scheduler, "Identifier")
+    ? scheduler.name
+    : isNodeOfType(scheduler, "MemberExpression")
+      ? getStaticPropertyName(scheduler)
+      : null;
+  if (schedulerName !== "queueMicrotask" && schedulerName !== "setTimeout") return false;
+  const isDirectGlobalScheduler =
+    isNodeOfType(scheduler, "Identifier") &&
+    isProvenGlobalNamespaceReference(scheduler, schedulerName, context.scopes);
+  const schedulerObject = isNodeOfType(scheduler, "MemberExpression")
+    ? stripParenExpression(scheduler.object)
+    : null;
+  const isGlobalObjectScheduler = Boolean(
+    schedulerObject &&
+    isNodeOfType(schedulerObject, "Identifier") &&
+    (schedulerObject.name === "window" ||
+      schedulerObject.name === "globalThis" ||
+      schedulerObject.name === "self") &&
+    isProvenUnmodifiedGlobalNamespaceReference(
+      schedulerObject,
+      schedulerObject.name,
+      context.scopes,
+      schedulerName,
+    ),
+  );
+  if (!isDirectGlobalScheduler && !isGlobalObjectScheduler) return false;
   return (
     context.cfg.enclosingFunction(schedulerCall) === executionBoundary &&
     context.cfg.isUnconditionalFromEntry(revokeCall) &&

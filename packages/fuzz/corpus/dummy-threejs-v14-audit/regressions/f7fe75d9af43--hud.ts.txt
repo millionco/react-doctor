@@ -1,0 +1,209 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit f7fe75d9af43d6ea9f3d74495b1602683288a1abb0a77c1304886dd333096353
+/** DOM heads-up display: progress, footing, the spatial depth gauge, and run outcomes. */
+
+const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
+  const node = document.getElementById(id);
+  if (!node) throw new Error(`missing HUD element #${id}`);
+  return node as T;
+};
+
+export interface HudFrame {
+  distance: number;
+  goal: number;
+  score: number;
+  chain: number;
+  footing: number;
+  speed: number;
+  /** Height above the grasp line, in metres. Negative means submerged. */
+  clearance: number;
+  /** Best reachable crest height above the grasp line, for gauge scaling. */
+  ceiling: number;
+  /** Lateral offset to the nearest good crest; sign says which way to lean. */
+  crestOffset: number;
+  lean: number;
+  submerged: number;
+  grabbed: boolean;
+}
+
+export interface RunSummary {
+  distance: number;
+  score: number;
+  bestChain: number;
+  flares: number;
+  surges: number;
+  timeSeconds: number;
+  rank: string;
+}
+
+export class Hud {
+  private readonly hud = el("hud");
+  private readonly overlay = el("overlay");
+  private readonly loading = el("loading");
+  private readonly cards = {
+    title: el("card-title"),
+    pause: el("card-pause"),
+    fail: el("card-fail"),
+    win: el("card-win"),
+  };
+  private readonly nodes = {
+    loadingFill: el("loading-fill"),
+    loadingNote: el("loading-note"),
+    progressFill: el("progress-fill"),
+    progressTicks: el("progress-ticks"),
+    progressRunner: el("progress-runner"),
+    distance: el("distance"),
+    goal: el("goal"),
+    score: el("score"),
+    chain: el("chain"),
+    footingFill: el("footing-fill"),
+    speed: el("speed"),
+    depthMarker: el("depth-marker"),
+    depthCaption: el("depth-caption"),
+    cueLeft: el("cue-left"),
+    cueRight: el("cue-right"),
+    cueText: el("cue-text"),
+    leanDot: el("lean-dot"),
+    toast: el("toast"),
+    damage: el("damage"),
+    failStats: el("fail-stats"),
+    failReason: el("fail-reason"),
+    winStats: el("win-stats"),
+    quality: el("quality-note"),
+    mute: el("mute-note"),
+  };
+
+  private toastTimer = 0;
+  private lastScore = -1;
+  private lastDistance = -1;
+
+  constructor(goal: number, gateSpacing: number) {
+    this.nodes.goal.textContent = `${goal} m`;
+    const ticks = this.nodes.progressTicks;
+    ticks.textContent = "";
+    for (let z = gateSpacing; z < goal; z += gateSpacing) {
+      const tick = document.createElement("i");
+      tick.style.left = `${(z / goal) * 100}%`;
+      tick.dataset.at = String(z);
+      ticks.appendChild(tick);
+    }
+  }
+
+  bindButton(id: string, fn: () => void): void {
+    el<HTMLButtonElement>(id).addEventListener("click", fn);
+  }
+
+  setLoading(frac: number, note: string): void {
+    this.nodes.loadingFill.style.width = `${Math.round(frac * 100)}%`;
+    this.nodes.loadingNote.textContent = note;
+  }
+
+  showCard(which: "loading" | "title" | "pause" | "fail" | "win" | null): void {
+    this.loading.hidden = which !== "loading";
+    for (const [key, node] of Object.entries(this.cards)) node.hidden = key !== which;
+    this.overlay.classList.toggle("hidden", which === null);
+  }
+
+  setLive(live: boolean): void {
+    this.hud.classList.toggle("live", live);
+  }
+
+  setQualityNote(text: string): void {
+    this.nodes.quality.textContent = text;
+  }
+
+  setMuted(muted: boolean): void {
+    this.nodes.mute.textContent = muted ? "SOUND OFF" : "SOUND ON";
+  }
+
+  toast(text: string, tone: "good" | "bad" | "warm", seconds = 1.4): void {
+    this.nodes.toast.textContent = text;
+    this.nodes.toast.className = `toast show ${tone}`;
+    this.toastTimer = seconds;
+  }
+
+  update(f: HudFrame, dt: number): void {
+    if (this.toastTimer > 0) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) this.nodes.toast.classList.remove("show");
+    }
+
+    const pct = Math.min(100, (f.distance / f.goal) * 100);
+    this.nodes.progressFill.style.width = `${pct}%`;
+    this.nodes.progressRunner.style.left = `${pct}%`;
+    const dist = Math.floor(f.distance);
+    if (dist !== this.lastDistance) {
+      this.lastDistance = dist;
+      this.nodes.distance.textContent = `${dist} m`;
+      for (const tick of Array.from(this.nodes.progressTicks.children) as HTMLElement[]) {
+        tick.classList.toggle("passed", Number(tick.dataset.at) <= dist);
+      }
+    }
+
+    const score = Math.floor(f.score);
+    if (score !== this.lastScore) {
+      this.lastScore = score;
+      this.nodes.score.textContent = score.toLocaleString();
+    }
+    this.nodes.chain.textContent = `CREST CHAIN ×${f.chain.toFixed(1)}`;
+    this.nodes.chain.classList.toggle("hot", f.chain >= 2);
+
+    this.nodes.footingFill.style.height = `${Math.max(0, f.footing) * 100}%`;
+    this.nodes.footingFill.classList.toggle("low", f.footing < 0.34);
+    this.nodes.speed.textContent = f.speed.toFixed(0);
+
+    // Depth gauge: the tide line is fixed at the middle, the runner floats against it.
+    const span = Math.max(2.2, f.ceiling + 1.4);
+    const norm = Math.max(-1, Math.min(1, f.clearance / span));
+    this.nodes.depthMarker.style.top = `${(0.5 - norm * 0.5) * 100}%`;
+    const danger = f.clearance < 0;
+    this.nodes.depthCaption.textContent = f.grabbed
+      ? "GRABBED"
+      : danger
+        ? `UNDER ${Math.abs(f.clearance).toFixed(1)} m`
+        : `CREST +${f.clearance.toFixed(1)} m`;
+    this.nodes.depthCaption.classList.toggle("danger", danger || f.grabbed);
+
+    const want = f.crestOffset;
+    const urgent = f.submerged > 0.25;
+    this.nodes.cueLeft.className = `arrow left${want < -1.2 ? " on" : ""}${urgent ? " urgent" : ""}`;
+    this.nodes.cueRight.className = `arrow right${want > 1.2 ? " on" : ""}${urgent ? " urgent" : ""}`;
+    this.nodes.cueText.textContent = f.grabbed
+      ? "SHAKE THEM OFF"
+      : urgent
+        ? "GET BACK UP"
+        : Math.abs(want) < 1.2
+          ? "HOLD THE CREST"
+          : "SHIFT YOUR WEIGHT";
+
+    this.nodes.leanDot.style.left = `calc(50% + ${f.lean * 48}%)`;
+    this.nodes.damage.style.opacity = String(Math.min(0.95, f.submerged * 0.9 + (1 - f.footing) * 0.5));
+  }
+
+  showFail(summary: RunSummary, reason: string): void {
+    this.nodes.failReason.textContent = reason;
+    this.nodes.failStats.innerHTML = this.statsMarkup(summary);
+    this.showCard("fail");
+  }
+
+  showWin(summary: RunSummary): void {
+    this.nodes.winStats.innerHTML = this.statsMarkup(summary);
+    this.showCard("win");
+  }
+
+  private statsMarkup(s: RunSummary): string {
+    const rows: Array<[string, string]> = [
+      ["Distance", `${Math.floor(s.distance)} m`],
+      ["Score", Math.floor(s.score).toLocaleString()],
+      ["Best chain", `×${s.bestChain.toFixed(1)}`],
+      ["Flares", String(s.flares)],
+      ["Surges cleared", String(s.surges)],
+      ["Time", `${s.timeSeconds.toFixed(1)} s`],
+      ["Rank", s.rank],
+    ];
+    return rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("");
+  }
+}

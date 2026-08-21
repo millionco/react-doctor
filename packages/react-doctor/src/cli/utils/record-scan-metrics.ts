@@ -119,7 +119,7 @@ export const recordScanMetrics = (input: ScanMetricsInput): void => {
   recordCount(METRIC.scanCompleted, 1, {
     mode: input.mode,
     lint: input.lint,
-    deadCode: input.deadCode,
+    maintainability: input.deadCode,
     parallel: input.parallel,
     scoreOnly: input.scoreOnly,
     didLintFail: input.didLintFail,
@@ -166,9 +166,9 @@ export const recordScanMetrics = (input: ScanMetricsInput): void => {
     });
   }
   // "Clean" means the scan actually completed and found nothing — not that a
-  // failed/incomplete run (lint or dead-code failed, a check was skipped)
+  // failed/incomplete run (lint or maintainability failed, a check was skipped)
   // happened to produce zero diagnostics. `skippedChecks` already includes
-  // lint/dead-code failures, so it's the single "fully completed" signal.
+  // lint/maintainability failures, so it's the single "fully completed" signal.
   if (result.diagnostics.length === 0 && !hasSkippedChecks) {
     recordCount(METRIC.scanClean, 1, { mode: input.mode });
   }
@@ -194,7 +194,7 @@ export const recordScanMetrics = (input: ScanMetricsInput): void => {
     recordCount(METRIC.lintFailed, 1, { reasonKind: input.lintFailureReasonKind });
   }
   if (input.didDeadCodeFail) {
-    recordCount(METRIC.deadCodeFailed, 1);
+    recordCount(METRIC.maintainabilityFailed, 1);
   }
   for (const check of result.skippedChecks) {
     recordCount(METRIC.scanCheckSkipped, 1, {

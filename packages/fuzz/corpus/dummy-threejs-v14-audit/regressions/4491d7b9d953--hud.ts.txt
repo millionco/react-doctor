@@ -1,0 +1,383 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 4491d7b9d9537c028c1502bcb0d494b4d7855f42e762b9f54a44efd8fc2b94b5
+import { FORMS, MATERIALS, MATERIAL_IDS, TOOLS, type MaterialId, type ToolId } from "../game/types";
+import type { Writ } from "../game/writs";
+import {
+  drawSchematic,
+  formIconURL,
+  materialIconURL,
+  toolIconURL,
+  type SchematicCell,
+  type SchematicExtra,
+} from "./icons";
+
+type OverlayKind = "intro" | "fail" | "win" | null;
+
+export interface HudHandlers {
+  onMaterial(id: MaterialId): void;
+  onForm(index: number): void;
+  onTool(tool: ToolId): void;
+  onCamera(kind: "plan" | "front"): void;
+  onToggleAudio(): void;
+  onStart(): void;
+  onReforge(): void;
+  onRestart(): void;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  text?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private writSub: HTMLElement;
+  private writName: HTMLElement;
+  private writBrief: HTMLElement;
+  private writPips: HTMLElement;
+  private schematic: HTMLCanvasElement;
+  private progressBar: HTMLElement;
+  private progressText: HTMLElement;
+  private chiselValue: HTMLElement;
+  private chiselTotal: HTMLElement;
+  private chiselGauge: HTMLElement;
+  private chiselNote: HTMLElement;
+  private chiselPanel: HTMLElement;
+  private matSlots = new Map<MaterialId, { root: HTMLElement; count: HTMLElement }>();
+  private formSlots: { root: HTMLElement; img: HTMLImageElement }[] = [];
+  private toolButtons = new Map<ToolId, HTMLElement>();
+  private toasts: HTMLElement;
+  private banner: HTMLElement;
+  private overlays = new Map<Exclude<OverlayKind, null>, HTMLElement>();
+  private failLine: HTMLElement;
+  private winLine: HTMLElement;
+  private audioBtn: HTMLElement;
+  private rotationTag: HTMLElement;
+
+  constructor(private handlers: HudHandlers) {
+    this.root = el("div", "hud");
+
+    // ---- Top bar ----------------------------------------------------------
+    const top = el("div", "topbar");
+
+    const brand = el("div", "brand");
+    const mark = el("div", "mark");
+    mark.innerHTML = `<svg viewBox="0 0 40 40" width="34" height="34" aria-hidden="true">
+      <polygon points="20,4 34,12 20,20 6,12" fill="#d9a15a"/>
+      <polygon points="6,12 20,20 20,36 6,28" fill="#8c5f34"/>
+      <polygon points="34,12 20,20 20,36 34,28" fill="#b47f45"/>
+      <polygon points="20,20 27,16 27,24 20,28" fill="#63a58c"/>
+    </svg>`;
+    const brandText = el("div", "brand-text");
+    brandText.appendChild(el("div", "title", "BLOCKSMITH"));
+    brandText.appendChild(el("div", "sub", "Cinderfell Mesa · Masonwright Guild"));
+    brand.append(mark, brandText);
+
+    const writ = el("div", "panel writ");
+    const wHead = el("div", "writ-head");
+    this.writSub = el("span", "writ-sub", "Writ the First");
+    this.writPips = el("span", "writ-pips", "");
+    wHead.append(this.writSub, this.writPips);
+    this.writName = el("div", "writ-name", "—");
+    this.writBrief = el("div", "writ-brief", "");
+    this.schematic = el("canvas", "schematic");
+    const prog = el("div", "progress");
+    const bar = el("div", "bar");
+    this.progressBar = el("i");
+    bar.appendChild(this.progressBar);
+    this.progressText = el("span", "pct", "0 / 0");
+    prog.append(bar, this.progressText);
+    writ.append(wHead, this.writName, this.writBrief, this.schematic, prog);
+
+    const rightStack = el("div", "right-stack");
+    this.chiselPanel = el("div", "panel chisel");
+    this.chiselPanel.appendChild(el("div", "label", "Chisels remaining"));
+    const big = el("div", "big");
+    this.chiselValue = el("span", "value", "24");
+    this.chiselTotal = el("small", "", "/24");
+    big.append(this.chiselValue, this.chiselTotal);
+    const gauge = el("div", "gauge");
+    this.chiselGauge = el("i");
+    gauge.appendChild(this.chiselGauge);
+    this.chiselNote = el("div", "note", "");
+    this.chiselPanel.append(big, gauge, this.chiselNote);
+
+    const camRow = el("div", "camrow");
+    const planBtn = el("button", "chip", "45° Plan");
+    planBtn.title = "Snap to the guild's planning view (F)";
+    planBtn.addEventListener("click", () => handlers.onCamera("plan"));
+    const frontBtn = el("button", "chip", "Elevation");
+    frontBtn.title = "Face-on elevation (G)";
+    frontBtn.addEventListener("click", () => handlers.onCamera("front"));
+    this.audioBtn = el("button", "chip", "♪ Sound");
+    this.audioBtn.addEventListener("click", () => handlers.onToggleAudio());
+    camRow.append(planBtn, frontBtn, this.audioBtn);
+    rightStack.append(this.chiselPanel, camRow);
+
+    top.append(brand, writ, rightStack);
+
+    // ---- Toasts & banner --------------------------------------------------
+    this.toasts = el("div", "toasts");
+    this.banner = el("div", "banner");
+
+    // ---- Dock -------------------------------------------------------------
+    const dock = el("div", "dock");
+    const matRow = el("div", "panel materials");
+    matRow.appendChild(el("div", "row-label", "Quarry stock"));
+    const matList = el("div", "slots");
+    MATERIAL_IDS.forEach((id, i) => {
+      const slot = el("button", "slot");
+      slot.title = MATERIALS[id].blurb;
+      const img = el("img");
+      img.src = materialIconURL(id);
+      img.alt = MATERIALS[id].name;
+      const name = el("span", "slot-name", MATERIALS[id].name);
+      const count = el("span", "slot-count", "0");
+      const key = el("span", "slot-key", String(i + 1));
+      slot.append(key, img, name, count);
+      slot.addEventListener("click", () => handlers.onMaterial(id));
+      matList.appendChild(slot);
+      this.matSlots.set(id, { root: slot, count });
+    });
+    matRow.appendChild(matList);
+
+    const lower = el("div", "lower");
+
+    const formPanel = el("div", "panel forms");
+    formPanel.appendChild(el("div", "row-label", "Forms"));
+    const formList = el("div", "slots");
+    FORMS.forEach((form, i) => {
+      const slot = el("button", "slot form");
+      slot.title = `${form.name} — ${form.hint}`;
+      const img = el("img");
+      img.src = formIconURL(form, 0);
+      img.alt = form.name;
+      const name = el("span", "slot-name", form.name);
+      const key = el("span", "slot-key", String(i + 1));
+      key.classList.add("alt");
+      slot.append(key, img, name);
+      slot.addEventListener("click", () => handlers.onForm(i));
+      formList.appendChild(slot);
+      this.formSlots.push({ root: slot, img });
+    });
+    formPanel.appendChild(formList);
+    this.rotationTag = el("div", "rotation", "Q / E  ·  facing N");
+    formPanel.appendChild(this.rotationTag);
+
+    const toolPanel = el("div", "panel tools");
+    toolPanel.appendChild(el("div", "row-label", "Tool"));
+    const toolList = el("div", "slots");
+    (["formhammer", "riftpick"] as ToolId[]).forEach((t) => {
+      const slot = el("button", "slot tool");
+      const img = el("img");
+      img.src = toolIconURL(t);
+      img.alt = TOOLS[t].name;
+      const name = el("span", "slot-name", TOOLS[t].name);
+      slot.append(img, name);
+      slot.addEventListener("click", () => handlers.onTool(t));
+      toolList.appendChild(slot);
+      this.toolButtons.set(t, slot);
+    });
+    toolPanel.appendChild(toolList);
+    toolPanel.appendChild(el("div", "rotation", "Tab swaps · hold Shift to cut"));
+
+    const legend = el("div", "panel legend");
+    legend.innerHTML = `
+      <div class="row-label">Controls</div>
+      <ul>
+        <li><b>Left drag</b> lay a route of blocks</li>
+        <li><b>Right drag</b> orbit · <b>wheel</b> zoom</li>
+        <li><b>Middle drag</b> / Shift+right pan</li>
+        <li><b>1-6</b> stock · <b>Q/E</b> turn form</li>
+        <li><b>Tab</b> tool · <b>F</b> plan view</li>
+      </ul>`;
+
+    lower.append(formPanel, toolPanel, legend);
+    dock.append(matRow, lower);
+
+    // ---- Overlays ---------------------------------------------------------
+    const intro = this.makeOverlay(
+      "intro",
+      "BLOCKSMITH",
+      "Three writs. Twenty-four chisels.",
+      `<p>The Masonwright Guild has posted three build writs on Cinderfell Mesa. Each one marks a
+       <b>frame</b> on the plot and names the exact stone that must stand inside it.</p>
+      <p>The quarry already left rock in the frame. Some of it is your footing — some of it is in the way.
+      Every block you <b>set</b> and every block you <b>cut</b> spends one chisel from the same pouch of
+      twenty-four. Spend them all with a writ unfinished and the work goes unsound.</p>
+      <p><b>Left-drag</b> to lay a route. <b>Right-drag</b> to orbit. <b>Q/E</b> turns the form in your hand.</p>`,
+      "Take up the hammer",
+      () => handlers.onStart(),
+    );
+
+    const fail = this.makeOverlay(
+      "fail",
+      "UNSOUND",
+      "The frame will not hold.",
+      `<p>The chisels are spent and the writ is unmet. The guild strikes the work and re-quarries the plot.</p>`,
+      "Reforge the writ",
+      () => handlers.onReforge(),
+    );
+    this.failLine = el("p", "stat-line", "");
+    fail.querySelector(".overlay-body")?.appendChild(this.failLine);
+
+    const win = this.makeOverlay(
+      "win",
+      "MASTERWORK",
+      "All three writs stand.",
+      `<p>The gate throws a shadow, the cistern holds its ring, and the spire is lit.</p>`,
+      "Work a new commission",
+      () => handlers.onRestart(),
+    );
+    this.winLine = el("p", "stat-line", "");
+    win.querySelector(".overlay-body")?.appendChild(this.winLine);
+
+    this.root.append(top, this.banner, this.toasts, dock, intro, fail, win);
+    document.body.appendChild(this.root);
+  }
+
+  private makeOverlay(
+    kind: Exclude<OverlayKind, null>,
+    title: string,
+    subtitle: string,
+    bodyHTML: string,
+    cta: string,
+    onCta: () => void,
+  ): HTMLElement {
+    const overlay = el("div", `overlay overlay-${kind}`);
+    const card = el("div", "overlay-card");
+    card.appendChild(el("div", "overlay-title", title));
+    card.appendChild(el("div", "overlay-sub", subtitle));
+    const body = el("div", "overlay-body");
+    body.innerHTML = bodyHTML;
+    card.appendChild(body);
+    const btn = el("button", "cta", cta);
+    btn.addEventListener("click", onCta);
+    card.appendChild(btn);
+    overlay.appendChild(card);
+    overlay.style.display = "none";
+    this.overlays.set(kind, overlay);
+    return overlay;
+  }
+
+  showOverlay(kind: OverlayKind): void {
+    for (const [k, node] of this.overlays) {
+      const on = k === kind;
+      node.style.display = on ? "flex" : "none";
+      if (on) {
+        node.classList.remove("in");
+        void node.offsetWidth;
+        node.classList.add("in");
+      }
+    }
+    this.root.classList.toggle("blocked", kind !== null);
+  }
+
+  setWrit(writ: Writ, index: number, total: number): void {
+    this.writSub.textContent = writ.subtitle;
+    this.writName.textContent = writ.name;
+    this.writBrief.textContent = writ.brief;
+    this.writPips.textContent = Array.from({ length: total }, (_, i) => (i < index ? "◆" : i === index ? "◈" : "◇")).join(" ");
+  }
+
+  setSchematic(
+    cells: readonly SchematicCell[],
+    extras: readonly SchematicExtra[],
+    bounds: { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number },
+  ): void {
+    drawSchematic(this.schematic, cells, extras, bounds);
+  }
+
+  setProgress(met: number, total: number, cuts: number): void {
+    const pct = total ? met / total : 0;
+    this.progressBar.style.width = `${Math.round(pct * 100)}%`;
+    this.progressText.textContent =
+      cuts > 0 ? `${met}/${total} set · ${cuts} to clear` : `${met}/${total} set`;
+    this.progressBar.classList.toggle("full", met === total && cuts === 0);
+  }
+
+  setChisels(left: number, total: number, par: number): void {
+    this.chiselValue.textContent = String(left);
+    this.chiselTotal.textContent = `/${total}`;
+    const f = total ? left / total : 0;
+    this.chiselGauge.style.width = `${Math.round(f * 100)}%`;
+    this.chiselPanel.classList.toggle("low", f <= 0.25);
+    this.chiselPanel.classList.toggle("critical", left <= 3);
+    this.chiselNote.textContent = par > 0 ? `guild par for this writ: ${par}` : "";
+  }
+
+  pulseChisels(): void {
+    this.chiselPanel.classList.remove("pulse");
+    void this.chiselPanel.offsetWidth;
+    this.chiselPanel.classList.add("pulse");
+  }
+
+  setStock(stock: Record<MaterialId, number>, selected: MaterialId): void {
+    for (const id of MATERIAL_IDS) {
+      const slot = this.matSlots.get(id);
+      if (!slot) continue;
+      const n = stock[id] ?? 0;
+      slot.count.textContent = String(n);
+      slot.root.classList.toggle("active", id === selected);
+      slot.root.classList.toggle("empty", n <= 0);
+    }
+  }
+
+  setForm(index: number, turns: number): void {
+    this.formSlots.forEach((slot, i) => {
+      slot.root.classList.toggle("active", i === index);
+      const form = FORMS[i];
+      if (form) slot.img.src = formIconURL(form, i === index ? turns : 0);
+    });
+    const dirs = ["north", "east", "south", "west"];
+    const form = FORMS[index];
+    this.rotationTag.textContent = form?.rotatable
+      ? `Q / E · facing ${dirs[((turns % 4) + 4) % 4]}`
+      : "Q / E · this form is square";
+  }
+
+  setTool(tool: ToolId): void {
+    for (const [t, node] of this.toolButtons) node.classList.toggle("active", t === tool);
+    this.root.dataset.tool = tool;
+  }
+
+  setAudioLabel(muted: boolean): void {
+    this.audioBtn.textContent = muted ? "♪ Muted" : "♪ Sound";
+    this.audioBtn.classList.toggle("off", muted);
+  }
+
+  toast(message: string, kind: "info" | "good" | "bad" = "info"): void {
+    const node = el("div", `toast ${kind}`, message);
+    this.toasts.appendChild(node);
+    window.setTimeout(() => node.classList.add("out"), 1900);
+    window.setTimeout(() => node.remove(), 2400);
+    while (this.toasts.children.length > 4) this.toasts.firstElementChild?.remove();
+  }
+
+  showBanner(title: string, sub: string, ms = 3200): void {
+    this.banner.innerHTML = "";
+    this.banner.appendChild(el("div", "banner-title", title));
+    this.banner.appendChild(el("div", "banner-sub", sub));
+    this.banner.classList.remove("show");
+    void this.banner.offsetWidth;
+    this.banner.classList.add("show");
+    window.setTimeout(() => this.banner.classList.remove("show"), ms);
+  }
+
+  setFailStats(text: string): void {
+    this.failLine.textContent = text;
+  }
+
+  setWinStats(text: string): void {
+    this.winLine.textContent = text;
+  }
+}

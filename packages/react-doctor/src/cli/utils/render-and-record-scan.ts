@@ -17,7 +17,6 @@ import type { CachedScanPayload } from "./scan-result-cache-payload.js";
 import type { RunRootSpan } from "./with-run-span.js";
 
 export interface RenderAndRecordScanInput {
-  readonly directory: string;
   readonly payload: CachedScanPayload;
   readonly options: ResolvedInspectOptions;
   readonly startTime: number;
@@ -121,7 +120,6 @@ export const renderAndRecordScan = async (
     didDeadCodeFail: input.payload.didDeadCodeFail,
     supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
     securityScanFailed: input.payload.securityScanFailed,
-    deadCodeOverlapped: input.payload.deadCodeOverlapped,
     suppressedRuleCounts: input.payload.suppressedRuleCounts ?? [],
   });
   return result;

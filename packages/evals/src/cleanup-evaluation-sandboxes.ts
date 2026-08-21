@@ -1,10 +1,9 @@
 import { DaytonaNotFoundError, SandboxState } from "@daytona/sdk";
 import type { Daytona, Sandbox } from "@daytona/sdk";
-import pLimit from "p-limit";
-
 import { SANDBOX_CLEANUP_CONCURRENCY, SANDBOX_DELETE_TIMEOUT_SECONDS } from "./constants.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
 import { runBeforeDeadline } from "./utils/run-before-deadline.js";
+import { createConcurrencyLimit } from "./utils/create-concurrency-limit.js";
 
 export interface CleanupEvaluationSandboxesInput {
   daytona: Daytona;
@@ -17,7 +16,7 @@ export const cleanupEvaluationSandboxes = async ({
   evaluationId,
   deadlineMilliseconds,
 }: CleanupEvaluationSandboxesInput): Promise<void> => {
-  const cleanupLimit = pLimit(SANDBOX_CLEANUP_CONCURRENCY);
+  const cleanupLimit = createConcurrencyLimit(SANDBOX_CLEANUP_CONCURRENCY);
   const remainingSandboxes = await runBeforeDeadline({
     operation: async () => {
       const sandboxes: Sandbox[] = [];

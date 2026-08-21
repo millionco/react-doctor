@@ -431,6 +431,7 @@ const installReactDoctorAgentHooksStep = (
       );
       recordCount(METRIC.installAgentHooks, 1, {
         agentsCount: hookResult.installedAgents.length,
+        hookEvent: "stop",
       });
     }
   } catch (error) {

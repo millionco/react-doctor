@@ -60,9 +60,10 @@ packages/
       refs.ts                    Context.Reference for ambient env config
       run-inspect.ts             streaming orchestrator (the heart)
       build-diagnostic-pipeline  per-element filter pipeline (single source of truth)
-      services/                  10 Context.Service classes (Files, Git, Project,
-                                 Config, Linter, DeadCode, Score, Reporter, Progress,
-                                 NodeResolver, StagedFiles) + LintPartialFailures
+      services/                  Context.Service implementations (Files, Git, Project,
+                                 Config, Linter, Maintainability, Score, Reporter,
+                                 Progress, NodeResolver, StagedFiles, SupplyChain)
+                                 + LintPartialFailures
       ...                        rest of the lint / score / suppression engine
   api/                           PRIVATE  programmatic diagnose() (Effect.runPromise shell)
   react-doctor/                  PUBLISHED  CLI + public inspect() + bin
@@ -157,7 +158,7 @@ for this codebase) for canonical examples.
 - `layerCapture` for the test layer that records calls into a `Ref` exposed via a
   sibling `*Capture` service (e.g. `ReporterCapture`, `ProgressCapture`).
 - `layerNoop` for the production layer that has void-return / discard semantics
-  (Reporter, Progress). Analyzers (Linter, DeadCode) use `layerOf([])` instead.
+  (Reporter, Progress). Analyzers (Linter, Maintainability) use `layerOf([])` instead.
 - Implementation-specific names: `layerOxlint`, `layerHttp`, `layerOra(factory)`.
 
 ### Schemas
@@ -228,9 +229,7 @@ for spans: the CLI pins `tracesSampleRate: 0` and Sentry never records a span.
   metrics exporter passes `maxBatchSize: "disabled"` internally, which skips
   Effect's empty-buffer short-circuit — it POSTs on every scope close whether or
   not anything was recorded, so on a firewalled machine that request cannot fail
-  fast. The language server overrides `exportIntervalMs` (see
-  `LSP_TELEMETRY_EXPORT_INTERVAL_MS`) because an editor session may never shut
-  down cleanly.
+  fast.
 - **Anonymization.** Telemetry must stay anonymized, and OTLP has **no**
   `beforeSend`-style hook — the safety net Sentry gave us for free had to be
   rebuilt. Two mechanisms now carry it:
@@ -292,7 +291,7 @@ for spans: the CLI pins `tracesSampleRate: 0` and Sentry never records a span.
   (`outcome.wouldBlock`/`outcome.blocking`/`outcome.clean`/`outcome.skippedChecks`),
   findings (`diag.total`, `diag.errors`/`diag.warnings`, `diag.affectedFiles`,
   `diag.distinctRules`, `diag.topRule`, per-category `diag.category.*`),
-  `score.value`/`score.label`/`score.available`, the `lint.*`/`deadCode.*`/
+  `score.value`/`score.label`/`score.available`, the `lint.*`/`maintainability.*`/
   `supplyChain.*` pass outcomes, `timing.*` durations, and the CI/PR specifics
   (`action.actorAssociation`, `action.runnerOs`, and the forwarded action knobs
   `action.comment`/`action.reviewComments`/`action.versionPin`). Typing matters
@@ -305,7 +304,7 @@ for spans: the CLI pins `tracesSampleRate: 0` and Sentry never records a span.
   outcome dimensions on the wide event (wrapped in `withNamespace`), **not** new
   counters — the `scan.completed`/`scan.duration`/`rule.fired` counters stay as
   the cheap floor alongside `cli.invoked`/`cli.error`. Score reachability is
-  derivable (`!score.available && !lint.failed && !deadCode.failed && !scan.noScore`)
+  derivable (`!score.available && !lint.failed && !maintainability.failed && !scan.noScore`)
   and score latency is the `Score.compute` child span's duration, so neither
   needs a dedicated field. CI detection + the official-action marker and
   forwarded inputs live in `cli/utils/is-ci-environment.ts`; `action.yml` sets the

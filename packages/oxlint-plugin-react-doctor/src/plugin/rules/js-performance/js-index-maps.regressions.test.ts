@@ -120,4 +120,10 @@ describe("js-performance/js-index-maps — regressions", () => {
       `function f(values, options){ const labels = []; for (const value of values){ const opt = options.find((o)=> o.value === value); labels.push(opt?.label ?? value); } return labels; }`,
     );
   });
+
+  it("does not treat a deferred event callback as part of its registration loop", () => {
+    expectPass(
+      `function bindButtons(buttons, users){ for (const button of buttons) { button.addEventListener("click", () => { const user = users.find((candidate) => candidate.id === button.dataset.id); show(user); }); } }`,
+    );
+  });
 });

@@ -42,6 +42,11 @@ interface EslintFlatConfig {
   name: string;
   plugins: Record<string, EslintPlugin>;
   rules: Record<string, OxlintRuleSeverity>;
+  settings: {
+    "react-doctor": {
+      portedRuleMode: "curated";
+    };
+  };
 }
 
 interface EslintPlugin {
@@ -94,6 +99,7 @@ const buildFlatConfig = (
   name: `react-doctor/${configName}`,
   plugins: {},
   rules: { ...ruleSet },
+  settings: { "react-doctor": { portedRuleMode: "curated" } },
 });
 
 const eslintPlugin: EslintPlugin = {

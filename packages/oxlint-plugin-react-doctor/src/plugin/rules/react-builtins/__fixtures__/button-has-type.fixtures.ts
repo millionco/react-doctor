@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/button_has_type.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/react/button_has_type.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`

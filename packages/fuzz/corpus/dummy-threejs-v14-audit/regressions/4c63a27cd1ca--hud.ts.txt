@@ -1,0 +1,217 @@
+// rule: dangerous-html-sink
+// file-path: src/game/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 4c63a27cd1cabd0aa8e4078b52f3d6c201912df8c3e7d0bf5487bc961230c3d9
+/** DOM overlay: live progress, transient feedback, and the season / run cards. */
+import { POOLS } from "../world/layout";
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html !== undefined) n.innerHTML = html;
+  return n;
+}
+
+export interface SeasonHudData {
+  index: number;
+  total: number;
+  name: string;
+  blurb: string;
+  lanterns: number;
+  maxLanterns: number;
+  settled: number;
+  quota: number;
+  brood: number;
+  adrift: number;
+  lost: number;
+  timeLeft: number;
+  timeTotal: number;
+  poolFill: number[];
+  pulseReady: number;
+}
+
+export class Hud {
+  private root = el("div");
+  private hud = el("div");
+  private cards = el("div");
+  private seasonName: HTMLElement;
+  private seasonLabel: HTMLElement;
+  private seasonBlurb: HTMLElement;
+  private lanterns: HTMLElement;
+  private quotaCount: HTMLElement;
+  private quotaFill: HTMLElement;
+  private quotaMark: HTMLElement;
+  private quotaSub: HTMLElement;
+  private timerValue: HTMLElement;
+  private timerFill: HTMLElement;
+  private poolRows: { row: HTMLElement; bar: HTMLElement; label: HTMLElement }[] = [];
+  private toasts: HTMLElement;
+  private vignette: HTMLElement;
+  private pulseState: HTMLElement;
+
+  constructor() {
+    this.root.id = "ui";
+    this.hud.id = "hud";
+    this.cards.id = "cards";
+
+    const season = el("div", "panel");
+    season.id = "season-box";
+    this.seasonLabel = el("div", undefined, "Season 1 of 5");
+    this.seasonLabel.id = "season-label";
+    this.seasonName = el("div", undefined, "First Thaw");
+    this.seasonName.id = "season-name";
+    this.seasonBlurb = el("div", undefined, "");
+    this.seasonBlurb.id = "season-blurb";
+    this.lanterns = el("div");
+    this.lanterns.id = "lanterns";
+    season.append(this.seasonLabel, this.seasonName, this.seasonBlurb, this.lanterns);
+
+    const quota = el("div", "panel");
+    quota.id = "quota-box";
+    const head = el("div");
+    head.id = "quota-head";
+    head.append(el("span", undefined, "Brood settled"), (this.quotaCount = el("span")));
+    this.quotaCount.id = "quota-count";
+    const track = el("div");
+    track.id = "quota-track";
+    this.quotaFill = el("div");
+    this.quotaFill.id = "quota-fill";
+    this.quotaMark = el("div");
+    this.quotaMark.id = "quota-mark";
+    track.append(this.quotaFill, this.quotaMark);
+    this.quotaSub = el("div");
+    this.quotaSub.id = "quota-sub";
+    quota.append(head, track, this.quotaSub);
+
+    const timer = el("div", "panel");
+    timer.id = "timer-box";
+    const tl = el("div", undefined, "Tide turns in");
+    tl.id = "timer-label";
+    this.timerValue = el("div", undefined, "0:00");
+    this.timerValue.id = "timer-value";
+    const ttrack = el("div");
+    ttrack.id = "timer-track";
+    this.timerFill = el("div");
+    this.timerFill.id = "timer-fill";
+    ttrack.append(this.timerFill);
+    timer.append(tl, this.timerValue, ttrack);
+
+    const pools = el("div", "panel");
+    pools.id = "pools-box";
+    pools.append(el("h4", undefined, "Safe pools"));
+    const names = ["West Bowl", "East Bowl", "South Bowl"];
+    for (let i = 0; i < POOLS.length; i++) {
+      const row = el("div", "pool-row");
+      const label = el("span", undefined, names[i] ?? `Pool ${i + 1}`);
+      label.style.minWidth = "62px";
+      const bar = el("div", "pool-bar");
+      const fill = el("i");
+      bar.append(fill);
+      const count = el("span", undefined, "0/0");
+      row.append(label, bar, count);
+      pools.append(row);
+      this.poolRows.push({ row, bar: fill, label: count });
+    }
+
+    const tools = el("div", "panel");
+    tools.id = "tools-box";
+    tools.innerHTML = `
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> &nbsp;steer — the <b>bow wave</b> pushes ahead</div>
+      <div><kbd>Space</kbd> &nbsp;<b>lantern</b> — draws the brood in, slows you</div>
+      <div><kbd>E</kbd> &nbsp;<b>surge</b> — <span id="pulse-state">ready</span></div>
+      <div><kbd>Wheel</kbd> zoom &nbsp;<kbd>M</kbd> mute &nbsp;<kbd>R</kbd> abandon season</div>`;
+
+    this.toasts = el("div");
+    this.toasts.id = "toasts";
+    this.vignette = el("div");
+    this.vignette.id = "danger-vignette";
+
+    this.hud.append(season, quota, timer, pools, tools, this.toasts, this.vignette);
+    this.root.append(this.vignette, this.hud, this.cards);
+    document.body.append(this.root);
+    this.pulseState = this.root.querySelector("#pulse-state") as HTMLElement;
+  }
+
+  setHudVisible(on: boolean): void {
+    this.hud.classList.toggle("on", on);
+  }
+
+  update(d: SeasonHudData): void {
+    this.seasonLabel.textContent = `Season ${d.index + 1} of ${d.total}`;
+    this.seasonName.textContent = d.name;
+    this.seasonBlurb.textContent = d.blurb;
+
+    if (this.lanterns.children.length !== d.maxLanterns) {
+      this.lanterns.innerHTML = "";
+      for (let i = 0; i < d.maxLanterns; i++) this.lanterns.append(el("div", "lamp"));
+    }
+    for (let i = 0; i < this.lanterns.children.length; i++) {
+      (this.lanterns.children[i] as HTMLElement).classList.toggle("out", i >= d.lanterns);
+    }
+
+    this.quotaCount.innerHTML = `<b>${d.settled}</b> / ${d.quota}`;
+    const pct = d.brood > 0 ? (d.settled / d.brood) * 100 : 0;
+    this.quotaFill.style.width = `${Math.min(100, pct)}%`;
+    this.quotaMark.style.left = `${d.brood > 0 ? (d.quota / d.brood) * 100 : 0}%`;
+    this.quotaSub.innerHTML =
+      `<span class="adriftv">adrift <b>${d.adrift}</b></span>` +
+      `<span>brood <b>${d.brood}</b></span>` +
+      `<span class="lostv">lost <b>${d.lost}</b></span>`;
+
+    const s = Math.max(0, Math.ceil(d.timeLeft));
+    this.timerValue.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    this.timerValue.classList.toggle("urgent", d.timeLeft < 15);
+    this.timerFill.style.width = `${Math.max(0, Math.min(100, (d.timeLeft / d.timeTotal) * 100))}%`;
+
+    for (let i = 0; i < this.poolRows.length; i++) {
+      const spec = POOLS[i]!;
+      const fill = d.poolFill[i] ?? 0;
+      const r = this.poolRows[i]!;
+      r.bar.style.width = `${(fill / spec.capacity) * 100}%`;
+      r.label.textContent = `${fill}/${spec.capacity}`;
+      r.row.classList.toggle("full", fill >= spec.capacity);
+    }
+
+    if (d.pulseReady >= 1) {
+      this.pulseState.textContent = "ready";
+      this.pulseState.className = "";
+    } else {
+      this.pulseState.textContent = `${Math.ceil((1 - d.pulseReady) * 5.5)}s`;
+      this.pulseState.className = "cooling";
+    }
+  }
+
+  setDanger(level: number): void {
+    this.vignette.style.opacity = String(Math.min(0.9, level));
+  }
+
+  toast(text: string, kind: "good" | "bad" | "cool" | "" = ""): void {
+    const t = el("div", `toast ${kind}`.trim(), text);
+    this.toasts.append(t);
+    setTimeout(() => t.remove(), 2100);
+    while (this.toasts.children.length > 4) this.toasts.firstElementChild?.remove();
+  }
+
+  /** Replaces whatever card is showing. Returns the card element. */
+  showCard(html: string, onAction?: () => void): HTMLElement {
+    this.cards.innerHTML = "";
+    const card = el("div", "card panel", html);
+    this.cards.append(card);
+    const btn = card.querySelector("button.go");
+    if (btn && onAction) btn.addEventListener("click", onAction, { once: true });
+    return card;
+  }
+
+  hideCard(): void {
+    this.cards.innerHTML = "";
+  }
+
+  get hasCard(): boolean {
+    return this.cards.children.length > 0;
+  }
+}

@@ -9,9 +9,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { hasCustomMemoComparator } from "../../utils/has-custom-memo-comparator.js";
 import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
-import { isJsxAttributeOnIntrinsicHtmlElement } from "../../utils/is-on-intrinsic-html-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { shouldSkipReactPerfNativeAttribute } from "../../utils/should-skip-react-perf-native-attribute.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import {
   DATA_ARRAY_PROP_NAMES,
@@ -44,7 +45,10 @@ const isEmptyArrayLiteralExpression = (expression: EsTreeNode): boolean => {
   return isNodeOfType(stripped, "ArrayExpression") && (stripped.elements ?? []).length === 0;
 };
 
-const isArrayProducingExpression = (expression: EsTreeNode): boolean => {
+const isArrayProducingExpression = (
+  expression: EsTreeNode,
+  shouldUseCuratedBehavior: boolean,
+): boolean => {
   const stripped = stripParenExpression(expression);
   if (isNodeOfType(stripped, "ArrayExpression")) return true;
   if (isNodeOfType(stripped, "NewExpression")) {
@@ -81,18 +85,25 @@ const isArrayProducingExpression = (expression: EsTreeNode): boolean => {
     // expression always allocates an array somewhere (e.g.
     // `items={data ?? buildList()}` where `buildList()` is itself
     // array-producing), so check both sides.
-    if (stripped.operator === "??" || stripped.operator === "||") {
+    if (shouldUseCuratedBehavior && (stripped.operator === "??" || stripped.operator === "||")) {
       const leftIsEmptyFallback = isEmptyArrayLiteralExpression(stripped.left);
       const rightIsEmptyFallback = isEmptyArrayLiteralExpression(stripped.right);
-      if (leftIsEmptyFallback) return isArrayProducingExpression(stripped.right);
-      if (rightIsEmptyFallback) return isArrayProducingExpression(stripped.left);
+      if (leftIsEmptyFallback) {
+        return isArrayProducingExpression(stripped.right, shouldUseCuratedBehavior);
+      }
+      if (rightIsEmptyFallback) {
+        return isArrayProducingExpression(stripped.left, shouldUseCuratedBehavior);
+      }
     }
-    return isArrayProducingExpression(stripped.left) || isArrayProducingExpression(stripped.right);
+    return (
+      isArrayProducingExpression(stripped.left, shouldUseCuratedBehavior) ||
+      isArrayProducingExpression(stripped.right, shouldUseCuratedBehavior)
+    );
   }
   if (isNodeOfType(stripped, "ConditionalExpression")) {
     return (
-      isArrayProducingExpression(stripped.consequent) ||
-      isArrayProducingExpression(stripped.alternate)
+      isArrayProducingExpression(stripped.consequent, shouldUseCuratedBehavior) ||
+      isArrayProducingExpression(stripped.alternate, shouldUseCuratedBehavior)
     );
   }
   return false;
@@ -101,6 +112,7 @@ const isArrayProducingExpression = (expression: EsTreeNode): boolean => {
 const followsRenderLocalArrayBinding = (
   expression: EsTreeNode,
   jsxAttribute: EsTreeNode,
+  shouldUseCuratedBehavior: boolean,
 ): boolean => {
   const stripped = stripParenExpression(expression);
   if (!isNodeOfType(stripped, "Identifier")) return false;
@@ -112,6 +124,7 @@ const followsRenderLocalArrayBinding = (
   // exempts, so the destructure-default spelling must not fire either.
   const bindingParent = binding.bindingIdentifier.parent;
   if (
+    shouldUseCuratedBehavior &&
     bindingParent &&
     isNodeOfType(bindingParent, "AssignmentPattern") &&
     isEmptyArrayLiteralExpression(binding.initializer)
@@ -132,7 +145,7 @@ const followsRenderLocalArrayBinding = (
     }
     walker = walker.parent ?? null;
   }
-  return isArrayProducingExpression(binding.initializer);
+  return isArrayProducingExpression(binding.initializer, shouldUseCuratedBehavior);
 };
 
 // Port of `oxc_linter::rules::react_perf::jsx_no_new_array_as_prop`. Flags
@@ -158,19 +171,29 @@ export const jsxNoNewArrayAsProp = defineRule({
     "Wrap the array in `useMemo` or move it outside the component so memoized children do not redraw every render.",
   category: "Performance",
   create: (context) => {
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const isTestlikeFile = isTestlikeFilename(context.filename);
     let memoRegistry: Map<string, MemoStatus> | null = null;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         memoRegistry = buildSameFileMemoRegistry(node as EsTreeNode);
       },
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         // Intrinsic HTML elements aren't memoized; flagging inline
         // arrays on them is unactionable. See `jsx-no-new-function-as-prop`
         // for the full rationale.
-        if (isJsxAttributeOnIntrinsicHtmlElement(node)) return;
+        if (
+          shouldSkipReactPerfNativeAttribute(
+            node,
+            context.settings,
+            "jsxNoNewArrayAsProp",
+            shouldUseCuratedBehavior,
+          )
+        ) {
+          return;
+        }
         // Consumer-component memo-status: if the parent JSX element
         // is a plain function/arrow defined in this same file (no
         // memo/forwardRef/observer wrapper), the rule's "React.memo
@@ -184,19 +207,29 @@ export const jsxNoNewArrayAsProp = defineRule({
         // Only fire when same-file analysis PROVES the consumer is
         // memoised. "unknown" and "not-memoised" both short-circuit —
         // see jsx-no-new-function-as-prop for the audit data.
-        if (memoStatusForJsxOpeningName(memoRegistry, openingName) !== "memoised") return;
+        if (
+          shouldUseCuratedBehavior &&
+          memoStatusForJsxOpeningName(memoRegistry, openingName) !== "memoised"
+        ) {
+          return;
+        }
         // `memo(fn, arePropsEqual)` compares props with the author's own
         // function, which routinely ignores reference identity (antd's
         // MemoInput element-wise childProps compare) — a fresh array
         // cannot break that bailout.
-        if (hasCustomMemoComparator(openingName, context.scopes)) return;
+        if (shouldUseCuratedBehavior && hasCustomMemoComparator(openingName, context.scopes))
+          return;
         // Data-collection slot props (`items`, `data`, `options`,
         // `tabs`, `*Items`, `*Options`, etc.) receive inline array
         // literals by convention — every list/table/menu/chart
         // component uses this pattern. The perf footgun the rule
         // targets is hot-path identity changes; these are one-time
         // configuration arrays.
-        if (isNodeOfType(node.name, "JSXIdentifier") && isDataArrayPropName(node.name.name)) {
+        if (
+          shouldUseCuratedBehavior &&
+          isNodeOfType(node.name, "JSXIdentifier") &&
+          isDataArrayPropName(node.name.name)
+        ) {
           return;
         }
         if (!isInsideFunctionScope(node)) return;
@@ -206,8 +239,8 @@ export const jsxNoNewArrayAsProp = defineRule({
         if (!expression || expression.type === "JSXEmptyExpression") return;
         const expressionNode = expression as EsTreeNode;
         if (
-          !isArrayProducingExpression(expressionNode) &&
-          !followsRenderLocalArrayBinding(expressionNode, node)
+          !isArrayProducingExpression(expressionNode, shouldUseCuratedBehavior) &&
+          !followsRenderLocalArrayBinding(expressionNode, node, shouldUseCuratedBehavior)
         ) {
           return;
         }

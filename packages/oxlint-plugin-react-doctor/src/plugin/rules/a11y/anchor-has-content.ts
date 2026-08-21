@@ -9,6 +9,7 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { objectHasAccessibleChild } from "../../utils/object-has-accessible-child.js";
 
 const MESSAGE =
@@ -39,6 +40,15 @@ const isTransComponentsTemplate = (node: EsTreeNodeOfType<"JSXElement">): boolea
   return false;
 };
 
+const hasPotentialCustomComponentChild = (node: EsTreeNodeOfType<"JSXElement">): boolean =>
+  node.children.some((child) => {
+    if (!isNodeOfType(child as EsTreeNode, "JSXElement")) return false;
+    const childElement = child as EsTreeNodeOfType<"JSXElement">;
+    const childName = flattenJsxName(childElement.openingElement.name as EsTreeNode);
+    if (!childName || childName[0] === childName[0]?.toLowerCase()) return false;
+    return !hasJsxPropIgnoreCase(childElement.openingElement.attributes, "aria-hidden");
+  });
+
 // Port of `oxc_linter::rules::jsx_a11y::anchor_has_content`.
 export const anchorHasContent = defineRule({
   id: "anchor-has-content",
@@ -48,10 +58,11 @@ export const anchorHasContent = defineRule({
   recommendation: "Put readable text inside every link.",
   category: "Accessibility",
   create: (context) => {
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const isTestlikeFile = isTestlikeFilename(context.filename);
     return {
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         const opening = node.openingElement;
         const tag = getElementType(opening, context.settings);
         if (tag !== "a") return;
@@ -62,13 +73,18 @@ export const anchorHasContent = defineRule({
           : [];
         const canHaveLinkRole =
           roleValues === null || roleValues.some((roleValue) => hasLinkRole(roleValue));
-        if (!hrefAttribute && !canHaveLinkRole) return;
+        if (shouldUseCuratedBehavior && !hrefAttribute && !canHaveLinkRole) return;
         if (isHiddenFromScreenReader(opening, context.settings)) return;
-        if (objectHasAccessibleChild(node, context.settings)) return;
+        if (
+          objectHasAccessibleChild(node, context.settings) ||
+          (!shouldUseCuratedBehavior && hasPotentialCustomComponentChild(node))
+        ) {
+          return;
+        }
         for (const attribute of ["title", "aria-label", "aria-labelledby"]) {
           if (hasJsxPropIgnoreCase(opening.attributes, attribute)) return;
         }
-        if (isTransComponentsTemplate(node)) return;
+        if (shouldUseCuratedBehavior && isTransComponentsTemplate(node)) return;
         context.report({ node: opening.name, message: MESSAGE });
       },
     };

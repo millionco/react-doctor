@@ -1,8 +1,0 @@
-{
-  "name": "vite-resolve-alias",
-  "version": "1.0.0",
-  "private": true,
-  "devDependencies": {
-    "vite": "^5.0.0"
-  }
-}

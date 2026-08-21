@@ -1,0 +1,302 @@
+// rule: dangerous-html-sink
+// file-path: src/game/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 1bc05e89f0c56c04a26277c1cb36fe107d0909ce776ae6d1bd5ebeb6ca6f43ff
+import type { Landmark } from "../world/props";
+import { CHAPTER_SECONDS, SCRIPT_TOTAL, type GameState, type ScriptLine } from "./state";
+
+/**
+ * DOM overlay. Kept out of the render loop's way: everything here is written
+ * only when the value it displays actually changes.
+ */
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+export interface RibbonEntry {
+  landmark: Landmark;
+  distance: number;
+  occluded: boolean;
+}
+
+export class Hud {
+  readonly root = el("div");
+  private readonly loader = el("div", "overlay");
+  private readonly loaderBar = el("i");
+  private readonly loaderLabel = el("p", "subtitle", "preparing");
+  private readonly prologue = el("div", "overlay veil hidden");
+  private readonly endcard = el("div", "overlay endcard hidden");
+  private readonly clockEl = el("div", "clock", "4:00");
+  private readonly scriptsEl = el("b", undefined, "0");
+  private readonly threadEls: HTMLElement[] = [];
+  private readonly ribbon = el("div", "ribbon");
+  private readonly reticle = el("div", "reticle");
+  private readonly prompt = el("div", "prompt");
+  private readonly promptName = el("div", "name");
+  private readonly promptVerb = el("div", "verb");
+  private readonly script = el("div", "script");
+  private readonly scriptSrc = el("div", "src");
+  private readonly scriptBody = el("div", "body");
+  private readonly inspect = el("div", "inspect");
+  private readonly inspectNumeral = el("div", "numeral");
+  private readonly inspectTitle = el("div", "title");
+  private readonly inspectCaption = el("div", "caption");
+  private readonly inspectHint = el("div", "hintline");
+  private readonly banner = el("div", "banner");
+  private readonly bannerHead = el("div", "head");
+  private readonly bannerSub = el("div", "sub");
+  private readonly hudTop = el("div", "hud-top");
+  private readonly threads = el("div", "threads");
+
+  private scriptTimer = 0;
+  private lastRibbon = "";
+  private lastClock = "";
+  private lastScripts = -1;
+
+  onBegin: (() => void) | null = null;
+
+  constructor() {
+    this.root.id = "ui";
+
+    // Loading -------------------------------------------------------------
+    const bar = el("div", "bar");
+    bar.append(this.loaderBar);
+    this.loader.append(
+      el("h1", "title", "Room for Twelve"),
+      this.loaderLabel,
+      bar,
+    );
+
+    // Prologue -------------------------------------------------------------
+    this.prologue.append(
+      el("p", "subtitle", "Chapter One"),
+      el("h1", "title", "Room for Twelve"),
+      el(
+        "p",
+        "blurb",
+        "The clock in this tower stopped four hundred years ago and the room around it never accepted that. " +
+          "Twelve stations. Twelve things to work. Eighty-six scripts the room still runs for nobody.<br><br>" +
+          "Find the three threads, set the mechanism the way they tell you, and pull the detent at the twelfth station. " +
+          "You have four minutes of the room's patience.",
+      ),
+      (() => {
+        const c = el("div", "controls");
+        c.append(
+          el("span", undefined, "<b>W A S D</b>walk"),
+          el("span", undefined, "<b>Mouse</b>look"),
+          el("span", undefined, "<b>E</b>inspect / converse"),
+          el("span", undefined, "<b>Shift</b>slow"),
+          el("span", undefined, "<b>Q</b>step back"),
+        );
+        return c;
+      })(),
+      el("div", "cta", "Click to begin"),
+    );
+
+    // HUD ------------------------------------------------------------------
+    const left = el("div");
+    left.append(el("div", "chapter", "Room for Twelve &middot; Chapter One"), this.clockEl);
+    const right = el("div", "scripts");
+    right.append(this.scriptsEl, document.createTextNode(`of ${SCRIPT_TOTAL} scripts`));
+    this.hudTop.append(left, right);
+
+    for (const label of ["The ledger's order", "The eleventh stone", "The medallion"]) {
+      const t = el("div", "thread");
+      t.append(el("i"), el("span", undefined, label));
+      this.threads.append(t);
+      this.threadEls.push(t);
+    }
+
+    this.prompt.append(this.promptName, this.promptVerb);
+    this.script.append(this.scriptSrc, this.scriptBody);
+    this.inspect.append(this.inspectNumeral, this.inspectTitle, this.inspectCaption, this.inspectHint);
+    this.banner.append(this.bannerHead, this.bannerSub);
+
+    this.root.append(
+      this.hudTop,
+      this.threads,
+      this.ribbon,
+      this.reticle,
+      this.prompt,
+      this.script,
+      this.inspect,
+      this.banner,
+      this.prologue,
+      this.endcard,
+      this.loader,
+    );
+    document.body.append(this.root);
+
+    this.setHudVisible(false);
+  }
+
+  // --- loading -------------------------------------------------------------
+
+  setLoading(fraction: number, label: string): void {
+    this.loaderBar.style.width = `${Math.round(fraction * 100)}%`;
+    this.loaderLabel.textContent = label;
+  }
+
+  showPrologue(): void {
+    this.loader.classList.add("hidden");
+    this.prologue.classList.remove("hidden");
+    const begin = () => {
+      this.prologue.classList.add("hidden");
+      this.setHudVisible(true);
+      this.onBegin?.();
+    };
+    addEventListener("click", begin, { once: true });
+    addEventListener("keydown", begin, { once: true });
+  }
+
+  private setHudVisible(v: boolean): void {
+    for (const node of [this.hudTop, this.threads, this.ribbon, this.reticle]) {
+      node.style.opacity = v ? "1" : "0";
+    }
+  }
+
+  // --- per-frame -----------------------------------------------------------
+
+  update(dt: number, s: GameState, focus: Landmark | null, ribbon: RibbonEntry[]): void {
+    // Clock
+    const t = Math.max(0, s.timeLeft);
+    const mm = Math.floor(t / 60);
+    const ss = Math.floor(t % 60);
+    const clock = `${mm}:${ss.toString().padStart(2, "0")}`;
+    if (clock !== this.lastClock) {
+      this.clockEl.textContent = clock;
+      this.lastClock = clock;
+    }
+    this.clockEl.classList.toggle("urgent", t < 45 && s.phase === "play");
+
+    if (s.revealed.size !== this.lastScripts) {
+      this.scriptsEl.textContent = String(s.revealed.size);
+      this.lastScripts = s.revealed.size;
+    }
+
+    this.threadEls[0]?.classList.toggle("on", s.clueA);
+    this.threadEls[1]?.classList.toggle("on", s.clueB);
+    this.threadEls[2]?.classList.toggle("on", s.clueC);
+
+    // Focus prompt
+    const inInspect = this.inspect.classList.contains("show");
+    if (focus && !inInspect) {
+      this.reticle.classList.add("active");
+      this.prompt.classList.add("show");
+      this.promptName.innerHTML = `<em>${focus.numeral}</em>${focus.title}`;
+      this.promptVerb.innerHTML = `<b>E</b> ${focus.verb === "converse" ? "speak" : "inspect"}`;
+    } else {
+      this.reticle.classList.remove("active");
+      this.prompt.classList.remove("show");
+    }
+
+    // Ribbon of nearby landmarks, dimmed when the mechanism is in the way.
+    const key = ribbon.map((r) => `${r.landmark.id}${r.occluded ? "x" : ""}`).join("|");
+    if (key !== this.lastRibbon) {
+      this.ribbon.replaceChildren();
+      for (const r of ribbon) {
+        const row = el("div", r.occluded ? "occluded" : r.distance < 2.6 ? "near" : undefined);
+        row.append(el("span", "num", r.landmark.numeral), el("span", undefined, r.landmark.title));
+        this.ribbon.append(row);
+      }
+      this.lastRibbon = key;
+    }
+
+    // Script auto-dismiss
+    if (this.scriptTimer > 0) {
+      this.scriptTimer -= dt;
+      if (this.scriptTimer <= 0) this.script.classList.remove("show");
+    }
+  }
+
+  // --- messages ------------------------------------------------------------
+
+  say(source: string, body: string, kind?: ScriptLine["kind"], hold = 9): void {
+    this.scriptSrc.textContent = source;
+    this.scriptBody.textContent = body;
+    this.script.classList.toggle("clue", kind === "clue");
+    this.script.classList.toggle("system", kind === "system");
+    this.script.classList.add("show");
+    this.scriptTimer = hold;
+  }
+
+  showInspect(lm: Landmark, s: GameState, hint: string): void {
+    this.inspectNumeral.textContent = lm.numeral;
+    this.inspectTitle.textContent = lm.title;
+    this.inspectCaption.textContent = lm.caption ? lm.caption(s) : "";
+    this.inspectHint.innerHTML = hint;
+    this.inspect.classList.add("show");
+    this.reticle.classList.add("dim");
+  }
+
+  refreshInspect(lm: Landmark, s: GameState, hint: string): void {
+    if (!this.inspect.classList.contains("show")) return;
+    this.inspectCaption.textContent = lm.caption ? lm.caption(s) : "";
+    this.inspectHint.innerHTML = hint;
+  }
+
+  hideInspect(): void {
+    this.inspect.classList.remove("show");
+    this.reticle.classList.remove("dim");
+  }
+
+  showBanner(head: string, sub: string, good = false): void {
+    this.bannerHead.textContent = head;
+    this.bannerSub.textContent = sub;
+    this.banner.classList.toggle("good", good);
+    this.banner.classList.add("show");
+  }
+
+  hideBanner(): void {
+    this.banner.classList.remove("show");
+  }
+
+  showEnd(s: GameState, elapsed: number): void {
+    this.endcard.replaceChildren(
+      el("p", "subtitle", "Chapter One complete"),
+      el("h1", "title", "The Room Keeps Time"),
+      el(
+        "p",
+        "blurb",
+        "The escapement has the weight, the weight has the drum, and the drum has four hundred years to give back. " +
+          "The twelfth station is empty, and can stay empty.",
+      ),
+      (() => {
+        const stat = el("div", "stat");
+        const mk = (label: string, value: string) => {
+          const d = el("div", undefined, label);
+          d.append(el("b", undefined, value));
+          return d;
+        };
+        stat.append(
+          mk("Scripts opened", `${s.revealed.size} / ${SCRIPT_TOTAL}`),
+          mk("Threads found", `${s.clueCount} / 3`),
+          mk("Time taken", `${Math.floor(elapsed / 60)}:${Math.floor(elapsed % 60).toString().padStart(2, "0")}`),
+          mk("Lapses", String(s.lapses)),
+        );
+        return stat;
+      })(),
+      el("div", "cta", "Press R to run the chapter again"),
+    );
+    this.endcard.classList.remove("hidden");
+    this.setHudVisible(false);
+  }
+
+  hideEnd(): void {
+    this.endcard.classList.add("hidden");
+    this.setHudVisible(true);
+  }
+
+  get chapterLength(): number {
+    return CHAPTER_SECONDS;
+  }
+}

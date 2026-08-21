@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/only_export_components.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/react/only_export_components.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -56,6 +56,8 @@ export const passCases: ReadonlyArray<OxcFixture> = [
   { code: `function Foo() {}; export default React.memo(Foo);` },
   { code: `function Foo() {}; export default React.memo(Foo) as typeof Foo;` },
   { code: `export type * from './module';` },
+  { code: `export { Foo } from './mod';` },
+  { code: `export type { Foo, helper } from './mod';` },
   { code: `type foo = string; export const Foo = () => null; export type { foo };` },
   { code: `export type foo = string; export const Foo = () => null;` },
   {
@@ -153,6 +155,7 @@ export const failCases: ReadonlyArray<OxcFixture> = [
   { code: `export const foo = 4; export const Bar = () => {};` },
   { code: `export function Component() {}; export const Aa = 'a'` },
   { code: `const foo = 4; const Bar = () => {}; export { foo, Bar };` },
+  { code: `export { Foo, helper } from './mod';` },
   { code: `export * from './foo';` },
   { code: `export default () => {};` },
   { code: `export default memo(() => {});` },

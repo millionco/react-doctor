@@ -1,0 +1,468 @@
+// rule: js-cache-property-access
+// file-path: src/world/collision.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit fc394f4243e00d6c7351fbebcecc94f75fd47c0af5e76c99ba151d0bd0246f33
+/**
+ * Collision, grounding and line-of-sight.
+ *
+ * Everything solid in the fortress is an axis-aligned box, either a static
+ * collider registered here or a live block inside a destructible wall. Keeping
+ * one representation means the *same* geometry that stops the player also stops
+ * a guard's sightline -- so when a charge removes masonry, the hole is
+ * simultaneously a new route and a new sightline. That coupling is the point.
+ *
+ * Sight queries dominate the frame: eight guards each rebuild a visibility
+ * polygon, and every ray is a segment test against the world. Two things keep
+ * that affordable -- segments walk the broadphase grid cell by cell (DDA)
+ * instead of sweeping their whole bounding box, and candidate de-duplication
+ * uses a per-query stamp rather than a linear scan.
+ */
+
+import * as THREE from "three";
+import { Surface } from "./types";
+
+export interface Collider {
+  box: THREE.Box3;
+  surface: Surface;
+  /** Whether this blocks line of sight (a low crate does not, at eye height). */
+  opaque: boolean;
+  /** Removed by explosions. */
+  fragile?: boolean;
+  /** Set false when destroyed. */
+  alive: boolean;
+  tag?: string;
+  /** Query stamp, for O(1) de-duplication across grid cells. */
+  stamp: number;
+}
+
+/** A destructible masonry wall, seen from the collision system's side. */
+export interface BlockOccluder {
+  bounds: THREE.Box3;
+  /** Visit every live block AABB overlapping `region`. */
+  forEachBlockIn(region: THREE.Box3, visit: (box: THREE.Box3, surface: Surface) => void): void;
+  /** True if the segment hits any live block. */
+  segmentHits(a: THREE.Vector3, b: THREE.Vector3): boolean;
+}
+
+const CELL = 4;
+const GRID_ORIGIN = 512;
+
+function keyOf(cx: number, cz: number): number {
+  return (cx + GRID_ORIGIN) * 4096 + (cz + GRID_ORIGIN);
+}
+
+export interface GroundHit {
+  y: number;
+  surface: Surface;
+  found: boolean;
+}
+
+const _region = new THREE.Box3();
+const _tmp = new THREE.Vector3();
+
+export class CollisionWorld {
+  readonly colliders: Collider[] = [];
+  readonly walls: BlockOccluder[] = [];
+  private grid = new Map<number, Collider[]>();
+  private stamp = 1;
+  private scratch: Collider[] = [];
+  private scratch2: Collider[] = [];
+
+  add(
+    box: THREE.Box3,
+    surface: Surface = Surface.Stone,
+    opaque = true,
+    opts: { fragile?: boolean; tag?: string } = {},
+  ): Collider {
+    const c: Collider = { box, surface, opaque, alive: true, fragile: opts.fragile, tag: opts.tag, stamp: 0 };
+    this.colliders.push(c);
+    this.index(c);
+    return c;
+  }
+
+  addBox(
+    cx: number,
+    cy: number,
+    cz: number,
+    sx: number,
+    sy: number,
+    sz: number,
+    surface: Surface = Surface.Stone,
+    opaque = true,
+    opts: { fragile?: boolean; tag?: string } = {},
+  ): Collider {
+    const box = new THREE.Box3(
+      new THREE.Vector3(cx - sx / 2, cy - sy / 2, cz - sz / 2),
+      new THREE.Vector3(cx + sx / 2, cy + sy / 2, cz + sz / 2),
+    );
+    return this.add(box, surface, opaque, opts);
+  }
+
+  addWall(w: BlockOccluder): void {
+    this.walls.push(w);
+  }
+
+  /**
+   * Colliders bigger than this never enter the grid -- a 300m ground pad would
+   * otherwise be inserted into thousands of cells. They are kept in a short
+   * "always considered" list instead.
+   */
+  private oversized: Collider[] = [];
+
+  private index(c: Collider): void {
+    const w = c.box.max.x - c.box.min.x;
+    const d = c.box.max.z - c.box.min.z;
+    if (w > 60 || d > 60) {
+      this.oversized.push(c);
+      return;
+    }
+    const x0 = Math.floor(c.box.min.x / CELL);
+    const x1 = Math.floor(c.box.max.x / CELL);
+    const z0 = Math.floor(c.box.min.z / CELL);
+    const z1 = Math.floor(c.box.max.z / CELL);
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cz = z0; cz <= z1; cz++) {
+        const k = keyOf(cx, cz);
+        let list = this.grid.get(k);
+        if (!list) {
+          list = [];
+          this.grid.set(k, list);
+        }
+        list.push(c);
+      }
+    }
+  }
+
+  /** Collect static colliders whose cells overlap the region. */
+  query(region: THREE.Box3, out: Collider[]): Collider[] {
+    out.length = 0;
+    const s = ++this.stamp;
+    for (const c of this.oversized) {
+      if (!c.alive) continue;
+      c.stamp = s;
+      out.push(c);
+    }
+    const x0 = Math.floor(region.min.x / CELL);
+    const x1 = Math.floor(region.max.x / CELL);
+    const z0 = Math.floor(region.min.z / CELL);
+    const z1 = Math.floor(region.max.z / CELL);
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cz = z0; cz <= z1; cz++) {
+        const list = this.grid.get(keyOf(cx, cz));
+        if (!list) continue;
+        for (const c of list) {
+          if (!c.alive || c.stamp === s) continue;
+          c.stamp = s;
+          out.push(c);
+        }
+      }
+    }
+    return out;
+  }
+
+  // -- line of sight --------------------------------------------------------
+
+  /**
+   * True if anything opaque sits between `a` and `b`.
+   * Walks the broadphase grid along the segment rather than over its bounding
+   * box, which for a long diagonal ray is an order of magnitude fewer cells.
+   */
+  blocked(a: THREE.Vector3, b: THREE.Vector3): boolean {
+    const s = ++this.stamp;
+
+    for (const c of this.oversized) {
+      if (!c.alive || !c.opaque) continue;
+      c.stamp = s;
+      if (segmentBox(a, b, c.box)) return true;
+    }
+
+    // 2D DDA across the XZ grid.
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    let cx = Math.floor(a.x / CELL);
+    let cz = Math.floor(a.z / CELL);
+    const ex = Math.floor(b.x / CELL);
+    const ez = Math.floor(b.z / CELL);
+    const stepX = dx > 0 ? 1 : -1;
+    const stepZ = dz > 0 ? 1 : -1;
+    const invX = Math.abs(dx) < 1e-9 ? Infinity : 1 / dx;
+    const invZ = Math.abs(dz) < 1e-9 ? Infinity : 1 / dz;
+    let tMaxX = invX === Infinity
+      ? Infinity
+      : (((dx > 0 ? cx + 1 : cx) * CELL) - a.x) * invX;
+    let tMaxZ = invZ === Infinity
+      ? Infinity
+      : (((dz > 0 ? cz + 1 : cz) * CELL) - a.z) * invZ;
+    const tDeltaX = invX === Infinity ? Infinity : Math.abs(CELL * invX);
+    const tDeltaZ = invZ === Infinity ? Infinity : Math.abs(CELL * invZ);
+
+    for (let guard = 0; guard < 256; guard++) {
+      const list = this.grid.get(keyOf(cx, cz));
+      if (list) {
+        for (const c of list) {
+          if (!c.alive || !c.opaque || c.stamp === s) continue;
+          c.stamp = s;
+          if (segmentBox(a, b, c.box)) return true;
+        }
+      }
+      if (cx === ex && cz === ez) break;
+      if (tMaxX < tMaxZ) {
+        if (tMaxX > 1) break;
+        cx += stepX;
+        tMaxX += tDeltaX;
+      } else {
+        if (tMaxZ > 1) break;
+        cz += stepZ;
+        tMaxZ += tDeltaZ;
+      }
+    }
+
+    _region.makeEmpty();
+    _region.expandByPoint(a);
+    _region.expandByPoint(b);
+    for (const w of this.walls) {
+      if (!boxOverlap(_region, w.bounds)) continue;
+      if (w.segmentHits(a, b)) return true;
+    }
+    return false;
+  }
+
+  /** Distance along `a -> b` at which sight is first broken (or full length). */
+  sightDistance(a: THREE.Vector3, b: THREE.Vector3): number {
+    const full = a.distanceTo(b);
+    if (!this.blocked(a, b)) return full;
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 5; i++) {
+      const mid = (lo + hi) * 0.5;
+      _tmp.lerpVectors(a, b, mid);
+      if (this.blocked(a, _tmp)) hi = mid;
+      else lo = mid;
+    }
+    return full * lo;
+  }
+
+  // -- movement -------------------------------------------------------------
+
+  /**
+   * Push a vertical cylinder out of anything it overlaps.
+   * Boxes whose top is within `stepHeight` of the feet are ignored horizontally
+   * so the player walks up stairs and rubble instead of being stopped by them.
+   */
+  resolveCylinder(pos: THREE.Vector3, radius: number, height: number, stepHeight: number): boolean {
+    let touched = false;
+    for (let iter = 0; iter < 3; iter++) {
+      let moved = false;
+      _region.min.set(pos.x - radius, pos.y + 0.02, pos.z - radius);
+      _region.max.set(pos.x + radius, pos.y + height, pos.z + radius);
+      const list = this.scratch2;
+      this.query(_region, list);
+
+      const apply = (box: THREE.Box3): void => {
+        if (box.max.y <= pos.y + stepHeight + 1e-4) return;
+        if (box.min.y >= pos.y + height) return;
+        const cx = THREE.MathUtils.clamp(pos.x, box.min.x, box.max.x);
+        const cz = THREE.MathUtils.clamp(pos.z, box.min.z, box.max.z);
+        const dx = pos.x - cx;
+        const dz = pos.z - cz;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= radius * radius) return;
+        if (d2 > 1e-8) {
+          const d = Math.sqrt(d2);
+          const push = radius - d;
+          pos.x += (dx / d) * push;
+          pos.z += (dz / d) * push;
+        } else {
+          // Centre is inside the box: leave along the shallowest face.
+          const px = Math.min(pos.x - box.min.x, box.max.x - pos.x);
+          const pz = Math.min(pos.z - box.min.z, box.max.z - pos.z);
+          if (px < pz) {
+            pos.x += pos.x - box.min.x < box.max.x - pos.x ? -(px + radius) : px + radius;
+          } else {
+            pos.z += pos.z - box.min.z < box.max.z - pos.z ? -(pz + radius) : pz + radius;
+          }
+        }
+        moved = true;
+        touched = true;
+      };
+
+      for (const c of list) apply(c.box);
+      for (const w of this.walls) {
+        if (!boxOverlap(_region, w.bounds)) continue;
+        w.forEachBlockIn(_region, apply);
+      }
+      if (!moved) break;
+    }
+    return touched;
+  }
+
+  /** Highest supporting surface under a cylinder, at or below `feetY + step`. */
+  groundUnder(
+    x: number,
+    z: number,
+    feetY: number,
+    radius: number,
+    step: number,
+    reach = 6,
+  ): GroundHit {
+    _region.min.set(x - radius, feetY - reach, z - radius);
+    _region.max.set(x + radius, feetY + step, z + radius);
+    let best = -Infinity;
+    let surface = Surface.Stone;
+    let found = false;
+    const consider = (box: THREE.Box3, s: Surface): void => {
+      if (box.max.y > feetY + step + 1e-3) return;
+      if (box.max.y < feetY - reach) return;
+      if (box.max.x < x - radius || box.min.x > x + radius) return;
+      if (box.max.z < z - radius || box.min.z > z + radius) return;
+      if (box.max.y > best) {
+        best = box.max.y;
+        surface = s;
+        found = true;
+      }
+    };
+    const list = this.scratch;
+    this.query(_region, list);
+    for (const c of list) consider(c.box, c.surface);
+    for (const w of this.walls) {
+      if (!boxOverlap(_region, w.bounds)) continue;
+      w.forEachBlockIn(_region, consider);
+    }
+    return { y: found ? best : 0, surface, found };
+  }
+
+  /** Ceiling directly above the feet, used to stop standing up inside a gap. */
+  ceilingAbove(x: number, z: number, feetY: number, radius: number, reach = 4): number {
+    _region.min.set(x - radius, feetY + 0.15, z - radius);
+    _region.max.set(x + radius, feetY + reach, z + radius);
+    let best = Infinity;
+    const consider = (box: THREE.Box3): void => {
+      if (box.min.y < feetY + 0.15) return;
+      if (box.max.x < x - radius || box.min.x > x + radius) return;
+      if (box.max.z < z - radius || box.min.z > z + radius) return;
+      if (box.min.y < best) best = box.min.y;
+    };
+    const list = this.scratch;
+    this.query(_region, list);
+    for (const c of list) consider(c.box);
+    for (const w of this.walls) {
+      if (!boxOverlap(_region, w.bounds)) continue;
+      w.forEachBlockIn(_region, consider);
+    }
+    return best;
+  }
+
+  /** First surface hit by a ray, as a distance (Infinity if clear). */
+  rayHit(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number): number {
+    _tmp.copy(dir).multiplyScalar(maxDist).add(origin);
+    _region.makeEmpty();
+    _region.expandByPoint(origin);
+    _region.expandByPoint(_tmp);
+    let best = maxDist;
+    const list = this.scratch;
+    this.query(_region, list);
+    for (const c of list) {
+      if (!c.opaque) continue;
+      const t = rayBox(origin, dir, c.box, best);
+      if (t >= 0 && t < best) best = t;
+    }
+    for (const w of this.walls) {
+      if (!boxOverlap(_region, w.bounds)) continue;
+      // Cheap conservative answer: walls are solid, so bisect the segment.
+      if (w.segmentHits(origin, _tmp)) {
+        let lo = 0;
+        let hi = best;
+        for (let i = 0; i < 6; i++) {
+          const mid = (lo + hi) * 0.5;
+          _probe.copy(dir).multiplyScalar(mid).add(origin);
+          if (w.segmentHits(origin, _probe)) hi = mid;
+          else lo = mid;
+        }
+        if (lo < best) best = lo;
+      }
+    }
+    return best;
+  }
+
+  /** Destroy fragile static colliders inside a blast. Returns what died. */
+  shatter(centre: THREE.Vector3, radius: number): Collider[] {
+    const dead: Collider[] = [];
+    for (const c of this.colliders) {
+      if (!c.alive || !c.fragile) continue;
+      c.box.getCenter(_tmp);
+      if (_tmp.distanceTo(centre) < radius) {
+        c.alive = false;
+        dead.push(c);
+      }
+    }
+    return dead;
+  }
+}
+
+const _probe = new THREE.Vector3();
+
+// ---------------------------------------------------------------------------
+
+export function boxOverlap(a: THREE.Box3, b: THREE.Box3): boolean {
+  return (
+    a.min.x <= b.max.x && a.max.x >= b.min.x &&
+    a.min.y <= b.max.y && a.max.y >= b.min.y &&
+    a.min.z <= b.max.z && a.max.z >= b.min.z
+  );
+}
+
+/** Slab test for a finite segment against an AABB. */
+export function segmentBox(a: THREE.Vector3, b: THREE.Vector3, box: THREE.Box3): boolean {
+  let tmin = 0;
+  let tmax = 1;
+  for (let axis = 0; axis < 3; axis++) {
+    const ao = axis === 0 ? a.x : axis === 1 ? a.y : a.z;
+    const bo = axis === 0 ? b.x : axis === 1 ? b.y : b.z;
+    const lo = axis === 0 ? box.min.x : axis === 1 ? box.min.y : box.min.z;
+    const hi = axis === 0 ? box.max.x : axis === 1 ? box.max.y : box.max.z;
+    const d = bo - ao;
+    if (Math.abs(d) < 1e-9) {
+      if (ao < lo || ao > hi) return false;
+      continue;
+    }
+    let t0 = (lo - ao) / d;
+    let t1 = (hi - ao) / d;
+    if (t0 > t1) {
+      const t = t0;
+      t0 = t1;
+      t1 = t;
+    }
+    if (t0 > tmin) tmin = t0;
+    if (t1 < tmax) tmax = t1;
+    if (tmin > tmax) return false;
+  }
+  return true;
+}
+
+/** Ray/AABB entry distance, or -1. */
+export function rayBox(origin: THREE.Vector3, dir: THREE.Vector3, box: THREE.Box3, maxDist: number): number {
+  let tmin = 0;
+  let tmax = maxDist;
+  for (let axis = 0; axis < 3; axis++) {
+    const o = axis === 0 ? origin.x : axis === 1 ? origin.y : origin.z;
+    const d = axis === 0 ? dir.x : axis === 1 ? dir.y : dir.z;
+    const lo = axis === 0 ? box.min.x : axis === 1 ? box.min.y : box.min.z;
+    const hi = axis === 0 ? box.max.x : axis === 1 ? box.max.y : box.max.z;
+    if (Math.abs(d) < 1e-9) {
+      if (o < lo || o > hi) return -1;
+      continue;
+    }
+    let t0 = (lo - o) / d;
+    let t1 = (hi - o) / d;
+    if (t0 > t1) {
+      const t = t0;
+      t0 = t1;
+      t1 = t;
+    }
+    if (t0 > tmin) tmin = t0;
+    if (t1 < tmax) tmax = t1;
+    if (tmin > tmax) return -1;
+  }
+  return tmin;
+}

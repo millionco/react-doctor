@@ -1,0 +1,552 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 3b48a51ff667d62e158ad0f02f4596ea8f9100a1040e4d4b514c558fef2af014
+import type { SupplyKind } from "./world";
+
+/**
+ * The HUD. Everything the player needs to make the "one more trip or go home"
+ * call: what is still missing, how much light is left, how the two meters are
+ * trending, and which way the owl is.
+ */
+
+export type CameraMode = "follow" | "inspect" | "route";
+export type ScreenKind = "start" | "win" | "lose" | "loading";
+
+export interface MarkerInfo {
+  x: number;
+  y: number;
+  kind: SupplyKind | "home" | "shelter";
+  distance: number;
+  depleted: boolean;
+}
+
+export interface SupplySpec {
+  kind: SupplyKind;
+  label: string;
+  required: number;
+}
+
+export const SUPPLIES: SupplySpec[] = [
+  { kind: "berry", label: "Sunberries", required: 5 },
+  { kind: "mushroom", label: "Emberkaps", required: 3 },
+  { kind: "relic", label: "Brass relic", required: 1 },
+];
+
+const ICONS: Record<string, string> = {
+  berry: `<svg viewBox="0 0 24 24"><circle cx="9" cy="15" r="5.4" fill="currentColor"/><circle cx="16" cy="12" r="4.4" fill="currentColor" opacity="0.72"/><path d="M9 9.4 Q10 4 15 3" stroke="currentColor" stroke-width="1.6" fill="none" opacity="0.8"/></svg>`,
+  mushroom: `<svg viewBox="0 0 24 24"><path d="M3 12.5a9 9 0 0 1 18 0Z" fill="currentColor"/><rect x="9.6" y="12.5" width="4.8" height="8.5" rx="2.2" fill="currentColor" opacity="0.62"/></svg>`,
+  relic: `<svg viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="12" cy="13.5" r="2.6" fill="currentColor"/><path d="M12 6.5V3" stroke="currentColor" stroke-width="2" /></svg>`,
+  home: `<svg viewBox="0 0 24 24"><path d="M3 13 12 4l9 9v8H3Z" fill="currentColor"/></svg>`,
+  shelter: `<svg viewBox="0 0 24 24"><path d="M2 15 12 7l10 8" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>`,
+  warmth: `<svg viewBox="0 0 24 24"><path d="M12 2c3 5-2 6 1 10 2-1 2-3 2-3 3 4 2 11-3 11S6 15 8 11c0 0 1 2 2 2 2-4-1-6 2-11Z" fill="currentColor"/></svg>`,
+  vigor: `<svg viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6Z" fill="currentColor"/></svg>`,
+};
+
+const CSS = `
+#hud, #hud * { box-sizing: border-box; }
+#hud {
+  position: fixed; inset: 0; pointer-events: none; z-index: 10;
+  font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  color: #f2e8d8;
+  --warm: #f0a44a; --cool: #8fc4e8; --bad: #e05a48; --good: #a9d068;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.75);
+  user-select: none;
+}
+#hud .panel {
+  background: linear-gradient(160deg, rgba(24,20,16,0.72), rgba(14,12,10,0.6));
+  border: 1px solid rgba(226,198,150,0.18);
+  border-radius: 12px;
+  backdrop-filter: blur(3px);
+  box-shadow: 0 6px 22px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,232,192,0.09);
+}
+
+/* --- supplies -------------------------------------------------------- */
+#supplies { position: absolute; top: 18px; left: 18px; display: flex; gap: 9px; }
+.supply { display: flex; align-items: center; gap: 9px; padding: 9px 13px 9px 10px; min-width: 128px; transition: border-color .3s, transform .25s; }
+.supply .ic { width: 26px; height: 26px; flex: 0 0 26px; opacity: .85; }
+.supply svg { width: 100%; height: 100%; display: block; }
+.supply .txt { line-height: 1.15; }
+.supply .name { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; opacity: .62; }
+.supply .cnt { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.supply .cnt .carry { font-size: 11.5px; opacity: .68; margin-left: 4px; font-weight: 500; }
+.supply.done { border-color: rgba(169,208,104,0.6); color: #d8ecb0; }
+.supply.done .ic { opacity: 1; color: var(--good); }
+.supply.pop { transform: scale(1.07); }
+
+/* --- clock ----------------------------------------------------------- */
+#clock { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); padding: 9px 16px 11px; text-align: center; min-width: 250px; }
+#clock .time { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+#clock .phase { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; opacity: .6; margin-bottom: 2px; }
+#daybar { position: relative; height: 6px; border-radius: 3px; margin-top: 7px; overflow: hidden;
+  background: linear-gradient(90deg, #ffd9a0, #ff9a4a 42%, #7a5aa0 72%, #1d2540); }
+#daybar .cut { position: absolute; top: 0; right: 0; height: 100%; background: rgba(6,6,10,0.78); }
+#daybar .sun { position: absolute; top: -3px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%;
+  background: #fff2d0; box-shadow: 0 0 9px 2px rgba(255,210,140,0.85); }
+#clock.urgent .time { color: #ff9c78; animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+
+/* --- weather --------------------------------------------------------- */
+#weather { position: absolute; top: 18px; right: 18px; padding: 9px 14px; max-width: 250px; text-align: right; }
+#weather .w { font-size: 14px; font-weight: 600; letter-spacing: .03em; }
+#weather .hint { font-size: 11px; opacity: .62; margin-top: 3px; line-height: 1.35; }
+#weather .fc { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--warm); margin-top: 5px; opacity: 0; transition: opacity .4s; }
+#weather.forecasting .fc { opacity: .95; }
+
+/* --- meters ---------------------------------------------------------- */
+#meters { position: absolute; left: 18px; bottom: 18px; padding: 13px 15px; width: 232px; display: grid; gap: 11px; }
+.meter .row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.meter .ic { width: 17px; height: 17px; opacity: .9; }
+.meter .ic svg { width: 100%; height: 100%; display: block; }
+.meter .lbl { font-size: 10.5px; letter-spacing: .13em; text-transform: uppercase; opacity: .68; flex: 1; }
+.meter .val { font-size: 12px; font-variant-numeric: tabular-nums; opacity: .85; }
+.meter .trend { font-size: 11px; width: 14px; text-align: center; }
+.bar { height: 9px; border-radius: 5px; background: rgba(0,0,0,0.5); overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.6); position: relative; }
+.bar .fill { height: 100%; border-radius: 5px; transition: width .18s linear, background-color .4s; }
+.bar .goal { position: absolute; top: -2px; bottom: -2px; width: 2px; background: rgba(255,255,255,0.55); }
+.meter.warmth .fill { background: linear-gradient(90deg, #b8541e, var(--warm)); }
+.meter.vigor .fill { background: linear-gradient(90deg, #4a7a2a, var(--good)); }
+.meter.low .fill { background: linear-gradient(90deg, #7a1e14, var(--bad)) !important; }
+.meter.low .lbl { color: var(--bad); opacity: 1; animation: pulse 1.1s ease-in-out infinite; }
+
+/* --- prompt ---------------------------------------------------------- */
+#prompt { position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%); display: flex; align-items: center; gap: 11px;
+  padding: 9px 16px 9px 11px; opacity: 0; transition: opacity .18s; }
+#prompt.on { opacity: 1; }
+#prompt .key { width: 27px; height: 27px; border-radius: 7px; border: 1.5px solid rgba(240,220,180,0.55);
+  display: grid; place-items: center; font-size: 12.5px; font-weight: 700; position: relative; overflow: hidden; }
+#prompt .key .ring { position: absolute; inset: 0; background: conic-gradient(var(--warm) var(--p), transparent 0); opacity: .55; }
+#prompt .key span { position: relative; }
+#prompt .t { font-size: 13.5px; }
+#prompt .t small { display: block; font-size: 10.5px; opacity: .6; margin-top: 1px; letter-spacing: .04em; }
+
+/* --- controls -------------------------------------------------------- */
+#controls { position: absolute; right: 18px; bottom: 18px; padding: 10px 13px; font-size: 11px; line-height: 1.75; opacity: .78; }
+#controls b { display: inline-block; min-width: 46px; color: #ffd9a0; font-weight: 600; }
+#mode { position: absolute; right: 18px; bottom: 148px; padding: 7px 13px; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; opacity: 0; transition: opacity .25s; }
+#mode.on { opacity: .95; }
+
+/* --- danger ---------------------------------------------------------- */
+#danger { position: absolute; inset: 0; opacity: 0; transition: opacity .3s; }
+#danger .edge { position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, transparent 42%, rgba(150,20,10,0.55) 100%); }
+#arc { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+#arc .needle { position: absolute; left: -19px; top: -220px; width: 38px; height: 46px;
+  clip-path: polygon(50% 0, 100% 100%, 50% 78%, 0 100%);
+  background: linear-gradient(180deg, rgba(255,90,60,0.95), rgba(255,90,60,0.08)); }
+#dangerLabel { position: absolute; left: 50%; top: 108px; transform: translateX(-50%);
+  font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: #ff9c78; opacity: 0; transition: opacity .25s; }
+#dangerLabel.on { opacity: 1; animation: pulse 0.75s ease-in-out infinite; }
+
+/* --- vignette / tint ------------------------------------------------- */
+#tint { position: absolute; inset: 0; transition: background .5s, backdrop-filter .5s; }
+
+/* --- markers --------------------------------------------------------- */
+.marker { position: absolute; transform: translate(-50%,-50%); display: flex; flex-direction: column; align-items: center;
+  gap: 3px; opacity: 0; transition: opacity .25s; }
+.marker.on { opacity: .92; }
+.marker .dot { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(18,14,10,0.66); border: 1.5px solid rgba(255,225,180,0.55); }
+.marker .dot svg { width: 14px; height: 14px; }
+.marker .d { font-size: 10.5px; font-variant-numeric: tabular-nums; opacity: .82; letter-spacing: .04em; }
+.marker.home .dot { border-color: rgba(255,190,110,0.95); background: rgba(60,32,12,0.72); color: #ffcf90; }
+.marker.berry .dot { color: #e8798c; }
+.marker.mushroom .dot { color: #ffa04a; }
+.marker.relic .dot { color: #ffdf9a; }
+.marker.shelter .dot { color: #9fd0e8; }
+.marker.depleted { opacity: .3 !important; }
+
+/* --- toasts ---------------------------------------------------------- */
+#toasts { position: absolute; left: 50%; top: 96px; transform: translateX(-50%); display: flex; flex-direction: column;
+  align-items: center; gap: 6px; }
+.toast { padding: 7px 15px; font-size: 12.5px; letter-spacing: .03em; border-radius: 20px;
+  background: rgba(20,16,12,0.78); border: 1px solid rgba(226,198,150,0.2);
+  animation: toastIn .3s ease-out; }
+.toast.warn { border-color: rgba(240,140,60,0.55); color: #ffcf9a; }
+.toast.bad { border-color: rgba(224,90,72,0.6); color: #ffa494; }
+.toast.good { border-color: rgba(169,208,104,0.55); color: #d4eaa8; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+
+/* --- screens --------------------------------------------------------- */
+#screen { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: auto;
+  background: radial-gradient(ellipse at center, rgba(12,10,8,0.72), rgba(6,5,4,0.94)); opacity: 0; visibility: hidden;
+  transition: opacity .5s, visibility .5s; }
+#screen.on { opacity: 1; visibility: visible; }
+#screen .card { max-width: 620px; padding: 34px 40px 30px; text-align: center; }
+#screen h1 { font-family: Georgia, "Times New Roman", serif; font-size: 38px; margin: 0 0 6px; letter-spacing: .015em; font-weight: 500; }
+#screen .sub { font-size: 13px; letter-spacing: .2em; text-transform: uppercase; opacity: .55; margin-bottom: 20px; }
+#screen p { font-size: 14px; line-height: 1.65; opacity: .84; margin: 0 0 14px; }
+#screen .keys { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; font-size: 12.5px;
+  text-align: left; margin: 18px auto 22px; max-width: 400px; opacity: .86; }
+#screen .keys b { color: #ffd9a0; font-weight: 600; }
+#screen .goals { display: flex; gap: 10px; justify-content: center; margin: 16px 0 6px; flex-wrap: wrap; }
+#screen .goal { padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(226,198,150,0.22);
+  background: rgba(255,255,255,0.03); font-size: 12px; }
+#screen .goal b { display: block; font-size: 16px; margin-top: 2px; color: #ffd9a0; }
+#screen button { pointer-events: auto; margin-top: 8px; padding: 12px 30px; font: inherit; font-size: 14px; letter-spacing: .1em;
+  text-transform: uppercase; color: #1a1410; background: linear-gradient(180deg, #f5d9a8, #d9a95e);
+  border: none; border-radius: 9px; cursor: pointer; box-shadow: 0 5px 16px rgba(0,0,0,0.45); transition: transform .15s, filter .15s; }
+#screen button:hover { transform: translateY(-1px); filter: brightness(1.08); }
+#screen .hintline { font-size: 11.5px; opacity: .5; margin-top: 14px; letter-spacing: .05em; }
+#loadbar { width: 260px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12); margin: 18px auto 0; overflow: hidden; }
+#loadbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg,#d9a95e,#f5d9a8); transition: width .25s; }
+
+/* --- recovery countdown ----------------------------------------------- */
+#recovery { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); text-align: center; opacity: 0;
+  transition: opacity .3s; }
+#recovery.on { opacity: 1; }
+#recovery .big { font-size: 46px; font-weight: 300; font-variant-numeric: tabular-nums; color: #ff9c78; }
+#recovery .cap { font-size: 12px; letter-spacing: .2em; text-transform: uppercase; opacity: .8; }
+`;
+
+interface MeterEls {
+  root: HTMLElement;
+  fill: HTMLElement;
+  val: HTMLElement;
+  trend: HTMLElement;
+}
+
+export class Hud {
+  readonly root: HTMLElement;
+  private readonly supplyEls = new Map<SupplyKind, { root: HTMLElement; cnt: HTMLElement }>();
+  private readonly meters = new Map<string, MeterEls>();
+  private readonly markerPool: HTMLElement[] = [];
+  private readonly toastBox: HTMLElement;
+  private readonly promptEl: HTMLElement;
+  private readonly promptText: HTMLElement;
+  private readonly promptKey: HTMLElement;
+  private readonly clockEl: HTMLElement;
+  private readonly timeEl: HTMLElement;
+  private readonly phaseEl: HTMLElement;
+  private readonly sunEl: HTMLElement;
+  private readonly cutEl: HTMLElement;
+  private readonly weatherEl: HTMLElement;
+  private readonly weatherName: HTMLElement;
+  private readonly weatherHint: HTMLElement;
+  private readonly weatherFc: HTMLElement;
+  private readonly dangerEl: HTMLElement;
+  private readonly arcEl: HTMLElement;
+  private readonly dangerLabel: HTMLElement;
+  private readonly tintEl: HTMLElement;
+  private readonly modeEl: HTMLElement;
+  private readonly screenEl: HTMLElement;
+  private readonly screenCard: HTMLElement;
+  private readonly recoveryEl: HTMLElement;
+  private readonly recoveryNum: HTMLElement;
+  private readonly recoveryCap: HTMLElement;
+
+  onAction: (() => void) | null = null;
+
+  constructor(parent: HTMLElement) {
+    const style = document.createElement("style");
+    style.textContent = CSS;
+    document.head.appendChild(style);
+
+    this.root = document.createElement("div");
+    this.root.id = "hud";
+    parent.appendChild(this.root);
+
+    // Supplies
+    const supplies = document.createElement("div");
+    supplies.id = "supplies";
+    for (const spec of SUPPLIES) {
+      const el = document.createElement("div");
+      el.className = "supply panel";
+      el.innerHTML = `<div class="ic">${ICONS[spec.kind]}</div><div class="txt"><div class="name">${spec.label}</div><div class="cnt">0/${spec.required}</div></div>`;
+      supplies.appendChild(el);
+      this.supplyEls.set(spec.kind, { root: el, cnt: el.querySelector(".cnt") as HTMLElement });
+    }
+    this.root.appendChild(supplies);
+
+    // Clock
+    this.clockEl = document.createElement("div");
+    this.clockEl.id = "clock";
+    this.clockEl.className = "panel";
+    this.clockEl.innerHTML = `<div class="phase">Afternoon</div><div class="time">5:00</div>
+      <div id="daybar"><div class="cut"></div><div class="sun"></div></div>`;
+    this.root.appendChild(this.clockEl);
+    this.timeEl = this.clockEl.querySelector(".time") as HTMLElement;
+    this.phaseEl = this.clockEl.querySelector(".phase") as HTMLElement;
+    this.sunEl = this.clockEl.querySelector(".sun") as HTMLElement;
+    this.cutEl = this.clockEl.querySelector(".cut") as HTMLElement;
+
+    // Weather
+    this.weatherEl = document.createElement("div");
+    this.weatherEl.id = "weather";
+    this.weatherEl.className = "panel";
+    this.weatherEl.innerHTML = `<div class="w">Clear</div><div class="hint"></div><div class="fc"></div>`;
+    this.root.appendChild(this.weatherEl);
+    this.weatherName = this.weatherEl.querySelector(".w") as HTMLElement;
+    this.weatherHint = this.weatherEl.querySelector(".hint") as HTMLElement;
+    this.weatherFc = this.weatherEl.querySelector(".fc") as HTMLElement;
+
+    // Meters
+    const meters = document.createElement("div");
+    meters.id = "meters";
+    meters.className = "panel";
+    for (const [key, label, icon] of [
+      ["warmth", "Warmth", ICONS.warmth],
+      ["vigor", "Vigor", ICONS.vigor],
+    ] as const) {
+      const el = document.createElement("div");
+      el.className = `meter ${key}`;
+      el.innerHTML = `<div class="row"><div class="ic">${icon}</div><div class="lbl">${label}</div>
+        <div class="trend"></div><div class="val">100%</div></div>
+        <div class="bar"><div class="fill" style="width:100%"></div><div class="goal" style="left:55%"></div></div>`;
+      meters.appendChild(el);
+      this.meters.set(key, {
+        root: el,
+        fill: el.querySelector(".fill") as HTMLElement,
+        val: el.querySelector(".val") as HTMLElement,
+        trend: el.querySelector(".trend") as HTMLElement,
+      });
+    }
+    this.root.appendChild(meters);
+
+    // Prompt
+    this.promptEl = document.createElement("div");
+    this.promptEl.id = "prompt";
+    this.promptEl.className = "panel";
+    this.promptEl.innerHTML = `<div class="key"><div class="ring"></div><span>E</span></div><div class="t"></div>`;
+    this.root.appendChild(this.promptEl);
+    this.promptText = this.promptEl.querySelector(".t") as HTMLElement;
+    this.promptKey = this.promptEl.querySelector(".key .ring") as HTMLElement;
+
+    // Controls
+    const controls = document.createElement("div");
+    controls.id = "controls";
+    controls.className = "panel";
+    controls.innerHTML = `<div><b>WASD</b> move</div><div><b>Shift</b> sprint</div><div><b>Mouse</b> look</div>
+      <div><b>E</b> gather</div><div><b>Q</b> route view</div><div><b>F / RMB</b> inspect</div>
+      <div><b>L</b> lantern</div><div><b>R</b> eat a berry</div>`;
+    this.root.appendChild(controls);
+
+    this.modeEl = document.createElement("div");
+    this.modeEl.id = "mode";
+    this.modeEl.className = "panel";
+    this.root.appendChild(this.modeEl);
+
+    // Danger
+    this.dangerEl = document.createElement("div");
+    this.dangerEl.id = "danger";
+    this.dangerEl.innerHTML = `<div class="edge"></div><div id="arc"><div class="needle"></div></div>`;
+    this.root.appendChild(this.dangerEl);
+    this.arcEl = this.dangerEl.querySelector("#arc") as HTMLElement;
+
+    this.dangerLabel = document.createElement("div");
+    this.dangerLabel.id = "dangerLabel";
+    this.root.appendChild(this.dangerLabel);
+
+    this.tintEl = document.createElement("div");
+    this.tintEl.id = "tint";
+    this.root.appendChild(this.tintEl);
+
+    this.toastBox = document.createElement("div");
+    this.toastBox.id = "toasts";
+    this.root.appendChild(this.toastBox);
+
+    this.recoveryEl = document.createElement("div");
+    this.recoveryEl.id = "recovery";
+    this.recoveryEl.innerHTML = `<div class="big">0</div><div class="cap"></div>`;
+    this.root.appendChild(this.recoveryEl);
+    this.recoveryNum = this.recoveryEl.querySelector(".big") as HTMLElement;
+    this.recoveryCap = this.recoveryEl.querySelector(".cap") as HTMLElement;
+
+    // Screen
+    this.screenEl = document.createElement("div");
+    this.screenEl.id = "screen";
+    this.screenCard = document.createElement("div");
+    this.screenCard.className = "card panel";
+    this.screenEl.appendChild(this.screenCard);
+    this.root.appendChild(this.screenEl);
+    this.screenEl.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).tagName === "BUTTON") this.onAction?.();
+    });
+  }
+
+  // -------------------------------------------------------------------------
+
+  setSupplies(banked: Record<SupplyKind, number>, carried: Record<SupplyKind, number>): void {
+    for (const spec of SUPPLIES) {
+      const el = this.supplyEls.get(spec.kind);
+      if (!el) continue;
+      const c = carried[spec.kind] ?? 0;
+      const b = banked[spec.kind] ?? 0;
+      el.cnt.innerHTML = `${b}/${spec.required}${c > 0 ? `<span class="carry">+${c} carried</span>` : ""}`;
+      el.root.classList.toggle("done", b >= spec.required);
+    }
+  }
+
+  pulseSupply(kind: SupplyKind): void {
+    const el = this.supplyEls.get(kind);
+    if (!el) return;
+    el.root.classList.add("pop");
+    window.setTimeout(() => el.root.classList.remove("pop"), 240);
+  }
+
+  setMeters(warmth: number, vigor: number, warmthRate: number, vigorRate: number, goal: number): void {
+    const apply = (key: string, value: number, rate: number): void => {
+      const m = this.meters.get(key);
+      if (!m) return;
+      m.fill.style.width = `${Math.round(value * 100)}%`;
+      m.val.textContent = `${Math.round(value * 100)}%`;
+      m.trend.textContent = rate > 0.004 ? "▲" : rate < -0.004 ? "▼" : "–";
+      m.trend.style.color = rate > 0.004 ? "#a9d068" : rate < -0.004 ? "#e08a5a" : "rgba(255,255,255,0.35)";
+      m.root.classList.toggle("low", value < 0.25);
+      const goalEl = m.root.querySelector(".goal") as HTMLElement | null;
+      if (goalEl) goalEl.style.left = `${goal * 100}%`;
+    };
+    apply("warmth", warmth, warmthRate);
+    apply("vigor", vigor, vigorRate);
+  }
+
+  setClock(secondsLeft: number, dayT: number, phase: string): void {
+    const s = Math.max(0, Math.ceil(secondsLeft));
+    this.timeEl.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    this.phaseEl.textContent = phase;
+    this.sunEl.style.left = `${Math.min(100, dayT * 100)}%`;
+    this.cutEl.style.width = `${Math.max(0, (1 - dayT) * 100)}%`;
+    this.clockEl.classList.toggle("urgent", secondsLeft < 45);
+  }
+
+  setWeather(label: string, hint: string, forecast: string | null): void {
+    this.weatherName.textContent = label;
+    this.weatherHint.textContent = hint;
+    this.weatherEl.classList.toggle("forecasting", forecast !== null);
+    if (forecast) this.weatherFc.textContent = `▸ turning to ${forecast}`;
+  }
+
+  setPrompt(text: string | null, sub: string, progress: number, key = "E"): void {
+    this.promptEl.classList.toggle("on", text !== null);
+    if (text) {
+      this.promptText.innerHTML = `${text}${sub ? `<small>${sub}</small>` : ""}`;
+      const span = this.promptEl.querySelector(".key span");
+      if (span) span.textContent = key;
+    }
+    this.promptKey.style.setProperty("--p", `${Math.round(progress * 360)}deg`);
+  }
+
+  setDanger(level: number, bearing: number | null, label: string): void {
+    this.dangerEl.style.opacity = `${Math.min(1, level)}`;
+    if (bearing !== null) {
+      this.arcEl.style.transform = `rotate(${bearing}rad)`;
+      this.arcEl.style.opacity = "1";
+    } else {
+      this.arcEl.style.opacity = "0";
+    }
+    this.dangerLabel.textContent = label;
+    this.dangerLabel.classList.toggle("on", label !== "");
+  }
+
+  setTint(cold: number, dark: number, damage: number): void {
+    const r = Math.round(damage * 120);
+    const g = Math.round(cold * 30);
+    const b = Math.round(cold * 90 + dark * 20);
+    const a = Math.min(0.55, damage * 0.42 + cold * 0.24 + dark * 0.12);
+    this.tintEl.style.background = `radial-gradient(ellipse at center, rgba(${r},${g},${b},${a * 0.25}) 25%, rgba(${r},${g},${b},${a}) 100%)`;
+  }
+
+  setMode(mode: CameraMode): void {
+    const label = mode === "route" ? "Route view" : mode === "inspect" ? "Inspecting" : "";
+    this.modeEl.textContent = label;
+    this.modeEl.classList.toggle("on", label !== "");
+  }
+
+  setMarkers(markers: MarkerInfo[]): void {
+    while (this.markerPool.length < markers.length) {
+      const el = document.createElement("div");
+      el.className = "marker";
+      el.innerHTML = `<div class="dot"></div><div class="d"></div>`;
+      this.root.appendChild(el);
+      this.markerPool.push(el);
+    }
+    for (let i = 0; i < this.markerPool.length; i++) {
+      const el = this.markerPool[i]!;
+      const info = markers[i];
+      if (!info) {
+        el.classList.remove("on");
+        continue;
+      }
+      el.className = `marker on ${info.kind}${info.depleted ? " depleted" : ""}`;
+      el.style.left = `${info.x}px`;
+      el.style.top = `${info.y}px`;
+      const dot = el.querySelector(".dot") as HTMLElement;
+      if (dot.dataset.kind !== info.kind) {
+        dot.dataset.kind = info.kind;
+        dot.innerHTML = ICONS[info.kind] ?? "";
+      }
+      (el.querySelector(".d") as HTMLElement).textContent = `${Math.round(info.distance)}m`;
+    }
+  }
+
+  toast(text: string, tone: "info" | "warn" | "bad" | "good" = "info"): void {
+    const el = document.createElement("div");
+    el.className = `toast ${tone}`;
+    el.textContent = text;
+    this.toastBox.appendChild(el);
+    window.setTimeout(() => {
+      el.style.transition = "opacity .5s, transform .5s";
+      el.style.opacity = "0";
+      el.style.transform = "translateY(-6px)";
+      window.setTimeout(() => el.remove(), 520);
+    }, 3200);
+  }
+
+  setRecovery(active: boolean, secondsLeft: number, caption: string): void {
+    this.recoveryEl.classList.toggle("on", active);
+    if (active) {
+      this.recoveryNum.textContent = Math.max(0, Math.ceil(secondsLeft)).toString();
+      this.recoveryCap.textContent = caption;
+    }
+  }
+
+  setLoading(label: string, frac: number): void {
+    const bar = this.screenCard.querySelector("#loadbar i") as HTMLElement | null;
+    if (bar) bar.style.width = `${Math.round(frac * 100)}%`;
+    const sub = this.screenCard.querySelector(".sub") as HTMLElement | null;
+    if (sub) sub.textContent = label;
+  }
+
+  showScreen(kind: ScreenKind, data: Record<string, string> = {}): void {
+    this.screenEl.className = `on ${kind}`;
+    if (kind === "loading") {
+      this.screenCard.innerHTML = `<h1>Basket Before Dark</h1><div class="sub">waking the forest</div>
+        <div id="loadbar"><i></i></div>`;
+    } else if (kind === "start") {
+      this.screenCard.innerHTML = `<h1>Basket Before Dark</h1>
+        <div class="sub">five minutes until nightfall</div>
+        <p>You are Pip. The basket by your burrow door is empty and the light is already going.
+        Fill it before dark, and be standing at your own doorstep when the sun finishes setting.</p>
+        <div class="goals">
+          <div class="goal">Sunberries<b>5</b></div>
+          <div class="goal">Emberkaps<b>3</b></div>
+          <div class="goal">Brass relic<b>1</b></div>
+          <div class="goal">Warmth &amp; Vigor<b>55%+</b></div>
+        </div>
+        <p>Everything worth having is further out. Supplies bank the moment you reach the burrow,
+        so a short trip is never wasted &mdash; but the owl hunts what it can see, and rain takes your warmth.
+        Ember hollows and shafts of sun give it back. Duck under a log or an overhang and both stop mattering.</p>
+        <div class="keys">
+          <b>WASD</b><span>move &mdash; hold Shift to sprint (costs vigor)</span>
+          <b>Mouse</b><span>look around</span>
+          <b>E</b><span>hold to gather what you are standing beside</span>
+          <b>Q</b><span>hold for the wide route-planning view</span>
+          <b>F / right mouse</b><span>hold to lean in and inspect</span>
+          <b>L</b><span>lantern &mdash; light and warmth, but the owl sees it</span>
+          <b>R</b><span>eat a carried sunberry to restore vigor</span>
+        </div>
+        <button>Head out</button>
+        <div class="hintline">Click to lock the mouse. Press Esc to release it.</div>`;
+    } else {
+      this.screenCard.innerHTML = `<h1>${data.title ?? ""}</h1><div class="sub">${data.sub ?? ""}</div>
+        <p>${data.body ?? ""}</p>
+        <div class="goals">${data.stats ?? ""}</div>
+        <button>${data.button ?? "Try again"}</button>`;
+    }
+  }
+
+  hideScreen(): void {
+    this.screenEl.className = "";
+  }
+}

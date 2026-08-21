@@ -15,6 +15,40 @@ afterEach(() => {
 });
 
 describe("HTML diagnostic mapping", () => {
+  it("drops a code-less Astro diagnostic without crashing", () => {
+    const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-astro-map-"));
+    temporaryDirectories.push(rootDirectory);
+    fs.mkdirSync(path.join(rootDirectory, "src"));
+    fs.writeFileSync(path.join(rootDirectory, "src", "page.astro"), "<main>Hello</main>");
+    const preparedSources = prepareLintSources(rootDirectory, path.join(rootDirectory, "tmp"), [
+      "src/page.astro",
+    ]);
+    const lintPath = preparedSources.lintFiles.find((filePath) => filePath.endsWith(".tsx"));
+    if (lintPath === undefined) throw new Error("Expected a virtual Astro lint source");
+    const stdout = JSON.stringify({
+      diagnostics: [
+        {
+          message: "Unexpected token",
+          severity: "error",
+          filename: lintPath,
+          labels: [],
+        },
+      ],
+      number_of_files: 1,
+      number_of_rules: 1,
+    });
+
+    expect(
+      parseOxlintOutput(
+        stdout,
+        buildProject({ rootDirectory }),
+        rootDirectory,
+        preparedSources.sourcePathByLintPath,
+        preparedSources.sourceMapByLintPath,
+      ),
+    ).toEqual([]);
+  });
+
   it("maps a virtual script diagnostic back to the HTML path and source position", () => {
     const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-html-map-"));
     temporaryDirectories.push(rootDirectory);

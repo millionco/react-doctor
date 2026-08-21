@@ -13,6 +13,7 @@ const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/mocks/",
   "/testUtils/",
   "/test-utils/",
+  "/test-stubs/",
   "/testutils/",
   "/cypress/",
   "/playwright/",

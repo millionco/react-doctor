@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/interactive_supports_focus.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/jsx_a11y/interactive_supports_focus.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -55,6 +55,8 @@ export const passCases: ReadonlyArray<OxcFixture> = [
   { code: `<a onClick={() => void 0} href="http://x.y.z" tabIndex={0} />` },
   { code: `<a onClick={() => void 0} href="http://x.y.z" role="button" />` },
   { code: `<TestComponent onClick={doFoo} />` },
+  { code: `<HigherLevelComponent role="button" onClick={() => void 0} />` },
+  { code: `<Foo.Bar role="button" onClick={() => void 0} />` },
   { code: `<input onClick={() => void 0} type="hidden" />;` },
   { code: `<span onClick='submitForm();'>Submit</span>` },
   { code: `<span onClick='submitForm();' tabIndex={undefined}>Submit</span>` },

@@ -1,0 +1,1024 @@
+// rule: no-create-object-url-without-revoke
+// file-path: src/main.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit bcb572302066423312d19c0639af933d4150a8deaea220889eb62b27a9523360
+import "./style.css";
+import * as THREE from "three";
+import { BoundedOrbit } from "./controls/orbit";
+import { clamp } from "./lib/noise";
+import { projectionScale, silhouetteBox, svgPath, type Pt } from "./lib/poly";
+import {
+  LIGHT_ENVELOPE,
+  MarkAnalyser,
+  PIECES,
+  STAGE,
+  castPlane,
+  checkComposition,
+  cloneComposition,
+  markSilhouettes,
+  sameComposition,
+  snapDepth,
+  snapGauge,
+  startComposition,
+  touchedPieces,
+  worldSilhouette,
+  type Analysis,
+  type Composition,
+} from "./studio/composition";
+import { History } from "./studio/history";
+import { buildLibrary } from "./studio/materials";
+import { buildOverlay } from "./studio/overlay";
+import { buildPieces } from "./studio/pieces";
+import { buildStage } from "./studio/stage";
+import { buildWorkspace } from "./studio/workspace";
+import { TOOLS, buildHud, type HudAction, type ToolId, type Tone } from "./ui/hud";
+
+const boot = document.createElement("div");
+boot.className = "boot";
+boot.textContent = "Shadow Mark Studio — baking surfaces";
+document.body.appendChild(boot);
+
+// let the boot notice paint before the synchronous texture bake
+requestAnimationFrame(() => requestAnimationFrame(() => window.setTimeout(start, 0)));
+
+function start(): void {
+  const canvas = document.querySelector("#view") as HTMLCanvasElement;
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    powerPreference: "high-performance",
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.VSMShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 90);
+  const orbit = new BoundedOrbit(camera);
+
+  const lib = buildLibrary(Math.min(8, renderer.capabilities.getMaxAnisotropy()));
+  const stage = buildStage(scene, renderer, lib);
+  const analyser = new MarkAnalyser();
+  const overlay = buildOverlay(analyser.targetMask);
+  stage.root.add(overlay.plane);
+  const pieces = buildPieces(lib);
+  scene.add(pieces.root);
+  scene.add(buildWorkspace(lib, { monitor: overlay.monitorTexture, brief: overlay.briefTexture }));
+
+  const hud = buildHud();
+  document.body.appendChild(hud.root);
+
+  /* ------------------------------------------------------------------ *
+   * studio state
+   * ------------------------------------------------------------------ */
+
+  const state = {
+    tool: "place" as ToolId,
+    selected: 0 as number | null,
+    hovered: null as number | null,
+    composition: startComposition(),
+    pins: new Set<number>(),
+    compare: false,
+    overlayMode: "guide" as "guide" | "analysis",
+    status: {
+      text: "Rig loaded as reviewed. Pick a piece and start shifting depth.",
+      tone: "info" as Tone,
+    },
+  };
+
+  const history = new History();
+  let reference: Composition = cloneComposition(state.composition);
+  let referenceLabel = "approved review layout";
+  let referenceAnalysis: Analysis = analyser.analyse(reference);
+  let analysis: Analysis = analyser.analyse(state.composition);
+
+  let dirty = true;
+  let lastRefresh = 0;
+  let coalesceKey = "";
+  let coalesceTime = 0;
+
+  const setStatus = (text: string, tone: Tone): void => {
+    state.status = { text, tone };
+  };
+
+  const refresh = (): void => {
+    analysis = analyser.analyse(state.composition);
+    pieces.apply(state.composition);
+    stage.setKey(state.composition.light);
+    overlay.draw({
+      composition: state.composition,
+      analysis,
+      reference: state.compare ? reference : null,
+      compare: state.compare,
+      selected: state.selected,
+      status: state.status.text,
+      statusTone: state.status.tone === "info" ? "warn" : state.status.tone,
+    });
+    hud.render({
+      tool: state.tool,
+      selected: state.selected,
+      hovered: state.hovered,
+      composition: state.composition,
+      analysis,
+      pins: state.pins,
+      history: history.entries,
+      historyIndex: history.index,
+      status: state.status,
+      compare: state.compare,
+      analysisOverlay: state.overlayMode === "analysis",
+      referenceLabel,
+      referenceDelta: state.compare
+        ? {
+            coverage: analysis.coverage - referenceAnalysis.coverage,
+            spill: analysis.spill - referenceAnalysis.spill,
+            fragments: analysis.fragments - referenceAnalysis.fragments,
+          }
+        : null,
+    });
+    dirty = false;
+  };
+
+  const invalidate = (): void => {
+    dirty = true;
+  };
+
+  /* ------------------------------------------------------------------ *
+   * constrained editing
+   * ------------------------------------------------------------------ */
+
+  interface EditOptions {
+    label: string;
+    detail: string;
+    coalesce?: string;
+    status?: string;
+  }
+
+  function tryEdit(mutate: (c: Composition) => void, opts: EditOptions): boolean {
+    const before = state.composition;
+    const next = cloneComposition(before);
+    mutate(next);
+    if (sameComposition(before, next)) return true;
+
+    const touched = touchedPieces(before, next);
+    const pinned = touched.filter((i) => state.pins.has(i));
+    if (pinned.length) {
+      const names = pinned.map((i) => PIECES[i]!.name).join(", ");
+      setStatus(
+        `Blocked — ${names} ${pinned.length > 1 ? "are" : "is"} pinned. Release the pin to move it.`,
+        "fail",
+      );
+      pinned.forEach((i) => pieces.flash(i));
+      invalidate();
+      return false;
+    }
+
+    const verdict = checkComposition(next);
+    if (!verdict.ok) {
+      setStatus(`Blocked — ${verdict.reason}`, "fail");
+      if (typeof verdict.subject === "number") pieces.flash(verdict.subject);
+      invalidate();
+      return false;
+    }
+
+    state.composition = next;
+    const now = performance.now();
+    const key = opts.coalesce ?? "";
+    const canCoalesce =
+      key !== "" &&
+      key === coalesceKey &&
+      now - coalesceTime < 900 &&
+      history.index === history.entries.length &&
+      history.index > 0;
+    if (canCoalesce) history.amend(next, opts.detail, touched);
+    else history.push(opts.label, opts.detail, before, next, touched);
+    coalesceKey = key;
+    coalesceTime = now;
+    if (opts.status) setStatus(opts.status, "ok");
+    invalidate();
+    return true;
+  }
+
+  const throwLabel = (index: number, depth: number): string => {
+    const k = projectionScale(state.composition.light.z, depth - PIECES[index]!.thickness * 0.5);
+    return `throw ×${k.toFixed(2)}`;
+  };
+
+  /* ------------------------------------------------------------------ *
+   * discrete edits
+   * ------------------------------------------------------------------ */
+
+  const nudge = (dx: number, dy: number): void => {
+    const i = state.selected;
+    if (i === null) {
+      setStatus("Select a piece first — Tab cycles the rig.", "warn");
+      invalidate();
+      return;
+    }
+    const def = PIECES[i]!;
+    const nx = state.composition.pieces[i]!.x + dx;
+    const ny = state.composition.pieces[i]!.y + dy;
+    tryEdit(
+      (c) => {
+        c.pieces[i]!.x = nx;
+        c.pieces[i]!.y = ny;
+      },
+      {
+        label: `Place ${def.name}`,
+        detail: `x ${(nx * 100).toFixed(0)} cm · y ${(ny * 100).toFixed(0)} cm`,
+        coalesce: `place-${i}`,
+        status: `${def.name} placed at ${(nx * 100).toFixed(0)}, ${(ny * 100).toFixed(0)} cm`,
+      },
+    );
+  };
+
+  const stepDepth = (delta: number): void => {
+    const i = state.selected;
+    if (i === null) return;
+    const def = PIECES[i]!;
+    const wanted = snapDepth(def, state.composition.pieces[i]!.depth + delta);
+    tryEdit(
+      (c) => {
+        c.pieces[i]!.depth = wanted;
+      },
+      {
+        label: `Depth ${def.name}`,
+        detail: `${(wanted * 100).toFixed(0)} cm from cyc`,
+        coalesce: `depth-${i}`,
+        status: `${def.name} flown to ${(wanted * 100).toFixed(0)} cm — ${throwLabel(i, wanted)}`,
+      },
+    );
+  };
+
+  const stepRotate = (delta: number): void => {
+    const i = state.selected;
+    if (i === null) return;
+    const def = PIECES[i]!;
+    const wanted = state.composition.pieces[i]!.rot + delta;
+    tryEdit(
+      (c) => {
+        c.pieces[i]!.rot = wanted;
+      },
+      {
+        label: `Rotate ${def.name}`,
+        detail: `${((wanted * 180) / Math.PI).toFixed(1)}°`,
+        coalesce: `rot-${i}`,
+        status: `${def.name} rotated to ${((wanted * 180) / Math.PI).toFixed(1)}°`,
+      },
+    );
+  };
+
+  const stepGauge = (delta: number): void => {
+    const i = state.selected;
+    if (i === null) return;
+    const def = PIECES[i]!;
+    const wanted = snapGauge(def, state.composition.pieces[i]!.gauge + delta);
+    tryEdit(
+      (c) => {
+        c.pieces[i]!.gauge = wanted;
+      },
+      {
+        label: `Gauge ${def.name}`,
+        detail: `${(wanted * 100).toFixed(def.kind === "relief" ? 0 : 1)}%`,
+        coalesce: `gauge-${i}`,
+        status:
+          def.kind === "relief"
+            ? `${def.name} swapped to the ${(wanted * 100).toFixed(0)}% stock blank — relief comes in 5% steps`
+            : `${def.name} scaled to ${(wanted * 100).toFixed(1)}% — screens scale continuously`,
+      },
+    );
+  };
+
+  function moveLightTo(x: number, y: number, z: number): void {
+    const nx = clamp(x, LIGHT_ENVELOPE.minX, LIGHT_ENVELOPE.maxX);
+    const ny = clamp(y, LIGHT_ENVELOPE.minY, LIGHT_ENVELOPE.maxY);
+    const nz = clamp(z, LIGHT_ENVELOPE.minZ, LIGHT_ENVELOPE.maxZ);
+    const atLimit =
+      Math.abs(nx - x) > 1e-6 || Math.abs(ny - y) > 1e-6 || Math.abs(nz - z) > 1e-6;
+    tryEdit(
+      (c) => {
+        c.light.x = nx;
+        c.light.y = ny;
+        c.light.z = nz;
+      },
+      {
+        label: "Key head",
+        detail: `${nx.toFixed(2)}, ${ny.toFixed(2)}, ${nz.toFixed(2)} m`,
+        coalesce: "light",
+        status: atLimit
+          ? `Key head is against its track stop at ${nx.toFixed(2)}, ${ny.toFixed(2)}, ${nz.toFixed(2)} m.`
+          : `Key head at ${nx.toFixed(2)}, ${ny.toFixed(2)}, ${nz.toFixed(2)} m — every throw rescales.`,
+      },
+    );
+  }
+
+  const moveLight = (dx: number, dy: number, dz: number): void => {
+    const l = state.composition.light;
+    moveLightTo(l.x + dx, l.y + dy, l.z + dz);
+  };
+
+  /* ------------------------------------------------------------------ *
+   * history, compare, export, reset
+   * ------------------------------------------------------------------ */
+
+  const undo = (): void => {
+    const entry = history.peekUndo();
+    if (!entry) {
+      setStatus("Nothing to undo — this is the rig as reviewed.", "warn");
+      invalidate();
+      return;
+    }
+    const locked = entry.touched.filter((i) => state.pins.has(i));
+    if (locked.length) {
+      const names = locked.map((i) => PIECES[i]!.name).join(", ");
+      setStatus(
+        `Undo blocked — "${entry.label}" moves ${names}, which ${locked.length > 1 ? "are" : "is"} pinned. Release the pin to step back.`,
+        "fail",
+      );
+      locked.forEach((i) => pieces.flash(i));
+      invalidate();
+      return;
+    }
+    history.undo();
+    state.composition = cloneComposition(entry.before);
+    coalesceKey = "";
+    setStatus(`Undid "${entry.label}".`, "info");
+    invalidate();
+  };
+
+  const redo = (): void => {
+    const entry = history.peekRedo();
+    if (!entry) {
+      setStatus("Nothing to redo.", "warn");
+      invalidate();
+      return;
+    }
+    const locked = entry.touched.filter((i) => state.pins.has(i));
+    if (locked.length) {
+      const names = locked.map((i) => PIECES[i]!.name).join(", ");
+      setStatus(`Redo blocked — "${entry.label}" moves pinned ${names}.`, "fail");
+      locked.forEach((i) => pieces.flash(i));
+      invalidate();
+      return;
+    }
+    const verdict = checkComposition(entry.after);
+    if (!verdict.ok) {
+      setStatus(`Redo blocked — ${verdict.reason}`, "fail");
+      invalidate();
+      return;
+    }
+    history.redo();
+    state.composition = cloneComposition(entry.after);
+    coalesceKey = "";
+    setStatus(`Redid "${entry.label}".`, "info");
+    invalidate();
+  };
+
+  const setCompare = (on: boolean): void => {
+    state.compare = on;
+    pieces.setGhost(on ? reference : null);
+    if (on) {
+      const dc = (analysis.coverage - referenceAnalysis.coverage) * 100;
+      setStatus(
+        `Compare on — current against ${referenceLabel}: coverage ${dc >= 0 ? "+" : ""}${dc.toFixed(1)} pts, ${analysis.fragments} part(s) against ${referenceAnalysis.fragments}.`,
+        "info",
+      );
+    } else {
+      setStatus("Compare off.", "info");
+    }
+    invalidate();
+  };
+
+  const captureReference = (): void => {
+    reference = cloneComposition(state.composition);
+    referenceAnalysis = analyser.analyse(reference);
+    referenceLabel = `capture ${new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    })}`;
+    if (state.compare) pieces.setGhost(reference);
+    setStatus(`Reference captured — ${referenceLabel}.`, "ok");
+    hud.toast("Reference captured. Compare now reads against this rig.", "ok");
+    invalidate();
+  };
+
+  const adoptReference = (): void => {
+    const i = state.selected;
+    if (i === null) {
+      setStatus("Select a piece before adopting the reference pose.", "warn");
+      invalidate();
+      return;
+    }
+    if (!state.compare) {
+      setStatus("Adopt works from compare — turn compare on (C) first.", "warn");
+      invalidate();
+      return;
+    }
+    const def = PIECES[i]!;
+    const same =
+      JSON.stringify(state.composition.pieces[i]) === JSON.stringify(reference.pieces[i]);
+    if (same) {
+      setStatus(`${def.name} already matches the reference pose.`, "warn");
+      invalidate();
+      return;
+    }
+    const ok = tryEdit(
+      (c) => {
+        c.pieces[i] = { ...reference.pieces[i]! };
+      },
+      {
+        label: `Adopt ${def.name}`,
+        detail: `pose from ${referenceLabel}`,
+        status: `${def.name} returned to the reference pose.`,
+      },
+    );
+    if (!ok) {
+      hud.toast(
+        `${def.name} cannot take the reference pose — the rest of the rig has moved on. ${state.status.text.replace("Blocked — ", "")}`,
+        "fail",
+      );
+    }
+    invalidate();
+  };
+
+  const reset = (): void => {
+    const before = state.composition;
+    const next = startComposition();
+    if (sameComposition(before, next)) {
+      setStatus("Already at the reviewed rig.", "warn");
+      invalidate();
+      return;
+    }
+    const touched = touchedPieces(before, next);
+    const locked = touched.filter((i) => state.pins.has(i));
+    if (locked.length) {
+      const names = locked.map((i) => PIECES[i]!.name).join(", ");
+      setStatus(
+        `Reset blocked — ${names} pinned. Release ${locked.length > 1 ? "them" : "it"} to restore the reviewed rig.`,
+        "fail",
+      );
+      locked.forEach((i) => pieces.flash(i));
+      invalidate();
+      return;
+    }
+    state.composition = next;
+    history.push("Reset rig", "back to the reviewed layout", before, next, touched);
+    coalesceKey = "";
+    setStatus("Rig reset to the reviewed layout. The reset is itself undoable.", "info");
+    invalidate();
+  };
+
+  /* ------------------------------------------------------------------ *
+   * export
+   * ------------------------------------------------------------------ */
+
+  const exportMark = (): void => {
+    if (!analysis.exportable) {
+      setStatus(analysis.exportBlock, "fail");
+      hud.toast(analysis.exportBlock, "fail");
+      invalidate();
+      return;
+    }
+    const sils = markSilhouettes(state.composition);
+    const included: number[] = [];
+    const excluded: number[] = [];
+    sils.forEach((_, i) => (analysis.pieces[i]!.contained ? included : excluded).push(i));
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const i of included) {
+      const b = silhouetteBox(sils[i]!);
+      minX = Math.min(minX, b.minX);
+      minY = Math.min(minY, b.minY);
+      maxX = Math.max(maxX, b.maxX);
+      maxY = Math.max(maxY, b.maxY);
+    }
+    const pad = 0.04;
+    minX -= pad;
+    minY -= pad;
+    maxX += pad;
+    maxY += pad;
+    const toMm = (p: Pt): Pt => [(p[0] - minX) * 1000, (maxY - p[1]) * 1000];
+    const w = (maxX - minX) * 1000;
+    const h = (maxY - minY) * 1000;
+
+    const meta = {
+      tool: "Shadow Mark Studio",
+      brief: "SMS/001 — merged shadow mark",
+      exported: new Date().toISOString(),
+      units: "mm",
+      key: {
+        x: +state.composition.light.x.toFixed(4),
+        y: +state.composition.light.y.toFixed(4),
+        z: +state.composition.light.z.toFixed(4),
+      },
+      metrics: {
+        coveragePct: +(analysis.coverage * 100).toFixed(2),
+        spillPct: +(analysis.spill * 100).toFixed(2),
+        fragments: analysis.fragments,
+        markAreaCm2: +analysis.markArea.toFixed(1),
+        provisional: analysis.coverage < 0.92 || analysis.spill > 0.06,
+      },
+      constraints: {
+        depthClearance:
+          "carriage envelopes that overlap in plan need (t1+t2)/2 + 40 mm of depth separation",
+        reliefDepthLimit: `${STAGE.maxReliefDepth} m from the cyclorama`,
+        reliefGaugeStep: `${STAGE.gaugeStep * 100}% stock steps`,
+        reliefDepthDetent: `${STAGE.depthStep * 100} cm carriage detents`,
+        printableArea: "throws outside the cyclorama print area are excluded from this file",
+      },
+      parts: included.map((i) => {
+        const def = PIECES[i]!;
+        const s = state.composition.pieces[i]!;
+        const wb = silhouetteBox(worldSilhouette(i, s));
+        const mb = silhouetteBox(sils[i]!);
+        return {
+          id: def.id,
+          name: def.name,
+          kind: def.kind,
+          depthCm: +(s.depth * 100).toFixed(1),
+          gaugePct: +(s.gauge * 100).toFixed(2),
+          throwScale: +projectionScale(state.composition.light.z, castPlane(i, s)).toFixed(4),
+          stockSizeMm: [
+            +((wb.maxX - wb.minX) * 1000).toFixed(1),
+            +((wb.maxY - wb.minY) * 1000).toFixed(1),
+          ],
+          markSizeMm: [
+            +((mb.maxX - mb.minX) * 1000).toFixed(1),
+            +((mb.maxY - mb.minY) * 1000).toFixed(1),
+          ],
+        };
+      }),
+      excluded: excluded.map((i) => ({
+        id: PIECES[i]!.id,
+        reason: "throw falls outside the printable area of the cyclorama",
+      })),
+    };
+
+    const paths = included
+      .map((i) => {
+        const def = PIECES[i]!;
+        return `    <path id="${def.id}" class="${def.kind}" d="${svgPath(sils[i]!, toMm, 2)}"/>`;
+      })
+      .join("\n");
+
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(1)}mm" height="${h.toFixed(1)}mm" viewBox="0 0 ${w.toFixed(2)} ${h.toFixed(2)}">
+  <title>Shadow Mark Studio — SMS/001</title>
+  <metadata>${JSON.stringify(meta)}</metadata>
+  <g fill="#14161a" fill-rule="evenodd">
+${paths}
+  </g>
+</svg>
+`;
+
+    try {
+      window.localStorage.setItem("shadow-mark-studio/last-export", JSON.stringify(meta));
+      window.localStorage.setItem("shadow-mark-studio/last-export-svg", svg);
+    } catch {
+      /* storage may be unavailable; the download still stands */
+    }
+
+    const blob = new Blob([svg], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `shadow-mark-SMS001-${(analysis.coverage * 100).toFixed(0)}cov.svg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+
+    const note = excluded.length ? ` ${excluded.length} throw(s) excluded by the printable area.` : "";
+    const prov = meta.metrics.provisional ? " Filed provisional: coverage or spill is off-brief." : "";
+    setStatus(`Exported ${included.length} merged part(s) as SVG plus report.${note}${prov}`, "ok");
+    hud.toast(
+      `Mark written locally — ${included.length} parts, ${(analysis.coverage * 100).toFixed(1)}% coverage.${note}${prov}`,
+      prov ? "warn" : "ok",
+    );
+    invalidate();
+  };
+
+  /* ------------------------------------------------------------------ *
+   * selection
+   * ------------------------------------------------------------------ */
+
+  const select = (i: number | null): void => {
+    state.selected = i;
+    pieces.setSelection(i);
+    if (i !== null) {
+      const def = PIECES[i]!;
+      const s = state.composition.pieces[i]!;
+      setStatus(
+        `${def.name} · ${def.blurb} · ${(s.depth * 100).toFixed(0)} cm from cyc · ${throwLabel(i, s.depth)}${
+          state.pins.has(i) ? " · pinned" : ""
+        }`,
+        "info",
+      );
+    } else {
+      setStatus("Selection cleared.", "info");
+    }
+    invalidate();
+  };
+
+  const togglePin = (i: number): void => {
+    if (state.pins.has(i)) {
+      state.pins.delete(i);
+      setStatus(`${PIECES[i]!.name} released — edits and undo can reach it again.`, "info");
+    } else {
+      state.pins.add(i);
+      setStatus(
+        `${PIECES[i]!.name} pinned — edits are refused and history entries touching it cannot be stepped through.`,
+        "info",
+      );
+    }
+    invalidate();
+  };
+
+  const cycleSelection = (dir: number): void => {
+    const n = PIECES.length;
+    select(state.selected === null ? 0 : (state.selected + dir + n) % n);
+  };
+
+  /* ------------------------------------------------------------------ *
+   * pointer
+   * ------------------------------------------------------------------ */
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const dragPlane = new THREE.Plane();
+  const hitPoint = new THREE.Vector3();
+
+  interface Drag {
+    kind: "piece" | "light" | "orbit" | "pan";
+    index: number;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    grabX: number;
+    grabY: number;
+    start: Composition;
+  }
+  let drag: Drag | null = null;
+
+  const setPointer = (event: PointerEvent): void => {
+    pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+    pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  };
+
+  const pickPiece = (): number | null => {
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects(pieces.pickables, false);
+    for (const hit of hits) {
+      let node: THREE.Object3D | null = hit.object;
+      while (node) {
+        if (typeof node.userData.pieceIndex === "number") return node.userData.pieceIndex as number;
+        node = node.parent;
+      }
+    }
+    return null;
+  };
+
+  const planePoint = (index: number, depth: number): THREE.Vector3 | null => {
+    dragPlane.set(new THREE.Vector3(0, 0, 1), -(depth - PIECES[index]!.thickness * 0.5));
+    raycaster.setFromCamera(pointer, camera);
+    return raycaster.ray.intersectPlane(dragPlane, hitPoint);
+  };
+
+  const makeDrag = (kind: Drag["kind"], index: number, event: PointerEvent): Drag => ({
+    kind,
+    index,
+    startX: event.clientX,
+    startY: event.clientY,
+    lastX: event.clientX,
+    lastY: event.clientY,
+    grabX: 0,
+    grabY: 0,
+    start: cloneComposition(state.composition),
+  });
+
+  canvas.addEventListener("pointerdown", (event) => {
+    setPointer(event);
+    canvas.setPointerCapture(event.pointerId);
+
+    if (event.button === 2 || event.button === 1 || (event.button === 0 && event.altKey)) {
+      drag = makeDrag("pan", -1, event);
+      canvas.classList.add("is-grabbing");
+      return;
+    }
+    if (event.button !== 0) return;
+
+    if (state.tool === "key") {
+      drag = makeDrag("light", -1, event);
+      canvas.classList.add("is-grabbing");
+      return;
+    }
+
+    const hit = pickPiece();
+    if (hit !== null) {
+      if (state.selected !== hit) select(hit);
+      drag = makeDrag("piece", hit, event);
+      const p = planePoint(hit, state.composition.pieces[hit]!.depth);
+      if (p) {
+        drag.grabX = p.x - state.composition.pieces[hit]!.x;
+        drag.grabY = p.y - state.composition.pieces[hit]!.y;
+      }
+      canvas.classList.add("is-grabbing");
+      return;
+    }
+    drag = makeDrag("orbit", -1, event);
+    canvas.classList.add("is-grabbing");
+  });
+
+  canvas.addEventListener("pointermove", (event) => {
+    setPointer(event);
+    if (!drag) {
+      const hit = state.tool === "key" ? null : pickPiece();
+      if (hit !== state.hovered) {
+        state.hovered = hit;
+        pieces.setHover(hit);
+        canvas.classList.toggle("is-over", hit !== null);
+        invalidate();
+      }
+      return;
+    }
+
+    const dx = event.clientX - drag.lastX;
+    const dy = event.clientY - drag.lastY;
+    const totalX = event.clientX - drag.startX;
+    const totalY = event.clientY - drag.startY;
+    drag.lastX = event.clientX;
+    drag.lastY = event.clientY;
+
+    if (drag.kind === "orbit") {
+      orbit.rotate(dx, dy);
+      return;
+    }
+    if (drag.kind === "pan") {
+      orbit.pan(dx, dy);
+      return;
+    }
+    if (drag.kind === "light") {
+      const s = drag.start.light;
+      if (event.shiftKey) moveLightTo(s.x, s.y, s.z - totalY * 0.004);
+      else moveLightTo(s.x + totalX * 0.004, s.y - totalY * 0.004, s.z);
+      return;
+    }
+
+    const i = drag.index;
+    const def = PIECES[i]!;
+    const s0 = drag.start.pieces[i]!;
+
+    if (state.tool === "place") {
+      const p = planePoint(i, s0.depth);
+      if (!p) return;
+      const nx = p.x - drag.grabX;
+      const ny = p.y - drag.grabY;
+      tryEdit(
+        (c) => {
+          c.pieces[i]!.x = nx;
+          c.pieces[i]!.y = ny;
+        },
+        {
+          label: `Place ${def.name}`,
+          detail: `x ${(nx * 100).toFixed(0)} cm · y ${(ny * 100).toFixed(0)} cm`,
+          coalesce: `place-${i}`,
+          status: `${def.name} at ${(nx * 100).toFixed(0)}, ${(ny * 100).toFixed(0)} cm`,
+        },
+      );
+    } else if (state.tool === "depth") {
+      const wanted = snapDepth(def, s0.depth - totalY * 0.0038);
+      tryEdit(
+        (c) => {
+          c.pieces[i]!.depth = wanted;
+        },
+        {
+          label: `Depth ${def.name}`,
+          detail: `${(wanted * 100).toFixed(0)} cm from cyc`,
+          coalesce: `depth-${i}`,
+          status: `${def.name} at ${(wanted * 100).toFixed(0)} cm — ${throwLabel(i, wanted)}`,
+        },
+      );
+    } else if (state.tool === "form") {
+      const rot = s0.rot + totalX * 0.005;
+      const gauge = snapGauge(def, s0.gauge - totalY * 0.0022);
+      tryEdit(
+        (c) => {
+          c.pieces[i]!.rot = rot;
+          c.pieces[i]!.gauge = gauge;
+        },
+        {
+          label: `Form ${def.name}`,
+          detail: `${((rot * 180) / Math.PI).toFixed(1)}° · gauge ${(gauge * 100).toFixed(0)}%`,
+          coalesce: `form-${i}`,
+          status: `${def.name} — ${((rot * 180) / Math.PI).toFixed(1)}°, gauge ${(gauge * 100).toFixed(0)}%`,
+        },
+      );
+    }
+  });
+
+  const endDrag = (): void => {
+    if (!drag) return;
+    drag = null;
+    coalesceKey = "";
+    canvas.classList.remove("is-grabbing");
+    invalidate();
+  };
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
+  canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+  canvas.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
+      orbit.dolly(event.deltaY);
+    },
+    { passive: false },
+  );
+
+  /* ------------------------------------------------------------------ *
+   * keyboard
+   * ------------------------------------------------------------------ */
+
+  const HOME = new THREE.Vector3(1.05, 1.48, 0.6);
+
+  const setTool = (id: ToolId): void => {
+    state.tool = id;
+    const tool = TOOLS.find((t) => t.id === id)!;
+    setStatus(`${tool.name} — ${tool.drag}.`, "info");
+    invalidate();
+  };
+
+  const setOverlayMode = (mode: "guide" | "analysis"): void => {
+    state.overlayMode = mode;
+    overlay.setMode(mode);
+    setStatus(
+      mode === "analysis"
+        ? "Analysis overlay on — red is brief left uncovered, amber is spill outside it."
+        : "Analysis overlay off — the brief outline stays as a registration guide.",
+      "info",
+    );
+    invalidate();
+  };
+
+  window.addEventListener("keydown", (event) => {
+    const meta = event.metaKey || event.ctrlKey;
+    const fine = event.shiftKey;
+
+    if (meta && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (meta) return;
+
+    switch (event.key) {
+      case "1":
+        return setTool("place");
+      case "2":
+        return setTool("depth");
+      case "3":
+        return setTool("form");
+      case "4":
+        return setTool("key");
+      case "Tab":
+        event.preventDefault();
+        return cycleSelection(event.shiftKey ? -1 : 1);
+      case "Escape":
+        return select(null);
+      case "Enter":
+        return adoptReference();
+      case "ArrowLeft":
+        event.preventDefault();
+        return state.tool === "key" ? moveLight(fine ? -0.01 : -0.05, 0, 0) : nudge(fine ? -0.005 : -0.02, 0);
+      case "ArrowRight":
+        event.preventDefault();
+        return state.tool === "key" ? moveLight(fine ? 0.01 : 0.05, 0, 0) : nudge(fine ? 0.005 : 0.02, 0);
+      case "ArrowUp":
+        event.preventDefault();
+        return state.tool === "key" ? moveLight(0, fine ? 0.01 : 0.05, 0) : nudge(0, fine ? 0.005 : 0.02);
+      case "ArrowDown":
+        event.preventDefault();
+        return state.tool === "key" ? moveLight(0, fine ? -0.01 : -0.05, 0) : nudge(0, fine ? -0.005 : -0.02);
+      case "[":
+        return state.tool === "key" ? moveLight(0, 0, -0.05) : stepDepth(fine ? -0.005 : -STAGE.depthStep);
+      case "]":
+        return state.tool === "key" ? moveLight(0, 0, 0.05) : stepDepth(fine ? 0.005 : STAGE.depthStep);
+      case ",":
+      case "<":
+        return stepRotate(fine ? -0.0087 : -0.0349);
+      case ".":
+      case ">":
+        return stepRotate(fine ? 0.0087 : 0.0349);
+      case "-":
+      case "_":
+        return stepGauge(fine ? -0.01 : -STAGE.gaugeStep);
+      case "=":
+      case "+":
+        return stepGauge(fine ? 0.01 : STAGE.gaugeStep);
+    }
+
+    switch (event.key.toLowerCase()) {
+      case "p":
+        if (state.selected !== null) togglePin(state.selected);
+        return;
+      case "c":
+        if (event.shiftKey) captureReference();
+        else setCompare(!state.compare);
+        return;
+      case "a":
+        setOverlayMode(state.overlayMode === "analysis" ? "guide" : "analysis");
+        return;
+      case "e":
+        exportMark();
+        return;
+      case "u":
+        if (event.shiftKey) redo();
+        else undo();
+        return;
+      case "y":
+        redo();
+        return;
+      case "r":
+        if (event.shiftKey) {
+          reset();
+        } else {
+          orbit.frame(0.3, 1.3, 7.6, HOME);
+          setStatus("Camera returned to the reviewed framing.", "info");
+          invalidate();
+        }
+        return;
+    }
+  });
+
+  hud.onAction((action: HudAction) => {
+    switch (action.type) {
+      case "tool":
+        return setTool(action.id);
+      case "select":
+        return select(action.index);
+      case "pin":
+        return togglePin(action.index);
+      case "undo":
+        return undo();
+      case "redo":
+        return redo();
+      case "compare":
+        return setCompare(!state.compare);
+      case "capture":
+        return captureReference();
+      case "adopt":
+        return adoptReference();
+      case "export":
+        return exportMark();
+      case "reset":
+        return reset();
+      case "overlay":
+        return setOverlayMode(state.overlayMode === "analysis" ? "guide" : "analysis");
+      case "frame":
+        return orbit.frame(0.3, 1.3, 7.6, HOME);
+    }
+  });
+
+  window.addEventListener("resize", () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  /* ------------------------------------------------------------------ *
+   * boot + loop
+   * ------------------------------------------------------------------ */
+
+  pieces.apply(state.composition, true);
+  pieces.setSelection(state.selected);
+  stage.setKey(state.composition.light);
+  overlay.setMode("guide");
+  refresh();
+
+  let last = performance.now();
+  const loop = (now: number): void => {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    orbit.tick(dt);
+    pieces.tick(dt, now / 1000);
+    overlay.tick(dt);
+    if (dirty && now - lastRefresh > 80) {
+      lastRefresh = now;
+      refresh();
+    }
+    renderer.render(scene, camera);
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+
+  boot.classList.add("is-done");
+  window.setTimeout(() => boot.remove(), 600);
+}

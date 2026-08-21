@@ -1,0 +1,466 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/ui.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit c8ac48e549f9b5a04944d0c9878e1555645b86d76b036071eb5c8125650d6646
+/**
+ * DOM overlay: transport, service isolation, and the payload schema inspector.
+ */
+
+import {
+  DIVERGENCE_T,
+  DURATION,
+  LAYERS,
+  SCHEMAS,
+  SERVICES,
+  focusStep,
+  metricValues,
+  serviceActivity,
+  trackEnd,
+  type ServiceId,
+  type Status,
+  type Step,
+  type Track,
+} from "../sim/model";
+
+export type Mode = "success" | "failure" | "compare";
+
+export type AppState = {
+  time: number;
+  playing: boolean;
+  speed: number;
+  mode: Mode;
+  isolate: ServiceId | null;
+  lowKey: boolean;
+  pinnedSchema: string | null;
+};
+
+export type UiHandlers = {
+  onTime: (t: number) => void;
+  onPlay: (playing: boolean) => void;
+  onSpeed: (s: number) => void;
+  onMode: (m: Mode) => void;
+  onIsolate: (id: ServiceId | null) => void;
+  onLowKey: (v: boolean) => void;
+  onReset: () => void;
+  onSchemaPin: (id: string | null) => void;
+};
+
+const el = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html !== undefined) n.innerHTML = html;
+  return n;
+};
+
+const fmt = (v: number): string =>
+  Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2);
+
+const esc = (s: string): string =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+export class Ui {
+  private readonly root = el("div");
+  private readonly serviceRows = new Map<ServiceId, HTMLButtonElement>();
+  private readonly metricCells = new Map<ServiceId, HTMLElement>();
+  private readonly modeButtons = new Map<Mode, HTMLButtonElement>();
+  private readonly speedButtons = new Map<number, HTMLButtonElement>();
+  private readonly scrub: HTMLInputElement;
+  private readonly clock: HTMLElement;
+  private readonly playBtn: HTMLButtonElement;
+  private readonly lowKeyBtn: HTMLButtonElement;
+  private readonly inspectorBody: HTMLElement;
+  private readonly schemaSelect: HTMLSelectElement;
+  private readonly hint: HTMLElement;
+  private readonly loading: HTMLElement;
+  private readonly loadingFill: HTMLElement;
+  private readonly loadingText: HTMLElement;
+
+  private lastInspectorKey = "";
+  private hintTimer = 0;
+
+  constructor(private readonly handlers: UiHandlers) {
+    this.root.id = "hud";
+    document.body.appendChild(this.root);
+
+    /* --- title --- */
+    const title = el("div", "panel");
+    title.id = "title";
+    title.innerHTML = `
+      <h1>Message Stack Explorer</h1>
+      <p>One write request followed end to end through seven services and five
+      depth-separated layers.</p>
+      <div class="msgid">msg <b>7f3ac2</b> &middot; order.created &middot; trace 4bf92f…</div>
+    `;
+    this.root.appendChild(title);
+
+    /* --- services --- */
+    const services = el("div", "panel");
+    services.id = "services";
+    const svcHead = el("div", "panel-head", "<b>Services</b><span>click to isolate</span>");
+    services.appendChild(svcHead);
+    const list = el("div");
+    list.id = "service-list";
+    for (const svc of SERVICES) {
+      const row = el("button", "svc") as HTMLButtonElement;
+      row.type = "button";
+      const hex = `#${svc.accent.toString(16).padStart(6, "0")}`;
+      row.style.color = hex;
+      row.innerHTML = `
+        <span class="dot" style="background:${hex}"></span>
+        <span>
+          <span class="name" style="color:var(--ink)">${svc.name}</span><br>
+          <span class="layer">L${svc.layer} · ${LAYERS[svc.layer]!.name}</span>
+        </span>
+        <span class="metric"></span>
+      `;
+      row.addEventListener("click", () => {
+        this.handlers.onIsolate(this.currentIsolate === svc.id ? null : svc.id);
+      });
+      this.serviceRows.set(svc.id, row);
+      this.metricCells.set(svc.id, row.querySelector(".metric") as HTMLElement);
+      list.appendChild(row);
+    }
+    services.appendChild(list);
+    const foot = el("div");
+    foot.id = "service-foot";
+    foot.textContent =
+      "Isolating a service dims everything it does not talk to and pulls the camera to it.";
+    services.appendChild(foot);
+    this.root.appendChild(services);
+
+    /* --- inspector --- */
+    const inspector = el("div", "panel");
+    inspector.id = "inspector";
+    inspector.appendChild(
+      el("div", "panel-head", "<b>Inspector</b><span>step &amp; payload</span>"),
+    );
+    this.inspectorBody = el("div");
+    this.inspectorBody.id = "inspector-body";
+    inspector.appendChild(this.inspectorBody);
+    this.root.appendChild(inspector);
+
+    this.schemaSelect = el("select") as HTMLSelectElement;
+    const follow = el("option") as HTMLOptionElement;
+    follow.value = "";
+    follow.textContent = "▸ follow the timeline";
+    this.schemaSelect.appendChild(follow);
+    for (const s of Object.values(SCHEMAS)) {
+      const o = el("option") as HTMLOptionElement;
+      o.value = s.id;
+      o.textContent = `${s.id} · ${s.title}`;
+      this.schemaSelect.appendChild(o);
+    }
+    this.schemaSelect.addEventListener("change", () => {
+      this.handlers.onSchemaPin(this.schemaSelect.value || null);
+      this.lastInspectorKey = "";
+    });
+
+    /* --- hint --- */
+    this.hint = el("div");
+    this.hint.id = "hint";
+    this.hint.textContent =
+      "drag to orbit · scroll to zoom · click a service or the rail cursor";
+    this.root.appendChild(this.hint);
+
+    /* --- transport --- */
+    const transport = el("div", "panel");
+    transport.id = "transport";
+
+    this.playBtn = el("button", "ctl primary on", "❚❚ Pause") as HTMLButtonElement;
+    this.playBtn.type = "button";
+    this.playBtn.addEventListener("click", () => this.handlers.onPlay(!this.currentPlaying));
+    transport.appendChild(this.playBtn);
+
+    const scrubWrap = el("div");
+    scrubWrap.id = "scrub-wrap";
+    this.scrub = el("input") as HTMLInputElement;
+    this.scrub.id = "scrub";
+    this.scrub.type = "range";
+    this.scrub.min = "0";
+    this.scrub.max = String(DURATION);
+    this.scrub.step = "0.01";
+    this.scrub.value = "0";
+    this.scrub.addEventListener("input", () => {
+      this.handlers.onTime(parseFloat(this.scrub.value));
+      this.handlers.onPlay(false);
+    });
+    this.clock = el("div");
+    this.clock.id = "clock";
+    scrubWrap.appendChild(this.scrub);
+    scrubWrap.appendChild(this.clock);
+    transport.appendChild(scrubWrap);
+
+    const speedSeg = el("div", "seg");
+    for (const s of [0.5, 1, 2]) {
+      const b = el("button", "ctl", `${s}×`) as HTMLButtonElement;
+      b.type = "button";
+      b.addEventListener("click", () => this.handlers.onSpeed(s));
+      this.speedButtons.set(s, b);
+      speedSeg.appendChild(b);
+    }
+    transport.appendChild(el("span", "group-label", "speed"));
+    transport.appendChild(speedSeg);
+
+    const modeSeg = el("div", "seg");
+    const modes: Array<[Mode, string]> = [
+      ["success", "Success"],
+      ["failure", "Failure"],
+      ["compare", "Compare"],
+    ];
+    for (const [m, label] of modes) {
+      const b = el("button", "ctl", label) as HTMLButtonElement;
+      b.type = "button";
+      b.addEventListener("click", () => this.handlers.onMode(m));
+      this.modeButtons.set(m, b);
+      modeSeg.appendChild(b);
+    }
+    transport.appendChild(el("span", "group-label", "path"));
+    transport.appendChild(modeSeg);
+
+    this.lowKeyBtn = el("button", "ctl", "Low key light") as HTMLButtonElement;
+    this.lowKeyBtn.type = "button";
+    this.lowKeyBtn.title =
+      "Drops the direct lights so you can see how much of the depth is coming from the surfaces themselves.";
+    this.lowKeyBtn.addEventListener("click", () => this.handlers.onLowKey(!this.currentLowKey));
+    transport.appendChild(this.lowKeyBtn);
+
+    const reset = el("button", "ctl", "↺ Reset") as HTMLButtonElement;
+    reset.type = "button";
+    reset.addEventListener("click", () => this.handlers.onReset());
+    transport.appendChild(reset);
+
+    this.root.appendChild(transport);
+
+    /* --- loading --- */
+    this.loading = el("div");
+    this.loading.id = "loading";
+    this.loading.innerHTML = `<h2>Message Stack Explorer</h2>`;
+    const track = el("div", "track");
+    this.loadingFill = el("div", "fill");
+    track.appendChild(this.loadingFill);
+    this.loading.appendChild(track);
+    this.loadingText = el("small", undefined, "authoring surfaces…");
+    this.loading.appendChild(this.loadingText);
+    document.body.appendChild(this.loading);
+
+    addEventListener("keydown", this.onKey);
+  }
+
+  private currentIsolate: ServiceId | null = null;
+  private currentPlaying = true;
+  private currentLowKey = false;
+
+  private onKey = (e: KeyboardEvent): void => {
+    if (e.target instanceof HTMLSelectElement || e.target instanceof HTMLInputElement) return;
+    switch (e.key) {
+      case " ":
+        e.preventDefault();
+        this.handlers.onPlay(!this.currentPlaying);
+        break;
+      case "ArrowLeft":
+        e.preventDefault();
+        this.handlers.onTime(Math.max(0, parseFloat(this.scrub.value) - (e.shiftKey ? 1 : 0.2)));
+        this.handlers.onPlay(false);
+        break;
+      case "ArrowRight":
+        e.preventDefault();
+        this.handlers.onTime(
+          Math.min(DURATION, parseFloat(this.scrub.value) + (e.shiftKey ? 1 : 0.2)),
+        );
+        this.handlers.onPlay(false);
+        break;
+      case "r":
+      case "R":
+        this.handlers.onReset();
+        break;
+      case "Escape":
+        this.handlers.onIsolate(null);
+        break;
+    }
+  };
+
+  setProgress(fraction: number, label: string): void {
+    this.loadingFill.style.width = `${Math.round(fraction * 100)}%`;
+    this.loadingText.textContent = label;
+  }
+
+  finishLoading(): void {
+    this.loading.classList.add("done");
+    setTimeout(() => this.loading.remove(), 700);
+    this.hintTimer = performance.now();
+  }
+
+  /* -------------------------------------------------------------- */
+
+  render(state: AppState): void {
+    this.currentIsolate = state.isolate;
+    this.currentPlaying = state.playing;
+    this.currentLowKey = state.lowKey;
+
+    const primary: Track = state.mode === "failure" ? "failure" : "success";
+
+    this.scrub.value = String(state.time);
+    this.scrub.style.setProperty("--pct", `${(state.time / DURATION) * 100}%`);
+    const end = trackEnd(primary);
+    this.clock.innerHTML = `${state.time.toFixed(2).padStart(5, "0")}<span>s / ${DURATION.toFixed(
+      1,
+    )}s</span>`;
+
+    this.playBtn.textContent = state.playing ? "❚❚ Pause" : "▶ Play";
+    this.playBtn.classList.toggle("on", state.playing);
+    this.lowKeyBtn.classList.toggle("on", state.lowKey);
+    for (const [s, b] of this.speedButtons) b.classList.toggle("on", s === state.speed);
+    for (const [m, b] of this.modeButtons) b.classList.toggle("on", m === state.mode);
+
+    const activity = serviceActivity(state.time, primary);
+    const other = state.mode === "compare" ? serviceActivity(state.time, "failure") : null;
+
+    for (const svc of SERVICES) {
+      const row = this.serviceRows.get(svc.id)!;
+      const a = Math.max(activity.get(svc.id) ?? 0, other?.get(svc.id) ?? 0);
+      row.classList.toggle("active", a > 0.05);
+      row.classList.toggle("isolated", state.isolate === svc.id);
+      row.classList.toggle("muted", state.isolate !== null && state.isolate !== svc.id);
+      const values = metricValues(svc, a);
+      const cell = this.metricCells.get(svc.id)!;
+      cell.innerHTML = values
+        .map((v, i) => `${fmt(v)}<span>${svc.metrics[i]!.unit}</span>`)
+        .join("<br>");
+    }
+
+    if (this.hintTimer && performance.now() - this.hintTimer > 8000) {
+      this.hint.style.opacity = "0";
+      this.hintTimer = 0;
+    }
+
+    this.renderInspector(state, primary, end);
+  }
+
+  private renderInspector(state: AppState, primary: Track, end: number): void {
+    const step = focusStep(Math.min(state.time, end), primary);
+    const otherStep =
+      state.mode === "compare"
+        ? focusStep(Math.min(state.time, trackEnd("failure")), "failure")
+        : null;
+    const schemaId = state.pinnedSchema ?? step?.schema ?? "http.request";
+    const key = `${step?.id ?? "-"}|${otherStep?.id ?? "-"}|${schemaId}|${state.mode}`;
+    if (key === this.lastInspectorKey) return;
+    this.lastInspectorKey = key;
+
+    const frag = document.createDocumentFragment();
+
+    if (state.mode === "compare") {
+      frag.appendChild(this.compareBlock(state, step, otherStep));
+    } else if (step) {
+      frag.appendChild(this.stepCard(step, primary));
+    }
+
+    frag.appendChild(this.schemaBlock(schemaId, state.pinnedSchema !== null));
+    this.inspectorBody.replaceChildren(frag);
+    if (this.schemaSelect.value !== (state.pinnedSchema ?? "")) {
+      this.schemaSelect.value = state.pinnedSchema ?? "";
+    }
+  }
+
+  private stepCard(step: Step, track: Track): HTMLElement {
+    const card = el("div", `step-card ${step.status}`);
+    const badge = (cls: string, text: string): string =>
+      `<span class="badge ${cls}">${esc(text)}</span>`;
+    card.innerHTML = `
+      <div class="step-meta">
+        ${badge(step.status, step.kind)}
+        ${badge("", track)}
+        <span>${step.t0.toFixed(1)}s – ${step.t1.toFixed(1)}s</span>
+      </div>
+      <h3>${esc(step.title)}</h3>
+      <p>${esc(step.detail)}</p>
+    `;
+    return card;
+  }
+
+  private compareBlock(state: AppState, a: Step | null, b: Step | null): HTMLElement {
+    const wrap = el("div");
+    const grid = el("div", "compare-grid");
+
+    const cell = (label: string, step: Step | null, cls: Status): HTMLElement => {
+      const c = el("div", "compare-cell");
+      c.innerHTML = `
+        <h4>${esc(label)}</h4>
+        <div class="ttl"><span class="badge ${step ? step.status : cls}">${esc(
+          step ? step.kind : "idle",
+        )}</span> ${esc(step ? step.title : "path already terminated")}</div>
+        <div class="sub">${esc(step ? step.detail : "")}</div>
+      `;
+      return c;
+    };
+
+    grid.appendChild(cell("success path", a, "ok"));
+    grid.appendChild(cell("failure path", b, "fail"));
+    wrap.appendChild(grid);
+
+    const note = el("div", "compare-note");
+    const shared = state.time < DIVERGENCE_T;
+    note.innerHTML = shared
+      ? `Both paths are still identical. They diverge at <b>${DIVERGENCE_T.toFixed(
+          1,
+        )}s</b>, inside token validation — marked by the flag on the rail.`
+      : `Diverged at <b>${DIVERGENCE_T.toFixed(1)}s</b>. The success path carries an expired-in-11-minutes
+         token and reaches persistence; the failure path carries one that expired 41 seconds ago and never
+         leaves the perimeter. Everything downstream of the gateway is a consequence of that single check.`;
+    wrap.appendChild(note);
+    return wrap;
+  }
+
+  private schemaBlock(id: string, pinned: boolean): HTMLElement {
+    const wrap = el("div", "schema");
+
+    const bar = el("div", "schema-bar");
+    bar.appendChild(this.schemaSelect);
+    if (pinned) {
+      const unpin = el("button", "ctl", "follow") as HTMLButtonElement;
+      unpin.type = "button";
+      unpin.addEventListener("click", () => {
+        this.handlers.onSchemaPin(null);
+        this.lastInspectorKey = "";
+      });
+      bar.appendChild(unpin);
+    }
+    wrap.appendChild(bar);
+
+    const schema = SCHEMAS[id];
+    if (!schema) return wrap;
+
+    const head = el("div");
+    head.innerHTML = `
+      <h4>${esc(schema.title)}</h4>
+      <div class="transport">${esc(schema.transport)}</div>
+    `;
+    wrap.appendChild(head);
+
+    const wire = el("pre", "wire", esc(schema.head.join("\n")));
+    wrap.appendChild(wire);
+
+    const list = el("ul", "fields");
+    for (const f of schema.fields) {
+      const li = el("li");
+      li.innerHTML = `
+        <div class="frow">
+          <span class="fname">${esc(f.name)}</span>
+          <span class="ftype">${esc(f.type)}</span>
+          ${f.mark ? `<span class="fmark ${f.mark}">${f.mark}</span>` : ""}
+          <span class="fnote">${esc(f.note)}</span>
+        </div>
+      `;
+      list.appendChild(li);
+    }
+    wrap.appendChild(list);
+
+    wrap.appendChild(el("div", "schema-size", `${esc(schema.size)} on the wire`));
+    return wrap;
+  }
+}

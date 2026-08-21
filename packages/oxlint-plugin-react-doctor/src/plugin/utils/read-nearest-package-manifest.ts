@@ -42,10 +42,9 @@ export interface PackageManifest {
 // filename) is essential — every file inside a package shares the same
 // answer, and oxlint visits many files per package per run.
 //
-// Both memos are sound only within one scan (the filesystem is treated as
-// frozen while a scan runs). A long-lived host (the LSP server) must call
-// `resetManifestCaches` at each scan start so a package.json created closer
-// to a source file, or an edited manifest, is picked up by the next scan.
+// Both memos are sound only within one scan because the filesystem is treated
+// as frozen while a scan runs. Reset them at each scan start so a closer or
+// edited package manifest is picked up by the next scan.
 const cachedPackageDirectoryByFilename = new Map<string, string | null>();
 const cachedManifestByPackageDirectory = new Map<string, PackageManifest | null>();
 

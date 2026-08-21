@@ -62,23 +62,11 @@ export interface InspectResult {
    */
   lintSidecarReplayedFileCount?: number | null;
   lintSidecarTotalFileCount?: number | null;
-  /**
-   * Dead-code result cache outcome: `true` when the pass replayed a cached
-   * result (the analysis never ran), `false` on a fresh analysis. Absent when
-   * the pass never consulted the cache — dead-code skipped, the cache
-   * disabled, or a whole-repo cache replay where no analysis ran. The CLI
-   * projects it onto the Sentry wide event as `deadCode.cacheHit`.
-   */
+  /** @deprecated Retained for report compatibility. */
   deadCodeCacheHit?: boolean | null;
-  /**
-   * deslop's incremental summary-cache outcome for the dead-code analysis:
-   * collected files served from cached parse summaries vs freshly parsed.
-   * Both absent whenever no analysis consulted the incremental store — a
-   * whole-result cache hit, the cache disabled, or dead-code skipped. The CLI
-   * projects them onto the Sentry wide event as `deadCode.summaryCacheHits` /
-   * `deadCode.summaryCacheMisses`.
-   */
+  /** @deprecated Retained for report compatibility. */
   deadCodeSummaryCacheHits?: number | null;
+  /** @deprecated Retained for report compatibility. */
   deadCodeSummaryCacheMisses?: number | null;
   /**
    * Present only for a baseline run (`InspectOptions.baseline` set). The
@@ -101,7 +89,7 @@ export interface InspectResult {
  * Options accepted by `inspect()`. Mixes two concern groups; ordered
  * here in the source to make the split visible to future readers:
  *
- *   - **Engine inputs** (`lint`, `deadCode`, `includePaths`,
+ *   - **Engine inputs** (`lint`, `includePaths`,
  *     `configOverride`, `respectInlineDisables`) — flow into
  *     `runInspect`'s `InspectInput` and shape what the engine
  *     actually does.
@@ -118,7 +106,7 @@ export interface InspectResult {
 export interface InspectOptions {
   // ── Engine inputs ────────────────────────────────────────────────
   lint?: boolean;
-  /** See `ReactDoctorConfig.deadCode`. Ignored in diff / staged mode. */
+  /** @deprecated Compatibility alias for React maintainability analysis. */
   deadCode?: boolean;
   /**
    * Whether to run the Socket.dev supply-chain scan. Resolves against
@@ -189,7 +177,7 @@ export interface InspectOptions {
    * seconds). When the budget runs out mid-scan, the run degrades
    * gracefully instead of failing: lint batches that haven't started are
    * skipped (listed in `skippedCheckReasons["lint:partial"]`) and the
-   * dead-code phase is skipped or capped to the remaining budget, so
+   * maintainability phase is skipped or capped to the remaining budget, so
    * partial results are still reported. In-flight work is allowed to
    * finish, so the wall clock can overshoot the budget by up to one
    * lint batch. A programmatic `inspect()` call applies the budget to that
@@ -389,14 +377,13 @@ export interface JsonReportV1 {
   mode: JsonReportMode;
   baselineDegraded?: boolean;
   /**
-   * Whether any scanned project resolved a React-compatible runtime (React
-   * or Preact). `false` means every React-runtime rule family was gated off,
-   * so an empty `diagnostics` array is vacuous — NOT the same as a clean
-   * React scan. Consumers gating on the report (CI, verifiers, hooks) should
-   * treat `reactDetected === false` as "wrong scan target", not "all clear"
-   * (per project, `projects[].project.reactVersion` / `preactVersion` say
-   * which roots were non-React). Absent when nothing was scanned (`projects`
-   * is empty), on error reports, and on reports from older CLI versions.
+   * Whether any scanned project resolved a React-compatible runtime directly
+   * or through a React-backed framework. `false` means every React-runtime
+   * rule family was gated off, not that the scan target was unsupported:
+   * other detected framework and library rule families still run, as do
+   * framework-neutral rules on any analyzable project. Absent when
+   * nothing was scanned (`projects` is empty), on error reports, and on
+   * reports from older CLI versions.
    */
   reactDetected?: boolean;
   diff: JsonReportDiffInfo | null;

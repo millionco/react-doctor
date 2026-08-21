@@ -20,6 +20,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
 import { unwrapReturnExpression } from "../../utils/unwrap-return-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { isExternalDomSyncCall } from "../state-and-effects/utils/has-deferred-or-external-effect-work.js";
 
 const USE_EFFECT_ONLY = new Set(["useEffect"]);
 const USE_CALLBACK_ONLY = new Set(["useCallback"]);
@@ -31,6 +32,8 @@ const REACT_API_CALL_OPTIONS = {
 };
 const MOUNT_FLASH_MESSAGE =
   "`useEffect(setState, [])` runs after the first paint, so users can see the initial state flash. Initialize from a render-safe value or use `useSyncExternalStore` for external values.";
+const EXTERNAL_SYNC_FLASH_MESSAGE =
+  "`useEffect` updates a rendered branch from a browser capability after the first paint, so users can see the fallback flash. Preserve a stable first render or switch in a layout effect when the pre-paint replacement is intentional.";
 
 interface PairedStateBinding {
   componentFunction: EsTreeNode;
@@ -107,6 +110,20 @@ const argumentsReadReactRefCurrent = (context: RuleContext, callArguments: EsTre
       }
     });
     return readsReactRefCurrent;
+  });
+
+const argumentsReadExternalDomSync = (context: RuleContext, callArguments: EsTreeNode[]): boolean =>
+  callArguments.some((argument) => {
+    let readsExternalDomSync = false;
+    walkAst(argument, (child) => {
+      if (readsExternalDomSync) return false;
+      if (child !== argument && isFunctionLike(child)) return false;
+      if (isExternalDomSyncCall(child, context)) {
+        readsExternalDomSync = true;
+        return false;
+      }
+    });
+    return readsExternalDomSync;
   });
 
 const findPairedStateBinding = (
@@ -692,7 +709,7 @@ const isExactViewportSubscriptionEffect = (
 
 export const renderingHydrationNoFlicker = defineRule({
   id: "rendering-hydration-no-flicker",
-  title: "useEffect setState flashes on mount",
+  title: "useEffect state synchronization flashes after paint",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
@@ -711,7 +728,8 @@ export const renderingHydrationNoFlicker = defineRule({
       }
 
       const depsNode = node.arguments[1];
-      if (!isNodeOfType(depsNode, "ArrayExpression") || depsNode.elements?.length !== 0) return;
+      if (!isNodeOfType(depsNode, "ArrayExpression")) return;
+      const isMountOnlyEffect = depsNode.elements?.length === 0;
 
       const callback = getEffectCallback(node);
       if (
@@ -743,6 +761,12 @@ export const renderingHydrationNoFlicker = defineRule({
       ) {
         const pairedState = findPairedStateBinding(context, expression, expression.callee.name);
         if (!pairedState) return;
+        if (
+          !isMountOnlyEffect &&
+          !argumentsReadExternalDomSync(context, expression.arguments ?? [])
+        ) {
+          return;
+        }
         if (isSameMountStateValue(context, pairedState, expression)) return;
         if (!isStateUsedInFirstPaintOutput(context, pairedState)) return;
         if (argumentsReadReactRefCurrent(context, expression.arguments ?? [])) return;
@@ -755,7 +779,7 @@ export const renderingHydrationNoFlicker = defineRule({
         if ((expression.arguments ?? []).some(containsLocaleEnvironmentRead)) return;
         context.report({
           node,
-          message: MOUNT_FLASH_MESSAGE,
+          message: isMountOnlyEffect ? MOUNT_FLASH_MESSAGE : EXTERNAL_SYNC_FLASH_MESSAGE,
         });
       }
     },

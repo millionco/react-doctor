@@ -58,4 +58,49 @@ describe("defineRule", () => {
     expect(visitors.Program).toBeTypeOf("function");
     expect(visitors.JSXOpeningElement).toBeTypeOf("function");
   });
+
+  it("keeps capability-gated rules compatible when capabilities are unspecified", () => {
+    const rule = defineRule({
+      id: "compiler-disabled-rule",
+      title: "test",
+      severity: "warn",
+      disabledWhen: ["react-compiler"],
+      create: () => ({ Program: () => {} }),
+    });
+
+    const visitors = rule.create({
+      report: () => {},
+      get scopes(): never {
+        throw new Error("scopes should stay lazy");
+      },
+      get cfg(): never {
+        throw new Error("cfg should stay lazy");
+      },
+    });
+
+    expect(visitors.Program).toBeTypeOf("function");
+  });
+
+  it("skips rules disabled by an explicitly configured capability", () => {
+    const rule = defineRule({
+      id: "compiler-disabled-rule",
+      title: "test",
+      severity: "warn",
+      disabledWhen: ["react-compiler"],
+      create: () => ({ Program: () => {} }),
+    });
+
+    const visitors = rule.create({
+      report: () => {},
+      settings: { "react-doctor": { capabilities: ["react-compiler"] } },
+      get scopes(): never {
+        throw new Error("scopes should stay lazy");
+      },
+      get cfg(): never {
+        throw new Error("cfg should stay lazy");
+      },
+    });
+
+    expect(visitors).toEqual({});
+  });
 });

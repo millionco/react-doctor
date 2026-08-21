@@ -10,6 +10,7 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const MESSAGE_MISSING_HREF =
   "Keyboard users can't reach this link because it has no `href`, so add a real `href` (or use `<button>` for actions).";
@@ -20,11 +21,21 @@ const MESSAGE_CANT_BE_ANCHOR =
 
 interface AnchorIsValidSettings {
   validHrefs?: ReadonlyArray<string>;
+  components?: ReadonlyArray<string>;
+  specialLink?: ReadonlyArray<string>;
+  aspects?: ReadonlyArray<string>;
+}
+
+interface ResolvedAnchorIsValidSettings {
+  validHrefs: ReadonlySet<string>;
+  hrefAttributeNames: ReadonlyArray<string>;
+  components: ReadonlySet<string>;
+  aspects: ReadonlySet<string> | null;
 }
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
-): { validHrefs: ReadonlySet<string>; hrefAttributeNames: ReadonlyArray<string> } => {
+): ResolvedAnchorIsValidSettings => {
   const reactDoctor = settings?.["react-doctor"];
   const ruleSettings =
     typeof reactDoctor === "object" && reactDoctor !== null
@@ -32,9 +43,17 @@ const resolveSettings = (
       : {};
   return {
     validHrefs: new Set(ruleSettings.validHrefs ?? []),
-    hrefAttributeNames: getJsxA11yHrefAttributeNames(settings),
+    hrefAttributeNames: [
+      ...getJsxA11yHrefAttributeNames(settings),
+      ...(ruleSettings.specialLink ?? []),
+    ],
+    components: new Set(ruleSettings.components ?? []),
+    aspects: ruleSettings.aspects ? new Set(ruleSettings.aspects) : null,
   };
 };
+
+const hasAspect = (settings: ResolvedAnchorIsValidSettings, aspect: string): boolean =>
+  settings.aspects === null || settings.aspects.has(aspect);
 
 // Next.js `<Link legacyBehavior>` (and the pre-13 default) clones its child
 // `<a>` and injects the `href` at render time, so the anchor is reachable
@@ -89,6 +108,36 @@ const isNullishOrFragmentHref = (value: EsTreeNode): boolean => {
   return false;
 };
 
+const getUpstreamHrefValueKind = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+): "nullish" | "invalid" | "valid" => {
+  const value = attribute.value;
+  if (!value) return "nullish";
+  if (isNodeOfType(value, "Literal")) {
+    return typeof value.value === "string" && isInvalidHref(value.value, new Set())
+      ? "invalid"
+      : "valid";
+  }
+  if (isNodeOfType(value, "JSXExpressionContainer")) {
+    const expression = value.expression;
+    if (isNodeOfType(expression, "Identifier") && expression.name === "undefined") {
+      return "nullish";
+    }
+    if (isNodeOfType(expression, "Literal")) {
+      if (expression.value === null) return "nullish";
+      return typeof expression.value === "string" && isInvalidHref(expression.value, new Set())
+        ? "invalid"
+        : "valid";
+    }
+    if (isNodeOfType(expression, "TemplateLiteral") && expression.expressions.length === 0) {
+      const staticValue = expression.quasis[0]?.value.cooked ?? "";
+      return isInvalidHref(staticValue, new Set()) ? "invalid" : "valid";
+    }
+    return "valid";
+  }
+  return isNodeOfType(value, "JSXFragment") ? "nullish" : "valid";
+};
+
 // Port of `oxc_linter::rules::jsx_a11y::anchor_is_valid`.
 export const anchorIsValid = defineRule({
   id: "anchor-is-valid",
@@ -99,14 +148,59 @@ export const anchorIsValid = defineRule({
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const fileHasJsxA11ySettings = hasJsxA11ySettings(context.settings);
     const isTestlikeFile = isTestlikeFilename(context.filename);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         const tag = getElementType(node, context.settings);
-        if (!fileHasJsxA11ySettings && tag !== "a") return;
-        if (tag !== "a") return;
+        const rawTagName = flattenJsxName(node.name);
+        if (
+          tag !== "a" &&
+          (shouldUseCuratedBehavior || !rawTagName || !settings.components.has(rawTagName))
+        ) {
+          return;
+        }
+        if (shouldUseCuratedBehavior && !fileHasJsxA11ySettings && tag !== "a") return;
+        if (!shouldUseCuratedBehavior) {
+          let hasHref = false;
+          let hasInvalidHref = false;
+          for (const hrefAttributeName of settings.hrefAttributeNames) {
+            const hrefAttribute = hasJsxPropIgnoreCase(node.attributes, hrefAttributeName);
+            if (!hrefAttribute) continue;
+            const valueKind = getUpstreamHrefValueKind(hrefAttribute);
+            if (valueKind === "invalid") {
+              hasHref = true;
+              hasInvalidHref = true;
+            } else if (valueKind === "valid") {
+              hasHref = true;
+            }
+          }
+          const hasSpreadAttribute = hasJsxSpreadAttribute(node.attributes);
+          const hasOnClick = Boolean(hasJsxPropIgnoreCase(node.attributes, "onClick"));
+          if (!hasHref) {
+            if (
+              !hasSpreadAttribute &&
+              hasAspect(settings, "noHref") &&
+              (!hasOnClick || !hasAspect(settings, "preferButton"))
+            ) {
+              context.report({ node: node.name, message: MESSAGE_MISSING_HREF });
+            }
+            if (!hasSpreadAttribute && hasOnClick && hasAspect(settings, "preferButton")) {
+              context.report({ node: node.name, message: MESSAGE_CANT_BE_ANCHOR });
+            }
+            return;
+          }
+          if (hasInvalidHref) {
+            if (hasOnClick && hasAspect(settings, "preferButton")) {
+              context.report({ node: node.name, message: MESSAGE_CANT_BE_ANCHOR });
+            } else if (hasAspect(settings, "invalidHref")) {
+              context.report({ node: node.name, message: MESSAGE_INCORRECT_HREF });
+            }
+          }
+          return;
+        }
         // First-found custom href alternative, falling back to "href".
         let hrefAttribute: ReturnType<typeof hasJsxPropIgnoreCase> | undefined;
         for (const attributeName of settings.hrefAttributeNames) {

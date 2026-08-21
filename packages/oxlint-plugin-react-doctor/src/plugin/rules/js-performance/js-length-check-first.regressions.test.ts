@@ -134,6 +134,12 @@ describe("js-performance/js-length-check-first — regressions", () => {
     }`);
   });
 
+  it("stays silent when every applies a non-equality constraint to a fixed tuple", () => {
+    expectPass(`function canAfford(cost: [number, number, number], owned: [number, number, number]) {
+      return cost.every((amount, index) => owned[index] >= amount);
+    }`);
+  });
+
   it("stays silent when the receiver is a map of the indexed array", () => {
     expectPass(`function unchanged(state) {
       const updatedServers = state.servers.map((s) => update(s));

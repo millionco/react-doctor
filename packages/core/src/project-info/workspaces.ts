@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { PackageJson, WorkspacePackage } from "../types/index.js";
-import { hasReactDependency } from "./dependencies.js";
+import { hasSupportedProjectDependency } from "./dependencies.js";
 import { isDirectory, isFile, readDirectoryEntries } from "./fs-utils.js";
 import { readPackageJson } from "./package-json.js";
 
@@ -122,7 +122,7 @@ export const listWorkspacePackages = (rootDirectory: string): WorkspacePackage[]
     packages.push(workspacePackage);
   };
 
-  if (hasReactDependency(packageJson)) {
+  if (hasSupportedProjectDependency(packageJson)) {
     const rootName = packageJson.name ?? path.basename(rootDirectory);
     pushIfNew({ name: rootName, directory: rootDirectory });
   }
@@ -132,7 +132,7 @@ export const listWorkspacePackages = (rootDirectory: string): WorkspacePackage[]
     for (const workspaceDirectory of directories) {
       const workspacePackageJson = readPackageJson(path.join(workspaceDirectory, "package.json"));
 
-      if (!hasReactDependency(workspacePackageJson)) continue;
+      if (!hasSupportedProjectDependency(workspacePackageJson)) continue;
 
       const name = workspacePackageJson.name ?? path.basename(workspaceDirectory);
       pushIfNew({ name, directory: workspaceDirectory });

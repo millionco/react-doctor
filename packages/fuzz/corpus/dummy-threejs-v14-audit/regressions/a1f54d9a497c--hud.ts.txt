@@ -1,0 +1,587 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit a1f54d9a497ce8b2f84e1dd4dfe1b905219f3842e1e5b3b7888e98a377ab05e3
+import { clamp, lerp } from "../core/mathx";
+import type { Shoal } from "../entities/marine";
+import { type Trim, type Outcome, OUTCOME_TEXT } from "../game/rules";
+import { SPECIES, SPECIES_ORDER, type SpeciesKey } from "../game/species";
+import { COURSE_LEN } from "../world/channel";
+import type { Terrain } from "../world/terrain";
+
+const SONAR_W = 344;
+const SONAR_H = 154;
+const SONAR_AHEAD = 190;
+const SONAR_BEHIND = 46;
+const SONAR_DEEP = 46;
+
+export interface HudState {
+  level: number;
+  score: number;
+  quota: number;
+  progress: number;
+  tide: number;
+  tideMax: number;
+  speed: number;
+  layer: string;
+  netDepth: number;
+  netFill: number;
+  clearance: number;
+  integrity: number;
+  licence: number;
+  stability: number;
+  holdMass: number;
+  holdCap: number;
+  trim: Trim;
+  hauls: number;
+  deployed: boolean;
+}
+
+export interface ResultData {
+  outcome: Outcome;
+  level: number;
+  score: number;
+  quota: number;
+  hauls: number;
+  landed: Record<SpeciesKey, number>;
+  timeLeft: number;
+}
+
+const el = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html !== undefined) n.innerHTML = html;
+  return n;
+};
+
+const hex = (n: number): string => `#${n.toString(16).padStart(6, "0")}`;
+
+export class Hud {
+  readonly root = el("div");
+  private q: Record<string, HTMLElement> = {};
+  private sonar: HTMLCanvasElement;
+  private sctx: CanvasRenderingContext2D;
+  private toasts: HTMLElement;
+  private alert: HTMLElement;
+  private flash: HTMLElement;
+  private flashV = 0;
+  private trimCells: HTMLElement[] = [];
+  private lastTrim: Trim | null = null;
+  private dpr = Math.min(2, window.devicePixelRatio || 1);
+  private ping = 0;
+
+  onStart: () => void = () => {};
+  onReplay: () => void = () => {};
+
+  constructor() {
+    this.root.id = "hud";
+
+    // ---- top bar --------------------------------------------------------
+    const top = el("div", "panel");
+    top.id = "top";
+    top.innerHTML = `
+      <div class="cell"><div class="lbl">Run</div><div class="val" id="vLevel">1</div></div>
+      <div class="sep"></div>
+      <div class="cell" style="min-width:210px">
+        <div class="row"><div class="lbl">Quota</div><div class="lbl" id="vQuota">0 / 0</div></div>
+        <div class="bar" id="quotaWrap"><i id="quotaFill" style="width:0%"></i></div>
+      </div>
+      <div class="sep"></div>
+      <div class="cell" style="min-width:150px">
+        <div class="row"><div class="lbl">To gate</div><div class="lbl" id="vDist">0%</div></div>
+        <div class="bar" id="distWrap"><i id="distFill" style="width:0%"></i></div>
+      </div>
+      <div class="sep"></div>
+      <div class="cell"><div class="lbl">Tide</div><div class="val" id="vTide">3:00</div></div>`;
+    this.root.appendChild(top);
+
+    // ---- left instruments ----------------------------------------------
+    const left = el("div", "panel");
+    left.id = "left";
+    left.innerHTML = `
+      <div class="row"><div class="lbl">Current band</div><div class="v" id="vLayer">TROUGH</div></div>
+      <div class="row"><div class="lbl">Speed</div><div class="v" id="vSpeed">0.0 kn</div></div>
+      <div class="row"><div class="lbl">Gear depth</div><div class="v" id="vDepth">0.0 m</div></div>
+      <div class="row"><div class="lbl">Bed clearance</div><div class="v" id="vClear">—</div></div>
+      <div style="height:1px;background:var(--edge);margin:1px 0"></div>
+      <div>
+        <div class="row"><div class="lbl">Net integrity</div><div class="lbl" id="vInt">100%</div></div>
+        <div class="bar"><i id="intFill" style="width:100%"></i></div>
+      </div>
+      <div>
+        <div class="row"><div class="lbl">Licence</div><div class="lbl" id="vLic">100%</div></div>
+        <div class="bar"><i id="licFill" style="width:100%"></i></div>
+      </div>
+      <div class="muteHint">M — mute &nbsp;·&nbsp; Wheel — zoom &nbsp;·&nbsp; R — restart</div>`;
+    this.root.appendChild(left);
+
+    // ---- sonar ----------------------------------------------------------
+    const sw = el("div", "panel");
+    sw.id = "sonarWrap";
+    const title = el("div", "lbl", "Depth sounder — beam ahead");
+    title.style.marginBottom = "6px";
+    sw.appendChild(title);
+    this.sonar = el("canvas");
+    this.sonar.id = "sonar";
+    this.sonar.width = SONAR_W * this.dpr;
+    this.sonar.height = SONAR_H * this.dpr;
+    this.sonar.style.width = `${SONAR_W}px`;
+    this.sonar.style.height = `${SONAR_H}px`;
+    sw.appendChild(this.sonar);
+    const key = el("div");
+    key.id = "sonarKey";
+    key.innerHTML = SPECIES_ORDER.map(
+      (k) =>
+        `<span><b style="background:${hex(SPECIES[k].color)};box-shadow:0 0 6px ${hex(
+          SPECIES[k].emissive,
+        )}"></b>${SPECIES[k].short}</span>`,
+    ).join("");
+    sw.appendChild(key);
+    this.root.appendChild(sw);
+    this.sctx = this.sonar.getContext("2d")!;
+    this.sctx.scale(this.dpr, this.dpr);
+
+    // ---- bottom: trim / stability / net ---------------------------------
+    const bottom = el("div");
+    bottom.id = "bottom";
+    const netBox = el("div", "panel");
+    netBox.id = "netBox";
+    netBox.innerHTML = `
+      <div class="row"><div class="lbl">Cod-end</div><div class="lbl" id="vNet">0%</div></div>
+      <div class="bar"><i id="netFill" style="width:0%"></i></div>
+      <div class="row"><div class="lbl">Hold mass</div><div class="lbl" id="vHold">0 t</div></div>
+      <div class="bar"><i id="holdFill" style="width:0%"></i></div>`;
+    const trimBox = el("div", "panel");
+    trimBox.id = "trimBox";
+    const trimLbl = el("div", "lbl", "Ballast distribution &nbsp;·&nbsp; <kbd>E</kbd>");
+    trimBox.appendChild(trimLbl);
+    const track = el("div");
+    track.id = "trimTrack";
+    for (const name of ["FORE", "EVEN", "AFT"]) {
+      const c = el("div", "trimCell", name);
+      this.trimCells.push(c);
+      track.appendChild(c);
+    }
+    trimBox.appendChild(track);
+    const trimNote = el("div", "lbl", "");
+    trimNote.id = "vTrimNote";
+    trimBox.appendChild(trimNote);
+    const stabBox = el("div", "panel");
+    stabBox.id = "stabBox";
+    stabBox.innerHTML = `
+      <div class="row"><div class="lbl">Stability</div><div class="lbl" id="vStab">100%</div></div>
+      <div class="bar"><i id="stabFill" style="width:100%"></i></div>
+      <div class="lbl" id="vStabNote" style="margin-top:2px">Trimmed and steady</div>`;
+    bottom.append(netBox, trimBox, stabBox);
+    this.root.appendChild(bottom);
+
+    // ---- toasts, alert, vignette ---------------------------------------
+    this.toasts = el("div");
+    this.toasts.id = "toasts";
+    this.root.appendChild(this.toasts);
+    this.alert = el("div");
+    this.alert.id = "alert";
+    this.root.appendChild(this.alert);
+    const vig = el("div");
+    vig.id = "vignette";
+    this.root.appendChild(vig);
+    this.flash = el("div");
+    this.flash.id = "damageFlash";
+    this.root.appendChild(this.flash);
+    // ---- overlays -------------------------------------------------------
+    const title2 = el("div", "overlay");
+    title2.id = "titleOverlay";
+    title2.innerHTML = `
+      <div class="panel card">
+        <div class="tag">Solo trawler · Kestrel Strait</div>
+        <h1>DRAGLINE</h1>
+        <p class="sub">
+          One boat, one tide, one shot at the gate. Five current bands run the length of the
+          strait — the races carry you downstream fast, the trough is deep and quiet, the reef
+          shelf is where the money sits and where nets die. <b>Pay out warp to extrude the trawl</b>:
+          the further it goes, the deeper and wider the volume it sweeps, and the more it drags.
+          Nothing counts until you winch the bag all the way in.
+        </p>
+        <div class="keys">
+          <kbd>A</kbd><span>Steer to port, across the current bands</span>
+          <kbd>D</kbd><span>Steer to starboard</span>
+          <kbd>SPACE</kbd><span>Hold to pay out warp — extrudes the trawl deeper and wider. Release to haul in and land the catch</span>
+          <kbd>E</kbd><span>Redistribute hold mass: FORE / EVEN / AFT. Aft fishes deeper but capsizes a full hold</span>
+          <kbd>WHEEL</kbd><span>Zoom the chase camera</span>
+        </div>
+        <button class="btn" id="startBtn">BEGIN THE RUN</button>
+      </div>`;
+    this.root.appendChild(title2);
+
+    const result = el("div", "overlay hidden");
+    result.id = "resultOverlay";
+    result.innerHTML = `<div class="panel card">
+        <div class="tag" id="rTag">Run 1</div>
+        <h2 id="rTitle">HAUL LANDED</h2>
+        <p class="sub" id="rNote"></p>
+        <div class="stats">
+          <div class="stat"><div class="lbl">Landed value</div><div class="n" id="rScore">0</div></div>
+          <div class="stat"><div class="lbl">Quota</div><div class="n" id="rQuota">0</div></div>
+          <div class="stat"><div class="lbl">Hauls</div><div class="n" id="rHauls">0</div></div>
+        </div>
+        <div class="lbl" style="margin-bottom:8px">Manifest</div>
+        <div class="manifest" id="rManifest"></div>
+        <button class="btn" id="replayBtn">RESTART — R</button>
+      </div>`;
+    this.root.appendChild(result);
+
+    document.body.appendChild(this.root);
+
+    for (const id of [
+      "vLevel", "vQuota", "quotaFill", "vDist", "distFill", "vTide", "vLayer", "vSpeed",
+      "vDepth", "vClear", "vInt", "intFill", "vLic", "licFill", "vNet", "netFill", "vHold",
+      "holdFill", "vStab", "stabFill", "vStabNote", "vTrimNote", "titleOverlay",
+      "resultOverlay", "rTitle", "rNote", "rScore", "rQuota", "rHauls", "rManifest", "rTag",
+    ]) {
+      const n = document.getElementById(id);
+      if (n) this.q[id] = n;
+    }
+
+    (document.getElementById("startBtn") as HTMLButtonElement).onclick = () => this.onStart();
+    (document.getElementById("replayBtn") as HTMLButtonElement).onclick = () => this.onReplay();
+  }
+
+  showTitle(show: boolean): void {
+    this.q.titleOverlay?.classList.toggle("hidden", !show);
+  }
+
+  showResult(data: ResultData | null): void {
+    const o = this.q.resultOverlay;
+    if (!o) return;
+    if (!data) {
+      o.classList.add("hidden");
+      return;
+    }
+    const t = OUTCOME_TEXT[data.outcome];
+    const won = data.outcome === "won";
+    this.q.rTag!.textContent = `Run ${data.level}`;
+    this.q.rTitle!.textContent = t.title;
+    this.q.rTitle!.style.color = won ? "var(--good)" : "var(--bad)";
+    this.q.rNote!.textContent =
+      t.note +
+      (won
+        ? `  Run ${data.level + 1} raises the quota and thins the tide window.`
+        : "  The strait resets. Same water, new luck.");
+    this.q.rScore!.textContent = String(Math.round(data.score));
+    this.q.rScore!.style.color = won ? "var(--good)" : "var(--warm)";
+    this.q.rQuota!.textContent = String(data.quota);
+    this.q.rHauls!.textContent = String(data.hauls);
+    const man = this.q.rManifest!;
+    man.innerHTML = SPECIES_ORDER.map((k) => {
+      const sp = SPECIES[k];
+      const amt = data.landed[k] ?? 0;
+      const val = amt * sp.value;
+      return `<div class="m"><i style="background:${hex(sp.color)}"></i>
+        <span>${sp.name}${sp.guarded ? " &nbsp;<b style='color:var(--bad)'>protected</b>" : ""}</span>
+        <b>${amt.toFixed(1)} u</b>
+        <b style="color:${val >= 0 ? "var(--warm)" : "var(--bad)"};min-width:56px;text-align:right">
+          ${val >= 0 ? "+" : ""}${Math.round(val)}</b></div>`;
+    }).join("");
+    (document.getElementById("replayBtn") as HTMLButtonElement).textContent = won
+      ? "NEXT RUN — R"
+      : "TRY AGAIN — R";
+    o.classList.remove("hidden");
+  }
+
+  toast(text: string, kind: "good" | "bad" | "warm" = "warm"): void {
+    const t = el("div", `toast ${kind}`, text);
+    this.toasts.appendChild(t);
+    while (this.toasts.children.length > 6) this.toasts.removeChild(this.toasts.children[0]!);
+    setTimeout(() => {
+      t.style.transition = "opacity .4s, transform .4s";
+      t.style.opacity = "0";
+      t.style.transform = "translateX(18px)";
+      setTimeout(() => t.remove(), 420);
+    }, 2100);
+  }
+
+  setAlert(text: string | null): void {
+    this.alert.textContent = text ?? "";
+    this.alert.classList.toggle("on", !!text);
+  }
+
+  hit(strength: number): void {
+    this.flashV = Math.min(1, this.flashV + strength);
+  }
+
+  /** Per-frame only: the damage flash needs real time to decay smoothly. */
+  tick(dt: number): void {  }
+
+  update(s: HudState, _dt: number): void {
+    const set = (id: string, v: string): void => {
+      const n = this.q[id];
+      if (n && n.textContent !== v) n.textContent = v;
+    };
+    const bar = (id: string, v: number): void => {
+      const n = this.q[id];
+      if (n) n.style.width = `${clamp(v, 0, 1) * 100}%`;
+    };
+
+    set("vLevel", String(s.level));
+    set("vQuota", `${Math.round(s.score)} / ${s.quota}`);
+    bar("quotaFill", s.score / s.quota);
+    set("vDist", `${Math.round(s.progress * 100)}%`);
+    bar("distFill", s.progress);
+    const m = Math.floor(Math.max(0, s.tide) / 60);
+    const sec = Math.floor(Math.max(0, s.tide) % 60);
+    set("vTide", `${m}:${String(sec).padStart(2, "0")}`);
+    const tideEl = this.q.vTide;
+    if (tideEl) tideEl.style.color = s.tide < 30 ? "var(--bad)" : s.tide < 60 ? "var(--warm)" : "";
+
+    set("vLayer", s.layer);
+    set("vSpeed", `${s.speed.toFixed(1)} kn`);
+    set("vDepth", s.deployed ? `${s.netDepth.toFixed(1)} m` : "stowed");
+    const cl = s.deployed ? s.clearance : Number.NaN;
+    set("vClear", Number.isNaN(cl) ? "—" : `${cl.toFixed(1)} m`);
+    const clEl = this.q.vClear;
+    if (clEl) clEl.style.color = !s.deployed ? "" : cl < 2 ? "var(--bad)" : cl < 5 ? "var(--warm)" : "var(--good)";
+
+    set("vInt", `${Math.round(s.integrity)}%`);
+    bar("intFill", s.integrity / 100);
+    set("vLic", `${Math.round(s.licence)}%`);
+    bar("licFill", s.licence / 100);
+    set("vNet", `${Math.round(s.netFill * 100)}%`);
+    bar("netFill", s.netFill);
+    set("vHold", `${s.holdMass.toFixed(0)} t`);
+    bar("holdFill", s.holdMass / s.holdCap);
+    set("vStab", `${Math.round(s.stability * 100)}%`);
+    bar("stabFill", s.stability);
+    const sf = this.q.stabFill;
+    if (sf) {
+      sf.classList.toggle("warn", s.stability < 0.55 && s.stability >= 0.25);
+      sf.classList.toggle("crit", s.stability < 0.25);
+    }
+    set(
+      "vStabNote",
+      s.stability < 0.25
+        ? "LISTING — shift ballast now"
+        : s.stability < 0.55
+          ? "Working hard — ease the trim"
+          : "Trimmed and steady",
+    );
+
+    if (this.lastTrim !== s.trim) {
+      this.lastTrim = s.trim;
+      this.trimCells.forEach((c, i) => c.classList.toggle("on", i - 1 === s.trim));
+      const notes: Record<string, string> = {
+        "-1": "Gear rides high · low drag · tender",
+        "0": "Balanced tow",
+        "1": "Gear rides deep · high drag · tippy when full",
+      };
+      set("vTrimNote", notes[String(s.trim)]!);
+    }
+  }
+
+  /**
+   * Side-scan sounder. This is where the spatial mechanic becomes a decision:
+   * you can see the bed rising, the depth of every shoal ahead, and exactly how
+   * much water is left under the footrope.
+   */
+  drawSonar(opts: {
+    terrain: Terrain;
+    shoals: Shoal[];
+    boatX: number;
+    boatZ: number;
+    netZ: number;
+    netDepth: number;
+    netHalfH: number;
+    /** True depth of the footrope — what the bed actually tests against. */
+    netFootDepth: number;
+    netLen: number;
+    deployed: boolean;
+    time: number;
+  }): void {
+    const c = this.sctx;
+    const W = SONAR_W;
+    const H = SONAR_H;
+    const z0 = opts.boatZ - SONAR_BEHIND;
+    const z1 = opts.boatZ + SONAR_AHEAD;
+    const zx = (z: number): number => ((z - z0) / (z1 - z0)) * W;
+    const dy = (d: number): number => (d / SONAR_DEEP) * H;
+
+    c.clearRect(0, 0, W, H);
+    const g = c.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#0d2b33");
+    g.addColorStop(0.5, "#071a22");
+    g.addColorStop(1, "#03090d");
+    c.fillStyle = g;
+    c.fillRect(0, 0, W, H);
+
+    // sweep line
+    this.ping = (this.ping + 0.016) % 1;
+    const sx = this.ping * W;
+    const sg = c.createLinearGradient(sx - 26, 0, sx, 0);
+    sg.addColorStop(0, "rgba(120,230,220,0)");
+    sg.addColorStop(1, "rgba(120,230,220,0.10)");
+    c.fillStyle = sg;
+    c.fillRect(sx - 26, 0, 26, H);
+
+    // depth grid
+    c.font = "8px ui-sans-serif, system-ui, sans-serif";
+    c.textBaseline = "top";
+    for (let d = 10; d < SONAR_DEEP; d += 10) {
+      const y = dy(d);
+      c.strokeStyle = "rgba(150,210,220,0.11)";
+      c.lineWidth = 1;
+      c.beginPath();
+      c.moveTo(0, y + 0.5);
+      c.lineTo(W, y + 0.5);
+      c.stroke();
+      c.fillStyle = "rgba(150,210,220,0.4)";
+      c.fillText(`${d}`, 3, y + 2);
+    }
+
+    // ---- seabed profile along the boat's lane ----
+    const N = 118;
+    c.beginPath();
+    c.moveTo(0, H);
+    let minBed = 99;
+    for (let i = 0; i <= N; i++) {
+      const z = lerp(z0, z1, i / N);
+      const bed = -opts.terrain.heightAt(opts.boatX, z);
+      minBed = Math.min(minBed, bed);
+      c.lineTo(zx(z), clamp(dy(bed), -20, H + 20));
+    }
+    c.lineTo(W, H);
+    c.closePath();
+    const bg = c.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, "rgba(196,150,96,0.95)");
+    bg.addColorStop(1, "rgba(84,58,38,0.95)");
+    c.fillStyle = bg;
+    c.fill();
+    c.strokeStyle = "rgba(255,206,140,0.95)";
+    c.lineWidth = 1.4;
+    c.stroke();
+
+    // ---- shoal returns ----
+    c.save();
+    c.beginPath();
+    c.rect(0, 0, W, H);
+    c.clip();
+    for (const s of opts.shoals) {
+      if (s.z < z0 - 20 || s.z > z1 + 20) continue;
+      if (Math.abs(s.x - opts.boatX) > 34) continue;
+      const alive = clamp(s.biomass / s.maxBiomass, 0, 1);
+      if (alive < 0.02) continue;
+      const lateral = 1 - clamp(Math.abs(s.x - opts.boatX) / 34, 0, 1);
+      const x = zx(s.z);
+      const y = dy(s.depth);
+      const r = (3.2 + s.radius * 0.42) * (0.4 + alive * 0.6);
+      const col = hex(s.species.color);
+      c.globalAlpha = 0.24 + lateral * 0.66;
+      const rg = c.createRadialGradient(x, y, 0, x, y, r * 1.9);
+      rg.addColorStop(0, col);
+      rg.addColorStop(0.45, col);
+      rg.addColorStop(1, "rgba(0,0,0,0)");
+      c.fillStyle = rg;
+      c.beginPath();
+      c.arc(x, y, r * 1.9, 0, Math.PI * 2);
+      c.fill();
+      if (s.species.guarded) {
+        c.globalAlpha = 0.5 + lateral * 0.5;
+        c.strokeStyle = "#ff5f52";
+        c.lineWidth = 1.1;
+        c.setLineDash([2, 2]);
+        c.beginPath();
+        c.arc(x, y, r * 1.5, 0, Math.PI * 2);
+        c.stroke();
+        c.setLineDash([]);
+      }
+      c.globalAlpha = 1;
+    }
+    c.restore();
+
+    // ---- the gear ----
+    if (opts.deployed) {
+      const mx = zx(opts.netZ);
+      const tx = zx(opts.netZ - opts.netLen);
+      const my = dy(opts.netDepth);
+      const hh = dy(opts.netHalfH);
+      c.beginPath();
+      c.moveTo(mx, my - hh);
+      c.lineTo(mx, my + hh);
+      c.lineTo(tx, my + hh * 0.42 + dy(1.6));
+      c.lineTo(tx, my - hh * 0.28 + dy(1.6));
+      c.closePath();
+      c.fillStyle = "rgba(140,240,255,0.2)";
+      c.fill();
+      c.strokeStyle = "#8ff0ff";
+      c.lineWidth = 1.3;
+      c.stroke();
+
+      // clearance callout under the footrope
+      const bedAt = -opts.terrain.heightAt(opts.boatX, opts.netZ);
+      const foot = opts.netFootDepth;
+      const clr = bedAt - foot;
+      const by = dy(bedAt);
+      c.strokeStyle = clr < 2 ? "#ff5f52" : clr < 5 ? "#ffb45c" : "rgba(140,240,255,0.55)";
+      c.lineWidth = 1;
+      c.setLineDash([3, 3]);
+      c.beginPath();
+      c.moveTo(mx, dy(foot));
+      c.lineTo(mx, by);
+      c.stroke();
+      c.setLineDash([]);
+      // Footrope line — the part that actually catches the bed.
+      c.strokeStyle = "#8ff0ff";
+      c.setLineDash([]);
+      c.lineWidth = 1.6;
+      c.beginPath();
+      c.moveTo(mx - 5, dy(foot));
+      c.lineTo(tx, dy(foot));
+      c.stroke();
+      if (clr < 8) {
+        c.fillStyle = clr < 2 ? "#ff5f52" : "#ffb45c";
+        c.font = "bold 9px ui-sans-serif, system-ui, sans-serif";
+        c.fillText(`${clr.toFixed(1)}m`, mx + 4, (dy(foot) + by) / 2 - 5);
+      }
+    }
+
+    // ---- own vessel ----
+    const bx = zx(opts.boatZ);
+    c.fillStyle = "#ffd6a0";
+    c.beginPath();
+    c.moveTo(bx + 7, 3);
+    c.lineTo(bx - 7, 3);
+    c.lineTo(bx - 5, 9);
+    c.lineTo(bx + 4, 9);
+    c.closePath();
+    c.fill();
+    c.strokeStyle = "rgba(255,214,160,0.45)";
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(bx + 0.5, 9);
+    c.lineTo(bx + 0.5, H);
+    c.stroke();
+
+    // gate marker
+    if (COURSE_LEN < z1 && COURSE_LEN > z0) {
+      const gx = zx(COURSE_LEN);
+      c.strokeStyle = "#7dffbe";
+      c.lineWidth = 1.6;
+      c.setLineDash([4, 3]);
+      c.beginPath();
+      c.moveTo(gx, 0);
+      c.lineTo(gx, H);
+      c.stroke();
+      c.setLineDash([]);
+      c.fillStyle = "#7dffbe";
+      c.font = "bold 8px ui-sans-serif, system-ui, sans-serif";
+      c.fillText("GATE", gx - 22, 4);
+    }
+
+    c.strokeStyle = "rgba(150,210,220,0.2)";
+    c.lineWidth = 1;
+    c.strokeRect(0.5, 0.5, W - 1, H - 1);
+  }
+}

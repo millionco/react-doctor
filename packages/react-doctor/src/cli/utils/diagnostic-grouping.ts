@@ -95,7 +95,7 @@ export const getSharedFixSiteCount = (diagnostics: ReadonlyArray<Diagnostic>): n
 const FIX_RECIPE_DIRECTIVE_LABEL =
   "Curl with no cache & follow the canonical fix and false positive check recipe before fixing";
 
-// `null` when the rule has no published recipe (dead-code, environment
+// `null` when the rule has no published recipe (maintainability, environment
 // checks, adopted plugins) so callers omit the directive instead of
 // linking to a 404.
 export const formatFixRecipeLine = (diagnostic: Diagnostic): string | null =>

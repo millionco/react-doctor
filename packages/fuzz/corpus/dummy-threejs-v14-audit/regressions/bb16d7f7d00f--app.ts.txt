@@ -1,0 +1,650 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/app.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit bb16d7f7d00ffe960464b4e7aae60c59e5039b002230a713991af9ab915bc28c
+/**
+ * The planner interface: a stepped path from the valid default configuration,
+ * through an A/B comparison, to one saved configuration.
+ */
+import * as CATALOG from "../data/catalog";
+import type { Issue, Metrics, ShowConfig } from "../data/catalog";
+import { LOOKS, SHOW_LENGTH, lookAt } from "../scene/content";
+import { VIEWS, type ViewId, type Viewer } from "../scene/viewer";
+
+const STORAGE_KEY = "lightstage.saved.v1";
+
+interface Saved {
+  name: string;
+  config: ShowConfig;
+  stamp: string;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+function money(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  return `$${Math.round(n / 1000)}k`;
+}
+
+function loadSaved(): Saved | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Saved;
+    if (!parsed.config || !CATALOG.VENUES[parsed.config.venue]) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export class App {
+  private root = document.getElementById("ui")!;
+  private state = {
+    config: { ...CATALOG.DEFAULT_CONFIG } as ShowConfig,
+    step: 0,
+    pinned: null as ShowConfig | null,
+    showing: "live" as "live" | "pinned",
+    saved: loadSaved(),
+    name: loadSaved()?.name ?? "Wrap option — Meridian",
+    view: "house" as ViewId,
+    touched: new Set<number>([0]),
+  };
+
+  private stepRail = el("div", "steprail");
+  private viewPicker = el("div", "viewpicker");
+  private panelHead = el("div", "panel-head");
+  private panelBody = el("div", "panel-body");
+  private panelFoot = el("div", "panel-foot");
+  private readoutBody = el("div", "readout-body");
+  private trackFill = el("i");
+  private trackKnob = el("u");
+  private clockLabel = el("b", undefined, "00:00");
+  private lookLabel = el("span", undefined, "");
+  private playBtn = el("button", "play", "❚❚");
+  private houseValue = el("span", undefined, "42%");
+
+  constructor(private viewer: Viewer) {
+    this.build();
+    this.viewer.applyConfig(this.state.config);
+    this.render();
+  }
+
+  // ---------------------------------------------------------------- shell --
+
+  private build(): void {
+    const top = el("div", "topbar glass");
+    const brand = el("div", "brand");
+    brand.append(el("b", undefined, "Lightstage"), el("span", undefined, "Planner"));
+    top.append(brand, this.stepRail, this.viewPicker);
+
+    for (const v of VIEWS) {
+      const b = el("button", v.id === this.state.view ? "on" : "", v.label);
+      b.onclick = () => {
+        this.state.view = v.id;
+        this.viewer.setView(v.id);
+        this.renderViews();
+      };
+      this.viewPicker.append(b);
+    }
+
+    const panel = el("aside", "panel glass");
+    panel.append(this.panelHead, this.panelBody, this.panelFoot);
+
+    const readout = el("section", "readout glass");
+    readout.append(this.readoutBody);
+
+    const transport = el("footer", "transport glass");
+    this.playBtn.onclick = () => this.togglePlay();
+
+    const scrub = el("div", "scrub");
+    const labels = el("div", "labels");
+    const left = el("div");
+    left.append(this.clockLabel, document.createTextNode(" / 00:48"));
+    labels.append(left, this.lookLabel);
+    const track = el("div", "track");
+    const cues = el("div", "cues");
+    for (let i = 1; i < LOOKS.length; i++) {
+      const mark = el("span");
+      mark.style.left = `${(i / LOOKS.length) * 100}%`;
+      cues.append(mark);
+    }
+    track.append(this.trackFill, cues, this.trackKnob);
+    const seek = (event: MouseEvent) => {
+      const rect = track.getBoundingClientRect();
+      const t = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+      this.viewer.time = t * SHOW_LENGTH;
+    };
+    track.addEventListener("pointerdown", (e) => {
+      seek(e);
+      const move = (ev: PointerEvent) => seek(ev);
+      const up = () => {
+        removeEventListener("pointermove", move);
+        removeEventListener("pointerup", up);
+      };
+      addEventListener("pointermove", move);
+      addEventListener("pointerup", up);
+    });
+    scrub.append(labels, track);
+
+    const dial = el("div", "dial");
+    const dialLabels = el("div", "labels");
+    dialLabels.append(el("span", undefined, "House light"), this.houseValue);
+    const slider = el("input");
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = "100";
+    slider.value = "42";
+    slider.oninput = () => {
+      const v = Number(slider.value) / 100;
+      this.viewer.applyHouseLight(v);
+      this.houseValue.textContent = `${slider.value}%`;
+    };
+    dial.append(dialLabels, slider);
+
+    transport.append(this.playBtn, scrub, dial);
+    this.root.append(top, panel, readout, transport);
+
+    addEventListener("keydown", (e) => {
+      if (e.code === "Space" && !(e.target instanceof HTMLInputElement)) {
+        e.preventDefault();
+        this.togglePlay();
+      }
+    });
+  }
+
+  private togglePlay(): void {
+    this.viewer.playing = !this.viewer.playing;
+    this.playBtn.textContent = this.viewer.playing ? "❚❚" : "▶";
+  }
+
+  // ---------------------------------------------------------------- state --
+
+  private activeConfig(): ShowConfig {
+    return this.state.showing === "pinned" && this.state.pinned
+      ? this.state.pinned
+      : this.state.config;
+  }
+
+  private set<K extends keyof ShowConfig>(key: K, value: ShowConfig[K]): void {
+    this.state.config = { ...this.state.config, [key]: value };
+    this.state.showing = "live";
+    this.viewer.applyConfig(this.state.config);
+    this.render();
+  }
+
+  private patch(p: Partial<ShowConfig>): void {
+    this.state.config = { ...this.state.config, ...p };
+    this.state.showing = "live";
+    this.viewer.applyConfig(this.state.config);
+    this.render();
+  }
+
+  private goto(step: number): void {
+    this.state.step = Math.max(0, Math.min(CATALOG.STEPS.length - 1, step));
+    this.state.touched.add(this.state.step);
+    this.render();
+  }
+
+  // --------------------------------------------------------------- render --
+
+  render(): void {
+    this.renderRail();
+    this.renderViews();
+    this.renderPanel();
+    this.renderReadout();
+  }
+
+  private renderRail(): void {
+    this.stepRail.replaceChildren();
+    CATALOG.STEPS.forEach((step, i) => {
+      const cls = i === this.state.step ? "active" : this.state.touched.has(i) ? "done" : "";
+      const b = el("button", cls);
+      b.append(el("span", "idx", String(i + 1)), el("span", "lbl", step.title));
+      b.onclick = () => this.goto(i);
+      this.stepRail.append(b);
+    });
+  }
+
+  private renderViews(): void {
+    Array.from(this.viewPicker.children).forEach((child, i) => {
+      child.className = VIEWS[i]!.id === this.state.view ? "on" : "";
+    });
+  }
+
+  private renderPanel(): void {
+    const step = CATALOG.STEPS[this.state.step]!;
+    this.panelHead.replaceChildren();
+    const h = el("h2", undefined, step.title);
+    this.panelHead.append(h, el("p", undefined, step.blurb));
+
+    this.panelBody.replaceChildren();
+    if (this.state.step <= 3) this.renderFields();
+    else if (this.state.step === 4) this.renderCompare();
+    else this.renderSave();
+
+    this.panelFoot.replaceChildren();
+    const back = el("button", "btn", "Back");
+    back.disabled = this.state.step === 0;
+    back.onclick = () => this.goto(this.state.step - 1);
+    this.panelFoot.append(back);
+    if (this.state.step < CATALOG.STEPS.length - 1) {
+      const next = el("button", "btn primary", "Continue");
+      next.onclick = () => this.goto(this.state.step + 1);
+      this.panelFoot.append(next);
+    }
+  }
+
+  private renderFields(): void {
+    const fields = CATALOG.FIELDS.filter((f) => f.step === this.state.step);
+    for (const field of fields) {
+      const wrap = el("div", "field");
+      wrap.append(el("h3", undefined, field.label), el("p", "hint", field.hint));
+      const current = this.state.config[field.key] as string;
+      for (const opt of field.options) {
+        const test = { ...this.state.config, [field.key]: opt.id } as ShowConfig;
+        const problems = CATALOG.evaluate(test).issues.filter((i) => i.level === "error");
+        const selected = opt.id === current;
+        const btn = el(
+          "button",
+          `opt${selected ? " on" : ""}${problems.length && !selected ? " risk" : ""}`,
+        );
+        const row = el("div", "row");
+        row.append(el("span", "name", opt.label), el("span", "stat", opt.stat));
+        btn.append(row, el("p", "desc", opt.detail));
+        if (problems.length && !selected) {
+          btn.append(el("div", "flag", problems[0]!.title));
+        }
+        btn.onclick = () => this.set(field.key, opt.id as never);
+        wrap.append(btn);
+      }
+      this.panelBody.append(wrap);
+    }
+
+    if (this.state.step === 0) {
+      const venue = CATALOG.VENUES[this.state.config.venue];
+      const notes = el("div", "field");
+      notes.append(el("h3", undefined, "Site notes"));
+      const spec = el("div", "spec");
+      for (const note of venue.notes) {
+        const line = el("div");
+        line.append(el("span", undefined, note), el("span", undefined, ""));
+        spec.append(line);
+      }
+      const throwLine = el("div");
+      throwLine.append(
+        el("span", undefined, "FOH throw"),
+        el("span", undefined, `${venue.throwDistance} m`),
+      );
+      const clearance = el("div");
+      clearance.append(
+        el("span", undefined, "Audience separation"),
+        el("span", undefined, `${venue.audienceClearance} m`),
+      );
+      const air = el("div");
+      air.append(
+        el("span", undefined, "Airspace ceiling"),
+        el("span", undefined, `${venue.droneCeiling} m`),
+      );
+      spec.append(throwLine, clearance, air);
+      notes.append(spec);
+      this.panelBody.append(notes);
+    }
+  }
+
+  private renderCompare(): void {
+    const { pinned, config } = this.state;
+
+    if (!pinned) {
+      this.panelBody.append(
+        el(
+          "p",
+          "note",
+          "Pin the build you have now as <b>Option A</b>. Then keep editing — every later change is measured against it, and you can flip the viewport between the two.",
+        ),
+      );
+      const pin = el("button", "btn primary", "Pin current build as Option A");
+      pin.onclick = () => {
+        this.state.pinned = { ...config };
+        this.render();
+      };
+      const holder = el("div", "field");
+      holder.append(pin);
+      this.panelBody.append(holder);
+      return;
+    }
+
+    const ab = el("div", "ab");
+    const aBtn = el("button", this.state.showing === "pinned" ? "on" : "");
+    aBtn.append(el("i", undefined, "Option A · pinned"), el("b", undefined, this.describe(pinned)));
+    aBtn.onclick = () => {
+      this.state.showing = "pinned";
+      this.viewer.applyConfig(pinned);
+      this.render();
+    };
+    const bBtn = el("button", this.state.showing === "live" ? "on" : "");
+    bBtn.append(el("i", undefined, "Option B · live"), el("b", undefined, this.describe(config)));
+    bBtn.onclick = () => {
+      this.state.showing = "live";
+      this.viewer.applyConfig(config);
+      this.render();
+    };
+    ab.append(aBtn, bBtn);
+    this.panelBody.append(ab);
+
+    this.panelBody.append(this.compareTable(pinned, config));
+
+    const actions = el("div", "field");
+    const repin = el("button", "btn", "Re-pin A from current");
+    repin.onclick = () => {
+      this.state.pinned = { ...config };
+      this.state.showing = "live";
+      this.render();
+    };
+    const adopt = el("button", "btn", "Make A the live build");
+    adopt.onclick = () => {
+      this.state.config = { ...pinned };
+      this.state.showing = "live";
+      this.viewer.applyConfig(this.state.config);
+      this.render();
+    };
+    const rowA = el("div", "panel-foot");
+    rowA.style.padding = "0";
+    rowA.style.borderTop = "0";
+    rowA.append(repin, adopt);
+    actions.append(rowA);
+    this.panelBody.append(actions);
+  }
+
+  private describe(c: ShowConfig): string {
+    const pitch = CATALOG.PITCHES[c.pitch];
+    const led = pitch.id === "none" ? "no LED" : `${pitch.pitchMm} mm ${CATALOG.WALLS[c.wall].label.replace("Shell ", "")}`;
+    return `${CATALOG.VENUES[c.venue].name.split(" ")[0]} · ${led}`;
+  }
+
+  private compareTable(a: ShowConfig, b: ShowConfig): HTMLElement {
+    const ma = CATALOG.metricsFor(a);
+    const mb = CATALOG.metricsFor(b);
+    const table = el("table", "cmp");
+    const head = el("tr");
+    head.append(
+      el("th", undefined, "Item"),
+      el("th", undefined, "A"),
+      el("th", undefined, "B"),
+      el("th", undefined, "Δ"),
+    );
+    table.append(head);
+
+    const specRows: [string, (c: ShowConfig) => string][] = [
+      ["Site", (c) => CATALOG.VENUES[c.venue].name.split(" ")[0]!],
+      ["Rigging", (c) => CATALOG.RIGGING[c.rigging].label.split(" ")[0]!],
+      ["Deck", (c) => CATALOG.DECKS[c.deck].label.split(" ")[0]!],
+      ["Pitch", (c) => (CATALOG.PITCHES[c.pitch].pitchMm || "—").toString()],
+      ["Shell", (c) => (c.pitch === "none" ? "—" : CATALOG.WALLS[c.wall].id.toUpperCase())],
+      ["Projection", (c) => (CATALOG.PROJECTION[c.projection].units || "—").toString()],
+      ["Lasers", (c) => (CATALOG.LASERS[c.laser].heads || "—").toString()],
+      ["Drones", (c) => (CATALOG.DRONES[c.drones].count || "—").toString()],
+    ];
+    for (const [label, fn] of specRows) {
+      const va = fn(a);
+      const vb = fn(b);
+      const tr = el("tr", va === vb ? "" : "changed");
+      tr.append(
+        el("td", undefined, label),
+        el("td", "v", va),
+        el("td", "v", vb),
+        el("td", `delta ${va === vb ? "same" : "up"}`, va === vb ? "—" : "≠"),
+      );
+      table.append(tr);
+    }
+
+    const numRows: [string, (m: Metrics) => number, (n: number) => string][] = [
+      ["Power", (m) => m.powerKW, (n) => `${n.toFixed(0)} kW`],
+      ["Rigged load", (m) => m.riggedMass, (n) => `${(n / 1000).toFixed(2)} t`],
+      ["Cabinets", (m) => m.cabinets, (n) => `${n}`],
+      ["Surface", (m) => m.surfaceArea, (n) => `${n} m²`],
+      ["Optical", (m) => m.opticalWatts, (n) => `${n} W`],
+      ["Crew", (m) => m.crew, (n) => `${n} h`],
+      ["Budget", (m) => m.cost, (n) => money(n)],
+    ];
+    for (const [label, get, fmt] of numRows) {
+      const va = get(ma);
+      const vb = get(mb);
+      const diff = vb - va;
+      const cls = Math.abs(diff) < 1e-6 ? "same" : diff > 0 ? "up" : "down";
+      const sign = diff > 0 ? "+" : "";
+      const tr = el("tr", cls === "same" ? "" : "changed");
+      tr.append(
+        el("td", undefined, label),
+        el("td", "v", fmt(va)),
+        el("td", "v", fmt(vb)),
+        el("td", `delta ${cls}`, cls === "same" ? "—" : `${sign}${fmt(diff)}`),
+      );
+      table.append(tr);
+    }
+    return table;
+  }
+
+  private renderSave(): void {
+    const { config, saved } = this.state;
+    const evaluation = CATALOG.evaluate(config);
+
+    if (saved) {
+      const card = el("div", "card");
+      card.append(
+        el("h4", undefined, saved.name),
+        el("div", "sub", `${CATALOG.VENUES[saved.config.venue].name} · saved ${saved.stamp}`),
+      );
+      const m = CATALOG.metricsFor(saved.config);
+      const spec = el("div", "spec");
+      const lines: [string, string][] = [
+        ["Rigging", CATALOG.RIGGING[saved.config.rigging].label],
+        ["Deck", CATALOG.DECKS[saved.config.deck].label],
+        [
+          "Imaging",
+          saved.config.pitch === "none"
+            ? "Projection only"
+            : `${CATALOG.PITCHES[saved.config.pitch].pitchMm} mm · ${m.cabinets} cabinets`,
+        ],
+        ["Projection", CATALOG.PROJECTION[saved.config.projection].label],
+        ["Lasers", CATALOG.LASERS[saved.config.laser].label],
+        ["Drones", CATALOG.DRONES[saved.config.drones].label],
+        ["Power", `${m.powerKW} kW`],
+        ["Budget", money(m.cost)],
+      ];
+      for (const [k, v] of lines) {
+        const line = el("div");
+        line.append(el("span", undefined, k), el("span", undefined, v));
+        spec.append(line);
+      }
+      card.append(spec);
+      this.panelBody.append(card);
+
+      const row = el("div", "ab");
+      const load = el("button");
+      load.append(el("i", undefined, "Restore"), el("b", undefined, "Load into planner"));
+      load.onclick = () => {
+        this.state.config = { ...saved.config };
+        this.state.name = saved.name;
+        this.state.showing = "live";
+        this.viewer.applyConfig(this.state.config);
+        this.render();
+      };
+      const clear = el("button");
+      clear.append(el("i", undefined, "Discard"), el("b", undefined, "Clear saved slot"));
+      clear.onclick = () => {
+        localStorage.removeItem(STORAGE_KEY);
+        this.state.saved = null;
+        this.render();
+      };
+      row.append(load, clear);
+      this.panelBody.append(row);
+    } else {
+      this.panelBody.append(
+        el(
+          "p",
+          "note",
+          "One slot, one story. Save the build you want to walk the client through — it comes back with the site, the rigging and every system exactly as specified.",
+        ),
+      );
+    }
+
+    const form = el("div", "field");
+    form.append(el("h3", undefined, "Name this build"));
+    const input = el("input", "namefield");
+    input.value = this.state.name;
+    input.placeholder = "Wrap option — Meridian";
+    input.oninput = () => {
+      this.state.name = input.value;
+    };
+    form.append(input);
+
+    const save = el("button", "btn primary", saved ? "Overwrite saved build" : "Save configuration");
+    save.disabled = !evaluation.valid;
+    save.onclick = () => {
+      const record: Saved = {
+        name: this.state.name.trim() || "Untitled build",
+        config: { ...this.state.config },
+        stamp: new Date().toLocaleDateString(undefined, {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        }),
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(record));
+      } catch {
+        /* storage unavailable — keep the in-memory copy */
+      }
+      this.state.saved = record;
+      this.render();
+    };
+    form.append(save);
+    if (!evaluation.valid) {
+      form.append(
+        el("p", "note", "Resolve the blocking issues on the right before saving."),
+      );
+    }
+    this.panelBody.append(form);
+  }
+
+  private renderReadout(): void {
+    const config = this.activeConfig();
+    const { metrics, issues, valid } = CATALOG.evaluate(config);
+    const venue = CATALOG.VENUES[config.venue];
+    this.readoutBody.replaceChildren();
+
+    this.readoutBody.append(
+      el(
+        "p",
+        "rt",
+        this.state.showing === "pinned" ? "Option A · pinned" : "Live build",
+      ),
+    );
+
+    this.readoutBody.append(
+      this.gauge("Site power", metrics.powerKW, metrics.powerCap, "kW"),
+      this.gauge("Rigged load", metrics.riggedMass / 1000, metrics.rigCapacity / 1000, "t", 2),
+    );
+
+    const stats = el("div", "stats");
+    const cells: [string, string][] = [
+      [money(metrics.cost), "budget"],
+      [`${metrics.crew} h`, "crew"],
+      [metrics.cabinets ? `${metrics.cabinets}` : "—", "cabinets"],
+      [`${metrics.surfaceArea} m²`, "imaging area"],
+      [metrics.opticalWatts ? `${metrics.opticalWatts} W` : "—", "optical"],
+      [metrics.droneCount ? `${metrics.droneCount}` : "—", "craft"],
+    ];
+    for (const [value, label] of cells) {
+      const s = el("div", "stat");
+      s.append(el("b", undefined, value), el("span", undefined, label));
+      stats.append(s);
+    }
+    this.readoutBody.append(stats);
+
+    this.readoutBody.append(el("p", "rt", "Compatibility"));
+    if (issues.length === 0) {
+      this.readoutBody.append(el("div", "clean", "Everything clears. Ready to save."));
+    } else {
+      const list = el("div", "issues");
+      for (const issue of issues) list.append(this.issueCard(issue));
+      this.readoutBody.append(list);
+    }
+
+    this.readoutBody.append(el("p", "rt gap", "Site limits"));
+    const spec = el("div", "spec");
+    const lines: [string, string][] = [
+      ["Service", `${venue.powerKW} kW`],
+      ["Rig capacity", `${(venue.rigCapacityKg / 1000).toFixed(1)} t`],
+      ["Trim height", venue.ceiling ? `${venue.ceiling} m` : "open"],
+      ["Optical cap", `${venue.laserMaxWatts} W/head`],
+      ["Airspace", `${venue.maxDrones} craft · ${venue.droneCeiling} m`],
+      ["Stage box", `${venue.maxStageWidth} m`],
+      ["Status", valid ? "clear" : "blocked"],
+    ];
+    for (const [k, v] of lines) {
+      const line = el("div");
+      line.append(el("span", undefined, k), el("span", undefined, v));
+      spec.append(line);
+    }
+    this.readoutBody.append(spec);
+  }
+
+  private gauge(
+    label: string,
+    value: number,
+    cap: number,
+    unit: string,
+    digits = 0,
+  ): HTMLElement {
+    const ratio = cap > 0 ? value / cap : 0;
+    const wrap = el("div", "gauge");
+    const top = el("div", "top");
+    top.append(
+      el("b", undefined, label),
+      el("span", undefined, `${value.toFixed(digits)} / ${cap.toFixed(digits)} ${unit}`),
+    );
+    const bar = el("div", `bar${ratio > 1 ? " over" : ratio > 0.85 ? " hot" : ""}`);
+    const fill = el("i");
+    fill.style.width = `${Math.min(100, ratio * 100)}%`;
+    bar.append(fill);
+    wrap.append(top, bar);
+    return wrap;
+  }
+
+  private issueCard(issue: Issue): HTMLElement {
+    const card = el("div", `issue ${issue.level}`);
+    card.append(el("b", undefined, issue.title), el("p", undefined, issue.detail));
+    if (issue.fix) {
+      const fix = issue.fix;
+      const btn = el("button", undefined, fix.label);
+      btn.onclick = () => this.patch(fix.patch);
+      card.append(btn);
+    }
+    return card;
+  }
+
+  /** Cheap per-frame transport refresh. */
+  tick(): void {
+    const t = this.viewer.time;
+    const pct = (t / SHOW_LENGTH) * 100;
+    this.trackFill.style.width = `${pct}%`;
+    this.trackKnob.style.left = `${pct}%`;
+    const mm = Math.floor(t / 60);
+    const ss = Math.floor(t % 60);
+    this.clockLabel.textContent = `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+    const look = LOOKS[lookAt(t).index % LOOKS.length]!;
+    if (this.lookLabel.textContent !== look.name) this.lookLabel.textContent = look.name;
+  }
+}

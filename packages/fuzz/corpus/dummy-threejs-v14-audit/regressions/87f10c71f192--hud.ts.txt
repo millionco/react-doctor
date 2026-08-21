@@ -1,0 +1,378 @@
+// rule: dangerous-html-sink
+// file-path: src/game/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 87f10c71f19219ba45c41842db3b81cdf4428fd8d9e343de3efb9be6a1234821
+/**
+ * The overlay: ward meter, objectives, cast preview, codex, inspect card and
+ * the full-screen moments (prologue, guttering, victory, defeat).
+ */
+
+import { ELEMENT_ORDER, ELEMENTS, WEAVES, type ElementId } from "../art/palette";
+import { sigilDataUrl } from "../art/sigils";
+import { clamp01 } from "../core/util";
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  text?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+export interface InspectCard {
+  kind: string;
+  name: string;
+  lore: string;
+  stats: [string, string][];
+}
+
+export interface CastPreviewData {
+  name: string;
+  detail: string;
+  damage: number;
+  wardGain: number;
+  targets: number;
+  blocked: number;
+}
+
+export interface OverlayConfig {
+  eyebrow: string;
+  title: string;
+  tone?: "grim" | "bright" | "brass";
+  body: string;
+  keys?: [string, string][];
+  button?: { label: string; danger?: boolean; onClick: () => void };
+}
+
+export type LogTone = "plain" | "good" | "bad" | "weave";
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private readonly wardValue: HTMLElement;
+  private readonly wardFill: HTMLElement;
+  private readonly turnLabel: HTMLElement;
+  private readonly phaseLabel: HTMLElement;
+  private readonly objectiveList: HTMLElement;
+  private readonly logBox: HTMLElement;
+  private readonly promptLine: HTMLElement;
+  private readonly actionButton: HTMLButtonElement;
+  private readonly preview: HTMLElement;
+  private readonly previewName: HTMLElement;
+  private readonly previewDetail: HTMLElement;
+  private readonly previewStats: HTMLElement;
+  private readonly inspect: HTMLElement;
+  private readonly overlayBox: HTMLElement;
+  private readonly overlayCard: HTMLElement;
+  private readonly grade: HTMLElement;
+  private readonly pulseLayer: HTMLElement;
+  private readonly bootBox: HTMLElement;
+  private readonly bootFill: HTMLElement;
+  private readonly bootLabel: HTMLElement;
+
+  private actionHandler: (() => void) | null = null;
+  private pulseAmount = 0;
+  private readonly iconCache = new Map<ElementId, string>();
+
+  constructor() {
+    this.root = el("div");
+    this.root.id = "hud";
+
+    // ---- status ---------------------------------------------------------
+    const status = el("div", "corner panel");
+    status.id = "status";
+    const title = el("div", "title", "Waycaster");
+    const subtitle = el("div", "subtitle", "Rites of the Emberline Road");
+    const wardRow = el("div", "ward-row");
+    wardRow.append(el("div", "cap", "Ward"));
+    this.wardValue = el("div", "ward-value", "10");
+    wardRow.append(this.wardValue);
+    const track = el("div", "ward-track");
+    this.wardFill = el("div", "ward-fill");
+    track.append(this.wardFill);
+    const meta = el("div", "meta-row");
+    this.turnLabel = el("span", undefined, "Turn I");
+    this.phaseLabel = el("span", undefined, "");
+    meta.append(this.turnLabel, this.phaseLabel);
+    status.append(title, subtitle, wardRow, track, meta);
+    this.root.append(status);
+
+    // ---- objectives -----------------------------------------------------
+    const objectives = el("div", "corner panel");
+    objectives.id = "objectives";
+    objectives.append(el("div", "cap", "The Rite"));
+    this.objectiveList = el("div");
+    objectives.append(this.objectiveList);
+    this.root.append(objectives);
+
+    // ---- log ------------------------------------------------------------
+    this.logBox = el("div");
+    this.logBox.id = "log";
+    this.root.append(this.logBox);
+
+    // ---- actions --------------------------------------------------------
+    const actions = el("div");
+    actions.id = "actions";
+    this.preview = el("div", "panel");
+    this.preview.id = "cast-preview";
+    const previewText = el("div");
+    this.previewName = el("div", "cp-name", "");
+    this.previewDetail = el("div", "cp-detail", "");
+    previewText.append(this.previewName, this.previewDetail);
+    this.previewStats = el("div", "cp-stats");
+    this.preview.append(previewText, this.previewStats);
+
+    this.promptLine = el("div");
+    this.promptLine.id = "prompt";
+    this.actionButton = el("button", "rite", "Cast the Way");
+    this.actionButton.addEventListener("click", () => this.actionHandler?.());
+    actions.append(this.preview, this.promptLine, this.actionButton);
+    this.root.append(actions);
+
+    // ---- codex ----------------------------------------------------------
+    const codex = el("div", "corner panel");
+    codex.id = "codex";
+    const head = el("div", "codex-head");
+    head.append(el("div", "cap", "Wayfarer's Codex"));
+    const chev = el("div", "chev", "▾");
+    head.append(chev);
+    const body = el("div", "codex-body");
+    for (const id of ELEMENT_ORDER) {
+      const def = ELEMENTS[id];
+      const row = el("div", "elem");
+      const icon = el("img");
+      icon.src = this.icon(id);
+      icon.alt = def.name;
+      row.append(icon, el("span", "nm", def.name), el("span", "ep", def.epithet.split(",")[0] ?? ""));
+      body.append(row);
+    }
+    body.append(el("div", "codex-rule"));
+    for (const weave of WEAVES.values()) {
+      const row = el("div", "weave-row");
+      const a = el("img");
+      a.src = this.icon(weave.pair[0]);
+      const b = el("img");
+      b.src = this.icon(weave.pair[1]);
+      row.append(a, b, el("span", "wn", weave.name));
+      const value = weave.ward > 0 ? `×${weave.force} · ward +${weave.ward}` : `×${weave.force}`;
+      row.append(el("span", "wv", value));
+      body.append(row);
+    }
+    codex.append(head, body);
+    head.addEventListener("click", () => codex.classList.toggle("collapsed"));
+    this.root.append(codex);
+
+    // ---- hints ----------------------------------------------------------
+    const hints = el("div", "corner panel");
+    hints.id = "hints";
+    hints.innerHTML =
+      "<div><kbd>drag</kbd> a castbone onto a waypost</div>" +
+      "<div><kbd>click</kbd> anything to inspect it</div>" +
+      "<div><kbd>Q</kbd> <kbd>E</kbd> turn the board &nbsp; <kbd>wheel</kbd> zoom</div>" +
+      "<div><kbd>drag</kbd> the table to orbit &nbsp; <kbd>Esc</kbd> back</div>";
+    this.root.append(hints);
+
+    // ---- inspect --------------------------------------------------------
+    this.inspect = el("div", "panel");
+    this.inspect.id = "inspect";
+    this.root.append(this.inspect);
+
+    // ---- overlay --------------------------------------------------------
+    this.overlayBox = el("div");
+    this.overlayBox.id = "overlay";
+    this.overlayCard = el("div", "over-card panel");
+    this.overlayBox.append(this.overlayCard);
+    this.root.append(this.overlayBox);
+
+    this.grade = el("div");
+    this.grade.id = "grade";
+    this.pulseLayer = el("div");
+    this.pulseLayer.id = "pulse";
+    this.root.append(this.grade, this.pulseLayer);
+
+    document.body.append(this.root);
+
+    // ---- boot screen ----------------------------------------------------
+    this.bootBox = el("div");
+    this.bootBox.id = "boot";
+    const bootInner = el("div", "boot-inner");
+    bootInner.append(el("div", "boot-title", "Waycaster"));
+    const bootTrack = el("div", "boot-track");
+    this.bootFill = el("div", "boot-fill");
+    bootTrack.append(this.bootFill);
+    this.bootLabel = el("div", "boot-label", "cutting the stone");
+    bootInner.append(bootTrack, this.bootLabel);
+    this.bootBox.append(bootInner);
+    document.body.append(this.bootBox);
+  }
+
+  icon(id: ElementId): string {
+    const cached = this.iconCache.get(id);
+    if (cached) return cached;
+    const url = sigilDataUrl(id, 48, ELEMENTS[id].css);
+    this.iconCache.set(id, url);
+    return url;
+  }
+
+  // ------------------------------------------------------------------ boot
+
+  setBoot(ratio: number, label: string): void {
+    this.bootFill.style.width = `${Math.round(clamp01(ratio) * 100)}%`;
+    this.bootLabel.textContent = label;
+  }
+
+  finishBoot(): void {
+    this.bootBox.classList.add("gone");
+    window.setTimeout(() => this.bootBox.remove(), 900);
+  }
+
+  // ---------------------------------------------------------------- status
+
+  setWard(value: number, max: number): void {
+    this.wardValue.textContent = `${Math.max(0, value)}`;
+    const ratio = clamp01(value / max);
+    this.wardFill.style.width = `${ratio * 100}%`;
+    const low = value <= 3;
+    this.wardValue.classList.toggle("low", low);
+    this.wardFill.classList.toggle("low", low);
+  }
+
+  setTurn(turn: number, phase: string): void {
+    const numerals = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+    this.turnLabel.textContent = `Turn ${numerals[turn] ?? turn}`;
+    this.phaseLabel.textContent = phase;
+  }
+
+  setObjectives(entries: { label: string; done: boolean; value: string }[]): void {
+    this.objectiveList.replaceChildren();
+    for (const entry of entries) {
+      const row = el("div", `objective${entry.done ? " done" : ""}`);
+      row.append(el("div", "mark", "✦"), el("span", undefined, entry.label), el("span", "count", entry.value));
+      this.objectiveList.append(row);
+    }
+  }
+
+  setPrompt(text: string): void {
+    this.promptLine.textContent = text;
+  }
+
+  setAction(label: string, enabled: boolean, handler: (() => void) | null, danger = false): void {
+    this.actionButton.textContent = label;
+    this.actionButton.disabled = !enabled;
+    this.actionButton.classList.toggle("danger", danger);
+    this.actionButton.style.display = label ? "" : "none";
+    this.actionHandler = handler;
+  }
+
+  setCastPreview(data: CastPreviewData | null): void {
+    if (!data) {
+      this.preview.classList.remove("on");
+      return;
+    }
+    this.preview.classList.add("on");
+    this.previewName.textContent = data.name;
+    this.previewDetail.textContent = data.detail;
+    const parts = [`<b>${data.damage}</b> force`];
+    if (data.wardGain > 0) parts.push(`<span class="ward">+${data.wardGain} ward</span>`);
+    parts.push(`${data.targets} in sight`);
+    if (data.blocked > 0) parts.push(`${data.blocked} screened`);
+    this.previewStats.innerHTML = parts.join(" &nbsp;·&nbsp; ");
+  }
+
+  log(text: string, tone: LogTone = "plain"): void {
+    const line = el("div", `log-line${tone === "plain" ? "" : ` ${tone}`}`, text);
+    this.logBox.append(line);
+    while (this.logBox.childElementCount > 6) this.logBox.firstElementChild?.remove();
+    window.setTimeout(() => {
+      line.style.transition = "opacity .6s, transform .6s";
+      line.style.opacity = "0";
+      line.style.transform = "translateX(12px)";
+      window.setTimeout(() => line.remove(), 620);
+    }, 7200);
+  }
+
+  clearLog(): void {
+    this.logBox.replaceChildren();
+  }
+
+  // --------------------------------------------------------------- inspect
+
+  showInspect(card: InspectCard | null): void {
+    if (!card) {
+      this.inspect.classList.remove("on");
+      return;
+    }
+    this.inspect.replaceChildren();
+    this.inspect.append(el("div", "ins-kind", card.kind), el("div", "ins-name", card.name));
+    this.inspect.append(el("div", "ins-lore", card.lore));
+    if (card.stats.length > 0) {
+      const list = el("dl", "ins-stats");
+      for (const [key, value] of card.stats) {
+        list.append(el("dt", undefined, key), el("dd", undefined, value));
+      }
+      this.inspect.append(list);
+    }
+    this.inspect.append(el("div", "ins-close", "Esc or click the table to step back"));
+    this.inspect.classList.add("on");
+  }
+
+  // -------------------------------------------------------------- overlays
+
+  showOverlay(config: OverlayConfig | null): void {
+    if (!config) {
+      this.overlayBox.classList.remove("on");
+      return;
+    }
+    this.overlayCard.replaceChildren();
+    this.overlayCard.append(el("div", "ov-eyebrow", config.eyebrow));
+    const heading = el("h1", config.tone === "grim" ? "grim" : config.tone === "bright" ? "bright" : undefined);
+    heading.textContent = config.title;
+    this.overlayCard.append(heading, el("div", "ov-rule"));
+    this.overlayCard.append(el("p", undefined, config.body));
+    if (config.keys) {
+      const keys = el("div", "ov-keys");
+      for (const [key, description] of config.keys) {
+        const span = el("span");
+        span.innerHTML = `<b>${key}</b> ${description}`;
+        keys.append(span);
+      }
+      this.overlayCard.append(keys);
+    }
+    if (config.button) {
+      const button = el("button", `rite${config.button.danger ? " danger" : ""}`, config.button.label);
+      button.addEventListener("click", config.button.onClick);
+      this.overlayCard.append(button);
+    }
+    this.overlayBox.classList.add("on");
+  }
+
+  get overlayVisible(): boolean {
+    return this.overlayBox.classList.contains("on");
+  }
+
+  // ----------------------------------------------------------------- grade
+
+  setDespair(amount: number): void {
+    const value = clamp01(amount);
+    this.grade.classList.toggle("lit", value > 0.002);
+    this.grade.style.opacity = `${value}`;
+  }
+
+  flash(amount: number): void {
+    this.pulseAmount = Math.max(this.pulseAmount, amount);
+  }
+
+  update(dt: number): void {
+    if (this.pulseAmount > 0.001) {
+      this.pulseAmount = Math.max(0, this.pulseAmount - dt * 1.7);
+      this.pulseLayer.classList.add("lit");
+      this.pulseLayer.style.opacity = `${this.pulseAmount}`;
+    } else if (this.pulseLayer.classList.contains("lit")) {
+      this.pulseLayer.classList.remove("lit");
+      this.pulseLayer.style.opacity = "0";
+    }
+  }
+}

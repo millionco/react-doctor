@@ -25,7 +25,7 @@ const HTML_VALUE_START_PATTERN =
 // `document.cookie`/`.referrer`, `window.name`, web/session storage,
 // `URLSearchParams`) — attacker-controllable channels that must be flagged.
 const HTML_TAINT_PATTERN =
-  /searchParams|query|params|request|req\.|response\.|result\.|data\.|await|fetch|props\.|children|content|html|body|text|message|markup|\blocation\b|document\.cookie|\breferrer\b|\blocalStorage\b|\bsessionStorage\b|URLSearchParams|window\.name/i;
+  /searchParams|query|params|request|req\.|response\.|await|fetch|props\.|children|(?:user|untrusted|unsafe|raw|comment|message|cms|remote|external)\.|(?:user|untrusted|unsafe|raw|comment|message|cms|remote|external|content|profile|signature|subtitle)\w*(?:html|markup)|(?:html|markup)\w*(?:input|payload)|\b(?:load|read|receive|decode)\w*\s*\(|\bget\w*(?:Html|Markup|Content|Page|Message)\b|\blocation\b|document\.cookie|\breferrer\b|\blocalStorage\b|\bsessionStorage\b|URLSearchParams|window\.name/i;
 
 // A trailing line comment (`innerHTML = "" // clear`) must not defeat the
 // literal/constant exemptions: without tolerating it the value never matches,
@@ -307,9 +307,11 @@ const splitTopLevelByPlus = (text: string): string[] => {
 const isAllOperandsDomContentConcat = (valueExpression: string): boolean => {
   const body = valueExpression.replace(/[;}]\s*$/, "").trim();
   if (!body.includes("+")) return false;
-  const operands = splitTopLevelByPlus(body)
-    .map((operand) => operand.trim())
-    .filter((operand) => operand.length > 0);
+  const operands: string[] = [];
+  for (const operand of splitTopLevelByPlus(body)) {
+    const trimmedOperand = operand.trim();
+    if (trimmedOperand.length > 0) operands.push(trimmedOperand);
+  }
   if (operands.length < 2) return false;
   return operands.every((operand) => {
     const withoutCast = operand.replace(/\(\s*([\w$]+(?:\??\.[\w$]+)*)\s+as\s+[^)]*\)/g, "$1");
@@ -542,6 +544,18 @@ interface FunctionParameterSource {
   readonly parameterIndex: number;
 }
 
+const isDestructuredInputParameter = (
+  identifier: string,
+  sinkIndex: number,
+  fileContent: string,
+): boolean => {
+  const prefix = fileContent.slice(Math.max(0, sinkIndex - STATIC_TEMPLATE_MAX_CHARS), sinkIndex);
+  const escapedIdentifier = escapeRegExp(identifier);
+  return new RegExp(
+    `(?:function\\s+[\\w$]+|(?:const|let|var)\\s+[\\w$]+\\s*=)\\s*\\(\\s*\\{[^}]*\\b${escapedIdentifier}\\b[^}]*\\}`,
+  ).test(prefix);
+};
+
 const findContainingFunctionParameterSource = (
   identifier: string,
   sinkIndex: number,
@@ -641,8 +655,11 @@ const isHtmlTainted = (
 ): boolean => {
   const trimmedExpression = expression.trim();
   if (isExplicitlyTrustedHtmlValue(trimmedExpression, fileContent, sinkIndex)) return false;
-  const identifier = trimmedExpression.match(/^([\w$]+)(?:\.|\s*(?:[;,})\n]|$))/)?.[1];
+  const identifier = trimmedExpression.match(
+    /^([\w$]+)(?:\.|\s*(?:(?:\|\||\?\?)|[;,})\n]|$))/,
+  )?.[1];
   if (identifier === undefined) return HTML_TAINT_PATTERN.test(trimmedExpression);
+  if (isDestructuredInputParameter(identifier, sinkIndex, fileContent)) return true;
   if (visitedIdentifiers.has(identifier)) return false;
   visitedIdentifiers.add(identifier);
 
@@ -686,7 +703,6 @@ const isHtmlTainted = (
   if (parameterSource !== null && parameterSource.functionName.length > 0) {
     const callPattern = new RegExp(`\\b${escapeRegExp(parameterSource.functionName)}\\s*\\(`, "g");
     let didInspectCallArgument = false;
-    let didInspectOnlyExplicitlyTrustedArguments = true;
     for (const callMatch of fileContent.matchAll(callPattern)) {
       if (
         callMatch.index === parameterSource.declarationNameIndex ||
@@ -711,11 +727,6 @@ const isHtmlTainted = (
         continue;
       }
       didInspectCallArgument = true;
-      didInspectOnlyExplicitlyTrustedArguments &&= isExplicitlyTrustedHtmlValue(
-        argument,
-        fileContent,
-        callMatch.index,
-      );
       const callVisitedIdentifiers = new Set(visitedIdentifiers);
       callVisitedIdentifiers.delete(identifier);
       const nextVisitedCallSites = new Set(visitedCallSites);
@@ -732,10 +743,17 @@ const isHtmlTainted = (
         return true;
       }
     }
-    if (didInspectCallArgument) {
-      return (
-        !didInspectOnlyExplicitlyTrustedArguments && HTML_TAINT_PATTERN.test(trimmedExpression)
-      );
+    if (didInspectCallArgument) return false;
+    const declarationPrefix = fileContent.slice(
+      Math.max(0, parameterSource.declarationNameIndex - 48),
+      parameterSource.declarationNameIndex,
+    );
+    if (
+      /\bexport\s+(?:(?:default\s+)?(?:async\s+)?function|const|let|var)\s+$/.test(
+        declarationPrefix,
+      )
+    ) {
+      return true;
     }
     return HTML_TAINT_PATTERN.test(trimmedExpression);
   }

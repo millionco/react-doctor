@@ -1,8 +1,0 @@
-{
-  "name": "expo-router-app",
-  "dependencies": {
-    "expo": "*",
-    "expo-router": "*",
-    "react": "*"
-  }
-}

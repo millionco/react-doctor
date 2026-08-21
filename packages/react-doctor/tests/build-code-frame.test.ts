@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { CODE_FRAME_MAX_LINE_LENGTH_CHARS } from "@react-doctor/core";
 import { buildCodeFrame } from "../src/cli/utils/build-code-frame.js";
@@ -31,7 +32,41 @@ describe("buildCodeFrame", () => {
       rootDirectory: temporaryDirectory,
     });
     expect(frame).not.toBeNull();
-    expect(frame).toContain("eval(value)");
+    const plainFrame = stripVTControlCharacters(frame ?? "");
+    expect(plainFrame).toContain("eval(value)");
+    expect(plainFrame).toContain("    |               ^");
+  });
+
+  it("renders a labeled multi-line range with bounded context", () => {
+    const filePath = writeFile(
+      "range.tsx",
+      ["const before = 1;", "const first = 2;", "const second = 3;", "const after = 4;"].join("\n"),
+    );
+    const frame = buildCodeFrame({
+      filePath,
+      line: 2,
+      column: 1,
+      endLine: 3,
+      message: "Repeated issue",
+      rootDirectory: temporaryDirectory,
+    });
+    expect(frame).not.toBeNull();
+    expect(stripVTControlCharacters(frame ?? "")).toBe(
+      [
+        "   Repeated issue",
+        "  1 | const before = 1;",
+        "> 2 | const first = 2;",
+        "> 3 | const second = 3;",
+        "  4 | const after = 4;",
+      ].join("\n"),
+    );
+  });
+
+  it("returns null when the location is past the end of the file", () => {
+    const filePath = writeFile("short.tsx", "const value = 1;\n");
+    expect(
+      buildCodeFrame({ filePath, line: 5, column: 1, rootDirectory: temporaryDirectory }),
+    ).toBeNull();
   });
 
   it("returns null when the offending line is too long to render usefully", () => {

@@ -1,0 +1,336 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit e6b75ccd60c678b3ebc3f2bce4be4db3fe1d86380e2498d4d7fb69dcd6f687a6
+import * as THREE from "three";
+import { DEFENSES, DEFENSE_ORDER, type DefenseId } from "../game/defs";
+import { clamp } from "../core/mathx";
+
+export interface InspectorData {
+  title: string;
+  rows: { k: string; v: string; tone?: "warn" | "ok" }[];
+  canRepair: boolean;
+  repairCost: number;
+  sellValue: number;
+}
+
+export interface ThreatMarker {
+  position: THREE.Vector3;
+  label: string;
+}
+
+export interface HudCallbacks {
+  onPickBlueprint(id: DefenseId): void;
+  onStartWave(): void;
+  onSell(): void;
+  onRepair(): void;
+  onInspect(): void;
+  onRecover(): void;
+  onRestart(): void;
+}
+
+const HELP_LINES: [string, string][] = [
+  ["LMB", "Select a pad or an emplacement · drag to pan"],
+  ["RMB", "Drag to orbit the tactical camera"],
+  ["Wheel", "Zoom in and out"],
+  ["Q / E", "Rotate the selected gun, or cycle the blueprint"],
+  ["1 2 3", "Pick a blueprint directly"],
+  ["V", "Drop to the ground-level sightline view"],
+  ["F", "Snap focus to the latest breach"],
+  ["Space", "Begin the next assault"],
+  ["X / R", "Sell · repair the selected gun"],
+];
+
+export class Hud {
+  private readonly root: HTMLElement;
+  private readonly cb: HudCallbacks;
+
+  private readonly goldEl: HTMLElement;
+  private readonly waveEl: HTMLElement;
+  private readonly enemyEl: HTMLElement;
+  private readonly barFill: HTMLElement;
+  private readonly bar: HTMLElement;
+  private readonly integrityEl: HTMLElement;
+  private readonly cards = new Map<DefenseId, HTMLElement>();
+  private readonly inspector: HTMLElement;
+  private readonly inspectorBody: HTMLElement;
+  private readonly inspectorTitle: HTMLElement;
+  private readonly repairBtn: HTMLButtonElement;
+  private readonly sellBtn: HTMLButtonElement;
+  private readonly prompt: HTMLElement;
+  private readonly promptText: HTMLElement;
+  private readonly banner: HTMLElement;
+  private readonly bannerTitle: HTMLElement;
+  private readonly bannerSub: HTMLElement;
+  private readonly modeTag: HTMLElement;
+  private readonly vignette: HTMLElement;
+  private readonly overlay: HTMLElement;
+  private readonly overlayTitle: HTMLElement;
+  private readonly overlayBody: HTMLElement;
+  private readonly overlayStats: HTMLElement;
+  private readonly overlayButtons: HTMLElement;
+  private readonly threatEls: HTMLElement[] = [];
+  private bannerTimer = 0;
+
+  constructor(root: HTMLElement, cb: HudCallbacks) {
+    this.root = root;
+    this.cb = cb;
+    root.innerHTML = `
+      <div class="topbar panel">
+        <div class="stat gold"><div class="label">Gold</div><div class="value" data-gold>0</div></div>
+        <div class="sep"></div>
+        <div class="stat integrity">
+          <div class="label">Protected core integrity <span data-integrity>100%</span></div>
+          <div class="bar" data-bar><div class="fill" data-fill></div><div class="threshold" style="left:35%"></div></div>
+        </div>
+        <div class="sep"></div>
+        <div class="stat"><div class="label">Assault</div><div class="value" data-wave>1 / 3</div></div>
+        <div class="sep"></div>
+        <div class="stat"><div class="label">Raiders ashore</div><div class="value" data-enemies>0</div></div>
+      </div>
+
+      <div class="palette panel">
+        <h3>Blueprints</h3>
+        <div data-cards></div>
+        <div class="hint">Click a stone pad to place · <b>Q</b>/<b>E</b> cycles</div>
+      </div>
+
+      <div class="helpbox panel">
+        <h3>Orders</h3>
+        ${HELP_LINES.map(([k, v]) => `<div class="line"><span class="key">${k}</span><span>${v}</span></div>`).join("")}
+      </div>
+
+      <div class="inspector panel" data-inspector>
+        <h3 data-inspector-title>Emplacement</h3>
+        <div data-inspector-body></div>
+        <div class="actions">
+          <button class="btn" data-inspect>Sightline (V)</button>
+          <button class="btn" data-repair>Repair</button>
+          <button class="btn" data-sell>Sell (X)</button>
+        </div>
+      </div>
+
+      <div class="prompt panel hidden" data-prompt><span class="pulse">▶</span><span data-prompt-text></span></div>
+      <div class="banner panel" data-banner>
+        <div class="title" data-banner-title></div>
+        <div class="sub" data-banner-sub></div>
+      </div>
+      <div class="mode-tag panel" data-mode></div>
+      <div class="vignette" data-vignette></div>
+
+      <div class="overlay" data-overlay>
+        <div class="card-big panel">
+          <h1 data-overlay-title></h1>
+          <div data-overlay-body></div>
+          <div class="stats" data-overlay-stats></div>
+          <div class="btnrow" data-overlay-buttons></div>
+        </div>
+      </div>
+    `;
+
+    const q = <T extends HTMLElement>(sel: string): T => root.querySelector(sel) as T;
+    this.goldEl = q("[data-gold]");
+    this.waveEl = q("[data-wave]");
+    this.enemyEl = q("[data-enemies]");
+    this.barFill = q("[data-fill]");
+    this.bar = q("[data-bar]");
+    this.integrityEl = q("[data-integrity]");
+    this.inspector = q("[data-inspector]");
+    this.inspectorBody = q("[data-inspector-body]");
+    this.inspectorTitle = q("[data-inspector-title]");
+    this.repairBtn = q<HTMLButtonElement>("[data-repair]");
+    this.sellBtn = q<HTMLButtonElement>("[data-sell]");
+    this.prompt = q("[data-prompt]");
+    this.promptText = q("[data-prompt-text]");
+    this.banner = q("[data-banner]");
+    this.bannerTitle = q("[data-banner-title]");
+    this.bannerSub = q("[data-banner-sub]");
+    this.modeTag = q("[data-mode]");
+    this.vignette = q("[data-vignette]");
+    this.overlay = q("[data-overlay]");
+    this.overlayTitle = q("[data-overlay-title]");
+    this.overlayBody = q("[data-overlay-body]");
+    this.overlayStats = q("[data-overlay-stats]");
+    this.overlayButtons = q("[data-overlay-buttons]");
+
+    const cardHost = q("[data-cards]");
+    DEFENSE_ORDER.forEach((id, i) => {
+      const spec = DEFENSES[id];
+      const el = document.createElement("button");
+      el.className = "card";
+      el.innerHTML = `
+        <div class="row"><span class="name">${spec.name}</span><span class="cost">${spec.cost}g</span></div>
+        <div class="blurb">${spec.blurb}</div>
+        <div class="keys">${Math.round(spec.range)}m reach · ${Math.round((spec.arc * 180) / Math.PI)}° traverse · key ${i + 1}</div>
+      `;
+      el.addEventListener("click", () => this.cb.onPickBlueprint(id));
+      cardHost.appendChild(el);
+      this.cards.set(id, el);
+    });
+
+    q("[data-inspect]").addEventListener("click", () => this.cb.onInspect());
+    this.repairBtn.addEventListener("click", () => this.cb.onRepair());
+    this.sellBtn.addEventListener("click", () => this.cb.onSell());
+    this.prompt.addEventListener("click", () => this.cb.onStartWave());
+
+    for (let i = 0; i < 8; i++) {
+      const el = document.createElement("div");
+      el.className = "threat";
+      el.innerHTML = `<div class="arrow"></div><div class="tag"></div>`;
+      root.appendChild(el);
+      this.threatEls.push(el);
+    }
+  }
+
+  setGold(gold: number): void {
+    this.goldEl.textContent = String(Math.floor(gold));
+    for (const [id, el] of this.cards) {
+      el.classList.toggle("poor", gold < DEFENSES[id].cost);
+    }
+  }
+
+  setBlueprint(id: DefenseId | null): void {
+    for (const [key, el] of this.cards) el.classList.toggle("active", key === id);
+  }
+
+  setIntegrity(t: number, critical: boolean): void {
+    const pct = clamp(t, 0, 1) * 100;
+    this.barFill.style.width = `${pct.toFixed(1)}%`;
+    this.bar.classList.toggle("critical", critical);
+    this.integrityEl.textContent = `${pct.toFixed(0)}%`;
+  }
+
+  setWave(label: string): void {
+    this.waveEl.textContent = label;
+  }
+
+  setEnemies(n: number): void {
+    this.enemyEl.textContent = String(n);
+  }
+
+  setPrompt(text: string | null): void {
+    this.prompt.classList.toggle("hidden", text === null);
+    if (text) this.promptText.textContent = text;
+  }
+
+  setModeTag(text: string | null): void {
+    this.modeTag.classList.toggle("show", text !== null);
+    if (text) this.modeTag.innerHTML = text;
+  }
+
+  setAlarm(on: boolean): void {
+    this.vignette.classList.toggle("alarm", on);
+  }
+
+  showBanner(title: string, sub: string, seconds = 4.5): void {
+    this.bannerTitle.textContent = title;
+    this.bannerSub.textContent = sub;
+    this.banner.classList.add("show");
+    this.bannerTimer = seconds;
+  }
+
+  showInspector(data: InspectorData | null): void {
+    this.inspector.classList.toggle("show", data !== null);
+    if (!data) return;
+    this.inspectorTitle.textContent = data.title;
+    this.inspectorBody.innerHTML = data.rows
+      .map((r) => `<div class="kv ${r.tone ?? ""}"><span>${r.k}</span><span>${r.v}</span></div>`)
+      .join("");
+    this.repairBtn.textContent = data.canRepair ? `Repair (${data.repairCost}g)` : "Repaired";
+    this.repairBtn.disabled = !data.canRepair;
+    this.repairBtn.style.opacity = data.canRepair ? "1" : "0.45";
+    this.sellBtn.textContent = `Sell +${data.sellValue}g`;
+  }
+
+  showOverlay(
+    kind: "defeat" | "victory",
+    title: string,
+    body: string,
+    stats: { label: string; value: string }[],
+    buttons: { label: string; primary?: boolean; action: () => void }[],
+  ): void {
+    this.overlay.classList.add("show");
+    this.overlay.classList.toggle("victory", kind === "victory");
+    this.overlayTitle.textContent = title;
+    this.overlayBody.innerHTML = body
+      .split("\n")
+      .map((p) => `<p>${p}</p>`)
+      .join("");
+    this.overlayStats.innerHTML = stats
+      .map((s) => `<div>${s.label}<b>${s.value}</b></div>`)
+      .join("");
+    this.overlayButtons.innerHTML = "";
+    for (const b of buttons) {
+      const el = document.createElement("button");
+      el.className = `btn${b.primary ? " primary" : ""}`;
+      el.textContent = b.label;
+      el.addEventListener("click", b.action);
+      this.overlayButtons.appendChild(el);
+    }
+  }
+
+  hideOverlay(): void {
+    this.overlay.classList.remove("show");
+  }
+
+  /**
+   * Directional breach warnings. On-screen threats get a marker over the target;
+   * off-screen ones pin to the edge pointing the way you need to look.
+   */
+  updateThreats(threats: ThreatMarker[], camera: THREE.Camera): void {
+    const w = innerWidth;
+    const h = innerHeight;
+    const v = new THREE.Vector3();
+    const fwd = new THREE.Vector3();
+    camera.getWorldDirection(fwd);
+    for (let i = 0; i < this.threatEls.length; i++) {
+      const el = this.threatEls[i]!;
+      const t = threats[i];
+      if (!t) {
+        el.classList.remove("show");
+        continue;
+      }
+      v.copy(t.position).project(camera);
+      const behind = v.z > 1;
+      let x = (v.x * 0.5 + 0.5) * w;
+      let y = (-v.y * 0.5 + 0.5) * h;
+      if (behind) {
+        x = w - x;
+        y = h - y;
+      }
+      const margin = 62;
+      const offscreen = behind || x < margin || x > w - margin || y < margin || y > h - margin;
+      let rot = 0;
+      if (offscreen) {
+        const cx = w / 2;
+        const cy = h / 2;
+        const dx = x - cx;
+        const dy = y - cy;
+        const ang = Math.atan2(dy, dx);
+        const rx = (w / 2 - margin) / Math.abs(Math.cos(ang) || 1e-4);
+        const ry = (h / 2 - margin) / Math.abs(Math.sin(ang) || 1e-4);
+        const r = Math.min(rx, ry);
+        x = cx + Math.cos(ang) * r;
+        y = cy + Math.sin(ang) * r;
+        rot = ang - Math.PI / 2;
+      }
+      el.style.transform = `translate(${x.toFixed(0)}px, ${y.toFixed(0)}px) rotate(${rot.toFixed(3)}rad)`;
+      const tag = el.querySelector(".tag") as HTMLElement;
+      tag.textContent = t.label;
+      tag.style.transform = `rotate(${(-rot).toFixed(3)}rad)`;
+      el.classList.add("show");
+    }
+  }
+
+  tick(dt: number): void {
+    if (this.bannerTimer > 0) {
+      this.bannerTimer -= dt;
+      if (this.bannerTimer <= 0) this.banner.classList.remove("show");
+    }
+  }
+
+  get element(): HTMLElement {
+    return this.root;
+  }
+}

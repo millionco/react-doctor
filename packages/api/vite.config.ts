@@ -3,10 +3,12 @@ import { defineConfig } from "vite-plus";
 export default defineConfig({
   pack: [
     {
-      entry: { index: "./src/index.ts" },
+      entry: {
+        index: "./src/index.ts",
+        "project-analysis-worker": "./src/project-analysis-worker.ts",
+      },
       deps: {
         neverBundle: [
-          "deslop-js",
           "effect",
           "oxc-parser",
           "oxc-resolver",

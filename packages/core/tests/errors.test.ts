@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   AmbiguousProject,
   ConfigParseFailed,
-  DeadCodeAnalysisFailed,
+  MaintainabilityAnalysisFailed,
   formatReactDoctorError,
   isReactDoctorError,
   isSplittableReactDoctorError,
@@ -135,12 +135,12 @@ describe("ReactDoctorError leaves", () => {
     );
   });
 
-  it("DeadCodeAnalysisFailed wraps the cause", () => {
+  it("MaintainabilityAnalysisFailed wraps the cause", () => {
     const error = new ReactDoctorError({
-      reason: new DeadCodeAnalysisFailed({ cause: "SIGABRT from native binding" }),
+      reason: new MaintainabilityAnalysisFailed({ cause: "unreadable source" }),
     });
-    expect(formatReactDoctorError(error)).toContain("Dead-code analysis failed");
-    expect(formatReactDoctorError(error)).toContain("SIGABRT from native binding");
+    expect(formatReactDoctorError(error)).toContain("Maintainability analysis failed");
+    expect(formatReactDoctorError(error)).toContain("unreadable source");
   });
 
   it("ScanDeadlineExceeded renders the elapsed detail and is not splittable", () => {
@@ -192,7 +192,7 @@ describe("isSplittableReactDoctorError", () => {
       new NoReactDependency({ directory: "x" }),
       new AmbiguousProject({ directory: "x", candidates: [] }),
       new ProjectDiscoveryFailed({ directory: "x", cause: new Error("boom") }),
-      new DeadCodeAnalysisFailed({ cause: "x" }),
+      new MaintainabilityAnalysisFailed({ cause: "x" }),
     ] as const;
     for (const reason of cases) {
       const error = new ReactDoctorError({ reason });

@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import type { SkillAgentType } from "agent-install";
 import { isErrnoException } from "@react-doctor/core";
-import { AGENT_HOOK_TIMEOUT_SECONDS } from "./constants.js";
+import { AGENT_HOOK_MAX_CONTINUATIONS, AGENT_HOOK_TIMEOUT_SECONDS } from "./constants.js";
 import * as fs from "node:fs";
 import { CliInputError } from "./cli-input-error.js";
 import { writeJsonFile } from "./git-hook-shared.js";
@@ -51,7 +51,6 @@ const CLAUDE_HOOK_COMMAND = 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/react-docto
 const CURSOR_HOOKS_RELATIVE_PATH = ".cursor/hooks.json";
 const CURSOR_HOOK_RELATIVE_PATH = ".cursor/hooks/react-doctor.mjs";
 const CURSOR_HOOK_COMMAND = "node .cursor/hooks/react-doctor.mjs";
-const CURSOR_HOOK_MATCHER = "Write|Edit|MultiEdit|ApplyPatch";
 const CURSOR_HOOKS_SCHEMA_VERSION = 1;
 // Releases up to 0.5.8 installed a `react-doctor.sh` shell hook; re-installs
 // must replace those entries (and the orphaned script) instead of stacking a
@@ -68,6 +67,9 @@ const LEGACY_HOOK_SCRIPT_PATHS = [
 const isLegacyHookCommand = (command: string | undefined): boolean =>
   typeof command === "string" &&
   LEGACY_HOOK_SCRIPT_PATHS.some((legacyPath) => command.includes(legacyPath));
+
+const isManagedHookCommand = (command: string | undefined, installedCommand: string): boolean =>
+  command === installedCommand || isLegacyHookCommand(command);
 
 const isSupportedAgent = (agent: SkillAgentType): boolean =>
   agent === CLAUDE_AGENT || agent === CURSOR_AGENT;
@@ -98,29 +100,34 @@ const readJsonFileSafely = <Value>(filePath: string, fallback: Value): Value => 
   }
 };
 
-// Detection half of the `agent-hooks-sh-to-mjs` migration (cli-migrations.ts):
-// which supported agents still have a ≤0.5.8 shell hook registered. Checks
-// exactly the event keys the installers strip (Claude `PostToolBatch`, Cursor
-// `postToolUse`) so one install pass always clears the detection.
-export const findAgentsWithLegacyShellHooks = (projectRoot: string): SkillAgentType[] => {
+// Detection half of the agent-hook migration (cli-migrations.ts). It finds
+// managed hooks that still run after tools, plus ≤0.5.8 shell hooks registered
+// on either the old or current events, so one install pass clears the probe.
+export const findAgentsWithOutdatedReactDoctorHooks = (projectRoot: string): SkillAgentType[] => {
   const agents: SkillAgentType[] = [];
   const settings = readJsonFileSafely<ClaudeSettings>(
     path.join(projectRoot, CLAUDE_SETTINGS_RELATIVE_PATH),
     {},
   );
-  const hasLegacyClaudeHook = (settings.hooks?.PostToolBatch ?? []).some((group) =>
-    (group.hooks ?? []).some((hook) => isLegacyHookCommand(hook.command)),
-  );
-  if (hasLegacyClaudeHook) agents.push(CLAUDE_AGENT);
+  const hasOutdatedClaudeHook =
+    [...(settings.hooks?.PostToolBatch ?? []), ...(settings.hooks?.Stop ?? [])].some((group) =>
+      (group.hooks ?? []).some((hook) => isLegacyHookCommand(hook.command)),
+    ) ||
+    (settings.hooks?.PostToolBatch ?? []).some((group) =>
+      (group.hooks ?? []).some((hook) => hook.command === CLAUDE_HOOK_COMMAND),
+    );
+  if (hasOutdatedClaudeHook) agents.push(CLAUDE_AGENT);
 
   const config = readJsonFileSafely<CursorHooksConfig>(
     path.join(projectRoot, CURSOR_HOOKS_RELATIVE_PATH),
     {},
   );
-  const hasLegacyCursorHook = (config.hooks?.postToolUse ?? []).some((handler) =>
-    isLegacyHookCommand(handler.command),
-  );
-  if (hasLegacyCursorHook) agents.push(CURSOR_AGENT);
+  const hasOutdatedCursorHook =
+    [...(config.hooks?.postToolUse ?? []), ...(config.hooks?.stop ?? [])].some((handler) =>
+      isLegacyHookCommand(handler.command),
+    ) ||
+    (config.hooks?.postToolUse ?? []).some((handler) => handler.command === CURSOR_HOOK_COMMAND);
+  if (hasOutdatedCursorHook) agents.push(CURSOR_AGENT);
   return agents;
 };
 
@@ -153,9 +160,9 @@ const writeJsonFileWithDirectoryCheck = (filePath: string, value: unknown): void
   writeJsonFile(filePath, value);
 };
 
-const writeHookScript = (filePath: string): void => {
+const writeHookScript = (filePath: string, hookEventName: "Stop" | "stop"): void => {
   ensureDirectoryExists(path.dirname(filePath));
-  fs.writeFileSync(filePath, buildAgentHookScript());
+  fs.writeFileSync(filePath, buildAgentHookScript(hookEventName));
   // Remove the orphaned ≤0.5.8 `.sh` sibling so a re-install doesn't leave it
   // behind. Best-effort: a stale script that can't be deleted only wastes disk.
   try {
@@ -163,74 +170,70 @@ const writeHookScript = (filePath: string): void => {
   } catch {}
 };
 
-const hasClaudeHookCommand = (groups: readonly ClaudeHookGroup[]): boolean =>
-  groups.some((group) => (group.hooks ?? []).some((hook) => hook.command === CLAUDE_HOOK_COMMAND));
-
 const installClaudeHook = (projectRoot: string): readonly string[] => {
   const settingsPath = path.join(projectRoot, CLAUDE_SETTINGS_RELATIVE_PATH);
   const hookPath = path.join(projectRoot, CLAUDE_HOOK_RELATIVE_PATH);
   const settings = readJsonFile<ClaudeSettings>(settingsPath, {});
   const hooks = { ...(settings.hooks ?? {}) };
-  // Strip legacy entries, dropping a group only when that strip emptied it.
+  // Strip managed entries, dropping a group only when that strip emptied it.
   // Groups react-doctor never touched (including empty or hook-less ones) pass
   // through verbatim — the installer must not rewrite settings it doesn't own.
-  const postToolBatchHooks = (hooks.PostToolBatch ?? []).flatMap((group) => {
-    const groupHooks = group.hooks ?? [];
-    const keptHooks = groupHooks.filter((hook) => !isLegacyHookCommand(hook.command));
-    if (keptHooks.length === groupHooks.length) return [group];
-    return keptHooks.length > 0 ? [{ ...group, hooks: keptHooks }] : [];
+  const stripManagedHooks = (groups: readonly ClaudeHookGroup[]): ClaudeHookGroup[] =>
+    groups.flatMap((group) => {
+      const groupHooks = group.hooks ?? [];
+      const keptHooks = groupHooks.filter(
+        (hook) => !isManagedHookCommand(hook.command, CLAUDE_HOOK_COMMAND),
+      );
+      if (keptHooks.length === groupHooks.length) return [group];
+      return keptHooks.length > 0 ? [{ ...group, hooks: keptHooks }] : [];
+    });
+
+  const stopHooks = stripManagedHooks(hooks.Stop ?? []);
+  stopHooks.push({
+    hooks: [
+      {
+        type: "command",
+        command: CLAUDE_HOOK_COMMAND,
+      },
+    ],
   });
 
-  if (!hasClaudeHookCommand(postToolBatchHooks)) {
-    postToolBatchHooks.push({
-      hooks: [
-        {
-          type: "command",
-          command: CLAUDE_HOOK_COMMAND,
-        },
-      ],
-    });
-  }
-
-  hooks.PostToolBatch = postToolBatchHooks;
+  hooks.PostToolBatch = stripManagedHooks(hooks.PostToolBatch ?? []);
+  hooks.Stop = stopHooks;
   writeJsonFileWithDirectoryCheck(settingsPath, { ...settings, hooks });
-  writeHookScript(hookPath);
+  writeHookScript(hookPath, "Stop");
 
   return [settingsPath, hookPath];
 };
-
-const hasCursorHookCommand = (handlers: readonly CursorHookHandler[]): boolean =>
-  handlers.some((handler) => handler.command === CURSOR_HOOK_COMMAND);
 
 const installCursorHook = (projectRoot: string): readonly string[] => {
   const configPath = path.join(projectRoot, CURSOR_HOOKS_RELATIVE_PATH);
   const hookPath = path.join(projectRoot, CURSOR_HOOK_RELATIVE_PATH);
   const config = readJsonFile<CursorHooksConfig>(configPath, {});
   const hooks = { ...(config.hooks ?? {}) };
-  const postToolUseHooks = (hooks.postToolUse ?? []).filter(
-    (handler) => !isLegacyHookCommand(handler.command),
+  const stopHooks = (hooks.stop ?? []).filter(
+    (handler) => !isManagedHookCommand(handler.command, CURSOR_HOOK_COMMAND),
   );
+  stopHooks.push({
+    command: CURSOR_HOOK_COMMAND,
+    timeout: AGENT_HOOK_TIMEOUT_SECONDS,
+  });
 
-  if (!hasCursorHookCommand(postToolUseHooks)) {
-    postToolUseHooks.push({
-      command: CURSOR_HOOK_COMMAND,
-      matcher: CURSOR_HOOK_MATCHER,
-      timeout: AGENT_HOOK_TIMEOUT_SECONDS,
-    });
-  }
-
-  hooks.postToolUse = postToolUseHooks;
+  hooks.postToolUse = (hooks.postToolUse ?? []).filter(
+    (handler) => !isManagedHookCommand(handler.command, CURSOR_HOOK_COMMAND),
+  );
+  hooks.stop = stopHooks;
   writeJsonFileWithDirectoryCheck(configPath, {
     ...config,
     version: config.version ?? CURSOR_HOOKS_SCHEMA_VERSION,
     hooks,
   });
-  writeHookScript(hookPath);
+  writeHookScript(hookPath, "stop");
 
   return [configPath, hookPath];
 };
 
-const buildAgentHookScript = (): string =>
+const buildAgentHookScript = (hookEventName: "Stop" | "stop"): string =>
   [
     "import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';",
     "import { tmpdir } from 'node:os';",
@@ -240,11 +243,11 @@ const buildAgentHookScript = (): string =>
     "",
     "const __filename = fileURLToPath(import.meta.url);",
     "const __dirname = dirname(__filename);",
+    `const HOOK_EVENT_NAME = ${JSON.stringify(hookEventName)};`,
+    `const MAX_CONTINUATIONS = ${AGENT_HOOK_MAX_CONTINUATIONS};`,
     "",
     "// --verbose scans on large diffs can exceed spawnSync's 1 MiB default.",
     "const SPAWN_MAX_BUFFER_BYTES = 16 * 1024 * 1024;",
-    "",
-    "const EDIT_TOOL_NAMES = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'ApplyPatch']);",
     "",
     "const readFileOrEmpty = (source) => {",
     "  try {",
@@ -255,13 +258,10 @@ const buildAgentHookScript = (): string =>
     "};",
     "",
     "const shouldScan = (input) => {",
-    "  const eventName = input.hook_event_name || input.eventName || input.event_name;",
-    "  if (eventName === 'PostToolBatch') {",
-    "    const toolCalls = Array.isArray(input.tool_calls) ? input.tool_calls : [];",
-    "    return toolCalls.some((toolCall) => EDIT_TOOL_NAMES.has(toolCall.tool_name));",
-    "  }",
-    "  const toolName = input.tool_name || input.toolName || input.tool;",
-    "  return !toolName || EDIT_TOOL_NAMES.has(toolName);",
+    "  if (HOOK_EVENT_NAME === 'Stop') return !input.stop_hook_active;",
+    "  if (input.status && input.status !== 'completed') return false;",
+    "  const loopCount = Number(input.loop_count);",
+    "  return !Number.isFinite(loopCount) || loopCount < MAX_CONTINUATIONS;",
     "};",
     "",
     "const runReactDoctor = (outputPath) => {",
@@ -277,11 +277,11 @@ const buildAgentHookScript = (): string =>
     "    : './node_modules/.bin/react-doctor';",
     "  const commands = [",
     "    ...(existsSync(localBin)",
-    "      ? [localBin + ' --verbose --scope changed --blocking warning --no-score']",
+    "      ? [localBin + ' --verbose --scope changed --include-untracked --blocking warning --no-score']",
     "      : []),",
-    "    'react-doctor --verbose --scope changed --blocking warning --no-score',",
-    "    'pnpm dlx react-doctor@latest --verbose --scope changed --blocking warning --no-score',",
-    "    'npx --yes react-doctor@latest --verbose --scope changed --blocking warning --no-score',",
+    "    'react-doctor --verbose --scope changed --include-untracked --blocking warning --no-score',",
+    "    'pnpm dlx react-doctor@latest --verbose --scope changed --include-untracked --blocking warning --no-score',",
+    "    'npx --yes react-doctor@latest --verbose --scope changed --include-untracked --blocking warning --no-score',",
     "  ];",
     "",
     "  for (const command of commands) {",
@@ -340,10 +340,10 @@ const buildAgentHookScript = (): string =>
     "",
     "  const message = `React Doctor found issues in the changed files. Review this output and fix the regressions before finishing. For confirmed issues that cannot be fixed now, create GitHub issues with the rule, file/line, confidence, impact, and proposed fix.\\n\\n${scanOutput}`;",
     "",
-    "  if (input.hook_event_name === 'PostToolBatch') {",
-    "    console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolBatch', additionalContext: message } }));",
+    "  if (HOOK_EVENT_NAME === 'Stop') {",
+    "    console.log(JSON.stringify({ decision: 'block', reason: message }));",
     "  } else {",
-    "    console.log(JSON.stringify({ additional_context: message }));",
+    "    console.log(JSON.stringify({ followup_message: message }));",
     "  }",
     "};",
     "",

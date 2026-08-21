@@ -380,6 +380,55 @@
     }
   },
   {
+    "key": "react-doctor/base-ui-dialog-popup-requires-title",
+    "id": "base-ui-dialog-popup-requires-title",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "base-ui-dialog-popup-requires-title",
+      "title": "Base UI dialog popup without a title",
+      "severity": "warn",
+      "recommendation": "Give every Base UI Dialog.Popup and AlertDialog.Popup a Title part (visually hidden when the design shows no heading) or name the dialog with aria-label.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react", "base-ui"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/base-ui-field-requires-label",
+    "id": "base-ui-field-requires-label",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "base-ui-field-requires-label",
+      "title": "Base UI field control without a label",
+      "severity": "warn",
+      "recommendation": "Give every Field.Root that wraps a Field.Control a Field.Label (visually hidden when the design shows no label) or name the control directly with aria-label.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react", "base-ui"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/base-ui-tabs-tab-requires-list",
+    "id": "base-ui-tabs-tab-requires-list",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "base-ui-tabs-tab-requires-list",
+      "title": "Base UI tab is outside Tabs.List",
+      "severity": "warn",
+      "recommendation": "Render each Base UI Tabs.Tab inside Tabs.List so the tablist role and arrow-key focus handling cover every tab.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["base-ui"],
+      "matchByOccurrence": true,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/build-pipeline-secret-boundary",
     "id": "build-pipeline-secret-boundary",
     "source": "react-doctor",
@@ -425,6 +474,24 @@
       "framework": "global",
       "requires": ["react"],
       "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/circular-dependency",
+    "id": "circular-dependency",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "circular-dependency",
+      "title": "Runtime import cycle",
+      "severity": "warn",
+      "recommendation": "Break the runtime cycle by extracting shared code into a lower-level module or inverting one dependency.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "defaultEnabled": false,
+      "isScanRule": false,
+      "isProjectRule": true
     }
   },
   {
@@ -782,6 +849,23 @@
       "requires": ["react"],
       "defaultEnabled": false,
       "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/duplicate-jsx-subtree",
+    "id": "duplicate-jsx-subtree",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "duplicate-jsx-subtree",
+      "title": "Duplicated JSX structure",
+      "severity": "warn",
+      "recommendation": "Extract a shared component when the repeated JSX trees represent the same UI concept and should evolve together.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "isScanRule": false,
+      "isProjectRule": true
     }
   },
   {
@@ -1848,7 +1932,7 @@
       "id": "js-cache-property-access",
       "title": "Repeated property access in a loop",
       "severity": "warn",
-      "recommendation": "Read the value once into a variable at the top of the loop: `const { x, y } = obj.deeply.nested`",
+      "recommendation": "When the value is unchanged between reads, cache it immediately before the first read inside the loop",
       "category": "Performance",
       "framework": "global",
       "tags": ["test-noise"],
@@ -5042,6 +5126,22 @@
     }
   },
   {
+    "key": "react-doctor/no-high-complexity-react-function",
+    "id": "no-high-complexity-react-function",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-high-complexity-react-function",
+      "title": "React function has high control-flow complexity",
+      "severity": "warn",
+      "recommendation": "Extract independent render branches and state logic into focused components or hooks until the control flow is easy to follow.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["test-noise", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/no-hover-only-reveal",
     "id": "no-hover-only-reveal",
     "source": "react-doctor",
@@ -5765,6 +5865,23 @@
     "rule": {
       "id": "no-multi-comp",
       "title": "Multiple components in one file",
+      "severity": "warn",
+      "recommendation": "Move every secondary component into its own file.",
+      "category": "Maintainability",
+      "framework": "global",
+      "requires": ["react"],
+      "defaultEnabled": false,
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/no-multi-component-file",
+    "id": "no-multi-component-file",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-multi-component-file",
+      "title": "Crowded component file",
       "severity": "warn",
       "recommendation": "Move secondary components into their own files so each component stays easier to find, test, and change.",
       "category": "Maintainability",
@@ -8699,6 +8816,23 @@
     }
   },
   {
+    "key": "react-doctor/r3f-no-compile-in-use-frame",
+    "id": "r3f-no-compile-in-use-frame",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-no-compile-in-use-frame",
+      "title": "R3F shader precompilation inside useFrame",
+      "severity": "error",
+      "recommendation": "Precompile scene materials outside useFrame before they are first displayed",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/r3f-no-deep-use-three-selector",
     "id": "r3f-no-deep-use-three-selector",
     "source": "react-doctor",
@@ -8818,6 +8952,40 @@
     }
   },
   {
+    "key": "react-doctor/r3f-no-ignored-basic-material-properties",
+    "id": "r3f-no-ignored-basic-material-properties",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-no-ignored-basic-material-properties",
+      "title": "PBR prop ignored by R3F meshBasicMaterial",
+      "severity": "warn",
+      "recommendation": "Use meshStandardMaterial or meshPhysicalMaterial when a mesh needs roughness or metalness",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-no-ignored-linewidth",
+    "id": "r3f-no-ignored-linewidth",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-no-ignored-linewidth",
+      "title": "R3F GPU renderer ignores line width",
+      "severity": "warn",
+      "recommendation": "Use Drei Line for wide GPU-rendered lines, or leave linewidth at one pixel",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/r3f-no-imperative-attach-of-managed-ref",
     "id": "r3f-no-imperative-attach-of-managed-ref",
     "source": "react-doctor",
@@ -8920,6 +9088,23 @@
     }
   },
   {
+    "key": "react-doctor/r3f-no-mutate-uniform-prop-source-in-use-frame",
+    "id": "r3f-no-mutate-uniform-prop-source-in-use-frame",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-no-mutate-uniform-prop-source-in-use-frame",
+      "title": "R3F uniform prop source mutated after being copied",
+      "severity": "error",
+      "recommendation": "Mutate materialRef.current.uniforms inside useFrame instead of the object passed to uniforms",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/r3f-no-mutating-pointer-event-data",
     "id": "r3f-no-mutating-pointer-event-data",
     "source": "react-doctor",
@@ -8950,6 +9135,23 @@
       "framework": "global",
       "requires": ["react", "r3f"],
       "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-no-normalized-float-buffer-attribute",
+    "id": "r3f-no-normalized-float-buffer-attribute",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-no-normalized-float-buffer-attribute",
+      "title": "Ignored normalization on R3F float attribute",
+      "severity": "warn",
+      "recommendation": "Use normalized only with integer buffer data; floating-point attributes are already represented directly",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
       "isScanRule": false
     }
   },
@@ -9001,6 +9203,40 @@
       "framework": "global",
       "requires": ["react", "r3f"],
       "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-no-shader-configuration-mutation-in-use-frame",
+    "id": "r3f-no-shader-configuration-mutation-in-use-frame",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-no-shader-configuration-mutation-in-use-frame",
+      "title": "R3F shader configuration mutates every frame",
+      "severity": "error",
+      "recommendation": "Keep shader source and program configuration stable; animate materialRef.current.uniforms.*.value instead",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-no-shadows-on-unsupported-light",
+    "id": "r3f-no-shadows-on-unsupported-light",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-no-shadows-on-unsupported-light",
+      "title": "R3F light cannot cast shadows",
+      "severity": "warn",
+      "recommendation": "Use a directional, point, or spot light when the scene needs a shadow-casting light",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
       "isScanRule": false
     }
   },
@@ -9090,6 +9326,40 @@
     }
   },
   {
+    "key": "react-doctor/r3f-prefer-gpu-instanced-animation",
+    "id": "r3f-prefer-gpu-instanced-animation",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-prefer-gpu-instanced-animation",
+      "title": "Per-instance CPU transform animation in R3F useFrame",
+      "severity": "warn",
+      "recommendation": "Move repeated per-instance transform motion into instanced attributes, a vertex shader, or GPU simulation",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-prefer-gpu-position-animation",
+    "id": "r3f-prefer-gpu-position-animation",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-prefer-gpu-position-animation",
+      "title": "Per-vertex CPU animation in R3F useFrame",
+      "severity": "warn",
+      "recommendation": "Animate repeated vertex or particle positions in a vertex shader, instanced attribute, or GPU simulation instead of rewriting them on the CPU every frame",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/r3f-prefer-instanced-mesh",
     "id": "r3f-prefer-instanced-mesh",
     "source": "react-doctor",
@@ -9115,11 +9385,79 @@
       "id": "r3f-prefer-use-loader",
       "title": "Imperative Three.js loader in a React effect",
       "severity": "warn",
-      "recommendation": "Load render resources with R3F useLoader so Suspense caching can share and deduplicate them",
+      "recommendation": "Load render resources with R3F useLoader so Suspense caching can deduplicate them and a parent error boundary can surface failures",
       "category": "Performance",
       "framework": "global",
       "requires": ["react", "r3f", "r3f:3"],
       "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-require-animation-mixer-update",
+    "id": "r3f-require-animation-mixer-update",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-animation-mixer-update",
+      "title": "R3F animation mixer is never advanced",
+      "severity": "error",
+      "recommendation": "Call mixer.update(delta) from useFrame after starting mixer actions",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-require-data-texture-update",
+    "id": "r3f-require-data-texture-update",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-data-texture-update",
+      "title": "R3F changed data texture is not marked for upload",
+      "severity": "error",
+      "recommendation": "Set texture.needsUpdate to true after changing data-texture pixels",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-require-dynamic-buffer-usage",
+    "id": "r3f-require-dynamic-buffer-usage",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-dynamic-buffer-usage",
+      "title": "R3F per-frame buffer upload keeps static usage",
+      "severity": "warn",
+      "recommendation": "Set usage={DynamicDrawUsage} on buffer attributes uploaded from useFrame",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-require-environment-for-metal",
+    "id": "r3f-require-environment-for-metal",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-environment-for-metal",
+      "title": "Metal R3F material has no environment",
+      "severity": "warn",
+      "recommendation": "Provide scene environment lighting or an envMap for strongly metallic standard and physical materials",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
       "isScanRule": false
     }
   },
@@ -9166,11 +9504,45 @@
       "id": "r3f-require-instanced-buffer-update",
       "title": "Instanced mesh buffer is not marked for upload",
       "severity": "error",
-      "recommendation": "After setMatrixAt or setColorAt, set the matching instance buffer's needsUpdate flag to true",
+      "recommendation": "After setMatrixAt, setColorAt, or setMorphAt, set the matching instance buffer's needsUpdate flag to true",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react", "r3f"],
       "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-require-lighting-for-pbr",
+    "id": "r3f-require-lighting-for-pbr",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-lighting-for-pbr",
+      "title": "R3F PBR material has no lighting source",
+      "severity": "warn",
+      "recommendation": "Add a light, scene environment, material envMap, lightMap, or intentional emissive source for PBR materials",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-require-lit-material-normals",
+    "id": "r3f-require-lit-material-normals",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-lit-material-normals",
+      "title": "Normal-mapped R3F geometry has no normals",
+      "severity": "error",
+      "recommendation": "Attach a normal BufferAttribute or compute vertex normals before applying a normal map to custom geometry",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
       "isScanRule": false
     }
   },
@@ -9192,6 +9564,23 @@
     }
   },
   {
+    "key": "react-doctor/r3f-require-position-buffer-update",
+    "id": "r3f-require-position-buffer-update",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-position-buffer-update",
+      "title": "R3F position buffer is not marked for upload",
+      "severity": "error",
+      "recommendation": "Set the position BufferAttribute needsUpdate flag after changing its values on the CPU",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/r3f-require-projection-matrix-update",
     "id": "r3f-require-projection-matrix-update",
     "source": "react-doctor",
@@ -9201,6 +9590,23 @@
       "title": "Missing camera projection-matrix update",
       "severity": "error",
       "recommendation": "Call camera.updateProjectionMatrix() after imperatively changing projection properties so Three.js renders the new frustum",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-require-render-target-reset",
+    "id": "r3f-require-render-target-reset",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-render-target-reset",
+      "title": "R3F renderer leaves an offscreen target bound",
+      "severity": "error",
+      "recommendation": "Call gl.setRenderTarget(null) on every useFrame path after rendering to an offscreen target",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react", "r3f"],
@@ -9243,6 +9649,278 @@
     }
   },
   {
+    "key": "react-doctor/r3f-require-shadows-enabled",
+    "id": "r3f-require-shadows-enabled",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-shadows-enabled",
+      "title": "R3F shadow caster without Canvas shadow maps",
+      "severity": "warn",
+      "recommendation": "Enable the Canvas shadows prop when descendants cast or receive real-time shadows",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-require-transparent-for-opacity",
+    "id": "r3f-require-transparent-for-opacity",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-transparent-for-opacity",
+      "title": "R3F material opacity is ignored",
+      "severity": "warn",
+      "recommendation": "Enable transparent, alphaHash, or alphaTest when a material opacity below 1 should affect rendering",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-require-uv-for-texture-map",
+    "id": "r3f-require-uv-for-texture-map",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-uv-for-texture-map",
+      "title": "Mapped R3F mesh geometry has no UVs",
+      "severity": "error",
+      "recommendation": "Attach a uv, uv1, uv2, or uv3 BufferAttribute when a built-in mesh material samples a texture map",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-texture-repeat-requires-wrapping",
+    "id": "r3f-texture-repeat-requires-wrapping",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-texture-repeat-requires-wrapping",
+      "title": "R3F texture repeat without repeat wrapping",
+      "severity": "warn",
+      "recommendation": "Set wrapS or wrapT to RepeatWrapping or MirroredRepeatWrapping when increasing repeat on that axis",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-valid-buffer-attribute-array-length",
+    "id": "r3f-valid-buffer-attribute-array-length",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-valid-buffer-attribute-array-length",
+      "title": "R3F buffer attribute has a partial final item",
+      "severity": "error",
+      "recommendation": "Use an attribute array length divisible by itemSize",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-valid-buffer-attribute-item-size",
+    "id": "r3f-valid-buffer-attribute-item-size",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-valid-buffer-attribute-item-size",
+      "title": "Invalid R3F buffer attribute item size",
+      "severity": "error",
+      "recommendation": "Use a positive integer itemSize matching the number of components per vertex attribute",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-valid-fog-parameters",
+    "id": "r3f-valid-fog-parameters",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-valid-fog-parameters",
+      "title": "R3F fog has invalid range parameters",
+      "severity": "error",
+      "recommendation": "Use non-negative fog parameters and keep linear fog far greater than near",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-valid-material-opacity",
+    "id": "r3f-valid-material-opacity",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-valid-material-opacity",
+      "title": "R3F material opacity outside its normalized range",
+      "severity": "warn",
+      "recommendation": "Keep material opacity in the normalized [0, 1] range",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-valid-orthographic-camera",
+    "id": "r3f-valid-orthographic-camera",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-valid-orthographic-camera",
+      "title": "Invalid R3F orthographic camera",
+      "severity": "error",
+      "recommendation": "Use distinct horizontal and vertical frustum planes and a far plane greater than near",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-valid-pbr-material-properties",
+    "id": "r3f-valid-pbr-material-properties",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-valid-pbr-material-properties",
+      "title": "R3F PBR material factor outside its normalized range",
+      "severity": "warn",
+      "recommendation": "Keep meshStandardMaterial and meshPhysicalMaterial roughness and metalness in [0, 1]",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-valid-perspective-camera",
+    "id": "r3f-valid-perspective-camera",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-valid-perspective-camera",
+      "title": "Invalid R3F perspective camera",
+      "severity": "error",
+      "recommendation": "Use a positive aspect ratio and near plane, and keep the far plane greater than the near plane",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-valid-physical-material-properties",
+    "id": "r3f-valid-physical-material-properties",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-valid-physical-material-properties",
+      "title": "Invalid R3F physical material property",
+      "severity": "warn",
+      "recommendation": "Keep meshPhysicalMaterial layer strengths and indices of refraction in their documented ranges",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-valid-raycaster-range",
+    "id": "r3f-valid-raycaster-range",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-valid-raycaster-range",
+      "title": "Invalid R3F raycaster distance range",
+      "severity": "error",
+      "recommendation": "Keep raycaster near nonnegative and far greater than or equal to near",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-valid-shadow-map-size",
+    "id": "r3f-valid-shadow-map-size",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-valid-shadow-map-size",
+      "title": "Invalid R3F shadow map size",
+      "severity": "warn",
+      "recommendation": "Use positive power-of-two shadow map dimensions within the renderer's maximum texture size",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-valid-spot-light-properties",
+    "id": "r3f-valid-spot-light-properties",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-valid-spot-light-properties",
+      "title": "Invalid R3F spotlight cone",
+      "severity": "warn",
+      "recommendation": "Keep spotlight angle in (0, Math.PI / 2] and penumbra in [0, 1]",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-valid-texture-color-space",
+    "id": "r3f-valid-texture-color-space",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-valid-texture-color-space",
+      "title": "R3F texture has an incompatible color space",
+      "severity": "error",
+      "recommendation": "Use SRGBColorSpace for color maps and NoColorSpace for non-color material data maps",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/r3f-webgpu-canvas-prop-compatibility",
     "id": "r3f-webgpu-canvas-prop-compatibility",
     "source": "react-doctor",
@@ -9273,6 +9951,23 @@
       "framework": "global",
       "requires": ["react", "r3f", "r3f:10"],
       "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-webgpu-no-high-precision-instancing",
+    "id": "r3f-webgpu-no-high-precision-instancing",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-webgpu-no-high-precision-instancing",
+      "title": "R3F WebGPU high precision conflicts with instanced meshes",
+      "severity": "error",
+      "recommendation": "Disable renderer.highPrecision for Canvas trees containing instancedMesh or skinnedMesh",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f", "three:181"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
       "isScanRule": false
     }
   },
@@ -9345,6 +10040,23 @@
     }
   },
   {
+    "key": "react-doctor/r3f-webgpu-require-async-init",
+    "id": "r3f-webgpu-require-async-init",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-webgpu-require-async-init",
+      "title": "R3F WebGPU factory skips asynchronous initialization",
+      "severity": "error",
+      "recommendation": "Make the Canvas gl factory async and await renderer.init() before returning it",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/radio-input-missing-name",
     "id": "radio-input-missing-name",
     "source": "react-doctor",
@@ -9356,6 +10068,39 @@
       "recommendation": "Give every radio in the same group the same `name` prop (e.g. `<input type=\"radio\" name=\"shippingSpeed\" />`). The browser groups radios and enables arrow-key navigation only when they share a `name`.",
       "category": "Accessibility",
       "framework": "global",
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/radix-dialog-content-requires-title",
+    "id": "radix-dialog-content-requires-title",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "radix-dialog-content-requires-title",
+      "title": "Radix dialog content without a title",
+      "severity": "warn",
+      "recommendation": "Give every Radix Dialog.Content and AlertDialog.Content a Title part (wrapped in VisuallyHidden when the design shows no heading) or name the dialog with aria-label.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react", "radix-ui"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/radix-tabs-trigger-requires-list",
+    "id": "radix-tabs-trigger-requires-list",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "radix-tabs-trigger-requires-list",
+      "title": "Radix tabs trigger is outside Tabs.List",
+      "severity": "warn",
+      "recommendation": "Render each Radix Tabs.Trigger inside Tabs.List so the tablist role and roving keyboard focus cover every trigger.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["radix-ui"],
+      "matchByOccurrence": true,
       "isScanRule": false
     }
   },
@@ -9373,6 +10118,22 @@
       "framework": "global",
       "tags": ["security-scan"],
       "isScanRule": true
+    }
+  },
+  {
+    "key": "react-doctor/react-aria-dialog-requires-heading",
+    "id": "react-aria-dialog-requires-heading",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "react-aria-dialog-requires-heading",
+      "title": "React Aria dialog without a heading",
+      "severity": "warn",
+      "recommendation": "Give every React Aria Dialog a <Heading slot=\"title\"> child or name the dialog with aria-label / aria-labelledby.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react", "react-aria"],
+      "isScanRule": false
     }
   },
   {
@@ -10327,7 +11088,7 @@
     "originallyExternal": false,
     "rule": {
       "id": "rendering-hydration-no-flicker",
-      "title": "useEffect setState flashes on mount",
+      "title": "useEffect state synchronization flashes after paint",
       "severity": "warn",
       "recommendation": "Initialize state from a render-safe value before the first paint, or read external mutable values with `useSyncExternalStore`.",
       "category": "Performance",
@@ -11591,6 +12352,88 @@
     }
   },
   {
+    "key": "react-doctor/shadcn-command-item-state-variant-requires-value",
+    "id": "shadcn-command-item-state-variant-requires-value",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "shadcn-command-item-state-variant-requires-value",
+      "title": "Command item styled by presence-only state variant",
+      "severity": "warn",
+      "recommendation": "Style command items with the value-aware variants data-[selected=true]: and data-[disabled=true]:, because cmdk renders both attributes on every item as \"true\" or \"false\".",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["shadcn"],
+      "matchByOccurrence": true,
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/shadcn-dialog-content-requires-title",
+    "id": "shadcn-dialog-content-requires-title",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "shadcn-dialog-content-requires-title",
+      "title": "Dialog content without a title",
+      "severity": "warn",
+      "recommendation": "Give every DialogContent, SheetContent, AlertDialogContent, and DrawerContent a matching title part (wrapped in an sr-only element when the design shows no heading) or name the dialog with aria-label.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react", "shadcn"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/shadcn-form-item-requires-label",
+    "id": "shadcn-form-item-requires-label",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "shadcn-form-item-requires-label",
+      "title": "FormItem control without a label",
+      "severity": "warn",
+      "recommendation": "Give every FormItem that wraps a FormControl a FormLabel (sr-only when the design shows no visible label) or name the control directly with aria-label.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react", "shadcn"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/shadcn-icon-button-requires-label",
+    "id": "shadcn-icon-button-requires-label",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "shadcn-icon-button-requires-label",
+      "title": "Icon-only Button without accessible name",
+      "severity": "warn",
+      "recommendation": "Give every icon-sized Button an aria-label or an sr-only text child so assistive technology announces what the button does.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react", "shadcn"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/shadcn-input-group-no-raw-controls",
+    "id": "shadcn-input-group-no-raw-controls",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "shadcn-input-group-no-raw-controls",
+      "title": "Raw control directly inside InputGroup",
+      "severity": "warn",
+      "recommendation": "Compose InputGroup from its own parts (InputGroupInput, InputGroupTextarea, and InputGroupAddon with InputGroupButton) so the group owns one border, focus ring, and error state.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["shadcn"],
+      "matchByOccurrence": true,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/shadcn-tabs-trigger-requires-list",
     "id": "shadcn-tabs-trigger-requires-list",
     "source": "react-doctor",
@@ -11602,7 +12445,8 @@
       "recommendation": "Render each imported TabsTrigger inside its library TabsList so keyboard navigation and tablist semantics share one scope.",
       "category": "Bugs",
       "framework": "global",
-      "defaultEnabled": false,
+      "requires": ["shadcn"],
+      "matchByOccurrence": true,
       "isScanRule": false
     }
   },
@@ -11751,6 +12595,23 @@
       "framework": "global",
       "requires": ["react"],
       "tags": ["react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/tanstack-form-on-submit-requires-prevent-default",
+    "id": "tanstack-form-on-submit-requires-prevent-default",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "tanstack-form-on-submit-requires-prevent-default",
+      "title": "Form submit reloads the page around handleSubmit",
+      "severity": "warn",
+      "recommendation": "Wrap the submit handler as onSubmit={(event) => { event.preventDefault(); form.handleSubmit(); }} because TanStack Form's handleSubmit never cancels the native submit itself.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["tanstack-form"],
+      "matchByOccurrence": true,
       "isScanRule": false
     }
   },
@@ -12010,6 +12871,39 @@
     }
   },
   {
+    "key": "react-doctor/tanstack-table-no-unstable-data-or-columns",
+    "id": "tanstack-table-no-unstable-data-or-columns",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "tanstack-table-no-unstable-data-or-columns",
+      "title": "Table data or columns recreated every render",
+      "severity": "warn",
+      "recommendation": "Give the table's data and columns options stable references: useMemo or useState inside the component, or a module-scope constant, so row and column models are not rebuilt on every render.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["tanstack-table"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/tanstack-virtual-measure-element-requires-data-index",
+    "id": "tanstack-virtual-measure-element-requires-data-index",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "tanstack-virtual-measure-element-requires-data-index",
+      "title": "Measured virtual item without data-index",
+      "severity": "warn",
+      "recommendation": "Add data-index={virtualItem.index} to every element whose ref is the virtualizer's measureElement, so dynamic measurement can attribute the size to the right row.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["tanstack-virtual"],
+      "matchByOccurrence": true,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/tenant-static-proxy-risk",
     "id": "tenant-static-proxy-risk",
     "source": "react-doctor",
@@ -12036,6 +12930,91 @@
       "severity": "warn",
       "recommendation": "Cap renderer pixel ratio, commonly at 2, so high-density displays do not multiply GPU work without a bound",
       "category": "Performance",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-effect-composer-output-pass-last",
+    "id": "three-effect-composer-output-pass-last",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-effect-composer-output-pass-last",
+      "title": "Postprocessing pass follows OutputPass",
+      "severity": "error",
+      "recommendation": "Add OutputPass after every other EffectComposer pass",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-effect-composer-require-size-on-resize",
+    "id": "three-effect-composer-require-size-on-resize",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-effect-composer-require-size-on-resize",
+      "title": "EffectComposer size is stale after renderer resize",
+      "severity": "error",
+      "recommendation": "Resize every EffectComposer associated with a resized renderer",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-gpu-computation-handle-init-error",
+    "id": "three-gpu-computation-handle-init-error",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-gpu-computation-handle-init-error",
+      "title": "GPU computation initialization error is ignored",
+      "severity": "error",
+      "recommendation": "Check or propagate the error string returned by GPUComputationRenderer.init()",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-gpu-computation-require-init-before-compute",
+    "id": "three-gpu-computation-require-init-before-compute",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-gpu-computation-require-init-before-compute",
+      "title": "GPU computation runs before initialization",
+      "severity": "error",
+      "recommendation": "Call and validate GPUComputationRenderer.init() before scheduling compute()",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-gpu-computation-valid-variable-name",
+    "id": "three-gpu-computation-valid-variable-name",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-gpu-computation-valid-variable-name",
+      "title": "GPU computation variable has an invalid shader name",
+      "severity": "error",
+      "recommendation": "Use a unique, non-reserved GLSL identifier for each computation variable",
+      "category": "Bugs",
       "framework": "global",
       "requires": ["three"],
       "tags": ["three", "webgl"],
@@ -12111,6 +13090,57 @@
     }
   },
   {
+    "key": "react-doctor/three-no-compile-in-animation-loop",
+    "id": "three-no-compile-in-animation-loop",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-no-compile-in-animation-loop",
+      "title": "Three.js shader precompilation inside animation loop",
+      "severity": "error",
+      "recommendation": "Precompile scene materials outside the animation loop before they are first displayed",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-no-ignored-basic-material-properties",
+    "id": "three-no-ignored-basic-material-properties",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-no-ignored-basic-material-properties",
+      "title": "PBR property ignored by Three.js MeshBasicMaterial",
+      "severity": "warn",
+      "recommendation": "Use MeshStandardMaterial or MeshPhysicalMaterial when a mesh needs roughness or metalness",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-no-ignored-linewidth",
+    "id": "three-no-ignored-linewidth",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-no-ignored-linewidth",
+      "title": "Three.js GPU renderer ignores line width",
+      "severity": "warn",
+      "recommendation": "Use Line2 for wide GPU-rendered lines, or leave linewidth at one pixel",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/three-no-material-recompile-in-animation-loop",
     "id": "three-no-material-recompile-in-animation-loop",
     "source": "react-doctor",
@@ -12138,6 +13168,23 @@
       "severity": "warn",
       "recommendation": "Allocate reusable objects before the animation loop and mutate them in place during each frame",
       "category": "Performance",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-no-normalized-float-buffer-attribute",
+    "id": "three-no-normalized-float-buffer-attribute",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-no-normalized-float-buffer-attribute",
+      "title": "Ignored normalization on Three.js float attribute",
+      "severity": "warn",
+      "recommendation": "Use normalized only with integer buffer data; floating-point attributes are already represented directly",
+      "category": "Bugs",
       "framework": "global",
       "requires": ["three"],
       "tags": ["three", "webgl"],
@@ -12179,6 +13226,40 @@
     }
   },
   {
+    "key": "react-doctor/three-no-shader-configuration-mutation-in-animation-loop",
+    "id": "three-no-shader-configuration-mutation-in-animation-loop",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-no-shader-configuration-mutation-in-animation-loop",
+      "title": "Shader configuration mutates every animation frame",
+      "severity": "error",
+      "recommendation": "Keep shader source and program configuration stable; animate existing uniform values instead",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-no-shadows-on-unsupported-light",
+    "id": "three-no-shadows-on-unsupported-light",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-no-shadows-on-unsupported-light",
+      "title": "Three.js light cannot cast shadows",
+      "severity": "warn",
+      "recommendation": "Use a DirectionalLight, PointLight, or SpotLight when the scene needs a shadow-casting light",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/three-no-state-in-animation-loop",
     "id": "three-no-state-in-animation-loop",
     "source": "react-doctor",
@@ -12213,6 +13294,40 @@
     }
   },
   {
+    "key": "react-doctor/three-no-sync-readback-in-animation-loop",
+    "id": "three-no-sync-readback-in-animation-loop",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-no-sync-readback-in-animation-loop",
+      "title": "Synchronous GPU readback in Three.js loop",
+      "severity": "warn",
+      "recommendation": "Use readRenderTargetPixelsAsync or move GPU readback to a discrete, lower-frequency path",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-no-unconditional-renderer-resize-in-animation-loop",
+    "id": "three-no-unconditional-renderer-resize-in-animation-loop",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-no-unconditional-renderer-resize-in-animation-loop",
+      "title": "Renderer resized unconditionally every frame",
+      "severity": "warn",
+      "recommendation": "Compare the drawing-buffer size first and resize the renderer only when its display size changed",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/three-on-before-compile-require-program-cache-key",
     "id": "three-on-before-compile-require-program-cache-key",
     "source": "react-doctor",
@@ -12230,6 +13345,40 @@
     }
   },
   {
+    "key": "react-doctor/three-prefer-gpu-instanced-animation",
+    "id": "three-prefer-gpu-instanced-animation",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-prefer-gpu-instanced-animation",
+      "title": "Per-instance CPU transform animation in a Three.js loop",
+      "severity": "warn",
+      "recommendation": "Move repeated per-instance transform motion into instanced attributes, a vertex shader, or GPU simulation",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-prefer-gpu-position-animation",
+    "id": "three-prefer-gpu-position-animation",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-prefer-gpu-position-animation",
+      "title": "Per-vertex CPU animation in a Three.js frame loop",
+      "severity": "warn",
+      "recommendation": "Animate repeated vertex or particle positions in a vertex shader, instanced attribute, or GPU simulation instead of rewriting them on the CPU every frame",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/three-prefer-instanced-mesh",
     "id": "three-prefer-instanced-mesh",
     "source": "react-doctor",
@@ -12240,6 +13389,23 @@
       "severity": "warn",
       "recommendation": "Replace repeated Mesh objects that share geometry and material with one InstancedMesh and per-instance transforms",
       "category": "Performance",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-prefer-set-animation-loop",
+    "id": "three-prefer-set-animation-loop",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-prefer-set-animation-loop",
+      "title": "Three.js renderer uses manual animation frames",
+      "severity": "warn",
+      "recommendation": "Use renderer.setAnimationLoop for Three.js animation-loop compatibility, including WebXR",
+      "category": "Bugs",
       "framework": "global",
       "requires": ["three"],
       "tags": ["three", "webgl"],
@@ -12298,6 +13464,40 @@
     }
   },
   {
+    "key": "react-doctor/three-require-animation-mixer-update",
+    "id": "three-require-animation-mixer-update",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-animation-mixer-update",
+      "title": "Three.js animation mixer is never advanced",
+      "severity": "error",
+      "recommendation": "Call mixer.update(deltaSeconds) from the renderer animation loop after starting mixer actions",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-camera-aspect-on-resize",
+    "id": "three-require-camera-aspect-on-resize",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-camera-aspect-on-resize",
+      "title": "Three.js resize leaves camera aspect stale",
+      "severity": "error",
+      "recommendation": "Update each rendered PerspectiveCamera aspect when resizing its renderer, then update its projection matrix",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/three-require-controls-cleanup",
     "id": "three-require-controls-cleanup",
     "source": "react-doctor",
@@ -12310,6 +13510,74 @@
       "category": "Bugs",
       "framework": "global",
       "requires": ["react", "three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-controls-update",
+    "id": "three-require-controls-update",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-controls-update",
+      "title": "Three.js controls require per-frame updates",
+      "severity": "warn",
+      "recommendation": "Call controls.update in the animation loop when OrbitControls or MapControls enables damping or auto-rotation",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-data-texture-update",
+    "id": "three-require-data-texture-update",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-data-texture-update",
+      "title": "Changed data texture is not marked for upload",
+      "severity": "error",
+      "recommendation": "Set texture.needsUpdate to true after changing data-texture pixels",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-dynamic-buffer-usage",
+    "id": "three-require-dynamic-buffer-usage",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-dynamic-buffer-usage",
+      "title": "Per-frame buffer upload keeps static usage",
+      "severity": "warn",
+      "recommendation": "Call attribute.setUsage(DynamicDrawUsage) before its first render",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-environment-for-metal",
+    "id": "three-require-environment-for-metal",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-environment-for-metal",
+      "title": "Metal Three.js material has no environment",
+      "severity": "warn",
+      "recommendation": "Provide scene environment lighting or an envMap for strongly metallic standard and physical materials",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
       "tags": ["three", "webgl"],
       "isScanRule": false
     }
@@ -12332,6 +13600,23 @@
     }
   },
   {
+    "key": "react-doctor/three-require-gpu-computation-cleanup",
+    "id": "three-require-gpu-computation-cleanup",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-gpu-computation-cleanup",
+      "title": "Undisposed Three.js GPU computation renderer",
+      "severity": "warn",
+      "recommendation": "Dispose component-owned GPUComputationRenderer instances during effect cleanup",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/three-require-instanced-buffer-update",
     "id": "three-require-instanced-buffer-update",
     "source": "react-doctor",
@@ -12340,7 +13625,75 @@
       "id": "three-require-instanced-buffer-update",
       "title": "Three.js instanced mesh buffer is not marked for upload",
       "severity": "error",
-      "recommendation": "After setMatrixAt or setColorAt, set the matching instance buffer's needsUpdate flag to true",
+      "recommendation": "After setMatrixAt, setColorAt, or setMorphAt, set the matching instance buffer's needsUpdate flag to true",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-ktx2-detect-support",
+    "id": "three-require-ktx2-detect-support",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-ktx2-detect-support",
+      "title": "KTX2Loader used before renderer support detection",
+      "severity": "error",
+      "recommendation": "Call detectSupport(renderer), or await detectSupportAsync(renderer), before loading KTX2 textures",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-lighting-for-pbr",
+    "id": "three-require-lighting-for-pbr",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-lighting-for-pbr",
+      "title": "Three.js PBR material has no lighting source",
+      "severity": "warn",
+      "recommendation": "Add a light, scene environment, material envMap, lightMap, or intentional emissive source for PBR materials",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-lit-material-normals",
+    "id": "three-require-lit-material-normals",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-lit-material-normals",
+      "title": "Normal-mapped Three.js geometry has no normals",
+      "severity": "error",
+      "recommendation": "Provide a normal BufferAttribute or call computeVertexNormals() before applying a normal map to custom geometry",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-loader-error-handling",
+    "id": "three-require-loader-error-handling",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-loader-error-handling",
+      "title": "Three.js asset load has no local error path",
+      "severity": "warn",
+      "recommendation": "Provide Loader.load with an onError callback, or await, return, or otherwise observe Loader.loadAsync rejections",
       "category": "Bugs",
       "framework": "global",
       "requires": ["three"],
@@ -12401,6 +13754,23 @@
     }
   },
   {
+    "key": "react-doctor/three-require-position-buffer-update",
+    "id": "three-require-position-buffer-update",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-position-buffer-update",
+      "title": "Three.js position buffer is not marked for upload",
+      "severity": "error",
+      "recommendation": "Set the position BufferAttribute needsUpdate flag after changing its values on the CPU",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/three-require-postprocessing-cleanup",
     "id": "three-require-postprocessing-cleanup",
     "source": "react-doctor",
@@ -12435,6 +13805,23 @@
     }
   },
   {
+    "key": "react-doctor/three-require-render-in-animation-loop",
+    "id": "three-require-render-in-animation-loop",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-render-in-animation-loop",
+      "title": "Three.js animation loop never renders",
+      "severity": "error",
+      "recommendation": "Render the scene or a postprocessing composer from each WebGLRenderer animation loop",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/three-require-render-target-cleanup",
     "id": "three-require-render-target-cleanup",
     "source": "react-doctor",
@@ -12452,6 +13839,23 @@
     }
   },
   {
+    "key": "react-doctor/three-require-render-target-reset",
+    "id": "three-require-render-target-reset",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-render-target-reset",
+      "title": "Three.js renderer leaves an offscreen target bound",
+      "severity": "error",
+      "recommendation": "Call renderer.setRenderTarget(null) on every path after rendering to an offscreen target",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/three-require-renderer-cleanup",
     "id": "three-require-renderer-cleanup",
     "source": "react-doctor",
@@ -12464,6 +13868,125 @@
       "category": "Bugs",
       "framework": "global",
       "requires": ["react", "three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-renderer-dom-attachment",
+    "id": "three-require-renderer-dom-attachment",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-renderer-dom-attachment",
+      "title": "Three.js renderer canvas is never attached to the DOM",
+      "severity": "warn",
+      "recommendation": "Pass an existing canvas to WebGLRenderer or attach renderer.domElement before presenting the scene",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-renderer-size",
+    "id": "three-require-renderer-size",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-renderer-size",
+      "title": "Three.js renderer drawing buffer is never sized",
+      "severity": "warn",
+      "recommendation": "Set the WebGLRenderer drawing-buffer size before rendering a generated canvas",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-shadows-enabled",
+    "id": "three-require-shadows-enabled",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-shadows-enabled",
+      "title": "Three.js shadow caster without renderer shadow maps",
+      "severity": "warn",
+      "recommendation": "Set renderer.shadowMap.enabled = true when rendered objects cast or receive shadows",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-texture-update-after-wrapping-change",
+    "id": "three-require-texture-update-after-wrapping-change",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-texture-update-after-wrapping-change",
+      "title": "Three.js texture wrapping changes without re-upload",
+      "severity": "error",
+      "recommendation": "Set texture.needsUpdate to true after changing wrapS or wrapT on a texture that has already rendered",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-transparent-for-opacity",
+    "id": "three-require-transparent-for-opacity",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-transparent-for-opacity",
+      "title": "Three.js material opacity is ignored",
+      "severity": "warn",
+      "recommendation": "Enable transparent, alphaHash, or alphaTest when a material opacity below 1 should affect rendering",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-uv-for-texture-map",
+    "id": "three-require-uv-for-texture-map",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-uv-for-texture-map",
+      "title": "Mapped Three.js mesh geometry has no UVs",
+      "severity": "error",
+      "recommendation": "Provide a uv, uv1, uv2, or uv3 BufferAttribute when a built-in mesh material samples a texture map",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-worker-loader-cleanup",
+    "id": "three-require-worker-loader-cleanup",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-worker-loader-cleanup",
+      "title": "Undisposed Three.js worker-backed loader",
+      "severity": "warn",
+      "recommendation": "Dispose component-owned DRACO and KTX2 loaders so decoder workers and internal resources are released",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
       "tags": ["three", "webgl"],
       "isScanRule": false
     }
@@ -12495,6 +14018,23 @@
       "title": "Shader derivative runs in non-uniform control flow",
       "severity": "error",
       "recommendation": "Evaluate derivatives and implicit-LOD texture samples before fragment-input-dependent branches",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-shader-no-glsl1-syntax-with-glsl3",
+    "id": "three-shader-no-glsl1-syntax-with-glsl3",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-shader-no-glsl1-syntax-with-glsl3",
+      "title": "GLSL 3 shader uses an unavailable GLSL 1 symbol",
+      "severity": "error",
+      "recommendation": "Use GLSL 3 in/out declarations, texture(), and an explicit fragment output",
       "category": "Bugs",
       "framework": "global",
       "requires": ["three"],
@@ -12622,6 +14162,23 @@
     }
   },
   {
+    "key": "react-doctor/three-shader-no-reserved-identifiers",
+    "id": "three-shader-no-reserved-identifiers",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-shader-no-reserved-identifiers",
+      "title": "Shader declares a reserved GLSL identifier",
+      "severity": "error",
+      "recommendation": "Rename user-defined identifiers that start with gl_ or contain __",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/three-shader-no-version-directive",
     "id": "three-shader-no-version-directive",
     "source": "react-doctor",
@@ -12666,6 +14223,40 @@
       "severity": "warn",
       "recommendation": "Compare squared vector distance against a squared nonnegative threshold",
       "category": "Performance",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-shader-require-compatible-uniform-values",
+    "id": "three-shader-require-compatible-uniform-values",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-shader-require-compatible-uniform-values",
+      "title": "Shader uniform value has an incompatible JavaScript shape",
+      "severity": "error",
+      "recommendation": "Bind GLSL uniforms to compatible numbers, vectors, matrices, and textures",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-shader-require-fragment-output-on-all-paths",
+    "id": "three-shader-require-fragment-output-on-all-paths",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-shader-require-fragment-output-on-all-paths",
+      "title": "Fragment shader leaves a color output undefined",
+      "severity": "error",
+      "recommendation": "Assign every used fragment color output before each return and on every non-discarded path",
+      "category": "Bugs",
       "framework": "global",
       "requires": ["three"],
       "tags": ["three", "webgl"],
@@ -12741,6 +14332,57 @@
     }
   },
   {
+    "key": "react-doctor/three-shader-valid-global-initializers",
+    "id": "three-shader-valid-global-initializers",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-shader-valid-global-initializers",
+      "title": "Shader global has an invalid initializer",
+      "severity": "error",
+      "recommendation": "Remove initializers from interface variables and initialize every const declaration",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-shader-valid-uniform-definitions",
+    "id": "three-shader-valid-uniform-definitions",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-shader-valid-uniform-definitions",
+      "title": "Shader uniform has an invalid JavaScript definition",
+      "severity": "error",
+      "recommendation": "Define each ShaderMaterial uniform as { value: ... } or THREE.Uniform",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-texture-repeat-requires-wrapping",
+    "id": "three-texture-repeat-requires-wrapping",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-texture-repeat-requires-wrapping",
+      "title": "Three.js texture repeat without repeat wrapping",
+      "severity": "warn",
+      "recommendation": "Set wrapS or wrapT to RepeatWrapping or MirroredRepeatWrapping before increasing repeat on that axis",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/three-tsl-no-js-uniform-branch",
     "id": "three-tsl-no-js-uniform-branch",
     "source": "react-doctor",
@@ -12753,6 +14395,278 @@
       "category": "Bugs",
       "framework": "global",
       "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-buffer-attribute-array-length",
+    "id": "three-valid-buffer-attribute-array-length",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-buffer-attribute-array-length",
+      "title": "Buffer attribute has a partial final item",
+      "severity": "error",
+      "recommendation": "Use an attribute array length divisible by itemSize",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-buffer-attribute-item-size",
+    "id": "three-valid-buffer-attribute-item-size",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-buffer-attribute-item-size",
+      "title": "Invalid Three.js buffer attribute item size",
+      "severity": "error",
+      "recommendation": "Use a positive integer itemSize matching the number of components per vertex attribute",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-data-texture-data-length",
+    "id": "three-valid-data-texture-data-length",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-data-texture-data-length",
+      "title": "Data texture storage is too short",
+      "severity": "error",
+      "recommendation": "Allocate enough typed-array elements for every data-texture texel component",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-data-texture-dimensions",
+    "id": "three-valid-data-texture-dimensions",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-data-texture-dimensions",
+      "title": "Data texture has an invalid dimension",
+      "severity": "error",
+      "recommendation": "Use positive integer width, height, and depth values for data textures",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-fog-parameters",
+    "id": "three-valid-fog-parameters",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-fog-parameters",
+      "title": "Three.js fog has invalid range parameters",
+      "severity": "error",
+      "recommendation": "Use non-negative fog parameters and keep linear fog far greater than near",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-gpu-computation-dimensions",
+    "id": "three-valid-gpu-computation-dimensions",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-gpu-computation-dimensions",
+      "title": "GPU computation has an invalid texture dimension",
+      "severity": "error",
+      "recommendation": "Use positive integer dimensions for GPU computation textures",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-material-opacity",
+    "id": "three-valid-material-opacity",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-material-opacity",
+      "title": "Three.js material opacity outside its normalized range",
+      "severity": "warn",
+      "recommendation": "Keep material opacity in the normalized [0, 1] range",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-orthographic-camera",
+    "id": "three-valid-orthographic-camera",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-orthographic-camera",
+      "title": "Invalid Three.js orthographic camera",
+      "severity": "error",
+      "recommendation": "Use distinct horizontal and vertical frustum planes and a far plane greater than near",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-pbr-material-properties",
+    "id": "three-valid-pbr-material-properties",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-pbr-material-properties",
+      "title": "Three.js PBR material factor outside its normalized range",
+      "severity": "warn",
+      "recommendation": "Keep MeshStandardMaterial and MeshPhysicalMaterial roughness and metalness in [0, 1]",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-perspective-camera",
+    "id": "three-valid-perspective-camera",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-perspective-camera",
+      "title": "Invalid Three.js perspective camera",
+      "severity": "error",
+      "recommendation": "Use a positive aspect ratio and near plane, and keep the far plane greater than the near plane",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-physical-material-properties",
+    "id": "three-valid-physical-material-properties",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-physical-material-properties",
+      "title": "Invalid Three.js physical material property",
+      "severity": "warn",
+      "recommendation": "Keep MeshPhysicalMaterial layer strengths and indices of refraction in their documented ranges",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-raycaster-range",
+    "id": "three-valid-raycaster-range",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-raycaster-range",
+      "title": "Invalid Three.js raycaster distance range",
+      "severity": "error",
+      "recommendation": "Keep raycaster near nonnegative and far greater than or equal to near",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-shadow-map-size",
+    "id": "three-valid-shadow-map-size",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-shadow-map-size",
+      "title": "Invalid Three.js shadow map size",
+      "severity": "warn",
+      "recommendation": "Use positive power-of-two shadow map dimensions within the renderer's maximum texture size",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-spot-light-properties",
+    "id": "three-valid-spot-light-properties",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-spot-light-properties",
+      "title": "Invalid Three.js spotlight cone",
+      "severity": "warn",
+      "recommendation": "Keep spotlight angle in (0, Math.PI / 2] and penumbra in [0, 1]",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-valid-texture-color-space",
+    "id": "three-valid-texture-color-space",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-valid-texture-color-space",
+      "title": "Three.js texture has an incompatible color space",
+      "severity": "error",
+      "recommendation": "Use SRGBColorSpace for color maps and NoColorSpace for non-color material data maps",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-webgpu-no-high-precision-instancing",
+    "id": "three-webgpu-no-high-precision-instancing",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-webgpu-no-high-precision-instancing",
+      "title": "WebGPU high precision conflicts with instanced meshes",
+      "severity": "error",
+      "recommendation": "Disable renderer.highPrecision when rendering InstancedMesh or SkinnedMesh objects",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three", "three:181"],
       "tags": ["three", "webgl"],
       "isScanRule": false
     }
@@ -12792,6 +14706,23 @@
     }
   },
   {
+    "key": "react-doctor/three-webgpu-require-init-before-sync-operation",
+    "id": "three-webgpu-require-init-before-sync-operation",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-webgpu-require-init-before-sync-operation",
+      "title": "WebGPU renderer used before asynchronous initialization",
+      "severity": "error",
+      "recommendation": "Await renderer.init() before calling synchronous WebGPU renderer methods",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three", "three:181"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/unsafe-json-in-html",
     "id": "unsafe-json-in-html",
     "source": "react-doctor",
@@ -12821,6 +14752,96 @@
       "framework": "global",
       "tags": ["security-scan"],
       "isScanRule": true
+    }
+  },
+  {
+    "key": "react-doctor/unused-dependency",
+    "id": "unused-dependency",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "unused-dependency",
+      "title": "Dependency has no discovered use",
+      "severity": "warn",
+      "recommendation": "Remove the dependency after checking source, scripts, configuration, generated code, and dynamic loading paths.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "defaultEnabled": false,
+      "isScanRule": false,
+      "isProjectRule": true
+    }
+  },
+  {
+    "key": "react-doctor/unused-dev-dependency",
+    "id": "unused-dev-dependency",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "unused-dev-dependency",
+      "title": "Development dependency has no discovered use",
+      "severity": "warn",
+      "recommendation": "Remove the development dependency after checking scripts, configuration, CI, generators, and indirect tool loading.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "defaultEnabled": false,
+      "isScanRule": false,
+      "isProjectRule": true
+    }
+  },
+  {
+    "key": "react-doctor/unused-export",
+    "id": "unused-export",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "unused-export",
+      "title": "Value export has no importer",
+      "severity": "warn",
+      "recommendation": "Remove the export or make it module-private after confirming that no external, generated, or dynamic consumer uses it.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "defaultEnabled": false,
+      "isScanRule": false,
+      "isProjectRule": true
+    }
+  },
+  {
+    "key": "react-doctor/unused-file",
+    "id": "unused-file",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "unused-file",
+      "title": "Source file is unreachable",
+      "severity": "warn",
+      "recommendation": "Delete the file after confirming that no application, package, framework, or dynamic entry point reaches it.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "defaultEnabled": false,
+      "isScanRule": false,
+      "isProjectRule": true
+    }
+  },
+  {
+    "key": "react-doctor/unused-type",
+    "id": "unused-type",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "unused-type",
+      "title": "Type export has no importer",
+      "severity": "warn",
+      "recommendation": "Remove the export or declaration after confirming that it is not part of a package's public type surface.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["project-analysis"],
+      "defaultEnabled": false,
+      "isScanRule": false,
+      "isProjectRule": true
     }
   },
   {

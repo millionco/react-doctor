@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/jsx_no_target_blank.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/react/jsx_no_target_blank.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -142,6 +142,9 @@ export const passCases: ReadonlyArray<OxcFixture> = [
   { code: `<a href={href} target={isSelf ? "_self" : ""} rel={isSelf ? undefined : ""} />` },
   {
     code: `<a href={href} target={isExternal ? "_blank" : undefined} rel={isExternal ? "noopener noreferrer" : undefined} />`,
+  },
+  {
+    code: `<a href={href} target={isEnabledA && isEnabledB ? "_blank" : undefined} rel={isEnabledA && isEnabledB ? "noreferrer" : undefined} />`,
   },
   { code: `<form action={action} />`, oxcOptions: [{ forms: true }] },
   { code: `<form action={action} {...spread} />`, oxcOptions: [{ forms: true }] },

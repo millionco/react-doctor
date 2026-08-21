@@ -1,8 +1,0 @@
-{
-  "name": "storybook-mdx-app",
-  "version": "1.0.0",
-  "main": "src/index.ts",
-  "devDependencies": {
-    "@storybook/react": "^7.0.0"
-  }
-}

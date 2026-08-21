@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/jsx_no_new_object_as_prop.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/react_perf/jsx_no_new_object_as_prop.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -43,6 +43,8 @@ export const passCases: ReadonlyArray<OxcFixture> = [
         }
         `,
   },
+  { code: `const Foo = () => <div style={{}} />`, oxcOptions: [{ nativeAllowList: "all" }] },
+  { code: `const Foo = () => <div style={{}} />`, oxcOptions: [{ nativeAllowList: ["style"] }] },
 ];
 
 export const failCases: ReadonlyArray<OxcFixture> = [
@@ -63,4 +65,5 @@ export const failCases: ReadonlyArray<OxcFixture> = [
   { code: `const Foo = () => { const x: Foo = {} as Foo; return <Bar x={x} /> }` },
   { code: `const Foo = () => { const x: Foo = {} satisfies Foo; return <Bar x={x} /> }` },
   { code: `const Foo = () => { const x: Foo = {} as const; return <Bar x={x} /> }` },
+  { code: `const Foo = () => <div config={{}} />`, oxcOptions: [{ nativeAllowList: ["style"] }] },
 ];

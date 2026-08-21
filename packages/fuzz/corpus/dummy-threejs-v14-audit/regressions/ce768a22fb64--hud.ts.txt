@@ -1,0 +1,559 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit ce768a22fb6471d5d40769044e9c3db4361f01061d12517477128ed96dafb328
+/**
+ * DOM heads-up display.
+ *
+ * Kept entirely out of the WebGL scene so text stays crisp. All icons are
+ * hand-authored inline SVG — a chamfered plate for the Bulwark, a lattice mast
+ * for the Pylon, a lobbed shell for the Ember, a sprung jaw for the Snare.
+ *
+ * The breach layer is the interesting piece: markers that are on screen get a
+ * ring at the location, and markers that are off screen or behind the camera get
+ * clamped to a screen-edge ellipse with an arrow rotated to point at them, so a
+ * flank you cannot see still announces itself and its direction.
+ */
+
+import { BUILD_ORDER, SPECS, type StructureKind } from "../world/structures";
+
+export interface BreachMarker {
+  id: number;
+  /** Normalised device coords; may fall outside -1..1. */
+  sx: number;
+  sy: number;
+  behind: boolean;
+  /** 0..1, drives colour and pulse rate. */
+  severity: number;
+  label: string;
+}
+
+export interface SelectionInfo {
+  name: string;
+  blurb: string;
+  hp: number;
+  maxHp: number;
+  rows: [string, string][];
+}
+
+export interface OverlaySpec {
+  kind: "intro" | "fail" | "win";
+  title: string;
+  lede: string;
+  rows?: [string, string][];
+  html?: string;
+  cta: string;
+}
+
+/* ------------------------------------------------------------------ icons */
+
+const ICONS: Record<StructureKind, string> = {
+  // A crenellated plate wall on a footing.
+  bulwark: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M3 8h3V5h3v3h3V5h3v3h3v9H3z" stroke-linejoin="round"/>
+    <path d="M2 19.5h20" stroke-linecap="round"/>
+    <path d="M8 10.5v5M12 10.5v5M16 10.5v5" opacity=".55"/>
+  </svg>`,
+  // Lattice mast with a discharge at the head.
+  pylon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M8.5 20L11 8h2l2.5 12" stroke-linejoin="round"/>
+    <path d="M9.6 15.5h4.8M10.3 12h3.4" opacity=".6"/>
+    <path d="M9.6 15.5L14.4 12M10.3 12L13.7 15.5" opacity=".4" stroke-width="1"/>
+    <path d="M12 8V5" stroke-linecap="round"/>
+    <path d="M9 4.5l1.6 2.2M15 4.5l-1.6 2.2" stroke-linecap="round"/>
+    <circle cx="12" cy="4" r="1.6" fill="currentColor" stroke="none"/>
+    <path d="M6.5 20h11" stroke-linecap="round"/>
+  </svg>`,
+  // Mortar barrel with a lobbed trajectory.
+  ember: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M4 20.5h9.5" stroke-linecap="round"/>
+    <path d="M6.5 20.5V15h5v5.5z" stroke-linejoin="round"/>
+    <path d="M9.5 15l4.5-6" stroke-linecap="round" stroke-width="2.4"/>
+    <path d="M13 6.5c4 0 7 3.4 7 8" stroke-dasharray="2.2 2.2" opacity=".65" stroke-linecap="round"/>
+    <circle cx="14.6" cy="7.6" r="1.5" fill="currentColor" stroke="none"/>
+  </svg>`,
+  // Pressure plate with sprung jaws.
+  snare: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <rect x="4" y="8" width="16" height="9" rx="1" stroke-linejoin="round"/>
+    <circle cx="12" cy="12.5" r="2.4"/>
+    <path d="M6.5 8L5 4.5M10 8L9.2 4M14 8l.8-4M17.5 8L19 4.5" stroke-linecap="round"/>
+  </svg>`,
+};
+
+const ICON_SCRAP = `<svg viewBox="0 0 24 24" fill="none" stroke="#d3c39f" stroke-width="1.5">
+  <path d="M4 15.5l4.5-9 4 5.5 3-3.5L20 15.5z" stroke-linejoin="round"/>
+  <path d="M3 19h18" stroke-linecap="round" opacity=".6"/>
+  <circle cx="8.5" cy="13" r=".9" fill="#d3c39f" stroke="none"/>
+  <circle cx="15" cy="12.5" r=".9" fill="#d3c39f" stroke="none"/>
+</svg>`;
+
+const ICON_CHARGE = `<svg viewBox="0 0 24 24" fill="none" stroke="#7fd8ff" stroke-width="1.5">
+  <rect x="6" y="4" width="12" height="16" rx="1.4" stroke-linejoin="round"/>
+  <path d="M10 2.5h4" stroke-linecap="round"/>
+  <path d="M12.6 8L10 13h2.2l-.8 3.6L14.4 11h-2.2z" fill="#7fd8ff" stroke="none"/>
+</svg>`;
+
+const ICON_WICK = `<svg viewBox="0 0 24 24" fill="none" stroke="#ffd08a" stroke-width="1.5">
+  <circle cx="12" cy="5.4" r="2.4"/>
+  <path d="M8.4 20v-5.6c0-2.6 1.6-4.4 3.6-4.4s3.6 1.8 3.6 4.4V20" stroke-linejoin="round"/>
+  <path d="M17.6 11.6v4.2" stroke-linecap="round" opacity=".7"/>
+  <circle cx="17.6" cy="17.4" r="1.7" fill="#ffd08a" stroke="none"/>
+</svg>`;
+
+function arrowSvg(color: string): string {
+  return `<svg class="arrow" viewBox="0 0 40 40" fill="none">
+    <path d="M20 3l7.5 13H12.5z" fill="${color}" opacity=".92"/>
+    <circle cx="20" cy="24" r="12" stroke="${color}" stroke-width="1.6" opacity=".45"/>
+    <circle cx="20" cy="24" r="7" stroke="${color}" stroke-width="1" opacity=".3"/>
+  </svg>`;
+}
+
+function ringSvg(color: string): string {
+  return `<svg class="arrow" viewBox="0 0 40 40" fill="none">
+    <circle cx="20" cy="20" r="13" stroke="${color}" stroke-width="2" opacity=".85"/>
+    <circle cx="20" cy="20" r="7" stroke="${color}" stroke-width="1.2" opacity=".5"/>
+    <path d="M20 2v6M20 32v6M2 20h6M32 20h6" stroke="${color}" stroke-width="1.6" opacity=".7"/>
+  </svg>`;
+}
+
+const CROSSHAIR = `<svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+  <circle cx="18" cy="18" r="9" stroke="rgba(255,174,66,.5)" stroke-width="1"/>
+  <path d="M18 3v8M18 25v8M3 18h8M25 18h8" stroke="rgba(255,174,66,.75)" stroke-width="1.2"/>
+  <circle cx="18" cy="18" r="1.4" fill="rgba(255,230,184,.9)"/>
+</svg>`;
+
+/* -------------------------------------------------------------------- hud */
+
+export class Hud {
+  private readonly phaseName: HTMLElement;
+  private readonly phaseSub: HTMLElement;
+  private readonly assaultCount: HTMLElement;
+  private readonly integrityFill: HTMLElement;
+  private readonly integrityValue: HTMLElement;
+
+  private readonly scrapValue: HTMLElement;
+  private readonly chargeValue: HTMLElement;
+  private readonly wickValue: HTMLElement;
+  private readonly scrapPanel: HTMLElement;
+  private readonly chargePanel: HTMLElement;
+
+  private readonly slots = new Map<StructureKind, HTMLElement>();
+  private readonly breachLayer: HTMLElement;
+  private readonly breachEls = new Map<number, HTMLElement>();
+
+  private readonly banner: HTMLElement;
+  private readonly bannerTitle: HTMLElement;
+  private readonly bannerSub: HTMLElement;
+  private bannerTimer = 0;
+
+  private readonly overlay: HTMLElement;
+  private readonly overlayTitle: HTMLElement;
+  private readonly overlayLede: HTMLElement;
+  private readonly overlayBody: HTMLElement;
+  private readonly overlayCta: HTMLElement;
+
+  private readonly loading: HTMLElement;
+  private readonly loadingBar: HTMLElement;
+  private readonly loadingLabel: HTMLElement;
+
+  private readonly selection: HTMLElement;
+  private readonly selName: HTMLElement;
+  private readonly selBlurb: HTMLElement;
+  private readonly selStats: HTMLElement;
+  private readonly selHp: HTMLElement;
+
+  private readonly crosshair: HTMLElement;
+  private readonly inspectNote: HTMLElement;
+  private readonly distress: HTMLElement;
+
+  private readonly actionRepair: HTMLElement;
+  private readonly actionInspect: HTMLElement;
+  private readonly actionSound: HTMLElement;
+  private readonly actionAssault: HTMLElement;
+
+  /** Set by the game to receive tray/button clicks. */
+  onPick: ((kind: StructureKind) => void) | null = null;
+  onRepair: (() => void) | null = null;
+  onInspect: (() => void) | null = null;
+  onSound: (() => void) | null = null;
+  onAssault: (() => void) | null = null;
+
+  constructor(root: HTMLElement) {
+    root.innerHTML = this.template();
+
+    const need = <T extends HTMLElement>(id: string): T => {
+      const el = root.querySelector<T>(`#${id}`);
+      if (!el) throw new Error(`HUD element #${id} missing`);
+      return el;
+    };
+
+    this.phaseName = need("phase-name");
+    this.phaseSub = need("phase-sub");
+    this.assaultCount = need("assault-count");
+    this.integrityFill = need("integrity-fill");
+    this.integrityValue = need("integrity-value");
+    this.scrapValue = need("scrap-value");
+    this.chargeValue = need("charge-value");
+    this.wickValue = need("wick-value");
+    this.scrapPanel = need("res-scrap");
+    this.chargePanel = need("res-charge");
+    this.breachLayer = need("breaches");
+    this.banner = need("banner");
+    this.bannerTitle = need("banner-title");
+    this.bannerSub = need("banner-sub");
+    this.overlay = need("overlay");
+    this.overlayTitle = need("overlay-title");
+    this.overlayLede = need("overlay-lede");
+    this.overlayBody = need("overlay-body");
+    this.overlayCta = need("overlay-cta");
+    this.loading = need("loading");
+    this.loadingBar = need("loading-progress");
+    this.loadingLabel = need("loading-label");
+    this.selection = need("selection");
+    this.selName = need("sel-name");
+    this.selBlurb = need("sel-blurb");
+    this.selStats = need("sel-stats");
+    this.selHp = need("sel-hp-fill");
+    this.crosshair = need("crosshair");
+    this.inspectNote = need("inspect-note");
+    this.distress = need("distress");
+    this.actionRepair = need("act-repair");
+    this.actionInspect = need("act-inspect");
+    this.actionSound = need("act-sound");
+    this.actionAssault = need("act-assault");
+
+    for (const kind of BUILD_ORDER) {
+      const el = need(`slot-${kind}`);
+      this.slots.set(kind, el);
+      el.addEventListener("click", () => this.onPick?.(kind));
+    }
+    this.actionRepair.addEventListener("click", () => this.onRepair?.());
+    this.actionInspect.addEventListener("click", () => this.onInspect?.());
+    this.actionSound.addEventListener("click", () => this.onSound?.());
+    this.actionAssault.addEventListener("click", () => this.onAssault?.());
+  }
+
+  private template(): string {
+    const slots = BUILD_ORDER.map((kind) => {
+      const s = SPECS[kind];
+      const charge = s.charge > 0 ? `<span class="c-charge" data-charge>${s.charge}<span>c</span></span>` : "";
+      return `<div class="panel slot" id="slot-${kind}" title="${s.blurb}">
+        <span class="slot-key">${s.hotkey}</span>
+        <div class="slot-head">${ICONS[kind]}<span class="slot-name">${s.name}</span></div>
+        <div class="slot-cost"><span class="c-scrap" data-scrap>${s.scrap}<span>s</span></span>${charge}</div>
+      </div>`;
+    }).join("");
+
+    return `
+      <div id="distress"></div>
+
+      <div class="panel" id="status">
+        <div id="phase-row">
+          <div id="phase-name">Daybreak</div>
+          <div id="assault-count">Assault 0 / 3</div>
+        </div>
+        <div id="phase-sub"></div>
+        <div id="integrity-block">
+          <div id="integrity-head">
+            <span class="label">Filament integrity</span>
+            <span id="integrity-value">100%</span>
+          </div>
+          <div id="integrity-bar">
+            <div id="integrity-fill"></div>
+            <div class="hatch"></div>
+            <div id="threshold" style="left:35%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="resources">
+        <div class="panel res" id="res-scrap">
+          ${ICON_SCRAP}
+          <div class="res-text"><span class="label">Scrap</span><span class="res-value" id="scrap-value">0</span></div>
+        </div>
+        <div class="panel res" id="res-charge">
+          ${ICON_CHARGE}
+          <div class="res-text"><span class="label">Charge</span><span class="res-value" id="charge-value">0</span></div>
+        </div>
+        <div class="panel res" id="res-wick">
+          ${ICON_WICK}
+          <div class="res-text"><span class="label">Wicks</span><span class="res-value" id="wick-value">0/0</span></div>
+        </div>
+      </div>
+
+      <div id="tray">${slots}</div>
+
+      <div class="panel" id="hints">
+        <div><b>LMB</b> place / select &nbsp; <b>drag</b> orbit</div>
+        <div><b>RMB</b> pan &nbsp; <b>wheel</b> zoom &nbsp; <b>WASD</b> move</div>
+        <div><b>Q</b>/<b>E</b> cycle defence, or rotate a selected one</div>
+        <div><b>R</b> rotate the piece on the cursor</div>
+        <div><b>V</b> ground view &nbsp; <b>F</b> focus breach &nbsp; <b>C</b> core</div>
+        <div><b>X</b> salvage built &nbsp; <b>SPACE</b> begin assault</div>
+      </div>
+
+      <div id="actions">
+        <div class="panel action" id="act-assault"><span>Begin assault</span><span class="k">SPACE</span></div>
+        <div class="panel action" id="act-repair"><span>Patch filament</span><span class="k">G</span></div>
+        <div class="panel action" id="act-inspect"><span>Ground view</span><span class="k">V</span></div>
+        <div class="panel action" id="act-sound"><span>Sound on</span><span class="k">M</span></div>
+      </div>
+
+      <div class="panel" id="selection">
+        <div id="sel-name">—</div>
+        <div id="sel-blurb"></div>
+        <div id="sel-stats"></div>
+        <div id="sel-hp"><div id="sel-hp-fill" style="width:100%"></div></div>
+      </div>
+
+      <div id="breaches"></div>
+
+      <div id="crosshair">${CROSSHAIR}</div>
+      <div id="inspect-note">Ground view — WASD to walk, drag to look, V to return</div>
+
+      <div id="banner">
+        <div id="banner-title"></div>
+        <div id="banner-sub"></div>
+      </div>
+
+      <div id="overlay">
+        <div class="panel" id="overlay-card">
+          <div id="overlay-title"></div>
+          <div id="overlay-lede"></div>
+          <div id="overlay-body"></div>
+          <div id="overlay-cta"></div>
+        </div>
+      </div>
+
+      <div id="loading">
+        <div id="loading-title">Keep the Lights</div>
+        <div id="loading-bar"><div id="loading-progress"></div></div>
+        <div id="loading-label">waking the generator</div>
+      </div>
+    `;
+  }
+
+  /* ------------------------------------------------------------ loading */
+
+  setLoading(fraction: number, label: string): void {
+    this.loadingBar.style.width = `${Math.round(fraction * 100)}%`;
+    this.loadingLabel.textContent = label;
+  }
+
+  hideLoading(): void {
+    this.loading.classList.add("done");
+    setTimeout(() => {
+      this.loading.style.display = "none";
+    }, 600);
+  }
+
+  /* ------------------------------------------------------------- status */
+
+  setPhase(name: string, sub: string, night: boolean, assault: number, total: number): void {
+    this.phaseName.textContent = name;
+    this.phaseName.classList.toggle("night", night);
+    this.phaseSub.textContent = sub;
+    this.assaultCount.textContent = `Assault ${assault} / ${total}`;
+  }
+
+  setIntegrity(pct: number, critical: boolean): void {
+    const clamped = Math.max(0, Math.min(100, pct));
+    this.integrityFill.style.width = `${clamped}%`;
+    this.integrityValue.textContent = `${Math.round(clamped)}%`;
+    this.integrityFill.classList.toggle("critical", critical);
+    this.integrityValue.style.color = critical ? "#ff8a6b" : "";
+  }
+
+  setDistress(amount: number): void {
+    this.distress.style.opacity = `${Math.max(0, Math.min(1, amount))}`;
+  }
+
+  setResources(scrap: number, charge: number): void {
+    this.setValue(this.scrapValue, this.scrapPanel, Math.floor(scrap));
+    this.setValue(this.chargeValue, this.chargePanel, Math.floor(charge));
+  }
+
+  private setValue(el: HTMLElement, panel: HTMLElement, value: number): void {
+    const prev = Number(el.textContent ?? "0");
+    if (prev === value) return;
+    el.textContent = `${value}`;
+    const cls = value > prev ? "gain" : "spend";
+    panel.classList.remove("gain", "spend");
+    // Force a reflow so the animation restarts even on consecutive changes.
+    void panel.offsetWidth;
+    panel.classList.add(cls);
+  }
+
+  setWicks(idle: number, total: number): void {
+    this.wickValue.textContent = `${idle}/${total}`;
+  }
+
+  /* --------------------------------------------------------------- tray */
+
+  setTray(selected: StructureKind | null, scrap: number, charge: number, enabled: boolean): void {
+    for (const [kind, el] of this.slots) {
+      const s = SPECS[kind];
+      const shortScrap = scrap < s.scrap;
+      const shortCharge = charge < s.charge;
+      el.classList.toggle("active", enabled && kind === selected);
+      el.classList.toggle("broke", !enabled || shortScrap || shortCharge);
+      const sc = el.querySelector<HTMLElement>("[data-scrap]");
+      if (sc) sc.classList.toggle("short", shortScrap);
+      const ch = el.querySelector<HTMLElement>("[data-charge]");
+      if (ch) ch.classList.toggle("short", shortCharge);
+    }
+  }
+
+  setActions(opts: {
+    assaultLabel: string;
+    assaultEnabled: boolean;
+    repairLabel: string;
+    repairEnabled: boolean;
+    inspecting: boolean;
+    soundOn: boolean;
+  }): void {
+    const set = (el: HTMLElement, label: string, on: boolean, armed = false): void => {
+      const span = el.firstElementChild;
+      if (span) span.textContent = label;
+      el.classList.toggle("off", !on);
+      el.classList.toggle("armed", armed);
+    };
+    set(this.actionAssault, opts.assaultLabel, opts.assaultEnabled);
+    set(this.actionRepair, opts.repairLabel, opts.repairEnabled);
+    set(this.actionInspect, opts.inspecting ? "Return to tactical" : "Ground view", true, opts.inspecting);
+    set(this.actionSound, opts.soundOn ? "Sound on" : "Sound off", opts.soundOn);
+  }
+
+  /* ---------------------------------------------------------- selection */
+
+  setSelection(info: SelectionInfo | null): void {
+    if (!info) {
+      this.selection.classList.remove("show");
+      return;
+    }
+    this.selection.classList.add("show");
+    this.selName.textContent = info.name;
+    this.selBlurb.textContent = info.blurb;
+    this.selStats.innerHTML = info.rows
+      .map(([k, v]) => `<span class="k">${k}</span><span>${v}</span>`)
+      .join("");
+    const frac = info.maxHp > 0 ? Math.max(0, info.hp / info.maxHp) : 0;
+    this.selHp.style.width = `${frac * 100}%`;
+    this.selHp.style.background = frac > 0.6 ? "#a8e05f" : frac > 0.3 ? "#ffae42" : "#ff5433";
+  }
+
+  /* ----------------------------------------------------------- breaches */
+
+  setBreaches(markers: BreachMarker[]): void {
+    const seen = new Set<number>();
+    const w = innerWidth;
+    const h = innerHeight;
+    // Inset ellipse the off-screen arrows ride on.
+    const rx = w * 0.42;
+    const ry = h * 0.38;
+
+    for (const m of markers) {
+      seen.add(m.id);
+      let el = this.breachEls.get(m.id);
+      const color = m.severity > 0.6 ? "#ff5433" : "#ffae42";
+      if (!el) {
+        el = document.createElement("div");
+        el.className = "breach";
+        this.breachLayer.appendChild(el);
+        this.breachEls.set(m.id, el);
+        el.dataset.mode = "";
+      }
+
+      const onScreen = !m.behind && Math.abs(m.sx) < 0.94 && Math.abs(m.sy) < 0.92;
+      const mode = `${onScreen ? "ring" : "arrow"}|${color}|${m.label}`;
+      if (el.dataset.mode !== mode) {
+        el.dataset.mode = mode;
+        el.innerHTML = (onScreen ? ringSvg(color) : arrowSvg(color)) + `<span class="tag">${m.label}</span>`;
+        el.classList.toggle("onscreen", onScreen);
+      }
+
+      let px: number;
+      let py: number;
+      let rot = 0;
+      if (onScreen) {
+        px = (m.sx * 0.5 + 0.5) * w;
+        py = (-m.sy * 0.5 + 0.5) * h;
+      } else {
+        // Point from the screen centre toward the target and ride the ellipse.
+        const dx = m.sx;
+        const dy = -m.sy;
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = (m.behind ? -dx : dx) / len;
+        const ny = (m.behind ? -dy : dy) / len;
+        px = w / 2 + nx * rx;
+        py = h / 2 + ny * ry;
+        // The arrow glyph points up, so rotate from -Y.
+        rot = Math.atan2(nx, -ny) * (180 / Math.PI);
+      }
+
+      const pulse = 1 + Math.sin(performance.now() * (0.006 + m.severity * 0.008)) * (0.07 + m.severity * 0.1);
+      el.style.transform = `translate(-50%,-50%) translate(${px.toFixed(1)}px,${py.toFixed(1)}px) rotate(${rot.toFixed(1)}deg) scale(${pulse.toFixed(3)})`;
+      const tag = el.querySelector<HTMLElement>(".tag");
+      // Keep the label upright even when the arrow is rotated.
+      if (tag) tag.style.transform = `translate(-50%,-50%) rotate(${(-rot).toFixed(1)}deg)`;
+    }
+
+    for (const [id, el] of this.breachEls) {
+      if (!seen.has(id)) {
+        el.remove();
+        this.breachEls.delete(id);
+      }
+    }
+  }
+
+  /* ------------------------------------------------------------- banner */
+
+  showBanner(title: string, sub: string, seconds = 2.6, threat = false): void {
+    this.bannerTitle.textContent = title;
+    this.bannerTitle.classList.toggle("threat", threat);
+    this.bannerSub.textContent = sub;
+    this.banner.classList.add("show");
+    this.bannerTimer = seconds;
+  }
+
+  tick(dt: number): void {
+    if (this.bannerTimer > 0) {
+      this.bannerTimer -= dt;
+      if (this.bannerTimer <= 0) this.banner.classList.remove("show");
+    }
+  }
+
+  /* ------------------------------------------------------------ overlay */
+
+  showOverlay(spec: OverlaySpec): void {
+    // A lingering banner behind a full-screen card just reads as a glitch.
+    this.banner.classList.remove("show");
+    this.bannerTimer = 0;
+    this.overlay.classList.add("show");
+    this.overlay.classList.toggle("fail", spec.kind === "fail");
+    this.overlay.classList.toggle("win", spec.kind === "win");
+    this.overlayTitle.textContent = spec.title;
+    this.overlayLede.textContent = spec.lede;
+    const rows = (spec.rows ?? [])
+      .map(([k, v]) => `<div class="row"><span>${k}</span><b>${v}</b></div>`)
+      .join("");
+    this.overlayBody.innerHTML = (spec.html ?? "") + rows;
+    this.overlayCta.textContent = spec.cta;
+  }
+
+  hideOverlay(): void {
+    this.overlay.classList.remove("show", "fail", "win");
+  }
+
+  get overlayVisible(): boolean {
+    return this.overlay.classList.contains("show");
+  }
+
+  /* ------------------------------------------------------------ inspect */
+
+  setInspecting(on: boolean): void {
+    this.crosshair.classList.toggle("show", on);
+    this.inspectNote.classList.toggle("show", on);
+  }
+}

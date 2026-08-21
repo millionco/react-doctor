@@ -1,0 +1,879 @@
+// rule: async-parallel, server-sequential-independent-await
+// file-path: src/main.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 7a0d2818e0250251cca6be0ac98b11acbd43a75b14200cbf40f5ee3d12197f7f
+/**
+ * MÖBIUS RUN
+ *
+ * A solo jumper crosses gap after gap around a Mobius ribbon. Every landing
+ * adopts the local surface normal, and because the strip has one side, the run
+ * is two laps of the ring but a single lap of the surface: the platforms you
+ * watch drift past *underneath* a gap on lap one are the platforms you land on
+ * during lap two, and the ones you used on lap one are hanging uselessly below
+ * you by then.
+ *
+ * The topology is not decoration. Partial gaps put their safe lane on mirrored
+ * sides of the ribbon between laps; stone chains only serve the face they were
+ * authored for; and the camera has to invert itself through a full 2*pi roll
+ * over the course of a run.
+ */
+
+import "./style.css";
+import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+import { GameAudio } from "./audio";
+import { FollowCamera } from "./camera";
+import { ContactShadow, Sparks } from "./effects";
+import { Hud, type RunSummary } from "./hud";
+import { CIRCUIT, R, arcRate, deckPoint, faceSign } from "./mobius";
+import { clamp, damp } from "./noise";
+import {
+  BeaconField,
+  buildArches,
+  buildGapMarkers,
+  buildLanterns,
+  buildShards,
+  buildStarfield,
+  buildStones,
+  buildVanes,
+  accentMaterial,
+  cloneTextures,
+  isLean,
+  setLeanMaterials,
+  setRepeat,
+  updateVanes,
+  vaneAngle,
+  type VaneVisual,
+} from "./props";
+import { Player, SPEED_BOOST, type PlayerInput } from "./player";
+import { buildRibbon } from "./ribbon";
+import {
+  ARCHES,
+  BEACONS,
+  STONE_GAP_CENTRES,
+  VANES,
+  resetBeacons,
+  supportAt,
+} from "./track";
+import {
+  makeDeckTextures,
+  makeHazardTextures,
+  makeInlayTexture,
+  makeMetalTextures,
+  makeSkyTexture,
+  makeStoneTextures,
+  makeSuitTextures,
+  setTextureAnisotropy,
+} from "./textures";
+
+/* ------------------------------------------------------------------ */
+/*  Renderer                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Probe the GL backend before committing to a renderer configuration. A
+ * software rasteriser pays for MSAA four times over and cannot afford a
+ * post chain at all, so those decisions have to be made up front rather than
+ * toggled later.
+ */
+function detectSoftwareRenderer(): boolean {
+  try {
+    const probe = document.createElement("canvas");
+    const gl = probe.getContext("webgl2") ?? probe.getContext("webgl");
+    if (!gl) return true;
+    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+    const name = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : "";
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    return /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
+  } catch {
+    return false;
+  }
+}
+
+const SOFTWARE = detectSoftwareRenderer();
+
+// Enables the frosted-glass HUD treatment. See the note in style.css.
+if (!SOFTWARE) document.documentElement.classList.add("glass");
+
+const canvas = document.querySelector("#view") as HTMLCanvasElement;
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: !SOFTWARE,
+  powerPreference: "high-performance",
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = !SOFTWARE;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.16;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(
+  56,
+  window.innerWidth / window.innerHeight,
+  0.2,
+  1200,
+);
+camera.position.set(0, 26, 62);
+camera.lookAt(0, 0, 0);
+
+let composer: EffectComposer | null = null;
+let bloom: UnrealBloomPass | null = null;
+if (!SOFTWARE) {
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  bloom = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.6,
+    0.62,
+    0.74,
+  );
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+  composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  composer.setSize(window.innerWidth, window.innerHeight);
+}
+
+setTextureAnisotropy(SOFTWARE ? 1 : renderer.capabilities.getMaxAnisotropy());
+setLeanMaterials(SOFTWARE);
+
+/* ------------------------------------------------------------------ */
+/*  Adaptive quality                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Three tiers. The scene is authored for tier 2, but a Mobius strip is a
+ * pathological shadow caster — the geometry wraps right around the light — so
+ * on a weak backend the cost has to come down hard. Detection is both up-front
+ * (a software renderer starts at the bottom tier) and continuous (a sustained
+ * bad frame time steps down).
+ */
+const MAX_DPR = Math.min(window.devicePixelRatio, 2);
+let quality = SOFTWARE ? 0 : 2;
+let useComposer = !SOFTWARE;
+
+function setShadowSize(light: THREE.DirectionalLight | undefined, size: number): void {
+  if (!light || light.shadow.mapSize.width === size) return;
+  light.shadow.mapSize.set(size, size);
+  light.shadow.map?.dispose();
+  light.shadow.map = null;
+}
+
+function applyViewport(): void {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const scale = quality >= 2 ? MAX_DPR : quality === 1 ? Math.min(MAX_DPR, 1) : 0.4;
+  renderer.setPixelRatio(scale);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  if (composer) {
+    composer.setPixelRatio(scale);
+    composer.setSize(w, h);
+  }
+  bloom?.setSize(w, h);
+}
+
+function applyQuality(level: number): void {
+  quality = Math.max(0, Math.min(2, level));
+  useComposer = quality >= 1 && composer !== null;
+  if (bloom) {
+    bloom.enabled = quality >= 1;
+    bloom.strength = quality >= 2 ? 0.6 : 0.44;
+  }
+  // At the bottom tier the shadow maps go entirely. The scene is authored so
+  // that baked AO, vertex occlusion and the contact decal carry the grounding
+  // on their own, so this degrades honestly rather than falling apart.
+  renderer.shadowMap.enabled = quality >= 1;
+  setShadowSize(sun, quality >= 2 ? 2048 : 1024);
+  if (sun) sun.castShadow = quality >= 1;
+  if (moon) moon.castShadow = quality >= 2;
+  applyViewport();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Boot                                                               */
+/* ------------------------------------------------------------------ */
+
+const bootEl = document.getElementById("boot") as HTMLElement;
+const bootStatus = document.getElementById("boot-status") as HTMLElement;
+const bootFill = document.getElementById("boot-fill") as HTMLElement;
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+async function stage<T>(label: string, pct: number, fn: () => T): Promise<T> {
+  bootStatus.textContent = label;
+  bootFill.style.width = `${pct}%`;
+  await nextFrame();
+  await nextFrame();
+  return fn();
+}
+
+/* ------------------------------------------------------------------ */
+/*  State                                                              */
+/* ------------------------------------------------------------------ */
+
+type Phase = "title" | "run" | "dying" | "winning" | "over" | "paused";
+
+const hud = new Hud();
+const audio = new GameAudio();
+const follow = new FollowCamera();
+const sparks = new Sparks();
+const contact = new ContactShadow();
+
+const MAX_INTEGRITY = 3;
+const TOTAL_BEACONS = BEACONS.length;
+
+const keys = new Set<string>();
+let jumpEdge = false;
+let phase: Phase = "title";
+let clockTime = 0;
+let elapsed = 0;
+let integrity = MAX_INTEGRITY;
+let beaconsTaken = 0;
+let invuln = 0;
+let phaseTimer = 0;
+let lastFace = 1;
+let failReason = "INTO THE VOID";
+let best: RunSummary | null = null;
+let ready = false;
+
+let player: Player;
+let beaconField: BeaconField;
+let inlayTex: THREE.DataTexture;
+let setInlayColour: (colour: THREE.Color) => void = () => {};
+let stonePadMat: THREE.MeshStandardMaterial;
+let vaneVisuals: VaneVisual[] = [];
+let sun: THREE.DirectionalLight;
+let moon: THREE.DirectionalLight;
+let runLamp: THREE.PointLight;
+
+const _T = new THREE.Vector3();
+const _B = new THREE.Vector3();
+const _N = new THREE.Vector3();
+const _focus = new THREE.Vector3();
+const _tmp = new THREE.Vector3();
+const _tmp2 = new THREE.Vector3();
+const COL_DUST = new THREE.Color("#c9b28c");
+const COL_GOLD = new THREE.Color("#ffcf7a");
+const COL_HURT = new THREE.Color("#ff6a35");
+const COL_SURGE = new THREE.Color("#57e8ff");
+const _inlayCol = new THREE.Color();
+const INLAY_A = new THREE.Color("#2ee6d6");
+const INLAY_B = new THREE.Color("#ffb347");
+
+function loadBest(): RunSummary | null {
+  try {
+    const raw = window.localStorage.getItem("mobius-run-best");
+    return raw ? (JSON.parse(raw) as RunSummary) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveBest(s: RunSummary): void {
+  try {
+    window.localStorage.setItem("mobius-run-best", JSON.stringify(s));
+  } catch {
+    /* private mode; the run still counts */
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Build                                                              */
+/* ------------------------------------------------------------------ */
+
+async function build(): Promise<void> {
+  best = loadBest();
+
+  // A software backend renders at 40% scale with no anisotropy, so full-size
+  // maps would cost memory and load time for detail it can never resolve.
+  const DECK_TEX = SOFTWARE ? 256 : 1024;
+  const PROP_TEX = SOFTWARE ? 128 : 512;
+
+  const deckTex = await stage("glazing the deck plates", 12, () => makeDeckTextures(DECK_TEX));
+  const stoneTex = await stage("quarrying the drift stones", 30, () => makeStoneTextures(PROP_TEX));
+  const metalTex = await stage("casting the bronzework", 44, () => makeMetalTextures(PROP_TEX));
+  const hazardTex = await stage("painting the hazard chevrons", 56, () =>
+    makeHazardTextures(PROP_TEX),
+  );
+  const suitTex = await stage("stitching the flight suit", 64, () => makeSuitTextures(PROP_TEX));
+  const skyTex = await stage("hanging the nebula", 70, () =>
+    SOFTWARE ? makeSkyTexture(256, 128) : makeSkyTexture(512, 256),
+  );
+
+  // Shared tiling for the material families; only three props need a variant
+  // distinct enough to justify a second GPU copy.
+  setRepeat(stoneTex, 1.6, 1.6);
+  setRepeat(metalTex, 2, 1);
+  setRepeat(hazardTex, 2.4, 1);
+  setRepeat(suitTex, 1.3, 1.3);
+  const metalFine = cloneTextures(metalTex, 1, 1);
+  const metalCoarse = cloneTextures(metalTex, 8, 1);
+  const hazardStrip = cloneTextures(hazardTex, 1, 1);
+
+  await stage("seeding the void", 74, () => {
+    const skyMat = new THREE.MeshBasicMaterial({
+      map: skyTex,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+    });
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(560, SOFTWARE ? 24 : 48, SOFTWARE ? 16 : 32), skyMat);
+    sky.renderOrder = -1;
+    scene.add(sky);
+    scene.add(buildStarfield());
+    scene.fog = new THREE.FogExp2(new THREE.Color("#080e1a"), 0.0042);
+  });
+
+  await stage("weaving the ribbon", 84, () => {
+    const { deck, inlay } = buildRibbon();
+
+    const deckMat = new THREE.MeshStandardMaterial(
+      isLean()
+        ? {
+            map: deckTex.map,
+            normalMap: deckTex.normalMap,
+            normalScale: new THREE.Vector2(1.25, 1.25),
+            roughness: 0.78,
+            metalness: 0.04,
+            vertexColors: true,
+          }
+        : {
+            map: deckTex.map,
+            normalMap: deckTex.normalMap,
+            roughnessMap: deckTex.roughnessMap,
+            aoMap: deckTex.aoMap,
+            aoMapIntensity: 1,
+            normalScale: new THREE.Vector2(1.25, 1.25),
+            roughness: 1,
+            metalness: 0.06,
+            vertexColors: true,
+          },
+    );
+    const deckMesh = new THREE.Mesh(deck, deckMat);
+    deckMesh.castShadow = true;
+    deckMesh.receiveShadow = true;
+    scene.add(deckMesh);
+
+    inlayTex = makeInlayTexture(256);
+    const mat = accentMaterial(INLAY_A, 2.5, inlayTex);
+    setInlayColour = (c) => {
+      if ((mat as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
+        (mat as THREE.MeshStandardMaterial).emissive.copy(c);
+      } else {
+        (mat as THREE.MeshBasicMaterial).color.copy(c).multiplyScalar(1.55);
+      }
+    };
+    scene.add(new THREE.Mesh(inlay, mat));
+  });
+
+  await stage("planting the drift stones", 90, () => {
+    const stones = buildStones(stoneTex, metalTex);
+    stonePadMat = stones.padMaterial;
+    scene.add(stones.group);
+    scene.add(buildGapMarkers(hazardStrip));
+    scene.add(buildShards(stoneTex));
+  });
+
+  await stage("raising the gateworks", 95, () => {
+    const vanes = buildVanes(hazardTex, metalTex);
+    vaneVisuals = vanes.visuals;
+    scene.add(vanes.group);
+    audio.registerVanes(vanes.visuals.flatMap((v) => v.arms));
+
+    scene.add(buildArches(metalCoarse));
+    scene.add(buildLanterns(metalFine));
+
+    beaconField = new BeaconField(metalTex);
+    scene.add(beaconField.group);
+  });
+
+  await stage("striking the lights", 98, () => {
+    scene.add(
+      new THREE.HemisphereLight(new THREE.Color("#33578f"), new THREE.Color("#4a2c1c"), 1.15),
+    );
+
+    sun = new THREE.DirectionalLight(new THREE.Color("#ffdcb0"), 3.1);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 140;
+    sun.shadow.camera.left = -17;
+    sun.shadow.camera.right = 17;
+    sun.shadow.camera.top = 17;
+    sun.shadow.camera.bottom = -17;
+    sun.shadow.bias = -0.0006;
+    sun.shadow.normalBias = 0.035;
+    scene.add(sun, sun.target);
+
+    // A cool counter-key, so the face turned away from the sun still reads.
+    moon = new THREE.DirectionalLight(new THREE.Color("#7ec9ff"), 1.6);
+    moon.castShadow = true;
+    moon.shadow.mapSize.set(1024, 1024);
+    moon.shadow.camera.near = 1;
+    moon.shadow.camera.far = 140;
+    moon.shadow.camera.left = -16;
+    moon.shadow.camera.right = 16;
+    moon.shadow.camera.top = 16;
+    moon.shadow.camera.bottom = -16;
+    moon.shadow.bias = -0.0008;
+    moon.shadow.normalBias = 0.04;
+    if (!SOFTWARE) scene.add(moon, moon.target);
+
+    if (!SOFTWARE) {
+      const rim = new THREE.DirectionalLight(new THREE.Color("#b98cff"), 0.7);
+      rim.position.set(-40, -12, 30);
+      scene.add(rim);
+    }
+
+    runLamp = new THREE.PointLight(new THREE.Color("#ffd0a0"), 7, 16, 2);
+    scene.add(runLamp);
+
+    if (!SOFTWARE) {
+      for (const cu of ARCHES) {
+        const lamp = new THREE.PointLight(new THREE.Color("#8ef0ff"), 14, 18, 2);
+        deckPoint(cu, 0, 2.2, lamp.position);
+        scene.add(lamp);
+      }
+    }
+
+    scene.add(sparks.points, contact.mesh);
+  });
+
+  await stage("waking the runner", 94, () => {
+    player = new Player(suitTex, metalFine);
+    scene.add(player.root);
+    follow.snap();
+    applyQuality(quality);
+  });
+
+  // Compile every program and upload every texture while the loading screen is
+  // still up. Left to the first frames of the title, this costs several seconds
+  // of stutter — most of it shader linking, which no amount of scene budget
+  // trimming would have fixed.
+  // Draw one full frame while the loading screen is still up. This is where
+  // every shader program actually gets linked, so it belongs behind the
+  // progress bar rather than in the first seconds of the title.
+  bootStatus.textContent = "warming the optics";
+  bootFill.style.width = "98%";
+  await nextFrame();
+  await nextFrame();
+  cinematic(0);
+  drawFrame();
+  await nextFrame();
+  bootFill.style.width = "100%";
+
+  bootEl.classList.add("gone");
+  window.setTimeout(() => bootEl.remove(), 800);
+  hud.showTitle(best);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Run control                                                        */
+/* ------------------------------------------------------------------ */
+
+function startRun(): void {
+  player.reset();
+  // The keypress that starts a run should not also buffer a jump.
+  jumpEdge = false;
+  resetBeacons();
+  sparks.clear();
+  beaconsTaken = 0;
+  integrity = MAX_INTEGRITY;
+  elapsed = 0;
+  invuln = 0;
+  phaseTimer = 0;
+  lastFace = 1;
+  follow.extraDistance = 0;
+  follow.extraHeight = 0;
+  follow.snap();
+  hud.hideTitle();
+  hud.hideResult();
+  hud.showHud(true);
+  hud.setIntegrity(integrity, MAX_INTEGRITY);
+  hud.setBeacons(0, TOTAL_BEACONS);
+  hud.setProgress(0, 0);
+  hud.toast(
+    "Amber lips mark every gap. Cyan pads are platforms for <em>this</em> face.",
+    5200,
+    "intro",
+  );
+  audio.setVaneGain(1);
+  phase = "run";
+}
+
+function gradeFor(time: number, beacons: number, hits: number): string {
+  const ratio = beacons / Math.max(1, TOTAL_BEACONS);
+  if (ratio > 0.85 && hits === 0 && time < 45) return "S";
+  if (ratio > 0.72 && hits <= 1) return "A";
+  if (ratio > 0.52) return "B";
+  if (ratio > 0.3) return "C";
+  return "D";
+}
+
+function summarise(): RunSummary {
+  return {
+    time: elapsed,
+    beacons: beaconsTaken,
+    total: TOTAL_BEACONS,
+    grade: gradeFor(elapsed, beaconsTaken, MAX_INTEGRITY - integrity),
+  };
+}
+
+function endRun(win: boolean, reason: string): void {
+  if (phase !== "run") return;
+  failReason = reason;
+  phaseTimer = 0;
+  phase = win ? "winning" : "dying";
+  audio.setVaneGain(0.25);
+  hud.clearToast();
+  player.focus(_tmp);
+  if (win) {
+    audio.playAt("win", _tmp, 1);
+  } else {
+    audio.playAt("fail", _tmp, 0.95);
+    follow.addShake(1.1);
+  }
+}
+
+function finishRun(win: boolean): void {
+  const summary = summarise();
+  if (win && (!best || summary.time < best.time || summary.beacons > best.beacons)) {
+    best = summary;
+    saveBest(summary);
+  }
+  hud.showHud(false);
+  hud.showResult(win, summary, failReason);
+  phase = "over";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Interactions                                                       */
+/* ------------------------------------------------------------------ */
+
+function collectBeacons(): void {
+  const rate = arcRate(player.U, player.v);
+  for (let i = 0; i < BEACONS.length; i++) {
+    const b = BEACONS[i]!;
+    if (b.taken) continue;
+    const dU = player.U - b.U;
+    if (Math.abs(dU) > 0.02) continue;
+    if (Math.abs(dU * rate) > 1.1) continue;
+    if (Math.abs(player.v - b.v) > 1.1) continue;
+    if (Math.abs(player.n + 0.55 - b.n) > 1.25) continue;
+
+    b.taken = true;
+    beaconsTaken++;
+    hud.setBeacons(beaconsTaken, TOTAL_BEACONS);
+    beaconField.worldPosition(i, _tmp);
+    audio.playAt("collect", _tmp, 0.5, 1 + (beaconsTaken % 6) * 0.06);
+    sparks.burst(_tmp, _tmp2.set(0, 1, 0), 14, 2.6, COL_GOLD, 1.9, 0.65);
+  }
+}
+
+function resolveVanes(time: number): void {
+  if (invuln > 0) return;
+  const lap = faceSign(player.U) > 0 ? 0 : 1;
+  const rate = arcRate(player.U, player.v);
+  for (let i = 0; i < VANES.length; i++) {
+    const vane = VANES[i]!;
+    const dU = player.U - (vane.cu + lap);
+    if (Math.abs(dU) > 0.06) continue;
+    if (player.n > vane.height + 0.2) continue;
+
+    const da = dU * rate;
+    const alpha = vaneAngle(i, lap, time);
+    const ca = Math.cos(alpha);
+    const sa = Math.sin(alpha);
+    const proj = player.v * ca - da * sa;
+    const perp = player.v * sa + da * ca;
+    if (Math.abs(perp) > 0.44) continue;
+    if (proj < 0.5 || proj > vane.radius + 0.25) continue;
+
+    integrity--;
+    invuln = 1.1;
+    player.stagger();
+    follow.addShake(0.95);
+    hud.setIntegrity(Math.max(0, integrity), MAX_INTEGRITY);
+    hud.flashHit();
+    player.focus(_tmp);
+    audio.playAt("hit", _tmp, 0.85);
+    sparks.burst(_tmp, _tmp2.set(0, 1, 0), 22, 4.5, COL_HURT, 2.2, 0.6);
+    if (integrity <= 0) endRun(false, "SHEARED");
+    return;
+  }
+}
+
+/** Fire the topology hint the first time a far-side stone chain is in view. */
+function topologyHints(): void {
+  if (player.U >= 1) return;
+  const cu = player.U - Math.floor(player.U);
+  for (const centre of STONE_GAP_CENTRES) {
+    if (Math.abs(cu - centre) < 0.025) {
+      hud.toast(
+        "Those dark slabs hanging under the gap are real — you land on them after the flip.",
+        5000,
+        "farside",
+      );
+      return;
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Input                                                              */
+/* ------------------------------------------------------------------ */
+
+function readInput(): PlayerInput {
+  const left = keys.has("keya") || keys.has("arrowleft");
+  const right = keys.has("keyd") || keys.has("arrowright");
+  const input: PlayerInput = {
+    strafe: (right ? 1 : 0) - (left ? 1 : 0),
+    jumpHeld: keys.has("space") || keys.has("keyw") || keys.has("arrowup"),
+    jumpPressed: jumpEdge,
+    brake: keys.has("keys") || keys.has("arrowdown"),
+    boost: keys.has("shiftleft") || keys.has("shiftright"),
+  };
+  jumpEdge = false;
+  return input;
+}
+
+function unlockAudio(): void {
+  audio.enable(camera, scene);
+}
+
+function advance(): void {
+  unlockAudio();
+  if (ready && (phase === "title" || phase === "over")) startRun();
+}
+
+window.addEventListener("keydown", (e) => {
+  const code = e.code.toLowerCase();
+  if (code === "space" || code.startsWith("arrow")) e.preventDefault();
+  if (!keys.has(code) && (code === "space" || code === "keyw" || code === "arrowup")) {
+    jumpEdge = true;
+  }
+  keys.add(code);
+
+  if (code === "space" || code === "enter") advance();
+  if (code === "keyr") {
+    unlockAudio();
+    if (ready && phase !== "title") startRun();
+  }
+  if (code === "keym") {
+    unlockAudio();
+    audio.setMuted(!audio.isMuted());
+  }
+  if (code === "keyp" && (phase === "run" || phase === "paused")) {
+    phase = phase === "run" ? "paused" : "run";
+    if (phase === "paused") hud.toast("PAUSED — press P to resume", 60000);
+    else hud.clearToast();
+  }
+});
+
+window.addEventListener("keyup", (e) => keys.delete(e.code.toLowerCase()));
+window.addEventListener("blur", () => keys.clear());
+window.addEventListener("pointerdown", () => advance());
+window.addEventListener("wheel", (e) => follow.adjustZoom(e.deltaY * 0.006), { passive: true });
+
+window.addEventListener("resize", applyViewport);
+
+/* ------------------------------------------------------------------ */
+/*  Frame                                                              */
+/* ------------------------------------------------------------------ */
+
+let last = performance.now();
+
+function updateKeyLights(target: THREE.Vector3): void {
+  sun.target.position.copy(target);
+  sun.position.copy(target).add(_tmp2.set(26, 52, 16));
+  moon.target.position.copy(target);
+  moon.position.copy(target).add(_tmp2.set(-20, -46, -24));
+}
+
+function cinematic(t: number): void {
+  // Low, close and slowly orbiting: the ribbon reads as a twisted band across
+  // the frame rather than a distant ring.
+  const ang = t * 0.075;
+  const rad = R * 1.82 + Math.sin(t * 0.19) * 4;
+  const hgt = 9.5 + Math.sin(t * 0.13) * 5.5;
+  camera.position.set(Math.cos(ang) * rad, hgt, Math.sin(ang) * rad);
+  camera.lookAt(0, Math.sin(t * 0.1) * 1.2 - 1, 0);
+}
+
+const IDLE_INPUT: PlayerInput = {
+  strafe: 0,
+  jumpHeld: false,
+  jumpPressed: false,
+  brake: false,
+  boost: false,
+};
+
+let frameEMA = 16;
+let framesSeen = 0;
+let lastStepDown = -10;
+
+/**
+ * On a slow renderer, requesting the next animation frame immediately keeps
+ * the main thread and compositor permanently saturated — nothing else,
+ * including the browser's own frame capture, ever gets a slot. Back off
+ * proportionally when frames are expensive. On hardware that keeps up this
+ * never fires.
+ */
+function scheduleNext(): void {
+  if (frameEMA > 70) {
+    const delay = Math.min(400, Math.max(90, frameEMA * 0.8));
+    window.setTimeout(() => requestAnimationFrame(frame), delay);
+  } else {
+    requestAnimationFrame(frame);
+  }
+}
+
+function frame(now: number): void {
+  try {
+    tick(now);
+  } finally {
+    scheduleNext();
+  }
+}
+
+function tick(now: number): void {
+  const rawMs = now - last;
+  const dt = Math.min(0.05, rawMs / 1000);
+  last = now;
+  if (!ready) return;
+
+  clockTime += dt;
+
+  // Continuous quality governor.
+  frameEMA += (Math.min(rawMs, 2000) - frameEMA) * 0.18;
+  framesSeen++;
+  if (quality > 0 && framesSeen > 3 && clockTime - lastStepDown > 1.5) {
+    if (frameEMA > 130) {
+      lastStepDown = clockTime;
+      applyQuality(0);
+      frameEMA = 24;
+    } else if (frameEMA > 42 && framesSeen > 24) {
+      lastStepDown = clockTime;
+      applyQuality(quality - 1);
+      frameEMA = 24;
+    }
+  }
+
+  // Dressing animates in every phase, so the title screen is a live diorama.
+  beaconField.update(clockTime);
+  updateVanes(vaneVisuals, clockTime);
+  inlayTex.offset.x -= dt * 0.055;
+  sparks.update(dt);
+
+  if (phase === "run") {
+    elapsed += dt;
+    invuln = Math.max(0, invuln - dt);
+
+    const ev = player.step(dt, readInput(), true);
+    player.focus(_focus);
+    player.frame(_T, _B, _N);
+
+    if (ev.jumped) audio.playAt("jump", _focus, 0.55, 0.94 + Math.random() * 0.12);
+    if (ev.landed) {
+      audio.playAt("land", _focus, 0.3 + ev.landingImpact * 0.5, 0.9 + Math.random() * 0.2);
+      if (ev.landingImpact > 0.25) {
+        follow.addShake(ev.landingImpact * 0.34);
+        deckPoint(player.U, player.v, player.n, _tmp);
+        sparks.burst(_tmp, _N, 12 + Math.round(ev.landingImpact * 14), 2.2, COL_DUST, 2.4, 0.5);
+      }
+    }
+    if (ev.footfall) audio.playAt("step", _focus, 0.16, 0.85 + Math.random() * 0.3);
+
+    if (player.speed > SPEED_BOOST - 2) {
+      deckPoint(player.U, player.v, player.n + 0.4, _tmp);
+      sparks.burst(_tmp, _tmp2.copy(_T).negate(), 2, 3.4, COL_SURGE, 1.1, 0.32);
+    }
+
+    collectBeacons();
+    resolveVanes(clockTime);
+    topologyHints();
+
+    // Crossing U = 1 turns the runner over: the far side becomes the floor.
+    const face = faceSign(player.U);
+    if (face !== lastFace) {
+      lastFace = face;
+      if (player.U > 0.5 && player.U < CIRCUIT) {
+        audio.playAt("flip", _focus, 0.8);
+        hud.toast(
+          "<em>FACE B.</em> Same ribbon, other side. The stones you ignored are your floor now.",
+          5200,
+        );
+        follow.addShake(0.4);
+      }
+    }
+    const flipT = clamp(player.U - 1, 0, 1);
+    setInlayColour(_inlayCol.copy(INLAY_A).lerp(INLAY_B, flipT));
+    stonePadMat.emissiveIntensity = 0.68 + Math.sin(clockTime * 2.4) * 0.16;
+
+    if (ev.fellIntoVoid) endRun(false, "INTO THE VOID");
+    else if (player.U >= CIRCUIT) endRun(true, "");
+
+    hud.setProgress(player.U / CIRCUIT, face > 0 ? 0 : 1);
+    hud.setBoost(player.boost);
+    hud.setClock(elapsed);
+    hud.setSpeed(player.speed);
+  } else if (phase === "dying" || phase === "winning") {
+    // Keep simulating so the fall reads, then pull the camera out to show the
+    // whole ribbon — the shape you were running on all along.
+    phaseTimer += dt;
+    player.step(dt, IDLE_INPUT, false);
+    player.focus(_focus);
+    player.frame(_T, _B, _N);
+    follow.extraDistance = damp(follow.extraDistance, phase === "winning" ? 7 : 13, 1.6, dt);
+    follow.extraHeight = damp(follow.extraHeight, phase === "winning" ? 3 : 7, 1.6, dt);
+    if (phaseTimer > (phase === "winning" ? 2.2 : 1.9)) finishRun(phase === "winning");
+  } else if (phase !== "title") {
+    player.focus(_focus);
+    player.frame(_T, _B, _N);
+  }
+
+  if (phase === "title") {
+    cinematic(clockTime);
+    const orbit = _tmp.set(
+      Math.cos(clockTime * 0.085) * R,
+      0,
+      Math.sin(clockTime * 0.085) * R,
+    );
+    updateKeyLights(orbit);
+    runLamp.intensity = 0;
+    contact.update(0, 0, 0, 0, false);
+  } else {
+    follow.update(camera, _focus, _T, _B, _N, player.v, dt);
+    updateKeyLights(_focus);
+    deckPoint(player.U, player.v, player.n + 1.5, runLamp.position);
+    runLamp.intensity = phase === "over" ? 3 : 8;
+    const sup = supportAt(player.U, player.v, player.n + 0.36);
+    contact.update(player.U, player.v, sup.n, player.n, phase !== "over");
+  }
+
+  drawFrame();
+}
+
+function drawFrame(): void {
+  if (useComposer && composer) composer.render();
+  else renderer.render(scene, camera);
+}
+
+/* ------------------------------------------------------------------ */
+
+void build().then(() => {
+  ready = true;
+  last = performance.now();
+});
+
+requestAnimationFrame(frame);

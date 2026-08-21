@@ -1,0 +1,475 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 3365fdf08620c323eb085e2db471165c42a253fd3d59e643f1f4a594cc8b8c5d
+/**
+ * The reading apparatus.
+ *
+ * Everything the visitor has set, everything the piece assumed on their
+ * behalf, what it costs to look closer, and what follows from all of it -
+ * shown at the same time, because the comparison is the point.
+ */
+
+import type { EvidenceClass } from "../data/eras";
+
+export type StatusKind = "ok" | "warn" | "bad" | "info";
+
+export interface HudCallbacks {
+  onEra(id: string, additive: boolean): void;
+  onFilter(id: EvidenceClass): void;
+  onAssumption(group: "calibration" | "uncertainty" | "boundary", value: string): void;
+  onAction(name: "compare" | "focus" | "clear" | "reset" | "bookmark" | "help"): void;
+  onBookmark(index: number): void;
+  onBookmarkDrop(index: number): void;
+  onMilestone(id: string): void;
+  onCut(kind: "aperture" | "rotate", delta: number): void;
+}
+
+export interface EraRowView {
+  id: string;
+  index: number;
+  name: string;
+  subtitle: string;
+  span: string;
+  swatch: string;
+  focused: boolean;
+  compared: boolean;
+  surveyed: number;
+  total: number;
+  visible: number;
+}
+
+export interface FilterView {
+  id: EvidenceClass;
+  label: string;
+  short: string;
+  key: string;
+  count: number;
+  active: boolean;
+}
+
+export interface OptionView {
+  value: string;
+  label: string;
+}
+
+export interface AssumptionView {
+  group: "calibration" | "uncertainty" | "boundary";
+  label: string;
+  options: OptionView[];
+  value: string;
+  note: string;
+  locked: boolean;
+}
+
+export interface InspectView {
+  kind: "milestone" | "era" | "none";
+  title: string;
+  subtitle: string;
+  rows: [string, string][];
+  note?: string;
+  caveat?: string;
+  chain?: string[];
+  locked?: string;
+  tag?: string;
+}
+
+export interface CompareRow {
+  label: string;
+  a: string;
+  b: string;
+  numeric?: boolean;
+}
+
+export interface CompareView {
+  a: string;
+  b: string;
+  rows: CompareRow[];
+  verdict: string;
+}
+
+export interface NeighbourView {
+  id: string;
+  rel: string;
+  label: string;
+  age: string;
+  current: boolean;
+  hidden: boolean;
+}
+
+export interface ConsequenceView {
+  text: string;
+  tone: "info" | "warn" | "bad";
+}
+
+export interface BookmarkView {
+  index: number;
+  label: string;
+  detail: string;
+}
+
+export interface ActionView {
+  enabled: boolean;
+  reason: string;
+}
+
+export interface HudView {
+  activeInputs: [string, string][];
+  eras: EraRowView[];
+  filters: FilterView[];
+  filterSummary: string;
+  assumptions: AssumptionView[];
+  cut: { aperture: string; rotation: string; radial: string };
+  inspect: InspectView;
+  compare: CompareView | null;
+  compareHint: string;
+  neighbours: NeighbourView[];
+  resources: {
+    cores: number;
+    coresTotal: number;
+    coresNote: string;
+    lab: number;
+    labTotal: number;
+    labNote: string;
+    slots: number;
+    slotsTotal: number;
+  };
+  consequences: ConsequenceView[];
+  bookmarks: BookmarkView[];
+  actions: Record<"compare" | "focus" | "clear" | "reset" | "bookmark", ActionView>;
+  status: { text: string; kind: StatusKind };
+}
+
+const esc = (s: string): string =>
+  s.replace(/[&<>"']/g, (c) =>
+    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;",
+  );
+
+const KEYS_LEGEND =
+  "<b>1-6</b> era &middot; <b>&#8679;+1-6</b> compare &middot; <b>F</b> focus &middot; <b>C</b> compare &middot; " +
+  "<b>B</b> bookmark &middot; <b>V</b> return &middot; <b>X</b> clear &middot; <b>0</b> reset &middot; " +
+  "<b>Tab</b> milestone &middot; <b>Enter</b> inspect &middot; <b>[ ]</b> cut &middot; <b>, .</b> turn &middot; " +
+  "<b>&#8592;&#8593;&#8594;&#8595;</b> orbit &middot; <b>H</b> panels &middot; <b>?</b> help";
+
+export class Hud {
+  private root: HTMLDivElement;
+  private help: HTMLDivElement;
+  private loading: HTMLDivElement;
+  private loadingBar: HTMLElement;
+  private loadingLabel: HTMLElement;
+  private slots = new Map<string, HTMLElement>();
+  private visible = true;
+
+  constructor(private cb: HudCallbacks) {
+    this.loading = document.createElement("div");
+    this.loading.id = "loading";
+    this.loading.innerHTML = `
+      <div class="lt">Forest Eras Explorer</div>
+      <div class="ls">preparing bark, foliage, soil, stone, crop and creature surfaces</div>
+      <div class="lb"><i></i></div>
+      <div class="lp">0%</div>`;
+    document.body.appendChild(this.loading);
+    this.loadingBar = this.loading.querySelector(".lb i") as HTMLElement;
+    this.loadingLabel = this.loading.querySelector(".lp") as HTMLElement;
+
+    this.root = document.createElement("div");
+    this.root.id = "hud";
+    this.root.innerHTML = `
+      <header class="masthead">
+        <div class="title">Forest Eras Explorer</div>
+        <div class="sub">a sectioned world-tree &mdash; six growth volumes, oldest at the core, radius reads as time</div>
+        <button class="btn" data-act="help">Guide <span class="k">?</span></button>
+      </header>
+      <div class="col left">
+        <section class="panel"><h2>Active inputs<span class="tag" data-slot="inputs-tag"></span></h2><dl class="kv" data-slot="inputs"></dl></section>
+        <section class="panel"><h2>Eras<span class="tag">material-coded</span></h2><div class="era-list" data-slot="eras"></div>
+          <div class="actions" data-slot="era-actions"></div></section>
+        <section class="panel"><h2>Evidence filter<span class="tag" data-slot="filter-tag"></span></h2><div class="chips" data-slot="filters"></div>
+          <div class="note" data-slot="filter-note"></div></section>
+        <section class="panel"><h2>Assumptions<span class="tag">costs lab time</span></h2><div data-slot="assumptions"></div></section>
+        <section class="panel"><h2>Cut<span class="tag" data-slot="cut-tag"></span></h2><div data-slot="cut"></div></section>
+      </div>
+      <div class="col right">
+        <section class="panel"><h2>Inspector<span class="tag" data-slot="inspect-tag"></span></h2><div data-slot="inspect"></div></section>
+        <section class="panel" data-slot="compare-panel"><h2>Compare<span class="tag" data-slot="compare-tag"></span></h2><div data-slot="compare"></div></section>
+        <section class="panel"><h2>Neighbouring milestones<span class="tag">in time</span></h2><div class="neighbours" data-slot="neighbours"></div></section>
+        <section class="panel"><h2>Resource state<span class="tag">survey budget</span></h2><div data-slot="resources"></div></section>
+        <section class="panel"><h2>Dependent consequences</h2><ul class="list" data-slot="consequences"></ul></section>
+        <section class="panel"><h2>Bookmarks<span class="tag" data-slot="bm-tag"></span></h2><div data-slot="bookmarks"></div></section>
+      </div>
+      <footer class="statusbar">
+        <div id="status" role="status" aria-live="polite"></div>
+        <div class="keys">${KEYS_LEGEND}</div>
+      </footer>`;
+    document.body.appendChild(this.root);
+
+    for (const el of this.root.querySelectorAll<HTMLElement>("[data-slot]")) {
+      this.slots.set(el.dataset.slot!, el);
+    }
+
+    this.help = document.createElement("div");
+    this.help.id = "help";
+    this.help.hidden = true;
+    this.help.innerHTML = this.helpMarkup();
+    document.body.appendChild(this.help);
+    this.help.addEventListener("click", (e) => {
+      if (e.target === this.help || (e.target as HTMLElement).dataset.act === "close") {
+        this.help.hidden = true;
+      }
+    });
+
+    this.root.addEventListener("click", this.onClick);
+  }
+
+  private helpMarkup(): string {
+    return `<div class="sheet">
+      <h3>Reading the sculpture</h3>
+      <p>Six growth volumes are stacked concentrically. The core is the oldest era and the
+      outermost collar is the present, so <em>radius is the time axis</em>: the brass rule lying in
+      the cut measures it. A wedge has been removed from every volume at once, exposing six
+      section faces in a single line of sight.</p>
+      <p>Each terrace carries its era's ground: bark, foliage, soil, stone, crops and creatures are
+      modelled and textured per era, so material identifies the era before any label does. Milestone
+      pins sit at the radius matching their date; the coloured bar through each pin is its
+      uncertainty, drawn along the same radial axis, so a wide bar is a loose date.</p>
+      <h4>Pointer</h4>
+      <dl>
+        <dt>drag</dt><dd>orbit within bounds</dd>
+        <dt>shift-drag / right-drag</dt><dd>pan the target</dd>
+        <dt>wheel / pinch</dt><dd>dolly between 9 and 46 units</dd>
+        <dt>click volume or pin</dt><dd>focus an era / inspect a milestone</dd>
+        <dt>shift-click volume</dt><dd>add to the comparison</dd>
+      </dl>
+      <h4>Keyboard</h4>
+      <dl>
+        <dt>1 - 6</dt><dd>focus era</dd>
+        <dt>shift + 1 - 6</dt><dd>add era to comparison</dd>
+        <dt>Q W E R T</dt><dd>toggle evidence-class filters</dd>
+        <dt>Tab / shift+Tab</dt><dd>step through milestones in time order</dd>
+        <dt>Enter</dt><dd>inspect the current milestone (costs one core sample)</dd>
+        <dt>F / C</dt><dd>focus / compare</dd>
+        <dt>B / V</dt><dd>bookmark this view / return to a bookmark</dd>
+        <dt>X</dt><dd>clear selection, comparison and filters</dd>
+        <dt>0</dt><dd>reset the whole survey</dd>
+        <dt>[ ]</dt><dd>narrow / widen the cut</dd>
+        <dt>, .</dt><dd>turn the cut around the tree</dd>
+        <dt>arrows, + -</dt><dd>orbit and dolly</dd>
+        <dt>H</dt><dd>hide the panels</dd>
+      </dl>
+      <h4>Why it costs something</h4>
+      <p>Inspection spends core samples and recalibration spends lab time, because in the field
+      both are finite. Running low does not stop you reading &mdash; it changes what the piece is
+      willing to claim, and the consequences panel says so as it happens.</p>
+      <div class="actions"><button class="btn" data-act="close">Close</button></div>
+    </div>`;
+  }
+
+  private onClick = (e: MouseEvent): void => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>("[data-act],[data-era],[data-filter],[data-assume],[data-ms],[data-bm],[data-bmdrop],[data-cut]");
+    if (!el) return;
+    const d = el.dataset;
+    if (d.era) this.cb.onEra(d.era, e.shiftKey);
+    else if (d.filter) this.cb.onFilter(d.filter as EvidenceClass);
+    else if (d.assume) {
+      const [group, value] = d.assume.split(":");
+      this.cb.onAssumption(group as "calibration", value!);
+    } else if (d.ms) this.cb.onMilestone(d.ms);
+    else if (d.bm) this.cb.onBookmark(Number(d.bm));
+    else if (d.bmdrop) this.cb.onBookmarkDrop(Number(d.bmdrop));
+    else if (d.cut) {
+      const [kind, delta] = d.cut.split(":");
+      this.cb.onCut(kind as "aperture", Number(delta));
+    } else if (d.act === "help") this.toggleHelp();
+    else if (d.act) this.cb.onAction(d.act as "focus");
+  };
+
+  toggleHelp(force?: boolean): void {
+    this.help.hidden = force !== undefined ? !force : !this.help.hidden;
+  }
+
+  get helpOpen(): boolean {
+    return !this.help.hidden;
+  }
+
+  toggleVisible(): void {
+    this.visible = !this.visible;
+    this.root.hidden = !this.visible;
+  }
+
+  progress(fraction: number, label: string): void {
+    this.loadingBar.style.width = `${Math.round(fraction * 100)}%`;
+    this.loadingLabel.textContent = `${Math.round(fraction * 100)}% · ${label}`;
+  }
+
+  finishLoading(): void {
+    this.loading.classList.add("done");
+    window.setTimeout(() => this.loading.remove(), 900);
+  }
+
+  private slot(name: string): HTMLElement {
+    return this.slots.get(name)!;
+  }
+
+  render(v: HudView): void {
+    this.slot("inputs").innerHTML = v.activeInputs
+      .map(([k, val]) => `<dt>${esc(k)}</dt><dd>${val}</dd>`)
+      .join("");
+    this.slot("inputs-tag").textContent = `${v.activeInputs.length} set`;
+
+    this.slot("eras").innerHTML = v.eras
+      .map((e) => {
+        const state = [e.focused ? "focus" : "", e.compared ? "compare" : ""].join(" ").trim();
+        return `<button class="era-row" data-era="${e.id}" data-state="${state}"
+          title="Click to focus, shift-click to compare">
+          <span class="swatch" style="background:${e.swatch}"></span>
+          <span class="nm">${esc(e.name)}<small>${esc(e.subtitle)}</small></span>
+          <span class="age">${esc(e.span)}<br>${e.surveyed}/${e.total} surveyed${
+            e.visible < e.total ? ` &middot; ${e.visible} shown` : ""
+          }</span>
+        </button>`;
+      })
+      .join("");
+
+    this.slot("era-actions").innerHTML = (
+      ["focus", "compare", "bookmark", "clear", "reset"] as const
+    )
+      .map((name) => {
+        const a = v.actions[name];
+        const key = { focus: "F", compare: "C", bookmark: "B", clear: "X", reset: "0" }[name];
+        return `<button class="btn${name === "focus" ? " primary" : ""}" data-act="${name}"
+          ${a.enabled ? "" : "disabled"} title="${esc(a.reason)}">${name}<span class="k">${key}</span></button>`;
+      })
+      .join("");
+
+    this.slot("filters").innerHTML = v.filters
+      .map(
+        (f) =>
+          `<button class="chip" data-filter="${f.id}" aria-pressed="${f.active}"
+            title="${esc(f.label)}"><span class="k">${f.key.toUpperCase()}</span>${esc(f.short)}<span class="n">${f.count}</span></button>`,
+      )
+      .join("");
+    this.slot("filter-tag").textContent = v.filterSummary;
+    this.slot("filter-note").textContent =
+      v.filters.find((f) => f.active) === undefined
+        ? "No filter: all 18 milestones are selectable."
+        : "Filtered milestones stay in place but cannot be inspected or compared.";
+
+    this.slot("assumptions").innerHTML = v.assumptions
+      .map(
+        (a) => `<div class="opt-group">
+          <div class="opt-label">${esc(a.label)}</div>
+          <div class="seg">${a.options
+            .map(
+              (o) =>
+                `<button data-assume="${a.group}:${o.value}" aria-pressed="${o.value === a.value}"
+                  ${a.locked && o.value !== a.value ? "disabled" : ""}>${esc(o.label)}</button>`,
+            )
+            .join("")}</div>
+          <div class="note">${esc(a.note)}</div>
+        </div>`,
+      )
+      .join("");
+
+    this.slot("cut-tag").textContent = v.cut.aperture;
+    this.slot("cut").innerHTML = `
+      <dl class="kv">
+        <dt>Aperture</dt><dd class="mono">${esc(v.cut.aperture)}</dd>
+        <dt>Bearing</dt><dd class="mono">${esc(v.cut.rotation)}</dd>
+        <dt>Rule</dt><dd class="mono">${esc(v.cut.radial)}</dd>
+      </dl>
+      <div class="actions">
+        <button class="btn" data-cut="aperture:-1">narrow<span class="k">[</span></button>
+        <button class="btn" data-cut="aperture:1">widen<span class="k">]</span></button>
+        <button class="btn" data-cut="rotate:-1">turn &#8592;<span class="k">,</span></button>
+        <button class="btn" data-cut="rotate:1">turn &#8594;<span class="k">.</span></button>
+      </div>
+      <div class="note">Widening the cut re-seats every terrace layout, so milestone bearings move
+      while their radii &mdash; their dates &mdash; do not.</div>`;
+
+    const i = v.inspect;
+    this.slot("inspect-tag").textContent = i.tag ?? "";
+    this.slot("inspect").innerHTML = `
+      <div style="font-size:14.5px;font-weight:600;line-height:1.2">${esc(i.title)}</div>
+      <div class="note" style="margin-top:0">${esc(i.subtitle)}</div>
+      <dl class="kv" style="margin-top:6px">${i.rows
+        .map(([k, val]) => `<dt>${esc(k)}</dt><dd class="mono">${val}</dd>`)
+        .join("")}</dl>
+      ${i.note ? `<p class="evidence-note">${esc(i.note)}</p>` : ""}
+      ${i.caveat ? `<p class="caveat">${esc(i.caveat)}</p>` : ""}
+      ${
+        i.chain && i.chain.length
+          ? `<ul class="list chain">${i.chain.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>`
+          : ""
+      }
+      ${i.locked ? `<div class="locked">${esc(i.locked)}</div>` : ""}`;
+
+    const cmp = v.compare;
+    this.slot("compare-tag").textContent = cmp ? `${cmp.a} / ${cmp.b}` : "inactive";
+    this.slot("compare").innerHTML = cmp
+      ? `<table class="cmp">
+          <tr><th></th><td><strong>${esc(cmp.a)}</strong></td><td><strong>${esc(cmp.b)}</strong></td></tr>
+          ${cmp.rows
+            .map(
+              (r) =>
+                `<tr><th>${esc(r.label)}</th><td class="${r.numeric ? "num" : ""}">${esc(r.a)}</td><td class="${
+                  r.numeric ? "num" : ""
+                }">${esc(r.b)}</td></tr>`,
+            )
+            .join("")}
+        </table><p class="note">${esc(cmp.verdict)}</p>`
+      : `<div class="empty">${esc(v.compareHint)}</div>`;
+
+    this.slot("neighbours").innerHTML = v.neighbours.length
+      ? v.neighbours
+          .map(
+            (n) =>
+              `<button class="nb" data-ms="${n.id}" data-cur="${n.current ? 1 : 0}" data-hidden="${
+                n.hidden ? 1 : 0
+              }"><span class="rel">${esc(n.rel)}</span><span>${esc(n.label)}</span><span class="age">${esc(
+                n.age,
+              )}</span></button>`,
+          )
+          .join("")
+      : `<div class="empty">Select a milestone pin to see what stands either side of it in time.</div>`;
+
+    const r = v.resources;
+    const meter = (
+      label: string,
+      value: number,
+      total: number,
+      note: string,
+    ): string => `<div class="meter${value / total <= 0.25 ? " low" : ""}">
+        <span class="lbl">${esc(label)}</span><span class="val">${value} / ${total}</span>
+        <span class="bar"><i style="width:${(value / total) * 100}%"></i></span>
+        <span class="sub">${esc(note)}</span>
+      </div>`;
+    this.slot("resources").innerHTML =
+      meter("Core samples", r.cores, r.coresTotal, r.coresNote) +
+      meter("Lab time", r.lab, r.labTotal, r.labNote) +
+      `<div class="meter"><span class="lbl">Bookmark slots</span><span class="val">${r.slots} / ${r.slotsTotal}</span>
+        <span class="slots">${Array.from({ length: r.slotsTotal }, (_, k) => `<i class="${k < r.slots ? "on" : ""}"></i>`).join("")}</span>
+      </div>`;
+
+    this.slot("consequences").innerHTML = v.consequences
+      .map((c) => `<li class="${c.tone}">${esc(c.text)}</li>`)
+      .join("");
+
+    this.slot("bm-tag").textContent = `${v.bookmarks.length} stored`;
+    this.slot("bookmarks").innerHTML = v.bookmarks.length
+      ? v.bookmarks
+          .map(
+            (b) =>
+              `<div class="bm"><button class="go" data-bm="${b.index}">${esc(b.label)}<small>${esc(
+                b.detail,
+              )}</small></button><button class="drop" data-bmdrop="${b.index}" title="Drop this bookmark">&times;</button></div>`,
+          )
+          .join("")
+      : `<div class="empty">Nothing bookmarked. Press B to store the current view, era, milestone and assumptions together.</div>`;
+
+    const status = document.getElementById("status")!;
+    status.dataset.kind = v.status.kind;
+    const icon = { ok: "&#10003;", warn: "!", bad: "&#215;", info: "&mdash;" }[v.status.kind];
+    status.innerHTML = `<span class="icon">${icon}</span>${esc(v.status.text)}`;
+  }
+}

@@ -5,6 +5,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
+
+const DEFAULT_FORBID_PROPS: ReadonlyArray<string> = ["className", "style"];
 
 interface ForbidEntry {
   propName?: string;
@@ -36,7 +39,10 @@ const resolveSettings = (
   // firings per run from exactly this. The rule's premise ("YOUR
   // project blocks this prop") is inherently project-specific, so
   // without an explicit `forbid` list it stays inert.
-  return { forbid: ruleSettings.forbid ?? [] };
+  return {
+    forbid:
+      ruleSettings.forbid ?? (shouldUseCuratedPortBehavior(settings) ? [] : DEFAULT_FORBID_PROPS),
+  };
 };
 
 // Convert a glob like `Foo*` / `*Foo` / `Foo*Bar` into a RegExp.

@@ -304,6 +304,30 @@ describe("buildJsonReport", () => {
     expect(report.diagnostics).toHaveLength(0);
   });
 
+  it("marks reactDetected false for a plain Three.js project", () => {
+    const threeProject: ProjectInfo = {
+      ...projectInfo,
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: null,
+      preactMajorVersion: null,
+      framework: "unknown",
+      hasThree: true,
+      threeVersion: "0.185.1",
+      threeRelease: 185,
+    };
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [{ directory: "/repo", result: result({ diagnostics: [], project: threeProject }) }],
+      totalElapsedMilliseconds: 1200,
+    });
+    expect(report.reactDetected).toBe(false);
+    expect(report.projects[0].project.hasThree).toBe(true);
+  });
+
   it("marks reactDetected true in a workspace where only some roots are React", () => {
     const nonReactProject: ProjectInfo = {
       ...projectInfo,
@@ -344,6 +368,24 @@ describe("buildJsonReport", () => {
       mode: "full",
       diff: null,
       scans: [{ directory: "/repo", result: result({ project: preactProject }) }],
+      totalElapsedMilliseconds: 1200,
+    });
+    expect(report.reactDetected).toBe(true);
+  });
+
+  it("marks reactDetected true for Next.js without a direct React declaration", () => {
+    const nextProject: ProjectInfo = {
+      ...projectInfo,
+      reactVersion: null,
+      reactMajorVersion: null,
+      framework: "nextjs",
+    };
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [{ directory: "/repo", result: result({ project: nextProject }) }],
       totalElapsedMilliseconds: 1200,
     });
     expect(report.reactDetected).toBe(true);

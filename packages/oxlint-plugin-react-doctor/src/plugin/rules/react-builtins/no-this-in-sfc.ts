@@ -6,6 +6,7 @@ import { isEs5Component } from "../../utils/is-es5-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const MESSAGE = "This value is `undefined` because function components have no `this`.";
 
@@ -165,6 +166,7 @@ export const noThisInSfc = defineRule({
   recommendation:
     "Read from the `props` argument because function components do not have a React instance `this`.",
   create: (context) => {
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     // Read settings.react.createClass — a string OR array OR a single
     // bare name. Always include the standard createReactClass shape
     // so callers who set the pragma don't accidentally lose default
@@ -192,7 +194,10 @@ export const noThisInSfc = defineRule({
         // (`function Stack() { this.items = []; }`) or factory shares the
         // convention. Require the function to actually render JSX /
         // createElement so prototype-based helpers keep their real `this`.
-        if (!functionContainsReactRenderOutput(enclosingFunction, context.scopes, context.cfg)) {
+        if (
+          shouldUseCuratedBehavior &&
+          !functionContainsReactRenderOutput(enclosingFunction, context.scopes, context.cfg)
+        ) {
           return;
         }
         if (functionHasOwnThisMemberWrite(enclosingFunction)) return;

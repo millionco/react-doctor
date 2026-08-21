@@ -297,6 +297,12 @@ describe("js-performance/async-parallel — regressions", () => {
     );
   });
 
+  it("keeps repeated named loading stages sequential", () => {
+    expectPass(
+      `async function buildScene() { const terrain = await stage("terrain", () => buildTerrain()); const props = await stage("props", () => buildProps()); const lights = await stage("lights", () => buildLights()); return { terrain, props, lights }; }`,
+    );
+  });
+
   it("does not flag when a bare expression-statement await depends on an earlier result", () => {
     expectPass(
       `async function load(){ const user = await getUser(); await trackVisit(user.id); const posts = await getPosts(); }`,

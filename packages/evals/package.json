@@ -14,8 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@daytona/sdk": "^0.196.0",
-    "p-limit": "^3.1.0"
+    "@daytona/sdk": "^0.196.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

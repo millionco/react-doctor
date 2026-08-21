@@ -1,0 +1,370 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 1561ff65b89114b340d64ce73ce250e33aa84dc18040f7605bad4b6ca6e2d5c0
+/**
+ * DOM heads-up display: scoreboard, shared boost meter, loop tracker, flight
+ * readout, event feed and the intro / result overlays.
+ */
+
+import { TEAMS, TeamKey } from "../gfx/surfaces";
+
+export interface LoopReadout {
+  team: TeamKey;
+  remaining: number;
+  radius: number;
+}
+
+export interface HudState {
+  score: Record<TeamKey, number>;
+  boost: number;
+  boostMax: number;
+  surge: boolean;
+  weaving: boolean;
+  speed: number;
+  altitude: number;
+  loops: LoopReadout[];
+  weaveHint: string;
+  stress: number;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+const RETICLE_SVG = `
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="50" cy="50" r="30" fill="none" stroke="#cfe6ff" stroke-width="1.2" stroke-dasharray="5 9" opacity="0.8"/>
+  <circle cx="50" cy="50" r="3" fill="#cfe6ff" opacity="0.9"/>
+  <path d="M50 8 L50 22 M50 78 L50 92 M8 50 L22 50 M78 50 L92 50" stroke="#cfe6ff" stroke-width="1.6" opacity="0.85"/>
+</svg>`;
+
+const ARROW_SVG = `
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <path d="M50 6 L74 52 L50 40 L26 52 Z" fill="#ffc27a" opacity="0.92"/>
+  <circle cx="50" cy="66" r="7" fill="none" stroke="#ffc27a" stroke-width="3" opacity="0.75"/>
+</svg>`;
+
+export class Hud {
+  private readonly root: HTMLDivElement;
+  private readonly pips: Record<TeamKey, HTMLDivElement[]> = { azure: [], ember: [] };
+  private readonly boostFill: HTMLDivElement;
+  private readonly boostValue: HTMLSpanElement;
+  private readonly weaveState: HTMLDivElement;
+  private readonly loopBox: HTMLDivElement;
+  private readonly speedValue: HTMLSpanElement;
+  private readonly altValue: HTMLSpanElement;
+  private readonly gForceValue: HTMLSpanElement;
+  private readonly feed: HTMLDivElement;
+  private readonly banner: HTMLDivElement;
+  private readonly bannerBig: HTMLDivElement;
+  private readonly bannerSmall: HTMLDivElement;
+  private readonly vignette: HTMLDivElement;
+  private readonly arrow: HTMLDivElement;
+  private readonly reticle: HTMLDivElement;
+
+  private readonly loadOverlay: HTMLDivElement;
+  private readonly loadFill: HTMLDivElement;
+  private readonly loadLabel: HTMLDivElement;
+  private readonly introOverlay: HTMLDivElement;
+  private readonly resultOverlay: HTMLDivElement;
+  private readonly resultTitle: HTMLDivElement;
+  private readonly resultSub: HTMLDivElement;
+
+  private bannerTimer = 0;
+
+  constructor() {
+    this.root = el("div");
+    this.root.id = "hud";
+    document.body.appendChild(this.root);
+
+    // --- scoreboard ---
+    const score = el("div", "skw-panel");
+    score.id = "skw-score";
+    for (const key of ["azure", "ember"] as TeamKey[]) {
+      const team = el("div", "skw-team");
+      team.style.color = `#${TEAMS[key].accentHex.toString(16).padStart(6, "0")}`;
+      const name = el("div", "skw-team-name", TEAMS[key].name);
+      const pips = el("div", "skw-pips");
+      for (let i = 0; i < 3; i++) {
+        const pip = el("div", "skw-pip");
+        pips.appendChild(pip);
+        this.pips[key].push(pip);
+      }
+      if (key === "azure") {
+        team.appendChild(name);
+        team.appendChild(pips);
+      } else {
+        team.appendChild(pips);
+        team.appendChild(name);
+      }
+      score.appendChild(team);
+      if (key === "azure") {
+        const vs = el("div", undefined, "FIRST TO 3");
+        vs.id = "skw-vs";
+        score.appendChild(vs);
+      }
+    }
+    this.root.appendChild(score);
+
+    // --- boost ---
+    const boost = el("div", "skw-panel");
+    boost.id = "skw-boost";
+    const boostLabel = el("div", "skw-label");
+    boostLabel.appendChild(el("span", undefined, "Shared weave charge"));
+    this.boostValue = el("span", undefined, "100");
+    boostLabel.appendChild(this.boostValue);
+    boost.appendChild(boostLabel);
+    const bar = el("div", "skw-bar");
+    this.boostFill = el("div", "skw-bar-fill");
+    bar.appendChild(this.boostFill);
+    bar.appendChild(el("div", "skw-bar-ticks"));
+    boost.appendChild(bar);
+    this.weaveState = el("div");
+    this.weaveState.id = "skw-weave-state";
+    boost.appendChild(this.weaveState);
+    this.root.appendChild(boost);
+
+    // --- flight readout ---
+    const flight = el("div", "skw-panel");
+    flight.id = "skw-flight";
+    const mkRow = (label: string): HTMLSpanElement => {
+      const row = el("div", "skw-readout");
+      row.appendChild(el("span", undefined, label));
+      const value = el("span", undefined, "0");
+      row.appendChild(value);
+      flight.appendChild(row);
+      return value;
+    };
+    this.speedValue = mkRow("Speed");
+    this.altValue = mkRow("Altitude");
+    this.gForceValue = mkRow("Airframe");
+    this.root.appendChild(flight);
+
+    // --- loop tracker ---
+    this.loopBox = el("div", "skw-panel");
+    this.loopBox.id = "skw-loops";
+    this.root.appendChild(this.loopBox);
+
+    // --- feed ---
+    this.feed = el("div");
+    this.feed.id = "skw-feed";
+    this.root.appendChild(this.feed);
+
+    // --- reticle + ball arrow ---
+    this.reticle = el("div", undefined, RETICLE_SVG);
+    this.reticle.id = "skw-reticle";
+    this.root.appendChild(this.reticle);
+    this.arrow = el("div", undefined, ARROW_SVG);
+    this.arrow.id = "skw-ball-arrow";
+    this.root.appendChild(this.arrow);
+
+    // --- banner ---
+    this.banner = el("div");
+    this.banner.id = "skw-banner";
+    this.bannerBig = el("div", "big");
+    this.bannerSmall = el("div", "small");
+    this.banner.appendChild(this.bannerBig);
+    this.banner.appendChild(this.bannerSmall);
+    this.root.appendChild(this.banner);
+
+    this.vignette = el("div");
+    this.vignette.id = "skw-vignette";
+    this.root.appendChild(this.vignette);
+
+    // --- loading overlay ---
+    this.loadOverlay = el("div", "skw-overlay");
+    const loadCard = el("div", "skw-card");
+    loadCard.appendChild(el("h1", "skw-title", "SKYWEAVE"));
+    loadCard.appendChild(el("div", "skw-sub", "Aerial Loop League"));
+    const loadBar = el("div");
+    loadBar.id = "skw-load-bar";
+    this.loadFill = el("div");
+    this.loadFill.id = "skw-load-fill";
+    loadBar.appendChild(this.loadFill);
+    loadCard.appendChild(loadBar);
+    this.loadLabel = el("div", undefined, "warming the looms");
+    this.loadLabel.id = "skw-load-label";
+    loadCard.appendChild(this.loadLabel);
+    this.loadOverlay.appendChild(loadCard);
+    document.body.appendChild(this.loadOverlay);
+
+    // --- intro overlay ---
+    this.introOverlay = el("div", "skw-overlay hidden");
+    const introCard = el("div", "skw-card skw-panel");
+    introCard.appendChild(el("h1", "skw-title", "SKYWEAVE"));
+    introCard.appendChild(el("div", "skw-sub", "Aerial Loop League &middot; Cirrus Azure vs Cinder Ember"));
+    introCard.appendChild(
+      el(
+        "div",
+        "skw-brief",
+        "Hold <b>SHIFT</b> to burn shared weave charge and trail vapour behind your racer. " +
+          "Fly a closed circuit and the loop you drew hangs in the air as a scoring gate. " +
+          "Then knock <b>the Weft</b> through it with <b>SPACE</b> before it frays. " +
+          "Loops must be round, roughly flat and worth flying through &mdash; place them where the ball is going, not where it is. " +
+          "First team to land three loops takes the match.",
+      ),
+    );
+    const keys = el("div", "skw-keys");
+    const keyDefs: Array<[string, string]> = [
+      ["W / S", "Pitch nose down / up"],
+      ["A / D", "Yaw left / right"],
+      ["Q / E", "Roll left / right"],
+      ["SHIFT", "Boost &amp; lay weave trail"],
+      ["SPACE", "Strike the Weft"],
+      ["I", "Invert pitch axis"],
+      ["C", "Cycle camera"],
+      ["R", "Restart match"],
+    ];
+    for (const [k, d] of keyDefs) {
+      const row = el("div", "skw-key");
+      row.appendChild(el("b", undefined, k));
+      row.appendChild(el("span", undefined, d));
+      keys.appendChild(row);
+    }
+    introCard.appendChild(keys);
+    const cta = el("div", "skw-cta", "Launch");
+    cta.id = "skw-start";
+    introCard.appendChild(cta);
+    this.introOverlay.appendChild(introCard);
+    document.body.appendChild(this.introOverlay);
+
+    // --- result overlay ---
+    this.resultOverlay = el("div", "skw-overlay hidden");
+    const resultCard = el("div", "skw-card skw-panel");
+    this.resultTitle = el("div", "skw-title", "");
+    this.resultTitle.style.fontSize = "44px";
+    this.resultSub = el("div", "skw-sub", "");
+    resultCard.appendChild(this.resultTitle);
+    resultCard.appendChild(this.resultSub);
+    const again = el("div", "skw-cta", "Fly again");
+    again.id = "skw-restart";
+    resultCard.appendChild(again);
+    this.resultOverlay.appendChild(resultCard);
+    document.body.appendChild(this.resultOverlay);
+  }
+
+  setLoading(fraction: number, label: string): void {
+    this.loadFill.style.width = `${Math.round(fraction * 100)}%`;
+    this.loadLabel.textContent = label;
+  }
+
+  hideLoading(): void {
+    this.loadOverlay.classList.add("hidden");
+  }
+
+  showIntro(onStart: () => void): void {
+    this.introOverlay.classList.remove("hidden");
+    const start = (): void => {
+      if (this.introOverlay.classList.contains("hidden")) return;
+      this.introOverlay.classList.add("hidden");
+      window.removeEventListener("keydown", onKey);
+      onStart();
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        start();
+      }
+    };
+    document.getElementById("skw-start")?.addEventListener("click", start);
+    window.addEventListener("keydown", onKey);
+  }
+
+  showResult(title: string, sub: string, onRestart: () => void): void {
+    this.resultTitle.textContent = title;
+    this.resultSub.textContent = sub;
+    this.resultOverlay.classList.remove("hidden");
+    const btn = document.getElementById("skw-restart");
+    const handler = (): void => {
+      this.resultOverlay.classList.add("hidden");
+      btn?.removeEventListener("click", handler);
+      onRestart();
+    };
+    btn?.addEventListener("click", handler);
+  }
+
+  hideResult(): void {
+    this.resultOverlay.classList.add("hidden");
+  }
+
+  pushEvent(text: string, color: string): void {
+    const item = el("div", "skw-feed-item", text);
+    item.style.color = color;
+    this.feed.appendChild(item);
+    while (this.feed.childElementCount > 5) this.feed.removeChild(this.feed.firstChild!);
+    setTimeout(() => {
+      if (item.parentElement === this.feed) this.feed.removeChild(item);
+    }, 4200);
+  }
+
+  showBanner(big: string, small: string, seconds = 2): void {
+    this.bannerBig.textContent = big;
+    this.bannerSmall.textContent = small;
+    this.banner.style.opacity = "1";
+    this.bannerTimer = seconds;
+  }
+
+  setBallArrow(visible: boolean, x: number, y: number, rotation: number, onScreen: boolean): void {
+    this.arrow.style.opacity = visible ? (onScreen ? "0.5" : "0.95") : "0";
+    this.arrow.style.transform = `translate(${x}px, ${y}px) rotate(${rotation}rad) scale(${onScreen ? 0.55 : 1})`;
+  }
+
+  update(state: HudState, dt: number): void {
+    for (const key of ["azure", "ember"] as TeamKey[]) {
+      const pips = this.pips[key];
+      for (let i = 0; i < pips.length; i++) {
+        pips[i]!.classList.toggle("on", i < state.score[key]);
+      }
+    }
+
+    const pct = Math.max(0, Math.min(1, state.boost / state.boostMax));
+    this.boostFill.style.width = `${pct * 100}%`;
+    this.boostFill.style.background = state.surge
+      ? "linear-gradient(90deg, #9effc9, #4fd2ff)"
+      : pct < 0.22
+        ? "linear-gradient(90deg, #ff6a4a, #ff9a5a)"
+        : "linear-gradient(90deg, #2f9fe0, #7fdcff)";
+    this.boostValue.textContent = Math.round(state.boost).toString();
+    this.weaveState.textContent = state.weaveHint;
+    this.weaveState.style.color = state.weaving ? "#7fdcff" : "rgba(232,238,246,0.55)";
+
+    this.speedValue.textContent = `${Math.round(state.speed)} kn`;
+    this.altValue.textContent = `${state.altitude >= 0 ? "+" : ""}${Math.round(state.altitude)} m`;
+    const stressPct = Math.round(state.stress * 100);
+    this.gForceValue.textContent = stressPct > 4 ? `STRESS ${stressPct}%` : "NOMINAL";
+    this.gForceValue.style.color = stressPct > 40 ? "#ff8a5a" : "#e8eef6";
+
+    this.loopBox.innerHTML = "";
+    const header = el("div", "skw-label");
+    header.appendChild(el("span", undefined, "Live loops"));
+    header.appendChild(el("span", undefined, state.loops.length.toString()));
+    this.loopBox.appendChild(header);
+    if (state.loops.length === 0) {
+      this.loopBox.appendChild(el("div", "skw-loop-row skw-loop-empty", "<span>none woven</span><span>&mdash;</span>"));
+    } else {
+      for (const loop of state.loops.slice(0, 4)) {
+        const row = el("div", "skw-loop-row");
+        row.style.color = `#${TEAMS[loop.team].accentHex.toString(16).padStart(6, "0")}`;
+        row.appendChild(el("span", undefined, `${TEAMS[loop.team].name.split(" ")[1]!} r${Math.round(loop.radius)}`));
+        row.appendChild(el("span", undefined, `${loop.remaining.toFixed(1)}s`));
+        this.loopBox.appendChild(row);
+      }
+    }
+
+    this.vignette.style.opacity = Math.min(0.9, state.stress * 0.9).toString();
+
+    if (this.bannerTimer > 0) {
+      this.bannerTimer -= dt;
+      if (this.bannerTimer <= 0) this.banner.style.opacity = "0";
+    }
+  }
+}

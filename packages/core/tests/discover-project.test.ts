@@ -2746,6 +2746,94 @@ describe("discoverProject", () => {
 });
 
 describe("listWorkspacePackages", () => {
+  it("includes packages that declare supported framework and ecosystem dependencies", () => {
+    const rootDirectory = path.join(tempDirectory, "supported-dependency-workspace");
+    const supportedDependencyNames = [
+      "react-dom",
+      "expo",
+      "expo-router",
+      "gatsby",
+      "@remix-run/react",
+      "@tanstack/react-start",
+      "react-scripts",
+      "@astrojs/react",
+      "remotion",
+      "@react-three/rapier",
+      "@react-three/postprocessing",
+      "@react-three/xr",
+      "@react-three/cannon",
+    ];
+    fs.mkdirSync(rootDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "workspace", workspaces: ["packages/*"] }),
+    );
+
+    for (const [packageIndex, dependencyName] of supportedDependencyNames.entries()) {
+      const packageDirectory = path.join(rootDirectory, "packages", `package-${packageIndex}`);
+      fs.mkdirSync(packageDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(packageDirectory, "package.json"),
+        JSON.stringify({ name: dependencyName, dependencies: { [dependencyName]: "1.0.0" } }),
+      );
+    }
+
+    expect(
+      listWorkspacePackages(rootDirectory)
+        .map((workspacePackage) => workspacePackage.name)
+        .toSorted(),
+    ).toEqual(supportedDependencyNames.toSorted());
+  });
+
+  it("excludes dependencies without supported runtime capabilities", () => {
+    const rootDirectory = path.join(tempDirectory, "unsupported-dependency-workspace");
+    const unsupportedDependencyNames = [
+      "vite",
+      "astro",
+      "@types/three",
+      "threewright",
+      "three-tester",
+      "phaser",
+      "@babylonjs/core",
+      "pixi.js",
+      "playcanvas",
+    ];
+    fs.mkdirSync(rootDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "workspace", workspaces: ["packages/*"] }),
+    );
+
+    for (const [packageIndex, dependencyName] of unsupportedDependencyNames.entries()) {
+      const packageDirectory = path.join(rootDirectory, "packages", `package-${packageIndex}`);
+      fs.mkdirSync(packageDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(packageDirectory, "package.json"),
+        JSON.stringify({ name: dependencyName, dependencies: { [dependencyName]: "1.0.0" } }),
+      );
+    }
+
+    expect(listWorkspacePackages(rootDirectory)).toEqual([]);
+  });
+
+  it("includes standalone Three.js workspace packages", () => {
+    const rootDirectory = path.join(tempDirectory, "three-workspace");
+    const gameDirectory = path.join(rootDirectory, "games", "viewer");
+    fs.mkdirSync(gameDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "workspace", workspaces: ["games/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(gameDirectory, "package.json"),
+      JSON.stringify({ name: "viewer", dependencies: { three: "^0.180.0" } }),
+    );
+
+    expect(listWorkspacePackages(rootDirectory)).toEqual([
+      { name: "viewer", directory: gameDirectory },
+    ]);
+  });
+
   it("resolves nested workspace patterns like apps/*/ClientApp", () => {
     const packages = listWorkspacePackages(path.join(FIXTURES_DIRECTORY, "nested-workspaces"));
     const packageNames = packages.map((workspacePackage) => workspacePackage.name);
@@ -3242,7 +3330,61 @@ describe("discoverProject without a package.json", () => {
   });
 });
 
+describe("supported ecosystem dependencies", () => {
+  it("derives project facts from framework and runtime packages", () => {
+    const rootDirectory = path.join(tempDirectory, "ecosystem-capabilities");
+    const expoDirectory = path.join(rootDirectory, "expo");
+    const astroDirectory = path.join(rootDirectory, "astro");
+    const remotionDirectory = path.join(rootDirectory, "remotion");
+    const reactThreeFiberDirectory = path.join(rootDirectory, "r3f");
+    for (const directory of [
+      expoDirectory,
+      astroDirectory,
+      remotionDirectory,
+      reactThreeFiberDirectory,
+    ]) {
+      fs.mkdirSync(directory, { recursive: true });
+    }
+    fs.writeFileSync(
+      path.join(expoDirectory, "package.json"),
+      JSON.stringify({ dependencies: { "expo-router": "1.0.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(astroDirectory, "package.json"),
+      JSON.stringify({ dependencies: { "@astrojs/react": "1.0.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(remotionDirectory, "package.json"),
+      JSON.stringify({ dependencies: { remotion: "4.0.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(reactThreeFiberDirectory, "package.json"),
+      JSON.stringify({ dependencies: { "@react-three/rapier": "2.0.0" } }),
+    );
+
+    expect(discoverProject(expoDirectory).framework).toBe("expo");
+    expect(discoverProject(astroDirectory).framework).toBe("astro");
+    expect(discoverProject(remotionDirectory).hasRemotion).toBe(true);
+    expect(discoverProject(reactThreeFiberDirectory).hasReactThreeFiber).toBe(true);
+  });
+});
+
 describe("discoverReactSubprojects", () => {
+  it("includes nested standalone Three.js packages", () => {
+    const rootDirectory = path.join(tempDirectory, "three-wrapper");
+    const gameDirectory = path.join(rootDirectory, "results", "viewer");
+    fs.mkdirSync(gameDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(gameDirectory, "package.json"),
+      JSON.stringify({ name: "viewer", dependencies: { three: "^0.180.0" } }),
+    );
+
+    expect(discoverReactSubprojects(rootDirectory)).toContainEqual({
+      name: "viewer",
+      directory: gameDirectory,
+    });
+  });
+
   it("skips subdirectories where package.json is a directory (EISDIR)", () => {
     const rootDirectory = path.join(tempDirectory, "eisdir-package-json");
     const subdirectory = path.join(rootDirectory, "broken-sub");

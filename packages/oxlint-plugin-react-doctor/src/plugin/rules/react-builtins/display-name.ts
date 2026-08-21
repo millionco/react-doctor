@@ -8,6 +8,9 @@ import { isEs5Component } from "../../utils/is-es5-component.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
+import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 const MESSAGE =
   "This component shows up as Anonymous in React DevTools because it has no `displayName`.";
@@ -91,6 +94,21 @@ const containsJsx = (root: EsTreeNode): boolean => {
   visit(root);
   containsJsxCache.set(root, found);
   return found;
+};
+
+const containsBareCreateElementCall = (root: EsTreeNode): boolean => {
+  let didFindCreateElementCall = false;
+  walkAst(root, (node) => {
+    if (
+      isNodeOfType(node, "CallExpression") &&
+      isNodeOfType(node.callee, "Identifier") &&
+      node.callee.name === "createElement"
+    ) {
+      didFindCreateElementCall = true;
+      return false;
+    }
+  });
+  return didFindCreateElementCall;
 };
 
 const getStaticMemberName = (node: EsTreeNode): string | null => {
@@ -377,6 +395,7 @@ export const displayName = defineRule({
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const ignoreNamed = !settings.ignoreTranspilerName;
 
     const reportAt = (node: EsTreeNode): void => {
@@ -406,6 +425,17 @@ export const displayName = defineRule({
       },
       FunctionExpression(node: EsTreeNodeOfType<"FunctionExpression">) {
         if (!containsJsx(node)) return;
+        if (!shouldUseCuratedBehavior && !node.id && isModuleExportsAssignment(node)) {
+          reportAt(node);
+          return;
+        }
+        if (
+          !shouldUseCuratedBehavior &&
+          !functionContainsReactRenderOutput(node, context.scopes, context.cfg) &&
+          !containsBareCreateElementCall(node)
+        ) {
+          return;
+        }
         if (node.id && isReactComponentName(node.id.name) && ignoreNamed) return;
         if (isNodeOfType(node.parent, "Property") && node.parent.method) {
           const key = node.parent.key as EsTreeNode;
@@ -436,7 +466,20 @@ export const displayName = defineRule({
         }
       },
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
-        if (!containsJsx(node)) return;
+        const isDefaultExport = isNodeOfType(node.parent, "ExportDefaultDeclaration");
+        const containsCreateElementCall = containsJsx(node);
+        if (!containsCreateElementCall && !isDefaultExport) return;
+        if (!shouldUseCuratedBehavior && isModuleExportsAssignment(node)) {
+          reportAt(node);
+          return;
+        }
+        if (
+          !shouldUseCuratedBehavior &&
+          !functionContainsReactRenderOutput(node, context.scopes, context.cfg) &&
+          !containsBareCreateElementCall(node)
+        ) {
+          return;
+        }
         if (
           isNodeOfType(node.parent, "ArrowFunctionExpression") ||
           isNodeOfType(node.parent, "ReturnStatement")
@@ -472,6 +515,16 @@ export const displayName = defineRule({
           }
           parent = parent.parent ?? null;
         }
+      },
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
+        if (shouldUseCuratedBehavior) return;
+        if (!isNodeOfType(node.parent, "ExportDefaultDeclaration")) return;
+        if (!functionContainsReactRenderOutput(node, context.scopes, context.cfg)) return;
+        if (node.id) {
+          const programRoot = findProgramRoot(node);
+          if (programRoot && hasDisplayNameAssignment(node.id.name, programRoot)) return;
+        }
+        reportAt(node.id ?? node);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (

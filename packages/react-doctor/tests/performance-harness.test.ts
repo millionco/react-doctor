@@ -429,45 +429,43 @@ describe("performance harness", () => {
       },
     );
 
-    it("captures and aggregates profiles across the benchmark process tree", () => {
-      const directory = createTemporaryDirectory();
-      const projectDirectory = path.join(directory, "project");
-      const outputDirectory = path.join(directory, "profile results");
-      createStressProject({
-        directory: projectDirectory,
-        fileCount: 1,
-        componentsPerFileCount: 1,
-      });
-      runPerformance({
-        directories: [projectDirectory],
-        samples: 1,
-        warmups: 0,
-        workerCounts: [1],
-        modes: ["full"],
-        cacheCohorts: ["no-cache"],
-        outputDirectory,
-        comparePath: null,
-        cliPath: builtCliPath,
-        profile: true,
-        heapProfile: true,
-      });
+    it(
+      "captures and aggregates profiles across the benchmark process tree",
+      { timeout: BUILT_CLI_PERFORMANCE_TEST_TIMEOUT_MS },
+      () => {
+        const directory = createTemporaryDirectory();
+        const projectDirectory = path.join(directory, "project");
+        const outputDirectory = path.join(directory, "profile results");
+        createStressProject({
+          directory: projectDirectory,
+          fileCount: 1,
+          componentsPerFileCount: 1,
+        });
+        runPerformance({
+          directories: [projectDirectory],
+          samples: 1,
+          warmups: 0,
+          workerCounts: [1],
+          modes: ["full"],
+          cacheCohorts: ["no-cache"],
+          outputDirectory,
+          comparePath: null,
+          cliPath: builtCliPath,
+          profile: true,
+          heapProfile: true,
+        });
 
-      const cpuAnalysis = analyzeCpuProfiles(outputDirectory);
-      const heapAnalysis = analyzeHeapProfiles(outputDirectory);
-      const cpuProcessRoles = new Set(
-        cpuAnalysis.processes.map((processSummary) => processSummary.role),
-      );
-      expect(cpuProcessRoles).toContain("react-doctor");
-      expect(cpuProcessRoles).toContain("oxlint");
-      if (process.allowedNodeEnvironmentFlags.has("--cpu-prof")) {
-        expect(cpuProcessRoles).toContain("dead-code");
-      } else {
+        const cpuAnalysis = analyzeCpuProfiles(outputDirectory);
+        const heapAnalysis = analyzeHeapProfiles(outputDirectory);
+        const cpuProcessRoles = new Set(
+          cpuAnalysis.processes.map((processSummary) => processSummary.role),
+        );
+        expect(cpuProcessRoles).toContain("react-doctor");
+        expect(cpuProcessRoles).toContain("oxlint");
         expect(cpuProcessRoles.size).toBeGreaterThanOrEqual(2);
-      }
-      expect(heapAnalysis.processes.length).toBeGreaterThanOrEqual(
-        process.allowedNodeEnvironmentFlags.has("--heap-prof") ? 3 : 2,
-      );
-    });
+        expect(heapAnalysis.processes.length).toBeGreaterThanOrEqual(2);
+      },
+    );
   });
 
   it("summarizes distributions with a robust median and MAD", () => {

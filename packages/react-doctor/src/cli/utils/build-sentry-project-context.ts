@@ -1,3 +1,4 @@
+import { buildCapabilities } from "@react-doctor/core";
 import type { ProjectInfo } from "@react-doctor/core";
 
 export interface SentryProjectContext {
@@ -17,33 +18,42 @@ export interface SentryProjectContext {
  * omits `projectName` and `rootDirectory`, the two identifying fields, so the
  * project can't be tied back to a specific company/repo.
  */
-export const buildSentryProjectContext = (projectInfo: ProjectInfo): SentryProjectContext => ({
-  tags: {
-    "project.framework": projectInfo.framework,
-    "project.reactMajor": projectInfo.reactMajorVersion,
-    "project.typescript": projectInfo.hasTypeScript,
-    "project.reactCompiler": projectInfo.hasReactCompiler,
-    "project.expo": projectInfo.expoVersion !== null,
-    "project.reactNative": projectInfo.hasReactNativeWorkspace,
-  },
-  context: {
-    framework: projectInfo.framework,
-    reactVersion: projectInfo.reactVersion,
-    reactMajorVersion: projectInfo.reactMajorVersion,
-    hasTypeScript: projectInfo.hasTypeScript,
-    hasReactCompiler: projectInfo.hasReactCompiler,
-    tanstackQueryVersion: projectInfo.tanstackQueryVersion,
-    mobxVersion: projectInfo.mobxVersion,
-    styledComponentsVersion: projectInfo.styledComponentsVersion,
-    tailwindVersion: projectInfo.tailwindVersion,
-    zodVersion: projectInfo.zodVersion,
-    preactVersion: projectInfo.preactVersion,
-    hasReactNativeWorkspace: projectInfo.hasReactNativeWorkspace,
-    expoVersion: projectInfo.expoVersion,
-    hasReanimated: projectInfo.hasReanimated,
-    sourceFileCount: projectInfo.sourceFileCount,
-  },
-});
+export const buildSentryProjectContext = (projectInfo: ProjectInfo): SentryProjectContext => {
+  const capabilities = buildCapabilities(projectInfo);
+  const supportedRuntimes: string[] = [];
+  if (capabilities.has("react")) supportedRuntimes.push("react");
+  if (capabilities.has("three")) supportedRuntimes.push("three");
+  if (capabilities.has("remotion")) supportedRuntimes.push("remotion");
+
+  return {
+    tags: {
+      "project.framework": projectInfo.framework,
+      "project.runtime": supportedRuntimes.join("+") || "unknown",
+      "project.reactMajor": projectInfo.reactMajorVersion,
+      "project.typescript": projectInfo.hasTypeScript,
+      "project.reactCompiler": projectInfo.hasReactCompiler,
+      "project.expo": projectInfo.expoVersion !== null,
+      "project.reactNative": projectInfo.hasReactNativeWorkspace,
+    },
+    context: {
+      framework: projectInfo.framework,
+      reactVersion: projectInfo.reactVersion,
+      reactMajorVersion: projectInfo.reactMajorVersion,
+      hasTypeScript: projectInfo.hasTypeScript,
+      hasReactCompiler: projectInfo.hasReactCompiler,
+      tanstackQueryVersion: projectInfo.tanstackQueryVersion,
+      mobxVersion: projectInfo.mobxVersion,
+      styledComponentsVersion: projectInfo.styledComponentsVersion,
+      tailwindVersion: projectInfo.tailwindVersion,
+      zodVersion: projectInfo.zodVersion,
+      preactVersion: projectInfo.preactVersion,
+      hasReactNativeWorkspace: projectInfo.hasReactNativeWorkspace,
+      expoVersion: projectInfo.expoVersion,
+      hasReanimated: projectInfo.hasReanimated,
+      sourceFileCount: projectInfo.sourceFileCount,
+    },
+  };
+};
 
 // The project being scanned in the current run, captured as soon as it's
 // discovered (the `beforeLint` hook). Held at module scope so the lazy,

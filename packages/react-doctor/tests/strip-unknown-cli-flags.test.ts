@@ -191,6 +191,31 @@ describe("stripUnknownCliFlags", () => {
     ]);
   });
 
+  it("keeps runtime scan options and their values", () => {
+    expect(
+      stripUserArguments([
+        "scan",
+        "http://localhost:3000",
+        "--format",
+        "jsonl",
+        "--cdp",
+        "http://127.0.0.1:9222",
+        "--trace-out",
+        "/tmp/runtime.json.gz",
+        "--offline",
+      ]),
+    ).toEqual([
+      "scan",
+      "http://localhost:3000",
+      "--format",
+      "jsonl",
+      "--cdp",
+      "http://127.0.0.1:9222",
+      "--trace-out",
+      "/tmp/runtime.json.gz",
+    ]);
+  });
+
   it("keeps color flags on rules subcommands so the color resolver can see them", () => {
     expect(stripUserArguments(["rules", "list", "--no-color"])).toEqual([
       "rules",

@@ -19,14 +19,14 @@ import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 import { isR3fHostIntrinsic } from "./utils/is-r3f-host-intrinsic.js";
 
 interface InstancedBufferMutation {
-  readonly bufferPropertyName: "instanceColor" | "instanceMatrix";
-  readonly methodName: "setColorAt" | "setMatrixAt";
+  readonly bufferPropertyName: "instanceColor" | "instanceMatrix" | "morphTexture";
+  readonly methodName: "setColorAt" | "setMatrixAt" | "setMorphAt";
   readonly node: EsTreeNodeOfType<"CallExpression">;
   readonly refSymbolId: number;
 }
 
 interface InstancedBufferCompletion {
-  readonly bufferPropertyName: "instanceColor" | "instanceMatrix";
+  readonly bufferPropertyName: "instanceColor" | "instanceMatrix" | "morphTexture";
   readonly node: EsTreeNode;
   readonly refSymbolId: number;
 }
@@ -93,8 +93,15 @@ const getMutation = (
   const callee = stripParenExpression(node.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return null;
   const methodName = getStaticPropertyName(callee);
-  if (methodName !== "setMatrixAt" && methodName !== "setColorAt") return null;
-  const bufferPropertyName = methodName === "setMatrixAt" ? "instanceMatrix" : "instanceColor";
+  if (methodName !== "setMatrixAt" && methodName !== "setColorAt" && methodName !== "setMorphAt") {
+    return null;
+  }
+  const bufferPropertyName =
+    methodName === "setMatrixAt"
+      ? "instanceMatrix"
+      : methodName === "setColorAt"
+        ? "instanceColor"
+        : "morphTexture";
   const refSymbol = resolveCurrentRefSymbol(callee.object, context);
   if (!refSymbol) return null;
   return {
@@ -129,7 +136,11 @@ const getBufferUpdate = (
   const bufferMember = stripParenExpression(needsUpdateMember.object);
   if (!isNodeOfType(bufferMember, "MemberExpression")) return null;
   const bufferPropertyName = getStaticPropertyName(bufferMember);
-  if (bufferPropertyName !== "instanceMatrix" && bufferPropertyName !== "instanceColor") {
+  if (
+    bufferPropertyName !== "instanceMatrix" &&
+    bufferPropertyName !== "instanceColor" &&
+    bufferPropertyName !== "morphTexture"
+  ) {
     return null;
   }
   const refSymbol = resolveCurrentRefSymbol(bufferMember.object, context);
@@ -150,7 +161,13 @@ const getOpaqueRefTransfer = (
   const callee = stripParenExpression(node.callee);
   if (isNodeOfType(callee, "MemberExpression")) {
     const methodName = getStaticPropertyName(callee);
-    if (methodName === "setMatrixAt" || methodName === "setColorAt") return [];
+    if (
+      methodName === "setMatrixAt" ||
+      methodName === "setColorAt" ||
+      methodName === "setMorphAt"
+    ) {
+      return [];
+    }
   }
   if (!isImportedOrStableParameterCall(node, context.scopes)) return [];
   const completions: InstancedBufferCompletion[] = [];
@@ -159,7 +176,11 @@ const getOpaqueRefTransfer = (
     const candidate = stripParenExpression(argument);
     if (isNodeOfType(candidate, "MemberExpression")) {
       const bufferPropertyName = getStaticPropertyName(candidate);
-      if (bufferPropertyName === "instanceMatrix" || bufferPropertyName === "instanceColor") {
+      if (
+        bufferPropertyName === "instanceMatrix" ||
+        bufferPropertyName === "instanceColor" ||
+        bufferPropertyName === "morphTexture"
+      ) {
         const refSymbol = resolveCurrentRefSymbol(candidate.object, context);
         if (refSymbol) completions.push({ bufferPropertyName, node, refSymbolId: refSymbol.id });
         continue;
@@ -171,6 +192,7 @@ const getOpaqueRefTransfer = (
     if (!refSymbol) continue;
     completions.push({ bufferPropertyName: "instanceMatrix", node, refSymbolId: refSymbol.id });
     completions.push({ bufferPropertyName: "instanceColor", node, refSymbolId: refSymbol.id });
+    completions.push({ bufferPropertyName: "morphTexture", node, refSymbolId: refSymbol.id });
   }
   return completions;
 };
@@ -314,7 +336,7 @@ export const r3fRequireInstancedBufferUpdate = defineRule({
   category: "Correctness",
   severity: "error",
   recommendation:
-    "After setMatrixAt or setColorAt, set the matching instance buffer's needsUpdate flag to true",
+    "After setMatrixAt, setColorAt, or setMorphAt, set the matching instance buffer's needsUpdate flag to true",
   create: (context: RuleContext) => {
     const managedRefSymbolIds = new Set<number>();
     const mutations: InstancedBufferMutation[] = [];

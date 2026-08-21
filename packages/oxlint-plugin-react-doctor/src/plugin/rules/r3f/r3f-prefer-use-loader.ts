@@ -102,7 +102,7 @@ export const r3fPreferUseLoader = defineRule({
   severity: "warn",
   requires: ["r3f:3"],
   recommendation:
-    "Load render resources with R3F useLoader so Suspense caching can share and deduplicate them",
+    "Load render resources with R3F useLoader so Suspense caching can deduplicate them and a parent error boundary can surface failures",
   create: (context: RuleContext) => {
     const reportedCalls = new Set<EsTreeNode>();
     let importsReactThreeFiber = false;
@@ -130,7 +130,7 @@ export const r3fPreferUseLoader = defineRule({
           context.report({
             node: candidate,
             message:
-              "This Three.js loader runs imperatively in a React effect, bypassing R3F Suspense caching and resource deduplication. Load the asset with useLoader instead",
+              "This Three.js loader runs imperatively in a React effect, bypassing R3F Suspense caching, deduplication, and parental error handling. Load the asset with useLoader under Suspense and an error boundary",
           });
         });
       },

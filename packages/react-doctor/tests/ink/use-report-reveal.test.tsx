@@ -1,5 +1,6 @@
 import { Text } from "ink";
 import { render } from "ink-testing-library";
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   TUI_DEFAULT_TERMINAL_COLUMNS,
@@ -26,6 +27,7 @@ const RevealProbe = ({ issueCount, onRevealComplete }: RevealProbeProps) => {
 };
 
 afterEach(() => {
+  vi.useRealTimers();
   if (previousForceOnboarding === undefined) delete process.env[FORCE_ONBOARDING_ENV_VAR];
   else process.env[FORCE_ONBOARDING_ENV_VAR] = previousForceOnboarding;
   if (previousTerminalName === undefined) delete process.env.TERM;
@@ -35,6 +37,7 @@ afterEach(() => {
 
 describe("useReportReveal", () => {
   it("completes onboarding only after the animated report reveal", async () => {
+    vi.useFakeTimers();
     process.env[FORCE_ONBOARDING_ENV_VAR] = "1";
     process.env.TERM = "xterm-256color";
     const onRevealComplete = vi.fn();
@@ -47,13 +50,17 @@ describe("useReportReveal", () => {
 
     renderedView.rerender(<RevealProbe issueCount={2} onRevealComplete={onRevealComplete} />);
 
-    await vi.waitFor(() => expect(renderedView.lastFrame()).toContain("streaming"));
+    expect(renderedView.lastFrame()).toContain("streaming");
     expect(onRevealComplete).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(onRevealComplete).toHaveBeenCalledOnce(), {
-      timeout:
-        TUI_REPORT_ISSUE_STREAM_FRAME_DELAY_MS * TUI_REPORT_ISSUE_STREAM_MAX_STEPS +
-        ONBOARDING_SECTION_DELAY_MS * 2,
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(
+        TUI_REPORT_ISSUE_STREAM_FRAME_DELAY_MS * TUI_REPORT_ISSUE_STREAM_MAX_STEPS,
+      );
     });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ONBOARDING_SECTION_DELAY_MS);
+    });
+    expect(onRevealComplete).toHaveBeenCalledOnce();
     expect(renderedView.lastFrame()).toContain("actions");
     renderedView.unmount();
   });

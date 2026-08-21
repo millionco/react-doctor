@@ -1,0 +1,279 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 6d0fced1a6fc75e9d1605ca676483efc3114287fdce3806b6ba6064de9be5bbb
+/** DOM overlay: progress, objective state, and the tilt read-out. */
+
+import { formatClock } from "../core/util";
+import { PROFILES, MATCH } from "../game/config";
+
+export interface ScoreEntry {
+  name: string;
+  color: number;
+  wins: number;
+  alive: boolean;
+  tag: string;
+}
+
+export interface PlayerCardState {
+  name: string;
+  color: number;
+  stamina: number;
+  shoveReady: boolean;
+  bracing: boolean;
+  dashReady: boolean;
+  surge: number;
+  alive: boolean;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+const hex = (c: number): string => `#${c.toString(16).padStart(6, "0")}`;
+
+export class Hud {
+  private readonly roundValue: HTMLElement;
+  private readonly timerValue: HTMLElement;
+  private readonly scoreRows: HTMLElement[] = [];
+  private readonly scorePips: HTMLElement[][] = [];
+  private readonly scoreTags: HTMLElement[] = [];
+  private readonly banner: HTMLElement;
+  private readonly bannerTitle: HTMLElement;
+  private readonly bannerSubtitle: HTMLElement;
+  private readonly bannerHint: HTMLElement;
+  private readonly toasts: HTMLElement;
+  private readonly cardName: HTMLElement;
+  private readonly cardSwatch: HTMLElement;
+  private readonly staminaMeter: HTMLElement;
+  private readonly staminaFill: HTMLElement;
+  private readonly abilityShove: HTMLElement;
+  private readonly abilityBrace: HTMLElement;
+  private readonly abilityDash: HTMLElement;
+  private readonly needle: HTMLElement;
+  private readonly degrees: HTMLElement;
+  private readonly slopeFill: HTMLElement;
+  private readonly helpCard: HTMLElement;
+  private readonly muteRow: HTMLElement;
+  private readonly loading: HTMLElement | null;
+  private readonly playerCard: HTMLElement;
+
+  constructor(root: HTMLElement) {
+    root.replaceChildren();
+
+    // --- top ---------------------------------------------------------------
+    const top = el("div", "top");
+    const brand = el("div", "panel brand");
+    brand.append(el("h1", undefined, "Tilt Ring"), el("div", "sub", "Shove Circuit &mdash; Ring 07"));
+
+    const roundBox = el("div", "panel roundbox");
+    const roundWrap = el("div");
+    roundWrap.append(el("div", "label", "Round"));
+    this.roundValue = el("div", "value", "1");
+    roundWrap.append(this.roundValue);
+    const timerWrap = el("div");
+    timerWrap.append(el("div", "label", "Clock"));
+    this.timerValue = el("div", "value", "0:55");
+    timerWrap.append(this.timerValue);
+    roundBox.append(roundWrap, timerWrap);
+
+    const scoreboard = el("div", "panel scoreboard");
+    scoreboard.append(el("div", "label", `First to ${MATCH.winsNeeded}`));
+    for (const profile of PROFILES) {
+      const row = el("div", "score-row");
+      row.style.color = hex(profile.color);
+      const swatch = el("div", "swatch");
+      const name = el("div", "name");
+      name.append(document.createTextNode(profile.name));
+      const tag = el("span", "tag", "CPU");
+      name.append(tag);
+      const pips = el("div", "pips");
+      const pipNodes: HTMLElement[] = [];
+      for (let i = 0; i < MATCH.winsNeeded; i++) {
+        const pip = el("div", "pip");
+        pips.append(pip);
+        pipNodes.push(pip);
+      }
+      row.append(swatch, name, pips);
+      scoreboard.append(row);
+      this.scoreRows.push(row);
+      this.scorePips.push(pipNodes);
+      this.scoreTags.push(tag);
+    }
+
+    top.append(brand, roundBox, scoreboard);
+
+    // --- middle ------------------------------------------------------------
+    const middle = el("div", "middle");
+    this.banner = el("div", "banner");
+    this.bannerTitle = el("div", "title", "");
+    this.bannerSubtitle = el("div", "subtitle", "");
+    this.bannerHint = el("div", "hint", "");
+    this.banner.append(this.bannerTitle, this.bannerSubtitle, this.bannerHint);
+    this.toasts = el("div", "toasts");
+    middle.append(this.banner, this.toasts);
+
+    // --- bottom ------------------------------------------------------------
+    const bottom = el("div", "bottom");
+
+    this.playerCard = el("div", "panel playercard");
+    const who = el("div", "who");
+    this.cardSwatch = el("span", "swatch");
+    this.cardSwatch.style.cssText = "width:10px;height:10px;border-radius:3px;background:currentColor";
+    this.cardName = el("b", undefined, "EMBER");
+    who.append(this.cardSwatch, this.cardName, el("span", undefined, "&mdash; Stamina"));
+    this.staminaMeter = el("div", "meter");
+    this.staminaFill = el("i");
+    this.staminaMeter.append(this.staminaFill);
+    const abilities = el("div", "abilities");
+    this.abilityShove = el("div", "ability", "Space&nbsp;Shove");
+    this.abilityBrace = el("div", "ability", "Shift&nbsp;Brace");
+    this.abilityDash = el("div", "ability", "E&nbsp;Dash");
+    abilities.append(this.abilityShove, this.abilityBrace, this.abilityDash);
+    this.playerCard.append(who, this.staminaMeter, abilities);
+
+    const gauge = el("div", "panel gauge");
+    const dial = el("div", "dial");
+    this.needle = el("div", "needle");
+    this.needle.append(el("span"));
+    dial.append(this.needle);
+    const readout = el("div", "readout");
+    readout.append(el("div", "label", "Ring tilt &mdash; fall line"));
+    this.degrees = el("div", "deg", "0&deg;");
+    const slopeBar = el("div", "slopebar");
+    this.slopeFill = el("i");
+    slopeBar.append(this.slopeFill);
+    readout.append(this.degrees, slopeBar);
+    gauge.append(dial, readout);
+
+    this.helpCard = el("div", "panel helpcard");
+    const rows: [string, string][] = [
+      ["W A S D", "Move (relative to camera)"],
+      ["Space", "Shove &mdash; costs stamina"],
+      ["Shift", "Brace &mdash; grip, resist, recover"],
+      ["E", "Dash &mdash; close or escape"],
+      ["Drag / Wheel", "Orbit &amp; bounded zoom"],
+      ["2", "Add local player two (arrows)"],
+      ["M / H / R", "Mute &middot; Help &middot; Restart"],
+    ];
+    for (const [key, text] of rows) {
+      const row = el("div", "row");
+      row.append(el("span", undefined, text), el("span", "key", key));
+      this.helpCard.append(row);
+    }
+    this.muteRow = el("div", "row");
+    this.helpCard.append(this.muteRow);
+    this.helpCard.append(
+      el(
+        "div",
+        "note",
+        "Leave the deck and you are out. If the bell rings first, the round goes to whoever is holding the centre &mdash; which gets harder the steeper the ring.",
+      ),
+    );
+    this.helpCard.append(
+      el(
+        "div",
+        "note",
+        "<b>Learning metaphor, not instruction.</b> The slope, friction and shove impulses here are a playful stand-in for inclined-plane physics, tuned for feel rather than accuracy. Do not treat it as a validated simulation or as physics teaching material.",
+      ),
+    );
+
+    bottom.append(this.playerCard, gauge, this.helpCard);
+    root.append(top, middle, bottom);
+
+    this.loading = document.getElementById("loading");
+    this.setMuted(false);
+  }
+
+  hideLoading(): void {
+    this.loading?.classList.add("hide");
+    window.setTimeout(() => this.loading?.classList.add("hidden"), 700);
+  }
+
+  setRound(round: number): void {
+    this.roundValue.textContent = String(round);
+  }
+
+  setTimer(seconds: number, suddenDeath: boolean): void {
+    this.timerValue.textContent = formatClock(seconds);
+    this.timerValue.classList.toggle("warn", suddenDeath && seconds > 10);
+    this.timerValue.classList.toggle("crit", seconds <= 10);
+  }
+
+  setScores(entries: readonly ScoreEntry[]): void {
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const row = this.scoreRows[i];
+      const pips = this.scorePips[i];
+      const tag = this.scoreTags[i];
+      if (!entry || !row || !pips || !tag) continue;
+      row.classList.toggle("out", !entry.alive);
+      tag.textContent = entry.tag;
+      for (let p = 0; p < pips.length; p++) pips[p]?.classList.toggle("on", p < entry.wins);
+    }
+  }
+
+  setPlayerCard(state: PlayerCardState | null): void {
+    if (!state) {
+      this.playerCard.classList.add("hidden");
+      return;
+    }
+    this.playerCard.classList.remove("hidden");
+    this.playerCard.classList.toggle("out", !state.alive);
+    this.playerCard.style.color = hex(state.color);
+    this.cardName.textContent = state.name;
+    const pct = Math.max(0, Math.min(100, state.stamina));
+    this.staminaFill.style.width = `${pct}%`;
+    this.staminaMeter.classList.toggle("low", pct < 30);
+    this.abilityShove.className = `ability${state.surge > 0 ? " surge" : state.shoveReady ? " ready" : ""}`;
+    this.abilityBrace.className = `ability${state.bracing ? " active" : " ready"}`;
+    this.abilityDash.className = `ability${state.dashReady ? " ready" : ""}`;
+  }
+
+  /** `screenAngle` is the fall line measured against the current camera yaw. */
+  setTilt(degrees: number, screenAngle: number, slopeFraction: number): void {
+    this.needle.style.transform = `rotate(${screenAngle}rad)`;
+    this.degrees.innerHTML = `${degrees.toFixed(1)}&deg;`;
+    this.slopeFill.style.width = `${Math.max(0, Math.min(1, slopeFraction)) * 100}%`;
+  }
+
+  showBanner(title: string, subtitle = "", hint = "", color = "#eef3f8"): void {
+    this.bannerTitle.textContent = title;
+    this.bannerTitle.style.color = color;
+    this.bannerSubtitle.innerHTML = subtitle;
+    this.bannerHint.innerHTML = hint;
+    this.banner.classList.add("show");
+  }
+
+  hideBanner(): void {
+    this.banner.classList.remove("show");
+  }
+
+  toast(text: string, color = "#eef3f8"): void {
+    const node = el("div", "toast", text);
+    node.style.color = color;
+    this.toasts.append(node);
+    window.setTimeout(() => node.remove(), 2100);
+  }
+
+  setMuted(muted: boolean): void {
+    this.muteRow.replaceChildren();
+    this.muteRow.append(
+      el("span", undefined, muted ? "Audio muted" : "Spatial audio on"),
+      el("span", "key", "M"),
+    );
+  }
+
+  toggleHelp(): boolean {
+    const hidden = this.helpCard.classList.toggle("hidden");
+    return !hidden;
+  }
+}

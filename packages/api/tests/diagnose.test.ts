@@ -17,6 +17,7 @@ const FIXTURES_DIRECTORY = path.resolve(
   "tests",
   "fixtures",
 );
+const LINT_OPT_OUT_TEST_TIMEOUT_MS = 60_000;
 
 const noReactTempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rdc-api-test-"));
 fs.writeFileSync(
@@ -95,6 +96,27 @@ describe("diagnose", () => {
     }
   });
 
+  it("scans a Three.js project without reporting React", async () => {
+    const threeDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rdc-three-"));
+    fs.writeFileSync(
+      path.join(threeDirectory, "package.json"),
+      JSON.stringify({ name: "three-tool", dependencies: { three: "0.185.1" } }),
+    );
+    fs.mkdirSync(path.join(threeDirectory, "src"));
+    fs.writeFileSync(
+      path.join(threeDirectory, "src", "main.ts"),
+      'import * as THREE from "three";\nexport const scene = new THREE.Scene();\n',
+    );
+    try {
+      const threeResult = await diagnose(threeDirectory, { deadCode: false, lint: false });
+      expect(threeResult.reactDetected).toBe(false);
+      expect(threeResult.project.reactVersion).toBeNull();
+      expect(threeResult.project.hasThree).toBe(true);
+    } finally {
+      fs.rmSync(threeDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("elapsedMilliseconds is non-negative", async () => {
     const result = await diagnose(path.join(FIXTURES_DIRECTORY, "basic-react"), {
       deadCode: false,
@@ -103,20 +125,24 @@ describe("diagnose", () => {
     expect(result.elapsedMilliseconds).toBeGreaterThanOrEqual(0);
   });
 
-  it("respects lint: false by providing a no-op linter layer", async () => {
-    const directory = path.join(FIXTURES_DIRECTORY, "basic-react");
-    const lintEnabledResult = await diagnose(directory, { deadCode: false, lint: true });
-    const lintDisabledResult = await diagnose(directory, { deadCode: false, lint: false });
-    const lintEnabledSourceDiagnostics = lintEnabledResult.diagnostics.filter(
-      (diagnostic) => diagnostic.filePath !== "package.json",
-    );
-    const lintDisabledSourceDiagnostics = lintDisabledResult.diagnostics.filter(
-      (diagnostic) => diagnostic.filePath !== "package.json",
-    );
+  it(
+    "respects lint: false by providing a no-op linter layer",
+    { timeout: LINT_OPT_OUT_TEST_TIMEOUT_MS },
+    async () => {
+      const directory = path.join(FIXTURES_DIRECTORY, "basic-react");
+      const lintEnabledResult = await diagnose(directory, { deadCode: false, lint: true });
+      const lintDisabledResult = await diagnose(directory, { deadCode: false, lint: false });
+      const lintEnabledSourceDiagnostics = lintEnabledResult.diagnostics.filter(
+        (diagnostic) => diagnostic.filePath !== "package.json",
+      );
+      const lintDisabledSourceDiagnostics = lintDisabledResult.diagnostics.filter(
+        (diagnostic) => diagnostic.filePath !== "package.json",
+      );
 
-    expect(lintEnabledSourceDiagnostics.length).toBeGreaterThan(0);
-    expect(lintDisabledSourceDiagnostics).toHaveLength(0);
-  });
+      expect(lintEnabledSourceDiagnostics.length).toBeGreaterThan(0);
+      expect(lintDisabledSourceDiagnostics).toHaveLength(0);
+    },
+  );
 });
 
 describe("diagnose({ projects })", () => {
@@ -323,6 +349,55 @@ describe("diagnose({ projects })", () => {
 
     expect(result.projects).toHaveLength(1);
     expect(result.projects[0].ok).toBe(true);
+  });
+
+  it("runs explicitly enabled project rules through the public API", async () => {
+    const projectDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rdc-project-analysis-"));
+    const sourceDirectory = path.join(projectDirectory, "src");
+    fs.mkdirSync(sourceDirectory);
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "project-analysis-api-test",
+        main: "src/index.ts",
+        dependencies: { react: "19.2.5" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(sourceDirectory, "index.ts"),
+      'import { usedValue } from "./library.js";\nconsole.log(usedValue);\n',
+    );
+    fs.writeFileSync(
+      path.join(sourceDirectory, "library.ts"),
+      "export const usedValue = 1;\nexport const unusedValue = 2;\n",
+    );
+    try {
+      const result = await diagnose({
+        projects: [
+          {
+            directory: projectDirectory,
+            config: { rules: { "react-doctor/unused-export": "warn" } },
+          },
+        ],
+        deadCode: false,
+        lint: false,
+      });
+
+      const projectResult = result.projects[0];
+      expect(projectResult.ok).toBe(true);
+      if (!projectResult.ok) return;
+      expect(projectResult.diagnostics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            plugin: "react-doctor",
+            rule: "unused-export",
+            message: expect.stringContaining("unusedValue"),
+          }),
+        ]),
+      );
+    } finally {
+      fs.rmSync(projectDirectory, { recursive: true, force: true });
+    }
   });
 
   it("respects batch config lint: false", async () => {

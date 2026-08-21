@@ -38,6 +38,7 @@ const LAYOUT_MEASUREMENT_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "offsetWidth",
   "scrollHeight",
   "clientHeight",
+  "className",
   "offsetHeight",
   "scrollTop",
   "scrollLeft",
@@ -56,6 +57,7 @@ const POST_MOUNT_GLOBAL_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 const REF_FACTORY_CALLEE_NAMES: ReadonlySet<string> = new Set(["useRef", "createRef"]);
+const DOM_ELEMENT_IDENTIFIER_NAMES: ReadonlySet<string> = new Set(["element", "node"]);
 
 const hasRefLikeName = (name: string): boolean =>
   name === "ref" ||
@@ -165,6 +167,12 @@ const isRefLikeReceiver = (
   return false;
 };
 
+const isClassNameReceiver = (receiver: EsTreeNode): boolean => {
+  if (!isNodeOfType(receiver, "Identifier")) return isRefLikeReceiver(receiver);
+  if (DOM_ELEMENT_IDENTIFIER_NAMES.has(receiver.name)) return true;
+  return resolvesToRefCurrentAlias(receiver, new Set());
+};
+
 // A member read that can only be answered by the live DOM: an unambiguous DOM
 // query API, or `.current` / a layout measure on a ref-like receiver
 // (`viewportRef.current`, `ref.current.offsetWidth`). Plain-data lookalikes
@@ -176,6 +184,7 @@ export const isPostMountMemberRead = (node: EsTreeNode): boolean => {
   const memberName = node.property.name;
   if (DOM_QUERY_MEMBER_NAMES.has(memberName)) return true;
   if (!LAYOUT_MEASUREMENT_MEMBER_NAMES.has(memberName)) return false;
+  if (memberName === "className") return isClassNameReceiver(node.object as EsTreeNode);
   return isRefLikeReceiver(node.object as EsTreeNode);
 };
 

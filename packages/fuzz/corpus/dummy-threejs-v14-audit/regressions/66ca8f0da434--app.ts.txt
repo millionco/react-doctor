@@ -1,0 +1,902 @@
+// rule: js-set-map-lookups
+// file-path: src/app.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 66ca8f0da43402805a6388db0299b6fe3ac84e5f3f07c96cfee52942b2ed7629
+/**
+ * Aircraft Lifecycle Explorer.
+ *
+ * Holds the application state, drives the analysis, and maps that analysis onto
+ * the scene: token status, gate holds, dependency emphasis, the bottleneck
+ * lens, the disassembly of the section, and the label layer.
+ */
+
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { MaterialLibrary } from "./core/materials";
+import { ProgrammeGraph, type Analysis } from "./data/graph";
+import { MODEL, STATUS_COLORS } from "./data/model";
+import type { StatusKey } from "./data/types";
+import { buildEdges, type EdgeBuild } from "./scene/edges";
+import { buildEnvironment } from "./scene/environment";
+import { BARREL, buildFuselage, type FuselageBuild } from "./scene/fuselage";
+import { buildProcess, RING, type ProcessBuild } from "./scene/process";
+import type { AppState, Ref, TraceMode } from "./state";
+import { refKey } from "./state";
+import { LabelLayer, type LabelSpec } from "./ui/labels";
+import { Ui } from "./ui/panels";
+
+const ACCENT = new THREE.Color(0x9fc4d8);
+const UPSTREAM = new THREE.Color(0x7fa3bd);
+const DOWNSTREAM = new THREE.Color(0xc9a468);
+const CRITICAL = new THREE.Color(0xcf7a68);
+
+interface CameraShot {
+  position: THREE.Vector3;
+  target: THREE.Vector3;
+  t: number;
+  duration: number;
+  from: THREE.Vector3;
+  fromTarget: THREE.Vector3;
+}
+
+export class Explorer {
+  private renderer: THREE.WebGLRenderer;
+  private scene = new THREE.Scene();
+  private camera: THREE.PerspectiveCamera;
+  private controls: OrbitControls;
+  private lib: MaterialLibrary;
+  private graph: ProgrammeGraph;
+  private analysis: Analysis;
+  private fuselage: FuselageBuild;
+  private process: ProcessBuild;
+  private edges: EdgeBuild;
+  private labels: LabelLayer;
+  private ui: Ui;
+
+  private state: AppState;
+  private raycaster = new THREE.Raycaster();
+  private pointer = new THREE.Vector2();
+  private pickables: THREE.Object3D[] = [];
+  private clock = new THREE.Clock();
+  private shot: CameraShot | null = null;
+  private labelTimer = 0;
+  private componentTargets = new Map<string, number>();
+  private ghostMaterial: THREE.MeshStandardMaterial;
+  private originalMaterials = new WeakMap<THREE.Mesh, THREE.Material | THREE.Material[]>();
+  private highlightClones = new Map<THREE.Material, THREE.Material>();
+  private highlighted: THREE.Mesh[] = [];
+  private dragged = false;
+  private downAt = { x: 0, y: 0 };
+  private hullSphere = new THREE.Sphere(new THREE.Vector3(0, BARREL.centreY, 0), 3.9);
+  /**
+   * Adaptive render scale. The scene is deliberately fill-rate heavy; on a
+   * software rasteriser or a weak GPU the buffer is scaled down until the frame
+   * budget is met, and scaled back up when there is headroom.
+   */
+  private perf = { scale: 1, base: 1, avgMs: 16, cooldown: 0 };
+  /**
+   * Seconds of "something is happening". While this is positive the scene is
+   * redrawn every frame at the adaptive scale; once it runs out the renderer
+   * draws one last frame at full resolution and then stops until the next
+   * change. On hardware that can keep up, the idle path is never taken.
+   */
+  private activity = 1.5;
+  private settled = false;
+  private hoverTimer = 0;
+  private pointerOverCanvas = false;
+
+  constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
+    this.perf.base = Math.min(devicePixelRatio, 1.5);
+    this.renderer.setPixelRatio(this.perf.base);
+    this.renderer.setSize(innerWidth, innerHeight);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // the lighting rig is static: the shadow map is only re-rendered when the
+    // section is actually moving, which keeps the cost off the steady state
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = true;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    this.camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.4, 400);
+    this.camera.position.set(-28.5, 19.5, 9.5);
+
+    this.controls = new OrbitControls(this.camera, canvas);
+    this.controls.target.set(1.5, 2.8, 0);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.075;
+    this.controls.minDistance = 6;
+    this.controls.maxDistance = 72;
+    this.controls.maxPolarAngle = Math.PI * 0.495;
+    this.controls.rotateSpeed = 0.62;
+
+    this.lib = new MaterialLibrary();
+    this.graph = new ProgrammeGraph(MODEL);
+
+    this.state = {
+      currentStage: 2,
+      resolved: new Set(),
+      selection: null,
+      hover: null,
+      trace: "off",
+      owners: new Set(MODEL.owners.map((o) => o.id)),
+      statuses: new Set<StatusKey>(["complete", "active", "blocked", "planned"]),
+      criticalOnly: false,
+      lens: false,
+      showFailures: true,
+      compare: [null, null],
+      evidence: null,
+      explode: 0,
+    };
+
+    const env = buildEnvironment(this.renderer, this.scene, this.lib);
+
+    this.fuselage = buildFuselage(this.lib);
+    this.scene.add(this.fuselage.root);
+    this.scene.add(this.fuselage.cradle);
+
+    this.process = buildProcess(MODEL, this.lib);
+    this.scene.add(this.process.root);
+
+    const centres = new Map<string, THREE.Vector3>();
+    for (const [id, s] of this.process.stages) centres.set(id, s.centre);
+    this.edges = buildEdges(MODEL, this.process.items, centres);
+    this.scene.add(this.edges.root);
+
+    // authored contact darkening under the heavy masses
+    env.addContactShadow(0, 0, 4.6, 3.4, 0.62);
+    for (const s of this.process.stages.values()) {
+      env.addContactShadow(s.centre.x, s.centre.z, RING.padWidth * 0.62, RING.padDepth * 0.62, 0.5);
+    }
+    for (const g of this.process.gates.values()) {
+      const p = g.group.position;
+      env.addContactShadow(p.x, p.z, 1.3, 1.3, 0.4);
+    }
+    env.keyLight.target.position.set(0, 2.0, 0);
+
+    this.ghostMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2c343c,
+      roughness: 0.85,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.16,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      emissive: 0x101820,
+      emissiveIntensity: 1,
+    });
+
+    this.pickables = [this.process.root, this.fuselage.root];
+
+    this.labels = new LabelLayer(uiRoot);
+    this.labels.insets = { left: 348, right: 384, top: 8, bottom: 26 };
+    this.ui = new Ui(uiRoot, MODEL, {
+      select: (ref) => this.select(ref),
+      frame: (ref) => this.frame(ref),
+      advance: () => this.advance(),
+      rollback: () => this.rollback(),
+      reset: () => this.reset(),
+      setTrace: (m) => this.setTrace(m),
+      toggleOwner: (id) => this.toggleSet(this.state.owners, id),
+      toggleStatus: (s) => this.toggleSet(this.state.statuses, s),
+      toggleCritical: () => {
+        this.state.criticalOnly = !this.state.criticalOnly;
+        this.refresh();
+      },
+      toggleLens: () => {
+        this.state.lens = !this.state.lens;
+        this.ui.toast(
+          this.state.lens
+            ? "Bottleneck lens on — token height above the pad is the share of the programme held behind it."
+            : "Bottleneck lens off.",
+        );
+        this.refresh();
+      },
+      toggleFailures: () => {
+        this.state.showFailures = !this.state.showFailures;
+        this.refresh();
+      },
+      pin: (ref) => this.pin(ref),
+      unpin: (slot) => {
+        this.state.compare[slot] = null;
+        this.refresh();
+      },
+      resolve: (id) => this.resolve(id),
+      openEvidence: (id) => {
+        this.state.evidence = id;
+        this.refresh();
+      },
+      setExplode: (v) => {
+        this.state.explode = v;
+        this.refresh();
+      },
+    });
+
+    this.analysis = this.graph.analyse(this.state);
+    this.refresh();
+
+    this.bindInput(canvas);
+    addEventListener("resize", () => {
+      this.onResize();
+      this.markActive(1.0);
+    });
+    this.onResize();
+
+    const blocked = [...this.analysis.nodes.values()].filter((n) => n.blocked);
+    this.ui.toast(
+      `<span class="hl">TRR gate on hold.</span> ${blocked.length} work items are blocked by unsourced capability — ` +
+        `select one to trace what it holds up, then accept its rework loop to see the schedule move.`,
+    );
+  }
+
+  /* ------------------------------------------------------------ input */
+
+  private bindInput(canvas: HTMLCanvasElement): void {
+    canvas.addEventListener("pointerdown", (e) => {
+      this.dragged = false;
+      this.downAt = { x: e.clientX, y: e.clientY };
+      this.markActive(1.2);
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 5) this.dragged = true;
+      this.pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+      this.pointerOverCanvas = true;
+      this.markActive(1.0);
+    });
+    canvas.addEventListener("pointerleave", () => {
+      this.pointerOverCanvas = false;
+      if (this.state.hover) {
+        this.state.hover = null;
+        document.body.style.cursor = "default";
+        this.applyVisuals();
+        this.markActive(0.3);
+      }
+    });
+    canvas.addEventListener("pointerup", (e) => {
+      if (this.dragged) return;
+      this.pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+      const hit = this.pick();
+      this.select(hit);
+    });
+    canvas.addEventListener("dblclick", () => {
+      const hit = this.pick();
+      if (hit) this.frame(hit);
+    });
+    addEventListener("keydown", (e) => {
+      this.markActive(1.2);
+      this.onKey(e);
+    });
+    canvas.addEventListener("wheel", () => this.markActive(1.0), { passive: true });
+  }
+
+  private pick(): Ref | null {
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const hits = this.raycaster.intersectObjects(this.pickables, true);
+    for (const hit of hits) {
+      let obj: THREE.Object3D | null = hit.object;
+      while (obj) {
+        const kind = obj.userData.pickKind as string | undefined;
+        if (kind === "item" || kind === "stage" || kind === "gate") {
+          return { kind: kind as Ref["kind"], id: obj.userData.id as string };
+        }
+        if (kind === "component" && obj.userData.componentId) {
+          return { kind: "component", id: obj.userData.componentId as string };
+        }
+        obj = obj.parent;
+      }
+    }
+    return null;
+  }
+
+  private onKey(e: KeyboardEvent): void {
+    const key = e.key.toLowerCase();
+    if (key >= "1" && key <= "6") {
+      const stage = MODEL.stages[Number(key) - 1];
+      if (stage) this.select({ kind: "stage", id: stage.id });
+      return;
+    }
+    switch (key) {
+      case "t":
+        this.setTrace(this.state.trace === "off" ? "both" : this.state.trace === "both" ? "down" : this.state.trace === "down" ? "up" : "off");
+        break;
+      case "c":
+        if (this.state.selection) this.pin(this.state.selection);
+        break;
+      case "b":
+        this.state.lens = !this.state.lens;
+        this.refresh();
+        break;
+      case "e": {
+        const sel = this.state.selection;
+        if (sel?.kind === "item") {
+          const item = MODEL.items.find((i) => i.id === sel.id);
+          const first = item?.evidence[0];
+          this.state.evidence = this.state.evidence ? null : (first?.id ?? null);
+          this.refresh();
+        }
+        break;
+      }
+      case "]":
+        this.advance();
+        break;
+      case "[":
+        this.rollback();
+        break;
+      case "r":
+        this.reset();
+        break;
+      case "escape":
+        this.select(null);
+        break;
+      case "f":
+        this.frame(this.state.selection);
+        break;
+    }
+  }
+
+  /* ------------------------------------------------------------ state */
+
+  private toggleSet<T>(set: Set<T>, value: T): void {
+    if (set.has(value)) set.delete(value);
+    else set.add(value);
+    this.refresh();
+  }
+
+  private select(ref: Ref | null): void {
+    const same = refKey(ref) === refKey(this.state.selection);
+    this.state.selection = same ? null : ref;
+    this.state.evidence = null;
+    this.refresh();
+  }
+
+  private setTrace(mode: TraceMode): void {
+    this.state.trace = mode;
+    if (mode !== "off" && this.state.selection?.kind !== "item") {
+      // trace needs an item; fall back to the heaviest bottleneck
+      let best = null as null | string;
+      let bw = -1;
+      for (const n of this.analysis.nodes.values()) {
+        if (n.bottleneck > bw) {
+          bw = n.bottleneck;
+          best = n.item.id;
+        }
+      }
+      if (best) this.state.selection = { kind: "item", id: best };
+    }
+    this.refresh();
+  }
+
+  private pin(ref: Ref): void {
+    const [a, b] = this.state.compare;
+    if (refKey(a) === refKey(ref) || refKey(b) === refKey(ref)) return;
+    this.state.compare = a ? [b, ref] : [ref, b];
+    if (!a && !b) this.state.compare = [ref, null];
+    this.refresh();
+  }
+
+  private advance(): void {
+    const stage = MODEL.stages[this.state.currentStage];
+    if (!stage) return;
+    const met = this.analysis.stages.get(stage.id)!;
+    if (met.gateStatus === "hold") {
+      const blocker = met.blockers[0]!;
+      const node = this.analysis.nodes.get(blocker)!;
+      const failure = MODEL.failures.find((f) => f.from === blocker);
+      this.state.selection = { kind: "item", id: blocker };
+      this.state.trace = "down";
+      this.state.showFailures = true;
+      this.refresh();
+      this.ui.toast(
+        `<span class="hl">${stage.gate.code} refused.</span> ${node.item.label} is blocked by “${node.capability.label}”. ` +
+          (failure ? `The armed rework loop returns to ${MODEL.items.find((i) => i.id === failure.to)?.label}.` : ""),
+      );
+      return;
+    }
+    if (this.state.currentStage >= MODEL.stages.length - 1) return;
+    this.state.currentStage += 1;
+    this.refresh();
+    const next = MODEL.stages[this.state.currentStage]!;
+    this.ui.toast(`<span class="hl">${stage.gate.code} passed.</span> ${next.label} is now active — ${next.buildNote}`);
+  }
+
+  private rollback(): void {
+    if (this.state.currentStage === 0) return;
+    this.state.currentStage -= 1;
+    this.refresh();
+    const stage = MODEL.stages[this.state.currentStage]!;
+    this.ui.toast(`Rolled back to ${stage.code} ${stage.label}.`);
+  }
+
+  private resolve(id: string): void {
+    const before = this.analysis.projectDays;
+    if (this.state.resolved.has(id)) this.state.resolved.delete(id);
+    else this.state.resolved.add(id);
+    this.refresh();
+    const after = this.analysis.projectDays;
+    const node = this.analysis.nodes.get(id)!;
+    const delta = Math.round(after - before);
+    this.ui.toast(
+      node.resolved
+        ? `<span class="hl">Rework accepted on ${node.item.label}.</span> Capability gap closed by redesign; programme ${
+            delta <= 0 ? `pulls in ${Math.abs(delta)} d` : `moves out ${delta} d`
+          } and ${node.downstream.length} downstream items are released.`
+        : `Rework reversed on ${node.item.label}; the capability gap is open again.`,
+    );
+  }
+
+  private reset(): void {
+    this.state.currentStage = 2;
+    this.state.resolved.clear();
+    this.state.selection = null;
+    this.state.trace = "off";
+    this.state.owners = new Set(MODEL.owners.map((o) => o.id));
+    this.state.statuses = new Set<StatusKey>(["complete", "active", "blocked", "planned"]);
+    this.state.criticalOnly = false;
+    this.state.lens = false;
+    this.state.showFailures = true;
+    this.state.compare = [null, null];
+    this.state.evidence = null;
+    this.state.explode = 0;
+    this.shot = null;
+    this.controls.target.set(1.5, 2.8, 0);
+    this.camera.position.set(-28.5, 19.5, 9.5);
+    this.refresh();
+    this.ui.toast("Explorer reset to the qualification stage baseline.");
+  }
+
+  /* -------------------------------------------------------- visuals */
+
+  private refresh(): void {
+    this.analysis = this.graph.analyse(this.state);
+    this.applyVisuals();
+    this.ui.render(this.state, this.analysis);
+    this.renderer.shadowMap.needsUpdate = true;
+    this.markActive(1.0);
+  }
+
+  private traceSets(): { up: Set<string>; down: Set<string>; focus: string | null } {
+    const sel = this.state.selection;
+    const up = new Set<string>();
+    const down = new Set<string>();
+    if (sel?.kind !== "item" || this.state.trace === "off") return { up, down, focus: sel?.kind === "item" ? sel.id : null };
+    const node = this.analysis.nodes.get(sel.id);
+    if (!node) return { up, down, focus: null };
+    if (this.state.trace === "up" || this.state.trace === "both") for (const id of node.upstream) up.add(id);
+    if (this.state.trace === "down" || this.state.trace === "both") for (const id of node.downstream) down.add(id);
+    return { up, down, focus: sel.id };
+  }
+
+  private passesFilter(id: string): boolean {
+    const n = this.analysis.nodes.get(id);
+    if (!n) return false;
+    if (!this.state.owners.has(n.item.owner)) return false;
+    if (!this.state.statuses.has(n.status)) return false;
+    if (this.state.criticalOnly && !n.critical) return false;
+    return true;
+  }
+
+  private applyVisuals(): void {
+    const { up, down, focus } = this.traceSets();
+    const tracing = up.size > 0 || down.size > 0;
+    for (const [id, vis] of this.process.items) {
+      const n = this.analysis.nodes.get(id)!;
+      const pass = this.passesFilter(id);
+      const isFocus = focus === id;
+      const hovered = this.state.hover?.kind === "item" && this.state.hover.id === id;
+      const inUp = up.has(id);
+      const inDown = down.has(id);
+      const relevant = !tracing || isFocus || inUp || inDown;
+      const dim = !pass || (tracing && !relevant);
+
+      const statusColor = new THREE.Color(STATUS_COLORS[n.status] ?? 0x5d6672);
+      const collar = vis.collar.material as THREE.MeshStandardMaterial;
+      collar.color.copy(statusColor);
+      collar.emissive.copy(statusColor);
+      collar.emissiveIntensity = dim ? 0.08 : n.status === "blocked" ? 0.85 : n.status === "active" ? 0.6 : 0.3;
+
+      const body = vis.body.material as THREE.MeshStandardMaterial;
+      body.color.setScalar(dim ? 0.28 : 1);
+      if (isFocus) body.emissive.copy(ACCENT).multiplyScalar(0.22);
+      else if (hovered) body.emissive.copy(ACCENT).multiplyScalar(0.13);
+      else if (inUp) body.emissive.copy(UPSTREAM).multiplyScalar(0.15);
+      else if (inDown) body.emissive.copy(DOWNSTREAM).multiplyScalar(0.15);
+      else if (n.critical && this.state.criticalOnly) body.emissive.copy(CRITICAL).multiplyScalar(0.14);
+      else body.emissive.setScalar(0);
+      body.needsUpdate = false;
+
+      const owner = MODEL.owners.find((o) => o.id === n.item.owner)!;
+      const chip = vis.ownerChip.material as THREE.MeshStandardMaterial;
+      chip.color.setHSL(owner.hue / 360, dim ? 0.05 : 0.34, dim ? 0.16 : 0.56);
+
+      const lift = this.state.lens ? n.bottleneck * 1.7 : 0;
+      vis.group.position.y = vis.basePos.y + lift;
+      vis.stem.visible = lift > 0.02;
+      if (vis.stem.visible) {
+        vis.stem.scale.y = lift;
+        vis.stem.position.y = -lift / 2;
+      }
+    }
+
+    // gates
+    for (const [gid, gate] of this.process.gates) {
+      const stage = MODEL.stages.find((s) => s.gate.id === gid)!;
+      const met = this.analysis.stages.get(stage.id)!;
+      const lampMat = gate.lamp.material as THREE.MeshStandardMaterial;
+      const color =
+        met.gateStatus === "passed" ? 0x4c8a76 : met.gateStatus === "hold" ? 0xb0554a : met.gateReady ? 0xc08a3e : 0x49525d;
+      lampMat.emissive.setHex(color);
+      lampMat.emissiveIntensity = met.gateStatus === "hold" ? 2.4 : met.gateReady ? 1.9 : 1.0;
+      gate.bar.visible = met.gateStatus === "hold";
+    }
+
+    // dependency and failure paths
+    for (const edge of this.edges.edges) {
+      if (edge.kind === "spine") {
+        edge.material.emissiveIntensity = 0.7;
+        continue;
+      }
+      if (edge.kind === "fail") {
+        const armed = this.analysis.nodes.get(edge.from)?.blocked || this.state.resolved.has(edge.from);
+        edge.mesh.visible = this.state.showFailures;
+        edge.material.emissiveIntensity = armed ? 1.9 : 0.42;
+        edge.material.color.setHex(armed ? 0x50302a : 0x2c2422);
+        continue;
+      }
+      const a = this.analysis.nodes.get(edge.from);
+      const b = this.analysis.nodes.get(edge.to);
+      const onTrace =
+        tracing &&
+        ((up.has(edge.from) || edge.from === focus) && (up.has(edge.to) || edge.to === focus) ||
+          ((down.has(edge.from) || edge.from === focus) && (down.has(edge.to) || edge.to === focus)));
+      const visibleByFilter = this.passesFilter(edge.from) && this.passesFilter(edge.to);
+      const critical = !!a?.critical && !!b?.critical && b.item.deps.includes(edge.from);
+      edge.mesh.visible = visibleByFilter || onTrace;
+      if (onTrace) {
+        const isUp = up.has(edge.from) || (edge.to === focus && up.has(edge.from));
+        edge.material.emissive.copy(isUp ? UPSTREAM : DOWNSTREAM);
+        edge.material.emissiveIntensity = 2.0;
+      } else if (this.state.criticalOnly && critical) {
+        edge.material.emissive.copy(CRITICAL);
+        edge.material.emissiveIntensity = 1.6;
+      } else {
+        edge.material.emissive.setHex(0x5c7182);
+        edge.material.emissiveIntensity = tracing ? 0.22 : 0.85;
+      }
+    }
+
+    this.applyBuildState();
+    this.applyComponentHighlight();
+  }
+
+  /** Component visibility, ghosting and explode targets follow the stage reached. */
+  private applyBuildState(): void {
+    const stage = this.state.currentStage;
+    const selectedComponent = this.state.selection?.kind === "component" ? this.state.selection.id : null;
+    // which components the selected work item touches
+    const selectedItem = this.state.selection?.kind === "item" ? this.analysis.nodes.get(this.state.selection.id) : null;
+    const itemComponent = selectedItem?.item.component ?? null;
+
+    for (const [id, node] of this.fuselage.components) {
+      const visible = stage >= node.ghostFrom;
+      const ghost = stage < node.introStage;
+      node.group.visible = visible;
+      for (const mesh of node.meshes) {
+        if (!this.originalMaterials.has(mesh)) this.originalMaterials.set(mesh, mesh.material);
+        const original = this.originalMaterials.get(mesh)!;
+        mesh.material = ghost ? this.ghostMaterial : original;
+        mesh.castShadow = !ghost;
+      }
+      let t = this.state.explode;
+      if (selectedComponent === id || itemComponent === id) t = Math.max(t, 0.55);
+      if (node.removeAtRetire && stage >= 5) t = Math.max(t, 1);
+      this.componentTargets.set(id, t);
+    }
+  }
+
+  private applyComponentHighlight(): void {
+    for (const mesh of this.highlighted) {
+      const original = this.originalMaterials.get(mesh);
+      if (original) mesh.material = original;
+    }
+    this.highlighted.length = 0;
+
+    const sel = this.state.selection;
+    let componentId: string | null = null;
+    if (sel?.kind === "component") componentId = sel.id;
+    else if (sel?.kind === "item") componentId = this.analysis.nodes.get(sel.id)?.item.component ?? null;
+    if (!componentId) return;
+
+    const node = this.fuselage.components.get(componentId);
+    if (!node || !node.group.visible) return;
+    if (this.state.currentStage < node.introStage) return;
+
+    for (const mesh of node.meshes) {
+      const original = this.originalMaterials.get(mesh) ?? mesh.material;
+      if (Array.isArray(original)) continue;
+      let clone = this.highlightClones.get(original);
+      if (!clone) {
+        clone = original.clone();
+        const std = clone as THREE.MeshStandardMaterial;
+        if (std.emissive) {
+          std.emissive = ACCENT.clone().multiplyScalar(0.18);
+          std.emissiveIntensity = 1;
+        }
+        this.highlightClones.set(original, clone);
+      }
+      mesh.material = clone;
+      this.highlighted.push(mesh);
+    }
+  }
+
+  /* --------------------------------------------------------- labels */
+
+  /** Cheap proxy occlusion test so labels never float on top of the airframe. */
+  private occluded(point: THREE.Vector3): boolean {
+    const cam = this.camera.position;
+    if (cam.distanceTo(this.hullSphere.center) < this.hullSphere.radius) return false;
+    const dir = point.clone().sub(cam);
+    const len = dir.length();
+    if (len < 0.001) return false;
+    dir.divideScalar(len);
+    const hit = new THREE.Ray(cam, dir).intersectSphere(this.hullSphere, new THREE.Vector3());
+    return !!hit && hit.distanceTo(cam) < len - 0.4;
+  }
+
+  private buildLabels(): LabelSpec[] {
+    const specs: LabelSpec[] = [];
+    const { up, down, focus } = this.traceSets();
+
+    for (const stage of MODEL.stages) {
+      const vis = this.process.stages.get(stage.id)!;
+      const met = this.analysis.stages.get(stage.id)!;
+      if (this.occluded(vis.labelAnchor)) continue;
+      specs.push({
+        id: `stage-${stage.id}`,
+        text: `${stage.code} ${stage.label}`,
+        sub: `${Math.round(met.span / 5)} wk`,
+        anchor: vis.labelAnchor,
+        priority: 400 + (stage.index === this.state.currentStage ? 50 : 0),
+        tone: "stage",
+        pinned: this.state.selection?.kind === "stage" && this.state.selection.id === stage.id,
+      });
+    }
+
+    for (const [gid, gate] of this.process.gates) {
+      const stage = MODEL.stages.find((s) => s.gate.id === gid)!;
+      const met = this.analysis.stages.get(stage.id)!;
+      if (this.occluded(gate.labelAnchor)) continue;
+      specs.push({
+        id: `gate-${gid}`,
+        text: stage.gate.code,
+        sub: met.gateStatus === "hold" ? "HOLD" : met.gateStatus === "passed" ? "passed" : met.gateReady ? "ready" : "pending",
+        anchor: gate.labelAnchor,
+        priority: 300 + (met.gateStatus === "hold" ? 60 : 0),
+        tone: "gate",
+      });
+    }
+
+    for (const [id, vis] of this.process.items) {
+      const n = this.analysis.nodes.get(id)!;
+      if (!this.passesFilter(id)) continue;
+      const isFocus = focus === id;
+      const traced = up.has(id) || down.has(id);
+      const tracing = up.size > 0 || down.size > 0;
+      if (tracing && !traced && !isFocus) continue;
+      const world = vis.group.getWorldPosition(new THREE.Vector3());
+      const anchor = new THREE.Vector3(world.x, world.y + vis.height + 0.26, world.z);
+      if (this.occluded(anchor)) continue;
+      specs.push({
+        id: `item-${id}`,
+        text: n.item.label,
+        sub: `${n.item.owner.toUpperCase()} · ${n.duration}d${n.float === 0 ? " · CP" : ""}`,
+        anchor,
+        priority: isFocus ? 350 : traced ? 200 + Math.round(n.bottleneck * 40) : 60 + Math.round(n.bottleneck * 80),
+        tone: n.status,
+        pinned: isFocus,
+      });
+    }
+
+    const sel = this.state.selection;
+    let componentId: string | null = null;
+    if (sel?.kind === "component") componentId = sel.id;
+    else if (sel?.kind === "item") componentId = this.analysis.nodes.get(sel.id)?.item.component ?? null;
+    if (componentId) {
+      const node = this.fuselage.components.get(componentId);
+      const comp = MODEL.components.find((c) => c.id === componentId);
+      if (node && comp && node.group.visible) {
+        const world = node.group.localToWorld(node.centre.clone());
+        specs.push({
+          id: `component-${componentId}`,
+          text: comp.short,
+          sub: `${comp.massKg} kg · ${comp.materialClass}`,
+          anchor: world,
+          priority: 380,
+          tone: "component",
+          pinned: true,
+        });
+      }
+    }
+
+    return specs;
+  }
+
+  /* --------------------------------------------------------- camera */
+
+  private frame(ref: Ref | null): void {
+    if (!ref) return;
+    let target = new THREE.Vector3();
+    let distance = 10;
+    if (ref.kind === "item") {
+      const vis = this.process.items.get(ref.id);
+      if (!vis) return;
+      target = vis.group.getWorldPosition(new THREE.Vector3()).setY(vis.anchor.y);
+      distance = 6.5;
+    } else if (ref.kind === "stage") {
+      const vis = this.process.stages.get(ref.id);
+      if (!vis) return;
+      target = vis.centre.clone().setY(1.4);
+      distance = 11;
+    } else if (ref.kind === "gate") {
+      const vis = this.process.gates.get(ref.id);
+      if (!vis) return;
+      target = vis.group.position.clone().setY(1.7);
+      distance = 8;
+    } else {
+      const node = this.fuselage.components.get(ref.id);
+      if (!node) return;
+      target = node.group.localToWorld(node.centre.clone());
+      distance = 8.5;
+    }
+
+    const radial = new THREE.Vector3(target.x, 0, target.z);
+    if (radial.lengthSq() < 0.5) radial.set(1, 0, 0.8);
+    radial.normalize();
+    const inward = ref.kind === "component" ? 1 : -1;
+    const position = target
+      .clone()
+      .addScaledVector(radial, inward * distance * 0.82)
+      .add(new THREE.Vector3(0, distance * 0.5, 0));
+
+    this.shot = {
+      position,
+      target,
+      t: 0,
+      duration: 0.95,
+      from: this.camera.position.clone(),
+      fromTarget: this.controls.target.clone(),
+    };
+    this.markActive(1.4);
+  }
+
+  /* ---------------------------------------------------------- frame */
+
+  private onResize(): void {
+    this.camera.aspect = innerWidth / innerHeight;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setPixelRatio(this.perf.base * this.perf.scale);
+    this.renderer.setSize(innerWidth, innerHeight);
+  }
+
+  private adaptResolution(dt: number): void {
+    const ms = dt * 1000;
+    this.perf.avgMs = this.perf.avgMs * 0.6 + ms * 0.4;
+    this.perf.cooldown -= dt;
+    if (this.perf.cooldown > 0) return;
+    const MIN = 0.6;
+    if (this.perf.avgMs > 110 && this.perf.scale > MIN) {
+      this.perf.scale = Math.max(MIN, this.perf.scale * 0.78);
+      this.perf.cooldown = 0.25;
+      this.onResize();
+    } else if (this.perf.avgMs < 26 && this.perf.scale < 1) {
+      this.perf.scale = Math.min(1, this.perf.scale * 1.1);
+      this.perf.cooldown = 1.5;
+      this.onResize();
+    }
+  }
+
+  /** Exposed for profiling and for driving the view from the console. */
+  get internals(): {
+    scene: THREE.Scene;
+    renderer: THREE.WebGLRenderer;
+    camera: THREE.PerspectiveCamera;
+    controls: OrbitControls;
+    look(position: [number, number, number], target: [number, number, number]): void;
+  } {
+    return {
+      scene: this.scene,
+      renderer: this.renderer,
+      camera: this.camera,
+      controls: this.controls,
+      look: (position, target) => {
+        this.camera.position.set(...position);
+        this.controls.target.set(...target);
+        this.markActive(3);
+      },
+    };
+  }
+
+  /** Flags the scene as changing, so it is redrawn until it settles again. */
+  private markActive(seconds = 0.7): void {
+    this.activity = Math.max(this.activity, seconds);
+    this.settled = false;
+  }
+
+  tick(): void {
+    const raw = this.clock.getDelta();
+    const dt = Math.min(0.05, raw);
+    // the countdown uses real elapsed time, not the clamped animation delta,
+    // so a slow machine settles after a couple of frames rather than dozens
+    this.activity -= Math.min(0.6, raw);
+    const smooth = this.perf.avgMs < 34;
+    const drawing = this.activity > 0 || smooth;
+    if (drawing) this.edges.update(dt);
+
+    // eased component disassembly
+    let moving = false;
+    for (const [id, node] of this.fuselage.components) {
+      const target = this.componentTargets.get(id) ?? 0;
+      const current = node.group.userData.explodeT ?? 0;
+      if (Math.abs(target - current) < 0.0015) {
+        if (current !== target) {
+          node.group.userData.explodeT = target;
+          node.group.position.copy(node.explode).multiplyScalar(target);
+          moving = true;
+        }
+        continue;
+      }
+      const next = current + (target - current) * Math.min(1, dt * 5.5);
+      node.group.userData.explodeT = next;
+      node.group.position.copy(node.explode).multiplyScalar(next);
+      moving = true;
+    }
+    if (moving) {
+      this.renderer.shadowMap.needsUpdate = true;
+      this.markActive(0.4);
+    }
+
+    if (this.shot) {
+      this.shot.t = Math.min(1, this.shot.t + dt / this.shot.duration);
+      const e = 1 - Math.pow(1 - this.shot.t, 3);
+      this.camera.position.lerpVectors(this.shot.from, this.shot.position, e);
+      this.controls.target.lerpVectors(this.shot.fromTarget, this.shot.target, e);
+      if (this.shot.t >= 1) this.shot = null;
+      this.markActive(0.4);
+    }
+
+    if (this.controls.update()) this.markActive(0.5);
+
+    // hover feedback, throttled so the raycast never sits in the frame budget
+    this.hoverTimer -= dt;
+    if (this.hoverTimer <= 0 && this.pointerOverCanvas && !this.dragged) {
+      this.hoverTimer = 0.11;
+      const hit = this.pick();
+      if (refKey(hit) !== refKey(this.state.hover)) {
+        this.state.hover = hit;
+        document.body.style.cursor = hit ? "pointer" : "default";
+        this.applyVisuals();
+        this.markActive(0.3);
+      }
+    }
+
+    this.labelTimer -= dt;
+    if (this.labelTimer <= 0) {
+      this.labelTimer = 0.12;
+      this.labels.sync(this.buildLabels());
+    }
+    this.labels.update(this.camera, innerWidth, innerHeight);
+
+    if (this.activity > 0 || smooth) {
+      this.adaptResolution(raw);
+      this.renderer.render(this.scene, this.camera);
+    } else if (!this.settled) {
+      // one crisp frame at full resolution, then hold it
+      this.perf.scale = 1;
+      this.onResize();
+      this.renderer.render(this.scene, this.camera);
+      this.settled = true;
+    }
+  }
+}

@@ -17,6 +17,7 @@ import { isNonInteractiveRole } from "../../utils/is-non-interactive-role.js";
 import { isPresentationRole } from "../../utils/is-presentation-role.js";
 import { isPureEventBlockerHandler } from "../../utils/is-pure-event-blocker-handler.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const MESSAGE =
   "Screen reader users can't tell this click handler is interactive because it has no `role`, so add a `role` or use a button or link.";
@@ -130,13 +131,14 @@ export const noStaticElementInteractions = defineRule({
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const handlersLower: ReadonlySet<string> = new Set(
       settings.handlers.map((handlerName) => handlerName.toLowerCase()),
     );
     const isTestlikeFile = isTestlikeFilename(context.filename);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         // Find any active handler — but pure event-blocker handlers
         // (`onClick={(e) => e.stopPropagation()}`) don't count as
         // "interactive": the element isn't a user-interaction target,
@@ -158,7 +160,7 @@ export const noStaticElementInteractions = defineRule({
           if (seenHandlerNames?.has(handlerNameLower)) continue;
           (seenHandlerNames ??= new Set()).add(handlerNameLower);
           if (isNullValue(attribute)) continue;
-          if (KEYBOARD_HANDLERS_LOWER.has(handlerNameLower)) {
+          if (shouldUseCuratedBehavior && KEYBOARD_HANDLERS_LOWER.has(handlerNameLower)) {
             isKeyboardTarget ??= isDirectKeyboardEventTarget(node.attributes, handlersLower);
             if (!isKeyboardTarget) continue;
           }

@@ -1,0 +1,256 @@
+// rule: dangerous-html-sink
+// file-path: src/ui.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 0034e9cae8385425badaba635a6a4cb1756f5f0b0b1dd1525cfc600d91b3db3a
+export type ToolId = "none" | "hand" | "food" | "brush" | "toy";
+
+export interface ToolDef {
+  id: ToolId;
+  glyph: string;
+  name: string;
+  hint: string;
+}
+
+export const TOOLS: ToolDef[] = [
+  { id: "hand", glyph: "✋", name: "Hand", hint: "Drag across a glowing point to pet" },
+  { id: "food", glyph: "🫐", name: "Feed", hint: "Drag the sunberry into its muzzle" },
+  { id: "brush", glyph: "🧽", name: "Wash", hint: "Scrub the patches you can actually see" },
+  { id: "toy", glyph: "🧶", name: "Play", hint: "Flick the burr-ball past a paw or its tail" },
+];
+
+export interface InspectRow {
+  k: string;
+  v: string;
+}
+
+export interface InspectInfo {
+  title: string;
+  kind: string;
+  rows: InspectRow[];
+}
+
+export interface MarkerInfo {
+  id: string;
+  x: number;
+  y: number;
+  label: string;
+  active: boolean;
+  opacity: number;
+}
+
+const NEEDS = [
+  { id: "feed", label: "Fed" },
+  { id: "clean", label: "Clean" },
+  { id: "play", label: "Played" },
+] as const;
+
+export type NeedId = (typeof NEEDS)[number]["id"];
+
+function el<T extends HTMLElement>(root: ParentNode, sel: string): T {
+  const node = root.querySelector(sel);
+  if (!node) throw new Error(`missing ${sel}`);
+  return node as T;
+}
+
+export class Ui {
+  readonly root: HTMLDivElement;
+  onTool: (id: ToolId) => void = () => {};
+  onStart: () => void = () => {};
+
+  private readonly bars: Record<string, HTMLElement> = {};
+  private readonly blocks: Record<string, HTMLElement> = {};
+  private readonly vals: Record<string, HTMLElement> = {};
+  private readonly toolEls: Record<string, HTMLElement> = {};
+  private readonly markers = new Map<string, HTMLElement>();
+  private readonly markerLayer: HTMLDivElement;
+  private sayTimer = 0;
+  private toastTimer = 0;
+
+  constructor() {
+    const root = document.createElement("div");
+    root.id = "hud";
+    root.innerHTML = `
+      <div id="ident" class="panel">
+        <div class="name">&nbsp;</div>
+        <div class="sub">unhatched</div>
+        <div class="stage">Day 1 &middot; hatchling</div>
+      </div>
+
+      <div id="needs" class="panel">
+        ${NEEDS.map(
+          (n) => `
+          <div class="need" data-need="${n.id}">
+            <div class="row"><span>${n.label}</span><b data-val>0%</b></div>
+            <div class="bar"><i></i></div>
+          </div>`,
+        ).join("")}
+        <div id="objective"></div>
+      </div>
+
+      <div id="inspect" class="panel">
+        <div class="title"></div>
+        <div class="kind"></div>
+        <ul></ul>
+      </div>
+
+      <div id="markers"></div>
+      <div id="say"></div>
+      <div id="toast" class="panel"></div>
+      <div id="hint"></div>
+      <div id="tray" class="panel">
+        ${TOOLS.map(
+          (t) => `<div class="tool" data-tool="${t.id}"><div class="glyph">${t.glyph}</div><div class="name">${t.name}</div></div>`,
+        ).join("")}
+      </div>
+      <div id="vignette"></div>
+
+      <div id="veil">
+        <div class="box">
+          <h1>Little Oddling</h1>
+          <p id="veiltext">Waking the shell&hellip;</p>
+          <div id="loadbar"><i></i></div>
+          <button id="startbtn" style="display:none">Hatch it</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(root);
+    this.root = root;
+    this.markerLayer = el<HTMLDivElement>(root, "#markers");
+
+    for (const n of NEEDS) {
+      const block = el<HTMLElement>(root, `.need[data-need="${n.id}"]`);
+      this.blocks[n.id] = block;
+      this.bars[n.id] = el<HTMLElement>(block, ".bar i");
+      this.vals[n.id] = el<HTMLElement>(block, "[data-val]");
+    }
+    for (const t of TOOLS) {
+      const node = el<HTMLElement>(root, `.tool[data-tool="${t.id}"]`);
+      this.toolEls[t.id] = node;
+      node.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        this.onTool(t.id);
+      });
+    }
+    el<HTMLButtonElement>(root, "#startbtn").addEventListener("click", () => this.onStart());
+  }
+
+  // --- loading / gates ---------------------------------------------------
+
+  progress(p: number, label: string): void {
+    el<HTMLElement>(this.root, "#loadbar i").style.width = `${Math.round(p * 100)}%`;
+    el<HTMLElement>(this.root, "#veiltext").textContent = label;
+  }
+
+  ready(text: string): void {
+    el<HTMLElement>(this.root, "#loadbar").style.display = "none";
+    el<HTMLElement>(this.root, "#veiltext").innerHTML = text;
+    el<HTMLElement>(this.root, "#startbtn").style.display = "inline-block";
+  }
+
+  dismissVeil(): void {
+    el<HTMLElement>(this.root, "#veil").classList.add("gone");
+  }
+
+  // --- readouts ----------------------------------------------------------
+
+  setIdent(name: string, sub: string, stage: string): void {
+    el<HTMLElement>(this.root, "#ident .name").textContent = name;
+    el<HTMLElement>(this.root, "#ident .sub").textContent = sub;
+    el<HTMLElement>(this.root, "#ident .stage").innerHTML = stage;
+  }
+
+  setNeed(id: NeedId, value: number, done: boolean): void {
+    const bar = this.bars[id];
+    const val = this.vals[id];
+    const block = this.blocks[id];
+    if (!bar || !val || !block) return;
+    bar.style.width = `${Math.round(value * 100)}%`;
+    val.textContent = `${Math.round(value * 100)}%`;
+    block.classList.toggle("low", value < 0.3 && !done);
+    block.classList.toggle("done", done);
+  }
+
+  setObjective(html: string): void {
+    el<HTMLElement>(this.root, "#objective").innerHTML = html;
+  }
+
+  setHint(html: string): void {
+    el<HTMLElement>(this.root, "#hint").innerHTML = html;
+  }
+
+  setTool(id: ToolId): void {
+    for (const t of TOOLS) this.toolEls[t.id]?.classList.toggle("on", t.id === id);
+  }
+
+  setInspect(info: InspectInfo | null): void {
+    const box = el<HTMLElement>(this.root, "#inspect");
+    if (!info) {
+      box.classList.remove("show");
+      return;
+    }
+    el<HTMLElement>(box, ".title").textContent = info.title;
+    el<HTMLElement>(box, ".kind").textContent = info.kind;
+    el<HTMLElement>(box, "ul").innerHTML = info.rows
+      .map((r) => `<li>${r.k}<span>${r.v}</span></li>`)
+      .join("");
+    box.classList.add("show");
+  }
+
+  say(text: string, hold = 1.8): void {
+    const node = el<HTMLElement>(this.root, "#say");
+    node.textContent = text;
+    node.classList.add("show");
+    this.sayTimer = hold;
+  }
+
+  toast(text: string, tone: "" | "warn" | "good" = "", hold = 3.2): void {
+    const node = el<HTMLElement>(this.root, "#toast");
+    node.textContent = text;
+    node.className = `panel show ${tone}`;
+    this.toastTimer = hold;
+  }
+
+  alarm(on: boolean): void {
+    el<HTMLElement>(this.root, "#vignette").classList.toggle("alarm", on);
+  }
+
+  // --- zone markers ------------------------------------------------------
+
+  setMarkers(list: MarkerInfo[]): void {
+    const seen = new Set<string>();
+    for (const m of list) {
+      seen.add(m.id);
+      let node = this.markers.get(m.id);
+      if (!node) {
+        node = document.createElement("div");
+        node.className = "marker";
+        node.innerHTML = `<div class="tag"></div>`;
+        this.markerLayer.appendChild(node);
+        this.markers.set(m.id, node);
+      }
+      node.style.transform = `translate(${m.x.toFixed(1)}px, ${m.y.toFixed(1)}px)`;
+      node.style.opacity = m.opacity.toFixed(2);
+      node.classList.toggle("act", m.active);
+      const tag = node.firstElementChild as HTMLElement;
+      tag.textContent = m.active ? m.label : "";
+    }
+    for (const [id, node] of this.markers) {
+      if (!seen.has(id)) {
+        node.remove();
+        this.markers.delete(id);
+      }
+    }
+  }
+
+  update(dt: number): void {
+    if (this.sayTimer > 0) {
+      this.sayTimer -= dt;
+      if (this.sayTimer <= 0) el<HTMLElement>(this.root, "#say").classList.remove("show");
+    }
+    if (this.toastTimer > 0) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) el<HTMLElement>(this.root, "#toast").classList.remove("show");
+    }
+  }
+}

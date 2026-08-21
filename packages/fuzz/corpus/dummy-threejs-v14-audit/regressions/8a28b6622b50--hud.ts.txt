@@ -1,0 +1,323 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 8a28b6622b50f0802c6f2a86497dae96dfae68f8dd146f52e3ab6968ec8d9fed
+/**
+ * DOM overlay: progress, success and failure feedback.
+ *
+ * The depth gauge on the left is the game's spine — it shows where you are in
+ * the shaft, where every marker sits, which relics are still down there, and
+ * how far the gloom has climbed. It is the 2D companion to the 3D overview.
+ */
+import { CONFIG } from "./config";
+import { clamp } from "./noise";
+
+export interface HudRelic {
+  y: number;
+  taken: boolean;
+}
+
+export interface HudFrame {
+  playerY: number;
+  gloomY: number;
+  markers: { y: number; linked: boolean }[];
+  markersLeft: number;
+  relics: HudRelic[];
+  carried: boolean[];
+  score: number;
+  health: number;
+  fuel: number;
+  chain: { state: "ok" | "warn" | "bad"; label: string; detail: string };
+}
+
+export interface EndStats {
+  won: boolean;
+  title: string;
+  blurb: string;
+  rank: string;
+  score: number;
+  relics: number;
+  deepest: number;
+  time: number;
+  markersLeft: number;
+}
+
+export interface Hud {
+  root: HTMLDivElement;
+  update(f: HudFrame): void;
+  setPrompt(html: string | null): void;
+  setHint(text: string | null): void;
+  toast(text: string, kind?: "" | "good" | "bad" | "gloom"): void;
+  flash(kind: "hurt" | "gloom"): void;
+  showStart(onStart: () => void): void;
+  showEnd(stats: EndStats, onRestart: () => void): void;
+  hideOverlay(): void;
+  setLoading(on: boolean): void;
+  onMute?: (muted: boolean) => void;
+  onOverview?: () => void;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string): HTMLElementTagNameMap[K] {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html !== undefined) n.innerHTML = html;
+  return n;
+}
+
+export function createHud(bottomY: number): Hud {
+  const root = el("div");
+  root.id = "ui";
+  document.body.appendChild(root);
+
+  const grade = el("div");
+  grade.id = "grade";
+  document.body.appendChild(grade);
+
+  const flashEl = el("div");
+  flashEl.id = "flash";
+  document.body.appendChild(flashEl);
+
+  /* ---- depth gauge ---- */
+  const gauge = el("div", "panel");
+  gauge.id = "gauge";
+  const labels = el("div", "labels");
+  const track = el("div", "track");
+  const gloomBar = el("div", "gloom");
+  const ticks = el("div", "ticks");
+  const you = el("div", "you");
+  track.append(gloomBar, ticks, you);
+  gauge.append(labels, track);
+  root.appendChild(gauge);
+
+  const span = CONFIG.rimY - bottomY;
+  const pctFor = (y: number) => clamp(((CONFIG.rimY - y) / span) * 100, 0, 100);
+
+  for (const [depth, text] of [
+    [0, "RIM"],
+    [span * 0.5, ""],
+    [span, "BED"],
+  ] as [number, string][]) {
+    const t = el("div", "tick");
+    t.style.top = `${(depth / span) * 100}%`;
+    ticks.appendChild(t);
+    if (text) {
+      const s = el("span", undefined, text);
+      s.style.top = `${(depth / span) * 100}%`;
+      labels.appendChild(s);
+    }
+  }
+
+  const depthReadout = el("div", "");
+  depthReadout.id = "depthReadout";
+  depthReadout.innerHTML = "Depth<b>0<small>m</small></b>";
+  root.appendChild(depthReadout);
+  const depthValue = depthReadout.querySelector("b") as HTMLElement;
+
+  const pipPool: HTMLElement[] = [];
+
+  /* ---- top right: markers + relics ---- */
+  const topRight = el("div", "panel");
+  topRight.id = "topRight";
+  topRight.innerHTML = `<div class="hudLabel">Markers</div><div id="markerPips"></div><div class="hudLabel">Relics recovered</div><div id="relicRow"></div>`;
+  root.appendChild(topRight);
+  const markerPips = topRight.querySelector("#markerPips") as HTMLElement;
+  const relicRow = topRight.querySelector("#relicRow") as HTMLElement;
+  for (let i = 0; i < CONFIG.markerCount; i++) markerPips.appendChild(el("i"));
+  for (let i = 0; i < 3; i++) relicRow.appendChild(el("i"));
+  const scoreEl = el("span", undefined, "0");
+  scoreEl.id = "score";
+  relicRow.appendChild(scoreEl);
+
+  /* ---- chain status ---- */
+  const chain = el("div", "panel");
+  chain.id = "chain";
+  chain.innerHTML = `<div class="hudLabel">Route home</div><div id="chainState" class="ok">Secured</div><div id="chainDetail"></div>`;
+  root.appendChild(chain);
+  const chainState = chain.querySelector("#chainState") as HTMLElement;
+  const chainDetail = chain.querySelector("#chainDetail") as HTMLElement;
+
+  /* ---- vitals ---- */
+  const vitals = el("div", "panel");
+  vitals.id = "vitals";
+  vitals.innerHTML = `
+    <div class="row"><div class="hudLabel">Condition</div><div class="bar"><span id="healthFill"></span></div></div>
+    <div class="row"><div class="hudLabel">Lantern oil</div><div class="bar"><span id="fuelFill"></span></div></div>`;
+  root.appendChild(vitals);
+  const healthFill = vitals.querySelector("#healthFill") as HTMLElement;
+  const fuelFill = vitals.querySelector("#fuelFill") as HTMLElement;
+
+  /* ---- prompt / toasts / hint ---- */
+  const prompt = el("div", "panel");
+  prompt.id = "prompt";
+  root.appendChild(prompt);
+
+  const toasts = el("div");
+  toasts.id = "toasts";
+  root.appendChild(toasts);
+
+  const hint = el("div", "panel");
+  hint.id = "hint";
+  root.appendChild(hint);
+
+  /* ---- corner buttons ---- */
+  const corner = el("div");
+  corner.id = "corner";
+  const muteBtn = el("button", undefined, "Sound: on");
+  const ovBtn = el("button", undefined, "Overview (Tab)");
+  corner.append(ovBtn, muteBtn);
+  root.appendChild(corner);
+
+  /* ---- overlay ---- */
+  const overlay = el("div");
+  overlay.id = "overlay";
+  root.appendChild(overlay);
+
+  // The loading card lives in index.html so it paints before the world builds.
+  let loading = document.querySelector("#loading") as HTMLElement | null;
+  if (!loading) {
+    loading = el("div");
+    loading.id = "loading";
+    document.body.appendChild(loading);
+  }
+
+  let muted = false;
+  const hud: Hud = {
+    root,
+    update(f) {
+      you.style.top = `${pctFor(f.playerY)}%`;
+      gloomBar.style.height = `${clamp(((f.gloomY - bottomY) / span) * 100, 0, 100)}%`;
+      depthValue.innerHTML = `${Math.max(0, Math.round(CONFIG.rimY - f.playerY))}<small style="font-size:13px;opacity:.6">m</small>`;
+
+      const needed = f.markers.length + f.relics.length;
+      while (pipPool.length < needed) {
+        const p = el("div", "pip");
+        ticks.appendChild(p);
+        pipPool.push(p);
+      }
+      let pi = 0;
+      for (const m of f.markers) {
+        const p = pipPool[pi++]!;
+        p.className = `pip${m.linked ? "" : " broken"}`;
+        p.style.top = `${pctFor(m.y)}%`;
+        p.style.display = "block";
+      }
+      for (const r of f.relics) {
+        const p = pipPool[pi++]!;
+        p.className = `pip relic${r.taken ? " taken" : ""}`;
+        p.style.top = `${pctFor(r.y)}%`;
+        p.style.display = "block";
+      }
+      for (; pi < pipPool.length; pi++) pipPool[pi]!.style.display = "none";
+
+      for (let i = 0; i < markerPips.children.length; i++) {
+        (markerPips.children[i] as HTMLElement).className = i < f.markersLeft ? "" : "spent";
+      }
+      for (let i = 0; i < 3; i++) {
+        (relicRow.children[i] as HTMLElement).className = f.carried[i] ? "got" : "";
+      }
+      scoreEl.textContent = String(f.score);
+
+      healthFill.style.width = `${clamp(f.health, 0, 100)}%`;
+      fuelFill.style.width = `${clamp(f.fuel * 100, 0, 100)}%`;
+
+      chainState.className = f.chain.state;
+      chainState.textContent = f.chain.label;
+      chainDetail.textContent = f.chain.detail;
+    },
+    setPrompt(html) {
+      if (html) {
+        prompt.innerHTML = html;
+        prompt.classList.add("on");
+      } else {
+        prompt.classList.remove("on");
+      }
+    },
+    setHint(text) {
+      if (text) {
+        hint.textContent = text;
+        hint.classList.add("on");
+      } else {
+        hint.classList.remove("on");
+      }
+    },
+    toast(text, kind = "") {
+      const t = el("div", `toast ${kind}`.trim(), text);
+      toasts.appendChild(t);
+      setTimeout(() => t.remove(), 3100);
+      while (toasts.children.length > 4) toasts.firstChild?.remove();
+    },
+    flash(kind) {
+      flashEl.classList.toggle("gloom", kind === "gloom");
+      flashEl.style.transition = "none";
+      flashEl.style.opacity = kind === "gloom" ? "0.9" : "0.75";
+      requestAnimationFrame(() => {
+        flashEl.style.transition = "opacity .42s ease-out";
+        flashEl.style.opacity = "0";
+      });
+    },
+    showStart(onStart) {
+      overlay.classList.remove("hidden");
+      overlay.classList.add("start");
+      overlay.innerHTML = "";
+      const card = el("div", "card");
+      card.innerHTML = `
+        <h1>Marker<em>fall</em></h1>
+        <div class="sub">A descent in eight anchors</div>
+        <p>The shaft below the rim swallowed every expedition before yours. You go down alone, with a lantern, an ascender, and <b>eight route markers</b>.</p>
+        <p>Markers do two jobs. They light a chamber, and they are the only thing your ascender can winch to. You can climb to a marker <b>up to ${CONFIG.ascendRange}m above you</b> — but only if nothing blocks the line. Space them too tightly and you run out before the deep relics; space them badly and the way home simply is not there.</p>
+        <p>Below you, the <span class="v">gloom</span> is rising. It does not stop. Take what you can carry and get back to the rim — <span class="t">one relic is enough to call it a success</span>, three makes you a legend.</p>
+        <div class="keys">
+          <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Move</span></div>
+          <div><kbd>Space</kbd><span>Jump</span></div>
+          <div><kbd>Shift</kbd><span>Sprint</span></div>
+          <div><kbd>E</kbd><span>Plant / recover marker</span></div>
+          <div><kbd>F</kbd><span>Ascend to anchor</span></div>
+          <div><kbd>Tab</kbd><span>Shaft overview</span></div>
+          <div><kbd>Drag</kbd><span>Orbit camera</span></div>
+          <div><kbd>Wheel</kbd><span>Zoom</span></div>
+        </div>
+        <button class="primary">Begin the descent</button>`;
+      overlay.appendChild(card);
+      (card.querySelector("button") as HTMLButtonElement).addEventListener("click", onStart);
+    },
+    showEnd(stats, onRestart) {
+      overlay.classList.remove("hidden");
+      overlay.classList.remove("start");
+      overlay.innerHTML = "";
+      const card = el("div", "card");
+      const mm = Math.floor(stats.time / 60);
+      const ss = Math.floor(stats.time % 60);
+      card.innerHTML = `
+        <h1>${stats.title}</h1>
+        <div class="sub">${stats.won ? "You reached the rim" : "The shaft kept you"}</div>
+        <div class="rank ${stats.won ? "" : "bad"}">${stats.rank}</div>
+        <p>${stats.blurb}</p>
+        <div class="stats">
+          <div><span>Score</span><b class="amber">${stats.score}</b></div>
+          <div><span>Relics out</span><b>${stats.relics} / 3</b></div>
+          <div><span>Deepest</span><b class="teal">${Math.round(stats.deepest)}m</b></div>
+          <div><span>Markers left</span><b>${stats.markersLeft}</b></div>
+          <div><span>Time</span><b>${mm}:${String(ss).padStart(2, "0")}</b></div>
+        </div>
+        <button class="primary">Descend again</button>`;
+      overlay.appendChild(card);
+      (card.querySelector("button") as HTMLButtonElement).addEventListener("click", onRestart);
+    },
+    hideOverlay() {
+      overlay.classList.add("hidden");
+    },
+    setLoading(on) {
+      loading?.classList.toggle("hidden", !on);
+    },
+  };
+
+  muteBtn.addEventListener("click", () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? "Sound: off" : "Sound: on";
+    hud.onMute?.(muted);
+  });
+  ovBtn.addEventListener("click", () => hud.onOverview?.());
+
+  return hud;
+}

@@ -8,6 +8,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const MESSAGE =
   "Your styles don't render because you passed the `style` prop a string instead of an object.";
@@ -151,6 +152,7 @@ export const stylePropObject = defineRule({
   category: "Correctness",
   create: (context) => {
     const { allow } = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const allowSet = new Set(allow);
     let fileIsProvenSolidJsx = false;
 
@@ -187,7 +189,7 @@ export const stylePropObject = defineRule({
         if (elementName) {
           const firstCharCode = elementName.charCodeAt(0);
           const isIntrinsic = firstCharCode >= 97 && firstCharCode <= 122;
-          if (!isIntrinsic) return;
+          if (shouldUseCuratedBehavior && !isIntrinsic) return;
         }
         for (const attribute of node.attributes) {
           if (!isNodeOfType(attribute, "JSXAttribute")) continue;

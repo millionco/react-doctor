@@ -28,8 +28,24 @@ describe("three-shader-require-uniform-bindings", () => {
     expect(runRule(threeShaderRequireUniformBindings, code).diagnostics).toHaveLength(1);
   });
 
+  it("reports used library uniforms when the controlling material flag is dynamic", () => {
+    const code = `import { ShaderMaterial } from "three"; const fog = getFog(); new ShaderMaterial({ fog, fragmentShader: "uniform vec3 fogColor; void main() { gl_FragColor = vec4(fogColor, 1.0); }" });`;
+
+    expect(runRule(threeShaderRequireUniformBindings, code).diagnostics).toHaveLength(1);
+  });
+
   it("reports skinning uniforms when ShaderMaterial skinning is disabled", () => {
     const code = `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "uniform mat4 bindMatrix; uniform mat4 bindMatrixInverse; void main() { gl_Position = bindMatrixInverse * bindMatrix * vec4(1.0); }" });`;
+
+    expect(runRule(threeShaderRequireUniformBindings, code).diagnostics).toHaveLength(2);
+  });
+
+  it("requires fog and light uniform libraries when their features are enabled", () => {
+    const code = `
+      import { ShaderMaterial } from "three";
+      new ShaderMaterial({ lights: true, fragmentShader: "uniform vec3 ambientLightColor; void main() { gl_FragColor = vec4(ambientLightColor, 1.0); }" });
+      new ShaderMaterial({ fog: true, fragmentShader: "uniform vec3 fogColor; void main() { gl_FragColor = vec4(fogColor, 1.0); }" });
+    `;
 
     expect(runRule(threeShaderRequireUniformBindings, code).diagnostics).toHaveLength(2);
   });
@@ -38,16 +54,16 @@ describe("three-shader-require-uniform-bindings", () => {
     `import { ShaderMaterial } from "three"; const uniforms = { uTime: { value: 0 } }; new ShaderMaterial({ uniforms, fragmentShader: "uniform float uTime; void main() { gl_FragColor = vec4(uTime); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform float uUnused; void main() { gl_FragColor = vec4(1.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform mat4 projectionMatrix; uniform mat4 modelViewMatrix; void main() { gl_FragColor = vec4(projectionMatrix[0][0] + modelViewMatrix[0][0]); }" });`,
-    `import { ShaderMaterial } from "three"; new ShaderMaterial({ lights: true, fragmentShader: "uniform vec3 ambientLightColor; void main() { gl_FragColor = vec4(ambientLightColor, 1.0); }" });`,
-    `import { ShaderMaterial } from "three"; new ShaderMaterial({ fog: true, fragmentShader: "uniform vec3 fogColor; void main() { gl_FragColor = vec4(fogColor, 1.0); }" });`,
+    `import { ShaderMaterial } from "three"; new ShaderMaterial({ lights: true, uniforms: { ambientLightColor: { value: null } }, fragmentShader: "uniform vec3 ambientLightColor; void main() { gl_FragColor = vec4(ambientLightColor, 1.0); }" });`,
+    `import { ShaderMaterial } from "three"; new ShaderMaterial({ fog: true, uniforms: { fogColor: { value: null } }, fragmentShader: "uniform vec3 fogColor; void main() { gl_FragColor = vec4(fogColor, 1.0); }" });`,
+    `import { ShaderMaterial, UniformsLib, UniformsUtils } from "three"; new ShaderMaterial({ fog: true, uniforms: UniformsUtils.merge([UniformsLib.fog]), fragmentShader: "uniform vec3 fogColor; void main() { gl_FragColor = vec4(fogColor, 1.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ skinning: true, vertexShader: "uniform mat4 bindMatrix; uniform mat4 bindMatrixInverse; void main() { gl_Position = bindMatrixInverse * bindMatrix * vec4(1.0); }" });`,
-    `import { ShaderMaterial } from "three"; const fog = getFog(); new ShaderMaterial({ fog, fragmentShader: "uniform vec3 fogColor; void main() { gl_FragColor = vec4(fogColor, 1.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ uniforms: getUniforms(), fragmentShader: "uniform float uTime; void main() { gl_FragColor = vec4(uTime); }" });`,
     `import { ShaderMaterial } from "three"; const shared = {}; new ShaderMaterial({ uniforms: { ...shared }, fragmentShader: "uniform float uTime; void main() { gl_FragColor = vec4(uTime); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader });`,
     `import { ShaderMaterial } from "other"; new ShaderMaterial({ fragmentShader: "uniform float uTime; void main() { gl_FragColor = vec4(uTime); }" });`,
   ])(
-    "keeps bound, unused, ShaderMaterial-managed, dynamic, spread, unresolved, and unrelated uniforms quiet",
+    "case %# keeps bound, unused, ShaderMaterial-managed, dynamic, spread, unresolved, and unrelated uniforms quiet",
     (code) => {
       expect(runRule(threeShaderRequireUniformBindings, code).diagnostics).toHaveLength(0);
     },

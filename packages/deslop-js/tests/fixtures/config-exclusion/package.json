@@ -1,8 +1,0 @@
-{
-  "name": "config-file-exclusion",
-  "version": "1.0.0",
-  "main": "src/index.ts",
-  "scripts": {
-    "test:smoke": "playwright test -c playwright.smoke.config.mjs"
-  }
-}

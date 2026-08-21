@@ -1,0 +1,446 @@
+// rule: js-set-map-lookups
+// file-path: src/logic/rules.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 06ec9a751f42eabaabd6e0cadf9aa4d7cebd84c7d06698ae137ca159d8c4857a
+/**
+ * Constraint + metric evaluation.
+ *
+ * Nothing here is cosmetic: magnet polarity, port diameters, kit inventory,
+ * load ratings, airflow and the balance test all read from the catalogue and
+ * from the geometry that was actually assembled, and every failure carries the
+ * measured number that caused it plus a concrete fix.
+ */
+import * as THREE from "three";
+import {
+  KIT,
+  PORT_LABEL,
+  PORT_POLARITY,
+  SIZE_MM,
+  part,
+  type CategoryId,
+  type Polarity,
+  type PortSize,
+} from "../parts/catalog";
+import type { BuiltCreature, CreatureConfig } from "../parts/build";
+
+export type Severity = "blocking" | "warning";
+
+export interface Issue {
+  id: string;
+  severity: Severity;
+  category: CategoryId;
+  title: string;
+  reason: string;
+  fix: string;
+}
+
+export interface Metrics {
+  mass: number;
+  massBudget: number;
+  magnetsUsed: number;
+  magnetsTotal: number;
+  adaptersUsed: number;
+  adaptersTotal: number;
+  legCapacity: number;
+  loadPerLeg: number;
+  ventilation: number;
+  clearance: number;
+  supportArea: number;
+  stabilityMargin: number;
+  /** Degrees of tilt the creature survives before it goes over. */
+  tipAngle: number;
+  com: THREE.Vector3;
+  hull: THREE.Vector2[];
+  verdict: "stable" | "tippy" | "falls";
+  tipAxis: THREE.Vector2 | null;
+}
+
+export interface Evaluation {
+  issues: Issue[];
+  metrics: Metrics;
+  blocking: Issue[];
+  warnings: Issue[];
+  ok: boolean;
+}
+
+export type FlipState = Record<CategoryId, boolean>;
+
+export const MOUNTED: CategoryId[] = ["head", "legs", "arms", "tail", "back"];
+
+export function portSizeFor(cat: CategoryId, config: CreatureConfig): PortSize {
+  if (cat === "legs") return part(config.torso).plugSize;
+  return "M";
+}
+
+export function effectivePolarity(cat: CategoryId, config: CreatureConfig, flips: FlipState): Polarity {
+  const p = part(config[cat as keyof CreatureConfig] as string).polarity;
+  if (!flips[cat]) return p;
+  return p === "N" ? "S" : "N";
+}
+
+/** Andrew monotone chain over the foot contacts. */
+function convexHull(points: THREE.Vector2[]): THREE.Vector2[] {
+  if (points.length < 3) return points.slice();
+  const pts = points.slice().sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x));
+  const cross = (o: THREE.Vector2, a: THREE.Vector2, b: THREE.Vector2) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: THREE.Vector2[] = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: THREE.Vector2[] = [];
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i]!;
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
+
+function polygonArea(poly: THREE.Vector2[]): number {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i]!;
+    const q = poly[(i + 1) % poly.length]!;
+    a += p.x * q.y - q.x * p.y;
+  }
+  return Math.abs(a) * 0.5;
+}
+
+/** Positive inside, negative outside; also reports the closest edge normal. */
+function signedMargin(poly: THREE.Vector2[], p: THREE.Vector2): { margin: number; axis: THREE.Vector2 | null } {
+  if (poly.length < 3) return { margin: -1, axis: null };
+  let best = Infinity;
+  let axis: THREE.Vector2 | null = null;
+  let inside = true;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]!;
+    const b = poly[(i + 1) % poly.length]!;
+    const ex = b.x - a.x;
+    const ey = b.y - a.y;
+    const len = Math.hypot(ex, ey) || 1e-6;
+    // CCW polygon: inward normal is (-ey, ex) / len
+    const nx = -ey / len;
+    const ny = ex / len;
+    const d = (p.x - a.x) * nx + (p.y - a.y) * ny;
+    if (d < 0) inside = false;
+    if (Math.abs(d) < Math.abs(best)) {
+      best = d;
+      axis = new THREE.Vector2(-nx, -ny);
+    }
+  }
+  return { margin: inside ? Math.abs(best) : -Math.abs(best), axis };
+}
+
+const boxA = new THREE.Box3();
+const boxB = new THREE.Box3();
+
+function overlapOf(build: BuiltCreature, a: CategoryId, b: CategoryId): number {
+  const pa = build.parts.get(a);
+  const pb = build.parts.get(b);
+  if (!pa || !pb) return 0;
+  if (pa.group.children.length === 0 || pb.group.children.length === 0) return 0;
+  boxA.setFromObject(pa.group);
+  boxB.setFromObject(pb.group);
+  if (boxA.isEmpty() || boxB.isEmpty()) return 0;
+  const ix = Math.min(boxA.max.x, boxB.max.x) - Math.max(boxA.min.x, boxB.min.x);
+  const iy = Math.min(boxA.max.y, boxB.max.y) - Math.max(boxA.min.y, boxB.min.y);
+  const iz = Math.min(boxA.max.z, boxB.max.z) - Math.max(boxA.min.z, boxB.min.z);
+  if (ix <= 0 || iy <= 0 || iz <= 0) return 0;
+  return Math.min(ix, Math.min(iy, iz));
+}
+
+export function evaluate(build: BuiltCreature, config: CreatureConfig, flips: FlipState): Evaluation {
+  const issues: Issue[] = [];
+  const torso = part(config.torso);
+
+  // --- inventory, magnets, adapters ---------------------------------------
+  let magnets = 0;
+  let adapters = 0;
+  const adapterUsers: CategoryId[] = [];
+
+  for (const cat of MOUNTED) {
+    const opt = part(config[cat as keyof CreatureConfig] as string);
+    magnets += opt.magnets;
+    const portSize = portSizeFor(cat, config);
+    if (opt.magnets > 0 && opt.plugSize !== portSize) {
+      adapters += 1;
+      adapterUsers.push(cat);
+    }
+  }
+  const allSelected = [torso, ...MOUNTED.map((c) => part(config[c as keyof CreatureConfig] as string)), part(config.coat)];
+  const mass = allSelected.reduce((s, p) => s + p.mass, 0);
+
+  // --- per-part checks ------------------------------------------------------
+  for (const cat of [...MOUNTED, "coat", "torso"] as CategoryId[]) {
+    const opt = part(config[cat as keyof CreatureConfig] as string);
+
+    if (opt.stock <= 0) {
+      issues.push({
+        id: `stock-${cat}`,
+        severity: "blocking",
+        category: cat,
+        title: `${opt.name} is out of stock`,
+        reason: `The kit ships 0 × ${opt.name}. Nothing can be mounted on the ${PORT_LABEL[cat]} until a piece is in the tray.`,
+        fix: "Pick another option in this row. You can keep it selected to look at it, but the build cannot ship until the piece is restocked.",
+      });
+    }
+
+    if (opt.requires) {
+      const current = config[opt.requires.category as keyof CreatureConfig];
+      if (current !== opt.requires.option) {
+        issues.push({
+          id: `req-${cat}`,
+          severity: "blocking",
+          category: cat,
+          title: `${opt.name} is locked`,
+          reason: `${opt.requires.why} You currently have ${part(current as string).name}.`,
+          fix: `Switch ${opt.requires.category} to ${part(opt.requires.option).name}.`,
+        });
+      }
+    }
+
+    if (opt.needsCoat && !opt.needsCoat.includes(part(config.coat).surface!)) {
+      const names = opt.needsCoat.map((s) => (s === "fur" ? "Plush Fur" : s === "feather" ? "Down Feathers" : s === "scale" ? "River Scales" : "Smooth Skin"));
+      issues.push({
+        id: `coat-${cat}`,
+        severity: "blocking",
+        category: cat,
+        title: `${opt.name} cannot root into ${part(config.coat).name}`,
+        reason:
+          opt.needsCoat.includes("fur")
+            ? `Quills need follicle beds to sit in. ${part(config.coat).name} has none, so the shafts sit on the surface and shear off.`
+            : `The anchor plate needs a smooth, continuous panel to bond to. ${part(config.coat).name} breaks the bond line.`,
+        fix: `Choose ${names.join(" or ")} as the coat, or pick a different side/tail piece.`,
+      });
+    }
+
+    // Magnet polarity: like poles repel and the piece will not seat.
+    const socket = PORT_POLARITY[cat];
+    if (socket && opt.magnets > 0) {
+      const plug = effectivePolarity(cat, config, flips);
+      if (plug === socket) {
+        issues.push({
+          id: `polarity-${cat}`,
+          severity: "blocking",
+          category: cat,
+          title: `${opt.name} magnets repel the ${PORT_LABEL[cat]}`,
+          reason: `The ${PORT_LABEL[cat]} is a ${socket === "N" ? "North" : "South"} face and this plug is also ${plug === "N" ? "North" : "South"}. Like poles push apart — the piece floats off and will not latch.`,
+          fix: "Select the piece and press F to flip its magnet, or choose a piece that ships the other way round.",
+        });
+      }
+    }
+
+    // Port diameter.
+    if (opt.magnets > 0) {
+      const portSize = portSizeFor(cat, config);
+      if (opt.plugSize !== portSize) {
+        const idx = adapterUsers.indexOf(cat);
+        const covered = idx >= 0 && idx < KIT.adapters;
+        issues.push({
+          id: `size-${cat}`,
+          severity: covered ? "warning" : "blocking",
+          category: cat,
+          title: covered
+            ? `${opt.name} is running on an adapter ring`
+            : `${opt.name} does not fit the ${PORT_LABEL[cat]}`,
+          reason: `Plug is Ø${SIZE_MM[opt.plugSize]} mm, the ${PORT_LABEL[cat]} is Ø${SIZE_MM[portSize]} mm.${covered ? ` One of the ${KIT.adapters} adapter rings is taking up the gap.` : ` All ${KIT.adapters} adapter rings are already in use elsewhere.`}`,
+          fix: covered
+            ? "Fine as-is, but a matching plug would be stiffer."
+            : `Use a piece with a Ø${SIZE_MM[portSize]} mm plug, or free an adapter by matching another port.`,
+        });
+      }
+    }
+  }
+
+  // --- kit budgets ----------------------------------------------------------
+  if (magnets > KIT.magnets) {
+    issues.push({
+      id: "magnets",
+      severity: "blocking",
+      category: "torso",
+      title: "Not enough magnets in the kit",
+      reason: `This build needs ${magnets} magnets and the kit contains ${KIT.magnets}.`,
+      fix: "Drop a side limb or back piece — each one frees its magnets.",
+    });
+  }
+
+  if (mass > KIT.massBudget) {
+    issues.push({
+      id: "mass",
+      severity: "blocking",
+      category: "torso",
+      title: "Over the kit's mass budget",
+      reason: `The creature weighs ${mass.toFixed(1)} kg; the magnetic joints are rated to ${KIT.massBudget.toFixed(1)} kg before they creep apart.`,
+      fix: "Swap the body core, tail or back piece for a lighter one.",
+    });
+  }
+
+  const legs = part(config.legs);
+  const legCapacity = legs.legCapacity ?? 0;
+  if (mass > legCapacity) {
+    issues.push({
+      id: "legs-load",
+      severity: "blocking",
+      category: "legs",
+      title: `${legs.name} cannot carry this creature`,
+      reason: `${legs.name} are rated to ${legCapacity.toFixed(1)} kg per set and the build weighs ${mass.toFixed(1)} kg. They buckle at the knee.`,
+      fix: "Fit stronger legs, or take weight out of the body, back piece or tail.",
+    });
+  }
+
+  // --- circulation ----------------------------------------------------------
+  const insulation = allSelected.reduce((s, p) => s + p.insulation, 0);
+  const ventilation = Math.max(0, Math.min(100, 100 - insulation + build.spec.clearance * 40));
+  if (ventilation < KIT.ventilationFloor) {
+    issues.push({
+      id: "ventilation",
+      severity: ventilation < KIT.ventilationFloor * 0.55 ? "blocking" : "warning",
+      category: "coat",
+      title: "Air cannot circulate around the body",
+      reason: `Airflow score is ${ventilation.toFixed(0)} of 100 (kit floor is ${KIT.ventilationFloor}). ${part(config.coat).name} adds ${part(config.coat).insulation} insulation and the mounted pieces add ${(insulation - part(config.coat).insulation).toFixed(0)} more, so trapped heat has nowhere to go.`,
+      fix: "Move to a cooler coat, remove a heat-trapping back or side piece, or use taller legs to lift the belly clear.",
+    });
+  }
+
+  // --- fit / clearance ------------------------------------------------------
+  const tailBack = overlapOf(build, "tail", "back");
+  if (tailBack > 0.012) {
+    issues.push({
+      id: "fit-tail-back",
+      severity: "blocking",
+      category: "tail",
+      title: "Tail sweeps into the back piece",
+      reason: `${part(config.tail).name} and ${part(config.back).name} overlap by ${(tailBack * 100).toFixed(1)} cm at the spine port. The tail cannot swing.`,
+      fix: "Choose a shorter tail or a lower back piece.",
+    });
+  }
+  const armLeg = overlapOf(build, "arms", "legs");
+  if (armLeg > 0.05) {
+    issues.push({
+      id: "fit-arms-legs",
+      severity: "warning",
+      category: "arms",
+      title: "Side limbs foul the front legs",
+      reason: `${part(config.arms).name} passes within ${(armLeg * 100).toFixed(1)} cm of the front legs, so the stride is blocked.`,
+      fix: "Taller legs or a shorter body core will open the gap.",
+    });
+  }
+  if (build.spec.clearance < 0.03) {
+    issues.push({
+      id: "clearance",
+      severity: "warning",
+      category: "legs",
+      title: "Belly drags on the ground",
+      reason: `Ground clearance is only ${(build.spec.clearance * 100).toFixed(1)} cm under the ${part(config.torso).name}.`,
+      fix: "Fit taller legs or a slimmer body core.",
+    });
+  }
+
+  // --- balance --------------------------------------------------------------
+  const com = new THREE.Vector3();
+  let total = 0;
+  build.parts.forEach((p) => {
+    if (p.mass <= 0) return;
+    com.addScaledVector(p.centroid, p.mass);
+    total += p.mass;
+  });
+  if (total > 0) com.divideScalar(total);
+  else com.copy(build.spec.spine(0.5));
+
+  const hull = convexHull(build.contacts.map((c) => new THREE.Vector2(c.x, c.z)));
+  const supportArea = polygonArea(hull);
+  const { margin, axis } = signedMargin(hull, new THREE.Vector2(com.x, com.z));
+  // Topple resistance: how far you can tilt the creature before the centre of
+  // mass crosses the nearest edge of its own footprint. This, not static
+  // overhang, is what decides whether a four-legged build survives a knock.
+  const tipAngle = (Math.atan2(margin, Math.max(com.y, 0.05)) * 180) / Math.PI;
+  const verdict: Metrics["verdict"] = margin < 0 || tipAngle < 12 ? "falls" : tipAngle < 22 ? "tippy" : "stable";
+
+  if (margin < 0) {
+    issues.push({
+      id: "balance",
+      severity: "blocking",
+      category: "legs",
+      title: "The creature falls over on its own",
+      reason: `The centre of mass sits ${(Math.abs(margin) * 100).toFixed(1)} cm outside the ${supportArea.toFixed(3)} m² footprint, so gravity pulls it past the feet before anything touches it.`,
+      fix: "Widen the stance, shorten or lighten the tail, or move mass back over the feet.",
+    });
+  } else if (verdict === "falls") {
+    issues.push({
+      id: "balance",
+      severity: "blocking",
+      category: "legs",
+      title: "The creature topples at the slightest nudge",
+      reason: `It only survives ${tipAngle.toFixed(0)}° of tilt (the kit asks for 22°). The centre of mass is ${(com.y * 100).toFixed(0)} cm up but only ${(margin * 100).toFixed(1)} cm in from the edge of the footprint.`,
+      fix: "Wider or shorter legs lower the centre of mass and widen the base; a lighter tail or back piece also helps.",
+    });
+  } else if (verdict === "tippy") {
+    issues.push({
+      id: "balance-margin",
+      severity: "warning",
+      category: "legs",
+      title: "Balance margin is thin",
+      reason: `It survives ${tipAngle.toFixed(0)}° of tilt — ${(margin * 100).toFixed(1)} cm of footprint against a centre of mass ${(com.y * 100).toFixed(0)} cm off the ground. A firm push would put it over.`,
+      fix: "Wider legs, a shorter body core or a lighter tail all buy margin.",
+    });
+  }
+
+  const metrics: Metrics = {
+    mass,
+    massBudget: KIT.massBudget,
+    magnetsUsed: magnets,
+    magnetsTotal: KIT.magnets,
+    adaptersUsed: adapters,
+    adaptersTotal: KIT.adapters,
+    legCapacity,
+    loadPerLeg: mass / 4,
+    ventilation,
+    clearance: build.spec.clearance,
+    supportArea,
+    stabilityMargin: margin,
+    tipAngle,
+    com,
+    hull,
+    verdict,
+    tipAxis: axis,
+  };
+
+  const blocking = issues.filter((i) => i.severity === "blocking");
+  const warnings = issues.filter((i) => i.severity === "warning");
+  return { issues, metrics, blocking, warnings, ok: blocking.length === 0 };
+}
+
+/**
+ * Why an option in the tray cannot be picked *right now*, without building it.
+ * Used to give every swatch a distinct product state.
+ */
+export function previewState(
+  optionId: string,
+  cat: CategoryId,
+  config: CreatureConfig,
+  flips: FlipState,
+): { state: "selected" | "available" | "low" | "out" | "locked" | "incompatible"; note: string } {
+  const opt = part(optionId);
+  if (config[cat as keyof CreatureConfig] === optionId) return { state: "selected", note: "Fitted" };
+  if (opt.stock <= 0) return { state: "out", note: "Out of stock" };
+  if (opt.requires && config[opt.requires.category as keyof CreatureConfig] !== opt.requires.option) {
+    return { state: "locked", note: `Needs ${part(opt.requires.option).name}` };
+  }
+  if (opt.needsCoat && !opt.needsCoat.includes(part(config.coat).surface!)) {
+    return { state: "incompatible", note: `Won't root in ${part(config.coat).name}` };
+  }
+  if (cat === "legs" && opt.plugSize !== part(config.torso).plugSize) {
+    return { state: "incompatible", note: `Ø${SIZE_MM[opt.plugSize]} plug vs Ø${SIZE_MM[part(config.torso).plugSize]} port` };
+  }
+  const socket = PORT_POLARITY[cat];
+  if (socket && opt.magnets > 0 && !flips[cat] && opt.polarity === socket) {
+    return { state: "available", note: "Ships reversed — press F after fitting" };
+  }
+  if (opt.stock <= 2) return { state: "low", note: `Only ${opt.stock} left` };
+  return { state: "available", note: `${opt.stock} in kit` };
+}

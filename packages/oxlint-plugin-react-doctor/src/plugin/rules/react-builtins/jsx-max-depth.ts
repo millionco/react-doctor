@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const buildMessage = (depth: number, max: number): string =>
   `This JSX is hard to read at ${depth} levels deep, past the limit of ${max}.`;
@@ -30,7 +31,9 @@ const resolveSettings = (
     typeof reactDoctor === "object" && reactDoctor !== null
       ? ((reactDoctor as { jsxMaxDepth?: JsxMaxDepthSettings }).jsxMaxDepth ?? {})
       : {};
-  return { max: ruleSettings.max ?? DEFAULT_MAX_DEPTH };
+  return {
+    max: ruleSettings.max ?? (shouldUseCuratedPortBehavior(settings) ? DEFAULT_MAX_DEPTH : 2),
+  };
 };
 
 const isLeafJsxNode = (node: EsTreeNode): boolean => {

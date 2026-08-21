@@ -9,6 +9,7 @@ import {
   buildScanResultCacheKey,
   createScanResultCacheInvocationState,
   createScanResultCache,
+  resolveScanResultToolchainFingerprint,
   shouldStoreScanPayload,
   type CachedScanPayload,
 } from "../src/cli/utils/scan-result-cache.js";
@@ -147,6 +148,14 @@ afterEach(() => {
 });
 
 describe("scan result cache", () => {
+  it("fingerprints the bundled rule implementation", () => {
+    const fingerprint = resolveScanResultToolchainFingerprint(null).find((entry) =>
+      entry.startsWith("oxlint-plugin-react-doctor#fingerprint="),
+    );
+
+    expect(fingerprint).toMatch(/^oxlint-plugin-react-doctor#fingerprint=[0-9a-f]+$/);
+  });
+
   it("reuses one repository identity across workspace projects", () => {
     const firstProjectDirectory = setupReactProject(tempDirectory, "apps/first", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },

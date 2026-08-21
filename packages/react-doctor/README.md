@@ -9,7 +9,7 @@
 
 Your agent writes bad React, this catches it.
 
-React Doctor deterministically scans your codebase and finds issues across state & effects, performance, architecture, security, and accessibility.
+React Doctor deterministically scans your codebase and finds issues across state and effects, performance, architecture, security, accessibility, and maintainability. It highlights overly complex React functions and repeated JSX trees that are good candidates for composition.
 
 Works across React frameworks and React-enabled sites - Next.js, Vite, Astro, TanStack, React Native, Expo, you name it.
 
@@ -54,6 +54,33 @@ This adds the workflow, scans every pull request, and posts a summary comment. C
 You can configure which rules to run and how to run them in `doctor.config.ts`.
 
 [Learn more →](https://react.doctor/docs/configuration/config-files)
+
+## Runtime performance traces
+
+Record a Chrome DevTools performance trace while you interact with a running React app:
+
+```bash
+npx react-doctor@latest scan http://localhost:3000
+```
+
+React Doctor opens system Chrome in a temporary isolated profile, records until you press Enter
+(up to five minutes), and flashes purple outlines with component names as React renders. It then
+returns a readable summary plus the path to a compressed DevTools trace. Use `--format json` or
+`--format jsonl` for coding agents. In an interactive terminal, you can run `react-doctor scan`
+without a URL and choose a detected localhost app or enter another URL; coding agents and CI must
+pass the URL explicitly.
+
+An already-open normal browser is left alone. To reuse an authenticated session, start a dedicated
+Chrome profile with remote debugging, sign in, close its non-blank tabs, and pass its endpoint:
+
+```bash
+npx react-doctor@latest scan https://app.example.com --cdp http://127.0.0.1:9222
+```
+
+Chrome performance tracing is browser-wide, so React Doctor rejects attached profiles with open
+pages. It closes blank startup tabs before tracing and closes its scan tab afterward; the attached
+browser stays open. The trace is stored locally and is never uploaded, but it can contain page
+URLs, source paths, and React profiling details. Treat it as sensitive application data.
 
 ## Telemetry
 

@@ -1,0 +1,369 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 22ccad0865023d880202cde5a19db85ff7ed7bb89f0ca4b430a8b779b2e1b7a4
+import { cssColor, SPECIES } from "../world/palette";
+
+export type Mode = "survey" | "deploy" | "chart";
+
+export interface HudHandlers {
+  onStart(): void;
+  onRestart(): void;
+  onMode(mode: Mode): void;
+  onOverview(): void;
+  onMute(): void;
+}
+
+export interface StatsView {
+  power: number;
+  powerMax: number;
+  beacons: number;
+  beaconsMax: number;
+  upkeep: number;
+  roarProgress: number;
+  roarIn: number;
+  imminent: boolean;
+  charted: number;
+  total: number;
+  mode: Mode;
+}
+
+export interface DossierView {
+  readings: number;
+  charted: boolean;
+  stars: number;
+  best: number;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private roarClock: HTMLDivElement;
+  private roarFill: HTMLElement;
+  private roarText: HTMLElement;
+  private powerBar: HTMLDivElement;
+  private powerFill: HTMLElement;
+  private powerText: HTMLElement;
+  private upkeepText: HTMLElement;
+  private beaconText: HTMLElement;
+  private pips: HTMLElement[] = [];
+  private chartedText: HTMLElement;
+  private dossiers: Array<{ root: HTMLElement; readings: HTMLElement; status: HTMLElement; fix: HTMLElement }> = [];
+  private modeButtons = new Map<Mode, HTMLButtonElement>();
+  private hint: HTMLElement;
+  private cursor: HTMLDivElement;
+  private toasts: HTMLDivElement;
+  private intro: HTMLDivElement;
+  private ending: HTMLDivElement;
+  private endCard: HTMLDivElement;
+  private loading: HTMLDivElement;
+  private loadFill: HTMLElement;
+  private muteBtn: HTMLButtonElement;
+  private subtitle!: HTMLElement;
+
+  constructor(private handlers: HudHandlers) {
+    this.root = el("div");
+    this.root.id = "hud";
+
+    const topbar = el("div", "panel");
+    topbar.id = "topbar";
+    const title = el("div", undefined, "Roar Atlas");
+    title.id = "title";
+    const subtitle = el("div", "mono", "Field survey · shelf 000000");
+    subtitle.id = "subtitle";
+    this.subtitle = subtitle;
+    topbar.append(title, subtitle);
+    this.root.append(topbar);
+
+    // --- roar clock ---------------------------------------------------------
+    this.roarClock = el("div", "panel");
+    this.roarClock.id = "roarclock";
+    const label = el("div");
+    label.id = "roarlabel";
+    this.roarText = el("b", "mono", "0.0s");
+    label.append(el("span", undefined, "Next roar"), this.roarText);
+    const bar = el("div", "bar");
+    this.roarFill = el("i");
+    bar.append(this.roarFill);
+    this.roarClock.append(label, bar);
+    this.root.append(this.roarClock);
+
+    // --- dossiers -----------------------------------------------------------
+    const dossiers = el("div");
+    dossiers.id = "dossiers";
+    for (const s of SPECIES) {
+      const card = el("div", "dossier panel");
+      card.style.setProperty("--sp", cssColor(s.color));
+      const name = el("div", "name", s.name);
+      const epithet = el("div", "epithet", s.epithet);
+      const meta = el("div", "meta");
+      const readings = el("b", "mono", "0");
+      const status = el("b", "status", "Uncharted");
+      const left = el("span");
+      left.append(document.createTextNode("Fixes "), readings);
+      meta.append(left, status);
+      const fix = el("div", "fix");
+      const fixFill = el("i");
+      fix.append(fixFill);
+      card.append(name, epithet, meta, fix);
+      dossiers.append(card);
+      this.dossiers.push({ root: card, readings, status, fix: fixFill });
+    }
+    this.root.append(dossiers);
+
+    // --- resources ----------------------------------------------------------
+    const res = el("div", "panel");
+    res.id = "resources";
+    const powerRow = el("div", "row");
+    this.powerText = el("b", "mono", "100");
+    powerRow.append(el("span", undefined, "Cell charge"), this.powerText);
+    this.powerBar = el("div", "bar");
+    this.powerBar.id = "powerbar";
+    this.powerFill = el("i");
+    this.powerBar.append(this.powerFill);
+    const drawRow = el("div", "row");
+    drawRow.style.marginTop = "8px";
+    this.upkeepText = el("b", "mono", "0.0/s");
+    drawRow.append(el("span", undefined, "Draw"), this.upkeepText);
+    const beaconRow = el("div", "row");
+    this.beaconText = el("b", "mono", "6");
+    beaconRow.append(el("span", undefined, "Beacons held"), this.beaconText);
+    const pipRow = el("div");
+    pipRow.id = "beaconpips";
+    for (let i = 0; i < 6; i++) {
+      const pip = el("div", "pip on");
+      this.pips.push(pip);
+      pipRow.append(pip);
+    }
+    const chartRow = el("div", "row");
+    chartRow.style.marginTop = "10px";
+    this.chartedText = el("b", "mono", "0 / 3");
+    chartRow.append(el("span", undefined, "Territories"), this.chartedText);
+    res.append(powerRow, this.powerBar, drawRow, beaconRow, pipRow, chartRow);
+    this.root.append(res);
+
+    // --- mode bar -----------------------------------------------------------
+    const modebar = el("div");
+    modebar.id = "modebar";
+    const modes: Array<[Mode, string, string]> = [
+      ["survey", "Survey", "1"],
+      ["deploy", "Deploy beacon", "2"],
+      ["chart", "Chart den", "3"],
+    ];
+    for (const [mode, text, key] of modes) {
+      const btn = el("button", "modebtn");
+      btn.append(document.createTextNode(text));
+      btn.append(el("span", "key", key));
+      btn.addEventListener("click", () => this.handlers.onMode(mode));
+      this.modeButtons.set(mode, btn);
+      modebar.append(btn);
+    }
+    const overviewBtn = el("button", "modebtn");
+    overviewBtn.append(document.createTextNode("Overview"));
+    overviewBtn.append(el("span", "key", "Tab"));
+    overviewBtn.addEventListener("click", () => this.handlers.onOverview());
+    modebar.append(overviewBtn);
+    this.muteBtn = el("button", "modebtn");
+    this.muteBtn.append(document.createTextNode("Sound on"));
+    this.muteBtn.addEventListener("click", () => this.handlers.onMute());
+    modebar.append(this.muteBtn);
+    this.root.append(modebar);
+
+    this.hint = el("div");
+    this.hint.id = "hint";
+    this.root.append(this.hint);
+
+    const legend = el("div", "panel");
+    legend.id = "legend";
+    legend.innerHTML = [
+      "<span>Drag</span>orbit",
+      "<span>Wheel</span>zoom",
+      "<span>2 + click</span>plant beacon",
+      "<span>Drag beacon</span>tune gain",
+      "<span>X</span>recall beacon",
+      "<span>3 + click</span>mark den",
+    ].join("<br>");
+    this.root.append(legend);
+
+    this.cursor = el("div", "panel mono");
+    this.cursor.id = "cursor";
+    this.root.append(this.cursor);
+
+    this.toasts = el("div");
+    this.toasts.id = "toasts";
+    this.root.append(this.toasts);
+
+    // --- intro --------------------------------------------------------------
+    this.intro = el("div", "overlay");
+    const introCard = el("div", "card panel");
+    introCard.innerHTML = `
+      <h1>Roar Atlas</h1>
+      <h2>Solo field survey · Umbral Shelf</h2>
+      <p>Three creatures den somewhere on this shelf. You will never see them until you have
+      proven where they live. You have <b>ears</b>, <b>tracks</b> and <b>triangulation</b>.</p>
+      <p>Plant survey beacons, then <b>drag a beacon to stretch its gain</b>. A wide gain hears
+      far but returns a fat, uncertain cone; a tight gain is precise but deaf at range — and
+      draws less charge. Every roar paints a cone from each beacon that heard it. Where cones of
+      the same colour overlap, the territory narrows.</p>
+      <p><b>Elevation decides everything.</b> A ridge between a beacon and a roar muffles the
+      reading into a vague smear. High ground hears clean.</p>
+      <div class="keys">
+        <span>1 / 2 / 3</span><div>Survey · Deploy beacon · Chart den</div>
+        <span>Drag</span><div>Orbit the diorama · wheel to zoom</div>
+        <span>Tab</span><div>Snap to overview and back</div>
+        <span>X</span><div>Recall the beacon under the cursor</div>
+      </div>
+      <p style="color:#8e9ba8;font-size:12px">Charge drains while beacons listen. Run dry with a
+      creature still unmapped and the survey is lost.</p>
+    `;
+    const startBtn = el("button", "bigbtn");
+    startBtn.textContent = "Begin survey";
+    startBtn.addEventListener("click", () => this.handlers.onStart());
+    introCard.append(startBtn);
+    this.intro.append(introCard);
+    this.root.append(this.intro);
+
+    // --- ending -------------------------------------------------------------
+    this.ending = el("div", "overlay hidden");
+    this.endCard = el("div", "card panel");
+    this.ending.append(this.endCard);
+    this.root.append(this.ending);
+
+    this.loading = el("div");
+    this.loading.id = "loading";
+    const lt = el("div", "lt", "Surveying the shelf");
+    const lbar = el("div", "lbar");
+    this.loadFill = el("i");
+    lbar.append(this.loadFill);
+    this.loading.append(lt, lbar);
+    this.root.append(this.loading);
+
+    document.body.append(this.root);
+    this.setMode("survey");
+  }
+
+  setSeed(seed: number): void {
+    this.subtitle.textContent = `Field survey · shelf ${seed.toString().padStart(6, "0")}`;
+  }
+
+  setLoading(t: number): void {
+    this.loadFill.style.width = `${Math.round(t * 100)}%`;
+  }
+
+  finishLoading(): void {
+    this.loading.classList.add("done");
+    window.setTimeout(() => this.loading.remove(), 700);
+  }
+
+  showIntro(show: boolean): void {
+    this.intro.classList.toggle("hidden", !show);
+  }
+
+  setMode(mode: Mode): void {
+    for (const [key, btn] of this.modeButtons) btn.classList.toggle("active", key === mode);
+  }
+
+  setMuted(muted: boolean): void {
+    this.muteBtn.textContent = muted ? "Sound off" : "Sound on";
+  }
+
+  setHint(html: string): void {
+    this.hint.innerHTML = html;
+  }
+
+  update(stats: StatsView): void {
+    this.powerFill.style.width = `${Math.max(0, (stats.power / stats.powerMax) * 100)}%`;
+    this.powerText.textContent = Math.max(0, Math.round(stats.power)).toString();
+    this.powerBar.classList.toggle("low", stats.power < stats.powerMax * 0.28);
+    this.upkeepText.textContent = `${stats.upkeep.toFixed(1)}/s`;
+    this.beaconText.textContent = `${stats.beacons}`;
+    for (let i = 0; i < this.pips.length; i++) {
+      (this.pips[i] as HTMLElement).classList.toggle("on", i < stats.beacons);
+    }
+    this.chartedText.textContent = `${stats.charted} / ${stats.total}`;
+    this.roarFill.style.width = `${Math.round(stats.roarProgress * 100)}%`;
+    this.roarText.textContent = `${stats.roarIn.toFixed(1)}s`;
+    this.roarClock.classList.toggle("imminent", stats.imminent);
+  }
+
+  updateDossier(index: number, view: DossierView): void {
+    const d = this.dossiers[index];
+    if (!d) return;
+    d.readings.textContent = `${view.readings}`;
+    d.root.classList.toggle("charted", view.charted);
+    d.status.textContent = view.charted ? "★".repeat(view.stars).padEnd(3, "☆") : "Uncharted";
+    d.fix.style.width = `${Math.round(view.best * 100)}%`;
+  }
+
+  setCursor(visible: boolean, x: number, y: number, big: string, sub: string, color: string): void {
+    this.cursor.style.opacity = visible ? "1" : "0";
+    if (!visible) return;
+    this.cursor.style.left = `${x}px`;
+    this.cursor.style.top = `${y}px`;
+    this.cursor.style.borderColor = color;
+    this.cursor.innerHTML = `<div class="big" style="color:${color}">${big}</div><div class="sub">${sub}</div>`;
+  }
+
+  toast(text: string, kind: "good" | "bad" | "info" = "info", ms = 3200): void {
+    const node = el("div", `toast ${kind}`, text);
+    this.toasts.append(node);
+    window.setTimeout(() => {
+      node.style.transition = "opacity .4s";
+      node.style.opacity = "0";
+      window.setTimeout(() => node.remove(), 420);
+    }, ms);
+  }
+
+  showEnding(
+    won: boolean,
+    lines: Array<{ name: string; color: string; stars: number; error: number; charted: boolean }>,
+    summary: string,
+    score: number,
+  ): void {
+    this.endCard.innerHTML = "";
+    const h1 = el("h1", undefined, won ? "Atlas Complete" : "Survey Lost");
+    h1.style.color = won ? "#ffe4a8" : "#ff9d90";
+    const h2 = el("h2", undefined, won ? "Every territory outlined" : "The shelf keeps its secrets");
+    this.endCard.append(h1, h2);
+    const p = el("p", undefined, summary);
+    this.endCard.append(p);
+    for (const line of lines) {
+      const row = el("div", "scoreline");
+      const name = el("span", undefined, line.name);
+      name.style.color = line.color;
+      const right = el("span", "stars mono");
+      right.textContent = line.charted
+        ? `${"★".repeat(line.stars)}${"☆".repeat(3 - line.stars)}  ${line.error.toFixed(1)}m`
+        : "— unmapped";
+      if (!line.charted) right.style.color = "#8e9ba8";
+      row.append(name, right);
+      this.endCard.append(row);
+    }
+    const total = el("div", "scoreline");
+    total.style.borderBottom = "none";
+    total.style.marginBottom = "18px";
+    total.append(el("span", undefined, "Survey score"), el("span", "stars mono", `${score}`));
+    this.endCard.append(total);
+
+    const btn = el("button", "bigbtn");
+    btn.textContent = "New shelf";
+    btn.addEventListener("click", () => this.handlers.onRestart());
+    this.endCard.append(btn);
+    this.ending.classList.remove("hidden");
+  }
+
+  hideEnding(): void {
+    this.ending.classList.add("hidden");
+  }
+}

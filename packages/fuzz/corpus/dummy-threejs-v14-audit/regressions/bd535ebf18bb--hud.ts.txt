@@ -1,0 +1,369 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit bd535ebf18bb2de78bfa85d07730a43ecbe5cd423998bf611805d1a5721cbaf3
+/**
+ * DOM overlay: readouts, judgment feedback, lane/phase panels, recovery cues
+ * and the title / results cards.
+ *
+ * Kept in DOM (not sprites) so text stays crisp and the 3D scene never has to
+ * fight a canvas-texture atlas.
+ */
+
+import { LANE_KEYS, LANE_NAMES, LANE_COLORS } from "../world/rails";
+import { PASS_ACCURACY, TOTAL_BEATS, type Judgment } from "../game/chart";
+
+export interface HudStats {
+  accuracy: number;
+  beat: number;
+  combo: number;
+  maxCombo: number;
+  multiplier: number;
+  tune: number;
+  counts: Record<Judgment, number>;
+  judged: number;
+  total: number;
+}
+
+export interface LaneInfo {
+  phase: number;
+  energy: number;
+  starve: number;
+  recovery: number;
+  alarm: number;
+}
+
+export interface ResultsData {
+  accuracy: number;
+  counts: Record<Judgment, number>;
+  maxCombo: number;
+  total: number;
+  passed: boolean;
+  edits: number;
+  lockTime: number;
+}
+
+const el = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  text?: string,
+): HTMLElementTagNameMap[K] => {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+
+const hex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
+
+export class Hud {
+  readonly root: HTMLDivElement;
+
+  private readonly accuracyValue: HTMLElement;
+  private readonly accuracyBar: HTMLElement;
+  private readonly beatValue: HTMLElement;
+  private readonly comboValue: HTMLElement;
+  private readonly multValue: HTMLElement;
+  private readonly tuneValue: HTMLElement;
+  private readonly tunePips: HTMLElement;
+  private readonly countChips: Record<Judgment, HTMLElement>;
+  private readonly judgeText: HTMLElement;
+  private readonly judgeOffset: HTMLElement;
+  private readonly lockBadge: HTMLElement;
+  private readonly lanePanels: Array<{
+    root: HTMLElement;
+    phaseFill: HTMLElement;
+    phaseNeedle: HTMLElement;
+    starve: HTMLElement;
+    recovery: HTMLElement;
+    status: HTMLElement;
+  }> = [];
+  private readonly vignette: HTMLElement;
+  private readonly card: HTMLElement;
+  private readonly cardBody: HTMLElement;
+  private readonly loadBar: HTMLElement;
+  private readonly loadWrap: HTMLElement;
+  private readonly hint: HTMLElement;
+
+  private judgeTimer = 0;
+  private flashTimer = 0;
+  private flashColor = "255,60,60";
+
+  constructor() {
+    this.root = el("div", "hud");
+
+    // ---------------- top bar ----------------
+    const top = el("div", "hud-top");
+
+    const accBlock = el("div", "panel acc");
+    accBlock.append(el("div", "label", "ACCURACY"));
+    this.accuracyValue = el("div", "value big", "100.0%");
+    accBlock.append(this.accuracyValue);
+    const track = el("div", "bar-track");
+    this.accuracyBar = el("div", "bar-fill");
+    const threshold = el("div", "bar-threshold");
+    threshold.style.left = `${PASS_ACCURACY}%`;
+    track.append(this.accuracyBar, threshold);
+    accBlock.append(track);
+    accBlock.append(el("div", "sub", `CLEAR AT ${PASS_ACCURACY}%`));
+
+    const seqBlock = el("div", "panel");
+    seqBlock.append(el("div", "label", "SEQUENCE"));
+    this.beatValue = el("div", "value", `0 / ${TOTAL_BEATS}`);
+    seqBlock.append(this.beatValue);
+    const counts = el("div", "chips");
+    this.countChips = {
+      perfect: el("span", "chip perfect", "P 0"),
+      early: el("span", "chip early", "E 0"),
+      late: el("span", "chip late", "L 0"),
+      miss: el("span", "chip miss", "M 0"),
+    };
+    counts.append(
+      this.countChips.perfect,
+      this.countChips.early,
+      this.countChips.late,
+      this.countChips.miss,
+    );
+    seqBlock.append(counts);
+
+    const comboBlock = el("div", "panel");
+    comboBlock.append(el("div", "label", "COMBO"));
+    this.comboValue = el("div", "value", "0");
+    comboBlock.append(this.comboValue);
+    this.multValue = el("div", "sub", "x1.0");
+    comboBlock.append(this.multValue);
+
+    const tuneBlock = el("div", "panel");
+    tuneBlock.append(el("div", "label", "TUNE CHARGES"));
+    this.tuneValue = el("div", "value", "8");
+    tuneBlock.append(this.tuneValue);
+    this.tunePips = el("div", "pips");
+    tuneBlock.append(this.tunePips);
+    tuneBlock.append(el("div", "sub", "CLICK A MARKER TO RE-ROUTE"));
+
+    top.append(accBlock, seqBlock, comboBlock, tuneBlock);
+    this.root.append(top);
+
+    // ---------------- centre judgment ----------------
+    const centre = el("div", "hud-centre");
+    this.judgeText = el("div", "judge");
+    this.judgeOffset = el("div", "judge-offset");
+    this.lockBadge = el("div", "lock-badge", "PULSE LOCK");
+    centre.append(this.judgeText, this.judgeOffset, this.lockBadge);
+    this.root.append(centre);
+
+    // ---------------- lane panels ----------------
+    const lanes = el("div", "hud-lanes");
+    for (let i = 0; i < 3; i++) {
+      const p = el("div", "lane");
+      p.style.setProperty("--lane", hex(LANE_COLORS[i]!));
+
+      const head = el("div", "lane-head");
+      head.append(el("span", "key", LANE_KEYS[i]!));
+      head.append(el("span", "lane-name", LANE_NAMES[i]!));
+      p.append(head);
+
+      const phaseTrack = el("div", "phase-track");
+      const phaseFill = el("div", "phase-fill");
+      const phaseNeedle = el("div", "phase-needle");
+      const centreTick = el("div", "phase-centre");
+      phaseTrack.append(phaseFill, centreTick, phaseNeedle);
+      p.append(phaseTrack);
+
+      const meta = el("div", "lane-meta");
+      const starve = el("span", "starve", "FED");
+      const status = el("span", "status", "");
+      meta.append(starve, status);
+      p.append(meta);
+
+      const recovery = el("div", "recovery");
+      p.append(recovery);
+
+      lanes.append(p);
+      this.lanePanels.push({ root: p, phaseFill, phaseNeedle, starve, recovery, status });
+    }
+    this.root.append(lanes);
+
+    // ---------------- overlays ----------------
+    this.vignette = el("div", "vignette");
+    this.root.append(this.vignette);
+
+    this.card = el("div", "card");
+    this.cardBody = el("div", "card-body");
+    this.card.append(this.cardBody);
+    this.root.append(this.card);
+
+    this.loadWrap = el("div", "loading");
+    const loadTrack = el("div", "load-track");
+    this.loadBar = el("div", "load-fill");
+    loadTrack.append(this.loadBar);
+    this.loadWrap.append(el("div", "load-title", "PULSE ORBIT"));
+    this.loadWrap.append(el("div", "load-sub", "AUTHORING SURFACES"));
+    this.loadWrap.append(loadTrack);
+    this.root.append(this.loadWrap);
+
+    this.hint = el("div", "hint");
+    this.root.append(this.hint);
+
+    document.body.append(this.root);
+  }
+
+  setLoading(progress: number, label: string): void {
+    this.loadWrap.style.display = progress >= 1 ? "none" : "flex";
+    this.loadBar.style.width = `${Math.round(progress * 100)}%`;
+    const sub = this.loadWrap.querySelector(".load-sub");
+    if (sub) sub.textContent = label;
+  }
+
+  showTitle(): void {
+    this.card.classList.add("visible");
+    this.cardBody.innerHTML = `
+      <h1>PULSE ORBIT</h1>
+      <p class="tag">Keep three rhythm waves phase-aligned while you leap the lattice.</p>
+      <div class="grid">
+        <div><span class="k">J</span><span class="k">SPACE</span><span class="k">K</span>
+          <p>Strike the port, axis and starboard rails as their markers reach the ring.</p></div>
+        <div><span class="k">CLICK</span>
+          <p>Re-route an approaching marker to another lane. Feed a starved wave before its
+             phase drifts and you lose PULSE LOCK.</p></div>
+      </div>
+      <p class="obj">OBJECTIVE &mdash; clear the 64-beat sequence above ${PASS_ACCURACY}% accuracy.</p>
+      <button id="start-btn">BEGIN SEQUENCE</button>
+      <p class="fine">Eight beats of the chart are always visible in depth along each rail.
+         The halo ring around a marker contracts to match the reference ring exactly on the beat.</p>
+    `;
+  }
+
+  showResults(data: ResultsData): void {
+    this.card.classList.add("visible");
+    const verdict = data.passed ? "SEQUENCE CLEARED" : "SEQUENCE FAILED";
+    this.cardBody.innerHTML = `
+      <h1 class="${data.passed ? "pass" : "fail"}">${verdict}</h1>
+      <p class="tag">${data.accuracy.toFixed(1)}% accuracy &middot; target ${PASS_ACCURACY}%</p>
+      <div class="tally">
+        <div><b class="perfect">${data.counts.perfect}</b><span>PERFECT</span></div>
+        <div><b class="early">${data.counts.early}</b><span>EARLY</span></div>
+        <div><b class="late">${data.counts.late}</b><span>LATE</span></div>
+        <div><b class="miss">${data.counts.miss}</b><span>MISS</span></div>
+      </div>
+      <p class="tag">Longest combo ${data.maxCombo} / ${data.total} &middot;
+         ${data.edits} re-routes &middot; ${data.lockTime.toFixed(1)}s in pulse lock</p>
+      <button id="start-btn">RUN AGAIN</button>
+    `;
+  }
+
+  hideCard(): void {
+    this.card.classList.remove("visible");
+  }
+
+  onStart(cb: () => void): void {
+    this.card.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).id === "start-btn") cb();
+    });
+  }
+
+  setHint(text: string): void {
+    this.hint.textContent = text;
+    this.hint.style.opacity = text ? "1" : "0";
+  }
+
+  flashJudgment(kind: Judgment, offsetMs: number): void {
+    this.judgeText.textContent = kind.toUpperCase();
+    this.judgeText.className = `judge show ${kind}`;
+    this.judgeOffset.textContent =
+      kind === "miss" ? "NO INPUT" : `${offsetMs > 0 ? "+" : ""}${offsetMs.toFixed(0)} ms`;
+    this.judgeOffset.className = `judge-offset show ${kind}`;
+    this.judgeTimer = kind === "miss" ? 0.85 : 0.55;
+    if (kind === "miss") this.flash("255,58,58", 0.5);
+  }
+
+  flash(rgb: string, seconds: number): void {
+    this.flashColor = rgb;
+    this.flashTimer = seconds;
+  }
+
+  setLock(amount: number, locked: boolean): void {
+    this.lockBadge.classList.toggle("on", locked);
+    this.lockBadge.style.opacity = `${0.15 + amount * 0.85}`;
+  }
+
+  setStats(s: HudStats): void {
+    this.accuracyValue.textContent = `${s.accuracy.toFixed(1)}%`;
+    this.accuracyValue.classList.toggle("under", s.judged > 0 && s.accuracy < PASS_ACCURACY);
+    this.accuracyBar.style.width = `${Math.max(0, Math.min(100, s.accuracy))}%`;
+    this.accuracyBar.classList.toggle("under", s.judged > 0 && s.accuracy < PASS_ACCURACY);
+    this.beatValue.textContent = `${Math.max(0, Math.min(TOTAL_BEATS, Math.floor(s.beat)))} / ${TOTAL_BEATS}`;
+    this.comboValue.textContent = `${s.combo}`;
+    this.multValue.textContent = `x${s.multiplier.toFixed(1)} · best ${s.maxCombo}`;
+    this.tuneValue.textContent = `${s.tune}`;
+    this.countChips.perfect.textContent = `P ${s.counts.perfect}`;
+    this.countChips.early.textContent = `E ${s.counts.early}`;
+    this.countChips.late.textContent = `L ${s.counts.late}`;
+    this.countChips.miss.textContent = `M ${s.counts.miss}`;
+
+    if (this.tunePips.childElementCount !== 8) {
+      this.tunePips.innerHTML = "";
+      for (let i = 0; i < 8; i++) this.tunePips.append(el("i"));
+    }
+    const pips = this.tunePips.children;
+    for (let i = 0; i < pips.length; i++) {
+      (pips[i] as HTMLElement).classList.toggle("spent", i >= s.tune);
+    }
+  }
+
+  setLanes(info: readonly LaneInfo[]): void {
+    for (let i = 0; i < this.lanePanels.length; i++) {
+      const p = this.lanePanels[i]!;
+      const d = info[i];
+      if (!d) continue;
+      const pct = 50 + Math.max(-0.5, Math.min(0.5, d.phase)) * 100;
+      p.phaseNeedle.style.left = `${pct}%`;
+      const drift = Math.min(1, Math.abs(d.phase) / 0.35);
+      p.phaseFill.style.width = `${Math.abs(d.phase) * 200}%`;
+      p.phaseFill.style.left = d.phase < 0 ? `${pct}%` : "50%";
+      p.root.classList.toggle("drifting", drift > 0.55);
+      p.root.classList.toggle("alarm", d.alarm > 0.05);
+      p.root.style.setProperty("--energy", `${d.energy.toFixed(3)}`);
+
+      if (d.starve >= 6) {
+        p.starve.textContent = `STARVED ${d.starve}`;
+        p.starve.className = "starve bad";
+      } else if (d.starve >= 3) {
+        p.starve.textContent = `THIN ${d.starve}`;
+        p.starve.className = "starve warn";
+      } else {
+        p.starve.textContent = "FED";
+        p.starve.className = "starve";
+      }
+
+      if (d.recovery > 0) {
+        p.recovery.style.display = "block";
+        p.recovery.innerHTML = `RE-SYNC ${"●".repeat(3 - d.recovery)}${"○".repeat(d.recovery)}`;
+        p.status.textContent = "DESYNC";
+        p.status.className = "status bad";
+      } else {
+        p.recovery.style.display = "none";
+        p.status.textContent = drift > 0.55 ? "DRIFTING" : "";
+        p.status.className = drift > 0.55 ? "status warn" : "status";
+      }
+    }
+  }
+
+  update(dt: number): void {
+    if (this.judgeTimer > 0) {
+      this.judgeTimer -= dt;
+      if (this.judgeTimer <= 0) {
+        this.judgeText.className = "judge";
+        this.judgeOffset.className = "judge-offset";
+      }
+    }
+    if (this.flashTimer > 0) {
+      this.flashTimer -= dt;
+      const a = Math.max(0, this.flashTimer) * 0.9;
+      this.vignette.style.boxShadow = `inset 0 0 22vh 4vh rgba(${this.flashColor},${a.toFixed(3)})`;
+    } else {
+      this.vignette.style.boxShadow = "inset 0 0 18vh 2vh rgba(0,0,0,0.55)";
+    }
+  }
+}

@@ -5,8 +5,13 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
   computeDiagnosticDelta,
+  classifyFileContext,
   filterPathsOutsideDirectories,
   filterSourceFiles,
+  isPathInsideDirectory,
+  JSX_DUPLICATION_SOURCE_FILE_PATTERN,
+  listSourceFilesCooperative,
+  remainingDeadlineBudgetMs,
   type Diagnostic,
   type InspectResult,
   PerFileLintCacheEnabled,
@@ -22,6 +27,7 @@ import { buildRuntimeLayers } from "./build-runtime-layers.js";
 import { BASELINE_FILES_TEMP_DIR_PREFIX } from "./constants.js";
 import { countDeadlineSkippedFiles } from "./count-deadline-skipped-files.js";
 import { countDroppedLintFiles } from "./count-dropped-lint-files.js";
+import { copyUnchangedBaselineSources } from "./copy-unchanged-baseline-sources.js";
 import { createDiagnosticEvidenceReader } from "./read-diagnostic-evidence.js";
 import { createSourceLineReader } from "./read-source-line.js";
 import { materializeBaselineFiles } from "./materialize-baseline-files.js";
@@ -59,7 +65,6 @@ export const countIncompleteLintFiles = (lintPartialFailures: ReadonlyArray<stri
 export const runBaselineComparison = async (
   input: RunBaselineComparisonInput,
 ): Promise<BaselineComparison | null> => {
-  const temporaryDirectory = mkdtempSync(path.join(tmpdir(), BASELINE_FILES_TEMP_DIR_PREFIX));
   const baselineIncludePaths = filterPathsOutsideDirectories({
     rootDirectory: input.directory,
     relativePaths: input.options.includePaths,
@@ -79,12 +84,39 @@ export const runBaselineComparison = async (
         excludedDirectories: input.options.excludedProjectDirectories,
       })
     : undefined;
+  const remainingBaselineBudgetMs =
+    input.deadlineEpochMs === null ? null : remainingDeadlineBudgetMs(input.deadlineEpochMs);
+  if (remainingBaselineBudgetMs === 0) return null;
+  const baselineDeadlineSignal =
+    remainingBaselineBudgetMs === null ? undefined : AbortSignal.timeout(remainingBaselineBudgetMs);
+  const baselineListingSignal =
+    baselineDeadlineSignal === undefined
+      ? input.oxlintRuntime.abortSignal
+      : input.oxlintRuntime.abortSignal === undefined
+        ? baselineDeadlineSignal
+        : AbortSignal.any([input.oxlintRuntime.abortSignal, baselineDeadlineSignal]);
+  let maintainabilitySourceFiles: string[] = [];
+  if (input.options.deadCode) {
+    try {
+      maintainabilitySourceFiles = (
+        await listSourceFilesCooperative(input.directory, baselineListingSignal)
+      ).filter(
+        (filePath) =>
+          JSX_DUPLICATION_SOURCE_FILE_PATTERN.test(filePath) &&
+          classifyFileContext(filePath) === "production",
+      );
+    } catch (error) {
+      if (baselineDeadlineSignal?.aborted) return null;
+      throw error;
+    }
+  }
+  const temporaryDirectory = mkdtempSync(path.join(tmpdir(), BASELINE_FILES_TEMP_DIR_PREFIX));
   const snapshot = await materializeBaselineFiles({
     directory: input.directory,
     ref: input.baselineRef,
-    files: baselineIncludePaths,
-    baseFiles: baselineBaseFiles,
-    headFiles: baselineHeadFiles,
+    files: input.options.deadCode ? input.options.includePaths : baselineIncludePaths,
+    baseFiles: input.options.deadCode ? input.baseFiles : baselineBaseFiles,
+    headFiles: input.options.deadCode ? input.headFiles : baselineHeadFiles,
     tempDirectory: temporaryDirectory,
   }).catch((error: unknown) => {
     rmSync(temporaryDirectory, { recursive: true, force: true });
@@ -97,27 +129,75 @@ export const runBaselineComparison = async (
 
   try {
     if (!snapshot.isComplete) return null;
+    if (
+      input.options.deadCode &&
+      !(await copyUnchangedBaselineSources({
+        directory: input.directory,
+        sourceFiles: maintainabilitySourceFiles,
+        baseMaterializedFiles: snapshot.materializedFiles,
+        headChangedFiles: snapshot.headFiles,
+        untrackedFiles: snapshot.untrackedFiles,
+        tempDirectory: snapshot.tempDirectory,
+        deadlineEpochMs: input.deadlineEpochMs,
+        signal: input.oxlintRuntime.abortSignal,
+      }))
+    ) {
+      return null;
+    }
+    const filteredSnapshotBaseFiles = filterPathsOutsideDirectories({
+      rootDirectory: input.directory,
+      relativePaths: snapshot.baseFiles,
+      excludedDirectories: input.options.excludedProjectDirectories,
+    });
+    const filteredSnapshotHeadFiles = filterPathsOutsideDirectories({
+      rootDirectory: input.directory,
+      relativePaths: snapshot.headFiles,
+      excludedDirectories: input.options.excludedProjectDirectories,
+    });
     const analyzedHeadFiles = new Set(input.headAnalyzedFiles.map(toForwardSlashes));
-    const baseFiles = new Set(snapshot.baseFiles.map(toForwardSlashes));
-    const expectedHeadFiles = new Set(snapshot.headFiles.map(toForwardSlashes));
+    const baseFiles = new Set(
+      (baselineBaseFiles ?? filteredSnapshotBaseFiles).map(toForwardSlashes),
+    );
+    const expectedHeadFiles = new Set(
+      (baselineHeadFiles ?? filteredSnapshotHeadFiles).map(toForwardSlashes),
+    );
     for (const filePath of baselineIncludePaths) {
       const normalizedFilePath = toForwardSlashes(filePath);
       if (!baseFiles.has(normalizedFilePath)) expectedHeadFiles.add(normalizedFilePath);
     }
     if (
+      input.options.lint &&
       filterSourceFiles([...expectedHeadFiles]).some((filePath) => !analyzedHeadFiles.has(filePath))
     ) {
       return null;
     }
 
+    const baselineLintPaths = new Set(
+      [...baselineIncludePaths, ...filteredSnapshotBaseFiles].map(toForwardSlashes),
+    );
+    const materializedLintPaths = snapshot.materializedFiles.filter((filePath) =>
+      baselineLintPaths.has(toForwardSlashes(filePath)),
+    );
+    const maintainabilityFocusPaths = [
+      ...new Set([...input.options.includePaths, ...snapshot.baseFiles].map(toForwardSlashes)),
+    ];
+    const baselineExcludedProjectDirectories = input.options.excludedProjectDirectories
+      .map((excludedDirectory) => path.resolve(excludedDirectory))
+      .filter((excludedDirectory) => isPathInsideDirectory(excludedDirectory, input.directory))
+      .map((excludedDirectory) =>
+        path.resolve(snapshot.tempDirectory, path.relative(input.directory, excludedDirectory)),
+      );
+    const baseIncludePaths =
+      materializedLintPaths.length > 0 ? materializedLintPaths : maintainabilityFocusPaths;
     const runtimeLayers = buildRuntimeLayers({
       directory: snapshot.tempDirectory,
       hasConfigOverride: true,
       userConfig: input.userConfig,
       configSourceDirectory: input.configSourceDirectory,
       projectInfoOverride: input.headProjectInfo,
-      shouldSkipLint: !input.options.lint || !input.resolvedNodeBinaryPath,
-      shouldRunDeadCode: false,
+      shouldSkipLint:
+        !input.options.lint || !input.resolvedNodeBinaryPath || materializedLintPaths.length === 0,
+      shouldRunDeadCode: input.options.deadCode,
       shouldRunSupplyChain: input.options.supplyChain,
       shouldComputeScore: false,
       shouldShowProgressSpinners: false,
@@ -127,7 +207,8 @@ export const runBaselineComparison = async (
     const baseProgram = runInspectEffect(
       {
         directory: snapshot.tempDirectory,
-        includePaths: snapshot.materializedFiles,
+        includePaths: baseIncludePaths,
+        maintainabilityFocusPaths,
         customRulesOnly: input.options.customRulesOnly,
         respectInlineDisables: input.options.respectInlineDisables,
         warnings: input.options.warnings,
@@ -136,7 +217,7 @@ export const runBaselineComparison = async (
         includedTags: input.options.includedTags,
         includeTagDefaults: input.options.includeTagDefaults,
         nodeBinaryPath: input.resolvedNodeBinaryPath ?? undefined,
-        runDeadCode: false,
+        runDeadCode: input.options.deadCode,
         isCi: input.options.isCi,
         doctorVersion: VERSION,
         runId: getRunId(),
@@ -145,6 +226,9 @@ export const runBaselineComparison = async (
         supplyChainManifestChanged: input.options.supplyChainManifestChanged,
         deadlineEpochMs: input.deadlineEpochMs ?? undefined,
         signal: input.oxlintRuntime.abortSignal,
+        excludedProjectDirectories: baselineExcludedProjectDirectories,
+        retainExcludedProjectDeadCodeDiagnostics:
+          input.options.retainExcludedProjectDeadCodeDiagnostics,
       },
       {},
     );
@@ -159,12 +243,20 @@ export const runBaselineComparison = async (
       ),
       { signal: input.oxlintRuntime.abortSignal },
     );
-    if (baseOutput.didLintFail || countIncompleteLintFiles(baseOutput.lintPartialFailures) > 0) {
+    if (
+      baseOutput.didLintFail ||
+      baseOutput.didDeadCodeFail ||
+      countIncompleteLintFiles(baseOutput.lintPartialFailures) > 0
+    ) {
       return null;
     }
 
     const hasUnscannedUntrackedSourceFiles = filterSourceFiles(
-      snapshot.untrackedFiles.map(toForwardSlashes),
+      filterPathsOutsideDirectories({
+        rootDirectory: input.directory,
+        relativePaths: snapshot.untrackedFiles,
+        excludedDirectories: input.options.excludedProjectDirectories,
+      }).map(toForwardSlashes),
     ).some((filePath) => !analyzedHeadFiles.has(filePath));
     const diagnosticDelta = computeDiagnosticDelta({
       headDiagnostics: input.headDiagnostics,

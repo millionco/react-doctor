@@ -1,5 +1,5 @@
 import {
-  hasReactRuntime,
+  hasSupportedFrameworkOrLibrary,
   type InspectResult,
   type JsonReportMode,
   type JsonReportSkippedProject,
@@ -32,7 +32,7 @@ export interface FinalCliScanOutcome {
   readonly baselineDegraded: boolean;
   readonly mode: JsonReportMode;
   readonly scansForJsonReport: ReadonlyArray<CompletedScan>;
-  readonly shouldWarnNoReactDetected: boolean;
+  readonly shouldWarnNoSupportedLibraryDetected: boolean;
 }
 
 const filterCompletedScansByCategories = (
@@ -77,8 +77,8 @@ export const buildFinalCliScanOutcome = (
       input.completedScans,
       input.categoryFilters,
     ),
-    shouldWarnNoReactDetected:
+    shouldWarnNoSupportedLibraryDetected:
       input.completedScans.length > 0 &&
-      !input.completedScans.some((scan) => hasReactRuntime(scan.result.project)),
+      !input.completedScans.some((scan) => hasSupportedFrameworkOrLibrary(scan.result.project)),
   };
 };

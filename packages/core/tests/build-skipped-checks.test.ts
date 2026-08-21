@@ -36,4 +36,20 @@ describe("buildSkippedChecks", () => {
 
     expect(result.skippedCheckReasons["security-scan"]).toBe(securityScanFailureReason);
   });
+
+  it("preserves the dead-code compatibility key for maintainability failures", () => {
+    const failureReason = "Maintainability analysis was incomplete.";
+    const result = buildSkippedChecks({
+      didLintFail: false,
+      lintFailureReason: null,
+      lintPartialFailures: [],
+      didDeadCodeFail: true,
+      deadCodeFailureReason: failureReason,
+      supplyChainOverlapTimedOut: false,
+      securityScanFailed: false,
+    });
+
+    expect(result.skippedChecks).toEqual(["dead-code"]);
+    expect(result.skippedCheckReasons["dead-code"]).toBe(failureReason);
+  });
 });

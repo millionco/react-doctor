@@ -1,0 +1,372 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 94bc18d8ac6bb3ef2d7a93d2c09d689673b14ea88069d2978ba5c7ee9d411b94
+import type { EraDef } from "../art/eras";
+import type { Objective } from "../game/state";
+import type { Notice } from "../game/world";
+import { ICON_ISLAND, ICON_KEYSTONE, iconFor, MARK } from "./icons";
+
+/**
+ * The overlay. Deliberately quiet: an age plate, one objective, a reticle that
+ * only appears when something is actually reachable, and panels that take over
+ * the lower third when you are reading or listening.
+ */
+
+export type PanelKind = "none" | "dialogue" | "inspect";
+
+const el = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] => {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+};
+
+const keycap = (label: string): string => `<span class="keycap">${label}</span>`;
+
+export class Hud {
+  private root: HTMLDivElement;
+  private eraBox: HTMLDivElement;
+  private eraReckoning: HTMLDivElement;
+  private eraName: HTMLDivElement;
+  private eraEpithet: HTMLDivElement;
+  private objLabel: HTMLDivElement;
+  private objText: HTMLDivElement;
+  private objDetail: HTMLDivElement;
+  private objProgress: HTMLDivElement;
+  private pips: HTMLDivElement;
+  private pipNodes: HTMLDivElement[] = [];
+  private reticle: HTMLDivElement;
+  private reticleIcon: HTMLDivElement;
+  private reticleLabel: HTMLSpanElement;
+  private reticleName: HTMLSpanElement;
+  private dot: HTMLDivElement;
+  private notices: HTMLDivElement;
+  private dialogue: HTMLDivElement;
+  private dialogueSpeaker: HTMLDivElement;
+  private dialogueLine: HTMLDivElement;
+  private inspect: HTMLDivElement;
+  private inspectTitle: HTMLDivElement;
+  private inspectSub: HTMLDivElement;
+  private inspectLines: HTMLDivElement;
+  private overlay: HTMLDivElement;
+  private beginButton: HTMLButtonElement;
+  private loading: HTMLDivElement;
+  private loadFill: HTMLDivElement;
+  private loadLabel: HTMLDivElement;
+  private grade: HTMLDivElement;
+  private place: HTMLDivElement;
+  private placeName: HTMLSpanElement;
+  private paused: HTMLDivElement;
+
+  private dialogueLines: string[] = [];
+  private dialogueIndex = 0;
+  panel: PanelKind = "none";
+  onBegin: (() => void) | null = null;
+
+  constructor() {
+    this.grade = el("div");
+    this.grade.id = "grade";
+    document.body.appendChild(this.grade);
+
+    const vignette = el("div");
+    vignette.id = "vignette";
+    document.body.appendChild(vignette);
+
+    this.root = el("div");
+    this.root.id = "hud";
+    document.body.appendChild(this.root);
+
+    // ---- Age plate
+    this.eraBox = el("div");
+    this.eraBox.id = "era";
+    this.eraReckoning = el("div", "reckoning", "Turn I");
+    this.eraName = el("div", "name", "The Sedge Kilns");
+    this.eraEpithet = el("div", "epithet", "");
+    this.eraBox.append(this.eraReckoning, this.eraName, this.eraEpithet, el("div", "rule"));
+    this.root.appendChild(this.eraBox);
+
+    // ---- Objective
+    const obj = el("div");
+    obj.id = "objective";
+    this.objLabel = el("div", "label", "Standing charge");
+    this.objText = el("div", "text", "");
+    this.objDetail = el("div", "detail", "");
+    this.objProgress = el("div", "progress", "");
+    this.pips = el("div");
+    this.pips.id = "keystones";
+    for (let i = 0; i < 3; i++) {
+      const pip = el("div", "pip", ICON_KEYSTONE("#d9a94f"));
+      this.pipNodes.push(pip);
+      this.pips.appendChild(pip);
+    }
+    obj.append(this.objLabel, this.objText, this.objDetail, this.objProgress, this.pips);
+    this.root.appendChild(obj);
+
+    // ---- Reticle
+    this.dot = el("div");
+    this.dot.id = "dot";
+    this.root.appendChild(this.dot);
+
+    this.reticle = el("div");
+    this.reticle.id = "reticle";
+    this.reticleIcon = el("div", "icon");
+    const prompt = el("div", "prompt");
+    this.reticleName = el("span", "name");
+    this.reticleLabel = el("span", "label");
+    prompt.innerHTML = keycap("E");
+    prompt.append(this.reticleLabel, this.reticleName);
+    this.reticle.append(this.reticleIcon, prompt);
+    this.root.appendChild(this.reticle);
+
+    // ---- Notices
+    this.notices = el("div");
+    this.notices.id = "notices";
+    this.root.appendChild(this.notices);
+
+    // ---- Dialogue
+    this.dialogue = el("div");
+    this.dialogue.id = "dialogue";
+    this.dialogueSpeaker = el("div", "speaker", "The Tallykeeper");
+    this.dialogueLine = el("div", "line", "");
+    const cont = el("div", "continue", `${keycap("E")}<span>continue</span>`);
+    this.dialogue.append(this.dialogueSpeaker, this.dialogueLine, cont);
+    this.root.appendChild(this.dialogue);
+
+    // ---- Inspect
+    this.inspect = el("div");
+    this.inspect.id = "inspect";
+    this.inspectTitle = el("div", "title", "");
+    this.inspectSub = el("div", "sub", "");
+    this.inspectLines = el("div", "lines");
+    const contI = el("div", "continue", `${keycap("E")}<span>step back</span>`);
+    this.inspect.append(this.inspectTitle, this.inspectSub, this.inspectLines, contI);
+    this.root.appendChild(this.inspect);
+
+    // ---- Corner furniture
+    this.place = el("div");
+    this.place.id = "place";
+    const glyph = el("div", "glyph", ICON_ISLAND("#8b8069"));
+    this.placeName = el("span");
+    this.placeName.textContent = "Ourenna";
+    this.place.append(glyph, this.placeName);
+    this.root.appendChild(this.place);
+
+    const hints = el("div");
+    hints.id = "hints";
+    hints.innerHTML = `
+      <div class="row">${keycap("W")}${keycap("A")}${keycap("S")}${keycap("D")}<span>walk</span></div>
+      <div class="row">${keycap("Shift")}<span>stride</span></div>
+      <div class="row">${keycap("E")}<span>inspect · speak · seat</span></div>
+      <div class="row">${keycap("V")}<span>view</span>${keycap("M")}<span>sound</span></div>`;
+    this.root.appendChild(hints);
+
+    this.paused = el("div");
+    this.paused.id = "paused";
+    this.paused.innerHTML = `<div class="title">Paused</div><div class="body">Click to take hold of the island again.</div>`;
+    this.root.appendChild(this.paused);
+
+    // ---- Title / loading overlay
+    this.overlay = el("div");
+    this.overlay.id = "overlay";
+    const card = el("div", "card");
+    const mark = el("div", "mark", MARK("#d9a94f"));
+    const h1 = el("h1");
+    h1.textContent = "AGEWHEEL";
+    const tagline = el("div", "tagline", "five ages of Ourenna, and one building you refuse to let go of");
+    const blurb = el(
+      "div",
+      "blurb",
+      "The island is rebuilt every thousand years on top of what was there before. " +
+        "Read three of its ages, then bind one structure as your anchor and carry it across two turns of the wheel. " +
+        "Its keystones work loose before every change — you will hear them before you see them.",
+    );
+    this.beginButton = el("button");
+    this.beginButton.id = "begin";
+    this.beginButton.textContent = "Take the island";
+    this.beginButton.disabled = true;
+    const controls = el("div");
+    controls.id = "controls";
+    controls.innerHTML = `
+      <span>${keycap("W")}${keycap("A")}${keycap("S")}${keycap("D")} walk</span>
+      <span>mouse look</span>
+      <span>${keycap("E")} inspect · converse · seat</span>
+      <span>${keycap("Shift")} stride</span>
+      <span>${keycap("V")} first / third person</span>
+      <span>${keycap("Esc")} release</span>`;
+    this.loading = el("div");
+    this.loading.id = "loading";
+    const bar = el("div", "bar");
+    this.loadFill = el("div", "fill");
+    bar.appendChild(this.loadFill);
+    this.loadLabel = el("div", "label", "quarrying granite");
+    this.loading.append(bar, this.loadLabel);
+
+    card.append(mark, h1, tagline, blurb, this.beginButton, this.loading, controls);
+    this.overlay.appendChild(card);
+    document.body.appendChild(this.overlay);
+
+    this.beginButton.addEventListener("click", () => {
+      this.onBegin?.();
+    });
+  }
+
+  /* ---------------- loading ---------------- */
+
+  setLoading(label: string, fraction: number): void {
+    this.loadLabel.textContent = label;
+    this.loadFill.style.width = `${Math.round(fraction * 100)}%`;
+  }
+
+  loadingDone(): void {
+    this.loading.classList.add("done");
+    this.beginButton.disabled = false;
+  }
+
+  showTitle(): void {
+    this.overlay.classList.remove("hidden");
+  }
+
+  hideTitle(): void {
+    this.overlay.classList.add("hidden");
+  }
+
+  get titleVisible(): boolean {
+    return !this.overlay.classList.contains("hidden");
+  }
+
+  /* ---------------- era + objective ---------------- */
+
+  setEra(era: EraDef): void {
+    this.eraReckoning.textContent = era.reckoning;
+    this.eraName.textContent = era.name;
+    this.eraEpithet.textContent = era.epithet;
+    this.eraBox.style.opacity = "0";
+    requestAnimationFrame(() => {
+      this.eraBox.style.opacity = "1";
+    });
+  }
+
+  setObjective(objective: Objective): void {
+    this.objText.textContent = objective.text;
+    this.objDetail.textContent = objective.detail;
+    this.objProgress.textContent = objective.progress;
+    this.objProgress.style.display = objective.progress ? "" : "none";
+  }
+
+  setKeystones(seated: readonly boolean[] | null): void {
+    if (!seated) {
+      this.pips.classList.remove("open");
+      return;
+    }
+    this.pips.classList.add("open");
+    this.pipNodes.forEach((pip, i) => {
+      pip.classList.toggle("seated", Boolean(seated[i]));
+    });
+  }
+
+  setPlace(name: string): void {
+    this.placeName.textContent = name;
+  }
+
+  /* ---------------- reticle ---------------- */
+
+  setPrompt(kind: string | null, label: string, name: string): void {
+    if (!kind) {
+      this.reticle.classList.remove("visible");
+      this.dot.style.opacity = "1";
+      return;
+    }
+    this.reticle.classList.add("visible");
+    this.dot.style.opacity = "0";
+    this.reticleIcon.innerHTML = iconFor(kind);
+    this.reticleLabel.textContent = label;
+    this.reticleName.textContent = name;
+  }
+
+  setReticleVisible(visible: boolean): void {
+    this.dot.style.opacity = visible ? "1" : "0";
+    if (!visible) this.reticle.classList.remove("visible");
+  }
+
+  /* ---------------- notices ---------------- */
+
+  notice(n: Notice): void {
+    const node = el("div", `notice ${n.tone}`);
+    node.append(el("div", "title", n.title), el("div", "body", n.body));
+    this.notices.appendChild(node);
+    const life = 5200 + n.body.length * 22;
+    setTimeout(() => {
+      node.classList.add("out");
+      setTimeout(() => node.remove(), 700);
+    }, life);
+    // Never stack more than three; the oldest bows out.
+    while (this.notices.children.length > 3) this.notices.firstElementChild?.remove();
+  }
+
+  /* ---------------- panels ---------------- */
+
+  showDialogue(speaker: string, lines: string[]): void {
+    this.closePanels();
+    this.dialogueLines = lines;
+    this.dialogueIndex = 0;
+    this.dialogueSpeaker.textContent = speaker;
+    this.dialogueLine.textContent = lines[0] ?? "";
+    this.dialogue.classList.add("open");
+    this.panel = "dialogue";
+  }
+
+  showInspect(title: string, subtitle: string, lines: string[]): void {
+    this.closePanels();
+    this.inspectTitle.textContent = title;
+    this.inspectSub.textContent = subtitle;
+    this.inspectLines.innerHTML = "";
+    for (const line of lines) this.inspectLines.appendChild(el("p", undefined, line));
+    this.inspect.classList.add("open");
+    this.panel = "inspect";
+  }
+
+  /** Advance a panel. Returns true when the panel is now closed. */
+  advancePanel(): boolean {
+    if (this.panel === "dialogue") {
+      this.dialogueIndex++;
+      if (this.dialogueIndex >= this.dialogueLines.length) {
+        this.closePanels();
+        return true;
+      }
+      this.dialogueLine.textContent = this.dialogueLines[this.dialogueIndex] ?? "";
+      return false;
+    }
+    if (this.panel === "inspect") {
+      this.closePanels();
+      return true;
+    }
+    return true;
+  }
+
+  closePanels(): void {
+    this.dialogue.classList.remove("open");
+    this.inspect.classList.remove("open");
+    this.panel = "none";
+  }
+
+  /* ---------------- grade + pause ---------------- */
+
+  setGrade(on: boolean): void {
+    this.grade.style.opacity = on ? "1" : "0";
+  }
+
+  setPaused(on: boolean): void {
+    this.paused.classList.toggle("open", on);
+  }
+
+  setHudVisible(visible: boolean): void {
+    this.root.style.opacity = visible ? "1" : "0";
+    this.root.style.transition = "opacity 700ms ease";
+  }
+}

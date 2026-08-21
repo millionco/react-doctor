@@ -58,6 +58,7 @@ export const STAGED_SNAPSHOT_ADDITIONAL_CONFIG_FILENAMES = [
   "vitest.config.ts",
 ] as const;
 export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
+export const BASELINE_SOURCE_COPY_CONCURRENCY = 32;
 // Bump on any breaking change to `CachedScanPayload`'s shape or diagnostic
 // semantics so stale on-disk results are discarded wholesale.
 // Bumped to 2: `CachedScanPayload` gained the required `supplyChainOverlapTimedOut`
@@ -67,7 +68,8 @@ export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
 // `lookup` verifies — pre-bump entries without it would never hit again.
 // Bumped to 6: declaration-file parser diagnostic compatibility filtering
 // changed the cached diagnostic set.
-export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 6;
+// Bumped to 7: maintainability diagnostics replace the removed dead-code pass.
+export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 7;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
 export const SCAN_RESULT_CACHE_FILENAME = "scan-cache.json";
 // The dirty-worktree cache-key fingerprint content-hashes every path `git
@@ -91,6 +93,7 @@ export const RUN_GIT_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 export const GIT_HOOK_EXECUTABLE_MODE = 0o755;
 
 export const AGENT_HOOK_TIMEOUT_SECONDS = 120;
+export const AGENT_HOOK_MAX_CONTINUATIONS = 1;
 
 // Hard cap on the `gh repo view` default-branch probe. A healthy gh answers
 // well under a second; a cold gh.exe on Windows CI has taken 30s+, and the
@@ -149,6 +152,7 @@ export const TUI_REPORT_COLUMN_GUTTER_COLUMNS = 3;
 export const TUI_REPORT_MIN_COLUMN_WIDTH_CHARS = 20;
 export const TUI_REPORT_SPLIT_MARGIN_COLUMNS = 1;
 export const TUI_REPORT_SPLIT_PADDING_COLUMNS = 1;
+export const TUI_SCORE_FACE_WIDTH_COLUMNS = 7;
 export const TUI_SCORE_FACE_OFFSET_COLUMNS = 11;
 export const TUI_SCORE_RIGHT_EDGE_SAFETY_COLUMNS = 2;
 export const TUI_HALF_PAGE_DIVISOR = 2;
@@ -213,12 +217,6 @@ export const AXIOM_INGEST_TOKEN = "xaat-31b59107-855d-4917-8fab-6dc29fb459ce";
 // dataset, which is why these are separate.
 // Effect span clocks are epoch nanoseconds; `Date.now()` is milliseconds.
 export const NANOSECONDS_PER_MILLISECOND = 1_000_000n;
-
-// The language server runs for the length of an editor session, so it exports
-// on a timer rather than relying on the shutdown flush the one-shot CLI uses —
-// an editor that kills the server, or a machine that sleeps, would otherwise
-// lose everything recorded since startup.
-export const LSP_TELEMETRY_EXPORT_INTERVAL_MS = 60_000;
 
 export const RULE_EVIDENCE_SCHEMA_VERSION = 1;
 export const RULE_EVIDENCE_MAX_DIAGNOSTIC_COUNT = 24;
@@ -285,13 +283,12 @@ export const METRIC = {
   // Kill metric for queued-project deadline reporting. If this never fires,
   // the additive JSON/TUI skipped-project surface is not carrying user value.
   scanProjectSkipped: "scan.project_skipped",
-  // Kill metric for workspace-owned dead-code analysis. If this never fires,
+  // Kill metric for workspace-owned maintainability analysis. If this never fires,
   // multi-project scans do not include their root and cannot share the pass.
-  scanWorkspaceDeadCodeShared: "scan.workspace_deadcode_shared",
-  // One count per completed scan where no project resolved a React /
-  // Preact runtime — the JSON report's `reactDetected: false` case. The
-  // kill metric for the vacuous-clean-scan signal: if it never fires,
-  // nobody points react-doctor at non-React targets and the surface can go.
+  scanWorkspaceMaintainabilityShared: "scan.workspace_maintainability_shared",
+  // One count per completed scan where no project resolved a supported
+  // framework or library capability. The kill metric for the
+  // vacuous-clean-scan signal: if it never fires, the warning surface can go.
   scanNoReactDetected: "scan.no_react_detected",
   baselineDegraded: "baseline.degraded",
   ruleFired: "rule.fired",
@@ -304,7 +301,7 @@ export const METRIC = {
   ruleDisabled: "rule.disabled",
   ruleSuppressed: "rule.suppressed",
   lintFailed: "lint.failed",
-  deadCodeFailed: "deadcode.failed",
+  maintainabilityFailed: "maintainability.failed",
   scoreUnavailable: "score.unavailable",
   oxlintWorkers: "oxlint.workers",
   agentHandoff: "agent.handoff",
@@ -324,12 +321,7 @@ export const METRIC = {
   ciConfigured: "ci.configured",
   rulesChanged: "rules.changed",
   rulesQueried: "rules.queried",
-  // Editor language server (`react-doctor experimental-lsp`). Each workspace
-  // scan burst is one wide-event span (op `lsp.scan`) plus these metrics.
-  lspSessionStarted: "lsp.session.started",
-  lspScanCompleted: "lsp.scan.completed",
-  lspScanDuration: "lsp.scan.duration",
-  lspScanDiagnostics: "lsp.scan.diagnostics",
+  runtimeScanUrlPromptShown: "runtime_scan.url_prompt_shown",
   tuiCompactReportShown: "tui.compact_report_shown",
   tuiFindingNavigated: "tui.finding_navigated",
   tuiIssueStreamShown: "tui.issue_stream_shown",

@@ -1,0 +1,250 @@
+// rule: dangerous-html-sink
+// file-path: src/ui.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 143c5889ce3a368be6350fa8ad4af44e337fe86409246b611ea304b9d3b9a9e9
+/**
+ * Stopbot — heads-up display.
+ *
+ * Plain DOM over the canvas. Everything here is read-only feedback; all input
+ * is handled on the canvas itself, so the HUD stays `pointer-events: none`.
+ */
+
+import { MOVE_BUDGET, ROBOT_COLOURS, type LevelDef } from "./levels";
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  attrs: Record<string, string> = {},
+  html = "",
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  if (html) node.innerHTML = html;
+  return node;
+}
+
+export interface ObjectiveRow {
+  colour: number;
+  label: string;
+  done: boolean;
+}
+
+export interface ResultRow {
+  name: string;
+  used: number;
+  optimal: number;
+}
+
+export class HUD {
+  private root: HTMLElement;
+  private stageNum: HTMLElement;
+  private stageName: HTMLElement;
+  private stageBrief: HTMLElement;
+  private budgetCount: HTMLElement;
+  private pips: HTMLElement[] = [];
+  private objectives: HTMLElement;
+  private status: HTMLElement;
+  private statusMain: HTMLElement;
+  private statusSub: HTMLElement;
+  private card: HTMLElement;
+  private cardKicker: HTMLElement;
+  private cardTitle: HTMLElement;
+  private cardBody: HTMLElement;
+  private cardTable: HTMLElement;
+  private cardCta: HTMLElement;
+  private loadFill: HTMLElement;
+  private loadLabel: HTMLElement;
+  private loading: HTMLElement;
+  private statusTimer = 0;
+
+  /** `budget` is injected so the run length is configurable in one place. */
+  constructor(private budget: number = MOVE_BUDGET) {
+    this.root = document.getElementById("hud") as HTMLElement;
+
+    const brief = el("div", { class: "panel", id: "brief" });
+    brief.append(el("div", { id: "title" }, "STOP<span>BOT</span>"));
+    const line = el("div", { id: "stage-line" });
+    this.stageNum = el("div", { id: "stage-num" }, "01/03");
+    this.stageName = el("div", { id: "stage-name" }, "—");
+    line.append(this.stageNum, this.stageName);
+    this.stageBrief = el("div", { id: "stage-brief" }, "");
+    brief.append(line, this.stageBrief);
+
+    const budgetPanel = el("div", { class: "panel", id: "budget" });
+    const head = el("div", { id: "budget-head" });
+    this.budgetCount = el("div", { id: "budget-count" }, `<b>${budget}</b>/${budget}`);
+    head.append(el("div", {}, "Move budget"), this.budgetCount);
+    const pipRow = el("div", { id: "pips" });
+    for (let i = 0; i < budget; i++) {
+      const p = el("div", { class: "pip" });
+      this.pips.push(p);
+      pipRow.append(p);
+    }
+    this.objectives = el("div", { id: "objectives" });
+    budgetPanel.append(head, pipRow, this.objectives);
+
+    const controls = el("div", { class: "panel", id: "controls" });
+    const rows: [string, string][] = [
+      ["<kbd>drag</kbd> bot", "commit a slide in that direction"],
+      ["<kbd>click</kbd> arrow", "commit the highlighted slide"],
+      ["<kbd>Q</kbd><kbd>E</kbd>", "turn the view — or the selected bot"],
+      ["<kbd>Space</kbd>", "test the facing slide (free)"],
+      ["<kbd>Enter</kbd>", "commit the tested slide"],
+      ["<kbd>F</kbd>", "inspect zoom · <kbd>Esc</kbd> release"],
+      ["<kbd>R</kbd>", "reset stage · refunds its moves"],
+      ["<kbd>M</kbd>", "mute"],
+    ];
+    for (const [k, v] of rows) {
+      const r = el("div", { class: "row" });
+      r.append(el("div", {}, k), el("span", {}, v));
+      controls.append(r);
+    }
+
+    this.status = el("div", { class: "panel", id: "status" });
+    this.statusMain = el("div", { id: "status-main" }, "");
+    this.statusSub = el("div", { id: "status-sub" }, "");
+    this.status.append(this.statusMain, this.statusSub);
+
+    this.card = el("div", { class: "panel", id: "card" });
+    this.cardKicker = el("div", { id: "card-kicker" }, "");
+    this.cardTitle = el("div", { id: "card-title" }, "");
+    this.cardBody = el("div", { id: "card-body" }, "");
+    this.cardTable = el("table", { id: "card-table" });
+    this.cardCta = el("div", { id: "card-cta" }, "");
+    this.card.append(this.cardKicker, this.cardTitle, this.cardBody, this.cardTable, this.cardCta);
+
+    this.root.append(brief, budgetPanel, controls, this.status, this.card);
+
+    this.loading = document.getElementById("loading") as HTMLElement;
+    this.loadFill = document.getElementById("load-fill") as HTMLElement;
+    this.loadLabel = document.getElementById("load-label") as HTMLElement;
+  }
+
+  /**
+   * Mirrors the run state onto the HUD root as `data-phase`. Cheap, and it
+   * gives both CSS and automated checks a reliable idle signal.
+   */
+  setPhase(phase: string): void {
+    if (this.root.dataset.phase !== phase) this.root.dataset.phase = phase;
+  }
+
+  /* ------------------------------------------------------------- loading */
+
+  setLoading(fraction: number, label: string): void {
+    this.loadFill.style.width = `${Math.round(fraction * 100)}%`;
+    this.loadLabel.textContent = label;
+  }
+
+  finishLoading(): void {
+    this.loading.classList.add("done");
+    window.setTimeout(() => this.loading.remove(), 600);
+  }
+
+  /* --------------------------------------------------------------- stage */
+
+  setStage(index: number, total: number, def: LevelDef): void {
+    this.stageNum.textContent = `${String(index + 1).padStart(2, "0")}/${String(total).padStart(2, "0")}`;
+    this.stageName.textContent = def.name;
+    this.stageBrief.textContent = def.brief;
+  }
+
+  /**
+   * `locked` is spent on finished stages, `current` on the stage in progress.
+   * Resetting a stage refunds only the current portion, which the pip colours
+   * make explicit.
+   */
+  setBudget(locked: number, current: number): void {
+    const used = locked + current;
+    const left = this.budget - used;
+    this.budgetCount.innerHTML = `<b>${Math.max(0, left)}</b>/${this.budget}`;
+    for (let i = 0; i < this.pips.length; i++) {
+      const p = this.pips[i]!;
+      p.className = "pip";
+      if (i < locked) p.classList.add("locked");
+      else if (i < used) p.classList.add(left <= 0 ? "gone" : "spent");
+    }
+  }
+
+  setObjectives(rows: ObjectiveRow[]): void {
+    this.objectives.replaceChildren();
+    for (const r of rows) {
+      const pal = ROBOT_COLOURS[r.colour] ?? ROBOT_COLOURS[0]!;
+      const node = el("div", { class: `obj${r.done ? " done" : ""}` });
+      const dot = el("div", { class: "dot" });
+      dot.style.color = `#${pal.signal.toString(16).padStart(6, "0")}`;
+      node.append(dot, el("div", {}, r.label), el("div", { class: "tick" }, r.done ? "SEATED" : "—"));
+      this.objectives.append(node);
+    }
+  }
+
+  /* -------------------------------------------------------------- status */
+
+  say(main: string, sub = "", kind: "" | "warn" | "good" = "", holdMs = 2400): void {
+    this.statusMain.textContent = main;
+    this.statusSub.textContent = sub;
+    this.status.className = `panel on ${kind}`;
+    window.clearTimeout(this.statusTimer);
+    if (holdMs > 0) {
+      this.statusTimer = window.setTimeout(() => this.status.classList.remove("on"), holdMs);
+    }
+  }
+
+  clearStatus(): void {
+    window.clearTimeout(this.statusTimer);
+    this.status.classList.remove("on");
+  }
+
+  /* ---------------------------------------------------------------- card */
+
+  showCard(o: {
+    kicker: string;
+    title: string;
+    body?: string;
+    cta?: string;
+    kind?: "win" | "fail" | "";
+    table?: ResultRow[];
+    par?: number;
+  }): void {
+    this.cardKicker.textContent = o.kicker;
+    this.cardTitle.textContent = o.title;
+    this.cardBody.innerHTML = o.body ?? "";
+    this.cardCta.innerHTML = o.cta ?? "";
+    this.cardTable.replaceChildren();
+
+    if (o.table) {
+      const thead = el("thead");
+      const hr = el("tr");
+      for (const h of ["Stage", "Your moves", "Optimal"]) hr.append(el("th", {}, h));
+      thead.append(hr);
+      const tbody = el("tbody");
+      let usedTotal = 0;
+      let optTotal = 0;
+      for (const r of o.table) {
+        usedTotal += r.used;
+        optTotal += r.optimal;
+        const tr = el("tr");
+        const perfect = r.used === r.optimal;
+        tr.append(
+          el("td", {}, r.name),
+          el("td", { class: `num ${perfect ? "par" : "over"}` }, String(r.used)),
+          el("td", { class: "num" }, String(r.optimal)),
+        );
+        tbody.append(tr);
+      }
+      const tr = el("tr", { class: "total" });
+      tr.append(
+        el("td", {}, "TOTAL"),
+        el("td", { class: `num ${usedTotal === optTotal ? "par" : "over"}` }, String(usedTotal)),
+        el("td", { class: "num" }, String(optTotal)),
+      );
+      tbody.append(tr);
+      this.cardTable.append(thead, tbody);
+    }
+
+    this.card.className = `panel on ${o.kind ?? ""}`;
+  }
+
+  hideCard(): void {
+    this.card.className = "panel";
+  }
+}

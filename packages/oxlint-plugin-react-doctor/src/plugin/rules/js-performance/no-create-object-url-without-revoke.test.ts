@@ -1756,4 +1756,17 @@ describe("no-create-object-url-without-revoke", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("accepts a revoke scheduled through the global window", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const download = (blob) => {
+         const url = URL.createObjectURL(blob);
+         link.href = url;
+         link.click();
+         window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

@@ -129,6 +129,21 @@ const WHY_FLAG_SPEC: CliFlagSpec = {
   shortOptionsWithRequiredValues: new Set(["-c"]),
 };
 
+const RUNTIME_SCAN_FLAG_SPEC: CliFlagSpec = {
+  longOptionsWithoutValues: new Set([
+    "--color",
+    "--debug",
+    "--help",
+    "--no-color",
+    "--no-score",
+    "--no-telemetry",
+  ]),
+  longOptionsWithRequiredValues: new Set(["--cdp", "--format", "--trace-out"]),
+  longOptionsWithOptionalValues: new Set(),
+  shortOptionsWithoutValues: new Set(["-h"]),
+  shortOptionsWithRequiredValues: new Set(["-f"]),
+};
+
 // `experimental-tui [directory]` mirrors the root scan's negatable dead-code,
 // supply-chain, and score knobs plus project selection. Without this entry the
 // pre-parse strip falls back to ROOT_FLAG_SPEC, which drops `-p` and turns its
@@ -157,6 +172,7 @@ const COMMAND_FLAG_SPECS = new Map<string, CliFlagSpec>([
   ["version", VERSION_FLAG_SPEC],
   ["rules", RULES_FLAG_SPEC],
   ["ci", CI_FLAG_SPEC],
+  ["scan", RUNTIME_SCAN_FLAG_SPEC],
   ["why", WHY_FLAG_SPEC],
   ["experimental-tui", EXPERIMENTAL_TUI_FLAG_SPEC],
 ]);

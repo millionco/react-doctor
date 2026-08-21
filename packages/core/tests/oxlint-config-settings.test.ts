@@ -50,6 +50,17 @@ const tailwindViteWebProject = buildProject({
 });
 
 describe("createOxlintConfig settings", () => {
+  it("uses curated behavior for faithfully ported rules", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+    });
+
+    expect(config.settings).toMatchObject({
+      "react-doctor": { portedRuleMode: "curated" },
+    });
+  });
+
   it("enables the Valtio rule only when the project declares Valtio", () => {
     const withoutValtio = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
@@ -348,6 +359,22 @@ describe("createOxlintConfig settings", () => {
     expect(config.rules).not.toHaveProperty("react-doctor/no-all-caps-body-text");
   });
 
+  it("keeps project rules out of the generated oxlint config", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: {
+        rules: {
+          "react-doctor/duplicate-jsx-subtree": "warn",
+          "react-doctor/unused-export": "error",
+        },
+      },
+    });
+
+    expect(config.rules).not.toHaveProperty("react-doctor/duplicate-jsx-subtree");
+    expect(config.rules).not.toHaveProperty("react-doctor/unused-export");
+  });
+
   it("runs only an explicitly included tag and activates that tag's opt-in rules", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
@@ -393,7 +420,46 @@ describe("createOxlintConfig settings", () => {
       severityControls: { categories: { Maintainability: "error" } },
     });
 
+    expect(config.rules["react-doctor/no-multi-component-file"]).toBe("error");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-comp");
+  });
+
+  it("opts the faithful no-multi-comp port in through its upstream alias", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: { rules: { "react/no-multi-comp": "error" } },
+    });
+
     expect(config.rules["react-doctor/no-multi-comp"]).toBe("error");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-component-file");
+  });
+
+  it("preserves no-multi-comp off overrides for the curated replacement", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: { rules: { "react-doctor/no-multi-comp": "off" } },
+    });
+
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-comp");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-component-file");
+  });
+
+  it("allows both component-file policies when both are explicit", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: {
+        rules: {
+          "react/no-multi-comp": "error",
+          "react-doctor/no-multi-component-file": "warn",
+        },
+      },
+    });
+
+    expect(config.rules["react-doctor/no-multi-comp"]).toBe("error");
+    expect(config.rules["react-doctor/no-multi-component-file"]).toBe("warn");
   });
 
   it("a per-rule severity opts a default-disabled rule in", () => {

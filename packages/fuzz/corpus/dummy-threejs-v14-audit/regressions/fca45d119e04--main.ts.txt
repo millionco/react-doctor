@@ -1,0 +1,930 @@
+// rule: three-prefer-gpu-instanced-animation
+// file-path: src/main.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit fca45d119e04e8b3941e63270abf0e73a7e123bae1f91abc385977c6c4a083b5
+/**
+ * Magnetic Buttons — an interactive study bench for arrangements of button
+ * magnets.
+ *
+ * The scene is three-dimensional because the evidence is: the field is sampled
+ * on a volume lattice, so lifting a magnet off the mat moves it into and out of
+ * lattice rows and rearranges the whole pattern. A flat diagram cannot show
+ * that, and neither can a flat sample.
+ *
+ * Everything the model does is an approximation, and the Method tab says exactly
+ * which ones. See `sim/field.ts` for the same list in code.
+ */
+
+import "./style.css";
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+import { CATALOG_BY_ID, type MagnetSpec } from "./data/catalog";
+import * as FIELD from "./sim/field";
+import type { Magnet } from "./sim/field";
+import { buildEnvironment, buildBackdrop } from "./lib/environment";
+import { setMaxAnisotropy, standardFrom } from "./lib/textures";
+import { buildMaterialKit } from "./scene/materials";
+import { buildWorkspace, MAT_TOP_Y } from "./scene/workspace";
+import {
+  buildMagnetMaterials,
+  createMagnetView,
+  disposeMagnetView,
+  syncMagnetView,
+  type MagnetView,
+} from "./scene/magnetMesh";
+import { FieldTubes, TUBE_CAPACITY, type TubeLine } from "./scene/fieldTubes";
+import { VectorFieldLattice, type ArrowFilter, type LatticeConfig } from "./scene/vectorField";
+import { SlicePlane } from "./scene/slicePlane";
+import { createProbe, disposeProbe, updateProbes, type Probe } from "./scene/probes";
+import { PRESETS, type PlacedSpec } from "./app/presets";
+import { UI, type SnapshotInfo, type UIState } from "./app/ui";
+import type { DragMode, FieldOptions, Filters, RepeatOptions, SliceOptions, Tool } from "./app/types";
+
+// ---------------------------------------------------------------------------
+// Renderer, camera, lighting
+// ---------------------------------------------------------------------------
+
+const canvas = document.querySelector("#view") as HTMLCanvasElement;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.06;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+setMaxAnisotropy(renderer.capabilities.getMaxAnisotropy());
+
+const scene = new THREE.Scene();
+scene.add(buildBackdrop());
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.4, 700);
+const HOME_POS = new THREE.Vector3(19, 15, 27.5);
+const HOME_TARGET = new THREE.Vector3(0, 2.2, 0);
+camera.position.copy(HOME_POS);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(HOME_TARGET);
+controls.enableDamping = true;
+controls.dampingFactor = 0.075;
+controls.minDistance = 8;
+controls.maxDistance = 110;
+controls.maxPolarAngle = Math.PI * 0.495;
+controls.update();
+
+// Deliberately low direct light: the shaping comes from the baked AO, the
+// analytic contact shadows and the image-based environment.
+const key = new THREE.DirectionalLight(0xfff2e0, 1.35);
+key.position.set(16, 26, 14);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 4;
+key.shadow.camera.far = 90;
+key.shadow.camera.left = -30;
+key.shadow.camera.right = 30;
+key.shadow.camera.top = 30;
+key.shadow.camera.bottom = -30;
+key.shadow.bias = -0.0012;
+key.shadow.normalBias = 0.035;
+key.shadow.radius = 2.2;
+scene.add(key);
+scene.add(key.target);
+
+const fill = new THREE.DirectionalLight(0x9fc4ff, 0.28);
+fill.position.set(-18, 11, -16);
+scene.add(fill);
+
+const rim = new THREE.DirectionalLight(0xffd9a8, 0.22);
+rim.position.set(-6, 5, -22);
+scene.add(rim);
+
+scene.environment = buildEnvironment(renderer);
+scene.environmentIntensity = 1.0;
+
+// ---------------------------------------------------------------------------
+// Procedural surfaces and static scene
+// ---------------------------------------------------------------------------
+
+const kit = buildMaterialKit();
+const workspace = buildWorkspace(kit);
+scene.add(workspace.group);
+
+const magnetMats = buildMagnetMaterials(kit);
+const probeBodyMaterial = standardFrom(kit.machined, {
+  color: 0xa8b0b8,
+  normalScale: 0.95,
+  metalness: 0.93,
+  roughness: 1,
+});
+
+const tubes = new FieldTubes(kit.flux, 2.2);
+scene.add(tubes.mesh);
+
+const LATTICE_HALF = new THREE.Vector3(11, 4.6, 8);
+const LATTICE_CENTRE = new THREE.Vector3(0, 4.9, 0);
+const lattice = new VectorFieldLattice(kit, {
+  centre: LATTICE_CENTRE,
+  half: LATTICE_HALF,
+  counts: [7, 7, 7],
+});
+scene.add(lattice.group);
+
+const slice = new SlicePlane(kit, 17, 13);
+scene.add(slice.group);
+
+// Ghost outline of a stored snapshot.
+const GHOST_MAX = 24000;
+const ghostGeo = new THREE.BufferGeometry();
+ghostGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(GHOST_MAX * 3), 3));
+ghostGeo.setDrawRange(0, 0);
+ghostGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 400);
+const ghostMat = new THREE.LineBasicMaterial({ color: 0x7fd7ff, transparent: true, opacity: 0.42, depthWrite: false });
+const ghostLines = new THREE.LineSegments(ghostGeo, ghostMat);
+ghostLines.frustumCulled = false;
+ghostLines.visible = false;
+scene.add(ghostLines);
+
+// Selection halo: a flat ring laid on the bench under each selected magnet.
+const haloGeo = new THREE.RingGeometry(0.98, 1.13, 48);
+haloGeo.rotateX(-Math.PI / 2);
+const haloMat = new THREE.MeshBasicMaterial({
+  color: 0x63d6ff,
+  transparent: true,
+  opacity: 0.7,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
+const halos = new THREE.InstancedMesh(haloGeo, haloMat, 64);
+halos.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+halos.frustumCulled = false;
+scene.add(halos);
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+const RAMP_MIN_T = 1e-6;
+const RAMP_MAX_T = 2e-2;
+const METRIC_OPTS = { half: new THREE.Vector3(14, 8, 11), centre: new THREE.Vector3(0, 6, 0), resolution: 11 };
+
+const magnets: Magnet[] = [];
+const views = new Map<number, MagnetView>();
+const probes: Probe[] = [];
+const selection = new Set<number>();
+
+const filters: Filters = {
+  materials: new Set(["Ferrite", "Neodymium", "SmCo", "AlNiCo"]),
+  maxUnitCost: 7,
+  minTempCeiling: 0,
+  soloSelection: false,
+};
+
+const fieldOpts: FieldOptions = {
+  showTubes: true,
+  showArrows: true,
+  showPips: true,
+  showShells: false,
+  flow: true,
+  lineDensity: 3,
+  latticeRes: 7,
+  arrowScale: 0.8,
+  minArrowT: Math.pow(10, -7 + (50 / 100) * 4.7),
+  hideNearField: true,
+  seedFrom: "all",
+  onlyLinked: false,
+};
+
+const sliceOpts: SliceOptions = {
+  enabled: false,
+  axis: 1,
+  offset: 4,
+  slabOnly: false,
+  slabHalf: 1.75,
+  contours: true,
+  opacity: 0.85,
+};
+
+interface Snapshot extends SnapshotInfo {
+  placed: PlacedSpec[];
+  ghost: Float32Array;
+  ghostLength: number;
+}
+
+const snapshots: { A: Snapshot | null; B: Snapshot | null } = { A: null, B: null };
+let lastLoadedLabel = "hand-built arrangement";
+
+let linkedFraction = 0;
+let lineCount = 0;
+let lineCapped = false;
+let metrics: FIELD.ArrangementMetrics | null = null;
+let excludedByFilter = 0;
+
+let tool: Tool = "select";
+let dragMode: DragMode = "plane";
+let shiftHeld = false;
+
+// ---------------------------------------------------------------------------
+// Magnet lifecycle
+// ---------------------------------------------------------------------------
+
+const pickables: THREE.Mesh[] = [];
+
+/** Lowest point of a disc with the given axis, so it rests on the mat. */
+function restingY(spec: MagnetSpec, axis: THREE.Vector3): number {
+  const halfT = spec.thicknessMm / 20;
+  const r = spec.diameterMm / 20;
+  const ay = Math.abs(axis.y);
+  return MAT_TOP_Y + ay * halfT + Math.sqrt(Math.max(0, 1 - ay * ay)) * r + 0.01;
+}
+
+/** Spiral outward from the bench centre until we find room. */
+function freeSpot(spec: MagnetSpec, axis: THREE.Vector3): THREE.Vector3 {
+  const r = spec.diameterMm / 20;
+  const candidate = new THREE.Vector3(0, restingY(spec, axis), 0);
+  for (let i = 0; i < 300; i++) {
+    const a = i * 2.399963;
+    const rad = 1.5 * Math.sqrt(i);
+    candidate.set(Math.cos(a) * rad, restingY(spec, axis), Math.sin(a) * rad);
+    if (!workspace.bounds.containsPoint(candidate)) continue;
+    let clear = true;
+    for (const m of magnets) {
+      if (Math.hypot(m.position.x - candidate.x, m.position.z - candidate.z) < r + m.radiusCm + 0.5) {
+        clear = false;
+        break;
+      }
+    }
+    if (clear) break;
+  }
+  return candidate.clone();
+}
+
+function addMagnet(specId: string, position?: THREE.Vector3, axis?: THREE.Vector3): Magnet | null {
+  const spec = CATALOG_BY_ID.get(specId);
+  if (!spec) return null;
+  if (magnets.length >= 40) return null;
+  const ax = (axis ?? new THREE.Vector3(0, 1, 0)).clone().normalize();
+  const pos = position ? position.clone() : freeSpot(spec, ax);
+  pos.y = Math.max(pos.y, restingY(spec, ax));
+  const magnet = FIELD.createMagnet(spec, pos, ax);
+  magnets.push(magnet);
+  const view = createMagnetView(magnet, kit, magnetMats, MAT_TOP_Y);
+  views.set(magnet.uid, view);
+  scene.add(view.group);
+  scene.add(view.stem);
+  view.body.userData.uid = magnet.uid;
+  pickables.push(view.body);
+  return magnet;
+}
+
+function removeMagnet(uid: number): void {
+  const idx = magnets.findIndex((m) => m.uid === uid);
+  if (idx < 0) return;
+  magnets.splice(idx, 1);
+  const view = views.get(uid);
+  if (view) {
+    scene.remove(view.group);
+    scene.remove(view.stem);
+    const pi = pickables.indexOf(view.body);
+    if (pi >= 0) pickables.splice(pi, 1);
+    disposeMagnetView(view);
+    views.delete(uid);
+  }
+  selection.delete(uid);
+}
+
+function clearBench(): void {
+  for (const m of [...magnets]) removeMagnet(m.uid);
+  selection.clear();
+}
+
+function loadPlaced(placed: readonly PlacedSpec[], label: string): void {
+  clearBench();
+  for (const p of placed) addMagnet(p.specId, new THREE.Vector3(...p.pos), new THREE.Vector3(...p.axis));
+  lastLoadedLabel = label;
+  markDirty(true);
+}
+
+function serialize(source: readonly Magnet[] = magnets): PlacedSpec[] {
+  return source.map((m) => ({
+    specId: m.spec.id,
+    pos: [m.position.x, m.position.y, m.position.z] as [number, number, number],
+    axis: [m.axis.x, m.axis.y, m.axis.z] as [number, number, number],
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Filtering — a filter is an experiment, not a view change
+// ---------------------------------------------------------------------------
+
+function applyFilters(): void {
+  excludedByFilter = 0;
+  const soloActive = filters.soloSelection && selection.size > 0;
+  for (const m of magnets) {
+    const passes =
+      filters.materials.has(m.spec.material) &&
+      m.spec.unitCostUsd <= filters.maxUnitCost + 1e-9 &&
+      m.spec.maxTempC >= filters.minTempCeiling;
+    m.active = passes && (!soloActive || selection.has(m.uid));
+    if (!m.active) excludedByFilter++;
+    const view = views.get(m.uid);
+    if (view) {
+      view.bodyMaterial.color.setScalar(m.active ? 1 : 0.22);
+      view.poleN.visible = m.active;
+      view.poleS.visible = m.active;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Recompute pipeline
+// ---------------------------------------------------------------------------
+
+const LINKED_COLOR = new THREE.Color(1.0, 0.62, 0.26);
+const ESCAPE_COLOR = new THREE.Color(0.34, 0.76, 1.0);
+const SELF_COLOR = new THREE.Color(0.52, 0.95, 0.82);
+
+const traceBounds = new THREE.Box3(new THREE.Vector3(-42, -6, -36), new THREE.Vector3(42, 34, 36));
+
+function traceAll(active: readonly Magnet[], quality: number): TubeLine[] {
+  const seedSet =
+    fieldOpts.seedFrom === "selected" && selection.size > 0 ? active.filter((m) => selection.has(m.uid)) : active;
+  lineCapped = false;
+  if (seedSet.length === 0) {
+    lineCount = 0;
+    linkedFraction = 0;
+    return [];
+  }
+
+  let rings = fieldOpts.lineDensity;
+  let azimuths = 4;
+  const budget = Math.max(8, Math.floor(TUBE_CAPACITY * quality));
+  if (rings * azimuths * seedSet.length > budget) {
+    const per = Math.max(2, Math.floor(budget / seedSet.length));
+    rings = Math.max(1, Math.min(rings, Math.round(Math.sqrt(per))));
+    azimuths = Math.max(1, Math.floor(per / rings));
+    lineCapped = true;
+  }
+
+  const opts: FIELD.TraceOptions = {
+    stepCm: 0.62,
+    maxSteps: Math.round(240 * (0.55 + quality * 0.45)),
+    bounds: traceBounds,
+    floorT: 2e-7,
+  };
+
+  const out: TubeLine[] = [];
+  let linked = 0;
+  let total = 0;
+  for (const mag of seedSet) {
+    for (const seed of FIELD.seedPoints(mag, rings, azimuths)) {
+      const line = FIELD.traceLine(seed, active, mag.uid, opts);
+      total++;
+      const isLinked = line.sinkUid >= 0 && line.sinkUid !== mag.uid;
+      if (isLinked) linked++;
+      if (fieldOpts.onlyLinked && !isLinked) continue;
+      if (line.points.length < 4) continue;
+      out.push({
+        points: line.points,
+        color: isLinked ? LINKED_COLOR : line.sinkUid === mag.uid ? SELF_COLOR : ESCAPE_COLOR,
+        radius: 0.085,
+        weight: 1,
+      });
+      if (out.length >= TUBE_CAPACITY) break;
+    }
+    if (out.length >= TUBE_CAPACITY) break;
+  }
+  linkedFraction = total > 0 ? linked / total : 0;
+  lineCount = out.length;
+  return out;
+}
+
+function updateContacts(): void {
+  const arr = workspace.contacts.value;
+  let i = 0;
+  for (const m of magnets) {
+    if (i >= arr.length) break;
+    const footprint = Math.max(m.radiusCm, m.halfThickCm) * 1.25;
+    (arr[i] as THREE.Vector4).set(
+      m.position.x,
+      m.position.y - m.halfThickCm * Math.abs(m.axis.y),
+      m.position.z,
+      footprint,
+    );
+    i++;
+  }
+  for (const p of probes) {
+    if (i >= arr.length) break;
+    (arr[i] as THREE.Vector4).set(p.group.position.x, p.group.position.y, p.group.position.z, 0.72);
+    i++;
+  }
+  workspace.contactCount.value = i;
+}
+
+const _haloMtx = new THREE.Matrix4();
+const _hiddenMtx = new THREE.Matrix4().makeScale(0, 0, 0);
+
+function updateHalos(): void {
+  let i = 0;
+  for (const m of magnets) {
+    if (i >= halos.count) break;
+    if (selection.has(m.uid)) {
+      const r = Math.max(m.radiusCm, m.halfThickCm) * 1.5;
+      _haloMtx.makeScale(r, 1, r);
+      _haloMtx.setPosition(m.position.x, MAT_TOP_Y + 0.02, m.position.z);
+      halos.setMatrixAt(i, _haloMtx);
+    } else {
+      halos.setMatrixAt(i, _hiddenMtx);
+    }
+    i++;
+  }
+  for (; i < halos.count; i++) halos.setMatrixAt(i, _hiddenMtx);
+  halos.instanceMatrix.needsUpdate = true;
+}
+
+let dirty = true;
+let dirtyMetrics = true;
+let lastHeavy = -1e9;
+let lastMetrics = -1e9;
+let dragging = false;
+
+function markDirty(alsoMetrics = false): void {
+  dirty = true;
+  if (alsoMetrics) dirtyMetrics = true;
+}
+
+function recompute(now: number): void {
+  applyFilters();
+  const active = magnets.filter((m) => m.active);
+
+  for (const m of magnets) {
+    const view = views.get(m.uid);
+    if (!view) continue;
+    syncMagnetView(view, MAT_TOP_Y);
+    view.shell.visible = fieldOpts.showShells && m.active;
+  }
+  updateContacts();
+  updateHalos();
+
+  const quality = dragging ? 0.5 : 1;
+
+  const lines = traceAll(active, fieldOpts.showTubes ? quality : 0.3);
+  tubes.mesh.visible = fieldOpts.showTubes;
+  if (fieldOpts.showTubes) tubes.update(lines);
+
+  const res = fieldOpts.latticeRes;
+  const cfg: LatticeConfig = { centre: LATTICE_CENTRE, half: LATTICE_HALF, counts: [res, res, res] };
+  lattice.setConfig(cfg);
+  const arrowFilter: ArrowFilter = {
+    minT: fieldOpts.minArrowT,
+    maxT: Infinity,
+    hideNearField: fieldOpts.hideNearField,
+    slab:
+      sliceOpts.enabled && sliceOpts.slabOnly
+        ? { axis: sliceOpts.axis, centre: sliceOpts.offset, halfWidth: sliceOpts.slabHalf }
+        : null,
+    scale: fieldOpts.arrowScale,
+    rampMinT: RAMP_MIN_T,
+    rampMaxT: RAMP_MAX_T,
+  };
+  lattice.arrows.visible = fieldOpts.showArrows;
+  lattice.pips.visible = fieldOpts.showPips;
+  if (fieldOpts.showArrows || fieldOpts.showPips) lattice.update(active, arrowFilter, fieldOpts.showPips);
+
+  slice.group.visible = sliceOpts.enabled;
+  slice.axis = sliceOpts.axis;
+  slice.offset = sliceOpts.offset;
+  slice.setOpacity(sliceOpts.opacity);
+  slice.setContours(sliceOpts.contours);
+  if (sliceOpts.enabled) slice.update(active, new THREE.Vector3(0, 6, 0), RAMP_MIN_T, RAMP_MAX_T);
+
+  updateProbes(probes, active, RAMP_MIN_T, RAMP_MAX_T);
+
+  if (dirtyMetrics && now - lastMetrics > 220) {
+    metrics = FIELD.computeMetrics(active, { ...METRIC_OPTS, linkedFraction });
+    lastMetrics = now;
+    dirtyMetrics = false;
+  }
+
+  renderUI();
+}
+
+// ---------------------------------------------------------------------------
+// UI wiring
+// ---------------------------------------------------------------------------
+
+function uiState(): UIState {
+  const brief = (s: Snapshot | null): SnapshotInfo | null =>
+    s ? { label: s.label, metrics: s.metrics, count: s.count } : null;
+  return {
+    magnets,
+    selection,
+    filters,
+    field: fieldOpts,
+    slice: sliceOpts,
+    probes,
+    metrics,
+    snapshots: { A: brief(snapshots.A), B: brief(snapshots.B) },
+    rampMinT: RAMP_MIN_T,
+    rampMaxT: RAMP_MAX_T,
+    lineCount,
+    lineCapped,
+    linkedFraction,
+    latticeVisible: lattice.visibleCount,
+    latticeTotal: lattice.sampleCount,
+    latticeClipped: lattice.clippedCount,
+    latticeNear: lattice.nearFieldCount,
+    excludedByFilter,
+  };
+}
+
+function flipSelected(): void {
+  for (const m of magnets) {
+    if (!selection.has(m.uid)) continue;
+    m.axis.negate();
+    m.position.y = Math.max(m.position.y, restingY(m.spec, m.axis));
+  }
+  markDirty(true);
+}
+
+const ui = new UI(
+  {
+    addMagnet: (id) => {
+      const m = addMagnet(id);
+      if (m) {
+        selection.clear();
+        selection.add(m.uid);
+        lastLoadedLabel = "hand-built arrangement";
+      }
+      markDirty(true);
+    },
+    filtersChanged: () => markDirty(true),
+    fieldChanged: () => markDirty(true),
+    sliceChanged: () => markDirty(false),
+    setTool: (t) => {
+      tool = t;
+      renderer.domElement.style.cursor = t === "probe" ? "crosshair" : "default";
+    },
+    setDragMode: (m) => {
+      dragMode = m;
+    },
+    flipSelected,
+    duplicateSelected: () => {
+      const sel = magnets.filter((m) => selection.has(m.uid));
+      selection.clear();
+      for (const m of sel) {
+        const copy = addMagnet(m.spec.id, undefined, m.axis);
+        if (copy) selection.add(copy.uid);
+      }
+      markDirty(true);
+    },
+    deleteSelected: () => {
+      for (const uid of [...selection]) removeMagnet(uid);
+      markDirty(true);
+    },
+    clearAll: () => {
+      clearBench();
+      lastLoadedLabel = "empty bench";
+      markDirty(true);
+    },
+    selectAll: () => {
+      selection.clear();
+      for (const m of magnets) selection.add(m.uid);
+      markDirty(true);
+    },
+    repeat: (opts) => doRepeat(opts),
+    loadPreset: (id) => {
+      const preset = PRESETS.find((p) => p.id === id);
+      if (preset) {
+        loadPlaced(preset.build(), preset.label);
+        selection.clear();
+      }
+    },
+    capture: (slot) => capture(slot),
+    restore: (slot) => {
+      const snap = snapshots[slot];
+      if (snap) {
+        loadPlaced(snap.placed, snap.label);
+        selection.clear();
+      }
+    },
+    setGhost: () => updateGhostVisibility(),
+    clearProbes: () => {
+      for (const p of probes) {
+        scene.remove(p.group);
+        disposeProbe(p);
+      }
+      probes.length = 0;
+      markDirty(false);
+    },
+    resetView: () => {
+      camera.position.copy(HOME_POS);
+      controls.target.copy(HOME_TARGET);
+      controls.update();
+    },
+  },
+  filters,
+  fieldOpts,
+  sliceOpts,
+);
+
+ui.buildLegend(RAMP_MIN_T, RAMP_MAX_T);
+
+function renderUI(): void {
+  const state = uiState();
+  ui.renderInspect(state);
+  ui.renderFieldNotes(state);
+  ui.renderCompare(state);
+  ui.setStatus(
+    `<b>${magnets.length}</b> magnets · <b>${lineCount}</b> lines · <b>${lattice.visibleCount}</b>/${lattice.sampleCount} samples` +
+      (selection.size ? ` · <b>${selection.size}</b> selected` : "") +
+      ` · ${lastLoadedLabel}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Repeat arrangements
+// ---------------------------------------------------------------------------
+
+function doRepeat(opts: RepeatOptions): void {
+  const source = magnets.filter((m) => selection.has(m.uid));
+  const set = source.length > 0 ? source : [...magnets];
+  if (set.length === 0) return;
+
+  const centroid = new THREE.Vector3();
+  for (const m of set) centroid.add(m.position);
+  centroid.multiplyScalar(1 / set.length);
+
+  const added: number[] = [];
+  const count = Math.max(2, Math.min(12, Math.round(opts.count)));
+
+  for (let i = 1; i < count; i++) {
+    for (const m of set) {
+      const axis = m.axis.clone();
+      const pos = m.position.clone();
+      if (opts.mode === "linear") {
+        pos.x += i * opts.spacing;
+      } else if (opts.mode === "stack") {
+        // Stack along each magnet's own axis, so the arrangement grows in 3D.
+        pos.addScaledVector(m.axis, i * Math.max(opts.spacing, m.halfThickCm * 2 + 0.06));
+      } else {
+        const rel = pos.clone().sub(centroid);
+        const a = (i / count) * Math.PI * 2;
+        const c = Math.cos(a);
+        const s = Math.sin(a);
+        pos.set(
+          centroid.x + (rel.x * c - rel.z * s) + c * opts.spacing,
+          pos.y,
+          centroid.z + (rel.x * s + rel.z * c) + s * opts.spacing,
+        );
+        axis.set(axis.x * c - axis.z * s, axis.y, axis.x * s + axis.z * c);
+      }
+      if (opts.alternate && i % 2 === 1) axis.negate();
+      pos.y = Math.max(pos.y, restingY(m.spec, axis));
+      pos.clamp(workspace.bounds.min, workspace.bounds.max);
+      const copy = addMagnet(m.spec.id, pos, axis);
+      if (copy) added.push(copy.uid);
+    }
+  }
+  for (const uid of added) selection.add(uid);
+  lastLoadedLabel = `repeated ×${count} (${opts.mode})`;
+  markDirty(true);
+}
+
+// ---------------------------------------------------------------------------
+// Snapshots and comparison
+// ---------------------------------------------------------------------------
+
+function capture(slot: "A" | "B"): void {
+  const active = magnets.filter((m) => m.active);
+  const lines = traceAll(active, 0.6);
+  const flat = new Float32Array(GHOST_MAX * 3);
+  let n = 0;
+  outer: for (const line of lines) {
+    const pts = line.points;
+    const stride = Math.max(1, Math.floor(pts.length / 48));
+    for (let i = stride; i < pts.length; i += stride) {
+      if (n + 6 > flat.length) break outer;
+      const a = pts[i - stride] as THREE.Vector3;
+      const b = pts[i] as THREE.Vector3;
+      flat[n++] = a.x;
+      flat[n++] = a.y;
+      flat[n++] = a.z;
+      flat[n++] = b.x;
+      flat[n++] = b.y;
+      flat[n++] = b.z;
+    }
+  }
+  snapshots[slot] = {
+    label: lastLoadedLabel,
+    count: active.length,
+    metrics: FIELD.computeMetrics(active, { ...METRIC_OPTS, linkedFraction }),
+    // Store only the magnets that were actually in the field sum, so restoring a
+    // snapshot reproduces exactly the arrangement its metrics describe.
+    placed: serialize(active),
+    ghost: flat,
+    ghostLength: n / 3,
+  };
+  updateGhostVisibility();
+  markDirty(true);
+}
+
+function updateGhostVisibility(): void {
+  // A is the reference arrangement, so it is the one drawn as a ghost against
+  // whatever is currently on the bench. With only B stored, ghost B instead.
+  const snap = snapshots.A ?? snapshots.B;
+  if (!ui.ghost || !snap) {
+    ghostLines.visible = false;
+    return;
+  }
+  const attr = ghostGeo.getAttribute("position") as THREE.BufferAttribute;
+  (attr.array as Float32Array).set(snap.ghost.subarray(0, snap.ghostLength * 3));
+  attr.needsUpdate = true;
+  ghostGeo.setDrawRange(0, snap.ghostLength);
+  ghostMat.color.set(snapshots.A ? 0x7fd7ff : 0xffc46b);
+  ghostLines.visible = true;
+}
+
+// ---------------------------------------------------------------------------
+// Pointer interaction
+// ---------------------------------------------------------------------------
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+const dragPlane = new THREE.Plane();
+const dragOffset = new THREE.Vector3();
+const hitPoint = new THREE.Vector3();
+let dragUid = -1;
+let downPos = { x: 0, y: 0 };
+let movedFar = false;
+
+function setPointer(ev: PointerEvent): void {
+  pointer.x = (ev.clientX / innerWidth) * 2 - 1;
+  pointer.y = -(ev.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+}
+
+function pickMagnet(): number {
+  const hits = raycaster.intersectObjects(pickables, false);
+  const first = hits[0];
+  return first ? (first.object.userData.uid as number) : -1;
+}
+
+function effectiveDragMode(): DragMode {
+  return shiftHeld ? (dragMode === "plane" ? "height" : "plane") : dragMode;
+}
+
+function buildDragPlane(magnet: Magnet): void {
+  if (effectiveDragMode() === "height") {
+    const n = new THREE.Vector3();
+    camera.getWorldDirection(n);
+    n.y = 0;
+    if (n.lengthSq() < 1e-6) n.set(0, 0, 1);
+    n.normalize();
+    dragPlane.setFromNormalAndCoplanarPoint(n, magnet.position);
+  } else {
+    dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), magnet.position);
+  }
+}
+
+renderer.domElement.addEventListener("pointerdown", (ev) => {
+  if (ev.button !== 0) return;
+  setPointer(ev);
+  downPos = { x: ev.clientX, y: ev.clientY };
+  movedFar = false;
+  if (tool === "probe") return;
+
+  const uid = pickMagnet();
+  if (uid < 0) return;
+
+  if (!ev.shiftKey) selection.clear();
+  selection.add(uid);
+
+  const magnet = magnets.find((m) => m.uid === uid);
+  if (!magnet) return;
+  dragUid = uid;
+  buildDragPlane(magnet);
+  if (raycaster.ray.intersectPlane(dragPlane, hitPoint)) dragOffset.subVectors(magnet.position, hitPoint);
+  else dragOffset.set(0, 0, 0);
+  dragging = true;
+  controls.enabled = false;
+  renderer.domElement.setPointerCapture(ev.pointerId);
+  markDirty(true);
+});
+
+renderer.domElement.addEventListener("pointermove", (ev) => {
+  if (dragUid < 0) return;
+  if (Math.hypot(ev.clientX - downPos.x, ev.clientY - downPos.y) > 3) movedFar = true;
+  const magnet = magnets.find((m) => m.uid === dragUid);
+  if (!magnet) return;
+  setPointer(ev);
+  if (!raycaster.ray.intersectPlane(dragPlane, hitPoint)) return;
+  const next = hitPoint.clone().add(dragOffset);
+
+  if (effectiveDragMode() === "height") {
+    magnet.position.y = next.y;
+  } else {
+    magnet.position.x = next.x;
+    magnet.position.z = next.z;
+  }
+  magnet.position.y = Math.max(magnet.position.y, restingY(magnet.spec, magnet.axis));
+  magnet.position.clamp(workspace.bounds.min, workspace.bounds.max);
+  markDirty(true);
+});
+
+function endDrag(ev: PointerEvent): void {
+  if (dragUid >= 0 && renderer.domElement.hasPointerCapture(ev.pointerId)) {
+    renderer.domElement.releasePointerCapture(ev.pointerId);
+  }
+  dragUid = -1;
+  dragging = false;
+  controls.enabled = true;
+  markDirty(true);
+}
+
+renderer.domElement.addEventListener("pointerup", (ev) => {
+  const wasDragging = dragUid >= 0;
+  endDrag(ev);
+  if (ev.button !== 0) return;
+  if (wasDragging && movedFar) return;
+
+  setPointer(ev);
+
+  if (tool === "probe") {
+    const hits = raycaster.intersectObject(workspace.group, true);
+    const first = hits[0];
+    if (first) {
+      const probe = createProbe(first.point.clone().setY(Math.max(first.point.y, MAT_TOP_Y)), kit, probeBodyMaterial);
+      probes.push(probe);
+      scene.add(probe.group);
+      markDirty(false);
+    }
+    return;
+  }
+
+  if (!wasDragging && !movedFar && pickMagnet() < 0 && !ev.shiftKey) {
+    selection.clear();
+    markDirty(true);
+  }
+});
+
+renderer.domElement.addEventListener("pointercancel", endDrag);
+
+addEventListener("keydown", (ev) => {
+  if (ev.key === "Shift") shiftHeld = true;
+  if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement) return;
+  if (ev.key === "Delete" || ev.key === "Backspace") {
+    for (const uid of [...selection]) removeMagnet(uid);
+    markDirty(true);
+  }
+  if (ev.key === "f" || ev.key === "F") flipSelected();
+});
+addEventListener("keyup", (ev) => {
+  if (ev.key === "Shift") shiftHeld = false;
+});
+
+// ---------------------------------------------------------------------------
+// Boot arrangement and loop
+// ---------------------------------------------------------------------------
+
+const opening = PRESETS.find((p) => p.id === "attract");
+if (opening) loadPlaced(opening.build(), opening.label);
+
+let flow = 0;
+let last = 0;
+
+function frame(now: number): void {
+  const dt = last === 0 ? 0.016 : Math.min(0.05, (now - last) / 1000);
+  last = now;
+
+  controls.update();
+
+  if (fieldOpts.flow) {
+    flow = (flow + dt * 0.5) % 1000;
+    tubes.setFlow(flow);
+  }
+
+  const interval = dragging ? 55 : 90;
+  if (dirty && now - lastHeavy > interval) {
+    lastHeavy = now;
+    dirty = false;
+    recompute(now);
+  }
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// Warm the first frame before dropping the loading veil.
+recompute(0);
+requestAnimationFrame((t) => {
+  frame(t);
+  ui.finishLoading();
+});

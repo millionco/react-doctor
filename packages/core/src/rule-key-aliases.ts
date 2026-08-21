@@ -16,6 +16,12 @@
 // namespaces (`effect/<id>` for the you-might-not-need-an-effect
 // family).
 const LEGACY_RULE_KEY_TO_NATIVE_RULE_KEY: Readonly<Record<string, string>> = {
+  "deslop/circular-dependency": "react-doctor/circular-dependency",
+  "deslop/unused-dependency": "react-doctor/unused-dependency",
+  "deslop/unused-dev-dependency": "react-doctor/unused-dev-dependency",
+  "deslop/unused-export": "react-doctor/unused-export",
+  "deslop/unused-file": "react-doctor/unused-file",
+  "deslop/unused-type": "react-doctor/unused-type",
   "effect/no-adjust-state-on-prop-change": "react-doctor/no-adjust-state-on-prop-change",
   "effect/no-chain-state-updates": "react-doctor/no-chain-state-updates",
   "effect/no-derived-state": "react-doctor/no-derived-state",

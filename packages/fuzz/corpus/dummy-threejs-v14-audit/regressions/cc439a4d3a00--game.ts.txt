@@ -1,0 +1,924 @@
+// rule: three-effect-composer-require-size-on-resize
+// file-path: src/game.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit cc439a4d3a00f452aec20e0f021571de93bd9c1980b6a2824ff3ab1131c634a1
+/**
+ * Markerfall — game loop, rules and feedback.
+ *
+ * Descend the shaft, plant a chain of anchors you can climb back up, take the
+ * relics, and beat the gloom to the rim. Everything the player decides is
+ * spatial: how far apart the anchors sit, whether a ledge blocks the line to
+ * the next one, and how much depth they can still afford.
+ */
+import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { FXAAPass } from "three/examples/jsm/postprocessing/FXAAPass.js";
+
+import { createAudio, type AudioSystem } from "./audio";
+import { createCameraRig } from "./cameraRig";
+import { CONFIG } from "./config";
+import { integrate, supportBelow, type Body } from "./collision";
+import { createHud, type Hud } from "./hud";
+import { createMarkerSystem, type AscendTarget, type ChainReport } from "./markers";
+import { clamp, lerp } from "./noise";
+import { createPlayer, type PlayerPose } from "./player";
+import { buildTextures, radialTexture } from "./textures";
+import { buildWorld } from "./world";
+
+type Phase = "loading" | "menu" | "playing" | "won" | "lost";
+
+const SPAWN_RADIUS = CONFIG.rimInner + 2.8;
+
+export function startGame(canvas: HTMLCanvasElement): void {
+  /* ------------------------------------------------------------------ */
+  /* renderer                                                            */
+  /* ------------------------------------------------------------------ */
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.7));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+  canvas.addEventListener("webglcontextlost", (e) => e.preventDefault());
+
+  /**
+   * Software rasterisers (SwiftShader, llvmpipe) cannot carry this scene at the
+   * intended density, so detect them before anything is built and generate a
+   * thinner world rather than trying to claw the frame time back afterwards.
+   */
+  const params = new URLSearchParams(location.search);
+  const forcedQuality = params.has("q") ? Number(params.get("q")) : null;
+
+  const lowSpec = (() => {
+    if (forcedQuality !== null) return false;
+    try {
+      const gl = renderer.getContext();
+      const ext = gl.getExtension("WEBGL_debug_renderer_info");
+      const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : "";
+      return /swiftshader|llvmpipe|softwarerasterizer|basic render|mesa offscreen/i.test(name);
+    } catch {
+      return false;
+    }
+  })();
+
+  const scene = new THREE.Scene();
+  const fog = new THREE.FogExp2(0x0a0d16, 0.021);
+  scene.fog = fog;
+
+  /* Sky dome so the mouth of the shaft opens onto something real. */
+  {
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(300, 32, 24),
+      new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        depthWrite: false,
+        fog: false,
+        uniforms: {},
+        vertexShader: /* glsl */ `
+          varying vec3 vP;
+          void main() {
+            vP = position;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: /* glsl */ `
+          varying vec3 vP;
+          void main() {
+            float h = normalize(vP).y;
+            vec3 deep = vec3(0.012, 0.015, 0.028);
+            vec3 low  = vec3(0.05, 0.07, 0.11);
+            vec3 high = vec3(0.42, 0.52, 0.68);
+            vec3 c = mix(deep, low, smoothstep(-0.6, 0.05, h));
+            c = mix(c, high, smoothstep(0.05, 0.85, h));
+            gl_FragColor = vec4(c, 1.0);
+          }
+        `,
+      }),
+    );
+    sky.renderOrder = -1;
+    scene.add(sky);
+  }
+
+  const cameraRig = createCameraRig(window.innerWidth / window.innerHeight);
+  const camera = cameraRig.camera;
+  camera.near = 0.25;
+  camera.far = 320;
+  camera.updateProjectionMatrix();
+  scene.add(camera);
+
+  /* ------------------------------------------------------------------ */
+  /* content                                                             */
+  /* ------------------------------------------------------------------ */
+  const tex = buildTextures(lowSpec ? 0.75 : 1);
+  const world = buildWorld(tex, lowSpec ? 0.8 : 1);
+  scene.add(world.root);
+
+  const player = createPlayer(tex);
+  scene.add(player.group);
+
+  const markers = createMarkerSystem(tex, world.losTargets);
+  scene.add(markers.group);
+
+  const audio: AudioSystem = createAudio();
+  const hud: Hud = createHud(world.bottomY);
+
+  /* contact shadow under the explorer + predicted landing ring */
+  const blobTex = radialTexture(0.0, 2.0);
+  const blob = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.7, 1.7),
+    new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, opacity: 0.5, depthWrite: false, color: 0x000000, blending: THREE.NormalBlending }),
+  );
+  blob.rotation.x = -Math.PI / 2;
+  blob.renderOrder = 3;
+  scene.add(blob);
+
+  const landRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.52, 0.74, 40),
+    new THREE.MeshBasicMaterial({ color: 0x64e2c0, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, depthTest: false }),
+  );
+  landRing.rotation.x = -Math.PI / 2;
+  landRing.renderOrder = 5;
+  scene.add(landRing);
+
+  const ascendRope = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.028, 0.028, 1, 6, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffcf8f, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }),
+  );
+  ascendRope.renderOrder = 4;
+  scene.add(ascendRope);
+
+  /* ------------------------------------------------------------------ */
+  /* post processing + quality ladder                                    */
+  /* ------------------------------------------------------------------ */
+  let composer: EffectComposer | null = null;
+  let gtao: GTAOPass | null = null;
+  let bloom: UnrealBloomPass | null = null;
+  let usePost = true;
+
+  function buildComposer(): void {
+    try {
+      const c = new EffectComposer(renderer);
+      c.addPass(new RenderPass(scene, camera));
+      const g = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
+      g.updateGtaoMaterial({ radius: 0.85, distanceExponent: 1.4, thickness: 0.6, scale: 1.1, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
+      g.updatePdMaterial({ lumaPhi: 8, depthPhi: 2.2, normalPhi: 4.5, radius: 4, rings: 2, samples: 8 });
+      g.blendIntensity = 0.95;
+      c.addPass(g);
+      const b = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.5, 0.7, 0.82);
+      c.addPass(b);
+      c.addPass(new OutputPass());
+      c.addPass(new FXAAPass());
+      composer = c;
+      gtao = g;
+      bloom = b;
+    } catch {
+      composer = null;
+      usePost = false;
+    }
+  }
+  buildComposer();
+
+  /**
+   * Quality ladder. 0 is the intended look. Each step down sheds the most
+   * expensive thing that is not load-bearing for readability — screen-space AO
+   * first (the maps and vertex shading already carry the form), then bloom,
+   * then shadows and the secondary lamps.
+   */
+  let quality = 0;
+  let litMarkers = 4;
+  const MAX_QUALITY = 4;
+  function applyQuality(level: number): void {
+    quality = clamp(level, 0, MAX_QUALITY);
+    if (gtao) gtao.enabled = quality < 1;
+    if (bloom) bloom.enabled = quality < 2;
+    usePost = composer !== null && quality < 3;
+
+    const shadows = quality < 3;
+    world.lights.sky.castShadow = shadows;
+    player.lantern.castShadow = shadows;
+    renderer.shadowMap.enabled = shadows;
+    if (quality >= 2) {
+      world.lights.sky.shadow.mapSize.set(1024, 1024);
+      player.lantern.shadow.mapSize.set(512, 512);
+      world.lights.sky.shadow.map?.dispose();
+      player.lantern.shadow.map?.dispose();
+      world.lights.sky.shadow.map = null;
+      player.lantern.shadow.map = null;
+    }
+
+    // Only the last rung sheds atmosphere and secondary lamps — everything
+    // above it still reads the way the game is meant to look.
+    const bare = quality >= 4;
+    player.rimLight.visible = !bare;
+    world.gloom.light.visible = !bare;
+    for (const r of world.relics) r.light.visible = !bare;
+    for (const b of world.lights.braziers) b.visible = !bare;
+    world.motes.points.visible = !bare;
+    for (const v of world.volumetrics) v.visible = !bare;
+    litMarkers = bare ? 2 : 4;
+
+    renderer.setPixelRatio(bare ? 0.5 : quality >= 2 ? 1 : Math.min(window.devicePixelRatio, 1.7));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer?.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  if (forcedQuality !== null) applyQuality(forcedQuality);
+  else if (lowSpec) applyQuality(3);
+
+  /* ------------------------------------------------------------------ */
+  /* state                                                               */
+  /* ------------------------------------------------------------------ */
+  // Spawn on the rim directly above the first chamber, a little off the winch.
+  const spawnAngle = world.entryAngle + 0.16;
+  const body: Body = {
+    x: Math.cos(spawnAngle) * SPAWN_RADIUS,
+    y: CONFIG.rimY,
+    z: Math.sin(spawnAngle) * SPAWN_RADIUS,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    radius: CONFIG.playerRadius,
+    height: CONFIG.playerHeight,
+    grounded: true,
+    apex: CONFIG.rimY,
+  };
+
+  const state = {
+    phase: "loading" as Phase,
+    health: CONFIG.maxHealth as number,
+    fuel: 1,
+    elapsed: 0,
+    runTime: 0,
+    score: 0,
+    carried: [false, false, false],
+    deepest: 0,
+    facing: spawnAngle + Math.PI,
+    coyote: 0,
+    jumpBuffer: 0,
+    ascending: null as null | { from: THREE.Vector3; to: THREE.Vector3; t: number; dur: number; target: AscendTarget },
+    ascendCooldown: 0,
+    shake: 0,
+    stepAccum: 0,
+    gloomWarned: false,
+    deepWarned: false,
+    lowMarkerWarned: false,
+    hurtCooldown: 0,
+    rimReminder: 0,
+  };
+
+  const keys = new Set<string>();
+  const pressed = new Set<string>();
+
+  const IDLE_CHAIN: ChainReport = { linked: 0, broken: 0, escapeSecured: true, nextGap: Infinity };
+  let queryTimer = 0;
+  let cachedAscend: AscendTarget | null = null;
+  let cachedChain: ChainReport = IDLE_CHAIN;
+
+  const tmpV = new THREE.Vector3();
+  const tmpV2 = new THREE.Vector3();
+  const camFwd = new THREE.Vector3();
+  const camRight = new THREE.Vector3();
+  const focus = new THREE.Vector3();
+
+  /* ------------------------------------------------------------------ */
+  /* input                                                               */
+  /* ------------------------------------------------------------------ */
+  function firstGesture(): void {
+    if (!audio.ready) {
+      audio.init(camera, scene);
+      if (audio.ready) {
+        audio.setGloomSource(world.gloom.group);
+        for (const r of world.relics) audio.attachLoop("relic", r.group, 0.5, 7);
+        for (const b of world.lights.braziers) audio.attachLoop("brazier", b, 0.42, 6);
+      }
+    }
+    audio.resume();
+  }
+
+  window.addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (["tab", " ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k)) e.preventDefault();
+    if (!keys.has(k)) pressed.add(k);
+    keys.add(k);
+    firstGesture();
+    if (k === "tab") cameraRig.toggleOverview();
+    if (k === "r" && (state.phase === "won" || state.phase === "lost")) restart();
+    if ((k === "enter" || k === " ") && state.phase === "menu") begin();
+  });
+  window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+  window.addEventListener("blur", () => keys.clear());
+  canvas.addEventListener("pointerdown", firstGesture);
+
+  cameraRig.attach(canvas);
+  hud.onMute = (m) => audio.setMuted(m);
+  hud.onOverview = () => {
+    firstGesture();
+    cameraRig.toggleOverview();
+  };
+
+  window.addEventListener("resize", () => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    renderer.setSize(w, h);
+    cameraRig.resize(w, h);
+    composer?.setSize(w, h);
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* helpers                                                             */
+  /* ------------------------------------------------------------------ */
+  function playerFeet(out: THREE.Vector3): THREE.Vector3 {
+    return out.set(body.x, body.y, body.z);
+  }
+  function playerChest(out: THREE.Vector3): THREE.Vector3 {
+    return out.set(body.x, body.y + 1.15, body.z);
+  }
+
+  function damage(amount: number, kind: "fall" | "gloom"): void {
+    if (state.phase !== "playing") return;
+    state.health -= amount;
+    state.shake = Math.min(1.1, state.shake + amount / 55);
+    hud.flash(kind === "gloom" ? "gloom" : "hurt");
+    if (state.hurtCooldown <= 0) {
+      audio.play("hurt", 0.7);
+      state.hurtCooldown = 0.35;
+    }
+    if (state.health <= 0) {
+      state.health = 0;
+      lose(kind === "gloom" ? "The gloom took you" : "You did not survive the fall");
+    }
+  }
+
+  function tryPlantOrRecover(): void {
+    const feet = playerFeet(tmpV);
+    const near = markers.markerNear(feet, 1.7);
+    if (near) {
+      markers.retrieve(near);
+      audio.playAt("retrieve", near.position, 0.8);
+      hud.toast(`Marker recovered — ${markers.remaining} in hand`, "good");
+      player.flashPlant();
+      return;
+    }
+    if (!body.grounded) {
+      audio.play("deny", 0.5);
+      hud.toast("Plant markers from solid ground", "bad");
+      return;
+    }
+    if (!markers.canPlant()) {
+      audio.play("deny", 0.5);
+      hud.toast("No markers left", "bad");
+      return;
+    }
+    const m = markers.plant(feet, state.elapsed);
+    if (!m) return;
+    player.flashPlant();
+    audio.playAt("plant", m.position, 0.85, 0.94 + Math.random() * 0.12);
+    audio.attachLoop("marker", m.group, 0.35, 5);
+    state.shake = Math.min(0.5, state.shake + 0.22);
+    if (!m.linked) {
+      hud.toast("No anchor above — chain broken", "bad");
+    } else if (markers.remaining <= 2 && !state.lowMarkerWarned) {
+      state.lowMarkerWarned = true;
+      hud.toast(`${markers.remaining} markers left`, "bad");
+    }
+  }
+
+  function tryAscend(): void {
+    if (state.ascending || state.ascendCooldown > 0) return;
+    const from = playerChest(tmpV);
+    const target = markers.findAscendTarget(from);
+    if (!target) {
+      audio.play("deny", 0.55);
+      hud.toast("No anchor in range above", "bad");
+      state.shake = Math.min(0.4, state.shake + 0.15);
+      return;
+    }
+    const dest = target.point.clone();
+    state.ascending = {
+      from: playerFeet(new THREE.Vector3()),
+      to: dest,
+      t: 0,
+      dur: Math.max(0.35, target.distance / CONFIG.ascendSpeed),
+      target,
+    };
+    body.vx = 0;
+    body.vy = 0;
+    body.vz = 0;
+    audio.playAt("ascend", from, 0.8);
+  }
+
+  function finishAscend(): void {
+    const a = state.ascending;
+    if (!a) return;
+    const groundY = a.target.kind === "rim" ? CONFIG.rimY : a.target.point.y - 0.96;
+    body.x = a.target.point.x;
+    body.z = a.target.point.z;
+    const support = supportBelow(world.colliders, body.x, body.z, groundY + 0.6, body.radius);
+    body.y = support > -Infinity ? support : groundY;
+    body.vy = 0;
+    body.apex = body.y;
+    body.grounded = true;
+    state.ascending = null;
+    state.ascendCooldown = 0.25;
+    state.shake = Math.min(0.6, state.shake + 0.22);
+    audio.playAt("arrive", playerFeet(tmpV), 0.7);
+    (ascendRope.material as THREE.MeshBasicMaterial).opacity = 0;
+  }
+
+  function checkRelics(): void {
+    const feet = playerFeet(tmpV);
+    for (const r of world.relics) {
+      if (r.taken) continue;
+      if (feet.distanceTo(r.position) > CONFIG.relicPickupRadius + 1.2) continue;
+      if (Math.abs(feet.y - (r.position.y - 2.15)) > 2.6) continue;
+      r.taken = true;
+      state.carried[r.id] = true;
+      state.score += r.value;
+      r.group.visible = false;
+      r.light.intensity = 0;
+      player.setRelicGlow(state.carried.filter(Boolean).length);
+      audio.play("relic", 0.85);
+      hud.toast(`${r.name} secured  ·  +${r.value}`, "good");
+      hud.flash("gloom");
+      state.shake = Math.min(0.5, state.shake + 0.2);
+    }
+  }
+
+  function rankFor(relics: number, won: boolean): string {
+    if (!won) return "Lost to the shaft";
+    if (relics >= 3) return "Rank: Deepcrowned";
+    if (relics === 2) return "Rank: Wayfinder";
+    return "Rank: Returned";
+  }
+
+  function win(): void {
+    if (state.phase !== "playing") return;
+    state.phase = "won";
+    const relics = state.carried.filter(Boolean).length;
+    const bonus = markers.remaining * 25 + Math.max(0, Math.round((240 - state.runTime) * 2));
+    state.score += bonus;
+    audio.play("win", 0.9);
+    hud.setPrompt(null);
+    hud.showEnd(
+      {
+        won: true,
+        title: relics >= 3 ? "All Three" : "Out Alive",
+        blurb:
+          relics >= 3
+            ? "Every relic the shaft was holding came up with you, and the gloom closed on nothing. Nobody has done that before."
+            : `You came back over the lip with ${relics} relic${relics === 1 ? "" : "s"} and ${markers.remaining} marker${markers.remaining === 1 ? "" : "s"} still in hand. The gloom can keep the rest.`,
+        rank: rankFor(relics, true),
+        score: state.score,
+        relics,
+        deepest: state.deepest,
+        time: state.runTime,
+        markersLeft: markers.remaining,
+      },
+      restart,
+    );
+  }
+
+  function lose(reason: string): void {
+    if (state.phase !== "playing") return;
+    state.phase = "lost";
+    audio.play("lose", 0.85);
+    hud.setPrompt(null);
+    const relics = state.carried.filter(Boolean).length;
+    hud.showEnd(
+      {
+        won: false,
+        title: "Markerfall",
+        blurb: `${reason}. ${relics > 0 ? "The relics you were carrying went down with you." : "The shaft keeps what it takes."} Your markers are still burning down there.`,
+        rank: rankFor(relics, false),
+        score: 0,
+        relics: 0,
+        deepest: state.deepest,
+        time: state.runTime,
+        markersLeft: markers.remaining,
+      },
+      restart,
+    );
+  }
+
+  function begin(): void {
+    firstGesture();
+    audio.play("ui", 0.5);
+    state.phase = "playing";
+    hud.hideOverlay();
+    hud.toast("Descend. Leave a way back.", "good");
+  }
+
+  function restart(): void {
+    audio.play("ui", 0.5);
+    markers.reset();
+    for (const r of world.relics) {
+      r.taken = false;
+      r.group.visible = true;
+      r.light.intensity = 13;
+    }
+    body.x = Math.cos(spawnAngle) * SPAWN_RADIUS;
+    body.y = CONFIG.rimY;
+    body.z = Math.sin(spawnAngle) * SPAWN_RADIUS;
+    body.vx = body.vy = body.vz = 0;
+    body.grounded = true;
+    body.apex = CONFIG.rimY;
+    state.health = CONFIG.maxHealth;
+    state.fuel = 1;
+    state.runTime = 0;
+    state.score = 0;
+    state.carried = [false, false, false];
+    state.deepest = 0;
+    state.facing = spawnAngle + Math.PI;
+    state.ascending = null;
+    state.shake = 0;
+    state.gloomWarned = false;
+    state.deepWarned = false;
+    state.lowMarkerWarned = false;
+    player.setRelicGlow(0);
+    world.gloom.setLevel(world.bottomY - CONFIG.gloomStartOffset);
+    cameraRig.reset(playerFeet(tmpV));
+    state.phase = "playing";
+    hud.hideOverlay();
+    hud.toast("Again. Deeper this time.", "good");
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* simulation                                                          */
+  /* ------------------------------------------------------------------ */
+  const FIXED = 1 / 120;
+  let accumulator = 0;
+
+  function simulate(dt: number): void {
+    /* --- desired horizontal velocity in camera space --- */
+    camera.getWorldDirection(camFwd);
+    camFwd.y = 0;
+    if (camFwd.lengthSq() < 1e-5) camFwd.set(0, 0, -1);
+    camFwd.normalize();
+    camRight.set(camFwd.z, 0, -camFwd.x);
+
+    let ix = 0;
+    let iz = 0;
+    if (keys.has("w") || keys.has("arrowup")) iz += 1;
+    if (keys.has("s") || keys.has("arrowdown")) iz -= 1;
+    if (keys.has("d") || keys.has("arrowright")) ix += 1;
+    if (keys.has("a") || keys.has("arrowleft")) ix -= 1;
+    const mag = Math.hypot(ix, iz);
+    const sprint = keys.has("shift");
+    const speed = sprint ? CONFIG.sprintSpeed : CONFIG.walkSpeed;
+
+    let wantX = 0;
+    let wantZ = 0;
+    if (mag > 0) {
+      wantX = ((camFwd.x * iz + camRight.x * ix) / mag) * speed;
+      wantZ = ((camFwd.z * iz + camRight.z * ix) / mag) * speed;
+      state.facing = Math.atan2(wantX, wantZ);
+    }
+
+    if (state.ascending) {
+      const a = state.ascending;
+      a.t += dt;
+      const k = clamp(a.t / a.dur, 0, 1);
+      // ease-out so arrival settles instead of snapping
+      const e = 1 - Math.pow(1 - k, 2.1);
+      const groundTo = a.target.kind === "rim" ? CONFIG.rimY : a.target.point.y - 0.96;
+      body.x = lerp(a.from.x, a.target.point.x, e);
+      body.z = lerp(a.from.z, a.target.point.z, e);
+      body.y = lerp(a.from.y, groundTo, e) + Math.sin(k * Math.PI) * 0.55;
+      if (k >= 1) finishAscend();
+      return;
+    }
+
+    const accel = body.grounded ? CONFIG.accel : CONFIG.airAccel;
+    body.vx += clamp(wantX - body.vx, -accel * dt, accel * dt);
+    body.vz += clamp(wantZ - body.vz, -accel * dt, accel * dt);
+    if (mag === 0 && body.grounded) {
+      const drag = Math.pow(0.0009, dt);
+      body.vx *= drag;
+      body.vz *= drag;
+    }
+
+    if (state.coyote > 0 && state.jumpBuffer > 0) {
+      body.vy = CONFIG.jumpSpeed;
+      body.grounded = false;
+      state.coyote = 0;
+      state.jumpBuffer = 0;
+      body.apex = body.y;
+      audio.playAt("jump", playerFeet(tmpV), 0.45, 0.95 + Math.random() * 0.15);
+    }
+
+    const res = integrate(body, world.colliders, dt, CONFIG.gravity, CONFIG.terminalVelocity);
+    state.coyote = res.grounded ? 0.13 : Math.max(0, state.coyote - dt);
+
+    if (res.landed) {
+      if (res.fallDistance > CONFIG.safeFall) {
+        const dmg = (res.fallDistance - CONFIG.safeFall) * CONFIG.fallDamagePerUnit;
+        audio.playAt("hardLand", playerFeet(tmpV), 0.95);
+        damage(dmg, "fall");
+        hud.toast(`Hard landing  −${Math.round(dmg)}`, "bad");
+      } else if (res.fallDistance > 1.2) {
+        audio.playAt("land", playerFeet(tmpV), clamp(res.fallDistance / 9, 0.25, 0.8));
+        state.shake = Math.min(0.5, state.shake + res.fallDistance / 40);
+      }
+    }
+
+    /* footsteps */
+    if (res.grounded) {
+      const moved = Math.hypot(body.vx, body.vz) * dt;
+      state.stepAccum += moved;
+      const stride = sprint ? 2.05 : 1.7;
+      if (state.stepAccum > stride) {
+        state.stepAccum = 0;
+        audio.playAt("step", playerFeet(tmpV), 0.4, 0.85 + Math.random() * 0.35);
+      }
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* frame                                                               */
+  /* ------------------------------------------------------------------ */
+  let last = performance.now();
+  let frameTimes = 0;
+  let frameCount = 0;
+
+  function frame(now: number): void {
+    // rAF timestamps are frame-start times, so the first one can predate the
+    // end of world construction. Clamp rather than trust it.
+    const rawDt = clamp((now - last) / 1000, 0, 0.05);
+    last = now;
+    state.elapsed += rawDt;
+
+    if (state.phase === "playing") {
+      state.runTime += rawDt;
+      state.hurtCooldown = Math.max(0, state.hurtCooldown - rawDt);
+      state.ascendCooldown = Math.max(0, state.ascendCooldown - rawDt);
+      state.jumpBuffer = Math.max(0, state.jumpBuffer - rawDt);
+
+      if (pressed.has(" ")) state.jumpBuffer = 0.13;
+      if (pressed.has("e")) tryPlantOrRecover();
+      if (pressed.has("f")) tryAscend();
+
+      accumulator += rawDt;
+      let steps = 0;
+      while (accumulator >= FIXED && steps < 10) {
+        simulate(FIXED);
+        accumulator -= FIXED;
+        steps++;
+      }
+      if (steps >= 10) accumulator = 0;
+
+      checkRelics();
+
+      /* --- gloom --- */
+      const t = state.runTime;
+      const risen = CONFIG.gloomBaseSpeed * t + CONFIG.gloomAccel * t * t;
+      const gloomY = world.bottomY - CONFIG.gloomStartOffset + risen;
+      world.gloom.setLevel(gloomY);
+      const gloomGap = body.y - gloomY;
+      if (gloomGap < 0.7) damage(CONFIG.gloomDamage * rawDt, "gloom");
+      if (!state.gloomWarned && gloomGap < 16) {
+        state.gloomWarned = true;
+        hud.toast("The gloom is climbing", "gloom");
+      }
+      audio.setGloomIntensity(clamp(1 - gloomGap / 34, 0, 1));
+      audio.setWind(clamp(0.35 + (1 - clamp(-body.y / 60, 0, 1)) * 0.65, 0, 1));
+      if (gloomY > CONFIG.rimY + 0.5) lose("The gloom swallowed the rim");
+
+      /* --- lantern oil --- */
+      state.fuel = clamp(1 - state.runTime / 260, 0.07, 1);
+
+      /* --- depth / escape --- */
+      state.deepest = Math.max(state.deepest, CONFIG.rimY - body.y);
+      if (!state.deepWarned && body.y < world.deepestShelfY + 4) {
+        state.deepWarned = true;
+        hud.toast("The shrine floor — deepest reach", "gloom");
+      }
+      const onRim = body.y > CONFIG.rimY - 0.6 && Math.hypot(body.x, body.z) > CONFIG.rimInner + 0.3;
+      if (onRim && body.grounded) {
+        if (state.carried.some(Boolean)) {
+          win();
+        } else if (state.runTime > 4) {
+          state.rimReminder -= rawDt;
+          if (state.rimReminder <= 0) {
+            state.rimReminder = 6;
+            hud.toast("Bring up at least one relic", "bad");
+          }
+        }
+      }
+    }
+
+    /* --- marker preview + prompts ---
+       Anchor tests are raycasts against the shaft, so they run on a timer
+       rather than every frame; the preview marker still tracks the feet. */
+    const feet = playerFeet(tmpV);
+    const canPreview = state.phase === "playing" && body.grounded && !state.ascending;
+    queryTimer -= rawDt;
+    if (queryTimer <= 0) {
+      queryTimer = 0.11;
+      if (canPreview) {
+        const near = markers.markerNear(feet, 1.7);
+        markers.setPreview(!near && markers.canPlant(), feet);
+      } else {
+        markers.setPreview(false, null);
+      }
+      cachedAscend =
+        state.phase === "playing" && !state.ascending ? markers.findAscendTarget(playerChest(tmpV2)) : null;
+      cachedChain = state.phase === "playing" ? markers.evaluateChain(playerChest(tmpV2)) : IDLE_CHAIN;
+    } else if (canPreview) {
+      markers.movePreview(feet);
+    }
+    const ascendTarget: AscendTarget | null = cachedAscend;
+
+    if (state.phase === "playing") {
+      const parts: string[] = [];
+      const near = markers.markerNear(feet, 1.7);
+      if (near) parts.push(`<kbd>E</kbd> recover marker`);
+      else if (body.grounded && markers.canPlant()) parts.push(`<kbd>E</kbd> plant marker (${markers.remaining})`);
+      if (ascendTarget) {
+        parts.push(
+          `<kbd>F</kbd> ascend ${ascendTarget.distance.toFixed(1)}m to ${ascendTarget.kind === "rim" ? "the rim" : "anchor"}`,
+        );
+      } else if (body.grounded) {
+        parts.push(`<span style="color:#ff8a7a">no anchor above</span>`);
+      }
+      hud.setPrompt(parts.length ? parts.join(`<span style="opacity:.3">|</span>`) : null);
+    }
+
+    /* --- player visuals --- */
+    const horizSpeed = Math.hypot(body.vx, body.vz);
+    let pose: PlayerPose = "idle";
+    if (state.phase === "lost") pose = "down";
+    else if (state.ascending) pose = "ascend";
+    else if (!body.grounded) pose = "air";
+    else if (horizSpeed > 5.6) pose = "run";
+    else if (horizSpeed > 0.4) pose = "walk";
+    player.group.position.set(body.x, body.y, body.z);
+    player.update(rawDt, state.elapsed, {
+      pose,
+      speed: horizSpeed,
+      vy: body.vy,
+      facing: state.facing,
+      lanternFuel: state.fuel,
+      carrying: markers.remaining,
+    });
+
+    /* --- contact shadow + landing predictor --- */
+    const ground = supportBelow(world.colliders, body.x, body.z, body.y + 0.1, body.radius);
+    if (ground > -Infinity) {
+      const h = clamp(body.y - ground, 0, 14);
+      blob.visible = true;
+      blob.position.set(body.x, ground + 0.035, body.z);
+      const s = 1 + h * 0.11;
+      blob.scale.set(s, s, s);
+      (blob.material as THREE.MeshBasicMaterial).opacity = 0.4 * Math.pow(clamp(1 - h / 12, 0, 1), 1.5);
+    } else {
+      blob.visible = false;
+    }
+
+    if (!body.grounded && body.vy < -1.5 && state.phase === "playing" && !state.ascending) {
+      const landY = supportBelow(world.colliders, body.x, body.z, body.y, body.radius);
+      if (landY > -Infinity) {
+        const drop = body.apex - landY;
+        landRing.visible = true;
+        landRing.position.set(body.x, landY + 0.06, body.z);
+        const danger = clamp((drop - CONFIG.safeFall) / 8, 0, 1);
+        (landRing.material as THREE.MeshBasicMaterial).color.setRGB(
+          lerp(0.39, 1, danger),
+          lerp(0.89, 0.3, danger),
+          lerp(0.75, 0.25, danger),
+        );
+        (landRing.material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.45 * Math.abs(Math.sin(state.elapsed * 7));
+        const rs = 1 + danger * 0.4;
+        landRing.scale.set(rs, rs, rs);
+      } else {
+        landRing.visible = false;
+      }
+    } else {
+      landRing.visible = false;
+    }
+
+    /* --- ascender rope --- */
+    if (state.ascending) {
+      const a = state.ascending;
+      player.chestWorld(tmpV);
+      const to = a.target.point;
+      const mid = tmpV2.copy(tmpV).add(to).multiplyScalar(0.5);
+      const len = tmpV.distanceTo(to);
+      ascendRope.position.copy(mid);
+      ascendRope.scale.set(1, Math.max(0.01, len), 1);
+      ascendRope.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        new THREE.Vector3().subVectors(to, tmpV).normalize(),
+      );
+      (ascendRope.material as THREE.MeshBasicMaterial).opacity = 0.85;
+    } else {
+      (ascendRope.material as THREE.MeshBasicMaterial).opacity *= 0.85;
+    }
+
+    /* --- world + camera --- */
+    // The menu keeps a slow orbit running so the rim reads as a live place.
+    if (state.phase === "menu") cameraRig.nudge(-rawDt * 0.05, 0);
+    world.update(rawDt, state.elapsed, body.y);
+    markers.update(rawDt, state.elapsed, feet, cameraRig.blend, litMarkers);
+
+    focus.set(body.x, body.y, body.z);
+    cameraRig.update(rawDt, focus, world.losTargets, world.deepestShelfY);
+
+    // camera shake
+    state.shake = Math.max(0, state.shake - rawDt * 2.4);
+    if (state.shake > 0.001) {
+      const s = state.shake * state.shake * 0.5;
+      camera.position.x += (Math.random() - 0.5) * s;
+      camera.position.y += (Math.random() - 0.5) * s;
+      camera.position.z += (Math.random() - 0.5) * s;
+    }
+
+    /* --- atmosphere blend --- */
+    const gloomProx = clamp(1 - (body.y - world.gloom.level) / 26, 0, 1);
+    fog.density = lerp(lerp(0.023, 0.0045, cameraRig.blend), 0.03, gloomProx * 0.35);
+    fog.color.setRGB(
+      lerp(0.035, 0.16, gloomProx),
+      lerp(0.045, 0.05, gloomProx),
+      lerp(0.075, 0.2, gloomProx),
+    );
+    // The overview is a planning view: lift the fill and the marked edges so
+    // the whole column reads at a glance.
+    world.lights.hemi.intensity = lerp(0.52, 1.5, cameraRig.blend);
+    world.lights.ambient.intensity = lerp(0.34, 1.5, cameraRig.blend);
+    world.setOverviewBoost(cameraRig.blend);
+    for (const o of world.overviewHidden) o.visible = cameraRig.blend < 0.42;
+    player.rimLight.intensity = lerp(9, 3, cameraRig.blend);
+    player.setFade(clamp((cameraRig.distance - 2.0) / 2.2, 0, 1));
+
+    /* --- HUD --- */
+    if (state.phase !== "loading") {
+      const report = cachedChain;
+      let chainState: "ok" | "warn" | "bad" = "ok";
+      let label = "Secured";
+      let detail = "";
+      if (state.phase === "playing") {
+        if (report.escapeSecured) {
+          chainState = "ok";
+          label = "Secured";
+          detail = report.nextGap < Infinity ? `next anchor ${report.nextGap.toFixed(1)}m` : "at the rim";
+        } else if (report.linked > 0 || markers.markers.length > 0) {
+          chainState = markers.remaining > 0 ? "warn" : "bad";
+          label = markers.remaining > 0 ? "Gap in the chain" : "Chain broken";
+          detail = markers.remaining > 0 ? `${markers.remaining} markers in hand` : "no markers left";
+        } else {
+          chainState = "warn";
+          label = "No anchors set";
+          detail = `${markers.remaining} markers in hand`;
+        }
+      }
+      hud.update({
+        playerY: body.y,
+        gloomY: world.gloom.level,
+        markers: markers.markers.map((m) => ({ y: m.position.y, linked: m.linked })),
+        markersLeft: markers.remaining,
+        relics: world.relics.map((r) => ({ y: r.position.y, taken: r.taken })),
+        carried: state.carried,
+        score: state.score,
+        health: state.health,
+        fuel: state.fuel,
+        chain: { state: chainState, label, detail },
+      });
+      hud.setHint(cameraRig.blend > 0.5 ? "Overview — green links reach an anchor above, red do not" : null);
+    }
+
+    pressed.clear();
+
+    /* --- render --- */
+    if (usePost && composer) composer.render();
+    else renderer.render(scene, camera);
+
+    /* --- adaptive quality: shed effects if the frame budget slips --- */
+    frameTimes += rawDt;
+    frameCount++;
+    if (frameCount >= 24) {
+      const avg = frameTimes / frameCount;
+      frameTimes = 0;
+      frameCount = 0;
+      if (avg > 0.04 && quality < MAX_QUALITY && forcedQuality === null) applyQuality(quality + 1);
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* boot                                                                */
+  /* ------------------------------------------------------------------ */
+  state.phase = "menu";
+  hud.setLoading(false);
+  hud.showStart(begin);
+  markers.setPreview(false, null);
+  cameraRig.reset(playerFeet(tmpV));
+  requestAnimationFrame(frame);
+}

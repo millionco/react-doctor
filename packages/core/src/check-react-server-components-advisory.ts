@@ -67,9 +67,9 @@ const buildAdvisoryDiagnostic = (input: BuildAdvisoryDiagnosticInput): Diagnosti
 });
 
 // Every workspace package directory under `workspaceRoot`, unfiltered — unlike
-// `listWorkspacePackages`, which keeps only React-bearing packages. A workspace
-// that declares only a `react-server-dom-*` package (or `next` solely under
-// `optionalDependencies`) must still have its `node_modules` probed.
+// `listWorkspacePackages`, which keeps only React- or Three-bearing packages. A
+// workspace that declares only a `react-server-dom-*` package (or `next` solely
+// under `optionalDependencies`) must still have its `node_modules` probed.
 const enumerateWorkspaceDirectories = (workspaceRoot: string): string[] => {
   const patterns = getWorkspacePatterns(
     workspaceRoot,

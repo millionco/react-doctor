@@ -1,6 +1,0 @@
-{
-  "name": "astro-live-config",
-  "dependencies": {
-    "astro": "^5.0.0"
-  }
-}

@@ -1,0 +1,473 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 4cdbb812a6449683b2dfdc2c92cf310043a811571399f1f19e1e11299312fd98
+/**
+ * DOM overlay: loading, title, dive-computer HUD, viewfinder and results.
+ * Kept entirely out of the render loop's way — the HUD only touches the DOM
+ * when a value it displays actually changes.
+ */
+
+import { SPECIES } from "./creatures";
+import type { SpeciesDef } from "./creatures";
+import { clamp } from "./noise";
+import { MAX_DEPTH } from "./field";
+
+const el = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] => {
+  const n = document.createElement(tag);
+  if (className) n.className = className;
+  if (html !== undefined) n.innerHTML = html;
+  return n;
+};
+
+export interface SpeciesStatus {
+  discovered: boolean;
+  quality: number;
+  banked: boolean;
+  depth: number;
+  glow: number;
+}
+
+export interface ResultRow {
+  def: SpeciesDef;
+  quality: number;
+  banked: boolean;
+  points: number;
+}
+
+const stars = (q: number): string => {
+  const n = q <= 0 ? 0 : clamp(Math.round(q * 5), 1, 5);
+  return "★★★★★".slice(0, n) + "☆☆☆☆☆".slice(0, 5 - n);
+};
+
+export class Hud {
+  readonly root = el("div");
+  private loading = el("div");
+  private loadBar = el("i");
+  private loadLabel = el("div", "label");
+  private title = el("div", "screen");
+  private results = el("div", "screen hidden");
+  private hud = el("div");
+
+  private gas = el("div", "panel");
+  private gasFill = el("div", "fill");
+  private gasNum = el("div", "num", "100");
+
+  private depthPanel = el("div", "panel");
+  private depthYou = el("div", "you");
+  private depthRead = el("b", undefined, "0.0");
+  private pocketMarks: HTMLElement[] = [];
+  private beastMarks = new Map<string, HTMLElement>();
+
+  private logRows = new Map<string, { row: HTMLElement; name: HTMLElement; stars: HTMLElement }>();
+  private logHeadCount = el("span", undefined, "0 / 6");
+
+  private film = el("div", "panel");
+  private frames = el("div", "frames");
+  private carry = el("span", "carry", "");
+
+  private prompt = el("div", "panel");
+  private toast = el("div");
+  private card = el("div", "panel");
+  private cardName = el("div", "name");
+  private cardLatin = el("div", "latin");
+  private cardStars = el("div", "stars");
+  private cardNote = el("div", "note");
+  private cardPts = el("div", "pts");
+
+  private finder = el("div");
+  private finderInfo = el("div", "info");
+  private flashbang = el("div");
+  private vignette = el("div");
+  private hint = el("div");
+  private compass = el("div");
+
+  private cardTimer = 0;
+  private lastGas = -1;
+  private lastDepth = -1;
+  private toastQueue: { node: HTMLElement; until: number }[] = [];
+
+  onStart: () => void = () => {};
+  onRestart: () => void = () => {};
+
+  constructor() {
+    this.root.id = "ui";
+    this.buildLoading();
+    this.buildTitle();
+    this.buildHud();
+    this.buildResults();
+    this.root.append(this.hud, this.title, this.results, this.loading);
+    document.body.appendChild(this.root);
+  }
+
+  /* ------------------------------ build ---------------------------- */
+
+  private buildLoading(): void {
+    this.loading.id = "loading";
+    const bar = el("div", "bar");
+    bar.appendChild(this.loadBar);
+    this.loading.append(
+      el("div", "mark", "ABYSSAL SURVEY"),
+      bar,
+      this.loadLabel,
+    );
+  }
+
+  private buildTitle(): void {
+    const keys = el("div", "keys");
+    keys.innerHTML = `
+      <b>W A S D</b><span>swim</span>
+      <b>SPACE / C</b><span>rise / sink</span>
+      <b>SHIFT</b><span>hard fin (burns gas)</span>
+      <b>RIGHT MOUSE</b><span>raise camera</span>
+      <b>LEFT MOUSE</b><span>expose a frame</span>
+      <b>F</b><span>torch on / off</span>
+      <b>WHEEL</b><span>camera distance</span>
+      <b>E</b><span>close the survey (at the skiff)</span>
+      <b>M</b><span>mute</span>`;
+    const cta = el("button", "cta", "Enter the water");
+    cta.addEventListener("click", () => this.onStart());
+    this.title.append(
+      el("h1", undefined, "Abyssal Survey"),
+      el(
+        "div",
+        "sub",
+        "A limestone shaft drops seventy-six metres into the dark. Six undescribed animals live in it. " +
+          "Your cylinder will not get you to the bottom and back — but three pockets of trapped air are " +
+          "caught under the ledges, and each one holds only so much.<br><br>" +
+          "Photograph what you find. Nothing counts until you surface at the skiff and log it. " +
+          "Black out down there and the card goes with you.",
+      ),
+      keys,
+      cta,
+    );
+  }
+
+  private buildHud(): void {
+    this.hud.id = "hud";
+
+    // Gas
+    this.gas.id = "gas";
+    const tube = el("div", "tube");
+    tube.append(this.gasFill, el("div", "ticks"));
+    this.gas.append(el("div", "cap", "GAS"), tube, this.gasNum);
+
+    // Depth ladder
+    this.depthPanel.id = "depth";
+    this.depthPanel.appendChild(el("div", "rail"));
+    for (let d = 0; d <= MAX_DEPTH; d += 10) {
+      const t = el("div", "tick");
+      t.style.top = `${this.depthToPct(d)}%`;
+      t.appendChild(el("span", undefined, `${d}`));
+      this.depthPanel.appendChild(t);
+    }
+    const boat = el("div", "mark boat");
+    boat.style.top = `${this.depthToPct(0)}%`;
+    this.depthPanel.appendChild(boat);
+    const read = el("div", "read");
+    read.append(this.depthRead, el("span", undefined, "METRES"));
+    this.depthPanel.append(this.depthYou, read);
+
+    // Species log
+    const log = el("div", "panel");
+    log.id = "log";
+    const head = el("div", "head");
+    head.append(el("span", undefined, "SPECIES LOG"), this.logHeadCount);
+    log.appendChild(head);
+    for (const s of SPECIES) {
+      const row = el("div", "row");
+      const dot = el("div", "dot");
+      dot.style.color = `#${s.glow.toString(16).padStart(6, "0")}`;
+      const name = el("div", undefined, `— ${s.hint}`);
+      const st = el("div", "stars", "");
+      row.append(dot, name, st);
+      log.appendChild(row);
+      this.logRows.set(s.id, { row, name, stars: st });
+    }
+
+    // Film
+    this.film.id = "film";
+    this.film.append(el("span", undefined, "FILM"), this.frames, this.carry);
+
+    this.prompt.id = "prompt";
+    this.toast.id = "toast";
+
+    this.card.id = "card";
+    this.card.append(this.cardName, this.cardLatin, this.cardStars, this.cardNote, this.cardPts);
+
+    this.finder.id = "finder";
+    const frame = el("div", "frame");
+    frame.append(el("i"), el("u"));
+    this.finder.append(el("div", "mask"), frame, el("div", "reticle"), this.finderInfo);
+
+    this.flashbang.id = "flashbang";
+    this.vignette.id = "vignette";
+    this.hint.id = "hint";
+    this.compass.id = "compass";
+
+    this.hud.append(
+      this.gas,
+      this.depthPanel,
+      log,
+      this.film,
+      this.prompt,
+      this.toast,
+      this.card,
+      this.finder,
+      this.hint,
+      this.compass,
+      this.vignette,
+      this.flashbang,
+    );
+  }
+
+  private buildResults(): void {
+    this.results.id = "results";
+  }
+
+  /** Maps depth in metres to a percentage down the ladder. */
+  private depthToPct(depth: number): number {
+    return 5 + (clamp(depth, 0, MAX_DEPTH) / MAX_DEPTH) * 90;
+  }
+
+  /* ----------------------------- states ---------------------------- */
+
+  setProgress(label: string, fraction: number): void {
+    this.loadLabel.textContent = label;
+    this.loadBar.style.width = `${Math.round(fraction * 100)}%`;
+  }
+
+  hideLoading(): void {
+    this.loading.style.opacity = "0";
+    setTimeout(() => this.loading.classList.add("hidden"), 650);
+  }
+
+  showTitle(): void {
+    this.title.classList.remove("hidden");
+    this.results.classList.add("hidden");
+    this.hud.classList.remove("on");
+  }
+
+  startRun(pockets: { depth: number }[]): void {
+    this.title.classList.add("hidden");
+    this.results.classList.add("hidden");
+    this.hud.classList.add("on");
+    for (const m of this.pocketMarks) m.remove();
+    this.pocketMarks = [];
+    for (const p of pockets) {
+      const m = el("div", "mark pocket");
+      m.style.top = `${this.depthToPct(-p.depth)}%`;
+      const fill = el("i");
+      fill.style.height = "100%";
+      m.appendChild(fill);
+      this.depthPanel.appendChild(m);
+      this.pocketMarks.push(m);
+    }
+    for (const m of this.beastMarks.values()) m.remove();
+    this.beastMarks.clear();
+    this.toast.innerHTML = "";
+    this.toastQueue = [];
+    this.card.classList.remove("on");
+    this.lastGas = -1;
+    this.lastDepth = -1;
+  }
+
+  /* ------------------------------ live ----------------------------- */
+
+  setGas(fraction: number): void {
+    const pct = Math.round(fraction * 100);
+    if (pct === this.lastGas) return;
+    this.lastGas = pct;
+    this.gasFill.style.height = `${clamp(fraction, 0, 1) * 100}%`;
+    this.gasNum.textContent = `${pct}`;
+    this.gas.classList.toggle("low", fraction < 0.4 && fraction >= 0.18);
+    this.gas.classList.toggle("crit", fraction < 0.18);
+  }
+
+  setDepth(depth: number): void {
+    const rounded = Math.round(depth * 10) / 10;
+    if (rounded === this.lastDepth) return;
+    this.lastDepth = rounded;
+    this.depthYou.style.top = `${this.depthToPct(depth)}%`;
+    this.depthRead.textContent = rounded.toFixed(1);
+  }
+
+  setPocketCharges(charges: number[]): void {
+    for (let i = 0; i < this.pocketMarks.length; i++) {
+      const m = this.pocketMarks[i]!;
+      const c = clamp(charges[i] ?? 0, 0, 1);
+      const fill = m.firstElementChild as HTMLElement | null;
+      if (fill) fill.style.height = `${c * 100}%`;
+      m.classList.toggle("spent", c <= 0.02);
+    }
+  }
+
+  setBeasts(list: { id: string; depth: number; glow: number; discovered: boolean }[]): void {
+    for (const b of list) {
+      let m = this.beastMarks.get(b.id);
+      if (!b.discovered) {
+        if (m) {
+          m.remove();
+          this.beastMarks.delete(b.id);
+        }
+        continue;
+      }
+      if (!m) {
+        m = el("div", "mark beast");
+        m.style.color = `#${b.glow.toString(16).padStart(6, "0")}`;
+        this.depthPanel.appendChild(m);
+        this.beastMarks.set(b.id, m);
+      }
+      m.style.top = `${this.depthToPct(-b.depth)}%`;
+    }
+  }
+
+  setSpecies(status: Map<string, SpeciesStatus>): void {
+    let banked = 0;
+    for (const s of SPECIES) {
+      const st = status.get(s.id);
+      const row = this.logRows.get(s.id);
+      if (!row || !st) continue;
+      row.row.classList.toggle("seen", st.discovered && st.quality <= 0);
+      row.row.classList.toggle("shot", st.quality > 0);
+      row.row.classList.toggle("banked", st.banked);
+      row.name.textContent = st.discovered || st.quality > 0 ? s.name : `— ${s.hint}`;
+      row.stars.textContent = st.quality > 0 ? stars(st.quality) : "";
+      if (st.banked) banked++;
+    }
+    this.logHeadCount.textContent = `${banked} / ${SPECIES.length}`;
+  }
+
+  setFilm(remaining: number, total: number, carried: number): void {
+    if (this.frames.childElementCount !== total) {
+      this.frames.innerHTML = "";
+      for (let i = 0; i < total; i++) this.frames.appendChild(el("i"));
+    }
+    const kids = this.frames.children;
+    for (let i = 0; i < kids.length; i++) {
+      (kids[i] as HTMLElement).classList.toggle("used", i >= remaining);
+    }
+    this.carry.textContent = carried > 0 ? `${carried} ON CARD` : "";
+  }
+
+  setPrompt(text: string | null): void {
+    if (text) {
+      if (this.prompt.innerHTML !== text) this.prompt.innerHTML = text;
+      this.prompt.classList.add("on");
+    } else {
+      this.prompt.classList.remove("on");
+    }
+  }
+
+  setHint(text: string): void {
+    if (this.hint.textContent !== text) this.hint.textContent = text;
+  }
+
+  setCompass(text: string | null): void {
+    if (text) {
+      if (this.compass.textContent !== text) this.compass.textContent = text;
+      this.compass.classList.add("on");
+    } else {
+      this.compass.classList.remove("on");
+    }
+  }
+
+  setFinder(on: boolean, locked: boolean, info: string): void {
+    this.finder.classList.toggle("on", on);
+    this.finder.classList.toggle("locked", locked);
+    if (this.finderInfo.textContent !== info) this.finderInfo.textContent = info;
+  }
+
+  setVignette(amount: number): void {
+    this.vignette.style.opacity = `${clamp(amount, 0, 1)}`;
+  }
+
+  setFlash(amount: number): void {
+    this.flashbang.style.opacity = `${clamp(amount, 0, 1)}`;
+  }
+
+  toastMessage(text: string, kind: "" | "warn" | "good" = "", seconds = 2.6): void {
+    const node = el("div", `msg ${kind}`.trim(), text);
+    this.toast.appendChild(node);
+    this.toastQueue.push({ node, until: seconds });
+    while (this.toastQueue.length > 4) {
+      const old = this.toastQueue.shift();
+      old?.node.remove();
+    }
+  }
+
+  showCard(def: SpeciesDef, quality: number, points: number, note: string): void {
+    this.cardName.textContent = def.name;
+    this.cardLatin.textContent = def.latin;
+    this.cardStars.textContent = stars(quality);
+    this.cardNote.textContent = note;
+    this.cardPts.textContent = points > 0 ? `+${points} PTS — UNLOGGED` : "NO USABLE FRAME";
+    this.card.classList.add("on");
+    this.cardTimer = 4.4;
+  }
+
+  tick(dt: number): void {
+    if (this.cardTimer > 0) {
+      this.cardTimer -= dt;
+      if (this.cardTimer <= 0) this.card.classList.remove("on");
+    }
+    for (let i = this.toastQueue.length - 1; i >= 0; i--) {
+      const t = this.toastQueue[i]!;
+      t.until -= dt;
+      if (t.until <= 0) {
+        t.node.remove();
+        this.toastQueue.splice(i, 1);
+      }
+    }
+  }
+
+  showResults(
+    outcome: "complete" | "partial" | "lost",
+    rows: ResultRow[],
+    total: number,
+    deepest: number,
+    lostPoints: number,
+  ): void {
+    this.hud.classList.remove("on");
+    this.results.innerHTML = "";
+    const heading =
+      outcome === "complete" ? "Full Census" : outcome === "partial" ? "Survey Filed" : "Blackout";
+    const verdict =
+      outcome === "complete"
+        ? "every resident of the shaft documented"
+        : outcome === "partial"
+          ? "you came back, and the card came back with you"
+          : "the light went out at depth — the skiff waited, and drifted home empty";
+
+    const h = el("h2", undefined, heading);
+    h.style.color = outcome === "lost" ? "var(--danger)" : "var(--good)";
+    this.results.append(h, el("div", "verdict", verdict));
+
+    const tally = el("div", "tally");
+    for (const r of rows) {
+      const row = el("div", `row${r.banked ? "" : " miss"}`);
+      const label = el("div");
+      label.innerHTML = `${r.def.name}<div class="latin">${r.def.latin}</div>`;
+      const st = el("div", "stars", r.banked ? stars(r.quality) : "—");
+      const pts = el("div", "pts", r.banked ? `${r.points}` : "0");
+      row.append(label, st, pts);
+      tally.appendChild(row);
+    }
+    this.results.appendChild(tally);
+
+    this.results.appendChild(el("div", "total", `${total} POINTS`));
+    const detail: string[] = [`deepest point reached ${deepest.toFixed(1)} m`];
+    if (lostPoints > 0) detail.push(`${lostPoints} points lost with the card`);
+    this.results.appendChild(el("div", "sub", detail.join(" · ")));
+
+    const cta = el("button", "cta", "Dive again");
+    cta.addEventListener("click", () => this.onRestart());
+    this.results.appendChild(cta);
+    this.results.classList.remove("hidden");
+  }
+}

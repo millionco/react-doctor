@@ -14,6 +14,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { objectHasAccessibleChild } from "../../utils/object-has-accessible-child.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const MISSING_ALT_PROP =
   'Screen reader users cannot access this image without `alt`. Add `alt="image_description"`, or `alt=""` if it is decorative.';
@@ -213,7 +214,10 @@ export const altText = defineRule({
   recommendation: "Give every meaningful image an `alt`, `aria-label`, or `aria-labelledby`.",
   category: "Accessibility",
   create: (context): RuleVisitors => {
-    if (isGeneratedImageRenderContext(context)) return EMPTY_RULE_VISITORS;
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
+    if (shouldUseCuratedBehavior && isGeneratedImageRenderContext(context)) {
+      return EMPTY_RULE_VISITORS;
+    }
     const settings = resolveSettings(context.settings);
     // Settings.elements selects WHICH element classes to check.
     // Default: all four. Custom aliases are merged into each class.
@@ -229,7 +233,7 @@ export const altText = defineRule({
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (isLocalTestScaffoldJsx(node, context)) return;
+        if (shouldUseCuratedBehavior && isLocalTestScaffoldJsx(node, context)) return;
         if (!fileHasJsxA11ySettings && isNodeOfType(node.name, "JSXIdentifier")) {
           const rawName = node.name.name;
           if (
@@ -245,17 +249,17 @@ export const altText = defineRule({
             return;
           }
         }
-        if (isGeneratedImageRenderContext(context, node)) return;
+        if (shouldUseCuratedBehavior && isGeneratedImageRenderContext(context, node)) return;
         // A spread (`{...props}`) can carry `alt` — wrapper components
         // typed as ImgHTMLAttributes forward it from callers, so the
         // element can't be proven unlabeled.
-        if (hasJsxSpreadAttribute(node.attributes)) return;
+        if (shouldUseCuratedBehavior && hasJsxSpreadAttribute(node.attributes)) return;
         const tag = getElementType(node, context.settings);
 
         if (checkImg && (tag === "img" || imgAliases.has(tag))) {
           // aria-hidden imgs are removed from the accessibility tree —
           // the decorative-image pattern; alt would never be announced.
-          if (isHiddenFromScreenReader(node, context.settings)) return;
+          if (shouldUseCuratedBehavior && isHiddenFromScreenReader(node, context.settings)) return;
           imgRule(node, node, context);
           return;
         }

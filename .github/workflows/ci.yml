@@ -45,7 +45,7 @@ jobs:
         os: [ubuntu-latest]
         node-version: ["20.19.0", "22.18.0", "24", "25", "26"]
         include:
-          - os: blacksmith-8vcpu-windows-2025
+          - os: windows-latest
             node-version: "22.18.0"
           - os: blacksmith-6vcpu-macos-latest
             node-version: "22.18.0"
@@ -64,7 +64,7 @@ jobs:
       - run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Run tests
-        if: ${{ matrix.os != 'blacksmith-8vcpu-windows-2025' && matrix.node-version != '20.19.0' }}
+        if: ${{ matrix.os != 'windows-latest' && matrix.node-version != '20.19.0' }}
         run: pnpm test
 
       - name: Run Node 20 tests serially
@@ -72,13 +72,8 @@ jobs:
         run: pnpm test --concurrency=1
 
       - name: Run Windows tests serially
-        if: ${{ matrix.os == 'blacksmith-8vcpu-windows-2025' }}
+        if: ${{ matrix.os == 'windows-latest' }}
         run: pnpm test --concurrency=1
-
-      # deslop-js/-cli assert on POSIX-separator paths, so their suites are
-      # build-only on Windows (mirrors the deslop upstream matrix).
-      - run: pnpm test:deslop
-        if: ${{ matrix.os != 'blacksmith-8vcpu-windows-2025' }}
 
       # lint + typecheck run as dedicated jobs in code-quality.yml; don't pay for
       # them again here.
@@ -140,7 +135,7 @@ jobs:
           pnpm check:published-deps
 
       - name: Smoke test packed CLI install
-        if: ${{ matrix.node-version == '22.18.0' && (matrix.os == 'ubuntu-latest' || matrix.os == 'blacksmith-8vcpu-windows-2025') }}
+        if: ${{ matrix.node-version == '22.18.0' && (matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest') }}
         run: |
           pnpm build
           pnpm smoke:packed-cli-install

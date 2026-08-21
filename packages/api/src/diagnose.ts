@@ -7,7 +7,6 @@ import {
   createOxlintSpawnSlots,
   DEFAULT_PROJECT_SCAN_CONCURRENCY,
   DEFAULT_SHOW_WARNINGS,
-  DeadCode,
   detectAiTrainingEnvironment,
   Files,
   Git,
@@ -15,6 +14,7 @@ import {
   layerUserOtlp,
   Linter,
   LintPartialFailures,
+  Maintainability,
   mapWithConcurrency,
   mergeReactDoctorConfigs,
   OxlintConcurrency,
@@ -26,6 +26,7 @@ import {
   restoreLegacyThrow,
   runInspect,
   Score,
+  shouldUseMaintainabilityLayer,
   SupplyChain,
   type InspectOutput,
   type ResolvedScanTarget,
@@ -90,7 +91,12 @@ const buildDiagnoseLayer = (input: DiagnoseLayerInput) => {
   return Layer.mergeAll(
     Project.layerNode,
     configLayer,
-    input.shouldRunDeadCode ? DeadCode.layerNode : DeadCode.layerOf([]),
+    shouldUseMaintainabilityLayer({
+      shouldRunDuplicateJsx: input.shouldRunDeadCode,
+      userConfig: input.config,
+    })
+      ? Maintainability.layerNode
+      : Maintainability.layerOf([]),
     Files.layerNode,
     Git.layerNode,
     input.shouldRunLint ? Linter.layerOxlint : Linter.layerOf([]),

@@ -62,6 +62,7 @@ import { ${exportName} } from "./${baseName}.js";
 const divergence = DIVERGENCES["${ruleId}"];
 runOxcFixtures("${bucket}/${ruleId}", ${exportName}, { passCases, failCases }, {
   translateOxcFixture: TRANSLATORS["${ruleId}"],
+  canonicalPassDivergences: divergence?.canonicalPassSkips,
   knownPassDivergences: divergence?.passSkips,
   knownFailDivergences: divergence?.failSkips,
 });

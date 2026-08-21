@@ -39,8 +39,20 @@ describe("isAnalyzableProject", () => {
     expect(isAnalyzableProject({ ...baseProject, preactVersion: "^10.22.0" })).toBe(true);
   });
 
+  it("is analyzable for a React framework with no direct react package", () => {
+    expect(isAnalyzableProject({ ...baseProject, framework: "expo" })).toBe(true);
+  });
+
   it("is analyzable for a plain TypeScript project with source files but no React", () => {
     expect(isAnalyzableProject({ ...baseProject, sourceFileCount: 12 })).toBe(true);
+  });
+
+  it("is analyzable for a standalone Three.js project with no source files", () => {
+    expect(isAnalyzableProject({ ...baseProject, hasThree: true })).toBe(true);
+  });
+
+  it("is analyzable for a Remotion project with no source files", () => {
+    expect(isAnalyzableProject({ ...baseProject, hasRemotion: true })).toBe(true);
   });
 
   it("is not analyzable with no react, no preact, and no source files", () => {

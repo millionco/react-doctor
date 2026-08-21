@@ -1,0 +1,219 @@
+// rule: dangerous-html-sink
+// file-path: src/game/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit f1595e10798a6eb19ed50f754996443fd887f83ab8afde17a0e5454b4921ebb6
+import { CHARGE_DEFS, type ChargeDef } from "./charges";
+
+export interface GaugeState {
+  removal: number;
+  removalIsPrediction: boolean;
+  spend: number;
+  budget: number;
+  integrity: number;
+  risk: number;
+  placed: number;
+  maxCharges: number;
+}
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private phaseEl: HTMLElement;
+  private hintEl: HTMLElement;
+  private paletteRows: HTMLElement[] = [];
+  private blurbEl: HTMLElement;
+  private bars: Record<string, { fill: HTMLElement; text: HTMLElement; row: HTMLElement }> = {};
+  private cardEl: HTMLElement;
+  private loadEl: HTMLElement;
+  private loadBar: HTMLElement;
+  private loadText: HTMLElement;
+  private chargeList: HTMLElement;
+
+  constructor(parent: HTMLElement) {
+    this.root = document.createElement("div");
+    this.root.id = "hud";
+    this.root.innerHTML = `
+      <div class="panel brief">
+        <div class="ttl">CLEAN BREAK</div>
+        <div class="sub">Lot 14 &mdash; Marley Street</div>
+        <div class="phase" id="cb-phase">PLANNING</div>
+        <ul class="obj">
+          <li><b>Take down</b> the condemned warehouse (red outline)</li>
+          <li><b>Protect</b> the listed bank next door (amber outline)</li>
+          <li><b>Stay</b> inside the charge budget</li>
+        </ul>
+      </div>
+
+      <div class="panel palette">
+        <div class="hdr">CHARGE TRAY <span class="key">Q / E</span></div>
+        <div id="cb-palette"></div>
+        <div class="blurb" id="cb-blurb"></div>
+      </div>
+
+      <div class="panel gauges">
+        <div class="hdr">READOUT</div>
+        <div id="cb-bars"></div>
+        <div class="hdr" style="margin-top:10px">PLACED</div>
+        <div id="cb-charges" class="charges"></div>
+      </div>
+
+      <div class="hints" id="cb-hints"></div>
+      <div class="card hidden" id="cb-card"></div>
+      <div class="loading" id="cb-load">
+        <div class="lttl">CLEAN BREAK</div>
+        <div class="lsub" id="cb-loadtext">authoring surfaces&hellip;</div>
+        <div class="lbar"><i id="cb-loadbar"></i></div>
+      </div>
+    `;
+    parent.appendChild(this.root);
+
+    this.phaseEl = this.root.querySelector("#cb-phase")!;
+    this.hintEl = this.root.querySelector("#cb-hints")!;
+    this.blurbEl = this.root.querySelector("#cb-blurb")!;
+    this.cardEl = this.root.querySelector("#cb-card")!;
+    this.loadEl = this.root.querySelector("#cb-load")!;
+    this.loadBar = this.root.querySelector("#cb-loadbar")!;
+    this.loadText = this.root.querySelector("#cb-loadtext")!;
+    this.chargeList = this.root.querySelector("#cb-charges")!;
+
+    const pal = this.root.querySelector("#cb-palette")!;
+    CHARGE_DEFS.forEach((d, i) => {
+      const row = document.createElement("div");
+      row.className = "prow";
+      row.innerHTML = `<i class="dot" style="background:#${d.colour.toString(16).padStart(6, "0")}"></i>
+        <span class="code">${d.code}</span><span class="nm">${d.name}</span><span class="cost">${d.cost}</span>`;
+      pal.appendChild(row);
+      this.paletteRows.push(row);
+      row.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        this.onSelect?.(i);
+      });
+    });
+
+    const bars = this.root.querySelector("#cb-bars")!;
+    for (const [key, label] of [
+      ["removal", "MASS REMOVED"],
+      ["budget", "BUDGET"],
+      ["integrity", "LISTED BLDG"],
+      ["risk", "IMPACT RISK"],
+    ] as const) {
+      const row = document.createElement("div");
+      row.className = "bar";
+      row.innerHTML = `<span class="lbl">${label}</span><span class="track"><i></i></span><span class="val"></span>`;
+      bars.appendChild(row);
+      this.bars[key] = {
+        fill: row.querySelector("i")!,
+        text: row.querySelector(".val")!,
+        row,
+      };
+    }
+
+    this.setHints([
+      ["Drag on the condemned block", "place + aim charge"],
+      ["Drag elsewhere / right-drag", "orbit"],
+      ["Q / E", "charge type"],
+      ["F", "freeze camera"],
+      ["V", "stress overlay"],
+      ["X", "undo charge"],
+      ["SPACE", "fire"],
+      ["R", "reset"],
+    ]);
+  }
+
+  onSelect: ((index: number) => void) | null = null;
+
+  setHints(items: Array<[string, string]>): void {
+    this.hintEl.innerHTML = items.map(([k, v]) => `<span><b>${k}</b>${v}</span>`).join("");
+  }
+
+  setLoading(progress: number, label: string): void {
+    this.loadBar.style.width = `${Math.round(progress * 100)}%`;
+    this.loadText.textContent = label;
+  }
+
+  hideLoading(): void {
+    this.loadEl.classList.add("gone");
+  }
+
+  setPhase(text: string, tone: "plan" | "arm" | "live" | "done"): void {
+    this.phaseEl.textContent = text;
+    this.phaseEl.className = `phase ${tone}`;
+  }
+
+  setSelected(index: number): void {
+    this.paletteRows.forEach((r, i) => r.classList.toggle("on", i === index));
+    const d = CHARGE_DEFS[index]!;
+    this.blurbEl.textContent = d.blurb;
+  }
+
+  setPlaced(list: ChargeDef[], budget: number): void {
+    if (!list.length) {
+      this.chargeList.innerHTML = `<div class="empty">no charges set</div>`;
+      return;
+    }
+    let total = 0;
+    this.chargeList.innerHTML = list
+      .map((d, i) => {
+        total += d.cost;
+        const over = total > budget;
+        return `<div class="ch${over ? " over" : ""}"><i style="background:#${d.colour
+          .toString(16)
+          .padStart(6, "0")}"></i>${i + 1}. ${d.code}<span>${d.cost}</span></div>`;
+      })
+      .join("");
+  }
+
+  setGauges(g: GaugeState): void {
+    const set = (
+      key: string,
+      frac: number,
+      text: string,
+      colour: string,
+      warn: boolean,
+    ): void => {
+      const b = this.bars[key]!;
+      b.fill.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
+      b.fill.style.background = colour;
+      b.text.textContent = text;
+      b.row.classList.toggle("warn", warn);
+    };
+    const rem = g.removal;
+    set(
+      "removal",
+      rem,
+      `${(rem * 100).toFixed(0)}%${g.removalIsPrediction ? " est" : ""}`,
+      rem >= 0.8 ? "#63e08a" : rem >= 0.55 ? "#e0c463" : "#c76a5a",
+      rem < 0.8,
+    );
+    set(
+      "budget",
+      g.spend / g.budget,
+      `${g.spend} / ${g.budget}`,
+      g.spend > g.budget ? "#ff5a5a" : "#63b8e0",
+      g.spend > g.budget,
+    );
+    set(
+      "integrity",
+      g.integrity,
+      `${(g.integrity * 100).toFixed(0)}%`,
+      g.integrity > 0.75 ? "#63e08a" : g.integrity > 0.4 ? "#e0c463" : "#ff5a5a",
+      g.integrity < 0.75,
+    );
+    set(
+      "risk",
+      g.risk,
+      g.risk < 0.05 ? "clear" : g.risk < 0.3 ? "low" : g.risk < 0.65 ? "high" : "severe",
+      g.risk < 0.3 ? "#63e08a" : g.risk < 0.65 ? "#e0a863" : "#ff5a5a",
+      g.risk >= 0.3,
+    );
+  }
+
+  showCard(html: string): void {
+    this.cardEl.innerHTML = html;
+    this.cardEl.classList.remove("hidden");
+  }
+
+  hideCard(): void {
+    this.cardEl.classList.add("hidden");
+  }
+}

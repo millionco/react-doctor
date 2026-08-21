@@ -1,0 +1,498 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 5108f2200a211e6b0192753d61182b4753a5a8e788d3cc4642701ea0c84bfb02
+import { clamp } from "../core/rng";
+import type { ActorId } from "../game/physics";
+
+/**
+ * DOM overlay: scoreboard, shot readout, and the screens that make the loop
+ * feel complete (loading → briefing → duel → round result → match result →
+ * rematch). Kept out of WebGL so text stays crisp at any resolution.
+ */
+
+export interface SideState {
+  hp: number;
+  maxHp: number;
+  ammo: number;
+  maxAmmo: number;
+}
+
+export type Difficulty = "steady" | "sharp" | "deadeye";
+export type Mode = "solo" | "hotseat";
+
+export interface MatchOptions {
+  mode: Mode;
+  difficulty: Difficulty;
+}
+
+const el = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string
+): HTMLElementTagNameMap[K] => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+};
+
+const RING_R = 15;
+const RING_C = 2 * Math.PI * RING_R;
+
+export class Hud {
+  readonly root: HTMLDivElement;
+
+  private scoreboard: HTMLDivElement;
+  private sides: Record<ActorId, {
+    box: HTMLDivElement;
+    hpFill: HTMLDivElement;
+    hpGhost: HTMLDivElement;
+    ammo: HTMLDivElement;
+    label: HTMLSpanElement;
+  }>;
+  private roundPips: HTMLDivElement;
+  private roundLabel: HTMLDivElement;
+  private timerFg: SVGCircleElement;
+  private reticle: Element;
+  private readout: HTMLDivElement;
+  private readoutBanks: HTMLSpanElement;
+  private readoutDmg: HTMLSpanElement;
+  private readoutEnd: HTMLSpanElement;
+  private power: HTMLDivElement;
+  private powerFill: HTMLDivElement;
+  private powerLabel: HTMLDivElement;
+  private toastWrap: HTMLDivElement;
+  private hint: HTMLDivElement;
+  private flash: HTMLDivElement;
+
+  private loadScreen: HTMLDivElement;
+  private loadBar!: HTMLDivElement;
+  private loadLabel!: HTMLDivElement;
+  private titleScreen: HTMLDivElement;
+  private resultScreen: HTMLDivElement;
+
+  private flashLevel = 0;
+  private flashColor = "255,255,255";
+
+  onStart: ((opts: MatchOptions) => void) | null = null;
+  onRematch: (() => void) | null = null;
+  onMenu: (() => void) | null = null;
+
+  private options: MatchOptions = { mode: "solo", difficulty: "sharp" };
+
+  constructor() {
+    this.root = el("div");
+    this.root.id = "ui";
+    document.body.appendChild(this.root);
+
+    // ---- scoreboard ----
+    this.scoreboard = el("div", "scoreboard");
+    const makeSide = (id: ActorId, name: string, right: boolean) => {
+      const box = el("div", `side ${id}${right ? " right" : ""}`);
+      const label = el("span");
+      label.textContent = name;
+      const nameRow = el("div", "name");
+      const dot = el("div", "turnDot");
+      if (right) {
+        nameRow.append(label, dot);
+      } else {
+        nameRow.append(dot, label);
+      }
+      const track = el("div", "hpTrack");
+      const ghost = el("div", "hpGhost");
+      const fill = el("div", "hpFill");
+      const pips = el("div", "pipRow");
+      track.append(ghost, fill, pips);
+      const meta = el("div", "metaRow");
+      const ammo = el("div", "ammo");
+      meta.append(ammo);
+      box.append(nameRow, track, meta);
+      return { box, hpFill: fill, hpGhost: ghost, ammo, label, pips };
+    };
+    const ice = makeSide("ice", "Frost Line", false);
+    const ember = makeSide("ember", "Ember Watch", true);
+
+    const center = el("div", "centerCol");
+    this.roundLabel = el("div", "roundLabel", "ROUND 1");
+    this.roundPips = el("div", "rounds");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "timerRing");
+    svg.setAttribute("viewBox", "0 0 34 34");
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    bg.setAttribute("class", "bg");
+    bg.setAttribute("cx", "17");
+    bg.setAttribute("cy", "17");
+    bg.setAttribute("r", String(RING_R));
+    const fg = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    fg.setAttribute("class", "fg");
+    fg.setAttribute("cx", "17");
+    fg.setAttribute("cy", "17");
+    fg.setAttribute("r", String(RING_R));
+    fg.setAttribute("stroke-dasharray", String(RING_C));
+    fg.setAttribute("stroke-dashoffset", "0");
+    svg.append(bg, fg);
+    this.timerFg = fg;
+    center.append(this.roundLabel, this.roundPips, svg);
+
+    this.scoreboard.append(ice.box, center, ember.box);
+    this.sides = { ice, ember };
+    this.root.appendChild(this.scoreboard);
+
+    // ---- reticle ----
+    const ret = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    ret.setAttribute("class", "reticle");
+    ret.setAttribute("viewBox", "0 0 46 46");
+    ret.innerHTML = `
+      <circle class="ring" cx="23" cy="23" r="13"/>
+      <circle class="ring" cx="23" cy="23" r="2.4"/>
+      <line class="tick" x1="23" y1="2" x2="23" y2="9"/>
+      <line class="tick" x1="23" y1="37" x2="23" y2="44"/>
+      <line class="tick" x1="2" y1="23" x2="9" y2="23"/>
+      <line class="tick" x1="37" y1="23" x2="44" y2="23"/>`;
+    this.reticle = ret;
+    this.root.appendChild(ret);
+
+    // ---- shot readout ----
+    this.readout = el("div", "readout");
+    const field = (caption: string) => {
+      const wrap = el("span");
+      const cap = el("span");
+      cap.textContent = `${caption} `;
+      const value = el("span", "val", "—");
+      wrap.append(cap, value);
+      this.readout.appendChild(wrap);
+      return value;
+    };
+    this.readoutBanks = field("Banks");
+    this.readoutDmg = field("Damage");
+    this.readoutEnd = field("Outcome");
+    this.root.appendChild(this.readout);
+
+    // ---- power meter ----
+    this.power = el("div", "power");
+    this.powerFill = el("div", "fill");
+    const marks = el("div", "marks");
+    for (let i = 0; i < 10; i++) marks.appendChild(el("span"));
+    this.powerLabel = el("div", "label", "HOLD TO CHARGE");
+    this.power.append(this.powerFill, marks, this.powerLabel);
+    this.root.appendChild(this.power);
+
+    this.toastWrap = el("div", "toastWrap");
+    this.root.appendChild(this.toastWrap);
+
+    this.hint = el("div", "hint");
+    this.root.appendChild(this.hint);
+
+    this.flash = el("div", "flash");
+    this.root.appendChild(this.flash);
+    this.root.appendChild(el("div", "vignette"));
+
+    // ---- screens ----
+    this.loadScreen = this.buildLoading();
+    this.titleScreen = this.buildTitle();
+    this.resultScreen = el("div", "screen hidden");
+    this.root.append(this.loadScreen, this.titleScreen, this.resultScreen);
+
+    this.setHudVisible(false);
+  }
+
+  // ------------------------------------------------------------- screens --
+
+  private buildLoading(): HTMLDivElement {
+    const s = el("div", "screen");
+    const tag = el("div", "tag", "Ricochet Duelling Circuit");
+    const h = el("h1", "", "Bankshot Duel");
+    this.loadBar = el("div", "loadBar");
+    this.loadBar.appendChild(el("div"));
+    this.loadLabel = el("div", "loadLabel", "warming the kilns");
+    s.append(tag, h, this.loadBar, this.loadLabel);
+    return s;
+  }
+
+  private buildTitle(): HTMLDivElement {
+    const s = el("div", "screen hidden");
+    const tag = el("div", "tag", "Ricochet Duelling Circuit");
+    const h = el("h1", "", "Bankshot Duel");
+    const p = el(
+      "p",
+      "",
+      "The monolith blocks every straight line. Read the arena, bank your shot off the live walls, and make the geometry do the work. <b>Every cushion multiplies the damage.</b>"
+    );
+
+    const legend = el("div", "legend");
+    const item = (color: string, text: string) => {
+      const d = el("div");
+      const i = el("i");
+      i.style.background = color;
+      const t = el("span");
+      t.innerHTML = text;
+      d.append(i, t);
+      return d;
+    };
+    legend.append(
+      item("linear-gradient(135deg,#9ff2ff,#2b7f9e)", "<b>Live plate</b> — clean, full-energy rebound"),
+      item("linear-gradient(135deg,#ffa23c,#7a3a10)", "<b>Kicker</b> — adds speed and lift"),
+      item("#15181c", "<b>Damping baffle</b> — kills the shot dead"),
+      item("linear-gradient(135deg,#d8bd8c,#7a6647)", "<b>Stone</b> — soft, lossy bounce"),
+      item("linear-gradient(135deg,#cfd6dd,#5b666f)", "<b>Spinner</b> — moving steel, throws your line"),
+      item("linear-gradient(135deg,#9ff2ff,#40707f)", "<b>Pylon</b> — curved bank, hard to read")
+    );
+
+    const modeRow = el("div", "btnRow");
+    const mkToggle = <T extends string>(
+      values: Array<{ v: T; label: string }>,
+      get: () => T,
+      set: (v: T) => void
+    ) => {
+      const btns: HTMLButtonElement[] = [];
+      for (const opt of values) {
+        const b = el("button", "gm") as HTMLButtonElement;
+        b.textContent = opt.label;
+        b.onclick = () => {
+          set(opt.v);
+          for (const x of btns) x.classList.remove("sel");
+          b.classList.add("sel");
+        };
+        if (get() === opt.v) b.classList.add("sel");
+        btns.push(b);
+        modeRow.appendChild(b);
+      }
+    };
+    mkToggle<Mode>(
+      [
+        { v: "solo", label: "Duel the Rival" },
+        { v: "hotseat", label: "Two Marksmen" },
+      ],
+      () => this.options.mode,
+      (v) => (this.options.mode = v)
+    );
+
+    const diffRow = el("div", "btnRow");
+    for (const opt of [
+      { v: "steady" as Difficulty, label: "Steady" },
+      { v: "sharp" as Difficulty, label: "Sharp" },
+      { v: "deadeye" as Difficulty, label: "Deadeye" },
+    ]) {
+      const b = el("button", "gm") as HTMLButtonElement;
+      b.textContent = opt.label;
+      if (this.options.difficulty === opt.v) b.classList.add("sel");
+      b.onclick = () => {
+        this.options.difficulty = opt.v;
+        for (const x of Array.from(diffRow.children)) x.classList.remove("sel");
+        b.classList.add("sel");
+      };
+      diffRow.appendChild(b);
+    }
+
+    const startRow = el("div", "btnRow");
+    const start = el("button", "gm primary") as HTMLButtonElement;
+    start.textContent = "Take the Line";
+    start.onclick = () => this.onStart?.({ ...this.options });
+    startRow.appendChild(start);
+
+    const controls = el(
+      "p",
+      "",
+      "<b>Mouse</b> aim &nbsp;·&nbsp; <b>Hold LMB</b> charge, release to fire &nbsp;·&nbsp; <b>A/D</b> walk the rampart &nbsp;·&nbsp; <b>Wheel</b> zoom &nbsp;·&nbsp; <b>Space</b> skip &nbsp;·&nbsp; <b>M</b> mute"
+    );
+
+    s.append(tag, h, p, legend, modeRow, diffRow, startRow, controls);
+    return s;
+  }
+
+  showLoading(progress: number, label: string): void {
+    (this.loadBar.firstElementChild as HTMLDivElement).style.width = `${clamp(progress, 0, 1) * 100}%`;
+    this.loadLabel.textContent = label;
+  }
+
+  hideLoading(): void {
+    this.loadScreen.classList.add("hidden");
+  }
+
+  showTitle(): void {
+    this.titleScreen.classList.remove("hidden");
+    this.resultScreen.classList.add("hidden");
+    this.setHudVisible(false);
+  }
+
+  hideTitle(): void {
+    this.titleScreen.classList.add("hidden");
+  }
+
+  setHudVisible(v: boolean): void {
+    for (const e of [this.scoreboard, this.readout, this.power, this.hint]) {
+      e.classList.toggle("hidden", !v);
+    }
+    this.reticle.classList.toggle("hidden", !v);
+  }
+
+  setAimUiVisible(v: boolean): void {
+    this.readout.classList.toggle("hidden", !v);
+    this.power.classList.toggle("hidden", !v);
+    this.reticle.classList.toggle("hidden", !v);
+  }
+
+  /** End-of-round / end-of-match panel with a replay path out of every state. */
+  showResult(opts: {
+    title: string;
+    subtitle: string;
+    color: string;
+    stats?: Array<{ k: string; v: string }>;
+    buttons: Array<{ label: string; primary?: boolean; action: () => void }>;
+  }): void {
+    this.resultScreen.innerHTML = "";
+    this.resultScreen.classList.remove("hidden");
+    // A result panel owns the screen; leftover toasts and the control hint
+    // read as clutter behind it.
+    this.clearToasts();
+    this.hint.classList.add("hidden");
+    this.setAimUiVisible(false);
+    const h = el("h2", "", opts.title);
+    h.style.color = opts.color;
+    const p = el("p", "", opts.subtitle);
+    this.resultScreen.append(h, p);
+    if (opts.stats?.length) {
+      const row = el("div", "statRow");
+      for (const s of opts.stats) {
+        const d = el("div");
+        d.append(el("div", "k", s.k), el("div", "v", s.v));
+        row.appendChild(d);
+      }
+      this.resultScreen.appendChild(row);
+    }
+    const row = el("div", "btnRow");
+    for (const b of opts.buttons) {
+      const btn = el("button", `gm${b.primary ? " primary" : ""}`) as HTMLButtonElement;
+      btn.textContent = b.label;
+      btn.onclick = b.action;
+      row.appendChild(btn);
+    }
+    this.resultScreen.appendChild(row);
+  }
+
+  hideResult(): void {
+    this.resultScreen.classList.add("hidden");
+    this.hint.classList.remove("hidden");
+  }
+
+  // ----------------------------------------------------------- scoreboard --
+
+  setNames(ice: string, ember: string): void {
+    this.sides.ice.label.textContent = ice;
+    this.sides.ember.label.textContent = ember;
+  }
+
+  setSide(id: ActorId, s: SideState): void {
+    const side = this.sides[id];
+    const frac = clamp(s.hp / s.maxHp, 0, 1);
+    side.hpFill.style.transform = `scaleX(${frac})`;
+    side.hpGhost.style.transform = `scaleX(${frac})`;
+    if (side.ammo.childElementCount !== s.maxAmmo) {
+      side.ammo.innerHTML = "";
+      for (let i = 0; i < s.maxAmmo; i++) side.ammo.appendChild(el("i"));
+    }
+    Array.from(side.ammo.children).forEach((c, i) => {
+      c.classList.toggle("on", i < s.ammo);
+    });
+  }
+
+  /** Called before the HP bar drops, so the white ghost trails the damage. */
+  markDamage(id: ActorId, prevFrac: number): void {
+    this.sides[id].hpGhost.style.transform = `scaleX(${clamp(prevFrac, 0, 1)})`;
+  }
+
+  setTurn(id: ActorId | null): void {
+    this.sides.ice.box.classList.toggle("active", id === "ice");
+    this.sides.ember.box.classList.toggle("active", id === "ember");
+  }
+
+  setRound(n: number, wins: Record<ActorId, number>, best: number): void {
+    this.roundLabel.textContent = `ROUND ${n}`;
+    this.roundPips.innerHTML = "";
+    const need = Math.ceil(best / 2);
+    for (let i = 0; i < need; i++) {
+      const pip = el("i");
+      if (i < wins.ice) pip.className = "ice";
+      this.roundPips.appendChild(pip);
+    }
+    for (let i = 0; i < need; i++) {
+      const pip = el("i");
+      if (i < wins.ember) pip.className = "ember";
+      this.roundPips.appendChild(pip);
+    }
+  }
+
+  setTimer(frac: number): void {
+    const f = clamp(frac, 0, 1);
+    this.timerFg.setAttribute("stroke-dashoffset", String(RING_C * (1 - f)));
+    this.timerFg.setAttribute("stroke", f < 0.25 ? "#ff7a6b" : f < 0.5 ? "#ffd24a" : "#e8d7b4");
+  }
+
+  // -------------------------------------------------------------- readout --
+
+  setReadout(banks: number, damage: number, outcome: string, good: boolean): void {
+    this.readoutBanks.textContent = String(banks);
+    this.readoutDmg.textContent = damage > 0 ? `${damage}` : "—";
+    this.readoutEnd.textContent = outcome;
+    this.readoutEnd.className = `val ${good ? "good" : "bad"}`;
+    this.reticle.classList.toggle("locked", good);
+  }
+
+  setPower(p: number, label: string): void {
+    this.powerFill.style.width = `${clamp(p, 0, 1) * 100}%`;
+    this.powerLabel.textContent = label;
+  }
+
+  setHint(html: string): void {
+    this.hint.innerHTML = html;
+  }
+
+  /**
+   * `channel` makes a toast replace the previous one of the same kind, so a
+   * rapid sequence (bank ×2, ×3, ×4…) reads as one updating callout.
+   */
+  toast(text: string, sub?: string, color = "#ffffff", ttl = 1.4, channel?: string): void {
+    if (channel) {
+      for (const prev of Array.from(this.toastWrap.querySelectorAll(`[data-ch="${channel}"]`))) prev.remove();
+    }
+    const t = el("div", "toast", text);
+    if (channel) t.dataset.ch = channel;
+    t.style.color = color;
+    this.toastWrap.appendChild(t);
+    let subEl: HTMLElement | null = null;
+    if (sub) {
+      subEl = el("div", "toast sub", sub);
+      if (channel) subEl.dataset.ch = channel;
+      this.toastWrap.appendChild(subEl);
+    }
+    setTimeout(() => {
+      t.classList.add("fade");
+      subEl?.classList.add("fade");
+      setTimeout(() => {
+        t.remove();
+        subEl?.remove();
+      }, 520);
+    }, ttl * 1000);
+  }
+
+  clearToasts(): void {
+    this.toastWrap.innerHTML = "";
+  }
+
+  pulseFlash(color: string, strength: number): void {
+    this.flashColor = color;
+    this.flashLevel = Math.max(this.flashLevel, strength);
+  }
+
+  update(dt: number): void {
+    if (this.flashLevel > 0.001) {
+      this.flashLevel = Math.max(0, this.flashLevel - dt * 2.6);
+      this.flash.style.background = `rgba(${this.flashColor},${this.flashLevel * 0.55})`;
+      this.flash.style.opacity = "1";
+    } else if (this.flash.style.opacity !== "0") {
+      this.flash.style.opacity = "0";
+    }
+  }
+}

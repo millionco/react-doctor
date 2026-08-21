@@ -1,0 +1,221 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit cda9a2b343e563072110ebcdb597c6f5cd2fb483a7c7e828211d6fd891820cb4
+// DOM overlay: clock, manifest, objective, prompts and the end-of-round card.
+
+export interface ManifestRow {
+  label: string;
+  destination: string;
+  condition: number;
+  state: "held" | "waiting" | "delivered";
+}
+
+export interface ResultRow {
+  label: string;
+  value: string;
+}
+
+const ARROW_SVG = `<svg viewBox="0 0 24 24"><path d="M12 2 L20 20 L12 15.5 L4 20 Z" fill="#ffd98a" stroke="rgba(40,28,12,0.8)" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+
+export class Hud {
+  private readonly root: HTMLDivElement;
+  private readonly clock: HTMLDivElement;
+  private readonly clockText: HTMLDivElement;
+  private readonly objective: HTMLDivElement;
+  private readonly objectiveMain: HTMLDivElement;
+  private readonly objectiveSub: HTMLDivElement;
+  private readonly compass: HTMLDivElement;
+  private readonly manifest: HTMLDivElement;
+  private readonly manifestBody: HTMLDivElement;
+  private readonly gaugeValue: HTMLDivElement;
+  private readonly prompt: HTMLDivElement;
+  private readonly toasts: HTMLDivElement;
+  private readonly overlay: HTMLDivElement;
+  private readonly loading: HTMLDivElement;
+  private readonly loadingBar: HTMLDivElement;
+  private readonly loadingWhat: HTMLDivElement;
+  private lastPrompt = "";
+  private lastTimer = -1;
+  private lastSpeed = -1;
+  private lastObjective = "";
+  private lastCompass = -999;
+  private lastManifest = "";
+
+  constructor() {
+    this.root = document.createElement("div");
+    this.root.id = "hud";
+    this.root.innerHTML = `
+      <div id="clock" class="panel"><div class="t">2:30</div><div class="lbl">Round time</div></div>
+      <div id="compass">${ARROW_SVG}</div>
+      <div id="objective" class="panel"><div class="o"></div><div class="s"></div></div>
+      <div id="manifest" class="panel"><h3>Manifest</h3><div class="body"></div></div>
+      <div id="gauge" class="panel"><div class="v">0</div><div class="u">km/h</div></div>
+      <div id="prompt" class="panel"></div>
+      <div id="toasts"></div>
+      <div id="overlay"></div>
+      <div id="loading">
+        <div class="title">Dirt Road Delivery</div>
+        <div class="track"><div class="bar"></div></div>
+        <div class="what">preparing</div>
+      </div>`;
+    document.body.appendChild(this.root);
+
+    const q = <T extends HTMLElement>(sel: string): T => this.root.querySelector(sel) as T;
+    this.clock = q("#clock");
+    this.clockText = q("#clock .t");
+    this.objective = q("#objective");
+    this.objectiveMain = q("#objective .o");
+    this.objectiveSub = q("#objective .s");
+    this.compass = q("#compass");
+    this.manifest = q("#manifest");
+    this.manifestBody = q("#manifest .body");
+    this.gaugeValue = q("#gauge .v");
+    this.prompt = q("#prompt");
+    this.toasts = q("#toasts");
+    this.overlay = q("#overlay");
+    this.loading = q("#loading");
+    this.loadingBar = q("#loading .bar");
+    this.loadingWhat = q("#loading .what");
+  }
+
+  setLoading(label: string, frac: number): void {
+    this.loadingBar.style.width = `${Math.round(frac * 100)}%`;
+    this.loadingWhat.textContent = label;
+  }
+
+  hideLoading(): void {
+    this.loading.classList.add("hidden");
+  }
+
+  setTimer(seconds: number): void {
+    const s = Math.max(0, seconds);
+    const whole = Math.floor(s);
+    if (whole === this.lastTimer) return;
+    this.lastTimer = whole;
+    const m = Math.floor(s / 60);
+    const r = Math.floor(s % 60);
+    this.clockText.textContent = `${m}:${r.toString().padStart(2, "0")}`;
+    this.clock.classList.toggle("warn", s <= 45 && s > 20);
+    this.clock.classList.toggle("crit", s <= 20);
+  }
+
+  setObjective(main: string, sub: string): void {
+    const key = `${main}|${sub}`;
+    if (key === this.lastObjective) return;
+    this.lastObjective = key;
+    this.objectiveMain.textContent = main;
+    this.objectiveSub.textContent = sub;
+    this.objective.style.display = main ? "" : "none";
+  }
+
+  setCompass(angleRad: number | null): void {
+    if (angleRad === null) {
+      if (this.lastCompass !== -999) {
+        this.lastCompass = -999;
+        this.compass.classList.remove("on");
+      }
+      return;
+    }
+    // Quantised: a style write every frame is a repaint every frame.
+    const step = Math.round((angleRad * 180) / Math.PI / 3);
+    if (step === this.lastCompass) return;
+    this.lastCompass = step;
+    this.compass.classList.add("on");
+    this.compass.style.transform = `rotate(${step * 3}deg)`;
+  }
+
+  setSpeed(kmh: number): void {
+    const v = Math.round(Math.abs(kmh));
+    if (v === this.lastSpeed) return;
+    this.lastSpeed = v;
+    this.gaugeValue.textContent = String(v);
+  }
+
+  setPrompt(text: string | null): void {
+    const t = text ?? "";
+    if (t === this.lastPrompt) return;
+    this.lastPrompt = t;
+    if (t) {
+      this.prompt.innerHTML = t;
+      this.prompt.classList.add("on");
+    } else {
+      this.prompt.classList.remove("on");
+    }
+  }
+
+  setManifest(rows: ManifestRow[]): void {
+    const key = rows.map((r) => `${r.destination}${r.state}${Math.round(r.condition * 40)}`).join();
+    if (key === this.lastManifest) return;
+    this.lastManifest = key;
+    this.manifest.style.display = rows.length ? "" : "none";
+    this.manifestBody.innerHTML = rows
+      .map((r) => {
+        const pct = Math.round(r.condition * 100);
+        const cls = r.state === "delivered" ? "done " : "";
+        const wear = r.condition < 0.35 ? "ruined" : r.condition < 0.75 ? "hurt" : "";
+        const status =
+          r.state === "delivered" ? "delivered" : r.state === "held" ? "aboard" : "at farm";
+        return `<div class="pcl ${cls}${wear}">
+          <div class="row"><span class="nm">${r.destination}</span><span class="st">${status}</span></div>
+          <div class="bar"><div class="fill" style="width:${pct}%"></div></div>
+        </div>`;
+      })
+      .join("");
+  }
+
+  toast(message: string, kind: "good" | "bad" | "info" = "info"): void {
+    const el = document.createElement("div");
+    el.className = `toast ${kind}`;
+    el.textContent = message;
+    this.toasts.appendChild(el);
+    setTimeout(() => el.classList.add("fade"), 2200);
+    setTimeout(() => el.remove(), 2700);
+    while (this.toasts.children.length > 4) this.toasts.firstElementChild?.remove();
+  }
+
+  showCard(html: string): void {
+    this.overlay.innerHTML = `<div class="card">${html}</div>`;
+    this.overlay.classList.remove("hidden");
+  }
+
+  hideCard(): void {
+    this.overlay.classList.add("hidden");
+  }
+
+  get cardVisible(): boolean {
+    return !this.overlay.classList.contains("hidden");
+  }
+}
+
+export function briefingHtml(): string {
+  return `
+    <h1>Dirt Road Delivery</h1>
+    <h2>Hallow Farm &middot; evening round</h2>
+    <p>Three parcels, three stops, one hundred and fifty seconds. Load up at the farm,
+    run the two villages in whichever order you like, then climb Beacon Hill for the last drop.</p>
+    <p>The load is not tied down. Camber, ruts and hard cornering will walk a parcel across
+    the bed &mdash; hit the boards hard enough and the contents will not survive the trip.</p>
+    <div class="keys">
+      <div><kbd>W</kbd><kbd>&uarr;</kbd> accelerate</div>
+      <div><kbd>S</kbd><kbd>&darr;</kbd> reverse</div>
+      <div><kbd>A</kbd><kbd>D</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd> steer</div>
+      <div><kbd>Space</kbd> brake</div>
+      <div><kbd>E</kbd> load / unload</div>
+      <div><kbd>C</kbd> recentre camera</div>
+    </div>
+    <div class="start">Press <kbd>Enter</kbd> or click to begin</div>`;
+}
+
+export function resultHtml(title: string, subtitle: string, rows: ResultRow[], grade: string): string {
+  const list = rows
+    .map((r) => `<div class="r"><span>${r.label}</span><span>${r.value}</span></div>`)
+    .join("");
+  return `
+    <h1>${title}</h1>
+    <h2>${subtitle}</h2>
+    <div class="results">${list}</div>
+    <div class="grade">${grade}</div>
+    <div class="start">Press <kbd>R</kbd> to run the round again</div>`;
+}

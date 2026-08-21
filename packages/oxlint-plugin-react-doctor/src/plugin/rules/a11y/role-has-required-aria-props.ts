@@ -6,6 +6,7 @@ import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-st
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isLocalTestScaffoldJsx } from "../../utils/is-local-test-scaffold-jsx.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const buildMessage = (role: string, missingProps: ReadonlyArray<string>): string =>
   `Screen reader users can't tell the state of this \`${role}\` without its required ARIA props, so add \`${missingProps.join(
@@ -77,38 +78,43 @@ export const roleHasRequiredAriaProps = defineRule({
   recommendation:
     "Add every required `aria-*` attribute so assistive tech can expose the role's state correctly.",
   category: "Accessibility",
-  create: (context) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (isLocalTestScaffoldJsx(node, context)) return;
-      const elementType = getElementType(node, context.settings);
-      if (!HTML_TAGS.has(elementType)) return;
-      const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
-      if (!roleAttribute) return;
-      // Static resolution covers `role={cond ? "checkbox" : "radio"}` and
-      // const-bound roles, not just the literal. Every resolved candidate
-      // is validated — a branch missing its required props is a bug
-      // whenever that branch is taken.
-      const roleCandidates = getJsxPropStaticStringValues(roleAttribute, context.scopes);
-      if (roleCandidates === null) return;
-      const roles = new Set(
-        roleCandidates.flatMap((candidate) =>
-          candidate.split(/\s+/).filter((token) => token.length > 0),
-        ),
-      );
-      for (const role of roles) {
-        const required = ROLE_REQUIRED_PROPS.get(role);
-        if (!required) continue;
-        const missing = required.filter((property) => {
-          if (suppliesNativeAriaProp(node, elementType, property)) return false;
-          return !hasJsxPropIgnoreCase(node.attributes, property);
-        });
-        if (missing.length > 0) {
-          context.report({
-            node: roleAttribute,
-            message: buildMessage(role, missing),
+  create: (context) => {
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
+    return {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (shouldUseCuratedBehavior && isLocalTestScaffoldJsx(node, context)) return;
+        const elementType = getElementType(node, context.settings);
+        if (!HTML_TAGS.has(elementType)) return;
+        const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
+        if (!roleAttribute) return;
+        // Static resolution covers `role={cond ? "checkbox" : "radio"}` and
+        // const-bound roles, not just the literal. Every resolved candidate
+        // is validated — a branch missing its required props is a bug
+        // whenever that branch is taken.
+        const roleCandidates = getJsxPropStaticStringValues(roleAttribute, context.scopes);
+        if (roleCandidates === null) return;
+        const roles = new Set(
+          roleCandidates.flatMap((candidate) =>
+            candidate.split(/\s+/).filter((token) => token.length > 0),
+          ),
+        );
+        for (const role of roles) {
+          const required = ROLE_REQUIRED_PROPS.get(role);
+          if (!required) continue;
+          const missing = required.filter((property) => {
+            if (shouldUseCuratedBehavior && suppliesNativeAriaProp(node, elementType, property)) {
+              return false;
+            }
+            return !hasJsxPropIgnoreCase(node.attributes, property);
           });
+          if (missing.length > 0) {
+            context.report({
+              node: roleAttribute,
+              message: buildMessage(role, missing),
+            });
+          }
         }
-      }
-    },
-  }),
+      },
+    };
+  },
 });

@@ -1,0 +1,248 @@
+// rule: dangerous-html-sink
+// file-path: src/app/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 06f0b446cac5ab5f33d60ee7a0f77100590a41536e4940deb727665ed17045f1
+import { ALLOY_LABEL, type PartDef } from "../game/catalog";
+
+export type ObjectiveKey = "core" | "limbs" | "arm" | "move" | "strike";
+export type ObjectiveState = "todo" | "active" | "done" | "bad";
+
+export interface InspectNote {
+  text: string;
+  tone: "" | "good" | "bad";
+}
+
+const OBJECTIVE_LABELS: Record<ObjectiveKey, string> = {
+  core: "Cradle a compatible core",
+  limbs: "Seat two limbs",
+  arm: "Mount one armament",
+  move: "Pass the movement test",
+  strike: "Pass the strike test",
+};
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html !== undefined) n.innerHTML = html;
+  return n;
+}
+
+export class Hud {
+  private readonly rootEl: HTMLDivElement;
+  private readonly bannerEl: HTMLDivElement;
+  private readonly bannerHead: HTMLDivElement;
+  private readonly bannerMsg: HTMLDivElement;
+  private readonly bannerHint: HTMLDivElement;
+  private readonly promptEl: HTMLDivElement;
+  private readonly inspectEl: HTMLDivElement;
+  private readonly faultEl: HTMLDivElement;
+  private readonly loadingEl: HTMLDivElement;
+  private readonly powerEl: HTMLDivElement;
+  private readonly powerFill: HTMLDivElement;
+  private readonly powerText: HTMLElement;
+  private readonly items = new Map<ObjectiveKey, HTMLLIElement>();
+  private bannerTimer = 0;
+
+  constructor() {
+    this.loadingEl = el("div");
+    this.loadingEl.id = "loading";
+    this.loadingEl.append(
+      el("div", "name", "FORGEBODY"),
+      el("div", "sub", "Heating the forge"),
+      el("div", "bar", "<i></i>"),
+    );
+    document.body.append(this.loadingEl);
+
+    this.rootEl = el("div");
+    this.rootEl.id = "hud";
+
+    /* brand */
+    const brand = el("div", "panel");
+    brand.id = "brand";
+    brand.append(
+      el("div", "name", "FORGEBODY"),
+      el("div", "sub", "Proving dais · Hall of the Second Forge"),
+    );
+
+    /* objectives + power */
+    const obj = el("div", "panel");
+    obj.id = "objectives";
+    obj.append(el("h2", undefined, "Work order"));
+    const ol = el("ol");
+    (Object.keys(OBJECTIVE_LABELS) as ObjectiveKey[]).forEach((k) => {
+      const li = el("li");
+      li.append(el("span", "box"), el("span", undefined, OBJECTIVE_LABELS[k]));
+      this.items.set(k, li);
+      ol.append(li);
+    });
+    obj.append(ol);
+
+    this.powerEl = el("div");
+    this.powerEl.id = "power";
+    const row = el("div", "row");
+    row.innerHTML = "<span>Power bus</span>";
+    this.powerText = el("b", undefined, "— / —");
+    row.append(this.powerText);
+    this.powerFill = el("div", "fill");
+    const bar = el("div", "bar");
+    bar.append(this.powerFill);
+    this.powerEl.append(row, bar);
+    obj.append(this.powerEl);
+
+    /* controls */
+    const controls = el("div", "panel");
+    controls.id = "controls";
+    controls.append(el("h2", undefined, "Controls"));
+    const dl = el("dl");
+    const rows: Array<[string, string]> = [
+      ["Drag", "Lift a part, drop it on a socket"],
+      ["Drag bg", "Orbit the dais"],
+      ["Wheel", "Zoom (bounded)"],
+      ["Q / E", "Rotate view — or held part"],
+      ["Z", "Inspect zoom on the dais"],
+      ["Space", "Run the proving tests"],
+      ["R", "Strip the dais"],
+      ["M", "Mute"],
+    ];
+    for (const [k, v] of rows) {
+      dl.append(el("dt", undefined, k), el("dd", undefined, v));
+    }
+    controls.append(dl);
+
+    /* inspect */
+    this.inspectEl = el("div", "panel empty");
+    this.inspectEl.id = "inspect";
+
+    /* banner */
+    this.bannerEl = el("div", "panel");
+    this.bannerEl.id = "banner";
+    this.bannerHead = el("div", "head");
+    this.bannerMsg = el("div", "msg");
+    this.bannerHint = el("div", "hint");
+    this.bannerEl.append(this.bannerHead, this.bannerMsg, this.bannerHint);
+
+    /* prompt */
+    this.promptEl = el("div");
+    this.promptEl.id = "prompt";
+
+    this.rootEl.append(brand, obj, controls, this.inspectEl, this.bannerEl, this.promptEl);
+
+    const vignette = el("div");
+    vignette.id = "vignette";
+    this.faultEl = el("div");
+    this.faultEl.id = "fault";
+
+    document.body.append(vignette, this.rootEl, this.faultEl);
+  }
+
+  /** Drive the loading sweep with real progress. */
+  loadingProgress(t: number) {
+    const bar = this.loadingEl.querySelector<HTMLElement>(".bar i");
+    if (!bar) return;
+    bar.style.animation = "none";
+    bar.style.transform = "none";
+    bar.style.width = `${Math.round(Math.max(0, Math.min(1, t)) * 100)}%`;
+    bar.style.background = "linear-gradient(90deg, #7a3410, var(--ember))";
+  }
+
+  hideLoading() {
+    this.loadingEl.classList.add("gone");
+    window.setTimeout(() => this.loadingEl.remove(), 900);
+  }
+
+  setObjective(key: ObjectiveKey, state: ObjectiveState) {
+    const li = this.items.get(key);
+    if (!li) return;
+    li.classList.toggle("done", state === "done");
+    li.classList.toggle("bad", state === "bad");
+    li.classList.toggle("active", state === "active");
+  }
+
+  setPower(draw: number, output: number) {
+    if (output <= 0) {
+      this.powerText.textContent = "— / —";
+      this.powerFill.style.width = "0%";
+      this.powerEl.classList.remove("over");
+      return;
+    }
+    this.powerText.textContent = `${draw} / ${output}`;
+    this.powerFill.style.width = `${Math.min(100, (draw / output) * 100)}%`;
+    this.powerEl.classList.toggle("over", draw > output);
+  }
+
+  banner(head: string, msg: string, hint: string, tone: "" | "good" | "bad", hold = 4.5) {
+    this.bannerHead.textContent = head;
+    this.bannerMsg.textContent = msg;
+    this.bannerHint.textContent = hint;
+    this.bannerEl.classList.remove("good", "bad");
+    if (tone) this.bannerEl.classList.add(tone);
+    this.bannerEl.classList.add("show");
+    this.bannerTimer = hold;
+  }
+
+  clearBanner() {
+    this.bannerEl.classList.remove("show");
+    this.bannerTimer = 0;
+  }
+
+  prompt(text: string) {
+    if (!text) {
+      this.promptEl.classList.remove("show");
+      return;
+    }
+    this.promptEl.innerHTML = text;
+    this.promptEl.classList.add("show");
+  }
+
+  fault(on: boolean) {
+    this.faultEl.classList.toggle("on", on);
+  }
+
+  inspect(def: PartDef | null, notes: InspectNote[]) {
+    if (!def) {
+      this.inspectEl.classList.add("empty");
+      return;
+    }
+    this.inspectEl.classList.remove("empty");
+    const kind = def.kind === "core" ? "Reactor core" : def.kind === "limb" ? "Ambulation limb" : "Armament";
+    const rows: Array<[string, string]> = [];
+    rows.push(["ALLOY", ALLOY_LABEL[def.alloy]]);
+    if (def.kind === "core") {
+      rows.push(["KEYWAY", def.keyway.toString(2).padStart(3, "0")]);
+      rows.push(["OUTPUT", `${def.output} u`]);
+      rows.push(["HARDPOINTS", `${def.hardpoints.filter((h) => h.kind === "limb").length} limb · ${def.hardpoints.filter((h) => h.kind === "mount").length} mount`]);
+    } else if (def.kind === "limb") {
+      rows.push(["GAUGE", def.gauge]);
+      rows.push(["DRAW", `${def.draw} u`]);
+    } else {
+      rows.push(["DRAW", `${def.draw} u`]);
+      rows.push(["REACH", `${def.reach.toFixed(2)} m`]);
+      rows.push(["SWEEP", `${def.arc}°`]);
+    }
+
+    this.inspectEl.replaceChildren();
+    this.inspectEl.append(el("div", "pname", def.name), el("div", "pkind", kind));
+    const table = el("table");
+    for (const [k, v] of rows) {
+      const tr = el("tr");
+      tr.append(el("td", undefined, k), el("td", undefined, v));
+      table.append(tr);
+    }
+    this.inspectEl.append(table);
+    for (const n of notes) {
+      this.inspectEl.append(el("div", `note ${n.tone}`, n.text));
+    }
+  }
+
+  update(dt: number) {
+    if (this.bannerTimer > 0) {
+      this.bannerTimer -= dt;
+      if (this.bannerTimer <= 0) this.bannerEl.classList.remove("show");
+    }
+  }
+}

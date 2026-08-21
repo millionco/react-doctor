@@ -1,0 +1,372 @@
+// rule: dangerous-html-sink, js-length-check-first
+// file-path: src/game/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit dbfbb1ca9cc30603353503764641ae1c3e66db5e2d96dd237c1ae3273914d017
+import { ORE_HEX, ORE_NAMES, UPGRADES, type UpgradeDef, type UpgradeId } from "./defs";
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+export interface HudState {
+  ore: [number, number, number];
+  capacity: number;
+  objective: string;
+  upgrades: UpgradeId[];
+  braces: number;
+  stress: number;
+  stressLabel: string;
+  braceTimer: number;
+  nodeHealth: number | null;
+  prompt: { key: string; text: string; sub?: string } | null;
+  aiming: boolean;
+  seen: number;
+}
+
+export class Hud {
+  readonly root = el("div", undefined);
+  private cross = el("div");
+  private oreRows: HTMLElement[] = [];
+  private oreCounts: HTMLElement[] = [];
+  private loadFill = el("div");
+  private loadBar = el("div");
+  private loadTxt = el("div");
+  private objTxt = el("div");
+  private upgList = el("div");
+  private promptEl = el("div", "panel");
+  private nodeBar = el("div");
+  private nodeFill = el("div");
+  private stressEl = el("div", "panel");
+  private stressFill = el("div");
+  private stressLabel = el("span");
+  private stressTitle = el("span");
+  private seenEl = el("div");
+  private flash = el("div");
+  private toasts = el("div");
+  private craft = el("div");
+  private cards = el("div");
+  private overlays = el("div");
+  private loadScreen!: HTMLElement;
+  private loadProgress!: HTMLElement;
+  private loadLabel!: HTMLElement;
+  private titleScreen!: HTMLElement;
+  private winScreen!: HTMLElement;
+  private loseScreen!: HTMLElement;
+
+  onCraft: ((id: UpgradeId) => void) | null = null;
+  onStart: (() => void) | null = null;
+  onRestart: (() => void) | null = null;
+  craftOpen = false;
+
+  constructor() {
+    this.root.id = "hud";
+    document.body.appendChild(this.root);
+
+    const vig = el("div");
+    vig.id = "vig";
+    this.root.appendChild(vig);
+    this.flash.id = "flash";
+    this.root.appendChild(this.flash);
+
+    this.cross.id = "cross";
+    this.cross.innerHTML = "<i></i><i></i><i></i><i></i>";
+    this.root.appendChild(this.cross);
+
+    this.nodeBar.id = "nodebar";
+    this.nodeFill.id = "nodefill";
+    this.nodeBar.appendChild(this.nodeFill);
+    this.root.appendChild(this.nodeBar);
+
+    // --- pack ---
+    const pack = el("div", "panel");
+    pack.id = "pack";
+    pack.appendChild(el("h4", undefined, "Pack"));
+    for (let i = 0; i < 3; i++) {
+      const row = el("div", "ore empty");
+      const pip = el("span", "pip");
+      pip.style.color = ORE_HEX[i]!;
+      row.appendChild(pip);
+      row.appendChild(el("span", "nm", ORE_NAMES[i]!));
+      const ct = el("span", "ct", "0");
+      row.appendChild(ct);
+      pack.appendChild(row);
+      this.oreRows.push(row);
+      this.oreCounts.push(ct);
+    }
+    this.loadBar.id = "loadbar";
+    this.loadFill.id = "loadfill";
+    this.loadBar.appendChild(this.loadFill);
+    pack.appendChild(this.loadBar);
+    this.loadTxt.id = "loadtxt";
+    pack.appendChild(this.loadTxt);
+    this.root.appendChild(pack);
+
+    // --- objectives ---
+    const obj = el("div", "panel");
+    obj.id = "obj";
+    obj.appendChild(el("h4", undefined, "Break the Quarry"));
+    this.objTxt.id = "objtxt";
+    obj.appendChild(this.objTxt);
+    this.upgList.id = "upg";
+    obj.appendChild(this.upgList);
+    this.root.appendChild(obj);
+
+    // --- prompt ---
+    this.promptEl.id = "prompt";
+    this.root.appendChild(this.promptEl);
+
+    // --- stress ---
+    this.stressEl.id = "stress";
+    const sh = el("h4");
+    this.stressTitle.textContent = "Roof Stress";
+    sh.appendChild(this.stressTitle);
+    sh.appendChild(this.stressLabel);
+    this.stressEl.appendChild(sh);
+    const sbar = el("div");
+    sbar.id = "stressbar";
+    this.stressFill.id = "stressfill";
+    sbar.appendChild(this.stressFill);
+    this.stressEl.appendChild(sbar);
+    this.root.appendChild(this.stressEl);
+
+    this.seenEl.id = "seen";
+    this.seenEl.textContent = "The warden is watching";
+    this.root.appendChild(this.seenEl);
+
+    this.toasts.id = "toasts";
+    this.root.appendChild(this.toasts);
+
+    // --- overlays ---
+    this.overlays.id = "overlays";
+    document.body.appendChild(this.overlays);
+    this.buildCraft();
+    this.buildScreens();
+  }
+
+  private buildCraft(): void {
+    this.craft.id = "craft";
+    const boxWrap = el("div", "panel");
+    boxWrap.id = "craftbox";
+    boxWrap.appendChild(el("h2", undefined, "Workbench"));
+    boxWrap.appendChild(
+      el("p", undefined, "Two makings, no more — the warden counts the tools at dawn. Each pair opens a different way out."),
+    );
+    this.cards.id = "cards";
+    boxWrap.appendChild(this.cards);
+    const foot = el("div");
+    foot.id = "craftfoot";
+    foot.innerHTML = "Press <b>1</b> / <b>2</b> / <b>3</b> to make · <b>E</b> or <b>Esc</b> to step back";
+    boxWrap.appendChild(foot);
+    this.craft.appendChild(boxWrap);
+    this.overlays.appendChild(this.craft);
+  }
+
+  private buildScreens(): void {
+    // Loading
+    this.loadScreen = el("div", "screen");
+    this.loadScreen.id = "load";
+    this.loadScreen.appendChild(el("div", "sub", "Cutting stone"));
+    this.loadScreen.appendChild(el("h1", undefined, "Break the <em>Quarry</em>"));
+    const bar = el("div", "bar");
+    this.loadProgress = el("div");
+    bar.appendChild(this.loadProgress);
+    this.loadScreen.appendChild(bar);
+    this.loadLabel = el("div", "sub", "…");
+    this.loadLabel.style.fontSize = "12px";
+    this.loadScreen.appendChild(this.loadLabel);
+    this.overlays.appendChild(this.loadScreen);
+
+    // Title
+    this.titleScreen = el("div", "screen hide");
+    this.titleScreen.id = "title";
+    this.titleScreen.appendChild(el("div", "sub", "Convict Quarry No. 4 · Night shift"));
+    this.titleScreen.appendChild(el("h1", undefined, "Break the <em>Quarry</em>"));
+    this.titleScreen.appendChild(
+      el(
+        "div",
+        "body",
+        "You cut stone for the warden by day. Tonight you cut it for yourself.<br><br>" +
+          "Break crystal, haul what your pack will hold to the bench, and make <b>two</b> things. " +
+          "Which two decides which way out opens — and a bad roof does not forgive a slow escape.",
+      ),
+    );
+    const keys = el("div", "keys");
+    keys.innerHTML =
+      "<span><b>WASD</b>move</span><span><b>Mouse</b>aim</span><span><b>Left click</b>mine</span>" +
+      "<span><b>E</b>collect / craft</span><span><b>Shift</b>sprint</span>";
+    this.titleScreen.appendChild(keys);
+    const btn = el("button", "cta", "Take up the pick");
+    btn.addEventListener("click", () => this.onStart?.());
+    this.titleScreen.appendChild(btn);
+    this.overlays.appendChild(this.titleScreen);
+
+    this.winScreen = this.makeEndScreen("win", "You are <em>out</em>", "Escaped");
+    this.loseScreen = this.makeEndScreen("lose", "The roof <em>came down</em>", "Buried");
+  }
+
+  private makeEndScreen(id: string, title: string, sub: string): HTMLElement {
+    const s = el("div", "screen hide");
+    s.id = id;
+    s.appendChild(el("div", "sub", sub));
+    s.appendChild(el("h1", undefined, title));
+    const body = el("div", "body");
+    body.dataset.slot = "body";
+    s.appendChild(body);
+    const tally = el("div", "tally");
+    tally.dataset.slot = "tally";
+    s.appendChild(tally);
+    const btn = el("button", "cta", "Again");
+    btn.addEventListener("click", () => this.onRestart?.());
+    s.appendChild(btn);
+    this.overlays.appendChild(s);
+    return s;
+  }
+
+  // ------------------------------------------------------------------
+  setLoading(fraction: number, label: string): void {
+    this.loadProgress.style.width = `${Math.round(fraction * 100)}%`;
+    this.loadLabel.textContent = label;
+  }
+
+  showTitle(): void {
+    this.loadScreen.classList.add("hide");
+    this.titleScreen.classList.remove("hide");
+  }
+
+  hideTitle(): void {
+    this.titleScreen.classList.add("hide");
+    this.root.classList.add("on");
+  }
+
+  showEnd(win: boolean, body: string, tally: string): void {
+    const s = win ? this.winScreen : this.loseScreen;
+    const b = s.querySelector('[data-slot="body"]');
+    const t = s.querySelector('[data-slot="tally"]');
+    if (b) b.innerHTML = body;
+    if (t) t.innerHTML = tally;
+    s.classList.remove("hide");
+    this.root.classList.remove("on");
+  }
+
+  hideEnd(): void {
+    this.winScreen.classList.add("hide");
+    this.loseScreen.classList.add("hide");
+    this.root.classList.add("on");
+  }
+
+  openCraft(ore: [number, number, number], owned: UpgradeId[], remaining: number): void {
+    this.craftOpen = true;
+    this.craft.classList.add("on");
+    this.cards.innerHTML = "";
+    for (const u of UPGRADES) {
+      this.cards.appendChild(this.makeCard(u, ore, owned, remaining));
+    }
+  }
+
+  private makeCard(u: UpgradeDef, ore: [number, number, number], owned: UpgradeId[], remaining: number): HTMLElement {
+    const have = owned.includes(u.id);
+    const afford = u.cost.every((c, i) => ore[i]! >= c);
+    const can = !have && afford && remaining > 0;
+    const card = el("div", `card${have ? " done" : can ? "" : " no"}`);
+    card.appendChild(el("div", "key", have ? "✓" : u.key));
+    card.appendChild(el("h3", undefined, u.name));
+    card.appendChild(el("div", "role", have ? "Made" : u.role));
+    card.appendChild(el("p", undefined, u.blurb));
+    const cost = el("div", "cost");
+    for (let i = 0; i < 3; i++) {
+      const c = u.cost[i]!;
+      if (c === 0) continue;
+      const span = el("span", ore[i]! >= c ? "" : "lack");
+      span.style.color = ore[i]! >= c ? ORE_HEX[i]! : "#e2745f";
+      const pip = el("i");
+      pip.style.color = ORE_HEX[i]!;
+      span.appendChild(pip);
+      span.appendChild(document.createTextNode(`${ore[i]!}/${c}`));
+      cost.appendChild(span);
+    }
+    card.appendChild(cost);
+    if (can) card.addEventListener("click", () => this.onCraft?.(u.id));
+    return card;
+  }
+
+  closeCraft(): void {
+    this.craftOpen = false;
+    this.craft.classList.remove("on");
+  }
+
+  toast(text: string, kind: "" | "good" | "bad" = ""): void {
+    const t = el("div", `toast ${kind}`.trim(), text);
+    this.toasts.appendChild(t);
+    setTimeout(() => t.classList.add("out"), 2600);
+    setTimeout(() => t.remove(), 3100);
+  }
+
+  pulseHit(): void {
+    this.cross.classList.add("hit");
+    setTimeout(() => this.cross.classList.remove("hit"), 90);
+  }
+
+  setDanger(v: number): void {
+    this.flash.style.background = `rgba(226, 69, 47, ${(v * 0.3).toFixed(3)})`;
+  }
+
+  update(s: HudState): void {
+    let total = 0;
+    for (let i = 0; i < 3; i++) {
+      const n = s.ore[i]!;
+      total += n;
+      this.oreCounts[i]!.textContent = String(n);
+      this.oreRows[i]!.classList.toggle("empty", n === 0);
+    }
+    const frac = s.capacity > 0 ? total / s.capacity : 0;
+    this.loadFill.style.width = `${Math.min(100, frac * 100)}%`;
+    this.loadBar.classList.toggle("full", total >= s.capacity);
+    this.loadTxt.textContent = `${total} / ${s.capacity} carried${total >= s.capacity ? " — pack full" : ""}`;
+
+    this.objTxt.textContent = s.objective;
+    const made = s.upgrades.map((id) => UPGRADES.find((u) => u.id === id)?.name ?? id);
+    let upgHtml = made.length ? `Made: <b>${made.join("</b> · <b>")}</b>` : "Made: nothing yet";
+    if (s.upgrades.includes("brace")) upgHtml += `<br>Braces left: <b>${s.braces}</b>`;
+    this.upgList.innerHTML = upgHtml;
+
+    if (s.prompt) {
+      this.promptEl.innerHTML = `<kbd>${s.prompt.key}</kbd>${s.prompt.text}${
+        s.prompt.sub ? `<small>${s.prompt.sub}</small>` : ""
+      }`;
+      this.promptEl.classList.add("on");
+    } else {
+      this.promptEl.classList.remove("on");
+    }
+
+    this.cross.classList.toggle("hot", s.aiming);
+
+    if (s.nodeHealth !== null) {
+      this.nodeBar.classList.add("on");
+      this.nodeFill.style.width = `${Math.max(0, s.nodeHealth * 100)}%`;
+    } else {
+      this.nodeBar.classList.remove("on");
+    }
+
+    if (s.stress > 0.005 || s.braceTimer > 0) {
+      this.stressEl.classList.add("on");
+      this.stressFill.style.width = `${Math.min(100, s.stress * 100)}%`;
+      this.stressEl.classList.toggle("crit", s.stress > 0.7);
+      this.stressTitle.textContent = s.stressLabel;
+      this.stressLabel.textContent =
+        s.braceTimer > 0 ? `braces hold ${Math.ceil(s.braceTimer)}s` : `${Math.round(s.stress * 100)}%`;
+    } else {
+      this.stressEl.classList.remove("on");
+      this.stressEl.classList.remove("crit");
+    }
+
+    this.seenEl.classList.toggle("on", s.seen > 0.35);
+  }
+}

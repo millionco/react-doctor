@@ -1,5 +1,9 @@
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
+import { collectFunctionReturnStatements } from "../../../utils/collect-function-return-statements.js";
+import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { resolveExactLocalFunction } from "../../../utils/resolve-exact-local-function.js";
 import {
   isPostMountGlobalRead,
   isPostMountMemberRead,
@@ -12,6 +16,7 @@ interface ReadsPostMountOptions {
   // only exempt genuine DOM-derived values (the chain rule) skip it;
   // `ref.current.scrollWidth` still matches through its layout member.
   ignoreBareRefCurrent?: boolean;
+  scopes?: ScopeAnalysis;
 }
 
 const isBareRefCurrentRead = (node: EsTreeNode): boolean =>
@@ -50,6 +55,14 @@ const findEffectLocalInitializer = (effectFn: EsTreeNode, name: string): EsTreeN
   return initializer;
 };
 
+const collectReturnedExpressions = (functionNode: EsTreeNode): ReadonlyArray<EsTreeNode> => {
+  if (!isFunctionLike(functionNode)) return [];
+  if (!isNodeOfType(functionNode.body, "BlockStatement")) return [functionNode.body];
+  return collectFunctionReturnStatements(functionNode).flatMap((returnStatement) =>
+    returnStatement.argument ? [returnStatement.argument] : [],
+  );
+};
+
 // The post-mount read is often hidden behind an effect-local variable —
 // `const { width } = ref.current.getBoundingClientRect(); setWidth(width)` or
 // `const anchors = Array.from(document.querySelectorAll(sel)); setAnchors(anchors)`.
@@ -60,6 +73,7 @@ export const readsPostMountValueThroughLocals = (
   effectFn: EsTreeNode,
   options: ReadsPostMountOptions = {},
   visitedLocalNames: Set<string> = new Set(),
+  visitedFunctionNodes: Set<EsTreeNode> = new Set(),
 ): boolean => {
   let found = false;
   walkAst(root, (child: EsTreeNode): boolean | void => {
@@ -68,13 +82,39 @@ export const readsPostMountValueThroughLocals = (
       found = true;
       return false;
     }
+    if (isNodeOfType(child, "CallExpression") && options.scopes) {
+      const localFunction = resolveExactLocalFunction(child.callee, options.scopes);
+      if (isFunctionLike(localFunction) && !visitedFunctionNodes.has(localFunction)) {
+        visitedFunctionNodes.add(localFunction);
+        if (
+          collectReturnedExpressions(localFunction).some((returnedExpression) =>
+            readsPostMountValueThroughLocals(
+              returnedExpression,
+              localFunction.body,
+              options,
+              new Set(),
+              visitedFunctionNodes,
+            ),
+          )
+        ) {
+          found = true;
+          return false;
+        }
+      }
+    }
     if (!isNodeOfType(child, "Identifier")) return;
     if (visitedLocalNames.has(child.name)) return;
     visitedLocalNames.add(child.name);
     const localInitializer = findEffectLocalInitializer(effectFn, child.name);
     if (
       localInitializer &&
-      readsPostMountValueThroughLocals(localInitializer, effectFn, options, visitedLocalNames)
+      readsPostMountValueThroughLocals(
+        localInitializer,
+        effectFn,
+        options,
+        visitedLocalNames,
+        visitedFunctionNodes,
+      )
     ) {
       found = true;
       return false;

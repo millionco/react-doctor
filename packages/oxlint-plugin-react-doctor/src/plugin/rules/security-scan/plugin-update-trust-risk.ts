@@ -14,6 +14,9 @@ import { getScannableContent } from "./utils/scan-by-pattern.js";
 const UPDATER_TRUST_PATTERN =
   /\b(?:repoUrl|updateUrl|UpdateApp|InstallApp|auto.?updater?|installer|curl(?!\s+(?:-T\b|--upload-file\b))|wget)\b[\s\S]{0,250}(?:\.(?:zip|exe|dmg|appimage|msi|deb|rpm)\b|\.tar\.gz\b|\|\s*(?:bash|sh)\b)/i;
 
+const REMOTE_SCRIPT_EXECUTION_PATTERN =
+  /\b(?:curl|wget)\b(?=(?:[^\r\n]|\\\r?\n)*https?:\/\/)(?:[^\r\n]|\\\r?\n)*?\|\s*(?:bash|sh)\b/i;
+
 // A download whose hash is checked before use is exactly what the rule's
 // recommendation asks for.
 const CHECKSUM_VERIFICATION_PATTERN =
@@ -55,12 +58,16 @@ export const pluginUpdateTrustRisk = defineRule({
       return [];
     }
     const content = getScannableContent(file);
-    if (!UPDATER_TRUST_PATTERN.test(content)) return [];
+    const hasRemoteScriptExecution = REMOTE_SCRIPT_EXECUTION_PATTERN.test(content);
+    if (!hasRemoteScriptExecution && !UPDATER_TRUST_PATTERN.test(content)) return [];
+    const locationPattern = hasRemoteScriptExecution
+      ? REMOTE_SCRIPT_EXECUTION_PATTERN
+      : UPDATER_TRUST_PATTERN;
     if (CHECKSUM_VERIFICATION_PATTERN.test(content)) return [];
     if (SOURCE_FILE_PATTERN.test(file.relativePath) && !EXECUTION_CONTEXT_PATTERN.test(content)) {
       return [];
     }
-    const location = getMatchLocation(content, UPDATER_TRUST_PATTERN);
+    const location = getMatchLocation(content, locationPattern);
     return [
       {
         message:

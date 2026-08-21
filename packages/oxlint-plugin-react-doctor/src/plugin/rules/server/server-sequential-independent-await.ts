@@ -1,3 +1,4 @@
+import { INTENTIONAL_SEQUENCING_CALLEE_NAMES } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { expressionReadsPatternBinding } from "../../utils/expression-reads-pattern-binding.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
@@ -5,7 +6,9 @@ import { getOrderIndependentLocalFunction } from "../../utils/get-order-independ
 import { hasPossibleStaticMemberCallWrite } from "../../utils/has-static-property-write-before.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { isAuthGuardName } from "../../utils/is-auth-guard-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -145,6 +148,54 @@ const declarationAwaitsGate = (declaration: EsTreeNode, context: RuleContext): b
   return false;
 };
 
+const PROGRESS_CALLBACK_WORDS = new Set(["progress", "stage", "step"]);
+
+const callbackReportsProgress = (callback: EsTreeNode): boolean => {
+  let doesReportProgress = false;
+  walkAst(callback, (candidate) => {
+    if (doesReportProgress || (candidate !== callback && isFunctionLike(candidate))) return false;
+    if (!isNodeOfType(candidate, "CallExpression")) return;
+    const calleeName = getCalleeName(candidate);
+    if (!calleeName) return;
+    doesReportProgress = tokenizeIdentifierWords(calleeName).some((word) =>
+      PROGRESS_CALLBACK_WORDS.has(word),
+    );
+  });
+  return doesReportProgress;
+};
+
+const declarationAwaitsIntentionalSequence = (
+  declaration: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
+  for (const declarator of declaration.declarations ?? []) {
+    if (!isNodeOfType(declarator.init, "AwaitExpression")) continue;
+    const argument = declarator.init.argument;
+    if (!isNodeOfType(argument, "CallExpression")) continue;
+    const localFunction = getOrderIndependentLocalFunction(argument, context.scopes);
+    const calleeName = getCalleeName(argument);
+    if (
+      localFunction === null &&
+      calleeName &&
+      INTENTIONAL_SEQUENCING_CALLEE_NAMES.has(calleeName)
+    ) {
+      return true;
+    }
+    if (
+      argument.arguments.some(
+        (callArgument) =>
+          !isNodeOfType(callArgument, "SpreadElement") &&
+          isFunctionLike(callArgument) &&
+          callbackReportsProgress(callArgument),
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 export const serverSequentialIndependentAwait = defineRule({
   id: "server-sequential-independent-await",
   title: "Sequential independent awaits",
@@ -176,6 +227,11 @@ export const serverSequentialIndependentAwait = defineRule({
         if (
           declarationAwaitsRequestScopedCall(currentStatement) ||
           declarationAwaitsRequestScopedCall(nextStatement)
+        )
+          continue;
+        if (
+          declarationAwaitsIntentionalSequence(currentStatement, context) ||
+          declarationAwaitsIntentionalSequence(nextStatement, context)
         )
           continue;
         // A guard / side-effect gate (`await requireSession()`, `db.connect()`)

@@ -6,9 +6,11 @@ const FRAMEWORK_PACKAGES: Record<string, Framework> = {
   "@remix-run/react": "remix",
   gatsby: "gatsby",
   astro: "astro",
+  "@astrojs/react": "astro",
   vite: "vite",
   "react-scripts": "cra",
   expo: "expo",
+  "expo-router": "expo",
   "react-native": "react-native",
 };
 

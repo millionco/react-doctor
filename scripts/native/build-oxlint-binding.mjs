@@ -121,6 +121,7 @@ try {
         `pub(crate) mod react_doctor_native {\n${nativeModuleDeclarations}\n}`,
       );
     fs.writeFileSync(rulesRegistryPath, rulesRegistry);
+    run("rustfmt", ["--version"], { cwd: checkoutDirectory });
     run("cargo", ["lintgen"], { cwd: checkoutDirectory });
     if (shouldCompileCheck) {
       run("cargo", ["check", "--locked", "-p", "oxc_linter"], { cwd: checkoutDirectory });

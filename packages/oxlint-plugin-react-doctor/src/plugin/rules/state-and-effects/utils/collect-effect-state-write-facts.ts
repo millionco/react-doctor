@@ -1852,12 +1852,16 @@ const expressionReadsStateDeclarator = (
         const assignedCallee = isNodeOfType(assignedCandidate, "CallExpression")
           ? stripParenExpression(assignedCandidate.callee)
           : null;
+        const assignedReceiver =
+          assignedCallee && isNodeOfType(assignedCallee, "MemberExpression")
+            ? stripParenExpression(assignedCallee.object)
+            : null;
         if (
           assignedCallee &&
           isNodeOfType(assignedCallee, "MemberExpression") &&
           FRESH_ARRAY_COPY_METHOD_NAMES.has(getStaticMemberName(assignedCallee) ?? "") &&
-          isNodeOfType(assignedCallee.object, "Identifier") &&
-          context.scopes.symbolFor(assignedCallee.object) === symbol
+          isNodeOfType(assignedReceiver, "Identifier") &&
+          context.scopes.symbolFor(assignedReceiver) === symbol
         ) {
           if (!isUnmodifiedMemberCall(assignedCandidate, executionReferenceNode)) return false;
           continue;

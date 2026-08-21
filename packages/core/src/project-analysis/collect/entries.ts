@@ -203,10 +203,7 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
       }
     }
 
-    const shouldExtractEntries =
-      isEligible &&
-      (workspacePackage.isDeclaredWorkspace || !workspaceDiscovery.hasRootLevelWorkspacePatterns);
-    if (shouldExtractEntries) {
+    if (isEligible) {
       const workspacePackageJsonPath = resolve(workspacePackage.directory, "package.json");
       const workspacePackageJsonEntries = await extractPackageJsonEntries(workspacePackageJsonPath);
       const hasValidEntries = workspacePackageJsonEntries.some((entryPath) =>

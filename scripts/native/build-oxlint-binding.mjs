@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const requireFromScript = createRequire(import.meta.url);
 const nativeDirectory = path.join(repositoryRoot, "native", "oxlint");
+const nativeRulesDirectory = path.join(nativeDirectory, "rules");
 const upstream = JSON.parse(fs.readFileSync(path.join(nativeDirectory, "upstream.json"), "utf8"));
 const patchPath = path.join(nativeDirectory, "react-doctor.patch");
 
@@ -26,6 +27,7 @@ const outputDirectory = path.resolve(
   readOption("--output") ?? path.join(repositoryRoot, "dist", "native-oxlint"),
 );
 const shouldCheckOnly = argumentsList.includes("--check-only");
+const shouldCompileCheck = argumentsList.includes("--compile-check");
 const shouldUseAllocator = !argumentsList.includes("--no-allocator");
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-oxc-"));
 const checkoutDirectory = path.join(temporaryDirectory, "oxc");
@@ -68,57 +70,115 @@ try {
     process.exitCode = 0;
   } else {
     run("git", ["apply", patchPath], { cwd: checkoutDirectory });
-    const targetDirectory = path.resolve(
-      process.env.CARGO_TARGET_DIR ?? path.join(temporaryDirectory, "target"),
+    const upstreamRulesDirectory = path.join(
+      checkoutDirectory,
+      "crates",
+      "oxc_linter",
+      "src",
+      "rules",
+      "react_doctor_native",
     );
-    const cargoArguments = ["build", "--locked", "-p", "oxlint", "--release"];
-    if (shouldUseAllocator) cargoArguments.push("--features", "allocator");
-    run("cargo", cargoArguments, {
-      cwd: checkoutDirectory,
-      env: { ...process.env, CARGO_TARGET_DIR: targetDirectory },
-    });
-
-    const libraryName =
-      process.platform === "win32"
-        ? "oxlint.dll"
-        : process.platform === "darwin"
-          ? "liboxlint.dylib"
-          : "liboxlint.so";
-    const platformSuffix =
-      process.platform === "linux"
-        ? `${process.platform}-${process.arch}-gnu`
-        : `${process.platform}-${process.arch}`;
-    const bindingFileName = `oxlint-react-doctor.${platformSuffix}.node`;
-    const builtLibraryPath = path.join(targetDirectory, "release", libraryName);
-    const outputBindingPath = path.join(outputDirectory, bindingFileName);
-    fs.mkdirSync(outputDirectory, { recursive: true });
-    fs.copyFileSync(builtLibraryPath, outputBindingPath);
-    const nativeBinding = requireFromScript(outputBindingPath);
-    if (typeof nativeBinding.lint !== "function") {
-      throw new Error(`built binding does not export lint: ${outputBindingPath}`);
+    fs.mkdirSync(upstreamRulesDirectory, { recursive: true });
+    const nativeUtilitySources = new Map(
+      [
+        "is-non-production-file",
+        "is-type-only-import",
+        "for-each-named-import",
+        "for-each-value-import",
+      ].map((utilityName) => [
+        utilityName.replaceAll("-", "_"),
+        fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),
+      ]),
+    );
+    for (const nativeRuleId of upstream.nativeRules) {
+      const nativeRuleSource = fs.readFileSync(
+        path.join(nativeRulesDirectory, `${nativeRuleId}.rs`),
+        "utf8",
+      );
+      const requiredUtilities = [...nativeUtilitySources]
+        .filter(([utilityName]) => nativeRuleSource.includes(`${utilityName}(`))
+        .map(([, utilitySource]) => utilitySource)
+        .join("\n\n");
+      fs.writeFileSync(
+        path.join(upstreamRulesDirectory, `${nativeRuleId.replaceAll("-", "_")}.rs`),
+        requiredUtilities ? `${requiredUtilities}\n\n${nativeRuleSource}` : nativeRuleSource,
+      );
     }
-
-    const sha256 = (filePath) =>
-      crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
-    fs.writeFileSync(
-      path.join(outputDirectory, `${bindingFileName}.json`),
-      `${JSON.stringify(
-        {
-          upstreamRepository: upstream.repository,
-          upstreamTag: upstream.tag,
-          upstreamCommit: upstream.commit,
-          oxlintVersion: upstream.oxlintVersion,
-          rustToolchain: upstream.rustToolchain,
-          nativeRules: upstream.nativeRules,
-          bindingFile: bindingFileName,
-          bindingSha256: sha256(outputBindingPath),
-          patchSha256: sha256(patchPath),
-        },
-        null,
-        2,
-      )}\n`,
+    const rulesRegistryPath = path.join(
+      checkoutDirectory,
+      "crates",
+      "oxc_linter",
+      "src",
+      "rules.rs",
     );
-    process.stdout.write(`Built ${outputBindingPath}\n`);
+    const nativeModuleDeclarations = upstream.nativeRules
+      .map((nativeRuleId) => `    pub mod ${nativeRuleId.replaceAll("-", "_")};`)
+      .join("\n");
+    const rulesRegistry = fs
+      .readFileSync(rulesRegistryPath, "utf8")
+      .replace(
+        "pub(crate) mod react_doctor_native;",
+        `pub(crate) mod react_doctor_native {\n${nativeModuleDeclarations}\n}`,
+      );
+    fs.writeFileSync(rulesRegistryPath, rulesRegistry);
+    run("cargo", ["lintgen"], { cwd: checkoutDirectory });
+    if (shouldCompileCheck) {
+      run("cargo", ["check", "--locked", "-p", "oxc_linter"], { cwd: checkoutDirectory });
+      process.stdout.write(`Native rules compile against ${upstream.tag} (${upstream.commit}).\n`);
+      process.exitCode = 0;
+    } else {
+      const targetDirectory = path.resolve(
+        process.env.CARGO_TARGET_DIR ?? path.join(temporaryDirectory, "target"),
+      );
+      const cargoArguments = ["build", "--locked", "-p", "oxlint", "--release", "--lib"];
+      if (shouldUseAllocator) cargoArguments.push("--features", "allocator");
+      run("cargo", cargoArguments, {
+        cwd: checkoutDirectory,
+        env: { ...process.env, CARGO_TARGET_DIR: targetDirectory },
+      });
+
+      const libraryName =
+        process.platform === "win32"
+          ? "oxlint.dll"
+          : process.platform === "darwin"
+            ? "liboxlint.dylib"
+            : "liboxlint.so";
+      const platformSuffix =
+        process.platform === "linux"
+          ? `${process.platform}-${process.arch}-gnu`
+          : `${process.platform}-${process.arch}`;
+      const bindingFileName = `oxlint-react-doctor.${platformSuffix}.node`;
+      const builtLibraryPath = path.join(targetDirectory, "release", libraryName);
+      const outputBindingPath = path.join(outputDirectory, bindingFileName);
+      fs.mkdirSync(outputDirectory, { recursive: true });
+      fs.copyFileSync(builtLibraryPath, outputBindingPath);
+      const nativeBinding = requireFromScript(outputBindingPath);
+      if (typeof nativeBinding.lint !== "function") {
+        throw new Error(`built binding does not export lint: ${outputBindingPath}`);
+      }
+
+      const sha256 = (filePath) =>
+        crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+      fs.writeFileSync(
+        path.join(outputDirectory, `${bindingFileName}.json`),
+        `${JSON.stringify(
+          {
+            upstreamRepository: upstream.repository,
+            upstreamTag: upstream.tag,
+            upstreamCommit: upstream.commit,
+            oxlintVersion: upstream.oxlintVersion,
+            rustToolchain: upstream.rustToolchain,
+            nativeRules: upstream.nativeRules,
+            bindingFile: bindingFileName,
+            bindingSha256: sha256(outputBindingPath),
+            patchSha256: sha256(patchPath),
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      process.stdout.write(`Built ${outputBindingPath}\n`);
+    }
   }
 } finally {
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });

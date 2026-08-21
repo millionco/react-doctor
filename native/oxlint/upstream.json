@@ -4,5 +4,22 @@
   "commit": "0db127cc16d28b97d84bac4ebeb302caf1a78c7e",
   "oxlintVersion": "1.79.0",
   "rustToolchain": "1.97.1",
-  "nativeRules": ["no-document-write"]
+  "nativeRules": [
+    "jsx-no-duplicate-props",
+    "nextjs-no-vercel-og-import",
+    "no-children-prop",
+    "no-danger",
+    "no-document-write",
+    "no-moment",
+    "no-namespace",
+    "no-react-children",
+    "preact-no-react-hooks-import",
+    "rn-bottom-sheet-prefer-native",
+    "rn-no-deprecated-modules",
+    "rn-no-legacy-expo-packages",
+    "rn-no-panresponder",
+    "rn-prefer-pressable",
+    "rn-prefer-reanimated",
+    "use-lazy-motion"
+  ]
 }

@@ -562,7 +562,24 @@ export const OXLINT_NATIVE_LIBRARY_PATH_ENV = "NAPI_RS_NATIVE_LIBRARY_PATH";
 
 export const NATIVE_REACT_DOCTOR_PLUGIN_NAME = "react-doctor-native";
 
-export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set(["no-document-write"]);
+export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
+  "jsx-no-duplicate-props",
+  "nextjs-no-vercel-og-import",
+  "no-children-prop",
+  "no-danger",
+  "no-document-write",
+  "no-moment",
+  "no-namespace",
+  "no-react-children",
+  "preact-no-react-hooks-import",
+  "rn-bottom-sheet-prefer-native",
+  "rn-no-deprecated-modules",
+  "rn-no-legacy-expo-packages",
+  "rn-no-panresponder",
+  "rn-prefer-pressable",
+  "rn-prefer-reanimated",
+  "use-lazy-motion",
+]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch
 // is at most OXLINT_MAX_FILES_PER_BATCH (= 200) files and a healthy

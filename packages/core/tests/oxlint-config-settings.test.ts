@@ -50,6 +50,25 @@ const tailwindViteWebProject = buildProject({
 });
 
 describe("createOxlintConfig settings", () => {
+  it("moves selected React Doctor rules into the native plugin", () => {
+    const stockConfig = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+    });
+    const nativeConfig = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      nativeRuleIds: new Set(["no-document-write"]),
+    });
+
+    expect(stockConfig.rules["react-doctor/no-document-write"]).toBe("warn");
+    expect(stockConfig.plugins).toEqual([]);
+    expect(nativeConfig.rules).not.toHaveProperty("react-doctor/no-document-write");
+    expect(nativeConfig.rules["react-doctor-native/no-document-write"]).toBe("warn");
+    expect(nativeConfig.plugins).toEqual(["react-doctor-native"]);
+    expect(nativeConfig.jsPlugins).toContain("/tmp/plugin.js");
+  });
+
   it("uses curated behavior for faithfully ported rules", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

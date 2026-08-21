@@ -3,6 +3,7 @@ import {
   ABORT_EXIT_CODES,
   MILLISECONDS_PER_SECOND,
   OXLINT_OUTPUT_MAX_BYTES,
+  OXLINT_NATIVE_LIBRARY_PATH_ENV,
   OXLINT_SPAWN_TIMEOUT_MS as DEFAULT_OXLINT_SPAWN_TIMEOUT_MS,
 } from "../../constants.js";
 import { OxlintBatchExceeded, OxlintSpawnFailed, ReactDoctorError } from "../../errors.js";
@@ -47,6 +48,7 @@ export const spawnOxlint = (
   // running until their own per-batch spawn timeout.
   abortSignal?: AbortSignal,
   onSpawn?: () => void,
+  nativeBindingPath?: string,
 ): Promise<string> =>
   new Promise<string>((resolve, reject) => {
     if (abortSignal?.aborted) {
@@ -56,6 +58,9 @@ export const spawnOxlint = (
       return;
     }
     onSpawn?.();
+    const childEnvironment = nativeBindingPath
+      ? { ...SANITIZED_ENV, [OXLINT_NATIVE_LIBRARY_PATH_ENV]: nativeBindingPath }
+      : SANITIZED_ENV;
     const child = spawn(
       nodeBinaryPath,
       buildProfiledNodeArguments({
@@ -65,7 +70,7 @@ export const spawnOxlint = (
       }),
       {
         cwd: rootDirectory,
-        env: SANITIZED_ENV,
+        env: childEnvironment,
         // HACK: oxlint's cli.js sets process.stdin._handle.setBlocking(true)
         // when stdout is not a TTY. This initializes and refs the child's stdin
         // handle, and since the parent never closes the pipe the child's event
@@ -184,14 +189,14 @@ export const spawnOxlint = (
           return;
         }
       }
-      const timingDirectory = SANITIZED_ENV.REACT_DOCTOR_OXLINT_TIMINGS_DIR;
+      const timingDirectory = childEnvironment.REACT_DOCTOR_OXLINT_TIMINGS_DIR;
       if (timingDirectory === undefined) {
         resolve(output);
         return;
       }
       captureOxlintRuleTimings({
         argumentsList: args,
-        environment: SANITIZED_ENV,
+        environment: childEnvironment,
         nodeBinaryPath,
         rootDirectory,
         timingDirectory,

@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/oxc-project/oxc.git",
+  "tag": "oxlint_v1.79.0",
+  "commit": "0db127cc16d28b97d84bac4ebeb302caf1a78c7e",
+  "oxlintVersion": "1.79.0",
+  "rustToolchain": "1.97.1",
+  "nativeRules": ["no-document-write"]
+}

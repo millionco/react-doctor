@@ -243,7 +243,11 @@ const parseRuleCode = (code: unknown): { plugin: string; rule: string } => {
   }
   const match = code.match(/^(.+)\((.+)\)$/);
   if (!match) return { plugin: "unknown", rule: code };
-  return { plugin: match[1].replace(/^eslint-plugin-/, ""), rule: match[2] };
+  const parsedPlugin = match[1].replace(/^eslint-plugin-/, "");
+  return {
+    plugin: parsedPlugin === "react-doctor-native" ? "react-doctor" : parsedPlugin,
+    rule: match[2],
+  };
 };
 
 const resolveDiagnosticCategory = (plugin: string, rule: string): string => {

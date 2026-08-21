@@ -556,6 +556,14 @@ export const SKILL_NAME = "react-doctor";
 // pathological JS-plugin rules that emit one diagnostic per AST node.
 export const OXLINT_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
 
+export const REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV = "REACT_DOCTOR_NATIVE_OXLINT_BINDING_PATH";
+
+export const OXLINT_NATIVE_LIBRARY_PATH_ENV = "NAPI_RS_NATIVE_LIBRARY_PATH";
+
+export const NATIVE_REACT_DOCTOR_PLUGIN_NAME = "react-doctor-native";
+
+export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set(["no-document-write"]);
+
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch
 // is at most OXLINT_MAX_FILES_PER_BATCH (= 200) files and a healthy
 // batch finishes in well under a second; 60 s leaves a large safety

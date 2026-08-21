@@ -13,6 +13,7 @@ const ENV_VARS = [
   "RUNNER_OS",
   "REACT_DOCTOR_GITHUB_ACTION",
   "REACT_DOCTOR_NO_CACHE",
+  "REACT_DOCTOR_NATIVE_OXLINT_BINDING_PATH",
   ...Object.values(ACTION_INPUT_ENVIRONMENT_VARIABLES),
 ] as const;
 
@@ -111,6 +112,12 @@ describe("buildRunEventAttributes", () => {
       if (previous === undefined) delete process.env[name];
       else process.env[name] = previous;
     }
+  });
+
+  it("records whether lint used stock Oxlint or a native source patch", () => {
+    expect(buildRunEventAttributes(baseInput())["lint.engine"]).toBe("stock");
+    process.env.REACT_DOCTOR_NATIVE_OXLINT_BINDING_PATH = "/tmp/oxlint.node";
+    expect(buildRunEventAttributes(baseInput())["lint.engine"]).toBe("native-patch");
   });
 
   it("records how many surfaced diagnostics span multiple lines", () => {

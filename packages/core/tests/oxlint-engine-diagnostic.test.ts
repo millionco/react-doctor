@@ -181,4 +181,26 @@ describe("parseOxlintOutput engine diagnostics", () => {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]).toMatchObject({ plugin: "TS", rule: "1039" });
   });
+
+  it("normalizes native React Doctor diagnostics to the public plugin identity", () => {
+    const diagnostics = parseOxlintOutput(
+      buildOutput([
+        {
+          ...HEALTHY_DIAGNOSTIC,
+          code: "react-doctor-native(no-document-write)",
+          message: "Native document write diagnostic",
+        },
+      ]),
+      buildProject(),
+      TEST_ROOT_DIRECTORY,
+    );
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({
+      plugin: "react-doctor",
+      rule: "no-document-write",
+      category: "Performance",
+      title: "document.write/writeln",
+    });
+  });
 });

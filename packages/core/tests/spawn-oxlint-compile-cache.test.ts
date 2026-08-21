@@ -1,7 +1,7 @@
 import os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { NODE_COMPILE_CACHE_DIR_NAME } from "../src/constants.js";
+import { NODE_COMPILE_CACHE_DIR_NAME, OXLINT_NATIVE_LIBRARY_PATH_ENV } from "../src/constants.js";
 import { spawnOxlint } from "../src/runners/oxlint/spawn-oxlint.js";
 
 // spawn-oxlint.ts captures SANITIZED_ENV from the live process.env at module
@@ -26,4 +26,21 @@ describe("spawnOxlint propagates the V8 compile cache to children", () => {
       expect(stdout).toBe(path.join(os.tmpdir(), NODE_COMPILE_CACHE_DIR_NAME));
     },
   );
+
+  it("passes an explicit native binding only to the child", async () => {
+    const nativeBindingPath = "/tmp/react-doctor-oxlint.node";
+    const stdout = await spawnOxlint(
+      ["-e", `process.stdout.write(process.env.${OXLINT_NATIVE_LIBRARY_PATH_ENV} ?? 'unset')`],
+      process.cwd(),
+      process.execPath,
+      5_000,
+      undefined,
+      undefined,
+      undefined,
+      nativeBindingPath,
+    );
+
+    expect(stdout).toBe(nativeBindingPath);
+    expect(process.env[OXLINT_NATIVE_LIBRARY_PATH_ENV]).not.toBe(nativeBindingPath);
+  });
 });

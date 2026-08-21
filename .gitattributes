@@ -1,2 +1,3 @@
 packages/fuzz/corpus/react-bench-0.9.7-audit/** -text whitespace=-trailing-space
 packages/fuzz/corpus/dummy-threejs-v14-audit/** -text whitespace=-trailing-space
+native/oxlint/*.patch -text whitespace=-trailing-space

@@ -8,7 +8,11 @@ import {
 import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor/core";
 import type { ProjectInfo, RuleSeverityControls } from "../../types/index.js";
 import { resolveRuleSeverityOverride } from "../../resolve-rule-severity-override.js";
-import { COMPILER_CLEANUP_BUCKET, COMPILER_CLEANUP_RULE_KEYS } from "../../constants.js";
+import {
+  COMPILER_CLEANUP_BUCKET,
+  COMPILER_CLEANUP_RULE_KEYS,
+  NATIVE_REACT_DOCTOR_PLUGIN_NAME,
+} from "../../constants.js";
 import { getCapabilities, shouldEnableRule } from "../../project-info/capabilities.js";
 import { filterRulesToAvailable, resolveReactHooksJsPlugin } from "./plugin-resolution.js";
 import type { JsPluginEntry, ResolvedUserPlugin } from "./plugin-resolution.js";
@@ -64,6 +68,7 @@ export interface OxlintConfigOptions {
    * for other selections.
    */
   sidecarRuleIdFilter?: ReadonlySet<string>;
+  nativeRuleIds?: ReadonlySet<string>;
 }
 
 const resolveSettingsRootDirectory = (rootDirectory: string): string => {
@@ -138,6 +143,7 @@ export const createOxlintConfig = ({
   disableReactHooksJsPlugin = false,
   ruleSelection,
   sidecarRuleIdFilter,
+  nativeRuleIds = new Set<string>(),
 }: OxlintConfigOptions) => {
   const hasIncludedTags = includedTags.size > 0;
   // The sidecar carries only cross-file react-doctor rules — the React
@@ -177,6 +183,7 @@ export const createOxlintConfig = ({
     noMultiCompOverride !== undefined && multiComponentFileOverride === undefined;
 
   const enabledReactDoctorRules: Record<string, OxlintRuleSeverity> = {};
+  let didEnableNativeReactDoctorRule = false;
   for (const registryEntry of REACT_DOCTOR_RULES) {
     const rule = REACT_DOCTOR_RULE_REGISTRY[registryEntry.id];
     if (!rule) continue;
@@ -241,7 +248,12 @@ export const createOxlintConfig = ({
       resolveCompilerCleanupBucketSeverity(registryEntry.key, severityControls) ??
       rule.severity;
     if (severity === "off") continue;
-    enabledReactDoctorRules[registryEntry.key] = severity;
+    if (nativeRuleIds.has(registryEntry.id)) {
+      enabledReactDoctorRules[`${NATIVE_REACT_DOCTOR_PLUGIN_NAME}/${registryEntry.id}`] = severity;
+      didEnableNativeReactDoctorRule = true;
+    } else {
+      enabledReactDoctorRules[registryEntry.key] = severity;
+    }
   }
 
   // Fold every user-declared plugin's enabled rules + add its
@@ -278,7 +290,7 @@ export const createOxlintConfig = ({
     // from our codegen-built registry plus configured npm-shipped
     // plugins (react-hooks-js for the React Compiler frontend etc.)
     // and any user-declared plugins from `config.plugins`.
-    plugins: [],
+    plugins: didEnableNativeReactDoctorRule ? [NATIVE_REACT_DOCTOR_PLUGIN_NAME] : [],
     jsPlugins: [...jsPlugins, pluginPath],
     settings: {
       "react-doctor": {

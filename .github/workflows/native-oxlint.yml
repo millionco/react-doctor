@@ -1,0 +1,85 @@
+name: Native Oxlint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "native/oxlint/**"
+      - "scripts/native/**"
+      - "package.json"
+      - "packages/core/src/constants.ts"
+      - "packages/core/src/run-oxlint.ts"
+      - "packages/core/src/runners/oxlint/**"
+      - ".github/workflows/native-oxlint.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "native/oxlint/**"
+      - "scripts/native/**"
+      - "package.json"
+      - "packages/core/src/constants.ts"
+      - "packages/core/src/run-oxlint.ts"
+      - "packages/core/src/runners/oxlint/**"
+      - ".github/workflows/native-oxlint.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: node scripts/native/build-oxlint-binding.mjs --check-only
+
+  build:
+    needs: verify-patch
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+          - macos-15-intel
+          - macos-15
+          - windows-2025
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: native-oxlint-${{ matrix.runner }}
+      - run: node scripts/native/build-oxlint-binding.mjs --output dist/native-oxlint
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-oxlint-${{ matrix.runner }}
+          path: dist/native-oxlint/*
+          if-no-files-found: error
+
+  parity:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --prefer-offline
+      - run: pnpm --filter oxlint-plugin-react-doctor build
+      - uses: actions/download-artifact@v8
+        with:
+          name: native-oxlint-ubuntu-24.04
+          path: dist/native-oxlint
+      - run: node scripts/native/verify-oxlint-parity.mjs --directory dist/native-oxlint

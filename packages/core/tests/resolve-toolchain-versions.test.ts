@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { resolveOxlintToolchainVersions } from "../src/runners/oxlint/resolve-toolchain-versions.js";
 
@@ -22,5 +25,20 @@ describe("resolveOxlintToolchainVersions", () => {
     expect(
       versions.some((entry) => entry.startsWith("oxlint-plugin-react-doctor/package.json=")),
     ).toBe(true);
+  });
+
+  it("fingerprints a custom native binding independently from stock Oxlint", () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-binding-"));
+    const nativeBindingPath = path.join(temporaryDirectory, "oxlint.node");
+    try {
+      fs.writeFileSync(nativeBindingPath, "native-binding");
+      const stockVersions = resolveOxlintToolchainVersions();
+      const nativeVersions = resolveOxlintToolchainVersions(process.execPath, nativeBindingPath);
+
+      expect(stockVersions).toContain("oxlint-native-binding#fingerprint=stock");
+      expect(nativeVersions).toContain("oxlint-native-binding#fingerprint=f90b6a879ed766d3");
+    } finally {
+      fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
   });
 });

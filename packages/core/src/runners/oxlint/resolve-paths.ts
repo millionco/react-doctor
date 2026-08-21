@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
-import { TSCONFIG_FILENAMES } from "../../constants.js";
+import { REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV, TSCONFIG_FILENAMES } from "../../constants.js";
 
 const esmRequire = createRequire(import.meta.url);
 
@@ -17,6 +17,13 @@ export const resolveOxlintBinary = (): string => {
 // accepts as-is. Works in dev (workspace symlink), in npm installs
 // (node_modules/.pnpm/...), and from pnpm dlx / npx temp directories.
 export const resolvePluginPath = (): string => esmRequire.resolve("oxlint-plugin-react-doctor");
+
+export const resolveNativeOxlintBindingPath = (
+  environment: NodeJS.ProcessEnv = process.env,
+): string | null => {
+  const configuredPath = environment[REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV]?.trim();
+  return configuredPath ? path.resolve(configuredPath) : null;
+};
 
 export const resolveTsConfigRelativePath = (rootDirectory: string): string | null => {
   for (const filename of TSCONFIG_FILENAMES) {

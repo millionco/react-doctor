@@ -20,6 +20,62 @@
     "rn-no-panresponder",
     "rn-prefer-pressable",
     "rn-prefer-reanimated",
-    "use-lazy-motion"
+    "use-lazy-motion",
+    "html-has-lang",
+    "no-access-key",
+    "no-clone-element",
+    "no-is-mounted",
+    "no-render-return-value",
+    "no-will-update-set-state",
+    "self-closing-comp",
+    "no-distracting-elements",
+    "require-render-return"
+  ],
+  "delegatedRules": [
+    {
+      "id": "html-has-lang",
+      "module": "jsx_a11y::html_has_lang",
+      "struct": "HtmlHasLang",
+      "category": "correctness"
+    },
+    {
+      "id": "no-access-key",
+      "module": "jsx_a11y::no_access_key",
+      "struct": "NoAccessKey",
+      "category": "correctness",
+      "fix": "suggestion",
+      "skipNonProduction": true
+    },
+    {
+      "id": "no-clone-element",
+      "module": "react::no_clone_element",
+      "struct": "NoCloneElement",
+      "category": "correctness"
+    },
+    {
+      "id": "no-will-update-set-state",
+      "module": "react::no_will_update_set_state",
+      "struct": "NoWillUpdateSetState",
+      "category": "correctness"
+    },
+    {
+      "id": "self-closing-comp",
+      "module": "react::self_closing_comp",
+      "struct": "SelfClosingComp",
+      "category": "style",
+      "fix": "fix"
+    },
+    {
+      "id": "no-distracting-elements",
+      "module": "jsx_a11y::no_distracting_elements",
+      "struct": "NoDistractingElements",
+      "category": "correctness"
+    },
+    {
+      "id": "require-render-return",
+      "module": "react::require_render_return",
+      "struct": "RequireRenderReturn",
+      "category": "nursery"
+    }
   ]
 }

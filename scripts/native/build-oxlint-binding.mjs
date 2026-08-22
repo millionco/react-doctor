@@ -12,6 +12,9 @@ const nativeDirectory = path.join(repositoryRoot, "native", "oxlint");
 const nativeRulesDirectory = path.join(nativeDirectory, "rules");
 const upstream = JSON.parse(fs.readFileSync(path.join(nativeDirectory, "upstream.json"), "utf8"));
 const patchPath = path.join(nativeDirectory, "react-doctor.patch");
+const delegatedRules = new Map(
+  (upstream.delegatedRules ?? []).map((delegatedRule) => [delegatedRule.id, delegatedRule]),
+);
 
 const argumentsList = process.argv.slice(2);
 const readOption = (name) => {
@@ -79,6 +82,52 @@ try {
       "react_doctor_native",
     );
     fs.mkdirSync(upstreamRulesDirectory, { recursive: true });
+    const buildDelegatedRuleSource = (delegatedRule) => {
+      const fixCapability = delegatedRule.fix ? `\n    ${delegatedRule.fix},` : "";
+      const shouldRun = delegatedRule.skipNonProduction
+        ? "!is_non_production_file(ctx) && self.upstream_rule.should_run(ctx)"
+        : "self.upstream_rule.should_run(ctx)";
+      return `use crate::{
+    AstNode,
+    context::{ContextHost, LintContext},
+    rule::Rule,
+    rules::${delegatedRule.module}::${delegatedRule.struct} as UpstreamRule,
+};
+use oxc_macros::declare_oxc_lint;
+
+#[derive(Debug, Default, Clone)]
+pub struct ${delegatedRule.struct} {
+    upstream_rule: UpstreamRule,
+}
+
+declare_oxc_lint!(
+    /// React Doctor adapter for Oxc's native detector.
+    ${delegatedRule.struct},
+    react_doctor_native,
+    ${delegatedRule.category},${fixCapability}
+    version = "0.1.0",
+    short_description = "Runs the parity-matched native Oxc detector with React Doctor diagnostics.",
+);
+
+impl Rule for ${delegatedRule.struct} {
+    fn from_configuration(value: serde_json::Value) -> Result<Self, serde_json::Error> {
+        UpstreamRule::from_configuration(value).map(|upstream_rule| Self { upstream_rule })
+    }
+
+    fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
+        self.upstream_rule.run(node, ctx);
+    }
+
+    fn run_once(&self, ctx: &LintContext) {
+        self.upstream_rule.run_once(ctx);
+    }
+
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        ${shouldRun}
+    }
+}
+`;
+    };
     const nativeUtilitySources = new Map(
       [
         "is-non-production-file",
@@ -91,10 +140,10 @@ try {
       ]),
     );
     for (const nativeRuleId of upstream.nativeRules) {
-      const nativeRuleSource = fs.readFileSync(
-        path.join(nativeRulesDirectory, `${nativeRuleId}.rs`),
-        "utf8",
-      );
+      const delegatedRule = delegatedRules.get(nativeRuleId);
+      const nativeRuleSource = delegatedRule
+        ? buildDelegatedRuleSource(delegatedRule)
+        : fs.readFileSync(path.join(nativeRulesDirectory, `${nativeRuleId}.rs`), "utf8");
       const requiredUtilities = [...nativeUtilitySources]
         .filter(([utilityName]) => nativeRuleSource.includes(`${utilityName}(`))
         .map(([, utilitySource]) => utilitySource)

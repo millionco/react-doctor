@@ -49,12 +49,13 @@ const oxlintBinaryPath = path.join(
 const pluginPath = requireFromRepository.resolve("oxlint-plugin-react-doctor");
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-native-parity-"));
 const fixturePath = path.join(temporaryDirectory, "fixture.tsx");
+const nonProductionFixturePath = path.join(temporaryDirectory, "fixture.test.tsx");
 const stockConfigPath = path.join(temporaryDirectory, "stock.json");
 const nativeConfigPath = path.join(temporaryDirectory, "native.json");
 const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-no-duplicate-props": 1,
   "nextjs-no-vercel-og-import": 1,
-  "no-children-prop": 2,
+  "no-children-prop": 3,
   "no-danger": 3,
   "no-document-write": 8,
   "no-moment": 1,
@@ -68,9 +69,19 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "rn-prefer-pressable": 1,
   "rn-prefer-reanimated": 2,
   "use-lazy-motion": 1,
+  "html-has-lang": 1,
+  "no-access-key": 1,
+  "no-clone-element": 1,
+  "no-is-mounted": 1,
+  "no-render-return-value": 2,
+  "no-will-update-set-state": 1,
+  "self-closing-comp": 1,
+  "no-distracting-elements": 1,
+  "require-render-return": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
+const BENCHMARK_FINDING_COUNT_PER_FILE = 500;
 const BENCHMARK_SAMPLE_COUNT = 5;
 const OXLINT_OUTPUT_MAX_BYTES = 256 * 1024 * 1024;
 const DISABLED_RULE_CATEGORIES = {
@@ -82,12 +93,21 @@ const DISABLED_RULE_CATEGORIES = {
   style: "off",
   suspicious: "off",
 };
+const REACT_DOCTOR_SETTINGS = {
+  "react-doctor": {
+    portedRuleMode: "curated",
+    framework: "unknown",
+    rootDirectory: repositoryRoot,
+    capabilities: ["react"],
+  },
+};
 const shouldBenchmark = argumentsList.includes("--benchmark");
 const fixture = `
 import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
 import React, { Children, useEffect, useState, Component } from "react";
+import ReactDOM from "react-dom";
 import type { useMemo as PreactTypeOnlyHook } from "react";
 import RawBottomSheet from "react-native-raw-bottom-sheet";
 import { Audio } from "expo-av/build/Audio";
@@ -126,6 +146,39 @@ const childrenProp = <Widget children="hidden" />;
 React.createElement(Widget, { children: "hidden" });
 Children.map(children, child => child);
 React.Children.only(children);
+const forwardedWithoutRef = React.forwardRef((props) => <div>{props.label}</div>);
+const page = <html></html>;
+const untitledFrame = <iframe />;
+const invalidFrameTitle = <iframe title={undefined} />;
+const invalidAnchor = <a>Open</a>;
+const missingWidget = <MissingWidget />;
+const missingMemberWidget = <Missing.Namespace />;
+const mouseOnly = <div onMouseOver={handle} />;
+const distracting = <marquee>scroll</marquee>;
+const redundantRole = <button role="button">Save</button>;
+const unsupportedAria = <button aria-invalid="true">Save</button>;
+const voidChildren = <img children="description" />;
+const visibleComment = <div>// visible comment</div>;
+const shortcut = <button accessKey="s">Save</button>;
+const clonedChild = React.cloneElement(child);
+const renderResult = ReactDOM.render(<div />, root);
+const wrappedRenderResult = (ReactDOM as any).render(<div />, root);
+class LegacyState extends Component {
+  componentWillUpdate() { this.setState({ loading: true }); }
+  update() { this.state.value = 1; this.isMounted(); }
+  render() { return null; }
+}
+class ConnectionPool {
+  isMounted() { return true; }
+  inspect() { return this.isMounted(); }
+}
+class MissingRender extends Component {
+  render() {}
+}
+class ForeignSuppressedMissingRender extends Component {
+  // eslint-disable-next-line react/require-render-return
+  render() {}
+}
 `;
 
 const normalizeDiagnostics = (diagnostics) =>
@@ -183,12 +236,14 @@ const runOxlint = (configPath, environment, targetPath = fixturePath) => {
 
 try {
   fs.writeFileSync(fixturePath, fixture);
+  fs.writeFileSync(nonProductionFixturePath, `const shortcut = <button accessKey="s" />;`);
   fs.writeFileSync(
     stockConfigPath,
     JSON.stringify({
       categories: DISABLED_RULE_CATEGORIES,
       plugins: [],
       jsPlugins: [pluginPath],
+      settings: REACT_DOCTOR_SETTINGS,
       rules: Object.fromEntries(
         nativeRules.map((nativeRuleId) => [`react-doctor/${nativeRuleId}`, "warn"]),
       ),
@@ -200,6 +255,7 @@ try {
       categories: DISABLED_RULE_CATEGORIES,
       plugins: ["react-doctor-native"],
       jsPlugins: [],
+      settings: REACT_DOCTOR_SETTINGS,
       rules: Object.fromEntries(
         nativeRules.map((nativeRuleId) => [`react-doctor-native/${nativeRuleId}`, "warn"]),
       ),
@@ -218,11 +274,38 @@ try {
     );
   }
   if (JSON.stringify(nativeDiagnostics) !== JSON.stringify(stockDiagnostics)) {
+    const nativeDiagnosticKeys = new Set(nativeDiagnostics.map(JSON.stringify));
+    const stockDiagnosticKeys = new Set(stockDiagnostics.map(JSON.stringify));
+    const stockOnlyDiagnostic = stockDiagnostics.find(
+      (diagnostic) => !nativeDiagnosticKeys.has(JSON.stringify(diagnostic)),
+    );
+    const nativeOnlyDiagnostic = nativeDiagnostics.find(
+      (diagnostic) => !stockDiagnosticKeys.has(JSON.stringify(diagnostic)),
+    );
     throw new Error(
-      `native parity failed\nstock=${JSON.stringify(stockDiagnostics, null, 2)}\nnative=${JSON.stringify(nativeDiagnostics, null, 2)}`,
+      `native parity failed\nstock count=${stockDiagnostics.length}\nnative count=${nativeDiagnostics.length}\nstock only=${JSON.stringify(stockOnlyDiagnostic, null, 2)}\nnative only=${JSON.stringify(nativeOnlyDiagnostic, null, 2)}`,
     );
   }
   process.stdout.write(`Native parity passed for ${stockDiagnostics.length} diagnostics.\n`);
+
+  const stockNonProductionDiagnostics = runOxlint(
+    stockConfigPath,
+    process.env,
+    nonProductionFixturePath,
+  ).diagnostics;
+  const nativeNonProductionDiagnostics = runOxlint(
+    nativeConfigPath,
+    nativeEnvironment,
+    nonProductionFixturePath,
+  ).diagnostics;
+  if (
+    stockNonProductionDiagnostics.length !== 0 ||
+    JSON.stringify(nativeNonProductionDiagnostics) !== JSON.stringify(stockNonProductionDiagnostics)
+  ) {
+    throw new Error(
+      `native non-production parity failed\nstock=${JSON.stringify(stockNonProductionDiagnostics, null, 2)}\nnative=${JSON.stringify(nativeNonProductionDiagnostics, null, 2)}`,
+    );
+  }
 
   if (corpusDirectory) {
     const resolvedCorpusDirectory = path.resolve(corpusDirectory);
@@ -310,6 +393,48 @@ try {
     const speedupPercent = ((stockMedianMs - nativeMedianMs) / stockMedianMs) * 100;
     process.stdout.write(
       `Benchmark p50: JavaScript ${stockMedianMs.toFixed(1)} ms, native ${nativeMedianMs.toFixed(1)} ms, ${speedupPercent.toFixed(1)}% faster.\n`,
+    );
+
+    const findingBenchmarkDirectory = path.join(temporaryDirectory, "finding-benchmark");
+    fs.mkdirSync(findingBenchmarkDirectory);
+    const findingBenchmarkSource = `${Array.from(
+      { length: BENCHMARK_FINDING_COUNT_PER_FILE },
+      (_unused, index) => `const Empty${index} = <Widget></Widget>;`,
+    ).join("\n")}\n`;
+    for (let fileIndex = 0; fileIndex < BENCHMARK_FILE_COUNT; fileIndex += 1) {
+      fs.writeFileSync(
+        path.join(findingBenchmarkDirectory, `fixture-${fileIndex}.tsx`),
+        findingBenchmarkSource,
+      );
+    }
+    runOxlint(stockConfigPath, process.env, findingBenchmarkDirectory);
+    runOxlint(nativeConfigPath, nativeEnvironment, findingBenchmarkDirectory);
+    const stockFindingDurationsMs = [];
+    const nativeFindingDurationsMs = [];
+    for (let sampleIndex = 0; sampleIndex < BENCHMARK_SAMPLE_COUNT; sampleIndex += 1) {
+      const shouldRunNativeFirst = sampleIndex % 2 === 1;
+      if (shouldRunNativeFirst) {
+        nativeFindingDurationsMs.push(
+          runOxlint(nativeConfigPath, nativeEnvironment, findingBenchmarkDirectory).durationMs,
+        );
+        stockFindingDurationsMs.push(
+          runOxlint(stockConfigPath, process.env, findingBenchmarkDirectory).durationMs,
+        );
+      } else {
+        stockFindingDurationsMs.push(
+          runOxlint(stockConfigPath, process.env, findingBenchmarkDirectory).durationMs,
+        );
+        nativeFindingDurationsMs.push(
+          runOxlint(nativeConfigPath, nativeEnvironment, findingBenchmarkDirectory).durationMs,
+        );
+      }
+    }
+    const stockFindingMedianMs = median(stockFindingDurationsMs);
+    const nativeFindingMedianMs = median(nativeFindingDurationsMs);
+    const findingSpeedupPercent =
+      ((stockFindingMedianMs - nativeFindingMedianMs) / stockFindingMedianMs) * 100;
+    process.stdout.write(
+      `Finding benchmark p50: JavaScript ${stockFindingMedianMs.toFixed(1)} ms, native ${nativeFindingMedianMs.toFixed(1)} ms, ${findingSpeedupPercent.toFixed(1)}% faster.\n`,
     );
   }
 } finally {

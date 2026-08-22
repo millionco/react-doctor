@@ -579,6 +579,15 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "rn-prefer-pressable",
   "rn-prefer-reanimated",
   "use-lazy-motion",
+  "html-has-lang",
+  "no-access-key",
+  "no-clone-element",
+  "no-is-mounted",
+  "no-render-return-value",
+  "no-will-update-set-state",
+  "self-closing-comp",
+  "no-distracting-elements",
+  "require-render-return",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

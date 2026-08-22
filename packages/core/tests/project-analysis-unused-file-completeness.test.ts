@@ -371,6 +371,28 @@ describe("unused-file graph completeness", () => {
     },
   );
 
+  it("uses entry points from implicit sub-projects outside workspace patterns", async () => {
+    const rootDirectory = createProject(
+      {
+        "index.js": "console.log('root');",
+        "packages/real/package.json": JSON.stringify({ name: "real", main: "index.js" }),
+        "packages/real/index.js": "export const value = 1;",
+        "sub/package.json": JSON.stringify({ name: "sub", main: "cli.js" }),
+        "sub/cli.js": "const { helper } = require('./helper'); console.log(helper());",
+        "sub/helper.js": "module.exports.helper = () => 'hi';",
+      },
+      {
+        name: "root",
+        workspaces: ["packages/*"],
+        main: "index.js",
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(unusedFilePaths(rootDirectory, result.unusedFiles)).toEqual([]);
+  });
+
   it("isolates uncertainty to its owning workspace package", async () => {
     const rootDirectory = createProject(
       {

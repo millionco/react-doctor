@@ -81,6 +81,13 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-no-comment-textnodes": 1,
   "void-dom-elements-no-children": 4,
   "forward-ref-uses-ref": 5,
+  "aria-props": 1,
+  "aria-unsupported-elements": 2,
+  "no-unescaped-entities": 1,
+  scope: 1,
+  "no-set-state": 2,
+  "no-find-dom-node": 2,
+  "react-in-jsx-scope": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -168,6 +175,10 @@ const mouseOnly = <div onMouseOver={handle} />;
 const distracting = <marquee>scroll</marquee>;
 const redundantRole = <button role="button">Save</button>;
 const unsupportedAria = <button aria-invalid="true">Save</button>;
+const invalidAria = <button aria-labeledby="label">Save</button>;
+const reservedAria = <meta aria-label="description" role="none" />;
+const unescapedEntity = <div>it's visible</div>;
+const invalidScope = <td scope="col" />;
 const voidChildren = <img children="description" />;
 const visibleComment = <div>// visible comment</div>;
 const literalComment = <code>// deliberately rendered</code>;
@@ -189,8 +200,13 @@ const shortcut = <button accessKey="s">Save</button>;
 const clonedChild = React.cloneElement(child);
 const renderResult = ReactDOM.render(<div />, root);
 const wrappedRenderResult = (ReactDOM as any).render(<div />, root);
+ReactDOM.findDOMNode(root);
+ReactDOM[findDOMNode](root);
+(ReactDOM as any).findDOMNode(root);
+ReactDOM[(findDOMNode as any)](root);
 class LegacyState extends Component {
   componentWillUpdate() { this.setState({ loading: true }); }
+  computedUpdate() { this[setState]({ loading: false }); this[(setState as any)]({}); }
   update() { this.state.value = 1; this.isMounted(); }
   render() { return null; }
 }
@@ -262,7 +278,10 @@ const runOxlint = (configPath, environment, targetPath = fixturePath) => {
 
 try {
   fs.writeFileSync(fixturePath, fixture);
-  fs.writeFileSync(nonProductionFixturePath, `const shortcut = <button accessKey="s" />;`);
+  fs.writeFileSync(
+    nonProductionFixturePath,
+    `const shortcut = <button accessKey="s" />; const classicJsx = <div />;`,
+  );
   fs.writeFileSync(
     stockConfigPath,
     JSON.stringify({
@@ -324,8 +343,13 @@ try {
     nativeEnvironment,
     nonProductionFixturePath,
   ).diagnostics;
+  const expectedNonProductionDiagnosticCounts = {
+    ...Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0])),
+    "react-in-jsx-scope": 2,
+  };
   if (
-    stockNonProductionDiagnostics.length !== 0 ||
+    JSON.stringify(countDiagnosticsByRule(stockNonProductionDiagnostics)) !==
+      JSON.stringify(expectedNonProductionDiagnosticCounts) ||
     JSON.stringify(nativeNonProductionDiagnostics) !== JSON.stringify(stockNonProductionDiagnostics)
   ) {
     throw new Error(

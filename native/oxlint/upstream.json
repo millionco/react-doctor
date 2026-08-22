@@ -32,7 +32,14 @@
     "require-render-return",
     "jsx-no-comment-textnodes",
     "void-dom-elements-no-children",
-    "forward-ref-uses-ref"
+    "forward-ref-uses-ref",
+    "aria-props",
+    "aria-unsupported-elements",
+    "no-unescaped-entities",
+    "scope",
+    "no-set-state",
+    "no-find-dom-node",
+    "react-in-jsx-scope"
   ],
   "delegatedRules": [
     {

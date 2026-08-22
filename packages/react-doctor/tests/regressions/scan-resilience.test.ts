@@ -916,7 +916,7 @@ describe("issue #1657: stack overflow with zustand + Next.js + path aliases", ()
     const projectDir = setupReactProject(tempRoot, "issue-1657-zustand-nextjs", {
       packageJsonExtras: {
         dependencies: {
-          next: "preview",
+          next: "15.0.0",
           react: "19.2.4",
           "react-dom": "19.2.4",
           zustand: "5.0.14",

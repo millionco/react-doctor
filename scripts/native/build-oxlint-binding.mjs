@@ -132,6 +132,7 @@ impl Rule for ${delegatedRule.struct} {
       [
         "is-non-production-file",
         "is-create-element-call",
+        "is-react-api-call",
         "property-key-matches-name",
         "is-type-only-import",
         "for-each-named-import",
@@ -146,10 +147,20 @@ impl Rule for ${delegatedRule.struct} {
       const nativeRuleSource = delegatedRule
         ? buildDelegatedRuleSource(delegatedRule)
         : fs.readFileSync(path.join(nativeRulesDirectory, `${nativeRuleId}.rs`), "utf8");
-      const requiredUtilities = [...nativeUtilitySources]
-        .filter(([utilityName]) => nativeRuleSource.includes(`${utilityName}(`))
-        .map(([, utilitySource]) => utilitySource)
-        .join("\n\n");
+      const requiredUtilitySources = [];
+      let sourceWithUtilities = nativeRuleSource;
+      const remainingUtilitySources = new Map(nativeUtilitySources);
+      while (true) {
+        const requiredUtility = [...remainingUtilitySources].find(([utilityName]) =>
+          sourceWithUtilities.includes(`${utilityName}(`),
+        );
+        if (!requiredUtility) break;
+        const [utilityName, utilitySource] = requiredUtility;
+        remainingUtilitySources.delete(utilityName);
+        requiredUtilitySources.push(utilitySource);
+        sourceWithUtilities += `\n${utilitySource}`;
+      }
+      const requiredUtilities = requiredUtilitySources.join("\n\n");
       fs.writeFileSync(
         path.join(upstreamRulesDirectory, `${nativeRuleId.replaceAll("-", "_")}.rs`),
         requiredUtilities ? `${requiredUtilities}\n\n${nativeRuleSource}` : nativeRuleSource,

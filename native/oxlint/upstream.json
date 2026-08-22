@@ -31,7 +31,8 @@
     "no-distracting-elements",
     "require-render-return",
     "jsx-no-comment-textnodes",
-    "void-dom-elements-no-children"
+    "void-dom-elements-no-children",
+    "forward-ref-uses-ref"
   ],
   "delegatedRules": [
     {

@@ -80,6 +80,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "require-render-return": 2,
   "jsx-no-comment-textnodes": 1,
   "void-dom-elements-no-children": 4,
+  "forward-ref-uses-ref": 5,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -108,7 +109,7 @@ const fixture = `
 import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
-import React, { Children, useEffect, useState, Component } from "react";
+import React, { Children, useEffect, useState, Component, forwardRef as wrapRef } from "react";
 import ReactDOM from "react-dom";
 import type { useMemo as PreactTypeOnlyHook } from "react";
 import RawBottomSheet from "react-native-raw-bottom-sheet";
@@ -149,6 +150,14 @@ React.createElement(Widget, { children: "hidden" });
 Children.map(children, child => child);
 React.Children.only(children);
 const forwardedWithoutRef = React.forwardRef((props) => <div>{props.label}</div>);
+const wrappedWithoutRef = wrapRef((props) => <div>{props.label}</div>);
+const immutableForwardRef = wrapRef;
+const aliasedWithoutRef = immutableForwardRef((props) => <div>{props.label}</div>);
+const { forwardRef: destructuredForwardRef } = React;
+const destructuredWithoutRef = destructuredForwardRef((props) => <div>{props.label}</div>);
+const computedWithoutRef = React["forwardRef"]((props) => <div>{props.label}</div>);
+const unrelatedForwardRef = (callback) => callback;
+unrelatedForwardRef((props) => <div>{props.label}</div>);
 const page = <html></html>;
 const untitledFrame = <iframe />;
 const invalidFrameTitle = <iframe title={undefined} />;

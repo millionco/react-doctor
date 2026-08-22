@@ -6,7 +6,7 @@ use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_span::GetSpan;
 
-use crate::{AstNode, context::LintContext, rule::Rule, utils::is_create_element_call};
+use crate::{AstNode, context::LintContext, rule::Rule};
 
 #[derive(Debug, Default, Clone)]
 pub struct NoNamespace;

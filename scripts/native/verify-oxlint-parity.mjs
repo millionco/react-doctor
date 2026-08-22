@@ -55,8 +55,8 @@ const nativeConfigPath = path.join(temporaryDirectory, "native.json");
 const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-no-duplicate-props": 1,
   "nextjs-no-vercel-og-import": 1,
-  "no-children-prop": 3,
-  "no-danger": 3,
+  "no-children-prop": 4,
+  "no-danger": 4,
   "no-document-write": 8,
   "no-moment": 1,
   "no-namespace": 2,
@@ -75,9 +75,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-is-mounted": 1,
   "no-render-return-value": 2,
   "no-will-update-set-state": 1,
-  "self-closing-comp": 1,
+  "self-closing-comp": 2,
   "no-distracting-elements": 1,
   "require-render-return": 2,
+  "jsx-no-comment-textnodes": 1,
+  "void-dom-elements-no-children": 4,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -159,6 +161,21 @@ const redundantRole = <button role="button">Save</button>;
 const unsupportedAria = <button aria-invalid="true">Save</button>;
 const voidChildren = <img children="description" />;
 const visibleComment = <div>// visible comment</div>;
+const literalComment = <code>// deliberately rendered</code>;
+const styledComment = <span className="comment">// deliberately rendered</span>;
+const separator = <div>{used} // 512 GB</div>;
+const commentOnlyVoid = <input>{/* hint */}</input>;
+const nullishVoid = <br>{undefined}{null}{void 0}</br>;
+const formattingOnlyVoid = <img>
+</img>;
+const VoidTag = "img" as const;
+const constantVoidChildren = <VoidTag>description</VoidTag>;
+React.createElement("br", {}, null, undefined, void 0);
+React.createElement("br", {}, "description");
+React.createElement("br", { [children]: "description" });
+React.createElement("div", { [dangerouslySetInnerHTML]: { __html: markup } });
+window.document.createElement("img", { children: "description", dangerouslySetInnerHTML: { __html: markup } }, "description");
+namespace[document].createElement("img", {}, "description");
 const shortcut = <button accessKey="s">Save</button>;
 const clonedChild = React.cloneElement(child);
 const renderResult = ReactDOM.render(<div />, root);

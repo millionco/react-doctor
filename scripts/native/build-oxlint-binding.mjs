@@ -131,6 +131,8 @@ impl Rule for ${delegatedRule.struct} {
     const nativeUtilitySources = new Map(
       [
         "is-non-production-file",
+        "is-create-element-call",
+        "property-key-matches-name",
         "is-type-only-import",
         "for-each-named-import",
         "for-each-value-import",

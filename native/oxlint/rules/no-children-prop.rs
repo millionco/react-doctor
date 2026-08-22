@@ -6,7 +6,7 @@ use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_span::GetSpan;
 
-use crate::{AstNode, context::LintContext, rule::Rule, utils::is_create_element_call};
+use crate::{AstNode, context::LintContext, rule::Rule};
 
 const MESSAGE: &str = "A `children` prop can override or hide nested children, so the component may render different content than the JSX shows.";
 
@@ -42,7 +42,7 @@ impl Rule for NoChildrenProp {
                     let ObjectPropertyKind::ObjectProperty(property) = property else {
                         continue;
                     };
-                    if property.key.is_specific_static_name("children") {
+                    if property_key_matches_name(&property.key, "children") {
                         ctx.diagnostic(
                             OxcDiagnostic::warn(MESSAGE).with_label(property.key.span()),
                         );

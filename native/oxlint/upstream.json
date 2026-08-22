@@ -29,7 +29,9 @@
     "no-will-update-set-state",
     "self-closing-comp",
     "no-distracting-elements",
-    "require-render-return"
+    "require-render-return",
+    "jsx-no-comment-textnodes",
+    "void-dom-elements-no-children"
   ],
   "delegatedRules": [
     {

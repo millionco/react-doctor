@@ -6,7 +6,7 @@ use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_span::GetSpan;
 
-use crate::{AstNode, context::LintContext, rule::Rule, utils::is_create_element_call};
+use crate::{AstNode, context::LintContext, rule::Rule};
 
 const MESSAGE: &str = "`dangerouslySetInnerHTML` is an XSS hole that runs attacker-controlled HTML in your users' browsers.";
 
@@ -50,10 +50,7 @@ impl Rule for NoDanger {
                     let ObjectPropertyKind::ObjectProperty(property) = property else {
                         continue;
                     };
-                    if property
-                        .key
-                        .is_specific_static_name("dangerouslySetInnerHTML")
-                    {
+                    if property_key_matches_name(&property.key, "dangerouslySetInnerHTML") {
                         ctx.diagnostic(
                             OxcDiagnostic::warn(MESSAGE).with_label(property.key.span()),
                         );

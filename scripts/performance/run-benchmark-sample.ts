@@ -20,6 +20,7 @@ export interface RunBenchmarkSampleInput {
   sampleIndex: number;
   cpuProfile: boolean;
   heapProfile: boolean;
+  ruleTimings: boolean;
 }
 
 let cachedTimeArguments: string[] | null = null;
@@ -51,7 +52,7 @@ export const runBenchmarkSample = (input: RunBenchmarkSampleInput): BenchmarkSam
   fs.mkdirSync(input.cacheDirectory, { recursive: true });
   const reportPath = path.join(input.artifactDirectory, `sample-${input.sampleIndex}.report.json`);
   const profileDirectory =
-    input.cpuProfile || input.heapProfile
+    input.cpuProfile || input.heapProfile || input.ruleTimings
       ? path.join(input.artifactDirectory, `sample-${input.sampleIndex}-profiles`)
       : null;
   if (profileDirectory !== null) fs.mkdirSync(profileDirectory, { recursive: true });
@@ -63,6 +64,7 @@ export const runBenchmarkSample = (input: RunBenchmarkSampleInput): BenchmarkSam
     workerCount: input.workerCount,
     cpuProfile: input.cpuProfile,
     heapProfile: input.heapProfile,
+    ruleTimings: input.ruleTimings,
     profileDirectory,
   });
   const cliArguments = [

@@ -223,19 +223,10 @@ const VISUALLY_HIDDEN_CLASS_NAMES = new Set([
 ]);
 const CASE_TOKENS = new Set(["capitalize", "lowercase", "normal-case", "uppercase"]);
 
-const getAncestorOpeningElements = (
-  jsxElement: EsTreeNodeOfType<"JSXElement">,
-): EsTreeNodeOfType<"JSXOpeningElement">[] => {
-  const openingElements: EsTreeNodeOfType<"JSXOpeningElement">[] = [];
-  let currentNode: EsTreeNode | null | undefined = jsxElement;
-  while (currentNode) {
-    if (isNodeOfType(currentNode, "JSXElement")) {
-      openingElements.push(currentNode.openingElement);
-    }
-    currentNode = currentNode.parent;
-  }
-  return openingElements;
-};
+interface TinyTextAncestorState {
+  hasFunctionalTextContext: boolean;
+  shouldSkipText: boolean;
+}
 
 const hasUnresolvedVisibilityAttribute = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
@@ -346,22 +337,21 @@ const isPreformattedContext = (openingElement: EsTreeNodeOfType<"JSXOpeningEleme
 };
 
 const isFunctionalTextContext = (
-  openingElements: ReadonlyArray<EsTreeNodeOfType<"JSXOpeningElement">>,
-): boolean =>
-  openingElements.some((openingElement) => {
-    const elementName = resolveJsxElementType(openingElement).toLowerCase();
-    if (FUNCTIONAL_ELEMENT_NAMES.has(elementName)) return true;
-    const roleAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "role", false);
-    const roleValue = roleAttribute ? getStringLiteralAttributeValue(roleAttribute) : null;
-    if (roleValue && FUNCTIONAL_ROLE_NAMES.has(roleValue.toLowerCase())) return true;
-    const classNameValue = getStringFromClassNameAttr(openingElement);
-    return Boolean(
-      classNameValue &&
-      splitTailwindClassName(classNameValue)
-        .map(parseTailwindClassNameToken)
-        .some((token) => FUNCTIONAL_CLASS_NAME_PATTERN.test(token.utility)),
-    );
-  });
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  const elementName = resolveJsxElementType(openingElement).toLowerCase();
+  if (FUNCTIONAL_ELEMENT_NAMES.has(elementName)) return true;
+  const roleAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "role", false);
+  const roleValue = roleAttribute ? getStringLiteralAttributeValue(roleAttribute) : null;
+  if (roleValue && FUNCTIONAL_ROLE_NAMES.has(roleValue.toLowerCase())) return true;
+  const classNameValue = getStringFromClassNameAttr(openingElement);
+  return Boolean(
+    classNameValue &&
+    splitTailwindClassName(classNameValue)
+      .map(parseTailwindClassNameToken)
+      .some((token) => FUNCTIONAL_CLASS_NAME_PATTERN.test(token.utility)),
+  );
+};
 
 const hasNonzeroInlineLetterSpacing = (
   expression: EsTreeNodeOfType<"ObjectExpression">,
@@ -411,21 +401,24 @@ export const noTinyText = defineRule({
   create: (context: RuleContext) => {
     const reportedPxValues = new Set<number>();
     const hasTailwind = hasCapabilityOrUnspecified(context.settings, "tailwind");
+    const ancestorStateStack: TinyTextAncestorState[] = [];
     return {
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         const openingElement = node.openingElement;
-        const openingElements = getAncestorOpeningElements(node);
-        if (openingElements.some(hasUnresolvedRenderingState)) return;
-        if (
-          openingElements.some(
-            (ancestorOpeningElement) =>
-              isStaticallyNonRendered(ancestorOpeningElement, hasTailwind) ||
-              isVisuallyHidden(ancestorOpeningElement) ||
-              isPreformattedContext(ancestorOpeningElement),
-          )
-        ) {
-          return;
-        }
+        const parentState = ancestorStateStack.at(-1);
+        const ancestorState: TinyTextAncestorState = {
+          hasFunctionalTextContext:
+            parentState?.hasFunctionalTextContext === true ||
+            isFunctionalTextContext(openingElement),
+          shouldSkipText:
+            parentState?.shouldSkipText === true ||
+            hasUnresolvedRenderingState(openingElement) ||
+            isStaticallyNonRendered(openingElement, hasTailwind) ||
+            isVisuallyHidden(openingElement) ||
+            isPreformattedContext(openingElement),
+        };
+        ancestorStateStack.push(ancestorState);
+        if (ancestorState.shouldSkipText) return;
         const pxValue = getStaticEffectiveFontSize(openingElement, hasTailwind);
         if (
           pxValue === null ||
@@ -435,8 +428,7 @@ export const noTinyText = defineRule({
           hasGlyphOnlyContent(node) ||
           hasOnlyIconIdentifierChildren(node) ||
           isChildlessIconComponent(openingElement) ||
-          (isUppercaseTrackedMicroLabel(openingElement) &&
-            !isFunctionalTextContext(openingElements))
+          (isUppercaseTrackedMicroLabel(openingElement) && !ancestorState.hasFunctionalTextContext)
         ) {
           return;
         }
@@ -445,6 +437,9 @@ export const noTinyText = defineRule({
           node: openingElement,
           message: `Your users strain to read ${pxValue}px text, so use at least ${TINY_TEXT_THRESHOLD_PX}px for readable interface text, & 16px is best.`,
         });
+      },
+      "JSXElement:exit"() {
+        ancestorStateStack.pop();
       },
     };
   },

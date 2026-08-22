@@ -8,6 +8,7 @@ export interface BuildBenchmarkEnvironmentInput {
   readonly workerCount: number | "auto";
   readonly cpuProfile: boolean;
   readonly heapProfile: boolean;
+  readonly ruleTimings: boolean;
   readonly profileDirectory: string | null;
 }
 
@@ -42,6 +43,10 @@ export const buildBenchmarkEnvironment = (
       input.cpuProfile && input.profileDirectory !== null ? input.profileDirectory : undefined,
     REACT_DOCTOR_HEAP_PROFILE_DIR:
       input.heapProfile && input.profileDirectory !== null ? input.profileDirectory : undefined,
+    REACT_DOCTOR_OXLINT_TIMINGS_DIR:
+      input.ruleTimings && input.profileDirectory !== null ? input.profileDirectory : undefined,
+    REACT_DOCTOR_RULE_TIMINGS_DIR:
+      input.ruleTimings && input.profileDirectory !== null ? input.profileDirectory : undefined,
     REACT_DOCTOR_LINT_BATCH_ORDERING: undefined,
     REACT_DOCTOR_NO_CACHE: input.cacheCohort === "no-cache" ? "1" : undefined,
     REACT_DOCTOR_NO_DEAD_CODE_CACHE: undefined,

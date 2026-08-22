@@ -101,6 +101,7 @@ export const buildSharedBenchmarkCommand = (input: SharedBenchmarkCommandInput):
     .option("--compare <results.json>", "compare against a previous result")
     .option("--profile", "capture V8 CPU profiles in a dedicated sample", false)
     .option("--heap-profile", "capture V8 heap profiles in a dedicated sample", false)
+    .option("--rule-timings", "capture Oxlint per-rule timings in a dedicated sample", false)
     .showHelpAfterError()
     .allowExcessArguments(false)
     .exitOverride();
@@ -125,6 +126,7 @@ export const toBenchmarkCliOptions = (
   cliPath: path.resolve(commandOptions.cli),
   profile: commandOptions.profile,
   heapProfile: commandOptions.heapProfile,
+  ruleTimings: commandOptions.ruleTimings,
 });
 
 export const parsePerformanceArguments = (argumentsList: string[]): BenchmarkCliOptions => {

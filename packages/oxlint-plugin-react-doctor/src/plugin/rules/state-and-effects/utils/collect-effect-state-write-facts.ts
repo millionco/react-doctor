@@ -1852,12 +1852,16 @@ const expressionReadsStateDeclarator = (
         const assignedCallee = isNodeOfType(assignedCandidate, "CallExpression")
           ? stripParenExpression(assignedCandidate.callee)
           : null;
+        const assignedReceiver =
+          assignedCallee && isNodeOfType(assignedCallee, "MemberExpression")
+            ? stripParenExpression(assignedCallee.object)
+            : null;
         if (
           assignedCallee &&
           isNodeOfType(assignedCallee, "MemberExpression") &&
           FRESH_ARRAY_COPY_METHOD_NAMES.has(getStaticMemberName(assignedCallee) ?? "") &&
-          isNodeOfType(assignedCallee.object, "Identifier") &&
-          context.scopes.symbolFor(assignedCallee.object) === symbol
+          isNodeOfType(assignedReceiver, "Identifier") &&
+          context.scopes.symbolFor(assignedReceiver) === symbol
         ) {
           if (!isUnmodifiedMemberCall(assignedCandidate, executionReferenceNode)) return false;
           continue;
@@ -2150,14 +2154,22 @@ const areInMutuallyExclusiveBranches = (leftNode: EsTreeNode, rightNode: EsTreeN
   return false;
 };
 
+const effectStateWriteFactsByNode = new WeakMap<EsTreeNode, ReadonlyArray<EffectStateWriteFact>>();
+
 export const collectEffectStateWriteFacts = (
   analysis: ProgramAnalysis,
   context: RuleContext,
   effectNode: EsTreeNode,
   currentFilename?: string,
 ): ReadonlyArray<EffectStateWriteFact> => {
+  const cachedFacts = effectStateWriteFactsByNode.get(effectNode);
+  if (cachedFacts) return cachedFacts;
   const frames = collectBoundedEffectExecutionFrames(analysis, effectNode, currentFilename);
-  if (frames.length === 0) return [];
+  if (frames.length === 0) {
+    const emptyFacts: ReadonlyArray<EffectStateWriteFact> = [];
+    effectStateWriteFactsByNode.set(effectNode, emptyFacts);
+    return emptyFacts;
+  }
   const frameByFunctionNode = new Map<EsTreeNode, EffectExecutionFrame>();
   for (const frame of frames) {
     if (!frameByFunctionNode.has(frame.functionNode)) {
@@ -2272,7 +2284,7 @@ export const collectEffectStateWriteFacts = (
     }
   }
 
-  return facts.map((fact) => {
+  const collectedFacts = facts.map((fact) => {
     const sourceStateDeclarators = fact.sourceReferences
       .filter((sourceReference) => isState(analysis, sourceReference))
       .map((sourceReference) => getUseStateDecl(analysis, sourceReference))
@@ -2295,4 +2307,6 @@ export const collectEffectStateWriteFacts = (
         !resetsSourceState,
     };
   });
+  effectStateWriteFactsByNode.set(effectNode, collectedFacts);
+  return collectedFacts;
 };

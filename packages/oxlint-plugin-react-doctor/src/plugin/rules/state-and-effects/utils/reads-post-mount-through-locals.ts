@@ -30,29 +30,35 @@ const matchesPostMountRead = (node: EsTreeNode, options: ReadsPostMountOptions):
   return !(options.ignoreBareRefCurrent === true && isBareRefCurrentRead(node));
 };
 
-const objectPatternBindsName = (pattern: EsTreeNode, name: string): boolean => {
-  if (!isNodeOfType(pattern, "ObjectPattern")) return false;
-  return (pattern.properties ?? []).some((property) => {
-    if (!isNodeOfType(property, "Property")) return false;
-    const bound = property.value;
-    return Boolean(bound && isNodeOfType(bound, "Identifier") && bound.name === name);
-  });
-};
+const localInitializersByEffectFunction = new WeakMap<
+  EsTreeNode,
+  ReadonlyMap<string, EsTreeNode>
+>();
 
 const findEffectLocalInitializer = (effectFn: EsTreeNode, name: string): EsTreeNode | null => {
-  let initializer: EsTreeNode | null = null;
+  const cachedInitializers = localInitializersByEffectFunction.get(effectFn);
+  if (cachedInitializers) return cachedInitializers.get(name) ?? null;
+
+  const initializers = new Map<string, EsTreeNode>();
   walkAst(effectFn, (child: EsTreeNode): boolean | void => {
-    if (initializer) return false;
     if (!isNodeOfType(child, "VariableDeclarator") || !child.init) return;
-    if (
-      (isNodeOfType(child.id, "Identifier") && child.id.name === name) ||
-      objectPatternBindsName(child.id as EsTreeNode, name)
-    ) {
-      initializer = child.init as EsTreeNode;
-      return false;
+    const initializer = child.init;
+    if (isNodeOfType(child.id, "Identifier")) {
+      if (!initializers.has(child.id.name)) initializers.set(child.id.name, initializer);
+      return;
+    }
+    if (!isNodeOfType(child.id, "ObjectPattern")) return;
+    for (const property of child.id.properties ?? []) {
+      if (!isNodeOfType(property, "Property") || !isNodeOfType(property.value, "Identifier")) {
+        continue;
+      }
+      if (!initializers.has(property.value.name)) {
+        initializers.set(property.value.name, initializer);
+      }
     }
   });
-  return initializer;
+  localInitializersByEffectFunction.set(effectFn, initializers);
+  return initializers.get(name) ?? null;
 };
 
 const collectReturnedExpressions = (functionNode: EsTreeNode): ReadonlyArray<EsTreeNode> => {

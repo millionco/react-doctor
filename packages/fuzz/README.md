@@ -62,6 +62,7 @@ FUZZ_TAG=design pnpm fuzz                  # every rule with one registry tag
 FUZZ_ITERATIONS=200 FUZZ_SEED=42 pnpm fuzz # more cases, fixed seed
 FUZZ_INVARIANTS=1 pnpm fuzz                # warn on invariant violations
 FUZZ_STRICT=1 pnpm fuzz                    # fail on invariant violations too
+FUZZ_SLOW_THRESHOLD_MS=100 pnpm fuzz       # verify and report lower-latency outliers
 FUZZ_CORPUS_DIR=~/corpus-repos pnpm fuzz   # also fuzz real files + crossover
 FUZZ_PRINT_SILENT=1 pnpm fuzz              # list rules that never fired
 FUZZ_PRINT_STATS=1 pnpm fuzz               # print executed, fired, and parse-skip counts

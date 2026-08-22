@@ -8,6 +8,7 @@ import {
 import { OxlintBatchExceeded, OxlintSpawnFailed, ReactDoctorError } from "../../errors.js";
 import { buildOxlintChildEnv } from "../../utils/build-oxlint-child-env.js";
 import { buildProfiledNodeArguments } from "../../utils/build-profiled-node-arguments.js";
+import { captureOxlintRuleTimings } from "../../utils/capture-oxlint-rule-timings.js";
 import { lowerChildProcessPriority } from "../../utils/lower-child-process-priority.js";
 
 const SANITIZED_ENV: NodeJS.ProcessEnv = buildOxlintChildEnv(process.env);
@@ -183,6 +184,17 @@ export const spawnOxlint = (
           return;
         }
       }
-      resolve(output);
+      const timingDirectory = SANITIZED_ENV.REACT_DOCTOR_OXLINT_TIMINGS_DIR;
+      if (timingDirectory === undefined) {
+        resolve(output);
+        return;
+      }
+      captureOxlintRuleTimings({
+        argumentsList: args,
+        environment: SANITIZED_ENV,
+        nodeBinaryPath,
+        rootDirectory,
+        timingDirectory,
+      }).then(() => resolve(output), reject);
     });
   });

@@ -334,7 +334,7 @@ const resolveMemberFunction = (
       propertyName,
       scopes,
       visitedSymbolIds,
-      remainingDepth - 1,
+      remainingDepth,
     );
     return {
       exactFunction,
@@ -343,7 +343,7 @@ const resolveMemberFunction = (
         propertyName,
         scopes,
         visitedSymbolIds,
-        remainingDepth - 1,
+        remainingDepth,
       ),
     };
   }
@@ -353,7 +353,7 @@ const resolveMemberFunction = (
       propertyName,
       scopes,
       visitedSymbolIds,
-      remainingDepth - 1,
+      remainingDepth,
     );
     return {
       exactFunction,
@@ -362,7 +362,7 @@ const resolveMemberFunction = (
         propertyName,
         scopes,
         visitedSymbolIds,
-        remainingDepth - 1,
+        remainingDepth,
       ),
     };
   }
@@ -383,14 +383,14 @@ const resolveMemberFunction = (
       propertyName,
       scopes,
       visitedSymbolIds,
-      remainingDepth - 1,
+      remainingDepth,
     );
     initialPossibleFunctions = resolvePossibleObjectPropertyFunctions(
       initializer,
       propertyName,
       scopes,
       visitedSymbolIds,
-      remainingDepth - 1,
+      remainingDepth,
     );
   } else if (receiverSymbol.kind === "class" && receiverSymbol.initializer) {
     initialFunction = resolveStaticClassFunction(
@@ -398,14 +398,14 @@ const resolveMemberFunction = (
       propertyName,
       scopes,
       visitedSymbolIds,
-      remainingDepth - 1,
+      remainingDepth,
     );
     initialPossibleFunctions = resolvePossibleStaticClassFunctions(
       receiverSymbol.initializer,
       propertyName,
       scopes,
       visitedSymbolIds,
-      remainingDepth - 1,
+      remainingDepth,
     );
   }
   return resolveAssignedMemberFunction(
@@ -416,7 +416,7 @@ const resolveMemberFunction = (
     initialPossibleFunctions,
     scopes,
     visitedSymbolIds,
-    remainingDepth - 1,
+    remainingDepth,
   );
 };
 
@@ -449,14 +449,14 @@ const resolvePossibleLocalFunctionsInternal = (
         remainingDepth - 1,
       );
     }
-    return resolveMemberFunction(unwrappedExpression, scopes, visitedSymbolIds, remainingDepth - 1)
+    return resolveMemberFunction(unwrappedExpression, scopes, visitedSymbolIds, remainingDepth)
       .possibleFunctions;
   }
   const exactFunction = resolveExactLocalFunctionInternal(
     unwrappedExpression,
     scopes,
     visitedSymbolIds,
-    remainingDepth - 1,
+    remainingDepth,
   );
   return exactFunction ? [exactFunction] : [];
 };
@@ -467,9 +467,9 @@ const resolveExactLocalFunctionInternal = (
   visitedSymbolIds: Set<number>,
   remainingDepth: number,
 ): EsTreeNode | null => {
-  if (remainingDepth <= 0) return null;
   const unwrappedExpression = stripParenExpression(expression);
   if (isFunctionLike(unwrappedExpression)) return unwrappedExpression;
+  if (remainingDepth <= 0) return null;
   if (isNodeOfType(unwrappedExpression, "CallExpression")) {
     const callee = stripParenExpression(unwrappedExpression.callee);
     if (isNodeOfType(callee, "MemberExpression") && getStaticPropertyName(callee) === "bind") {
@@ -492,7 +492,7 @@ const resolveExactLocalFunctionInternal = (
         remainingDepth - 1,
       );
     }
-    return resolveMemberFunction(unwrappedExpression, scopes, visitedSymbolIds, remainingDepth - 1)
+    return resolveMemberFunction(unwrappedExpression, scopes, visitedSymbolIds, remainingDepth)
       .exactFunction;
   }
   if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;

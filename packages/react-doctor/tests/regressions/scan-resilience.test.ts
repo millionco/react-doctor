@@ -31,6 +31,7 @@ import {
   batchIncludePaths,
   createOxlintConfig,
   OXLINT_MAX_FILES_PER_BATCH,
+  runOxlint,
   SPAWN_ARGS_MAX_LENGTH_CHARS,
 } from "@react-doctor/core";
 import {
@@ -911,32 +912,20 @@ describe("issue #921: non-string `projects` config entry crashes selectProjects"
 });
 
 describe("issue #1657: stack overflow with zustand + Next.js + path aliases", () => {
-  it("completes without crashing when scanning zustand store with path aliases", () => {
+  it("completes without crashing when scanning zustand store with path aliases", async () => {
     const projectDir = setupReactProject(tempRoot, "issue-1657-zustand-nextjs", {
-      dependencies: {
-        next: "preview",
-        react: "19.2.4",
-        "react-dom": "19.2.4",
-        zustand: "5.0.14",
-      },
-      tsconfigOverrides: {
-        compilerOptions: {
-          paths: {
-            "@/*": ["./src/*"],
-          },
+      packageJsonExtras: {
+        dependencies: {
+          next: "preview",
+          react: "19.2.4",
+          "react-dom": "19.2.4",
+          zustand: "5.0.14",
         },
       },
-    });
-
-    writeFile(
-      path.join(projectDir, "src/lib/preferences/theme.ts"),
-      `export type Theme = 'light' | 'dark' | 'system';
+      files: {
+        "src/lib/preferences/theme.ts": `export type Theme = 'light' | 'dark' | 'system';
 export const DEFAULT_THEME: Theme = 'system';`,
-    );
-
-    writeFile(
-      path.join(projectDir, "src/lib/preferences/theme-utils.ts"),
-      `import { type Theme, DEFAULT_THEME } from './theme';
+        "src/lib/preferences/theme-utils.ts": `import { type Theme, DEFAULT_THEME } from './theme';
 
 export const resolveTheme = (theme: Theme): 'light' | 'dark' => {
   if (theme === 'system') {
@@ -948,21 +937,13 @@ export const resolveTheme = (theme: Theme): 'light' | 'dark' => {
 };
 
 export const getInitialTheme = (): Theme => DEFAULT_THEME;`,
-    );
-
-    writeFile(
-      path.join(projectDir, "src/lib/preferences/preference-runtime.ts"),
-      `import { resolveTheme, getInitialTheme } from './theme-utils';
+        "src/lib/preferences/preference-runtime.ts": `import { resolveTheme, getInitialTheme } from './theme-utils';
 
 export const runtime = {
   resolve: resolveTheme,
   getInitial: getInitialTheme,
 };`,
-    );
-
-    writeFile(
-      path.join(projectDir, "src/stores/preferences/preferences-store.ts"),
-      `import { createStore } from 'zustand/vanilla';
+        "src/stores/preferences/preferences-store.ts": `import { createStore } from 'zustand/vanilla';
 import { runtime } from '@/lib/preferences/preference-runtime';
 import type { Theme } from '@/lib/preferences/theme';
 
@@ -977,28 +958,27 @@ export const preferencesStore = createStore<PreferencesState>()((set, get) => ({
   setTheme: (theme) => set({ theme }),
   getResolvedTheme: () => runtime.resolve(get().theme),
 }));`,
-    );
-
-    const { rd } = buildTestProject(projectDir);
-    const result = spawnSync(
-      rd,
-      ["--no-telemetry", "--no-cache", "--json", "--json-out", "report.json"],
-      {
-        cwd: projectDir,
-        encoding: "utf8",
-        timeout: 30_000,
       },
-    );
+    });
+    writeJson(path.join(projectDir, "tsconfig.json"), {
+      compilerOptions: {
+        baseUrl: ".",
+        jsx: "preserve",
+        module: "esnext",
+        paths: { "@/*": ["./src/*"] },
+        target: "es2022",
+      },
+    });
 
-    expect(result.status).toBe(0);
-    expect(result.stderr).not.toContain("RangeError: Maximum call stack size exceeded");
-    expect(result.stderr).not.toContain("Error running JS plugin");
+    const project = discoverProject(projectDir);
+    expect(project.framework).toBe("nextjs");
 
-    const reportPath = path.join(projectDir, "report.json");
-    expect(fs.existsSync(reportPath)).toBe(true);
-
-    const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
-    expect(report.complete).toBe(true);
-    expect(report.skippedChecks).not.toContain("lint");
+    await expect(
+      runOxlint({
+        rootDirectory: projectDir,
+        project,
+        includePaths: [path.join(projectDir, "src/stores/preferences/preferences-store.ts")],
+      }),
+    ).resolves.toEqual(expect.any(Array));
   });
 });

@@ -48,7 +48,14 @@ const oxlintBinaryPath = path.join(
 );
 const pluginPath = requireFromRepository.resolve("oxlint-plugin-react-doctor");
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-native-parity-"));
-const fixturePath = path.join(temporaryDirectory, "app", "error.tsx");
+const fixtureDirectory = path.join(temporaryDirectory, "production-fixtures");
+const fixturePath = path.join(fixtureDirectory, "app", "error.tsx");
+const globalErrorFixturePath = path.join(fixtureDirectory, "app", "global-error.tsx");
+const ogImageFixturePath = path.join(fixtureDirectory, "app", "opengraph-image.tsx");
+const routeHandlerFixturePath = path.join(fixtureDirectory, "app", "api", "route.ts");
+const safeGlobalErrorFixturePath = path.join(fixtureDirectory, "app", "safe", "global-error.tsx");
+const safePageFixturePath = path.join(fixtureDirectory, "app", "page.tsx");
+const safeRouteHandlerFixturePath = path.join(fixtureDirectory, "app", "safe", "route.ts");
 const nonProductionFixturePath = path.join(temporaryDirectory, "fixture.test.tsx");
 const configuredFixturePath = path.join(temporaryDirectory, "configured.tsx");
 const stockConfigPath = path.join(temporaryDirectory, "stock.json");
@@ -121,6 +128,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "nextjs-no-google-analytics-script": 2,
   "nextjs-no-head-import": 1,
   "nextjs-error-boundary-missing-use-client": 1,
+  "nextjs-global-error-missing-html-body": 1,
+  "nextjs-no-edge-og-runtime": 1,
+  "nextjs-no-default-export-in-route-handler": 1,
   "prefer-truncate-shorthand": 3,
   "no-multiple-main-landmarks": 3,
   "iframe-title-unique": 2,
@@ -497,6 +507,24 @@ try {
   fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
   fs.writeFileSync(fixturePath, fixture);
   fs.writeFileSync(
+    globalErrorFixturePath,
+    `'use client';\nimport React from "react";\nexport default function GlobalError() { return <div />; }\n`,
+  );
+  fs.writeFileSync(ogImageFixturePath, 'export const runtime = "edge";');
+  fs.mkdirSync(path.dirname(routeHandlerFixturePath), { recursive: true });
+  fs.writeFileSync(routeHandlerFixturePath, "export default function handler() {}\n");
+  fs.mkdirSync(path.dirname(safeGlobalErrorFixturePath), { recursive: true });
+  fs.writeFileSync(
+    safeGlobalErrorFixturePath,
+    `'use client';\nimport React from "react";\nexport default function GlobalError() { return <html lang="en"><body /></html>; }\n`,
+  );
+  fs.writeFileSync(safePageFixturePath, 'export const runtime = "edge";\n');
+  fs.mkdirSync(path.dirname(safeRouteHandlerFixturePath), { recursive: true });
+  fs.writeFileSync(
+    safeRouteHandlerFixturePath,
+    "export const GET = () => new Response();\nexport default function handler() {}\n",
+  );
+  fs.writeFileSync(
     nonProductionFixturePath,
     `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>;`,
   );
@@ -545,12 +573,16 @@ class ConfiguredState extends Component {
       }),
     ),
   );
-  const stockDiagnostics = runOxlint(stockConfigPath, process.env).diagnostics;
+  const stockDiagnostics = runOxlint(stockConfigPath, process.env, fixtureDirectory).diagnostics;
   const nativeEnvironment = {
     ...process.env,
     NAPI_RS_NATIVE_LIBRARY_PATH: path.resolve(nativeBindingPath),
   };
-  const nativeDiagnostics = runOxlint(nativeConfigPath, nativeEnvironment).diagnostics;
+  const nativeDiagnostics = runOxlint(
+    nativeConfigPath,
+    nativeEnvironment,
+    fixtureDirectory,
+  ).diagnostics;
   const stockDiagnosticCounts = countDiagnosticsByRule(stockDiagnostics);
   if (JSON.stringify(stockDiagnosticCounts) !== JSON.stringify(EXPECTED_DIAGNOSTIC_COUNTS)) {
     throw new Error(

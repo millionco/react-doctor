@@ -147,6 +147,7 @@ impl Rule for ${delegatedRule.struct} {
         "get-static-class-name",
         "is-in-project-directory",
         "is-next-file-active",
+        "program-estree-span",
         "collect-static-jsx-opening-elements",
         "is-static-jsx-tree-root",
         "get-static-jsx-tree-opening-elements",

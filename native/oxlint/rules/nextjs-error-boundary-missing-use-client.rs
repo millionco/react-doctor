@@ -1,7 +1,6 @@
 use oxc_ast::AstKind;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
-use oxc_span::{GetSpan, Span};
 
 use crate::{
     context::{ContextHost, LintContext},
@@ -46,16 +45,6 @@ impl Rule for NextjsErrorBoundaryMissingUseClient {
         }
         ctx.diagnostic(OxcDiagnostic::warn(MESSAGE).with_label(program_estree_span(program)));
     }
-}
-
-fn program_estree_span(program: &oxc_ast::ast::Program) -> Span {
-    let start = program
-        .directives
-        .first()
-        .map(GetSpan::span)
-        .or_else(|| program.body.first().map(GetSpan::span))
-        .map_or(0, |first_span| first_span.start);
-    Span::new(start, program.span.end)
 }
 
 fn is_error_boundary_filename(filename: &str) -> bool {

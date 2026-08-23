@@ -147,6 +147,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "dialog-has-accessible-name": 2,
   "no-disabled-zoom": 3,
   "nextjs-no-script-in-head": 1,
+  "rendering-animate-svg-wrapper": 2,
+  "rn-bottom-sheet-no-ignored-scroll-prop": 4,
+  "rn-platform-shaking-use-direct-import": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -186,6 +189,8 @@ import React, { Children, useEffect, useMemo, useState, Component, forwardRef as
 import ReactDOM from "react-dom";
 import type { useMemo as PreactTypeOnlyHook } from "react";
 import RawBottomSheet from "react-native-raw-bottom-sheet";
+import { BottomSheetScrollView as SheetScroll } from "@gorhom/bottom-sheet";
+import * as GorhomBottomSheet from "@gorhom/bottom-sheet";
 import { Audio } from "expo-av/build/Audio";
 import {
   Animated,
@@ -195,6 +200,7 @@ import {
   TouchableOpacity,
   type WebView,
 } from "react-native";
+import * as ReactNative from "react-native";
 import { motion, motionValue as createMotionValue, useTransform as mapMotionValue, type MotionConfig } from "framer-motion";
 import * as MotionRuntime from "motion/react";
 import Head from "next/head";
@@ -244,6 +250,14 @@ const MemoMotionFixture = React.memo(() => {
 const mapArray = Array.from;
 const ArrayFromMotionFixture = () => mapArray(["nav"], (tagName) => motion.create(tagName));
 const dynamicMotionTransform = mapMotionValue(progress, inputRange, outputRange);
+const animatedSvg = <svg animate={{ opacity: 1 }} />;
+const SvgElement = "svg" as const;
+const animatedSvgAlias = <SvgElement whileInView={{ opacity: 1 }} />;
+const staticSvg = <svg viewBox="0 0 24 24" />;
+const ignoredBottomSheetScrollProperties = <SheetScroll scrollEventThrottle={16} decelerationRate="fast" onScrollBeginDrag={handleDrag} />;
+const ignoredNamespacedBottomSheetScrollProperty = <GorhomBottomSheet.BottomSheetScrollView decelerationRate="normal" />;
+const supportedBottomSheetScrollProperty = <SheetScroll onScroll={handleScroll} {...scrollProperties} />;
+const currentPlatform = ReactNative.Platform.OS;
 const namespaced = <svg:path />;
 React.createElement("svg:path");
 const danger = <div dangerouslySetInnerHTML={{ __html: markup }} />;

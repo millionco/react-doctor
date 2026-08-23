@@ -88,7 +88,10 @@
     "motion-value-constructor-in-render",
     "dialog-has-accessible-name",
     "no-disabled-zoom",
-    "nextjs-no-script-in-head"
+    "nextjs-no-script-in-head",
+    "rendering-animate-svg-wrapper",
+    "rn-bottom-sheet-no-ignored-scroll-prop",
+    "rn-platform-shaking-use-direct-import"
   ],
   "delegatedRules": [
     {

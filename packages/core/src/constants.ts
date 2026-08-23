@@ -647,6 +647,9 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "dialog-has-accessible-name",
   "no-disabled-zoom",
   "nextjs-no-script-in-head",
+  "rendering-animate-svg-wrapper",
+  "rn-bottom-sheet-no-ignored-scroll-prop",
+  "rn-platform-shaking-use-direct-import",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

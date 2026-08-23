@@ -156,6 +156,7 @@ impl Rule for ${delegatedRule.struct} {
         "motion-react-api-path-matches",
         "is-render-phase-component-or-hook",
         "is-inside-stable-react-initializer",
+        "resolve-imported-jsx-component-name",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

@@ -294,6 +294,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "design-no-three-period-ellipsis": 1,
   "design-no-vague-button-label": 1,
   "js-tosorted-immutable": 1,
+  "rerender-functional-setstate": 8,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -972,6 +973,35 @@ const assignedMemo = useMemo(() => ({ raw }), [raw]);
 assignedMemo.raw = mode;
 const deletedMemo = useMemo(() => ({ raw }), [raw]);
 delete deletedMemo.raw;
+const FunctionalSetstateFixture = () => {
+  const [count, setCount] = useState(0);
+  const [items, setItems] = useState([]);
+  const [profile, setProfile] = useState({ active: false });
+  const [page, setPage] = useState(1);
+  const doubleStep = () => {
+    setCount(count + 1);
+    setCount(count + 1);
+  };
+  useEffect(() => {
+    const interval = setInterval(() => setCount(count - 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+  const remember = debounce((item) => setItems([...items, item]), 100);
+  const updateProfile = throttle((active) => setProfile({ ...profile, active }), 100);
+  queueMicrotask(() => setPage(++page));
+  Promise.resolve().then(() => setPage(page ** 2));
+  requestAnimationFrame(() => setPage(page / 2));
+  const singleStep = () => setPage(page + 1);
+  const synchronousSpread = () => setItems([...items, raw]);
+  const mutuallyExclusiveStep = () => {
+    if (page === 0) {
+      setPage(1);
+    } else if (page > 0) {
+      setPage(page - 1);
+    }
+  };
+  return <button onClick={doubleStep} onBlur={singleStep} onFocus={synchronousSpread} onKeyDown={mutuallyExclusiveStep}>{remember}{updateProfile}</button>;
+};
 {
   class Map {}
   const shadowedMapState = useState(new Map());
@@ -1105,7 +1135,7 @@ try {
   );
   fs.writeFileSync(
     nonProductionFixturePath,
-    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; const smallTestInput = <input style={{ fontSize: 14 }} />; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js")); useMemo(() => value + 1, [value]);`,
+    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; const smallTestInput = <input style={{ fontSize: 14 }} />; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js")); useMemo(() => value + 1, [value]); function TestCounter() { const [count, setCount] = useState(0); setTimeout(() => setCount(count + 1), 0); }`,
   );
   fs.writeFileSync(
     deepNonProductionFixturePath,

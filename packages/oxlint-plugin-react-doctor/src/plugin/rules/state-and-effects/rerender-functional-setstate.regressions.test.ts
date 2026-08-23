@@ -341,6 +341,25 @@ describe("rerender-functional-setstate — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("stays silent when the other same-setter call does not read state", () => {
+    const result = runRule(
+      rerenderFunctionalSetstate,
+      `function Editor({ editingIndex, removedIndex }) {
+        const [index, setIndex] = useState(editingIndex);
+        const remove = () => {
+          if (index === removedIndex) {
+            setIndex(0);
+          } else if (removedIndex < index) {
+            setIndex(index - 1);
+          }
+        };
+        return <button onClick={remove}>Remove</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags arithmetic inside a setInterval closure", () => {
     const result = runRule(
       rerenderFunctionalSetstate,

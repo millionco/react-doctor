@@ -2,6 +2,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
 import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -119,10 +121,39 @@ const isInsideDeferredCallback = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const isFunctionLikeNode = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "ArrowFunctionExpression") ||
-  isNodeOfType(node, "FunctionExpression") ||
-  isNodeOfType(node, "FunctionDeclaration");
+const setterArgumentReadsState = (
+  setterCallNode: EsTreeNodeOfType<"CallExpression">,
+  stateName: string,
+): boolean => {
+  const argument = setterCallNode.arguments?.[0];
+  if (isNodeOfType(argument, "Identifier")) return argument.name === stateName;
+  if (isNodeOfType(argument, "BinaryExpression")) {
+    return (
+      (isNodeOfType(argument.left, "Identifier") && argument.left.name === stateName) ||
+      (isNodeOfType(argument.right, "Identifier") && argument.right.name === stateName)
+    );
+  }
+  if (isNodeOfType(argument, "UpdateExpression")) {
+    return isNodeOfType(argument.argument, "Identifier") && argument.argument.name === stateName;
+  }
+  if (isNodeOfType(argument, "ArrayExpression")) {
+    return (argument.elements ?? []).some(
+      (element: EsTreeNode | null) =>
+        isNodeOfType(element, "SpreadElement") &&
+        isNodeOfType(element.argument, "Identifier") &&
+        element.argument.name === stateName,
+    );
+  }
+  if (isNodeOfType(argument, "ObjectExpression")) {
+    return (argument.properties ?? []).some(
+      (property: EsTreeNode | null) =>
+        isNodeOfType(property, "SpreadElement") &&
+        isNodeOfType(property.argument, "Identifier") &&
+        property.argument.name === stateName,
+    );
+  }
+  return false;
+};
 
 // A single synchronous `setX(x - 1)` per handler invocation cannot lose its
 // own update — React renders between discrete events, so the next call reads
@@ -132,24 +163,25 @@ const isFunctionLikeNode = (node: EsTreeNode): boolean =>
 const hasMultipleSetterCallsInEnclosingFunction = (
   setterCallNode: EsTreeNodeOfType<"CallExpression">,
   setterName: string,
+  stateName: string,
 ): boolean => {
-  let enclosingFunction: EsTreeNode | null | undefined = setterCallNode.parent;
-  while (enclosingFunction && !isFunctionLikeNode(enclosingFunction)) {
-    enclosingFunction = enclosingFunction.parent;
-  }
+  const enclosingFunction = findEnclosingFunction(setterCallNode);
   if (!enclosingFunction) return false;
 
-  let setterCallCount = 0;
+  let hasOtherStateReadingSetterCall = false;
   walkAst(enclosingFunction, (child: EsTreeNode) => {
+    if (child !== enclosingFunction && isFunctionLike(child)) return false;
     if (
+      (child.range[0] !== setterCallNode.range[0] || child.range[1] !== setterCallNode.range[1]) &&
       isNodeOfType(child, "CallExpression") &&
       isNodeOfType(child.callee, "Identifier") &&
-      child.callee.name === setterName
+      child.callee.name === setterName &&
+      setterArgumentReadsState(child, stateName)
     ) {
-      setterCallCount += 1;
+      hasOtherStateReadingSetterCall = true;
     }
   });
-  return setterCallCount >= 2;
+  return hasOtherStateReadingSetterCall;
 };
 
 export const rerenderFunctionalSetstate = defineRule({
@@ -179,7 +211,8 @@ export const rerenderFunctionalSetstate = defineRule({
       // an update.
       const canSyncArithmeticGoStale = (): boolean =>
         isInsideDeferredCallback(node) ||
-        hasMultipleSetterCallsInEnclosingFunction(node, calleeName);
+        (expectedStateName !== null &&
+          hasMultipleSetterCallsInEnclosingFunction(node, calleeName, expectedStateName));
 
       if (
         isNodeOfType(argument, "BinaryExpression") &&

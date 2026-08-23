@@ -205,7 +205,8 @@
     "design-no-space-on-flex-children",
     "design-no-three-period-ellipsis",
     "design-no-vague-button-label",
-    "js-tosorted-immutable"
+    "js-tosorted-immutable",
+    "rerender-functional-setstate"
   ],
   "delegatedRules": [
     {

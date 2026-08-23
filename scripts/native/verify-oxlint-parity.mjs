@@ -95,6 +95,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "html-no-nested-form": 1,
   "no-img-lazy-with-high-fetchpriority": 1,
   "no-srcset-without-sizes": 1,
+  "no-aria-hidden-on-focusable": 5,
+  "jsx-props-no-spread-multi": 2,
+  "no-redundant-should-component-update": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -149,6 +152,12 @@ document[method]("safe");
 stream.write("safe");
 { const document = { write() {} }; document.write("safe"); }
 const duplicateProps = <Widget value="first" value="second" />;
+const sharedSpreadProps = {};
+const duplicateIdentifierSpread = <Widget {...sharedSpreadProps} {...sharedSpreadProps} {...sharedSpreadProps} />;
+const nestedSpreadProps = { options: {} };
+const duplicateMemberSpread = <Widget {...nestedSpreadProps.options} {...(nestedSpreadProps.options)} />;
+const distinctMemberSpreads = <Widget {...nestedSpreadProps.options} {...nestedSpreadProps.other} />;
+const wrappedComputedSpreads = <Widget {...nestedSpreadProps[("options" as string)]} {...nestedSpreadProps.options} />;
 const namespaced = <svg:path />;
 React.createElement("svg:path");
 const danger = <div dangerouslySetInnerHTML={{ __html: markup }} />;
@@ -211,6 +220,15 @@ const infiniteTabOrder = <button tabIndex="Infinity">Normal</button>;
 const staticFalseTabOrder = <button tabIndex={false ? 2 : 0}>Normal</button>;
 const numericFalseTabOrder = <button tabIndex={0 ? 2 : 0}>Normal</button>;
 const unaryPositiveTabOrder = <button tabIndex={+2}>Normal</button>;
+const hiddenFocusableButton = <button aria-hidden={true}>Hidden</button>;
+const hiddenFocusableInput = <input aria-hidden="true" />;
+const hiddenFocusablePlayer = <video controls aria-hidden src="clip.mp4" />;
+const hiddenFocusableDiv = <div tabIndex={0} aria-hidden={"true"}>Hidden</div>;
+const dynamicAriaHidden = <button aria-hidden={isHidden}>Dynamic</button>;
+const visuallyHiddenInput = <input className="hidden" aria-hidden />;
+const negativeHiddenButton = <button tabIndex={-1} aria-hidden />;
+const FocusableAlias = "button" as const;
+const hiddenFocusableAlias = <FocusableAlias aria-hidden />;
 const autoplayingVideo = <video autoPlay src="hero.mp4" />;
 const mutedAutoplayingVideo = <video autoPlay muted src="hero.mp4" />;
 const unnamedDetails = <details><p>Answer</p></details>;
@@ -230,6 +248,15 @@ class LegacyState extends Component {
   computedUpdate() { this[setState]({ loading: false }); this[(setState as any)]({}); }
   update() { this.state.value = 1; this.isMounted(); }
   render() { return null; }
+}
+class PureOverride extends React.PureComponent {
+  shouldComponentUpdate() { return true; }
+}
+const AnonymousPureOverride = class extends PureComponent {
+  "shouldComponentUpdate" = () => true;
+};
+class WrappedReactPure extends (React as any).PureComponent {
+  shouldComponentUpdate() { return true; }
 }
 class ConnectionPool {
   isMounted() { return true; }

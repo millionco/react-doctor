@@ -139,6 +139,7 @@ impl Rule for ${delegatedRule.struct} {
         "for-each-value-import",
         "resolve-jsx-element-type",
         "get-string-literal-attribute-value",
+        "parse-static-jsx-number",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

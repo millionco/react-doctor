@@ -1,9 +1,5 @@
-use oxc_ast::{
-    AstKind,
-    ast::{Expression, JSXAttributeItem, JSXAttributeValue},
-};
+use oxc_ast::{AstKind, ast::JSXAttributeItem};
 use oxc_diagnostics::OxcDiagnostic;
-use oxc_ecmascript::StringToNumber;
 use oxc_macros::declare_oxc_lint;
 
 use crate::{
@@ -47,75 +43,5 @@ impl Rule for TabindexNoPositive {
 
     fn should_run(&self, ctx: &ContextHost) -> bool {
         !is_non_production_file(ctx)
-    }
-}
-
-fn parse_static_jsx_number(value: &JSXAttributeValue) -> Option<f64> {
-    match value {
-        JSXAttributeValue::StringLiteral(string_literal) => {
-            parse_finite_number(string_literal.value.as_str())
-        }
-        JSXAttributeValue::ExpressionContainer(container) => {
-            parse_static_expression(container.expression.as_expression()?.get_inner_expression())
-        }
-        _ => None,
-    }
-}
-
-fn parse_static_expression(expression: &Expression) -> Option<f64> {
-    match expression.get_inner_expression() {
-        Expression::NumericLiteral(number_literal) => Some(number_literal.value),
-        Expression::StringLiteral(string_literal) => {
-            parse_finite_number(string_literal.value.as_str())
-        }
-        Expression::UnaryExpression(unary_expression)
-            if unary_expression.operator == oxc_syntax::operator::UnaryOperator::UnaryNegation =>
-        {
-            let Expression::NumericLiteral(number_literal) =
-                unary_expression.argument.get_inner_expression()
-            else {
-                return None;
-            };
-            Some(-number_literal.value)
-        }
-        Expression::TemplateLiteral(template_literal)
-            if template_literal.expressions.is_empty() && template_literal.quasis.len() == 1 =>
-        {
-            let quasi = &template_literal.quasis[0];
-            parse_finite_number(
-                quasi
-                    .value
-                    .cooked
-                    .as_ref()
-                    .map_or(quasi.value.raw.as_str(), |cooked| cooked.as_str()),
-            )
-        }
-        Expression::ConditionalExpression(conditional_expression) => {
-            let selected_expression =
-                if resolve_static_truthiness(&conditional_expression.test).unwrap_or(true) {
-                    &conditional_expression.consequent
-                } else {
-                    &conditional_expression.alternate
-                };
-            parse_static_expression(selected_expression)
-        }
-        _ => None,
-    }
-}
-
-fn parse_finite_number(value: &str) -> Option<f64> {
-    let number = value
-        .trim_matches(|character: char| character.is_whitespace() || character == '\u{feff}')
-        .string_to_number();
-    number.is_finite().then_some(number)
-}
-
-fn resolve_static_truthiness(expression: &Expression) -> Option<bool> {
-    match expression.get_inner_expression() {
-        Expression::BooleanLiteral(boolean_literal) => Some(boolean_literal.value),
-        Expression::NullLiteral(_) => Some(false),
-        Expression::NumericLiteral(number_literal) => Some(number_literal.value != 0.0),
-        Expression::StringLiteral(string_literal) => Some(!string_literal.value.is_empty()),
-        _ => None,
     }
 }

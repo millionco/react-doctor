@@ -275,6 +275,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "require-autoplay-video-poster": 3,
   "rerender-dependencies": 4,
   "rerender-lazy-ref-init": 7,
+  "no-inert-sticky-position": 1,
+  "no-crushed-letter-spacing": 1,
+  "no-inline-bounce-easing": 1,
+  "prefer-tabular-numeric-data": 1,
+  "no-excessive-font-families": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -921,6 +926,11 @@ const emptyWeakMapReference = useRef(new GlobalWeakMap());
   const Map = cache.Map;
   const shadowedMapReference = useRef(new Map());
 }
+const inertStickyPosition = <header className="sticky z-10" />;
+const crushedLetterSpacing = <h1 style={{ letterSpacing: "-0.12em" }}>Readable heading</h1>;
+const inlineBounceEasing = <div className="animate-bounce" />;
+const proportionalNumericData = <table><tbody><tr><td>{total.toLocaleString()}</td></tr></tbody></table>;
+const excessiveFontFamilies = <main><h1 style={{ fontFamily: "Fraunces" }}>Title</h1><p style={{ fontFamily: "Inter" }}>Body</p><code style={{ fontFamily: "JetBrains Mono" }}>Code</code><aside style={{ fontFamily: "Caveat" }}>Note</aside></main>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

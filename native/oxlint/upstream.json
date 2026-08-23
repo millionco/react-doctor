@@ -186,7 +186,12 @@
     "no-overwide-text-measure",
     "require-autoplay-video-poster",
     "rerender-dependencies",
-    "rerender-lazy-ref-init"
+    "rerender-lazy-ref-init",
+    "no-inert-sticky-position",
+    "no-crushed-letter-spacing",
+    "no-inline-bounce-easing",
+    "prefer-tabular-numeric-data",
+    "no-excessive-font-families"
   ],
   "delegatedRules": [
     {

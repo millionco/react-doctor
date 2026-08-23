@@ -209,7 +209,8 @@
     "rerender-functional-setstate",
     "js-cache-storage",
     "no-set-state-in-render",
-    "js-cache-property-access"
+    "js-cache-property-access",
+    "no-effect-event-in-deps"
   ],
   "delegatedRules": [
     {

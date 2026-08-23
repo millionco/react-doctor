@@ -298,6 +298,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "js-cache-storage": 1,
   "no-set-state-in-render": 2,
   "js-cache-property-access": 1,
+  "no-effect-event-in-deps": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -344,7 +345,7 @@ const fixture = `
 import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
-import React, { Children, createContext as makeContext, useEffect, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef } from "react";
+import React, { Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef } from "react";
 import ReactDOM from "react-dom";
 import type { useMemo as PreactTypeOnlyHook } from "react";
 import { createContext as makeTrackedContext } from "react-tracked";
@@ -1024,6 +1025,21 @@ function HandlerRenderSetterFixture() {
   const [handlerCount, setHandlerCount] = useState(0);
   const increment = () => setHandlerCount(handlerCount + 1);
   return <button onClick={increment}>{handlerCount}</button>;
+}
+function EffectEventDependencyFixture({ value }) {
+  const onTick = useEffectEvent(() => value);
+  useEffect(() => onTick(), [onTick]);
+  return null;
+}
+function ImportedEffectEventDependencyFixture({ value }) {
+  const onImportedTick = useReactEffectEvent(() => value);
+  useEffect(() => onImportedTick(), [onImportedTick]);
+  return null;
+}
+function NonReactEffectEventDependencyFixture({ value }) {
+  const onTick = StableHooks.useEffectEvent(() => value);
+  useEffect(() => onTick(), [onTick]);
+  return null;
 }
 {
   class Map {}

@@ -135,7 +135,11 @@
     "remotion-no-module-scope-delay-render",
     "no-default-warm-page-surface",
     "no-default-purple-page-gradient",
-    "no-deprecated-tailwind-class"
+    "no-deprecated-tailwind-class",
+    "no-italic-serif-display-heading",
+    "no-transitioned-focus-ring",
+    "no-overloaded-hover-state",
+    "no-tailwind-layout-transition"
   ],
   "delegatedRules": [
     {

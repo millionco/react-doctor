@@ -694,6 +694,10 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-default-warm-page-surface",
   "no-default-purple-page-gradient",
   "no-deprecated-tailwind-class",
+  "no-italic-serif-display-heading",
+  "no-transitioned-focus-ring",
+  "no-overloaded-hover-state",
+  "no-tailwind-layout-transition",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

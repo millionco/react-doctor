@@ -1,7 +1,7 @@
 struct TailwindClassNameToken<'a> {
     utility: &'a str,
     #[allow(dead_code)]
-    has_variants: bool,
+    variants: Vec<&'a str>,
 }
 
 fn tailwind_class_name_tokens(value: &str) -> Vec<TailwindClassNameToken<'_>> {
@@ -55,7 +55,8 @@ fn tailwind_class_name_tokens(value: &str) -> Vec<TailwindClassNameToken<'_>> {
 
 fn parse_tailwind_class_name_token(raw_token: &str) -> TailwindClassNameToken<'_> {
     let mut utility_start = 0;
-    let mut has_variants = false;
+    let mut segment_start = 0;
+    let mut variants = Vec::new();
     let mut bracket_depth = 0_u32;
     let mut parenthesis_depth = 0_u32;
     let mut quote = None;
@@ -86,8 +87,9 @@ fn parse_tailwind_class_name_token(raw_token: &str) -> TailwindClassNameToken<'_
             '(' => parenthesis_depth += 1,
             ')' => parenthesis_depth = parenthesis_depth.saturating_sub(1),
             ':' if bracket_depth == 0 && parenthesis_depth == 0 => {
+                variants.push(&raw_token[segment_start..character_index]);
                 utility_start = character_index + character.len_utf8();
-                has_variants = true;
+                segment_start = utility_start;
             }
             _ => {}
         }
@@ -107,8 +109,5 @@ fn parse_tailwind_class_name_token(raw_token: &str) -> TailwindClassNameToken<'_
             utility = &utility[..utility.len() - 1];
         }
     }
-    TailwindClassNameToken {
-        utility,
-        has_variants,
-    }
+    TailwindClassNameToken { utility, variants }
 }

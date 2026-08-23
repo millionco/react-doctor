@@ -44,7 +44,7 @@ impl Rule for NoDefaultPurplePageGradient {
         let tokens = tailwind_class_name_tokens(class_name);
         let unvariant_utilities = tokens
             .iter()
-            .filter(|token| !token.has_variants)
+            .filter(|token| token.variants.is_empty())
             .map(|token| token.utility)
             .collect::<Vec<_>>();
         let is_main_element = matches!(

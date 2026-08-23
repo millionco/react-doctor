@@ -201,6 +201,10 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-default-warm-page-surface": 2,
   "no-default-purple-page-gradient": 2,
   "no-deprecated-tailwind-class": 7,
+  "no-italic-serif-display-heading": 1,
+  "no-transitioned-focus-ring": 2,
+  "no-overloaded-hover-state": 1,
+  "no-tailwind-layout-transition": 3,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -641,6 +645,14 @@ const safeVariantGradient = <main className="bg-gradient-to-r from-violet-500 da
 const deprecatedTailwindClasses = <div className="md:flex-shrink-0 group-hover:!flex-grow overflow-ellipsis bg-gradient-to-r bg-gradient-radial" />;
 const deprecatedTailwindTemplate = <div className={\`flex-shrink\`} />;
 const safeTailwindClasses = <div className="shrink-0 grow text-ellipsis bg-linear-to-r" />;
+const italicSerifDisplayHeading = <h1 className="font-serif italic text-7xl">Title</h1>;
+const safeVariantDisplayHeading = <h2 className="font-serif dark:italic md:text-8xl">Title</h2>;
+const transitionedFocusIndicators = <><button className="transition-shadow focus-visible:ring-2" /><button className="transition-[outline] focus-visible:outline-2" /></>;
+const instantFocusIndicator = <button className="transition-colors hover:bg-blue-600 focus-visible:ring-2" />;
+const overloadedHoverState = <article className="hover:-translate-y-1 hover:shadow-xl hover:bg-white" />;
+const restrainedHoverState = <article className="md:scale-105 group-hover:rotate-2 hover:shadow-lg" />;
+const layoutTransitions = <><div className="transition-[height]" /><div className="motion-safe:transition-[width,opacity]" /><section className="transition-[ margin-top , opacity ]" /></>;
+const safeLayoutTransitions = <><rect className="transition-[height,width]" /><div className="before:content-['transition-[height]'] transition-[transform]" /></>;
 const duplicateEmailId = <><label htmlFor="email">Email</label><input id="email" /><input id="email" /></>;
 const duplicateUnicodeId = <><div aria-labelledby="item" /><span id={"\uFEFFitem\u00A0"} /><span id="item" /></>;
 const conditionalDuplicateId = <div aria-labelledby="item">{condition ? <span id="item" /> : <span id="item" />}</div>;

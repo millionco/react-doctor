@@ -131,6 +131,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "nextjs-global-error-missing-html-body": 1,
   "nextjs-no-edge-og-runtime": 1,
   "nextjs-no-default-export-in-route-handler": 1,
+  "nextjs-image-missing-sizes": 1,
+  "nextjs-no-font-link": 1,
+  "nextjs-no-polyfill-script": 1,
   "prefer-truncate-shorthand": 3,
   "no-multiple-main-landmarks": 3,
   "iframe-title-unique": 2,
@@ -398,6 +401,13 @@ const brokenImage = <img alt="Preview" />;
 const nestedForm = <form><form /></form>;
 const conflictingImagePriority = <img src="hero.png" loading="lazy" fetchPriority="high" />;
 const responsiveImage = <img srcSet="hero-640.jpg 640w, hero-1280.jpg 1280w" alt="" />;
+const fillImageWithoutSizes = <Image fill src="hero.jpg" alt="Hero" />;
+const forwardedImageSizes = <Image fill {...imageProperties} />;
+const disabledFillImage = <Image fill={false} src="hero.jpg" alt="Hero" />;
+const googleFontStylesheet = <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter" />;
+const googleFontPreconnect = <link rel="preconnect" href="https://fonts.googleapis.com" />;
+const polyfillScript = <script src="https://polyfill.io/v3/polyfill.min.js" />;
+const dataPolyfillScript = <script src="data:text/javascript,polyfill.min.js" />;
 const clonedChild = React.cloneElement(child);
 const renderResult = ReactDOM.render(<div />, root);
 const wrappedRenderResult = (ReactDOM as any).render(<div />, root);

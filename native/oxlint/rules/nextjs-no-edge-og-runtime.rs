@@ -35,7 +35,7 @@ impl Rule for NextjsNoEdgeOgRuntime {
             return;
         };
         let filename = ctx.file_path().to_string_lossy().replace('\\', "/");
-        if !is_og_image_filename(&filename) {
+        if !is_og_image_filename(&filename) || !is_next_file_active(ctx) {
             return;
         }
         let Declaration::VariableDeclaration(variable_declaration) =

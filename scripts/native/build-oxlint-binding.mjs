@@ -139,6 +139,7 @@ impl Rule for ${delegatedRule.struct} {
         "for-each-value-import",
         "resolve-jsx-element-type",
         "get-string-literal-attribute-value",
+        "get-direct-string-literal-attribute-value",
         "parse-finite-number",
         "parse-static-jsx-number",
         "get-authoritative-jsx-attribute",

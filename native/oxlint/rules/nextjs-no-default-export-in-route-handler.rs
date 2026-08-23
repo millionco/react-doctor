@@ -35,6 +35,7 @@ impl Rule for NextjsNoDefaultExportInRouteHandler {
         let filename = ctx.file_path().to_string_lossy().replace('\\', "/");
         if !is_in_project_directory(ctx, "app")
             || !is_route_handler_filename(&filename)
+            || !is_next_file_active(ctx)
             || program_has_named_http_method_export(ctx.nodes().program())
         {
             return;

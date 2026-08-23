@@ -26,7 +26,10 @@ impl Rule for NextjsGlobalErrorMissingHtmlBody {
 
     fn run_once(&self, ctx: &LintContext) {
         let filename = ctx.file_path().to_string_lossy().replace('\\', "/");
-        if !is_in_project_directory(ctx, "app") || !is_global_error_filename(&filename) {
+        if !is_next_file_active(ctx)
+            || !is_in_project_directory(ctx, "app")
+            || !is_global_error_filename(&filename)
+        {
             return;
         }
         let mut has_html = false;

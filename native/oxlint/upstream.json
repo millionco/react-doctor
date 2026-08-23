@@ -164,7 +164,10 @@
     "no-layout-transition-inline",
     "no-common-root-font",
     "no-redundant-display-class",
-    "no-repeated-placeholder-navigation"
+    "no-repeated-placeholder-navigation",
+    "no-all-caps-body-text",
+    "no-tight-display-tracking",
+    "no-placeholder-persona-copy"
   ],
   "delegatedRules": [
     {

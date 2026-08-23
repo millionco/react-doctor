@@ -183,6 +183,8 @@ impl Rule for ${delegatedRule.struct} {
         "is-layout-transition-property",
         "is-svg-layout-transition-exempt-element",
         "is-pure-black-color",
+        "get-static-jsx-text",
+        "is-top-level-page-copy-root",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

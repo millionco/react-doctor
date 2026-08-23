@@ -253,6 +253,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-common-root-font": 1,
   "no-redundant-display-class": 1,
   "no-repeated-placeholder-navigation": 1,
+  "no-all-caps-body-text": 1,
+  "no-tight-display-tracking": 1,
+  "no-placeholder-persona-copy": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -819,6 +822,9 @@ const inlineLayoutTransition = <div style={{ transition: "width 200ms" }} />;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;
+const allCapsBody = <p className="uppercase">This paragraph contains enough readable copy that forcing every word into capitals makes it harder to scan.</p>;
+const tightDisplayTracking = <h1 className="tracking-tighter">Build faster</h1>;
+const placeholderPersona = <main><p>Jane Doe</p></main>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

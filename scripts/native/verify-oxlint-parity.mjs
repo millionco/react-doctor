@@ -175,7 +175,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-no-router-in-render": 2,
   "nextjs-async-client-component": 3,
   "no-string-false-on-boolean-attribute": 3,
-  "nextjs-no-a-element": 2,
+  "nextjs-no-a-element": 3,
   "jsx-no-script-url": 2,
   "jsx-boolean-value": 2,
   "no-danger-with-children": 1,
@@ -205,6 +205,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-transitioned-focus-ring": 2,
   "no-overloaded-hover-state": 1,
   "no-tailwind-layout-transition": 3,
+  "anchor-has-content": 1,
+  "jsx-fragments": 1,
+  "jsx-no-constructed-context-values": 1,
+  "prefer-es6-class": 1,
+  "prefer-function-component": 7,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -653,6 +658,15 @@ const overloadedHoverState = <article className="hover:-translate-y-1 hover:shad
 const restrainedHoverState = <article className="md:scale-105 group-hover:rotate-2 hover:shadow-lg" />;
 const layoutTransitions = <><div className="transition-[height]" /><div className="motion-safe:transition-[width,opacity]" /><section className="transition-[ margin-top , opacity ]" /></>;
 const safeLayoutTransitions = <><rect className="transition-[height,width]" /><div className="before:content-['transition-[height]'] transition-[transform]" /></>;
+const emptyNamedAnchor = <a href="/empty" />;
+const explicitFragment = <React.Fragment><span /></React.Fragment>;
+interface StableContext { count: number; }
+const StableContext = React.createContext(null);
+const ConstructedContextValue = () => <StableContext.Provider value={{ count: 1 }} />;
+const LegacyCreateClass = createReactClass({ render() { return <div />; } });
+class LegacyClassComponent extends React.Component {
+  render() { return <div />; }
+}
 const duplicateEmailId = <><label htmlFor="email">Email</label><input id="email" /><input id="email" /></>;
 const duplicateUnicodeId = <><div aria-labelledby="item" /><span id={"\uFEFFitem\u00A0"} /><span id="item" /></>;
 const conditionalDuplicateId = <div aria-labelledby="item">{condition ? <span id="item" /> : <span id="item" />}</div>;

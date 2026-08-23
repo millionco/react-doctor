@@ -172,6 +172,8 @@ impl Rule for ${delegatedRule.struct} {
         "is-react-router-file-active",
         "tailwind-class-name-tokens",
         "imported-module-api-matches",
+        "resolve-identifier-import",
+        "is-react-es6-component",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

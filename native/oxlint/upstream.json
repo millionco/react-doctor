@@ -139,7 +139,12 @@
     "no-italic-serif-display-heading",
     "no-transitioned-focus-ring",
     "no-overloaded-hover-state",
-    "no-tailwind-layout-transition"
+    "no-tailwind-layout-transition",
+    "anchor-has-content",
+    "jsx-fragments",
+    "jsx-no-constructed-context-values",
+    "prefer-es6-class",
+    "prefer-function-component"
   ],
   "delegatedRules": [
     {

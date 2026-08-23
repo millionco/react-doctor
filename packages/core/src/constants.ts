@@ -762,6 +762,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "design-no-redundant-size-axes",
   "design-no-space-on-flex-children",
   "design-no-three-period-ellipsis",
+  "design-no-vague-button-label",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

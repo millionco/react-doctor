@@ -55,7 +55,10 @@
     "state-in-constructor",
     "nextjs-inline-script-missing-id",
     "no-aria-hidden-on-body",
-    "html-xml-lang-mismatch"
+    "html-xml-lang-mismatch",
+    "no-server-side-image-map",
+    "no-mixed-srcset-descriptors",
+    "no-assertive-status"
   ],
   "delegatedRules": [
     {

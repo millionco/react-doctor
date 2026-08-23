@@ -107,6 +107,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "nextjs-inline-script-missing-id": 1,
   "no-aria-hidden-on-body": 2,
   "html-xml-lang-mismatch": 1,
+  "no-server-side-image-map": 1,
+  "no-mixed-srcset-descriptors": 1,
+  "no-assertive-status": 3,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -263,6 +266,23 @@ const dynamicSpreadHiddenBody = <body aria-hidden {...bodyProperties} />;
 const conflictingDocumentLanguage = <html lang="en-US" xml:lang="fr-CA" />;
 const matchingDocumentLanguage = <html lang="EN-us" xml:lang="en-GB" />;
 const spreadOverridesDocumentLanguage = <html lang="en" xml:lang="fr" {...{ "xml:lang": "en" }} />;
+const serverSideImageMap = <img src="map.png" alt="Campus" isMap />;
+const disabledServerSideImageMap = <img src="map.png" alt="Campus" isMap={false} />;
+const dynamicServerSideImageMap = <img src="map.png" alt="Campus" isMap={isEnabled} />;
+const spreadOverridesServerSideImageMap = <img src="map.png" alt="Campus" isMap {...{ isMap: false }} />;
+const mixedSourceSet = <img src="fallback.jpg" srcSet="small.jpg 640w, large.jpg 2x" sizes="100vw" />;
+const consistentSourceSet = <img src="fallback.jpg" srcSet="small.jpg 640w, large.jpg 1280w" sizes="100vw" />;
+const spreadOwnedMixedSourceSet = <img srcSet="small.jpg 640w, large.jpg 2x" {...imageProperties} />;
+const assertiveStatus = <div role="status" aria-live="assertive">Saved</div>;
+const politeStatus = <div role="status" aria-live="polite">Saved</div>;
+const customAssertiveStatus = <Status role="status" aria-live="assertive">Saved</Status>;
+const IntrinsicStatusTag = "div" as const;
+const intrinsicAliasAssertiveStatus = <IntrinsicStatusTag role="status" aria-live="assertive">Saved</IntrinsicStatusTag>;
+const AliasedStatusTag = IntrinsicStatusTag;
+const aliasedAssertiveStatus = <AliasedStatusTag role="status" aria-live="assertive">Saved</AliasedStatusTag>;
+const ConditionalStatusTag = isOutput ? "output" : "div";
+const conditionalAssertiveStatus = <ConditionalStatusTag role="status" aria-live="assertive">Saved</ConditionalStatusTag>;
+const spreadAssertiveStatus = <div role="status" aria-live="assertive" {...statusProperties}>Saved</div>;
 const autoplayingVideo = <video autoPlay src="hero.mp4" />;
 const mutedAutoplayingVideo = <video autoPlay muted src="hero.mp4" />;
 const unnamedDetails = <details><p>Answer</p></details>;

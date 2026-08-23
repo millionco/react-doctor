@@ -141,6 +141,7 @@ impl Rule for ${delegatedRule.struct} {
         "get-string-literal-attribute-value",
         "parse-static-jsx-number",
         "get-authoritative-jsx-attribute",
+        "is-proven-intrinsic-jsx-element",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

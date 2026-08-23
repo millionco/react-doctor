@@ -208,7 +208,8 @@
     "js-tosorted-immutable",
     "rerender-functional-setstate",
     "js-cache-storage",
-    "no-set-state-in-render"
+    "no-set-state-in-render",
+    "js-cache-property-access"
   ],
   "delegatedRules": [
     {

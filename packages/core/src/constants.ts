@@ -767,6 +767,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "rerender-functional-setstate",
   "js-cache-storage",
   "no-set-state-in-render",
+  "js-cache-property-access",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

@@ -297,6 +297,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "rerender-functional-setstate": 8,
   "js-cache-storage": 1,
   "no-set-state-in-render": 2,
+  "js-cache-property-access": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1061,6 +1062,19 @@ function readCachedTheme(items) {
 }
 function readUnrelatedTheme() {
   return localStorage.getItem("theme");
+}
+function renderPalette(rows, theme, render, nextPalette) {
+  for (const row of rows) {
+    render(theme.colors.primary, row);
+    render(theme.colors.primary, row);
+    render(theme.colors.primary, row);
+  }
+  for (const row of rows) {
+    render(theme.colors.secondary, row);
+    render(theme.colors.secondary, row);
+    theme.colors = nextPalette(row);
+    render(theme.colors.secondary, row);
+  }
 }
 `;
 

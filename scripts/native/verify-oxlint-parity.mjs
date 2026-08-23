@@ -255,11 +255,14 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-repeated-placeholder-navigation": 1,
   "no-all-caps-body-text": 1,
   "no-tight-display-tracking": 1,
-  "no-placeholder-persona-copy": 1,
+  "no-placeholder-persona-copy": 2,
   "js-early-exit": 1,
   "js-flatmap-filter": 4,
   "hooks-no-nan-in-deps": 5,
   "rendering-conditional-render": 2,
+  "no-uppercase-tracked-navigation-label": 1,
+  "no-redundant-title-tooltip": 1,
+  "no-symmetric-text-button-padding": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -875,6 +878,10 @@ const NanDependencyFixture = () => {
 const leakedNumericConditional = itemCount && <Badge n={itemCount} />;
 const leakedLengthConditional = items.length && <List items={items} />;
 const safeBooleanConditional = showCount && <Badge n={itemCount} />;
+const nestedPlaceholderPersona = <main><article><p>John Smith</p></article></main>;
+const trackedNavigationLabel = <aside><span className="uppercase tracking-widest">Workspace</span></aside>;
+const redundantTitle = <button title="Save changes">Save changes</button>;
+const symmetricTextButton = <button className="p-3">Save changes</button>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

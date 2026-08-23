@@ -6,7 +6,7 @@ fn is_top_level_page_copy_root(
     if !is_page_copy_root(element) {
         return false;
     }
-    !ctx.nodes().ancestors(node.id()).skip(1).any(|ancestor| {
+    !ctx.nodes().ancestors(node.id()).any(|ancestor| {
         matches!(
             ancestor.kind(),
             oxc_ast::AstKind::JSXElement(ancestor_element) if is_page_copy_root(ancestor_element)

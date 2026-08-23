@@ -730,6 +730,9 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "js-flatmap-filter",
   "hooks-no-nan-in-deps",
   "rendering-conditional-render",
+  "no-uppercase-tracked-navigation-label",
+  "no-redundant-title-tooltip",
+  "no-symmetric-text-button-padding",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

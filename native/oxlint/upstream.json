@@ -171,7 +171,10 @@
     "js-early-exit",
     "js-flatmap-filter",
     "hooks-no-nan-in-deps",
-    "rendering-conditional-render"
+    "rendering-conditional-render",
+    "no-uppercase-tracked-navigation-label",
+    "no-redundant-title-tooltip",
+    "no-symmetric-text-button-padding"
   ],
   "delegatedRules": [
     {

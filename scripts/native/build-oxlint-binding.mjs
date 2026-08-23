@@ -189,6 +189,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-pure-black-color",
         "get-static-jsx-text",
         "is-top-level-page-copy-root",
+        "is-inside-navigation",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

@@ -47,6 +47,9 @@ fn get_static_expression_text(expression: &oxc_ast::ast::Expression) -> String {
         oxc_ast::ast::Expression::LogicalExpression(logical_expression) => {
             get_static_expression_text(&logical_expression.right)
         }
+        oxc_ast::ast::Expression::ParenthesizedExpression(parenthesized_expression) => {
+            get_static_expression_text(&parenthesized_expression.expression)
+        }
         _ => String::new(),
     }
 }

@@ -194,10 +194,12 @@ impl Rule for ${delegatedRule.struct} {
         "get-effective-tailwind-class-name-token",
         "parse-static-tailwind-font-size",
         "get-static-tailwind-font-size",
+        "get-static-effective-font-size",
         "get-effective-nonzero-tailwind-tracking",
         "is-technical-label-text",
         "get-effective-static-style-property",
         "get-static-style-property-number-value",
+        "has-capability-or-unspecified",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

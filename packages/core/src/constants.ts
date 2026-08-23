@@ -753,6 +753,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-repeated-section-shells",
   "rerender-lazy-state-init",
   "no-eager-new-in-use-state-initializer",
+  "no-oversized-long-heading",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

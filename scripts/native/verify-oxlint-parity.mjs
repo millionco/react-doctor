@@ -283,6 +283,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-repeated-section-shells": 1,
   "rerender-lazy-state-init": 7,
   "no-eager-new-in-use-state-initializer": 5,
+  "no-oversized-long-heading": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -311,6 +312,7 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
   react: { version: "16.4.0" },
   "react-doctor": {
     ...REACT_DOCTOR_SETTINGS["react-doctor"],
+    capabilities: ["react", "tailwind"],
     headingHasContent: { components: ["Title"] },
     jsxBooleanValue: { mode: "always", never: ["compact"] },
     noStringRefs: { noTemplateLiterals: true },
@@ -956,6 +958,7 @@ const inlineBounceEasing = <div className="animate-bounce" />;
 const proportionalNumericData = <table><tbody><tr><td>{total.toLocaleString()}</td></tr></tbody></table>;
 const excessiveFontFamilies = <main><h1 style={{ fontFamily: "Fraunces" }}>Title</h1><p style={{ fontFamily: "Inter" }}>Body</p><code style={{ fontFamily: "JetBrains Mono" }}>Code</code><aside style={{ fontFamily: "Caveat" }}>Note</aside></main>;
 const repeatedSectionShells = <main><section className="py-20"><div className="mx-auto max-w-6xl">Intro</div></section><section className="py-24"><div className="mx-auto max-w-6xl">Features</div></section><section className="py-20"><div className="mx-auto max-w-6xl">Pricing</div></section></main>;
+const oversizedLongHeading = <><h1 className="text-8xl">Build a better workflow for every team in your growing organization</h1><h1 style={{ fontSize: "5rem" }}>Build a better workflow for every team in your growing organization</h1></>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>
@@ -1089,6 +1092,7 @@ const configuredAllowedInteractiveRole = <button role="article">Save</button>;
 const configuredAllowedNoninteractiveRole = <h1 role="button">Open</h1>;
 const configuredDeepJsx = <div><section><span><em /></span></section></div>;
 const configuredCompetingDeepJsx = <div><section><span><em /></span><Widget render={() => <section><span><em /></span></section>} /></section></div>;
+const configuredOversizedLongHeading = <h1 className="text-8xl">Build a better workflow for every team in your growing organization</h1>;
 `,
   );
   const routerGateFixture =
@@ -1159,6 +1163,7 @@ const configuredCompetingDeepJsx = <div><section><span><em /></span><Widget rend
     "no-noninteractive-element-to-interactive-role",
     "jsx-max-depth",
     "no-unsafe",
+    "no-oversized-long-heading",
   ];
   fs.writeFileSync(
     configuredStockConfigPath,
@@ -1298,6 +1303,7 @@ const configuredCompetingDeepJsx = <div><section><span><em /></span><Widget rend
     "anchor-ambiguous-text": 1,
     "jsx-max-depth": 2,
     "no-unsafe": 1,
+    "no-oversized-long-heading": 1,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(configuredStockDiagnostics)) !==

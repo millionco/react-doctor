@@ -122,6 +122,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "nextjs-no-head-import": 1,
   "nextjs-error-boundary-missing-use-client": 1,
   "prefer-truncate-shorthand": 3,
+  "no-multiple-main-landmarks": 3,
+  "iframe-title-unique": 2,
+  "html-label-has-single-control": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -349,6 +352,20 @@ const truncateClasses = <span className="overflow-hidden text-ellipsis whitespac
 const reorderedTruncateClasses = <span className={"whitespace-nowrap text-sm overflow-hidden text-ellipsis"} />;
 const templateTruncateClasses = <span className={\`text-ellipsis overflow-hidden whitespace-nowrap\`} />;
 const incompleteTruncateClasses = <span className="overflow-hidden whitespace-nowrap" />;
+const duplicateMainLandmarks = <><main /><section><main /></section><main /></>;
+const MainLandmark = "main" as const;
+const duplicateAliasedMainLandmarks = <section><MainLandmark /><MainLandmark /></section>;
+const separateMainLandmarks = condition ? <main /> : <main />;
+const duplicateFrameTitles = <><iframe title="Store map" /><section><frame title={" store   MAP "} /></section></>;
+const duplicateUnicodeFrameTitles = <><iframe title={"\uFEFFAdmin\u00A0map"} /><iframe title=" admin map " /></>;
+const distinctFrameTitles = <><iframe title="Store map" /><iframe title="Campus map" /></>;
+const dynamicFrameTitles = <><iframe title={frameTitle} /><iframe title={frameTitle} /></>;
+const expressionBranchFrameTitles = <div>{condition && <><iframe title="Map" /><iframe title="Map" /></>}</div>;
+const multiControlLabel = <label>Name <input /><span><select /></span></label>;
+const LabelTag = "label" as const;
+const InputTag = "input" as const;
+const aliasedMultiControlLabel = <LabelTag><InputTag /><textarea /></LabelTag>;
+const expressionControlLabel = <label><input />{condition && <input />}</label>;
 const autoplayingVideo = <video autoPlay src="hero.mp4" />;
 const mutedAutoplayingVideo = <video autoPlay muted src="hero.mp4" />;
 const unnamedDetails = <details><p>Answer</p></details>;

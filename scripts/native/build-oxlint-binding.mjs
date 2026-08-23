@@ -147,6 +147,9 @@ impl Rule for ${delegatedRule.struct} {
         "get-static-class-name",
         "is-in-project-directory",
         "is-next-file-active",
+        "collect-static-jsx-opening-elements",
+        "is-static-jsx-tree-root",
+        "get-static-jsx-tree-opening-elements",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

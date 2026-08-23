@@ -629,6 +629,9 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "nextjs-no-head-import",
   "nextjs-error-boundary-missing-use-client",
   "prefer-truncate-shorthand",
+  "no-multiple-main-landmarks",
+  "iframe-title-unique",
+  "html-label-has-single-control",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

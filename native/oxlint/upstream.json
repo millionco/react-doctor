@@ -70,7 +70,10 @@
     "nextjs-no-google-analytics-script",
     "nextjs-no-head-import",
     "nextjs-error-boundary-missing-use-client",
-    "prefer-truncate-shorthand"
+    "prefer-truncate-shorthand",
+    "no-multiple-main-landmarks",
+    "iframe-title-unique",
+    "html-label-has-single-control"
   ],
   "delegatedRules": [
     {

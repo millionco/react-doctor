@@ -170,11 +170,13 @@ impl Rule for ${delegatedRule.struct} {
         "first-js-whitespace-token",
         "direct-named-import-matches",
         "is-react-router-file-active",
+        "is-react-router-framework-file-active",
         "tailwind-class-name-tokens",
         "imported-module-api-matches",
         "resolve-identifier-import",
         "is-react-es6-component",
         "get-static-jsx-attribute-string-values",
+        "resolve-local-react-callback",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

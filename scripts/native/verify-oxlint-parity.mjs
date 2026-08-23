@@ -19,6 +19,13 @@ const readOption = (name) => {
   if (!optionValue || optionValue.startsWith("--")) throw new Error(`${name} requires a value`);
   return optionValue;
 };
+const corpusRuleOption = readOption("--rules");
+const corpusRuleIds = corpusRuleOption ? corpusRuleOption.split(",") : nativeRules;
+const unknownCorpusRuleIds = corpusRuleIds.filter((ruleId) => !nativeRules.includes(ruleId));
+if (unknownCorpusRuleIds.length > 0) {
+  throw new Error(`unknown native rules: ${unknownCorpusRuleIds.join(", ")}`);
+}
+const excludedCorpusRepositories = new Set(readOption("--exclude")?.split(",") ?? []);
 const bindingDirectory = readOption("--directory");
 const corpusDirectory = readOption("--corpus");
 const configuredBindingPath =
@@ -64,12 +71,27 @@ const inactiveRouterFixtureDirectory = path.join(temporaryDirectory, "inactive-r
 const inactiveRouterFixturePath = path.join(inactiveRouterFixtureDirectory, "src", "fixture.tsx");
 const activeRouterFixtureDirectory = path.join(temporaryDirectory, "active-router-package");
 const activeRouterFixturePath = path.join(activeRouterFixtureDirectory, "src", "fixture.tsx");
+const environmentRouteFixturePath = path.join(
+  activeRouterFixtureDirectory,
+  "app",
+  "routes",
+  "dashboard.server.tsx",
+);
+const frameworkRouterFixtureDirectory = path.join(temporaryDirectory, "framework-router-package");
+const frameworkEnvironmentRouteFixturePath = path.join(
+  frameworkRouterFixtureDirectory,
+  "app",
+  "routes",
+  "dashboard.server.tsx",
+);
 const stockConfigPath = path.join(temporaryDirectory, "stock.json");
 const nativeConfigPath = path.join(temporaryDirectory, "native.json");
 const configuredStockConfigPath = path.join(temporaryDirectory, "configured-stock.json");
 const configuredNativeConfigPath = path.join(temporaryDirectory, "configured-native.json");
 const routerStockConfigPath = path.join(temporaryDirectory, "router-stock.json");
 const routerNativeConfigPath = path.join(temporaryDirectory, "router-native.json");
+const corpusStockConfigPath = path.join(temporaryDirectory, "corpus-stock.json");
+const corpusNativeConfigPath = path.join(temporaryDirectory, "corpus-native.json");
 const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-no-duplicate-props": 1,
   "nextjs-no-vercel-og-import": 1,
@@ -218,6 +240,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-noninteractive-element-to-interactive-role": 1,
   "jsx-max-depth": 1,
   "no-unsafe": 1,
+  "r3f-no-async-use-frame": 2,
+  "react-router-no-route-module-environment-suffix": 0,
+  "three-webgpu-no-legacy-effect-composer": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -273,6 +298,7 @@ import { createBrowserRouter as makeBrowserRouter, createHashRouter as makeHashR
 import { useNavigate as useRouteNavigate } from "react-router-dom";
 import { runOnJS as callOnJavaScript, useWorkletCallback as makeLegacyWorklet, withSpring as makeSpring } from "react-native-reanimated";
 import * as ReanimatedRuntime from "react-native-reanimated";
+import { useFrame as useRenderFrame } from "@react-three/fiber";
 import { privateFiberApi } from "@react-three/fiber/dist/core";
 import FiberInternal = require("@react-three/fiber/src/core");
 export { privateFiberRenderer } from "@react-three/fiber/dist/renderer";
@@ -298,6 +324,8 @@ import { AnimatePresence, animate as runMotionAnimation, motion, motionValue as 
 import * as MotionRuntime from "motion/react";
 import { delayRender, delayRender as holdRender } from "remotion";
 import * as Remotion from "remotion";
+import { WebGPURenderer } from "three/webgpu";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import Head from "next/head";
 void import("@react-three/fiber/dist/native");
 require("@react-three/fiber/src/native");
@@ -673,6 +701,11 @@ const thirdModuleRenderHandle = Remotion.delayRender();
 const fourthModuleRenderHandle = Remotion["delayRender"]();
 const deferredRenderHandle = () => delayRender();
 const unrelatedDelayRender = otherRemotion.delayRender();
+useRenderFrame(async () => update());
+const asyncFrame = React.useCallback(async () => update(), []);
+useRenderFrame(asyncFrame);
+const webgpuRenderer = new WebGPURenderer();
+const legacyComposer = new EffectComposer(webgpuRenderer);
 const warmMainSurface = <main className="bg-stone-50">Warm</main>;
 const warmFullPageSurface = <div className="min-h-dvh bg-amber-50">Warm</div>;
 const safeVariantWarmSurface = <main className="bg-white dark:bg-stone-50">Safe</main>;
@@ -915,6 +948,20 @@ const configuredCompetingDeepJsx = <div><section><span><em /></span><Widget rend
     JSON.stringify({ dependencies: { "react-router-dom": "latest" } }),
   );
   fs.writeFileSync(activeRouterFixturePath, routerGateFixture);
+  fs.mkdirSync(path.dirname(environmentRouteFixturePath), { recursive: true });
+  fs.writeFileSync(
+    environmentRouteFixturePath,
+    "export default function DashboardRoute() { return null; }\n",
+  );
+  fs.mkdirSync(path.dirname(frameworkEnvironmentRouteFixturePath), { recursive: true });
+  fs.writeFileSync(
+    path.join(frameworkRouterFixtureDirectory, "package.json"),
+    JSON.stringify({ dependencies: { "@react-router/dev": "latest" } }),
+  );
+  fs.writeFileSync(
+    frameworkEnvironmentRouteFixturePath,
+    "export default function DashboardRoute() { return null; }\n",
+  );
   fs.writeFileSync(
     stockConfigPath,
     JSON.stringify(buildConfig({ isNative: false, settings: REACT_DOCTOR_SETTINGS })),
@@ -922,6 +969,26 @@ const configuredCompetingDeepJsx = <div><section><span><em /></span><Widget rend
   fs.writeFileSync(
     nativeConfigPath,
     JSON.stringify(buildConfig({ isNative: true, settings: REACT_DOCTOR_SETTINGS })),
+  );
+  fs.writeFileSync(
+    corpusStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: REACT_DOCTOR_SETTINGS,
+        ruleIds: corpusRuleIds,
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    corpusNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: REACT_DOCTOR_SETTINGS,
+        ruleIds: corpusRuleIds,
+      }),
+    ),
   );
   const configuredRuleIds = [
     "heading-has-content",
@@ -958,6 +1025,7 @@ const configuredCompetingDeepJsx = <div><section><span><em /></span><Widget rend
   );
   const routerRuleIds = [
     "react-router-no-navigate-in-render",
+    "react-router-no-route-module-environment-suffix",
     "react-router-no-router-in-render",
     "react-router-v8-no-react-router-dom-import",
   ];
@@ -1117,6 +1185,44 @@ const configuredCompetingDeepJsx = <div><section><span><em /></span><Widget rend
       `native active React Router package parity failed\nstock=${JSON.stringify(activeRouterStockDiagnostics, null, 2)}\nnative=${JSON.stringify(activeRouterNativeDiagnostics, null, 2)}`,
     );
   }
+  const environmentRouteStockDiagnostics = runOxlint(
+    routerStockConfigPath,
+    process.env,
+    environmentRouteFixturePath,
+  ).diagnostics;
+  const environmentRouteNativeDiagnostics = runOxlint(
+    routerNativeConfigPath,
+    nativeEnvironment,
+    environmentRouteFixturePath,
+  ).diagnostics;
+  if (
+    environmentRouteStockDiagnostics.length !== 0 ||
+    JSON.stringify(environmentRouteNativeDiagnostics) !==
+      JSON.stringify(environmentRouteStockDiagnostics)
+  ) {
+    throw new Error(
+      `native React Router route module parity failed\nstock=${JSON.stringify(environmentRouteStockDiagnostics, null, 2)}\nnative=${JSON.stringify(environmentRouteNativeDiagnostics, null, 2)}`,
+    );
+  }
+  const frameworkEnvironmentRouteStockDiagnostics = runOxlint(
+    routerStockConfigPath,
+    process.env,
+    frameworkEnvironmentRouteFixturePath,
+  ).diagnostics;
+  const frameworkEnvironmentRouteNativeDiagnostics = runOxlint(
+    routerNativeConfigPath,
+    nativeEnvironment,
+    frameworkEnvironmentRouteFixturePath,
+  ).diagnostics;
+  if (
+    frameworkEnvironmentRouteStockDiagnostics.length !== 1 ||
+    JSON.stringify(frameworkEnvironmentRouteNativeDiagnostics) !==
+      JSON.stringify(frameworkEnvironmentRouteStockDiagnostics)
+  ) {
+    throw new Error(
+      `native React Router framework route module parity failed\nstock=${JSON.stringify(frameworkEnvironmentRouteStockDiagnostics, null, 2)}\nnative=${JSON.stringify(frameworkEnvironmentRouteNativeDiagnostics, null, 2)}`,
+    );
+  }
 
   if (corpusDirectory) {
     const resolvedCorpusDirectory = path.resolve(corpusDirectory);
@@ -1124,6 +1230,7 @@ const configuredCompetingDeepJsx = <div><section><span><em /></span><Widget rend
       .readdirSync(resolvedCorpusDirectory, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
       .map((entry) => entry.name)
+      .filter((repositoryName) => !excludedCorpusRepositories.has(repositoryName))
       .sort();
     if (corpusRepositories.length === 0) {
       throw new Error(`no repositories found in corpus: ${resolvedCorpusDirectory}`);
@@ -1132,12 +1239,12 @@ const configuredCompetingDeepJsx = <div><section><span><em /></span><Widget rend
     for (const repositoryName of corpusRepositories) {
       const repositoryPath = path.join(resolvedCorpusDirectory, repositoryName);
       const repositoryStockDiagnostics = runOxlint(
-        stockConfigPath,
+        corpusStockConfigPath,
         process.env,
         repositoryPath,
       ).diagnostics;
       const repositoryNativeDiagnostics = runOxlint(
-        nativeConfigPath,
+        corpusNativeConfigPath,
         nativeEnvironment,
         repositoryPath,
       ).diagnostics;

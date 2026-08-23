@@ -155,6 +155,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-cascading-set-state": 0,
   "rn-animate-layout-property": 0,
   "rn-prefer-content-inset-adjustment": 0,
+  "rn-no-inline-flatlist-renderitem": 2,
+  "rn-no-image-children": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -200,6 +202,8 @@ import { Audio } from "expo-av/build/Audio";
 import {
   Animated,
   AsyncStorage,
+  FlatList,
+  Image as NativeImage,
   LayoutAnimation,
   PanResponder as PR,
   TouchableOpacity,
@@ -263,6 +267,12 @@ const ignoredBottomSheetScrollProperties = <SheetScroll scrollEventThrottle={16}
 const ignoredNamespacedBottomSheetScrollProperty = <GorhomBottomSheet.BottomSheetScrollView decelerationRate="normal" />;
 const supportedBottomSheetScrollProperty = <SheetScroll onScroll={handleScroll} {...scrollProperties} />;
 const currentPlatform = ReactNative.Platform.OS;
+const inlineFlatListRenderItem = <FlatList renderItem={({ item }) => <Row item={item} />} />;
+const inlineSectionListRenderItem = <ReactNative.SectionList renderItem={function ({ item }) { return <Row item={item} />; }} />;
+const stableFlatListRenderItem = <FlatList renderItem={renderRow} />;
+const nativeImageTextChild = <NativeImage source={imageSource}>Caption</NativeImage>;
+const nativeImageElementChild = <NativeImage source={imageSource}><Overlay /></NativeImage>;
+const nativeImageEmptyChildren = <NativeImage source={imageSource}>{false}{null}{undefined}</NativeImage>;
 const namespaced = <svg:path />;
 React.createElement("svg:path");
 const danger = <div dangerouslySetInnerHTML={{ __html: markup }} />;

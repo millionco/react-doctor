@@ -96,7 +96,9 @@
     "ink-suspense-requires-concurrent",
     "no-cascading-set-state",
     "rn-animate-layout-property",
-    "rn-prefer-content-inset-adjustment"
+    "rn-prefer-content-inset-adjustment",
+    "rn-no-inline-flatlist-renderitem",
+    "rn-no-image-children"
   ],
   "delegatedRules": [
     {

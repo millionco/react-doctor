@@ -137,6 +137,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-type-only-import",
         "for-each-named-import",
         "for-each-value-import",
+        "resolve-jsx-element-name",
         "resolve-jsx-element-type",
         "get-string-literal-attribute-value",
         "get-direct-string-literal-attribute-value",

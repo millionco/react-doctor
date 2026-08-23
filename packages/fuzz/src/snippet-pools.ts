@@ -340,6 +340,10 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `export const createFuzzTeam = async (ownerId: string) => { await supabase.from("teams").insert({ ownerId, role: "admin" }); };`,
   `import { animate as fuzzAnimate, motion as FuzzCreatedMotion, motionValue as fuzzMotionValue, useAnimate as useFuzzAnimate, useAnimationControls as useFuzzAnimationControls, useMotionValue as useFuzzMotionValue, useTransform as useFuzzTransform } from "motion/react"; export const FuzzCreatedPanel = () => { const DynamicPanel = FuzzCreatedMotion.create("section"); const progress = fuzzMotionValue(0); const controls = useFuzzAnimationControls(); const liveProgress = useFuzzMotionValue(0); const [, animatePanel] = useFuzzAnimate(); fuzzAnimate(".panel", { opacity: 1 }); animatePanel(".panel", { x: 10 }); controls.start({ opacity: 1 }); liveProgress.set(1); liveProgress.on("change", console.log); useFuzzTransform(liveProgress, [0, 0.5, 1], [0, 1]); return <DynamicPanel animate={{ opacity: [0, 1, 0] }} transition={{ times: [0, 1] }} />; }; export const FuzzHoverReveal = () => <FuzzCreatedMotion.button initial={{ opacity: 0 }} whileHover={{ opacity: 1 }} />;`,
   `export const FuzzObjectUrlPanel = ({ blob }) => <a href={URL.createObjectURL(blob)}>Download</a>;`,
+  `import { createContext as createFuzzRenderContext } from "react"; export const FuzzRenderContextPanel = () => createFuzzRenderContext(null);`,
+  `import { useEffect as useFuzzAsyncEffect } from "react"; export const FuzzAsyncEffectPanel = () => { useFuzzAsyncEffect(async () => { await Promise.resolve(); }, []); return null; };`,
+  `import { useQuery as useFuzzRestQuery } from "@tanstack/react-query"; export const FuzzRestQueryPanel = () => { const { data, ...queryState } = useFuzzRestQuery({ queryKey: ["fuzz"] }); return <output>{String(data ?? queryState.status)}</output>; };`,
+  `import { createMemoryRouter as createFuzzRenderRouter } from "react-router"; export const FuzzRenderRouterPanel = () => { const router = createFuzzRenderRouter([]); return <output>{String(router.state.location)}</output>; };`,
   `import { AnimatePresence as FuzzAnimatePresence } from "motion/react"; export const FuzzPresenceKeys = () => <FuzzAnimatePresence><Panel /><Panel /></FuzzAnimatePresence>; export const FuzzPresenceWait = () => <FuzzAnimatePresence mode="wait"><Panel key="a" /><Panel key="b" /></FuzzAnimatePresence>;`,
   `import { TabsTrigger as FuzzTabsTrigger } from "./tabs"; export const FuzzDetachedTabsTrigger = () => <FuzzTabsTrigger value="a" />;`,
   `import { ImageResponse as FuzzImageResponse } from "next/og"; export const FuzzPostcardLayout = ({ url }) => <img src={url} alt="" />; export const FuzzPostcardRoute = () => new FuzzImageResponse(FuzzPostcardLayout({ url }));`,
@@ -418,6 +422,12 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
+  `"use client";
+import React from "react";
+export default async function FuzzAsyncClientPage() {
+  return <main />;
+}
+const FuzzFrozenAsyncClient = Object.freeze(async () => <section />);`,
   `export default function FuzzDedupPage({ items }) {
   return <FuzzList items={items} sortedItems={items.toSorted()} />;
 }`,

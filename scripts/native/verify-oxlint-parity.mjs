@@ -53,6 +53,7 @@ const fixturePath = path.join(fixtureDirectory, "app", "error.tsx");
 const globalErrorFixturePath = path.join(fixtureDirectory, "app", "global-error.tsx");
 const ogImageFixturePath = path.join(fixtureDirectory, "app", "opengraph-image.tsx");
 const routeHandlerFixturePath = path.join(fixtureDirectory, "app", "api", "route.ts");
+const asyncClientFixturePath = path.join(fixtureDirectory, "app", "async-client.tsx");
 const safeGlobalErrorFixturePath = path.join(fixtureDirectory, "app", "safe", "global-error.tsx");
 const safePageFixturePath = path.join(fixtureDirectory, "app", "page.tsx");
 const safeRouteHandlerFixturePath = path.join(fixtureDirectory, "app", "safe", "route.ts");
@@ -162,6 +163,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "motion-animate-presence-requires-key": 6,
   "motion-animate-presence-wait-single-child": 3,
   "no-create-object-url-in-render": 4,
+  "no-create-context-in-render": 3,
+  "no-async-effect-callback": 3,
+  "query-no-rest-destructuring": 2,
+  "react-router-no-router-in-render": 2,
+  "nextjs-async-client-component": 3,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -197,9 +203,13 @@ const fixture = `
 import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
-import React, { Children, useEffect, useMemo, useState, Component, forwardRef as wrapRef } from "react";
+import React, { Children, createContext as makeContext, useEffect, useLayoutEffect, useMemo, useState, Component, forwardRef as wrapRef } from "react";
 import ReactDOM from "react-dom";
 import type { useMemo as PreactTypeOnlyHook } from "react";
+import { createContext as makeTrackedContext } from "react-tracked";
+import { useQuery as useItemsQuery } from "@tanstack/react-query";
+import * as TanstackQuery from "@tanstack/react-query";
+import { createBrowserRouter as makeBrowserRouter, createHashRouter as makeHashRouter } from "react-router";
 import RawBottomSheet from "react-native-raw-bottom-sheet";
 import { BottomSheetScrollView as SheetScroll } from "@gorhom/bottom-sheet";
 import * as GorhomBottomSheet from "@gorhom/bottom-sheet";
@@ -278,6 +288,33 @@ const ObjectUrlFixture = () => {
 const ShadowedObjectUrlFixture = () => {
   const URL = { createObjectURL: () => "local" };
   return <a href={URL.createObjectURL()}>Local</a>;
+};
+const ContextRenderFixture = () => {
+  const LocalContext = makeContext(null);
+  return <LocalContext.Provider value={null} />;
+};
+function useTrackedContextFactory() {
+  return makeTrackedContext(null);
+}
+const ContextNamespaceFixture = () => React.createContext(null);
+const DeferredContextFixture = () => {
+  const onClick = () => makeContext(null);
+  return <button onClick={onClick}>Context</button>;
+};
+const AsyncEffectFixture = () => {
+  useEffect(async () => { await loadProfile(); }, []);
+  useLayoutEffect(async function () { await measure(); }, []);
+  React.useEffect(async () => { await sync(); }, []);
+  return null;
+};
+const { data: queryData, ...queryRest } = useItemsQuery({ queryKey: ["items"] });
+const infiniteQueryResult = TanstackQuery.useInfiniteQuery({ queryKey: ["pages"] });
+const { data: infiniteQueryData, ...infiniteQueryRest } = infiniteQueryResult;
+const RouterRenderFixture = () => {
+  makeBrowserRouter([]);
+  ["hash"].map(() => makeHashRouter([]));
+  const onClick = () => makeBrowserRouter([]);
+  return <button onClick={onClick}>Router</button>;
 };
 const unkeyedPresence = <AnimatePresence><Panel /><Panel /></AnimatePresence>;
 const partiallyKeyedNamespacePresence = <MotionRuntime.AnimatePresence><Panel /><Panel key="second" /></MotionRuntime.AnimatePresence>;
@@ -643,6 +680,10 @@ try {
   fs.writeFileSync(ogImageFixturePath, 'export const runtime = "edge";');
   fs.mkdirSync(path.dirname(routeHandlerFixturePath), { recursive: true });
   fs.writeFileSync(routeHandlerFixturePath, "export default function handler() {}\n");
+  fs.writeFileSync(
+    asyncClientFixturePath,
+    `'use client';\nimport React from "react";\nexport default async function AsyncProfile() { return <div />; }\nconst AsyncSettings = async () => <section />;\nconst FrozenClient = Object.freeze(Object.seal(async () => <main />));\nconst SyncClient = Object.freeze(() => <aside />);\n`,
+  );
   fs.mkdirSync(path.dirname(safeGlobalErrorFixturePath), { recursive: true });
   fs.writeFileSync(
     safeGlobalErrorFixturePath,

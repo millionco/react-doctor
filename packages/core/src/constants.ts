@@ -662,6 +662,11 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "motion-animate-presence-requires-key",
   "motion-animate-presence-wait-single-child",
   "no-create-object-url-in-render",
+  "no-create-context-in-render",
+  "no-async-effect-callback",
+  "query-no-rest-destructuring",
+  "react-router-no-router-in-render",
+  "nextjs-async-client-component",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

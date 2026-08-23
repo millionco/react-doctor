@@ -161,6 +161,9 @@ impl Rule for ${delegatedRule.struct} {
         "motion-react-component-matches",
         "get-static-direct-jsx-elements",
         "is-motion-hook-result-expression",
+        "transparent-expression-root",
+        "component-or-hook-function-name",
+        "module-api-path-matches",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

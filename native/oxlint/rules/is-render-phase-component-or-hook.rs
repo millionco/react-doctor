@@ -25,7 +25,7 @@ fn is_render_phase_component_or_hook<'a>(
         return false;
     };
     loop {
-        if is_component_or_hook_function(function_node, ctx) {
+        if component_or_hook_function_name(function_node, ctx).is_some() {
             return true;
         }
         if !function_executes_during_render(function_node, ctx) {
@@ -41,50 +41,6 @@ fn is_render_phase_component_or_hook<'a>(
         };
         function_node = outer_function;
     }
-}
-
-fn is_component_or_hook_function<'a>(
-    function_node: &crate::AstNode<'a>,
-    ctx: &crate::context::LintContext<'a>,
-) -> bool {
-    if let oxc_ast::AstKind::Function(function) = function_node.kind()
-        && function.id.as_ref().is_some_and(|identifier| {
-            crate::utils::is_react_component_or_hook_name(identifier.name.as_str())
-        })
-    {
-        return true;
-    }
-    let mut expression_root = transparent_expression_root(function_node, ctx);
-    loop {
-        let parent = ctx.nodes().parent_node(expression_root.id());
-        let oxc_ast::AstKind::CallExpression(call_expression) = parent.kind() else {
-            break;
-        };
-        let is_first_argument = call_expression.arguments.first().is_some_and(|argument| {
-            argument
-                .as_expression()
-                .is_some_and(|expression| expression.span() == expression_root.span())
-        });
-        if !is_first_argument
-            || !matches!(
-                call_expression.callee_name(),
-                Some("memo" | "forwardRef" | "observer" | "lazy")
-            )
-        {
-            break;
-        }
-        expression_root = transparent_expression_root(parent, ctx);
-    }
-    let parent = ctx.nodes().parent_node(expression_root.id());
-    let oxc_ast::AstKind::VariableDeclarator(declarator) = parent.kind() else {
-        return false;
-    };
-    declarator
-        .id
-        .get_binding_identifier()
-        .is_some_and(|identifier| {
-            crate::utils::is_react_component_or_hook_name(identifier.name.as_str())
-        })
 }
 
 fn function_executes_during_render<'a>(
@@ -200,26 +156,4 @@ fn expression_is_argument_at(
             .as_expression()
             .is_some_and(|expression| expression.span() == expression_span)
     })
-}
-
-fn transparent_expression_root<'a, 'b>(
-    mut node: &'b crate::AstNode<'a>,
-    ctx: &'b crate::context::LintContext<'a>,
-) -> &'b crate::AstNode<'a> {
-    loop {
-        let parent = ctx.nodes().parent_node(node.id());
-        if !matches!(
-            parent.kind(),
-            oxc_ast::AstKind::ParenthesizedExpression(_)
-                | oxc_ast::AstKind::TSAsExpression(_)
-                | oxc_ast::AstKind::TSSatisfiesExpression(_)
-                | oxc_ast::AstKind::TSTypeAssertion(_)
-                | oxc_ast::AstKind::TSNonNullExpression(_)
-                | oxc_ast::AstKind::TSInstantiationExpression(_)
-                | oxc_ast::AstKind::ChainExpression(_)
-        ) {
-            return node;
-        }
-        node = parent;
-    }
 }

@@ -703,6 +703,11 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "jsx-no-constructed-context-values",
   "prefer-es6-class",
   "prefer-function-component",
+  "aria-activedescendant-has-tabindex",
+  "aria-role",
+  "anchor-ambiguous-text",
+  "no-interactive-element-to-noninteractive-role",
+  "no-noninteractive-element-to-interactive-role",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

@@ -174,6 +174,7 @@ impl Rule for ${delegatedRule.struct} {
         "imported-module-api-matches",
         "resolve-identifier-import",
         "is-react-es6-component",
+        "get-static-jsx-attribute-string-values",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

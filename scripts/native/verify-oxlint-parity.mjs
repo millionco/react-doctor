@@ -210,6 +210,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-no-constructed-context-values": 1,
   "prefer-es6-class": 1,
   "prefer-function-component": 7,
+  "aria-activedescendant-has-tabindex": 1,
+  "aria-role": 5,
+  "anchor-ambiguous-text": 2,
+  "no-interactive-element-to-noninteractive-role": 1,
+  "no-noninteractive-element-to-interactive-role": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -240,6 +245,10 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
     jsxBooleanValue: { mode: "always", never: ["compact"] },
     noStringRefs: { noTemplateLiterals: true },
     stateInConstructor: { mode: "never" },
+    ariaRole: { allowedInvalidRoles: ["datepicker"], ignoreNonDOM: false },
+    anchorAmbiguousText: { words: ["continue"] },
+    noInteractiveElementToNoninteractiveRole: { button: ["article"] },
+    noNoninteractiveElementToInteractiveRole: { h1: ["button"] },
   },
 };
 const shouldBenchmark = argumentsList.includes("--benchmark");
@@ -471,6 +480,22 @@ const page = <html></html>;
 const untitledFrame = <iframe />;
 const invalidFrameTitle = <iframe title={undefined} />;
 const invalidAnchor = <a>Open</a>;
+const ambiguousAnchor = <a href="https://example.com/details">learn more</a>;
+const expressionAmbiguousAnchor = <a href="https://example.com/next">{"learn more"}</a>;
+const unfocusableActiveDescendant = <div aria-activedescendant="selected-item" />;
+const editableActiveDescendant = <div contentEditable aria-activedescendant="selected-item" />;
+const dynamicEditableActiveDescendant = <div contentEditable={editable} aria-activedescendant="selected-item" />;
+const templateEditableActiveDescendant = <div contentEditable={\`true\`} aria-activedescendant="selected-item" />;
+const negativeActiveDescendant = <div tabIndex={-1} aria-activedescendant="selected-item" />;
+const invalidAriaRole = <div role="datepicker" />;
+const INVALID_ROLE_ALIAS = "datepicker";
+const invalidAliasedAriaRole = <div role={INVALID_ROLE_ALIAS} />;
+const invalidConditionalAriaRole = <div role={condition ? "button" : "datepicker"} />;
+const interactiveElementWithNoninteractiveRole = <button role="article">Save</button>;
+const noninteractiveElementWithInteractiveRole = <h1 role="button">Open</h1>;
+const allowedTablePresentationRole = <tr role="presentation" />;
+const allowedListRole = <ul role="tablist" />;
+const unfocusableSeparatorRole = <h2 role="separator">Divider</h2>;
 const missingWidget = <MissingWidget />;
 const missingMemberWidget = <Missing.Namespace />;
 const mouseOnly = <div onMouseOver={handle} />;
@@ -853,6 +878,11 @@ class ConfiguredState extends Component {
 }
 const configuredBooleanProps = <Widget enabled compact={true} />;
 const configuredHeading = <Title />;
+const configuredAllowedInvalidRole = <div role="datepicker" />;
+const configuredInvalidCustomRole = <Widget role="custom-invalid" />;
+const configuredAmbiguousAnchor = <a href="https://example.com/continue">continue</a>;
+const configuredAllowedInteractiveRole = <button role="article">Save</button>;
+const configuredAllowedNoninteractiveRole = <h1 role="button">Open</h1>;
 `,
   );
   const routerGateFixture =
@@ -882,6 +912,11 @@ const configuredHeading = <Title />;
     "jsx-boolean-value",
     "no-string-refs",
     "state-in-constructor",
+    "aria-activedescendant-has-tabindex",
+    "aria-role",
+    "anchor-ambiguous-text",
+    "no-interactive-element-to-noninteractive-role",
+    "no-noninteractive-element-to-interactive-role",
   ];
   fs.writeFileSync(
     configuredStockConfigPath,
@@ -997,6 +1032,8 @@ const configuredHeading = <Title />;
     "jsx-boolean-value": 2,
     "no-string-refs": 1,
     "state-in-constructor": 3,
+    "aria-role": 1,
+    "anchor-ambiguous-text": 1,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(configuredStockDiagnostics)) !==

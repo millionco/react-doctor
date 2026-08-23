@@ -104,6 +104,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-direct-mutation-state": 2,
   "no-string-refs": 2,
   "state-in-constructor": 1,
+  "nextjs-inline-script-missing-id": 1,
+  "no-aria-hidden-on-body": 2,
+  "html-xml-lang-mismatch": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -243,6 +246,17 @@ const negativeHiddenButton = <button tabIndex={-1} aria-hidden />;
 const FocusableAlias = "button" as const;
 const hiddenFocusableAlias = <FocusableAlias aria-hidden />;
 const legacyStringRef = <Widget ref="legacy" />;
+const inlineNextScript = <Script>window.analytics = true;</Script>;
+const identifiedInlineNextScript = <Script id="analytics">window.analytics = true;</Script>;
+const externalNextScript = <Script src="/analytics.js" />;
+const spreadInlineNextScript = <Script {...scriptProperties}>window.analytics = true;</Script>;
+const inaccessibleBody = <body aria-hidden="true" />;
+const spreadOverridesHiddenBody = <body aria-hidden {...{ "aria-hidden": false }} />;
+const hiddenBodyOverridesSpread = <body {...{ "aria-hidden": false }} aria-hidden />;
+const dynamicSpreadHiddenBody = <body aria-hidden {...bodyProperties} />;
+const conflictingDocumentLanguage = <html lang="en-US" xml:lang="fr-CA" />;
+const matchingDocumentLanguage = <html lang="EN-us" xml:lang="en-GB" />;
+const spreadOverridesDocumentLanguage = <html lang="en" xml:lang="fr" {...{ "xml:lang": "en" }} />;
 const autoplayingVideo = <video autoPlay src="hero.mp4" />;
 const mutedAutoplayingVideo = <video autoPlay muted src="hero.mp4" />;
 const unnamedDetails = <details><p>Answer</p></details>;

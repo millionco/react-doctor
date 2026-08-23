@@ -52,7 +52,10 @@
     "no-redundant-should-component-update",
     "no-direct-mutation-state",
     "no-string-refs",
-    "state-in-constructor"
+    "state-in-constructor",
+    "nextjs-inline-script-missing-id",
+    "no-aria-hidden-on-body",
+    "html-xml-lang-mismatch"
   ],
   "delegatedRules": [
     {

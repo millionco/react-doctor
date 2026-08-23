@@ -192,7 +192,9 @@
     "no-inline-bounce-easing",
     "prefer-tabular-numeric-data",
     "no-excessive-font-families",
-    "no-repeated-section-shells"
+    "no-repeated-section-shells",
+    "rerender-lazy-state-init",
+    "no-eager-new-in-use-state-initializer"
   ],
   "delegatedRules": [
     {

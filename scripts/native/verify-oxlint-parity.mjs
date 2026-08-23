@@ -281,6 +281,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "prefer-tabular-numeric-data": 1,
   "no-excessive-font-families": 1,
   "no-repeated-section-shells": 1,
+  "rerender-lazy-state-init": 7,
+  "no-eager-new-in-use-state-initializer": 5,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -917,6 +919,27 @@ const optionalCallReference = useRef(cache.factory?.());
 const dateReference = useRef(new Date());
 const populatedMapReference = useRef(new Map([["mode", mode]]));
 const memberMapReference = useRef(new cache.Map());
+const lazyState = useState(buildRows(raw) ?? []);
+const eagerConstructedState = useState(new AbortController());
+const directLazyState = useState(buildState(raw));
+const memberLazyState = useState(computeState(raw).value);
+const spreadLazyState = useState([...buildState(raw)]);
+const optionalLazyState = useState(buildState?.(raw));
+const optionalMemberLazyState = useState(buildState(raw)?.value);
+const hookState = useState(useMemo(() => raw, [raw]));
+const trivialDateState = useState(Date.now());
+const conditionalFallbackState = useState(raw ?? buildState(raw));
+const conditionalConstructedState = useState(raw ? new ReadClient() : new WriteClient());
+const nestedConstructedState = useState({ client: new ApiClient() });
+const runtimeMapState = useState(new Map(items));
+const constantMapState = useState(new Map([["raw", raw]]));
+const globalMapState = useState(new globalThis.Map());
+const lazyConstructedState = useState(() => new ApiClient());
+const wrappedConstructedState = useState(wrap(new ApiClient()));
+{
+  class Map {}
+  const shadowedMapState = useState(new Map());
+}
 const emptyMapReference = useRef(new Map());
 const directGlobalMapReference = useRef(new globalThis.Map());
 const GlobalSet = globalThis.Set;
@@ -1036,7 +1059,7 @@ try {
   );
   fs.writeFileSync(
     nonProductionFixturePath,
-    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache());`,
+    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js"));`,
   );
   fs.writeFileSync(
     deepNonProductionFixturePath,

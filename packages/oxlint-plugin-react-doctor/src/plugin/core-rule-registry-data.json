@@ -1996,7 +1996,7 @@
       "id": "js-flatmap-filter",
       "title": ".map().filter(Boolean) loops twice",
       "severity": "warn",
-      "recommendation": "Use `.flatMap(item => condition ? [value] : [])` to change and drop items in one pass, instead of building a throwaway array in between",
+      "recommendation": "If this is a measured hot path, combine the transform and truthy check with `.reduce()` or a `for...of` loop to avoid the intermediate array and second pass",
       "category": "Performance",
       "framework": "global",
       "tags": ["test-noise"],

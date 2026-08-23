@@ -24,7 +24,7 @@ export const jsFlatmapFilter = defineRule({
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Use `.flatMap(item => condition ? [value] : [])` to change and drop items in one pass, instead of building a throwaway array in between",
+    "If this is a measured hot path, combine the transform and truthy check with `.reduce()` or a `for...of` loop to avoid the intermediate array and second pass",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (
@@ -82,7 +82,7 @@ export const jsFlatmapFilter = defineRule({
       context.report({
         node,
         message:
-          "This loops over your list twice because .map().filter(Boolean) makes two passes, so use .flatMap() to change & drop items in one pass",
+          "This .map().filter(Boolean) chain creates an intermediate array and traverses it again; if this is a measured hot path, combine the transform and truthy check with .reduce() or for...of",
       });
     },
   }),

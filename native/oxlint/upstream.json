@@ -82,7 +82,10 @@
     "html-label-has-single-control",
     "fieldset-requires-legend",
     "no-skipped-heading-level",
-    "no-duplicate-static-id-reference"
+    "no-duplicate-static-id-reference",
+    "motion-create-in-render",
+    "motion-use-transform-range-length",
+    "motion-value-constructor-in-render"
   ],
   "delegatedRules": [
     {

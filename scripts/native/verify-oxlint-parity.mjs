@@ -141,6 +141,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "fieldset-requires-legend": 2,
   "no-skipped-heading-level": 2,
   "no-duplicate-static-id-reference": 2,
+  "motion-create-in-render": 5,
+  "motion-use-transform-range-length": 3,
+  "motion-value-constructor-in-render": 4,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -176,7 +179,7 @@ const fixture = `
 import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
-import React, { Children, useEffect, useState, Component, forwardRef as wrapRef } from "react";
+import React, { Children, useEffect, useMemo, useState, Component, forwardRef as wrapRef } from "react";
 import ReactDOM from "react-dom";
 import type { useMemo as PreactTypeOnlyHook } from "react";
 import RawBottomSheet from "react-native-raw-bottom-sheet";
@@ -189,7 +192,8 @@ import {
   TouchableOpacity,
   type WebView,
 } from "react-native";
-import { motion, type MotionConfig } from "framer-motion";
+import { motion, motionValue as createMotionValue, useTransform as mapMotionValue, type MotionConfig } from "framer-motion";
+import * as MotionRuntime from "motion/react";
 import Head from "next/head";
 document.write("a");
 document.writeln("b");
@@ -210,6 +214,33 @@ const duplicateMemberSpread = <Widget {...nestedSpreadProps.options} {...(nested
 const distinctMemberSpreads = <Widget {...nestedSpreadProps.options} {...nestedSpreadProps.other} />;
 const wrappedComputedSpreads = <Widget {...nestedSpreadProps[("options" as string)]} {...nestedSpreadProps.options} />;
 const duplicateOptionalSpread = <Widget {...nestedSpreadProps?.options} {...nestedSpreadProps?.options} />;
+const MotionRenderFixture = () => {
+  const FirstMotionElement = motion.create("div");
+  const SecondMotionElement = MotionRuntime.motion.create("span");
+  const firstMotionValue = createMotionValue(0);
+  const secondMotionValue = MotionRuntime.motionValue(1);
+  const stableMotionValue = useMemo(() => createMotionValue(2), []);
+  const deferredMotionFactory = () => motion.create("button");
+  return <FirstMotionElement onClick={deferredMotionFactory}>{firstMotionValue.get() + secondMotionValue.get() + stableMotionValue.get()}<SecondMotionElement /></FirstMotionElement>;
+};
+const mismatchedMotionTransform = mapMotionValue(progress, [0, 0.5, 1], [0, 1]);
+const mismatchedNamespacedMotionTransform = MotionRuntime.useTransform(progress, [0, 1], [0]);
+const aliasedMotionCreate = motion.create;
+const aliasedMotionValue = createMotionValue;
+const aliasedMotionTransform = MotionRuntime.useTransform;
+const mismatchedAliasedMotionTransform = aliasedMotionTransform(progress, [0, 1, 2], [0, 1]);
+const MemoMotionFixture = React.memo(() => {
+  const MissingDepsMotionElement = useMemo(() => aliasedMotionCreate("section"));
+  const mappedMotionElements = ["article"].map((tagName) => aliasedMotionCreate(tagName));
+  const mappedMotionValues = [0].map((value) => aliasedMotionValue(value));
+  const immediateMotionValue = (() => (createMotionValue as typeof createMotionValue)(4))();
+  const [StableMotionElement] = useState(() => motion.create("aside"));
+  const stableMemoMotionValue = useMemo(() => createMotionValue(5), []);
+  return <MissingDepsMotionElement>{mappedMotionElements.length + mappedMotionValues.length + immediateMotionValue.get() + stableMemoMotionValue.get()}<StableMotionElement /></MissingDepsMotionElement>;
+});
+const mapArray = Array.from;
+const ArrayFromMotionFixture = () => mapArray(["nav"], (tagName) => motion.create(tagName));
+const dynamicMotionTransform = mapMotionValue(progress, inputRange, outputRange);
 const namespaced = <svg:path />;
 React.createElement("svg:path");
 const danger = <div dangerouslySetInnerHTML={{ __html: markup }} />;

@@ -153,6 +153,9 @@ impl Rule for ${delegatedRule.struct} {
         "is-static-jsx-tree-root",
         "get-static-jsx-tree-opening-elements",
         "is-js-whitespace",
+        "motion-react-api-path-matches",
+        "is-render-phase-component-or-hook",
+        "is-inside-stable-react-initializer",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

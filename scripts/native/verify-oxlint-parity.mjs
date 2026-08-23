@@ -178,6 +178,13 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "aria-braille-equivalent": 2,
   "no-presentation-role-conflict": 4,
   "no-focusable-content-in-role-text": 2,
+  "duplicate-jsx-subtree": 0,
+  "circular-dependency": 0,
+  "unused-dependency": 0,
+  "unused-dev-dependency": 0,
+  "unused-export": 0,
+  "unused-file": 0,
+  "unused-type": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;

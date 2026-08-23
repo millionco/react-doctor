@@ -118,7 +118,14 @@
     "empty-table-header",
     "aria-braille-equivalent",
     "no-presentation-role-conflict",
-    "no-focusable-content-in-role-text"
+    "no-focusable-content-in-role-text",
+    "duplicate-jsx-subtree",
+    "circular-dependency",
+    "unused-dependency",
+    "unused-dev-dependency",
+    "unused-export",
+    "unused-file",
+    "unused-type"
   ],
   "delegatedRules": [
     {

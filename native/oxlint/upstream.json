@@ -39,7 +39,14 @@
     "scope",
     "no-set-state",
     "no-find-dom-node",
-    "react-in-jsx-scope"
+    "react-in-jsx-scope",
+    "tabindex-no-positive",
+    "no-autoplay-without-muted",
+    "details-requires-summary",
+    "no-broken-image-source",
+    "html-no-nested-form",
+    "no-img-lazy-with-high-fetchpriority",
+    "no-srcset-without-sizes"
   ],
   "delegatedRules": [
     {

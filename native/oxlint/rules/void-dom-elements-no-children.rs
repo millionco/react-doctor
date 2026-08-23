@@ -1,8 +1,8 @@
 use oxc_ast::{
     AstKind,
     ast::{
-        Argument, Expression, JSXAttributeItem, JSXAttributeName, JSXChild, JSXElementName,
-        JSXExpression, ObjectPropertyKind,
+        Argument, Expression, JSXAttributeItem, JSXAttributeName, JSXChild, JSXExpression,
+        ObjectPropertyKind,
     },
 };
 use oxc_diagnostics::OxcDiagnostic;
@@ -32,7 +32,9 @@ impl Rule for VoidDomElementsNoChildren {
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
         match node.kind() {
             AstKind::JSXElement(element) => {
-                let Some((tag_name, span)) = resolve_jsx_element_type(element, ctx) else {
+                let Some((tag_name, span)) =
+                    resolve_jsx_element_type(&element.opening_element, ctx)
+                else {
                     return;
                 };
                 if !VOID_DOM_ELEMENTS.contains(&tag_name)
@@ -92,44 +94,6 @@ fn diagnostic(tag_name: &str, span: Span) -> OxcDiagnostic {
         "React errors when `<{tag_name}>` has children because it's a void element."
     ))
     .with_label(span)
-}
-
-fn resolve_jsx_element_type<'a>(
-    element: &'a oxc_ast::ast::JSXElement<'a>,
-    ctx: &LintContext<'a>,
-) -> Option<(&'a str, Span)> {
-    match &element.opening_element.name {
-        JSXElementName::Identifier(identifier) => Some((identifier.name.as_str(), identifier.span)),
-        JSXElementName::IdentifierReference(identifier) => {
-            let reference = ctx.scoping().get_reference(identifier.reference_id());
-            let symbol_id = reference.symbol_id()?;
-            let declaration = ctx.symbol_declaration(symbol_id);
-            let AstKind::VariableDeclarator(declarator) = declaration.kind() else {
-                return Some((identifier.name.as_str(), identifier.span));
-            };
-            let parent = ctx.nodes().parent_node(declaration.id());
-            let AstKind::VariableDeclaration(variable_declaration) = parent.kind() else {
-                return Some((identifier.name.as_str(), identifier.span));
-            };
-            if !variable_declaration.kind.is_const()
-                || declarator
-                    .id
-                    .get_binding_identifier()
-                    .is_none_or(|binding_identifier| binding_identifier.symbol_id() != symbol_id)
-            {
-                return Some((identifier.name.as_str(), identifier.span));
-            }
-            let Some(Expression::StringLiteral(string_literal)) = declarator
-                .init
-                .as_ref()
-                .map(Expression::get_inner_expression)
-            else {
-                return Some((identifier.name.as_str(), identifier.span));
-            };
-            Some((string_literal.value.as_str(), identifier.span))
-        }
-        _ => None,
-    }
 }
 
 fn has_children_like_attribute(attributes: &[JSXAttributeItem]) -> bool {

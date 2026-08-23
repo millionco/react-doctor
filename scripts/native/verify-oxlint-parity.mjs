@@ -88,6 +88,13 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-set-state": 2,
   "no-find-dom-node": 2,
   "react-in-jsx-scope": 0,
+  "tabindex-no-positive": 3,
+  "no-autoplay-without-muted": 1,
+  "details-requires-summary": 1,
+  "no-broken-image-source": 4,
+  "html-no-nested-form": 1,
+  "no-img-lazy-with-high-fetchpriority": 1,
+  "no-srcset-without-sizes": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -197,6 +204,20 @@ React.createElement("div", { [dangerouslySetInnerHTML]: { __html: markup } });
 window.document.createElement("img", { children: "description", dangerouslySetInnerHTML: { __html: markup } }, "description");
 namespace[document].createElement("img", {}, "description");
 const shortcut = <button accessKey="s">Save</button>;
+const positiveTabOrder = <button tabIndex={2}>Later</button>;
+const hexadecimalPositiveTabOrder = <button tabIndex="0x2">Later</button>;
+const paddedPositiveTabOrder = <button tabIndex=" 2 ">Later</button>;
+const infiniteTabOrder = <button tabIndex="Infinity">Normal</button>;
+const staticFalseTabOrder = <button tabIndex={false ? 2 : 0}>Normal</button>;
+const numericFalseTabOrder = <button tabIndex={0 ? 2 : 0}>Normal</button>;
+const unaryPositiveTabOrder = <button tabIndex={+2}>Normal</button>;
+const autoplayingVideo = <video autoPlay src="hero.mp4" />;
+const mutedAutoplayingVideo = <video autoPlay muted src="hero.mp4" />;
+const unnamedDetails = <details><p>Answer</p></details>;
+const brokenImage = <img alt="Preview" />;
+const nestedForm = <form><form /></form>;
+const conflictingImagePriority = <img src="hero.png" loading="lazy" fetchPriority="high" />;
+const responsiveImage = <img srcSet="hero-640.jpg 640w, hero-1280.jpg 1280w" alt="" />;
 const clonedChild = React.cloneElement(child);
 const renderResult = ReactDOM.render(<div />, root);
 const wrappedRenderResult = (ReactDOM as any).render(<div />, root);

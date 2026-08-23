@@ -1,5 +1,7 @@
+import * as fs from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import type { ProjectInfo } from "../src/index.js";
+import { NATIVE_REACT_DOCTOR_RULE_IDS } from "../src/constants.js";
 import { createOxlintConfig } from "../src/runners/oxlint/config.js";
 
 const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
@@ -50,6 +52,14 @@ const tailwindViteWebProject = buildProject({
 });
 
 describe("createOxlintConfig settings", () => {
+  it("keeps the application allowlist synchronized with the native build manifest", () => {
+    const upstreamManifest = JSON.parse(
+      fs.readFileSync(new URL("../../../native/oxlint/upstream.json", import.meta.url), "utf8"),
+    );
+
+    expect([...NATIVE_REACT_DOCTOR_RULE_IDS]).toEqual(upstreamManifest.nativeRules);
+  });
+
   it("moves selected React Doctor rules into the native plugin", () => {
     const stockConfig = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

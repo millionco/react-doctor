@@ -171,6 +171,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-string-false-on-boolean-attribute": 3,
   "nextjs-no-a-element": 2,
   "jsx-no-script-url": 2,
+  "jsx-boolean-value": 2,
+  "no-danger-with-children": 1,
+  "heading-has-content": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -197,6 +200,8 @@ const REACT_DOCTOR_SETTINGS = {
 const CONFIGURED_REACT_DOCTOR_SETTINGS = {
   "react-doctor": {
     ...REACT_DOCTOR_SETTINGS["react-doctor"],
+    headingHasContent: { components: ["Title"] },
+    jsxBooleanValue: { mode: "always", never: ["compact"] },
     noStringRefs: { noTemplateLiterals: true },
     stateInConstructor: { mode: "never" },
   },
@@ -375,6 +380,8 @@ const namespaced = <svg:path />;
 React.createElement("svg:path");
 const danger = <div dangerouslySetInnerHTML={{ __html: markup }} />;
 React.createElement("div", { dangerouslySetInnerHTML: { __html: markup } });
+const dangerousPropsWithChildren = { dangerouslySetInnerHTML: { __html: markup } };
+const dangerWithNestedChildren = <div {...dangerousPropsWithChildren}>Content</div>;
 const suppressedOnlyForReact =
   // eslint-disable-next-line react/no-danger
   <div dangerouslySetInnerHTML={{ __html: markup }} />;
@@ -551,6 +558,7 @@ const skippedMainHeading = <main><h1>Title</h1><section><h3>Details</h3></sectio
 const nestedSkippedArticleHeading = <main><h1>Title</h1><article><h2>Article</h2><h4>Detail</h4></article></main>;
 const expressionHeading = <main><h1>Title</h1>{condition && <h3>Details</h3>}</main>;
 const continuousHeadings = <article><h1>Title</h1><h2>Details</h2></article>;
+const emptyHeading = <h2 />;
 const duplicateEmailId = <><label htmlFor="email">Email</label><input id="email" /><input id="email" /></>;
 const duplicateUnicodeId = <><div aria-labelledby="item" /><span id={"\uFEFFitem\u00A0"} /><span id="item" /></>;
 const conditionalDuplicateId = <div aria-labelledby="item">{condition ? <span id="item" /> : <span id="item" />}</div>;
@@ -727,6 +735,8 @@ class ConfiguredState extends Component {
   }
   render() { return <Widget ref={\`legacy-\${id}\`} />; }
 }
+const configuredBooleanProps = <Widget enabled compact={true} />;
+const configuredHeading = <Title />;
 `,
   );
   fs.writeFileSync(
@@ -737,7 +747,12 @@ class ConfiguredState extends Component {
     nativeConfigPath,
     JSON.stringify(buildConfig({ isNative: true, settings: REACT_DOCTOR_SETTINGS })),
   );
-  const configuredRuleIds = ["no-string-refs", "state-in-constructor"];
+  const configuredRuleIds = [
+    "heading-has-content",
+    "jsx-boolean-value",
+    "no-string-refs",
+    "state-in-constructor",
+  ];
   fs.writeFileSync(
     configuredStockConfigPath,
     JSON.stringify(
@@ -825,6 +840,8 @@ class ConfiguredState extends Component {
   ).diagnostics;
   const expectedConfiguredDiagnosticCounts = {
     ...Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0])),
+    "heading-has-content": 1,
+    "jsx-boolean-value": 2,
     "no-string-refs": 1,
     "state-in-constructor": 3,
   };

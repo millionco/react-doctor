@@ -111,7 +111,10 @@
     "nextjs-async-client-component",
     "no-string-false-on-boolean-attribute",
     "nextjs-no-a-element",
-    "jsx-no-script-url"
+    "jsx-no-script-url",
+    "jsx-boolean-value",
+    "no-danger-with-children",
+    "heading-has-content"
   ],
   "delegatedRules": [
     {

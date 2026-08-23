@@ -49,7 +49,10 @@
     "no-srcset-without-sizes",
     "no-aria-hidden-on-focusable",
     "jsx-props-no-spread-multi",
-    "no-redundant-should-component-update"
+    "no-redundant-should-component-update",
+    "no-direct-mutation-state",
+    "no-string-refs",
+    "state-in-constructor"
   ],
   "delegatedRules": [
     {

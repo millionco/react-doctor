@@ -50,8 +50,11 @@ const pluginPath = requireFromRepository.resolve("oxlint-plugin-react-doctor");
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-native-parity-"));
 const fixturePath = path.join(temporaryDirectory, "fixture.tsx");
 const nonProductionFixturePath = path.join(temporaryDirectory, "fixture.test.tsx");
+const configuredFixturePath = path.join(temporaryDirectory, "configured.tsx");
 const stockConfigPath = path.join(temporaryDirectory, "stock.json");
 const nativeConfigPath = path.join(temporaryDirectory, "native.json");
+const configuredStockConfigPath = path.join(temporaryDirectory, "configured-stock.json");
+const configuredNativeConfigPath = path.join(temporaryDirectory, "configured-native.json");
 const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-no-duplicate-props": 1,
   "nextjs-no-vercel-og-import": 1,
@@ -98,6 +101,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-aria-hidden-on-focusable": 5,
   "jsx-props-no-spread-multi": 2,
   "no-redundant-should-component-update": 2,
+  "no-direct-mutation-state": 2,
+  "no-string-refs": 2,
+  "state-in-constructor": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -119,6 +125,13 @@ const REACT_DOCTOR_SETTINGS = {
     framework: "unknown",
     rootDirectory: repositoryRoot,
     capabilities: ["react"],
+  },
+};
+const CONFIGURED_REACT_DOCTOR_SETTINGS = {
+  "react-doctor": {
+    ...REACT_DOCTOR_SETTINGS["react-doctor"],
+    noStringRefs: { noTemplateLiterals: true },
+    stateInConstructor: { mode: "never" },
   },
 };
 const shouldBenchmark = argumentsList.includes("--benchmark");
@@ -229,6 +242,7 @@ const visuallyHiddenInput = <input className="hidden" aria-hidden />;
 const negativeHiddenButton = <button tabIndex={-1} aria-hidden />;
 const FocusableAlias = "button" as const;
 const hiddenFocusableAlias = <FocusableAlias aria-hidden />;
+const legacyStringRef = <Widget ref="legacy" />;
 const autoplayingVideo = <video autoPlay src="hero.mp4" />;
 const mutedAutoplayingVideo = <video autoPlay muted src="hero.mp4" />;
 const unnamedDetails = <details><p>Answer</p></details>;
@@ -244,9 +258,10 @@ ReactDOM[findDOMNode](root);
 (ReactDOM as any).findDOMNode(root);
 ReactDOM[(findDOMNode as any)](root);
 class LegacyState extends Component {
+  state = { value: 0, count: 0 };
   componentWillUpdate() { this.setState({ loading: true }); }
   computedUpdate() { this[setState]({ loading: false }); this[(setState as any)]({}); }
-  update() { this.state.value = 1; this.isMounted(); }
+  update() { this.state.value = 1; this.state.count++; this.refs.legacy; this.isMounted(); }
   render() { return null; }
 }
 class PureOverride extends React.PureComponent {
@@ -324,6 +339,19 @@ const runOxlint = (configPath, environment, targetPath = fixturePath) => {
   };
 };
 
+const buildConfig = ({ isNative, settings, ruleIds = nativeRules }) => ({
+  categories: DISABLED_RULE_CATEGORIES,
+  plugins: isNative ? ["react-doctor-native"] : [],
+  jsPlugins: isNative ? [] : [pluginPath],
+  settings,
+  rules: Object.fromEntries(
+    ruleIds.map((nativeRuleId) => [
+      `${isNative ? "react-doctor-native" : "react-doctor"}/${nativeRuleId}`,
+      "warn",
+    ]),
+  ),
+});
+
 try {
   fs.writeFileSync(fixturePath, fixture);
   fs.writeFileSync(
@@ -331,28 +359,49 @@ try {
     `const shortcut = <button accessKey="s" />; const classicJsx = <div />;`,
   );
   fs.writeFileSync(
+    configuredFixturePath,
+    `
+import React, { Component } from "react";
+class ConfiguredState extends Component {
+  state = {};
+  constructor() {
+    super();
+    this.state = {};
+    this["state"] = {};
+    this[state] = {};
+  }
+  render() { return <Widget ref={\`legacy-\${id}\`} />; }
+}
+`,
+  );
+  fs.writeFileSync(
     stockConfigPath,
-    JSON.stringify({
-      categories: DISABLED_RULE_CATEGORIES,
-      plugins: [],
-      jsPlugins: [pluginPath],
-      settings: REACT_DOCTOR_SETTINGS,
-      rules: Object.fromEntries(
-        nativeRules.map((nativeRuleId) => [`react-doctor/${nativeRuleId}`, "warn"]),
-      ),
-    }),
+    JSON.stringify(buildConfig({ isNative: false, settings: REACT_DOCTOR_SETTINGS })),
   );
   fs.writeFileSync(
     nativeConfigPath,
-    JSON.stringify({
-      categories: DISABLED_RULE_CATEGORIES,
-      plugins: ["react-doctor-native"],
-      jsPlugins: [],
-      settings: REACT_DOCTOR_SETTINGS,
-      rules: Object.fromEntries(
-        nativeRules.map((nativeRuleId) => [`react-doctor-native/${nativeRuleId}`, "warn"]),
-      ),
-    }),
+    JSON.stringify(buildConfig({ isNative: true, settings: REACT_DOCTOR_SETTINGS })),
+  );
+  const configuredRuleIds = ["no-string-refs", "state-in-constructor"];
+  fs.writeFileSync(
+    configuredStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: CONFIGURED_REACT_DOCTOR_SETTINGS,
+        ruleIds: configuredRuleIds,
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    configuredNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: CONFIGURED_REACT_DOCTOR_SETTINGS,
+        ruleIds: configuredRuleIds,
+      }),
+    ),
   );
   const stockDiagnostics = runOxlint(stockConfigPath, process.env).diagnostics;
   const nativeEnvironment = {
@@ -402,6 +451,31 @@ try {
   ) {
     throw new Error(
       `native non-production parity failed\nstock=${JSON.stringify(stockNonProductionDiagnostics, null, 2)}\nnative=${JSON.stringify(nativeNonProductionDiagnostics, null, 2)}`,
+    );
+  }
+
+  const configuredStockDiagnostics = runOxlint(
+    configuredStockConfigPath,
+    process.env,
+    configuredFixturePath,
+  ).diagnostics;
+  const configuredNativeDiagnostics = runOxlint(
+    configuredNativeConfigPath,
+    nativeEnvironment,
+    configuredFixturePath,
+  ).diagnostics;
+  const expectedConfiguredDiagnosticCounts = {
+    ...Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0])),
+    "no-string-refs": 1,
+    "state-in-constructor": 3,
+  };
+  if (
+    JSON.stringify(countDiagnosticsByRule(configuredStockDiagnostics)) !==
+      JSON.stringify(expectedConfiguredDiagnosticCounts) ||
+    JSON.stringify(configuredNativeDiagnostics) !== JSON.stringify(configuredStockDiagnostics)
+  ) {
+    throw new Error(
+      `native configured parity failed\nstock=${JSON.stringify(configuredStockDiagnostics, null, 2)}\nnative=${JSON.stringify(configuredNativeDiagnostics, null, 2)}`,
     );
   }
 

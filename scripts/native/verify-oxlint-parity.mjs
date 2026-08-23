@@ -256,6 +256,10 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-all-caps-body-text": 1,
   "no-tight-display-tracking": 1,
   "no-placeholder-persona-copy": 1,
+  "js-early-exit": 1,
+  "js-flatmap-filter": 4,
+  "hooks-no-nan-in-deps": 5,
+  "rendering-conditional-render": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -825,6 +829,52 @@ const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a><
 const allCapsBody = <p className="uppercase">This paragraph contains enough readable copy that forcing every word into capitals makes it harder to scan.</p>;
 const tightDisplayTracking = <h1 className="tracking-tighter">Build faster</h1>;
 const placeholderPersona = <main><p>Jane Doe</p></main>;
+function deeplyNestedConditions(first, second, third, fourth) {
+  if (first) {
+    if (second) {
+      if (third) {
+        if (fourth) runNestedWork();
+      }
+    }
+  }
+}
+function branchedNestedConditions(first, second, third, fourth) {
+  if (first) {
+    if (second) {
+      if (third) {
+        if (fourth) runNestedWork();
+      } else {
+        runAlternateWork();
+      }
+    }
+  }
+}
+const compactedItems = items.map((item) => item.value).filter(Boolean);
+const typedCompactedItems = (items.map((item) => item.value) as any).filter(Boolean);
+const identityCompactedItems = items.map((item) => item.value).filter((item) => item);
+const parenthesizedIdentityCompactedItems = items.map((item) => item.value).filter((item => item));
+const boundedCompactedItems = items.slice(0, 4).map((item) => item.value).filter(Boolean);
+const smallCompactedItems = [first, second].map((item) => item.value).filter(Boolean);
+const immutableNanValue = Number.NaN;
+const aliasedNanValue = immutableNanValue;
+const { ["NaN"]: destructuredNanValue } = Number;
+const [, arrayNanValue] = [0, Number.NaN];
+const conditionalEffect = condition ? useEffect : React.useEffect;
+const { useImperativeHandle: exposeImperativeHandle } = React;
+const NanDependencyFixture = () => {
+  useEffect(() => {}, [NaN]);
+  conditionalEffect(() => {}, [aliasedNanValue, destructuredNanValue, arrayNanValue]);
+  exposeImperativeHandle(ref, () => ({}), [Number.NaN]);
+  {
+    const NaN = 0;
+    const Number = { NaN: 0 };
+    useEffect(() => {}, [NaN, Number.NaN]);
+  }
+  return null;
+};
+const leakedNumericConditional = itemCount && <Badge n={itemCount} />;
+const leakedLengthConditional = items.length && <List items={items} />;
+const safeBooleanConditional = showCount && <Badge n={itemCount} />;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>
@@ -928,7 +978,7 @@ try {
   );
   fs.writeFileSync(
     nonProductionFixturePath,
-    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>;`,
+    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean);`,
   );
   fs.writeFileSync(
     deepNonProductionFixturePath,

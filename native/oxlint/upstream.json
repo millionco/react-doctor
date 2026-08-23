@@ -167,7 +167,11 @@
     "no-repeated-placeholder-navigation",
     "no-all-caps-body-text",
     "no-tight-display-tracking",
-    "no-placeholder-persona-copy"
+    "no-placeholder-persona-copy",
+    "js-early-exit",
+    "js-flatmap-filter",
+    "hooks-no-nan-in-deps",
+    "rendering-conditional-render"
   ],
   "delegatedRules": [
     {

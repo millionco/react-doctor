@@ -157,6 +157,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "rn-prefer-content-inset-adjustment": 0,
   "rn-no-inline-flatlist-renderitem": 2,
   "rn-no-image-children": 2,
+  "motion-imperative-animation-in-render": 5,
+  "motion-value-subscription-in-render": 2,
+  "motion-animate-presence-requires-key": 6,
+  "motion-animate-presence-wait-single-child": 3,
+  "no-create-object-url-in-render": 4,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -210,7 +215,7 @@ import {
   type WebView,
 } from "react-native";
 import * as ReactNative from "react-native";
-import { motion, motionValue as createMotionValue, useTransform as mapMotionValue, type MotionConfig } from "framer-motion";
+import { AnimatePresence, animate as runMotionAnimation, motion, motionValue as createMotionValue, useAnimate as useMotionAnimate, useAnimationControls as useMotionControls, useMotionValue as useLiveMotionValue, useSpring as useMotionSpring, useTransform as mapMotionValue, type MotionConfig } from "framer-motion";
 import * as MotionRuntime from "motion/react";
 import Head from "next/head";
 document.write("a");
@@ -241,6 +246,48 @@ const MotionRenderFixture = () => {
   const deferredMotionFactory = () => motion.create("button");
   return <FirstMotionElement onClick={deferredMotionFactory}>{firstMotionValue.get() + secondMotionValue.get() + stableMotionValue.get()}<SecondMotionElement /></FirstMotionElement>;
 };
+const MotionSideEffectFixture = () => {
+  const controls = useMotionControls();
+  const liveProgress = useLiveMotionValue(0);
+  const controlsAlias = controls;
+  const liveProgressAlias = liveProgress;
+  const [, animatePanel] = useMotionAnimate();
+  const animatePanelAlias = animatePanel;
+  runMotionAnimation(".panel", { opacity: 1 });
+  animatePanelAlias(".panel", { x: 10 });
+  controlsAlias.start({ opacity: 1 });
+  liveProgressAlias.set(1);
+  liveProgress.jump(0);
+  liveProgressAlias.on("change", console.log);
+  useMotionSpring(liveProgress).on("change", console.log);
+  const onClick = () => {
+    runMotionAnimation(".panel", { opacity: 0 });
+    liveProgress.on("change", console.log);
+  };
+  return <button onClick={onClick}>Animate</button>;
+};
+const ObjectUrlFixture = () => {
+  const directObjectUrl = URL.createObjectURL(blob);
+  const mappedObjectUrls = [blob].map((currentBlob) => URL.createObjectURL(currentBlob));
+  const memoizedObjectUrl = useMemo(() => URL.createObjectURL(blob), []);
+  const wrappedObjectUrl = (URL as typeof URL).createObjectURL(blob);
+  useEffect(() => { const effectObjectUrl = URL.createObjectURL(blob); return () => URL.revokeObjectURL(effectObjectUrl); }, []);
+  const onDownload = () => URL.createObjectURL(blob);
+  return <a href={directObjectUrl} onClick={onDownload}>{mappedObjectUrls.length + memoizedObjectUrl.length + wrappedObjectUrl.length}</a>;
+};
+const ShadowedObjectUrlFixture = () => {
+  const URL = { createObjectURL: () => "local" };
+  return <a href={URL.createObjectURL()}>Local</a>;
+};
+const unkeyedPresence = <AnimatePresence><Panel /><Panel /></AnimatePresence>;
+const partiallyKeyedNamespacePresence = <MotionRuntime.AnimatePresence><Panel /><Panel key="second" /></MotionRuntime.AnimatePresence>;
+const AliasedPresence = AnimatePresence;
+const MotionNamespaceAlias = MotionRuntime;
+const aliasedPresence = <AliasedPresence><Panel /><Panel key="second" /></AliasedPresence>;
+const waitingPresence = <AnimatePresence mode="wait"><Panel key="first" /><Panel key="second" /></AnimatePresence>;
+const waitingNamespacePresence = <MotionRuntime.AnimatePresence mode={"wait"}><Panel key="first" /><Panel key="second" /></MotionRuntime.AnimatePresence>;
+const aliasedWaitingPresence = <MotionNamespaceAlias.AnimatePresence mode="wait"><Panel key="first" /><Panel key="second" /></MotionNamespaceAlias.AnimatePresence>;
+const spreadOwnedWaitingPresence = <AnimatePresence mode="wait" {...presenceProperties}><Panel /><Panel /></AnimatePresence>;
 const mismatchedMotionTransform = mapMotionValue(progress, [0, 0.5, 1], [0, 1]);
 const mismatchedNamespacedMotionTransform = MotionRuntime.useTransform(progress, [0, 1], [0]);
 const aliasedMotionCreate = motion.create;

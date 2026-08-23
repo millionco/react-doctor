@@ -98,7 +98,12 @@
     "rn-animate-layout-property",
     "rn-prefer-content-inset-adjustment",
     "rn-no-inline-flatlist-renderitem",
-    "rn-no-image-children"
+    "rn-no-image-children",
+    "motion-imperative-animation-in-render",
+    "motion-value-subscription-in-render",
+    "motion-animate-presence-requires-key",
+    "motion-animate-presence-wait-single-child",
+    "no-create-object-url-in-render"
   ],
   "delegatedRules": [
     {

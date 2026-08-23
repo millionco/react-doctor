@@ -48,7 +48,7 @@ const oxlintBinaryPath = path.join(
 );
 const pluginPath = requireFromRepository.resolve("oxlint-plugin-react-doctor");
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-native-parity-"));
-const fixturePath = path.join(temporaryDirectory, "fixture.tsx");
+const fixturePath = path.join(temporaryDirectory, "app", "error.tsx");
 const nonProductionFixturePath = path.join(temporaryDirectory, "fixture.test.tsx");
 const configuredFixturePath = path.join(temporaryDirectory, "configured.tsx");
 const stockConfigPath = path.join(temporaryDirectory, "stock.json");
@@ -119,6 +119,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-generic-handler-names": 1,
   "tanstack-start-no-dynamic-server-fn-import": 2,
   "nextjs-no-google-analytics-script": 2,
+  "nextjs-no-head-import": 1,
+  "nextjs-error-boundary-missing-use-client": 1,
+  "prefer-truncate-shorthand": 3,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -168,6 +171,7 @@ import {
   type WebView,
 } from "react-native";
 import { motion, type MotionConfig } from "framer-motion";
+import Head from "next/head";
 document.write("a");
 document.writeln("b");
 document["write"]("c");
@@ -341,6 +345,10 @@ const tagManagerScript = <Script src="https://www.googletagmanager.com/gtag/js?i
 const analyticsScript = <script src="https://www.google-analytics.com/analytics.js" />;
 const unrelatedScript = <Script src="https://example.com/widget.js" />;
 const expressionAnalyticsScript = <Script src={"https://www.google-analytics.com/analytics.js"} />;
+const truncateClasses = <span className="overflow-hidden text-ellipsis whitespace-nowrap" />;
+const reorderedTruncateClasses = <span className={"whitespace-nowrap text-sm overflow-hidden text-ellipsis"} />;
+const templateTruncateClasses = <span className={\`text-ellipsis overflow-hidden whitespace-nowrap\`} />;
+const incompleteTruncateClasses = <span className="overflow-hidden whitespace-nowrap" />;
 const autoplayingVideo = <video autoPlay src="hero.mp4" />;
 const mutedAutoplayingVideo = <video autoPlay muted src="hero.mp4" />;
 const unnamedDetails = <details><p>Answer</p></details>;
@@ -454,6 +462,7 @@ const buildConfig = ({ isNative, settings, ruleIds = nativeRules }) => ({
 });
 
 try {
+  fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
   fs.writeFileSync(fixturePath, fixture);
   fs.writeFileSync(
     nonProductionFixturePath,

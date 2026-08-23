@@ -67,7 +67,10 @@
     "rn-no-single-element-style-array",
     "no-generic-handler-names",
     "tanstack-start-no-dynamic-server-fn-import",
-    "nextjs-no-google-analytics-script"
+    "nextjs-no-google-analytics-script",
+    "nextjs-no-head-import",
+    "nextjs-error-boundary-missing-use-client",
+    "prefer-truncate-shorthand"
   ],
   "delegatedRules": [
     {

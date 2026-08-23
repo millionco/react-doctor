@@ -58,6 +58,7 @@ const safeGlobalErrorFixturePath = path.join(fixtureDirectory, "app", "safe", "g
 const safePageFixturePath = path.join(fixtureDirectory, "app", "page.tsx");
 const safeRouteHandlerFixturePath = path.join(fixtureDirectory, "app", "safe", "route.ts");
 const nonProductionFixturePath = path.join(temporaryDirectory, "fixture.test.tsx");
+const deepNonProductionFixturePath = path.join(temporaryDirectory, "deep-fixture.test.tsx");
 const configuredFixturePath = path.join(temporaryDirectory, "configured.tsx");
 const inactiveRouterFixtureDirectory = path.join(temporaryDirectory, "inactive-router-package");
 const inactiveRouterFixturePath = path.join(inactiveRouterFixtureDirectory, "src", "fixture.tsx");
@@ -215,11 +216,14 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "anchor-ambiguous-text": 2,
   "no-interactive-element-to-noninteractive-role": 1,
   "no-noninteractive-element-to-interactive-role": 1,
+  "jsx-max-depth": 1,
+  "no-unsafe": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
 const BENCHMARK_FINDING_COUNT_PER_FILE = 500;
 const BENCHMARK_SAMPLE_COUNT = 5;
+const CORPUS_PARITY_DIFF_LIMIT = 20;
 const OXLINT_OUTPUT_MAX_BYTES = 256 * 1024 * 1024;
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -239,6 +243,7 @@ const REACT_DOCTOR_SETTINGS = {
   },
 };
 const CONFIGURED_REACT_DOCTOR_SETTINGS = {
+  react: { version: "16.4.0" },
   "react-doctor": {
     ...REACT_DOCTOR_SETTINGS["react-doctor"],
     headingHasContent: { components: ["Title"] },
@@ -249,6 +254,8 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
     anchorAmbiguousText: { words: ["continue"] },
     noInteractiveElementToNoninteractiveRole: { button: ["article"] },
     noNoninteractiveElementToInteractiveRole: { h1: ["button"] },
+    jsxMaxDepth: { max: 2 },
+    noUnsafe: { checkAliases: true },
   },
 };
 const shouldBenchmark = argumentsList.includes("--benchmark");
@@ -729,6 +736,7 @@ ReactDOM[findDOMNode](root);
 ReactDOM[(findDOMNode as any)](root);
 class LegacyState extends Component {
   state = { value: 0, count: 0 };
+  UNSAFE_componentWillMount() {}
   componentWillUpdate() { this.setState({ loading: true }); }
   computedUpdate() { this[setState]({ loading: false }); this[(setState as any)]({}); }
   update() { this.state.value = 1; this.state.count++; this.refs.legacy; this.isMounted(); }
@@ -757,6 +765,7 @@ class ForeignSuppressedMissingRender extends Component {
   // eslint-disable-next-line react/require-render-return
   render() {}
 }
+const deeplyNestedJsx = <div><div><div><div><div><div><div><div><div><div><div><div><div><div><div><span /></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>
@@ -863,11 +872,16 @@ try {
     `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>;`,
   );
   fs.writeFileSync(
+    deepNonProductionFixturePath,
+    `import React from "react"; const deeplyNestedTestJsx = <div><div><div><div><div><div><div><div><div><div><div><div><div><div><div><span /></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div>;`,
+  );
+  fs.writeFileSync(
     configuredFixturePath,
     `
 import React, { Component } from "react";
 class ConfiguredState extends Component {
   state = {};
+  componentWillMount() {}
   constructor() {
     super();
     this.state = {};
@@ -883,6 +897,8 @@ const configuredInvalidCustomRole = <Widget role="custom-invalid" />;
 const configuredAmbiguousAnchor = <a href="https://example.com/continue">continue</a>;
 const configuredAllowedInteractiveRole = <button role="article">Save</button>;
 const configuredAllowedNoninteractiveRole = <h1 role="button">Open</h1>;
+const configuredDeepJsx = <div><section><span><em /></span></section></div>;
+const configuredCompetingDeepJsx = <div><section><span><em /></span><Widget render={() => <section><span><em /></span></section>} /></section></div>;
 `,
   );
   const routerGateFixture =
@@ -917,6 +933,8 @@ const configuredAllowedNoninteractiveRole = <h1 role="button">Open</h1>;
     "anchor-ambiguous-text",
     "no-interactive-element-to-noninteractive-role",
     "no-noninteractive-element-to-interactive-role",
+    "jsx-max-depth",
+    "no-unsafe",
   ];
   fs.writeFileSync(
     configuredStockConfigPath,
@@ -1016,6 +1034,25 @@ const configuredAllowedNoninteractiveRole = <h1 role="button">Open</h1>;
     );
   }
 
+  const deepNonProductionStockDiagnostics = runOxlint(
+    stockConfigPath,
+    process.env,
+    deepNonProductionFixturePath,
+  ).diagnostics;
+  const deepNonProductionNativeDiagnostics = runOxlint(
+    nativeConfigPath,
+    nativeEnvironment,
+    deepNonProductionFixturePath,
+  ).diagnostics;
+  if (
+    deepNonProductionStockDiagnostics.length !== 0 ||
+    deepNonProductionNativeDiagnostics.length !== 0
+  ) {
+    throw new Error(
+      `native deep non-production parity failed\nstock=${JSON.stringify(deepNonProductionStockDiagnostics, null, 2)}\nnative=${JSON.stringify(deepNonProductionNativeDiagnostics, null, 2)}`,
+    );
+  }
+
   const configuredStockDiagnostics = runOxlint(
     configuredStockConfigPath,
     process.env,
@@ -1034,6 +1071,8 @@ const configuredAllowedNoninteractiveRole = <h1 role="button">Open</h1>;
     "state-in-constructor": 3,
     "aria-role": 1,
     "anchor-ambiguous-text": 1,
+    "jsx-max-depth": 2,
+    "no-unsafe": 1,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(configuredStockDiagnostics)) !==
@@ -1107,14 +1146,14 @@ const configuredAllowedNoninteractiveRole = <h1 role="button">Open</h1>;
       ) {
         const nativeDiagnosticKeys = new Set(repositoryNativeDiagnostics.map(JSON.stringify));
         const stockDiagnosticKeys = new Set(repositoryStockDiagnostics.map(JSON.stringify));
-        const stockOnlyDiagnostic = repositoryStockDiagnostics.find(
+        const stockOnlyDiagnostics = repositoryStockDiagnostics.filter(
           (diagnostic) => !nativeDiagnosticKeys.has(JSON.stringify(diagnostic)),
         );
-        const nativeOnlyDiagnostic = repositoryNativeDiagnostics.find(
+        const nativeOnlyDiagnostics = repositoryNativeDiagnostics.filter(
           (diagnostic) => !stockDiagnosticKeys.has(JSON.stringify(diagnostic)),
         );
         throw new Error(
-          `native corpus parity failed for ${repositoryName}\nstock count=${repositoryStockDiagnostics.length}\nnative count=${repositoryNativeDiagnostics.length}\nstock only=${JSON.stringify(stockOnlyDiagnostic, null, 2)}\nnative only=${JSON.stringify(nativeOnlyDiagnostic, null, 2)}`,
+          `native corpus parity failed for ${repositoryName}\nstock count=${repositoryStockDiagnostics.length}\nnative count=${repositoryNativeDiagnostics.length}\nstock only=${JSON.stringify(stockOnlyDiagnostics.slice(0, CORPUS_PARITY_DIFF_LIMIT), null, 2)}\nnative only=${JSON.stringify(nativeOnlyDiagnostics.slice(0, CORPUS_PARITY_DIFF_LIMIT), null, 2)}`,
         );
       }
       corpusDiagnosticCount += repositoryStockDiagnostics.length;

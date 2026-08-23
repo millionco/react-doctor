@@ -149,7 +149,9 @@
     "aria-role",
     "anchor-ambiguous-text",
     "no-interactive-element-to-noninteractive-role",
-    "no-noninteractive-element-to-interactive-role"
+    "no-noninteractive-element-to-interactive-role",
+    "jsx-max-depth",
+    "no-unsafe"
   ],
   "delegatedRules": [
     {

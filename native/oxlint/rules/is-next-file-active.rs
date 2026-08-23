@@ -5,8 +5,33 @@ const DEPENDENCY_SECTION_NAMES: [&str; 4] = [
     "optionalDependencies",
 ];
 
-fn is_next_file_active(ctx: &crate::context::LintContext) -> bool {
-    let Some(package_directory) = find_nearest_package_directory(ctx.file_path()) else {
+trait NextFileContext {
+    fn next_file_path(&self) -> &std::path::Path;
+    fn next_root_directory(&self) -> Option<&str>;
+}
+
+impl NextFileContext for crate::context::LintContext<'_> {
+    fn next_file_path(&self) -> &std::path::Path {
+        self.file_path()
+    }
+
+    fn next_root_directory(&self) -> Option<&str> {
+        get_next_root_directory(self.settings().json.as_ref())
+    }
+}
+
+impl NextFileContext for crate::context::ContextHost<'_> {
+    fn next_file_path(&self) -> &std::path::Path {
+        self.file_path()
+    }
+
+    fn next_root_directory(&self) -> Option<&str> {
+        get_next_root_directory(self.settings().json.as_ref())
+    }
+}
+
+fn is_next_file_active(ctx: &impl NextFileContext) -> bool {
+    let Some(package_directory) = find_nearest_package_directory(ctx.next_file_path()) else {
         return true;
     };
     let package_json_path = package_directory.join("package.json");
@@ -34,19 +59,21 @@ fn is_next_file_active(ctx: &crate::context::LintContext) -> bool {
     if !declares_any_dependency {
         return true;
     }
-    let Some(root_directory) = ctx
-        .settings()
-        .json
-        .as_ref()
+    let Some(root_directory) = ctx.next_root_directory() else {
+        return true;
+    };
+    !is_package_within_project_root(&package_directory, root_directory)
+}
+
+fn get_next_root_directory(
+    settings: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> Option<&str> {
+    settings
         .and_then(|settings| settings.get("react-doctor"))
         .and_then(serde_json::Value::as_object)
         .and_then(|settings| settings.get("rootDirectory"))
         .and_then(serde_json::Value::as_str)
         .filter(|root_directory| !root_directory.is_empty())
-    else {
-        return true;
-    };
-    !is_package_within_project_root(&package_directory, root_directory)
 }
 
 fn find_nearest_package_directory(file_path: &std::path::Path) -> Option<std::path::PathBuf> {

@@ -108,7 +108,10 @@
     "no-async-effect-callback",
     "query-no-rest-destructuring",
     "react-router-no-router-in-render",
-    "nextjs-async-client-component"
+    "nextjs-async-client-component",
+    "no-string-false-on-boolean-attribute",
+    "nextjs-no-a-element",
+    "jsx-no-script-url"
   ],
   "delegatedRules": [
     {

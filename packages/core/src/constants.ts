@@ -667,6 +667,9 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "query-no-rest-destructuring",
   "react-router-no-router-in-render",
   "nextjs-async-client-component",
+  "no-string-false-on-boolean-attribute",
+  "nextjs-no-a-element",
+  "jsx-no-script-url",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

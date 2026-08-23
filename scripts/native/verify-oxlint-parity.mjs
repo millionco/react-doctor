@@ -168,6 +168,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "query-no-rest-destructuring": 2,
   "react-router-no-router-in-render": 2,
   "nextjs-async-client-component": 3,
+  "no-string-false-on-boolean-attribute": 3,
+  "nextjs-no-a-element": 2,
+  "jsx-no-script-url": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -357,6 +360,17 @@ const stableFlatListRenderItem = <FlatList renderItem={renderRow} />;
 const nativeImageTextChild = <NativeImage source={imageSource}>Caption</NativeImage>;
 const nativeImageElementChild = <NativeImage source={imageSource}><Overlay /></NativeImage>;
 const nativeImageEmptyChildren = <NativeImage source={imageSource}>{false}{null}{undefined}</NativeImage>;
+const stringFalseButton = <button disabled="false" />;
+const stringTrueInput = <input checked="true" />;
+const stringFalseReadonlyInput = <input readOnly="false" />;
+const booleanFalseButton = <button disabled={false} />;
+const internalAnchor = <a href="/about">About</a>;
+const internalExpressionAnchor = <a href={"/settings"} download={false}>Settings</a>;
+const downloadAnchor = <a href="/report" download>Report</a>;
+const protocolRelativeAnchor = <a href="//cdn.example.com/file">File</a>;
+const scriptUrlAnchor = <a href="javascript:void(0)">Open</a>;
+const obfuscatedScriptUrlAnchor = <a href=" \tJ\na\rv\ta\ns\tc\rr\ni\tp\tt:alert(1)">Open</a>;
+const safeJavascriptArticle = <a href="https://example.com/JavaScript:Guide">Read</a>;
 const namespaced = <svg:path />;
 React.createElement("svg:path");
 const danger = <div dangerouslySetInnerHTML={{ __html: markup }} />;

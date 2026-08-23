@@ -197,6 +197,10 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-internal-imports": 6,
   "react-router-v8-no-react-router-dom-import": 4,
   "react-router-no-navigate-in-render": 2,
+  "remotion-no-module-scope-delay-render": 4,
+  "no-default-warm-page-surface": 2,
+  "no-default-purple-page-gradient": 2,
+  "no-deprecated-tailwind-class": 7,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -267,6 +271,8 @@ import {
 import * as ReactNative from "react-native";
 import { AnimatePresence, animate as runMotionAnimation, motion, motionValue as createMotionValue, useAnimate as useMotionAnimate, useAnimationControls as useMotionControls, useMotionValue as useLiveMotionValue, useSpring as useMotionSpring, useTransform as mapMotionValue, type MotionConfig } from "framer-motion";
 import * as MotionRuntime from "motion/react";
+import { delayRender, delayRender as holdRender } from "remotion";
+import * as Remotion from "remotion";
 import Head from "next/head";
 void import("@react-three/fiber/dist/native");
 require("@react-three/fiber/src/native");
@@ -620,6 +626,21 @@ const focusableDecorativeImage = <img alt="" src="logo.svg" tabIndex={-1} />;
 const safePresentationalElements = <><div role="presentation" /><span role={dynamicRole} tabIndex={0} /><span role="presentation" aria-hidden="true" /></>;
 const focusableRoleTextContent = <span role="text"><button>Open</button><span tabIndex={0}>More</span></span>;
 const safeRoleTextContent = <span role="text">Total <button disabled>Help</button><Wrapper><button>Open</button></Wrapper></span>;
+const firstModuleRenderHandle = delayRender();
+const secondModuleRenderHandle = holdRender();
+const thirdModuleRenderHandle = Remotion.delayRender();
+const fourthModuleRenderHandle = Remotion["delayRender"]();
+const deferredRenderHandle = () => delayRender();
+const unrelatedDelayRender = otherRemotion.delayRender();
+const warmMainSurface = <main className="bg-stone-50">Warm</main>;
+const warmFullPageSurface = <div className="min-h-dvh bg-amber-50">Warm</div>;
+const safeVariantWarmSurface = <main className="bg-white dark:bg-stone-50">Safe</main>;
+const purpleGradientPage = <main className="bg-gradient-to-r from-violet-500 to-cyan-400">Purple</main>;
+const purpleGradientWrapper = <div className="min-h-screen bg-linear-to-br from-indigo-500 via-slate-500 to-pink-500">Purple</div>;
+const safeVariantGradient = <main className="bg-gradient-to-r from-violet-500 dark:to-cyan-400">Safe</main>;
+const deprecatedTailwindClasses = <div className="md:flex-shrink-0 group-hover:!flex-grow overflow-ellipsis bg-gradient-to-r bg-gradient-radial" />;
+const deprecatedTailwindTemplate = <div className={\`flex-shrink\`} />;
+const safeTailwindClasses = <div className="shrink-0 grow text-ellipsis bg-linear-to-r" />;
 const duplicateEmailId = <><label htmlFor="email">Email</label><input id="email" /><input id="email" /></>;
 const duplicateUnicodeId = <><div aria-labelledby="item" /><span id={"\uFEFFitem\u00A0"} /><span id="item" /></>;
 const conditionalDuplicateId = <div aria-labelledby="item">{condition ? <span id="item" /> : <span id="item" />}</div>;
@@ -864,7 +885,7 @@ const configuredHeading = <Title />;
   const routerSettings = {
     "react-doctor": {
       ...REACT_DOCTOR_SETTINGS["react-doctor"],
-      rootDirectory: temporaryDirectory,
+      rootDirectory: fs.realpathSync(temporaryDirectory),
     },
   };
   fs.writeFileSync(

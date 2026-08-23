@@ -690,6 +690,10 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "r3f-no-internal-imports",
   "react-router-v8-no-react-router-dom-import",
   "react-router-no-navigate-in-render",
+  "remotion-no-module-scope-delay-render",
+  "no-default-warm-page-surface",
+  "no-default-purple-page-gradient",
+  "no-deprecated-tailwind-class",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

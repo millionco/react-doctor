@@ -131,7 +131,11 @@
     "rn-reanimated-4-use-worklets-scheduler",
     "r3f-no-internal-imports",
     "react-router-v8-no-react-router-dom-import",
-    "react-router-no-navigate-in-render"
+    "react-router-no-navigate-in-render",
+    "remotion-no-module-scope-delay-render",
+    "no-default-warm-page-surface",
+    "no-default-purple-page-gradient",
+    "no-deprecated-tailwind-class"
   ],
   "delegatedRules": [
     {

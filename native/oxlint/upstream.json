@@ -207,7 +207,8 @@
     "design-no-vague-button-label",
     "js-tosorted-immutable",
     "rerender-functional-setstate",
-    "js-cache-storage"
+    "js-cache-storage",
+    "no-set-state-in-render"
   ],
   "delegatedRules": [
     {

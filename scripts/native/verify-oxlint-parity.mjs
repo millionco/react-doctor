@@ -296,6 +296,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "js-tosorted-immutable": 1,
   "rerender-functional-setstate": 8,
   "js-cache-storage": 1,
+  "no-set-state-in-render": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1003,6 +1004,26 @@ const FunctionalSetstateFixture = () => {
   };
   return <button onClick={doubleStep} onBlur={singleStep} onFocus={synchronousSpread} onKeyDown={mutuallyExclusiveStep}>{remember}{updateProfile}</button>;
 };
+function UnconditionalRenderSetterFixture() {
+  const [renderCount, setRenderCount] = useState(0);
+  setRenderCount(1);
+  return renderCount;
+}
+const ArrowRenderSetterFixture = () => {
+  const [renderOpen, setRenderOpen] = React.useState(false);
+  setRenderOpen(true);
+  return renderOpen;
+};
+function ConditionalRenderSetterFixture(nextCount) {
+  const [previousCount, setPreviousCount] = useState(nextCount);
+  if (previousCount !== nextCount) setPreviousCount(nextCount);
+  return previousCount;
+}
+function HandlerRenderSetterFixture() {
+  const [handlerCount, setHandlerCount] = useState(0);
+  const increment = () => setHandlerCount(handlerCount + 1);
+  return <button onClick={increment}>{handlerCount}</button>;
+}
 {
   class Map {}
   const shadowedMapState = useState(new Map());

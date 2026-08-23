@@ -1,12 +1,12 @@
 use oxc_ast::{
-    AstKind,
     ast::{Expression, JSXAttributeItem, MemberExpression},
+    AstKind,
 };
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use rustc_hash::FxHashSet;
 
-use crate::{AstNode, context::LintContext, rule::Rule};
+use crate::{context::LintContext, rule::Rule, AstNode};
 
 #[derive(Debug, Default, Clone)]
 pub struct JsxPropsNoSpreadMulti;
@@ -50,6 +50,9 @@ fn flatten_member_expression_name(expression: &Expression) -> Option<String> {
     match expression.get_inner_expression() {
         Expression::Identifier(identifier) => Some(identifier.name.to_string()),
         Expression::ThisExpression(_) => Some("this".to_string()),
+        Expression::ChainExpression(chain_expression) => {
+            flatten_member_expression(chain_expression.expression.as_member_expression()?)
+        }
         expression => flatten_member_expression(expression.as_member_expression()?),
     }
 }

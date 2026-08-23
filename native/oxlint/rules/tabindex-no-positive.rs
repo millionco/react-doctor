@@ -1,12 +1,12 @@
-use oxc_ast::{AstKind, ast::JSXAttributeItem};
+use oxc_ast::{ast::JSXAttributeItem, AstKind};
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 
 use crate::{
-    AstNode,
     context::{ContextHost, LintContext},
     rule::Rule,
     utils::has_jsx_prop_ignore_case,
+    AstNode,
 };
 
 const MESSAGE: &str = "Keyboard users get jumped out of the normal order by a positive `tabIndex`, so use `0` or `-1`.";

@@ -1,12 +1,12 @@
 use oxc_ast::{
-    AstKind,
     ast::{Class, ClassElement, Expression, MemberExpression, PropertyKey},
+    AstKind,
 };
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_span::Span;
 
-use crate::{AstNode, context::LintContext, rule::Rule};
+use crate::{context::LintContext, rule::Rule, AstNode};
 
 #[derive(Debug, Default, Clone)]
 pub struct NoRedundantShouldComponentUpdate;
@@ -47,18 +47,27 @@ fn is_pure_component_super(class: &Class) -> bool {
     let Some(super_class) = class.heritage_expression() else {
         return false;
     };
-    if let Some(identifier) = super_class.get_identifier_reference() {
-        return identifier.name == "PureComponent";
+    match super_class {
+        Expression::Identifier(identifier) => identifier.name == "PureComponent",
+        expression => {
+            let Some(member_expression) = expression.as_member_expression() else {
+                return false;
+            };
+            if !matches!(member_expression.object(), Expression::Identifier(identifier) if identifier.name == "React")
+            {
+                return false;
+            }
+            match member_expression {
+                MemberExpression::StaticMemberExpression(member_expression) => {
+                    member_expression.property.name == "PureComponent"
+                }
+                MemberExpression::ComputedMemberExpression(member_expression) => {
+                    matches!(&member_expression.expression, Expression::Identifier(identifier) if identifier.name == "PureComponent")
+                }
+                MemberExpression::PrivateFieldExpression(_) => false,
+            }
+        }
     }
-    let Some(MemberExpression::StaticMemberExpression(member_expression)) =
-        super_class.as_member_expression()
-    else {
-        return false;
-    };
-    matches!(
-        &member_expression.object,
-        Expression::Identifier(identifier) if identifier.name == "React"
-    ) && member_expression.property.name == "PureComponent"
 }
 
 fn find_should_component_update(class: &Class) -> Option<Span> {
@@ -72,6 +81,9 @@ fn find_should_component_update(class: &Class) -> Option<Span> {
             PropertyKey::StaticIdentifier(identifier)
                 if identifier.name == "shouldComponentUpdate" =>
             {
+                Some(identifier.span)
+            }
+            PropertyKey::Identifier(identifier) if identifier.name == "shouldComponentUpdate" => {
                 Some(identifier.span)
             }
             PropertyKey::StringLiteral(string_literal)

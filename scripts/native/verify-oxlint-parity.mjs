@@ -91,7 +91,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-set-state": 2,
   "no-find-dom-node": 2,
   "react-in-jsx-scope": 0,
-  "tabindex-no-positive": 3,
+  "tabindex-no-positive": 7,
   "no-autoplay-without-muted": 1,
   "details-requires-summary": 1,
   "no-broken-image-source": 4,
@@ -99,8 +99,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-img-lazy-with-high-fetchpriority": 1,
   "no-srcset-without-sizes": 1,
   "no-aria-hidden-on-focusable": 5,
-  "jsx-props-no-spread-multi": 2,
-  "no-redundant-should-component-update": 2,
+  "jsx-props-no-spread-multi": 3,
+  "no-redundant-should-component-update": 3,
   "no-direct-mutation-state": 2,
   "no-string-refs": 2,
   "state-in-constructor": 1,
@@ -174,6 +174,7 @@ const nestedSpreadProps = { options: {} };
 const duplicateMemberSpread = <Widget {...nestedSpreadProps.options} {...(nestedSpreadProps.options)} />;
 const distinctMemberSpreads = <Widget {...nestedSpreadProps.options} {...nestedSpreadProps.other} />;
 const wrappedComputedSpreads = <Widget {...nestedSpreadProps[("options" as string)]} {...nestedSpreadProps.options} />;
+const duplicateOptionalSpread = <Widget {...nestedSpreadProps?.options} {...nestedSpreadProps?.options} />;
 const namespaced = <svg:path />;
 React.createElement("svg:path");
 const danger = <div dangerouslySetInnerHTML={{ __html: markup }} />;
@@ -236,6 +237,11 @@ const infiniteTabOrder = <button tabIndex="Infinity">Normal</button>;
 const staticFalseTabOrder = <button tabIndex={false ? 2 : 0}>Normal</button>;
 const numericFalseTabOrder = <button tabIndex={0 ? 2 : 0}>Normal</button>;
 const unaryPositiveTabOrder = <button tabIndex={+2}>Normal</button>;
+const literalConditionalTabOrder = <button tabIndex={true ? 3 : -1}>Later</button>;
+const unknownConditionalTabOrder = <button tabIndex={condition ? 4 : -1}>Later</button>;
+const alternateConditionalTabOrder = <button tabIndex={false ? -1 : 5}>Later</button>;
+const staticTemplateTabOrder = <button tabIndex={\`6\`}>Later</button>;
+const dynamicTemplateTabOrder = <button tabIndex={\`7\${suffix}\`}>Normal</button>;
 const hiddenFocusableButton = <button aria-hidden={true}>Hidden</button>;
 const hiddenFocusableInput = <input aria-hidden="true" />;
 const hiddenFocusablePlayer = <video controls aria-hidden src="clip.mp4" />;
@@ -284,6 +290,9 @@ class PureOverride extends React.PureComponent {
 const AnonymousPureOverride = class extends PureComponent {
   "shouldComponentUpdate" = () => true;
 };
+class ComputedPureOverride extends React[PureComponent] {
+  [shouldComponentUpdate]() { return true; }
+}
 class WrappedReactPure extends (React as any).PureComponent {
   shouldComponentUpdate() { return true; }
 }

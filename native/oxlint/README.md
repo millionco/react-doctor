@@ -15,6 +15,8 @@ REACT_DOCTOR_NATIVE_OXLINT_BINDING_PATH=dist/native-oxlint/<binding>.node nr nat
 REACT_DOCTOR_NATIVE_OXLINT_BINDING_PATH=dist/native-oxlint/<binding>.node nr native:oxlint:parity --corpus packages/fuzz/tmp/corpus-repos
 ```
 
+Set `CARGO_BUILD_JOBS=2` for the compile-check and release build on memory-constrained builders.
+
 `native:oxlint:verify` clones the pinned tag, checks its commit, and proves the patch still applies. `native:oxlint:check` overlays every native rule, regenerates Oxc's rule registry, and compile-checks the linter. `native:oxlint:build` performs the same source assembly, compiles and loads the N-API binding, and writes the binding plus provenance and SHA-256 hashes to `dist/native-oxlint`.
 
 The parity check runs the JavaScript and native implementations over the same adversarial TypeScript fixture and compares normalized diagnostics. Pass `--corpus` with a directory of repositories to compare every repository independently. A native rule should not be added to `nativeRules` or `NATIVE_REACT_DOCTOR_RULE_IDS` until both checks pass.

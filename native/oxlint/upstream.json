@@ -201,7 +201,9 @@
     "no-usememo-simple-expression",
     "design-no-em-dash-in-jsx-text",
     "design-no-redundant-padding-axes",
-    "design-no-redundant-size-axes"
+    "design-no-redundant-size-axes",
+    "design-no-space-on-flex-children",
+    "design-no-three-period-ellipsis"
   ],
   "delegatedRules": [
     {

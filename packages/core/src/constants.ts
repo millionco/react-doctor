@@ -760,6 +760,8 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "design-no-em-dash-in-jsx-text",
   "design-no-redundant-padding-axes",
   "design-no-redundant-size-axes",
+  "design-no-space-on-flex-children",
+  "design-no-three-period-ellipsis",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

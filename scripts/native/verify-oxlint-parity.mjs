@@ -290,6 +290,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "design-no-em-dash-in-jsx-text": 1,
   "design-no-redundant-padding-axes": 1,
   "design-no-redundant-size-axes": 1,
+  "design-no-space-on-flex-children": 1,
+  "design-no-three-period-ellipsis": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -994,6 +996,8 @@ const smallFormControlText = <><input className="text-xs" style={{ fontSize: 14 
 const proseEmDash = <p>The tool is fast — blazingly fast — and simple to use.</p>;
 const redundantPaddingAxes = <div className="px-4 py-4" />;
 const redundantSizeAxes = <><svg className="w-4 h-4" /><svg className="w-6 h-6" /></>;
+const spaceOnFlexChildren = <div className="flex space-x-4"><span /><span /></div>;
+const threePeriodEllipsis = <button>Loading...</button>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

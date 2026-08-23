@@ -174,6 +174,10 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-boolean-value": 2,
   "no-danger-with-children": 1,
   "heading-has-content": 1,
+  "empty-table-header": 2,
+  "aria-braille-equivalent": 2,
+  "no-presentation-role-conflict": 4,
+  "no-focusable-content-in-role-text": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -559,6 +563,16 @@ const nestedSkippedArticleHeading = <main><h1>Title</h1><article><h2>Article</h2
 const expressionHeading = <main><h1>Title</h1>{condition && <h3>Details</h3>}</main>;
 const continuousHeadings = <article><h1>Title</h1><h2>Details</h2></article>;
 const emptyHeading = <h2 />;
+const emptyTableHeaders = <table><tbody><tr><th /><td role="columnheader" /></tr></tbody></table>;
+const accessibleTableHeaders = <table><tbody><tr><th>Name</th><th>{headerName}</th><th aria-label="Status" /></tr></tbody></table>;
+const customTableHeader = <Cell role="columnheader" />;
+const brailleOnlyNames = <><button aria-braillelabel="sv"> </button><div aria-brailleroledescription="ctl" /></>;
+const brailleEquivalents = <><button aria-braillelabel="sv">Save</button><div aria-brailleroledescription="ctl" aria-roledescription="control" /><button aria-braillelabel="sv" aria-label={buttonLabel} /><div {...brailleProperties} aria-brailleroledescription="ctl" /></>;
+const presentationalConflicts = <><div role="presentation" tabIndex={0} /><span role="none" aria-label="Status" /></>;
+const focusableDecorativeImage = <img alt="" src="logo.svg" tabIndex={-1} />;
+const safePresentationalElements = <><div role="presentation" /><span role={dynamicRole} tabIndex={0} /><span role="presentation" aria-hidden="true" /></>;
+const focusableRoleTextContent = <span role="text"><button>Open</button><span tabIndex={0}>More</span></span>;
+const safeRoleTextContent = <span role="text">Total <button disabled>Help</button><Wrapper><button>Open</button></Wrapper></span>;
 const duplicateEmailId = <><label htmlFor="email">Email</label><input id="email" /><input id="email" /></>;
 const duplicateUnicodeId = <><div aria-labelledby="item" /><span id={"\uFEFFitem\u00A0"} /><span id="item" /></>;
 const conditionalDuplicateId = <div aria-labelledby="item">{condition ? <span id="item" /> : <span id="item" />}</div>;

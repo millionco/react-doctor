@@ -164,6 +164,10 @@ impl Rule for ${delegatedRule.struct} {
         "transparent-expression-root",
         "component-or-hook-function-name",
         "module-api-path-matches",
+        "object-has-accessible-child",
+        "is-focusable-jsx-opening-element",
+        "resolve-jsx-element-type-name",
+        "first-js-whitespace-token",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

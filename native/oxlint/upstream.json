@@ -114,7 +114,11 @@
     "jsx-no-script-url",
     "jsx-boolean-value",
     "no-danger-with-children",
-    "heading-has-content"
+    "heading-has-content",
+    "empty-table-header",
+    "aria-braille-equivalent",
+    "no-presentation-role-conflict",
+    "no-focusable-content-in-role-text"
   ],
   "delegatedRules": [
     {

@@ -286,6 +286,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-oversized-long-heading": 1,
   "no-flat-page-type-scale": 1,
   "no-small-form-control-text": 1,
+  "no-usememo-simple-expression": 8,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -940,6 +941,30 @@ const constantMapState = useState(new Map([["raw", raw]]));
 const globalMapState = useState(new globalThis.Map());
 const lazyConstructedState = useState(() => new ApiClient());
 const wrappedConstructedState = useState(wrap(new ApiClient()));
+const cheapMemo = useMemo(() => raw + 1, [raw]);
+const staticTemplateMemo = useMemo(() => \`static label\`, []);
+const conditionalMemo = useMemo(() => (raw ? mode : "fallback"), [raw, mode]);
+const blockMemo = useMemo(function () { return raw !== mode; }, [raw, mode]);
+const memberOnlyMemo = useMemo(() => [raw], [raw]);
+const memberOnlyMemoLength = memberOnlyMemo.length;
+const destructuredMemo = useMemo(() => ({ total: raw + mode, parts: 2 }), [raw, mode]);
+const { total: destructuredMemoTotal } = destructuredMemo;
+const { raw: immediateMemoRaw } = useMemo(() => ({ raw, mode }), [raw, mode]);
+const [tupleMemoFirst] = useMemo(() => [raw, mode], [raw, mode]);
+useMemo(() => ({ raw, mode }), [raw, mode]);
+const interpolatedMemo = useMemo(() => \`mode \${mode}\`, [mode]);
+const wrappedCallbackMemo = useMemo((() => raw + 1) as () => number, [raw]);
+const escapingMemo = useMemo(() => ({ raw }), [raw]);
+const escapedMemoElement = <Widget value={escapingMemo} />;
+const aliasedMemo = escapingMemo;
+const computedKeyMemo = useMemo(() => ({ [mode]: raw }), [raw, mode]);
+const computedKeyMemoSize = computedKeyMemo.size;
+const mutableMemo = useMemo(() => [raw], [raw]);
+mutableMemo.push(mode);
+const assignedMemo = useMemo(() => ({ raw }), [raw]);
+assignedMemo.raw = mode;
+const deletedMemo = useMemo(() => ({ raw }), [raw]);
+delete deletedMemo.raw;
 {
   class Map {}
   const shadowedMapState = useState(new Map());
@@ -1066,7 +1091,7 @@ try {
   );
   fs.writeFileSync(
     nonProductionFixturePath,
-    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; const smallTestInput = <input style={{ fontSize: 14 }} />; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js"));`,
+    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; const smallTestInput = <input style={{ fontSize: 14 }} />; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js")); useMemo(() => value + 1, [value]);`,
   );
   fs.writeFileSync(
     deepNonProductionFixturePath,

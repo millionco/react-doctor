@@ -150,6 +150,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "rendering-animate-svg-wrapper": 2,
   "rn-bottom-sheet-no-ignored-scroll-prop": 4,
   "rn-platform-shaking-use-direct-import": 1,
+  "ink-newline-inside-text": 0,
+  "ink-suspense-requires-concurrent": 0,
+  "no-cascading-set-state": 0,
+  "rn-animate-layout-property": 0,
+  "rn-prefer-content-inset-adjustment": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;

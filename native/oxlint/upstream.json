@@ -91,7 +91,12 @@
     "nextjs-no-script-in-head",
     "rendering-animate-svg-wrapper",
     "rn-bottom-sheet-no-ignored-scroll-prop",
-    "rn-platform-shaking-use-direct-import"
+    "rn-platform-shaking-use-direct-import",
+    "ink-newline-inside-text",
+    "ink-suspense-requires-concurrent",
+    "no-cascading-set-state",
+    "rn-animate-layout-property",
+    "rn-prefer-content-inset-adjustment"
   ],
   "delegatedRules": [
     {

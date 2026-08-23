@@ -144,6 +144,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "motion-create-in-render": 5,
   "motion-use-transform-range-length": 3,
   "motion-value-constructor-in-render": 4,
+  "dialog-has-accessible-name": 2,
+  "no-disabled-zoom": 3,
+  "nextjs-no-script-in-head": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -425,6 +428,16 @@ const duplicateEmailId = <><label htmlFor="email">Email</label><input id="email"
 const duplicateUnicodeId = <><div aria-labelledby="item" /><span id={"\uFEFFitem\u00A0"} /><span id="item" /></>;
 const conditionalDuplicateId = <div aria-labelledby="item">{condition ? <span id="item" /> : <span id="item" />}</div>;
 const customDuplicateIdReference = <><Custom aria-labelledby="item" /><span id="item" /><span id="item" /></>;
+const unnamedDialog = <dialog>Confirm</dialog>;
+const unnamedRoleDialog = <section role="alertdialog">Confirm</section>;
+const namedDialog = <div role="dialog" aria-labelledby="dialog-title">Confirm</div>;
+const spreadDialog = <dialog {...dialogProperties}>Confirm</dialog>;
+const disabledViewportZoom = <meta name="viewport" content="width=device-width, user-scalable=yes, user-scalable=no, maximum-scale=1" />;
+const userScalableViewportZoom = <meta name="viewport" content="width=device-width, user-scalable=yes, user-scalable=no" />;
+const restrictiveViewportZoom = <meta name="viewport" content="width=device-width, maximum-scale=1.5.9" />;
+const accessibleViewportZoom = <meta name="viewport" content="width=device-width, maximum-scale=5" />;
+const ignoredHeadScript = <Head><Script src="/ignored.js" /></Head>;
+const headAttributeScript = <Head icon={<Script src="/loaded.js" />} />;
 const autoplayingVideo = <video autoPlay src="hero.mp4" />;
 const mutedAutoplayingVideo = <video autoPlay muted src="hero.mp4" />;
 const unnamedDetails = <details><p>Answer</p></details>;

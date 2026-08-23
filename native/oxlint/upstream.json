@@ -85,7 +85,10 @@
     "no-duplicate-static-id-reference",
     "motion-create-in-render",
     "motion-use-transform-range-length",
-    "motion-value-constructor-in-render"
+    "motion-value-constructor-in-render",
+    "dialog-has-accessible-name",
+    "no-disabled-zoom",
+    "nextjs-no-script-in-head"
   ],
   "delegatedRules": [
     {

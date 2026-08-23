@@ -61,7 +61,10 @@
     "no-assertive-status",
     "no-uninformative-aria-label",
     "no-aria-invalid-without-description",
-    "no-invalid-progress-range"
+    "no-invalid-progress-range",
+    "preact-prefer-ondblclick",
+    "rn-no-set-native-props",
+    "rn-no-single-element-style-array"
   ],
   "delegatedRules": [
     {

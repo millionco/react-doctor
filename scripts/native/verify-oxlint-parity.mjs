@@ -113,6 +113,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-uninformative-aria-label": 3,
   "no-aria-invalid-without-description": 4,
   "no-invalid-progress-range": 6,
+  "preact-prefer-ondblclick": 3,
+  "rn-no-set-native-props": 5,
+  "rn-no-single-element-style-array": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -307,6 +310,24 @@ const invalidAriaProgressCurrent = <div role="progressbar" aria-valuemin={0} ari
 const validNativeProgress = <progress value={5} max={10} />;
 const dynamicNativeProgress = <progress value={progressValue} max={progressMaximum} />;
 const spreadAriaProgress = <div role="progressbar" aria-valuenow={progressValue} {...progressProperties} />;
+const preactDoubleClickListItem = <li onDoubleClick={openInline}>Item</li>;
+const preactDoubleClickButton = <button onDoubleClick={beginEdit}>Edit</button>;
+const preactDblClickButton = <button onDblClick={beginEdit}>Edit</button>;
+const PreactItem = () => null;
+const preactCustomDoubleClick = <PreactItem onDoubleClick={openInline}>Item</PreactItem>;
+const PreactButton = "button" as const;
+const preactAliasedDoubleClick = <PreactButton onDoubleClick={openInline}>Open</PreactButton>;
+inputRef.current.setNativeProps({ text: value });
+textInputRef.current?.setNativeProps({ selection: { start, end } });
+this.rootViewRef.current.setNativeProps({ style: { opacity: 0 } });
+inputRef.current?.textInputRef.current?.setNativeProps({ selection });
+(inputRef.current as any).setNativeProps({ text: value });
+config.setNativeProps({ text: value });
+inputRef.current.focus();
+const singleStyleArray = <View style={[styles.box]} />;
+const singleCustomStyleArray = <View contentStyle={[styles.content]} />;
+const spreadStyleArray = <View style={[...baseStyles]} />;
+const multipleStyleArray = <View style={[styles.box, isActive && styles.active]} />;
 const autoplayingVideo = <video autoPlay src="hero.mp4" />;
 const mutedAutoplayingVideo = <video autoPlay muted src="hero.mp4" />;
 const unnamedDetails = <details><p>Answer</p></details>;

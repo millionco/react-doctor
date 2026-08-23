@@ -198,7 +198,8 @@
     "no-oversized-long-heading",
     "no-flat-page-type-scale",
     "no-small-form-control-text",
-    "no-usememo-simple-expression"
+    "no-usememo-simple-expression",
+    "design-no-em-dash-in-jsx-text"
   ],
   "delegatedRules": [
     {

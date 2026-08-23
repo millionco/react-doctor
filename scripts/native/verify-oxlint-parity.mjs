@@ -287,6 +287,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-flat-page-type-scale": 1,
   "no-small-form-control-text": 1,
   "no-usememo-simple-expression": 8,
+  "design-no-em-dash-in-jsx-text": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -988,6 +989,7 @@ const repeatedSectionShells = <main><section className="py-20"><div className="m
 const oversizedLongHeading = <><h1 className="text-8xl">Build a better workflow for every team in your growing organization</h1><h1 style={{ fontSize: "5rem" }}>Build a better workflow for every team in your growing organization</h1></>;
 const flatPageTypeScale = <main><p style={{ fontSize: 14 }}>A</p><h2 style={{ fontSize: 16 }}>B</h2><h1 style={{ fontSize: 18 }}>C</h1></main>;
 const smallFormControlText = <><input className="text-xs" style={{ fontSize: 14 }} /><input type="hidden" style={{ fontSize: 12 }} /></>;
+const proseEmDash = <p>The tool is fast — blazingly fast — and simple to use.</p>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

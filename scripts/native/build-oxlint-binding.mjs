@@ -203,6 +203,12 @@ impl Rule for ${delegatedRule.struct} {
         "normalize-tailwind-arbitrary-utility-value",
         "get-tailwind-visibility-effect",
         "get-tailwind-visibility-at-breakpoints",
+        "get-static-string-expression",
+        "resolve-static-jsx-attribute",
+        "is-statically-hidden-from-screen-reader",
+        "get-opening-element-tag-name",
+        "is-inside-excluded-typography-ancestor",
+        "is-inside-statically-hidden-jsx-subtree",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

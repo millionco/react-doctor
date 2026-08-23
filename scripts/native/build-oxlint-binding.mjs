@@ -209,6 +209,8 @@ impl Rule for ${delegatedRule.struct} {
         "get-opening-element-tag-name",
         "is-inside-excluded-typography-ancestor",
         "is-inside-statically-hidden-jsx-subtree",
+        "collect-axis-shorthand-values",
+        "has-responsive-axis-prefix",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

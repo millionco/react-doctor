@@ -244,6 +244,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-no-route-module-environment-suffix": 0,
   "three-webgpu-no-legacy-effect-composer": 1,
   "react-router-no-nested-router": 1,
+  "no-full-viewport-width": 1,
+  "prefer-dvh-over-vh": 2,
+  "no-justified-text": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -801,6 +804,9 @@ class ForeignSuppressedMissingRender extends Component {
 }
 const deeplyNestedJsx = <div><div><div><div><div><div><div><div><div><div><div><div><div><div><div><span /></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div>;
 const nestedRouter = <OuterRouter><InnerRouter /></OuterRouter>;
+const fullViewportWidth = <div className="w-screen" />;
+const fullViewportHeight = <main className="min-h-screen" />;
+const justifiedText = <p style={{ textAlign: "justify" }}>Long justified text</p>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

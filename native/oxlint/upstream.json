@@ -155,7 +155,10 @@
     "r3f-no-async-use-frame",
     "react-router-no-route-module-environment-suffix",
     "three-webgpu-no-legacy-effect-composer",
-    "react-router-no-nested-router"
+    "react-router-no-nested-router",
+    "no-full-viewport-width",
+    "prefer-dvh-over-vh",
+    "no-justified-text"
   ],
   "delegatedRules": [
     {

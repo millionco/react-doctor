@@ -177,6 +177,9 @@ impl Rule for ${delegatedRule.struct} {
         "is-react-es6-component",
         "get-static-jsx-attribute-string-values",
         "resolve-local-react-callback",
+        "get-inline-style-object-expression",
+        "get-static-style-property-string-value",
+        "get-effective-static-style-property-string-value",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

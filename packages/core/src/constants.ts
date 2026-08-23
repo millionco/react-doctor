@@ -714,6 +714,9 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "react-router-no-route-module-environment-suffix",
   "three-webgpu-no-legacy-effect-composer",
   "react-router-no-nested-router",
+  "no-full-viewport-width",
+  "prefer-dvh-over-vh",
+  "no-justified-text",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

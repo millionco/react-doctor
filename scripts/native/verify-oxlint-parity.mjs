@@ -457,7 +457,7 @@ try {
   fs.writeFileSync(fixturePath, fixture);
   fs.writeFileSync(
     nonProductionFixturePath,
-    `const shortcut = <button accessKey="s" />; const classicJsx = <div />;`,
+    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>;`,
   );
   fs.writeFileSync(
     configuredFixturePath,
@@ -543,7 +543,7 @@ class ConfiguredState extends Component {
   ).diagnostics;
   const expectedNonProductionDiagnosticCounts = {
     ...Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0])),
-    "react-in-jsx-scope": 2,
+    "react-in-jsx-scope": 3,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(stockNonProductionDiagnostics)) !==

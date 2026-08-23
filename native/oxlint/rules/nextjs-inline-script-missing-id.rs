@@ -5,7 +5,11 @@ use oxc_ast::{
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 
-use crate::{context::LintContext, rule::Rule, AstNode};
+use crate::{
+    context::{ContextHost, LintContext},
+    rule::Rule,
+    AstNode,
+};
 
 const MESSAGE: &str =
     "Without an id, Next.js can't track this inline <Script> & may execute it twice.";
@@ -23,6 +27,10 @@ declare_oxc_lint!(
 );
 
 impl Rule for NextjsInlineScriptMissingId {
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        !is_non_production_file(ctx)
+    }
+
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
         let AstKind::JSXOpeningElement(opening_element) = node.kind() else {
             return;

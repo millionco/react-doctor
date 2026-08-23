@@ -191,7 +191,8 @@
     "no-crushed-letter-spacing",
     "no-inline-bounce-easing",
     "prefer-tabular-numeric-data",
-    "no-excessive-font-families"
+    "no-excessive-font-families",
+    "no-repeated-section-shells"
   ],
   "delegatedRules": [
     {

@@ -280,6 +280,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-inline-bounce-easing": 1,
   "prefer-tabular-numeric-data": 1,
   "no-excessive-font-families": 1,
+  "no-repeated-section-shells": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -931,6 +932,7 @@ const crushedLetterSpacing = <h1 style={{ letterSpacing: "-0.12em" }}>Readable h
 const inlineBounceEasing = <div className="animate-bounce" />;
 const proportionalNumericData = <table><tbody><tr><td>{total.toLocaleString()}</td></tr></tbody></table>;
 const excessiveFontFamilies = <main><h1 style={{ fontFamily: "Fraunces" }}>Title</h1><p style={{ fontFamily: "Inter" }}>Body</p><code style={{ fontFamily: "JetBrains Mono" }}>Code</code><aside style={{ fontFamily: "Caveat" }}>Note</aside></main>;
+const repeatedSectionShells = <main><section className="py-20"><div className="mx-auto max-w-6xl">Intro</div></section><section className="py-24"><div className="mx-auto max-w-6xl">Features</div></section><section className="py-20"><div className="mx-auto max-w-6xl">Pricing</div></section></main>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

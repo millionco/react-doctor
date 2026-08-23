@@ -273,6 +273,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-full-viewport-centered-hero": 1,
   "no-overwide-text-measure": 1,
   "require-autoplay-video-poster": 3,
+  "rerender-dependencies": 4,
+  "rerender-lazy-ref-init": 7,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -318,7 +320,7 @@ const fixture = `
 import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
-import React, { Children, createContext as makeContext, useEffect, useLayoutEffect, useMemo, useState, Component, forwardRef as wrapRef } from "react";
+import React, { Children, createContext as makeContext, useEffect, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef } from "react";
 import ReactDOM from "react-dom";
 import type { useMemo as PreactTypeOnlyHook } from "react";
 import { createContext as makeTrackedContext } from "react-tracked";
@@ -902,6 +904,23 @@ const tightAllCapsHeading = <h1 className="uppercase leading-none">Infrastructur
 const fullViewportCenteredHero = <section className="flex min-h-dvh items-center justify-center"><h1>Build faster</h1></section>;
 const overwideTextMeasure = <blockquote className="max-w-[90ch]">Copy</blockquote>;
 const autoplayVideoWithoutPoster = <video autoPlay muted src="/demo.mp4" />;
+useEffect(() => {}, [{ mode }, [mode], () => mode, function dependency() { return mode; }]);
+const expensiveReference = useRef(buildExpensiveCache());
+const memberReference = useRef(cache.build());
+const optionalCallReference = useRef(cache.factory?.());
+const dateReference = useRef(new Date());
+const populatedMapReference = useRef(new Map([["mode", mode]]));
+const memberMapReference = useRef(new cache.Map());
+const emptyMapReference = useRef(new Map());
+const directGlobalMapReference = useRef(new globalThis.Map());
+const GlobalSet = globalThis.Set;
+const emptySetReference = useRef(new GlobalSet());
+const { WeakMap: GlobalWeakMap } = globalThis;
+const emptyWeakMapReference = useRef(new GlobalWeakMap());
+{
+  const Map = cache.Map;
+  const shadowedMapReference = useRef(new Map());
+}
 `;
 
 const normalizeDiagnostics = (diagnostics) =>
@@ -1005,7 +1024,7 @@ try {
   );
   fs.writeFileSync(
     nonProductionFixturePath,
-    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean);`,
+    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache());`,
   );
   fs.writeFileSync(
     deepNonProductionFixturePath,

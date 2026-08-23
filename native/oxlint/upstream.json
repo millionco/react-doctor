@@ -184,7 +184,9 @@
     "no-tight-all-caps-heading",
     "no-full-viewport-centered-hero",
     "no-overwide-text-measure",
-    "require-autoplay-video-poster"
+    "require-autoplay-video-poster",
+    "rerender-dependencies",
+    "rerender-lazy-ref-init"
   ],
   "delegatedRules": [
     {

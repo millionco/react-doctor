@@ -617,6 +617,9 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-server-side-image-map",
   "no-mixed-srcset-descriptors",
   "no-assertive-status",
+  "no-uninformative-aria-label",
+  "no-aria-invalid-without-description",
+  "no-invalid-progress-range",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

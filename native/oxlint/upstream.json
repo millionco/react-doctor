@@ -58,7 +58,10 @@
     "html-xml-lang-mismatch",
     "no-server-side-image-map",
     "no-mixed-srcset-descriptors",
-    "no-assertive-status"
+    "no-assertive-status",
+    "no-uninformative-aria-label",
+    "no-aria-invalid-without-description",
+    "no-invalid-progress-range"
   ],
   "delegatedRules": [
     {

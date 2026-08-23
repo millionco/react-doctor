@@ -51,15 +51,6 @@ fn parse_static_expression(expression: &oxc_ast::ast::Expression) -> Option<f64>
     }
 }
 
-fn parse_finite_number(value: &str) -> Option<f64> {
-    use oxc_ecmascript::StringToNumber;
-
-    let number = value
-        .trim_matches(|character: char| character.is_whitespace() || character == '\u{feff}')
-        .string_to_number();
-    number.is_finite().then_some(number)
-}
-
 fn resolve_static_truthiness(expression: &oxc_ast::ast::Expression) -> Option<bool> {
     match expression.get_inner_expression() {
         oxc_ast::ast::Expression::BooleanLiteral(boolean_literal) => Some(boolean_literal.value),

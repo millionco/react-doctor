@@ -139,9 +139,11 @@ impl Rule for ${delegatedRule.struct} {
         "for-each-value-import",
         "resolve-jsx-element-type",
         "get-string-literal-attribute-value",
+        "parse-finite-number",
         "parse-static-jsx-number",
         "get-authoritative-jsx-attribute",
         "is-proven-intrinsic-jsx-element",
+        "find-jsx-attribute",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

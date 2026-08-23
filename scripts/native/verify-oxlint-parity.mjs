@@ -110,6 +110,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-server-side-image-map": 1,
   "no-mixed-srcset-descriptors": 1,
   "no-assertive-status": 3,
+  "no-uninformative-aria-label": 3,
+  "no-aria-invalid-without-description": 4,
+  "no-invalid-progress-range": 6,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -283,6 +286,27 @@ const aliasedAssertiveStatus = <AliasedStatusTag role="status" aria-live="assert
 const ConditionalStatusTag = isOutput ? "output" : "div";
 const conditionalAssertiveStatus = <ConditionalStatusTag role="status" aria-live="assertive">Saved</ConditionalStatusTag>;
 const spreadAssertiveStatus = <div role="status" aria-live="assertive" {...statusProperties}>Saved</div>;
+const uninformativeButtonLabel = <button aria-label=" Button " />;
+const uninformativeImageLabel = <svg aria-label={"image"} />;
+const spreadUninformativeLabel = <button aria-label="icon" {...labelProperties} />;
+const descriptiveButtonLabel = <button aria-label="Search" />;
+const dynamicButtonLabel = <button aria-label={buttonLabel} />;
+const invalidInput = <input aria-invalid />;
+const invalidSelect = <select aria-invalid="true" />;
+const invalidTextarea = <textarea aria-invalid={true} />;
+const grammarInvalidInput = <input aria-invalid="grammar" />;
+const describedInvalidInput = <input aria-invalid aria-describedby="email-error" />;
+const dynamicInvalidInput = <input aria-invalid={isInvalid} />;
+const spreadInvalidInput = <input aria-invalid {...inputProperties} />;
+const invalidNativeProgressAboveMaximum = <progress value={11} max={10} />;
+const invalidNativeProgressBelowMinimum = <progress value={-1} max={10} />;
+const invalidWrappedNativeProgress = <progress value={(-1 as number)} max={(10 as number)} />;
+const invalidNativeProgressMaximum = <progress value={1} max={0} />;
+const invalidAriaProgressRange = <div role="progressbar" aria-valuemin={10} aria-valuemax={5} aria-valuenow={7} />;
+const invalidAriaProgressCurrent = <div role="progressbar" aria-valuemin={0} aria-valuemax={10} aria-valuenow={12} />;
+const validNativeProgress = <progress value={5} max={10} />;
+const dynamicNativeProgress = <progress value={progressValue} max={progressMaximum} />;
+const spreadAriaProgress = <div role="progressbar" aria-valuenow={progressValue} {...progressProperties} />;
 const autoplayingVideo = <video autoPlay src="hero.mp4" />;
 const mutedAutoplayingVideo = <video autoPlay muted src="hero.mp4" />;
 const unnamedDetails = <details><p>Answer</p></details>;

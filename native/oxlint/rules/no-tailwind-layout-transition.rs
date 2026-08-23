@@ -1,4 +1,4 @@
-use oxc_ast::{ast::JSXElementName, AstKind};
+use oxc_ast::AstKind;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 
@@ -7,62 +7,6 @@ use crate::{
     rule::Rule,
     AstNode,
 };
-
-const LAYOUT_TRANSITION_PROPERTIES: [&str; 27] = [
-    "width",
-    "height",
-    "min-width",
-    "max-width",
-    "min-height",
-    "max-height",
-    "top",
-    "right",
-    "bottom",
-    "left",
-    "padding",
-    "padding-top",
-    "padding-right",
-    "padding-bottom",
-    "padding-left",
-    "margin",
-    "margin-top",
-    "margin-right",
-    "margin-bottom",
-    "margin-left",
-    "border-width",
-    "border-top-width",
-    "border-right-width",
-    "border-bottom-width",
-    "border-left-width",
-    "line-height",
-    "column-width",
-];
-const SVG_LAYOUT_TRANSITION_EXEMPT_ELEMENT_NAMES: [&str; 24] = [
-    "svg",
-    "g",
-    "rect",
-    "circle",
-    "ellipse",
-    "image",
-    "line",
-    "path",
-    "polygon",
-    "polyline",
-    "text",
-    "tspan",
-    "textPath",
-    "use",
-    "marker",
-    "mask",
-    "pattern",
-    "symbol",
-    "defs",
-    "clipPath",
-    "linearGradient",
-    "radialGradient",
-    "stop",
-    "filter",
-];
 
 #[derive(Debug, Default, Clone)]
 pub struct NoTailwindLayoutTransition;
@@ -85,11 +29,7 @@ impl Rule for NoTailwindLayoutTransition {
         let AstKind::JSXOpeningElement(opening_element) = node.kind() else {
             return;
         };
-        if matches!(
-            &opening_element.name,
-            JSXElementName::Identifier(identifier)
-                if SVG_LAYOUT_TRANSITION_EXEMPT_ELEMENT_NAMES.contains(&identifier.name.as_str())
-        ) {
+        if is_svg_layout_transition_exempt_element(opening_element) {
             return;
         }
         let Some(class_name) = get_static_class_name(opening_element) else {
@@ -107,7 +47,7 @@ impl Rule for NoTailwindLayoutTransition {
             let Some(layout_property) = animated_properties
                 .split(',')
                 .map(|property| property.trim_matches(is_js_whitespace))
-                .find(|property| LAYOUT_TRANSITION_PROPERTIES.contains(property))
+                .find(|property| is_layout_transition_property(property))
             else {
                 continue;
             };

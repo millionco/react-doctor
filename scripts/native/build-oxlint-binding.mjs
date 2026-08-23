@@ -180,6 +180,9 @@ impl Rule for ${delegatedRule.struct} {
         "get-inline-style-object-expression",
         "get-static-style-property-string-value",
         "get-effective-static-style-property-string-value",
+        "is-layout-transition-property",
+        "is-svg-layout-transition-exempt-element",
+        "is-pure-black-color",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

@@ -247,6 +247,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-full-viewport-width": 1,
   "prefer-dvh-over-vh": 2,
   "no-justified-text": 1,
+  "no-arbitrary-px-font-size": 1,
+  "no-pure-black-background": 1,
+  "no-layout-transition-inline": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -807,6 +810,9 @@ const nestedRouter = <OuterRouter><InnerRouter /></OuterRouter>;
 const fullViewportWidth = <div className="w-screen" />;
 const fullViewportHeight = <main className="min-h-screen" />;
 const justifiedText = <p style={{ textAlign: "justify" }}>Long justified text</p>;
+const arbitraryPixelFontSize = <p className="text-[13px]">Small text</p>;
+const pureBlackBackground = <section style={{ backgroundColor: "#000" }} />;
+const inlineLayoutTransition = <div style={{ transition: "width 200ms" }} />;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

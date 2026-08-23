@@ -158,7 +158,10 @@
     "react-router-no-nested-router",
     "no-full-viewport-width",
     "prefer-dvh-over-vh",
-    "no-justified-text"
+    "no-justified-text",
+    "no-arbitrary-px-font-size",
+    "no-pure-black-background",
+    "no-layout-transition-inline"
   ],
   "delegatedRules": [
     {

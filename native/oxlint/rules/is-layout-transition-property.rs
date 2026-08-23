@@ -1,0 +1,32 @@
+fn is_layout_transition_property(property_name: &str) -> bool {
+    const LAYOUT_TRANSITION_PROPERTIES: [&str; 27] = [
+        "width",
+        "height",
+        "min-width",
+        "max-width",
+        "min-height",
+        "max-height",
+        "top",
+        "right",
+        "bottom",
+        "left",
+        "padding",
+        "padding-top",
+        "padding-right",
+        "padding-bottom",
+        "padding-left",
+        "margin",
+        "margin-top",
+        "margin-right",
+        "margin-bottom",
+        "margin-left",
+        "border-width",
+        "border-top-width",
+        "border-right-width",
+        "border-bottom-width",
+        "border-left-width",
+        "line-height",
+        "column-width",
+    ];
+    LAYOUT_TRANSITION_PROPERTIES.contains(&property_name)
+}

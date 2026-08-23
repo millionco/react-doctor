@@ -64,7 +64,10 @@
     "no-invalid-progress-range",
     "preact-prefer-ondblclick",
     "rn-no-set-native-props",
-    "rn-no-single-element-style-array"
+    "rn-no-single-element-style-array",
+    "no-generic-handler-names",
+    "tanstack-start-no-dynamic-server-fn-import",
+    "nextjs-no-google-analytics-script"
   ],
   "delegatedRules": [
     {

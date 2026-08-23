@@ -1,5 +1,5 @@
 use oxc_ast::{
-    ast::{ArrayExpressionElement, Expression, JSXAttributeName, JSXAttributeValue},
+    ast::{Expression, JSXAttributeName, JSXAttributeValue},
     AstKind,
 };
 use oxc_diagnostics::OxcDiagnostic;
@@ -11,19 +11,21 @@ use crate::{
     AstNode,
 };
 
+const GENERIC_EVENT_SUFFIXES: [&str; 5] = ["Click", "Change", "Input", "Blur", "Focus"];
+
 #[derive(Debug, Default, Clone)]
-pub struct RnNoSingleElementStyleArray;
+pub struct NoGenericHandlerNames;
 
 declare_oxc_lint!(
-    /// Disallow React Native style arrays that wrap one value.
-    RnNoSingleElementStyleArray,
+    /// Disallow handler names that only repeat the event name.
+    NoGenericHandlerNames,
     react_doctor_native,
     correctness,
     version = "0.1.0",
-    short_description = "Disallow React Native style arrays that wrap one value.",
+    short_description = "Disallow generic JSX handler names.",
 );
 
-impl Rule for RnNoSingleElementStyleArray {
+impl Rule for NoGenericHandlerNames {
     fn should_run(&self, ctx: &ContextHost) -> bool {
         !is_non_production_file(ctx)
     }
@@ -35,31 +37,28 @@ impl Rule for RnNoSingleElementStyleArray {
         let JSXAttributeName::Identifier(attribute_name) = &attribute.name else {
             return;
         };
-        if attribute_name.name != "style" && !attribute_name.name.ends_with("Style") {
+        let Some(event_suffix) = attribute_name.name.strip_prefix("on") else {
+            return;
+        };
+        if !GENERIC_EVENT_SUFFIXES.contains(&event_suffix) {
             return;
         }
         let Some(JSXAttributeValue::ExpressionContainer(container)) = &attribute.value else {
             return;
         };
-        let Some(Expression::ArrayExpression(array_expression)) =
-            container.expression.as_expression()
-        else {
+        let Some(Expression::Identifier(handler)) = container.expression.as_expression() else {
             return;
         };
-        if array_expression.elements.len() != 1
-            || matches!(
-                array_expression.elements[0],
-                ArrayExpressionElement::SpreadElement(_) | ArrayExpressionElement::Elision(_)
-            )
-        {
+        let expected_handler_name = format!("handle{event_suffix}");
+        if handler.name != expected_handler_name.as_str() {
             return;
         }
         ctx.diagnostic(
             OxcDiagnostic::warn(format!(
-                "Your users pay for an extra array allocation when \"{}\" wraps a single value for nothing.",
-                attribute_name.name
+                "The handler name \"{}\" says when it runs, not what it does, so name it after the action instead.",
+                handler.name
             ))
-            .with_label(array_expression.span),
+            .with_label(attribute.span),
         );
     }
 }

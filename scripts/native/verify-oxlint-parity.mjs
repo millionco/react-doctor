@@ -116,6 +116,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "preact-prefer-ondblclick": 3,
   "rn-no-set-native-props": 5,
   "rn-no-single-element-style-array": 2,
+  "no-generic-handler-names": 1,
+  "tanstack-start-no-dynamic-server-fn-import": 2,
+  "nextjs-no-google-analytics-script": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -328,6 +331,16 @@ const singleStyleArray = <View style={[styles.box]} />;
 const singleCustomStyleArray = <View contentStyle={[styles.content]} />;
 const spreadStyleArray = <View style={[...baseStyles]} />;
 const multipleStyleArray = <View style={[styles.box, isActive && styles.active]} />;
+const genericClickHandler = <button onClick={handleClick}>Save</button>;
+const actionClickHandler = <button onClick={saveProfile}>Save</button>;
+const dynamicServerFunctions = import("~/utils/users.functions");
+const typedDynamicServerFunctions = import(\`~/utils/admin.functions.ts\`);
+const dynamicClientModule = import("~/components/chart");
+const dynamicServerFunctionName = import(\`~/utils/\${serverFunctionName}.functions\`);
+const tagManagerScript = <Script src="https://www.googletagmanager.com/gtag/js?id=G-XYZ" />;
+const analyticsScript = <script src="https://www.google-analytics.com/analytics.js" />;
+const unrelatedScript = <Script src="https://example.com/widget.js" />;
+const expressionAnalyticsScript = <Script src={"https://www.google-analytics.com/analytics.js"} />;
 const autoplayingVideo = <video autoPlay src="hero.mp4" />;
 const mutedAutoplayingVideo = <video autoPlay muted src="hero.mp4" />;
 const unnamedDetails = <details><p>Answer</p></details>;

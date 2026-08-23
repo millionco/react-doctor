@@ -623,6 +623,9 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "preact-prefer-ondblclick",
   "rn-no-set-native-props",
   "rn-no-single-element-style-array",
+  "no-generic-handler-names",
+  "tanstack-start-no-dynamic-server-fn-import",
+  "nextjs-no-google-analytics-script",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

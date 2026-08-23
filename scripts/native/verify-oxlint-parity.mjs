@@ -284,6 +284,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "rerender-lazy-state-init": 7,
   "no-eager-new-in-use-state-initializer": 5,
   "no-oversized-long-heading": 1,
+  "no-flat-page-type-scale": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -959,6 +960,7 @@ const proportionalNumericData = <table><tbody><tr><td>{total.toLocaleString()}</
 const excessiveFontFamilies = <main><h1 style={{ fontFamily: "Fraunces" }}>Title</h1><p style={{ fontFamily: "Inter" }}>Body</p><code style={{ fontFamily: "JetBrains Mono" }}>Code</code><aside style={{ fontFamily: "Caveat" }}>Note</aside></main>;
 const repeatedSectionShells = <main><section className="py-20"><div className="mx-auto max-w-6xl">Intro</div></section><section className="py-24"><div className="mx-auto max-w-6xl">Features</div></section><section className="py-20"><div className="mx-auto max-w-6xl">Pricing</div></section></main>;
 const oversizedLongHeading = <><h1 className="text-8xl">Build a better workflow for every team in your growing organization</h1><h1 style={{ fontSize: "5rem" }}>Build a better workflow for every team in your growing organization</h1></>;
+const flatPageTypeScale = <main><p style={{ fontSize: 14 }}>A</p><h2 style={{ fontSize: 16 }}>B</h2><h1 style={{ fontSize: 18 }}>C</h1></main>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>
@@ -1093,6 +1095,7 @@ const configuredAllowedNoninteractiveRole = <h1 role="button">Open</h1>;
 const configuredDeepJsx = <div><section><span><em /></span></section></div>;
 const configuredCompetingDeepJsx = <div><section><span><em /></span><Widget render={() => <section><span><em /></span></section>} /></section></div>;
 const configuredOversizedLongHeading = <h1 className="text-8xl">Build a better workflow for every team in your growing organization</h1>;
+const configuredFlatPageTypeScale = <main><p className="text-sm">A</p><h2 className="text-base">B</h2><h1 className="text-lg">C</h1></main>;
 `,
   );
   const routerGateFixture =
@@ -1164,6 +1167,7 @@ const configuredOversizedLongHeading = <h1 className="text-8xl">Build a better w
     "jsx-max-depth",
     "no-unsafe",
     "no-oversized-long-heading",
+    "no-flat-page-type-scale",
   ];
   fs.writeFileSync(
     configuredStockConfigPath,
@@ -1304,6 +1308,7 @@ const configuredOversizedLongHeading = <h1 className="text-8xl">Build a better w
     "jsx-max-depth": 2,
     "no-unsafe": 1,
     "no-oversized-long-heading": 1,
+    "no-flat-page-type-scale": 1,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(configuredStockDiagnostics)) !==

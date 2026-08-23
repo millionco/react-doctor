@@ -195,7 +195,8 @@
     "no-repeated-section-shells",
     "rerender-lazy-state-init",
     "no-eager-new-in-use-state-initializer",
-    "no-oversized-long-heading"
+    "no-oversized-long-heading",
+    "no-flat-page-type-scale"
   ],
   "delegatedRules": [
     {

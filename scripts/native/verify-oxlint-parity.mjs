@@ -250,6 +250,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-arbitrary-px-font-size": 1,
   "no-pure-black-background": 1,
   "no-layout-transition-inline": 1,
+  "no-common-root-font": 1,
+  "no-redundant-display-class": 1,
+  "no-repeated-placeholder-navigation": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -813,6 +816,9 @@ const justifiedText = <p style={{ textAlign: "justify" }}>Long justified text</p
 const arbitraryPixelFontSize = <p className="text-[13px]">Small text</p>;
 const pureBlackBackground = <section style={{ backgroundColor: "#000" }} />;
 const inlineLayoutTransition = <div style={{ transition: "width 200ms" }} />;
+const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
+const redundantDisplay = <div className="block rounded-lg" />;
+const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

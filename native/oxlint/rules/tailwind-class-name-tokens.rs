@@ -1,4 +1,7 @@
 struct TailwindClassNameToken<'a> {
+    #[allow(dead_code)]
+    raw_token: &'a str,
+    #[allow(dead_code)]
     utility: &'a str,
     #[allow(dead_code)]
     variants: Vec<&'a str>,
@@ -109,5 +112,9 @@ fn parse_tailwind_class_name_token(raw_token: &str) -> TailwindClassNameToken<'_
             utility = &utility[..utility.len() - 1];
         }
     }
-    TailwindClassNameToken { utility, variants }
+    TailwindClassNameToken {
+        raw_token,
+        utility,
+        variants,
+    }
 }

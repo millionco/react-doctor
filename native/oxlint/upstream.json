@@ -161,7 +161,10 @@
     "no-justified-text",
     "no-arbitrary-px-font-size",
     "no-pure-black-background",
-    "no-layout-transition-inline"
+    "no-layout-transition-inline",
+    "no-common-root-font",
+    "no-redundant-display-class",
+    "no-repeated-placeholder-navigation"
   ],
   "delegatedRules": [
     {

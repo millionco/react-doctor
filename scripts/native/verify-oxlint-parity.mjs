@@ -59,10 +59,16 @@ const safePageFixturePath = path.join(fixtureDirectory, "app", "page.tsx");
 const safeRouteHandlerFixturePath = path.join(fixtureDirectory, "app", "safe", "route.ts");
 const nonProductionFixturePath = path.join(temporaryDirectory, "fixture.test.tsx");
 const configuredFixturePath = path.join(temporaryDirectory, "configured.tsx");
+const inactiveRouterFixtureDirectory = path.join(temporaryDirectory, "inactive-router-package");
+const inactiveRouterFixturePath = path.join(inactiveRouterFixtureDirectory, "src", "fixture.tsx");
+const activeRouterFixtureDirectory = path.join(temporaryDirectory, "active-router-package");
+const activeRouterFixturePath = path.join(activeRouterFixtureDirectory, "src", "fixture.tsx");
 const stockConfigPath = path.join(temporaryDirectory, "stock.json");
 const nativeConfigPath = path.join(temporaryDirectory, "native.json");
 const configuredStockConfigPath = path.join(temporaryDirectory, "configured-stock.json");
 const configuredNativeConfigPath = path.join(temporaryDirectory, "configured-native.json");
+const routerStockConfigPath = path.join(temporaryDirectory, "router-stock.json");
+const routerNativeConfigPath = path.join(temporaryDirectory, "router-native.json");
 const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-no-duplicate-props": 1,
   "nextjs-no-vercel-og-import": 1,
@@ -185,6 +191,12 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "unused-export": 0,
   "unused-file": 0,
   "unused-type": 0,
+  "rn-reanimated-4-no-removed-api": 2,
+  "rn-reanimated-4-no-legacy-spring-thresholds": 2,
+  "rn-reanimated-4-use-worklets-scheduler": 2,
+  "r3f-no-internal-imports": 6,
+  "react-router-v8-no-react-router-dom-import": 4,
+  "react-router-no-navigate-in-render": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -229,6 +241,15 @@ import { createContext as makeTrackedContext } from "react-tracked";
 import { useQuery as useItemsQuery } from "@tanstack/react-query";
 import * as TanstackQuery from "@tanstack/react-query";
 import { createBrowserRouter as makeBrowserRouter, createHashRouter as makeHashRouter } from "react-router";
+import { useNavigate as useRouteNavigate } from "react-router-dom";
+import { runOnJS as callOnJavaScript, useWorkletCallback as makeLegacyWorklet, withSpring as makeSpring } from "react-native-reanimated";
+import * as ReanimatedRuntime from "react-native-reanimated";
+import { privateFiberApi } from "@react-three/fiber/dist/core";
+import FiberInternal = require("@react-three/fiber/src/core");
+export { privateFiberRenderer } from "@react-three/fiber/dist/renderer";
+export * from "@react-three/fiber/src/web";
+export { Link as RouterLink } from "react-router-dom";
+export * from "react-router-dom";
 import RawBottomSheet from "react-native-raw-bottom-sheet";
 import { BottomSheetScrollView as SheetScroll } from "@gorhom/bottom-sheet";
 import * as GorhomBottomSheet from "@gorhom/bottom-sheet";
@@ -247,6 +268,18 @@ import * as ReactNative from "react-native";
 import { AnimatePresence, animate as runMotionAnimation, motion, motionValue as createMotionValue, useAnimate as useMotionAnimate, useAnimationControls as useMotionControls, useMotionValue as useLiveMotionValue, useSpring as useMotionSpring, useTransform as mapMotionValue, type MotionConfig } from "framer-motion";
 import * as MotionRuntime from "motion/react";
 import Head from "next/head";
+void import("@react-three/fiber/dist/native");
+require("@react-three/fiber/src/native");
+void import("react-router-dom");
+void privateFiberApi;
+void FiberInternal;
+makeLegacyWorklet(() => {});
+const ReanimatedAlias = ReanimatedRuntime;
+const legacyGestureHandler = ReanimatedAlias.useAnimatedGestureHandler;
+legacyGestureHandler({});
+makeSpring(1, { restDisplacementThreshold: 0.01, ["restSpeedThreshold"]: 2 });
+callOnJavaScript(() => {});
+ReanimatedRuntime.runOnRuntime(runtime, () => {});
 document.write("a");
 document.writeln("b");
 document["write"]("c");
@@ -334,6 +367,13 @@ const RouterRenderFixture = () => {
   ["hash"].map(() => makeHashRouter([]));
   const onClick = () => makeBrowserRouter([]);
   return <button onClick={onClick}>Router</button>;
+};
+const RouterNavigateFixture = () => {
+  const navigateToRoute = useRouteNavigate();
+  navigateToRoute("/profile");
+  ["/settings"].forEach((path) => navigateToRoute(path));
+  const onClick = () => navigateToRoute("/deferred");
+  return <button onClick={onClick}>Navigate</button>;
 };
 const unkeyedPresence = <AnimatePresence><Panel /><Panel /></AnimatePresence>;
 const partiallyKeyedNamespacePresence = <MotionRuntime.AnimatePresence><Panel /><Panel key="second" /></MotionRuntime.AnimatePresence>;
@@ -690,7 +730,15 @@ const runOxlint = (configPath, environment, targetPath = fixturePath) => {
   if (!result.stdout) {
     throw new Error(result.stderr || `oxlint exited with status ${result.status}`);
   }
-  const parsed = JSON.parse(result.stdout);
+  let parsed;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch (error) {
+    throw new Error(
+      `oxlint returned non-JSON output\nstdout=${result.stdout}\nstderr=${result.stderr}`,
+      { cause: error },
+    );
+  }
   if (result.status !== 0 && result.status !== 1) {
     throw new Error(result.stderr || `oxlint exited with status ${result.status}`);
   }
@@ -760,6 +808,20 @@ const configuredBooleanProps = <Widget enabled compact={true} />;
 const configuredHeading = <Title />;
 `,
   );
+  const routerGateFixture =
+    'import { createBrowserRouter, useNavigate } from "react-router-dom"; export function App() { const navigate = useNavigate(); navigate("/next"); createBrowserRouter([]); return null; }';
+  fs.mkdirSync(path.dirname(inactiveRouterFixturePath), { recursive: true });
+  fs.writeFileSync(
+    path.join(inactiveRouterFixtureDirectory, "package.json"),
+    JSON.stringify({ dependencies: { react: "latest" } }),
+  );
+  fs.writeFileSync(inactiveRouterFixturePath, routerGateFixture);
+  fs.mkdirSync(path.dirname(activeRouterFixturePath), { recursive: true });
+  fs.writeFileSync(
+    path.join(activeRouterFixtureDirectory, "package.json"),
+    JSON.stringify({ dependencies: { "react-router-dom": "latest" } }),
+  );
+  fs.writeFileSync(activeRouterFixturePath, routerGateFixture);
   fs.writeFileSync(
     stockConfigPath,
     JSON.stringify(buildConfig({ isNative: false, settings: REACT_DOCTOR_SETTINGS })),
@@ -792,6 +854,29 @@ const configuredHeading = <Title />;
         settings: CONFIGURED_REACT_DOCTOR_SETTINGS,
         ruleIds: configuredRuleIds,
       }),
+    ),
+  );
+  const routerRuleIds = [
+    "react-router-no-navigate-in-render",
+    "react-router-no-router-in-render",
+    "react-router-v8-no-react-router-dom-import",
+  ];
+  const routerSettings = {
+    "react-doctor": {
+      ...REACT_DOCTOR_SETTINGS["react-doctor"],
+      rootDirectory: temporaryDirectory,
+    },
+  };
+  fs.writeFileSync(
+    routerStockConfigPath,
+    JSON.stringify(
+      buildConfig({ isNative: false, settings: routerSettings, ruleIds: routerRuleIds }),
+    ),
+  );
+  fs.writeFileSync(
+    routerNativeConfigPath,
+    JSON.stringify(
+      buildConfig({ isNative: true, settings: routerSettings, ruleIds: routerRuleIds }),
     ),
   );
   const stockDiagnostics = runOxlint(stockConfigPath, process.env, fixtureDirectory).diagnostics;
@@ -873,6 +958,40 @@ const configuredHeading = <Title />;
   ) {
     throw new Error(
       `native configured parity failed\nstock=${JSON.stringify(configuredStockDiagnostics, null, 2)}\nnative=${JSON.stringify(configuredNativeDiagnostics, null, 2)}`,
+    );
+  }
+
+  const inactiveRouterStockDiagnostics = runOxlint(
+    routerStockConfigPath,
+    process.env,
+    inactiveRouterFixturePath,
+  ).diagnostics;
+  const inactiveRouterNativeDiagnostics = runOxlint(
+    routerNativeConfigPath,
+    nativeEnvironment,
+    inactiveRouterFixturePath,
+  ).diagnostics;
+  if (inactiveRouterStockDiagnostics.length !== 0 || inactiveRouterNativeDiagnostics.length !== 0) {
+    throw new Error(
+      `native inactive React Router package parity failed\nstock=${JSON.stringify(inactiveRouterStockDiagnostics, null, 2)}\nnative=${JSON.stringify(inactiveRouterNativeDiagnostics, null, 2)}`,
+    );
+  }
+  const activeRouterStockDiagnostics = runOxlint(
+    routerStockConfigPath,
+    process.env,
+    activeRouterFixturePath,
+  ).diagnostics;
+  const activeRouterNativeDiagnostics = runOxlint(
+    routerNativeConfigPath,
+    nativeEnvironment,
+    activeRouterFixturePath,
+  ).diagnostics;
+  if (
+    activeRouterStockDiagnostics.length !== 3 ||
+    JSON.stringify(activeRouterNativeDiagnostics) !== JSON.stringify(activeRouterStockDiagnostics)
+  ) {
+    throw new Error(
+      `native active React Router package parity failed\nstock=${JSON.stringify(activeRouterStockDiagnostics, null, 2)}\nnative=${JSON.stringify(activeRouterNativeDiagnostics, null, 2)}`,
     );
   }
 

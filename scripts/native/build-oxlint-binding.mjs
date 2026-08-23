@@ -168,6 +168,8 @@ impl Rule for ${delegatedRule.struct} {
         "is-focusable-jsx-opening-element",
         "resolve-jsx-element-type-name",
         "first-js-whitespace-token",
+        "direct-named-import-matches",
+        "is-react-router-file-active",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

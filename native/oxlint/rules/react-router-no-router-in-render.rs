@@ -35,7 +35,7 @@ declare_oxc_lint!(
 
 impl Rule for ReactRouterNoRouterInRender {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx)
+        !is_non_production_file(ctx) && is_react_router_file_active(ctx)
     }
 
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
@@ -64,35 +64,10 @@ fn is_direct_react_router_factory_import<'a>(
     identifier: &oxc_ast::ast::IdentifierReference<'a>,
     ctx: &LintContext<'a>,
 ) -> bool {
-    let Some(symbol_id) = ctx
-        .scoping()
-        .get_reference(identifier.reference_id())
-        .symbol_id()
-    else {
-        return false;
-    };
-    let declaration = ctx.symbol_declaration(symbol_id);
-    if !matches!(
-        declaration.kind(),
-        AstKind::ImportSpecifier(_) | AstKind::ImportDefaultSpecifier(_)
-    ) {
-        return false;
-    }
-    ctx.module_record().import_entries.iter().any(|entry| {
-        if entry.is_type
-            || !REACT_ROUTER_RUNTIME_MODULE_SOURCES.contains(&entry.module_request.name())
-            || ctx
-                .scoping()
-                .get_root_binding(entry.local_name.name().into())
-                != Some(symbol_id)
-        {
-            return false;
-        }
-        match &entry.import_name {
-            crate::module_record::ImportImportName::Name(imported_name) => {
-                REACT_ROUTER_FACTORY_EXPORT_NAMES.contains(&imported_name.name())
-            }
-            _ => false,
-        }
-    })
+    direct_named_import_matches(
+        identifier,
+        &REACT_ROUTER_FACTORY_EXPORT_NAMES,
+        &REACT_ROUTER_RUNTIME_MODULE_SOURCES,
+        ctx,
+    )
 }

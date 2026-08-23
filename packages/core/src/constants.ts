@@ -684,6 +684,12 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "unused-export",
   "unused-file",
   "unused-type",
+  "rn-reanimated-4-no-removed-api",
+  "rn-reanimated-4-no-legacy-spring-thresholds",
+  "rn-reanimated-4-use-worklets-scheduler",
+  "r3f-no-internal-imports",
+  "react-router-v8-no-react-router-dom-import",
+  "react-router-no-navigate-in-render",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

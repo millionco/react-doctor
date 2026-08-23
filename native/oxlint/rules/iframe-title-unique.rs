@@ -42,7 +42,7 @@ impl Rule for IframeTitleUnique {
             if normalized_title.is_empty() || seen_titles.insert(normalized_title) {
                 continue;
             }
-            let trimmed_title = raw_title.trim_matches(is_ecmascript_whitespace);
+            let trimmed_title = raw_title.trim_matches(is_js_whitespace);
             ctx.diagnostic(
                 OxcDiagnostic::warn(format!(
                     "Another frame in this static JSX tree already uses the title \"{trimmed_title}\". Give each frame a title that identifies its distinct purpose."
@@ -57,7 +57,7 @@ fn normalize_frame_title(title: &str) -> String {
     let mut normalized_title = String::new();
     let mut has_pending_space = false;
     for character in title.chars() {
-        if is_ecmascript_whitespace(character) {
+        if is_js_whitespace(character) {
             has_pending_space = !normalized_title.is_empty();
             continue;
         }
@@ -68,25 +68,4 @@ fn normalize_frame_title(title: &str) -> String {
         normalized_title.extend(character.to_lowercase());
     }
     normalized_title
-}
-
-fn is_ecmascript_whitespace(character: char) -> bool {
-    matches!(
-        character,
-        '\u{0009}'
-            | '\u{000A}'
-            | '\u{000B}'
-            | '\u{000C}'
-            | '\u{000D}'
-            | '\u{0020}'
-            | '\u{00A0}'
-            | '\u{1680}'
-            | '\u{2000}'..='\u{200A}'
-            | '\u{2028}'
-            | '\u{2029}'
-            | '\u{202F}'
-            | '\u{205F}'
-            | '\u{3000}'
-            | '\u{FEFF}'
-    )
 }

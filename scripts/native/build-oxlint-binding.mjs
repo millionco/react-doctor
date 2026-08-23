@@ -150,6 +150,7 @@ impl Rule for ${delegatedRule.struct} {
         "collect-static-jsx-opening-elements",
         "is-static-jsx-tree-root",
         "get-static-jsx-tree-opening-elements",
+        "is-js-whitespace",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

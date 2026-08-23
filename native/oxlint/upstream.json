@@ -73,7 +73,10 @@
     "prefer-truncate-shorthand",
     "no-multiple-main-landmarks",
     "iframe-title-unique",
-    "html-label-has-single-control"
+    "html-label-has-single-control",
+    "fieldset-requires-legend",
+    "no-skipped-heading-level",
+    "no-duplicate-static-id-reference"
   ],
   "delegatedRules": [
     {

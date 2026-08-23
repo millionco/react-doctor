@@ -125,6 +125,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-multiple-main-landmarks": 3,
   "iframe-title-unique": 2,
   "html-label-has-single-control": 2,
+  "fieldset-requires-legend": 2,
+  "no-skipped-heading-level": 2,
+  "no-duplicate-static-id-reference": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -366,6 +369,18 @@ const LabelTag = "label" as const;
 const InputTag = "input" as const;
 const aliasedMultiControlLabel = <LabelTag><InputTag /><textarea /></LabelTag>;
 const expressionControlLabel = <label><input />{condition && <input />}</label>;
+const unnamedFieldset = <fieldset><input /><select /></fieldset>;
+const nestedLegendFieldset = <fieldset><div><legend>Contact</legend></div><input /><textarea /></fieldset>;
+const namedFieldset = <fieldset><legend>Contact</legend><input /><input /></fieldset>;
+const spreadFieldset = <fieldset {...fieldsetProperties}><input /><input /></fieldset>;
+const skippedMainHeading = <main><h1>Title</h1><section><h3>Details</h3></section></main>;
+const nestedSkippedArticleHeading = <main><h1>Title</h1><article><h2>Article</h2><h4>Detail</h4></article></main>;
+const expressionHeading = <main><h1>Title</h1>{condition && <h3>Details</h3>}</main>;
+const continuousHeadings = <article><h1>Title</h1><h2>Details</h2></article>;
+const duplicateEmailId = <><label htmlFor="email">Email</label><input id="email" /><input id="email" /></>;
+const duplicateUnicodeId = <><div aria-labelledby="item" /><span id={"\uFEFFitem\u00A0"} /><span id="item" /></>;
+const conditionalDuplicateId = <div aria-labelledby="item">{condition ? <span id="item" /> : <span id="item" />}</div>;
+const customDuplicateIdReference = <><Custom aria-labelledby="item" /><span id="item" /><span id="item" /></>;
 const autoplayingVideo = <video autoPlay src="hero.mp4" />;
 const mutedAutoplayingVideo = <video autoPlay muted src="hero.mp4" />;
 const unnamedDetails = <details><p>Answer</p></details>;

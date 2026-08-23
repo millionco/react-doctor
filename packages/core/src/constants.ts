@@ -713,6 +713,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "r3f-no-async-use-frame",
   "react-router-no-route-module-environment-suffix",
   "three-webgpu-no-legacy-effect-composer",
+  "react-router-no-nested-router",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

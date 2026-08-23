@@ -243,6 +243,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-async-use-frame": 2,
   "react-router-no-route-module-environment-suffix": 0,
   "three-webgpu-no-legacy-effect-composer": 1,
+  "react-router-no-nested-router": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -294,7 +295,7 @@ import type { useMemo as PreactTypeOnlyHook } from "react";
 import { createContext as makeTrackedContext } from "react-tracked";
 import { useQuery as useItemsQuery } from "@tanstack/react-query";
 import * as TanstackQuery from "@tanstack/react-query";
-import { createBrowserRouter as makeBrowserRouter, createHashRouter as makeHashRouter } from "react-router";
+import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, createBrowserRouter as makeBrowserRouter, createHashRouter as makeHashRouter } from "react-router";
 import { useNavigate as useRouteNavigate } from "react-router-dom";
 import { runOnJS as callOnJavaScript, useWorkletCallback as makeLegacyWorklet, withSpring as makeSpring } from "react-native-reanimated";
 import * as ReanimatedRuntime from "react-native-reanimated";
@@ -799,6 +800,7 @@ class ForeignSuppressedMissingRender extends Component {
   render() {}
 }
 const deeplyNestedJsx = <div><div><div><div><div><div><div><div><div><div><div><div><div><div><div><span /></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div>;
+const nestedRouter = <OuterRouter><InnerRouter /></OuterRouter>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

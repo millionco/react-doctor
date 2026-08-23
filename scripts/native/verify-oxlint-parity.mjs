@@ -293,6 +293,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "design-no-space-on-flex-children": 1,
   "design-no-three-period-ellipsis": 1,
   "design-no-vague-button-label": 1,
+  "js-tosorted-immutable": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1000,6 +1001,7 @@ const redundantSizeAxes = <><svg className="w-4 h-4" /><svg className="w-6 h-6" 
 const spaceOnFlexChildren = <div className="flex space-x-4"><span /><span /></div>;
 const threePeriodEllipsis = <button>Loading...</button>;
 const vagueButtonLabel = <button>Click here</button>;
+const sortedCopy = [...items].sort();
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

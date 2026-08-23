@@ -204,7 +204,8 @@
     "design-no-redundant-size-axes",
     "design-no-space-on-flex-children",
     "design-no-three-period-ellipsis",
-    "design-no-vague-button-label"
+    "design-no-vague-button-label",
+    "js-tosorted-immutable"
   ],
   "delegatedRules": [
     {

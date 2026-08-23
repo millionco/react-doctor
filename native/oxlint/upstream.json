@@ -179,7 +179,12 @@
     "no-excessive-centered-copy",
     "no-tiny-uppercase-tracked-label",
     "no-uppercase-mono-label",
-    "no-tight-body-leading"
+    "no-tight-body-leading",
+    "no-repeated-hover-scale",
+    "no-tight-all-caps-heading",
+    "no-full-viewport-centered-hero",
+    "no-overwide-text-measure",
+    "require-autoplay-video-poster"
   ],
   "delegatedRules": [
     {

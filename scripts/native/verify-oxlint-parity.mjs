@@ -268,6 +268,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-tiny-uppercase-tracked-label": 1,
   "no-uppercase-mono-label": 1,
   "no-tight-body-leading": 1,
+  "no-repeated-hover-scale": 1,
+  "no-tight-all-caps-heading": 1,
+  "no-full-viewport-centered-hero": 1,
+  "no-overwide-text-measure": 1,
+  "require-autoplay-video-poster": 3,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -892,6 +897,11 @@ const excessiveCenteredCopy = <main><p className="text-center">Build polished in
 const tinyUppercaseTrackedLabel = <span className="text-[0.6875rem] uppercase tracking-wide">Recent activity</span>;
 const uppercaseMonoLabel = <span className="font-mono text-xs uppercase tracking-widest">System online</span>;
 const tightBodyLeading = <p className="leading-tight">This paragraph contains enough words to wrap across several lines in a typical content column.</p>;
+const repeatedHoverScale = <main><article className="hover:scale-105" /><article className="hover:scale-105" /><article className="hover:scale-105" /></main>;
+const tightAllCapsHeading = <h1 className="uppercase leading-none">Infrastructure for every engineering team</h1>;
+const fullViewportCenteredHero = <section className="flex min-h-dvh items-center justify-center"><h1>Build faster</h1></section>;
+const overwideTextMeasure = <blockquote className="max-w-[90ch]">Copy</blockquote>;
+const autoplayVideoWithoutPoster = <video autoPlay muted src="/demo.mp4" />;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

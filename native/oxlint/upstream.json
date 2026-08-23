@@ -174,7 +174,12 @@
     "rendering-conditional-render",
     "no-uppercase-tracked-navigation-label",
     "no-redundant-title-tooltip",
-    "no-symmetric-text-button-padding"
+    "no-symmetric-text-button-padding",
+    "no-fake-browser-chrome",
+    "no-excessive-centered-copy",
+    "no-tiny-uppercase-tracked-label",
+    "no-uppercase-mono-label",
+    "no-tight-body-leading"
   ],
   "delegatedRules": [
     {

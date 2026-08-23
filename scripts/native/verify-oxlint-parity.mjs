@@ -263,6 +263,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-uppercase-tracked-navigation-label": 1,
   "no-redundant-title-tooltip": 1,
   "no-symmetric-text-button-padding": 1,
+  "no-fake-browser-chrome": 1,
+  "no-excessive-centered-copy": 1,
+  "no-tiny-uppercase-tracked-label": 1,
+  "no-uppercase-mono-label": 1,
+  "no-tight-body-leading": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -882,6 +887,11 @@ const nestedPlaceholderPersona = <main><article><p>John Smith</p></article></mai
 const trackedNavigationLabel = <aside><span className="uppercase tracking-widest">Workspace</span></aside>;
 const redundantTitle = <button title="Save changes">Save changes</button>;
 const symmetricTextButton = <button className="p-3">Save changes</button>;
+const fakeBrowserChrome = <div className="overflow-hidden rounded-xl border"><div><span className="size-3 rounded-full bg-red-500" /><span className="size-3 rounded-full bg-yellow-500" /><span className="size-3 rounded-full bg-green-500" /></div></div>;
+const excessiveCenteredCopy = <main><p className="text-center">Build polished interfaces with a workflow that keeps every decision visible.</p><p className="text-center">Move from an initial idea to a working result without losing important context.</p><p className="text-center">Keep the whole team aligned with clear updates and shared project history.</p></main>;
+const tinyUppercaseTrackedLabel = <span className="text-[0.6875rem] uppercase tracking-wide">Recent activity</span>;
+const uppercaseMonoLabel = <span className="font-mono text-xs uppercase tracking-widest">System online</span>;
+const tightBodyLeading = <p className="leading-tight">This paragraph contains enough words to wrap across several lines in a typical content column.</p>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

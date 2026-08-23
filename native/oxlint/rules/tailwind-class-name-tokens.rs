@@ -2,6 +2,8 @@ struct TailwindClassNameToken<'a> {
     #[allow(dead_code)]
     raw_token: &'a str,
     #[allow(dead_code)]
+    is_important: bool,
+    #[allow(dead_code)]
     utility: &'a str,
     #[allow(dead_code)]
     variants: Vec<&'a str>,
@@ -99,6 +101,8 @@ fn parse_tailwind_class_name_token(raw_token: &str) -> TailwindClassNameToken<'_
     }
 
     let mut utility = &raw_token[utility_start..];
+    let has_leading_important_modifier = utility.starts_with('!');
+    let mut has_trailing_important_modifier = false;
     if let Some(stripped_utility) = utility.strip_prefix('!') {
         utility = stripped_utility;
     }
@@ -109,11 +113,13 @@ fn parse_tailwind_class_name_token(raw_token: &str) -> TailwindClassNameToken<'_
             .take_while(|character| *character == '\\')
             .count();
         if preceding_backslash_count % 2 == 0 {
+            has_trailing_important_modifier = true;
             utility = &utility[..utility.len() - 1];
         }
     }
     TailwindClassNameToken {
         raw_token,
+        is_important: has_leading_important_modifier || has_trailing_important_modifier,
         utility,
         variants,
     }

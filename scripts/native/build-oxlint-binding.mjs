@@ -200,6 +200,9 @@ impl Rule for ${delegatedRule.struct} {
         "get-effective-static-style-property",
         "get-static-style-property-number-value",
         "has-capability-or-unspecified",
+        "normalize-tailwind-arbitrary-utility-value",
+        "get-tailwind-visibility-effect",
+        "get-tailwind-visibility-at-breakpoints",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

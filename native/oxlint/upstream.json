@@ -196,7 +196,8 @@
     "rerender-lazy-state-init",
     "no-eager-new-in-use-state-initializer",
     "no-oversized-long-heading",
-    "no-flat-page-type-scale"
+    "no-flat-page-type-scale",
+    "no-small-form-control-text"
   ],
   "delegatedRules": [
     {

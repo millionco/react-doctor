@@ -285,6 +285,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-eager-new-in-use-state-initializer": 5,
   "no-oversized-long-heading": 1,
   "no-flat-page-type-scale": 1,
+  "no-small-form-control-text": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -961,6 +962,7 @@ const excessiveFontFamilies = <main><h1 style={{ fontFamily: "Fraunces" }}>Title
 const repeatedSectionShells = <main><section className="py-20"><div className="mx-auto max-w-6xl">Intro</div></section><section className="py-24"><div className="mx-auto max-w-6xl">Features</div></section><section className="py-20"><div className="mx-auto max-w-6xl">Pricing</div></section></main>;
 const oversizedLongHeading = <><h1 className="text-8xl">Build a better workflow for every team in your growing organization</h1><h1 style={{ fontSize: "5rem" }}>Build a better workflow for every team in your growing organization</h1></>;
 const flatPageTypeScale = <main><p style={{ fontSize: 14 }}>A</p><h2 style={{ fontSize: 16 }}>B</h2><h1 style={{ fontSize: 18 }}>C</h1></main>;
+const smallFormControlText = <><input className="text-xs" style={{ fontSize: 14 }} /><input type="hidden" style={{ fontSize: 12 }} /></>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>
@@ -1064,7 +1066,7 @@ try {
   );
   fs.writeFileSync(
     nonProductionFixturePath,
-    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js"));`,
+    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; const smallTestInput = <input style={{ fontSize: 14 }} />; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js"));`,
   );
   fs.writeFileSync(
     deepNonProductionFixturePath,
@@ -1096,6 +1098,7 @@ const configuredDeepJsx = <div><section><span><em /></span></section></div>;
 const configuredCompetingDeepJsx = <div><section><span><em /></span><Widget render={() => <section><span><em /></span></section>} /></section></div>;
 const configuredOversizedLongHeading = <h1 className="text-8xl">Build a better workflow for every team in your growing organization</h1>;
 const configuredFlatPageTypeScale = <main><p className="text-sm">A</p><h2 className="text-base">B</h2><h1 className="text-lg">C</h1></main>;
+const configuredSmallFormControlText = <><input className="text-sm" /><input className="hidden md:block text-xs" /></>;
 `,
   );
   const routerGateFixture =
@@ -1168,6 +1171,7 @@ const configuredFlatPageTypeScale = <main><p className="text-sm">A</p><h2 classN
     "no-unsafe",
     "no-oversized-long-heading",
     "no-flat-page-type-scale",
+    "no-small-form-control-text",
   ];
   fs.writeFileSync(
     configuredStockConfigPath,
@@ -1256,7 +1260,8 @@ const configuredFlatPageTypeScale = <main><p className="text-sm">A</p><h2 classN
   ).diagnostics;
   const expectedNonProductionDiagnosticCounts = {
     ...Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0])),
-    "react-in-jsx-scope": 3,
+    "react-in-jsx-scope": 4,
+    "no-small-form-control-text": 1,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(stockNonProductionDiagnostics)) !==
@@ -1309,6 +1314,7 @@ const configuredFlatPageTypeScale = <main><p className="text-sm">A</p><h2 classN
     "no-unsafe": 1,
     "no-oversized-long-heading": 1,
     "no-flat-page-type-scale": 1,
+    "no-small-form-control-text": 1,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(configuredStockDiagnostics)) !==

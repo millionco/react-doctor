@@ -295,6 +295,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "design-no-vague-button-label": 1,
   "js-tosorted-immutable": 1,
   "rerender-functional-setstate": 8,
+  "js-cache-storage": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1032,6 +1033,14 @@ const spaceOnFlexChildren = <div className="flex space-x-4"><span /><span /></di
 const threePeriodEllipsis = <button>Loading...</button>;
 const vagueButtonLabel = <button>Click here</button>;
 const sortedCopy = [...items].sort();
+function readCachedTheme(items) {
+  const theme = localStorage.getItem("theme");
+  items.map(() => localStorage.getItem("theme"));
+  return theme;
+}
+function readUnrelatedTheme() {
+  return localStorage.getItem("theme");
+}
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

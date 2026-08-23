@@ -206,7 +206,8 @@
     "design-no-three-period-ellipsis",
     "design-no-vague-button-label",
     "js-tosorted-immutable",
-    "rerender-functional-setstate"
+    "rerender-functional-setstate",
+    "js-cache-storage"
   ],
   "delegatedRules": [
     {

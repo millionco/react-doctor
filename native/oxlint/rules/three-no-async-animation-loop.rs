@@ -33,15 +33,10 @@ impl Rule for ThreeNoAsyncAnimationLoop {
                     .first()
                     .and_then(oxc_ast::ast::Argument::as_expression)
                     .and_then(|argument| resolve_local_react_callback(argument, ctx))
-            } else if is_global_request_animation_frame_call(call_expression, ctx) {
-                call_expression
-                    .arguments
-                    .first()
-                    .and_then(oxc_ast::ast::Argument::as_expression)
-                    .and_then(|argument| resolve_local_react_callback(argument, ctx))
-                    .filter(|(_, callback_span)| {
-                        callback_is_recursive_three_animation_frame(*callback_span, ctx)
-                    })
+            } else if let Some(callback) =
+                resolve_recursive_animation_frame_callback(call_expression, false, ctx)
+            {
+                callback_renders_with_three(callback.1, ctx).then_some(callback)
             } else {
                 None
             };
@@ -73,26 +68,8 @@ fn is_three_set_animation_loop_call<'a>(
         .is_some()
 }
 
-fn is_global_request_animation_frame_call<'a>(
-    call_expression: &oxc_ast::ast::CallExpression<'a>,
-    ctx: &LintContext<'a>,
-) -> bool {
-    let oxc_ast::ast::Expression::Identifier(identifier) =
-        call_expression.callee.get_inner_expression()
-    else {
-        return false;
-    };
-    identifier.name == "requestAnimationFrame"
-        && ctx
-            .scoping()
-            .get_reference(identifier.reference_id())
-            .symbol_id()
-            .is_none()
-}
-
-fn callback_is_recursive_three_animation_frame(callback_span: Span, ctx: &LintContext) -> bool {
+fn callback_renders_with_three(callback_span: Span, ctx: &LintContext) -> bool {
     let mut has_three_render = false;
-    let mut has_recursive_schedule = false;
     for candidate in ctx
         .nodes()
         .iter()
@@ -115,18 +92,6 @@ fn callback_is_recursive_three_animation_frame(callback_span: Span, ctx: &LintCo
         {
             has_three_render = true;
         }
-        if is_global_request_animation_frame_call(call_expression, ctx)
-            && call_expression
-                .arguments
-                .first()
-                .and_then(oxc_ast::ast::Argument::as_expression)
-                .and_then(|argument| resolve_local_react_callback(argument, ctx))
-                .is_some_and(|(_, recursive_callback_span)| {
-                    recursive_callback_span == callback_span
-                })
-        {
-            has_recursive_schedule = true;
-        }
     }
-    has_three_render && has_recursive_schedule
+    has_three_render
 }

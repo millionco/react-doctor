@@ -250,7 +250,9 @@
     "remotion-no-css-transition",
     "no-conflicting-spring-options",
     "three-no-shadows-on-unsupported-light",
-    "three-no-async-animation-loop"
+    "three-no-async-animation-loop",
+    "three-cap-device-pixel-ratio",
+    "three-prefer-set-animation-loop"
   ],
   "delegatedRules": [
     {

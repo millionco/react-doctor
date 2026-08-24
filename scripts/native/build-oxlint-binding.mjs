@@ -136,6 +136,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-react-hook-call",
         "is-global-nan-value",
         "is-proven-global-namespace-reference",
+        "binding-pattern-has-symbol",
         "is-process-stdout-member",
         "member-expression-identifier-property-name",
         "strip-parenthesized-expression",
@@ -230,6 +231,8 @@ impl Rule for ${delegatedRule.struct} {
         "run-remotion-css-time-rule",
         "get-static-motion-transition-objects",
         "three-constructor-name",
+        "resolve-recursive-animation-frame-callback",
+        "resolve-raw-device-pixel-ratio",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

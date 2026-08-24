@@ -341,6 +341,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-conflicting-spring-options": 2,
   "three-no-shadows-on-unsupported-light": 1,
   "three-no-async-animation-loop": 2,
+  "three-cap-device-pixel-ratio": 1,
+  "three-prefer-set-animation-loop": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1263,6 +1265,7 @@ const unsupportedShadowLight = new ThreeRuntime.AmbientLight();
 unsupportedShadowLight.castShadow = true;
 const asyncAnimationRenderer = new ThreeRuntime.WebGLRenderer();
 asyncAnimationRenderer.setAnimationLoop(async () => updateFrame());
+asyncAnimationRenderer.setPixelRatio(window.devicePixelRatio);
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();
   asyncAnimationRenderer.render(scene, camera);

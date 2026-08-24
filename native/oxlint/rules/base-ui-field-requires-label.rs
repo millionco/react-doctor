@@ -89,6 +89,7 @@ impl Rule for BaseUiFieldRequiresLabel {
                 true
             },
             &mut || saw_unprovable_content.set(true),
+            &mut || {},
         );
         if !has_control.get() || has_label.get() || saw_unprovable_content.get() {
             return;

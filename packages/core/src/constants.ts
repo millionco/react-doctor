@@ -842,6 +842,8 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "base-ui-field-requires-label",
   "radix-dialog-content-requires-title",
   "shadcn-dialog-content-requires-title",
+  "shadcn-form-item-requires-label",
+  "shadcn-icon-button-requires-label",
   "no-create-store-in-render",
   "react-compiler-no-manual-memoization",
   "no-giant-component",

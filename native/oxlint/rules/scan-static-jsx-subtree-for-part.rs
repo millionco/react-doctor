@@ -35,6 +35,7 @@ where
             true
         },
         &mut || saw_opaque_content.set(true),
+        &mut || {},
     );
     StaticJsxPartScan {
         found_part: found_part.get(),

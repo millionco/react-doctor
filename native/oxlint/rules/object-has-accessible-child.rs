@@ -1,8 +1,6 @@
 use oxc_ast::ast::{
     Expression, JSXAttributeItem, JSXAttributeValue, JSXChild, JSXElementName, JSXExpression,
 };
-use oxc_syntax::operator::UnaryOperator;
-
 use crate::{context::LintContext, utils::get_element_type};
 
 fn object_has_accessible_child<'a>(
@@ -10,21 +8,23 @@ fn object_has_accessible_child<'a>(
     ctx: &LintContext<'a>,
 ) -> bool {
     has_accessible_child(&element.children, ctx)
-        || attribute_may_have_non_empty_value(
+        || jsx_attribute_may_have_non_empty_value(
             get_authoritative_jsx_attribute(
                 &element.opening_element,
                 "dangerouslySetInnerHTML",
                 false,
             ),
             false,
+            None,
         )
         || has_spread_that_may_provide_attribute(
             &element.opening_element,
             "dangerouslySetInnerHTML",
         )
-        || attribute_may_have_non_empty_value(
+        || jsx_attribute_may_have_non_empty_value(
             get_authoritative_jsx_attribute(&element.opening_element, "children", false),
             false,
+            None,
         )
         || has_spread_that_may_provide_attribute(&element.opening_element, "children")
 }
@@ -67,7 +67,7 @@ fn element_may_provide_text<'a>(
         return true;
     }
     let aria_label = get_authoritative_jsx_attribute(opening_element, "aria-label", false);
-    if attribute_may_have_non_empty_value(aria_label, true)
+    if jsx_attribute_may_have_non_empty_value(aria_label, true, None)
         || (aria_label.is_none()
             && has_spread_that_may_provide_attribute(opening_element, "aria-label"))
     {
@@ -75,40 +75,13 @@ fn element_may_provide_text<'a>(
     }
     if get_element_type(ctx, opening_element) == "img" {
         let alt = get_authoritative_jsx_attribute(opening_element, "alt", false);
-        if attribute_may_have_non_empty_value(alt, false)
+        if jsx_attribute_may_have_non_empty_value(alt, false, None)
             || (alt.is_none() && has_spread_that_may_provide_attribute(opening_element, "alt"))
         {
             return true;
         }
     }
     object_has_accessible_child(element, ctx)
-}
-
-fn attribute_may_have_non_empty_value(
-    attribute: Option<&oxc_ast::ast::JSXAttribute>,
-    boolean_values_render: bool,
-) -> bool {
-    let Some(value) = attribute.and_then(|attribute| attribute.value.as_ref()) else {
-        return false;
-    };
-    match value {
-        JSXAttributeValue::StringLiteral(string_literal) => !string_literal.value.trim().is_empty(),
-        JSXAttributeValue::ExpressionContainer(container) => container
-            .expression
-            .as_expression()
-            .is_some_and(|expression| match expression.get_inner_expression() {
-                Expression::BooleanLiteral(_) => boolean_values_render,
-                Expression::NumericLiteral(_) => true,
-                Expression::StringLiteral(string_literal) => {
-                    !string_literal.value.trim().is_empty()
-                }
-                Expression::UnaryExpression(unary_expression) => {
-                    !is_literal_void_expression(unary_expression)
-                }
-                _ => true,
-            }),
-        _ => true,
-    }
 }
 
 fn expression_may_render_text(expression: &Expression) -> bool {
@@ -191,14 +164,6 @@ fn boolean_like_hidden_value(
         }
         _ => false,
     }
-}
-
-fn is_literal_void_expression(unary_expression: &oxc_ast::ast::UnaryExpression) -> bool {
-    unary_expression.operator == UnaryOperator::Void
-        && unary_expression
-            .argument
-            .get_inner_expression()
-            .is_literal()
 }
 
 fn get_direct_static_string_attribute_value<'a>(

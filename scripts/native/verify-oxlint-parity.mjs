@@ -390,6 +390,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "base-ui-field-requires-label": 1,
   "radix-dialog-content-requires-title": 1,
   "shadcn-dialog-content-requires-title": 1,
+  "shadcn-form-item-requires-label": 1,
+  "shadcn-icon-button-requires-label": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -499,6 +501,9 @@ import { Dialog as BaseDialog } from "@base-ui/react/dialog";
 import { Field as BaseField } from "@base-ui/react/field";
 import * as NativeRadixDialog from "@radix-ui/react-dialog";
 import { DialogContent as ShadcnDialogContent } from "@/components/ui/dialog";
+import { Button as ShadcnButton } from "@/components/ui/button";
+import { FormControl as ShadcnFormControl, FormItem as ShadcnFormItem } from "@/components/ui/form";
+import { Trash2 as LucideTrash2 } from "lucide-react";
 import Head from "next/head";
 import NextImage from "next/image";
 void import("@react-three/fiber/dist/native");
@@ -1453,6 +1458,10 @@ const BaseUiStructureFixture = () => <>
 const DialogTitleFixture = () => <>
   <NativeRadixDialog.Content><p>Body</p></NativeRadixDialog.Content>
   <ShadcnDialogContent><p>Body</p></ShadcnDialogContent>
+</>;
+const ShadcnLabelFixture = () => <>
+  <ShadcnFormItem><ShadcnFormControl><input /></ShadcnFormControl></ShadcnFormItem>
+  <ShadcnButton size="icon"><LucideTrash2 /></ShadcnButton>
 </>;
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();

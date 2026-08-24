@@ -329,6 +329,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-ctrl-c-handler-requires-exit-option": 1,
   "ink-no-live-hooks-in-render-to-string": 1,
   "ink-no-repeated-render": 4,
+  "hook-use-state": 22,
+  "rendering-svg-precision": 1,
+  "no-document-start-view-transition": 1,
+  "no-permanent-will-change": 2,
+  "no-global-css-variable-animation": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -375,7 +380,7 @@ const fixture = `
 import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
-import React, { Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef } from "react";
+import React, { Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef, ViewTransition } from "react";
 import ReactDOM from "react-dom";
 import type { useMemo as PreactTypeOnlyHook } from "react";
 import { createContext as makeTrackedContext } from "react-tracked";
@@ -439,6 +444,10 @@ document!.write("f");
 document[method]("safe");
 stream.write("safe");
 { const document = { write() {} }; document.write("safe"); }
+document.startViewTransition(() => {});
+requestAnimationFrame(() => {
+  document.documentElement.style.setProperty("--progress", "1");
+});
 const duplicateProps = <Widget value="first" value="second" />;
 const sharedSpreadProps = {};
 const duplicateIdentifierSpread = <Widget {...sharedSpreadProps} {...sharedSpreadProps} {...sharedSpreadProps} />;
@@ -1227,6 +1236,13 @@ function EventHandlerNestedTriggeredCallFixture() {
   }, [selected]);
   return <button onClick={() => setSelected(true)}>Select</button>;
 }
+function HookUseStateFixture() {
+  const stateResult = React.useState(0);
+  const [value, updateValue] = React.useState(0);
+  return <button onClick={() => updateValue(value + 1)}>{stateResult[0]}</button>;
+}
+const OverpreciseSvgPathFixture = () => <path d="M10.293847 20.847362" />;
+const PermanentWillChangeFixture = () => <><div className="will-change-transform" /><div style={{ willChange: "opacity" }} /></>;
 {
   class Map {}
   const shadowedMapState = useState(new Map());
@@ -1702,6 +1718,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     ...Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0])),
     "react-in-jsx-scope": 4,
     "no-small-form-control-text": 1,
+    "hook-use-state": 2,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(stockNonProductionDiagnostics)) !==

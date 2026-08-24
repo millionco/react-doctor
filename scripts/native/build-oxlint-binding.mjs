@@ -231,8 +231,12 @@ impl Rule for ${delegatedRule.struct} {
         "run-remotion-css-time-rule",
         "get-static-motion-transition-objects",
         "three-constructor-name",
+        "three-module-api-path-matches",
         "resolve-recursive-animation-frame-callback",
         "resolve-raw-device-pixel-ratio",
+        "get-static-object-property-value",
+        "resolve-static-number",
+        "is-float-typed-array",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

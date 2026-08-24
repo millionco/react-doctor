@@ -1,5 +1,3 @@
-const THREE_MODULE_SOURCES: [&str; 3] = ["three", "three-stdlib", "three/webgpu"];
-
 fn three_constructor_name<'a>(
     expression: &oxc_ast::ast::Expression<'a>,
     constructor_names: &'static [&'static str],
@@ -17,13 +15,7 @@ fn three_constructor_name_internal<'a>(
     let expression = expression.get_inner_expression();
     if let oxc_ast::ast::Expression::NewExpression(new_expression) = expression {
         return constructor_names.iter().copied().find(|constructor_name| {
-            module_api_path_matches(
-                &new_expression.callee,
-                &[*constructor_name],
-                &THREE_MODULE_SOURCES,
-                false,
-                ctx,
-            )
+            three_module_api_path_matches(&new_expression.callee, &[*constructor_name], ctx)
         });
     }
     let oxc_ast::ast::Expression::Identifier(identifier) = expression else {

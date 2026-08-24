@@ -343,6 +343,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-no-async-animation-loop": 2,
   "three-cap-device-pixel-ratio": 1,
   "three-prefer-set-animation-loop": 1,
+  "three-no-ignored-basic-material-properties": 3,
+  "three-no-ignored-linewidth": 2,
+  "three-no-normalized-float-buffer-attribute": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1266,6 +1269,13 @@ unsupportedShadowLight.castShadow = true;
 const asyncAnimationRenderer = new ThreeRuntime.WebGLRenderer();
 asyncAnimationRenderer.setAnimationLoop(async () => updateFrame());
 asyncAnimationRenderer.setPixelRatio(window.devicePixelRatio);
+const ignoredBasicMaterial = new ThreeRuntime.MeshBasicMaterial({ roughness: 0.4, metalness: 0.8 });
+ignoredBasicMaterial.roughness = 0.5;
+const ignoredLineMaterial = new ThreeRuntime.LineBasicMaterial({ linewidth: 4 });
+ignoredLineMaterial.linewidth = 3;
+const floatBufferValues = new Float32Array(9);
+new ThreeRuntime.BufferAttribute(floatBufferValues, 3, true);
+new ThreeRuntime.Float32BufferAttribute([], 3, true);
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();
   asyncAnimationRenderer.render(scene, camera);

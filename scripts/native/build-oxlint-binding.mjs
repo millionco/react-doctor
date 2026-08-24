@@ -229,6 +229,7 @@ impl Rule for ${delegatedRule.struct} {
         "get-static-route-full-path",
         "get-tanstack-route-options-object",
         "walk-tanstack-server-fn-chain",
+        "find-sequential-independent-await",
         "is-static-react-router-route-object",
         "is-definitely-falsy-expression",
         "has-active-route-property",

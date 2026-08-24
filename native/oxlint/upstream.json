@@ -238,7 +238,8 @@
     "ink-use-reactive-window-size",
     "no-event-handler",
     "ink-ctrl-c-handler-requires-exit-option",
-    "ink-no-live-hooks-in-render-to-string"
+    "ink-no-live-hooks-in-render-to-string",
+    "ink-no-repeated-render"
   ],
   "delegatedRules": [
     {

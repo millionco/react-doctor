@@ -328,6 +328,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-event-handler": 11,
   "ink-ctrl-c-handler-requires-exit-option": 1,
   "ink-no-live-hooks-in-render-to-string": 1,
+  "ink-no-repeated-render": 4,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1368,6 +1369,16 @@ const InkCtrlCHandler = () => { useInput((input, key) => { if (key.ctrl && input
 renderInk(<InkCtrlCHandler />);
 const InkSnapshotInput = () => { useInput(() => {}); return null; };
 renderInkToString(<InkSnapshotInput />);
+const repeatInkRender = () => { renderInk(null); renderInk(null); };
+const chooseInkRender = (server) => { if (server) renderInk(null); else renderInk(null); };
+const unmountInkRender = () => { const instance = renderInk(null); instance.unmount(); renderInk(null); };
+const destructureInkUnmount = () => { const { unmount } = renderInk(null); unmount(); renderInk(null); };
+const immediateInkUnmount = () => { renderInk(null).unmount(); renderInk(null); };
+const conditionalInkUnmount = (shouldStop) => { const instance = renderInk(null); if (shouldStop) instance.unmount(); renderInk(null); };
+const branchInkUnmount = (shouldStop) => { const instance = renderInk(null); if (shouldStop) instance.unmount(); else instance.unmount(); renderInk(null); };
+const separateInkOutputs = (firstOutput, secondOutput) => { renderInk(null, { stdout: firstOutput }); renderInk(null, { stdout: secondOutput }); };
+const repeatedInkOutput = (output) => { renderInk(null, { stdout: output }); renderInk(null, { stdout: output }); };
+const explicitDefaultInkOutput = () => { renderInk(null); renderInk(null, { stdout: process.stdout }); };
 async function buildAsyncReduce(items) {
   const object = await items.reduce(async (accumulator, item) => {
     accumulator[item.id] = await getItem(item);

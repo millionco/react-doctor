@@ -418,6 +418,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "tanstack-start-redirect-in-try-catch": 4,
   "tanstack-start-missing-head-content": 1,
   "tanstack-start-no-useeffect-fetch": 8,
+  "tanstack-start-get-mutation": 11,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1846,6 +1847,27 @@ function ComputedIdentifierHookNameFetch() { hooks[useEffect](() => { fetch("/ap
 function DeferredEffectFetch() { useEffect(() => { setInterval(() => { fetch("/api/timer"); }, 1000); }, []); return null; }
 function EventHandlerEffectFetch() { useEffect(() => { const refresh = () => { fetch("/api/event"); }; window.addEventListener("online", refresh); }, []); return null; }
 function ComputedStringHookNameFetch() { hooks["useEffect"](() => { fetch("/api/computed-string-hook"); }); return null; }
+createServerFn().handler(async () => { await db.update({ active: true }); });
+(createServerFn() as any).handler(() => cookies().set("session", "active"));
+createServerFn({ method: "GET" }).handler(() => fetch("/api/notify", { method: "POST" }));
+createServerFn({ method: "get" }).handler(() => db.users.delete("123"));
+createServerFn().handler(async () => { const cookieStore = await cookies(); cookieStore.delete("session"); });
+createServerFn().handler(() => { const deferredMutation = () => db.insert({ active: true }); return deferredMutation; });
+createServerFn().handler(function () { db.destroy({ id: "123" }); });
+createServerFn().handler(() => db[update]({ active: true }));
+createServerFn()[handler](() => db.remove({ id: "123" }));
+createServerFn().handler(() => fetch("/api/computed-method", { [method]: "POST" }));
+createServerFn({ "method": "POST" }).handler(() => db.upsert({ id: "123" }));
+createServerFn({ method: "POST" }).handler(() => db.create({ active: true }));
+createServerFn({ method: "PATCH" }).handler(() => db.update({ active: true }));
+createServerFn({ [method]: "POST" }).handler(() => db.insert({ active: true }));
+createServerFn().handler(() => { const customHeaders = new Headers(); customHeaders.set("x-trace", "abc"); });
+createServerFn().handler(() => { const localCache = new Map(); localCache.set("hit", true); });
+createServerFn().handler(() => { const response = NextResponse.json({ ok: true }); response.headers.set("x-trace", "abc"); });
+createServerFn().handler(() => fetch("/api/quoted-method", { "method": "POST" }));
+createServerFn().handler(namedServerHandler);
+createServerFn().handler(() => db["update"]({ active: true }));
+otherFactory().handler(() => db.update({ active: true }));
 `,
   );
   fs.writeFileSync(

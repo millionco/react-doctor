@@ -302,6 +302,7 @@
     "tanstack-start-redirect-in-try-catch",
     "tanstack-start-missing-head-content",
     "tanstack-start-no-useeffect-fetch",
+    "tanstack-start-get-mutation",
     "no-create-store-in-render",
     "react-compiler-no-manual-memoization",
     "no-giant-component",

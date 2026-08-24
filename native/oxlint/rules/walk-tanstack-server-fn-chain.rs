@@ -8,7 +8,7 @@ struct TanstackServerFnChainInfo<'a> {
 fn walk_tanstack_server_fn_chain<'a>(
     outer_call: &'a oxc_ast::ast::CallExpression<'a>,
 ) -> TanstackServerFnChainInfo<'a> {
-    use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey};
+    use oxc_ast::ast::{Expression, ObjectPropertyKind};
 
     let mut chain_info = TanstackServerFnChainInfo {
         is_server_fn_chain: false,
@@ -37,10 +37,7 @@ fn walk_tanstack_server_fn_chain<'a>(
                     let ObjectPropertyKind::ObjectProperty(property) = property else {
                         continue;
                     };
-                    if !matches!(
-                        &property.key,
-                        PropertyKey::StaticIdentifier(identifier) if identifier.name == "method"
-                    ) {
+                    if property_key_identifier_name(&property.key) != Some("method") {
                         continue;
                     }
                     if let Expression::StringLiteral(method) = property.value.get_inner_expression()
@@ -50,20 +47,24 @@ fn walk_tanstack_server_fn_chain<'a>(
                 }
                 break;
             }
-            Expression::StaticMemberExpression(member) => {
-                let method_name = member.property.name.as_str();
+            expression => {
+                let Some(member) = expression.as_member_expression() else {
+                    break;
+                };
+                let Some(method_name) = member_expression_identifier_property_name(member) else {
+                    break;
+                };
                 chain_info.method_names.push(method_name);
                 if matches!(method_name, "validator" | "inputValidator") {
                     chain_info.has_input_validation = true;
                 }
                 let Expression::CallExpression(previous_call) =
-                    member.object.get_inner_expression()
+                    member.object().get_inner_expression()
                 else {
                     break;
                 };
                 current_call = previous_call;
             }
-            _ => break,
         }
     }
 

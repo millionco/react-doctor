@@ -417,6 +417,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "tanstack-start-loader-parallel-fetch": 5,
   "tanstack-start-redirect-in-try-catch": 4,
   "tanstack-start-missing-head-content": 1,
+  "tanstack-start-no-useeffect-fetch": 8,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1834,6 +1835,17 @@ function swallowedIifeRedirect() { try { (() => { throw redirect({ to: "/login" 
 async function rethrownRedirect() { try { throw redirect({ to: "/login" }); } catch (error) { throw error; } }
 function deferredRedirect() { try { setTimeout(() => { throw redirect({ to: "/login" }); }); } catch (error) { console.error(error); } }
 async function outerSwallowedRedirect() { try { try { throw redirect({ to: "/done" }); } catch (error) { throw error; } } catch (outerError) { console.error(outerError); } }
+function DirectEffectFetch() { useEffect(() => { fetch("/api/direct"); }, []); return null; }
+function LocalEffectFetch() { useEffect(() => { const load = () => { fetch("/api/local"); }; load(); }, []); return null; }
+function PromiseEffectFetch() { useEffect(() => { loadConfig().then(() => { fetch("/api/promise"); }); }, []); return null; }
+function AsyncIifeEffectFetch() { useEffect(() => { (async () => { await fetch("/api/iife"); })(); }, []); return null; }
+function LayoutEffectFetch() { useLayoutEffect(() => { fetch("/api/layout"); }, []); return null; }
+function LocalHookNameFetch() { const useEffect = (callback) => callback(); useEffect(() => { fetch("/api/local-hook"); }); return null; }
+function MemberHookNameFetch() { hooks.useEffect(() => { fetch("/api/member-hook"); }); return null; }
+function ComputedIdentifierHookNameFetch() { hooks[useEffect](() => { fetch("/api/computed-hook"); }); return null; }
+function DeferredEffectFetch() { useEffect(() => { setInterval(() => { fetch("/api/timer"); }, 1000); }, []); return null; }
+function EventHandlerEffectFetch() { useEffect(() => { const refresh = () => { fetch("/api/event"); }; window.addEventListener("online", refresh); }, []); return null; }
+function ComputedStringHookNameFetch() { hooks["useEffect"](() => { fetch("/api/computed-string-hook"); }); return null; }
 `,
   );
   fs.writeFileSync(

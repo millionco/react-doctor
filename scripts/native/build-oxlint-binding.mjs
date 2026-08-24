@@ -232,6 +232,7 @@ impl Rule for ${delegatedRule.struct} {
         "find-sequential-independent-await",
         "find-guarding-try-statement",
         "is-tanstack-root-route-filename",
+        "effect-execution-contains-direct-fetch",
         "is-static-react-router-route-object",
         "is-definitely-falsy-expression",
         "has-active-route-property",

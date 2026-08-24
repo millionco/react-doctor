@@ -301,6 +301,7 @@
     "tanstack-start-loader-parallel-fetch",
     "tanstack-start-redirect-in-try-catch",
     "tanstack-start-missing-head-content",
+    "tanstack-start-no-useeffect-fetch",
     "no-create-store-in-render",
     "react-compiler-no-manual-memoization",
     "no-giant-component",

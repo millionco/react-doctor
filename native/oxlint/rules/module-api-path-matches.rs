@@ -104,8 +104,13 @@ fn module_api_path_matches_internal<'a>(
             });
     }
     ctx.module_record().import_entries.iter().any(|entry| {
+        let module_source = entry.module_request.name();
         !entry.is_type
-            && module_sources.contains(&entry.module_request.name())
+            && (module_sources.contains(&module_source)
+                || module_sources.iter().any(|module_source_prefix| {
+                    module_source_prefix.ends_with('/')
+                        && module_source.starts_with(module_source_prefix)
+                }))
             && ctx
                 .scoping()
                 .get_root_binding(entry.local_name.name().into())

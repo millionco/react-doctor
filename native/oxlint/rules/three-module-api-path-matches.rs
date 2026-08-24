@@ -1,4 +1,4 @@
-const THREE_MODULE_SOURCES: [&str; 3] = ["three", "three-stdlib", "three/webgpu"];
+const THREE_MODULE_SOURCES: [&str; 3] = ["three", "three-stdlib", "three/"];
 
 fn three_module_api_path_matches<'a>(
     expression: &oxc_ast::ast::Expression<'a>,

@@ -371,6 +371,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-valid-data-texture-dimensions": 4,
   "three-valid-buffer-attribute-array-length": 3,
   "three-valid-shadow-map-size": 3,
+  "three-valid-gpu-computation-dimensions": 2,
+  "three-valid-pbr-material-properties": 2,
+  "three-valid-physical-material-properties": 2,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1345,6 +1348,11 @@ const invalidDirectionalShadow = new ThreeRuntime.DirectionalLight();
 const invalidPointShadow = new ThreeRuntime.PointLight();
 invalidDirectionalShadow.shadow.mapSize.set(1000, 1024);
 invalidPointShadow.shadow.mapSize.set(0, -512);
+new ThreeRuntime.GPUComputationRenderer(0, -1, renderer);
+new ThreeRuntime.MeshStandardMaterial({ roughness: 2, metalness: -0.25 });
+const invalidPhysicalMaterial = new ThreeRuntime.MeshPhysicalMaterial();
+invalidPhysicalMaterial.clearcoat = 2;
+invalidPhysicalMaterial.ior = 3;
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();
   asyncAnimationRenderer.render(scene, camera);

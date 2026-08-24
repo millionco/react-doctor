@@ -212,7 +212,8 @@
     "js-cache-property-access",
     "no-effect-event-in-deps",
     "js-async-reduce-without-awaited-acc",
-    "react-router-no-invalid-splat-path"
+    "react-router-no-invalid-splat-path",
+    "react-router-no-invalid-absolute-child-path"
   ],
   "delegatedRules": [
     {

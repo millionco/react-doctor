@@ -320,6 +320,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-static-requires-key": 1,
   "ink-no-multiple-static": 1,
   "ink-valid-aria-semantics": 5,
+  "ink-prefer-use-paste": 1,
+  "ink-use-string-width-for-cursor": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -402,7 +404,7 @@ import { AnimatePresence, animate as runMotionAnimation, motion, motionValue as 
 import * as MotionRuntime from "motion/react";
 import { delayRender, delayRender as holdRender } from "remotion";
 import * as Remotion from "remotion";
-import { Box as InkBox, measureElement, Static as InkStatic, Text as InkText, useFocusManager, useInput, useStdin } from "ink";
+import { Box as InkBox, measureElement, Static as InkStatic, Text as InkText, useCursor, useFocusManager, useInput, useStdin } from "ink";
 import { WebGPURenderer } from "three/webgpu";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import Head from "next/head";
@@ -1243,6 +1245,10 @@ const InkTextAriaSemantics = () => <InkText aria-role="dialog" aria-state={{ che
 const InkInvalidAriaRole = () => <InkBox aria-role="dialog" />;
 const InkInvalidAriaState = () => <InkBox aria-state={{ pressed: true }} />;
 const InkHiddenAriaLabel = () => <InkBox aria-hidden aria-label="Hidden" />;
+const InkPastedInput = () => { useInput(input => { if (input.includes("\\n")) acceptPaste(input); }); return null; };
+const InkOrdinaryInputLength = () => { useInput(input => { if (input.length >= 1) acceptInput(input); }); return null; };
+const InkUnicodeCursor = ({ label }) => { const cursor = useCursor(); cursor.setCursorPosition({ x: label.length, y: 0 }); return null; };
+const InkAsciiCursor = () => { const label = "Ready"; const cursor = useCursor(); cursor.setCursorPosition({ x: label.length, y: 0 }); return null; };
 async function buildAsyncReduce(items) {
   const object = await items.reduce(async (accumulator, item) => {
     accumulator[item.id] = await getItem(item);

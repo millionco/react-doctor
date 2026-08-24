@@ -230,7 +230,9 @@
     "ink-static-is-append-only",
     "ink-static-requires-key",
     "ink-no-multiple-static",
-    "ink-valid-aria-semantics"
+    "ink-valid-aria-semantics",
+    "ink-prefer-use-paste",
+    "ink-use-string-width-for-cursor"
   ],
   "delegatedRules": [
     {

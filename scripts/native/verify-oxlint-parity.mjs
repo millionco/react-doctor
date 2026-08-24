@@ -302,6 +302,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "js-async-reduce-without-awaited-acc": 2,
   "react-router-no-invalid-splat-path": 2,
   "react-router-no-invalid-absolute-child-path": 1,
+  "react-router-no-empty-leaf-route": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1111,6 +1112,8 @@ const routerWithSplatPaths = makeBrowserRouter([
       { path: "/admin/settings", element: <AdminSettings /> },
     ],
   },
+  { path: "/empty-route" },
+  { path: "/resource-route", loader: loadResourceRoute },
 ]);
 async function buildAsyncReduce(items) {
   const object = await items.reduce(async (accumulator, item) => {

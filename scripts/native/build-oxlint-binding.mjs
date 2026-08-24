@@ -207,6 +207,8 @@ impl Rule for ${delegatedRule.struct} {
         "get-static-route-property",
         "get-static-route-full-path",
         "is-static-react-router-route-object",
+        "is-definitely-falsy-expression",
+        "has-active-route-property",
         "resolve-static-jsx-attribute",
         "is-statically-hidden-from-screen-reader",
         "get-opening-element-tag-name",

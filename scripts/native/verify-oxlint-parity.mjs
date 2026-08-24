@@ -346,7 +346,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-ctrl-c-handler-requires-exit-option": 1,
   "ink-no-live-hooks-in-render-to-string": 1,
   "ink-no-repeated-render": 4,
-  "hook-use-state": 22,
+  "hook-use-state": 23,
   "rendering-svg-precision": 1,
   "no-document-start-view-transition": 1,
   "no-permanent-will-change": 2,
@@ -379,6 +379,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-giant-component": 1,
   "no-nested-component-definition": 1,
   "no-high-complexity-react-function": 1,
+  "remotion-no-next-image": 1,
+  "remotion-no-native-media-elements": 4,
+  "remotion-stable-delay-render-handle": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -470,6 +473,7 @@ import * as ThreeRuntime from "three";
 import { WebGPURenderer } from "three/webgpu";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import Head from "next/head";
+import NextImage from "next/image";
 void import("@react-three/fiber/dist/native");
 require("@react-three/fiber/src/native");
 void import("react-router-dom");
@@ -1297,6 +1301,12 @@ const RemotionCssTimeFixture = () => {
   return <><div className="motion-safe:animate-spin hover:transition-colors" style={{ animationName: "spin", animation: "fade 1s", transition: "all 1s", transitionProperty: "opacity" }} /><div className="animate-none transition-none" style={{ animation: "none", animationName: \` NONE \`, transition: "none", transitionProperty: \` NONE \` }} /></>;
 };
 const RemotionMediaTransitionFixture = () => <RemotionVideo style={{ transition: "opacity 1s" }} />;
+function RemotionMediaFixture() {
+  Remotion.useCurrentFrame();
+  const unstableHandle = holdRender();
+  const [stableHandle] = useState(() => delayRender());
+  return <><NextImage alt="Frame" src="/frame.png" width={100} height={100} /><img alt="Frame" src="/frame.png" /><audio aria-label="Audio" /><iframe title="Frame" /><video aria-label="Video" />{unstableHandle}{stableHandle}</>;
+}
 const ConflictingMotionSpringFixture = () => <><MotionRuntime.motion.div transition={{ type: "spring", stiffness: 200, duration: 0.4 }} /><MotionRuntime.motion.div animate={{ x: 100, transition: { type: "spring", mass: 1, bounce: 0.3 } }} /></>;
 const unsupportedShadowLight = new ThreeRuntime.AmbientLight();
 unsupportedShadowLight.castShadow = true;

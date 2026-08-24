@@ -272,7 +272,10 @@
     "react-compiler-no-manual-memoization",
     "no-giant-component",
     "no-nested-component-definition",
-    "no-high-complexity-react-function"
+    "no-high-complexity-react-function",
+    "remotion-no-next-image",
+    "remotion-no-native-media-elements",
+    "remotion-stable-delay-render-handle"
   ],
   "delegatedRules": [
     {

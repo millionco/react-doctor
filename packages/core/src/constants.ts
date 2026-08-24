@@ -791,6 +791,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "ink-valid-aria-semantics",
   "ink-prefer-use-paste",
   "ink-use-string-width-for-cursor",
+  "ink-use-suspend-terminal",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

@@ -232,7 +232,8 @@
     "ink-no-multiple-static",
     "ink-valid-aria-semantics",
     "ink-prefer-use-paste",
-    "ink-use-string-width-for-cursor"
+    "ink-use-string-width-for-cursor",
+    "ink-use-suspend-terminal"
   ],
   "delegatedRules": [
     {

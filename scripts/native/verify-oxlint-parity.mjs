@@ -313,6 +313,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-no-focus-in-render": 1,
   "ink-no-direct-raw-mode": 1,
   "ink-no-layout-inside-text": 1,
+  "no-event-trigger-state": 4,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1055,6 +1056,58 @@ function NonReactEffectEventDependencyFixture({ value }) {
   const onTick = StableHooks.useEffectEvent(() => value);
   useEffect(() => onTick(), [onTick]);
   return null;
+}
+function EventTriggerStateFixture() {
+  const [submittedPayload, setSubmittedPayload] = useState(null);
+  useEffect(() => {
+    if (submittedPayload) {
+      post("/api/register", submittedPayload);
+    }
+  }, [submittedPayload]);
+  return <button onClick={() => setSubmittedPayload({ ok: true })}>Submit registration</button>;
+}
+function NamedEventTriggerStateFixture() {
+  const [namedPayload, setNamedPayload] = useState(null);
+  const handleSubmit = () => setNamedPayload({ ok: true });
+  useEffect(() => {
+    if (namedPayload) post("/api/named", namedPayload);
+  }, [namedPayload]);
+  return <button onClick={handleSubmit}>Submit named registration</button>;
+}
+function HelperEventTriggerStateFixture() {
+  const [helperPayload, setHelperPayload] = useState(null);
+  const markSubmitted = () => setHelperPayload({ ok: true });
+  const handleSubmit = () => markSubmitted();
+  useEffect(() => {
+    if (helperPayload) post("/api/helper", helperPayload);
+  }, [helperPayload]);
+  return <button onClick={handleSubmit}>Submit helper registration</button>;
+}
+function PropertyEventTriggerStateFixture() {
+  const [propertyPayload, setPropertyPayload] = useState(null);
+  const handlers = { onClick: () => setPropertyPayload({ ok: true }) };
+  useEffect(() => {
+    if (propertyPayload) post("/api/property", propertyPayload);
+  }, [propertyPayload]);
+  return <button {...handlers}>Submit property registration</button>;
+}
+function MixedWriterEventTriggerStateFixture({ automatic }) {
+  const [mixedPayload, setMixedPayload] = useState(null);
+  const handleSubmit = () => setMixedPayload({ ok: true });
+  useEffect(() => {
+    if (automatic) setMixedPayload({ automatic: true });
+  }, [automatic]);
+  useEffect(() => {
+    if (mixedPayload) post("/api/mixed", mixedPayload);
+  }, [mixedPayload]);
+  return <button onClick={handleSubmit}>Submit mixed registration</button>;
+}
+function RenderUsedEventTriggerStateFixture() {
+  const [visiblePayload, setVisiblePayload] = useState(null);
+  useEffect(() => {
+    if (visiblePayload) post("/api/visible", visiblePayload);
+  }, [visiblePayload]);
+  return <button onClick={() => setVisiblePayload({ ok: true })}>{visiblePayload ? "Submitted" : "Submit visible registration"}</button>;
 }
 {
   class Map {}

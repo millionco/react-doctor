@@ -223,7 +223,8 @@
     "ink-no-measure-element-in-render",
     "ink-no-focus-in-render",
     "ink-no-direct-raw-mode",
-    "ink-no-layout-inside-text"
+    "ink-no-layout-inside-text",
+    "no-event-trigger-state"
   ],
   "delegatedRules": [
     {

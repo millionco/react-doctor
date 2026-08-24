@@ -393,6 +393,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "shadcn-form-item-requires-label": 1,
   "shadcn-icon-button-requires-label": 1,
   "react-aria-dialog-requires-heading": 1,
+  "shadcn-input-group-no-raw-controls": 1,
+  "shadcn-command-item-state-variant-requires-value": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -504,7 +506,9 @@ import * as NativeRadixDialog from "@radix-ui/react-dialog";
 import { DialogContent as ShadcnDialogContent } from "@/components/ui/dialog";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import { FormControl as ShadcnFormControl, FormItem as ShadcnFormItem } from "@/components/ui/form";
+import * as ShadcnInputGroupParts from "@/components/ui/input-group";
 import { Trash2 as LucideTrash2 } from "lucide-react";
+import * as Cmdk from "cmdk";
 import { Dialog as ReactAriaDialog } from "react-aria-components";
 import Head from "next/head";
 import NextImage from "next/image";
@@ -1466,6 +1470,8 @@ const ShadcnLabelFixture = () => <>
   <ShadcnButton size="icon"><LucideTrash2 /></ShadcnButton>
 </>;
 const ReactAriaDialogFixture = () => <ReactAriaDialog><p>Body</p></ReactAriaDialog>;
+const ShadcnInputGroupFixture = ({ isVisible }) => <ShadcnInputGroupParts.InputGroup><>{isVisible && <textarea />}</><ShadcnInputGroupParts.InputGroupAddon>Search</ShadcnInputGroupParts.InputGroupAddon></ShadcnInputGroupParts.InputGroup>;
+const ShadcnCommandItemFixture = ({ extra }) => <Cmdk.Command.Item className={\`px-2 \${extra} data-[disabled]:opacity-50\`} />;
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();
   asyncAnimationRenderer.render(scene, camera);

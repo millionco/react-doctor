@@ -278,7 +278,9 @@
     "no-high-complexity-react-function",
     "remotion-no-next-image",
     "remotion-no-native-media-elements",
-    "remotion-stable-delay-render-handle"
+    "remotion-stable-delay-render-handle",
+    "remotion-deterministic-randomness",
+    "remotion-no-css-url-assets"
   ],
   "delegatedRules": [
     {

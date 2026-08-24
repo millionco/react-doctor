@@ -385,6 +385,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "remotion-no-next-image": 1,
   "remotion-no-native-media-elements": 4,
   "remotion-stable-delay-render-handle": 1,
+  "remotion-deterministic-randomness": 2,
+  "remotion-no-css-url-assets": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -466,7 +468,7 @@ import {
 import * as ReactNative from "react-native";
 import { AnimatePresence, animate as runMotionAnimation, motion, motionValue as createMotionValue, useAnimate as useMotionAnimate, useAnimationControls as useMotionControls, useMotionValue as useLiveMotionValue, useSpring as useMotionSpring, useTransform as mapMotionValue, type MotionConfig } from "framer-motion";
 import * as MotionRuntime from "motion/react";
-import { delayRender, delayRender as holdRender } from "remotion";
+import { delayRender, delayRender as holdRender, Img as RemotionImg } from "remotion";
 import * as Remotion from "remotion";
 import { Video as RemotionVideo } from "@remotion/media";
 import { Box as InkBox, measureElement, render as renderInk, renderToString as renderInkToString, Static as InkStatic, Text as InkText, useApp, useCursor, useFocusManager, useInput, useStdin } from "ink";
@@ -1308,7 +1310,14 @@ function RemotionMediaFixture() {
   Remotion.useCurrentFrame();
   const unstableHandle = holdRender();
   const [stableHandle] = useState(() => delayRender());
-  return <><NextImage alt="Frame" src="/frame.png" width={100} height={100} /><img alt="Frame" src="/frame.png" /><audio aria-label="Audio" /><iframe title="Frame" /><video aria-label="Video" />{unstableHandle}{stableHandle}</>;
+  const randomValue = Math.random();
+  const globalRandomValue = globalThis.Math["random"]();
+  return <><NextImage alt="Frame" src="/frame.png" width={100} height={100} /><img alt="Frame" src="/frame.png" /><audio aria-label="Audio" /><iframe title="Frame" /><video aria-label="Video" /><div style={{ backgroundImage: "url('/background.png')", maskImage: "url(data:image/png;base64,abc)", WebkitMaskImage: "url(#mask)" }} /><RemotionImg alt="Preloaded" src="/preloaded.png" /><div style={{ backgroundImage: "url('/preloaded.png')" }} />{unstableHandle}{stableHandle}{randomValue}{globalRandomValue}</>;
+}
+function SafeRemotionRandomFixture() {
+  const Math = { random: () => 0.5 };
+  Remotion.useCurrentFrame();
+  return <div>{Math.random()}</div>;
 }
 const ConflictingMotionSpringFixture = () => <><MotionRuntime.motion.div transition={{ type: "spring", stiffness: 200, duration: 0.4 }} /><MotionRuntime.motion.div animate={{ x: 100, transition: { type: "spring", mass: 1, bounce: 0.3 } }} /></>;
 const unsupportedShadowLight = new ThreeRuntime.AmbientLight();

@@ -310,6 +310,7 @@
     "nextjs-no-redirect-in-try-catch",
     "nextjs-no-css-link",
     "react-router-no-multiple-blockers",
+    "react-router-no-catch-middleware-next",
     "no-create-store-in-render",
     "react-compiler-no-manual-memoization",
     "no-giant-component",

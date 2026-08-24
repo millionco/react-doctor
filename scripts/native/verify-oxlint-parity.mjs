@@ -426,6 +426,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "nextjs-no-redirect-in-try-catch": 1,
   "nextjs-no-css-link": 1,
   "react-router-no-multiple-blockers": 1,
+  "react-router-no-catch-middleware-next": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1755,6 +1756,13 @@ function MultipleRouteBlockersExample() {
   useRouteBlocker(false);
   return null;
 }
+export const middleware = [async (_context, next) => {
+  try {
+    return await next();
+  } catch (error) {
+    return new Response(String(error), { status: 500 });
+  }
+}];
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

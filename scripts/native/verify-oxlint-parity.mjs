@@ -421,6 +421,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "tanstack-start-get-mutation": 11,
   "tanstack-start-no-navigate-in-render": 10,
   "tanstack-start-missing-scripts": 1,
+  "activity-wraps-effect-heavy-subtree": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -477,7 +478,7 @@ const fixture = `
 import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
-import React, { Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef, ViewTransition, memo } from "react";
+import React, { Activity as ReactActivity, Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef, ViewTransition, memo } from "react";
 import ReactDOM from "react-dom";
 import type { useMemo as PreactTypeOnlyHook } from "react";
 import { createContext as makeTrackedContext } from "react-tracked";
@@ -1725,6 +1726,8 @@ async function buildAsyncReduce(items) {
   }, Promise.resolve({}));
   return { object, tuple, safe };
 }
+const ActivityEffectChild = () => { useEffect(() => subscribe(), []); return null; };
+const ActivityEffectScreen = ({ open }) => <ReactActivity mode={open ? "visible" : "hidden"}><ActivityEffectChild /></ReactActivity>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

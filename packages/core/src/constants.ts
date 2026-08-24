@@ -863,6 +863,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "tanstack-start-get-mutation",
   "tanstack-start-no-navigate-in-render",
   "tanstack-start-missing-scripts",
+  "activity-wraps-effect-heavy-subtree",
   "no-create-store-in-render",
   "react-compiler-no-manual-memoization",
   "no-giant-component",

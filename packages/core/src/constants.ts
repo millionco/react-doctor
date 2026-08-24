@@ -785,6 +785,8 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "ink-no-dom-host-elements",
   "ink-no-dom-router",
   "no-event-trigger-state",
+  "ink-static-is-append-only",
+  "ink-static-requires-key",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

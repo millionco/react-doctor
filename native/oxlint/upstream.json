@@ -226,7 +226,9 @@
     "ink-no-layout-inside-text",
     "ink-no-dom-host-elements",
     "ink-no-dom-router",
-    "no-event-trigger-state"
+    "no-event-trigger-state",
+    "ink-static-is-append-only",
+    "ink-static-requires-key"
   ],
   "delegatedRules": [
     {

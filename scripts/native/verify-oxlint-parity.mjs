@@ -316,6 +316,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-no-dom-host-elements": 1,
   "ink-no-dom-router": 1,
   "no-event-trigger-state": 4,
+  "ink-static-is-append-only": 1,
+  "ink-static-requires-key": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -398,7 +400,7 @@ import { AnimatePresence, animate as runMotionAnimation, motion, motionValue as 
 import * as MotionRuntime from "motion/react";
 import { delayRender, delayRender as holdRender } from "remotion";
 import * as Remotion from "remotion";
-import { Box as InkBox, measureElement, Text as InkText, useFocusManager, useInput, useStdin } from "ink";
+import { Box as InkBox, measureElement, Static as InkStatic, Text as InkText, useFocusManager, useInput, useStdin } from "ink";
 import { WebGPURenderer } from "three/webgpu";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import Head from "next/head";
@@ -1228,6 +1230,8 @@ function InkRawModeChangedDuringRender() {
 const InkLayoutInsideText = () => <InkText><InkBox /></InkText>;
 const InkDomHost = () => <InkBox><div /></InkBox>;
 const InkDomRouter = () => <InkBox><DomLink to="/" /></InkBox>;
+const InkStaticReordered = ({ items }) => <InkStatic items={items.toReversed()}>{item => <InkText key={item.id}>{item.label}</InkText>}</InkStatic>;
+const InkStaticMissingKey = ({ items }) => <InkStatic items={items}>{item => <InkText>{item.label}</InkText>}</InkStatic>;
 async function buildAsyncReduce(items) {
   const object = await items.reduce(async (accumulator, item) => {
     accumulator[item.id] = await getItem(item);

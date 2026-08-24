@@ -1,7 +1,7 @@
 const MAX_CONST_STRING_ALIASES: usize = 4;
 
 fn get_static_jsx_attribute_string_values<'a>(
-    attribute: &'a oxc_ast::ast::JSXAttribute<'a>,
+    attribute: &oxc_ast::ast::JSXAttribute<'a>,
     ctx: &crate::context::LintContext<'a>,
 ) -> Option<Vec<String>> {
     let value = attribute.value.as_ref()?;
@@ -18,7 +18,7 @@ fn get_static_jsx_attribute_string_values<'a>(
 }
 
 fn resolve_static_string_values<'a>(
-    expression: &'a oxc_ast::ast::Expression<'a>,
+    expression: &oxc_ast::ast::Expression<'a>,
     ctx: &crate::context::LintContext<'a>,
     remaining_const_aliases: usize,
     resolving_symbol_ids: &mut Vec<oxc_semantic::SymbolId>,

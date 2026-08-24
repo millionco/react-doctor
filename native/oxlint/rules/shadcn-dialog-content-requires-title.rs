@@ -66,7 +66,8 @@ impl Rule for ShadcnDialogContentRequiresTitle {
             let scan = scan_static_jsx_subtree_for_part(
                 &element.children,
                 ctx,
-                |child_name| {
+                |child_element| {
+                    let child_name = &child_element.opening_element.name;
                     resolve_shadcn_component_name(child_name, module_name, ctx).as_deref()
                         == Some(title_component)
                         || jsx_element_name_trailing_segment(child_name) == Some(title_component)

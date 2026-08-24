@@ -392,6 +392,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "shadcn-dialog-content-requires-title": 1,
   "shadcn-form-item-requires-label": 1,
   "shadcn-icon-button-requires-label": 1,
+  "react-aria-dialog-requires-heading": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -423,7 +424,7 @@ const REACT_DOCTOR_SETTINGS = {
     portedRuleMode: "curated",
     framework: "unknown",
     rootDirectory: repositoryRoot,
-    capabilities: ["react", "three:181", "base-ui", "shadcn", "radix-ui"],
+    capabilities: ["react", "three:181", "base-ui", "shadcn", "radix-ui", "react-aria"],
   },
 };
 const CONFIGURED_REACT_DOCTOR_SETTINGS = {
@@ -504,6 +505,7 @@ import { DialogContent as ShadcnDialogContent } from "@/components/ui/dialog";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import { FormControl as ShadcnFormControl, FormItem as ShadcnFormItem } from "@/components/ui/form";
 import { Trash2 as LucideTrash2 } from "lucide-react";
+import { Dialog as ReactAriaDialog } from "react-aria-components";
 import Head from "next/head";
 import NextImage from "next/image";
 void import("@react-three/fiber/dist/native");
@@ -1463,6 +1465,7 @@ const ShadcnLabelFixture = () => <>
   <ShadcnFormItem><ShadcnFormControl><input /></ShadcnFormControl></ShadcnFormItem>
   <ShadcnButton size="icon"><LucideTrash2 /></ShadcnButton>
 </>;
+const ReactAriaDialogFixture = () => <ReactAriaDialog><p>Body</p></ReactAriaDialog>;
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();
   asyncAnimationRenderer.render(scene, camera);

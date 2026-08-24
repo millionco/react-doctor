@@ -55,7 +55,13 @@ impl Rule for RadixDialogContentRequiresTitle {
             let scan = scan_static_jsx_subtree_for_part(
                 &element.children,
                 ctx,
-                |child_name| is_radix_dialog_title_name(child_name, surface_name, ctx),
+                |child_element| {
+                    is_radix_dialog_title_name(
+                        &child_element.opening_element.name,
+                        surface_name,
+                        ctx,
+                    )
+                },
                 |child_element| {
                     let child_name = &child_element.opening_element.name;
                     resolve_radix_dialog_part_name(child_name, surface_name, ctx).is_none()

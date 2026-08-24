@@ -3,14 +3,14 @@ struct StaticJsxPartScan {
     saw_opaque_content: bool,
 }
 
-fn scan_static_jsx_subtree_for_part<'a, IsPartElementName, IsOpaqueElement>(
+fn scan_static_jsx_subtree_for_part<'a, IsPartElement, IsOpaqueElement>(
     children: &'a [oxc_ast::ast::JSXChild<'a>],
     ctx: &crate::context::LintContext<'a>,
-    mut is_part_element_name: IsPartElementName,
+    mut is_part_element: IsPartElement,
     mut is_opaque_element: IsOpaqueElement,
 ) -> StaticJsxPartScan
 where
-    IsPartElementName: FnMut(&oxc_ast::ast::JSXElementName<'a>) -> bool,
+    IsPartElement: FnMut(&oxc_ast::ast::JSXElement<'a>) -> bool,
     IsOpaqueElement: FnMut(&oxc_ast::ast::JSXElement<'a>) -> bool,
 {
     use std::cell::Cell;
@@ -20,12 +20,12 @@ where
     visit_static_jsx_children(
         children,
         &mut |element| {
-            if is_part_element_name(&element.opening_element.name) {
+            if is_part_element(element) {
                 found_part.set(true);
                 return false;
             }
             if find_jsx_attribute(&element.opening_element, "render").is_some_and(|attribute| {
-                jsx_attribute_contains_part(attribute, ctx, &mut is_part_element_name)
+                jsx_attribute_contains_part(attribute, ctx, &mut is_part_element)
             }) {
                 found_part.set(true);
             }
@@ -43,13 +43,13 @@ where
     }
 }
 
-fn jsx_attribute_contains_part<'a, IsPartElementName>(
+fn jsx_attribute_contains_part<'a, IsPartElement>(
     attribute: &oxc_ast::ast::JSXAttribute<'a>,
     ctx: &crate::context::LintContext<'a>,
-    is_part_element_name: &mut IsPartElementName,
+    is_part_element: &mut IsPartElement,
 ) -> bool
 where
-    IsPartElementName: FnMut(&oxc_ast::ast::JSXElementName<'a>) -> bool,
+    IsPartElement: FnMut(&oxc_ast::ast::JSXElement<'a>) -> bool,
 {
     use oxc_ast::AstKind;
     use oxc_span::GetSpan;
@@ -65,6 +65,9 @@ where
         let candidate_span = opening_element.span;
         candidate_span.start >= value_span.start
             && candidate_span.end <= value_span.end
-            && is_part_element_name(&opening_element.name)
+            && matches!(
+                ctx.nodes().parent_node(candidate.id()).kind(),
+                AstKind::JSXElement(element) if is_part_element(element)
+            )
     })
 }

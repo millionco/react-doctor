@@ -60,7 +60,13 @@ impl Rule for BaseUiDialogPopupRequiresTitle {
             let scan = scan_static_jsx_subtree_for_part(
                 &element.children,
                 ctx,
-                |child_name| is_base_ui_dialog_title_name(child_name, surface_name, ctx),
+                |child_element| {
+                    is_base_ui_dialog_title_name(
+                        &child_element.opening_element.name,
+                        surface_name,
+                        ctx,
+                    )
+                },
                 |child_element| {
                     let child_name = &child_element.opening_element.name;
                     if resolve_base_ui_dialog_part_name(child_name, surface_name, ctx).is_none()

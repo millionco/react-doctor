@@ -175,6 +175,7 @@ impl Rule for ${delegatedRule.struct} {
         "resolve-jsx-import-api-path",
         "resolve-shadcn-component-name",
         "resolve-general-shadcn-ui-component-name",
+        "resolve-react-aria-component-name",
         "jsx-element-name-trailing-segment",
         "jsx-part-is-inside-root-without-required-ancestor",
         "motion-react-component-matches",

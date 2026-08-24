@@ -374,6 +374,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-valid-gpu-computation-dimensions": 2,
   "three-valid-pbr-material-properties": 2,
   "three-valid-physical-material-properties": 2,
+  "three-valid-data-texture-data-length": 4,
+  "three-valid-material-opacity": 3,
+  "three-require-transparent-for-opacity": 2,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1363,6 +1366,16 @@ new ThreeRuntime.MeshStandardMaterial({ roughness: 2, metalness: -0.25 });
 const invalidPhysicalMaterial = new ThreeRuntime.MeshPhysicalMaterial();
 invalidPhysicalMaterial.clearcoat = 2;
 invalidPhysicalMaterial.ior = 3;
+new ThreeRuntime.DataTexture(new Uint8Array(15), 2, 2);
+new ThreeRuntime.DataTexture(new Float32Array([1, 2, 3]), 2, 2, ThreeRuntime.RedFormat);
+new ThreeRuntime.Data3DTexture(new Float32Array(31), 2, 2, 2);
+new ThreeRuntime.DataArrayTexture(new Uint8Array(23), 2, 2, 3, ThreeRuntime.RGFormat);
+new ThreeRuntime.MeshBasicMaterial({ opacity: -0.1 });
+new ThreeRuntime.MeshStandardMaterial({ opacity: 1.2 });
+const invalidOpacityMaterial = new ThreeRuntime.MeshBasicMaterial();
+invalidOpacityMaterial.opacity = -1;
+new ThreeRuntime.MeshBasicMaterial({ opacity: 0.5 });
+new ThreeRuntime.MeshStandardMaterial({ opacity: 0.2, transparent: false });
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();
   asyncAnimationRenderer.render(scene, camera);

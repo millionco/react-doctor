@@ -236,7 +236,8 @@
     "ink-use-suspend-terminal",
     "ink-prefer-use-animation",
     "ink-use-reactive-window-size",
-    "no-event-handler"
+    "no-event-handler",
+    "ink-ctrl-c-handler-requires-exit-option"
   ],
   "delegatedRules": [
     {

@@ -163,6 +163,7 @@ impl Rule for ${delegatedRule.struct} {
         "motion-react-api-path-matches",
         "is-render-phase-component-or-hook",
         "component-renders-ink",
+        "ink-render-call-is-related-to-node",
         "is-inside-stable-react-initializer",
         "resolve-imported-jsx-component-name",
         "motion-react-component-matches",

@@ -326,6 +326,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-prefer-use-animation": 1,
   "ink-use-reactive-window-size": 1,
   "no-event-handler": 11,
+  "ink-ctrl-c-handler-requires-exit-option": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -408,7 +409,7 @@ import { AnimatePresence, animate as runMotionAnimation, motion, motionValue as 
 import * as MotionRuntime from "motion/react";
 import { delayRender, delayRender as holdRender } from "remotion";
 import * as Remotion from "remotion";
-import { Box as InkBox, measureElement, Static as InkStatic, Text as InkText, useApp, useCursor, useFocusManager, useInput, useStdin } from "ink";
+import { Box as InkBox, measureElement, render as renderInk, Static as InkStatic, Text as InkText, useApp, useCursor, useFocusManager, useInput, useStdin } from "ink";
 import { spawn as spawnChild } from "node:child_process";
 import { WebGPURenderer } from "three/webgpu";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
@@ -1362,6 +1363,8 @@ const InkIntervalAnimation = () => { const [frame, setFrame] = useState(0); useE
 const DomIntervalAnimation = () => { const [frame, setFrame] = useState(0); useEffect(() => { setInterval(() => setFrame(value => value + 1), 80); }, []); return <div>{frame}</div>; };
 const InkNonReactiveWindowSize = () => <InkText>{process.stdout.columns}</InkText>;
 const InkReactiveWindowSize = () => { const [columns, setColumns] = useState(process.stdout.columns); useEffect(() => { const updateColumns = () => setColumns(process.stdout.columns); process.stdout.on("resize", updateColumns); return () => process.stdout.off("resize", updateColumns); }, []); return <InkText>{columns}</InkText>; };
+const InkCtrlCHandler = () => { useInput((input, key) => { if (key.ctrl && input === "c") closeApp(); }); return null; };
+renderInk(<InkCtrlCHandler />);
 async function buildAsyncReduce(items) {
   const object = await items.reduce(async (accumulator, item) => {
     accumulator[item.id] = await getItem(item);

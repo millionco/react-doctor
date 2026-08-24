@@ -261,7 +261,10 @@
     "three-valid-fog-parameters",
     "three-valid-perspective-camera",
     "three-valid-orthographic-camera",
-    "three-valid-spot-light-properties"
+    "three-valid-spot-light-properties",
+    "three-valid-data-texture-dimensions",
+    "three-valid-buffer-attribute-array-length",
+    "three-valid-shadow-map-size"
   ],
   "delegatedRules": [
     {

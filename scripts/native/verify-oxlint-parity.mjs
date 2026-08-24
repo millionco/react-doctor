@@ -352,6 +352,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-valid-perspective-camera": 8,
   "three-valid-orthographic-camera": 3,
   "three-valid-spot-light-properties": 4,
+  "three-valid-data-texture-dimensions": 4,
+  "three-valid-buffer-attribute-array-length": 3,
+  "three-valid-shadow-map-size": 3,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1309,6 +1312,17 @@ new ThreeRuntime.SpotLight(0xffffff, 1, 0, 2, -0.1);
 const invalidSpotLight = new ThreeRuntime.SpotLight();
 invalidSpotLight.angle = 0;
 invalidSpotLight.penumbra = 2;
+new ThreeRuntime.DataTexture(data, 0, 8);
+new ThreeRuntime.DataTexture(data, 8, -1);
+new ThreeRuntime.Data3DTexture(data, 4, 4, 1.5);
+new ThreeRuntime.DataArrayTexture(data, 2, 3.2, 4);
+new ThreeRuntime.BufferAttribute(new Float32Array(10), 3);
+new ThreeRuntime.Float32BufferAttribute([0, 1, 2, 3, 4], 2);
+new ThreeRuntime.InstancedBufferAttribute(new Uint8Array([0, 1, 2, 3, 4]), 4);
+const invalidDirectionalShadow = new ThreeRuntime.DirectionalLight();
+const invalidPointShadow = new ThreeRuntime.PointLight();
+invalidDirectionalShadow.shadow.mapSize.set(1000, 1024);
+invalidPointShadow.shadow.mapSize.set(0, -512);
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();
   asyncAnimationRenderer.render(scene, camera);

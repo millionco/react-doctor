@@ -237,6 +237,7 @@ impl Rule for ${delegatedRule.struct} {
         "get-static-object-property-value",
         "resolve-static-number",
         "resolve-static-number-argument",
+        "resolve-static-array-like-length",
         "is-float-typed-array",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),

@@ -427,6 +427,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "nextjs-no-css-link": 1,
   "react-router-no-multiple-blockers": 1,
   "react-router-no-catch-middleware-next": 1,
+  "react-router-no-middleware-response-body-consumption": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1762,6 +1763,10 @@ export const middleware = [async (_context, next) => {
   } catch (error) {
     return new Response(String(error), { status: 500 });
   }
+}, async (_context, next) => {
+  const response = await next();
+  await response.json();
+  return response;
 }];
 `;
 

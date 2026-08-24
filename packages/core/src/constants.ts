@@ -847,6 +847,8 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "react-aria-dialog-requires-heading",
   "shadcn-input-group-no-raw-controls",
   "shadcn-command-item-state-variant-requires-value",
+  "no-nonresizable-textarea",
+  "no-static-motion-config-never",
   "no-create-store-in-render",
   "react-compiler-no-manual-memoization",
   "no-giant-component",

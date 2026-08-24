@@ -57,6 +57,7 @@ const pluginPath = requireFromRepository.resolve("oxlint-plugin-react-doctor");
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-native-parity-"));
 const fixtureDirectory = path.join(temporaryDirectory, "production-fixtures");
 const fixturePath = path.join(fixtureDirectory, "app", "error.tsx");
+const motionConfigFixturePath = path.join(fixtureDirectory, "app", "layout.tsx");
 const inkWrapperFixturePath = path.join(fixtureDirectory, "app", "ink-wrappers.tsx");
 const reactRouterConfigFixturePath = path.join(fixtureDirectory, "react-router.config.ts");
 const globalErrorFixturePath = path.join(fixtureDirectory, "app", "global-error.tsx");
@@ -395,6 +396,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-aria-dialog-requires-heading": 1,
   "shadcn-input-group-no-raw-controls": 1,
   "shadcn-command-item-state-variant-requires-value": 1,
+  "no-nonresizable-textarea": 1,
+  "no-static-motion-config-never": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1472,6 +1475,7 @@ const ShadcnLabelFixture = () => <>
 const ReactAriaDialogFixture = () => <ReactAriaDialog><p>Body</p></ReactAriaDialog>;
 const ShadcnInputGroupFixture = ({ isVisible }) => <ShadcnInputGroupParts.InputGroup><>{isVisible && <textarea />}</><ShadcnInputGroupParts.InputGroupAddon>Search</ShadcnInputGroupParts.InputGroupAddon></ShadcnInputGroupParts.InputGroup>;
 const ShadcnCommandItemFixture = ({ extra }) => <Cmdk.Command.Item className={\`px-2 \${extra} data-[disabled]:opacity-50\`} />;
+const NonresizableTextareaFixture = () => <textarea className="resize-none" />;
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();
   asyncAnimationRenderer.render(scene, camera);
@@ -1771,6 +1775,10 @@ try {
     JSON.stringify({ dependencies: { ink: "^7.1.0" } }),
   );
   fs.writeFileSync(fixturePath, fixture);
+  fs.writeFileSync(
+    motionConfigFixturePath,
+    `import React from "react";\nimport { MotionConfig } from "motion/react";\nexport const App = () => <MotionConfig reducedMotion="never"><main /></MotionConfig>;\n`,
+  );
   fs.writeFileSync(
     inkWrapperFixturePath,
     `import React from "react";\nimport { Box, Text } from "ink";\nexport const ImportedInkPanel = ({ children }) => <Box>{children}</Box>;\nexport const ImportedInkLabel = ({ children }) => <Text>{children}</Text>;\n`,

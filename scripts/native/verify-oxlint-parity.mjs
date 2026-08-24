@@ -303,6 +303,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-no-invalid-splat-path": 2,
   "react-router-no-invalid-absolute-child-path": 1,
   "react-router-no-empty-leaf-route": 1,
+  "react-router-require-root-error-boundary": 1,
+  "react-router-valid-route-object": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1097,9 +1099,10 @@ function renderPalette(rows, theme, render, nextPalette) {
   }
 }
 const routerWithSplatPaths = makeBrowserRouter([
-  { path: "/files/*/edit", element: <Editor /> },
+  { path: "/files/*/edit", element: <Editor />, ErrorBoundary: RouteError },
   {
     path: "/files/*",
+    ErrorBoundary: RouteError,
     children: [
       { path: "details/*/edit", element: <DetailEditor /> },
       { path: "details/*", element: <Details /> },
@@ -1107,13 +1110,27 @@ const routerWithSplatPaths = makeBrowserRouter([
   },
   {
     path: "/admin",
+    ErrorBoundary: RouteError,
     children: [
       { path: "/settings", element: <Settings /> },
       { path: "/admin/settings", element: <AdminSettings /> },
     ],
   },
-  { path: "/empty-route" },
-  { path: "/resource-route", loader: loadResourceRoute },
+  { path: "/empty-route", ErrorBoundary: RouteError },
+  { path: "/resource-route", loader: loadResourceRoute, ErrorBoundary: RouteError },
+  { path: "/uncovered-route", element: <UncoveredRoute /> },
+  {
+    path: "/route-validity",
+    ErrorBoundary: RouteError,
+    children: [
+      {
+        index: true,
+        Component: RouteHome,
+        element: <RouteHome />,
+        children: [{ path: "child", element: <RouteChild /> }],
+      },
+    ],
+  },
 ]);
 async function buildAsyncReduce(items) {
   const object = await items.reduce(async (accumulator, item) => {

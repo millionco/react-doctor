@@ -214,7 +214,9 @@
     "js-async-reduce-without-awaited-acc",
     "react-router-no-invalid-splat-path",
     "react-router-no-invalid-absolute-child-path",
-    "react-router-no-empty-leaf-route"
+    "react-router-no-empty-leaf-route",
+    "react-router-require-root-error-boundary",
+    "react-router-valid-route-object"
   ],
   "delegatedRules": [
     {

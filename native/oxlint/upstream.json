@@ -218,7 +218,10 @@
     "react-router-require-root-error-boundary",
     "react-router-valid-route-object",
     "react-router-v8-no-removed-future-flags",
-    "react-router-no-duplicate-route-id"
+    "react-router-no-duplicate-route-id",
+    "ink-no-bare-process-exit",
+    "ink-no-measure-element-in-render",
+    "ink-no-focus-in-render"
   ],
   "delegatedRules": [
     {

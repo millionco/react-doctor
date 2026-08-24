@@ -777,6 +777,9 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "react-router-valid-route-object",
   "react-router-v8-no-removed-future-flags",
   "react-router-no-duplicate-route-id",
+  "ink-no-bare-process-exit",
+  "ink-no-measure-element-in-render",
+  "ink-no-focus-in-render",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

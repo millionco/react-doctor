@@ -425,6 +425,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "advanced-event-handler-refs": 1,
   "nextjs-no-redirect-in-try-catch": 1,
   "nextjs-no-css-link": 1,
+  "react-router-no-multiple-blockers": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -489,7 +490,7 @@ import { createContext as makeTrackedContext } from "react-tracked";
 import { create as createZustandStore } from "zustand";
 import { useQuery as useItemsQuery } from "@tanstack/react-query";
 import * as TanstackQuery from "@tanstack/react-query";
-import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, createBrowserRouter as makeBrowserRouter, createHashRouter as makeHashRouter } from "react-router";
+import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, createBrowserRouter as makeBrowserRouter, createHashRouter as makeHashRouter, unstable_useBlocker as useRouteBlocker } from "react-router";
 import { Link as DomLink, useNavigate as useRouteNavigate } from "react-router-dom";
 import { runOnJS as callOnJavaScript, useWorkletCallback as makeLegacyWorklet, withSpring as makeSpring } from "react-native-reanimated";
 import * as ReanimatedRuntime from "react-native-reanimated";
@@ -1748,6 +1749,11 @@ function swallowedNextRedirect() {
 }
 function NextCssLinkExample() {
   return <link rel="stylesheet" href="/styles.css" />;
+}
+function MultipleRouteBlockersExample() {
+  useRouteBlocker(true);
+  useRouteBlocker(false);
+  return null;
 }
 `;
 

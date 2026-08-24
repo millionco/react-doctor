@@ -221,6 +221,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-technical-label-text",
         "get-effective-static-style-property",
         "get-static-style-property-number-value",
+        "has-capability",
         "has-capability-or-unspecified",
         "normalize-tailwind-arbitrary-utility-value",
         "get-tailwind-visibility-effect",

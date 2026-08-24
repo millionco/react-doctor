@@ -401,6 +401,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "tanstack-start-no-direct-fetch-in-loader": 1,
   "tanstack-start-route-property-order": 1,
   "tanstack-start-no-use-server-in-handler": 1,
+  "tanstack-start-server-fn-method-order": 2,
+  "tanstack-start-server-fn-validate-input": 2,
+  "tanstack-start-no-secrets-in-loader": 2,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -548,7 +551,14 @@ requestAnimationFrame(() => {
 const duplicateProps = <Widget value="first" value="second" />;
 createFileRoute("/todos")({ loader: async () => fetch("/api/todos") });
 createFileRoute("/")({ loader: async () => ({}), params: { parse: (raw) => raw } });
+createFileRoute("/account")({ loader: async () => process.env.STRIPE_SECRET_KEY });
+createFileRoute("/settings")({ beforeLoad: async () => import.meta.env.PRIVATE_TOKEN });
+createFileRoute("/safe")({ loader: async () => createServerFn().handler(() => process.env.STRIPE_SECRET_KEY) });
 createServerFn().handler(async () => { "use server"; return loadData(); });
+createServerFn().handler(() => null).validator((input) => input);
+createServerFn().handler(({ data }) => data);
+(createServerFn().handler(() => null) as any).inputValidator((input) => input);
+(createServerFn() as any).handler((context) => context.data);
 const sharedSpreadProps = {};
 const duplicateIdentifierSpread = <Widget {...sharedSpreadProps} {...sharedSpreadProps} {...sharedSpreadProps} />;
 const nestedSpreadProps = { options: {} };

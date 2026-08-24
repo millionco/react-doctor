@@ -227,6 +227,7 @@ impl Rule for ${delegatedRule.struct} {
         "get-static-string-expression",
         "get-static-route-property",
         "get-static-route-full-path",
+        "get-tanstack-route-options-object",
         "is-static-react-router-route-object",
         "is-definitely-falsy-expression",
         "has-active-route-property",

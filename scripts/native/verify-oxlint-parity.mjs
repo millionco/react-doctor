@@ -398,6 +398,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "shadcn-command-item-state-variant-requires-value": 1,
   "no-nonresizable-textarea": 1,
   "no-static-motion-config-never": 1,
+  "tanstack-start-no-direct-fetch-in-loader": 1,
+  "tanstack-start-route-property-order": 1,
+  "tanstack-start-no-use-server-in-handler": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -543,6 +546,9 @@ requestAnimationFrame(() => {
   document.documentElement.style.setProperty("--progress", "1");
 });
 const duplicateProps = <Widget value="first" value="second" />;
+createFileRoute("/todos")({ loader: async () => fetch("/api/todos") });
+createFileRoute("/")({ loader: async () => ({}), params: { parse: (raw) => raw } });
+createServerFn().handler(async () => { "use server"; return loadData(); });
 const sharedSpreadProps = {};
 const duplicateIdentifierSpread = <Widget {...sharedSpreadProps} {...sharedSpreadProps} {...sharedSpreadProps} />;
 const nestedSpreadProps = { options: {} };

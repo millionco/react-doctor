@@ -407,6 +407,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "tanstack-start-no-secrets-in-loader": 2,
   "tanstack-start-no-anchor-element": 2,
   "tanstack-start-loader-parallel-fetch": 5,
+  "tanstack-start-redirect-in-try-catch": 4,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1818,6 +1819,12 @@ createFileRoute("/laundered")({ loader: async () => { const user = await loadUse
 createFileRoute("/later-independent")({ loader: async () => { const user = await loadUser(); const posts = await loadPosts(user.id); const teams = await loadTeams(); return { posts, teams }; } });
 createFileRoute("/for-await")({ loader: async () => { for await (const first of loadFirst()) consume(first); for await (const second of loadSecond()) consume(second); } });
 createFileRoute("/assigned")({ loader: async () => { let first; let second; first = await loadFirst(); second = await loadSecond(); return { first, second }; } });
+async function swallowedRedirect() { try { throw redirect({ to: "/login" }); } catch (error) { console.error(error); } }
+async function swallowedNotFound() { try { throw notFound(); } catch (error) { return null; } }
+function swallowedIifeRedirect() { try { (() => { throw redirect({ to: "/login" }); })(); } catch (error) { console.error(error); } }
+async function rethrownRedirect() { try { throw redirect({ to: "/login" }); } catch (error) { throw error; } }
+function deferredRedirect() { try { setTimeout(() => { throw redirect({ to: "/login" }); }); } catch (error) { console.error(error); } }
+async function outerSwallowedRedirect() { try { try { throw redirect({ to: "/done" }); } catch (error) { throw error; } } catch (outerError) { console.error(outerError); } }
 `,
   );
   fs.writeFileSync(

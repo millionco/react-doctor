@@ -324,6 +324,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-use-string-width-for-cursor": 1,
   "ink-use-suspend-terminal": 1,
   "ink-prefer-use-animation": 1,
+  "ink-use-reactive-window-size": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1256,6 +1257,8 @@ const InkUnsuspendedChild = () => { useInput(() => { spawnChild("vim", [], { std
 const InkSuspendedChild = () => { const { suspendTerminal } = useApp(); useInput(() => suspendTerminal(() => spawnChild("vim", [], { stdio: "inherit" }))); return null; };
 const InkIntervalAnimation = () => { const [frame, setFrame] = useState(0); useEffect(() => { setInterval(() => setFrame(value => value + 1), 80); }, []); return <InkText>{frame}</InkText>; };
 const DomIntervalAnimation = () => { const [frame, setFrame] = useState(0); useEffect(() => { setInterval(() => setFrame(value => value + 1), 80); }, []); return <div>{frame}</div>; };
+const InkNonReactiveWindowSize = () => <InkText>{process.stdout.columns}</InkText>;
+const InkReactiveWindowSize = () => { const [columns, setColumns] = useState(process.stdout.columns); useEffect(() => { const updateColumns = () => setColumns(process.stdout.columns); process.stdout.on("resize", updateColumns); return () => process.stdout.off("resize", updateColumns); }, []); return <InkText>{columns}</InkText>; };
 async function buildAsyncReduce(items) {
   const object = await items.reduce(async (accumulator, item) => {
     accumulator[item.id] = await getItem(item);

@@ -234,7 +234,8 @@
     "ink-prefer-use-paste",
     "ink-use-string-width-for-cursor",
     "ink-use-suspend-terminal",
-    "ink-prefer-use-animation"
+    "ink-prefer-use-animation",
+    "ink-use-reactive-window-size"
   ],
   "delegatedRules": [
     {

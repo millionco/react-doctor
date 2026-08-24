@@ -299,6 +299,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-set-state-in-render": 2,
   "js-cache-property-access": 1,
   "no-effect-event-in-deps": 2,
+  "js-async-reduce-without-awaited-acc": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1091,6 +1092,22 @@ function renderPalette(rows, theme, render, nextPalette) {
     theme.colors = nextPalette(row);
     render(theme.colors.secondary, row);
   }
+}
+async function buildAsyncReduce(items) {
+  const object = await items.reduce(async (accumulator, item) => {
+    accumulator[item.id] = await getItem(item);
+    return accumulator;
+  }, {});
+  const tuple = await items["reduceRight"](async ([sum, count], item) => {
+    const value = await getItem(item);
+    return [sum + value, count + 1];
+  }, [0, 0]);
+  const safe = await items.reduce(async (previous, item) => {
+    const accumulator = await previous;
+    accumulator[item.id] = await getItem(item);
+    return accumulator;
+  }, Promise.resolve({}));
+  return { object, tuple, safe };
 }
 `;
 

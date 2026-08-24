@@ -210,7 +210,8 @@
     "js-cache-storage",
     "no-set-state-in-render",
     "js-cache-property-access",
-    "no-effect-event-in-deps"
+    "no-effect-event-in-deps",
+    "js-async-reduce-without-awaited-acc"
   ],
   "delegatedRules": [
     {

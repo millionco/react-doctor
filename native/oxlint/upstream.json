@@ -258,7 +258,10 @@
     "three-no-normalized-float-buffer-attribute",
     "three-valid-buffer-attribute-item-size",
     "three-valid-raycaster-range",
-    "three-valid-fog-parameters"
+    "three-valid-fog-parameters",
+    "three-valid-perspective-camera",
+    "three-valid-orthographic-camera",
+    "three-valid-spot-light-properties"
   ],
   "delegatedRules": [
     {

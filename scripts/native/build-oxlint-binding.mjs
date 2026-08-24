@@ -236,6 +236,7 @@ impl Rule for ${delegatedRule.struct} {
         "resolve-raw-device-pixel-ratio",
         "get-static-object-property-value",
         "resolve-static-number",
+        "resolve-static-number-argument",
         "is-float-typed-array",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),

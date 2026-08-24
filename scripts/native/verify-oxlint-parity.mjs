@@ -349,6 +349,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-valid-buffer-attribute-item-size": 3,
   "three-valid-raycaster-range": 3,
   "three-valid-fog-parameters": 4,
+  "three-valid-perspective-camera": 8,
+  "three-valid-orthographic-camera": 3,
+  "three-valid-spot-light-properties": 4,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1290,6 +1293,22 @@ new ThreeRuntime.Fog("white", -1, 10);
 new ThreeRuntime.Fog(0xffffff, 10, 10);
 new ThreeRuntime.Fog(0xffffff, 20, 10);
 new ThreeRuntime.FogExp2("white", -0.1);
+const invalidPerspectiveCamera = new ThreeRuntime.PerspectiveCamera();
+invalidPerspectiveCamera.aspect = 0;
+invalidPerspectiveCamera.near = -1;
+invalidPerspectiveCamera.far = 0;
+new ThreeRuntime.PerspectiveCamera(75, 0, 0.1, 1000);
+new ThreeRuntime.PerspectiveCamera(75, 1, 0, 1000);
+new ThreeRuntime.PerspectiveCamera(75, 1, 100, 100);
+new ThreeRuntime.PerspectiveCamera(75, 1, 100, 50);
+new ThreeRuntime.PerspectiveCamera(75, 1, dynamicNear, 0);
+new ThreeRuntime.OrthographicCamera(1, 1, 1, -1, 0, 10);
+new ThreeRuntime.OrthographicCamera(-1, 1, 2, 2, 0, 10);
+new ThreeRuntime.OrthographicCamera(-1, 1, 1, -1, 5, 5);
+new ThreeRuntime.SpotLight(0xffffff, 1, 0, 2, -0.1);
+const invalidSpotLight = new ThreeRuntime.SpotLight();
+invalidSpotLight.angle = 0;
+invalidSpotLight.penumbra = 2;
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();
   asyncAnimationRenderer.render(scene, camera);

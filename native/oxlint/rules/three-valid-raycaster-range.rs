@@ -32,11 +32,11 @@ impl Rule for ThreeValidRaycasterRange {
                     ctx,
                 ) =>
             {
-                let near = static_raycaster_argument(
+                let near = resolve_static_number_argument(
                     new_expression.arguments.get(NEAR_ARGUMENT_INDEX),
                     ctx,
                 );
-                let far = static_raycaster_argument(
+                let far = resolve_static_number_argument(
                     new_expression.arguments.get(FAR_ARGUMENT_INDEX),
                     ctx,
                 );
@@ -66,14 +66,6 @@ impl Rule for ThreeValidRaycasterRange {
             _ => {}
         }
     }
-}
-
-fn static_raycaster_argument<'a>(
-    argument: Option<&'a oxc_ast::ast::Argument<'a>>,
-    ctx: &LintContext<'a>,
-) -> Option<(&'a oxc_ast::ast::Expression<'a>, f64)> {
-    let expression = argument.and_then(oxc_ast::ast::Argument::as_expression)?;
-    Some((expression, resolve_static_number(expression, ctx)?))
 }
 
 fn report_invalid_raycaster_range<'a>(

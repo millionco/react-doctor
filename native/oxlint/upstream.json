@@ -228,7 +228,9 @@
     "ink-no-dom-router",
     "no-event-trigger-state",
     "ink-static-is-append-only",
-    "ink-static-requires-key"
+    "ink-static-requires-key",
+    "ink-no-multiple-static",
+    "ink-valid-aria-semantics"
   ],
   "delegatedRules": [
     {

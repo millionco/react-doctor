@@ -181,6 +181,7 @@ impl Rule for ${delegatedRule.struct} {
         "resolve-identifier-import",
         "identifier-initializer",
         "module-jsx-tree-index",
+        "is-node-conditionally-executed",
         "is-react-es6-component",
         "get-static-jsx-attribute-string-values",
         "resolve-local-react-callback",

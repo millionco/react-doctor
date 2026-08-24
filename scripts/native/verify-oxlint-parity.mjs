@@ -122,7 +122,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-no-comment-textnodes": 1,
   "void-dom-elements-no-children": 4,
   "forward-ref-uses-ref": 5,
-  "aria-props": 1,
+  "aria-props": 5,
   "aria-unsupported-elements": 2,
   "no-unescaped-entities": 1,
   scope: 1,
@@ -318,6 +318,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-event-trigger-state": 4,
   "ink-static-is-append-only": 1,
   "ink-static-requires-key": 1,
+  "ink-no-multiple-static": 1,
+  "ink-valid-aria-semantics": 5,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1232,6 +1234,15 @@ const InkDomHost = () => <InkBox><div /></InkBox>;
 const InkDomRouter = () => <InkBox><DomLink to="/" /></InkBox>;
 const InkStaticReordered = ({ items }) => <InkStatic items={items.toReversed()}>{item => <InkText key={item.id}>{item.label}</InkText>}</InkStatic>;
 const InkStaticMissingKey = ({ items }) => <InkStatic items={items}>{item => <InkText>{item.label}</InkText>}</InkStatic>;
+const InkMultipleStatic = () => <><InkStatic items={[]} /><InkStatic items={[]} /></>;
+const FirstInkStatic = () => <InkStatic items={[]} />;
+const SecondInkStatic = () => <InkStatic items={[]} />;
+const InkConditionalStatic = ({ compact }) => <>{compact ? <InkStatic items={[]} /> : <InkStatic items={[]} />}</>;
+const InkLogicalStatic = ({ compact }) => <>{compact && <InkStatic items={[]} />}{!compact && <InkStatic items={[]} />}</>;
+const InkTextAriaSemantics = () => <InkText aria-role="dialog" aria-state={{ checked: true }}>Open</InkText>;
+const InkInvalidAriaRole = () => <InkBox aria-role="dialog" />;
+const InkInvalidAriaState = () => <InkBox aria-state={{ pressed: true }} />;
+const InkHiddenAriaLabel = () => <InkBox aria-hidden aria-label="Hidden" />;
 async function buildAsyncReduce(items) {
   const object = await items.reduce(async (accumulator, item) => {
     accumulator[item.id] = await getItem(item);

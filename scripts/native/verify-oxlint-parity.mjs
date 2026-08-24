@@ -377,6 +377,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-valid-data-texture-data-length": 4,
   "three-valid-material-opacity": 3,
   "three-require-transparent-for-opacity": 2,
+  "three-webgpu-no-legacy-material-api": 3,
+  "three-gpu-computation-handle-init-error": 2,
+  "three-gpu-computation-valid-variable-name": 6,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1385,6 +1388,23 @@ const invalidOpacityMaterial = new ThreeRuntime.MeshBasicMaterial();
 invalidOpacityMaterial.opacity = -1;
 new ThreeRuntime.MeshBasicMaterial({ opacity: 0.5 });
 new ThreeRuntime.MeshStandardMaterial({ opacity: 0.2, transparent: false });
+const threeNamespaceWebgpuRenderer = new ThreeRuntime.WebGPURenderer();
+new ThreeRuntime.ShaderMaterial();
+new ThreeRuntime.RawShaderMaterial();
+const legacyWebgpuMaterial = new ThreeRuntime.MeshStandardMaterial();
+legacyWebgpuMaterial.onBeforeCompile = patchShader;
+const gpuComputation = new ThreeRuntime.GPUComputationRenderer(4, 4, renderer);
+gpuComputation.init();
+void gpuComputation.init();
+gpuComputation.addVariable("texture-position", shader, texture);
+gpuComputation.addVariable("gl_Position", shader, texture);
+gpuComputation.addVariable("uniform", shader, texture);
+gpuComputation.addVariable("projectionMatrix", shader, texture);
+gpuComputation.addVariable("texturePosition", firstShader, firstTexture);
+gpuComputation.addVariable("texturePosition", secondShader, secondTexture);
+const gpuComputationAlias = gpuComputation;
+gpuComputationAlias.addVariable("textureVelocity", firstShader, firstTexture);
+gpuComputation.addVariable("textureVelocity", secondShader, secondTexture);
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();
   asyncAnimationRenderer.render(scene, camera);

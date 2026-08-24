@@ -236,6 +236,7 @@ impl Rule for ${delegatedRule.struct} {
         "three-constructor-name",
         "three-module-api-name",
         "three-module-api-path-matches",
+        "resolve-stable-identifier-symbol",
         "resolve-recursive-animation-frame-callback",
         "resolve-raw-device-pixel-ratio",
         "get-static-object-property-value",

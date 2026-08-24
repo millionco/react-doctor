@@ -346,6 +346,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-no-ignored-basic-material-properties": 3,
   "three-no-ignored-linewidth": 2,
   "three-no-normalized-float-buffer-attribute": 2,
+  "three-valid-buffer-attribute-item-size": 3,
+  "three-valid-raycaster-range": 3,
+  "three-valid-fog-parameters": 4,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1276,6 +1279,17 @@ ignoredLineMaterial.linewidth = 3;
 const floatBufferValues = new Float32Array(9);
 new ThreeRuntime.BufferAttribute(floatBufferValues, 3, true);
 new ThreeRuntime.Float32BufferAttribute([], 3, true);
+new ThreeRuntime.BufferAttribute(floatBufferValues, 0);
+new ThreeRuntime.Float32BufferAttribute([], -1);
+new ThreeRuntime.Float32BufferAttribute([], 1.5);
+new ThreeRuntime.Raycaster(origin, direction, -1, 10);
+new ThreeRuntime.Raycaster(origin, direction, 10, 5);
+const invalidRaycaster = new ThreeRuntime.Raycaster();
+invalidRaycaster.near = -0.1;
+new ThreeRuntime.Fog("white", -1, 10);
+new ThreeRuntime.Fog(0xffffff, 10, 10);
+new ThreeRuntime.Fog(0xffffff, 20, 10);
+new ThreeRuntime.FogExp2("white", -0.1);
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();
   asyncAnimationRenderer.render(scene, camera);

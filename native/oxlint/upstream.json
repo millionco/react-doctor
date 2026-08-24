@@ -255,7 +255,10 @@
     "three-prefer-set-animation-loop",
     "three-no-ignored-basic-material-properties",
     "three-no-ignored-linewidth",
-    "three-no-normalized-float-buffer-attribute"
+    "three-no-normalized-float-buffer-attribute",
+    "three-valid-buffer-attribute-item-size",
+    "three-valid-raycaster-range",
+    "three-valid-fog-parameters"
   ],
   "delegatedRules": [
     {

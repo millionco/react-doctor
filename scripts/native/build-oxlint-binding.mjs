@@ -179,6 +179,7 @@ impl Rule for ${delegatedRule.struct} {
         "tailwind-class-name-tokens",
         "imported-module-api-matches",
         "resolve-identifier-import",
+        "identifier-initializer",
         "is-react-es6-component",
         "get-static-jsx-attribute-string-values",
         "resolve-local-react-callback",

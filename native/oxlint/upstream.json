@@ -221,7 +221,9 @@
     "react-router-no-duplicate-route-id",
     "ink-no-bare-process-exit",
     "ink-no-measure-element-in-render",
-    "ink-no-focus-in-render"
+    "ink-no-focus-in-render",
+    "ink-no-direct-raw-mode",
+    "ink-no-layout-inside-text"
   ],
   "delegatedRules": [
     {

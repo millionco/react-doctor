@@ -311,6 +311,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-no-bare-process-exit": 1,
   "ink-no-measure-element-in-render": 1,
   "ink-no-focus-in-render": 1,
+  "ink-no-direct-raw-mode": 1,
+  "ink-no-layout-inside-text": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -393,7 +395,7 @@ import { AnimatePresence, animate as runMotionAnimation, motion, motionValue as 
 import * as MotionRuntime from "motion/react";
 import { delayRender, delayRender as holdRender } from "remotion";
 import * as Remotion from "remotion";
-import { measureElement, useFocusManager, useInput } from "ink";
+import { Box as InkBox, measureElement, Text as InkText, useFocusManager, useInput, useStdin } from "ink";
 import { WebGPURenderer } from "three/webgpu";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import Head from "next/head";
@@ -1163,6 +1165,12 @@ function InkFocusChangedDuringRender() {
   focusManager.focus("name");
   return null;
 }
+function InkRawModeChangedDuringRender() {
+  const { setRawMode } = useStdin();
+  setRawMode(true);
+  return null;
+}
+const InkLayoutInsideText = () => <InkText><InkBox /></InkText>;
 async function buildAsyncReduce(items) {
   const object = await items.reduce(async (accumulator, item) => {
     accumulator[item.id] = await getItem(item);

@@ -838,6 +838,8 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "base-ui-tabs-tab-requires-list",
   "shadcn-tabs-trigger-requires-list",
   "radix-tabs-trigger-requires-list",
+  "base-ui-dialog-popup-requires-title",
+  "base-ui-field-requires-label",
   "no-create-store-in-render",
   "react-compiler-no-manual-memoization",
   "no-giant-component",

@@ -386,6 +386,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "base-ui-tabs-tab-requires-list": 1,
   "shadcn-tabs-trigger-requires-list": 1,
   "radix-tabs-trigger-requires-list": 1,
+  "base-ui-dialog-popup-requires-title": 1,
+  "base-ui-field-requires-label": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -491,6 +493,8 @@ import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { Tabs as BaseTabs } from "@base-ui/react/tabs";
 import { Tabs as ShadcnTabs, TabsTrigger as ShadcnTabsTrigger } from "@/components/ui/tabs";
 import * as RadixTabs from "@radix-ui/react-tabs";
+import { Dialog as BaseDialog } from "@base-ui/react/dialog";
+import { Field as BaseField } from "@base-ui/react/field";
 import Head from "next/head";
 import NextImage from "next/image";
 void import("@react-three/fiber/dist/native");
@@ -1437,6 +1441,10 @@ const TabsHierarchyFixture = () => <>
   <BaseTabs.Root><BaseTabs.Tab value="base">Base</BaseTabs.Tab></BaseTabs.Root>
   <ShadcnTabs><ShadcnTabsTrigger value="shadcn">Shadcn</ShadcnTabsTrigger></ShadcnTabs>
   <RadixTabs.Root><RadixTabs.Trigger value="radix">Radix</RadixTabs.Trigger></RadixTabs.Root>
+</>;
+const BaseUiStructureFixture = () => <>
+  <BaseDialog.Popup><p>Body</p></BaseDialog.Popup>
+  <BaseField.Root><BaseField.Control /></BaseField.Root>
 </>;
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();

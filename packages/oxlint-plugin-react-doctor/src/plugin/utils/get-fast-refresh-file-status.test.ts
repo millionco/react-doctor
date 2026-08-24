@@ -668,6 +668,32 @@ describe("probeFastRefreshFileStatus", () => {
     ).toBe(false);
   });
 
+  it("uses the nearest workspace root for a checkout nested inside another workspace", () => {
+    const outerWorkspaceDirectory = createWorkspaceFixture({
+      "package.json": JSON.stringify({ workspaces: ["unrelated/*"] }),
+      "checkouts/inner/package.json": JSON.stringify({
+        workspaces: ["apps/*", "packages/*"],
+      }),
+      "checkouts/inner/apps/web/package.json": JSON.stringify({
+        ...viteManifest({ dev: "vite" }),
+        dependencies: { react: "19.0.0", ui: "workspace:*" },
+      }),
+      "checkouts/inner/apps/web/vite.config.ts":
+        'import react from "@vitejs/plugin-react"; export default { plugins: [react()] };',
+      "checkouts/inner/packages/ui/package.json": JSON.stringify({
+        name: "ui",
+        main: "./src/index.ts",
+      }),
+      "checkouts/inner/packages/ui/src/Card.tsx": "export const Card = () => <div />;",
+    });
+
+    expect(
+      probeFastRefreshFileStatus(
+        path.join(outerWorkspaceDirectory, "checkouts/inner/packages/ui/src/Card.tsx"),
+      ).isActive,
+    ).toBe(true);
+  });
+
   it("ignores Fast Refresh consumers outside declared pnpm workspace packages", () => {
     const workspaceDirectory = createWorkspaceFixture({
       "package.json": JSON.stringify({ name: "workspace" }),

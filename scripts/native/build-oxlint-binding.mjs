@@ -173,6 +173,8 @@ impl Rule for ${delegatedRule.struct} {
         "is-motion-hook-result-expression",
         "transparent-expression-root",
         "component-or-hook-function-name",
+        "function-contains-react-render-output",
+        "file-is-non-react-jsx-dialect",
         "module-api-path-matches",
         "object-has-accessible-child",
         "is-focusable-jsx-opening-element",

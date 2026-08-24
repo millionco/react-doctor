@@ -68,6 +68,7 @@ const safePageFixturePath = path.join(fixtureDirectory, "app", "page.tsx");
 const safeRouteHandlerFixturePath = path.join(fixtureDirectory, "app", "safe", "route.ts");
 const nonProductionFixturePath = path.join(temporaryDirectory, "fixture.test.tsx");
 const deepNonProductionFixturePath = path.join(temporaryDirectory, "deep-fixture.test.tsx");
+const nonReactJsxFixturePath = path.join(temporaryDirectory, "solid-fixture.tsx");
 const configuredFixturePath = path.join(temporaryDirectory, "configured.tsx");
 const inactiveRouterFixtureDirectory = path.join(temporaryDirectory, "inactive-router-package");
 const inactiveRouterFixturePath = path.join(inactiveRouterFixtureDirectory, "src", "fixture.tsx");
@@ -94,6 +95,21 @@ const routerStockConfigPath = path.join(temporaryDirectory, "router-stock.json")
 const routerNativeConfigPath = path.join(temporaryDirectory, "router-native.json");
 const corpusStockConfigPath = path.join(temporaryDirectory, "corpus-stock.json");
 const corpusNativeConfigPath = path.join(temporaryDirectory, "corpus-native.json");
+const nonReactJsxStockConfigPath = path.join(temporaryDirectory, "solid-stock.json");
+const nonReactJsxNativeConfigPath = path.join(temporaryDirectory, "solid-native.json");
+const giantComponentStatements = Array.from(
+  { length: 300 },
+  (_unused, statementIndex) => `  void ${statementIndex};`,
+).join("\n");
+const nonReactComplexityBranches = Array.from(
+  { length: 16 },
+  (_unused, branchIndex) => `  if (value === ${branchIndex}) return <span>${branchIndex}</span>;`,
+).join("\n");
+const REACT_JSX_ONLY_COHORT_RULE_IDS = [
+  "no-giant-component",
+  "no-high-complexity-react-function",
+  "no-nested-component-definition",
+];
 const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-no-duplicate-props": 1,
   "nextjs-no-vercel-og-import": 1,
@@ -355,6 +371,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-valid-data-texture-dimensions": 4,
   "three-valid-buffer-attribute-array-length": 3,
   "three-valid-shadow-map-size": 3,
+  "no-create-store-in-render": 1,
+  "react-compiler-no-manual-memoization": 8,
+  "no-giant-component": 1,
+  "no-nested-component-definition": 1,
+  "no-high-complexity-react-function": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -401,10 +422,11 @@ const fixture = `
 import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
-import React, { Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef, ViewTransition } from "react";
+import React, { Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef, ViewTransition, memo } from "react";
 import ReactDOM from "react-dom";
 import type { useMemo as PreactTypeOnlyHook } from "react";
 import { createContext as makeTrackedContext } from "react-tracked";
+import { create as createZustandStore } from "zustand";
 import { useQuery as useItemsQuery } from "@tanstack/react-query";
 import * as TanstackQuery from "@tanstack/react-query";
 import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, createBrowserRouter as makeBrowserRouter, createHashRouter as makeHashRouter } from "react-router";
@@ -1329,6 +1351,38 @@ async function AsyncThreeAnimationFrameFixture() {
   requestAnimationFrame(AsyncThreeAnimationFrameFixture);
 }
 requestAnimationFrame(AsyncThreeAnimationFrameFixture);
+const CompilerInnerFixture = () => <div />;
+const CompilerMemoFixture = memo(CompilerInnerFixture);
+function NativeStoreFixture() {
+  const useStore = createZustandStore(() => ({ count: 0 }));
+  return <div>{String(useStore)}</div>;
+}
+function NativeNestedParentFixture() {
+  const NativeNestedChildFixture = () => <span>nested</span>;
+  return <NativeNestedChildFixture />;
+}
+function NativeComplexityFixture({ value }) {
+  if (value === 0) return <span>0</span>;
+  if (value === 1) return <span>1</span>;
+  if (value === 2) return <span>2</span>;
+  if (value === 3) return <span>3</span>;
+  if (value === 4) return <span>4</span>;
+  if (value === 5) return <span>5</span>;
+  if (value === 6) return <span>6</span>;
+  if (value === 7) return <span>7</span>;
+  if (value === 8) return <span>8</span>;
+  if (value === 9) return <span>9</span>;
+  if (value === 10) return <span>10</span>;
+  if (value === 11) return <span>11</span>;
+  if (value === 12) return <span>12</span>;
+  if (value === 13) return <span>13</span>;
+  if (value === 14) return <span>14</span>;
+  return <span>fallback</span>;
+}
+function NativeGiantComponentFixture() {
+${giantComponentStatements}
+  return <div />;
+}
 {
   class Map {}
   const shadowedMapState = useState(new Map());
@@ -1629,6 +1683,21 @@ try {
     `import React from "react"; const deeplyNestedTestJsx = <div><div><div><div><div><div><div><div><div><div><div><div><div><div><div><span /></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div>;`,
   );
   fs.writeFileSync(
+    nonReactJsxFixturePath,
+    `import { createSignal } from "solid-js";
+export const SolidGiant = () => {
+  createSignal(0);
+${giantComponentStatements}
+  return <div />;
+};
+export const SolidParent = ({ value }) => {
+  const SolidChild = () => <span />;
+${nonReactComplexityBranches}
+  return <SolidChild />;
+};
+`,
+  );
+  fs.writeFileSync(
     configuredFixturePath,
     `
 import React, { Component } from "react";
@@ -1710,6 +1779,26 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
         isNative: true,
         settings: REACT_DOCTOR_SETTINGS,
         ruleIds: corpusRuleIds,
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    nonReactJsxStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: REACT_DOCTOR_SETTINGS,
+        ruleIds: REACT_JSX_ONLY_COHORT_RULE_IDS,
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    nonReactJsxNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: REACT_DOCTOR_SETTINGS,
+        ruleIds: REACT_JSX_ONLY_COHORT_RULE_IDS,
       }),
     ),
   );
@@ -1846,6 +1935,22 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
   ) {
     throw new Error(
       `native deep non-production parity failed\nstock=${JSON.stringify(deepNonProductionStockDiagnostics, null, 2)}\nnative=${JSON.stringify(deepNonProductionNativeDiagnostics, null, 2)}`,
+    );
+  }
+
+  const nonReactJsxStockDiagnostics = runOxlint(
+    nonReactJsxStockConfigPath,
+    process.env,
+    nonReactJsxFixturePath,
+  ).diagnostics;
+  const nonReactJsxNativeDiagnostics = runOxlint(
+    nonReactJsxNativeConfigPath,
+    nativeEnvironment,
+    nonReactJsxFixturePath,
+  ).diagnostics;
+  if (nonReactJsxStockDiagnostics.length !== 0 || nonReactJsxNativeDiagnostics.length !== 0) {
+    throw new Error(
+      `native non-React JSX parity failed\nstock=${JSON.stringify(nonReactJsxStockDiagnostics, null, 2)}\nnative=${JSON.stringify(nonReactJsxNativeDiagnostics, null, 2)}`,
     );
   }
 

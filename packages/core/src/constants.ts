@@ -803,6 +803,11 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-document-start-view-transition",
   "no-permanent-will-change",
   "no-global-css-variable-animation",
+  "no-create-store-in-render",
+  "react-compiler-no-manual-memoization",
+  "no-giant-component",
+  "no-nested-component-definition",
+  "no-high-complexity-react-function",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

@@ -264,7 +264,12 @@
     "three-valid-spot-light-properties",
     "three-valid-data-texture-dimensions",
     "three-valid-buffer-attribute-array-length",
-    "three-valid-shadow-map-size"
+    "three-valid-shadow-map-size",
+    "no-create-store-in-render",
+    "react-compiler-no-manual-memoization",
+    "no-giant-component",
+    "no-nested-component-definition",
+    "no-high-complexity-react-function"
   ],
   "delegatedRules": [
     {

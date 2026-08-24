@@ -307,6 +307,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-require-root-error-boundary": 1,
   "react-router-valid-route-object": 2,
   "react-router-v8-no-removed-future-flags": 2,
+  "react-router-no-duplicate-route-id": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1132,6 +1133,18 @@ const routerWithSplatPaths = makeBrowserRouter([
         children: [{ path: "child", element: <RouteChild /> }],
       },
     ],
+  },
+  {
+    id: "duplicate-route-id",
+    path: "/first-explicit-id",
+    loader: loadFirstExplicitRoute,
+    ErrorBoundary: RouteError,
+  },
+  {
+    id: "duplicate-route-id",
+    path: "/second-explicit-id",
+    loader: loadSecondExplicitRoute,
+    ErrorBoundary: RouteError,
   },
 ]);
 async function buildAsyncReduce(items) {

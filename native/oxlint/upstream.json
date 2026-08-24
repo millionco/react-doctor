@@ -217,7 +217,8 @@
     "react-router-no-empty-leaf-route",
     "react-router-require-root-error-boundary",
     "react-router-valid-route-object",
-    "react-router-v8-no-removed-future-flags"
+    "react-router-v8-no-removed-future-flags",
+    "react-router-no-duplicate-route-id"
   ],
   "delegatedRules": [
     {

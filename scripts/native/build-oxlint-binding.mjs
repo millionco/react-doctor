@@ -161,6 +161,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-js-whitespace",
         "motion-react-api-path-matches",
         "is-render-phase-component-or-hook",
+        "component-renders-ink",
         "is-inside-stable-react-initializer",
         "resolve-imported-jsx-component-name",
         "motion-react-component-matches",

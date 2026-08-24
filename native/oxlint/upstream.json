@@ -233,7 +233,8 @@
     "ink-valid-aria-semantics",
     "ink-prefer-use-paste",
     "ink-use-string-width-for-cursor",
-    "ink-use-suspend-terminal"
+    "ink-use-suspend-terminal",
+    "ink-prefer-use-animation"
   ],
   "delegatedRules": [
     {

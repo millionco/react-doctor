@@ -323,6 +323,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-prefer-use-paste": 1,
   "ink-use-string-width-for-cursor": 1,
   "ink-use-suspend-terminal": 1,
+  "ink-prefer-use-animation": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1253,6 +1254,8 @@ const InkUnicodeCursor = ({ label }) => { const cursor = useCursor(); cursor.set
 const InkAsciiCursor = () => { const label = "Ready"; const cursor = useCursor(); cursor.setCursorPosition({ x: label.length, y: 0 }); return null; };
 const InkUnsuspendedChild = () => { useInput(() => { spawnChild("vim", [], { stdio: "inherit" }); }); return null; };
 const InkSuspendedChild = () => { const { suspendTerminal } = useApp(); useInput(() => suspendTerminal(() => spawnChild("vim", [], { stdio: "inherit" }))); return null; };
+const InkIntervalAnimation = () => { const [frame, setFrame] = useState(0); useEffect(() => { setInterval(() => setFrame(value => value + 1), 80); }, []); return <InkText>{frame}</InkText>; };
+const DomIntervalAnimation = () => { const [frame, setFrame] = useState(0); useEffect(() => { setInterval(() => setFrame(value => value + 1), 80); }, []); return <div>{frame}</div>; };
 async function buildAsyncReduce(items) {
   const object = await items.reduce(async (accumulator, item) => {
     accumulator[item.id] = await getItem(item);

@@ -297,6 +297,7 @@
     "tanstack-start-server-fn-method-order",
     "tanstack-start-server-fn-validate-input",
     "tanstack-start-no-secrets-in-loader",
+    "tanstack-start-no-anchor-element",
     "no-create-store-in-render",
     "react-compiler-no-manual-memoization",
     "no-giant-component",

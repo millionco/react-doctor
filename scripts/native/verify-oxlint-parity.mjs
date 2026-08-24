@@ -58,6 +58,7 @@ const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-n
 const fixtureDirectory = path.join(temporaryDirectory, "production-fixtures");
 const fixturePath = path.join(fixtureDirectory, "app", "error.tsx");
 const motionConfigFixturePath = path.join(fixtureDirectory, "app", "layout.tsx");
+const tanstackRouteFixturePath = path.join(fixtureDirectory, "src", "routes", "index.tsx");
 const inkWrapperFixturePath = path.join(fixtureDirectory, "app", "ink-wrappers.tsx");
 const reactRouterConfigFixturePath = path.join(fixtureDirectory, "react-router.config.ts");
 const globalErrorFixturePath = path.join(fixtureDirectory, "app", "global-error.tsx");
@@ -217,7 +218,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-no-router-in-render": 2,
   "nextjs-async-client-component": 3,
   "no-string-false-on-boolean-attribute": 3,
-  "nextjs-no-a-element": 3,
+  "nextjs-no-a-element": 6,
   "jsx-no-script-url": 2,
   "jsx-boolean-value": 2,
   "no-danger-with-children": 1,
@@ -404,6 +405,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "tanstack-start-server-fn-method-order": 2,
   "tanstack-start-server-fn-validate-input": 2,
   "tanstack-start-no-secrets-in-loader": 2,
+  "tanstack-start-no-anchor-element": 2,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1794,6 +1796,21 @@ try {
   fs.writeFileSync(
     motionConfigFixturePath,
     `import React from "react";\nimport { MotionConfig } from "motion/react";\nexport const App = () => <MotionConfig reducedMotion="never"><main /></MotionConfig>;\n`,
+  );
+  fs.mkdirSync(path.dirname(tanstackRouteFixturePath), { recursive: true });
+  fs.writeFileSync(
+    tanstackRouteFixturePath,
+    `import React from "react";
+const AnchorAlias = "a" as const;
+export const RouteLinks = () => <>
+  <a href="/dashboard">Dashboard</a>
+  <AnchorAlias href={"/settings?tab=profile"}>Settings</AnchorAlias>
+  <a href="//cdn.example.com/asset">CDN</a>
+  <a href="/api/export">Export</a>
+  <a href="/resume.pdf" download>Resume</a>
+  <a href="/docs" target={"_blank"}>Docs</a>
+</>;
+`,
   );
   fs.writeFileSync(
     inkWrapperFixturePath,

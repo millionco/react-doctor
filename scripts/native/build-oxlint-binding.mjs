@@ -226,6 +226,8 @@ impl Rule for ${delegatedRule.struct} {
         "has-responsive-axis-prefix",
         "setter-is-written-only-from-event-handlers",
         "state-setter-symbol-id",
+        "remotion-render-function-has-evidence",
+        "run-remotion-css-time-rule",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

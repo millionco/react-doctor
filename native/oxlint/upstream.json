@@ -245,7 +245,9 @@
     "no-document-start-view-transition",
     "no-permanent-will-change",
     "no-global-css-variable-animation",
-    "ink-no-raw-text"
+    "ink-no-raw-text",
+    "remotion-no-css-animation",
+    "remotion-no-css-transition"
   ],
   "delegatedRules": [
     {

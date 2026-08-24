@@ -336,6 +336,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-permanent-will-change": 2,
   "no-global-css-variable-animation": 1,
   "ink-no-raw-text": 9,
+  "remotion-no-css-animation": 3,
+  "remotion-no-css-transition": 4,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -418,6 +420,7 @@ import { AnimatePresence, animate as runMotionAnimation, motion, motionValue as 
 import * as MotionRuntime from "motion/react";
 import { delayRender, delayRender as holdRender } from "remotion";
 import * as Remotion from "remotion";
+import { Video as RemotionVideo } from "@remotion/media";
 import { Box as InkBox, measureElement, render as renderInk, renderToString as renderInkToString, Static as InkStatic, Text as InkText, useApp, useCursor, useFocusManager, useInput, useStdin } from "ink";
 import { ImportedInkLabel, ImportedInkPanel } from "./ink-wrappers";
 import { spawn as spawnChild } from "node:child_process";
@@ -1246,6 +1249,11 @@ function HookUseStateFixture() {
 }
 const OverpreciseSvgPathFixture = () => <path d="M10.293847 20.847362" />;
 const PermanentWillChangeFixture = () => <><div className="will-change-transform" /><div style={{ willChange: "opacity" }} /></>;
+const RemotionCssTimeFixture = () => {
+  Remotion.useCurrentFrame();
+  return <><div className="motion-safe:animate-spin hover:transition-colors" style={{ animationName: "spin", animation: "fade 1s", transition: "all 1s", transitionProperty: "opacity" }} /><div className="animate-none transition-none" style={{ animation: "none", animationName: \` NONE \`, transition: "none", transitionProperty: \` NONE \` }} /></>;
+};
+const RemotionMediaTransitionFixture = () => <RemotionVideo style={{ transition: "opacity 1s" }} />;
 {
   class Map {}
   const shadowedMapState = useState(new Map());

@@ -424,6 +424,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "activity-wraps-effect-heavy-subtree": 1,
   "advanced-event-handler-refs": 1,
   "nextjs-no-redirect-in-try-catch": 1,
+  "nextjs-no-css-link": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1744,6 +1745,9 @@ function swallowedNextRedirect() {
   } catch (error) {
     console.error(error);
   }
+}
+function NextCssLinkExample() {
+  return <link rel="stylesheet" href="/styles.css" />;
 }
 `;
 

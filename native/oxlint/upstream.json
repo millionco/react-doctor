@@ -308,6 +308,7 @@
     "activity-wraps-effect-heavy-subtree",
     "advanced-event-handler-refs",
     "nextjs-no-redirect-in-try-catch",
+    "nextjs-no-css-link",
     "no-create-store-in-render",
     "react-compiler-no-manual-memoization",
     "no-giant-component",

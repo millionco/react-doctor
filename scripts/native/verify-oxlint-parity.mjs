@@ -57,6 +57,7 @@ const pluginPath = requireFromRepository.resolve("oxlint-plugin-react-doctor");
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-native-parity-"));
 const fixtureDirectory = path.join(temporaryDirectory, "production-fixtures");
 const fixturePath = path.join(fixtureDirectory, "app", "error.tsx");
+const reactRouterConfigFixturePath = path.join(fixtureDirectory, "react-router.config.ts");
 const globalErrorFixturePath = path.join(fixtureDirectory, "app", "global-error.tsx");
 const ogImageFixturePath = path.join(fixtureDirectory, "app", "opengraph-image.tsx");
 const routeHandlerFixturePath = path.join(fixtureDirectory, "app", "api", "route.ts");
@@ -305,6 +306,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-no-empty-leaf-route": 1,
   "react-router-require-root-error-boundary": 1,
   "react-router-valid-route-object": 2,
+  "react-router-v8-no-removed-future-flags": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1227,6 +1229,10 @@ const buildConfig = ({ isNative, settings, ruleIds = nativeRules }) => ({
 try {
   fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
   fs.writeFileSync(fixturePath, fixture);
+  fs.writeFileSync(
+    reactRouterConfigFixturePath,
+    "const config = { future: { v8_middleware: true, unstable_previewServerPrerendering: true } }; export default config;\n",
+  );
   fs.writeFileSync(
     globalErrorFixturePath,
     `'use client';\nimport React from "react";\nexport default function GlobalError() { return <div />; }\n`,

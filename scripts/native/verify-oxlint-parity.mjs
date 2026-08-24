@@ -260,7 +260,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-unsafe": 1,
   "r3f-no-async-use-frame": 2,
   "react-router-no-route-module-environment-suffix": 0,
-  "three-webgpu-no-legacy-effect-composer": 1,
+  "three-webgpu-no-legacy-effect-composer": 2,
   "react-router-no-nested-router": 1,
   "no-full-viewport-width": 1,
   "prefer-dvh-over-vh": 2,
@@ -380,6 +380,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-webgpu-no-legacy-material-api": 3,
   "three-gpu-computation-handle-init-error": 2,
   "three-gpu-computation-valid-variable-name": 6,
+  "three-effect-composer-output-pass-last": 1,
+  "three-webgpu-no-high-precision-instancing": 1,
+  "three-limit-shadowed-point-lights": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -411,7 +414,7 @@ const REACT_DOCTOR_SETTINGS = {
     portedRuleMode: "curated",
     framework: "unknown",
     rootDirectory: repositoryRoot,
-    capabilities: ["react"],
+    capabilities: ["react", "three:181"],
   },
 };
 const CONFIGURED_REACT_DOCTOR_SETTINGS = {
@@ -480,6 +483,8 @@ import { spawn as spawnChild } from "node:child_process";
 import * as ThreeRuntime from "three";
 import { WebGPURenderer } from "three/webgpu";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import Head from "next/head";
 import NextImage from "next/image";
 void import("@react-three/fiber/dist/native");
@@ -1405,6 +1410,23 @@ gpuComputation.addVariable("texturePosition", secondShader, secondTexture);
 const gpuComputationAlias = gpuComputation;
 gpuComputationAlias.addVariable("textureVelocity", firstShader, firstTexture);
 gpuComputation.addVariable("textureVelocity", secondShader, secondTexture);
+const outputComposer = new EffectComposer(renderer);
+outputComposer.addPass(new OutputPass());
+outputComposer.addPass(new ShaderPass(shader));
+const highPrecisionRenderer = new ThreeRuntime.WebGPURenderer();
+highPrecisionRenderer.highPrecision = true;
+const highPrecisionScene = new ThreeRuntime.Scene();
+const highPrecisionMesh = new ThreeRuntime.InstancedMesh(geometry, material, 10);
+highPrecisionScene.add(highPrecisionMesh);
+highPrecisionRenderer.render(highPrecisionScene, camera);
+const shadowScene = new ThreeRuntime.Scene();
+const firstShadowLight = new ThreeRuntime.PointLight();
+const secondShadowLight = new ThreeRuntime.PointLight();
+const thirdShadowLight = new ThreeRuntime.PointLight();
+firstShadowLight.castShadow = true;
+secondShadowLight.castShadow = true;
+thirdShadowLight.castShadow = true;
+shadowScene.add(firstShadowLight, secondShadowLight, thirdShadowLight);
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();
   asyncAnimationRenderer.render(scene, camera);

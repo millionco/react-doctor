@@ -168,6 +168,8 @@ impl Rule for ${delegatedRule.struct} {
         "ink-render-call-is-related-to-node",
         "is-inside-stable-react-initializer",
         "resolve-imported-jsx-component-name",
+        "resolve-jsx-import-api-path",
+        "jsx-part-is-inside-root-without-required-ancestor",
         "motion-react-component-matches",
         "get-static-direct-jsx-elements",
         "is-motion-hook-result-expression",

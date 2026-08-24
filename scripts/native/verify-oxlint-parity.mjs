@@ -383,6 +383,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-effect-composer-output-pass-last": 1,
   "three-webgpu-no-high-precision-instancing": 1,
   "three-limit-shadowed-point-lights": 1,
+  "base-ui-tabs-tab-requires-list": 1,
+  "shadcn-tabs-trigger-requires-list": 1,
+  "radix-tabs-trigger-requires-list": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -414,7 +417,7 @@ const REACT_DOCTOR_SETTINGS = {
     portedRuleMode: "curated",
     framework: "unknown",
     rootDirectory: repositoryRoot,
-    capabilities: ["react", "three:181"],
+    capabilities: ["react", "three:181", "base-ui", "shadcn", "radix-ui"],
   },
 };
 const CONFIGURED_REACT_DOCTOR_SETTINGS = {
@@ -485,6 +488,9 @@ import { WebGPURenderer } from "three/webgpu";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+import { Tabs as BaseTabs } from "@base-ui/react/tabs";
+import { Tabs as ShadcnTabs, TabsTrigger as ShadcnTabsTrigger } from "@/components/ui/tabs";
+import * as RadixTabs from "@radix-ui/react-tabs";
 import Head from "next/head";
 import NextImage from "next/image";
 void import("@react-three/fiber/dist/native");
@@ -1427,6 +1433,11 @@ firstShadowLight.castShadow = true;
 secondShadowLight.castShadow = true;
 thirdShadowLight.castShadow = true;
 shadowScene.add(firstShadowLight, secondShadowLight, thirdShadowLight);
+const TabsHierarchyFixture = () => <>
+  <BaseTabs.Root><BaseTabs.Tab value="base">Base</BaseTabs.Tab></BaseTabs.Root>
+  <ShadcnTabs><ShadcnTabsTrigger value="shadcn">Shadcn</ShadcnTabsTrigger></ShadcnTabs>
+  <RadixTabs.Root><RadixTabs.Trigger value="radix">Radix</RadixTabs.Trigger></RadixTabs.Root>
+</>;
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();
   asyncAnimationRenderer.render(scene, camera);

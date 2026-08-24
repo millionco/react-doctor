@@ -388,6 +388,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "radix-tabs-trigger-requires-list": 1,
   "base-ui-dialog-popup-requires-title": 1,
   "base-ui-field-requires-label": 1,
+  "radix-dialog-content-requires-title": 1,
+  "shadcn-dialog-content-requires-title": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -495,6 +497,8 @@ import { Tabs as ShadcnTabs, TabsTrigger as ShadcnTabsTrigger } from "@/componen
 import * as RadixTabs from "@radix-ui/react-tabs";
 import { Dialog as BaseDialog } from "@base-ui/react/dialog";
 import { Field as BaseField } from "@base-ui/react/field";
+import * as NativeRadixDialog from "@radix-ui/react-dialog";
+import { DialogContent as ShadcnDialogContent } from "@/components/ui/dialog";
 import Head from "next/head";
 import NextImage from "next/image";
 void import("@react-three/fiber/dist/native");
@@ -1445,6 +1449,10 @@ const TabsHierarchyFixture = () => <>
 const BaseUiStructureFixture = () => <>
   <BaseDialog.Popup><p>Body</p></BaseDialog.Popup>
   <BaseField.Root><BaseField.Control /></BaseField.Root>
+</>;
+const DialogTitleFixture = () => <>
+  <NativeRadixDialog.Content><p>Body</p></NativeRadixDialog.Content>
+  <ShadcnDialogContent><p>Body</p></ShadcnDialogContent>
 </>;
 async function AsyncThreeAnimationFrameFixture() {
   await updateFrame();

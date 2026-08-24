@@ -159,6 +159,7 @@ impl Rule for ${delegatedRule.struct} {
         "program-estree-span",
         "collect-static-jsx-opening-elements",
         "visit-static-jsx-children",
+        "scan-static-jsx-subtree-for-part",
         "is-static-jsx-tree-root",
         "get-static-jsx-tree-opening-elements",
         "is-js-whitespace",

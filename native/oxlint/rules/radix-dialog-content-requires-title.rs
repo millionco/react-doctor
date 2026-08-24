@@ -1,40 +1,37 @@
-use oxc_ast::{
-    ast::{JSXAttributeItem, JSXAttributeValue},
-    AstKind,
-};
+use oxc_ast::{ast::JSXAttributeItem, AstKind};
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_span::GetSpan;
 
 use crate::{context::LintContext, rule::Rule, utils::has_jsx_prop_ignore_case, AstNode};
 
-const DIALOG_MESSAGE: &str = "This Dialog.Popup renders no Dialog.Title, so the dialog has no accessible name and assistive technology announces an unnamed dialog. Add a Title part (visually hidden if the design shows no heading) or an aria-label.";
-const ALERT_DIALOG_MESSAGE: &str = "This AlertDialog.Popup renders no AlertDialog.Title, so the dialog has no accessible name and assistive technology announces an unnamed dialog. Add a Title part (visually hidden if the design shows no heading) or an aria-label.";
+const DIALOG_MESSAGE: &str = "This Dialog.Content renders no Dialog.Title, so the dialog has no accessible name and Radix logs an accessibility error at runtime. Add a Title part (wrapped in VisuallyHidden if the design shows no heading) or an aria-label.";
+const ALERT_DIALOG_MESSAGE: &str = "This AlertDialog.Content renders no AlertDialog.Title, so the dialog has no accessible name and Radix logs an accessibility error at runtime. Add a Title part (wrapped in VisuallyHidden if the design shows no heading) or an aria-label.";
 const NAME_PROVIDING_ATTRIBUTES: [&str; 3] = ["aria-label", "aria-labelledby", "title"];
 
 #[derive(Debug, Default, Clone)]
-pub struct BaseUiDialogPopupRequiresTitle;
+pub struct RadixDialogContentRequiresTitle;
 
 declare_oxc_lint!(
-    /// Require accessible names on Base UI dialog popups.
-    BaseUiDialogPopupRequiresTitle,
+    /// Require accessible names on Radix dialog content.
+    RadixDialogContentRequiresTitle,
     react_doctor_native,
     correctness,
     version = "0.1.0",
-    short_description = "Require accessible names on Base UI dialog popups.",
+    short_description = "Require accessible names on Radix dialog content.",
 );
 
-impl Rule for BaseUiDialogPopupRequiresTitle {
+impl Rule for RadixDialogContentRequiresTitle {
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
-        if !has_capability_or_unspecified(ctx, "base-ui") {
+        if !has_capability_or_unspecified(ctx, "radix-ui") {
             return;
         }
         let AstKind::JSXOpeningElement(opening_element) = node.kind() else {
             return;
         };
         for surface_name in ["Dialog", "AlertDialog"] {
-            if resolve_base_ui_dialog_part_name(&opening_element.name, surface_name, ctx)
-                != Some("Popup")
+            if resolve_radix_dialog_part_name(&opening_element.name, surface_name, ctx)
+                != Some("Content")
             {
                 continue;
             }
@@ -45,8 +42,6 @@ impl Rule for BaseUiDialogPopupRequiresTitle {
                 || NAME_PROVIDING_ATTRIBUTES.iter().any(|attribute_name| {
                     has_jsx_prop_ignore_case(opening_element, attribute_name).is_some()
                 })
-                || find_jsx_attribute(opening_element, "render")
-                    .is_some_and(render_prop_may_provide_name)
             {
                 return;
             }
@@ -60,18 +55,14 @@ impl Rule for BaseUiDialogPopupRequiresTitle {
             let scan = scan_static_jsx_subtree_for_part(
                 &element.children,
                 ctx,
-                |child_name| is_base_ui_dialog_title_name(child_name, surface_name, ctx),
+                |child_name| is_radix_dialog_title_name(child_name, surface_name, ctx),
                 |child_element| {
                     let child_name = &child_element.opening_element.name;
-                    if resolve_base_ui_dialog_part_name(child_name, surface_name, ctx).is_none()
+                    resolve_radix_dialog_part_name(child_name, surface_name, ctx).is_none()
                         && jsx_element_name_trailing_segment(child_name).is_some_and(|name| {
                             name != "Fragment"
                                 && name.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
                         })
-                    {
-                        return true;
-                    }
-                    false
                 },
             );
             if scan.found_part || scan.saw_opaque_content {
@@ -88,30 +79,29 @@ impl Rule for BaseUiDialogPopupRequiresTitle {
     }
 }
 
-fn resolve_base_ui_dialog_part_name<'a>(
+fn resolve_radix_dialog_part_name<'a>(
     element_name: &oxc_ast::ast::JSXElementName<'a>,
     surface_name: &str,
     ctx: &LintContext<'a>,
 ) -> Option<&'static str> {
+    let primitive_module = match surface_name {
+        "Dialog" => "@radix-ui/react-dialog",
+        "AlertDialog" => "@radix-ui/react-alert-dialog",
+        _ => return None,
+    };
+    if let Some(api_path) = resolve_jsx_import_api_path(
+        element_name,
+        |module_source| module_source == primitive_module,
+        ctx,
+    ) {
+        let [part_name] = api_path.as_slice() else {
+            return None;
+        };
+        return radix_dialog_part(part_name);
+    }
     let api_path = resolve_jsx_import_api_path(
         element_name,
-        |module_source| match surface_name {
-            "Dialog" => matches!(
-                module_source,
-                "@base-ui/react"
-                    | "@base-ui/react/dialog"
-                    | "@base-ui-components/react"
-                    | "@base-ui-components/react/dialog"
-            ),
-            "AlertDialog" => matches!(
-                module_source,
-                "@base-ui/react"
-                    | "@base-ui/react/alert-dialog"
-                    | "@base-ui-components/react"
-                    | "@base-ui-components/react/alert-dialog"
-            ),
-            _ => false,
-        },
+        |module_source| module_source == "radix-ui",
         ctx,
     )?;
     let [namespace, part_name] = api_path.as_slice() else {
@@ -120,43 +110,26 @@ fn resolve_base_ui_dialog_part_name<'a>(
     if namespace != surface_name {
         return None;
     }
-    match part_name.as_str() {
-        "Popup" => Some("Popup"),
+    radix_dialog_part(part_name)
+}
+
+fn radix_dialog_part(part_name: &str) -> Option<&'static str> {
+    match part_name {
+        "Content" => Some("Content"),
         "Title" => Some("Title"),
         _ => Some("Part"),
     }
 }
 
-fn is_base_ui_dialog_title_name<'a>(
+fn is_radix_dialog_title_name<'a>(
     element_name: &oxc_ast::ast::JSXElementName<'a>,
     surface_name: &str,
     ctx: &LintContext<'a>,
 ) -> bool {
-    resolve_base_ui_dialog_part_name(element_name, surface_name, ctx) == Some("Title")
+    resolve_radix_dialog_part_name(element_name, surface_name, ctx) == Some("Title")
         || jsx_element_name_trailing_segment(element_name).is_some_and(|name| {
             name == "Title"
                 || (surface_name == "Dialog" && name == "DialogTitle")
                 || (surface_name == "AlertDialog" && name == "AlertDialogTitle")
-        })
-}
-
-fn render_prop_may_provide_name(attribute: &oxc_ast::ast::JSXAttribute<'_>) -> bool {
-    let Some(JSXAttributeValue::ExpressionContainer(container)) = &attribute.value else {
-        return true;
-    };
-    let Some(oxc_ast::ast::Expression::JSXElement(element)) = container
-        .expression
-        .as_expression()
-        .map(oxc_ast::ast::Expression::get_inner_expression)
-    else {
-        return true;
-    };
-    element
-        .opening_element
-        .attributes
-        .iter()
-        .any(|attribute| matches!(attribute, JSXAttributeItem::SpreadAttribute(_)))
-        || NAME_PROVIDING_ATTRIBUTES.iter().any(|attribute_name| {
-            has_jsx_prop_ignore_case(&element.opening_element, attribute_name).is_some()
         })
 }

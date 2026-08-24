@@ -422,6 +422,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "tanstack-start-no-navigate-in-render": 10,
   "tanstack-start-missing-scripts": 1,
   "activity-wraps-effect-heavy-subtree": 1,
+  "advanced-event-handler-refs": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1728,6 +1729,13 @@ async function buildAsyncReduce(items) {
 }
 const ActivityEffectChild = () => { useEffect(() => subscribe(), []); return null; };
 const ActivityEffectScreen = ({ open }) => <ReactActivity mode={open ? "visible" : "hidden"}><ActivityEffectChild /></ReactActivity>;
+function AdvancedEventHandlerRefsExample({ onResize }) {
+  useEffect(() => {
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [onResize]);
+  return null;
+}
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

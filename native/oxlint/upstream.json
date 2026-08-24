@@ -306,6 +306,7 @@
     "tanstack-start-no-navigate-in-render",
     "tanstack-start-missing-scripts",
     "activity-wraps-effect-heavy-subtree",
+    "advanced-event-handler-refs",
     "no-create-store-in-render",
     "react-compiler-no-manual-memoization",
     "no-giant-component",

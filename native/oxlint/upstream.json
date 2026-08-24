@@ -211,7 +211,8 @@
     "no-set-state-in-render",
     "js-cache-property-access",
     "no-effect-event-in-deps",
-    "js-async-reduce-without-awaited-acc"
+    "js-async-reduce-without-awaited-acc",
+    "react-router-no-invalid-splat-path"
   ],
   "delegatedRules": [
     {

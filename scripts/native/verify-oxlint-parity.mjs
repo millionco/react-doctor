@@ -300,6 +300,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "js-cache-property-access": 1,
   "no-effect-event-in-deps": 2,
   "js-async-reduce-without-awaited-acc": 2,
+  "react-router-no-invalid-splat-path": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1093,6 +1094,16 @@ function renderPalette(rows, theme, render, nextPalette) {
     render(theme.colors.secondary, row);
   }
 }
+const routerWithSplatPaths = makeBrowserRouter([
+  { path: "/files/*/edit", element: <Editor /> },
+  {
+    path: "/files/*",
+    children: [
+      { path: "details/*/edit", element: <DetailEditor /> },
+      { path: "details/*", element: <Details /> },
+    ],
+  },
+]);
 async function buildAsyncReduce(items) {
   const object = await items.reduce(async (accumulator, item) => {
     accumulator[item.id] = await getItem(item);

@@ -204,6 +204,8 @@ impl Rule for ${delegatedRule.struct} {
         "get-tailwind-visibility-effect",
         "get-tailwind-visibility-at-breakpoints",
         "get-static-string-expression",
+        "get-static-route-property",
+        "is-static-react-router-route-object",
         "resolve-static-jsx-attribute",
         "is-statically-hidden-from-screen-reader",
         "get-opening-element-tag-name",

@@ -57,6 +57,7 @@ const pluginPath = requireFromRepository.resolve("oxlint-plugin-react-doctor");
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-native-parity-"));
 const fixtureDirectory = path.join(temporaryDirectory, "production-fixtures");
 const fixturePath = path.join(fixtureDirectory, "app", "error.tsx");
+const inkWrapperFixturePath = path.join(fixtureDirectory, "app", "ink-wrappers.tsx");
 const reactRouterConfigFixturePath = path.join(fixtureDirectory, "react-router.config.ts");
 const globalErrorFixturePath = path.join(fixtureDirectory, "app", "global-error.tsx");
 const ogImageFixturePath = path.join(fixtureDirectory, "app", "opengraph-image.tsx");
@@ -230,7 +231,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-overloaded-hover-state": 1,
   "no-tailwind-layout-transition": 3,
   "anchor-has-content": 1,
-  "jsx-fragments": 1,
+  "jsx-fragments": 2,
   "jsx-no-constructed-context-values": 1,
   "prefer-es6-class": 1,
   "prefer-function-component": 7,
@@ -334,6 +335,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-document-start-view-transition": 1,
   "no-permanent-will-change": 2,
   "no-global-css-variable-animation": 1,
+  "ink-no-raw-text": 9,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -417,6 +419,7 @@ import * as MotionRuntime from "motion/react";
 import { delayRender, delayRender as holdRender } from "remotion";
 import * as Remotion from "remotion";
 import { Box as InkBox, measureElement, render as renderInk, renderToString as renderInkToString, Static as InkStatic, Text as InkText, useApp, useCursor, useFocusManager, useInput, useStdin } from "ink";
+import { ImportedInkLabel, ImportedInkPanel } from "./ink-wrappers";
 import { spawn as spawnChild } from "node:child_process";
 import { WebGPURenderer } from "three/webgpu";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
@@ -1395,6 +1398,16 @@ const branchInkUnmount = (shouldStop) => { const instance = renderInk(null); if 
 const separateInkOutputs = (firstOutput, secondOutput) => { renderInk(null, { stdout: firstOutput }); renderInk(null, { stdout: secondOutput }); };
 const repeatedInkOutput = (output) => { renderInk(null, { stdout: output }); renderInk(null, { stdout: output }); };
 const explicitDefaultInkOutput = () => { renderInk(null); renderInk(null, { stdout: process.stdout }); };
+const InkRawText = () => <InkBox>plain{"string"}{7}{\`template\`}</InkBox>;
+const InkFragmentRawText = () => <InkBox><>short</><React.Fragment>named</React.Fragment></InkBox>;
+const LocalInkUnsafe = ({ children }) => <InkBox>{children}</InkBox>;
+const LocalInkSafe = ({ children }) => <InkText>{children}</InkText>;
+const InkWrapperRawText = () => <InkBox><LocalInkUnsafe>bad</LocalInkUnsafe><LocalInkSafe>good</LocalInkSafe></InkBox>;
+const OuterInkUnsafe = ({ children }) => <InnerInkUnsafe>{children}</InnerInkUnsafe>;
+const InnerInkUnsafe = ({ children }) => <InkBox>{children}</InkBox>;
+const InkWrapperChainRawText = () => <OuterInkUnsafe>bad</OuterInkUnsafe>;
+const InkImportedRawText = () => <InkBox><ImportedInkPanel>bad</ImportedInkPanel><ImportedInkLabel>good</ImportedInkLabel></InkBox>;
+const InkShadowedImportedWrapper = (ImportedInkPanel) => <ImportedInkPanel>good</ImportedInkPanel>;
 async function buildAsyncReduce(items) {
   const object = await items.reduce(async (accumulator, item) => {
     accumulator[item.id] = await getItem(item);
@@ -1494,6 +1507,10 @@ try {
     JSON.stringify({ dependencies: { ink: "^7.1.0" } }),
   );
   fs.writeFileSync(fixturePath, fixture);
+  fs.writeFileSync(
+    inkWrapperFixturePath,
+    `import React from "react";\nimport { Box, Text } from "ink";\nexport const ImportedInkPanel = ({ children }) => <Box>{children}</Box>;\nexport const ImportedInkLabel = ({ children }) => <Text>{children}</Text>;\n`,
+  );
   fs.writeFileSync(
     reactRouterConfigFixturePath,
     "const config = { future: { v8_middleware: true, unstable_previewServerPrerendering: true } }; export default config;\n",

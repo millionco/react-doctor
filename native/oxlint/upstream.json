@@ -244,7 +244,8 @@
     "rendering-svg-precision",
     "no-document-start-view-transition",
     "no-permanent-will-change",
-    "no-global-css-variable-animation"
+    "no-global-css-variable-animation",
+    "ink-no-raw-text"
   ],
   "delegatedRules": [
     {

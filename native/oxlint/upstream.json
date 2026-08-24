@@ -235,7 +235,8 @@
     "ink-use-string-width-for-cursor",
     "ink-use-suspend-terminal",
     "ink-prefer-use-animation",
-    "ink-use-reactive-window-size"
+    "ink-use-reactive-window-size",
+    "no-event-handler"
   ],
   "delegatedRules": [
     {

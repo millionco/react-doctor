@@ -315,7 +315,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-no-layout-inside-text": 1,
   "ink-no-dom-host-elements": 1,
   "ink-no-dom-router": 1,
-  "no-event-trigger-state": 4,
+  "no-event-trigger-state": 5,
   "ink-static-is-append-only": 1,
   "ink-static-requires-key": 1,
   "ink-no-multiple-static": 1,
@@ -325,6 +325,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-use-suspend-terminal": 1,
   "ink-prefer-use-animation": 1,
   "ink-use-reactive-window-size": 1,
+  "no-event-handler": 11,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1121,6 +1122,108 @@ function RenderUsedEventTriggerStateFixture() {
   }, [visiblePayload]);
   return <button onClick={() => setVisiblePayload({ ok: true })}>{visiblePayload ? "Submitted" : "Submit visible registration"}</button>;
 }
+function EventHandlerEffectFixture() {
+  const [payload, setPayload] = useState(null);
+  useEffect(() => {
+    if (payload) submitData(payload);
+  }, [payload]);
+  return <button onClick={() => setPayload({ ok: true })}>Submit event payload</button>;
+}
+function EventHandlerEffectWithoutDependenciesFixture() {
+  const [payload, setPayload] = useState(null);
+  useEffect(() => {
+    if (payload) submitData(payload);
+  });
+  return <button onClick={() => setPayload({ ok: true })}>Submit dependency-free payload</button>;
+}
+function EventHandlerMemberGuardFixture() {
+  const [payload, setPayload] = useState(null);
+  useEffect(() => {
+    if (payload.name && payload.name.length > 0) submitData(payload);
+  }, [payload]);
+  return <button onClick={() => setPayload({ name: "Ada" })}>Submit named payload</button>;
+}
+function EventHandlerCleanupFixture({ subscribe, unsubscribe }) {
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    if (enabled) subscribe();
+    return () => unsubscribe();
+  }, [enabled, subscribe, unsubscribe]);
+  return <button onClick={() => setEnabled(true)}>Enable subscription</button>;
+}
+function EventHandlerMixedGuardFixture({ ready }) {
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    if (enabled && ready) submitData();
+  }, [enabled, ready]);
+  return <button onClick={() => setEnabled(true)}>Submit ready payload</button>;
+}
+function EventHandlerNestedGuardFixture() {
+  const [enabled, setEnabled] = useState(false);
+  const [ready] = useState(false);
+  useEffect(() => {
+    if (enabled) {
+      if (ready) submitData();
+    }
+  }, [enabled, ready]);
+  return <button onClick={() => setEnabled(true)}>Submit nested payload</button>;
+}
+function EventHandlerDeferredFrameFixture() {
+  const [sortField, setSortField] = useState("");
+  const onSort = React.useCallback((field) => setSortField(field), []);
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      if (sortField) applySort(getField(sortField));
+    });
+  }, [sortField]);
+  return <Grid onSort={onSort} />;
+}
+function EventHandlerStateSetterHelperFixture({ onChange }) {
+  const [focused, setFocused] = useState(false);
+  const [value, setValue] = useState(0);
+  const commitChange = () => {
+    setValue(1);
+    onChange(1);
+  };
+  useEffect(() => {
+    if (!focused) commitChange();
+  }, [focused]);
+  return <input value={value} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} />;
+}
+function EventHandlerPropInitializedStateFixture({ initialEnabled }) {
+  const [enabled, setEnabled] = useState(initialEnabled);
+  useEffect(() => {
+    if (enabled) submitData();
+  }, [enabled]);
+  return <button onClick={() => setEnabled(true)}>Enable prop-initialized submission</button>;
+}
+function EventHandlerUseCallbackFrameFixture() {
+  const [query, setQuery] = useState("");
+  const fetchMore = React.useCallback(() => {
+    if (query) fetchNextPage(query);
+  }, [query]);
+  useEffect(() => {
+    fetchMore();
+  }, [fetchMore]);
+  return <button onClick={() => setQuery("next")}>Fetch more</button>;
+}
+function EventHandlerAsyncFrameFixture() {
+  const [payload, setPayload] = useState(null);
+  const submitLater = async () => {
+    if (payload) submitData(payload);
+  };
+  useEffect(() => {
+    submitLater();
+  }, [submitLater]);
+  return <button onClick={() => setPayload({ ok: true })}>Submit later</button>;
+}
+function EventHandlerNestedTriggeredCallFixture() {
+  const [selected, setSelected] = useState(false);
+  useEffect(() => {
+    if (selected) client.subscribe(() => analytics.track("selected"));
+  }, [selected]);
+  return <button onClick={() => setSelected(true)}>Select</button>;
+}
 {
   class Map {}
   const shadowedMapState = useState(new Map());
@@ -1386,7 +1489,7 @@ try {
   );
   fs.writeFileSync(
     nonProductionFixturePath,
-    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; const smallTestInput = <input style={{ fontSize: 14 }} />; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js")); useMemo(() => value + 1, [value]); function TestCounter() { const [count, setCount] = useState(0); setTimeout(() => setCount(count + 1), 0); }`,
+    `const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; const smallTestInput = <input style={{ fontSize: 14 }} />; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js")); useMemo(() => value + 1, [value]); function TestCounter() { const [count, setCount] = useState(0); setTimeout(() => setCount(count + 1), 0); } function TestEventEffect() { const [payload, setPayload] = useState(null); useEffect(() => { if (payload) post(payload); }, [payload]); return { onClick: () => setPayload({ ok: true }) }; }`,
   );
   fs.writeFileSync(
     deepNonProductionFixturePath,
@@ -1730,6 +1833,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
       throw new Error(`no repositories found in corpus: ${resolvedCorpusDirectory}`);
     }
     let corpusDiagnosticCount = 0;
+    const corpusParityFailures = [];
     for (const repositoryName of corpusRepositories) {
       const repositoryPath = path.join(resolvedCorpusDirectory, repositoryName);
       const repositoryStockDiagnostics = runOxlint(
@@ -1753,11 +1857,15 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
         const nativeOnlyDiagnostics = repositoryNativeDiagnostics.filter(
           (diagnostic) => !stockDiagnosticKeys.has(JSON.stringify(diagnostic)),
         );
-        throw new Error(
+        corpusParityFailures.push(
           `native corpus parity failed for ${repositoryName}\nstock count=${repositoryStockDiagnostics.length}\nnative count=${repositoryNativeDiagnostics.length}\nstock only=${JSON.stringify(stockOnlyDiagnostics.slice(0, CORPUS_PARITY_DIFF_LIMIT), null, 2)}\nnative only=${JSON.stringify(nativeOnlyDiagnostics.slice(0, CORPUS_PARITY_DIFF_LIMIT), null, 2)}`,
         );
+        continue;
       }
       corpusDiagnosticCount += repositoryStockDiagnostics.length;
+    }
+    if (corpusParityFailures.length > 0) {
+      throw new Error(corpusParityFailures.join("\n\n"));
     }
     process.stdout.write(
       `Native corpus parity passed for ${corpusRepositories.length} repositories and ${corpusDiagnosticCount} diagnostics.\n`,

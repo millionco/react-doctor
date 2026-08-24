@@ -222,6 +222,8 @@ impl Rule for ${delegatedRule.struct} {
         "is-inside-statically-hidden-jsx-subtree",
         "collect-axis-shorthand-values",
         "has-responsive-axis-prefix",
+        "setter-is-written-only-from-event-handlers",
+        "state-setter-symbol-id",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

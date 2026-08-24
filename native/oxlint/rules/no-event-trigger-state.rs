@@ -1,12 +1,16 @@
 use oxc_ast::{
     AstKind,
-    ast::{BindingPattern, Expression, JSXAttributeName, Statement, UnaryOperator},
+    ast::{BindingPattern, Expression, Statement, UnaryOperator},
 };
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_span::GetSpan;
 
-use crate::{AstNode, context::LintContext, rule::Rule};
+use crate::{
+    AstNode,
+    context::{ContextHost, LintContext},
+    rule::Rule,
+};
 
 const EVENT_TRIGGER_EFFECT_HOOKS: [&str; 3] =
     ["useEffect", "useInsertionEffect", "useLayoutEffect"];
@@ -32,7 +36,6 @@ const EVENT_TRIGGER_MEMBER_METHODS: [&str; 8] = [
 const EVENT_TRIGGER_NAVIGATION_METHODS: [&str; 2] = ["push", "replace"];
 const EVENT_TRIGGER_NAVIGATION_RECEIVERS: [&str; 5] =
     ["router", "navigation", "navigator", "history", "location"];
-const MAX_EVENT_HANDLER_PROOF_DEPTH: usize = 8;
 
 #[derive(Debug, Default, Clone)]
 pub struct NoEventTriggerState;
@@ -47,6 +50,10 @@ declare_oxc_lint!(
 );
 
 impl Rule for NoEventTriggerState {
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        !is_non_production_file(ctx)
+    }
+
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
         let AstKind::CallExpression(effect_call) = node.kind() else {
             return;
@@ -115,35 +122,6 @@ impl Rule for NoEventTriggerState {
             .with_label(effect_call.span),
         );
     }
-}
-
-fn state_setter_symbol_id(
-    state_symbol_id: oxc_semantic::SymbolId,
-    ctx: &LintContext<'_>,
-) -> Option<oxc_semantic::SymbolId> {
-    let declaration = ctx.symbol_declaration(state_symbol_id);
-    let AstKind::VariableDeclarator(declarator) = declaration.kind() else {
-        return None;
-    };
-    let BindingPattern::ArrayPattern(pattern) = &declarator.id else {
-        return None;
-    };
-    let Some(BindingPattern::BindingIdentifier(state_identifier)) =
-        pattern.elements.first().and_then(Option::as_ref)
-    else {
-        return None;
-    };
-    let Some(BindingPattern::BindingIdentifier(setter_identifier)) =
-        pattern.elements.get(1).and_then(Option::as_ref)
-    else {
-        return None;
-    };
-    let Some(Expression::CallExpression(use_state_call)) = &declarator.init else {
-        return None;
-    };
-    (state_identifier.symbol_id() == state_symbol_id
-        && is_react_hook_call(use_state_call, &["useState"], ctx))
-    .then(|| setter_identifier.symbol_id())
 }
 
 fn effect_callback<'a>(
@@ -292,225 +270,6 @@ fn is_render_reference(
         }
     }
     false
-}
-
-fn setter_is_written_only_from_event_handlers(
-    setter_symbol_id: oxc_semantic::SymbolId,
-    component_node_id: oxc_semantic::NodeId,
-    ctx: &LintContext<'_>,
-) -> bool {
-    let mut has_writer = false;
-    for reference in ctx.scoping().get_resolved_references(setter_symbol_id) {
-        let reference_node = ctx.nodes().get_node(reference.node_id());
-        if !is_setter_writer_usage(reference_node, component_node_id, ctx) {
-            continue;
-        }
-        has_writer = true;
-        if !is_inside_proven_event_handler(reference_node.id(), component_node_id, true, 0, ctx) {
-            return false;
-        }
-    }
-    has_writer
-}
-
-fn is_setter_writer_usage(
-    node: &AstNode<'_>,
-    component_node_id: oxc_semantic::NodeId,
-    ctx: &LintContext<'_>,
-) -> bool {
-    let parent = ctx.nodes().parent_node(node.id());
-    if matches!(
-        parent.kind(),
-        AstKind::CallExpression(call_expression)
-            if call_expression.callee.span() == node.span()
-                || call_expression.arguments.iter().any(|argument| {
-                    argument
-                        .as_expression()
-                        .is_some_and(|expression| expression.span() == node.span())
-                })
-    ) {
-        return true;
-    }
-    is_inside_inline_event_handler(node.id(), component_node_id, ctx)
-}
-
-fn is_inside_proven_event_handler(
-    node_id: oxc_semantic::NodeId,
-    component_node_id: oxc_semantic::NodeId,
-    allow_one_call_frame: bool,
-    proof_depth: usize,
-    ctx: &LintContext<'_>,
-) -> bool {
-    if proof_depth >= MAX_EVENT_HANDLER_PROOF_DEPTH {
-        return false;
-    }
-    if is_inside_inline_event_handler(node_id, component_node_id, ctx) {
-        return true;
-    }
-    let Some(function_node_id) = enclosing_function_node_id(node_id, component_node_id, ctx) else {
-        return false;
-    };
-    if function_is_wired_only_to_event_handlers(
-        function_node_id,
-        component_node_id,
-        proof_depth + 1,
-        ctx,
-    ) {
-        return true;
-    }
-    allow_one_call_frame
-        && function_is_called_only_from_event_handlers(
-            function_node_id,
-            component_node_id,
-            proof_depth + 1,
-            ctx,
-        )
-}
-
-fn enclosing_function_node_id(
-    node_id: oxc_semantic::NodeId,
-    component_node_id: oxc_semantic::NodeId,
-    ctx: &LintContext<'_>,
-) -> Option<oxc_semantic::NodeId> {
-    ctx.nodes()
-        .ancestors(node_id)
-        .take_while(|ancestor| ancestor.id() != component_node_id)
-        .find_map(|ancestor| {
-            matches!(
-                ancestor.kind(),
-                AstKind::Function(_) | AstKind::ArrowFunctionExpression(_)
-            )
-            .then(|| ancestor.id())
-        })
-}
-
-fn function_symbol_id(
-    function_node_id: oxc_semantic::NodeId,
-    ctx: &LintContext<'_>,
-) -> Option<oxc_semantic::SymbolId> {
-    let function_node = ctx.nodes().get_node(function_node_id);
-    if let AstKind::Function(function) = function_node.kind()
-        && function.is_function_declaration()
-    {
-        return function
-            .id
-            .as_ref()
-            .map(|identifier| identifier.symbol_id());
-    }
-    let parent = ctx.nodes().parent_node(function_node_id);
-    let AstKind::VariableDeclarator(declarator) = parent.kind() else {
-        return None;
-    };
-    let BindingPattern::BindingIdentifier(identifier) = &declarator.id else {
-        return None;
-    };
-    Some(identifier.symbol_id())
-}
-
-fn function_is_wired_only_to_event_handlers(
-    function_node_id: oxc_semantic::NodeId,
-    component_node_id: oxc_semantic::NodeId,
-    proof_depth: usize,
-    ctx: &LintContext<'_>,
-) -> bool {
-    let Some(function_symbol_id) = function_symbol_id(function_node_id, ctx) else {
-        return false;
-    };
-    let mut is_wired = false;
-    for reference in ctx.scoping().get_resolved_references(function_symbol_id) {
-        if is_inside_inline_event_handler(reference.node_id(), component_node_id, ctx) {
-            is_wired = true;
-            continue;
-        }
-        let reference_node = ctx.nodes().get_node(reference.node_id());
-        let parent = ctx.nodes().parent_node(reference.node_id());
-        let is_call = matches!(
-            parent.kind(),
-            AstKind::CallExpression(call_expression)
-                if call_expression.callee.span() == reference_node.span()
-        );
-        if is_call
-            && (enclosing_function_node_id(parent.id(), component_node_id, ctx)
-                == Some(function_node_id)
-                || is_inside_proven_event_handler(
-                    parent.id(),
-                    component_node_id,
-                    false,
-                    proof_depth,
-                    ctx,
-                ))
-        {
-            continue;
-        }
-        return false;
-    }
-    is_wired
-}
-
-fn function_is_called_only_from_event_handlers(
-    function_node_id: oxc_semantic::NodeId,
-    component_node_id: oxc_semantic::NodeId,
-    proof_depth: usize,
-    ctx: &LintContext<'_>,
-) -> bool {
-    let Some(function_symbol_id) = function_symbol_id(function_node_id, ctx) else {
-        return false;
-    };
-    let mut has_call = false;
-    for reference in ctx.scoping().get_resolved_references(function_symbol_id) {
-        let reference_node = ctx.nodes().get_node(reference.node_id());
-        let parent = ctx.nodes().parent_node(reference.node_id());
-        if !matches!(
-            parent.kind(),
-            AstKind::CallExpression(call_expression)
-                if call_expression.callee.span() == reference_node.span()
-        ) {
-            continue;
-        }
-        has_call = true;
-        if !is_inside_proven_event_handler(parent.id(), component_node_id, false, proof_depth, ctx)
-        {
-            return false;
-        }
-    }
-    has_call
-}
-
-fn is_inside_inline_event_handler(
-    node_id: oxc_semantic::NodeId,
-    component_node_id: oxc_semantic::NodeId,
-    ctx: &LintContext<'_>,
-) -> bool {
-    for ancestor in ctx.nodes().ancestors(node_id) {
-        if ancestor.id() == component_node_id {
-            return false;
-        }
-        if let AstKind::JSXAttribute(attribute) = ancestor.kind()
-            && let JSXAttributeName::Identifier(identifier) = &attribute.name
-            && identifier.name.starts_with("on")
-            && identifier
-                .name
-                .as_bytes()
-                .get(2)
-                .is_some_and(u8::is_ascii_uppercase)
-        {
-            return true;
-        }
-        if let AstKind::ObjectProperty(property) = ancestor.kind()
-            && !property.computed
-            && property
-                .key
-                .static_name()
-                .is_some_and(|name| is_event_handler_name(name.as_ref()))
-        {
-            return true;
-        }
-    }
-    false
-}
-
-fn is_event_handler_name(name: &str) -> bool {
-    name.starts_with("on") && name.as_bytes().get(2).is_some_and(u8::is_ascii_uppercase)
 }
 
 fn find_event_trigger_side_effect(

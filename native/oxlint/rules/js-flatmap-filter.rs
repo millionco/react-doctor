@@ -12,7 +12,7 @@ use crate::{
 };
 
 const SMALL_LITERAL_ARRAY_MAX_ELEMENTS: usize = 8;
-const MESSAGE: &str = "This loops over your list twice because .map().filter(Boolean) makes two passes, so use .flatMap() to change & drop items in one pass";
+const MESSAGE: &str = "This .map().filter(Boolean) chain creates an intermediate array and traverses it again; if this is a measured hot path, combine the transform and truthy check with .reduce() or for...of";
 
 #[derive(Debug, Default, Clone)]
 pub struct JsFlatmapFilter;

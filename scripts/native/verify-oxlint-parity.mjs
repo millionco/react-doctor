@@ -356,7 +356,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-ctrl-c-handler-requires-exit-option": 1,
   "ink-no-live-hooks-in-render-to-string": 1,
   "ink-no-repeated-render": 4,
-  "hook-use-state": 23,
+  "hook-use-state": 24,
   "rendering-svg-precision": 1,
   "no-document-start-view-transition": 1,
   "no-permanent-will-change": 2,
@@ -419,6 +419,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "tanstack-start-missing-head-content": 1,
   "tanstack-start-no-useeffect-fetch": 8,
   "tanstack-start-get-mutation": 11,
+  "tanstack-start-no-navigate-in-render": 10,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1868,6 +1869,30 @@ createServerFn().handler(() => fetch("/api/quoted-method", { "method": "POST" })
 createServerFn().handler(namedServerHandler);
 createServerFn().handler(() => db["update"]({ active: true }));
 otherFactory().handler(() => db.update({ active: true }));
+function DirectRenderNavigate() { navigate({ to: "/direct" }); return null; }
+function SynchronousIterationNavigate() { items.forEach((item) => navigate({ to: item.path })); return null; }
+function LazyStateNavigate() { useState(() => { navigate({ to: "/state" }); return 0; }); return null; }
+function SyncExternalStoreNavigate() { useSyncExternalStore(() => { navigate({ to: "/store" }); return value; }); return null; }
+function TransitionNavigate() { startTransition(() => navigate({ to: "/transition" })); return null; }
+function LocalHelperNavigate() { const go = () => navigate({ to: "/helper" }); go(); return null; }
+function IifeNavigate() { (() => navigate({ to: "/iife" }))(); return null; }
+function ComputedPromiseNavigate() { doThing()[then](() => navigate({ to: "/computed-promise" })); return null; }
+function MemberCustomHookNavigate() { hooks.useInterval(() => navigate({ to: "/member-hook" }), 1000); return null; }
+function SecondArgumentCustomHookNavigate() { useInterval(1000, () => navigate({ to: "/second-argument" })); return null; }
+function DeferredEffectNavigate() { useEffect(() => navigate({ to: "/effect" }), []); return null; }
+function DeferredLayoutEffectNavigate() { useLayoutEffect(() => navigate({ to: "/layout-effect" }), []); return null; }
+function DeferredMemoNavigate() { useMemo(() => navigate({ to: "/memo" }), []); return null; }
+function DeferredCallbackNavigate() { useCallback(() => navigate({ to: "/callback" }), []); return null; }
+function CustomHookCallbackNavigate() { useInterval(() => navigate({ to: "/custom-hook" }), 1000); return null; }
+function PromiseCallbackNavigate() { doThing().then(() => navigate({ to: "/promise" })); return null; }
+function InlineHandlerNavigate() { return <button onClick={() => navigate({ to: "/inline" })}>Open dashboard</button>; }
+function ObjectHandlerNavigate() { useForm({ "onSubmit": () => navigate({ to: "/submit" }) }); return null; }
+function NamedHandlerNavigate() { const handleSubmit = () => navigate({ to: "/named" }); return handleSubmit; }
+function WiredHandlerNavigate() { const goHome = () => navigate({ to: "/wired" }); return <button onClick={goHome}>Open dashboard</button>; }
+export const useExplicitNavigate = () => { return () => navigate({ to: "/explicit-return" }); };
+export const useImplicitNavigate = () => () => navigate({ to: "/implicit-return" });
+function ZeroArgumentNavigate() { navigate(); return null; }
+function MemberNavigate() { router.navigate({ to: "/member" }); return null; }
 `,
   );
   fs.writeFileSync(

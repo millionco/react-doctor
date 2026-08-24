@@ -861,6 +861,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "tanstack-start-missing-head-content",
   "tanstack-start-no-useeffect-fetch",
   "tanstack-start-get-mutation",
+  "tanstack-start-no-navigate-in-render",
   "no-create-store-in-render",
   "react-compiler-no-manual-memoization",
   "no-giant-component",

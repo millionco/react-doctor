@@ -228,6 +228,8 @@ impl Rule for ${delegatedRule.struct} {
         "state-setter-symbol-id",
         "remotion-render-function-has-evidence",
         "run-remotion-css-time-rule",
+        "get-static-motion-transition-objects",
+        "three-constructor-name",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

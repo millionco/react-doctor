@@ -247,7 +247,10 @@
     "no-global-css-variable-animation",
     "ink-no-raw-text",
     "remotion-no-css-animation",
-    "remotion-no-css-transition"
+    "remotion-no-css-transition",
+    "no-conflicting-spring-options",
+    "three-no-shadows-on-unsupported-light",
+    "three-no-async-animation-loop"
   ],
   "delegatedRules": [
     {

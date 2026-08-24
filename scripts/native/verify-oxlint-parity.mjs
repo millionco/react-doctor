@@ -338,6 +338,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-no-raw-text": 9,
   "remotion-no-css-animation": 3,
   "remotion-no-css-transition": 4,
+  "no-conflicting-spring-options": 2,
+  "three-no-shadows-on-unsupported-light": 1,
+  "three-no-async-animation-loop": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -424,6 +427,7 @@ import { Video as RemotionVideo } from "@remotion/media";
 import { Box as InkBox, measureElement, render as renderInk, renderToString as renderInkToString, Static as InkStatic, Text as InkText, useApp, useCursor, useFocusManager, useInput, useStdin } from "ink";
 import { ImportedInkLabel, ImportedInkPanel } from "./ink-wrappers";
 import { spawn as spawnChild } from "node:child_process";
+import * as ThreeRuntime from "three";
 import { WebGPURenderer } from "three/webgpu";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import Head from "next/head";
@@ -1254,6 +1258,17 @@ const RemotionCssTimeFixture = () => {
   return <><div className="motion-safe:animate-spin hover:transition-colors" style={{ animationName: "spin", animation: "fade 1s", transition: "all 1s", transitionProperty: "opacity" }} /><div className="animate-none transition-none" style={{ animation: "none", animationName: \` NONE \`, transition: "none", transitionProperty: \` NONE \` }} /></>;
 };
 const RemotionMediaTransitionFixture = () => <RemotionVideo style={{ transition: "opacity 1s" }} />;
+const ConflictingMotionSpringFixture = () => <><MotionRuntime.motion.div transition={{ type: "spring", stiffness: 200, duration: 0.4 }} /><MotionRuntime.motion.div animate={{ x: 100, transition: { type: "spring", mass: 1, bounce: 0.3 } }} /></>;
+const unsupportedShadowLight = new ThreeRuntime.AmbientLight();
+unsupportedShadowLight.castShadow = true;
+const asyncAnimationRenderer = new ThreeRuntime.WebGLRenderer();
+asyncAnimationRenderer.setAnimationLoop(async () => updateFrame());
+async function AsyncThreeAnimationFrameFixture() {
+  await updateFrame();
+  asyncAnimationRenderer.render(scene, camera);
+  requestAnimationFrame(AsyncThreeAnimationFrameFixture);
+}
+requestAnimationFrame(AsyncThreeAnimationFrameFixture);
 {
   class Map {}
   const shadowedMapState = useState(new Map());

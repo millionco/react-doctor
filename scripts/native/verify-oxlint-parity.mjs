@@ -137,7 +137,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "rn-prefer-pressable": 1,
   "rn-prefer-reanimated": 2,
   "use-lazy-motion": 1,
-  "html-has-lang": 1,
+  "html-has-lang": 3,
   "no-access-key": 1,
   "no-clone-element": 1,
   "no-is-mounted": 1,
@@ -260,7 +260,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-fragments": 2,
   "jsx-no-constructed-context-values": 1,
   "prefer-es6-class": 1,
-  "prefer-function-component": 7,
+  "prefer-function-component": 8,
   "aria-activedescendant-has-tabindex": 1,
   "aria-role": 5,
   "anchor-ambiguous-text": 2,
@@ -420,6 +420,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "tanstack-start-no-useeffect-fetch": 8,
   "tanstack-start-get-mutation": 11,
   "tanstack-start-no-navigate-in-render": 10,
+  "tanstack-start-missing-scripts": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1898,14 +1899,27 @@ function MemberNavigate() { router.navigate({ to: "/member" }); return null; }
   fs.writeFileSync(
     tanstackRootFixturePath,
     `import React from "react";
-export const RootDocument = () => <html lang="en"><head><meta charSet="utf-8" /></head><body><main>Root</main></body></html>;`,
+export const Route = createRootRoute({
+  component: () => <html lang="en"><head><meta charSet="utf-8" /></head><body><main>Root</main></body></html>,
+});`,
   );
   fs.mkdirSync(path.dirname(tanstackSafeRootFixturePath), { recursive: true });
   fs.writeFileSync(
     tanstackSafeRootFixturePath,
     `import React from "react";
+import * as TanStackRouter from "@tanstack/react-router";
 import { HeadContent as AppHead } from "@tanstack/react-router";
-export const RootDocument = () => <html lang="en"><head><AppHead /></head><body><main>Safe root</main></body></html>;`,
+const RouterScripts = TanStackRouter.Scripts;
+const AppScripts = () => <RouterScripts />;
+const AppShell = () => <AppScripts />;
+const RootDocument = () => <html lang="en"><head><AppHead /></head><body><main>Safe root</main><AppShell /></body></html>;
+class ClassRoot extends React.Component { render() { return <html><body><TanStackRouter.Scripts /></body></html>; } }
+const ValueRoot = () => { const scripts = <RouterScripts />; return <html><body>{scripts}</body></html>; };
+const routeOptions = { component: RootDocument };
+const makeRootRoute = TanStackRouter.createRootRoute;
+export const Route = makeRootRoute(routeOptions);
+export const ClassRoute = TanStackRouter.createRootRoute({ component: ClassRoot });
+export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot });`,
   );
   fs.writeFileSync(
     inkWrapperFixturePath,

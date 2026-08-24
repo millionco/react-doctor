@@ -180,6 +180,7 @@ impl Rule for ${delegatedRule.struct} {
         "imported-module-api-matches",
         "resolve-identifier-import",
         "identifier-initializer",
+        "module-jsx-tree-index",
         "is-react-es6-component",
         "get-static-jsx-attribute-string-values",
         "resolve-local-react-callback",

@@ -313,6 +313,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-no-focus-in-render": 1,
   "ink-no-direct-raw-mode": 1,
   "ink-no-layout-inside-text": 1,
+  "ink-no-dom-host-elements": 1,
+  "ink-no-dom-router": 1,
   "no-event-trigger-state": 4,
 };
 const BENCHMARK_FILE_COUNT = 100;
@@ -367,7 +369,7 @@ import { createContext as makeTrackedContext } from "react-tracked";
 import { useQuery as useItemsQuery } from "@tanstack/react-query";
 import * as TanstackQuery from "@tanstack/react-query";
 import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, createBrowserRouter as makeBrowserRouter, createHashRouter as makeHashRouter } from "react-router";
-import { useNavigate as useRouteNavigate } from "react-router-dom";
+import { Link as DomLink, useNavigate as useRouteNavigate } from "react-router-dom";
 import { runOnJS as callOnJavaScript, useWorkletCallback as makeLegacyWorklet, withSpring as makeSpring } from "react-native-reanimated";
 import * as ReanimatedRuntime from "react-native-reanimated";
 import { useFrame as useRenderFrame } from "@react-three/fiber";
@@ -1224,6 +1226,8 @@ function InkRawModeChangedDuringRender() {
   return null;
 }
 const InkLayoutInsideText = () => <InkText><InkBox /></InkText>;
+const InkDomHost = () => <InkBox><div /></InkBox>;
+const InkDomRouter = () => <InkBox><DomLink to="/" /></InkBox>;
 async function buildAsyncReduce(items) {
   const object = await items.reduce(async (accumulator, item) => {
     accumulator[item.id] = await getItem(item);

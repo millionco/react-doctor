@@ -782,6 +782,8 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "ink-no-focus-in-render",
   "ink-no-direct-raw-mode",
   "ink-no-layout-inside-text",
+  "ink-no-dom-host-elements",
+  "ink-no-dom-router",
   "no-event-trigger-state",
 ]);
 

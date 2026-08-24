@@ -224,6 +224,8 @@
     "ink-no-focus-in-render",
     "ink-no-direct-raw-mode",
     "ink-no-layout-inside-text",
+    "ink-no-dom-host-elements",
+    "ink-no-dom-router",
     "no-event-trigger-state"
   ],
   "delegatedRules": [

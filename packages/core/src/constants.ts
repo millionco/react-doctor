@@ -796,6 +796,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "ink-use-reactive-window-size",
   "no-event-handler",
   "ink-ctrl-c-handler-requires-exit-option",
+  "ink-no-live-hooks-in-render-to-string",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

@@ -300,6 +300,7 @@
     "tanstack-start-no-anchor-element",
     "tanstack-start-loader-parallel-fetch",
     "tanstack-start-redirect-in-try-catch",
+    "tanstack-start-missing-head-content",
     "no-create-store-in-render",
     "react-compiler-no-manual-memoization",
     "no-giant-component",

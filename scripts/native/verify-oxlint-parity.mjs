@@ -59,6 +59,14 @@ const fixtureDirectory = path.join(temporaryDirectory, "production-fixtures");
 const fixturePath = path.join(fixtureDirectory, "app", "error.tsx");
 const motionConfigFixturePath = path.join(fixtureDirectory, "app", "layout.tsx");
 const tanstackRouteFixturePath = path.join(fixtureDirectory, "src", "routes", "index.tsx");
+const tanstackRootFixturePath = path.join(fixtureDirectory, "src", "routes", "__root.tsx");
+const tanstackSafeRootFixturePath = path.join(
+  fixtureDirectory,
+  "src",
+  "routes",
+  "safe",
+  "__root.tsx",
+);
 const inkWrapperFixturePath = path.join(fixtureDirectory, "app", "ink-wrappers.tsx");
 const reactRouterConfigFixturePath = path.join(fixtureDirectory, "react-router.config.ts");
 const globalErrorFixturePath = path.join(fixtureDirectory, "app", "global-error.tsx");
@@ -408,6 +416,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "tanstack-start-no-anchor-element": 2,
   "tanstack-start-loader-parallel-fetch": 5,
   "tanstack-start-redirect-in-try-catch": 4,
+  "tanstack-start-missing-head-content": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1826,6 +1835,18 @@ async function rethrownRedirect() { try { throw redirect({ to: "/login" }); } ca
 function deferredRedirect() { try { setTimeout(() => { throw redirect({ to: "/login" }); }); } catch (error) { console.error(error); } }
 async function outerSwallowedRedirect() { try { try { throw redirect({ to: "/done" }); } catch (error) { throw error; } } catch (outerError) { console.error(outerError); } }
 `,
+  );
+  fs.writeFileSync(
+    tanstackRootFixturePath,
+    `import React from "react";
+export const RootDocument = () => <html lang="en"><head><meta charSet="utf-8" /></head><body><main>Root</main></body></html>;`,
+  );
+  fs.mkdirSync(path.dirname(tanstackSafeRootFixturePath), { recursive: true });
+  fs.writeFileSync(
+    tanstackSafeRootFixturePath,
+    `import React from "react";
+import { HeadContent as AppHead } from "@tanstack/react-router";
+export const RootDocument = () => <html lang="en"><head><AppHead /></head><body><main>Safe root</main></body></html>;`,
   );
   fs.writeFileSync(
     inkWrapperFixturePath,

@@ -307,6 +307,7 @@
     "tanstack-start-missing-scripts",
     "activity-wraps-effect-heavy-subtree",
     "advanced-event-handler-refs",
+    "nextjs-no-redirect-in-try-catch",
     "no-create-store-in-render",
     "react-compiler-no-manual-memoization",
     "no-giant-component",

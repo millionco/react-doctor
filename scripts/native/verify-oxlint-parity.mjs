@@ -423,6 +423,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "tanstack-start-missing-scripts": 1,
   "activity-wraps-effect-heavy-subtree": 1,
   "advanced-event-handler-refs": 1,
+  "nextjs-no-redirect-in-try-catch": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -479,6 +480,7 @@ const fixture = `
 import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
+import { redirect as nextRedirect } from "next/navigation";
 import React, { Activity as ReactActivity, Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef, ViewTransition, memo } from "react";
 import ReactDOM from "react-dom";
 import type { useMemo as PreactTypeOnlyHook } from "react";
@@ -1735,6 +1737,13 @@ function AdvancedEventHandlerRefsExample({ onResize }) {
     return () => window.removeEventListener("resize", onResize);
   }, [onResize]);
   return null;
+}
+function swallowedNextRedirect() {
+  try {
+    nextRedirect("/login");
+  } catch (error) {
+    console.error(error);
+  }
 }
 `;
 

@@ -507,6 +507,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-dark-mode-glow": 1,
   "no-decorative-grid-background": 1,
   "no-decorative-pulse": 1,
+  "no-decorative-radial-spotlight": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1172,6 +1173,7 @@ const autoScrollingContent = <motion.div animate={{ x: ["0%", "-50%"] }} transit
 const darkModeGlow = <div style={{ backgroundColor: "#111", boxShadow: "0 0 60px rgba(139, 92, 246, 0.8)" }} />;
 const decorativeGridBackground = <section style={{ backgroundImage: "linear-gradient(to right, #aaa 1px, transparent 1px), linear-gradient(to bottom, #aaa 1px, transparent 1px)", backgroundSize: "24px 24px" }} />;
 const decorativePulse = <span className="animate-pulse">New feature</span>;
+const decorativeRadialSpotlight = <div style={{ width: 320, height: 180, backgroundImage: "radial-gradient(circle, rgb(37 99 235 / 25%), transparent 70%)" }} />;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

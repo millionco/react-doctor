@@ -278,14 +278,14 @@ fn hairline_gradient_axis(body: &str) -> Option<&'static str> {
 }
 
 fn fixed_pixel_tile_dimension_count(value: &str, is_shorthand: bool) -> usize {
-    let Some(layers) = split_decorative_grid_css_top_level(value, ',') else {
+    let Some(layers) = split_css_top_level(value, ',') else {
         return 0;
     };
     let mut maximum_dimension_count = 0;
     for layer in layers {
         let mut size_value = layer;
         if is_shorthand {
-            let Some(parts) = split_decorative_grid_css_top_level(layer, '/') else {
+            let Some(parts) = split_css_top_level(layer, '/') else {
                 continue;
             };
             if parts.len() != 2 || parts[1].is_empty() {
@@ -314,34 +314,6 @@ fn fixed_pixel_tile_dimension_count(value: &str, is_shorthand: bool) -> usize {
         maximum_dimension_count = maximum_dimension_count.max(usize::from(second_dimension.is_some()) + 1);
     }
     maximum_dimension_count
-}
-
-fn split_decorative_grid_css_top_level(value: &str, separator: char) -> Option<Vec<&str>> {
-    let mut parts = Vec::new();
-    let mut parenthesis_depth = 0_i32;
-    let mut part_start = 0;
-    for (index, character) in value.char_indices() {
-        if character == '(' {
-            parenthesis_depth += 1;
-        }
-        if character == ')' {
-            parenthesis_depth -= 1;
-            if parenthesis_depth < 0 {
-                return None;
-            }
-        }
-        if character == separator && parenthesis_depth == 0 {
-            parts.push(
-                value[part_start..index].trim_matches(|character| is_js_whitespace(character)),
-            );
-            part_start = index + character.len_utf8();
-        }
-    }
-    if parenthesis_depth != 0 {
-        return None;
-    }
-    parts.push(value[part_start..].trim_matches(|character| is_js_whitespace(character)));
-    Some(parts)
 }
 
 enum EffectiveTailwindUtility<'a> {

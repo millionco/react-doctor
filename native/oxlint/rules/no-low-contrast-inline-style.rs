@@ -285,8 +285,8 @@ fn parse_opaque_gradient_stops(raw: &str) -> Option<Vec<Rgb>> {
     if value.to_lowercase().contains("var(") || !is_gradient_function(value) {
         return None;
     }
-    let contents = css_function_contents(value)?;
-    let mut parts = split_css_top_level(contents)?;
+    let contents = get_css_function_contents(value)?;
+    let mut parts = split_css_top_level(contents, ',')?;
     if parts.len() < 2 {
         return None;
     }
@@ -304,55 +304,6 @@ fn is_gradient_function(value: &str) -> bool {
     ["linear-gradient(", "radial-gradient(", "conic-gradient("]
         .iter()
         .any(|prefix| lower.starts_with(prefix))
-}
-
-fn css_function_contents(value: &str) -> Option<&str> {
-    let opening = value.find('(')?;
-    if !value.ends_with(')') {
-        return None;
-    }
-    let mut depth = 0_i32;
-    for (index, character) in value
-        .char_indices()
-        .skip_while(|(index, _)| *index < opening)
-    {
-        if character == '(' {
-            depth += 1;
-        }
-        if character == ')' {
-            depth -= 1;
-        }
-        if depth < 0 || depth == 0 && index != value.len() - 1 {
-            return None;
-        }
-    }
-    (depth == 0).then_some(&value[opening + 1..value.len() - 1])
-}
-
-fn split_css_top_level(value: &str) -> Option<Vec<&str>> {
-    let mut parts = Vec::new();
-    let mut depth = 0_i32;
-    let mut start = 0;
-    for (index, character) in value.char_indices() {
-        if character == '(' {
-            depth += 1;
-        }
-        if character == ')' {
-            depth -= 1;
-            if depth < 0 {
-                return None;
-            }
-        }
-        if character == ',' && depth == 0 {
-            parts.push(value[start..index].trim_matches(is_js_whitespace));
-            start = index + 1;
-        }
-    }
-    if depth != 0 {
-        return None;
-    }
-    parts.push(value[start..].trim_matches(is_js_whitespace));
-    Some(parts)
 }
 
 fn parse_opaque_gradient_stop(stop: &str) -> Option<Rgb> {

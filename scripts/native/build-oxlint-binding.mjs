@@ -175,6 +175,8 @@ impl Rule for ${delegatedRule.struct} {
         "is-static-jsx-tree-root",
         "get-static-jsx-tree-opening-elements",
         "is-js-whitespace",
+        "get-css-function-contents",
+        "split-css-top-level",
         "motion-react-api-path-matches",
         "is-render-phase-component-or-hook",
         "component-renders-ink",

@@ -279,7 +279,7 @@ fn is_tailwind_animation_utility(utility: &str) -> bool {
 }
 
 fn is_infinite_cursor_animation(value: &str) -> bool {
-    split_decorative_pulse_css_top_level(value, ',').is_some_and(|segments| {
+    split_css_top_level(value, ',').is_some_and(|segments| {
         segments.len() == 1
             && INFINITE_ANIMATION_TOKEN_PATTERN.is_match(value)
             && has_cursor_animation_name(value)
@@ -288,34 +288,6 @@ fn is_infinite_cursor_animation(value: &str) -> bool {
 
 fn has_cursor_animation_name(value: &str) -> bool {
     CURSOR_ANIMATION_NAME_PATTERN.is_match(&value.replace("\\_", "_"))
-}
-
-fn split_decorative_pulse_css_top_level(value: &str, separator: char) -> Option<Vec<&str>> {
-    let mut parts = Vec::new();
-    let mut parenthesis_depth = 0_i32;
-    let mut part_start = 0;
-    for (index, character) in value.char_indices() {
-        if character == '(' {
-            parenthesis_depth += 1;
-        }
-        if character == ')' {
-            parenthesis_depth -= 1;
-            if parenthesis_depth < 0 {
-                return None;
-            }
-        }
-        if character == separator && parenthesis_depth == 0 {
-            parts.push(
-                value[part_start..index].trim_matches(|character| is_js_whitespace(character)),
-            );
-            part_start = index + character.len_utf8();
-        }
-    }
-    if parenthesis_depth != 0 {
-        return None;
-    }
-    parts.push(value[part_start..].trim_matches(|character| is_js_whitespace(character)));
-    Some(parts)
 }
 
 fn has_cursor_semantic_exemption<'a>(

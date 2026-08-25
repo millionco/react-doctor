@@ -372,7 +372,8 @@
     "no-auto-scrolling-content",
     "no-dark-mode-glow",
     "no-decorative-grid-background",
-    "no-decorative-pulse"
+    "no-decorative-pulse",
+    "no-decorative-radial-spotlight"
   ],
   "delegatedRules": [
     {

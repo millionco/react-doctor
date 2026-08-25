@@ -361,7 +361,8 @@
     "no-excessive-pill-treatment",
     "no-empty-card-shell",
     "no-dynamic-tailwind-class-fragment",
-    "no-ease-in-motion"
+    "no-ease-in-motion",
+    "no-clipped-overlay"
   ],
   "delegatedRules": [
     {

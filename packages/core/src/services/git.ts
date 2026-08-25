@@ -473,7 +473,12 @@ export class Git extends Context.Service<
           const symref = yield* runGit(directory, ["symbolic-ref", "refs/remotes/origin/HEAD"]);
           if (symref.status === 0) {
             const trimmed = trimOrNull(symref.stdout);
-            if (trimmed !== null) return trimmed.replace("refs/remotes/origin/", "");
+            if (trimmed !== null) {
+              const branchName = trimmed.replace("refs/remotes/origin/", "");
+              const remoteBranch = `origin/${branchName}`;
+              const doesRemoteBranchExist = yield* branchExists(directory, remoteBranch);
+              return doesRemoteBranchExist ? remoteBranch : branchName;
+            }
           }
           const candidateRefs = DEFAULT_BRANCH_CANDIDATES.map(
             (candidate) => `refs/heads/${candidate}`,
@@ -484,7 +489,11 @@ export class Git extends Context.Service<
             ...candidateRefs,
           ]);
           if (candidates.status !== 0) return null;
-          return trimOrNull(candidates.stdout.split("\n")[0] ?? "");
+          const localBranch = trimOrNull(candidates.stdout.split("\n")[0] ?? "");
+          if (localBranch === null) return null;
+          const remoteBranch = `origin/${localBranch}`;
+          const doesRemoteBranchExist = yield* branchExists(directory, remoteBranch);
+          return doesRemoteBranchExist ? remoteBranch : localBranch;
         }).pipe(Effect.withSpan("Git.defaultBranch"));
 
       const branchExists = (

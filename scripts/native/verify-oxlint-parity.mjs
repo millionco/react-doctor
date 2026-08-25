@@ -521,6 +521,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-pointer-disabled-enabled-control": 1,
   "no-inert-pointer-affordance": 1,
   "no-generic-marketing-copy": 1,
+  "no-gradient-text": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2005,6 +2006,7 @@ export async function action({ request }) {
 }
 const InertPointerAffordance = () => <div className="cursor-pointer">Open</div>;
 const GenericMarketingCopy = () => <main>Supercharge your workflow</main>;
+const GradientText = () => <h1 style={{ backgroundImage: "linear-gradient(red, blue)", backgroundClip: "text", color: "transparent" }}>Title</h1>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

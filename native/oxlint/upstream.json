@@ -386,7 +386,8 @@
     "no-generic-purple-blue-icon-gradient",
     "no-pointer-disabled-enabled-control",
     "no-inert-pointer-affordance",
-    "no-generic-marketing-copy"
+    "no-generic-marketing-copy",
+    "no-gradient-text"
   ],
   "delegatedRules": [
     {

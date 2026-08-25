@@ -243,6 +243,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-top-level-page-copy-root",
         "is-inside-navigation",
         "get-effective-tailwind-class-name-token",
+        "resolve-effective-tailwind-class-name-token",
         "parse-static-tailwind-font-size",
         "get-static-tailwind-font-size",
         "get-static-effective-font-size",

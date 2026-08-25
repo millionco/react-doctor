@@ -531,6 +531,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-image-hover-transform": 1,
   "no-indeterminate-attribute": 4,
   "no-impure-call-at-module-scope": 7,
+  "no-impure-state-updater": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2046,6 +2047,11 @@ const MODULE_RENDERED_AT = Date.now();
 const MODULE_CURRENT_DATE = new Date();
 const MODULE_BROWSER_MARK = typeof window === "undefined" ? 0 : performance.now();
 const MODULE_SERVER_MARK = typeof window === "undefined" ? performance.now() : 0;
+const [impureUpdaterCount, setImpureUpdaterCount] = useState(0);
+setImpureUpdaterCount((previousCount) => {
+  localStorage.setItem("count", String(previousCount));
+  return previousCount + 1;
+});
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

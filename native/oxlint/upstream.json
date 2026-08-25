@@ -396,7 +396,8 @@
     "no-hover-only-reveal",
     "no-image-hover-transform",
     "no-indeterminate-attribute",
-    "no-impure-call-at-module-scope"
+    "no-impure-call-at-module-scope",
+    "no-impure-state-updater"
   ],
   "delegatedRules": [
     {

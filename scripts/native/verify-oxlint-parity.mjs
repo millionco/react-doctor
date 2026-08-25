@@ -498,6 +498,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-ease-in-motion": 1,
   "no-clipped-overlay": 1,
   "no-fixed-inside-transformed-ancestor": 1,
+  "no-wide-letter-spacing": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1154,6 +1155,7 @@ const dynamicTailwindClassFragment = <div className={\`bg-\${themeColor}-500\`} 
 const easeInMotion = <div style={{ transition: "opacity 200ms ease-in" }} />;
 const clippedOverlay = <div className="overflow-hidden"><div role="menu" className="absolute top-full">Menu</div></div>;
 const fixedInsideTransformedAncestor = <div className="translate-x-0"><div className="fixed inset-0" /></div>;
+const wideLetterSpacing = <p style={{ letterSpacing: 2 }}>Body copy</p>;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

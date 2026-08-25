@@ -363,7 +363,8 @@
     "no-dynamic-tailwind-class-fragment",
     "no-ease-in-motion",
     "no-clipped-overlay",
-    "no-fixed-inside-transformed-ancestor"
+    "no-fixed-inside-transformed-ancestor",
+    "no-wide-letter-spacing"
   ],
   "delegatedRules": [
     {

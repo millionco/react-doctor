@@ -286,6 +286,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-descendant-routes-require-splat": 1,
   "react-router-guard-aborted-handle-error": 0,
   "react-router-internal-route-anchor": 1,
+  "react-router-loader-fetch-forwards-signal": 0,
   "react-router-no-route-module-environment-suffix": 0,
   "react-router-no-session-mutation-in-loader": 2,
   "react-router-no-static-cookie-expires": 1,
@@ -2197,7 +2198,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
   );
   fs.writeFileSync(
     frameworkEnvironmentRouteFixturePath,
-    "export default function DashboardRoute() { return null; }\n",
+    'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/", loader: async ({ request }) => { await fetch("/missing"); await fetch("/direct", { signal: request.signal }); const signalAlias = request.signal; await fetch("/alias", { signal: signalAlias }); const { signal: destructuredSignal } = request; await fetch("/destructured", { signal: destructuredSignal }); await fetch(request); return fetch(new Request("/request", { signal: request.signal })); } }]);\nexport default function DashboardRoute() { return null; }\n',
   );
   fs.writeFileSync(
     frameworkServerEntryFixturePath,
@@ -2293,6 +2294,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     "react-router-no-router-in-render",
     "react-router-v8-no-react-router-dom-import",
     "react-router-guard-aborted-handle-error",
+    "react-router-loader-fetch-forwards-signal",
   ];
   const routerSettings = {
     "react-doctor": {
@@ -2531,7 +2533,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     frameworkEnvironmentRouteFixturePath,
   ).diagnostics;
   if (
-    frameworkEnvironmentRouteStockDiagnostics.length !== 1 ||
+    frameworkEnvironmentRouteStockDiagnostics.length !== 2 ||
     JSON.stringify(frameworkEnvironmentRouteNativeDiagnostics) !==
       JSON.stringify(frameworkEnvironmentRouteStockDiagnostics)
   ) {

@@ -16,6 +16,10 @@ fn is_react_router_route_function(
         );
     }
 
+    if !has_capability(ctx, "react-router-framework") {
+        return false;
+    }
+
     if let oxc_ast::AstKind::Function(function) = function_node.kind()
         && function
             .id

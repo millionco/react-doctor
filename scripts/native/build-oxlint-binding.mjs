@@ -199,6 +199,7 @@ impl Rule for ${delegatedRule.struct} {
         "imported-module-api-matches",
         "resolve-identifier-import",
         "identifier-initializer",
+        "resolve-direct-unreassigned-symbol-initializer",
         "resolve-direct-unreassigned-initializer",
         "module-jsx-tree-index",
         "is-node-conditionally-executed",

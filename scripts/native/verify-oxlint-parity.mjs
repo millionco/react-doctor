@@ -272,6 +272,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-no-route-module-environment-suffix": 0,
   "react-router-no-session-mutation-in-loader": 2,
   "react-router-no-static-cookie-expires": 1,
+  "react-router-no-unsynchronized-search-params-mutation": 1,
   "three-webgpu-no-legacy-effect-composer": 2,
   "react-router-no-nested-router": 1,
   "no-full-viewport-width": 1,
@@ -1793,6 +1794,11 @@ function MultipleSearchParamUpdatesExample({ compact }) {
   void updateNever;
   void updateAfterGuard;
   return <button onClick={update} onFocus={updateAfterSave} onBlur={updateView} />;
+}
+function UnsynchronizedSearchParamsExample() {
+  const [searchParams] = useRouteSearchParams();
+  searchParams.set("tab", "all");
+  return null;
 }
 export const middleware = [async (_context, next) => {
   try {

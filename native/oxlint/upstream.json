@@ -156,6 +156,7 @@
     "react-router-no-route-module-environment-suffix",
     "react-router-no-session-mutation-in-loader",
     "react-router-no-static-cookie-expires",
+    "react-router-no-unsynchronized-search-params-mutation",
     "three-webgpu-no-legacy-effect-composer",
     "react-router-no-nested-router",
     "no-full-viewport-width",

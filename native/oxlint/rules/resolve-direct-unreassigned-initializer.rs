@@ -6,16 +6,5 @@ fn resolve_direct_unreassigned_initializer<'a>(
         .scoping()
         .get_reference(identifier.reference_id())
         .symbol_id()?;
-    if ctx
-        .scoping()
-        .get_resolved_references(symbol_id)
-        .any(oxc_semantic::Reference::is_write)
-    {
-        return None;
-    }
-    let declaration = ctx.symbol_declaration(symbol_id);
-    let oxc_ast::AstKind::VariableDeclarator(declarator) = declaration.kind() else {
-        return None;
-    };
-    declarator.init.as_ref()
+    resolve_direct_unreassigned_symbol_initializer(symbol_id, ctx)
 }

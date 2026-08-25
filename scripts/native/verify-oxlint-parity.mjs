@@ -500,6 +500,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-fixed-inside-transformed-ancestor": 1,
   "no-wide-letter-spacing": 1,
   "no-hairline-border-wide-shadow": 1,
+  "no-pure-black-shadow": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1158,6 +1159,7 @@ const clippedOverlay = <div className="overflow-hidden"><div role="menu" classNa
 const fixedInsideTransformedAncestor = <div className="translate-x-0"><div className="fixed inset-0" /></div>;
 const wideLetterSpacing = <p style={{ letterSpacing: 2 }}>Body copy</p>;
 const hairlineBorderWideShadow = <div className="border shadow-2xl" />;
+const pureBlackShadow = <div className="shadow-xl shadow-black" />;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

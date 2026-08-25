@@ -270,6 +270,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-unsafe": 1,
   "r3f-no-async-use-frame": 2,
   "react-router-no-route-module-environment-suffix": 0,
+  "react-router-no-session-mutation-in-loader": 2,
   "three-webgpu-no-legacy-effect-composer": 2,
   "react-router-no-nested-router": 1,
   "no-full-viewport-width": 1,
@@ -1813,16 +1814,23 @@ async (_context, next) => {
 }, async (_context, next) => {
   await next();
 }];
-const { getSession: getRouteSession, commitSession: commitRouteSession } = makeCookieSessionStorage({ cookie: { name: "session" } });
+const { getSession: getRouteSession, commitSession: commitRouteSession, destroySession: destroyRouteSession } = makeCookieSessionStorage({ cookie: { name: "session" } });
 makeBrowserRouter([{ path: "/session", ErrorBoundary: SessionErrorBoundary, action: async ({ request }) => {
   const session = await getRouteSession(request.headers.get("Cookie"));
   session.set("user", "a");
+  return null;
+}, loader: async ({ request }) => {
+  const session = await getRouteSession(request.headers.get("Cookie"));
+  session.set("loaderNotice", "hello");
   return null;
 } }, { path: "/safe-session", ErrorBoundary: SessionErrorBoundary, action: async ({ request }) => {
   const session = await getRouteSession(request.headers.get("Cookie"));
   session.set("user", "a");
   const cookie = await commitRouteSession(session);
   return routeRedirect("/", { headers: { "Set-Cookie": cookie } });
+}, loader: async ({ request }) => {
+  const session = await getRouteSession(request.headers.get("Cookie"));
+  return routeRedirect("/", { headers: { "Set-Cookie": await destroyRouteSession(session) } });
 } }]);
 export async function action({ request }) {
   const session = await getRouteSession(request.headers.get("Cookie"));

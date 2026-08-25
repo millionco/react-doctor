@@ -154,6 +154,7 @@
     "no-unsafe",
     "r3f-no-async-use-frame",
     "react-router-no-route-module-environment-suffix",
+    "react-router-no-session-mutation-in-loader",
     "three-webgpu-no-legacy-effect-composer",
     "react-router-no-nested-router",
     "no-full-viewport-width",

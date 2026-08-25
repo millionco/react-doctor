@@ -154,6 +154,7 @@
     "no-unsafe",
     "r3f-no-async-use-frame",
     "react-router-csp-nonce-consistency",
+    "react-router-descendant-routes-require-splat",
     "react-router-no-route-module-environment-suffix",
     "react-router-no-session-mutation-in-loader",
     "react-router-no-static-cookie-expires",

@@ -270,6 +270,7 @@ impl Rule for ${delegatedRule.struct} {
         "three-module-api-path-matches",
         "resolve-stable-identifier-symbol",
         "resolve-const-identifier-root-symbol",
+        "contains-react-router-export-usage",
         "resolve-recursive-animation-frame-callback",
         "resolve-raw-device-pixel-ratio",
         "get-static-object-property-value",

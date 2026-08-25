@@ -270,6 +270,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-unsafe": 1,
   "r3f-no-async-use-frame": 2,
   "react-router-csp-nonce-consistency": 1,
+  "react-router-descendant-routes-require-splat": 1,
   "react-router-no-route-module-environment-suffix": 0,
   "react-router-no-session-mutation-in-loader": 2,
   "react-router-no-static-cookie-expires": 1,
@@ -505,7 +506,7 @@ import { createContext as makeTrackedContext } from "react-tracked";
 import { create as createZustandStore } from "zustand";
 import { useQuery as useItemsQuery } from "@tanstack/react-query";
 import * as TanstackQuery from "@tanstack/react-query";
-import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, RouterProvider as RouteProvider, ServerRouter as ServerRouteRouter, createBrowserRouter as makeBrowserRouter, createCookieSessionStorage as makeCookieSessionStorage, createHashRouter as makeHashRouter, redirect as routeRedirect, unstable_useBlocker as useRouteBlocker, useLoaderData as useRouteLoaderData, useMatches as useRouteMatches, useSearchParams as useRouteSearchParams } from "react-router";
+import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, RouterProvider as RouteProvider, ServerRouter as ServerRouteRouter, createBrowserRouter as makeBrowserRouter, createCookieSessionStorage as makeCookieSessionStorage, createHashRouter as makeHashRouter, redirect as routeRedirect, unstable_useBlocker as useRouteBlocker, useLoaderData as useRouteLoaderData, useMatches as useRouteMatches, useRoutes as useNestedRoutes, useSearchParams as useRouteSearchParams } from "react-router";
 import { Link as DomLink, useNavigate as useRouteNavigate } from "react-router-dom";
 import { renderToPipeableStream as renderRouteStream } from "react-dom/server";
 import { runOnJS as callOnJavaScript, useWorkletCallback as makeLegacyWorklet, withSpring as makeSpring } from "react-native-reanimated";
@@ -688,6 +689,10 @@ const renderSafeNonceStream = (nonce) => {
   const streamNonce = routerNonce;
   return renderRouteStream(<ServerRouteRouter nonce={routerNonce} />, { nonce: streamNonce });
 };
+const descendantRouteTrees = makeBrowserRouter([
+  { path: "account", Component: () => useNestedRoutes([]), ErrorBoundary: RouteErrorBoundary },
+  { path: "safe", Component: () => { const NestedRoutes = () => useNestedRoutes([]); return <main />; }, ErrorBoundary: RouteErrorBoundary },
+]);
 const [{ [\`data\`]: removedMatchData }] = useRouteMatches();
 const DroppedTransitionNavigationFixture = () => {
   const navigateToTransitionRoute = useRouteNavigate();

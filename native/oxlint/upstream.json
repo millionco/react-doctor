@@ -160,6 +160,7 @@
     "react-router-loader-fetch-forwards-signal",
     "react-router-loader-parallel-fetch",
     "react-router-nested-route-requires-outlet",
+    "react-router-no-client-module-in-server-render",
     "react-router-no-route-module-environment-suffix",
     "react-router-no-session-mutation-in-loader",
     "react-router-no-static-cookie-expires",

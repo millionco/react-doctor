@@ -97,6 +97,11 @@ const frameworkEnvironmentRouteFixturePath = path.join(
   "routes",
   "dashboard.server.tsx",
 );
+const frameworkClientEntryFixturePath = path.join(
+  frameworkRouterFixtureDirectory,
+  "app",
+  "entry.client.tsx",
+);
 const frameworkServerEntryFixturePath = path.join(
   frameworkRouterFixtureDirectory,
   "app",
@@ -289,6 +294,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-loader-fetch-forwards-signal": 0,
   "react-router-loader-parallel-fetch": 0,
   "react-router-nested-route-requires-outlet": 0,
+  "react-router-no-client-module-in-server-render": 0,
   "react-router-no-route-module-environment-suffix": 0,
   "react-router-no-session-mutation-in-loader": 2,
   "react-router-no-static-cookie-expires": 1,
@@ -2200,7 +2206,11 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
   );
   fs.writeFileSync(
     frameworkEnvironmentRouteFixturePath,
-    'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/", loader: async ({ request }) => { await fetch("/missing"); await fetch("/direct", { signal: request.signal }); const signalAlias = request.signal; await fetch("/alias", { signal: signalAlias }); const { signal: destructuredSignal } = request; await fetch("/destructured", { signal: destructuredSignal }); await fetch(request); return fetch(new Request("/request", { signal: request.signal })); } }]);\nexport default function DashboardRoute() { return null; }\n',
+    'import { createBrowserRouter } from "react-router";\nimport ClientCard from "./card.client";\nimport NestedSuffixClientCard from "./card.client.clientx";\nimport OrdinaryCard from "./client-card";\nimport { ClientOnly } from "./client-only";\ncreateBrowserRouter([{ path: "/", loader: async ({ request }) => { await fetch("/missing"); await fetch("/direct", { signal: request.signal }); const signalAlias = request.signal; await fetch("/alias", { signal: signalAlias }); const { signal: destructuredSignal } = request; await fetch("/destructured", { signal: destructuredSignal }); await fetch(request); return fetch(new Request("/request", { signal: request.signal })); } }]);\nexport default function DashboardRoute() { return <><ClientCard /><NestedSuffixClientCard /><OrdinaryCard /><ClientOnly>{() => <ClientCard />}</ClientOnly></>; }\n',
+  );
+  fs.writeFileSync(
+    frameworkClientEntryFixturePath,
+    'import ClientCard from "./card.client";\nexport const hydrate = () => <ClientCard />;\n',
   );
   fs.writeFileSync(
     frameworkServerEntryFixturePath,
@@ -2299,12 +2309,14 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     "react-router-loader-fetch-forwards-signal",
     "react-router-loader-parallel-fetch",
     "react-router-nested-route-requires-outlet",
+    "react-router-no-client-module-in-server-render",
   ];
   const routerSettings = {
     "react-doctor": {
       ...REACT_DOCTOR_SETTINGS["react-doctor"],
       capabilities: [
         ...REACT_DOCTOR_SETTINGS["react-doctor"].capabilities,
+        "react-router:7",
         "react-router-framework",
       ],
       rootDirectory: fs.realpathSync(temporaryDirectory),
@@ -2537,12 +2549,31 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     frameworkEnvironmentRouteFixturePath,
   ).diagnostics;
   if (
-    frameworkEnvironmentRouteStockDiagnostics.length !== 3 ||
+    frameworkEnvironmentRouteStockDiagnostics.length !== 5 ||
     JSON.stringify(frameworkEnvironmentRouteNativeDiagnostics) !==
       JSON.stringify(frameworkEnvironmentRouteStockDiagnostics)
   ) {
     throw new Error(
       `native React Router framework route module parity failed\nstock=${JSON.stringify(frameworkEnvironmentRouteStockDiagnostics, null, 2)}\nnative=${JSON.stringify(frameworkEnvironmentRouteNativeDiagnostics, null, 2)}`,
+    );
+  }
+  const frameworkClientEntryStockDiagnostics = runOxlint(
+    routerStockConfigPath,
+    process.env,
+    frameworkClientEntryFixturePath,
+  ).diagnostics;
+  const frameworkClientEntryNativeDiagnostics = runOxlint(
+    routerNativeConfigPath,
+    nativeEnvironment,
+    frameworkClientEntryFixturePath,
+  ).diagnostics;
+  if (
+    frameworkClientEntryStockDiagnostics.length !== 0 ||
+    JSON.stringify(frameworkClientEntryNativeDiagnostics) !==
+      JSON.stringify(frameworkClientEntryStockDiagnostics)
+  ) {
+    throw new Error(
+      `native React Router framework client entry parity failed\nstock=${JSON.stringify(frameworkClientEntryStockDiagnostics, null, 2)}\nnative=${JSON.stringify(frameworkClientEntryNativeDiagnostics, null, 2)}`,
     );
   }
   const frameworkServerEntryStockDiagnostics = runOxlint(

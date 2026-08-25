@@ -528,6 +528,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-inline-exhaustive-style": 3,
   "no-focus-in-animation-completion-handler": 1,
   "no-hover-only-reveal": 1,
+  "no-image-hover-transform": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2032,6 +2033,7 @@ const DirectGeneratedImageResponse = () => generatedSatori(<div style={{ display
 import ReactForFocusCompletion from "react";
 const FocusAfterAnimation = () => { const inputRef = ReactForFocusCompletion.useRef(null); return <><input ref={inputRef} /><div onAnimationEnd={() => inputRef.current.focus()} /></>; };
 const HoverOnlyReveal = () => <><button className="opacity-0 hover:opacity-100">Edit</button><motion.button initial={{ opacity: 0 }} whileHover={{ opacity: 1 }}>Delete</motion.button></>;
+const HoverTransformImage = () => <img src="/hover-transform.jpg" className="transition-transform hover:scale-105" />;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

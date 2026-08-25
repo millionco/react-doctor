@@ -393,7 +393,8 @@
     "no-cramped-container-padding",
     "no-inline-exhaustive-style",
     "no-focus-in-animation-completion-handler",
-    "no-hover-only-reveal"
+    "no-hover-only-reveal",
+    "no-image-hover-transform"
   ],
   "delegatedRules": [
     {

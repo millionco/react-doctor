@@ -2,6 +2,7 @@
 struct EffectiveTailwindClassNameTokenResolution<'a> {
     #[allow(dead_code)]
     is_ambiguous: bool,
+    #[allow(dead_code)]
     is_important: bool,
     #[allow(dead_code)]
     utility: Option<&'a str>,

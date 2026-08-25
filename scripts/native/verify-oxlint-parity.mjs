@@ -519,6 +519,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "require-scale-reveal-transform-origin": 1,
   "no-generic-purple-blue-icon-gradient": 1,
   "no-pointer-disabled-enabled-control": 1,
+  "no-inert-pointer-affordance": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2001,6 +2002,7 @@ export async function action({ request }) {
   session.set("ignoredOutsideRouteModule", true);
   return null;
 }
+const InertPointerAffordance = () => <div className="cursor-pointer">Open</div>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

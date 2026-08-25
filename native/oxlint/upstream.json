@@ -394,7 +394,8 @@
     "no-inline-exhaustive-style",
     "no-focus-in-animation-completion-handler",
     "no-hover-only-reveal",
-    "no-image-hover-transform"
+    "no-image-hover-transform",
+    "no-indeterminate-attribute"
   ],
   "delegatedRules": [
     {

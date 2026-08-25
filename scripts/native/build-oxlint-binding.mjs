@@ -205,6 +205,7 @@ impl Rule for ${delegatedRule.struct} {
         "cfg-block-can-reach",
         "is-node-reachable-within-function",
         "can-node-reach-later-node-within-function",
+        "do-nodes-cover-every-path-after-node",
         "get-react-router-middleware-next-symbol",
         "is-react-es6-component",
         "get-static-jsx-attribute-string-values",

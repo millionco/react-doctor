@@ -370,7 +370,8 @@
     "no-z-index-9999",
     "no-emoji-heading-decoration",
     "no-auto-scrolling-content",
-    "no-dark-mode-glow"
+    "no-dark-mode-glow",
+    "no-decorative-grid-background"
   ],
   "delegatedRules": [
     {

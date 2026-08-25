@@ -8,7 +8,6 @@ use crate::{
     AstNode,
 };
 
-const COLOR_CHROMA_THRESHOLD: f64 = 30.0;
 const DARK_BACKGROUND_CHANNEL_MAX: f64 = 35.0;
 const DARK_GLOW_BLUR_THRESHOLD_PX: f64 = 4.0;
 const MESSAGE: &str = "A strong colored glow on a dark background can feel heavy. Use a subtle, neutral shadow instead.";
@@ -263,12 +262,6 @@ fn is_shadow_color_at_top_level(value: &str, color_index: usize) -> bool {
         }
     }
     parenthesis_depth == 0
-}
-
-fn has_color_chroma(color: Rgb) -> bool {
-    let maximum = color.red.max(color.green).max(color.blue);
-    let minimum = color.red.min(color.green).min(color.blue);
-    maximum - minimum >= COLOR_CHROMA_THRESHOLD
 }
 
 fn parse_shadow_layer_blur(layer: &str) -> f64 {

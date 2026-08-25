@@ -18,7 +18,6 @@ const MAX_VISIBLE_STOPS: usize = 2;
 const MIN_HEIGHT_PX: f64 = 160.0;
 const MIN_WIDTH_PX: f64 = 240.0;
 const ROOT_FONT_SIZE_PX: f64 = 16.0;
-const TAILWIND_SPACING_UNIT_PX: f64 = 4.0;
 const TRANSPARENT_ALPHA_MAX: f64 = 0.05;
 const VISIBLE_ALPHA_MAX: f64 = 0.45;
 const MESSAGE: &str = "This large translucent radial glow is generic decorative scaffolding. Replace it with a visual treatment tied to the product or simplify the surface.";
@@ -38,10 +37,6 @@ static CSS_STOP_POSITION_PATTERN: Lazy<Regex> = lazy_regex!(
 static RADIAL_GRADIENT_PRELUDE_PATTERN: Lazy<Regex> = lazy_regex!(
     r"(?i-u)\b(?:at|circle|closest-corner|closest-side|ellipse|farthest-corner|farthest-side)\b"
 );
-static TAILWIND_ARBITRARY_LENGTH_PATTERN: Lazy<Regex> =
-    lazy_regex!(r"(?i-u)^\[(?:length:)?(\d+(?:\.\d*)?|\.\d+)(px|rem)\]$");
-static TAILWIND_SCALE_LENGTH_PATTERN: Lazy<Regex> =
-    lazy_regex!(r"(?-u)^(\d+(?:\.\d*)?|\.\d+)$");
 
 #[derive(Debug, Default, Clone)]
 pub struct NoDecorativeRadialSpotlight;
@@ -459,26 +454,6 @@ fn tailwind_inset_edge_evidence<'a>(
                     == Some(0.0),
         ),
     }
-}
-
-fn parse_static_tailwind_length_px(utility: &str, prefix: &str) -> Option<f64> {
-    let value = utility.strip_prefix(&format!("{prefix}-"))?;
-    if value == "px" {
-        return Some(1.0);
-    }
-    if let Some(captures) = TAILWIND_ARBITRARY_LENGTH_PATTERN.captures(value) {
-        let number = captures.get(1)?.as_str().parse::<f64>().ok()?;
-        return Some(if captures.get(2)?.as_str().eq_ignore_ascii_case("rem") {
-            number * ROOT_FONT_SIZE_PX
-        } else {
-            number
-        });
-    }
-    TAILWIND_SCALE_LENGTH_PATTERN
-        .captures(value)
-        .and_then(|captures| captures.get(1))
-        .and_then(|capture| capture.as_str().parse::<f64>().ok())
-        .map(|number| number * TAILWIND_SPACING_UNIT_PX)
 }
 
 fn effective_inset_edge_is_zero<'a>(

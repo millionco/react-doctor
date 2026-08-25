@@ -11,7 +11,8 @@ fn has_visible_tailwind_border(tokens: &[&str]) -> bool {
     let mut style_by_edge = make_tailwind_border_edge_states(true);
     let mut color_by_edge = make_tailwind_border_edge_states(true);
     let mut opacity_by_edge = make_tailwind_border_edge_states(true);
-    for token in tokens {
+    for marked_token in tokens {
+        let (is_important, token) = tailwind_token_priority(marked_token);
         if let Some(captures) = BORDER_WIDTH_PATTERN.captures(token) {
             let direction = captures.get(1).map(|capture| capture.as_str());
             let length = captures.get(2).map(|capture| capture.as_str());
@@ -19,7 +20,7 @@ fn has_visible_tailwind_border(tokens: &[&str]) -> bool {
                 length == "px"
                     || parse_tailwind_border_length(length).is_some_and(|length| length > 0.0)
             });
-            update_tailwind_border_edges(&mut width_by_edge, direction, has_width);
+            update_tailwind_border_edges(&mut width_by_edge, direction, has_width, is_important);
             continue;
         }
         if let Some(captures) = BORDER_STYLE_PATTERN.captures(token) {
@@ -29,6 +30,7 @@ fn has_visible_tailwind_border(tokens: &[&str]) -> bool {
                 &mut style_by_edge,
                 direction,
                 !matches!(style, "hidden" | "none"),
+                is_important,
             );
             continue;
         }
@@ -38,7 +40,12 @@ fn has_visible_tailwind_border(tokens: &[&str]) -> bool {
         let direction = captures.get(1).map(|capture| capture.as_str());
         let color = captures.get(2).map_or("", |capture| capture.as_str());
         if color.starts_with("opacity-") {
-            update_tailwind_border_edges(&mut opacity_by_edge, direction, color != "opacity-0");
+            update_tailwind_border_edges(
+                &mut opacity_by_edge,
+                direction,
+                color != "opacity-0",
+                is_important,
+            );
             continue;
         }
         if color.starts_with("spacing-") || matches!(color, "collapse" | "separate") {
@@ -48,6 +55,7 @@ fn has_visible_tailwind_border(tokens: &[&str]) -> bool {
             &mut color_by_edge,
             direction,
             color != "transparent" && !color.ends_with("/0"),
+            is_important,
         );
     }
     (0..4).any(|edge| {
@@ -61,6 +69,7 @@ fn has_visible_tailwind_border(tokens: &[&str]) -> bool {
 fn make_tailwind_border_edge_states(value: bool) -> [EffectiveTailwindBooleanState; 4] {
     [EffectiveTailwindBooleanState {
         is_declared: false,
+        is_important: false,
         specificity: 0,
         value: Some(value),
     }; 4]
@@ -79,6 +88,7 @@ fn update_tailwind_border_edges(
     states: &mut [EffectiveTailwindBooleanState; 4],
     direction: Option<&str>,
     value: bool,
+    is_important: bool,
 ) {
     let specificity = match direction {
         None => 0,
@@ -86,6 +96,11 @@ fn update_tailwind_border_edges(
         Some(_) => 2,
     };
     for edge in tailwind_border_edges(direction) {
-        states[*edge] = update_effective_tailwind_boolean_state(states[*edge], value, specificity);
+        states[*edge] = update_effective_tailwind_boolean_state(
+            states[*edge],
+            value,
+            is_important,
+            specificity,
+        );
     }
 }

@@ -210,19 +210,6 @@ fn effective_scoped_utility<'a>(utilities: &[ScopedTailwindUtility<'a>]) -> Opti
     effective_utility
 }
 
-fn split_tailwind_opacity_modifier(utility: &str) -> (&str, Option<&str>) {
-    let modifier_index =
-        tailwind_top_level_character_indices(utility, |character| character == '/')
-            .into_iter()
-            .next();
-    modifier_index.map_or((utility, None), |modifier_index| {
-        (
-            &utility[..modifier_index],
-            Some(&utility[modifier_index + 1..]),
-        )
-    })
-}
-
 fn has_opaque_tailwind_color_modifier(utility: &str) -> bool {
     let (_, modifier) = split_tailwind_opacity_modifier(utility);
     let Some(modifier) = modifier else {
@@ -234,7 +221,7 @@ fn has_opaque_tailwind_color_modifier(utility: &str) -> bool {
     let Some(captures) = ARBITRARY_OPACITY_PATTERN.captures(modifier) else {
         return false;
     };
-    let Some(opacity) = parse_javascript_decimal_prefix(&captures[1]) else {
+    let Some(opacity) = parse_javascript_decimal_prefix_value(&captures[1]) else {
         return false;
     };
     if modifier.ends_with("%]") {
@@ -242,25 +229,6 @@ fn has_opaque_tailwind_color_modifier(utility: &str) -> bool {
     } else {
         opacity == 1.0
     }
-}
-
-fn parse_javascript_decimal_prefix(value: &str) -> Option<f64> {
-    let bytes = value.as_bytes();
-    let mut end = bytes
-        .iter()
-        .take_while(|byte| byte.is_ascii_digit())
-        .count();
-    if bytes.get(end) == Some(&b'.') {
-        end += 1;
-        end += bytes[end..]
-            .iter()
-            .take_while(|byte| byte.is_ascii_digit())
-            .count();
-    }
-    if end == 0 || end == 1 && bytes[0] == b'.' {
-        return None;
-    }
-    value[..end].parse().ok()
 }
 
 fn utility_shade(utility: &str) -> Option<i32> {

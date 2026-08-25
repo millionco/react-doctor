@@ -523,6 +523,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-generic-marketing-copy": 1,
   "no-gradient-text": 1,
   "no-gray-on-colored-background": 1,
+  "no-hero-eyebrow-chip": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2009,6 +2010,7 @@ const InertPointerAffordance = () => <div className="cursor-pointer">Open</div>;
 const GenericMarketingCopy = () => <main>Supercharge your workflow</main>;
 const GradientText = () => <h1 style={{ backgroundImage: "linear-gradient(red, blue)", backgroundClip: "text", color: "transparent" }}>Title</h1>;
 const GrayOnColoredBackground = () => <div className="bg-blue-600 text-gray-400">Muted</div>;
+const HeroEyebrowChip = () => <header><p className="uppercase tracking-widest">Built for teams</p><h1 className="text-7xl">Work together</h1></header>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

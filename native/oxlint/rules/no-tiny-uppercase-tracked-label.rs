@@ -53,7 +53,7 @@ impl Rule for NoTinyUppercaseTrackedLabel {
         {
             return;
         }
-        let text = normalize_js_whitespace(&get_static_jsx_text(element));
+        let text = normalize_static_jsx_whitespace(&get_static_jsx_text(element));
         if text.is_empty()
             || text.encode_utf16().count() > SHORT_DECORATIVE_LABEL_MAX_CHARACTERS
             || is_technical_label_text(&text)
@@ -83,12 +83,4 @@ impl Rule for NoTinyUppercaseTrackedLabel {
         }
         ctx.diagnostic(OxcDiagnostic::warn(MESSAGE).with_label(element.opening_element.span));
     }
-}
-
-fn normalize_js_whitespace(value: &str) -> String {
-    value
-        .split(|character| is_js_whitespace(character))
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ")
 }

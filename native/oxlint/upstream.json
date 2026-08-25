@@ -388,7 +388,8 @@
     "no-inert-pointer-affordance",
     "no-generic-marketing-copy",
     "no-gradient-text",
-    "no-gray-on-colored-background"
+    "no-gray-on-colored-background",
+    "no-hero-eyebrow-chip"
   ],
   "delegatedRules": [
     {

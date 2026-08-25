@@ -526,6 +526,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-hero-eyebrow-chip": 1,
   "no-cramped-container-padding": 1,
   "no-inline-exhaustive-style": 3,
+  "no-focus-in-animation-completion-handler": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2027,6 +2028,8 @@ import generatedSatori from "satori";
 const GeneratedImageCard = () => <div style={{ display: "flex", width: 1200, height: 630, alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }} />;
 const BuildGeneratedImageResponse = () => new GeneratedImageResponse(<GeneratedImageCard />);
 const DirectGeneratedImageResponse = () => generatedSatori(<div style={{ display: "flex", width: 1200, height: 630, alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "black", color: "white" }} />, { width: 1200, height: 630 });
+import ReactForFocusCompletion from "react";
+const FocusAfterAnimation = () => { const inputRef = ReactForFocusCompletion.useRef(null); return <><input ref={inputRef} /><div onAnimationEnd={() => inputRef.current.focus()} /></>; };
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

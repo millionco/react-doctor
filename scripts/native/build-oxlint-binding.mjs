@@ -232,6 +232,7 @@ impl Rule for ${delegatedRule.struct} {
         "are-nodes-in-mutually-exclusive-branches",
         "cfg-block-can-reach",
         "is-node-reachable-within-function",
+        "nodes-can-co-execute",
         "static-literal-truthiness",
         "can-node-reach-later-node-within-function",
         "do-nodes-cover-every-path-after-node",

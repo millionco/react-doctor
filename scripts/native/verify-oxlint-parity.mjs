@@ -287,6 +287,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-guard-aborted-handle-error": 0,
   "react-router-internal-route-anchor": 1,
   "react-router-loader-fetch-forwards-signal": 0,
+  "react-router-loader-parallel-fetch": 0,
   "react-router-no-route-module-environment-suffix": 0,
   "react-router-no-session-mutation-in-loader": 2,
   "react-router-no-static-cookie-expires": 1,
@@ -2295,6 +2296,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     "react-router-v8-no-react-router-dom-import",
     "react-router-guard-aborted-handle-error",
     "react-router-loader-fetch-forwards-signal",
+    "react-router-loader-parallel-fetch",
   ];
   const routerSettings = {
     "react-doctor": {
@@ -2533,7 +2535,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     frameworkEnvironmentRouteFixturePath,
   ).diagnostics;
   if (
-    frameworkEnvironmentRouteStockDiagnostics.length !== 2 ||
+    frameworkEnvironmentRouteStockDiagnostics.length !== 3 ||
     JSON.stringify(frameworkEnvironmentRouteNativeDiagnostics) !==
       JSON.stringify(frameworkEnvironmentRouteStockDiagnostics)
   ) {

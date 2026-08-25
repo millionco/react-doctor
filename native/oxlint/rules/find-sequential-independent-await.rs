@@ -1,5 +1,5 @@
-struct AwaitedStatementInfo {
-    awaited_expression_spans: Vec<oxc_span::Span>,
+struct AwaitedStatementInfo<'a> {
+    awaited_expressions: Vec<&'a oxc_ast::ast::Expression<'a>>,
     bound_names: Vec<String>,
 }
 
@@ -9,11 +9,17 @@ struct SequentialAwaitReference {
     node_id: oxc_semantic::NodeId,
 }
 
-fn find_sequential_independent_await(
-    body: &oxc_ast::ast::FunctionBody<'_>,
+fn find_sequential_independent_await<'a>(
+    body: &'a oxc_ast::ast::FunctionBody<'a>,
     threshold: usize,
-    ctx: &crate::context::LintContext<'_>,
-) -> bool {
+    is_candidate: Option<
+        fn(
+            &oxc_ast::ast::Expression<'a>,
+            &crate::context::LintContext<'a>,
+        ) -> bool,
+    >,
+    ctx: &crate::context::LintContext<'a>,
+) -> Option<oxc_span::Span> {
     use oxc_span::GetSpan;
     use std::collections::{HashMap, HashSet};
 
@@ -58,10 +64,21 @@ fn find_sequential_independent_await(
             continue;
         };
 
+        if is_candidate.is_some_and(|is_candidate| {
+            !awaited_info
+                .awaited_expressions
+                .iter()
+                .all(|expression| is_candidate(expression, ctx))
+        }) {
+            tainting_await_indices_by_name.clear();
+            seen_await_dependency_sets.clear();
+            continue;
+        }
+
         let referenced_names = awaited_info
-            .awaited_expression_spans
+            .awaited_expressions
             .iter()
-            .flat_map(|span| collect_reference_names(*span, &references, ctx))
+            .flat_map(|expression| collect_reference_names(expression.span(), &references, ctx))
             .collect::<HashSet<_>>();
         let depends_on_await_indices = referenced_names
             .iter()
@@ -75,7 +92,7 @@ fn find_sequential_independent_await(
             .filter(|(await_index, _)| !depends_on_await_indices.contains(await_index))
             .count();
         if independent_earlier_await_count + 1 >= threshold {
-            return true;
+            return Some(statement.span());
         }
 
         let current_await_index = seen_await_dependency_sets.len();
@@ -87,16 +104,14 @@ fn find_sequential_independent_await(
         }
     }
 
-    false
+    None
 }
 
-fn get_awaited_statement_info(
-    statement: &oxc_ast::ast::Statement<'_>,
-) -> Option<AwaitedStatementInfo> {
+fn get_awaited_statement_info<'a>(
+    statement: &'a oxc_ast::ast::Statement<'a>,
+) -> Option<AwaitedStatementInfo<'a>> {
     use oxc_ast::ast::{AssignmentTarget, Expression, ForStatementLeft, Statement};
-    use oxc_span::GetSpan;
-
-    let mut awaited_expression_spans = Vec::new();
+    let mut awaited_expressions = Vec::new();
     let mut bound_names = Vec::new();
 
     match statement {
@@ -106,19 +121,19 @@ fn get_awaited_statement_info(
                 else {
                     continue;
                 };
-                awaited_expression_spans.push(await_expression.argument.span());
+                awaited_expressions.push(&await_expression.argument);
                 collect_binding_pattern_names(&declarator.id, &mut bound_names);
             }
         }
         Statement::ExpressionStatement(statement) => match &statement.expression {
             Expression::AwaitExpression(await_expression) => {
-                awaited_expression_spans.push(await_expression.argument.span());
+                awaited_expressions.push(&await_expression.argument);
             }
             Expression::AssignmentExpression(assignment) => {
                 let Expression::AwaitExpression(await_expression) = &assignment.right else {
                     return None;
                 };
-                awaited_expression_spans.push(await_expression.argument.span());
+                awaited_expressions.push(&await_expression.argument);
                 if let AssignmentTarget::AssignmentTargetIdentifier(identifier) = &assignment.left {
                     bound_names.push(identifier.name.to_string());
                 }
@@ -129,10 +144,10 @@ fn get_awaited_statement_info(
             let Some(Expression::AwaitExpression(await_expression)) = &statement.argument else {
                 return None;
             };
-            awaited_expression_spans.push(await_expression.argument.span());
+            awaited_expressions.push(&await_expression.argument);
         }
         Statement::ForOfStatement(statement) if statement.r#await => {
-            awaited_expression_spans.push(statement.right.span());
+            awaited_expressions.push(&statement.right);
             match &statement.left {
                 ForStatementLeft::VariableDeclaration(declaration) => {
                     if let Some(declarator) = declaration.declarations.first() {
@@ -148,8 +163,8 @@ fn get_awaited_statement_info(
         _ => return None,
     }
 
-    (!awaited_expression_spans.is_empty()).then_some(AwaitedStatementInfo {
-        awaited_expression_spans,
+    (!awaited_expressions.is_empty()).then_some(AwaitedStatementInfo {
+        awaited_expressions,
         bound_names,
     })
 }

@@ -53,7 +53,7 @@ impl Rule for TanstackStartLoaderParallelFetch {
             let Some(body) = body else {
                 continue;
             };
-            if find_sequential_independent_await(body, 2, ctx) {
+            if find_sequential_independent_await(body, 2, None, ctx).is_some() {
                 ctx.diagnostic(OxcDiagnostic::warn(MESSAGE).with_label(property.span));
             }
         }

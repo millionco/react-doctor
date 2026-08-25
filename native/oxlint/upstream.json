@@ -354,7 +354,8 @@
     "no-manufactured-contrast-copy",
     "no-repeating-gradient-decoration",
     "no-decorative-blur-orb",
-    "no-repeated-emoji-tiles"
+    "no-repeated-emoji-tiles",
+    "no-repeated-kicker-labels"
   ],
   "delegatedRules": [
     {

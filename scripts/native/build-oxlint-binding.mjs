@@ -163,6 +163,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-in-project-directory",
         "is-next-file-active",
         "program-estree-span",
+        "get-next-static-jsx-element-sibling",
         "collect-static-jsx-elements",
         "collect-static-jsx-opening-elements",
         "visit-static-jsx-children",

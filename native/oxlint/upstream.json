@@ -351,7 +351,8 @@
     "no-legacy-context-api",
     "no-long-transition-duration",
     "no-low-contrast-inline-style",
-    "no-manufactured-contrast-copy"
+    "no-manufactured-contrast-copy",
+    "no-repeating-gradient-decoration"
   ],
   "delegatedRules": [
     {

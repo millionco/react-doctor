@@ -229,6 +229,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-layout-transition-property",
         "is-svg-layout-transition-exempt-element",
         "is-pure-black-color",
+        "parse-color-to-rgb",
         "get-static-jsx-text",
         "is-top-level-page-copy-root",
         "is-inside-navigation",

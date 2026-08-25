@@ -379,7 +379,8 @@
     "no-excessive-card-surfaces",
     "no-nested-card-surface",
     "no-icon-tile-heading-stack",
-    "no-uniform-feature-card-grid"
+    "no-uniform-feature-card-grid",
+    "no-svg-currentcolor-with-fill-class"
   ],
   "delegatedRules": [
     {

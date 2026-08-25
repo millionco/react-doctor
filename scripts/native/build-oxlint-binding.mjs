@@ -177,6 +177,7 @@ impl Rule for ${delegatedRule.struct} {
         "get-static-jsx-tree-opening-elements",
         "is-js-whitespace",
         "is-non-source-file",
+        "is-svg-tag-name",
         "is-tailwind-card-surface",
         "is-tailwind-padded-card-surface",
         "get-css-function-contents",

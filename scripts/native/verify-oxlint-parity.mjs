@@ -514,6 +514,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-nested-card-surface": 1,
   "no-icon-tile-heading-stack": 1,
   "no-uniform-feature-card-grid": 1,
+  "no-svg-currentcolor-with-fill-class": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1187,6 +1188,7 @@ const excessiveCardPage = <main><section className="rounded-xl border p-6">One</
 const nestedCardSurface = <div className="rounded-xl border p-6"><section className="rounded-lg border bg-white p-4">Inner</section></div>;
 const iconTileHeadingStack = <article className="rounded-xl border bg-white p-6"><div className="size-12 rounded-lg bg-blue-100"><SparklesIcon /></div><h3>Automations</h3></article>;
 const uniformFeatureCardGrid = <section className="grid grid-cols-3"><article className="rounded-xl border p-6"><h3>Fast</h3><p>Finish sooner.</p></article><article className="rounded-xl border p-6"><h3>Safe</h3><p>Protect changes.</p></article><article className="rounded-xl border p-6"><h3>Simple</h3><p>Stay focused.</p></article></section>;
+const currentColorConflict = <svg fill="currentColor" className="fill-zinc-400" />;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

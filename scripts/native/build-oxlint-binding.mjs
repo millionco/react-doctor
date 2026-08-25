@@ -213,6 +213,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-react-router-file-active",
         "is-react-router-framework-file-active",
         "tailwind-class-name-tokens",
+        "tailwind-top-level-character-indices",
         "imported-module-api-matches",
         "resolve-identifier-import",
         "identifier-initializer",

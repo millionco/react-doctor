@@ -387,7 +387,8 @@
     "no-pointer-disabled-enabled-control",
     "no-inert-pointer-affordance",
     "no-generic-marketing-copy",
-    "no-gradient-text"
+    "no-gradient-text",
+    "no-gray-on-colored-background"
   ],
   "delegatedRules": [
     {

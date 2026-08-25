@@ -533,6 +533,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-impure-call-at-module-scope": 7,
   "no-impure-state-updater": 1,
   "no-inline-hoc-on-component": 1,
+  "no-inline-prop-on-memo-component": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2057,6 +2058,9 @@ const InlineHocCard = withTracking((props) => {
   const theme = useInlineHocTheme();
   return <article className={theme}>{props.title}</article>;
 });
+// oxlint-disable-next-line react-doctor/react-compiler-no-manual-memoization
+const MemoizedInlinePropCard = memo(InlinePropCard);
+const InlinePropCardList = () => <MemoizedInlinePropCard onClick={() => doThing()} />;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

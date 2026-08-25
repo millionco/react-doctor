@@ -375,7 +375,8 @@
     "no-decorative-pulse",
     "no-decorative-radial-spotlight",
     "no-default-props",
-    "no-deprecated-keyboard-event-keycode-which"
+    "no-deprecated-keyboard-event-keycode-which",
+    "no-excessive-card-surfaces"
   ],
   "delegatedRules": [
     {

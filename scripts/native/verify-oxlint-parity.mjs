@@ -510,6 +510,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-decorative-radial-spotlight": 1,
   "no-default-props": 1,
   "no-deprecated-keyboard-event-keycode-which": 1,
+  "no-excessive-card-surfaces": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1179,6 +1180,7 @@ const decorativeRadialSpotlight = <div style={{ width: 320, height: 180, backgro
 const DefaultPropsLink = (props) => <a {...props} />;
 DefaultPropsLink.defaultProps = { size: "regular" };
 const keyboardRow = <div onKeyDown={(event) => { if (event.keyCode === 75) focusSearch(); }} />;
+const excessiveCardPage = <main><section className="rounded-xl border p-6">One</section><section className="rounded-xl border p-6">Two</section><section className="rounded-xl border p-6">Three</section><section className="rounded-xl border p-6">Four</section><section className="rounded-xl border p-6">Five</section><section className="rounded-xl border p-6">Six</section></main>;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

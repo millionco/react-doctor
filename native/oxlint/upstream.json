@@ -367,7 +367,8 @@
     "no-wide-letter-spacing",
     "no-hairline-border-wide-shadow",
     "no-pure-black-shadow",
-    "no-z-index-9999"
+    "no-z-index-9999",
+    "no-emoji-heading-decoration"
   ],
   "delegatedRules": [
     {

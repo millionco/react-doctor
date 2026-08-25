@@ -390,7 +390,8 @@
     "no-gradient-text",
     "no-gray-on-colored-background",
     "no-hero-eyebrow-chip",
-    "no-cramped-container-padding"
+    "no-cramped-container-padding",
+    "no-inline-exhaustive-style"
   ],
   "delegatedRules": [
     {

@@ -525,6 +525,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-gray-on-colored-background": 1,
   "no-hero-eyebrow-chip": 1,
   "no-cramped-container-padding": 1,
+  "no-inline-exhaustive-style": 3,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2013,6 +2014,19 @@ const GradientText = () => <h1 style={{ backgroundImage: "linear-gradient(red, b
 const GrayOnColoredBackground = () => <div className="bg-blue-600 text-gray-400">Muted</div>;
 const HeroEyebrowChip = () => <header><p className="uppercase tracking-widest">Built for teams</p><h1 className="text-7xl">Work together</h1></header>;
 const CrampedContainerPadding = () => <div style={{ border: "1px solid", padding: 4 }}>Status</div>;
+const InlineExhaustiveStyle = () => <div style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }} />;
+const StableInlineExhaustiveStyle = <div style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }} />;
+const StableIifeInlineExhaustiveStyle = (() => <div style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }} />)();
+class InlineExhaustiveStyleHolder {
+  static accessor stable = <div style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }} />;
+  accessor instance = <div style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }} />;
+}
+class InlineExhaustiveStyleOuter { inner = class { static value = <div style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }} />; }; }
+import { ImageResponse as GeneratedImageResponse } from "next/og";
+import generatedSatori from "satori";
+const GeneratedImageCard = () => <div style={{ display: "flex", width: 1200, height: 630, alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }} />;
+const BuildGeneratedImageResponse = () => new GeneratedImageResponse(<GeneratedImageCard />);
+const DirectGeneratedImageResponse = () => generatedSatori(<div style={{ display: "flex", width: 1200, height: 630, alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "black", color: "white" }} />, { width: 1200, height: 630 });
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

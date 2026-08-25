@@ -97,12 +97,25 @@ const frameworkEnvironmentRouteFixturePath = path.join(
   "routes",
   "dashboard.server.tsx",
 );
+const frameworkServerEntryFixturePath = path.join(
+  frameworkRouterFixtureDirectory,
+  "app",
+  "entry.server.tsx",
+);
 const stockConfigPath = path.join(temporaryDirectory, "stock.json");
 const nativeConfigPath = path.join(temporaryDirectory, "native.json");
 const configuredStockConfigPath = path.join(temporaryDirectory, "configured-stock.json");
 const configuredNativeConfigPath = path.join(temporaryDirectory, "configured-native.json");
 const routerStockConfigPath = path.join(temporaryDirectory, "router-stock.json");
 const routerNativeConfigPath = path.join(temporaryDirectory, "router-native.json");
+const frameworkServerEntryStockConfigPath = path.join(
+  temporaryDirectory,
+  "framework-server-entry-stock.json",
+);
+const frameworkServerEntryNativeConfigPath = path.join(
+  temporaryDirectory,
+  "framework-server-entry-native.json",
+);
 const corpusStockConfigPath = path.join(temporaryDirectory, "corpus-stock.json");
 const corpusNativeConfigPath = path.join(temporaryDirectory, "corpus-native.json");
 const nonReactJsxStockConfigPath = path.join(temporaryDirectory, "solid-stock.json");
@@ -271,6 +284,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-async-use-frame": 2,
   "react-router-csp-nonce-consistency": 1,
   "react-router-descendant-routes-require-splat": 1,
+  "react-router-guard-aborted-handle-error": 0,
   "react-router-no-route-module-environment-suffix": 0,
   "react-router-no-session-mutation-in-loader": 2,
   "react-router-no-static-cookie-expires": 1,
@@ -2185,6 +2199,10 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     "export default function DashboardRoute() { return null; }\n",
   );
   fs.writeFileSync(
+    frameworkServerEntryFixturePath,
+    'import { captureException } from "@sentry/node";\nimport { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ handleError: (error, { request }) => { captureException(error); if (!request.signal.aborted) captureException(error); } }]);\n',
+  );
+  fs.writeFileSync(
     stockConfigPath,
     JSON.stringify(buildConfig({ isNative: false, settings: REACT_DOCTOR_SETTINGS })),
   );
@@ -2273,10 +2291,15 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     "react-router-no-route-module-environment-suffix",
     "react-router-no-router-in-render",
     "react-router-v8-no-react-router-dom-import",
+    "react-router-guard-aborted-handle-error",
   ];
   const routerSettings = {
     "react-doctor": {
       ...REACT_DOCTOR_SETTINGS["react-doctor"],
+      capabilities: [
+        ...REACT_DOCTOR_SETTINGS["react-doctor"].capabilities,
+        "react-router-framework",
+      ],
       rootDirectory: fs.realpathSync(temporaryDirectory),
     },
   };
@@ -2290,6 +2313,32 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     routerNativeConfigPath,
     JSON.stringify(
       buildConfig({ isNative: true, settings: routerSettings, ruleIds: routerRuleIds }),
+    ),
+  );
+  const frameworkServerEntrySettings = {
+    "react-doctor": {
+      ...routerSettings["react-doctor"],
+      rootDirectory: fs.realpathSync(frameworkRouterFixtureDirectory),
+    },
+  };
+  fs.writeFileSync(
+    frameworkServerEntryStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: frameworkServerEntrySettings,
+        ruleIds: ["react-router-guard-aborted-handle-error"],
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    frameworkServerEntryNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: frameworkServerEntrySettings,
+        ruleIds: ["react-router-guard-aborted-handle-error"],
+      }),
     ),
   );
   const stockDiagnostics = runOxlint(stockConfigPath, process.env, fixtureDirectory).diagnostics;
@@ -2487,6 +2536,25 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
   ) {
     throw new Error(
       `native React Router framework route module parity failed\nstock=${JSON.stringify(frameworkEnvironmentRouteStockDiagnostics, null, 2)}\nnative=${JSON.stringify(frameworkEnvironmentRouteNativeDiagnostics, null, 2)}`,
+    );
+  }
+  const frameworkServerEntryStockDiagnostics = runOxlint(
+    frameworkServerEntryStockConfigPath,
+    process.env,
+    frameworkServerEntryFixturePath,
+  ).diagnostics;
+  const frameworkServerEntryNativeDiagnostics = runOxlint(
+    frameworkServerEntryNativeConfigPath,
+    nativeEnvironment,
+    frameworkServerEntryFixturePath,
+  ).diagnostics;
+  if (
+    frameworkServerEntryStockDiagnostics.length !== 1 ||
+    JSON.stringify(frameworkServerEntryNativeDiagnostics) !==
+      JSON.stringify(frameworkServerEntryStockDiagnostics)
+  ) {
+    throw new Error(
+      `native React Router framework server entry parity failed\nstock=${JSON.stringify(frameworkServerEntryStockDiagnostics, null, 2)}\nnative=${JSON.stringify(frameworkServerEntryNativeDiagnostics, null, 2)}`,
     );
   }
 

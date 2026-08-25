@@ -508,6 +508,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-decorative-grid-background": 1,
   "no-decorative-pulse": 1,
   "no-decorative-radial-spotlight": 1,
+  "no-default-props": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1174,6 +1175,8 @@ const darkModeGlow = <div style={{ backgroundColor: "#111", boxShadow: "0 0 60px
 const decorativeGridBackground = <section style={{ backgroundImage: "linear-gradient(to right, #aaa 1px, transparent 1px), linear-gradient(to bottom, #aaa 1px, transparent 1px)", backgroundSize: "24px 24px" }} />;
 const decorativePulse = <span className="animate-pulse">New feature</span>;
 const decorativeRadialSpotlight = <div style={{ width: 320, height: 180, backgroundImage: "radial-gradient(circle, rgb(37 99 235 / 25%), transparent 70%)" }} />;
+const DefaultPropsLink = (props) => <a {...props} />;
+DefaultPropsLink.defaultProps = { size: "regular" };
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

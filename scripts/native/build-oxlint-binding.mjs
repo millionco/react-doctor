@@ -247,6 +247,7 @@ impl Rule for ${delegatedRule.struct} {
         "get-static-style-property-number-value",
         "has-capability",
         "has-capability-or-unspecified",
+        "symbol-has-write-before",
         "normalize-tailwind-arbitrary-utility-value",
         "get-tailwind-visibility-effect",
         "get-tailwind-visibility-at-breakpoints",

@@ -373,7 +373,8 @@
     "no-dark-mode-glow",
     "no-decorative-grid-background",
     "no-decorative-pulse",
-    "no-decorative-radial-spotlight"
+    "no-decorative-radial-spotlight",
+    "no-default-props"
   ],
   "delegatedRules": [
     {

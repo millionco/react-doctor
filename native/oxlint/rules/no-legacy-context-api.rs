@@ -548,17 +548,6 @@ fn styled_factory_root<'a>(expression: &'a Expression<'a>) -> Option<&'a Express
     }
 }
 
-fn symbol_has_write_before(
-    symbol_id: SymbolId,
-    reference_offset: u32,
-    ctx: &LintContext<'_>,
-) -> bool {
-    ctx.scoping()
-        .get_resolved_references(symbol_id)
-        .filter(|reference| reference.is_write())
-        .any(|reference| ctx.nodes().get_node(reference.node_id()).span().start < reference_offset)
-}
-
 fn symbol_has_react_component_type_annotation(symbol_id: SymbolId, ctx: &LintContext<'_>) -> bool {
     let declaration = ctx.symbol_declaration(symbol_id);
     let AstKind::VariableDeclarator(declarator) = declaration.kind() else {

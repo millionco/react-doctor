@@ -905,6 +905,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "remotion-no-css-url-assets",
   "no-react19-deprecated-apis",
   "no-react-dom-deprecated-apis",
+  "no-legacy-class-lifecycles",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

@@ -481,6 +481,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "remotion-no-css-url-assets": 1,
   "no-react19-deprecated-apis": 1,
   "no-react-dom-deprecated-apis": 7,
+  "no-legacy-class-lifecycles": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;

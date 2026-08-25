@@ -914,6 +914,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-decorative-blur-orb",
   "no-repeated-emoji-tiles",
   "no-repeated-kicker-labels",
+  "no-repeated-glass-surfaces",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

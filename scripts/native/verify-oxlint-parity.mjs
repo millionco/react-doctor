@@ -490,6 +490,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-decorative-blur-orb": 1,
   "no-repeated-emoji-tiles": 1,
   "no-repeated-kicker-labels": 1,
+  "no-repeated-glass-surfaces": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1138,6 +1139,7 @@ const repeatingGradientDecoration = <div style={{ backgroundImage: "repeating-li
 const decorativeBlurOrb = <div className="pointer-events-none absolute size-96 rounded-full bg-purple-500 blur-3xl" />;
 const repeatedEmojiTiles = <main><span className="size-12 rounded-xl bg-blue-100">🚀</span><span className="size-12 rounded-xl bg-green-100">🔒</span><span className="size-12 rounded-xl bg-amber-100">⚡</span></main>;
 const repeatedKickerLabels = <main><section><p className="uppercase tracking-widest">Approach</p><h2>How it works</h2></section><section><p className="uppercase tracking-widest">Benefits</p><h2>Why it helps</h2></section><section><p className="uppercase tracking-widest">Results</p><h2>What changed</h2></section></main>;
+const repeatedGlassSurfaces = <main><section className="rounded-xl border bg-white/10 backdrop-blur-xl">A</section><section className="rounded-xl border bg-white/10 backdrop-blur-xl">B</section><section className="rounded-xl border bg-white/10 backdrop-blur-xl">C</section></main>;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

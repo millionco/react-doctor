@@ -353,7 +353,8 @@
     "no-low-contrast-inline-style",
     "no-manufactured-contrast-copy",
     "no-repeating-gradient-decoration",
-    "no-decorative-blur-orb"
+    "no-decorative-blur-orb",
+    "no-repeated-emoji-tiles"
   ],
   "delegatedRules": [
     {

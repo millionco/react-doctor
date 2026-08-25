@@ -488,6 +488,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-manufactured-contrast-copy": 1,
   "no-repeating-gradient-decoration": 1,
   "no-decorative-blur-orb": 1,
+  "no-repeated-emoji-tiles": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1134,6 +1135,7 @@ const lowContrastInlineStyle = <span style={{ color: "#9ca3af", backgroundColor:
 const manufacturedContrastCopy = <main><p>Not just another report. It is a plan.</p><p>No busywork. Just useful diagnostics.</p><p>Review the important changes. No manual sorting.</p></main>;
 const repeatingGradientDecoration = <div style={{ backgroundImage: "repeating-linear-gradient(45deg, #fff 0 4px, #eee 4px 8px)" }} />;
 const decorativeBlurOrb = <div className="pointer-events-none absolute size-96 rounded-full bg-purple-500 blur-3xl" />;
+const repeatedEmojiTiles = <main><span className="size-12 rounded-xl bg-blue-100">🚀</span><span className="size-12 rounded-xl bg-green-100">🔒</span><span className="size-12 rounded-xl bg-amber-100">⚡</span></main>;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

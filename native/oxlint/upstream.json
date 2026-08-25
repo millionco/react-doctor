@@ -382,7 +382,8 @@
     "no-uniform-feature-card-grid",
     "no-svg-currentcolor-with-fill-class",
     "no-outline-none",
-    "require-scale-reveal-transform-origin"
+    "require-scale-reveal-transform-origin",
+    "no-generic-purple-blue-icon-gradient"
   ],
   "delegatedRules": [
     {

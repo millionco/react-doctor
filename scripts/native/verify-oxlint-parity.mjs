@@ -274,6 +274,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-no-static-cookie-expires": 1,
   "react-router-no-unsynchronized-search-params-mutation": 1,
   "react-router-no-use-loader-data-in-error-ui": 1,
+  "react-router-prefer-route-lazy": 1,
   "three-webgpu-no-legacy-effect-composer": 2,
   "react-router-no-nested-router": 1,
   "no-full-viewport-width": 1,
@@ -1614,7 +1615,9 @@ function renderPalette(rows, theme, render, nextPalette) {
     render(theme.colors.secondary, row);
   }
 }
+const LazyRoutePage = (React.lazy(() => import("./lazy-route-page")));
 const routerWithSplatPaths = makeBrowserRouter([
+  { path: "/lazy-route", Component: (LazyRoutePage), ErrorBoundary: RouteError },
   { path: "/files/*/edit", element: <Editor />, ErrorBoundary: RouteError },
   {
     path: "/files/*",

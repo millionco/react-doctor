@@ -516,6 +516,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-uniform-feature-card-grid": 1,
   "no-svg-currentcolor-with-fill-class": 1,
   "no-outline-none": 1,
+  "require-scale-reveal-transform-origin": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1191,6 +1192,7 @@ const iconTileHeadingStack = <article className="rounded-xl border bg-white p-6"
 const uniformFeatureCardGrid = <section className="grid grid-cols-3"><article className="rounded-xl border p-6"><h3>Fast</h3><p>Finish sooner.</p></article><article className="rounded-xl border p-6"><h3>Safe</h3><p>Protect changes.</p></article><article className="rounded-xl border p-6"><h3>Simple</h3><p>Stay focused.</p></article></section>;
 const currentColorConflict = <svg fill="currentColor" className="fill-zinc-400" />;
 const missingFocusIndicator = <button style={{ outline: "none" }}>Save</button>;
+const unanchoredScaleReveal = <motion.div role="menu" initial={{ scale: 0.96 }} />;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

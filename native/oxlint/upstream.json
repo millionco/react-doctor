@@ -344,7 +344,8 @@
     "remotion-no-native-media-elements",
     "remotion-stable-delay-render-handle",
     "remotion-deterministic-randomness",
-    "remotion-no-css-url-assets"
+    "remotion-no-css-url-assets",
+    "no-react19-deprecated-apis"
   ],
   "delegatedRules": [
     {

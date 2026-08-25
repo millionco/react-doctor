@@ -479,6 +479,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "remotion-stable-delay-render-handle": 1,
   "remotion-deterministic-randomness": 2,
   "remotion-no-css-url-assets": 1,
+  "no-react19-deprecated-apis": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -588,6 +589,8 @@ import * as Cmdk from "cmdk";
 import { Dialog as ReactAriaDialog } from "react-aria-components";
 import Head from "next/head";
 import NextImage from "next/image";
+const LegacyReactAlias = React;
+const createLegacyButton = (LegacyReactAlias as typeof LegacyReactAlias).createFactory("button");
 void import("@react-three/fiber/dist/native");
 require("@react-three/fiber/src/native");
 void import("react-router-dom");
@@ -2518,7 +2521,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     activeRouterFixturePath,
   ).diagnostics;
   if (
-    activeRouterStockDiagnostics.length !== 10 ||
+    activeRouterStockDiagnostics.length !== 9 ||
     JSON.stringify(activeRouterNativeDiagnostics) !== JSON.stringify(activeRouterStockDiagnostics)
   ) {
     throw new Error(
@@ -2555,7 +2558,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     frameworkEnvironmentRouteFixturePath,
   ).diagnostics;
   if (
-    frameworkEnvironmentRouteStockDiagnostics.length !== 6 ||
+    frameworkEnvironmentRouteStockDiagnostics.length !== 5 ||
     JSON.stringify(frameworkEnvironmentRouteNativeDiagnostics) !==
       JSON.stringify(frameworkEnvironmentRouteStockDiagnostics)
   ) {

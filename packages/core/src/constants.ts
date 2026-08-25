@@ -903,6 +903,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "remotion-stable-delay-render-handle",
   "remotion-deterministic-randomness",
   "remotion-no-css-url-assets",
+  "no-react19-deprecated-apis",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

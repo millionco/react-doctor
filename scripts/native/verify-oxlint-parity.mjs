@@ -483,6 +483,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-react-dom-deprecated-apis": 7,
   "no-legacy-class-lifecycles": 2,
   "no-legacy-context-api": 7,
+  "no-long-transition-duration": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1123,6 +1124,8 @@ const justifiedText = <p style={{ textAlign: "justify" }}>Long justified text</p
 const arbitraryPixelFontSize = <p className="text-[13px]">Small text</p>;
 const pureBlackBackground = <section style={{ backgroundColor: "#000" }} />;
 const inlineLayoutTransition = <div style={{ transition: "width 200ms" }} />;
+const longOpacityTransition = <div style={{ transition: "opacity 2s ease" }} />;
+const longMotionTransition = <motion.div animate={{ opacity: 1 }} transition={{ duration: 1.5 }} />;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

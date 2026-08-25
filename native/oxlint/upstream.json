@@ -348,7 +348,8 @@
     "no-react19-deprecated-apis",
     "no-react-dom-deprecated-apis",
     "no-legacy-class-lifecycles",
-    "no-legacy-context-api"
+    "no-legacy-context-api",
+    "no-long-transition-duration"
   ],
   "delegatedRules": [
     {

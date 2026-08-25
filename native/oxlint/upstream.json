@@ -345,7 +345,8 @@
     "remotion-stable-delay-render-handle",
     "remotion-deterministic-randomness",
     "remotion-no-css-url-assets",
-    "no-react19-deprecated-apis"
+    "no-react19-deprecated-apis",
+    "no-react-dom-deprecated-apis"
   ],
   "delegatedRules": [
     {

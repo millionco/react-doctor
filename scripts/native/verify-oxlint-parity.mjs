@@ -480,6 +480,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "remotion-deterministic-randomness": 2,
   "remotion-no-css-url-assets": 1,
   "no-react19-deprecated-apis": 1,
+  "no-react-dom-deprecated-apis": 7,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -528,7 +529,8 @@ import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
 import { redirect as nextRedirect } from "next/navigation";
 import React, { Activity as ReactActivity, Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef, ViewTransition, memo, startTransition as beginRouteTransition } from "react";
-import ReactDOM from "react-dom";
+import ReactDOM, { hydrate as legacyHydrate } from "react-dom";
+import { act as legacyAct, Simulate as LegacySimulate } from "react-dom/test-utils";
 import type { useMemo as PreactTypeOnlyHook } from "react";
 import { createContext as makeTrackedContext } from "react-tracked";
 import { create as createZustandStore } from "zustand";

@@ -371,7 +371,8 @@
     "no-emoji-heading-decoration",
     "no-auto-scrolling-content",
     "no-dark-mode-glow",
-    "no-decorative-grid-background"
+    "no-decorative-grid-background",
+    "no-decorative-pulse"
   ],
   "delegatedRules": [
     {

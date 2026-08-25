@@ -364,7 +364,8 @@
     "no-ease-in-motion",
     "no-clipped-overlay",
     "no-fixed-inside-transformed-ancestor",
-    "no-wide-letter-spacing"
+    "no-wide-letter-spacing",
+    "no-hairline-border-wide-shadow"
   ],
   "delegatedRules": [
     {

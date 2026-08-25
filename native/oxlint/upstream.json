@@ -374,7 +374,8 @@
     "no-decorative-grid-background",
     "no-decorative-pulse",
     "no-decorative-radial-spotlight",
-    "no-default-props"
+    "no-default-props",
+    "no-deprecated-keyboard-event-keycode-which"
   ],
   "delegatedRules": [
     {

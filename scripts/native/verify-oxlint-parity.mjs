@@ -532,6 +532,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-indeterminate-attribute": 4,
   "no-impure-call-at-module-scope": 7,
   "no-impure-state-updater": 1,
+  "no-inline-hoc-on-component": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2051,6 +2052,10 @@ const [impureUpdaterCount, setImpureUpdaterCount] = useState(0);
 setImpureUpdaterCount((previousCount) => {
   localStorage.setItem("count", String(previousCount));
   return previousCount + 1;
+});
+const InlineHocCard = withTracking((props) => {
+  const theme = useInlineHocTheme();
+  return <article className={theme}>{props.title}</article>;
 });
 `;
 

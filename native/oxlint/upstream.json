@@ -397,7 +397,8 @@
     "no-image-hover-transform",
     "no-indeterminate-attribute",
     "no-impure-call-at-module-scope",
-    "no-impure-state-updater"
+    "no-impure-state-updater",
+    "no-inline-hoc-on-component"
   ],
   "delegatedRules": [
     {

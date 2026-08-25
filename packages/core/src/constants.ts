@@ -956,6 +956,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-indeterminate-attribute",
   "no-impure-call-at-module-scope",
   "no-impure-state-updater",
+  "no-inline-hoc-on-component",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

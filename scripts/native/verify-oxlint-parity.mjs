@@ -485,6 +485,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-legacy-context-api": 7,
   "no-long-transition-duration": 2,
   "no-low-contrast-inline-style": 1,
+  "no-manufactured-contrast-copy": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1128,6 +1129,7 @@ const inlineLayoutTransition = <div style={{ transition: "width 200ms" }} />;
 const longOpacityTransition = <div style={{ transition: "opacity 2s ease" }} />;
 const longMotionTransition = <motion.div animate={{ opacity: 1 }} transition={{ duration: 1.5 }} />;
 const lowContrastInlineStyle = <span style={{ color: "#9ca3af", backgroundColor: "#ffffff", fontSize: 16 }}>Balance</span>;
+const manufacturedContrastCopy = <main><p>Not just another report. It is a plan.</p><p>No busywork. Just useful diagnostics.</p><p>Review the important changes. No manual sorting.</p></main>;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

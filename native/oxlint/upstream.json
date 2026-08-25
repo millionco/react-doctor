@@ -350,7 +350,8 @@
     "no-legacy-class-lifecycles",
     "no-legacy-context-api",
     "no-long-transition-duration",
-    "no-low-contrast-inline-style"
+    "no-low-contrast-inline-style",
+    "no-manufactured-contrast-copy"
   ],
   "delegatedRules": [
     {

@@ -518,6 +518,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-outline-none": 1,
   "require-scale-reveal-transform-origin": 1,
   "no-generic-purple-blue-icon-gradient": 1,
+  "no-pointer-disabled-enabled-control": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1195,6 +1196,7 @@ const currentColorConflict = <svg fill="currentColor" className="fill-zinc-400" 
 const missingFocusIndicator = <button style={{ outline: "none" }}>Save</button>;
 const unanchoredScaleReveal = <motion.div role="menu" initial={{ scale: 0.96 }} />;
 const genericGradientIcon = <div className="size-8 rounded-lg bg-linear-to-r from-purple-500 to-blue-500 flex" />;
+const pointerDisabledControl = <button className="pointer-events-none">Save</button>;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

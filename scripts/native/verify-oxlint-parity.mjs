@@ -527,6 +527,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-cramped-container-padding": 1,
   "no-inline-exhaustive-style": 3,
   "no-focus-in-animation-completion-handler": 1,
+  "no-hover-only-reveal": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2030,6 +2031,7 @@ const BuildGeneratedImageResponse = () => new GeneratedImageResponse(<GeneratedI
 const DirectGeneratedImageResponse = () => generatedSatori(<div style={{ display: "flex", width: 1200, height: 630, alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "black", color: "white" }} />, { width: 1200, height: 630 });
 import ReactForFocusCompletion from "react";
 const FocusAfterAnimation = () => { const inputRef = ReactForFocusCompletion.useRef(null); return <><input ref={inputRef} /><div onAnimationEnd={() => inputRef.current.focus()} /></>; };
+const HoverOnlyReveal = () => <><button className="opacity-0 hover:opacity-100">Edit</button><motion.button initial={{ opacity: 0 }} whileHover={{ opacity: 1 }}>Delete</motion.button></>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>
@@ -2307,6 +2309,7 @@ const configuredOversizedLongHeading = <h1 className="text-8xl">Build a better w
 const configuredFlatPageTypeScale = <main><p className="text-sm">A</p><h2 className="text-base">B</h2><h1 className="text-lg">C</h1></main>;
 const configuredSmallFormControlText = <><input className="text-sm" /><input className="hidden md:block text-xs" /></>;
 const configuredCrampedContainerPadding = <div className="border p-1">Status</div>;
+const configuredHoverOnlyReveal = <button className="opacity-0 hover:opacity-100">Edit</button>;
 `,
   );
   const routerGateFixture =
@@ -2409,6 +2412,7 @@ const configuredCrampedContainerPadding = <div className="border p-1">Status</di
     "no-flat-page-type-scale",
     "no-small-form-control-text",
     "no-cramped-container-padding",
+    "no-hover-only-reveal",
   ];
   fs.writeFileSync(
     configuredStockConfigPath,
@@ -2609,6 +2613,7 @@ const configuredCrampedContainerPadding = <div className="border p-1">Status</di
     "no-flat-page-type-scale": 1,
     "no-small-form-control-text": 1,
     "no-cramped-container-padding": 1,
+    "no-hover-only-reveal": 1,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(configuredStockDiagnostics)) !==

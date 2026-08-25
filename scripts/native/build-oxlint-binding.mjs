@@ -159,6 +159,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-proven-intrinsic-jsx-element",
         "find-jsx-attribute",
         "get-static-class-name",
+        "does-tailwind-variant-scope-cover",
         "tailwind-token-priority",
         "update-effective-tailwind-boolean-state",
         "tailwind-border-edges",

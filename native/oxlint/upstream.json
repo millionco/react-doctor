@@ -392,7 +392,8 @@
     "no-hero-eyebrow-chip",
     "no-cramped-container-padding",
     "no-inline-exhaustive-style",
-    "no-focus-in-animation-completion-handler"
+    "no-focus-in-animation-completion-handler",
+    "no-hover-only-reveal"
   ],
   "delegatedRules": [
     {

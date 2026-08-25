@@ -352,7 +352,8 @@
     "no-long-transition-duration",
     "no-low-contrast-inline-style",
     "no-manufactured-contrast-copy",
-    "no-repeating-gradient-decoration"
+    "no-repeating-gradient-decoration",
+    "no-decorative-blur-orb"
   ],
   "delegatedRules": [
     {

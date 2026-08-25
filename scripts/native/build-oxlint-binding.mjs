@@ -159,6 +159,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-proven-intrinsic-jsx-element",
         "find-jsx-attribute",
         "get-static-class-name",
+        "has-visible-tailwind-background",
         "is-in-project-directory",
         "is-next-file-active",
         "program-estree-span",

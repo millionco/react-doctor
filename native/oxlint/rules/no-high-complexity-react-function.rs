@@ -5,9 +5,9 @@ use oxc_semantic::ScopeFlags;
 use oxc_syntax::operator::LogicalOperator;
 
 use crate::{
-    AstNode,
     context::{ContextHost, LintContext},
     rule::Rule,
+    AstNode,
 };
 
 const REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD: usize = 15;
@@ -335,19 +335,6 @@ fn count_logical_expression_runs(
         logical_run_count += count_logical_expression_runs(right_expression, previous_operator);
     }
     logical_run_count
-}
-
-fn parenthesized_expression_root<'a, 'b>(
-    mut node: &'b AstNode<'a>,
-    ctx: &'b LintContext<'a>,
-) -> &'b AstNode<'a> {
-    loop {
-        let parent = ctx.nodes().parent_node(node.id());
-        if !matches!(parent.kind(), AstKind::ParenthesizedExpression(_)) {
-            return node;
-        }
-        node = parent;
-    }
 }
 
 fn belongs_to_function<'a>(

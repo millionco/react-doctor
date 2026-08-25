@@ -160,6 +160,7 @@
     "react-router-no-use-loader-data-in-error-ui",
     "react-router-prefer-route-lazy",
     "react-router-resource-link-requires-reload",
+    "react-router-return-navigation-promise-in-transition",
     "three-webgpu-no-legacy-effect-composer",
     "react-router-no-nested-router",
     "no-full-viewport-width",

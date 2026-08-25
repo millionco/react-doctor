@@ -276,6 +276,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-no-use-loader-data-in-error-ui": 1,
   "react-router-prefer-route-lazy": 1,
   "react-router-resource-link-requires-reload": 1,
+  "react-router-return-navigation-promise-in-transition": 1,
   "three-webgpu-no-legacy-effect-composer": 2,
   "react-router-no-nested-router": 1,
   "no-full-viewport-width": 1,
@@ -495,14 +496,14 @@ import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
 import { redirect as nextRedirect } from "next/navigation";
-import React, { Activity as ReactActivity, Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef, ViewTransition, memo } from "react";
+import React, { Activity as ReactActivity, Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef, ViewTransition, memo, startTransition as beginRouteTransition } from "react";
 import ReactDOM from "react-dom";
 import type { useMemo as PreactTypeOnlyHook } from "react";
 import { createContext as makeTrackedContext } from "react-tracked";
 import { create as createZustandStore } from "zustand";
 import { useQuery as useItemsQuery } from "@tanstack/react-query";
 import * as TanstackQuery from "@tanstack/react-query";
-import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, createBrowserRouter as makeBrowserRouter, createCookieSessionStorage as makeCookieSessionStorage, createHashRouter as makeHashRouter, redirect as routeRedirect, unstable_useBlocker as useRouteBlocker, useLoaderData as useRouteLoaderData, useSearchParams as useRouteSearchParams } from "react-router";
+import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, RouterProvider as RouteProvider, createBrowserRouter as makeBrowserRouter, createCookieSessionStorage as makeCookieSessionStorage, createHashRouter as makeHashRouter, redirect as routeRedirect, unstable_useBlocker as useRouteBlocker, useLoaderData as useRouteLoaderData, useSearchParams as useRouteSearchParams } from "react-router";
 import { Link as DomLink, useNavigate as useRouteNavigate } from "react-router-dom";
 import { runOnJS as callOnJavaScript, useWorkletCallback as makeLegacyWorklet, withSpring as makeSpring } from "react-native-reanimated";
 import * as ReanimatedRuntime from "react-native-reanimated";
@@ -676,6 +677,15 @@ const RouterNavigateFixture = () => {
   ["/settings"].forEach((path) => navigateToRoute(path));
   const onClick = () => navigateToRoute("/deferred");
   return <button onClick={onClick}>Navigate</button>;
+};
+const TransitionRouterFixture = ({ router }) => <RouteProvider router={router} unstable_useTransitions />;
+const DroppedTransitionNavigationFixture = () => {
+  const navigateToTransitionRoute = useRouteNavigate();
+  const onClick = () => beginRouteTransition(() => {
+    navigateToTransitionRoute("/transition-next");
+  });
+  const onSafeClick = () => beginRouteTransition(() => navigateToTransitionRoute("/transition-safe"));
+  return <><button onClick={onClick}>Navigate with transition</button><button onClick={onSafeClick}>Navigate safely</button></>;
 };
 const unkeyedPresence = <AnimatePresence><Panel /><Panel /></AnimatePresence>;
 const partiallyKeyedNamespacePresence = <MotionRuntime.AnimatePresence><Panel /><Panel key="second" /></MotionRuntime.AnimatePresence>;

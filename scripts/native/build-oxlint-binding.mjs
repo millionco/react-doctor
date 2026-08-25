@@ -178,6 +178,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-js-whitespace",
         "is-non-source-file",
         "is-tailwind-card-surface",
+        "is-tailwind-padded-card-surface",
         "get-css-function-contents",
         "split-css-top-level",
         "motion-react-api-path-matches",

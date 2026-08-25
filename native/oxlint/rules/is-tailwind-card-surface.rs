@@ -41,14 +41,18 @@ fn is_tailwind_card_surface(
         return false;
     };
     let tokens = tailwind_class_name_tokens(class_name);
+    is_tailwind_card_surface_from_tokens(&tokens)
+}
+
+fn is_tailwind_card_surface_from_tokens(tokens: &[TailwindClassNameToken<'_>]) -> bool {
     let effective_rounding =
-        get_effective_tailwind_class_name_token(&tokens, is_card_rounding_utility);
+        get_effective_tailwind_class_name_token(tokens, is_card_rounding_utility);
     let has_rounding = effective_rounding.is_some_and(|utility| utility != "rounded-none");
-    let has_interior = card_padding_values(&tokens)
+    let has_interior = card_padding_values(tokens)
         .into_iter()
         .any(|padding| padding > 0.0)
-        || card_has_visible_background(&tokens);
-    has_rounding && card_has_visible_boundary(&tokens) && has_interior
+        || card_has_visible_background(tokens);
+    has_rounding && card_has_visible_boundary(tokens) && has_interior
 }
 
 fn is_card_rounding_utility(utility: &str) -> bool {

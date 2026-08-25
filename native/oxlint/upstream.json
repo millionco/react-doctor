@@ -389,7 +389,8 @@
     "no-generic-marketing-copy",
     "no-gradient-text",
     "no-gray-on-colored-background",
-    "no-hero-eyebrow-chip"
+    "no-hero-eyebrow-chip",
+    "no-cramped-container-padding"
   ],
   "delegatedRules": [
     {

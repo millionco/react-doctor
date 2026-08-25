@@ -524,6 +524,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-gradient-text": 1,
   "no-gray-on-colored-background": 1,
   "no-hero-eyebrow-chip": 1,
+  "no-cramped-container-padding": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2011,6 +2012,7 @@ const GenericMarketingCopy = () => <main>Supercharge your workflow</main>;
 const GradientText = () => <h1 style={{ backgroundImage: "linear-gradient(red, blue)", backgroundClip: "text", color: "transparent" }}>Title</h1>;
 const GrayOnColoredBackground = () => <div className="bg-blue-600 text-gray-400">Muted</div>;
 const HeroEyebrowChip = () => <header><p className="uppercase tracking-widest">Built for teams</p><h1 className="text-7xl">Work together</h1></header>;
+const CrampedContainerPadding = () => <div style={{ border: "1px solid", padding: 4 }}>Status</div>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>
@@ -2287,6 +2289,7 @@ const configuredCompetingDeepJsx = <div><section><span><em /></span><Widget rend
 const configuredOversizedLongHeading = <h1 className="text-8xl">Build a better workflow for every team in your growing organization</h1>;
 const configuredFlatPageTypeScale = <main><p className="text-sm">A</p><h2 className="text-base">B</h2><h1 className="text-lg">C</h1></main>;
 const configuredSmallFormControlText = <><input className="text-sm" /><input className="hidden md:block text-xs" /></>;
+const configuredCrampedContainerPadding = <div className="border p-1">Status</div>;
 `,
   );
   const routerGateFixture =
@@ -2388,6 +2391,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     "no-oversized-long-heading",
     "no-flat-page-type-scale",
     "no-small-form-control-text",
+    "no-cramped-container-padding",
   ];
   fs.writeFileSync(
     configuredStockConfigPath,
@@ -2587,6 +2591,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     "no-oversized-long-heading": 1,
     "no-flat-page-type-scale": 1,
     "no-small-form-control-text": 1,
+    "no-cramped-container-padding": 1,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(configuredStockDiagnostics)) !==

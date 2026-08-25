@@ -1,6 +1,9 @@
 #[derive(Clone, Copy)]
 struct EffectiveTailwindClassNameTokenResolution<'a> {
+    #[allow(dead_code)]
+    is_ambiguous: bool,
     is_important: bool,
+    #[allow(dead_code)]
     utility: Option<&'a str>,
 }
 
@@ -31,6 +34,7 @@ fn resolve_effective_tailwind_class_name_token<'a>(
         }
         if utility.is_some_and(|current| current != token.utility) {
             return EffectiveTailwindClassNameTokenResolution {
+                is_ambiguous: true,
                 is_important: false,
                 utility: None,
             };
@@ -38,6 +42,7 @@ fn resolve_effective_tailwind_class_name_token<'a>(
         utility = Some(token.utility);
     }
     EffectiveTailwindClassNameTokenResolution {
+        is_ambiguous: false,
         is_important: utility.is_some() && has_important_token,
         utility,
     }

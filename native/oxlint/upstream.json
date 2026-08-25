@@ -395,7 +395,8 @@
     "no-focus-in-animation-completion-handler",
     "no-hover-only-reveal",
     "no-image-hover-transform",
-    "no-indeterminate-attribute"
+    "no-indeterminate-attribute",
+    "no-impure-call-at-module-scope"
   ],
   "delegatedRules": [
     {

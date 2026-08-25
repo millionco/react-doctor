@@ -530,6 +530,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-hover-only-reveal": 1,
   "no-image-hover-transform": 1,
   "no-indeterminate-attribute": 4,
+  "no-impure-call-at-module-scope": 7,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2040,6 +2041,11 @@ const indeterminateInputRef = useRef<HTMLInputElement | null>(null);
 indeterminateInputRef.current?.toggleAttribute("indeterminate", true);
 const markIndeterminateInput = (node: HTMLInputElement) => node.setAttribute("indeterminate", "true");
 const markDestructuredIndeterminateInput = ({ node }: { node: HTMLInputElement }) => node.toggleAttribute("indeterminate");
+export const MODULE_RANDOM_SAMPLE = Math.random();
+const MODULE_RENDERED_AT = Date.now();
+const MODULE_CURRENT_DATE = new Date();
+const MODULE_BROWSER_MARK = typeof window === "undefined" ? 0 : performance.now();
+const MODULE_SERVER_MARK = typeof window === "undefined" ? performance.now() : 0;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

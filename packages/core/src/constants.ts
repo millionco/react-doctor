@@ -954,6 +954,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-hover-only-reveal",
   "no-image-hover-transform",
   "no-indeterminate-attribute",
+  "no-impure-call-at-module-scope",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

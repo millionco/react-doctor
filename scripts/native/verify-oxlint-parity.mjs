@@ -296,6 +296,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-nested-route-requires-outlet": 0,
   "react-router-no-client-module-in-server-render": 0,
   "react-router-no-invalid-lazy-route-properties": 0,
+  "react-router-no-loader-request-body": 0,
   "react-router-no-route-module-environment-suffix": 0,
   "react-router-no-session-mutation-in-loader": 2,
   "react-router-no-static-cookie-expires": 1,
@@ -2182,7 +2183,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
 `,
   );
   const routerGateFixture =
-    'import { createBrowserRouter, Outlet, useNavigate, useOutlet as useChildOutlet } from "react-router-dom"; export function App() { const navigate = useNavigate(); navigate("/next"); createBrowserRouter([{ Component: () => <main />, children: [{ path: "child", element: <span /> }] }, { Component: () => <main>{useChildOutlet()}</main>, children: [{ path: "safe-hook", element: <span /> }] }, { Component: () => <Layout />, children: [{ path: "safe-component", element: <span /> }] }, { element: <main><Layout /></main>, children: [{ path: "safe-element", element: <span /> }] }, { Component: () => <main />, children: null }, { Component: () => { const Unused = () => <Outlet />; return <main />; }, children: [{ path: "nested-helper", element: <span /> }] }, { path: "lazy", lazy: async () => ({ ["path"]: "/changed", Component }) }, { path: "conditional-lazy", lazy: async () => { if (compact) return ({ id: "compact" } as const); const nested = () => ({ children: [] }); return { loader }; } }, { path: "safe-lazy", lazy: async () => ({ Component, loader }) }, { path: "helper", Component: () => { const helper = { lazy: async () => ({ path: "/ignored" }) }; return <button onClick={helper.lazy} />; } }]); return null; }';
+    'import { createBrowserRouter, Outlet, useNavigate, useOutlet as useChildOutlet } from "react-router-dom"; export function App() { const navigate = useNavigate(); navigate("/next"); createBrowserRouter([{ Component: () => <main />, children: [{ path: "child", element: <span /> }] }, { Component: () => <main>{useChildOutlet()}</main>, children: [{ path: "safe-hook", element: <span /> }] }, { Component: () => <Layout />, children: [{ path: "safe-component", element: <span /> }] }, { element: <main><Layout /></main>, children: [{ path: "safe-element", element: <span /> }] }, { Component: () => <main />, children: null }, { Component: () => { const Unused = () => <Outlet />; return <main />; }, children: [{ path: "nested-helper", element: <span /> }] }, { path: "lazy", lazy: async () => ({ ["path"]: "/changed", Component }) }, { path: "conditional-lazy", lazy: async () => { if (compact) return ({ id: "compact" } as const); const nested = () => ({ children: [] }); return { loader }; } }, { path: "safe-lazy", lazy: async () => ({ Component, loader }) }, { path: "loader-body", loader: async ({ request: routeRequest }) => routeRequest["json"]() }, { path: "safe-action-body", action: async ({ request }) => request.formData() }, { path: "helper", Component: () => { const helper = { lazy: async () => ({ path: "/ignored" }), loader: async ({ request }) => request.text() }; return <button onClick={helper.lazy} />; } }]); return null; }';
   fs.mkdirSync(path.dirname(inactiveRouterFixturePath), { recursive: true });
   fs.writeFileSync(
     path.join(inactiveRouterFixtureDirectory, "package.json"),
@@ -2207,7 +2208,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
   );
   fs.writeFileSync(
     frameworkEnvironmentRouteFixturePath,
-    'import { createBrowserRouter } from "react-router";\nimport ClientCard from "./card.client";\nimport NestedSuffixClientCard from "./card.client.clientx";\nimport OrdinaryCard from "./client-card";\nimport { ClientOnly } from "./client-only";\ncreateBrowserRouter([{ path: "/", loader: async ({ request }) => { await fetch("/missing"); await fetch("/direct", { signal: request.signal }); const signalAlias = request.signal; await fetch("/alias", { signal: signalAlias }); const { signal: destructuredSignal } = request; await fetch("/destructured", { signal: destructuredSignal }); await fetch(request); return fetch(new Request("/request", { signal: request.signal })); } }]);\nexport default function DashboardRoute() { return <><ClientCard /><NestedSuffixClientCard /><OrdinaryCard /><ClientOnly>{() => <ClientCard />}</ClientOnly></>; }\n',
+    'import { createBrowserRouter } from "react-router";\nimport ClientCard from "./card.client";\nimport NestedSuffixClientCard from "./card.client.clientx";\nimport OrdinaryCard from "./client-card";\nimport { ClientOnly } from "./client-only";\ncreateBrowserRouter([{ path: "/", loader: async ({ request }) => { await fetch("/missing"); await fetch("/direct", { signal: request.signal }); const signalAlias = request.signal; await fetch("/alias", { signal: signalAlias }); const { signal: destructuredSignal } = request; await fetch("/destructured", { signal: destructuredSignal }); await fetch(request); return fetch(new Request("/request", { signal: request.signal })); } }]);\nexport async function loader({ request }) { return request["text"](); }\nexport async function action({ request }) { return request.formData(); }\nexport default function DashboardRoute() { return <><ClientCard /><NestedSuffixClientCard /><OrdinaryCard /><ClientOnly>{() => <ClientCard />}</ClientOnly></>; }\n',
   );
   fs.writeFileSync(
     frameworkClientEntryFixturePath,
@@ -2312,6 +2313,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     "react-router-nested-route-requires-outlet",
     "react-router-no-client-module-in-server-render",
     "react-router-no-invalid-lazy-route-properties",
+    "react-router-no-loader-request-body",
   ];
   const routerSettings = {
     "react-doctor": {
@@ -2514,7 +2516,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     activeRouterFixturePath,
   ).diagnostics;
   if (
-    activeRouterStockDiagnostics.length !== 7 ||
+    activeRouterStockDiagnostics.length !== 8 ||
     JSON.stringify(activeRouterNativeDiagnostics) !== JSON.stringify(activeRouterStockDiagnostics)
   ) {
     throw new Error(
@@ -2551,7 +2553,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     frameworkEnvironmentRouteFixturePath,
   ).diagnostics;
   if (
-    frameworkEnvironmentRouteStockDiagnostics.length !== 5 ||
+    frameworkEnvironmentRouteStockDiagnostics.length !== 6 ||
     JSON.stringify(frameworkEnvironmentRouteNativeDiagnostics) !==
       JSON.stringify(frameworkEnvironmentRouteStockDiagnostics)
   ) {

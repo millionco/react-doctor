@@ -162,6 +162,7 @@
     "react-router-nested-route-requires-outlet",
     "react-router-no-client-module-in-server-render",
     "react-router-no-invalid-lazy-route-properties",
+    "react-router-no-loader-request-body",
     "react-router-no-route-module-environment-suffix",
     "react-router-no-session-mutation-in-loader",
     "react-router-no-static-cookie-expires",

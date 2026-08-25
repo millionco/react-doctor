@@ -495,6 +495,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-excessive-pill-treatment": 1,
   "no-empty-card-shell": 1,
   "no-dynamic-tailwind-class-fragment": 1,
+  "no-ease-in-motion": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1148,6 +1149,7 @@ const pillNavigationCount = <nav><span className="rounded-full bg-gray-200 px-2"
 const excessivePillTreatment = <main><span className="rounded-full border px-3">Fast</span><span className="rounded-full bg-blue-100 px-3">Secure</span><span className="rounded-full border px-4">Start</span><span className="rounded-full bg-gray-200 px-4">Docs</span><span className="rounded-full border px-3">New</span></main>;
 const emptyCardShell = <section className="rounded-xl border p-6" />;
 const dynamicTailwindClassFragment = <div className={\`bg-\${themeColor}-500\`} />;
+const easeInMotion = <div style={{ transition: "opacity 200ms ease-in" }} />;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

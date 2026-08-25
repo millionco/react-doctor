@@ -360,7 +360,8 @@
     "no-pill-navigation-count",
     "no-excessive-pill-treatment",
     "no-empty-card-shell",
-    "no-dynamic-tailwind-class-fragment"
+    "no-dynamic-tailwind-class-fragment",
+    "no-ease-in-motion"
   ],
   "delegatedRules": [
     {

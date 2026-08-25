@@ -349,7 +349,8 @@
     "no-react-dom-deprecated-apis",
     "no-legacy-class-lifecycles",
     "no-legacy-context-api",
-    "no-long-transition-duration"
+    "no-long-transition-duration",
+    "no-low-contrast-inline-style"
   ],
   "delegatedRules": [
     {

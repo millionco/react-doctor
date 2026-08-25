@@ -368,7 +368,8 @@
     "no-hairline-border-wide-shadow",
     "no-pure-black-shadow",
     "no-z-index-9999",
-    "no-emoji-heading-decoration"
+    "no-emoji-heading-decoration",
+    "no-auto-scrolling-content"
   ],
   "delegatedRules": [
     {

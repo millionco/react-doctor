@@ -272,6 +272,7 @@ impl Rule for ${delegatedRule.struct} {
         "remotion-render-function-has-evidence",
         "run-remotion-css-time-rule",
         "get-static-motion-transition-objects",
+        "get-static-motion-property-object",
         "three-constructor-api-name",
         "three-constructor-name",
         "three-module-api-name",

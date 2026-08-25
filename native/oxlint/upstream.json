@@ -347,7 +347,8 @@
     "remotion-no-css-url-assets",
     "no-react19-deprecated-apis",
     "no-react-dom-deprecated-apis",
-    "no-legacy-class-lifecycles"
+    "no-legacy-class-lifecycles",
+    "no-legacy-context-api"
   ],
   "delegatedRules": [
     {

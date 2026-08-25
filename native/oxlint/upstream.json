@@ -356,7 +356,8 @@
     "no-decorative-blur-orb",
     "no-repeated-emoji-tiles",
     "no-repeated-kicker-labels",
-    "no-repeated-glass-surfaces"
+    "no-repeated-glass-surfaces",
+    "no-pill-navigation-count"
   ],
   "delegatedRules": [
     {

@@ -162,6 +162,7 @@ impl Rule for ${delegatedRule.struct} {
         "update-effective-tailwind-boolean-state",
         "has-visible-tailwind-background",
         "has-visible-tailwind-border",
+        "has-visible-tailwind-ring",
         "is-in-project-directory",
         "is-next-file-active",
         "program-estree-span",

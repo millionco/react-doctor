@@ -1,5 +1,5 @@
 static BORDER_WIDTH_PATTERN: lazy_regex::Lazy<lazy_regex::Regex> = lazy_regex::lazy_regex!(
-    r"^border(?:-([trblxy]))?(?:-(px|\d+(?:\.\d+)?|\[\d+(?:\.\d+)?px\]))?$"
+    r"^border(?:-([trblxy]))?(?:-(px|[0-9]+(?:\.[0-9]+)?|\[[0-9]+(?:\.[0-9]+)?px\]))?$"
 );
 static BORDER_STYLE_PATTERN: lazy_regex::Lazy<lazy_regex::Regex> =
     lazy_regex::lazy_regex!(r"^border(?:-([trblxy]))?-(hidden|none|solid|dashed|dotted|double)$");

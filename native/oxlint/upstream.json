@@ -161,6 +161,7 @@
     "react-router-prefer-route-lazy",
     "react-router-resource-link-requires-reload",
     "react-router-return-navigation-promise-in-transition",
+    "react-router-v8-no-meta-data-field",
     "three-webgpu-no-legacy-effect-composer",
     "react-router-no-nested-router",
     "no-full-viewport-width",

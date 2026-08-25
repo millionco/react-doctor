@@ -277,6 +277,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-prefer-route-lazy": 1,
   "react-router-resource-link-requires-reload": 1,
   "react-router-return-navigation-promise-in-transition": 1,
+  "react-router-v8-no-meta-data-field": 1,
   "three-webgpu-no-legacy-effect-composer": 2,
   "react-router-no-nested-router": 1,
   "no-full-viewport-width": 1,
@@ -503,7 +504,7 @@ import { createContext as makeTrackedContext } from "react-tracked";
 import { create as createZustandStore } from "zustand";
 import { useQuery as useItemsQuery } from "@tanstack/react-query";
 import * as TanstackQuery from "@tanstack/react-query";
-import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, RouterProvider as RouteProvider, createBrowserRouter as makeBrowserRouter, createCookieSessionStorage as makeCookieSessionStorage, createHashRouter as makeHashRouter, redirect as routeRedirect, unstable_useBlocker as useRouteBlocker, useLoaderData as useRouteLoaderData, useSearchParams as useRouteSearchParams } from "react-router";
+import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, RouterProvider as RouteProvider, createBrowserRouter as makeBrowserRouter, createCookieSessionStorage as makeCookieSessionStorage, createHashRouter as makeHashRouter, redirect as routeRedirect, unstable_useBlocker as useRouteBlocker, useLoaderData as useRouteLoaderData, useMatches as useRouteMatches, useSearchParams as useRouteSearchParams } from "react-router";
 import { Link as DomLink, useNavigate as useRouteNavigate } from "react-router-dom";
 import { runOnJS as callOnJavaScript, useWorkletCallback as makeLegacyWorklet, withSpring as makeSpring } from "react-native-reanimated";
 import * as ReanimatedRuntime from "react-native-reanimated";
@@ -679,6 +680,7 @@ const RouterNavigateFixture = () => {
   return <button onClick={onClick}>Navigate</button>;
 };
 const TransitionRouterFixture = ({ router }) => <RouteProvider router={router} unstable_useTransitions />;
+const [{ [\`data\`]: removedMatchData }] = useRouteMatches();
 const DroppedTransitionNavigationFixture = () => {
   const navigateToTransitionRoute = useRouteNavigate();
   const onClick = () => beginRouteTransition(() => {

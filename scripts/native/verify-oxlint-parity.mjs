@@ -430,6 +430,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-no-middleware-response-body-consumption": 1,
   "react-router-no-multiple-middleware-next": 1,
   "react-router-no-multiple-set-search-params-in-tick": 1,
+  "react-router-server-middleware-return-response": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1808,6 +1809,8 @@ async (_context, next) => {
   observe(next);
   observe(next);
   return new Response();
+}, async (_context, next) => {
+  await next();
 }];
 `;
 

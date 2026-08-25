@@ -314,6 +314,7 @@
     "react-router-no-middleware-response-body-consumption",
     "react-router-no-multiple-middleware-next",
     "react-router-no-multiple-set-search-params-in-tick",
+    "react-router-server-middleware-return-response",
     "no-create-store-in-render",
     "react-compiler-no-manual-memoization",
     "no-giant-component",

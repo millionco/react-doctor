@@ -366,7 +366,8 @@
     "no-fixed-inside-transformed-ancestor",
     "no-wide-letter-spacing",
     "no-hairline-border-wide-shadow",
-    "no-pure-black-shadow"
+    "no-pure-black-shadow",
+    "no-z-index-9999"
   ],
   "delegatedRules": [
     {

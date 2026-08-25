@@ -501,6 +501,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-wide-letter-spacing": 1,
   "no-hairline-border-wide-shadow": 1,
   "no-pure-black-shadow": 1,
+  "no-z-index-9999": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1160,6 +1161,7 @@ const fixedInsideTransformedAncestor = <div className="translate-x-0"><div class
 const wideLetterSpacing = <p style={{ letterSpacing: 2 }}>Body copy</p>;
 const hairlineBorderWideShadow = <div className="border shadow-2xl" />;
 const pureBlackShadow = <div className="shadow-xl shadow-black" />;
+const absurdZIndex = <div style={{ zIndex: 9999 }} />;
 const commonRootFont = <main style={{ fontFamily: "Inter, sans-serif" }}>Content</main>;
 const redundantDisplay = <div className="block rounded-lg" />;
 const placeholderNavigation = <nav><a href="#">Home</a><a href="#">Settings</a></nav>;

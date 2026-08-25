@@ -359,7 +359,8 @@
     "no-repeated-glass-surfaces",
     "no-pill-navigation-count",
     "no-excessive-pill-treatment",
-    "no-empty-card-shell"
+    "no-empty-card-shell",
+    "no-dynamic-tailwind-class-fragment"
   ],
   "delegatedRules": [
     {

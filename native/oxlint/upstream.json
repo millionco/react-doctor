@@ -378,7 +378,8 @@
     "no-deprecated-keyboard-event-keycode-which",
     "no-excessive-card-surfaces",
     "no-nested-card-surface",
-    "no-icon-tile-heading-stack"
+    "no-icon-tile-heading-stack",
+    "no-uniform-feature-card-grid"
   ],
   "delegatedRules": [
     {

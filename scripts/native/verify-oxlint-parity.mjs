@@ -297,6 +297,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-no-client-module-in-server-render": 0,
   "react-router-no-invalid-lazy-route-properties": 0,
   "react-router-no-loader-request-body": 0,
+  "react-router-no-redirect-in-try-catch": 0,
   "react-router-no-route-module-environment-suffix": 0,
   "react-router-no-session-mutation-in-loader": 2,
   "react-router-no-static-cookie-expires": 1,
@@ -2183,7 +2184,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
 `,
   );
   const routerGateFixture =
-    'import { createBrowserRouter, Outlet, useNavigate, useOutlet as useChildOutlet } from "react-router-dom"; export function App() { const navigate = useNavigate(); navigate("/next"); createBrowserRouter([{ Component: () => <main />, children: [{ path: "child", element: <span /> }] }, { Component: () => <main>{useChildOutlet()}</main>, children: [{ path: "safe-hook", element: <span /> }] }, { Component: () => <Layout />, children: [{ path: "safe-component", element: <span /> }] }, { element: <main><Layout /></main>, children: [{ path: "safe-element", element: <span /> }] }, { Component: () => <main />, children: null }, { Component: () => { const Unused = () => <Outlet />; return <main />; }, children: [{ path: "nested-helper", element: <span /> }] }, { path: "lazy", lazy: async () => ({ ["path"]: "/changed", Component }) }, { path: "conditional-lazy", lazy: async () => { if (compact) return ({ id: "compact" } as const); const nested = () => ({ children: [] }); return { loader }; } }, { path: "safe-lazy", lazy: async () => ({ Component, loader }) }, { path: "loader-body", loader: async ({ request: routeRequest }) => routeRequest["json"]() }, { path: "safe-action-body", action: async ({ request }) => request.formData() }, { path: "helper", Component: () => { const helper = { lazy: async () => ({ path: "/ignored" }), loader: async ({ request }) => request.text() }; return <button onClick={helper.lazy} />; } }]); return null; }';
+    'import { createBrowserRouter, Outlet, redirect as routeRedirect, redirectDocument as routeDocument, useNavigate, useOutlet as useChildOutlet } from "react-router-dom"; export function App() { const navigate = useNavigate(); navigate("/next"); createBrowserRouter([{ Component: () => <main />, children: [{ path: "child", element: <span /> }] }, { Component: () => <main>{useChildOutlet()}</main>, children: [{ path: "safe-hook", element: <span /> }] }, { Component: () => <Layout />, children: [{ path: "safe-component", element: <span /> }] }, { element: <main><Layout /></main>, children: [{ path: "safe-element", element: <span /> }] }, { Component: () => <main />, children: null }, { Component: () => { const Unused = () => <Outlet />; return <main />; }, children: [{ path: "nested-helper", element: <span /> }] }, { path: "lazy", lazy: async () => ({ ["path"]: "/changed", Component }) }, { path: "conditional-lazy", lazy: async () => { if (compact) return ({ id: "compact" } as const); const nested = () => ({ children: [] }); return { loader }; } }, { path: "safe-lazy", lazy: async () => ({ Component, loader }) }, { path: "loader-body", loader: async ({ request: routeRequest }) => routeRequest["json"]() }, { path: "safe-action-body", action: async ({ request }) => request.formData() }, { path: "swallowed-redirect", loader: async () => { try { throw routeRedirect("/login"); } catch (error) { return null; } } }, { path: "swallowed-document-redirect", clientLoader: async () => { try { (() => { throw routeDocument("/client"); })(); } catch (error) { return null; } } }, { path: "returned-redirect", action: async () => { try { return routeRedirect("/safe"); } catch (error) { return null; } } }, { path: "rethrown-redirect", clientAction: async () => { try { throw routeRedirect("/safe"); } catch (error) { throw error; } } }, { path: "helper", Component: () => { const helper = { lazy: async () => ({ path: "/ignored" }), loader: async ({ request }) => request.text() }; return <button onClick={helper.lazy} />; } }]); return null; }';
   fs.mkdirSync(path.dirname(inactiveRouterFixturePath), { recursive: true });
   fs.writeFileSync(
     path.join(inactiveRouterFixtureDirectory, "package.json"),
@@ -2314,6 +2315,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     "react-router-no-client-module-in-server-render",
     "react-router-no-invalid-lazy-route-properties",
     "react-router-no-loader-request-body",
+    "react-router-no-redirect-in-try-catch",
   ];
   const routerSettings = {
     "react-doctor": {
@@ -2516,7 +2518,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
     activeRouterFixturePath,
   ).diagnostics;
   if (
-    activeRouterStockDiagnostics.length !== 8 ||
+    activeRouterStockDiagnostics.length !== 10 ||
     JSON.stringify(activeRouterNativeDiagnostics) !== JSON.stringify(activeRouterStockDiagnostics)
   ) {
     throw new Error(

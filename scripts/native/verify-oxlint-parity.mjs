@@ -271,6 +271,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-async-use-frame": 2,
   "react-router-no-route-module-environment-suffix": 0,
   "react-router-no-session-mutation-in-loader": 2,
+  "react-router-no-static-cookie-expires": 1,
   "three-webgpu-no-legacy-effect-composer": 2,
   "react-router-no-nested-router": 1,
   "no-full-viewport-width": 1,
@@ -1814,7 +1815,7 @@ async (_context, next) => {
 }, async (_context, next) => {
   await next();
 }];
-const { getSession: getRouteSession, commitSession: commitRouteSession, destroySession: destroyRouteSession } = makeCookieSessionStorage({ cookie: { name: "session" } });
+const { getSession: getRouteSession, commitSession: commitRouteSession, destroySession: destroyRouteSession } = makeCookieSessionStorage({ cookie: { name: "session", expires: new Date(Date.now() + 1000) } });
 makeBrowserRouter([{ path: "/session", ErrorBoundary: SessionErrorBoundary, action: async ({ request }) => {
   const session = await getRouteSession(request.headers.get("Cookie"));
   session.set("user", "a");

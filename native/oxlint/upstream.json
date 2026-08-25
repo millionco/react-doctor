@@ -312,6 +312,7 @@
     "react-router-no-multiple-blockers",
     "react-router-no-catch-middleware-next",
     "react-router-no-middleware-response-body-consumption",
+    "react-router-no-multiple-middleware-next",
     "no-create-store-in-render",
     "react-compiler-no-manual-memoization",
     "no-giant-component",

@@ -201,6 +201,8 @@ impl Rule for ${delegatedRule.struct} {
         "resolve-direct-unreassigned-initializer",
         "module-jsx-tree-index",
         "is-node-conditionally-executed",
+        "are-nodes-in-mutually-exclusive-branches",
+        "cfg-block-can-reach",
         "get-react-router-middleware-next-symbol",
         "is-react-es6-component",
         "get-static-jsx-attribute-string-values",

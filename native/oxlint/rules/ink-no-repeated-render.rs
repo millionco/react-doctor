@@ -5,10 +5,6 @@ use oxc_ast::{
         BindingPattern, CallExpression, Expression, ObjectPropertyKind,
     },
 };
-use oxc_cfg::{
-    BlockNodeId, EdgeType,
-    graph::{Direction, visit::EdgeRef},
-};
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_semantic::{NodeId, SymbolId};
@@ -76,7 +72,7 @@ impl Rule for InkNoRepeatedRender {
                     return false;
                 };
                 ink_render_calls_share_output(earlier_call, later_call, ctx)
-                    && ink_cfg_block_can_reach(
+                    && cfg_block_can_reach(
                         ctx.nodes().cfg_id(earlier_call_node.id()),
                         ctx.nodes().cfg_id(render_call_node.id()),
                         &FxHashSet::default(),
@@ -185,37 +181,6 @@ fn ink_render_output_expression<'a>(
     }
 }
 
-fn ink_cfg_block_can_reach(
-    source_block: BlockNodeId,
-    target_block: BlockNodeId,
-    excluded_blocks: &FxHashSet<BlockNodeId>,
-    ctx: &LintContext<'_>,
-) -> bool {
-    if source_block == target_block {
-        return true;
-    }
-    let graph = ctx.cfg().graph();
-    let mut visited_blocks = FxHashSet::default();
-    let mut pending_blocks = vec![source_block];
-    while let Some(current_block) = pending_blocks.pop() {
-        if !visited_blocks.insert(current_block) {
-            continue;
-        }
-        for edge in graph.edges_directed(current_block, Direction::Outgoing) {
-            if matches!(edge.weight(), EdgeType::NewFunction | EdgeType::Unreachable)
-                || excluded_blocks.contains(&edge.target())
-            {
-                continue;
-            }
-            if edge.target() == target_block {
-                return true;
-            }
-            pending_blocks.push(edge.target());
-        }
-    }
-    false
-}
-
 fn ink_render_is_unmounted_before(
     owner_node_id: NodeId,
     earlier_call_node: &AstNode<'_>,
@@ -249,7 +214,7 @@ fn ink_render_is_unmounted_before(
         cleanup_blocks.insert(cleanup_block);
     }
     !cleanup_blocks.is_empty()
-        && !ink_cfg_block_can_reach(earlier_block, later_block, &cleanup_blocks, ctx)
+        && !cfg_block_can_reach(earlier_block, later_block, &cleanup_blocks, ctx)
 }
 
 fn ink_render_cleanup_bindings(

@@ -428,6 +428,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-no-multiple-blockers": 1,
   "react-router-no-catch-middleware-next": 1,
   "react-router-no-middleware-response-body-consumption": 1,
+  "react-router-no-multiple-middleware-next": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -1767,6 +1768,14 @@ export const middleware = [async (_context, next) => {
   const response = await next();
   await response.json();
   return response;
+}, async (_context, next) => {
+  await next();
+  return next();
+}, async ({ enabled }, next) => enabled ? next() : next(),
+async (_context, next) => {
+  observe(next);
+  observe(next);
+  return new Response();
 }];
 `;
 

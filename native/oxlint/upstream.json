@@ -377,7 +377,8 @@
     "no-default-props",
     "no-deprecated-keyboard-event-keycode-which",
     "no-excessive-card-surfaces",
-    "no-nested-card-surface"
+    "no-nested-card-surface",
+    "no-icon-tile-heading-stack"
   ],
   "delegatedRules": [
     {

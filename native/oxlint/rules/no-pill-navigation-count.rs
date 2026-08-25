@@ -63,9 +63,7 @@ impl Rule for NoPillNavigationCount {
             || !utilities
                 .iter()
                 .any(|utility| HORIZONTAL_PADDING_PATTERN.is_match(utility))
-            || !(has_visible_tailwind_border(&utilities)
-                || has_visible_tailwind_ring(&utilities)
-                || has_visible_tailwind_background(&utilities))
+            || !has_visible_tailwind_fill_or_edge(&utilities)
         {
             return;
         }

@@ -357,7 +357,8 @@
     "no-repeated-emoji-tiles",
     "no-repeated-kicker-labels",
     "no-repeated-glass-surfaces",
-    "no-pill-navigation-count"
+    "no-pill-navigation-count",
+    "no-excessive-pill-treatment"
   ],
   "delegatedRules": [
     {

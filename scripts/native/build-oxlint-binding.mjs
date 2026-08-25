@@ -163,6 +163,7 @@ impl Rule for ${delegatedRule.struct} {
         "has-visible-tailwind-background",
         "has-visible-tailwind-border",
         "has-visible-tailwind-ring",
+        "has-visible-tailwind-fill-or-edge",
         "is-in-project-directory",
         "is-next-file-active",
         "program-estree-span",

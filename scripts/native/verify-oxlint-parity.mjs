@@ -273,6 +273,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-no-session-mutation-in-loader": 2,
   "react-router-no-static-cookie-expires": 1,
   "react-router-no-unsynchronized-search-params-mutation": 1,
+  "react-router-no-use-loader-data-in-error-ui": 1,
   "three-webgpu-no-legacy-effect-composer": 2,
   "react-router-no-nested-router": 1,
   "no-full-viewport-width": 1,
@@ -499,7 +500,7 @@ import { createContext as makeTrackedContext } from "react-tracked";
 import { create as createZustandStore } from "zustand";
 import { useQuery as useItemsQuery } from "@tanstack/react-query";
 import * as TanstackQuery from "@tanstack/react-query";
-import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, createBrowserRouter as makeBrowserRouter, createCookieSessionStorage as makeCookieSessionStorage, createHashRouter as makeHashRouter, redirect as routeRedirect, unstable_useBlocker as useRouteBlocker, useSearchParams as useRouteSearchParams } from "react-router";
+import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, createBrowserRouter as makeBrowserRouter, createCookieSessionStorage as makeCookieSessionStorage, createHashRouter as makeHashRouter, redirect as routeRedirect, unstable_useBlocker as useRouteBlocker, useLoaderData as useRouteLoaderData, useSearchParams as useRouteSearchParams } from "react-router";
 import { Link as DomLink, useNavigate as useRouteNavigate } from "react-router-dom";
 import { runOnJS as callOnJavaScript, useWorkletCallback as makeLegacyWorklet, withSpring as makeSpring } from "react-native-reanimated";
 import * as ReanimatedRuntime from "react-native-reanimated";
@@ -1822,7 +1823,10 @@ async (_context, next) => {
   await next();
 }];
 const { getSession: getRouteSession, commitSession: commitRouteSession, destroySession: destroyRouteSession } = makeCookieSessionStorage({ cookie: { name: "session", expires: new Date(Date.now() + 1000) } });
-makeBrowserRouter([{ path: "/session", ErrorBoundary: SessionErrorBoundary, action: async ({ request }) => {
+makeBrowserRouter([{ path: "/loader-data-error", element: <main />, ErrorBoundary: function LoaderDataErrorBoundary() {
+  const data = useRouteLoaderData();
+  return <pre>{data.message}</pre>;
+} }, { path: "/session", ErrorBoundary: SessionErrorBoundary, action: async ({ request }) => {
   const session = await getRouteSession(request.headers.get("Cookie"));
   session.set("user", "a");
   return null;

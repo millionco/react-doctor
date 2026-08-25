@@ -157,6 +157,7 @@
     "react-router-no-session-mutation-in-loader",
     "react-router-no-static-cookie-expires",
     "react-router-no-unsynchronized-search-params-mutation",
+    "react-router-no-use-loader-data-in-error-ui",
     "three-webgpu-no-legacy-effect-composer",
     "react-router-no-nested-router",
     "no-full-viewport-width",

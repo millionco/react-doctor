@@ -203,6 +203,8 @@ impl Rule for ${delegatedRule.struct} {
         "is-node-conditionally-executed",
         "are-nodes-in-mutually-exclusive-branches",
         "cfg-block-can-reach",
+        "is-node-reachable-within-function",
+        "can-node-reach-later-node-within-function",
         "get-react-router-middleware-next-symbol",
         "is-react-es6-component",
         "get-static-jsx-attribute-string-values",

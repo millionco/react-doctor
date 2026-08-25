@@ -429,6 +429,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-no-catch-middleware-next": 1,
   "react-router-no-middleware-response-body-consumption": 1,
   "react-router-no-multiple-middleware-next": 1,
+  "react-router-no-multiple-set-search-params-in-tick": 1,
   "no-create-store-in-render": 1,
   "react-compiler-no-manual-memoization": 8,
   "no-giant-component": 1,
@@ -493,7 +494,7 @@ import { createContext as makeTrackedContext } from "react-tracked";
 import { create as createZustandStore } from "zustand";
 import { useQuery as useItemsQuery } from "@tanstack/react-query";
 import * as TanstackQuery from "@tanstack/react-query";
-import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, createBrowserRouter as makeBrowserRouter, createHashRouter as makeHashRouter, unstable_useBlocker as useRouteBlocker } from "react-router";
+import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, createBrowserRouter as makeBrowserRouter, createHashRouter as makeHashRouter, unstable_useBlocker as useRouteBlocker, useSearchParams as useRouteSearchParams } from "react-router";
 import { Link as DomLink, useNavigate as useRouteNavigate } from "react-router-dom";
 import { runOnJS as callOnJavaScript, useWorkletCallback as makeLegacyWorklet, withSpring as makeSpring } from "react-native-reanimated";
 import * as ReanimatedRuntime from "react-native-reanimated";
@@ -1757,6 +1758,37 @@ function MultipleRouteBlockersExample() {
   useRouteBlocker(true);
   useRouteBlocker(false);
   return null;
+}
+function MultipleSearchParamUpdatesExample({ compact }) {
+  const [, setRouteSearchParams] = useRouteSearchParams();
+  const update = () => {
+    setRouteSearchParams({ page: "1" });
+    setRouteSearchParams({ view: "compact" });
+  };
+  const updateAfterSave = async () => {
+    setRouteSearchParams({ phase: "start" });
+    await save();
+    setRouteSearchParams({ phase: "done" });
+  };
+  const updateView = () => compact
+    ? setRouteSearchParams({ view: "compact" })
+    : setRouteSearchParams({ view: "full" });
+  const updateNever = () => {
+    if (false) {
+      setRouteSearchParams({ hidden: "first" });
+      setRouteSearchParams({ hidden: "second" });
+    }
+  };
+  const updateAfterGuard = () => {
+    if (compact) {
+      setRouteSearchParams({ guard: "compact" });
+      return;
+    }
+    setRouteSearchParams({ guard: "full" });
+  };
+  void updateNever;
+  void updateAfterGuard;
+  return <button onClick={update} onFocus={updateAfterSave} onBlur={updateView} />;
 }
 export const middleware = [async (_context, next) => {
   try {

@@ -285,6 +285,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-csp-nonce-consistency": 1,
   "react-router-descendant-routes-require-splat": 1,
   "react-router-guard-aborted-handle-error": 0,
+  "react-router-internal-route-anchor": 1,
   "react-router-no-route-module-environment-suffix": 0,
   "react-router-no-session-mutation-in-loader": 2,
   "react-router-no-static-cookie-expires": 1,

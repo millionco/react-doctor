@@ -156,6 +156,7 @@
     "react-router-csp-nonce-consistency",
     "react-router-descendant-routes-require-splat",
     "react-router-guard-aborted-handle-error",
+    "react-router-internal-route-anchor",
     "react-router-no-route-module-environment-suffix",
     "react-router-no-session-mutation-in-loader",
     "react-router-no-static-cookie-expires",

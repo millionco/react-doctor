@@ -385,7 +385,8 @@
     "require-scale-reveal-transform-origin",
     "no-generic-purple-blue-icon-gradient",
     "no-pointer-disabled-enabled-control",
-    "no-inert-pointer-affordance"
+    "no-inert-pointer-affordance",
+    "no-generic-marketing-copy"
   ],
   "delegatedRules": [
     {

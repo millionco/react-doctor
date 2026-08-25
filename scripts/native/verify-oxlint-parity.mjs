@@ -520,6 +520,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-generic-purple-blue-icon-gradient": 1,
   "no-pointer-disabled-enabled-control": 1,
   "no-inert-pointer-affordance": 1,
+  "no-generic-marketing-copy": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2003,6 +2004,7 @@ export async function action({ request }) {
   return null;
 }
 const InertPointerAffordance = () => <div className="cursor-pointer">Open</div>;
+const GenericMarketingCopy = () => <main>Supercharge your workflow</main>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

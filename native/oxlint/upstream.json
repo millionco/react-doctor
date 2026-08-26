@@ -427,7 +427,8 @@
     "no-random-key",
     "no-ref-callback-cleanup-before-react-19",
     "no-uncontrolled-input",
-    "no-undeferred-third-party"
+    "no-undeferred-third-party",
+    "no-undersized-icon-button"
   ],
   "delegatedRules": [
     {

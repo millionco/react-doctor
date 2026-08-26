@@ -584,6 +584,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-valid-physical-material-properties": 1,
   "r3f-require-transparent-for-opacity": 1,
   "r3f-valid-buffer-attribute-item-size": 1,
+  "r3f-valid-buffer-attribute-array-length": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -733,6 +734,7 @@ const invalidR3fPbrMaterialFactor = <meshStandardMaterial roughness={1.2} />;
 const invalidR3fPhysicalMaterialProperty = <meshPhysicalMaterial clearcoat={2} />;
 const ignoredR3fOpacity = <meshBasicMaterial opacity={0.5} />;
 const invalidR3fBufferAttributeItemSize = <bufferAttribute args={[data, 0]} />;
+const invalidR3fBufferAttributeArrayLength = <bufferAttribute args={[new Float32Array(8), 3]} />;
 createFileRoute("/todos")({ loader: async () => fetch("/api/todos") });
 createFileRoute("/")({ loader: async () => ({}), params: { parse: (raw) => raw } });
 createFileRoute("/account")({ loader: async () => process.env.STRIPE_SECRET_KEY });
@@ -2401,7 +2403,7 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   );
   fs.writeFileSync(
     nonProductionFixturePath,
-    `import { Canvas } from "@react-three/fiber"; const ignoredTestLineWidth = <lineBasicMaterial linewidth={4} />; const unsupportedTestShadowLight = <ambientLight castShadow />; const ignoredTestBasicMaterialProperty = <meshBasicMaterial roughness={0.4} />; const invalidTestMaterialOpacity = <meshStandardMaterial opacity={1.2} />; const invalidTestPbrMaterialFactor = <meshStandardMaterial roughness={1.2} />; const invalidTestPhysicalMaterialProperty = <meshPhysicalMaterial clearcoat={2} />; const ignoredTestOpacity = <meshBasicMaterial opacity={0.5} />; const invalidTestBufferAttributeItemSize = <bufferAttribute args={[data, 0]} />; const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; const smallTestInput = <input style={{ fontSize: 14 }} />; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js")); useMemo(() => value + 1, [value]); function TestCounter() { const [count, setCount] = useState(0); setTimeout(() => setCount(count + 1), 0); } function TestEventEffect() { const [payload, setPayload] = useState(null); useEffect(() => { if (payload) post(payload); }, [payload]); return { onClick: () => setPayload({ ok: true }) }; } void Canvas;`,
+    `import { Canvas } from "@react-three/fiber"; const ignoredTestLineWidth = <lineBasicMaterial linewidth={4} />; const unsupportedTestShadowLight = <ambientLight castShadow />; const ignoredTestBasicMaterialProperty = <meshBasicMaterial roughness={0.4} />; const invalidTestMaterialOpacity = <meshStandardMaterial opacity={1.2} />; const invalidTestPbrMaterialFactor = <meshStandardMaterial roughness={1.2} />; const invalidTestPhysicalMaterialProperty = <meshPhysicalMaterial clearcoat={2} />; const ignoredTestOpacity = <meshBasicMaterial opacity={0.5} />; const invalidTestBufferAttributeItemSize = <bufferAttribute args={[data, 0]} />; const invalidTestBufferAttributeArrayLength = <bufferAttribute args={[new Float32Array(8), 3]} />; const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; const smallTestInput = <input style={{ fontSize: 14 }} />; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js")); useMemo(() => value + 1, [value]); function TestCounter() { const [count, setCount] = useState(0); setTimeout(() => setCount(count + 1), 0); } function TestEventEffect() { const [payload, setPayload] = useState(null); useEffect(() => { if (payload) post(payload); }, [payload]); return { onClick: () => setPayload({ ok: true }) }; } void Canvas;`,
   );
   fs.writeFileSync(
     deepNonProductionFixturePath,
@@ -2419,6 +2421,7 @@ const ignoredSolidPbrMaterialFactor = <meshStandardMaterial roughness={1.2} />;
 const ignoredSolidPhysicalMaterialProperty = <meshPhysicalMaterial clearcoat={2} />;
 const ignoredSolidOpacity = <meshBasicMaterial opacity={0.5} />;
 const ignoredSolidBufferAttributeItemSize = <bufferAttribute args={[data, 0]} />;
+const ignoredSolidBufferAttributeArrayLength = <bufferAttribute args={[new Float32Array(8), 3]} />;
 void Canvas;
 export const SolidGiant = () => {
   createSignal(0);
@@ -2714,7 +2717,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
   ).diagnostics;
   const expectedNonProductionDiagnosticCounts = {
     ...Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0])),
-    "react-in-jsx-scope": 12,
+    "react-in-jsx-scope": 13,
     "no-small-form-control-text": 1,
     "hook-use-state": 2,
     "r3f-no-ignored-linewidth": 1,
@@ -2725,6 +2728,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "r3f-valid-physical-material-properties": 1,
     "r3f-require-transparent-for-opacity": 1,
     "r3f-valid-buffer-attribute-item-size": 1,
+    "r3f-valid-buffer-attribute-array-length": 1,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(stockNonProductionDiagnostics)) !==

@@ -449,7 +449,8 @@
     "r3f-valid-pbr-material-properties",
     "r3f-valid-physical-material-properties",
     "r3f-require-transparent-for-opacity",
-    "r3f-valid-buffer-attribute-item-size"
+    "r3f-valid-buffer-attribute-item-size",
+    "r3f-valid-buffer-attribute-array-length"
   ],
   "delegatedRules": [
     {

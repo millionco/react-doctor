@@ -595,6 +595,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-normalized-float-buffer-attribute": 1,
   "r3f-webgpu-canvas-prop-compatibility": 1,
   "r3f-limit-shadowed-point-lights": 1,
+  "rn-bottom-sheet-use-integrated-scrollable": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -904,6 +905,7 @@ const staticSvg = <svg viewBox="0 0 24 24" />;
 const ignoredBottomSheetScrollProperties = <SheetScroll scrollEventThrottle={16} decelerationRate="fast" onScrollBeginDrag={handleDrag} />;
 const ignoredNamespacedBottomSheetScrollProperty = <GorhomBottomSheet.BottomSheetScrollView decelerationRate="normal" />;
 const supportedBottomSheetScrollProperty = <SheetScroll onScroll={handleScroll} {...scrollProperties} />;
+const mismatchedBottomSheetScrollable = <GorhomBottomSheet.BottomSheet><FlatList /></GorhomBottomSheet.BottomSheet>;
 const currentPlatform = ReactNative.Platform.OS;
 const inlineFlatListRenderItem = <FlatList renderItem={({ item }) => <Row item={item} />} />;
 const inlineSectionListRenderItem = <ReactNative.SectionList renderItem={function ({ item }) { return <Row item={item} />; }} />;

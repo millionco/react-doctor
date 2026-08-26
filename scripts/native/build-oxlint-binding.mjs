@@ -185,6 +185,7 @@ impl Rule for ${delegatedRule.struct} {
         "scan-static-jsx-subtree-for-part",
         "is-static-jsx-tree-root",
         "get-static-jsx-tree-opening-elements",
+        "get-static-jsx-descendant-opening-elements",
         "is-js-whitespace",
         "normalize-static-jsx-whitespace",
         "is-non-source-file",

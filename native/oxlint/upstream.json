@@ -452,7 +452,8 @@
     "r3f-valid-buffer-attribute-item-size",
     "r3f-valid-buffer-attribute-array-length",
     "r3f-valid-shadow-map-size",
-    "r3f-valid-raycaster-range"
+    "r3f-valid-raycaster-range",
+    "r3f-valid-fog-parameters"
   ],
   "delegatedRules": [
     {

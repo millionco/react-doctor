@@ -560,6 +560,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-prevent-default": 1,
   "no-random-key": 1,
   "no-ref-callback-cleanup-before-react-19": 1,
+  "no-uncontrolled-input": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2131,6 +2132,7 @@ if (isPredicateReady) runPredicateReadyTask();
 const PreventDefaultLink = () => <a href="https://example.com" onClick={(event) => event.preventDefault()}>Next</a>;
 const RandomKeyList = () => <div key={Math.random()} />;
 const RefCleanupBeforeReact19 = () => <div ref={(node) => () => node.remove()} />;
+const UncontrolledInput = ({ value }) => <input value={value} />;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

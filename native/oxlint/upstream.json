@@ -468,7 +468,8 @@
     "anchor-target-exists",
     "aria-proptypes",
     "async-await-in-loop",
-    "async-defer-await"
+    "async-defer-await",
+    "async-parallel"
   ],
   "delegatedRules": [
     {

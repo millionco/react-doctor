@@ -296,6 +296,7 @@ impl Rule for ${delegatedRule.struct} {
         "collect-binding-pattern-names",
         "find-side-effect",
         "find-sequential-independent-await",
+        "async-local-function-is-order-independent",
         "find-guarding-try-statement",
         "is-tanstack-root-route-filename",
         "effect-execution-contains-fetch-call",

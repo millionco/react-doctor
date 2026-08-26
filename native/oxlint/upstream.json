@@ -458,7 +458,8 @@
     "r3f-valid-perspective-camera",
     "r3f-valid-orthographic-camera",
     "r3f-no-use-frame-dependency-array",
-    "r3f-no-normalized-float-buffer-attribute"
+    "r3f-no-normalized-float-buffer-attribute",
+    "r3f-webgpu-canvas-prop-compatibility"
   ],
   "delegatedRules": [
     {

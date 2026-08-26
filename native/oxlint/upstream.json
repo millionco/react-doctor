@@ -444,7 +444,8 @@
     "nextjs-no-client-fetch-for-server-data",
     "r3f-no-ignored-linewidth",
     "r3f-no-shadows-on-unsupported-light",
-    "r3f-no-ignored-basic-material-properties"
+    "r3f-no-ignored-basic-material-properties",
+    "r3f-valid-material-opacity"
   ],
   "delegatedRules": [
     {

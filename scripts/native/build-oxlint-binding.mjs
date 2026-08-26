@@ -221,6 +221,7 @@ impl Rule for ${delegatedRule.struct} {
         "direct-named-import-matches",
         "direct-zod-factory-call-name",
         "is-direct-zod-namespace-identifier",
+        "is-direct-method-call-on-zod-factory",
         "is-react-router-session-method",
         "is-react-router-file-active",
         "is-react-router-framework-file-active",

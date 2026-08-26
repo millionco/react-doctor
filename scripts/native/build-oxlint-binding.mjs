@@ -238,6 +238,7 @@ impl Rule for ${delegatedRule.struct} {
         "cfg-block-can-reach",
         "is-node-reachable-within-function",
         "nodes-can-co-execute",
+        "node-dominates-node",
         "static-literal-truthiness",
         "can-node-reach-later-node-within-function",
         "do-nodes-cover-every-path-after-node",

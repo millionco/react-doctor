@@ -546,6 +546,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-monotonous-page-spacing": 1,
   "no-multiple-unlabeled-navigation-landmarks": 2,
   "no-mutable-in-deps": 1,
+  "no-mutating-array-method-on-prop-or-hook-result": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2098,6 +2099,7 @@ const MutableDependency = () => {
   useEffect(() => {}, [location.href]);
   return null;
 };
+const MutatingPropArray = ({ items }) => items.sort();
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

@@ -48,7 +48,7 @@ impl Rule for RnBottomSheetUseIntegratedScrollable {
             if !BOTTOM_SHEET_CONTAINER_NAMES.contains(&container_name) {
                 continue;
             }
-            for descendant in get_static_jsx_descendant_opening_elements(element) {
+            for descendant in get_static_jsx_descendant_opening_elements(element, true) {
                 let Some(scrollable_name) = resolve_imported_jsx_component_name(
                     descendant,
                     REACT_NATIVE_MODULE_SOURCE,

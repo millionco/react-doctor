@@ -461,7 +461,8 @@
     "r3f-no-normalized-float-buffer-attribute",
     "r3f-webgpu-canvas-prop-compatibility",
     "r3f-limit-shadowed-point-lights",
-    "rn-bottom-sheet-use-integrated-scrollable"
+    "rn-bottom-sheet-use-integrated-scrollable",
+    "no-focusable-content-in-aria-hidden"
   ],
   "delegatedRules": [
     {

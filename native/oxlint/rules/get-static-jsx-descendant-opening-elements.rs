@@ -21,36 +21,54 @@ struct StaticExpressionResultBranch<'a> {
 
 fn get_static_jsx_descendant_opening_elements<'a>(
     element: &'a oxc_ast::ast::JSXElement<'a>,
+    include_static_expression_branches: bool,
 ) -> Vec<&'a oxc_ast::ast::JSXOpeningElement<'a>> {
     let mut descendants = Vec::new();
     for child in &element.children {
-        append_static_jsx_descendant(child, &mut descendants);
+        append_static_jsx_descendant(
+            child,
+            include_static_expression_branches,
+            &mut descendants,
+        );
     }
     descendants
 }
 
 fn append_static_jsx_descendant<'a>(
     child: &'a oxc_ast::ast::JSXChild<'a>,
+    include_static_expression_branches: bool,
     descendants: &mut Vec<&'a oxc_ast::ast::JSXOpeningElement<'a>>,
 ) {
     match child {
         oxc_ast::ast::JSXChild::Element(element) => {
             descendants.push(&element.opening_element);
             for child in &element.children {
-                append_static_jsx_descendant(child, descendants);
+                append_static_jsx_descendant(
+                    child,
+                    include_static_expression_branches,
+                    descendants,
+                );
             }
         }
         oxc_ast::ast::JSXChild::Fragment(fragment) => {
             for child in &fragment.children {
-                append_static_jsx_descendant(child, descendants);
+                append_static_jsx_descendant(
+                    child,
+                    include_static_expression_branches,
+                    descendants,
+                );
             }
         }
-        oxc_ast::ast::JSXChild::ExpressionContainer(container) => {
+        oxc_ast::ast::JSXChild::ExpressionContainer(container)
+            if include_static_expression_branches =>
+        {
             if let Some(expression) = container.expression.as_expression() {
                 append_static_jsx_descendant_expression(expression, descendants);
             }
         }
-        oxc_ast::ast::JSXChild::Text(_) | oxc_ast::ast::JSXChild::Spread(_) => {}
+        oxc_ast::ast::JSXChild::ExpressionContainer(_)
+        | oxc_ast::ast::JSXChild::Text(_)
+        | oxc_ast::ast::JSXChild::Spread(_) => {}
     }
 }
 
@@ -65,12 +83,12 @@ fn append_static_jsx_descendant_expression<'a>(
         Expression::JSXElement(element) => {
             descendants.push(&element.opening_element);
             for child in &element.children {
-                append_static_jsx_descendant(child, descendants);
+                append_static_jsx_descendant(child, true, descendants);
             }
         }
         Expression::JSXFragment(fragment) => {
             for child in &fragment.children {
-                append_static_jsx_descendant(child, descendants);
+                append_static_jsx_descendant(child, true, descendants);
             }
         }
         Expression::ConditionalExpression(conditional) => {

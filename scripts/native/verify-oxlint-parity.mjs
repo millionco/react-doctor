@@ -555,6 +555,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-passive-request-owner-ref": 1,
   "no-path-prefix-containment": 1,
   "no-placeholder-only-field": 1,
+  "no-polymorphic-children": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2120,6 +2121,7 @@ const containmentRoot = process.cwd();
 const containmentCandidate = resolveContainmentPath(containmentRoot, requestedPath);
 const HasUnsafePathPrefix = containmentCandidate.startsWith(containmentRoot);
 const PlaceholderOnlyField = () => <input placeholder="Email address" />;
+const PolymorphicChildren = ({ children }) => typeof children === "string" ? <span>{children}</span> : <div>{children}</div>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

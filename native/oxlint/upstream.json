@@ -407,7 +407,8 @@
     "no-layout-property-animation",
     "no-layout-shifting-interaction-state",
     "no-many-boolean-props",
-    "no-match-media-in-state-initializer"
+    "no-match-media-in-state-initializer",
+    "no-mirror-prop-effect"
   ],
   "delegatedRules": [
     {

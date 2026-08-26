@@ -602,6 +602,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "anchor-target-exists": 1,
   "aria-proptypes": 1,
   "async-await-in-loop": 3,
+  "async-defer-await": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -942,6 +943,7 @@ const missingFragmentAnchor = <a href="#missing-native-target">Missing</a>;
 const existingFragmentAnchor = <><a href="#existing-native-target">Existing</a><section id="existing-native-target" /></>;
 const invalidAriaPropType = <div aria-hidden="yes" />;
 async function loadNativeAwaitLoop(items) { for (const item of items) { await loadNativeItem(item); } }
+async function loadNativeDeferredAwait(shouldSkip) { const rows = await loadNativeRows(); if (shouldSkip) return []; return rows; }
 const namespaced = <svg:path />;
 React.createElement("svg:path");
 const danger = <div dangerouslySetInnerHTML={{ __html: markup }} />;

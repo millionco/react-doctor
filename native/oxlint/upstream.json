@@ -467,7 +467,8 @@
     "anchor-is-valid",
     "anchor-target-exists",
     "aria-proptypes",
-    "async-await-in-loop"
+    "async-await-in-loop",
+    "async-defer-await"
   ],
   "delegatedRules": [
     {

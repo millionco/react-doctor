@@ -573,6 +573,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "zod-v4-no-deprecated-error-customization": 0,
   "zod-v4-no-deprecated-schema-apis": 0,
   "zod-v4-prefer-top-level-string-formats": 0,
+  "rn-no-non-native-navigator": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -655,6 +656,7 @@ import {
   type WebView,
 } from "react-native";
 import * as ReactNative from "react-native";
+import { createStackNavigator } from "@react-navigation/stack";
 import { AnimatePresence, animate as runMotionAnimation, motion, motionValue as createMotionValue, useAnimate as useMotionAnimate, useAnimationControls as useMotionControls, useMotionValue as useLiveMotionValue, useSpring as useMotionSpring, useTransform as mapMotionValue, type MotionConfig } from "framer-motion";
 import * as MotionRuntime from "motion/react";
 import { delayRender, delayRender as holdRender, Img as RemotionImg } from "remotion";

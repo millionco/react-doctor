@@ -438,7 +438,8 @@
     "zod-v4-no-deprecated-error-apis",
     "zod-v4-no-deprecated-error-customization",
     "zod-v4-no-deprecated-schema-apis",
-    "zod-v4-prefer-top-level-string-formats"
+    "zod-v4-prefer-top-level-string-formats",
+    "rn-no-non-native-navigator"
   ],
   "delegatedRules": [
     {

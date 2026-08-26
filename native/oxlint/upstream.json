@@ -409,7 +409,8 @@
     "no-many-boolean-props",
     "no-match-media-in-state-initializer",
     "no-mirror-prop-effect",
-    "no-monotonous-page-spacing"
+    "no-monotonous-page-spacing",
+    "no-multiple-unlabeled-navigation-landmarks"
   ],
   "delegatedRules": [
     {

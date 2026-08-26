@@ -33,7 +33,6 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "fast-glob": "^3.3.3",
     "jiti": "^2.7.0",
-    "mdast": "^3.0.0",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-mdx-expression": "^2.0.1",
     "mdast-util-mdx-jsx": "^3.2.0",
@@ -53,6 +52,7 @@
   },
   "devDependencies": {
     "@effect/vitest": "4.0.0-beta.102",
+    "@types/mdast": "^4.0.4",
     "@types/node": "^25.6.0",
     "@types/picomatch": "^4.0.3",
     "@types/semver": "^7.7.1"

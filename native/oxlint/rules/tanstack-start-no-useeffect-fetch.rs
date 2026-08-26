@@ -1,11 +1,11 @@
-use oxc_ast::{AstKind, ast::Expression};
+use oxc_ast::{ast::Expression, AstKind};
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 
 use crate::{
-    AstNode,
     context::{ContextHost, LintContext},
     rule::Rule,
+    AstNode,
 };
 
 const EFFECT_HOOK_NAMES: [&str; 2] = ["useEffect", "useLayoutEffect"];
@@ -50,7 +50,7 @@ impl Rule for TanstackStartNoUseeffectFetch {
         else {
             return;
         };
-        if !effect_execution_contains_direct_fetch(callback, ctx) {
+        if !effect_execution_contains_fetch_call(callback, ctx, &["fetch"], &[]) {
             return;
         }
         ctx.diagnostic(

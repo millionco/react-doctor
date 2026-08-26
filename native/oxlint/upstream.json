@@ -440,7 +440,8 @@
     "zod-v4-no-deprecated-schema-apis",
     "zod-v4-prefer-top-level-string-formats",
     "rn-no-non-native-navigator",
-    "server-cache-with-object-literal"
+    "server-cache-with-object-literal",
+    "nextjs-no-client-fetch-for-server-data"
   ],
   "delegatedRules": [
     {

@@ -575,6 +575,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "zod-v4-prefer-top-level-string-formats": 0,
   "rn-no-non-native-navigator": 1,
   "server-cache-with-object-literal": 1,
+  "nextjs-no-client-fetch-for-server-data": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2373,7 +2374,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
     safeGlobalErrorFixturePath,
     `'use client';\nimport React from "react";\nexport default function GlobalError() { return <html lang="en"><body /></html>; }\n`,
   );
-  fs.writeFileSync(safePageFixturePath, 'export const runtime = "edge";\n');
+  fs.writeFileSync(
+    safePageFixturePath,
+    `'use client';\nexport const runtime = "edge";\nexport default function Page() { useEffect(() => { fetch("/api/data"); }, []); return null; }\n`,
+  );
   fs.mkdirSync(path.dirname(safeRouteHandlerFixturePath), { recursive: true });
   fs.writeFileSync(
     safeRouteHandlerFixturePath,

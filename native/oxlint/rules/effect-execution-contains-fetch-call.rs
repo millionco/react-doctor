@@ -1,10 +1,12 @@
-fn effect_execution_contains_direct_fetch(
+fn effect_execution_contains_fetch_call(
     callback: &oxc_ast::ast::Expression<'_>,
     ctx: &crate::context::LintContext<'_>,
+    fetch_callee_names: &[&str],
+    member_object_names: &[&str],
 ) -> bool {
     use oxc_ast::{
-        AstKind,
         ast::{AssignmentTarget, Expression, FunctionType},
+        AstKind,
     };
     use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -55,11 +57,10 @@ fn effect_execution_contains_direct_fetch(
                     }
                 }
                 AstKind::CallExpression(call_expression) => {
-                    let callee = call_expression.callee.get_inner_expression();
-                    if matches!(callee, Expression::Identifier(identifier) if identifier.name == "fetch")
-                    {
+                    if is_fetch_call(call_expression, fetch_callee_names, member_object_names) {
                         return true;
                     }
+                    let callee = call_expression.callee.get_inner_expression();
                     if let Some(function_node_id) = function_expression_node_id(callee) {
                         pending_execution_root_ids.push(function_node_id);
                         continue;
@@ -107,6 +108,27 @@ fn effect_execution_contains_direct_fetch(
     false
 }
 
+fn is_fetch_call(
+    call_expression: &oxc_ast::ast::CallExpression<'_>,
+    callee_names: &[&str],
+    member_object_names: &[&str],
+) -> bool {
+    match &call_expression.callee {
+        oxc_ast::ast::Expression::Identifier(identifier) => {
+            callee_names.contains(&identifier.name.as_str())
+        }
+        expression => expression
+            .as_member_expression()
+            .is_some_and(|member_expression| {
+                matches!(
+                    member_expression.object(),
+                    oxc_ast::ast::Expression::Identifier(identifier)
+                        if member_object_names.contains(&identifier.name.as_str())
+                )
+            }),
+    }
+}
+
 fn is_inside_execution_root(
     candidate_node_id: oxc_semantic::NodeId,
     execution_root_id: oxc_semantic::NodeId,
@@ -121,8 +143,7 @@ fn is_inside_execution_root(
         }
         if matches!(
             ancestor.kind(),
-            oxc_ast::AstKind::Function(_)
-                | oxc_ast::AstKind::ArrowFunctionExpression(_)
+            oxc_ast::AstKind::Function(_) | oxc_ast::AstKind::ArrowFunctionExpression(_)
         ) {
             return false;
         }
@@ -135,9 +156,7 @@ fn function_expression_node_id(
 ) -> Option<oxc_semantic::NodeId> {
     match expression.get_inner_expression() {
         oxc_ast::ast::Expression::FunctionExpression(function) => Some(function.node_id.get()),
-        oxc_ast::ast::Expression::ArrowFunctionExpression(function) => {
-            Some(function.node_id.get())
-        }
+        oxc_ast::ast::Expression::ArrowFunctionExpression(function) => Some(function.node_id.get()),
         _ => None,
     }
 }

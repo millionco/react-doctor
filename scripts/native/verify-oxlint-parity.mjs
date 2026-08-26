@@ -402,6 +402,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "remotion-no-css-animation": 3,
   "remotion-no-css-transition": 4,
   "no-conflicting-spring-options": 2,
+  "motion-keyframe-times-mismatch": 2,
   "three-no-shadows-on-unsupported-light": 1,
   "three-no-async-animation-loop": 2,
   "three-cap-device-pixel-ratio": 1,
@@ -1607,6 +1608,7 @@ function SafeRemotionRandomFixture() {
   return <div>{Math.random()}</div>;
 }
 const ConflictingMotionSpringFixture = () => <><MotionRuntime.motion.div transition={{ type: "spring", stiffness: 200, duration: 0.4 }} /><MotionRuntime.motion.div animate={{ x: 100, transition: { type: "spring", mass: 1, bounce: 0.3 } }} /></>;
+const MismatchedMotionKeyframesFixture = () => <><MotionRuntime.motion.div animate={{ opacity: [0, 1, 0] }} transition={{ times: [0, 1] }} /><MotionRuntime.motion.div animate={{ x: [0, 20], transition: { times: [0, 0.5, 1] } }} /></>;
 const unsupportedShadowLight = new ThreeRuntime.AmbientLight();
 unsupportedShadowLight.castShadow = true;
 const asyncAnimationRenderer = new ThreeRuntime.WebGLRenderer();

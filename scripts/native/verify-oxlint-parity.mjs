@@ -561,6 +561,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-random-key": 1,
   "no-ref-callback-cleanup-before-react-19": 1,
   "no-uncontrolled-input": 2,
+  "no-undeferred-third-party": 3,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2133,6 +2134,7 @@ const PreventDefaultLink = () => <a href="https://example.com" onClick={(event) 
 const RandomKeyList = () => <div key={Math.random()} />;
 const RefCleanupBeforeReact19 = () => <div ref={(node) => () => node.remove()} />;
 const UncontrolledInput = ({ value }) => <input value={value} />;
+const UndeferredThirdParty = () => <script src="https://cdn.example.com/widget.js" />;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

@@ -426,7 +426,8 @@
     "no-prevent-default",
     "no-random-key",
     "no-ref-callback-cleanup-before-react-19",
-    "no-uncontrolled-input"
+    "no-uncontrolled-input",
+    "no-undeferred-third-party"
   ],
   "delegatedRules": [
     {

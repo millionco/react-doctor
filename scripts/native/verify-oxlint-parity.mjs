@@ -554,6 +554,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-object-or-array-coerced-to-string-in-template-literal": 1,
   "no-passive-request-owner-ref": 1,
   "no-path-prefix-containment": 1,
+  "no-placeholder-only-field": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2118,6 +2119,7 @@ import { resolve as resolveContainmentPath } from "node:path";
 const containmentRoot = process.cwd();
 const containmentCandidate = resolveContainmentPath(containmentRoot, requestedPath);
 const HasUnsafePathPrefix = containmentCandidate.startsWith(containmentRoot);
+const PlaceholderOnlyField = () => <input placeholder="Email address" />;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

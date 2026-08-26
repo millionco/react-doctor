@@ -419,7 +419,8 @@
     "no-numbered-section-markers",
     "no-object-or-array-coerced-to-string-in-template-literal",
     "no-passive-request-owner-ref",
-    "no-path-prefix-containment"
+    "no-path-prefix-containment",
+    "no-placeholder-only-field"
   ],
   "delegatedRules": [
     {

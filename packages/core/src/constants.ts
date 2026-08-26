@@ -964,6 +964,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-large-animated-blur",
   "no-layout-property-animation",
   "no-layout-shifting-interaction-state",
+  "no-many-boolean-props",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

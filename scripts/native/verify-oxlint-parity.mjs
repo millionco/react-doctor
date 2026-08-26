@@ -540,6 +540,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-large-animated-blur": 1,
   "no-layout-property-animation": 1,
   "no-layout-shifting-interaction-state": 1,
+  "no-many-boolean-props": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2074,6 +2075,7 @@ const JsxElementComponent = (): JSX.Element => <div />;
 const LargeAnimatedBlur = () => <motion.div animate={{ filter: "blur(24px)" }} />;
 const LayoutPropertyAnimation = () => <motion.div animate={{ width: 200 }} />;
 const LayoutShiftingInteractionState = () => <button className="hover:px-6">Save</button>;
+const ManyBooleanProps: React.FC = ({ isOpen, isLoading, hasIcon, canEdit }) => <div />;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

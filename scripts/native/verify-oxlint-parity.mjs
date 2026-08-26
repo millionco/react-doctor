@@ -547,6 +547,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-multiple-unlabeled-navigation-landmarks": 2,
   "no-mutable-in-deps": 1,
   "no-mutating-array-method-on-prop-or-hook-result": 1,
+  "no-mutating-reducer-state": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -594,7 +595,7 @@ import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
 import { redirect as nextRedirect } from "next/navigation";
-import React, { Activity as ReactActivity, Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useRef, useState, Component, forwardRef as wrapRef, ViewTransition, memo, startTransition as beginRouteTransition, type FunctionComponent as LegacyContextFunctionComponent } from "react";
+import React, { Activity as ReactActivity, Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useReducer, useRef, useState, Component, forwardRef as wrapRef, ViewTransition, memo, startTransition as beginRouteTransition, type FunctionComponent as LegacyContextFunctionComponent } from "react";
 import ReactDOM, { hydrate as legacyHydrate } from "react-dom";
 import { act as legacyAct, Simulate as LegacySimulate } from "react-dom/test-utils";
 import type { useMemo as PreactTypeOnlyHook } from "react";
@@ -2100,6 +2101,7 @@ const MutableDependency = () => {
   return null;
 };
 const MutatingPropArray = ({ items }) => items.sort();
+const MutatingReducerState = () => useReducer((state) => { state.count += 1; return state; }, { count: 0 });
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

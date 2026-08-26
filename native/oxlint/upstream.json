@@ -412,7 +412,8 @@
     "no-monotonous-page-spacing",
     "no-multiple-unlabeled-navigation-landmarks",
     "no-mutable-in-deps",
-    "no-mutating-array-method-on-prop-or-hook-result"
+    "no-mutating-array-method-on-prop-or-hook-result",
+    "no-mutating-reducer-state"
   ],
   "delegatedRules": [
     {

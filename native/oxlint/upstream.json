@@ -403,7 +403,8 @@
     "no-invisible-focus-control",
     "no-json-parse-stringify-clone",
     "no-jsx-element-type",
-    "no-large-animated-blur"
+    "no-large-animated-blur",
+    "no-layout-property-animation"
   ],
   "delegatedRules": [
     {

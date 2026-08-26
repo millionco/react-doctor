@@ -136,6 +136,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-react-hook-call",
         "is-global-nan-value",
         "is-proven-global-namespace-reference",
+        "is-proven-dom-event-target",
         "binding-pattern-has-symbol",
         "is-process-stdout-member",
         "member-expression-identifier-property-name",

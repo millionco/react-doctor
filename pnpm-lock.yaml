@@ -256,6 +256,9 @@ importers:
       eslint-plugin-react-hooks:
         specifier: ^7.1.1
         version: 7.1.1(eslint@9.39.2(jiti@2.7.0))
+      is-unicode-supported:
+        specifier: ^2.1.0
+        version: 2.1.0
       jiti:
         specifier: ^2.7.0
         version: 2.7.0

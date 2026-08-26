@@ -567,6 +567,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-unthrottled-scroll-mutation": 0,
   "preact-prefer-oninput": 1,
   "waapi-animation-in-render": 0,
+  "zod-v4-prefer-top-level-string-formats": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2393,6 +2394,7 @@ ${nonReactComplexityBranches}
     configuredFixturePath,
     `
 import React, { Component } from "react";
+import { z as configuredZod } from "zod";
 class ConfiguredState extends Component {
   state = {};
   componentWillMount() {}
@@ -2421,6 +2423,7 @@ const configuredUngatedTailwindAnimation = <><span className="animate-spin" /><s
 const configuredScrollHero = document.querySelector(".hero"); document.addEventListener("scroll", () => { configuredScrollHero.style.transform = "translateY(10px)"; });
 const configuredPreactTextInput = <input type="text" onChange={() => {}} />;
 const ConfiguredWaapiPanel = () => { document.body.animate({ opacity: [0, 1] }, 200); return <div />; };
+const configuredZodEmail = configuredZod.string().email();
 const configuredCrampedContainerPadding = <div className="border p-1">Status</div>;
 const configuredHoverOnlyReveal = <button className="opacity-0 hover:opacity-100">Edit</button>;
 const configuredImportantNumberedSections = <main><section><span className="!text-xs font-mono" style={{ fontSize: 16 }}>01</span><h2>Principles</h2></section><section><span className="!text-xs font-mono" style={{ fontSize: 16 }}>02</span><h2>Process</h2></section></main>;
@@ -2532,6 +2535,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "no-unthrottled-scroll-mutation",
     "preact-prefer-oninput",
     "waapi-animation-in-render",
+    "zod-v4-prefer-top-level-string-formats",
     "no-cramped-container-padding",
     "no-hover-only-reveal",
     "no-numbered-section-markers",
@@ -2739,6 +2743,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "no-unthrottled-scroll-mutation": 1,
     "preact-prefer-oninput": 1,
     "waapi-animation-in-render": 1,
+    "zod-v4-prefer-top-level-string-formats": 1,
     "no-cramped-container-padding": 1,
     "no-hover-only-reveal": 1,
     "no-numbered-section-markers": 3,

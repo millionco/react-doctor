@@ -456,7 +456,8 @@
     "r3f-valid-fog-parameters",
     "r3f-valid-spot-light-properties",
     "r3f-valid-perspective-camera",
-    "r3f-valid-orthographic-camera"
+    "r3f-valid-orthographic-camera",
+    "r3f-no-use-frame-dependency-array"
   ],
   "delegatedRules": [
     {

@@ -464,7 +464,8 @@
     "rn-bottom-sheet-use-integrated-scrollable",
     "no-focusable-content-in-aria-hidden",
     "alt-text",
-    "anchor-is-valid"
+    "anchor-is-valid",
+    "anchor-target-exists"
   ],
   "delegatedRules": [
     {

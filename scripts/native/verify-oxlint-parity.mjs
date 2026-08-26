@@ -599,6 +599,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-focusable-content-in-aria-hidden": 1,
   "alt-text": 7,
   "anchor-is-valid": 2,
+  "anchor-target-exists": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -625,6 +626,10 @@ const REACT_DOCTOR_SETTINGS = {
 };
 const CONFIGURED_REACT_DOCTOR_SETTINGS = {
   react: { version: "16.4.0" },
+  "jsx-a11y": {
+    attributes: { href: ["href", "to"] },
+    components: { NavigationLink: "a" },
+  },
   "react-doctor": {
     ...REACT_DOCTOR_SETTINGS["react-doctor"],
     capabilities: ["react", "tailwind"],
@@ -931,6 +936,8 @@ const protocolRelativeAnchor = <a href="//cdn.example.com/file">File</a>;
 const scriptUrlAnchor = <a href="javascript:void(0)">Open</a>;
 const obfuscatedScriptUrlAnchor = <a href=" \tJ\na\rv\ta\ns\tc\rr\ni\tp\tt:alert(1)">Open</a>;
 const safeJavascriptArticle = <a href="https://example.com/JavaScript:Guide">Read</a>;
+const missingFragmentAnchor = <a href="#missing-native-target">Missing</a>;
+const existingFragmentAnchor = <><a href="#existing-native-target">Existing</a><section id="existing-native-target" /></>;
 const namespaced = <svg:path />;
 React.createElement("svg:path");
 const danger = <div dangerouslySetInnerHTML={{ __html: markup }} />;
@@ -2498,6 +2505,7 @@ const configuredAllowedInvalidRole = <div role="datepicker" />;
 const configuredImage = <ConfiguredImage />;
 verify("forwards the fixture", () => { void <ProductComponent fixture={<img src="/fixture.png" />} />; });
 const configuredInvalidAnchor = <a to="">Destination</a>;
+const configuredMissingFragmentAnchor = <NavigationLink to="#configured-missing-target">Missing</NavigationLink>;
 const configuredInvalidCustomRole = <Widget role="custom-invalid" />;
 const configuredAmbiguousAnchor = <a href="https://example.com/continue">continue</a>;
 const configuredAllowedInteractiveRole = <button role="article">Save</button>;
@@ -2616,6 +2624,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "aria-role",
     "alt-text",
     "anchor-is-valid",
+    "anchor-target-exists",
     "anchor-ambiguous-text",
     "no-interactive-element-to-noninteractive-role",
     "no-noninteractive-element-to-interactive-role",
@@ -2850,6 +2859,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "aria-role": 1,
     "alt-text": 1,
     "anchor-is-valid": 1,
+    "anchor-target-exists": 1,
     "anchor-ambiguous-text": 1,
     "jsx-max-depth": 2,
     "no-unsafe": 1,

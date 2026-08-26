@@ -167,7 +167,11 @@ const SOURCE_ROOT_SEGMENTS: &[&str] = &[
 
 fn is_non_production_file(ctx: &crate::context::ContextHost) -> bool {
     let filename = ctx.file_path().to_string_lossy().replace('\\', "/");
-    let basename = filename.rsplit('/').next().unwrap_or(filename.as_ref());
+    is_non_production_filename(&filename)
+}
+
+fn is_non_production_filename(filename: &str) -> bool {
+    let basename = filename.rsplit('/').next().unwrap_or(filename);
     let lowercase_basename = basename.to_lowercase();
     if NON_PRODUCTION_BASENAMES.contains(&lowercase_basename.as_str())
         || NON_PRODUCTION_FILENAME_SUFFIXES
@@ -186,12 +190,10 @@ fn is_non_production_file(ctx: &crate::context::ContextHost) -> bool {
         .iter()
         .filter_map(|segment| filename.rfind(segment))
         .max()
-        .map_or(filename.as_ref(), |source_root_index| {
-            &filename[source_root_index..]
-        });
+        .map_or(filename, |source_root_index| &filename[source_root_index..]);
     NON_PRODUCTION_PATH_SEGMENTS.iter().any(|segment| {
         let haystack = if segment.starts_with("/.") {
-            filename.as_ref()
+            filename
         } else {
             scoped_filename
         };

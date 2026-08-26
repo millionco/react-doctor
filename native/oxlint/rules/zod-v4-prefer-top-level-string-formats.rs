@@ -5,7 +5,6 @@ use oxc_macros::declare_oxc_lint;
 use crate::{
     AstNode,
     context::{ContextHost, LintContext},
-    module_record::ImportImportName,
     rule::Rule,
 };
 
@@ -33,7 +32,6 @@ const STRING_FORMAT_METHODS: [&str; 21] = [
     "url",
     "uuid",
 ];
-const ZOD_MODULE_SOURCES: [&str; 2] = ["zod", "zod/v4"];
 
 #[derive(Debug, Default, Clone)]
 #[allow(non_camel_case_types)]
@@ -79,21 +77,17 @@ impl Rule for Zod_v4PreferTopLevelStringFormats {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ZodImportKind {
-    Namespace,
-    NamedZ,
-    NamedString,
-}
-
-fn is_direct_zod_string_factory(
-    expression: &Expression<'_>,
-    ctx: &LintContext<'_>,
+fn is_direct_zod_string_factory<'a>(
+    expression: &Expression<'a>,
+    ctx: &LintContext<'a>,
 ) -> bool {
     match expression.get_inner_expression() {
-        Expression::Identifier(identifier) => {
-            direct_zod_import_kind(identifier, ctx) == Some(ZodImportKind::NamedString)
-        }
+        Expression::Identifier(identifier) => direct_named_import_matches(
+            identifier,
+            &["string"],
+            &DIRECT_ZOD_MODULE_SOURCES,
+            ctx,
+        ),
         expression => expression
             .as_member_expression()
             .is_some_and(|member_expression| {
@@ -101,44 +95,8 @@ fn is_direct_zod_string_factory(
                     && matches!(
                         member_expression.object().get_inner_expression(),
                         Expression::Identifier(identifier)
-                            if matches!(
-                                direct_zod_import_kind(identifier, ctx),
-                                Some(ZodImportKind::Namespace | ZodImportKind::NamedZ)
-                            )
+                            if is_direct_zod_namespace_identifier(identifier, ctx)
                     )
             }),
     }
-}
-
-fn direct_zod_import_kind(
-    identifier: &oxc_ast::ast::IdentifierReference<'_>,
-    ctx: &LintContext<'_>,
-) -> Option<ZodImportKind> {
-    let symbol_id = ctx
-        .scoping()
-        .get_reference(identifier.reference_id())
-        .symbol_id()?;
-    ctx.module_record().import_entries.iter().find_map(|entry| {
-        if entry.is_type
-            || !ZOD_MODULE_SOURCES.contains(&entry.module_request.name())
-            || ctx
-                .scoping()
-                .get_root_binding(entry.local_name.name().into())
-                != Some(symbol_id)
-        {
-            return None;
-        }
-        match &entry.import_name {
-            ImportImportName::NamespaceObject | ImportImportName::Default(_) => {
-                Some(ZodImportKind::Namespace)
-            }
-            ImportImportName::Name(imported_name) if imported_name.name() == "z" => {
-                Some(ZodImportKind::NamedZ)
-            }
-            ImportImportName::Name(imported_name) if imported_name.name() == "string" => {
-                Some(ZodImportKind::NamedString)
-            }
-            _ => None,
-        }
-    })
 }

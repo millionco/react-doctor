@@ -565,6 +565,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-undersized-icon-button": 0,
   "no-ungated-tailwind-animation": 2,
   "no-unthrottled-scroll-mutation": 0,
+  "waapi-animation-in-render": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2417,6 +2418,7 @@ const configuredSmallFormControlText = <><input className="text-sm" /><input cla
 const configuredUndersizedIconButton = <button className="size-4 p-0"><svg /></button>;
 const configuredUngatedTailwindAnimation = <><span className="animate-spin" /><span className="motion-reduce:animate-spin motion-reduce:hidden" /></>;
 const configuredScrollHero = document.querySelector(".hero"); document.addEventListener("scroll", () => { configuredScrollHero.style.transform = "translateY(10px)"; });
+const ConfiguredWaapiPanel = () => { document.body.animate({ opacity: [0, 1] }, 200); return <div />; };
 const configuredCrampedContainerPadding = <div className="border p-1">Status</div>;
 const configuredHoverOnlyReveal = <button className="opacity-0 hover:opacity-100">Edit</button>;
 const configuredImportantNumberedSections = <main><section><span className="!text-xs font-mono" style={{ fontSize: 16 }}>01</span><h2>Principles</h2></section><section><span className="!text-xs font-mono" style={{ fontSize: 16 }}>02</span><h2>Process</h2></section></main>;
@@ -2526,6 +2528,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "no-undersized-icon-button",
     "no-ungated-tailwind-animation",
     "no-unthrottled-scroll-mutation",
+    "waapi-animation-in-render",
     "no-cramped-container-padding",
     "no-hover-only-reveal",
     "no-numbered-section-markers",
@@ -2731,6 +2734,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "no-undersized-icon-button": 1,
     "no-ungated-tailwind-animation": 1,
     "no-unthrottled-scroll-mutation": 1,
+    "waapi-animation-in-render": 1,
     "no-cramped-container-padding": 1,
     "no-hover-only-reveal": 1,
     "no-numbered-section-markers": 3,

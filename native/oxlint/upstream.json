@@ -430,7 +430,8 @@
     "no-undeferred-third-party",
     "no-undersized-icon-button",
     "no-ungated-tailwind-animation",
-    "no-unthrottled-scroll-mutation"
+    "no-unthrottled-scroll-mutation",
+    "waapi-animation-in-render"
   ],
   "delegatedRules": [
     {

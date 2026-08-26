@@ -551,6 +551,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-non-literal-selector-query-without-try-catch": 1,
   "no-nullish-coalescing-arithmetic-precedence": 1,
   "no-numbered-section-markers": 1,
+  "no-object-or-array-coerced-to-string-in-template-literal": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2108,6 +2109,8 @@ const MutatingReducerState = () => useReducer((state) => { state.count += 1; ret
 element.matches(location.hash);
 const NullishRatio = maybeValue ?? 0 / divisor;
 const NumberedSections = () => <main><section><span style={{ fontSize: 12, fontFamily: "monospace" }}>01</span><h2>Principles</h2></section><section><span style={{ fontSize: 12, fontWeight: 600 }}>02</span><h2>Process</h2></section></main>;
+const objectCoercionValue = { code: 1 };
+const ObjectCoercion = () => \`Error: \${objectCoercionValue}\`;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

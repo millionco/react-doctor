@@ -416,7 +416,8 @@
     "no-mutating-reducer-state",
     "no-non-literal-selector-query-without-try-catch",
     "no-nullish-coalescing-arithmetic-precedence",
-    "no-numbered-section-markers"
+    "no-numbered-section-markers",
+    "no-object-or-array-coerced-to-string-in-template-literal"
   ],
   "delegatedRules": [
     {

@@ -541,6 +541,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-layout-property-animation": 1,
   "no-layout-shifting-interaction-state": 1,
   "no-many-boolean-props": 1,
+  "no-match-media-in-state-initializer": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2076,6 +2077,7 @@ const LargeAnimatedBlur = () => <motion.div animate={{ filter: "blur(24px)" }} /
 const LayoutPropertyAnimation = () => <motion.div animate={{ width: 200 }} />;
 const LayoutShiftingInteractionState = () => <button className="hover:px-6">Save</button>;
 const ManyBooleanProps: React.FC = ({ isOpen, isLoading, hasIcon, canEdit }) => <div />;
+const MatchMediaState = () => useState(() => matchMedia("(max-width: 768px)").matches);
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

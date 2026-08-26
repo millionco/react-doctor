@@ -406,7 +406,8 @@
     "no-large-animated-blur",
     "no-layout-property-animation",
     "no-layout-shifting-interaction-state",
-    "no-many-boolean-props"
+    "no-many-boolean-props",
+    "no-match-media-in-state-initializer"
   ],
   "delegatedRules": [
     {

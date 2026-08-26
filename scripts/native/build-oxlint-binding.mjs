@@ -173,6 +173,7 @@ impl Rule for ${delegatedRule.struct} {
         "generated-image-jsx-opening-element-ids",
         "is-in-project-directory",
         "is-next-file-active",
+        "is-react-native-file-target",
         "program-estree-span",
         "get-next-static-jsx-element-sibling",
         "collect-static-jsx-elements",

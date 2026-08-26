@@ -404,7 +404,8 @@
     "no-json-parse-stringify-clone",
     "no-jsx-element-type",
     "no-large-animated-blur",
-    "no-layout-property-animation"
+    "no-layout-property-animation",
+    "no-layout-shifting-interaction-state"
   ],
   "delegatedRules": [
     {

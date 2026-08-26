@@ -421,7 +421,8 @@
     "no-passive-request-owner-ref",
     "no-path-prefix-containment",
     "no-placeholder-only-field",
-    "no-polymorphic-children"
+    "no-polymorphic-children",
+    "no-predicate-function-reference-in-boolean-position"
   ],
   "delegatedRules": [
     {

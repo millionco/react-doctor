@@ -600,6 +600,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "alt-text": 7,
   "anchor-is-valid": 2,
   "anchor-target-exists": 1,
+  "aria-proptypes": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -938,6 +939,7 @@ const obfuscatedScriptUrlAnchor = <a href=" \tJ\na\rv\ta\ns\tc\rr\ni\tp\tt:alert
 const safeJavascriptArticle = <a href="https://example.com/JavaScript:Guide">Read</a>;
 const missingFragmentAnchor = <a href="#missing-native-target">Missing</a>;
 const existingFragmentAnchor = <><a href="#existing-native-target">Existing</a><section id="existing-native-target" /></>;
+const invalidAriaPropType = <div aria-hidden="yes" />;
 const namespaced = <svg:path />;
 React.createElement("svg:path");
 const danger = <div dangerouslySetInnerHTML={{ __html: markup }} />;

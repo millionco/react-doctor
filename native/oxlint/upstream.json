@@ -465,7 +465,8 @@
     "no-focusable-content-in-aria-hidden",
     "alt-text",
     "anchor-is-valid",
-    "anchor-target-exists"
+    "anchor-target-exists",
+    "aria-proptypes"
   ],
   "delegatedRules": [
     {

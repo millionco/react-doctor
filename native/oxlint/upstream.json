@@ -413,7 +413,8 @@
     "no-multiple-unlabeled-navigation-landmarks",
     "no-mutable-in-deps",
     "no-mutating-array-method-on-prop-or-hook-result",
-    "no-mutating-reducer-state"
+    "no-mutating-reducer-state",
+    "no-non-literal-selector-query-without-try-catch"
   ],
   "delegatedRules": [
     {

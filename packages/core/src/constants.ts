@@ -959,6 +959,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-inline-hoc-on-component",
   "no-inline-prop-on-memo-component",
   "no-invisible-focus-control",
+  "no-json-parse-stringify-clone",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

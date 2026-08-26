@@ -400,7 +400,8 @@
     "no-impure-state-updater",
     "no-inline-hoc-on-component",
     "no-inline-prop-on-memo-component",
-    "no-invisible-focus-control"
+    "no-invisible-focus-control",
+    "no-json-parse-stringify-clone"
   ],
   "delegatedRules": [
     {

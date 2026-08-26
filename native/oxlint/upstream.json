@@ -442,7 +442,8 @@
     "rn-no-non-native-navigator",
     "server-cache-with-object-literal",
     "nextjs-no-client-fetch-for-server-data",
-    "r3f-no-ignored-linewidth"
+    "r3f-no-ignored-linewidth",
+    "r3f-no-shadows-on-unsupported-light"
   ],
   "delegatedRules": [
     {

@@ -326,6 +326,7 @@ impl Rule for ${delegatedRule.struct} {
         "resolve-static-array-like-length",
         "is-float-typed-array",
         "has-r3f-runtime-import",
+        "read-static-jsx-boolean-attribute",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

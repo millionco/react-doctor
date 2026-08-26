@@ -577,6 +577,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "server-cache-with-object-literal": 1,
   "nextjs-no-client-fetch-for-server-data": 1,
   "r3f-no-ignored-linewidth": 1,
+  "r3f-no-shadows-on-unsupported-light": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -719,6 +720,7 @@ requestAnimationFrame(() => {
 });
 const duplicateProps = <Widget value="first" value="second" />;
 const ignoredR3fLineWidth = <lineBasicMaterial linewidth={4} />;
+const unsupportedR3fShadowLight = <ambientLight castShadow />;
 createFileRoute("/todos")({ loader: async () => fetch("/api/todos") });
 createFileRoute("/")({ loader: async () => ({}), params: { parse: (raw) => raw } });
 createFileRoute("/account")({ loader: async () => process.env.STRIPE_SECRET_KEY });
@@ -2387,7 +2389,7 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   );
   fs.writeFileSync(
     nonProductionFixturePath,
-    `import { Canvas } from "@react-three/fiber"; const ignoredTestLineWidth = <lineBasicMaterial linewidth={4} />; const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; const smallTestInput = <input style={{ fontSize: 14 }} />; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js")); useMemo(() => value + 1, [value]); function TestCounter() { const [count, setCount] = useState(0); setTimeout(() => setCount(count + 1), 0); } function TestEventEffect() { const [payload, setPayload] = useState(null); useEffect(() => { if (payload) post(payload); }, [payload]); return { onClick: () => setPayload({ ok: true }) }; } void Canvas;`,
+    `import { Canvas } from "@react-three/fiber"; const ignoredTestLineWidth = <lineBasicMaterial linewidth={4} />; const unsupportedTestShadowLight = <ambientLight castShadow />; const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; const smallTestInput = <input style={{ fontSize: 14 }} />; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js")); useMemo(() => value + 1, [value]); function TestCounter() { const [count, setCount] = useState(0); setTimeout(() => setCount(count + 1), 0); } function TestEventEffect() { const [payload, setPayload] = useState(null); useEffect(() => { if (payload) post(payload); }, [payload]); return { onClick: () => setPayload({ ok: true }) }; } void Canvas;`,
   );
   fs.writeFileSync(
     deepNonProductionFixturePath,
@@ -2398,6 +2400,7 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
     `import { createSignal } from "solid-js";
 import { Canvas } from "@react-three/fiber";
 const ignoredSolidLineWidth = <lineBasicMaterial linewidth={4} />;
+const ignoredSolidShadowLight = <ambientLight castShadow />;
 void Canvas;
 export const SolidGiant = () => {
   createSignal(0);
@@ -2693,10 +2696,11 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
   ).diagnostics;
   const expectedNonProductionDiagnosticCounts = {
     ...Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0])),
-    "react-in-jsx-scope": 5,
+    "react-in-jsx-scope": 6,
     "no-small-form-control-text": 1,
     "hook-use-state": 2,
     "r3f-no-ignored-linewidth": 1,
+    "r3f-no-shadows-on-unsupported-light": 1,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(stockNonProductionDiagnostics)) !==

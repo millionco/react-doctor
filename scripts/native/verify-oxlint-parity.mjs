@@ -597,6 +597,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-limit-shadowed-point-lights": 1,
   "rn-bottom-sheet-use-integrated-scrollable": 1,
   "no-focusable-content-in-aria-hidden": 1,
+  "alt-text": 7,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -631,6 +632,7 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
     noStringRefs: { noTemplateLiterals: true },
     stateInConstructor: { mode: "never" },
     ariaRole: { allowedInvalidRoles: ["datepicker"], ignoreNonDOM: false },
+    altText: { elements: ["img"], img: ["ConfiguredImage"] },
     anchorAmbiguousText: { words: ["continue"] },
     noInteractiveElementToNoninteractiveRole: { button: ["article"] },
     noNoninteractiveElementToInteractiveRole: { h1: ["button"] },
@@ -908,6 +910,7 @@ const ignoredNamespacedBottomSheetScrollProperty = <GorhomBottomSheet.BottomShee
 const supportedBottomSheetScrollProperty = <SheetScroll onScroll={handleScroll} {...scrollProperties} />;
 const mismatchedBottomSheetScrollable = <GorhomBottomSheet.BottomSheet><FlatList /></GorhomBottomSheet.BottomSheet>;
 const hiddenFocusableControl = <div aria-hidden><button type="button">Save</button></div>;
+const missingImageAlternative = <img src="/missing-alt.png" />;
 const currentPlatform = ReactNative.Platform.OS;
 const inlineFlatListRenderItem = <FlatList renderItem={({ item }) => <Row item={item} />} />;
 const inlineSectionListRenderItem = <ReactNative.SectionList renderItem={function ({ item }) { return <Row item={item} />; }} />;
@@ -2473,6 +2476,8 @@ ${nonReactComplexityBranches}
     configuredFixturePath,
     `
 import React, { Component } from "react";
+import { test as verify } from "vitest";
+import { ProductComponent } from "./product-component";
 import { z as configuredZod } from "zod";
 class ConfiguredState extends Component {
   state = {};
@@ -2488,6 +2493,8 @@ class ConfiguredState extends Component {
 const configuredBooleanProps = <Widget enabled compact={true} />;
 const configuredHeading = <Title />;
 const configuredAllowedInvalidRole = <div role="datepicker" />;
+const configuredImage = <ConfiguredImage />;
+verify("forwards the fixture", () => { void <ProductComponent fixture={<img src="/fixture.png" />} />; });
 const configuredInvalidCustomRole = <Widget role="custom-invalid" />;
 const configuredAmbiguousAnchor = <a href="https://example.com/continue">continue</a>;
 const configuredAllowedInteractiveRole = <button role="article">Save</button>;
@@ -2604,6 +2611,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "state-in-constructor",
     "aria-activedescendant-has-tabindex",
     "aria-role",
+    "alt-text",
     "anchor-ambiguous-text",
     "no-interactive-element-to-noninteractive-role",
     "no-noninteractive-element-to-interactive-role",
@@ -2836,6 +2844,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "no-string-refs": 1,
     "state-in-constructor": 3,
     "aria-role": 1,
+    "alt-text": 1,
     "anchor-ambiguous-text": 1,
     "jsx-max-depth": 2,
     "no-unsafe": 1,

@@ -462,7 +462,8 @@
     "r3f-webgpu-canvas-prop-compatibility",
     "r3f-limit-shadowed-point-lights",
     "rn-bottom-sheet-use-integrated-scrollable",
-    "no-focusable-content-in-aria-hidden"
+    "no-focusable-content-in-aria-hidden",
+    "alt-text"
   ],
   "delegatedRules": [
     {

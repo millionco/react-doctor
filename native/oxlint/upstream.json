@@ -434,6 +434,7 @@
     "preact-prefer-oninput",
     "waapi-animation-in-render",
     "zod-v4-no-deprecated-error-apis",
+    "zod-v4-no-deprecated-error-customization",
     "zod-v4-prefer-top-level-string-formats"
   ],
   "delegatedRules": [

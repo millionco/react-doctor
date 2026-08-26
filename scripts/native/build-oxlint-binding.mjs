@@ -219,6 +219,7 @@ impl Rule for ${delegatedRule.struct} {
         "resolve-jsx-element-type-name",
         "first-js-whitespace-token",
         "direct-named-import-matches",
+        "direct-zod-factory-call-name",
         "is-direct-zod-namespace-identifier",
         "is-react-router-session-method",
         "is-react-router-file-active",

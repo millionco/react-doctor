@@ -568,6 +568,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "preact-prefer-oninput": 1,
   "waapi-animation-in-render": 0,
   "zod-v4-no-deprecated-error-apis": 0,
+  "zod-v4-no-deprecated-error-customization": 0,
   "zod-v4-prefer-top-level-string-formats": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
@@ -2425,6 +2426,7 @@ const configuredScrollHero = document.querySelector(".hero"); document.addEventL
 const configuredPreactTextInput = <input type="text" onChange={() => {}} />;
 const ConfiguredWaapiPanel = () => { document.body.animate({ opacity: [0, 1] }, 200); return <div />; };
 const configuredZodError = configuredZod.ZodError.create([]);
+const configuredZodErrorCustomization = configuredZod.string("Required");
 const configuredZodEmail = configuredZod.string().email();
 const configuredCrampedContainerPadding = <div className="border p-1">Status</div>;
 const configuredHoverOnlyReveal = <button className="opacity-0 hover:opacity-100">Edit</button>;
@@ -2538,6 +2540,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "preact-prefer-oninput",
     "waapi-animation-in-render",
     "zod-v4-no-deprecated-error-apis",
+    "zod-v4-no-deprecated-error-customization",
     "zod-v4-prefer-top-level-string-formats",
     "no-cramped-container-padding",
     "no-hover-only-reveal",
@@ -2747,6 +2750,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "preact-prefer-oninput": 1,
     "waapi-animation-in-render": 1,
     "zod-v4-no-deprecated-error-apis": 1,
+    "zod-v4-no-deprecated-error-customization": 1,
     "zod-v4-prefer-top-level-string-formats": 1,
     "no-cramped-container-padding": 1,
     "no-hover-only-reveal": 1,

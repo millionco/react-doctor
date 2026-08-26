@@ -537,6 +537,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-invisible-focus-control": 1,
   "no-json-parse-stringify-clone": 1,
   "no-jsx-element-type": 1,
+  "no-large-animated-blur": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2068,6 +2069,7 @@ const InlinePropCardList = () => <MemoizedInlinePropCard onClick={() => doThing(
 const InvisibleFocusSelect = () => <select className="absolute inset-0 opacity-0"><option>UTC</option></select>;
 const JsonClone = () => JSON.parse(JSON.stringify(state));
 const JsxElementComponent = (): JSX.Element => <div />;
+const LargeAnimatedBlur = () => <motion.div animate={{ filter: "blur(24px)" }} />;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

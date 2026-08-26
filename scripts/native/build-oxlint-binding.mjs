@@ -220,6 +220,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-react-router-file-active",
         "is-react-router-framework-file-active",
         "tailwind-class-name-tokens",
+        "static-tailwind-opacity",
         "tailwind-top-level-character-indices",
         "split-tailwind-opacity-modifier",
         "parse-javascript-decimal-prefix-value",

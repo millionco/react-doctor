@@ -534,6 +534,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-impure-state-updater": 1,
   "no-inline-hoc-on-component": 1,
   "no-inline-prop-on-memo-component": 1,
+  "no-invisible-focus-control": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2037,6 +2038,7 @@ const BuildGeneratedImageResponse = () => new GeneratedImageResponse(<GeneratedI
 const DirectGeneratedImageResponse = () => generatedSatori(<div style={{ display: "flex", width: 1200, height: 630, alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "black", color: "white" }} />, { width: 1200, height: 630 });
 import ReactForFocusCompletion from "react";
 const FocusAfterAnimation = () => { const inputRef = ReactForFocusCompletion.useRef(null); return <><input ref={inputRef} /><div onAnimationEnd={() => inputRef.current.focus()} /></>; };
+// oxlint-disable-next-line react-doctor/no-invisible-focus-control
 const HoverOnlyReveal = () => <><button className="opacity-0 hover:opacity-100">Edit</button><motion.button initial={{ opacity: 0 }} whileHover={{ opacity: 1 }}>Delete</motion.button></>;
 const HoverTransformImage = () => <img src="/hover-transform.jpg" className="transition-transform hover:scale-105" />;
 const IndeterminateCheckbox = () => <input type="checkbox" indeterminate />;
@@ -2061,6 +2063,7 @@ const InlineHocCard = withTracking((props) => {
 // oxlint-disable-next-line react-doctor/react-compiler-no-manual-memoization
 const MemoizedInlinePropCard = memo(InlinePropCard);
 const InlinePropCardList = () => <MemoizedInlinePropCard onClick={() => doThing()} />;
+const InvisibleFocusSelect = () => <select className="absolute inset-0 opacity-0"><option>UTC</option></select>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

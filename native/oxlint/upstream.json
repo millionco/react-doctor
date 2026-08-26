@@ -399,7 +399,8 @@
     "no-impure-call-at-module-scope",
     "no-impure-state-updater",
     "no-inline-hoc-on-component",
-    "no-inline-prop-on-memo-component"
+    "no-inline-prop-on-memo-component",
+    "no-invisible-focus-control"
   ],
   "delegatedRules": [
     {

@@ -457,7 +457,8 @@
     "r3f-valid-spot-light-properties",
     "r3f-valid-perspective-camera",
     "r3f-valid-orthographic-camera",
-    "r3f-no-use-frame-dependency-array"
+    "r3f-no-use-frame-dependency-array",
+    "r3f-no-normalized-float-buffer-attribute"
   ],
   "delegatedRules": [
     {

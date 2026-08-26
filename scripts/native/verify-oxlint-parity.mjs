@@ -598,6 +598,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "rn-bottom-sheet-use-integrated-scrollable": 1,
   "no-focusable-content-in-aria-hidden": 1,
   "alt-text": 7,
+  "anchor-is-valid": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -633,6 +634,7 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
     stateInConstructor: { mode: "never" },
     ariaRole: { allowedInvalidRoles: ["datepicker"], ignoreNonDOM: false },
     altText: { elements: ["img"], img: ["ConfiguredImage"] },
+    anchorIsValid: { specialLink: ["to"] },
     anchorAmbiguousText: { words: ["continue"] },
     noInteractiveElementToNoninteractiveRole: { button: ["article"] },
     noNoninteractiveElementToInteractiveRole: { h1: ["button"] },
@@ -2495,6 +2497,7 @@ const configuredHeading = <Title />;
 const configuredAllowedInvalidRole = <div role="datepicker" />;
 const configuredImage = <ConfiguredImage />;
 verify("forwards the fixture", () => { void <ProductComponent fixture={<img src="/fixture.png" />} />; });
+const configuredInvalidAnchor = <a to="">Destination</a>;
 const configuredInvalidCustomRole = <Widget role="custom-invalid" />;
 const configuredAmbiguousAnchor = <a href="https://example.com/continue">continue</a>;
 const configuredAllowedInteractiveRole = <button role="article">Save</button>;
@@ -2612,6 +2615,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "aria-activedescendant-has-tabindex",
     "aria-role",
     "alt-text",
+    "anchor-is-valid",
     "anchor-ambiguous-text",
     "no-interactive-element-to-noninteractive-role",
     "no-noninteractive-element-to-interactive-role",
@@ -2845,6 +2849,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "state-in-constructor": 3,
     "aria-role": 1,
     "alt-text": 1,
+    "anchor-is-valid": 1,
     "anchor-ambiguous-text": 1,
     "jsx-max-depth": 2,
     "no-unsafe": 1,

@@ -644,6 +644,7 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
     stateInConstructor: { mode: "never" },
     ariaRole: { allowedInvalidRoles: ["datepicker"], ignoreNonDOM: false },
     altText: { elements: ["img"], img: ["ConfiguredImage"] },
+    autocompleteValid: { inputComponents: ["ConfiguredInput"] },
     anchorIsValid: { specialLink: ["to"] },
     anchorAmbiguousText: { words: ["continue"] },
     noInteractiveElementToNoninteractiveRole: { button: ["article"] },
@@ -936,6 +937,7 @@ const stringFalseReadonlyInput = <input readOnly="false" />;
 const booleanFalseButton = <button disabled={false} />;
 const internalAnchor = <a href="/about">About</a>;
 const internalExpressionAnchor = <a href={"/settings"} download={false}>Settings</a>;
+const configuredInvalidAutocomplete = <ConfiguredInput autoComplete="unknown-configured-token" />;
 const downloadAnchor = <a href="/report" download>Report</a>;
 const protocolRelativeAnchor = <a href="//cdn.example.com/file">File</a>;
 const scriptUrlAnchor = <a href="javascript:void(0)">Open</a>;
@@ -2626,6 +2628,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     ),
   );
   const configuredRuleIds = [
+    "autocomplete-valid",
     "heading-has-content",
     "jsx-boolean-value",
     "no-string-refs",

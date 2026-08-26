@@ -4,13 +4,11 @@ use oxc_ast::{
 };
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 
 use crate::{
     AstNode,
     context::{ContextHost, LintContext},
-    rule::{DefaultRuleConfig, Rule},
+    rule::Rule,
 };
 
 const AUTOFILL_TOKENS: &[&str] = &[
@@ -83,30 +81,19 @@ const AUTOFILL_ADDRESS_TYPES: &[&str] = &["shipping", "billing"];
 const AUTOFILL_CONTACT_QUALIFIERS: &[&str] = &["home", "work", "mobile", "fax", "pager"];
 const FORM_CONTROL_TAGS: &[&str] = &["input", "textarea", "select", "form"];
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
-struct AutocompleteValidConfig {
-    input_components: Vec<String>,
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AutocompleteValid(AutocompleteValidConfig);
+#[derive(Debug, Default, Clone)]
+pub struct AutocompleteValid;
 
 declare_oxc_lint!(
     /// Require valid HTML autocomplete tokens on form controls.
     AutocompleteValid,
     react_doctor_native,
     correctness,
-    config = AutocompleteValid,
     version = "0.1.0",
     short_description = "Require valid autocomplete values.",
 );
 
 impl Rule for AutocompleteValid {
-    fn from_configuration(value: serde_json::Value) -> Result<Self, serde_json::Error> {
-        DefaultRuleConfig::<Self>::from_value(value).map(DefaultRuleConfig::into_inner)
-    }
-
     fn should_run(&self, ctx: &ContextHost) -> bool {
         !is_non_production_file(ctx)
     }
@@ -125,11 +112,7 @@ impl Rule for AutocompleteValid {
             .get(raw_element_type)
             .map_or(raw_element_type, |configured| configured.as_str());
         if !FORM_CONTROL_TAGS.contains(&element_type)
-            && !self
-                .0
-                .input_components
-                .iter()
-                .any(|component| component == element_type)
+            && !is_configured_input_component(element_type, ctx)
         {
             return;
         }
@@ -156,6 +139,21 @@ impl Rule for AutocompleteValid {
             .with_label(attribute.span),
         );
     }
+}
+
+fn is_configured_input_component(element_type: &str, ctx: &LintContext<'_>) -> bool {
+    ctx.settings()
+        .json
+        .as_ref()
+        .and_then(|settings| settings.get("react-doctor"))
+        .and_then(|settings| settings.get("autocompleteValid"))
+        .and_then(|settings| settings.get("inputComponents"))
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|components| {
+            components
+                .iter()
+                .any(|component| component.as_str() == Some(element_type))
+        })
 }
 
 fn autocomplete_value_is_valid(value: &str) -> bool {

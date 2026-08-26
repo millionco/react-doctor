@@ -82,7 +82,7 @@ fn is_react_native_file_target(ctx: &crate::context::ContextHost<'_>) -> bool {
         }
     }
     matches!(
-        react_doctor_framework_setting(ctx),
+        react_doctor_framework_setting_from_json(ctx.settings().json.as_ref()),
         Some("react-native" | "expo")
     )
 }
@@ -108,12 +108,6 @@ fn has_platform_file_extension(filename: &str, platforms: &[&str]) -> bool {
         stem.strip_suffix(platform)
             .is_some_and(|prefix| prefix.ends_with('.'))
     })
-}
-
-fn react_doctor_framework_setting<'a>(ctx: &'a crate::context::ContextHost<'_>) -> Option<&'a str> {
-    react_doctor_platform_settings(ctx)?
-        .get("framework")?
-        .as_str()
 }
 
 fn react_doctor_root_directory_for_platform(

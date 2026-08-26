@@ -174,6 +174,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-in-project-directory",
         "is-next-file-active",
         "is-react-native-file-target",
+        "react-doctor-framework-setting-from-json",
         "program-estree-span",
         "get-next-static-jsx-element-sibling",
         "collect-static-jsx-elements",

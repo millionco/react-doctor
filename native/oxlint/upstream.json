@@ -422,7 +422,8 @@
     "no-path-prefix-containment",
     "no-placeholder-only-field",
     "no-polymorphic-children",
-    "no-predicate-function-reference-in-boolean-position"
+    "no-predicate-function-reference-in-boolean-position",
+    "no-prevent-default"
   ],
   "delegatedRules": [
     {

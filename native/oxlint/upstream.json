@@ -455,7 +455,8 @@
     "r3f-valid-raycaster-range",
     "r3f-valid-fog-parameters",
     "r3f-valid-spot-light-properties",
-    "r3f-valid-perspective-camera"
+    "r3f-valid-perspective-camera",
+    "r3f-valid-orthographic-camera"
   ],
   "delegatedRules": [
     {

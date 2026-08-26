@@ -545,6 +545,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-mirror-prop-effect": 1,
   "no-monotonous-page-spacing": 1,
   "no-multiple-unlabeled-navigation-landmarks": 2,
+  "no-mutable-in-deps": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2093,6 +2094,10 @@ const MonotonousPageSpacing = () => <main>
   <div style={{ padding: 16 }} /><div style={{ padding: 16 }} /><div style={{ padding: 16 }} />
 </main>;
 const MultipleNavigationLandmarks = () => <><nav>Primary</nav><nav>Footer</nav></>;
+const MutableDependency = () => {
+  useEffect(() => {}, [location.href]);
+  return null;
+};
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

@@ -410,7 +410,8 @@
     "no-match-media-in-state-initializer",
     "no-mirror-prop-effect",
     "no-monotonous-page-spacing",
-    "no-multiple-unlabeled-navigation-landmarks"
+    "no-multiple-unlabeled-navigation-landmarks",
+    "no-mutable-in-deps"
   ],
   "delegatedRules": [
     {

@@ -84,17 +84,43 @@ URLs, source paths, and React profiling details. Treat it as sensitive applicati
 
 ## Telemetry
 
-The CLI reports crashes to [Sentry](https://sentry.io/) to help us fix bugs. Axiom run traces and metrics are disabled unless `REACT_DOCTOR_AXIOM_TOKEN` is set explicitly.
+The CLI reports crashes and, when configured, run traces and usage metrics to help us fix bugs and prioritize work.
 
-We collect:
+### Destinations
 
-- Environment: CLI version, platform, Node version
-- Invocation: which command, package manager, and run context (whether it's local vs. CI vs. coding agent)
-- Project shape: framework, React version, TypeScript, project size (NO file contents)
-- Rules fired: rule names and counts only (e.g. `react-doctor/no-array-index-as-key`) (NO code or specific findings)
-- De-minified React Doctor CLI stack traces
+- **[Sentry](https://sentry.io/)** — crashes only (stack traces, issue grouping, and source-map symbolication). Tracing is disabled (`tracesSampleRate: 0`).
+- **[Axiom](https://axiom.co/)** — run traces and metrics via OTLP (OpenTelemetry Protocol), only when `REACT_DOCTOR_AXIOM_TOKEN` is set explicitly.
 
-To opt out, run: `npx react-doctor@latest --no-telemetry`
+### What we collect
+
+- **Environment**: CLI version, platform, Node version, package manager, terminal emulator kind
+- **Invocation**: which command, full argv shape (paths scrubbed), working directory (paths scrubbed), run context (local / CI / coding agent)
+- **CI metadata** (when detected): provider name (e.g. `github-actions`, `circleci`), event name (e.g. `pull_request`, `push`), whether via the official GitHub Action, and GitHub Action inputs (`blocking`, `comment`, `reviewComments`, `version`)
+- **Project shape**: framework, React version, TypeScript, project size, configuration presence and shape (NO file contents)
+- **Rules fired**: rule names, severity, category, and counts per rule (e.g. `react-doctor/no-array-index-as-key: 3 errors`) (NO code or specific findings)
+- **Diagnostics summary**: total count, error/warning split, affected file count, distinct rule count, top rule, per-category breakdowns
+- **Score and outcomes**: score value and label, lint/maintainability/supply-chain pass outcomes, timing durations
+- **Stack traces** (crashes only): de-minified React Doctor CLI frames; user-project filenames appear in stack frames but NO file contents or code snippets are transmitted
+
+### Path scrubbing
+
+Paths in `argv`, `cwd`, span attributes, and stack traces are scrubbed to remove home directory and username (replaced with `~`). However, **repository and directory names** survive this scrubbing (e.g. `~/Developer/my-project` becomes `~/Developer/my-project`), so the environment is pseudonymous rather than fully anonymous.
+
+### Opt out
+
+To disable all telemetry (both Sentry and Axiom), run:
+
+```bash
+npx react-doctor@latest --no-telemetry
+```
+
+Or set the environment variable:
+
+```bash
+export REACT_DOCTOR_NO_TELEMETRY=1
+```
+
+The `@react-doctor/api` programmatic library never reports telemetry, regardless of flags.
 
 ## Contributing
 

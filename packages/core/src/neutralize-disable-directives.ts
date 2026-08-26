@@ -8,6 +8,9 @@ import { walkSourceTreeFiles } from "./utils/walk-source-tree-files.js";
 import { Git } from "./services/git.js";
 
 const DISABLE_DIRECTIVE_PATTERN = /(eslint|oxlint)-disable/;
+const BACKUP_SUFFIX = ".react-doctor-backup";
+
+const getBackupPath = (absolutePath: string): string => `${absolutePath}${BACKUP_SUFFIX}`;
 
 interface NeutralizedFileLease {
   originalContent: string;
@@ -187,12 +190,52 @@ const collectNeutralizationCandidatePaths = (
   return candidatePaths;
 };
 
+const restoreOrphanedBackups = (rootDirectory: string): Set<string> => {
+  const restoredPaths = new Set<string>();
+  for (const { absolutePath } of walkSourceTreeFiles(rootDirectory)) {
+    if (!absolutePath.endsWith(BACKUP_SUFFIX)) continue;
+    const originalPath = absolutePath.slice(0, -BACKUP_SUFFIX.length);
+    if (neutralizedFileLeases.has(originalPath)) continue;
+    let backupContent: string | null = null;
+    try {
+      backupContent = fs.readFileSync(absolutePath, "utf-8");
+    } catch (error) {
+      process.stderr.write(
+        `[react-doctor] Failed to read backup ${absolutePath}: ${messageFromUnknown(error)}\n`,
+      );
+      continue;
+    }
+    try {
+      fs.writeFileSync(originalPath, backupContent);
+      restoredPaths.add(originalPath);
+      process.stderr.write(
+        `[react-doctor] Restored ${originalPath} from backup after ungraceful exit\n`,
+      );
+    } catch (error) {
+      process.stderr.write(
+        `[react-doctor] Failed to restore ${originalPath} from backup: ${messageFromUnknown(error)}\n`,
+      );
+    }
+    try {
+      fs.rmSync(absolutePath);
+    } catch (error) {
+      process.stderr.write(
+        `[react-doctor] Failed to delete backup ${absolutePath}: ${messageFromUnknown(error)}\n`,
+      );
+    }
+  }
+  return restoredPaths;
+};
+
 export const neutralizeDisableDirectives = async (
   rootDirectory: string,
   includePaths?: string[],
   options: NeutralizationOptions = {},
 ): Promise<() => void> => {
   const resolvedRootDirectory = fs.realpathSync(rootDirectory);
+  
+  const restoredPaths = restoreOrphanedBackups(resolvedRootDirectory);
+  
   const leasedPaths = new Set<string>();
 
   let isRestored = false;
@@ -210,10 +253,8 @@ export const neutralizeDisableDirectives = async (
       neutralizedFileLeases.delete(absolutePath);
       try {
         fs.writeFileSync(absolutePath, lease.originalContent);
+        fs.rmSync(getBackupPath(absolutePath), { force: true });
       } catch (error) {
-        // HACK: surface failed restores so the user can manually revert.
-        // Silently swallowing left source files with `eslint_disable` /
-        // `oxlint_disable` (neutralized form) and no signal anything broke.
         process.stderr.write(
           `[react-doctor] Failed to restore inline disable directives in ${absolutePath}: ${messageFromUnknown(error)}\n` +
             `[react-doctor] Run: git checkout -- ${absolutePath}\n`,
@@ -235,6 +276,7 @@ export const neutralizeDisableDirectives = async (
 
   const leaseCandidatePath = (absolutePath: string): void => {
     if (leasedPaths.has(absolutePath)) return;
+    if (restoredPaths.has(absolutePath)) return;
     const existingLease = neutralizedFileLeases.get(absolutePath);
     if (existingLease) {
       existingLease.referenceCount += 1;
@@ -251,6 +293,8 @@ export const neutralizeDisableDirectives = async (
 
     const neutralizedContent = neutralizeContent(originalContent);
     if (neutralizedContent !== originalContent) {
+      const backupPath = getBackupPath(absolutePath);
+      fs.writeFileSync(backupPath, originalContent);
       fs.writeFileSync(absolutePath, neutralizedContent);
       neutralizedFileLeases.set(absolutePath, { originalContent, referenceCount: 1 });
       leasedPaths.add(absolutePath);

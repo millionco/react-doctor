@@ -175,3 +175,134 @@ describe("neutralizeDisableDirectives — build-output exclusion", () => {
     expect(readNestedFile("src/app.tsx")).toBe(replacement);
   });
 });
+
+describe("neutralizeDisableDirectives — backup recovery after ungraceful exit", () => {
+  let temporaryDirectory: string;
+
+  const writeNestedFile = (relativePath: string, contents: string): void => {
+    const filePath = path.join(temporaryDirectory, relativePath);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, contents);
+  };
+
+  const readNestedFile = (relativePath: string): string =>
+    fs.readFileSync(path.join(temporaryDirectory, relativePath), "utf-8");
+
+  const fileExists = (relativePath: string): boolean => {
+    try {
+      fs.accessSync(path.join(temporaryDirectory, relativePath));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const SOURCE = "// eslint-disable-next-line\nexport const value = 1;\n";
+
+  beforeEach(() => {
+    temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-neutralize-backup-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  });
+
+  it("creates backup files when neutralizing", async () => {
+    writeNestedFile("src/app.tsx", SOURCE);
+
+    const restore = await neutralizeDisableDirectives(temporaryDirectory);
+
+    expect(readNestedFile("src/app.tsx")).toContain("eslint_disable");
+    expect(fileExists("src/app.tsx.react-doctor-backup")).toBe(true);
+    expect(readNestedFile("src/app.tsx.react-doctor-backup")).toBe(SOURCE);
+
+    restore();
+  });
+
+  it("deletes backup files after successful restoration", async () => {
+    writeNestedFile("src/app.tsx", SOURCE);
+
+    const restore = await neutralizeDisableDirectives(temporaryDirectory);
+    expect(fileExists("src/app.tsx.react-doctor-backup")).toBe(true);
+
+    restore();
+
+    expect(readNestedFile("src/app.tsx")).toBe(SOURCE);
+    expect(fileExists("src/app.tsx.react-doctor-backup")).toBe(false);
+  });
+
+  it("restores orphaned backups from previous ungraceful exit", async () => {
+    const NEUTRALIZED = "// eslint_disable-next-line\nexport const value = 1;\n";
+    writeNestedFile("src/app.tsx", NEUTRALIZED);
+    writeNestedFile("src/app.tsx.react-doctor-backup", SOURCE);
+
+    await neutralizeDisableDirectives(temporaryDirectory);
+
+    expect(readNestedFile("src/app.tsx")).toBe(SOURCE);
+    expect(fileExists("src/app.tsx.react-doctor-backup")).toBe(false);
+  });
+
+  it("restores multiple orphaned backups", async () => {
+    const SOURCE_2 = "// oxlint-disable\nexport const other = 2;\n";
+    const NEUTRALIZED_1 = "// eslint_disable-next-line\nexport const value = 1;\n";
+    const NEUTRALIZED_2 = "// oxlint_disable\nexport const other = 2;\n";
+
+    writeNestedFile("src/app.tsx", NEUTRALIZED_1);
+    writeNestedFile("src/app.tsx.react-doctor-backup", SOURCE);
+    writeNestedFile("src/utils.ts", NEUTRALIZED_2);
+    writeNestedFile("src/utils.ts.react-doctor-backup", SOURCE_2);
+
+    await neutralizeDisableDirectives(temporaryDirectory);
+
+    expect(readNestedFile("src/app.tsx")).toBe(SOURCE);
+    expect(readNestedFile("src/utils.ts")).toBe(SOURCE_2);
+    expect(fileExists("src/app.tsx.react-doctor-backup")).toBe(false);
+    expect(fileExists("src/utils.ts.react-doctor-backup")).toBe(false);
+  });
+
+  it("handles missing original file when restoring orphaned backup", async () => {
+    writeNestedFile("src/app.tsx.react-doctor-backup", SOURCE);
+
+    await neutralizeDisableDirectives(temporaryDirectory);
+
+    expect(readNestedFile("src/app.tsx")).toBe(SOURCE);
+    expect(fileExists("src/app.tsx.react-doctor-backup")).toBe(false);
+  });
+
+  it("continues after failing to restore one orphaned backup", async () => {
+    const SOURCE_2 = "// oxlint-disable\nexport const other = 2;\n";
+    const NEUTRALIZED_2 = "// oxlint_disable\nexport const other = 2;\n";
+
+    writeNestedFile("src/readonly/app.tsx.react-doctor-backup", SOURCE);
+    fs.chmodSync(path.join(temporaryDirectory, "src/readonly"), 0o555);
+
+    writeNestedFile("src/utils.ts", NEUTRALIZED_2);
+    writeNestedFile("src/utils.ts.react-doctor-backup", SOURCE_2);
+
+    await neutralizeDisableDirectives(temporaryDirectory);
+
+    expect(readNestedFile("src/utils.ts")).toBe(SOURCE_2);
+    expect(fileExists("src/utils.ts.react-doctor-backup")).toBe(false);
+
+    fs.chmodSync(path.join(temporaryDirectory, "src/readonly"), 0o755);
+  });
+
+  it("does not restore backups outside the scan scope", async () => {
+    const SOURCE_NESTED = "// eslint-disable\nconst nested = 1;\n";
+    const NEUTRALIZED_NESTED = "// eslint_disable\nconst nested = 1;\n";
+
+    writeNestedFile("packages/app/src/app.tsx", NEUTRALIZED_NESTED);
+    writeNestedFile("packages/app/src/app.tsx.react-doctor-backup", SOURCE_NESTED);
+
+    writeNestedFile("packages/other/src/other.tsx", NEUTRALIZED_NESTED);
+    writeNestedFile("packages/other/src/other.tsx.react-doctor-backup", SOURCE_NESTED);
+
+    await neutralizeDisableDirectives(path.join(temporaryDirectory, "packages/app"));
+
+    expect(readNestedFile("packages/app/src/app.tsx")).toBe(SOURCE_NESTED);
+    expect(fileExists("packages/app/src/app.tsx.react-doctor-backup")).toBe(false);
+
+    expect(readNestedFile("packages/other/src/other.tsx")).toBe(NEUTRALIZED_NESTED);
+    expect(fileExists("packages/other/src/other.tsx.react-doctor-backup")).toBe(true);
+  });
+});

@@ -431,6 +431,7 @@
     "no-undersized-icon-button",
     "no-ungated-tailwind-animation",
     "no-unthrottled-scroll-mutation",
+    "preact-prefer-oninput",
     "waapi-animation-in-render"
   ],
   "delegatedRules": [

@@ -424,7 +424,8 @@
     "no-polymorphic-children",
     "no-predicate-function-reference-in-boolean-position",
     "no-prevent-default",
-    "no-random-key"
+    "no-random-key",
+    "no-ref-callback-cleanup-before-react-19"
   ],
   "delegatedRules": [
     {

@@ -574,6 +574,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "zod-v4-no-deprecated-schema-apis": 0,
   "zod-v4-prefer-top-level-string-formats": 0,
   "rn-no-non-native-navigator": 1,
+  "server-cache-with-object-literal": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2104,6 +2105,8 @@ const InlineHocCard = withTracking((props) => {
 });
 // oxlint-disable-next-line react-doctor/react-compiler-no-manual-memoization
 const MemoizedInlinePropCard = memo(InlinePropCard);
+const getCachedUser = React.cache(async (params) => db.user.find(params));
+getCachedUser(Object.freeze({ id: 1 }));
 const InlinePropCardList = () => <MemoizedInlinePropCard onClick={() => doThing()} />;
 const InvisibleFocusSelect = () => <select className="absolute inset-0 opacity-0"><option>UTC</option></select>;
 const JsonClone = () => JSON.parse(JSON.stringify(state));

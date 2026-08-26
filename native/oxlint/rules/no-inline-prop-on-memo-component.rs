@@ -176,7 +176,8 @@ fn inline_reference_type<'a>(
     expression: &'a Expression<'a>,
     ctx: &LintContext<'a>,
 ) -> Option<&'static str> {
-    let reference = unwrap_object_integrity_expression(expression, ctx);
+    let reference =
+        unwrap_object_integrity_expression(expression, ctx, &OBJECT_INTEGRITY_METHOD_NAMES);
     match reference {
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
             Some("functions")
@@ -188,45 +189,6 @@ fn inline_reference_type<'a>(
         Expression::ArrayExpression(_) => Some("Arrays"),
         Expression::JSXElement(_) | Expression::JSXFragment(_) => Some("JSX"),
         _ => None,
-    }
-}
-
-fn unwrap_object_integrity_expression<'a, 'b>(
-    expression: &'b Expression<'a>,
-    ctx: &LintContext<'a>,
-) -> &'b Expression<'a> {
-    let mut current = expression.get_inner_expression();
-    loop {
-        let Expression::CallExpression(call_expression) = current else {
-            return current;
-        };
-        let Expression::StaticMemberExpression(member_expression) =
-            call_expression.callee.get_inner_expression()
-        else {
-            return current;
-        };
-        let Expression::Identifier(receiver) = member_expression.object.get_inner_expression()
-        else {
-            return current;
-        };
-        if receiver.name != "Object"
-            || ctx
-                .scoping()
-                .get_reference(receiver.reference_id())
-                .symbol_id()
-                .is_some()
-            || !OBJECT_INTEGRITY_METHOD_NAMES.contains(&member_expression.property.name.as_str())
-        {
-            return current;
-        }
-        let Some(wrapped_expression) = call_expression
-            .arguments
-            .first()
-            .and_then(Argument::as_expression)
-        else {
-            return current;
-        };
-        current = wrapped_expression.get_inner_expression();
     }
 }
 

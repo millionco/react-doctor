@@ -152,6 +152,7 @@ impl Rule for ${delegatedRule.struct} {
         "get-direct-string-literal-attribute-value",
         "is-literal-void-expression",
         "is-no-op-statement",
+        "unwrap-object-integrity-expression",
         "is-result-discarded-call",
         "is-jsx-attribute-potentially-truthy",
         "jsx-attribute-may-have-non-empty-value",

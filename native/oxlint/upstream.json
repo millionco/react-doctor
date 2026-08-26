@@ -415,7 +415,8 @@
     "no-mutating-array-method-on-prop-or-hook-result",
     "no-mutating-reducer-state",
     "no-non-literal-selector-query-without-try-catch",
-    "no-nullish-coalescing-arithmetic-precedence"
+    "no-nullish-coalescing-arithmetic-precedence",
+    "no-numbered-section-markers"
   ],
   "delegatedRules": [
     {

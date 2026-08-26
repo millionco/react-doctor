@@ -553,6 +553,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-numbered-section-markers": 1,
   "no-object-or-array-coerced-to-string-in-template-literal": 1,
   "no-passive-request-owner-ref": 1,
+  "no-path-prefix-containment": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2113,6 +2114,10 @@ const NumberedSections = () => <main><section><span style={{ fontSize: 12, fontF
 const objectCoercionValue = { code: 1 };
 const ObjectCoercion = () => \`Error: \${objectCoercionValue}\`;
 const PassiveOwnerRef = ({ viewId }) => { const ownerRef = useRef(viewId); const [, setData] = useState([]); useEffect(() => { ownerRef.current = viewId; }, [viewId]); const load = async () => { const data = await fetchData(viewId); if (ownerRef.current !== viewId) return; setData(data); }; return <button onClick={load}>Load</button>; };
+import { resolve as resolveContainmentPath } from "node:path";
+const containmentRoot = process.cwd();
+const containmentCandidate = resolveContainmentPath(containmentRoot, requestedPath);
+const HasUnsafePathPrefix = containmentCandidate.startsWith(containmentRoot);
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

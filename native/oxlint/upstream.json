@@ -418,7 +418,8 @@
     "no-nullish-coalescing-arithmetic-precedence",
     "no-numbered-section-markers",
     "no-object-or-array-coerced-to-string-in-template-literal",
-    "no-passive-request-owner-ref"
+    "no-passive-request-owner-ref",
+    "no-path-prefix-containment"
   ],
   "delegatedRules": [
     {

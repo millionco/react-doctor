@@ -466,7 +466,8 @@
     "alt-text",
     "anchor-is-valid",
     "anchor-target-exists",
-    "aria-proptypes"
+    "aria-proptypes",
+    "async-await-in-loop"
   ],
   "delegatedRules": [
     {

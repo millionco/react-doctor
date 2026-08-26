@@ -549,6 +549,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-mutating-array-method-on-prop-or-hook-result": 1,
   "no-mutating-reducer-state": 1,
   "no-non-literal-selector-query-without-try-catch": 1,
+  "no-nullish-coalescing-arithmetic-precedence": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2104,6 +2105,7 @@ const MutableDependency = () => {
 const MutatingPropArray = ({ items }) => items.sort();
 const MutatingReducerState = () => useReducer((state) => { state.count += 1; return state; }, { count: 0 });
 element.matches(location.hash);
+const NullishRatio = maybeValue ?? 0 / divisor;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

@@ -414,7 +414,8 @@
     "no-mutable-in-deps",
     "no-mutating-array-method-on-prop-or-hook-result",
     "no-mutating-reducer-state",
-    "no-non-literal-selector-query-without-try-catch"
+    "no-non-literal-selector-query-without-try-catch",
+    "no-nullish-coalescing-arithmetic-precedence"
   ],
   "delegatedRules": [
     {

@@ -68,6 +68,10 @@ jobs:
         # the gate: uncomment the block below and set blocking to "error" (fail
         # on new error-severity findings) or "warning" (fail on any finding).
         # Full reference: https://www.react.doctor/ci
+        #
+        # Security: @v2 is a floating major tag that may move. For supply-chain-
+        # hardened CI, pin to a full commit SHA with a version comment instead:
+        # uses: millionco/react-doctor@<sha>  # v2.x.x
         # with:
         #   blocking: error          # Gate level: "none" (advisory, the default) | "warning" | "error"
         #   scope: full              # On PRs, scan the whole project instead of just changed files

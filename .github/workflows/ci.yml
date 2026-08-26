@@ -21,11 +21,13 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Turbo Remote Cache: share build/typecheck/test artifacts across runs, runners,
-# and branches. Both are repo secrets, so they're empty on fork PRs (secrets are
-# withheld there) — turbo just runs cold, it does not fail.
+# and branches. Restricted to main-branch pushes only: any first-party PR branch
+# can write to the cache and poison entries consumed by subsequent main builds.
+# PRs run with a cold cache (slower but safe). Fork PRs are also safe (secrets
+# are withheld), but first-party PRs would have write access if not gated here.
 env:
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-  TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+  TURBO_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.TURBO_TOKEN || '' }}
+  TURBO_TEAM: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.TURBO_TEAM || '' }}
 
 jobs:
   test:

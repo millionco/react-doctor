@@ -161,6 +161,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # CI has no signing key, so override the repo's tag.gpgsign default and
           # create an unsigned annotated tag instead of failing on a missing key.
+          # SECURITY: These tags are unsigned. Security-conscious consumers should
+          # pin to a full commit SHA with a trailing version comment (e.g.
+          # `uses: millionco/react-doctor@<sha> # v2.2.2`) instead of using the
+          # floating major tag (@v2) or semver tags, which cannot be verified.
           git -c tag.gpgsign=false tag -a "${NEXT_TAG}" -m "react-doctor action ${NEXT_TAG} (${BUMP_LEVEL})"
           git push origin "${NEXT_TAG}"
           # `queue: max` serializes runs but does not order them: an older
@@ -172,6 +176,10 @@ jobs:
             echo "Tagged ${NEXT_TAG}; left ${MAJOR_TAG} in place (a newer commit already carries it)." >> "${GITHUB_STEP_SUMMARY}"
             exit 0
           fi
+          # SECURITY: This floating major tag is unsigned and force-pushed by
+          # automation. Consumers using @v2 receive whatever HEAD carries with no
+          # cryptographic verification. For supply-chain-hardened CI, pin to a
+          # full commit SHA instead (see security note above).
           git -c tag.gpgsign=false tag -fa "${MAJOR_TAG}" -m "react-doctor action ${MAJOR_TAG} (floating major -> ${NEXT_TAG})"
           git push --force origin "${MAJOR_TAG}"
           echo "Tagged ${NEXT_TAG} and moved ${MAJOR_TAG} to ${GITHUB_SHA}." >> "${GITHUB_STEP_SUMMARY}"

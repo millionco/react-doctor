@@ -441,7 +441,8 @@
     "zod-v4-prefer-top-level-string-formats",
     "rn-no-non-native-navigator",
     "server-cache-with-object-literal",
-    "nextjs-no-client-fetch-for-server-data"
+    "nextjs-no-client-fetch-for-server-data",
+    "r3f-no-ignored-linewidth"
   ],
   "delegatedRules": [
     {

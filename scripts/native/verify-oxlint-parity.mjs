@@ -558,6 +558,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-polymorphic-children": 1,
   "no-predicate-function-reference-in-boolean-position": 1,
   "no-prevent-default": 1,
+  "no-random-key": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2127,6 +2128,7 @@ const PolymorphicChildren = ({ children }) => typeof children === "string" ? <sp
 const isPredicateReady = () => true;
 if (isPredicateReady) runPredicateReadyTask();
 const PreventDefaultLink = () => <a href="https://example.com" onClick={(event) => event.preventDefault()}>Next</a>;
+const RandomKeyList = () => <div key={Math.random()} />;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

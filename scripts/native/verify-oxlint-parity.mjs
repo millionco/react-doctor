@@ -536,6 +536,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-inline-prop-on-memo-component": 1,
   "no-invisible-focus-control": 1,
   "no-json-parse-stringify-clone": 1,
+  "no-jsx-element-type": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2066,6 +2067,7 @@ const MemoizedInlinePropCard = memo(InlinePropCard);
 const InlinePropCardList = () => <MemoizedInlinePropCard onClick={() => doThing()} />;
 const InvisibleFocusSelect = () => <select className="absolute inset-0 opacity-0"><option>UTC</option></select>;
 const JsonClone = () => JSON.parse(JSON.stringify(state));
+const JsxElementComponent = (): JSX.Element => <div />;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

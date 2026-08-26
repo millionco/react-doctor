@@ -469,7 +469,8 @@
     "aria-proptypes",
     "async-await-in-loop",
     "async-defer-await",
-    "async-parallel"
+    "async-parallel",
+    "autocomplete-valid"
   ],
   "delegatedRules": [
     {

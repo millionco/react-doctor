@@ -313,13 +313,10 @@ fn sole_effect_setter_call<'a>(
 fn sole_callback_statement_expression<'a>(body: &'a FunctionBody<'a>) -> Option<&'a Expression<'a>> {
     let mut expression = None;
     for statement in &body.statements {
+        if is_no_op_statement(statement) {
+            continue;
+        }
         let candidate = match statement {
-            Statement::EmptyStatement(_) => continue,
-            Statement::ExpressionStatement(statement)
-                if is_no_op_expression(&statement.expression) =>
-            {
-                continue;
-            }
             Statement::ExpressionStatement(statement) => Some(&statement.expression),
             Statement::ReturnStatement(statement) => statement.argument.as_ref(),
             _ => return None,
@@ -330,15 +327,6 @@ fn sole_callback_statement_expression<'a>(body: &'a FunctionBody<'a>) -> Option<
         }
     }
     expression
-}
-
-fn is_no_op_expression(expression: &Expression<'_>) -> bool {
-    let expression = expression.get_inner_expression();
-    expression.is_literal()
-        || matches!(expression, Expression::Identifier(identifier) if identifier.name == "undefined")
-        || matches!(expression, Expression::UnaryExpression(unary)
-            if unary.operator == UnaryOperator::Void
-                && unary.argument.get_inner_expression().is_literal())
 }
 
 fn unwrap_discarded_expression<'a>(

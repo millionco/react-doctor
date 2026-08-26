@@ -107,6 +107,7 @@
     "no-create-context-in-render",
     "no-async-effect-callback",
     "query-no-rest-destructuring",
+    "query-no-void-query-fn",
     "react-router-no-router-in-render",
     "nextjs-async-client-component",
     "no-string-false-on-boolean-attribute",

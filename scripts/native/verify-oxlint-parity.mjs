@@ -241,6 +241,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-create-context-in-render": 3,
   "no-async-effect-callback": 3,
   "query-no-rest-destructuring": 2,
+  "query-no-void-query-fn": 1,
   "react-router-no-router-in-render": 2,
   "nextjs-async-client-component": 3,
   "no-string-false-on-boolean-attribute": 3,
@@ -625,7 +626,7 @@ import { act as legacyAct, Simulate as LegacySimulate } from "react-dom/test-uti
 import type { useMemo as PreactTypeOnlyHook } from "react";
 import { createContext as makeTrackedContext } from "react-tracked";
 import { create as createZustandStore } from "zustand";
-import { useQuery as useItemsQuery } from "@tanstack/react-query";
+import { useQuery, useQuery as useItemsQuery } from "@tanstack/react-query";
 import * as TanstackQuery from "@tanstack/react-query";
 import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, RouterProvider as RouteProvider, ServerRouter as ServerRouteRouter, createBrowserRouter as makeBrowserRouter, createCookieSessionStorage as makeCookieSessionStorage, createHashRouter as makeHashRouter, redirect as routeRedirect, unstable_useBlocker as useRouteBlocker, useLoaderData as useRouteLoaderData, useMatches as useRouteMatches, useRoutes as useNestedRoutes, useSearchParams as useRouteSearchParams } from "react-router";
 import { Link as DomLink, useNavigate as useRouteNavigate } from "react-router-dom";
@@ -790,6 +791,7 @@ const AsyncEffectFixture = () => {
   return null;
 };
 const { data: queryData, ...queryRest } = useItemsQuery({ queryKey: ["items"] });
+const EmptyQueryFunctionFixture = () => useQuery({ queryKey: ["empty"], queryFn: () => {} });
 const infiniteQueryResult = TanstackQuery.useInfiniteQuery({ queryKey: ["pages"] });
 const { data: infiniteQueryData, ...infiniteQueryRest } = infiniteQueryResult;
 const RouterRenderFixture = () => {

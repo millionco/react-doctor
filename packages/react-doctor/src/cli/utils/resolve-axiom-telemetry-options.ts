@@ -1,6 +1,6 @@
 import { AXIOM_DEFAULT_DOMAIN, type AxiomTelemetryOptions } from "@react-doctor/core";
 import * as Redacted from "effect/Redacted";
-import { AXIOM_INGEST_TOKEN, AXIOM_METRICS_DATASET, AXIOM_TRACES_DATASET } from "./constants.js";
+import { AXIOM_METRICS_DATASET, AXIOM_TRACES_DATASET } from "./constants.js";
 import { isTelemetryEnabled } from "./is-telemetry-enabled.js";
 import { VERSION } from "./version.js";
 
@@ -12,11 +12,16 @@ import { VERSION } from "./version.js";
  * side is what makes `@react-doctor/api` silent by construction rather than by a
  * runtime guard.
  *
- * Returning `null` for an empty token means an unconfigured build (or a
- * contributor's checkout without the token baked in) simply doesn't export,
- * instead of sending unauthenticated requests to Axiom on every run.
+ * First-party telemetry now requires `REACT_DOCTOR_AXIOM_TOKEN` to be set
+ * explicitly — no token ships in the published package. This makes first-party
+ * telemetry opt-in and removes the extractable credential from the tarball.
+ * Users who need first-party telemetry must provide their own scoped Axiom
+ * ingest token.
  *
- * The overrides are `REACT_DOCTOR_`-prefixed rather than the bare `AXIOM_TOKEN`
+ * Returning `null` for an empty token means telemetry is disabled, and no
+ * unauthenticated requests are sent to Axiom.
+ *
+ * The env vars are `REACT_DOCTOR_`-prefixed rather than the bare `AXIOM_TOKEN`
  * / `AXIOM_DATASET` names Axiom's own tooling uses. Those are common in the
  * environment of anyone who already runs Axiom, and reading them here would
  * silently redirect React Doctor's telemetry into an unrelated account — or
@@ -25,7 +30,7 @@ import { VERSION } from "./version.js";
  */
 export const resolveAxiomTelemetryOptions = (): AxiomTelemetryOptions | null => {
   if (!isTelemetryEnabled()) return null;
-  const token = process.env.REACT_DOCTOR_AXIOM_TOKEN || AXIOM_INGEST_TOKEN;
+  const token = process.env.REACT_DOCTOR_AXIOM_TOKEN;
   if (!token) return null;
   return {
     token: Redacted.make(token),

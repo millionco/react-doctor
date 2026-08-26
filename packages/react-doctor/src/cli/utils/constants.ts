@@ -198,19 +198,6 @@ export const INTERNAL_ERROR_JSON_FALLBACK =
 export const SENTRY_DSN =
   "https://f253d570240a59b8dbd77b7a548ef133@o4510226365743104.ingest.us.sentry.io/4511487817809920";
 
-// Axiom ingest token for first-party CLI telemetry (traces + metrics). Unlike a
-// Sentry DSN, an Axiom API token is a real credential, so this one is minted
-// `ingest:create` only, scoped to exactly the two datasets below, with no
-// expiry and no organization permissions — it can write those datasets and
-// nothing else. It ships inside the published tarball and is therefore
-// extractable; rotation means cutting a release, and an Axiom monitor on
-// anomalous ingest volume is the detection. If abuse ever materializes, the
-// standing alternative is to proxy ingest through `www.react.doctor` (which
-// already hosts the score API) so the token stops shipping at all.
-// Overridable at runtime via `REACT_DOCTOR_AXIOM_TOKEN` for local testing
-// against a scratch dataset.
-export const AXIOM_INGEST_TOKEN = "xaat-31b59107-855d-4917-8fab-6dc29fb459ce";
-
 // Events-type dataset receiving spans (the per-run root span carries the wide
 // event), and the Metrics-type dataset receiving counters and distributions.
 // Axiom types datasets at creation and will not accept metrics into an events

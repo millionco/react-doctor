@@ -315,18 +315,16 @@ for spans: the CLI pins `tracesSampleRate: 0` and Sentry never records a span.
   run disables all of it. Blanking `SENTRY_DSN` alone no longer silences
   anything, so internal tooling that must not report (the evals harness, the
   benchmark environment, the delta-audit runner) sets `REACT_DOCTOR_NO_TELEMETRY`.
-- **Credentials.** The Axiom ingest token is embedded in `cli/utils/constants.ts`
-  (`AXIOM_INGEST_TOKEN`), mirroring the public Sentry DSN — but unlike a DSN it is
-  a real credential, so it is minted **ingest-only and scoped to the two
-  datasets**. It ships in the tarball and is therefore extractable: rotation means
-  cutting a release, and an Axiom monitor on anomalous ingest volume is the
-  detection. `cli/utils/resolve-axiom-telemetry-options.ts` resolves it (with
-  `REACT_DOCTOR_AXIOM_TOKEN` / `_DOMAIN` / `_DATASET` overrides for local
-  testing — deliberately prefixed, since the bare `AXIOM_*` names are Axiom's
-  own and reading them would hijack the telemetry of anyone already running it)
-  and returns `null` when unset, so an unconfigured build simply doesn't export.
-  Core never reads these itself — keeping them CLI-side is what makes
-  `@react-doctor/api` silent by construction rather than by a runtime guard.
+- **Credentials.** First-party Axiom telemetry requires `REACT_DOCTOR_AXIOM_TOKEN`
+  to be set explicitly — no token ships in the published package. This removes the
+  extractable credential from the tarball and makes first-party telemetry opt-in.
+  `cli/utils/resolve-axiom-telemetry-options.ts` resolves the token from
+  `REACT_DOCTOR_AXIOM_TOKEN` / `_DOMAIN` / `_DATASET` env vars (deliberately
+  prefixed, since the bare `AXIOM_*` names are Axiom's own and reading them would
+  hijack the telemetry of anyone already running it) and returns `null` when unset,
+  so telemetry is disabled by default. Core never reads these itself — keeping them
+  CLI-side is what makes `@react-doctor/api` silent by construction rather than by a
+  runtime guard.
 - **runId.** `cli/utils/run-id.ts` mints one random `runId` per CLI run
   (process). It rides the Sentry `run` context and the wide event, and is a tag
   only on crash reports (where it links to the Axiom trace) — never a metric

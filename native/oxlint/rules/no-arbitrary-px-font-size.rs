@@ -9,8 +9,6 @@ use crate::{
 };
 
 const ROOT_FONT_SIZE_PX: f64 = 16.0;
-const JAVASCRIPT_EXPONENTIAL_MINIMUM_ABSOLUTE_VALUE: f64 = 0.000_001;
-const JAVASCRIPT_EXPONENTIAL_MAXIMUM_ABSOLUTE_VALUE: f64 = 1e21;
 
 #[derive(Debug, Default, Clone)]
 pub struct NoArbitraryPxFontSize;
@@ -86,32 +84,6 @@ fn parse_arbitrary_px_font_size(utility: &str) -> Option<f64> {
         return None;
     }
     numeric_value.parse().ok()
-}
-
-fn format_javascript_number(value: f64) -> String {
-    if value.is_infinite() {
-        return "Infinity".to_string();
-    }
-    let absolute_value = value.abs();
-    if value != 0.0
-        && !(JAVASCRIPT_EXPONENTIAL_MINIMUM_ABSOLUTE_VALUE
-            ..JAVASCRIPT_EXPONENTIAL_MAXIMUM_ABSOLUTE_VALUE)
-            .contains(&absolute_value)
-    {
-        let mut exponential_value = format!("{value:e}");
-        let exponent_index = exponential_value
-            .find('e')
-            .unwrap_or(exponential_value.len());
-        if exponential_value
-            .as_bytes()
-            .get(exponent_index + 1)
-            .is_some_and(u8::is_ascii_digit)
-        {
-            exponential_value.insert(exponent_index + 1, '+');
-        }
-        return exponential_value;
-    }
-    value.to_string()
 }
 
 fn arbitrary_font_size_line_height_suffix(utility: &str) -> &str {

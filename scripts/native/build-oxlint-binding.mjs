@@ -226,6 +226,7 @@ impl Rule for ${delegatedRule.struct} {
         "tailwind-top-level-character-indices",
         "split-tailwind-opacity-modifier",
         "parse-javascript-decimal-prefix-value",
+        "format-javascript-number",
         "imported-module-api-matches",
         "resolve-identifier-import",
         "identifier-initializer",

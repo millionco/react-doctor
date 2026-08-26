@@ -8,8 +8,6 @@ use crate::{
 };
 
 const Z_INDEX_ABSURD_THRESHOLD: f64 = 1000.0;
-const JAVASCRIPT_EXPONENTIAL_MINIMUM_ABSOLUTE_VALUE: f64 = 0.000_001;
-const JAVASCRIPT_EXPONENTIAL_MAXIMUM_ABSOLUTE_VALUE: f64 = 1e21;
 
 #[derive(Debug, Default, Clone)]
 #[allow(non_camel_case_types)]
@@ -112,30 +110,4 @@ impl Rule for NoZIndex_9999 {
             }
         }
     }
-}
-
-fn format_javascript_number(value: f64) -> String {
-    if value.is_infinite() {
-        return "Infinity".to_string();
-    }
-    let absolute_value = value.abs();
-    if value != 0.0
-        && !(JAVASCRIPT_EXPONENTIAL_MINIMUM_ABSOLUTE_VALUE
-            ..JAVASCRIPT_EXPONENTIAL_MAXIMUM_ABSOLUTE_VALUE)
-            .contains(&absolute_value)
-    {
-        let mut exponential_value = format!("{value:e}");
-        let exponent_index = exponential_value
-            .find('e')
-            .unwrap_or(exponential_value.len());
-        if exponential_value
-            .as_bytes()
-            .get(exponent_index + 1)
-            .is_some_and(u8::is_ascii_digit)
-        {
-            exponential_value.insert(exponent_index + 1, '+');
-        }
-        return exponential_value;
-    }
-    value.to_string()
 }

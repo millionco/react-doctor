@@ -408,7 +408,8 @@
     "no-layout-shifting-interaction-state",
     "no-many-boolean-props",
     "no-match-media-in-state-initializer",
-    "no-mirror-prop-effect"
+    "no-mirror-prop-effect",
+    "no-monotonous-page-spacing"
   ],
   "delegatedRules": [
     {

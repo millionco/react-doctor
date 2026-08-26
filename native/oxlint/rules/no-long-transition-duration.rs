@@ -375,11 +375,3 @@ fn has_conflicting_motion_spring_duration(
         get_effective_motion_object_property(transition_object, property_name).is_some()
     })
 }
-
-fn format_javascript_number(value: f64) -> String {
-    if value.fract() == 0.0 {
-        format!("{value:.0}")
-    } else {
-        value.to_string()
-    }
-}

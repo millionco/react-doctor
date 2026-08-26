@@ -543,6 +543,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-many-boolean-props": 1,
   "no-match-media-in-state-initializer": 1,
   "no-mirror-prop-effect": 1,
+  "no-monotonous-page-spacing": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2084,6 +2085,12 @@ const MirrorPropEffect = ({ value }) => {
   useEffect(() => { setDraft(value); }, [value]);
   return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
 };
+const MonotonousPageSpacing = () => <main>
+  <div style={{ padding: 16 }} /><div style={{ padding: 16 }} /><div style={{ padding: 16 }} />
+  <div style={{ padding: 16 }} /><div style={{ padding: 16 }} /><div style={{ padding: 16 }} />
+  <div style={{ padding: 16 }} /><div style={{ padding: 16 }} /><div style={{ padding: 16 }} />
+  <div style={{ padding: 16 }} /><div style={{ padding: 16 }} /><div style={{ padding: 16 }} />
+</main>;
 `;
 
 const normalizeDiagnostics = (diagnostics) =>

@@ -429,7 +429,8 @@
     "no-uncontrolled-input",
     "no-undeferred-third-party",
     "no-undersized-icon-button",
-    "no-ungated-tailwind-animation"
+    "no-ungated-tailwind-animation",
+    "no-unthrottled-scroll-mutation"
   ],
   "delegatedRules": [
     {

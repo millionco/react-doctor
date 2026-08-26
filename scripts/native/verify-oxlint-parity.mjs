@@ -564,6 +564,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-undeferred-third-party": 3,
   "no-undersized-icon-button": 0,
   "no-ungated-tailwind-animation": 2,
+  "no-unthrottled-scroll-mutation": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2415,6 +2416,7 @@ const configuredFlatPageTypeScale = <main><p className="text-sm">A</p><h2 classN
 const configuredSmallFormControlText = <><input className="text-sm" /><input className="hidden md:block text-xs" /></>;
 const configuredUndersizedIconButton = <button className="size-4 p-0"><svg /></button>;
 const configuredUngatedTailwindAnimation = <><span className="animate-spin" /><span className="motion-reduce:animate-spin motion-reduce:hidden" /></>;
+const configuredScrollHero = document.querySelector(".hero"); document.addEventListener("scroll", () => { configuredScrollHero.style.transform = "translateY(10px)"; });
 const configuredCrampedContainerPadding = <div className="border p-1">Status</div>;
 const configuredHoverOnlyReveal = <button className="opacity-0 hover:opacity-100">Edit</button>;
 const configuredImportantNumberedSections = <main><section><span className="!text-xs font-mono" style={{ fontSize: 16 }}>01</span><h2>Principles</h2></section><section><span className="!text-xs font-mono" style={{ fontSize: 16 }}>02</span><h2>Process</h2></section></main>;
@@ -2523,6 +2525,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "no-small-form-control-text",
     "no-undersized-icon-button",
     "no-ungated-tailwind-animation",
+    "no-unthrottled-scroll-mutation",
     "no-cramped-container-padding",
     "no-hover-only-reveal",
     "no-numbered-section-markers",
@@ -2727,6 +2730,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "no-small-form-control-text": 1,
     "no-undersized-icon-button": 1,
     "no-ungated-tailwind-animation": 1,
+    "no-unthrottled-scroll-mutation": 1,
     "no-cramped-container-padding": 1,
     "no-hover-only-reveal": 1,
     "no-numbered-section-markers": 3,

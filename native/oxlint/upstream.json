@@ -472,7 +472,8 @@
     "async-parallel",
     "autocomplete-valid",
     "button-has-type",
-    "checked-requires-onchange-or-readonly"
+    "checked-requires-onchange-or-readonly",
+    "class-component-missing-component-will-unmount-teardown"
   ],
   "delegatedRules": [
     {

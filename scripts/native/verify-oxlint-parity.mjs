@@ -607,6 +607,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "autocomplete-valid": 1,
   "button-has-type": 5,
   "checked-requires-onchange-or-readonly": 6,
+  "class-component-missing-component-will-unmount-teardown": 3,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -961,6 +962,25 @@ const ForwardedCheckedInput = ({ checked, defaultChecked }) => <input checked={c
 const spreadCheckedInput = <input checked {...inputProperties} />;
 const disabledCheckedInput = <input checked disabled />;
 const configuredIgnoredCheckedInput = <input checked defaultChecked />;
+/* oxlint-disable react-doctor/prefer-function-component, react-doctor/no-set-state */
+class MissingClassListenerCleanup extends React.Component {
+  componentDidMount() { window.addEventListener("resize", this.handleResize); }
+  render() { return null; }
+}
+class MissingClassIntervalCleanup extends React.Component {
+  componentDidMount() { this.interval = setInterval(this.tick, 1000); }
+  render() { return null; }
+}
+class MissingClassTimeoutCleanup extends React.Component {
+  componentDidMount() { this.timeout = setTimeout(() => this.setState({ ready: true }), 1000); }
+  render() { return null; }
+}
+class CleanClassListenerCleanup extends React.Component {
+  componentDidMount() { window.addEventListener("resize", this.handleResize); }
+  componentWillUnmount() { window.removeEventListener("resize", this.handleResize); }
+  render() { return null; }
+}
+/* oxlint-enable react-doctor/prefer-function-component, react-doctor/no-set-state */
 const downloadAnchor = <a href="/report" download>Report</a>;
 const protocolRelativeAnchor = <a href="//cdn.example.com/file">File</a>;
 const scriptUrlAnchor = <a href="javascript:void(0)">Open</a>;
@@ -2654,6 +2674,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "autocomplete-valid",
     "button-has-type",
     "checked-requires-onchange-or-readonly",
+    "class-component-missing-component-will-unmount-teardown",
     "heading-has-content",
     "jsx-boolean-value",
     "no-string-refs",

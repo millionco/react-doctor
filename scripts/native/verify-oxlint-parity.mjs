@@ -606,6 +606,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "async-parallel": 2,
   "autocomplete-valid": 1,
   "button-has-type": 5,
+  "checked-requires-onchange-or-readonly": 6,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -647,6 +648,10 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
     altText: { elements: ["img"], img: ["ConfiguredImage"] },
     autocompleteValid: { inputComponents: ["ConfiguredInput"] },
     buttonHasType: { reset: false },
+    checkedRequiresOnchangeOrReadonly: {
+      ignoreExclusiveCheckedAttribute: true,
+      ignoreMissingProperties: true,
+    },
     anchorIsValid: { specialLink: ["to"] },
     anchorAmbiguousText: { words: ["continue"] },
     noInteractiveElementToNoninteractiveRole: { button: ["article"] },
@@ -949,6 +954,13 @@ const NativeMergedAriaButton = () => { const { triggerProps } = useNativeButtonB
 const ComputedTypeForwardButton = (properties) => <button type={properties["type"]}>Forward</button>;
 const ComputedDestructuredTypeButton = ({ ["type"]: kind }) => <button type={kind}>Forward</button>;
 const computedSpreadButton = <form><button {...{ ["onClick"]: () => {} }}>Save</button></form>;
+const missingCheckedHandler = <input type="checkbox" checked />;
+const exclusiveCheckedDefaults = <input checked defaultChecked readOnly />;
+const missingCreateElementCheckedHandler = React.createElement("input", { checked: true });
+const ForwardedCheckedInput = ({ checked, defaultChecked }) => <input checked={checked} defaultChecked={defaultChecked} readOnly />;
+const spreadCheckedInput = <input checked {...inputProperties} />;
+const disabledCheckedInput = <input checked disabled />;
+const configuredIgnoredCheckedInput = <input checked defaultChecked />;
 const downloadAnchor = <a href="/report" download>Report</a>;
 const protocolRelativeAnchor = <a href="//cdn.example.com/file">File</a>;
 const scriptUrlAnchor = <a href="javascript:void(0)">Open</a>;
@@ -2641,6 +2653,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
   const configuredRuleIds = [
     "autocomplete-valid",
     "button-has-type",
+    "checked-requires-onchange-or-readonly",
     "heading-has-content",
     "jsx-boolean-value",
     "no-string-refs",

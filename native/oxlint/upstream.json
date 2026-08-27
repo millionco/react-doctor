@@ -471,7 +471,8 @@
     "async-defer-await",
     "async-parallel",
     "autocomplete-valid",
-    "button-has-type"
+    "button-has-type",
+    "checked-requires-onchange-or-readonly"
   ],
   "delegatedRules": [
     {

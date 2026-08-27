@@ -16,11 +16,11 @@ concurrency:
   group: react-doctor-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Turbo Remote Cache: restricted to main-branch pushes only to prevent cache
-# poisoning from first-party PR branches. PRs run with a cold cache (safe).
+# First-party PRs can read the Turbo cache, but only trusted push runs can write it.
 env:
-  TURBO_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.TURBO_TOKEN || '' }}
-  TURBO_TEAM: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.TURBO_TEAM || '' }}
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+  TURBO_CACHE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && 'local:rw,remote:r' || github.event_name == 'pull_request' && 'local:rw' || 'local:rw,remote:rw' }}
 
 jobs:
   react-doctor:

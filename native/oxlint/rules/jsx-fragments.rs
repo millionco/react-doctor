@@ -1,7 +1,4 @@
-use oxc_ast::{
-    AstKind,
-    ast::{JSXElementName, JSXMemberExpressionObject},
-};
+use oxc_ast::AstKind;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_span::GetSpan;
@@ -9,7 +6,6 @@ use oxc_span::GetSpan;
 use crate::{
     AstNode,
     context::{ContextHost, LintContext},
-    module_record::ImportImportName,
     rule::Rule,
 };
 
@@ -34,7 +30,10 @@ impl Rule for JsxFragments {
             AstKind::JSXElement(element) if fragment_mode(ctx) == "syntax" => {
                 if element.closing_element.is_none()
                     || !element.opening_element.attributes.is_empty()
-                    || !is_react_fragment(&element.opening_element.name, ctx)
+                    || !is_scoped_react_fragment_element(
+                        &element.opening_element.name,
+                        ctx,
+                    )
                 {
                     return;
                 }
@@ -66,48 +65,4 @@ fn fragment_mode<'a>(ctx: &'a LintContext<'_>) -> &'a str {
         .and_then(|settings| settings.get("mode"))
         .and_then(serde_json::Value::as_str)
         .unwrap_or("syntax")
-}
-
-fn is_react_fragment<'a>(name: &JSXElementName<'a>, ctx: &LintContext<'a>) -> bool {
-    match name {
-        JSXElementName::IdentifierReference(identifier) => {
-            let Some(import_entry) = resolve_identifier_import(identifier, ctx) else {
-                return identifier.name == "Fragment"
-                    && ctx
-                        .scoping()
-                        .get_reference(identifier.reference_id())
-                        .symbol_id()
-                        .is_none();
-            };
-            import_entry.module_request.name() == "react"
-                && matches!(
-                    &import_entry.import_name,
-                    ImportImportName::Name(imported_name) if imported_name.name() == "Fragment"
-                )
-        }
-        JSXElementName::MemberExpression(member_expression) => {
-            if member_expression.property.name != "Fragment" {
-                return false;
-            }
-            let JSXMemberExpressionObject::IdentifierReference(identifier) =
-                &member_expression.object
-            else {
-                return false;
-            };
-            let Some(import_entry) = resolve_identifier_import(identifier, ctx) else {
-                return identifier.name == "React"
-                    && ctx
-                        .scoping()
-                        .get_reference(identifier.reference_id())
-                        .symbol_id()
-                        .is_none();
-            };
-            import_entry.module_request.name() == "react"
-                && match &import_entry.import_name {
-                    ImportImportName::Default(_) | ImportImportName::NamespaceObject => true,
-                    ImportImportName::Name(imported_name) => imported_name.name() == "default",
-                }
-        }
-        _ => false,
-    }
 }

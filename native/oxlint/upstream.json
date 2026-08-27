@@ -79,6 +79,7 @@
     "prefer-truncate-shorthand",
     "no-multiple-main-landmarks",
     "iframe-title-unique",
+    "iframe-has-title",
     "html-label-has-single-control",
     "fieldset-requires-legend",
     "no-skipped-heading-level",

@@ -213,6 +213,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "prefer-truncate-shorthand": 3,
   "no-multiple-main-landmarks": 3,
   "iframe-title-unique": 2,
+  "iframe-has-title": 2,
   "html-label-has-single-control": 2,
   "fieldset-requires-legend": 2,
   "no-skipped-heading-level": 2,

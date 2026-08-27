@@ -74,6 +74,7 @@ const globalErrorFixturePath = path.join(fixtureDirectory, "app", "global-error.
 const ogImageFixturePath = path.join(fixtureDirectory, "app", "opengraph-image.tsx");
 const routeHandlerFixturePath = path.join(fixtureDirectory, "app", "api", "route.ts");
 const asyncClientFixturePath = path.join(fixtureDirectory, "app", "async-client.tsx");
+const r3fLightingFixturePath = path.join(fixtureDirectory, "app", "r3f-lighting.tsx");
 const safeGlobalErrorFixturePath = path.join(fixtureDirectory, "app", "safe", "global-error.tsx");
 const safePageFixturePath = path.join(fixtureDirectory, "app", "page.tsx");
 const safeRouteHandlerFixturePath = path.join(fixtureDirectory, "app", "safe", "route.ts");
@@ -614,6 +615,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-valid-pbr-material-properties": 1,
   "r3f-valid-physical-material-properties": 1,
   "r3f-require-transparent-for-opacity": 1,
+  "r3f-require-lighting-for-pbr": 1,
   "r3f-valid-buffer-attribute-item-size": 1,
   "r3f-valid-buffer-attribute-array-length": 1,
   "r3f-valid-shadow-map-size": 1,
@@ -2656,6 +2658,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     asyncClientFixturePath,
     `'use client';\nimport React from "react";\nexport default async function AsyncProfile() { return <div />; }\nconst AsyncSettings = async () => <section />;\nconst FrozenClient = Object.freeze(Object.seal(async () => <main />));\nconst SyncClient = Object.freeze(() => <aside />);\n`,
+  );
+  fs.writeFileSync(
+    r3fLightingFixturePath,
+    `import React from "react";\nimport { Canvas } from "@react-three/fiber";\nexport const UnlitScene = () => <Canvas><mesh><boxGeometry /><meshStandardMaterial /></mesh></Canvas>;\n`,
   );
   fs.mkdirSync(path.dirname(safeGlobalErrorFixturePath), { recursive: true });
   fs.writeFileSync(

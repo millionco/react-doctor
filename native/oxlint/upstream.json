@@ -10,6 +10,7 @@
     "no-children-prop",
     "no-danger",
     "no-document-write",
+    "no-eval",
     "no-moment",
     "no-namespace",
     "no-react-children",

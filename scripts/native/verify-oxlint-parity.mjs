@@ -144,6 +144,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-children-prop": 4,
   "no-danger": 4,
   "no-document-write": 8,
+  "no-eval": 1,
   "no-moment": 1,
   "no-namespace": 2,
   "no-react-children": 2,
@@ -821,6 +822,7 @@ callOnJavaScript(() => {});
 ReanimatedRuntime.runOnRuntime(runtime, () => {});
 document.write("a");
 document.writeln("b");
+const runDynamicEvaluation = (userInput) => globalThis.eval(userInput);
 document["write"]("c");
 document[\`writeln\`]("d");
 document?.write("e");

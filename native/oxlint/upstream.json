@@ -82,6 +82,7 @@
     "iframe-has-title",
     "iframe-missing-sandbox",
     "img-redundant-alt",
+    "interactive-supports-focus",
     "html-label-has-single-control",
     "fieldset-requires-legend",
     "no-skipped-heading-level",

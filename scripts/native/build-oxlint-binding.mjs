@@ -258,6 +258,7 @@ impl Rule for ${delegatedRule.struct} {
         "do-nodes-cover-every-path-after-node",
         "get-react-router-middleware-next-symbol",
         "is-react-es6-component",
+        "can-content-editable-be-tabbable",
         "get-static-jsx-attribute-string-values",
         "get-implicit-role",
         "get-known-static-jsx-attribute-string-values",

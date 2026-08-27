@@ -216,6 +216,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "iframe-has-title": 2,
   "iframe-missing-sandbox": 12,
   "img-redundant-alt": 4,
+  "interactive-supports-focus": 3,
   "html-label-has-single-control": 2,
   "fieldset-requires-legend": 2,
   "no-skipped-heading-level": 2,
@@ -704,6 +705,7 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
     ariaRole: { allowedInvalidRoles: ["datepicker"], ignoreNonDOM: false },
     altText: { elements: ["img"], img: ["ConfiguredImage"] },
     imgRedundantAlt: { components: ["ConfiguredImage"], words: ["portrait"] },
+    interactiveSupportsFocus: { tabbable: ["slider"] },
     autocompleteValid: { inputComponents: ["ConfiguredInput"] },
     buttonHasType: { reset: false },
     checkedRequiresOnchangeOrReadonly: {
@@ -1110,6 +1112,14 @@ const redundantTemplateImageAlt = <img src="/cat.png" alt={\`Picture of \${subje
 const NativeImageTag = "img" as const;
 const redundantAliasedImageAlt = <NativeImageTag src="/cat.png" alt="Photo of a cat" />;
 const joinedImageAlt = <img src="/cat.png" alt="image-left-top" />;
+const unfocusableTabbableRole = <div role="button" aria-label="Open" onKeyDown={handle} />;
+const unfocusableFocusableRole = <div role="slider" aria-label="Volume" onKeyDown={handle} />;
+const conditionalUnfocusableRole = <div role={condition ? "button" : "link"} aria-label="Open" onKeyDown={handle} />;
+const focusedInteractiveRole = <div role="button" aria-label="Open" onKeyDown={handle} tabIndex={0} />;
+const compositeRoleContainer = <div role="toolbar" aria-label="Tools" onKeyDown={handle} />;
+const identifiedCompositeRoleItem = <div role="option" id="selected-option" aria-label="Selected" onMouseEnter={handle} />;
+const spreadFocusedInteractiveRole = <div role="button" aria-label="Open" onKeyDown={handle} {...focusProperties} />;
+const editableInteractiveRole = <div role="textbox" aria-label="Editor" contentEditable onKeyDown={handle} />;
 const invalidAnchor = <a>Open</a>;
 const ambiguousAnchor = <a href="https://example.com/details">learn more</a>;
 const expressionAmbiguousAnchor = <a href="https://example.com/next">{"learn more"}</a>;
@@ -2658,6 +2668,7 @@ const configuredHeading = <Title />;
 const configuredAllowedInvalidRole = <div role="datepicker" />;
 const configuredImage = <ConfiguredImage />;
 const configuredRedundantImageAlt = <ConfiguredImage alt="Portrait of a customer" />;
+const configuredUnfocusableRole = <div role="slider" aria-label="Volume" onKeyDown={handle} />;
 verify("forwards the fixture", () => { void <ProductComponent fixture={<img src="/fixture.png" />} />; });
 const configuredInvalidAnchor = <a to="">Destination</a>;
 const configuredMissingFragmentAnchor = <NavigationLink to="#configured-missing-target">Missing</NavigationLink>;
@@ -2813,6 +2824,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "aria-role",
     "alt-text",
     "img-redundant-alt",
+    "interactive-supports-focus",
     "anchor-is-valid",
     "anchor-target-exists",
     "anchor-ambiguous-text",
@@ -3049,6 +3061,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "aria-role": 1,
     "alt-text": 1,
     "img-redundant-alt": 1,
+    "interactive-supports-focus": 1,
     "anchor-is-valid": 1,
     "anchor-target-exists": 1,
     "anchor-ambiguous-text": 1,

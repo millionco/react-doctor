@@ -479,7 +479,8 @@
     "display-name",
     "forbid-component-props",
     "forbid-dom-props",
-    "forbid-elements"
+    "forbid-elements",
+    "form-control-requires-name"
   ],
   "delegatedRules": [
     {

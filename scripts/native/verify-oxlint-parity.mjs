@@ -614,6 +614,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "forbid-component-props": 0,
   "forbid-dom-props": 0,
   "forbid-elements": 0,
+  "form-control-requires-name": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2654,6 +2655,7 @@ const configuredForbiddenMemberElement = <Library.Panel />;
 const configuredForbiddenCreatedElement = React.createElement("button");
 const configuredForbiddenCreatedComponent = createElement(ConfiguredModal);
 const configuredForbiddenCreatedMember = React.createElement(Library.Panel);
+const configuredUnnamedFormControl = <form><input aria-label="Email" /></form>;
 const configuredAllowedInteractiveRole = <button role="article">Save</button>;
 const configuredAllowedNoninteractiveRole = <h1 role="button">Open</h1>;
 const configuredDeepJsx = <div><section><span><em /></span></section></div>;
@@ -2772,6 +2774,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "forbid-component-props",
     "forbid-dom-props",
     "forbid-elements",
+    "form-control-requires-name",
     "heading-has-content",
     "jsx-boolean-value",
     "no-string-refs",
@@ -3022,6 +3025,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "forbid-component-props": 3,
     "forbid-dom-props": 5,
     "forbid-elements": 10,
+    "form-control-requires-name": 1,
     "jsx-max-depth": 2,
     "no-unsafe": 1,
     "no-oversized-long-heading": 1,

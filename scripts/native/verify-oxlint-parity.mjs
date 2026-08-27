@@ -85,6 +85,11 @@ const r3fClockFixturePath = path.join(fixtureDirectory, "app", "r3f-clock.tsx");
 const r3fCapDprFixturePath = path.join(fixtureDirectory, "app", "r3f-cap-dpr.tsx");
 const r3fCloneInFrameFixturePath = path.join(fixtureDirectory, "app", "r3f-clone-in-frame.tsx");
 const r3fDeepSelectorFixturePath = path.join(fixtureDirectory, "app", "r3f-deep-selector.tsx");
+const r3fDisposeLoaderCacheFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-dispose-loader-cache.tsx",
+);
 const r3fPointerAllocationFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -352,6 +357,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-clone-in-use-frame": 4,
   "r3f-no-compile-in-use-frame": 2,
   "r3f-no-deep-use-three-selector": 3,
+  "r3f-no-dispose-loader-cache": 8,
   "r3f-no-extend-three-namespace": 4,
   "r3f-no-inline-primitive-object": 1,
   "react-router-csp-nonce-consistency": 1,
@@ -2724,6 +2730,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     r3fDeepSelectorFixturePath,
     `import React from "react";\nimport * as Fiber from "@react-three/fiber";\nconst clockSelector = React.useCallback((state) => {\n  const clock = state.clock;\n  return clock.elapsedTime;\n}, []);\nexport const DeepSelectorScene = () => {\n  const zoom = Fiber.useThree((state) => state.camera.zoom);\n  const x = Fiber.useThree(({ camera }) => camera.position.x);\n  const elapsedTime = Fiber.useThree(clockSelector);\n  const position = Fiber.useThree((state) => state.camera.position);\n  return consume(zoom, x, elapsedTime, position);\n};\n`,
+  );
+  fs.writeFileSync(
+    r3fDisposeLoaderCacheFixturePath,
+    `import { useGLTF, useTexture } from "@react-three/drei";\nconst texture = useTexture(textureUrl);\nconst model = useGLTF(modelUrl);\nconst clone = model.scene.clone();\ntexture.dispose();\nmodel.scene.dispose();\nmodel.nodes.Mesh.geometry.dispose();\nclone.geometry.dispose();\nclone.children[0].material.dispose();\nmodel.scene.traverse((child) => child.material.dispose());\nObject.values(model.materials).forEach((material) => material.map.dispose());\nclone.traverse((child) => { child.position.dispose(); child.geometry.dispose(); });\nclone.dispose();\nclone.position.dispose();\n`,
   );
   fs.writeFileSync(
     r3fPointerAllocationFixturePath,

@@ -1,6 +1,6 @@
 use oxc_ast::{
     AstKind,
-    ast::{BindingPattern, Expression, ObjectPropertyKind},
+    ast::{Expression, ObjectPropertyKind},
 };
 use oxc_diagnostics::OxcDiagnostic;
 
@@ -377,58 +377,4 @@ fn is_r3f_api_call<'a>(
         false,
         ctx,
     )
-}
-
-fn binding_property_name_for_symbol(
-    pattern: &BindingPattern<'_>,
-    symbol_id: oxc_semantic::SymbolId,
-) -> Option<String> {
-    match pattern {
-        BindingPattern::BindingIdentifier(_) => None,
-        BindingPattern::AssignmentPattern(assignment) => {
-            binding_property_name_for_symbol(&assignment.left, symbol_id)
-        }
-        BindingPattern::ObjectPattern(object_pattern) => {
-            for property in &object_pattern.properties {
-                if binding_pattern_contains_symbol(&property.value, symbol_id) {
-                    return property.key.static_name().map(|name| name.to_string());
-                }
-            }
-            None
-        }
-        BindingPattern::ArrayPattern(array_pattern) => array_pattern
-            .elements
-            .iter()
-            .flatten()
-            .find_map(|element| binding_property_name_for_symbol(element, symbol_id)),
-    }
-}
-
-fn binding_pattern_contains_symbol(
-    pattern: &BindingPattern<'_>,
-    symbol_id: oxc_semantic::SymbolId,
-) -> bool {
-    match pattern {
-        BindingPattern::BindingIdentifier(identifier) => identifier.symbol_id() == symbol_id,
-        BindingPattern::AssignmentPattern(assignment) => {
-            binding_pattern_contains_symbol(&assignment.left, symbol_id)
-        }
-        BindingPattern::ObjectPattern(object_pattern) => {
-            object_pattern.properties.iter().any(|property| {
-                binding_pattern_contains_symbol(&property.value, symbol_id)
-            }) || object_pattern.rest.as_ref().is_some_and(|rest| {
-                binding_pattern_contains_symbol(&rest.argument, symbol_id)
-            })
-        }
-        BindingPattern::ArrayPattern(array_pattern) => {
-            array_pattern
-                .elements
-                .iter()
-                .flatten()
-                .any(|element| binding_pattern_contains_symbol(element, symbol_id))
-                || array_pattern.rest.as_ref().is_some_and(|rest| {
-                    binding_pattern_contains_symbol(&rest.argument, symbol_id)
-                })
-        }
-    }
 }

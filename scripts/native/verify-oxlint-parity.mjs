@@ -217,6 +217,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "iframe-missing-sandbox": 12,
   "img-redundant-alt": 4,
   "interactive-supports-focus": 3,
+  "label-has-associated-control": 4,
   "html-label-has-single-control": 2,
   "fieldset-requires-legend": 2,
   "no-skipped-heading-level": 2,
@@ -706,6 +707,13 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
     altText: { elements: ["img"], img: ["ConfiguredImage"] },
     imgRedundantAlt: { components: ["ConfiguredImage"], words: ["portrait"] },
     interactiveSupportsFocus: { tabbable: ["slider"] },
+    labelHasAssociatedControl: {
+      labelComponents: ["ConfiguredLabel"],
+      labelAttributes: ["label"],
+      controlComponents: ["ConfiguredInput"],
+      assert: "both",
+      depth: 3,
+    },
     autocompleteValid: { inputComponents: ["ConfiguredInput"] },
     buttonHasType: { reset: false },
     checkedRequiresOnchangeOrReadonly: {
@@ -1120,6 +1128,12 @@ const compositeRoleContainer = <div role="toolbar" aria-label="Tools" onKeyDown=
 const identifiedCompositeRoleItem = <div role="option" id="selected-option" aria-label="Selected" onMouseEnter={handle} />;
 const spreadFocusedInteractiveRole = <div role="button" aria-label="Open" onKeyDown={handle} {...focusProperties} />;
 const editableInteractiveRole = <div role="textbox" aria-label="Editor" contentEditable onKeyDown={handle} />;
+const unidentifiedEmptyLabel = <label />;
+const unassociatedTextLabel = <label>Name</label>;
+const unassociatedExpressionLabel = <label>{fieldLabel}</label>;
+const emptyAssociationLabel = <label htmlFor="">Name</label>;
+const nestedAssociationLabel = <label>Name<input /></label>;
+const renderingChildrenLabel = <label>Name {children}</label>;
 const invalidAnchor = <a>Open</a>;
 const ambiguousAnchor = <a href="https://example.com/details">learn more</a>;
 const expressionAmbiguousAnchor = <a href="https://example.com/next">{"learn more"}</a>;
@@ -2669,6 +2683,7 @@ const configuredAllowedInvalidRole = <div role="datepicker" />;
 const configuredImage = <ConfiguredImage />;
 const configuredRedundantImageAlt = <ConfiguredImage alt="Portrait of a customer" />;
 const configuredUnfocusableRole = <div role="slider" aria-label="Volume" onKeyDown={handle} />;
+const configuredUnnestedLabel = <ConfiguredLabel htmlFor="configured-name" label="Name" />;
 verify("forwards the fixture", () => { void <ProductComponent fixture={<img src="/fixture.png" />} />; });
 const configuredInvalidAnchor = <a to="">Destination</a>;
 const configuredMissingFragmentAnchor = <NavigationLink to="#configured-missing-target">Missing</NavigationLink>;
@@ -2825,6 +2840,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "alt-text",
     "img-redundant-alt",
     "interactive-supports-focus",
+    "label-has-associated-control",
     "anchor-is-valid",
     "anchor-target-exists",
     "anchor-ambiguous-text",
@@ -3062,6 +3078,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "alt-text": 1,
     "img-redundant-alt": 1,
     "interactive-supports-focus": 1,
+    "label-has-associated-control": 1,
     "anchor-is-valid": 1,
     "anchor-target-exists": 1,
     "anchor-ambiguous-text": 1,

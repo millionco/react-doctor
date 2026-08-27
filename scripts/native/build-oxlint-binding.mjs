@@ -371,6 +371,13 @@ impl Rule for ${delegatedRule.struct} {
         requiredUtilities ? `${requiredUtilities}\n\n${nativeRuleSource}` : nativeRuleSource,
       );
     }
+    const sharedNativeUtilityIds = ["simple-glob-matches"];
+    for (const sharedNativeUtilityId of sharedNativeUtilityIds) {
+      fs.copyFileSync(
+        path.join(nativeRulesDirectory, `${sharedNativeUtilityId}.rs`),
+        path.join(upstreamRulesDirectory, `${sharedNativeUtilityId.replaceAll("-", "_")}.rs`),
+      );
+    }
     const rulesRegistryPath = path.join(
       checkoutDirectory,
       "crates",
@@ -378,9 +385,14 @@ impl Rule for ${delegatedRule.struct} {
       "src",
       "rules.rs",
     );
-    const nativeModuleDeclarations = upstream.nativeRules
-      .map((nativeRuleId) => `    pub mod ${nativeRuleId.replaceAll("-", "_")};`)
-      .join("\n");
+    const nativeModuleDeclarations = [
+      ...sharedNativeUtilityIds.map(
+        (sharedNativeUtilityId) => `    mod ${sharedNativeUtilityId.replaceAll("-", "_")};`,
+      ),
+      ...upstream.nativeRules.map(
+        (nativeRuleId) => `    pub mod ${nativeRuleId.replaceAll("-", "_")};`,
+      ),
+    ].join("\n");
     const rulesRegistry = fs
       .readFileSync(rulesRegistryPath, "utf8")
       .replace(

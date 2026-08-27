@@ -484,7 +484,8 @@
     "hook-import-rename-loses-use-prefix",
     "html-no-invalid-paragraph-child",
     "html-no-invalid-table-nesting",
-    "auth-token-in-web-storage"
+    "auth-token-in-web-storage",
+    "client-localstorage-no-version"
   ],
   "delegatedRules": [
     {

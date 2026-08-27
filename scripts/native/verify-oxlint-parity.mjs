@@ -619,6 +619,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "html-no-invalid-paragraph-child": 1,
   "html-no-invalid-table-nesting": 1,
   "auth-token-in-web-storage": 1,
+  "client-localstorage-no-version": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1144,6 +1145,7 @@ const shortcut = <button accessKey="s">Save</button>;
 const InvalidParagraphChild = () => <p><div>Block content</div></p>;
 const InvalidTableNesting = () => <table><td>Cell</td></table>;
 localStorage.setItem("authToken", token);
+localStorage.setItem("preferences", JSON.stringify(preferences));
 const positiveTabOrder = <button tabIndex={2}>Later</button>;
 const hexadecimalPositiveTabOrder = <button tabIndex="0x2">Later</button>;
 const paddedPositiveTabOrder = <button tabIndex=" 2 ">Later</button>;

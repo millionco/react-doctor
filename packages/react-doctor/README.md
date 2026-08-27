@@ -84,7 +84,7 @@ URLs, source paths, and React profiling details. Treat it as sensitive applicati
 
 ## Telemetry
 
-The CLI reports crashes, basic run traces, and anonymous usage counters to [Sentry](https://sentry.io/) to help us fix bugs and prioritize work.
+The CLI reports crashes to [Sentry](https://sentry.io/) to help us fix bugs. Axiom run traces and metrics are disabled unless `REACT_DOCTOR_AXIOM_TOKEN` is set explicitly.
 
 We collect:
 

@@ -1,7 +1,5 @@
-import { AXIOM_DEFAULT_DOMAIN } from "@react-doctor/core";
 import * as Redacted from "effect/Redacted";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { AXIOM_METRICS_DATASET, AXIOM_TRACES_DATASET } from "../src/cli/utils/constants.js";
 import { resolveAxiomTelemetryOptions } from "../src/cli/utils/resolve-axiom-telemetry-options.js";
 
 const TELEMETRY_ENVIRONMENT_VARIABLES = [
@@ -36,29 +34,16 @@ afterEach(() => {
 });
 
 describe("resolveAxiomTelemetryOptions", () => {
-  it("resolves the embedded first-party defaults when nothing is overridden", () => {
-    const options = resolveAxiomTelemetryOptions();
-
-    expect(options).not.toBeNull();
-    expect(options?.domain).toBe(AXIOM_DEFAULT_DOMAIN);
-    expect(options?.tracesDataset).toBe(AXIOM_TRACES_DATASET);
-    expect(options?.metricsDataset).toBe(AXIOM_METRICS_DATASET);
+  it("does not enable Axiom without an explicit token", () => {
+    expect(resolveAxiomTelemetryOptions()).toBeNull();
   });
 
   it("ignores Axiom's own unprefixed environment variables", () => {
-    // A developer who already uses Axiom very likely has these set for their
-    // own app. Reading them would silently redirect React Doctor's telemetry
-    // into an unrelated account, or fail against a dataset that isn't shaped
-    // for it.
     process.env.AXIOM_TOKEN = "someone-elses-token";
     process.env.AXIOM_DOMAIN = "https://someone-elses-host.invalid";
     process.env.AXIOM_DATASET = "someone-elses-dataset";
 
-    const options = resolveAxiomTelemetryOptions();
-
-    expect(options?.domain).toBe(AXIOM_DEFAULT_DOMAIN);
-    expect(options?.tracesDataset).toBe(AXIOM_TRACES_DATASET);
-    expect(Redacted.value(options?.token ?? Redacted.make(""))).not.toBe("someone-elses-token");
+    expect(resolveAxiomTelemetryOptions()).toBeNull();
   });
 
   it("honors the REACT_DOCTOR_-prefixed overrides", () => {
@@ -72,6 +57,7 @@ describe("resolveAxiomTelemetryOptions", () => {
     expect(options?.domain).toBe("https://example.invalid");
     expect(options?.tracesDataset).toBe("our-traces");
     expect(options?.metricsDataset).toBe("our-metrics");
+    expect(Redacted.value(options?.token ?? Redacted.make(""))).toBe("our-token");
   });
 
   it("stays null when telemetry is opted out even with a token present", () => {

@@ -12,14 +12,8 @@ import { VERSION } from "./version.js";
  * side is what makes `@react-doctor/api` silent by construction rather than by a
  * runtime guard.
  *
- * First-party telemetry now requires `REACT_DOCTOR_AXIOM_TOKEN` to be set
- * explicitly — no token ships in the published package. This makes first-party
- * telemetry opt-in and removes the extractable credential from the tarball.
- * Users who need first-party telemetry must provide their own scoped Axiom
- * ingest token.
- *
- * Returning `null` for an empty token means telemetry is disabled, and no
- * unauthenticated requests are sent to Axiom.
+ * Axiom export requires `REACT_DOCTOR_AXIOM_TOKEN`. No Axiom token ships in the
+ * published package, and an empty token disables the exporter.
  *
  * The env vars are `REACT_DOCTOR_`-prefixed rather than the bare `AXIOM_TOKEN`
  * / `AXIOM_DATASET` names Axiom's own tooling uses. Those are common in the

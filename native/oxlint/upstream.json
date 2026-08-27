@@ -486,7 +486,8 @@
     "html-no-invalid-table-nesting",
     "auth-token-in-web-storage",
     "client-localstorage-no-version",
-    "data-table-requires-accessible-name"
+    "data-table-requires-accessible-name",
+    "expo-no-non-inlined-env"
   ],
   "delegatedRules": [
     {

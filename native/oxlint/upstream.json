@@ -470,7 +470,8 @@
     "async-await-in-loop",
     "async-defer-await",
     "async-parallel",
-    "autocomplete-valid"
+    "autocomplete-valid",
+    "button-has-type"
   ],
   "delegatedRules": [
     {

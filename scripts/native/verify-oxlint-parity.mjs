@@ -605,6 +605,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "async-defer-await": 1,
   "async-parallel": 2,
   "autocomplete-valid": 1,
+  "button-has-type": 5,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -645,6 +646,7 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
     ariaRole: { allowedInvalidRoles: ["datepicker"], ignoreNonDOM: false },
     altText: { elements: ["img"], img: ["ConfiguredImage"] },
     autocompleteValid: { inputComponents: ["ConfiguredInput"] },
+    buttonHasType: { reset: false },
     anchorIsValid: { specialLink: ["to"] },
     anchorAmbiguousText: { words: ["continue"] },
     noInteractiveElementToNoninteractiveRole: { button: ["article"] },
@@ -667,6 +669,7 @@ import { createContext as makeTrackedContext } from "react-tracked";
 import { create as createZustandStore } from "zustand";
 import { useQuery, useQuery as useItemsQuery } from "@tanstack/react-query";
 import * as TanstackQuery from "@tanstack/react-query";
+import { mergeProps as mergeNativeButtonProps, useFocus as useNativeButtonFocus, useHover as useNativeButtonHover, usePress as useNativeButtonPress } from "react-aria";
 import { BrowserRouter as OuterRouter, MemoryRouter as InnerRouter, RouterProvider as RouteProvider, ServerRouter as ServerRouteRouter, createBrowserRouter as makeBrowserRouter, createCookieSessionStorage as makeCookieSessionStorage, createHashRouter as makeHashRouter, redirect as routeRedirect, unstable_useBlocker as useRouteBlocker, useLoaderData as useRouteLoaderData, useMatches as useRouteMatches, useRoutes as useNestedRoutes, useSearchParams as useRouteSearchParams } from "react-router";
 import { Link as DomLink, useNavigate as useRouteNavigate } from "react-router-dom";
 import { renderToPipeableStream as renderRouteStream } from "react-dom/server";
@@ -938,6 +941,14 @@ const booleanFalseButton = <button disabled={false} />;
 const internalAnchor = <a href="/about">About</a>;
 const internalExpressionAnchor = <a href={"/settings"} download={false}>Settings</a>;
 const configuredInvalidAutocomplete = <ConfiguredInput autoComplete="unknown-configured-token" />;
+const configuredInvalidResetButton = <button type="reset">Reset</button>;
+const missingNativeButtonType = <form><button>Save</button></form>;
+const NativeAriaPressButton = (properties) => { const { pressProps } = useNativeButtonPress(properties); return <form><button {...pressProps}>Press</button></form>; };
+function useNativeButtonBag() { const { focusProps } = useNativeButtonFocus({}); const { hoverProps } = useNativeButtonHover({}); return { triggerProps: mergeNativeButtonProps(focusProps, hoverProps) }; }
+const NativeMergedAriaButton = () => { const { triggerProps } = useNativeButtonBag(); return <form><button {...triggerProps}>Merge</button></form>; };
+const ComputedTypeForwardButton = (properties) => <button type={properties["type"]}>Forward</button>;
+const ComputedDestructuredTypeButton = ({ ["type"]: kind }) => <button type={kind}>Forward</button>;
+const computedSpreadButton = <form><button {...{ ["onClick"]: () => {} }}>Save</button></form>;
 const downloadAnchor = <a href="/report" download>Report</a>;
 const protocolRelativeAnchor = <a href="//cdn.example.com/file">File</a>;
 const scriptUrlAnchor = <a href="javascript:void(0)">Open</a>;
@@ -2629,6 +2640,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
   );
   const configuredRuleIds = [
     "autocomplete-valid",
+    "button-has-type",
     "heading-has-content",
     "jsx-boolean-value",
     "no-string-refs",

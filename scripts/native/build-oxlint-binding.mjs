@@ -337,6 +337,7 @@ impl Rule for ${delegatedRule.struct} {
         "has-r3f-runtime-import",
         "read-static-jsx-boolean-attribute",
         "is-nullish-expression",
+        "can-expression-override-jsx-attribute-with-aliases",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),

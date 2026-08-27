@@ -620,6 +620,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "html-no-invalid-table-nesting": 1,
   "auth-token-in-web-storage": 1,
   "client-localstorage-no-version": 1,
+  "data-table-requires-accessible-name": 3,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1146,6 +1147,7 @@ const InvalidParagraphChild = () => <p><div>Block content</div></p>;
 const InvalidTableNesting = () => <table><td>Cell</td></table>;
 localStorage.setItem("authToken", token);
 localStorage.setItem("preferences", JSON.stringify(preferences));
+const DataTableWithoutName = () => <table><tr><th>Name</th></tr></table>;
 const positiveTabOrder = <button tabIndex={2}>Later</button>;
 const hexadecimalPositiveTabOrder = <button tabIndex="0x2">Later</button>;
 const paddedPositiveTabOrder = <button tabIndex=" 2 ">Later</button>;

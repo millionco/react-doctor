@@ -3,13 +3,16 @@ fn jsx_attribute_may_have_non_empty_value<'a>(
     boolean_values_render: bool,
     ctx: Option<&crate::context::LintContext<'a>>,
 ) -> bool {
-    let Some(value) = attribute.and_then(|attribute| attribute.value.as_ref()) else {
+    let Some(attribute) = attribute else {
+        return false;
+    };
+    if let Some(static_string_value) = get_string_literal_attribute_value(attribute) {
+        return !static_string_value.trim().is_empty();
+    }
+    let Some(value) = attribute.value.as_ref() else {
         return false;
     };
     match value {
-        oxc_ast::ast::JSXAttributeValue::StringLiteral(string_literal) => {
-            !string_literal.value.trim().is_empty()
-        }
         oxc_ast::ast::JSXAttributeValue::ExpressionContainer(container) => container
             .expression
             .as_expression()
@@ -19,6 +22,9 @@ fn jsx_attribute_may_have_non_empty_value<'a>(
                 oxc_ast::ast::Expression::StringLiteral(string_literal) => {
                     !string_literal.value.trim().is_empty()
                 }
+                oxc_ast::ast::Expression::NullLiteral(_)
+                | oxc_ast::ast::Expression::BigIntLiteral(_)
+                | oxc_ast::ast::Expression::RegExpLiteral(_) => false,
                 oxc_ast::ast::Expression::Identifier(identifier)
                     if identifier.name == "undefined"
                         && ctx.is_some_and(|ctx| {

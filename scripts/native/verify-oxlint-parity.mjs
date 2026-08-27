@@ -608,6 +608,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "button-has-type": 5,
   "checked-requires-onchange-or-readonly": 6,
   "class-component-missing-component-will-unmount-teardown": 3,
+  "click-events-have-key-events": 3,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -981,6 +982,12 @@ class CleanClassListenerCleanup extends React.Component {
   render() { return null; }
 }
 /* oxlint-enable react-doctor/prefer-function-component, react-doctor/no-set-state */
+/* oxlint-disable react-doctor/no-static-element-interactions */
+const clickableWithoutKeyboardHandler = <div onClick={openDetails}>Details</div>;
+const capturedClickWithoutKeyboardHandler = <section onClickCapture={openDetails}>Details</section>;
+const spreadClickWithoutKeyboardHandler = <main {...{ onClick: openDetails }}>Details</main>;
+const clickableWithKeyboardHandler = <div onClick={openDetails} onKeyDown={openDetails}>Details</div>;
+/* oxlint-enable react-doctor/no-static-element-interactions */
 const downloadAnchor = <a href="/report" download>Report</a>;
 const protocolRelativeAnchor = <a href="//cdn.example.com/file">File</a>;
 const scriptUrlAnchor = <a href="javascript:void(0)">Open</a>;
@@ -2675,6 +2682,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "button-has-type",
     "checked-requires-onchange-or-readonly",
     "class-component-missing-component-will-unmount-teardown",
+    "click-events-have-key-events",
     "heading-has-content",
     "jsx-boolean-value",
     "no-string-refs",

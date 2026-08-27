@@ -473,7 +473,8 @@
     "autocomplete-valid",
     "button-has-type",
     "checked-requires-onchange-or-readonly",
-    "class-component-missing-component-will-unmount-teardown"
+    "class-component-missing-component-will-unmount-teardown",
+    "click-events-have-key-events"
   ],
   "delegatedRules": [
     {

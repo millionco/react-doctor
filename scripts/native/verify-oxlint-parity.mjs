@@ -218,6 +218,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "img-redundant-alt": 4,
   "interactive-supports-focus": 3,
   "label-has-associated-control": 4,
+  "mouse-events-have-key-events": 1,
   "html-label-has-single-control": 2,
   "fieldset-requires-legend": 2,
   "no-skipped-heading-level": 2,
@@ -713,6 +714,10 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
       controlComponents: ["ConfiguredInput"],
       assert: "both",
       depth: 3,
+    },
+    mouseEventsHaveKeyEvents: {
+      hoverInHandlers: ["onPointerEnter"],
+      hoverOutHandlers: ["onPointerLeave"],
     },
     autocompleteValid: { inputComponents: ["ConfiguredInput"] },
     buttonHasType: { reset: false },
@@ -2684,6 +2689,7 @@ const configuredImage = <ConfiguredImage />;
 const configuredRedundantImageAlt = <ConfiguredImage alt="Portrait of a customer" />;
 const configuredUnfocusableRole = <div role="slider" aria-label="Volume" onKeyDown={handle} />;
 const configuredUnnestedLabel = <ConfiguredLabel htmlFor="configured-name" label="Name" />;
+const configuredMouseOnly = <div onPointerEnter={handle} onPointerLeave={handle} />;
 verify("forwards the fixture", () => { void <ProductComponent fixture={<img src="/fixture.png" />} />; });
 const configuredInvalidAnchor = <a to="">Destination</a>;
 const configuredMissingFragmentAnchor = <NavigationLink to="#configured-missing-target">Missing</NavigationLink>;
@@ -2841,6 +2847,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "img-redundant-alt",
     "interactive-supports-focus",
     "label-has-associated-control",
+    "mouse-events-have-key-events",
     "anchor-is-valid",
     "anchor-target-exists",
     "anchor-ambiguous-text",
@@ -3079,6 +3086,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "img-redundant-alt": 1,
     "interactive-supports-focus": 1,
     "label-has-associated-control": 1,
+    "mouse-events-have-key-events": 2,
     "anchor-is-valid": 1,
     "anchor-target-exists": 1,
     "anchor-ambiguous-text": 1,

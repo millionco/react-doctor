@@ -84,6 +84,7 @@
     "img-redundant-alt",
     "interactive-supports-focus",
     "label-has-associated-control",
+    "mouse-events-have-key-events",
     "html-label-has-single-control",
     "fieldset-requires-legend",
     "no-skipped-heading-level",

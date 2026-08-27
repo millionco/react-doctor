@@ -24,6 +24,13 @@ fn module_api_path_matches_internal<'a>(
     visited_symbol_ids: &mut Vec<oxc_semantic::SymbolId>,
 ) -> bool {
     let expression = expression.get_inner_expression();
+    if expected_path.is_empty()
+        && matches!(expression, oxc_ast::ast::Expression::CallExpression(_))
+        && global_require_module_source(expression, ctx)
+            .is_some_and(|module_source| module_source_matches(module_source, module_sources))
+    {
+        return true;
+    }
     if let Some(member_expression) = expression.as_member_expression() {
         let Some((expected_property, expected_receiver_path)) = expected_path.split_last() else {
             return false;
@@ -53,6 +60,15 @@ fn module_api_path_matches_internal<'a>(
     }
     visited_symbol_ids.push(symbol_id);
     let declaration = ctx.symbol_declaration(symbol_id);
+    if let oxc_ast::AstKind::TSImportEqualsDeclaration(declaration) = declaration.kind() {
+        let oxc_ast::ast::TSModuleReference::ExternalModuleReference(reference) =
+            &declaration.module_reference
+        else {
+            return false;
+        };
+        return expected_path.is_empty()
+            && module_source_matches(reference.expression.value.as_str(), module_sources);
+    }
     if let oxc_ast::AstKind::VariableDeclarator(declarator) = declaration.kind() {
         let parent = ctx.nodes().parent_node(declaration.id());
         let oxc_ast::AstKind::VariableDeclaration(variable_declaration) = parent.kind() else {
@@ -106,11 +122,7 @@ fn module_api_path_matches_internal<'a>(
     ctx.module_record().import_entries.iter().any(|entry| {
         let module_source = entry.module_request.name();
         !entry.is_type
-            && (module_sources.contains(&module_source)
-                || module_sources.iter().any(|module_source_prefix| {
-                    module_source_prefix.ends_with('/')
-                        && module_source.starts_with(module_source_prefix)
-                }))
+            && module_source_matches(module_source, module_sources)
             && ctx
                 .scoping()
                 .get_root_binding(entry.local_name.name().into())
@@ -128,4 +140,11 @@ fn module_api_path_matches_internal<'a>(
                 }
             }
     })
+}
+
+fn module_source_matches(module_source: &str, expected_module_sources: &[&str]) -> bool {
+    expected_module_sources.contains(&module_source)
+        || expected_module_sources.iter().any(|module_source_prefix| {
+            module_source_prefix.ends_with('/') && module_source.starts_with(module_source_prefix)
+        })
 }

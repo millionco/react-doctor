@@ -215,6 +215,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "iframe-title-unique": 2,
   "iframe-has-title": 2,
   "iframe-missing-sandbox": 12,
+  "img-redundant-alt": 4,
   "html-label-has-single-control": 2,
   "fieldset-requires-legend": 2,
   "no-skipped-heading-level": 2,
@@ -702,6 +703,7 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
     stateInConstructor: { mode: "never" },
     ariaRole: { allowedInvalidRoles: ["datepicker"], ignoreNonDOM: false },
     altText: { elements: ["img"], img: ["ConfiguredImage"] },
+    imgRedundantAlt: { components: ["ConfiguredImage"], words: ["portrait"] },
     autocompleteValid: { inputComponents: ["ConfiguredInput"] },
     buttonHasType: { reset: false },
     checkedRequiresOnchangeOrReadonly: {
@@ -1102,6 +1104,12 @@ unrelatedForwardRef((props) => <div>{props.label}</div>);
 const page = <html></html>;
 const untitledFrame = <iframe />;
 const invalidFrameTitle = <iframe title={undefined} />;
+const redundantImageAlt = <img src="/cat.png" alt="Image of a cat" />;
+const redundantExpressionImageAlt = <img src="/cat.png" alt={"Photo of a cat"} />;
+const redundantTemplateImageAlt = <img src="/cat.png" alt={\`Picture of \${subject}\`} />;
+const NativeImageTag = "img" as const;
+const redundantAliasedImageAlt = <NativeImageTag src="/cat.png" alt="Photo of a cat" />;
+const joinedImageAlt = <img src="/cat.png" alt="image-left-top" />;
 const invalidAnchor = <a>Open</a>;
 const ambiguousAnchor = <a href="https://example.com/details">learn more</a>;
 const expressionAmbiguousAnchor = <a href="https://example.com/next">{"learn more"}</a>;
@@ -2273,7 +2281,7 @@ class InlineExhaustiveStyleHolder {
 class InlineExhaustiveStyleOuter { inner = class { static value = <div style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }} />; }; }
 import { ImageResponse as GeneratedImageResponse } from "next/og";
 import generatedSatori from "satori";
-const GeneratedImageCard = () => <div style={{ display: "flex", width: 1200, height: 630, alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }} />;
+const GeneratedImageCard = () => <div style={{ display: "flex", width: 1200, height: 630, alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "white", fontSize: 64 }}><img src="/product.png" alt="Image of a product card" /></div>;
 const BuildGeneratedImageResponse = () => new GeneratedImageResponse(<GeneratedImageCard />);
 const DirectGeneratedImageResponse = () => generatedSatori(<div style={{ display: "flex", width: 1200, height: 630, alignItems: "center", justifyContent: "center", flexDirection: "column", backgroundColor: "black", color: "white" }} />, { width: 1200, height: 630 });
 import ReactForFocusCompletion from "react";
@@ -2558,7 +2566,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
     globalErrorFixturePath,
     `'use client';\nimport React from "react";\nexport default function GlobalError() { return <div />; }\n`,
   );
-  fs.writeFileSync(ogImageFixturePath, 'export const runtime = "edge";');
+  fs.writeFileSync(
+    ogImageFixturePath,
+    'import React from "react"; export const runtime = "edge"; export default function Image() { return <img src="/product.png" alt="Image of a product card" />; }',
+  );
   fs.mkdirSync(path.dirname(routeHandlerFixturePath), { recursive: true });
   fs.writeFileSync(routeHandlerFixturePath, "export default function handler() {}\n");
   fs.writeFileSync(
@@ -2646,6 +2657,7 @@ const configuredBooleanProps = <Widget enabled compact={true} />;
 const configuredHeading = <Title />;
 const configuredAllowedInvalidRole = <div role="datepicker" />;
 const configuredImage = <ConfiguredImage />;
+const configuredRedundantImageAlt = <ConfiguredImage alt="Portrait of a customer" />;
 verify("forwards the fixture", () => { void <ProductComponent fixture={<img src="/fixture.png" />} />; });
 const configuredInvalidAnchor = <a to="">Destination</a>;
 const configuredMissingFragmentAnchor = <NavigationLink to="#configured-missing-target">Missing</NavigationLink>;
@@ -2800,6 +2812,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "aria-activedescendant-has-tabindex",
     "aria-role",
     "alt-text",
+    "img-redundant-alt",
     "anchor-is-valid",
     "anchor-target-exists",
     "anchor-ambiguous-text",
@@ -3035,6 +3048,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "state-in-constructor": 3,
     "aria-role": 1,
     "alt-text": 1,
+    "img-redundant-alt": 1,
     "anchor-is-valid": 1,
     "anchor-target-exists": 1,
     "anchor-ambiguous-text": 1,

@@ -81,6 +81,7 @@
     "iframe-title-unique",
     "iframe-has-title",
     "iframe-missing-sandbox",
+    "img-redundant-alt",
     "html-label-has-single-control",
     "fieldset-requires-legend",
     "no-skipped-heading-level",

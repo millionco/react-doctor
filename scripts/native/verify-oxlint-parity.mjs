@@ -617,6 +617,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "form-control-requires-name": 0,
   "hook-import-rename-loses-use-prefix": 1,
   "html-no-invalid-paragraph-child": 1,
+  "html-no-invalid-table-nesting": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1140,6 +1141,7 @@ window.document.createElement("img", { children: "description", dangerouslySetIn
 namespace[document].createElement("img", {}, "description");
 const shortcut = <button accessKey="s">Save</button>;
 const InvalidParagraphChild = () => <p><div>Block content</div></p>;
+const InvalidTableNesting = () => <table><td>Cell</td></table>;
 const positiveTabOrder = <button tabIndex={2}>Later</button>;
 const hexadecimalPositiveTabOrder = <button tabIndex="0x2">Later</button>;
 const paddedPositiveTabOrder = <button tabIndex=" 2 ">Later</button>;

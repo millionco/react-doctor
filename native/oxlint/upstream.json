@@ -482,7 +482,8 @@
     "forbid-elements",
     "form-control-requires-name",
     "hook-import-rename-loses-use-prefix",
-    "html-no-invalid-paragraph-child"
+    "html-no-invalid-paragraph-child",
+    "html-no-invalid-table-nesting"
   ],
   "delegatedRules": [
     {

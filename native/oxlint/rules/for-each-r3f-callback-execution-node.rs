@@ -2,7 +2,7 @@ fn for_each_r3f_callback_execution_node<'a>(
     call_expression: &oxc_ast::ast::CallExpression<'a>,
     hook_name: &str,
     ctx: &crate::context::LintContext<'a>,
-    mut visitor: impl FnMut(&crate::AstNode<'a>, oxc_semantic::NodeId),
+    visitor: impl FnMut(&crate::AstNode<'a>, oxc_semantic::NodeId, bool),
 ) {
     if !module_api_path_matches(
         &call_expression.callee,
@@ -26,7 +26,5 @@ fn for_each_r3f_callback_execution_node<'a>(
     else {
         return;
     };
-    for_each_local_callback_execution_node(callback_expression, ctx, |candidate, callback_id, _| {
-        visitor(candidate, callback_id);
-    });
+    for_each_local_callback_execution_node(callback_expression, ctx, visitor);
 }

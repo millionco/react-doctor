@@ -32,7 +32,7 @@ impl Rule for R3FNoCompileInUseFrame {
                 call_expression,
                 "useFrame",
                 ctx,
-                |candidate, callback_id| {
+                |candidate, callback_id, _| {
                     let AstKind::CallExpression(candidate_call) = candidate.kind() else {
                         return;
                     };

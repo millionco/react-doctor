@@ -271,6 +271,8 @@ impl Rule for ${delegatedRule.struct} {
         "for-each-local-callback-execution-node",
         "for-each-r3f-callback-execution-node",
         "r3f-callback-state-property-matches",
+        "collect-r3f-host-ref-symbol-ids",
+        "r3f-use-three-state-property-matches",
         "get-inline-style-object-expression",
         "get-inline-style-object-expression-with-aliases",
         "get-static-style-property-string-value",

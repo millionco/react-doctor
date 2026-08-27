@@ -83,6 +83,7 @@ const r3fMetalEnvironmentFixturePath = path.join(
 const r3fNoCompileFixturePath = path.join(fixtureDirectory, "app", "r3f-no-compile.tsx");
 const r3fClockFixturePath = path.join(fixtureDirectory, "app", "r3f-clock.tsx");
 const r3fCapDprFixturePath = path.join(fixtureDirectory, "app", "r3f-cap-dpr.tsx");
+const r3fCloneInFrameFixturePath = path.join(fixtureDirectory, "app", "r3f-clone-in-frame.tsx");
 const r3fPointerAllocationFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -347,6 +348,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-allocation-in-pointer-move": 3,
   "r3f-no-advancing-clock-in-use-frame": 2,
   "r3f-no-async-use-frame": 2,
+  "r3f-no-clone-in-use-frame": 4,
   "r3f-no-compile-in-use-frame": 2,
   "r3f-no-extend-three-namespace": 4,
   "r3f-no-inline-primitive-object": 1,
@@ -2712,6 +2714,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     r3fCapDprFixturePath,
     `import React from "react";\nimport { Canvas, createRoot, useThree } from "@react-three/fiber";\nexport const DprScene = () => {\n  const directRoot = createRoot(canvas);\n  const [{ root }] = React.useState(() => ({ root: createRoot(canvas) }));\n  const selectedSetDpr = useThree((state) => state.setDpr);\n  const { setDpr } = useThree();\n  directRoot.configure({ dpr: window.devicePixelRatio });\n  root.configure({ dpr: globalThis.devicePixelRatio, ...props });\n  selectedSetDpr(window.devicePixelRatio);\n  setDpr(globalThis.devicePixelRatio);\n  return <Canvas dpr={window.devicePixelRatio} pixelRatio={globalThis.devicePixelRatio} />;\n};\n`,
+  );
+  fs.writeFileSync(
+    r3fCloneInFrameFixturePath,
+    `import React from "react";\nimport { useFrame, useThree } from "@react-three/fiber";\nexport const CloneScene = ({ enabled }) => {\n  const mesh = React.useRef(null);\n  const camera = useThree((state) => state.camera);\n  const { pointer } = useThree();\n  useFrame((state) => {\n    mesh.current.position.clone();\n    state.scene.clone();\n    camera.position.clone();\n    pointer.clone();\n    if (enabled) state.camera.clone();\n  });\n  return <mesh ref={mesh} />;\n};\n`,
   );
   fs.writeFileSync(
     r3fPointerAllocationFixturePath,

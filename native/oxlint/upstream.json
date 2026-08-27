@@ -478,7 +478,8 @@
     "control-has-associated-label",
     "display-name",
     "forbid-component-props",
-    "forbid-dom-props"
+    "forbid-dom-props",
+    "forbid-elements"
   ],
   "delegatedRules": [
     {

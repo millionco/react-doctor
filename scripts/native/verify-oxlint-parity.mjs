@@ -613,6 +613,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "display-name": 10,
   "forbid-component-props": 0,
   "forbid-dom-props": 0,
+  "forbid-elements": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -674,6 +675,13 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
           disallowedFor: ["section"],
           message: "Use the section variant.",
         },
+      ],
+    },
+    forbidElements: {
+      forbid: [
+        "button",
+        { element: "ConfiguredModal", message: "Use the approved modal." },
+        "Library.Panel",
       ],
     },
     capabilities: ["react", "tailwind"],
@@ -2640,6 +2648,12 @@ const configuredForbiddenDomExpressionValue = <span data-state={"blocked"} />;
 const configuredForbiddenDomTemplateValue = <span data-state={\`blocked\`} />;
 const configuredForbiddenDomCustomMessage = <section className="blocked" />;
 const configuredForbiddenAliasedDomProp = <ConfiguredIntrinsic id="blocked" />;
+const configuredForbiddenElement = <button aria-label="Blocked" />;
+const configuredForbiddenCustomElement = <ConfiguredModal />;
+const configuredForbiddenMemberElement = <Library.Panel />;
+const configuredForbiddenCreatedElement = React.createElement("button");
+const configuredForbiddenCreatedComponent = createElement(ConfiguredModal);
+const configuredForbiddenCreatedMember = React.createElement(Library.Panel);
 const configuredAllowedInteractiveRole = <button role="article">Save</button>;
 const configuredAllowedNoninteractiveRole = <h1 role="button">Open</h1>;
 const configuredDeepJsx = <div><section><span><em /></span></section></div>;
@@ -2757,6 +2771,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "display-name",
     "forbid-component-props",
     "forbid-dom-props",
+    "forbid-elements",
     "heading-has-content",
     "jsx-boolean-value",
     "no-string-refs",
@@ -3006,6 +3021,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "display-name": 2,
     "forbid-component-props": 3,
     "forbid-dom-props": 5,
+    "forbid-elements": 10,
     "jsx-max-depth": 2,
     "no-unsafe": 1,
     "no-oversized-long-heading": 1,

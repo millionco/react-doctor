@@ -60,7 +60,8 @@ impl Rule for R3FTextureRepeatRequiresWrapping {
             {
                 continue;
             }
-            let Some(repeat_expression) = jsx_attribute_expression(opening_element, "repeat")
+            let Some(repeat_expression) =
+                r3f_texture_attribute_expression(opening_element, "repeat")
             else {
                 continue;
             };
@@ -88,7 +89,7 @@ impl Rule for R3FTextureRepeatRequiresWrapping {
                     continue;
                 }
                 let wrapping_attribute_name = if axis_index == 0 { "wrapS" } else { "wrapT" };
-                if jsx_attribute_expression(opening_element, wrapping_attribute_name)
+                if r3f_texture_attribute_expression(opening_element, wrapping_attribute_name)
                     .is_some_and(|expression| is_three_repeating_wrapping(expression, ctx))
                 {
                     continue;
@@ -105,7 +106,7 @@ impl Rule for R3FTextureRepeatRequiresWrapping {
     }
 }
 
-fn jsx_attribute_expression<'a>(
+fn r3f_texture_attribute_expression<'a>(
     opening_element: &'a oxc_ast::ast::JSXOpeningElement<'a>,
     attribute_name: &str,
 ) -> Option<&'a oxc_ast::ast::Expression<'a>> {

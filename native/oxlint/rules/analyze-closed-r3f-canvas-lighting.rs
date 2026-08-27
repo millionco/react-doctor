@@ -1,7 +1,7 @@
 use oxc_ast::{
     AstKind,
     ast::{
-        Expression, JSXAttributeItem, JSXAttributeValue, JSXChild, JSXElement, JSXOpeningElement,
+        Expression, JSXAttributeItem, JSXChild, JSXElement, JSXOpeningElement,
     },
 };
 
@@ -264,7 +264,7 @@ fn get_r3f_lighting_material_visibility<'a>(
     else {
         return Some(true);
     };
-    let Some(opacity_expression) = r3f_lighting_expression_from_attribute(opacity_attribute) else {
+    let Some(opacity_expression) = jsx_attribute_expression(opacity_attribute) else {
         return Some(true);
     };
     if is_nullish_expression(opacity_expression) {
@@ -292,7 +292,7 @@ fn r3f_lighting_has_non_nullish_attribute(
     let Some(attribute) = get_authoritative_jsx_attribute(opening_element, name, true) else {
         return false;
     };
-    r3f_lighting_expression_from_attribute(attribute)
+    jsx_attribute_expression(attribute)
         .is_none_or(|expression| !is_nullish_expression(expression))
 }
 
@@ -301,16 +301,7 @@ fn r3f_lighting_attribute_expression<'a, 'b>(
     name: &str,
 ) -> Option<&'b Expression<'a>> {
     get_authoritative_jsx_attribute(opening_element, name, true)
-        .and_then(r3f_lighting_expression_from_attribute)
-}
-
-fn r3f_lighting_expression_from_attribute<'a, 'b>(
-    attribute: &'b oxc_ast::ast::JSXAttribute<'a>,
-) -> Option<&'b Expression<'a>> {
-    let JSXAttributeValue::ExpressionContainer(container) = attribute.value.as_ref()? else {
-        return None;
-    };
-    container.expression.as_expression()
+        .and_then(|attribute| jsx_attribute_expression(attribute))
 }
 
 fn r3f_lighting_has_spread_attribute(opening_element: &JSXOpeningElement<'_>) -> bool {

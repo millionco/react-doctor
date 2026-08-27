@@ -164,6 +164,7 @@
     "jsx-max-depth",
     "jsx-filename-extension",
     "no-unsafe",
+    "r3f-cap-device-pixel-ratio",
     "r3f-no-advancing-clock-in-use-frame",
     "r3f-no-async-use-frame",
     "r3f-no-compile-in-use-frame",

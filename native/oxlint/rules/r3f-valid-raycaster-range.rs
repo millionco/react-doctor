@@ -1,4 +1,4 @@
-use oxc_ast::{ast::JSXAttributeValue, AstKind};
+use oxc_ast::AstKind;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_span::GetSpan;
 
@@ -7,13 +7,6 @@ use crate::{
     rule::{Rule, RuleCategory, RuleInfo, RuleMeta},
 };
 
-const R3F_PUBLIC_MODULES: [&str; 5] = [
-    "@react-three/fiber",
-    "@react-three/fiber/legacy",
-    "@react-three/fiber/native",
-    "@react-three/fiber/webgpu",
-    "react-three-fiber",
-];
 const NEAR_ARGUMENT_INDEX: usize = 2;
 const FAR_ARGUMENT_INDEX: usize = 3;
 
@@ -60,7 +53,7 @@ impl Rule for R3FValidRaycasterRange {
                         "args",
                         true,
                     )
-                    .and_then(jsx_attribute_expression)
+                    .and_then(|attribute| jsx_attribute_expression(attribute))
                     .and_then(|expression| {
                         let oxc_ast::ast::Expression::ArrayExpression(arguments) =
                             expression.get_inner_expression()
@@ -79,7 +72,7 @@ impl Rule for R3FValidRaycasterRange {
                                 .and_then(|arguments| arguments.elements.get(NEAR_ARGUMENT_INDEX))
                                 .and_then(oxc_ast::ast::ArrayExpressionElement::as_expression)
                         },
-                        jsx_attribute_expression,
+                        |attribute| jsx_attribute_expression(attribute),
                     );
                     let far_expression = far_attribute.map_or_else(
                         || {
@@ -87,7 +80,7 @@ impl Rule for R3FValidRaycasterRange {
                                 .and_then(|arguments| arguments.elements.get(FAR_ARGUMENT_INDEX))
                                 .and_then(oxc_ast::ast::ArrayExpressionElement::as_expression)
                         },
-                        jsx_attribute_expression,
+                        |attribute| jsx_attribute_expression(attribute),
                     );
                     (near_expression, far_expression)
                 }
@@ -97,7 +90,7 @@ impl Rule for R3FValidRaycasterRange {
                         "raycaster",
                         true,
                     )
-                    .and_then(jsx_attribute_expression)
+                    .and_then(|attribute| jsx_attribute_expression(attribute))
                     else {
                         continue;
                     };
@@ -133,22 +126,4 @@ impl Rule for R3FValidRaycasterRange {
             }
         }
     }
-}
-
-fn jsx_attribute_expression<'a>(
-    attribute: &'a oxc_ast::ast::JSXAttribute<'a>,
-) -> Option<&'a oxc_ast::ast::Expression<'a>> {
-    let JSXAttributeValue::ExpressionContainer(container) = attribute.value.as_ref()? else {
-        return None;
-    };
-    container.expression.as_expression()
-}
-
-fn is_r3f_canvas<'a>(
-    opening_element: &oxc_ast::ast::JSXOpeningElement<'a>,
-    ctx: &LintContext<'a>,
-) -> bool {
-    R3F_PUBLIC_MODULES.iter().any(|module_source| {
-        resolve_imported_jsx_component_name(opening_element, module_source, ctx) == Some("Canvas")
-    })
 }

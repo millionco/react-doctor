@@ -1,4 +1,4 @@
-use oxc_ast::{ast::JSXAttributeValue, AstKind};
+use oxc_ast::AstKind;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_span::GetSpan;
 
@@ -7,13 +7,6 @@ use crate::{
     rule::{Rule, RuleCategory, RuleInfo, RuleMeta},
 };
 
-const R3F_PUBLIC_MODULES: [&str; 5] = [
-    "@react-three/fiber",
-    "@react-three/fiber/legacy",
-    "@react-three/fiber/native",
-    "@react-three/fiber/webgpu",
-    "react-three-fiber",
-];
 const ASPECT_ARGUMENT_INDEX: usize = 1;
 const NEAR_ARGUMENT_INDEX: usize = 2;
 const FAR_ARGUMENT_INDEX: usize = 3;
@@ -59,7 +52,7 @@ impl Rule for R3FValidPerspectiveCamera {
                         "args",
                         true,
                     )
-                    .and_then(jsx_attribute_expression)
+                    .and_then(|attribute| jsx_attribute_expression(attribute))
                     .and_then(|expression| {
                         let oxc_ast::ast::Expression::ArrayExpression(arguments) =
                             expression.get_inner_expression()
@@ -80,7 +73,7 @@ impl Rule for R3FValidPerspectiveCamera {
                                             oxc_ast::ast::ArrayExpressionElement::as_expression,
                                         )
                                 },
-                                jsx_attribute_expression,
+                                |attribute| jsx_attribute_expression(attribute),
                             )
                     };
                     Some((
@@ -98,7 +91,7 @@ impl Rule for R3FValidPerspectiveCamera {
                         "camera",
                         true,
                     )
-                    .and_then(jsx_attribute_expression)
+                    .and_then(|attribute| jsx_attribute_expression(attribute))
                     else {
                         continue;
                     };
@@ -160,23 +153,5 @@ fn resolve_camera_parameter<'a>(
 ) -> Option<(&'a oxc_ast::ast::Expression<'a>, f64)> {
     expression.and_then(|expression| {
         resolve_static_number(expression, ctx).map(|value| (expression, value))
-    })
-}
-
-fn jsx_attribute_expression<'a>(
-    attribute: &'a oxc_ast::ast::JSXAttribute<'a>,
-) -> Option<&'a oxc_ast::ast::Expression<'a>> {
-    let JSXAttributeValue::ExpressionContainer(container) = attribute.value.as_ref()? else {
-        return None;
-    };
-    container.expression.as_expression()
-}
-
-fn is_r3f_canvas<'a>(
-    opening_element: &oxc_ast::ast::JSXOpeningElement<'a>,
-    ctx: &LintContext<'a>,
-) -> bool {
-    R3F_PUBLIC_MODULES.iter().any(|module_source| {
-        resolve_imported_jsx_component_name(opening_element, module_source, ctx) == Some("Canvas")
     })
 }

@@ -1,4 +1,4 @@
-use oxc_ast::{ast::JSXAttributeValue, AstKind};
+use oxc_ast::AstKind;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_span::GetSpan;
 
@@ -49,7 +49,7 @@ impl Rule for R3FValidSpotLightProperties {
                 continue;
             }
             let arguments = get_authoritative_jsx_attribute(opening_element, "args", true)
-                .and_then(jsx_attribute_expression)
+                .and_then(|attribute| jsx_attribute_expression(attribute))
                 .and_then(|expression| {
                     let oxc_ast::ast::Expression::ArrayExpression(arguments) =
                         expression.get_inner_expression()
@@ -70,7 +70,7 @@ impl Rule for R3FValidSpotLightProperties {
                             .and_then(|arguments| arguments.elements.get(argument_index))
                             .and_then(oxc_ast::ast::ArrayExpressionElement::as_expression)
                     },
-                    jsx_attribute_expression,
+                    |attribute| jsx_attribute_expression(attribute),
                 );
                 let Some(expression) = expression else {
                     continue;
@@ -95,13 +95,4 @@ impl Rule for R3FValidSpotLightProperties {
             }
         }
     }
-}
-
-fn jsx_attribute_expression<'a>(
-    attribute: &'a oxc_ast::ast::JSXAttribute<'a>,
-) -> Option<&'a oxc_ast::ast::Expression<'a>> {
-    let JSXAttributeValue::ExpressionContainer(container) = attribute.value.as_ref()? else {
-        return None;
-    };
-    container.expression.as_expression()
 }

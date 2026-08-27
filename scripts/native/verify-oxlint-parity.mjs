@@ -82,6 +82,7 @@ const r3fMetalEnvironmentFixturePath = path.join(
 );
 const r3fNoCompileFixturePath = path.join(fixtureDirectory, "app", "r3f-no-compile.tsx");
 const r3fClockFixturePath = path.join(fixtureDirectory, "app", "r3f-clock.tsx");
+const r3fCapDprFixturePath = path.join(fixtureDirectory, "app", "r3f-cap-dpr.tsx");
 const r3fExtendNamespaceFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -337,6 +338,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-max-depth": 1,
   "jsx-filename-extension": 1,
   "no-unsafe": 1,
+  "r3f-cap-device-pixel-ratio": 6,
   "r3f-no-advancing-clock-in-use-frame": 2,
   "r3f-no-async-use-frame": 2,
   "r3f-no-compile-in-use-frame": 2,
@@ -448,7 +450,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-ctrl-c-handler-requires-exit-option": 1,
   "ink-no-live-hooks-in-render-to-string": 1,
   "ink-no-repeated-render": 4,
-  "hook-use-state": 24,
+  "hook-use-state": 25,
   "rendering-svg-precision": 1,
   "no-document-start-view-transition": 1,
   "no-permanent-will-change": 2,
@@ -2700,6 +2702,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     r3fClockFixturePath,
     `import React from "react";\nimport { useFrame } from "@react-three/fiber";\nexport const ClockScene = () => { useFrame(({ clock }) => clock.getElapsedTime()); useFrame((state) => { const frameClock = state.clock; frameClock.getDelta(); }); return null; };\n`,
+  );
+  fs.writeFileSync(
+    r3fCapDprFixturePath,
+    `import React from "react";\nimport { Canvas, createRoot, useThree } from "@react-three/fiber";\nexport const DprScene = () => {\n  const directRoot = createRoot(canvas);\n  const [{ root }] = React.useState(() => ({ root: createRoot(canvas) }));\n  const selectedSetDpr = useThree((state) => state.setDpr);\n  const { setDpr } = useThree();\n  directRoot.configure({ dpr: window.devicePixelRatio });\n  root.configure({ dpr: globalThis.devicePixelRatio, ...props });\n  selectedSetDpr(window.devicePixelRatio);\n  setDpr(globalThis.devicePixelRatio);\n  return <Canvas dpr={window.devicePixelRatio} pixelRatio={globalThis.devicePixelRatio} />;\n};\n`,
   );
   fs.writeFileSync(
     r3fExtendNamespaceFixturePath,

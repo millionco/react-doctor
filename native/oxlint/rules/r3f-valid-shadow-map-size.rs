@@ -1,4 +1,4 @@
-use oxc_ast::{ast::JSXAttributeValue, AstKind};
+use oxc_ast::AstKind;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_span::GetSpan;
 
@@ -56,7 +56,7 @@ impl Rule for R3FValidShadowMapSize {
                 continue;
             }
             if let Some(map_size_expression) =
-                get_jsx_attribute_expression(opening_element, "shadow-mapSize")
+                r3f_shadow_map_attribute_expression(opening_element, "shadow-mapSize")
             {
                 if let oxc_ast::ast::Expression::ArrayExpression(array_expression) =
                     map_size_expression.get_inner_expression()
@@ -82,7 +82,7 @@ impl Rule for R3FValidShadowMapSize {
             }
             for attribute_name in ["shadow-mapSize-width", "shadow-mapSize-height"] {
                 let Some(expression) =
-                    get_jsx_attribute_expression(opening_element, attribute_name)
+                    r3f_shadow_map_attribute_expression(opening_element, attribute_name)
                 else {
                     continue;
                 };
@@ -97,15 +97,12 @@ impl Rule for R3FValidShadowMapSize {
     }
 }
 
-fn get_jsx_attribute_expression<'a>(
+fn r3f_shadow_map_attribute_expression<'a>(
     opening_element: &'a oxc_ast::ast::JSXOpeningElement<'a>,
     attribute_name: &str,
 ) -> Option<&'a oxc_ast::ast::Expression<'a>> {
     let attribute = get_authoritative_jsx_attribute(opening_element, attribute_name, true)?;
-    let JSXAttributeValue::ExpressionContainer(container) = attribute.value.as_ref()? else {
-        return None;
-    };
-    container.expression.as_expression()
+    jsx_attribute_expression(attribute)
 }
 
 fn is_valid_shadow_map_size(value: f64) -> bool {

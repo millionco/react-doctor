@@ -1,4 +1,4 @@
-use oxc_ast::{ast::JSXAttributeValue, AstKind};
+use oxc_ast::AstKind;
 use oxc_diagnostics::OxcDiagnostic;
 
 use crate::{
@@ -53,18 +53,18 @@ impl Rule for R3FValidFogParameters {
                 "args",
                 true,
             )
-            .and_then(jsx_attribute_expression);
+            .and_then(|attribute| jsx_attribute_expression(attribute));
             let density_expression = get_authoritative_jsx_attribute(
                 opening_element,
                 "density",
                 true,
             )
-            .and_then(jsx_attribute_expression);
+            .and_then(|attribute| jsx_attribute_expression(attribute));
             let near_expression =
                 get_authoritative_jsx_attribute(opening_element, "near", true)
-                    .and_then(jsx_attribute_expression);
+                    .and_then(|attribute| jsx_attribute_expression(attribute));
             let far_expression = get_authoritative_jsx_attribute(opening_element, "far", true)
-                .and_then(jsx_attribute_expression);
+                .and_then(|attribute| jsx_attribute_expression(attribute));
             let invalid_parameter = if constructor_name == "FogExp2" {
                 let density = density_expression
                     .map(|expression| resolve_static_number(expression, ctx))
@@ -126,15 +126,6 @@ impl Rule for R3FValidFogParameters {
             );
         }
     }
-}
-
-fn jsx_attribute_expression<'a>(
-    attribute: &'a oxc_ast::ast::JSXAttribute<'a>,
-) -> Option<&'a oxc_ast::ast::Expression<'a>> {
-    let JSXAttributeValue::ExpressionContainer(container) = attribute.value.as_ref()? else {
-        return None;
-    };
-    container.expression.as_expression()
 }
 
 fn resolve_static_number_array_element<'a>(

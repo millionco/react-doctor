@@ -1,7 +1,7 @@
 fn for_each_local_callback_execution_node<'a>(
     callback_expression: &oxc_ast::ast::Expression<'a>,
     ctx: &crate::context::LintContext<'a>,
-    mut visitor: impl FnMut(&crate::AstNode<'a>, oxc_semantic::NodeId),
+    mut visitor: impl FnMut(&crate::AstNode<'a>, oxc_semantic::NodeId, bool),
 ) {
     use oxc_ast::AstKind;
     use oxc_span::GetSpan;
@@ -19,11 +19,15 @@ fn for_each_local_callback_execution_node<'a>(
     }) else {
         return;
     };
-    let mut execution_function_ids = vec![callback_id];
-    let mut execution_index = 0;
-    while execution_index < execution_function_ids.len() {
-        let execution_function_id = execution_function_ids[execution_index];
-        execution_index += 1;
+    let mut execution_functions = vec![(callback_id, false)];
+    let mut pending_function_ids = vec![callback_id];
+    while let Some(execution_function_id) = pending_function_ids.pop() {
+        let is_conditionally_executed_by_call_site = execution_functions
+            .iter()
+            .find_map(|(function_id, is_conditional)| {
+                (*function_id == execution_function_id).then_some(*is_conditional)
+            })
+            .unwrap_or(false);
         for candidate in ctx.nodes().iter() {
             if local_callback_nearest_function_id(candidate.id(), ctx)
                 != Some(execution_function_id)
@@ -33,22 +37,40 @@ fn for_each_local_callback_execution_node<'a>(
             let AstKind::CallExpression(candidate_call) = candidate.kind() else {
                 continue;
             };
-            if let Some(called_function_id) = exact_local_callback_function_id(
+            let Some(called_function_id) = exact_local_callback_function_id(
                 &candidate_call.callee,
                 ctx,
                 &mut Vec::new(),
-            ) && !execution_function_ids.contains(&called_function_id)
+            ) else {
+                continue;
+            };
+            let is_conditionally_executed = is_conditionally_executed_by_call_site
+                || is_node_conditionally_executed(candidate, execution_function_id, ctx);
+            if let Some((_, previous_conditionality)) = execution_functions
+                .iter_mut()
+                .find(|(function_id, _)| *function_id == called_function_id)
             {
-                execution_function_ids.push(called_function_id);
+                if *previous_conditionality && !is_conditionally_executed {
+                    *previous_conditionality = false;
+                    pending_function_ids.push(called_function_id);
+                }
+            } else {
+                execution_functions.push((called_function_id, is_conditionally_executed));
+                pending_function_ids.push(called_function_id);
             }
         }
     }
-    for execution_function_id in execution_function_ids {
+    for (execution_function_id, is_conditionally_executed_by_call_site) in execution_functions {
         for candidate in ctx.nodes().iter() {
             if local_callback_nearest_function_id(candidate.id(), ctx)
                 == Some(execution_function_id)
             {
-                visitor(candidate, callback_id);
+                visitor(
+                    candidate,
+                    callback_id,
+                    is_conditionally_executed_by_call_site
+                        || is_node_conditionally_executed(candidate, execution_function_id, ctx),
+                );
             }
         }
     }

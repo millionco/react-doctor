@@ -200,7 +200,7 @@ fn lazy_state_initializer_creates_r3f_root<'a>(
         return false;
     };
     let mut creates_root = false;
-    for_each_local_callback_execution_node(callback_expression, ctx, |candidate, _| {
+    for_each_local_callback_execution_node(callback_expression, ctx, |candidate, _, _| {
         if creates_root {
             return;
         }

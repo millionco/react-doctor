@@ -146,6 +146,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-type-only-import",
         "global-require-module-source",
         "is-r3f-canvas",
+        "r3f-jsx-event-handler-expression",
         "for-each-named-import",
         "for-each-value-import",
         "resolve-jsx-element-name",

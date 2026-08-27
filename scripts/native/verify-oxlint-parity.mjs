@@ -456,6 +456,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-valid-data-texture-data-length": 4,
   "three-valid-material-opacity": 3,
   "three-require-transparent-for-opacity": 2,
+  "three-require-lighting-for-pbr": 1,
   "three-webgpu-no-legacy-material-api": 3,
   "three-gpu-computation-handle-init-error": 2,
   "three-gpu-computation-valid-variable-name": 6,
@@ -1951,6 +1952,11 @@ const invalidOpacityMaterial = new ThreeRuntime.MeshBasicMaterial();
 invalidOpacityMaterial.opacity = -1;
 new ThreeRuntime.MeshBasicMaterial({ opacity: 0.5 });
 new ThreeRuntime.MeshStandardMaterial({ opacity: 0.2, transparent: false });
+const unlitThreeScene = new ThreeRuntime.Scene();
+unlitThreeScene.add(
+  new ThreeRuntime.Mesh(geometry, new ThreeRuntime.MeshStandardMaterial()),
+);
+new ThreeRuntime.WebGLRenderer().render(unlitThreeScene, camera);
 const threeNamespaceWebgpuRenderer = new ThreeRuntime.WebGPURenderer();
 new ThreeRuntime.ShaderMaterial();
 new ThreeRuntime.RawShaderMaterial();

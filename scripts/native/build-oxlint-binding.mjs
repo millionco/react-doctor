@@ -324,6 +324,7 @@ impl Rule for ${delegatedRule.struct} {
         "get-static-motion-property-object",
         "three-constructor-api-name",
         "three-constructor-name",
+        "resolve-three-constructor",
         "three-module-api-name",
         "three-module-api-path-matches",
         "resolve-stable-identifier-symbol",

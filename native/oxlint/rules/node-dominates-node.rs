@@ -3,14 +3,19 @@ fn node_dominates_node<'a>(
     target: &crate::AstNode<'a>,
     ctx: &crate::context::LintContext<'a>,
 ) -> bool {
-    let Some(function_node) = crate::ast_util::get_enclosing_function(target, ctx) else {
-        return false;
+    let target_function = crate::ast_util::get_enclosing_function(target, ctx);
+    let candidate_function = crate::ast_util::get_enclosing_function(candidate, ctx);
+    let owner_node = if let Some(function_node) = target_function {
+        if candidate_function.is_none_or(|candidate_owner| candidate_owner.id() != function_node.id()) {
+            return false;
+        }
+        function_node
+    } else {
+        if candidate_function.is_some() {
+            return false;
+        }
+        ctx.nodes().iter().next().expect("program node")
     };
-    if crate::ast_util::get_enclosing_function(candidate, ctx)
-        .is_none_or(|candidate_owner| candidate_owner.id() != function_node.id())
-    {
-        return false;
-    }
 
     let candidate_block = ctx.nodes().cfg_id(candidate.id());
     let target_block = ctx.nodes().cfg_id(target.id());
@@ -18,7 +23,7 @@ fn node_dominates_node<'a>(
         return oxc_span::GetSpan::span(candidate).start < oxc_span::GetSpan::span(target).start;
     }
 
-    let entry_block = ctx.nodes().cfg_id(function_node.id());
+    let entry_block = ctx.nodes().cfg_id(owner_node.id());
     let no_exclusions = rustc_hash::FxHashSet::default();
     if !cfg_block_can_reach(entry_block, candidate_block, &no_exclusions, ctx)
         || !cfg_block_can_reach(entry_block, target_block, &no_exclusions, ctx)

@@ -1,7 +1,7 @@
-fn get_static_object_property_value<'a>(
-    expression: &'a oxc_ast::ast::Expression<'a>,
+fn get_static_object_property_value<'a, 'b>(
+    expression: &'b oxc_ast::ast::Expression<'a>,
     expected_property_name: &str,
-) -> Option<&'a oxc_ast::ast::Expression<'a>> {
+) -> Option<&'b oxc_ast::ast::Expression<'a>> {
     let oxc_ast::ast::Expression::ObjectExpression(object_expression) =
         expression.get_inner_expression()
     else {

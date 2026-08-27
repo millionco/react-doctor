@@ -172,6 +172,7 @@
     "r3f-no-compile-in-use-frame",
     "r3f-no-deep-use-three-selector",
     "r3f-no-dispose-loader-cache",
+    "r3f-no-duplicate-primitive-object",
     "r3f-no-extend-three-namespace",
     "r3f-no-inline-primitive-object",
     "react-router-csp-nonce-consistency",

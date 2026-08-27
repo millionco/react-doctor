@@ -90,6 +90,11 @@ const r3fDisposeLoaderCacheFixturePath = path.join(
   "app",
   "r3f-dispose-loader-cache.tsx",
 );
+const r3fDuplicatePrimitiveFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-duplicate-primitive.tsx",
+);
 const r3fPointerAllocationFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -358,6 +363,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-compile-in-use-frame": 2,
   "r3f-no-deep-use-three-selector": 3,
   "r3f-no-dispose-loader-cache": 8,
+  "r3f-no-duplicate-primitive-object": 5,
   "r3f-no-extend-three-namespace": 4,
   "r3f-no-inline-primitive-object": 1,
   "react-router-csp-nonce-consistency": 1,
@@ -2736,6 +2742,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
     `import { useGLTF, useTexture } from "@react-three/drei";\nconst texture = useTexture(textureUrl);\nconst model = useGLTF(modelUrl);\nconst clone = model.scene.clone();\ntexture.dispose();\nmodel.scene.dispose();\nmodel.nodes.Mesh.geometry.dispose();\nclone.geometry.dispose();\nclone.children[0].material.dispose();\nmodel.scene.traverse((child) => child.material.dispose());\nObject.values(model.materials).forEach((material) => material.map.dispose());\nclone.traverse((child) => { child.position.dispose(); child.geometry.dispose(); });\nclone.dispose();\nclone.position.dispose();\n`,
   );
   fs.writeFileSync(
+    r3fDuplicatePrimitiveFixturePath,
+    `import React from "react";\nimport "@react-three/fiber";\nexport const SameBinding = ({ scene }) => <><primitive object={scene} /><primitive object={scene} /></>;\nexport const SameMember = ({ model }) => <><primitive object={model.scene} /><primitive object={model["scene"]} /></>;\nexport const RepeatedMap = ({ scene }) => <>{["left", "right"].map((side) => <primitive key={side} object={scene} />)}</>;\nexport const NamedMap = ({ scene }) => { const renderPrimitive = (side) => <primitive key={side} object={scene} />; return ["left", "right"].map(renderPrimitive); };\nexport const InlineHelper = ({ scene }) => <>{(() => <primitive object={scene} />)()}<primitive object={scene} /></>;\nexport const Complementary = ({ scene, detail }) => <>{detail && <primitive object={scene} />}{!detail && <primitive object={scene} />}</>;\nexport const TrailingSpread = ({ scene, props }) => <><primitive object={scene} {...props} /><primitive object={scene} /></>;\nexport const UnusedLocal = ({ scene }) => { const unused = <primitive object={scene} />; return <primitive object={scene} />; };\nconst sharedScene = loadScene();\nconst renderModulePrimitive = (side) => <primitive key={side} object={sharedScene} />;\n["left", "right"].map(renderModulePrimitive);\n`,
+  );
+  fs.writeFileSync(
     r3fPointerAllocationFixturePath,
     `import React from "react";\nimport { Canvas } from "@react-three/fiber";\nimport { Vector3 } from "three";\nconst handlePointerMove = (event) => {\n  consume(new Vector3(), event.point.clone(), event.object.position.clone());\n  if (enabled) consume(new Vector3());\n};\nexport const PointerScene = () => <Canvas><mesh onPointerMove={handlePointerMove} /></Canvas>;\n`,
   );
@@ -2799,6 +2809,7 @@ const ignoredSolidOrthographicCamera = <orthographicCamera left={2} right={2} />
 const ignoredSolidNormalizedFloatAttribute = <float32BufferAttribute args={[data, 3, true]} />;
 const ignoredSolidWebgpuCanvas = <Canvas gl={{}} renderer={{}} />;
 const ignoredSolidShadowedPointLights = () => <group><pointLight castShadow /><pointLight castShadow /><pointLight castShadow /></group>;
+const ignoredSolidDuplicatePrimitive = ({ scene }) => <><primitive object={scene} /><primitive object={scene} /></>;
 void Canvas;
 export const SolidGiant = () => {
   createSignal(0);

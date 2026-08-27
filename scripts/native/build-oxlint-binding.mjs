@@ -341,6 +341,7 @@ impl Rule for ${delegatedRule.struct} {
         "resolve-static-number-argument",
         "resolve-static-array-like-length",
         "is-float-typed-array",
+        "resolve-r3f-fresh-value",
         "has-r3f-runtime-import",
         "r3f-canvas-has-public-provenance",
         "is-r3f-host-intrinsic",

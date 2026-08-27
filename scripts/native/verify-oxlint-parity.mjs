@@ -610,6 +610,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "class-component-missing-component-will-unmount-teardown": 3,
   "click-events-have-key-events": 3,
   "control-has-associated-label": 53,
+  "display-name": 10,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -642,6 +643,11 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
   },
   "react-doctor": {
     ...REACT_DOCTOR_SETTINGS["react-doctor"],
+    displayName: {
+      additionalHoCs: ["withRedux"],
+      checkContextObjects: true,
+      reactVersion: "18.0-beta",
+    },
     capabilities: ["react", "tailwind"],
     headingHasContent: { components: ["Title"] },
     jsxBooleanValue: { mode: "always", never: ["compact"] },
@@ -1002,6 +1008,13 @@ const undefinedWrapperLabelControl = <Field label={undefined}><input /></Field>;
 const numericControlLabel = <label htmlFor={1e21}>Amount</label>;
 const numericControl = <input id="1e+21" />;
 /* oxlint-enable react-doctor/button-has-type, react-doctor/no-static-element-interactions */
+/* oxlint-disable react-doctor/prefer-es6-class, react-doctor/prefer-function-component, react-doctor/react-compiler-no-manual-memoization */
+module.exports = memo(function () { return <div />; });
+module.exports = memo(forwardRef((props, ref) => <div ref={ref} {...props} />));
+export const displayNameFactory = (order) => { return (props) => <Title order={order} {...props} />; };
+const legacyDisplayNameComponent = createReactClass({ render() { return <div />; } });
+const anonymousDisplayNameClass = class extends React.Component { render() { return <div />; } };
+/* oxlint-enable react-doctor/prefer-es6-class, react-doctor/prefer-function-component, react-doctor/react-compiler-no-manual-memoization */
 const downloadAnchor = <a href="/report" download>Report</a>;
 const protocolRelativeAnchor = <a href="//cdn.example.com/file">File</a>;
 const scriptUrlAnchor = <a href="javascript:void(0)">Open</a>;
@@ -2585,6 +2598,9 @@ const configuredMissingFragmentAnchor = <NavigationLink to="#configured-missing-
 const configuredInvalidCustomRole = <Widget role="custom-invalid" />;
 const configuredAmbiguousAnchor = <a href="https://example.com/continue">continue</a>;
 const configuredUnlabeledMappedControl = <ConfiguredControl />;
+const configuredAnonymousContext = createContext(null);
+const configuredAnonymousHoc = withRedux(() => <div />);
+const configuredComposedDisplayName = memo(forwardRef((props, ref) => <div ref={ref} {...props} />));
 const configuredAllowedInteractiveRole = <button role="article">Save</button>;
 const configuredAllowedNoninteractiveRole = <h1 role="button">Open</h1>;
 const configuredDeepJsx = <div><section><span><em /></span></section></div>;
@@ -2699,6 +2715,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "class-component-missing-component-will-unmount-teardown",
     "click-events-have-key-events",
     "control-has-associated-label",
+    "display-name",
     "heading-has-content",
     "jsx-boolean-value",
     "no-string-refs",
@@ -2945,6 +2962,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "anchor-target-exists": 1,
     "anchor-ambiguous-text": 1,
     "control-has-associated-label": 5,
+    "display-name": 2,
     "jsx-max-depth": 2,
     "no-unsafe": 1,
     "no-oversized-long-heading": 1,

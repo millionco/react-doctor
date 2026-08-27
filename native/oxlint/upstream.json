@@ -475,7 +475,8 @@
     "checked-requires-onchange-or-readonly",
     "class-component-missing-component-will-unmount-teardown",
     "click-events-have-key-events",
-    "control-has-associated-label"
+    "control-has-associated-label",
+    "display-name"
   ],
   "delegatedRules": [
     {

@@ -476,7 +476,8 @@
     "class-component-missing-component-will-unmount-teardown",
     "click-events-have-key-events",
     "control-has-associated-label",
-    "display-name"
+    "display-name",
+    "forbid-component-props"
   ],
   "delegatedRules": [
     {

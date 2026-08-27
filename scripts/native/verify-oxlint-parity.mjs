@@ -611,6 +611,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "click-events-have-key-events": 3,
   "control-has-associated-label": 53,
   "display-name": 10,
+  "forbid-component-props": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -647,6 +648,17 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
       additionalHoCs: ["withRedux"],
       checkContextObjects: true,
       reactVersion: "18.0-beta",
+    },
+    forbidComponentProps: {
+      forbid: [
+        "className",
+        { propNamePattern: "data-*", allowedForPatterns: ["Allowed*"] },
+        {
+          propName: "style",
+          disallowedForPatterns: ["Library.*"],
+          message: "Use the panel variant.",
+        },
+      ],
     },
     capabilities: ["react", "tailwind"],
     headingHasContent: { components: ["Title"] },
@@ -2601,6 +2613,10 @@ const configuredUnlabeledMappedControl = <ConfiguredControl />;
 const configuredAnonymousContext = createContext(null);
 const configuredAnonymousHoc = withRedux(() => <div />);
 const configuredComposedDisplayName = memo(forwardRef((props, ref) => <div ref={ref} {...props} />));
+const configuredForbiddenExactProp = <ConfiguredWidget className="blocked" />;
+const configuredAllowedPatternProp = <AllowedWidget data-state="safe" />;
+const configuredForbiddenPatternProp = <BlockedWidget data-state="blocked" />;
+const configuredForbiddenMemberProp = <Library.Panel style={{ color: "red" }} />;
 const configuredAllowedInteractiveRole = <button role="article">Save</button>;
 const configuredAllowedNoninteractiveRole = <h1 role="button">Open</h1>;
 const configuredDeepJsx = <div><section><span><em /></span></section></div>;
@@ -2716,6 +2732,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "click-events-have-key-events",
     "control-has-associated-label",
     "display-name",
+    "forbid-component-props",
     "heading-has-content",
     "jsx-boolean-value",
     "no-string-refs",
@@ -2963,6 +2980,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "anchor-ambiguous-text": 1,
     "control-has-associated-label": 5,
     "display-name": 2,
+    "forbid-component-props": 3,
     "jsx-max-depth": 2,
     "no-unsafe": 1,
     "no-oversized-long-heading": 1,

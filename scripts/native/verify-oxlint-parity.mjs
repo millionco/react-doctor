@@ -81,6 +81,7 @@ const r3fMetalEnvironmentFixturePath = path.join(
   "r3f-metal-environment.tsx",
 );
 const r3fShadowsFixturePath = path.join(fixtureDirectory, "app", "r3f-shadows.tsx");
+const r3fTextureRepeatFixturePath = path.join(fixtureDirectory, "app", "r3f-texture-repeat.tsx");
 const safeGlobalErrorFixturePath = path.join(fixtureDirectory, "app", "safe", "global-error.tsx");
 const safePageFixturePath = path.join(fixtureDirectory, "app", "page.tsx");
 const safeRouteHandlerFixturePath = path.join(fixtureDirectory, "app", "safe", "route.ts");
@@ -624,6 +625,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-require-lighting-for-pbr": 1,
   "r3f-require-environment-for-metal": 1,
   "r3f-require-shadows-enabled": 1,
+  "r3f-texture-repeat-requires-wrapping": 1,
   "r3f-valid-buffer-attribute-item-size": 1,
   "r3f-valid-buffer-attribute-array-length": 1,
   "r3f-valid-shadow-map-size": 1,
@@ -2678,6 +2680,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     r3fShadowsFixturePath,
     `import React from "react";\nimport { Canvas } from "@react-three/fiber";\nexport const ShadowScene = () => <Canvas><directionalLight castShadow /><mesh receiveShadow /></Canvas>;\n`,
+  );
+  fs.writeFileSync(
+    r3fTextureRepeatFixturePath,
+    `import React from "react";\nimport { Canvas } from "@react-three/fiber";\nimport { RepeatWrapping as DirectRepeatWrapping } from "three";\nimport * as Three from "three";\nconst RequiredThree = require("three");\nexport const RepeatedTexture = () => <Canvas><texture repeat={[4, 1]} /><texture repeat={[4, 1]} wrapS={DirectRepeatWrapping} /><texture repeat={[4, 1]} wrapS={Three.RepeatWrapping} /><texture repeat={[4, 1]} wrapS={RequiredThree.RepeatWrapping} /></Canvas>;\n`,
   );
   fs.mkdirSync(path.dirname(safeGlobalErrorFixturePath), { recursive: true });
   fs.writeFileSync(

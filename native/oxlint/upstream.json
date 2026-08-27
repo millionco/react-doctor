@@ -477,7 +477,8 @@
     "click-events-have-key-events",
     "control-has-associated-label",
     "display-name",
-    "forbid-component-props"
+    "forbid-component-props",
+    "forbid-dom-props"
   ],
   "delegatedRules": [
     {

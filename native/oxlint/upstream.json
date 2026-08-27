@@ -462,6 +462,7 @@
     "r3f-valid-physical-material-properties",
     "r3f-require-transparent-for-opacity",
     "r3f-require-lighting-for-pbr",
+    "r3f-require-environment-for-metal",
     "r3f-valid-buffer-attribute-item-size",
     "r3f-valid-buffer-attribute-array-length",
     "r3f-valid-shadow-map-size",

@@ -5,20 +5,22 @@ use crate::{
     rule::{Rule, RuleCategory, RuleInfo, RuleMeta},
 };
 
-#[derive(Debug, Default, Clone)]
-pub struct R3FRequireLightingForPbr;
+const METAL_ENVIRONMENT_THRESHOLD: f64 = 0.5;
 
-impl RuleMeta for R3FRequireLightingForPbr {
-    const NAME: &'static str = "r3f-require-lighting-for-pbr";
+#[derive(Debug, Default, Clone)]
+pub struct R3FRequireEnvironmentForMetal;
+
+impl RuleMeta for R3FRequireEnvironmentForMetal {
+    const NAME: &'static str = "r3f-require-environment-for-metal";
     const PLUGIN: &'static str = "react_doctor_native";
     const CATEGORY: RuleCategory = RuleCategory::Correctness;
     const VERSION: &'static str = "0.1.0";
     const INFO: RuleInfo = RuleInfo {
-        short_description: "Require lighting for React Three Fiber PBR materials.",
+        short_description: "Require environments for metallic React Three Fiber materials.",
     };
 }
 
-impl Rule for R3FRequireLightingForPbr {
+impl Rule for R3FRequireEnvironmentForMetal {
     fn should_run(&self, ctx: &ContextHost) -> bool {
         ctx.source_type().is_jsx()
     }
@@ -35,20 +37,21 @@ impl Rule for R3FRequireLightingForPbr {
                 continue;
             }
             let analysis = analyze_closed_r3f_canvas_lighting(canvas, ctx);
-            if !analysis.is_complete || analysis.has_environment || analysis.has_light {
+            if !analysis.is_complete || analysis.has_environment {
                 continue;
             }
             for material in analysis.materials {
-                if material.has_environment_map
-                    || material.has_light_map
-                    || material.has_emissive_source
-                {
+                let Some(metalness) = material.metalness else {
+                    continue;
+                };
+                if material.has_environment_map || metalness <= METAL_ENVIRONMENT_THRESHOLD {
                     continue;
                 }
                 ctx.diagnostic(
                     OxcDiagnostic::warn(format!(
-                        "{} is rendered in a closed Canvas with no light, environment, envMap, lightMap, or emissive source",
-                        material.constructor_name
+                        "{} uses metalness {} without an envMap or Canvas scene environment, so its reflections have no environment source",
+                        material.constructor_name,
+                        format_javascript_number(metalness)
                     ))
                     .with_label(material.span),
                 );

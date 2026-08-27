@@ -75,6 +75,11 @@ const ogImageFixturePath = path.join(fixtureDirectory, "app", "opengraph-image.t
 const routeHandlerFixturePath = path.join(fixtureDirectory, "app", "api", "route.ts");
 const asyncClientFixturePath = path.join(fixtureDirectory, "app", "async-client.tsx");
 const r3fLightingFixturePath = path.join(fixtureDirectory, "app", "r3f-lighting.tsx");
+const r3fMetalEnvironmentFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-metal-environment.tsx",
+);
 const safeGlobalErrorFixturePath = path.join(fixtureDirectory, "app", "safe", "global-error.tsx");
 const safePageFixturePath = path.join(fixtureDirectory, "app", "page.tsx");
 const safeRouteHandlerFixturePath = path.join(fixtureDirectory, "app", "safe", "route.ts");
@@ -616,6 +621,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-valid-physical-material-properties": 1,
   "r3f-require-transparent-for-opacity": 1,
   "r3f-require-lighting-for-pbr": 1,
+  "r3f-require-environment-for-metal": 1,
   "r3f-valid-buffer-attribute-item-size": 1,
   "r3f-valid-buffer-attribute-array-length": 1,
   "r3f-valid-shadow-map-size": 1,
@@ -2662,6 +2668,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     r3fLightingFixturePath,
     `import React from "react";\nimport { Canvas } from "@react-three/fiber";\nexport const UnlitScene = () => <Canvas><mesh><boxGeometry /><meshStandardMaterial /></mesh></Canvas>;\n`,
+  );
+  fs.writeFileSync(
+    r3fMetalEnvironmentFixturePath,
+    `import React from "react";\nimport { Canvas } from "@react-three/fiber";\nexport const MetallicScene = () => <Canvas><mesh><boxGeometry /><meshStandardMaterial metalness={0.9} /></mesh><directionalLight /></Canvas>;\n`,
   );
   fs.mkdirSync(path.dirname(safeGlobalErrorFixturePath), { recursive: true });
   fs.writeFileSync(

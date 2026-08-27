@@ -342,6 +342,7 @@ impl Rule for ${delegatedRule.struct} {
         "has-r3f-runtime-import",
         "read-static-jsx-boolean-attribute",
         "is-nullish-expression",
+        "analyze-closed-r3f-canvas-lighting",
         "can-expression-override-jsx-attribute-with-aliases",
       ].map((utilityName) => [
         utilityName.replaceAll("-", "_"),

@@ -164,6 +164,7 @@
     "jsx-max-depth",
     "jsx-filename-extension",
     "no-unsafe",
+    "r3f-no-advancing-clock-in-use-frame",
     "r3f-no-async-use-frame",
     "r3f-no-compile-in-use-frame",
     "react-router-csp-nonce-consistency",

@@ -264,6 +264,8 @@ impl Rule for ${delegatedRule.struct} {
         "get-known-static-jsx-attribute-string-values",
         "get-static-project-dom-ids",
         "resolve-local-react-callback",
+        "for-each-r3f-callback-execution-node",
+        "r3f-callback-state-property-matches",
         "get-inline-style-object-expression",
         "get-inline-style-object-expression-with-aliases",
         "get-static-style-property-string-value",

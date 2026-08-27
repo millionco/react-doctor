@@ -80,6 +80,7 @@ const r3fMetalEnvironmentFixturePath = path.join(
   "app",
   "r3f-metal-environment.tsx",
 );
+const r3fNoCompileFixturePath = path.join(fixtureDirectory, "app", "r3f-no-compile.tsx");
 const r3fShadowsFixturePath = path.join(fixtureDirectory, "app", "r3f-shadows.tsx");
 const r3fTextureRepeatFixturePath = path.join(fixtureDirectory, "app", "r3f-texture-repeat.tsx");
 const safeGlobalErrorFixturePath = path.join(fixtureDirectory, "app", "safe", "global-error.tsx");
@@ -326,6 +327,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-filename-extension": 1,
   "no-unsafe": 1,
   "r3f-no-async-use-frame": 2,
+  "r3f-no-compile-in-use-frame": 2,
   "react-router-csp-nonce-consistency": 1,
   "react-router-descendant-routes-require-splat": 1,
   "react-router-guard-aborted-handle-error": 0,
@@ -2676,6 +2678,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     r3fMetalEnvironmentFixturePath,
     `import React from "react";\nimport { Canvas } from "@react-three/fiber";\nexport const MetallicScene = () => <Canvas><mesh><boxGeometry /><meshStandardMaterial metalness={0.9} /></mesh><directionalLight /></Canvas>;\n`,
+  );
+  fs.writeFileSync(
+    r3fNoCompileFixturePath,
+    `import React from "react";\nimport { useFrame } from "@react-three/fiber";\nexport const CompileScene = () => { useFrame(({ gl, scene, camera }) => gl.compile(scene, camera)); useFrame((state) => state.renderer.compileAsync(state.scene, state.camera)); return null; };\n`,
   );
   fs.writeFileSync(
     r3fShadowsFixturePath,

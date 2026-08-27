@@ -481,7 +481,8 @@
     "forbid-dom-props",
     "forbid-elements",
     "form-control-requires-name",
-    "hook-import-rename-loses-use-prefix"
+    "hook-import-rename-loses-use-prefix",
+    "html-no-invalid-paragraph-child"
   ],
   "delegatedRules": [
     {

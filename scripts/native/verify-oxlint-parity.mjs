@@ -616,6 +616,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "forbid-elements": 0,
   "form-control-requires-name": 0,
   "hook-import-rename-loses-use-prefix": 1,
+  "html-no-invalid-paragraph-child": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1138,6 +1139,7 @@ React.createElement("div", { [dangerouslySetInnerHTML]: { __html: markup } });
 window.document.createElement("img", { children: "description", dangerouslySetInnerHTML: { __html: markup } }, "description");
 namespace[document].createElement("img", {}, "description");
 const shortcut = <button accessKey="s">Save</button>;
+const InvalidParagraphChild = () => <p><div>Block content</div></p>;
 const positiveTabOrder = <button tabIndex={2}>Later</button>;
 const hexadecimalPositiveTabOrder = <button tabIndex="0x2">Later</button>;
 const paddedPositiveTabOrder = <button tabIndex=" 2 ">Later</button>;

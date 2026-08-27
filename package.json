@@ -44,6 +44,7 @@
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
     "@rayhanadev/truffler": "^0.4.2",
+    "@react-doctor/core": "workspace:*",
     "@sentry/cli": "^3.4.3",
     "@types/node": "^25.6.0",
     "@voidzero-dev/vite-plus-core": "^0.1.15",

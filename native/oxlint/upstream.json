@@ -97,6 +97,7 @@
     "no-disabled-zoom",
     "nextjs-no-script-in-head",
     "rendering-animate-svg-wrapper",
+    "rendering-script-defer-async",
     "rn-bottom-sheet-no-ignored-scroll-prop",
     "rn-platform-shaking-use-direct-import",
     "ink-newline-inside-text",

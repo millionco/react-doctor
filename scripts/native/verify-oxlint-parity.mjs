@@ -250,6 +250,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-disabled-zoom": 3,
   "nextjs-no-script-in-head": 1,
   "rendering-animate-svg-wrapper": 2,
+  "rendering-script-defer-async": 5,
   "rn-bottom-sheet-no-ignored-scroll-prop": 4,
   "rn-platform-shaking-use-direct-import": 1,
   "ink-newline-inside-text": 0,
@@ -1322,6 +1323,7 @@ const dynamicClientModule = import("~/components/chart");
 const dynamicServerFunctionName = import(\`~/utils/\${serverFunctionName}.functions\`);
 const tagManagerScript = <Script src="https://www.googletagmanager.com/gtag/js?id=G-XYZ" />;
 const analyticsScript = <script src="https://www.google-analytics.com/analytics.js" />;
+const renderBlockingScript = <script src="/app.js" />;
 const unrelatedScript = <Script src="https://example.com/widget.js" />;
 const expressionAnalyticsScript = <Script src={"https://www.google-analytics.com/analytics.js"} />;
 const truncateClasses = <span className="overflow-hidden text-ellipsis whitespace-nowrap" />;

@@ -474,7 +474,8 @@
     "button-has-type",
     "checked-requires-onchange-or-readonly",
     "class-component-missing-component-will-unmount-teardown",
-    "click-events-have-key-events"
+    "click-events-have-key-events",
+    "control-has-associated-label"
   ],
   "delegatedRules": [
     {

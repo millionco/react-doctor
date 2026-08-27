@@ -609,6 +609,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "checked-requires-onchange-or-readonly": 6,
   "class-component-missing-component-will-unmount-teardown": 3,
   "click-events-have-key-events": 3,
+  "control-has-associated-label": 53,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -637,7 +638,7 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
   react: { version: "16.4.0" },
   "jsx-a11y": {
     attributes: { href: ["href", "to"] },
-    components: { NavigationLink: "a" },
+    components: { ConfiguredControl: "button", NavigationLink: "a" },
   },
   "react-doctor": {
     ...REACT_DOCTOR_SETTINGS["react-doctor"],
@@ -988,6 +989,19 @@ const capturedClickWithoutKeyboardHandler = <section onClickCapture={openDetails
 const spreadClickWithoutKeyboardHandler = <main {...{ onClick: openDetails }}>Details</main>;
 const clickableWithKeyboardHandler = <div onClick={openDetails} onKeyDown={openDetails}>Details</div>;
 /* oxlint-enable react-doctor/no-static-element-interactions */
+/* oxlint-disable react-doctor/button-has-type, react-doctor/no-static-element-interactions */
+const unlabeledButtonControl = <button />;
+const unlabeledCheckboxControl = <input type="checkbox" />;
+const unlabeledRoleControl = <div role="button" />;
+const labeledButtonControl = <button type="button">Save</button>;
+const bigintOnlyButtonControl = <button type="button">{1n}</button>;
+const regexpOnlyButtonControl = <button type="button">{/save/}</button>;
+const computedHiddenStyleButtonControl = <button type="button" style={{ ["display"]: "none" }} />;
+const coalescedTitleButtonControl = <button type="button" title={undefined ?? "Save"} />;
+const undefinedWrapperLabelControl = <Field label={undefined}><input /></Field>;
+const numericControlLabel = <label htmlFor={1e21}>Amount</label>;
+const numericControl = <input id="1e+21" />;
+/* oxlint-enable react-doctor/button-has-type, react-doctor/no-static-element-interactions */
 const downloadAnchor = <a href="/report" download>Report</a>;
 const protocolRelativeAnchor = <a href="//cdn.example.com/file">File</a>;
 const scriptUrlAnchor = <a href="javascript:void(0)">Open</a>;
@@ -2570,6 +2584,7 @@ const configuredInvalidAnchor = <a to="">Destination</a>;
 const configuredMissingFragmentAnchor = <NavigationLink to="#configured-missing-target">Missing</NavigationLink>;
 const configuredInvalidCustomRole = <Widget role="custom-invalid" />;
 const configuredAmbiguousAnchor = <a href="https://example.com/continue">continue</a>;
+const configuredUnlabeledMappedControl = <ConfiguredControl />;
 const configuredAllowedInteractiveRole = <button role="article">Save</button>;
 const configuredAllowedNoninteractiveRole = <h1 role="button">Open</h1>;
 const configuredDeepJsx = <div><section><span><em /></span></section></div>;
@@ -2683,6 +2698,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "checked-requires-onchange-or-readonly",
     "class-component-missing-component-will-unmount-teardown",
     "click-events-have-key-events",
+    "control-has-associated-label",
     "heading-has-content",
     "jsx-boolean-value",
     "no-string-refs",
@@ -2928,6 +2944,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "anchor-is-valid": 1,
     "anchor-target-exists": 1,
     "anchor-ambiguous-text": 1,
+    "control-has-associated-label": 5,
     "jsx-max-depth": 2,
     "no-unsafe": 1,
     "no-oversized-long-heading": 1,

@@ -2,7 +2,7 @@ use oxc_ast::AstKind;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 
-use crate::{AstNode, context::LintContext, rule::Rule, utils::get_element_type};
+use crate::{context::LintContext, rule::Rule, AstNode};
 
 const MESSAGE: &str = "Screen reader users tab to this focusable element but hear nothing because `aria-hidden` skips it, so remove `aria-hidden` or stop it being focusable.";
 
@@ -31,7 +31,7 @@ impl Rule for NoAriaHiddenOnFocusable {
         if !is_aria_hidden_true(aria_hidden_attribute)
             || !is_focusable_jsx_opening_element(
                 opening_element,
-                &resolve_element_type(opening_element, ctx),
+                &resolve_configured_jsx_element_type(opening_element, ctx),
                 false,
             )
         {
@@ -58,24 +58,4 @@ fn is_aria_hidden_true(attribute: &oxc_ast::ast::JSXAttribute) -> bool {
         }
         _ => false,
     }
-}
-
-fn resolve_element_type<'a>(
-    opening_element: &'a oxc_ast::ast::JSXOpeningElement<'a>,
-    ctx: &LintContext<'a>,
-) -> String {
-    let Some((base_element_type, _)) = resolve_jsx_element_type(opening_element, ctx) else {
-        return get_element_type(ctx, opening_element).into_owned();
-    };
-    let settings = &ctx.settings().jsx_a11y;
-    let raw_element_type = settings
-        .polymorphic_prop_name
-        .as_ref()
-        .and_then(|property_name| has_jsx_prop_ignore_case(opening_element, property_name))
-        .and_then(get_string_literal_prop_value)
-        .unwrap_or(base_element_type);
-    settings
-        .components
-        .get(raw_element_type)
-        .map_or_else(|| raw_element_type.to_string(), ToString::to_string)
 }

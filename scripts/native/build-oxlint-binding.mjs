@@ -148,6 +148,7 @@ impl Rule for ${delegatedRule.struct} {
         "for-each-value-import",
         "resolve-jsx-element-name",
         "resolve-jsx-element-type",
+        "resolve-configured-jsx-element-type",
         "get-string-literal-attribute-value",
         "get-direct-string-literal-attribute-value",
         "is-literal-void-expression",

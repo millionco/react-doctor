@@ -1,5 +1,5 @@
 fn resolve_jsx_element_type<'a>(
-    opening_element: &'a oxc_ast::ast::JSXOpeningElement<'a>,
+    opening_element: &oxc_ast::ast::JSXOpeningElement<'a>,
     ctx: &crate::context::LintContext<'a>,
 ) -> Option<(&'a str, oxc_span::Span)> {
     match &opening_element.name {

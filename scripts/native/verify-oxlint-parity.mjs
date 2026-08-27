@@ -615,6 +615,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "forbid-dom-props": 0,
   "forbid-elements": 0,
   "form-control-requires-name": 0,
+  "hook-import-rename-loses-use-prefix": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2611,9 +2612,11 @@ ${nonReactComplexityBranches}
     configuredFixturePath,
     `
 import React, { Component } from "react";
+import { useConfiguredHook as configuredHook } from "./configured-hooks";
 import { test as verify } from "vitest";
 import { ProductComponent } from "./product-component";
 import { z as configuredZod } from "zod";
+configuredHook();
 class ConfiguredState extends Component {
   state = {};
   componentWillMount() {}
@@ -2775,6 +2778,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "forbid-dom-props",
     "forbid-elements",
     "form-control-requires-name",
+    "hook-import-rename-loses-use-prefix",
     "heading-has-content",
     "jsx-boolean-value",
     "no-string-refs",
@@ -3026,6 +3030,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "forbid-dom-props": 5,
     "forbid-elements": 10,
     "form-control-requires-name": 1,
+    "hook-import-rename-loses-use-prefix": 1,
     "jsx-max-depth": 2,
     "no-unsafe": 1,
     "no-oversized-long-heading": 1,

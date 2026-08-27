@@ -480,7 +480,8 @@
     "forbid-component-props",
     "forbid-dom-props",
     "forbid-elements",
-    "form-control-requires-name"
+    "form-control-requires-name",
+    "hook-import-rename-loses-use-prefix"
   ],
   "delegatedRules": [
     {

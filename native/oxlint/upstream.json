@@ -159,6 +159,7 @@
     "no-interactive-element-to-noninteractive-role",
     "no-noninteractive-element-to-interactive-role",
     "jsx-max-depth",
+    "jsx-filename-extension",
     "no-unsafe",
     "r3f-no-async-use-frame",
     "react-router-csp-nonce-consistency",

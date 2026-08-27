@@ -57,6 +57,7 @@ const pluginPath = requireFromRepository.resolve("oxlint-plugin-react-doctor");
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-native-parity-"));
 const fixtureDirectory = path.join(temporaryDirectory, "production-fixtures");
 const fixturePath = path.join(fixtureDirectory, "app", "error.tsx");
+const jsxFilenameMismatchFixturePath = path.join(fixtureDirectory, "app", "jsx-mismatch.js");
 const motionConfigFixturePath = path.join(fixtureDirectory, "app", "layout.tsx");
 const tanstackRouteFixturePath = path.join(fixtureDirectory, "src", "routes", "index.tsx");
 const tanstackRootFixturePath = path.join(fixtureDirectory, "src", "routes", "__root.tsx");
@@ -111,6 +112,24 @@ const stockConfigPath = path.join(temporaryDirectory, "stock.json");
 const nativeConfigPath = path.join(temporaryDirectory, "native.json");
 const configuredStockConfigPath = path.join(temporaryDirectory, "configured-stock.json");
 const configuredNativeConfigPath = path.join(temporaryDirectory, "configured-native.json");
+const jsxFilenameAsNeededFixturePath = path.join(temporaryDirectory, "as-needed.jsx");
+const jsxFilenameIgnoredFixturePath = path.join(temporaryDirectory, "ignored.jsx");
+const jsxFilenameAsNeededStockConfigPath = path.join(
+  temporaryDirectory,
+  "jsx-filename-as-needed-stock.json",
+);
+const jsxFilenameAsNeededNativeConfigPath = path.join(
+  temporaryDirectory,
+  "jsx-filename-as-needed-native.json",
+);
+const jsxFilenameIgnoredStockConfigPath = path.join(
+  temporaryDirectory,
+  "jsx-filename-ignored-stock.json",
+);
+const jsxFilenameIgnoredNativeConfigPath = path.join(
+  temporaryDirectory,
+  "jsx-filename-ignored-native.json",
+);
 const routerStockConfigPath = path.join(temporaryDirectory, "router-stock.json");
 const routerNativeConfigPath = path.join(temporaryDirectory, "router-native.json");
 const frameworkServerEntryStockConfigPath = path.join(
@@ -293,6 +312,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-interactive-element-to-noninteractive-role": 1,
   "no-noninteractive-element-to-interactive-role": 1,
   "jsx-max-depth": 1,
+  "jsx-filename-extension": 1,
   "no-unsafe": 1,
   "r3f-no-async-use-frame": 2,
   "react-router-csp-nonce-consistency": 1,
@@ -2473,6 +2493,12 @@ try {
   );
   fs.writeFileSync(fixturePath, fixture);
   fs.writeFileSync(
+    jsxFilenameMismatchFixturePath,
+    'import React from "react";\nexport const JsxFilenameMismatch = () => <div />;\n',
+  );
+  fs.writeFileSync(jsxFilenameAsNeededFixturePath, "export const value = 1;\n");
+  fs.writeFileSync(jsxFilenameIgnoredFixturePath, "// no code\n");
+  fs.writeFileSync(
     motionConfigFixturePath,
     `import React from "react";\nimport { MotionConfig } from "motion/react";\nexport const App = () => <MotionConfig reducedMotion="never"><main /></MotionConfig>;\n`,
   );
@@ -2893,6 +2919,61 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
       }),
     ),
   );
+  const jsxFilenameAsNeededSettings = {
+    "react-doctor": {
+      ...REACT_DOCTOR_SETTINGS["react-doctor"],
+      jsxFilenameExtension: { allow: "as-needed", extensions: [".jsx"] },
+    },
+  };
+  const jsxFilenameIgnoredSettings = {
+    "react-doctor": {
+      ...jsxFilenameAsNeededSettings["react-doctor"],
+      jsxFilenameExtension: {
+        ...jsxFilenameAsNeededSettings["react-doctor"].jsxFilenameExtension,
+        ignoreFilesWithoutCode: true,
+      },
+    },
+  };
+  fs.writeFileSync(
+    jsxFilenameAsNeededStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: jsxFilenameAsNeededSettings,
+        ruleIds: ["jsx-filename-extension"],
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    jsxFilenameAsNeededNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: jsxFilenameAsNeededSettings,
+        ruleIds: ["jsx-filename-extension"],
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    jsxFilenameIgnoredStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: jsxFilenameIgnoredSettings,
+        ruleIds: ["jsx-filename-extension"],
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    jsxFilenameIgnoredNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: jsxFilenameIgnoredSettings,
+        ruleIds: ["jsx-filename-extension"],
+      }),
+    ),
+  );
   const routerRuleIds = [
     "react-router-no-navigate-in-render",
     "react-router-no-route-module-environment-suffix",
@@ -2961,6 +3042,37 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     ...process.env,
     NAPI_RS_NATIVE_LIBRARY_PATH: path.resolve(nativeBindingPath),
   };
+  const jsxFilenameAsNeededStockDiagnostics = runOxlint(
+    jsxFilenameAsNeededStockConfigPath,
+    process.env,
+    jsxFilenameAsNeededFixturePath,
+  ).diagnostics;
+  const jsxFilenameAsNeededNativeDiagnostics = runOxlint(
+    jsxFilenameAsNeededNativeConfigPath,
+    nativeEnvironment,
+    jsxFilenameAsNeededFixturePath,
+  ).diagnostics;
+  const jsxFilenameIgnoredStockDiagnostics = runOxlint(
+    jsxFilenameIgnoredStockConfigPath,
+    process.env,
+    jsxFilenameIgnoredFixturePath,
+  ).diagnostics;
+  const jsxFilenameIgnoredNativeDiagnostics = runOxlint(
+    jsxFilenameIgnoredNativeConfigPath,
+    nativeEnvironment,
+    jsxFilenameIgnoredFixturePath,
+  ).diagnostics;
+  if (
+    jsxFilenameAsNeededStockDiagnostics.length !== 1 ||
+    JSON.stringify(jsxFilenameAsNeededNativeDiagnostics) !==
+      JSON.stringify(jsxFilenameAsNeededStockDiagnostics) ||
+    jsxFilenameIgnoredStockDiagnostics.length !== 0 ||
+    jsxFilenameIgnoredNativeDiagnostics.length !== 0
+  ) {
+    throw new Error(
+      `native JSX filename settings parity failed\nas-needed stock=${JSON.stringify(jsxFilenameAsNeededStockDiagnostics, null, 2)}\nas-needed native=${JSON.stringify(jsxFilenameAsNeededNativeDiagnostics, null, 2)}\nignored stock=${JSON.stringify(jsxFilenameIgnoredStockDiagnostics, null, 2)}\nignored native=${JSON.stringify(jsxFilenameIgnoredNativeDiagnostics, null, 2)}`,
+    );
+  }
   const nativeDiagnostics = runOxlint(
     nativeConfigPath,
     nativeEnvironment,

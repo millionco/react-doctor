@@ -258,6 +258,7 @@ impl Rule for ${delegatedRule.struct} {
         "get-react-router-middleware-next-symbol",
         "is-react-es6-component",
         "get-static-jsx-attribute-string-values",
+        "get-implicit-role",
         "get-known-static-jsx-attribute-string-values",
         "get-static-project-dom-ids",
         "resolve-local-react-callback",

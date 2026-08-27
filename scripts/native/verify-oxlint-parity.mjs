@@ -622,6 +622,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "client-localstorage-no-version": 1,
   "data-table-requires-accessible-name": 3,
   "expo-no-non-inlined-env": 0,
+  "html-no-nested-interactive": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;

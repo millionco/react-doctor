@@ -487,7 +487,8 @@
     "auth-token-in-web-storage",
     "client-localstorage-no-version",
     "data-table-requires-accessible-name",
-    "expo-no-non-inlined-env"
+    "expo-no-non-inlined-env",
+    "html-no-nested-interactive"
   ],
   "delegatedRules": [
     {

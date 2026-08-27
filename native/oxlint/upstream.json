@@ -122,6 +122,7 @@
     "jsx-no-script-url",
     "jsx-boolean-value",
     "jsx-curly-brace-presence",
+    "jsx-handler-names",
     "no-danger-with-children",
     "heading-has-content",
     "empty-table-header",

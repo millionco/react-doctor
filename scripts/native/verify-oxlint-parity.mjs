@@ -275,6 +275,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-no-script-url": 2,
   "jsx-boolean-value": 2,
   "jsx-curly-brace-presence": 18,
+  "jsx-handler-names": 1,
   "no-danger-with-children": 1,
   "heading-has-content": 1,
   "empty-table-header": 2,
@@ -728,6 +729,13 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
       props: "always",
       children: "always",
       propElementValues: "always",
+    },
+    jsxHandlerNames: {
+      checkInlineFunction: true,
+      checkLocalVariables: true,
+      eventHandlerPrefix: "handle|on",
+      eventHandlerPropPrefix: "when|on",
+      ignoreComponentNames: ["Ignored*"],
     },
     noStringRefs: { noTemplateLiterals: true },
     stateInConstructor: { mode: "never" },
@@ -2374,6 +2382,7 @@ const InvisibleFocusSelect = () => <select className="absolute inset-0 opacity-0
 const JsonClone = () => JSON.parse(JSON.stringify(state));
 const JsxElementComponent = (): JSX.Element => <div />;
 const CurlyBraceLiteral = () => <Widget label={"plain"} />;
+const InconsistentHandlerName = () => <Widget onChange={ctx[action]} />;
 const LargeAnimatedBlur = () => <motion.div animate={{ filter: "blur(24px)" }} />;
 const LayoutPropertyAnimation = () => <motion.div animate={{ width: 200 }} />;
 const LayoutShiftingInteractionState = () => <button className="hover:px-6">Save</button>;
@@ -2719,6 +2728,7 @@ class ConfiguredState extends Component {
 }
 const configuredBooleanProps = <Widget enabled compact={true} />;
 const configuredCurlyBracePresence = <Widget title="Hello" panel=<Panel />>Hello</Widget>;
+const configuredHandlerNames = <><Widget whenChange={() => takeCareOfChange()} /><Widget value={handleChange} /><IgnoredWidget whenChange={() => takeCareOfChange()} /></>;
 const configuredHeading = <Title />;
 const configuredAllowedInvalidRole = <div role="datepicker" />;
 const configuredImage = <ConfiguredImage />;
@@ -2876,6 +2886,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "heading-has-content",
     "jsx-boolean-value",
     "jsx-curly-brace-presence",
+    "jsx-handler-names",
     "no-string-refs",
     "state-in-constructor",
     "aria-activedescendant-has-tabindex",
@@ -3203,6 +3214,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "heading-has-content": 1,
     "jsx-boolean-value": 2,
     "jsx-curly-brace-presence": 62,
+    "jsx-handler-names": 6,
     "no-string-refs": 1,
     "state-in-constructor": 3,
     "aria-role": 1,

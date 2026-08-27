@@ -80,6 +80,7 @@
     "no-multiple-main-landmarks",
     "iframe-title-unique",
     "iframe-has-title",
+    "iframe-missing-sandbox",
     "html-label-has-single-control",
     "fieldset-requires-legend",
     "no-skipped-heading-level",

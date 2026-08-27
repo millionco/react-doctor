@@ -84,6 +84,7 @@ const r3fNoCompileFixturePath = path.join(fixtureDirectory, "app", "r3f-no-compi
 const r3fClockFixturePath = path.join(fixtureDirectory, "app", "r3f-clock.tsx");
 const r3fCapDprFixturePath = path.join(fixtureDirectory, "app", "r3f-cap-dpr.tsx");
 const r3fCloneInFrameFixturePath = path.join(fixtureDirectory, "app", "r3f-clone-in-frame.tsx");
+const r3fDeepSelectorFixturePath = path.join(fixtureDirectory, "app", "r3f-deep-selector.tsx");
 const r3fPointerAllocationFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -350,6 +351,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-async-use-frame": 2,
   "r3f-no-clone-in-use-frame": 4,
   "r3f-no-compile-in-use-frame": 2,
+  "r3f-no-deep-use-three-selector": 3,
   "r3f-no-extend-three-namespace": 4,
   "r3f-no-inline-primitive-object": 1,
   "react-router-csp-nonce-consistency": 1,
@@ -2718,6 +2720,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     r3fCloneInFrameFixturePath,
     `import React from "react";\nimport { useFrame, useThree } from "@react-three/fiber";\nexport const CloneScene = ({ enabled }) => {\n  const mesh = React.useRef(null);\n  const camera = useThree((state) => state.camera);\n  const { pointer } = useThree();\n  useFrame((state) => {\n    mesh.current.position.clone();\n    state.scene.clone();\n    camera.position.clone();\n    pointer.clone();\n    if (enabled) state.camera.clone();\n  });\n  return <mesh ref={mesh} />;\n};\n`,
+  );
+  fs.writeFileSync(
+    r3fDeepSelectorFixturePath,
+    `import React from "react";\nimport * as Fiber from "@react-three/fiber";\nconst clockSelector = React.useCallback((state) => {\n  const clock = state.clock;\n  return clock.elapsedTime;\n}, []);\nexport const DeepSelectorScene = () => {\n  const zoom = Fiber.useThree((state) => state.camera.zoom);\n  const x = Fiber.useThree(({ camera }) => camera.position.x);\n  const elapsedTime = Fiber.useThree(clockSelector);\n  const position = Fiber.useThree((state) => state.camera.position);\n  return consume(zoom, x, elapsedTime, position);\n};\n`,
   );
   fs.writeFileSync(
     r3fPointerAllocationFixturePath,

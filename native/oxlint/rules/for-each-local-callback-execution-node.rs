@@ -37,11 +37,9 @@ fn for_each_local_callback_execution_node<'a>(
             let AstKind::CallExpression(candidate_call) = candidate.kind() else {
                 continue;
             };
-            let Some(called_function_id) = exact_local_callback_function_id(
-                &candidate_call.callee,
-                ctx,
-                &mut Vec::new(),
-            ) else {
+            let Some(called_function_id) =
+                exact_local_callback_function_id(&candidate_call.callee, ctx, &mut Vec::new())
+            else {
                 continue;
             };
             let is_conditionally_executed = is_conditionally_executed_by_call_site
@@ -74,19 +72,6 @@ fn for_each_local_callback_execution_node<'a>(
             }
         }
     }
-}
-
-fn local_callback_nearest_function_id(
-    node_id: oxc_semantic::NodeId,
-    ctx: &crate::context::LintContext<'_>,
-) -> Option<oxc_semantic::NodeId> {
-    ctx.nodes().ancestors(node_id).find_map(|ancestor| {
-        matches!(
-            ancestor.kind(),
-            oxc_ast::AstKind::Function(_) | oxc_ast::AstKind::ArrowFunctionExpression(_)
-        )
-        .then_some(ancestor.id())
-    })
 }
 
 fn exact_local_callback_function_id<'a>(

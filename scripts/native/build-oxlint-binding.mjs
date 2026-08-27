@@ -340,6 +340,8 @@ impl Rule for ${delegatedRule.struct} {
         "resolve-static-array-like-length",
         "is-float-typed-array",
         "has-r3f-runtime-import",
+        "r3f-canvas-has-public-provenance",
+        "is-r3f-host-intrinsic",
         "read-static-jsx-boolean-attribute",
         "is-nullish-expression",
         "analyze-closed-r3f-canvas-lighting",

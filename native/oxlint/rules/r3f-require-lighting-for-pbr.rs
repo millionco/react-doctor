@@ -31,7 +31,7 @@ impl Rule for R3FRequireLightingForPbr {
             let AstKind::JSXElement(canvas) = node.kind() else {
                 continue;
             };
-            if !is_r3f_lighting_canvas(&canvas.opening_element, ctx) {
+            if !r3f_canvas_has_public_provenance(&canvas.opening_element, ctx) {
                 continue;
             }
             let analysis = analyze_closed_r3f_canvas_lighting(canvas, ctx);

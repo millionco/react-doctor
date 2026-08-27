@@ -8,13 +8,6 @@ use oxc_ast::{
 use crate::{context::LintContext, globals::HTML_TAG};
 
 const DREI_PUBLIC_MODULES: [&str; 2] = ["@react-three/drei", "@react-three/drei/native"];
-const R3F_PUBLIC_MODULES: [&str; 5] = [
-    "@react-three/fiber",
-    "@react-three/fiber/legacy",
-    "@react-three/fiber/native",
-    "@react-three/fiber/webgpu",
-    "react-three-fiber",
-];
 const LIGHT_CONSTRUCTOR_NAMES: [&str; 7] = [
     "AmbientLight",
     "DirectionalLight",
@@ -236,7 +229,7 @@ fn get_r3f_lighting_surface_visibility<'a>(
         return Some(false);
     }
     for (index, opening_element) in ancestors.iter().rev().enumerate() {
-        if index > 0 && is_r3f_lighting_canvas(opening_element, ctx) {
+        if index > 0 && r3f_canvas_has_public_provenance(opening_element, ctx) {
             return Some(true);
         }
         if !is_r3f_lighting_host_intrinsic(opening_element, &[], ctx) {
@@ -325,15 +318,6 @@ fn r3f_lighting_has_spread_attribute(opening_element: &JSXOpeningElement<'_>) ->
         .attributes
         .iter()
         .any(|attribute| matches!(attribute, JSXAttributeItem::SpreadAttribute(_)))
-}
-
-fn is_r3f_lighting_canvas<'a>(
-    opening_element: &JSXOpeningElement<'a>,
-    ctx: &LintContext<'a>,
-) -> bool {
-    R3F_PUBLIC_MODULES.iter().any(|module_source| {
-        resolve_imported_jsx_component_name(opening_element, module_source, ctx) == Some("Canvas")
-    })
 }
 
 fn is_drei_lighting_environment<'a>(

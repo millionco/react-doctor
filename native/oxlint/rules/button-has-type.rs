@@ -9,7 +9,7 @@ use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_semantic::SymbolId;
 use oxc_span::{GetSpan, Span};
-use oxc_syntax::operator::{LogicalOperator, UnaryOperator};
+use oxc_syntax::operator::LogicalOperator;
 use oxc_syntax::node::NodeId;
 use rustc_hash::FxHashSet;
 
@@ -730,15 +730,6 @@ fn find_jsx_attribute_ignore_case<'a, 'b>(
         )
         .then_some(attribute.as_ref())
     })
-}
-
-fn is_nullish_expression(expression: &Expression<'_>) -> bool {
-    match expression.get_inner_expression() {
-        Expression::NullLiteral(_) => true,
-        Expression::Identifier(identifier) => identifier.name == "undefined",
-        Expression::UnaryExpression(unary) => unary.operator == UnaryOperator::Void,
-        _ => false,
-    }
 }
 
 fn report_invalid(span: Span, ctx: &LintContext<'_>) {

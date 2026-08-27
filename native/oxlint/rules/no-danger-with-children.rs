@@ -8,7 +8,6 @@ use oxc_ast::{
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_semantic::SymbolId;
-use oxc_syntax::operator::UnaryOperator;
 use rustc_hash::FxHashSet;
 
 use crate::{AstNode, context::LintContext, rule::Rule, utils::has_jsx_prop_ignore_case};
@@ -196,15 +195,4 @@ fn is_meaningful_jsx_child(child: &JSXChild) -> bool {
 
 fn is_nullish_argument(argument: &Argument) -> bool {
     argument.as_expression().is_some_and(is_nullish_expression)
-}
-
-fn is_nullish_expression(expression: &Expression) -> bool {
-    match expression.get_inner_expression() {
-        Expression::NullLiteral(_) => true,
-        Expression::Identifier(identifier) => identifier.name == "undefined",
-        Expression::UnaryExpression(unary_expression) => {
-            unary_expression.operator == UnaryOperator::Void
-        }
-        _ => false,
-    }
 }

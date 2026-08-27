@@ -274,6 +274,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "nextjs-no-a-element": 6,
   "jsx-no-script-url": 2,
   "jsx-boolean-value": 2,
+  "jsx-curly-brace-presence": 18,
   "no-danger-with-children": 1,
   "heading-has-content": 1,
   "empty-table-header": 2,
@@ -723,6 +724,11 @@ const CONFIGURED_REACT_DOCTOR_SETTINGS = {
     capabilities: ["react", "tailwind"],
     headingHasContent: { components: ["Title"] },
     jsxBooleanValue: { mode: "always", never: ["compact"] },
+    jsxCurlyBracePresence: {
+      props: "always",
+      children: "always",
+      propElementValues: "always",
+    },
     noStringRefs: { noTemplateLiterals: true },
     stateInConstructor: { mode: "never" },
     ariaRole: { allowedInvalidRoles: ["datepicker"], ignoreNonDOM: false },
@@ -2367,6 +2373,7 @@ const InlinePropCardList = () => <MemoizedInlinePropCard onClick={() => doThing(
 const InvisibleFocusSelect = () => <select className="absolute inset-0 opacity-0"><option>UTC</option></select>;
 const JsonClone = () => JSON.parse(JSON.stringify(state));
 const JsxElementComponent = (): JSX.Element => <div />;
+const CurlyBraceLiteral = () => <Widget label={"plain"} />;
 const LargeAnimatedBlur = () => <motion.div animate={{ filter: "blur(24px)" }} />;
 const LayoutPropertyAnimation = () => <motion.div animate={{ width: 200 }} />;
 const LayoutShiftingInteractionState = () => <button className="hover:px-6">Save</button>;
@@ -2711,6 +2718,7 @@ class ConfiguredState extends Component {
   render() { return <Widget ref={\`legacy-\${id}\`} />; }
 }
 const configuredBooleanProps = <Widget enabled compact={true} />;
+const configuredCurlyBracePresence = <Widget title="Hello" panel=<Panel />>Hello</Widget>;
 const configuredHeading = <Title />;
 const configuredAllowedInvalidRole = <div role="datepicker" />;
 const configuredImage = <ConfiguredImage />;
@@ -2867,6 +2875,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     "hook-import-rename-loses-use-prefix",
     "heading-has-content",
     "jsx-boolean-value",
+    "jsx-curly-brace-presence",
     "no-string-refs",
     "state-in-constructor",
     "aria-activedescendant-has-tabindex",
@@ -3193,6 +3202,7 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     ...Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0])),
     "heading-has-content": 1,
     "jsx-boolean-value": 2,
+    "jsx-curly-brace-presence": 62,
     "no-string-refs": 1,
     "state-in-constructor": 3,
     "aria-role": 1,
@@ -3234,8 +3244,16 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
       JSON.stringify(expectedConfiguredDiagnosticCounts) ||
     JSON.stringify(configuredNativeDiagnostics) !== JSON.stringify(configuredStockDiagnostics)
   ) {
+    const configuredNativeDiagnosticKeys = new Set(configuredNativeDiagnostics.map(JSON.stringify));
+    const configuredStockDiagnosticKeys = new Set(configuredStockDiagnostics.map(JSON.stringify));
+    const configuredStockOnlyDiagnostic = configuredStockDiagnostics.find(
+      (diagnostic) => !configuredNativeDiagnosticKeys.has(JSON.stringify(diagnostic)),
+    );
+    const configuredNativeOnlyDiagnostic = configuredNativeDiagnostics.find(
+      (diagnostic) => !configuredStockDiagnosticKeys.has(JSON.stringify(diagnostic)),
+    );
     throw new Error(
-      `native configured parity failed\nstock=${JSON.stringify(configuredStockDiagnostics, null, 2)}\nnative=${JSON.stringify(configuredNativeDiagnostics, null, 2)}`,
+      `native configured parity failed\nexpected counts=${JSON.stringify(expectedConfiguredDiagnosticCounts, null, 2)}\nstock counts=${JSON.stringify(countDiagnosticsByRule(configuredStockDiagnostics), null, 2)}\nstock only=${JSON.stringify(configuredStockOnlyDiagnostic, null, 2)}\nnative only=${JSON.stringify(configuredNativeOnlyDiagnostic, null, 2)}`,
     );
   }
 

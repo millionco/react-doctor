@@ -1,6 +1,7 @@
 import { isProjectDiscoveryError, isReactDoctorError } from "@react-doctor/core";
 import { CliInputError } from "./cli-input-error.js";
 import { isEnvironmentError } from "./is-environment-error.js";
+import { isNpmCacheCorruptionError } from "./is-npm-cache-corruption-error.js";
 
 /**
  * Whether `error` is an expected, user-actionable failure — the user's project
@@ -9,7 +10,7 @@ import { isEnvironmentError } from "./is-environment-error.js";
  * `handleUserError` (a plain message — no "Something went wrong", prefilled
  * issue, Discord link, or Sentry reference), since there is no bug to report.
  *
- * Four distinct shapes reach the CLI's catch blocks:
+ * Five distinct shapes reach the CLI's catch blocks:
  *
  * - **Project-discovery failures** (`NoReactDependencyError`,
  *   `ProjectNotFoundError`, `PackageJsonNotFoundError`, `NotADirectoryError`,
@@ -29,6 +30,10 @@ import { isEnvironmentError } from "./is-environment-error.js";
  *   actionable message instead of crashing. See `is-environment-error.ts` for
  *   why the set stays narrow (codes that usually mean our bug keep reaching
  *   Sentry).
+ * - **npm cache corruption** (`MODULE_NOT_FOUND` for ajv/conf in the npx
+ *   cache) — incomplete package installations in the npx cache, a known issue
+ *   with npm 12 + Node 26. The user can clear the cache to recover; not a
+ *   react-doctor bug.
  *
  * This composes the existing core narrowers rather than introducing a new
  * error-shape helper (AGENTS.md): it encodes CLI-layer reporting policy, not
@@ -38,5 +43,6 @@ export const isExpectedUserError = (error: unknown): boolean =>
   error instanceof CliInputError ||
   isProjectDiscoveryError(error) ||
   isEnvironmentError(error) ||
+  isNpmCacheCorruptionError(error) ||
   (isReactDoctorError(error) &&
     (error.reason._tag === "GitBaseBranchInvalid" || error.reason._tag === "GitBaseBranchMissing"));

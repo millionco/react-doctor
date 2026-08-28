@@ -289,6 +289,21 @@ const threeNoStateInAnimationLoopFixturePath = path.join(
   "app",
   "three-no-state-in-animation-loop.ts",
 );
+const threeNoSyncReadbackInAnimationLoopFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-no-sync-readback-in-animation-loop.ts",
+);
+const threeNoUnconditionalRendererResizeInAnimationLoopFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-no-unconditional-renderer-resize-in-animation-loop.ts",
+);
+const threeOnBeforeCompileRequireProgramCacheKeyFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-on-before-compile-require-program-cache-key.ts",
+);
 const threeControlsCleanupFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -799,6 +814,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-no-redundant-uniforms-need-update": 2,
   "three-no-shader-configuration-mutation-in-animation-loop": 3,
   "three-no-state-in-animation-loop": 2,
+  "three-no-sync-readback-in-animation-loop": 1,
+  "three-no-unconditional-renderer-resize-in-animation-loop": 2,
+  "three-on-before-compile-require-program-cache-key": 21,
   "three-require-camera-aspect-on-resize": 1,
   "three-require-controls-cleanup": 7,
   "three-require-controls-update": 1,
@@ -4118,6 +4136,214 @@ export const HelperStateScene = () => {
     renderer.render(scene, camera);
   });
 };
+`,
+  );
+  fs.writeFileSync(
+    threeNoSyncReadbackInAnimationLoopFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { WebGLRenderer } from "three";
+
+const renderer = new WebGLRenderer();
+renderer.setAnimationLoop(() => {
+  renderer.readRenderTargetPixels(target, 0, 0, 1, 1, buffer);
+  renderer.render(scene, camera);
+});
+`,
+  );
+  fs.writeFileSync(
+    threeNoUnconditionalRendererResizeInAnimationLoopFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment */
+import { WebGLRenderer } from "three";
+
+const renderer = new WebGLRenderer();
+renderer.setAnimationLoop(() => {
+  renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+  renderer.setDrawingBufferSize(canvas.width, canvas.height, devicePixelRatio);
+  renderer.render(scene, camera);
+});
+`,
+  );
+  fs.writeFileSync(
+    threeOnBeforeCompileRequireProgramCacheKeyFixturePath,
+    `import * as THREE from "three";
+import { MeshStandardMaterial } from "three";
+
+{
+  let mode = "warm";
+  const material = new MeshStandardMaterial();
+  material.onBeforeCompile = (shader) => {
+    if (mode === "warm") shader.fragmentShader = shader.fragmentShader.replace("A", "B");
+  };
+}
+{
+  let mode = "warm";
+  const material = new MeshStandardMaterial();
+  material.onBeforeCompile = (shader) => {
+    const patch = mode === "warm" ? "B" : "C";
+    shader.fragmentShader = shader.fragmentShader.replace("A", patch);
+  };
+}
+{
+  const options = { mode: "warm" };
+  const material = new MeshStandardMaterial();
+  material.onBeforeCompile = (shader) => {
+    const selectedMode = options.mode;
+    const patch = "#define MODE_" + selectedMode + "\\n";
+    shader.vertexShader = patch + shader.vertexShader;
+  };
+}
+{
+  let enabled = true;
+  const material = new MeshStandardMaterial();
+  material.onBeforeCompile = (shader) => {
+    let shouldPatch = enabled;
+    if (shouldPatch) shader.fragmentShader += " ";
+  };
+}
+{
+  const options = { useFog: true };
+  const material = new THREE.MeshPhongMaterial();
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = options.useFog
+      ? "#define FOG\\n" + shader.vertexShader
+      : shader.vertexShader;
+  };
+}
+{
+  let enabled = true;
+  const material = new MeshStandardMaterial();
+  material.onBeforeCompile = (shader) => {
+    enabled && (shader.fragmentShader += " ");
+  };
+}
+{
+  let mode = "warm";
+  const material = new MeshStandardMaterial();
+  material.onBeforeCompile = (shader) => {
+    switch (mode) {
+      case "warm":
+        shader.fragmentShader += " ";
+        break;
+    }
+  };
+}
+{
+  let remaining = 1;
+  const material = new MeshStandardMaterial();
+  material.onBeforeCompile = (shader) => {
+    while (remaining > 0) {
+      shader.fragmentShader += " ";
+      remaining -= 1;
+    }
+  };
+}
+{
+  let chunks = ["A"];
+  const material = new MeshStandardMaterial();
+  material.onBeforeCompile = (shader) => {
+    for (const chunk of chunks) shader.fragmentShader += chunk;
+  };
+}
+{
+  let defines = { MODE: "A" };
+  const material = new MeshStandardMaterial();
+  material.onBeforeCompile = (shader) => {
+    for (const name in defines) shader.defines[name] = defines[name];
+  };
+}
+{
+  const material = new MeshStandardMaterial();
+  material.onBeforeCompile = function (shader) {
+    if (this.mode === "warm") shader.fragmentShader += " ";
+  };
+}
+{
+  let mode = "warm";
+  new MeshStandardMaterial({
+    customProgramCacheKey: null,
+    onBeforeCompile: (shader) => {
+      if (mode === "warm") shader.fragmentShader += " ";
+    },
+  });
+}
+{
+  let mode = "warm";
+  const material = new MeshStandardMaterial();
+  material.onBeforeCompile = (shader) => {
+    if (mode === "warm") shader.fragmentShader += " ";
+  };
+  material.customProgramCacheKey = "warm";
+}
+{
+  let mode = "warm";
+  const material = new MeshStandardMaterial();
+  material.customProgramCacheKey = () => mode;
+  material.customProgramCacheKey = null;
+  material.onBeforeCompile = (shader) => {
+    if (mode === "warm") shader.fragmentShader += " ";
+  };
+}
+{
+  let mode = "warm";
+  const material = new MeshStandardMaterial({
+    customProgramCacheKey: () => mode,
+    onBeforeCompile: (shader) => {
+      if (mode === "warm") shader.fragmentShader += " ";
+    },
+  });
+  material.customProgramCacheKey = null;
+}
+{
+  const createMaterial = (mode) => {
+    const material = new MeshStandardMaterial();
+    material.onBeforeCompile = (shader) => {
+      if (mode === "warm") shader.fragmentShader += " ";
+    };
+    return material;
+  };
+  createMaterial("warm");
+}
+{
+  const chunks = ["A"];
+  const material = new MeshStandardMaterial();
+  material.onBeforeCompile = (shader) => {
+    for (const chunk of chunks) shader.fragmentShader += chunk;
+  };
+}
+{
+  const defines = { MODE: "A" };
+  const material = new MeshStandardMaterial();
+  material.onBeforeCompile = (shader) => {
+    for (const name in defines) shader.defines[name] = defines[name];
+  };
+}
+{
+  let mode = "warm";
+  let material = new MeshStandardMaterial({
+    onBeforeCompile: (shader) => {
+      if (mode === "warm") shader.fragmentShader += " ";
+    },
+  });
+  material = new MeshStandardMaterial();
+  material.customProgramCacheKey = () => mode;
+}
+{
+  let mode = "warm";
+  new MeshStandardMaterial({
+    onBeforeCompile: (shader) => {
+      if (mode === "warm") shader.fragmentShader += " ";
+    },
+  });
+}
+{
+  let mode = "warm";
+  const first = new MeshStandardMaterial();
+  const second = new MeshStandardMaterial();
+  first.onBeforeCompile = (shader) => {
+    if (mode === "warm") shader.fragmentShader += " ";
+  };
+  second.customProgramCacheKey = () => mode;
+}
 `,
   );
   fs.writeFileSync(

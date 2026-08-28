@@ -107,6 +107,11 @@ const r3fExtendNamespaceFixturePath = path.join(
 );
 const r3fFreshPortalFixturePath = path.join(fixtureDirectory, "app", "r3f-fresh-portal.tsx");
 const r3fFreshSelectorFixturePath = path.join(fixtureDirectory, "app", "r3f-fresh-selector.tsx");
+const r3fManagedRefAttachmentFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-managed-ref-attachment.tsx",
+);
 const r3fInlinePrimitiveFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -370,6 +375,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-extend-three-namespace": 4,
   "r3f-no-fresh-portal-container": 1,
   "r3f-no-fresh-use-three-selector": 1,
+  "r3f-no-imperative-attach-of-managed-ref": 1,
   "r3f-no-inline-primitive-object": 1,
   "react-router-csp-nonce-consistency": 1,
   "react-router-descendant-routes-require-splat": 1,
@@ -2765,6 +2771,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     r3fFreshSelectorFixturePath,
     `import { useThree } from "@react-three/fiber";\nexport const FreshSelectorScene = () => useThree((state) => ({ camera: state.camera }));\nexport const StableSelectorScene = () => useThree((state) => state.camera);\nexport const OrderedSelectorScene = ({ enabled }) => useThree((state) => enabled ? (() => state.camera) : ({ camera: state.camera }));\n`,
+  );
+  fs.writeFileSync(
+    r3fManagedRefAttachmentFixturePath,
+    `import React from "react";\nimport "@react-three/fiber";\nimport { Scene } from "three";\nexport const ManagedRefScene = () => { const meshRef = React.useRef(null); const scene = new Scene(); scene.add(meshRef.current); return <mesh ref={meshRef} />; };\n`,
   );
   fs.writeFileSync(
     r3fInlinePrimitiveFixturePath,

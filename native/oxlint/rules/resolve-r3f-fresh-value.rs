@@ -1,10 +1,12 @@
 fn resolve_r3f_fresh_value<'a>(
     expression: &oxc_ast::ast::Expression<'a>,
     ctx: &crate::context::LintContext<'a>,
+    accepted_kinds: &[&str],
 ) -> Option<&'static str> {
     resolve_r3f_fresh_value_inner(
         expression,
         ctx,
+        accepted_kinds,
         &mut rustc_hash::FxHashSet::default(),
     )
 }
@@ -12,17 +14,27 @@ fn resolve_r3f_fresh_value<'a>(
 fn resolve_r3f_fresh_value_inner<'a>(
     expression: &oxc_ast::ast::Expression<'a>,
     ctx: &crate::context::LintContext<'a>,
+    accepted_kinds: &[&str],
     visited_symbol_ids: &mut rustc_hash::FxHashSet<oxc_semantic::SymbolId>,
 ) -> Option<&'static str> {
     let expression = expression.get_inner_expression();
     match expression {
-        oxc_ast::ast::Expression::ObjectExpression(_) => Some("object"),
-        oxc_ast::ast::Expression::ArrayExpression(_) => Some("array"),
+        oxc_ast::ast::Expression::ObjectExpression(_) => {
+            r3f_accepted_fresh_kind("object", accepted_kinds)
+        }
+        oxc_ast::ast::Expression::ArrayExpression(_) => {
+            r3f_accepted_fresh_kind("array", accepted_kinds)
+        }
         oxc_ast::ast::Expression::ArrowFunctionExpression(_)
-        | oxc_ast::ast::Expression::FunctionExpression(_) => Some("function"),
-        oxc_ast::ast::Expression::JSXElement(_)
-        | oxc_ast::ast::Expression::JSXFragment(_) => Some("JSX"),
-        oxc_ast::ast::Expression::NewExpression(_) => Some("instance"),
+        | oxc_ast::ast::Expression::FunctionExpression(_) => {
+            r3f_accepted_fresh_kind("function", accepted_kinds)
+        }
+        oxc_ast::ast::Expression::JSXElement(_) | oxc_ast::ast::Expression::JSXFragment(_) => {
+            r3f_accepted_fresh_kind("JSX", accepted_kinds)
+        }
+        oxc_ast::ast::Expression::NewExpression(_) => {
+            r3f_accepted_fresh_kind("instance", accepted_kinds)
+        }
         oxc_ast::ast::Expression::Identifier(identifier) => {
             let symbol_id = ctx
                 .scoping()
@@ -57,18 +69,25 @@ fn resolve_r3f_fresh_value_inner<'a>(
             {
                 return None;
             }
-            resolve_r3f_fresh_value_inner(declarator.init.as_ref()?, ctx, visited_symbol_ids)
+            resolve_r3f_fresh_value_inner(
+                declarator.init.as_ref()?,
+                ctx,
+                accepted_kinds,
+                visited_symbol_ids,
+            )
         }
         oxc_ast::ast::Expression::ConditionalExpression(conditional_expression) => {
             resolve_r3f_fresh_value_inner(
                 &conditional_expression.consequent,
                 ctx,
+                accepted_kinds,
                 &mut visited_symbol_ids.clone(),
             )
             .or_else(|| {
                 resolve_r3f_fresh_value_inner(
                     &conditional_expression.alternate,
                     ctx,
+                    accepted_kinds,
                     &mut visited_symbol_ids.clone(),
                 )
             })
@@ -77,12 +96,14 @@ fn resolve_r3f_fresh_value_inner<'a>(
             resolve_r3f_fresh_value_inner(
                 &logical_expression.left,
                 ctx,
+                accepted_kinds,
                 &mut visited_symbol_ids.clone(),
             )
             .or_else(|| {
                 resolve_r3f_fresh_value_inner(
                     &logical_expression.right,
                     ctx,
+                    accepted_kinds,
                     &mut visited_symbol_ids.clone(),
                 )
             })
@@ -99,16 +120,17 @@ fn resolve_r3f_fresh_value_inner<'a>(
                             && ctx.scoping().get_reference(identifier.reference_id()).symbol_id().is_none()
                 )
             {
-                return Some("object");
+                return r3f_accepted_fresh_kind("object", accepted_kinds);
             }
             if method_name == "clone" {
-                return Some("clone");
+                return r3f_accepted_fresh_kind("clone", accepted_kinds);
             }
             (method_name == "add")
                 .then(|| {
                     resolve_r3f_fresh_value_inner(
                         member_expression.object(),
                         ctx,
+                        accepted_kinds,
                         visited_symbol_ids,
                     )
                 })
@@ -116,4 +138,11 @@ fn resolve_r3f_fresh_value_inner<'a>(
         }
         _ => None,
     }
+}
+
+fn r3f_accepted_fresh_kind(
+    fresh_kind: &'static str,
+    accepted_kinds: &[&str],
+) -> Option<&'static str> {
+    (accepted_kinds.is_empty() || accepted_kinds.contains(&fresh_kind)).then_some(fresh_kind)
 }

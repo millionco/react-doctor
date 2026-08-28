@@ -26,7 +26,7 @@ fn is_react_router_route_function(
             .as_ref()
             .is_some_and(|identifier| identifier.name == expected_name)
     {
-        return matches!(parent.kind(), oxc_ast::AstKind::ExportNamedDeclaration(_))
+        return matches!(parent.kind(), oxc_ast::AstKind::ExportDeclaration(_))
             && is_react_router_framework_module_filename(ctx);
     }
     let oxc_ast::AstKind::VariableDeclarator(declarator) = parent.kind() else {
@@ -42,21 +42,16 @@ fn is_react_router_route_function(
         return false;
     }
     let declaration = ctx.nodes().parent_node(parent.id());
-    if !matches!(
-        declaration.kind(),
-        oxc_ast::AstKind::VariableDeclaration(_)
-    ) {
+    if !matches!(declaration.kind(), oxc_ast::AstKind::VariableDeclaration(_)) {
         return false;
     }
     matches!(
         ctx.nodes().parent_node(declaration.id()).kind(),
-        oxc_ast::AstKind::ExportNamedDeclaration(_)
+        oxc_ast::AstKind::ExportDeclaration(_)
     ) && is_react_router_framework_module_filename(ctx)
 }
 
-fn is_react_router_framework_module_filename(
-    ctx: &crate::context::LintContext<'_>,
-) -> bool {
+fn is_react_router_framework_module_filename(ctx: &crate::context::LintContext<'_>) -> bool {
     let is_absolute_filename = ctx.file_path().is_absolute();
     let filename = ctx.file_path().to_string_lossy().replace('\\', "/");
     let root_directory = ctx
@@ -69,9 +64,7 @@ fn is_react_router_framework_module_filename(
         .and_then(serde_json::Value::as_str)
         .filter(|root_directory| !root_directory.is_empty())
         .map(|root_directory| root_directory.replace('\\', "/"));
-    let relative_filename = if is_absolute_filename
-        && let Some(root_directory) = root_directory
-    {
+    let relative_filename = if is_absolute_filename && let Some(root_directory) = root_directory {
         let root_directory = root_directory.trim_end_matches('/');
         let Some(relative_filename) = filename
             .strip_prefix(root_directory)
@@ -83,8 +76,8 @@ fn is_react_router_framework_module_filename(
     } else {
         filename.as_str()
     };
-    let is_route = relative_filename.starts_with("app/routes/")
-        || relative_filename.contains("/app/routes/");
+    let is_route =
+        relative_filename.starts_with("app/routes/") || relative_filename.contains("/app/routes/");
     let basename = relative_filename.rsplit('/').next().unwrap_or_default();
     let parent = relative_filename
         .strip_suffix(basename)

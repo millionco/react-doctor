@@ -47,7 +47,7 @@ impl Rule for R3FNoInlinePrimitiveObject {
             let Some(expression) = container.expression.as_expression() else {
                 continue;
             };
-            let Some(fresh_kind) = resolve_r3f_fresh_value(expression, ctx) else {
+            let Some(fresh_kind) = resolve_r3f_fresh_value(expression, ctx, &[]) else {
                 continue;
             };
             ctx.diagnostic(

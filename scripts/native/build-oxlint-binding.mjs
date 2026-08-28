@@ -352,6 +352,8 @@ impl Rule for ${delegatedRule.struct} {
         "resolve-static-array-like-length",
         "is-float-typed-array",
         "resolve-r3f-fresh-value",
+        "has-possible-static-property-write-before",
+        "module-api-reference-matches",
         "resolve-loader-cache-provenance",
         "has-r3f-runtime-import",
         "r3f-canvas-has-public-provenance",

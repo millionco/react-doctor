@@ -105,6 +105,7 @@ const r3fExtendNamespaceFixturePath = path.join(
   "app",
   "r3f-extend-namespace.tsx",
 );
+const r3fFreshPortalFixturePath = path.join(fixtureDirectory, "app", "r3f-fresh-portal.tsx");
 const r3fInlinePrimitiveFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -366,6 +367,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-duplicate-primitive-object": 5,
   "r3f-no-extend-in-render": 0,
   "r3f-no-extend-three-namespace": 4,
+  "r3f-no-fresh-portal-container": 1,
   "r3f-no-inline-primitive-object": 1,
   "react-router-csp-nonce-consistency": 1,
   "react-router-descendant-routes-require-splat": 1,
@@ -2753,6 +2755,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     r3fExtendNamespaceFixturePath,
     `import { extend } from "@react-three/fiber";\nimport * as Fiber from "@react-three/fiber/native";\nimport * as THREE from "three";\nimport Three = require("three");\nextend(THREE);\nextend({ ...THREE });\nFiber.extend(Three);\nconst CommonJsFiber = require("@react-three/fiber");\nCommonJsFiber.extend(require("three"));\n`,
+  );
+  fs.writeFileSync(
+    r3fFreshPortalFixturePath,
+    `import React from "react";\nimport { createPortal } from "@react-three/fiber";\nexport const FreshPortalScene = ({ source }) => createPortal(<mesh />, source.clone());\nexport const StablePortalScene = ({ container }) => createPortal(<mesh />, container);\n`,
   );
   fs.writeFileSync(
     r3fInlinePrimitiveFixturePath,

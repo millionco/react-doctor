@@ -101,11 +101,18 @@ fn module_api_path_matches_internal<'a>(
         };
         let has_matching_property = pattern.properties.iter().any(|property| {
             property_key_matches_name(&property.key, expected_path[0])
-                && matches!(
-                    &property.value,
-                    oxc_ast::ast::BindingPattern::BindingIdentifier(binding_identifier)
-                        if binding_identifier.symbol_id() == symbol_id
-                )
+                && match &property.value {
+                    oxc_ast::ast::BindingPattern::BindingIdentifier(binding_identifier) => {
+                        binding_identifier.symbol_id() == symbol_id
+                    }
+                    oxc_ast::ast::BindingPattern::AssignmentPattern(assignment) => assignment
+                        .left
+                        .get_binding_identifier()
+                        .is_some_and(|binding_identifier| {
+                            binding_identifier.symbol_id() == symbol_id
+                        }),
+                    _ => false,
+                }
         });
         return has_matching_property
             && declarator.init.as_ref().is_some_and(|initializer| {

@@ -49,6 +49,7 @@ fn function_executes_during_render<'a>(
             .callee
             .get_inner_expression()
             .as_member_expression()
+            && !member_expression.is_computed()
             && member_expression
                 .static_property_name()
                 .is_some_and(|property_name| {

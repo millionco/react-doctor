@@ -304,6 +304,21 @@ const threeOnBeforeCompileRequireProgramCacheKeyFixturePath = path.join(
   "app",
   "three-on-before-compile-require-program-cache-key.ts",
 );
+const threeAnimationMixerCleanupFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-animation-mixer-cleanup.tsx",
+);
+const threeAnimationMixerUpdateFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-animation-mixer-update.ts",
+);
+const threeDataTextureUpdateFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-data-texture-update.ts",
+);
 const threeControlsCleanupFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -817,9 +832,12 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-no-sync-readback-in-animation-loop": 1,
   "three-no-unconditional-renderer-resize-in-animation-loop": 2,
   "three-on-before-compile-require-program-cache-key": 21,
+  "three-require-animation-mixer-cleanup": 12,
+  "three-require-animation-mixer-update": 2,
   "three-require-camera-aspect-on-resize": 1,
   "three-require-controls-cleanup": 7,
   "three-require-controls-update": 1,
+  "three-require-data-texture-update": 4,
   "three-require-transparent-for-opacity": 2,
   "three-require-lighting-for-pbr": 1,
   "three-require-owned-texture-cleanup": 4,
@@ -4343,6 +4361,171 @@ import { MeshStandardMaterial } from "three";
     if (mode === "warm") shader.fragmentShader += " ";
   };
   second.customProgramCacheKey = () => mode;
+}
+`,
+  );
+  fs.writeFileSync(
+    threeAnimationMixerCleanupFixturePath,
+    `/* oxlint-disable react-doctor/preact-no-react-hooks-import, react-doctor/react-compiler-no-manual-memoization, react-doctor/rerender-lazy-ref-init, react-doctor/three-no-object-construction-in-render, react-hooks/exhaustive-deps */
+import { useEffect, useMemo, useRef } from "react";
+import { AnimationMixer } from "three";
+
+export const MemoMixer = ({ root, clip }) => {
+  const mixer = useMemo(() => new AnimationMixer(root), [root]);
+  mixer.clipAction(clip);
+  return null;
+};
+
+export const RefMixer = ({ root, clip }) => {
+  const mixerRef = useRef(new AnimationMixer(root));
+  mixerRef.current.clipAction(clip);
+  return null;
+};
+
+export const MissingUncache = ({ root, clip }) => {
+  const mixer = useMemo(() => new AnimationMixer(root), [root]);
+  mixer.clipAction(clip);
+  useEffect(() => () => mixer.stopAllAction(), [mixer]);
+  return null;
+};
+
+export const Reversed = ({ root, clip }) => {
+  const mixer = useMemo(() => new AnimationMixer(root), [root]);
+  mixer.clipAction(clip);
+  useEffect(() => () => {
+    mixer.uncacheRoot(root);
+    mixer.stopAllAction();
+  }, [mixer, root]);
+  return null;
+};
+
+export const Conditional = ({ root, clip, enabled }) => {
+  const mixer = useMemo(() => new AnimationMixer(root), [root]);
+  mixer.clipAction(clip);
+  useEffect(() => () => {
+    if (enabled) mixer.stopAllAction();
+    mixer.uncacheRoot(root);
+  }, [enabled, mixer, root]);
+  return null;
+};
+
+export const WrongRoot = ({ root, otherRoot, clip }) => {
+  const mixer = useMemo(() => new AnimationMixer(root), [root]);
+  mixer.clipAction(clip);
+  useEffect(() => () => {
+    mixer.stopAllAction();
+    mixer.uncacheRoot(otherRoot);
+  }, [mixer, otherRoot]);
+  return null;
+};
+
+export const ReversedHelpers = ({ root, clip }) => {
+  const mixer = useMemo(() => new AnimationMixer(root), [root]);
+  mixer.clipAction(clip);
+  useEffect(() => () => {
+    const stopMixer = () => mixer.stopAllAction();
+    const uncacheMixer = () => mixer.uncacheRoot(root);
+    uncacheMixer();
+    stopMixer();
+  }, [mixer, root]);
+  return null;
+};
+
+export const MissingDependencies = ({ root, clip }) => {
+  const mixer = useMemo(() => new AnimationMixer(root), [root]);
+  mixer.clipAction(clip);
+  useEffect(() => () => {
+    mixer.stopAllAction();
+    mixer.uncacheRoot(root);
+  }, []);
+  return null;
+};
+
+export const useReturnedCleanup = (root, clip) => {
+  const mixer = useMemo(() => new AnimationMixer(root), [root]);
+  mixer.clipAction(clip);
+  return () => {
+    mixer.stopAllAction();
+    mixer.uncacheRoot(root);
+  };
+};
+
+export const AliasedMixer = ({ root, clip }) => {
+  const mixer = useMemo(() => new AnimationMixer(root), [root]);
+  const mixerAlias = mixer;
+  mixerAlias.clipAction(clip);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    threeAnimationMixerUpdateFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { AnimationMixer, WebGLRenderer } from "three";
+import { advanceMixer } from "./animation";
+
+{
+  const renderer = new WebGLRenderer();
+  const mixer = new AnimationMixer(root);
+  mixer.clipAction(clip).play();
+  renderer.setAnimationLoop(() => renderer.render(scene, camera));
+}
+{
+  const renderer = new WebGLRenderer();
+  const direct = new AnimationMixer(root);
+  direct.clipAction(clip).play();
+  const delegated = new AnimationMixer(otherRoot);
+  delegated.clipAction(otherClip).play();
+  renderer.setAnimationLoop((time) => {
+    direct.update(clock.getDelta());
+    advanceMixer(delegated, time);
+    renderer.render(scene, camera);
+  });
+  const external = new AnimationMixer(thirdRoot);
+  external.clipAction(thirdClip).play();
+}
+`,
+  );
+  fs.writeFileSync(
+    threeDataTextureUpdateFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import * as THREE from "three";
+import { DataArrayTexture, DataTexture, WebGLRenderer } from "three";
+
+{
+  const texture = new DataTexture(new Uint8Array(16), 2, 2);
+  const renderer = new WebGLRenderer();
+  renderer.setAnimationLoop(() => {
+    texture.image.data[0] = 255;
+    renderer.render(scene, camera);
+  });
+}
+{
+  const texture = new THREE.DataTexture(new Uint8Array(16), 2, 2);
+  const pixels = texture.image.data;
+  const renderer = new THREE.WebGLRenderer();
+  renderer.setAnimationLoop(() => {
+    pixels.fill(0);
+    renderer.render(scene, camera);
+  });
+}
+{
+  const texture = new DataArrayTexture(new Uint8Array(32), 2, 2, 2);
+  const renderer = new WebGLRenderer();
+  renderer.setAnimationLoop(() => {
+    texture.image = nextImage;
+    renderer.render(scene, camera);
+  });
+}
+{
+  const first = new DataTexture(new Uint8Array(16), 2, 2);
+  const second = new DataTexture(new Uint8Array(16), 2, 2);
+  const renderer = new WebGLRenderer();
+  renderer.setAnimationLoop(() => {
+    first.image.data.set(nextPixels);
+    second.needsUpdate = true;
+    renderer.render(scene, camera);
+  });
 }
 `,
   );

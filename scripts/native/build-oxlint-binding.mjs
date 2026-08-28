@@ -458,6 +458,14 @@ impl Rule for ${delegatedRule.struct} {
         ["r3f_analyze_owned_root_lifecycle", "statement_always_exits"],
       ],
       [
+        "three-require-animation-mixer-cleanup",
+        [
+          "r3f_analyze_owned_root_lifecycle",
+          "r3f_analyzed_use_three_state_property_matches",
+          "statement_always_exits",
+        ],
+      ],
+      [
         "three-require-owned-texture-cleanup",
         [
           "r3f_analyze_owned_root_lifecycle",

@@ -319,6 +319,21 @@ const threeDataTextureUpdateFixturePath = path.join(
   "app",
   "three-data-texture-update.ts",
 );
+const threeInstancedBufferUpdateFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-instanced-buffer-update.ts",
+);
+const threeKtx2DetectSupportFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-ktx2-detect-support.ts",
+);
+const threeLitMaterialNormalsFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-lit-material-normals.ts",
+);
 const threeControlsCleanupFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -838,6 +853,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-require-controls-cleanup": 7,
   "three-require-controls-update": 1,
   "three-require-data-texture-update": 4,
+  "three-require-instanced-buffer-update": 11,
+  "three-require-ktx2-detect-support": 2,
+  "three-require-lit-material-normals": 3,
   "three-require-transparent-for-opacity": 2,
   "three-require-lighting-for-pbr": 1,
   "three-require-owned-texture-cleanup": 4,
@@ -4526,6 +4544,142 @@ import { DataArrayTexture, DataTexture, WebGLRenderer } from "three";
     second.needsUpdate = true;
     renderer.render(scene, camera);
   });
+}
+`,
+  );
+  fs.writeFileSync(
+    threeInstancedBufferUpdateFixturePath,
+    `import * as THREE from "three";
+import { InstancedMesh } from "three";
+
+{
+  const mesh = new InstancedMesh(geometry, material, count);
+  const update = () => mesh.setMatrixAt(0, matrix);
+}
+{
+  const mesh = new THREE.InstancedMesh(geometry, material, count);
+  const update = () => {
+    mesh.setColorAt(0, color);
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+}
+{
+  const mesh = new InstancedMesh(geometry, material, count);
+  const update = () => {
+    mesh.setMatrixAt(0, matrix);
+    if (shouldUpload) mesh.instanceMatrix.needsUpdate = true;
+  };
+}
+{
+  const mesh = new InstancedMesh(geometry, material, count);
+  const update = () => mesh.setMorphAt(0, sourceMesh);
+}
+{
+  const mesh = new InstancedMesh(geometry, material, count);
+  const update = () => {
+    let dirty = false;
+    for (const entry of entries) {
+      mesh.setColorAt(entry.index, entry.color);
+      if (entry.skipUpload) continue;
+      dirty = true;
+    }
+    if (dirty && mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  };
+}
+{
+  const changed = new InstancedMesh(geometry, material, count);
+  const other = new InstancedMesh(geometry, material, count);
+  const update = () => {
+    changed.setMatrixAt(0, matrix);
+    for (const mesh of [other]) mesh.instanceMatrix.needsUpdate = true;
+  };
+}
+{
+  const createMesh = () => {
+    const mesh = new InstancedMesh(geometry, material, count);
+    scene.add(mesh);
+    mesh.setMatrixAt(0, matrix);
+    return mesh;
+  };
+}
+{
+  const mesh = new InstancedMesh(geometry, material, count);
+  scene.add(mesh);
+  const setSlot = (index, matrix) => mesh.setMatrixAt(index, matrix);
+  const covered = () => {
+    setSlot(0, first);
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+  const uncovered = () => setSlot(1, second);
+}
+{
+  class SceneBuilder {
+    create() {
+      const mesh = new InstancedMesh(geometry, material, count);
+      this.publish(mesh);
+      mesh.setMatrixAt(0, matrix);
+      return mesh;
+    }
+    publish(mesh) {
+      registry.mesh = mesh;
+    }
+  }
+}
+{
+  const createMesh = (registry) => {
+    const mesh = new InstancedMesh(geometry, material, count);
+    registry.add(mesh);
+    mesh.setColorAt(0, color);
+    return mesh;
+  };
+}
+`,
+  );
+  fs.writeFileSync(
+    threeKtx2DetectSupportFixturePath,
+    `import { KTX2Loader as Loader } from "three/addons/loaders/KTX2Loader.js";
+
+const first = new Loader();
+first.load("map.ktx2", onLoad, undefined, onError);
+const second = new Loader();
+second.loadAsync("map.ktx2");
+second.detectSupport(renderer);
+`,
+  );
+  fs.writeFileSync(
+    threeLitMaterialNormalsFixturePath,
+    `import * as THREE from "three";
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Mesh,
+  MeshStandardMaterial,
+  Texture,
+} from "three";
+
+{
+  const geometry = new BufferGeometry();
+  geometry.setAttribute("position", new BufferAttribute(positions, 3));
+  new Mesh(geometry, new MeshStandardMaterial({ normalMap: new Texture() }));
+}
+{
+  const source = new THREE.BufferGeometry();
+  const geometry = source;
+  geometry.setIndex(indices);
+  geometry.setAttribute(\`position\`, new THREE.Float32BufferAttribute(positions, 3));
+  const material = new THREE.MeshPhongMaterial();
+  material.normalMap = new THREE.Texture();
+  new THREE.Mesh(geometry, material);
+}
+{
+  const geometry = new BufferGeometry();
+  geometry.setAttribute("position", new BufferAttribute(positions, 3));
+  const mesh = new Mesh(
+    geometry,
+    new MeshStandardMaterial({ normalMap: new Texture() }),
+  );
+  mesh.visible = false;
+  mesh.visible = true;
 }
 `,
   );

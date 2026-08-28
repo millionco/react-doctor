@@ -739,6 +739,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "r3f-no-inline-primitive-object",
   "r3f-no-inline-resource-prop",
   "r3f-no-manual-canvas-resize",
+  "r3f-require-animation-mixer-update",
   "react-router-csp-nonce-consistency",
   "react-router-descendant-routes-require-splat",
   "react-router-guard-aborted-handle-error",

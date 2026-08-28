@@ -682,17 +682,60 @@ fn exact_local_function_id<'a>(
     visited_symbol_ids: &mut Vec<oxc_semantic::SymbolId>,
     resolution_cache: &mut LocalFunctionResolutionCache,
 ) -> Option<oxc_semantic::NodeId> {
+    exact_local_function_id_with_generator_mode(
+        expression,
+        ctx,
+        visited_symbol_ids,
+        resolution_cache,
+        false,
+    )
+}
+
+fn exact_local_function_id_including_generators<'a>(
+    expression: &oxc_ast::ast::Expression<'a>,
+    ctx: &crate::context::LintContext<'a>,
+    visited_symbol_ids: &mut Vec<oxc_semantic::SymbolId>,
+    resolution_cache: &mut LocalFunctionResolutionCache,
+) -> Option<oxc_semantic::NodeId> {
+    exact_local_function_id_with_generator_mode(
+        expression,
+        ctx,
+        visited_symbol_ids,
+        resolution_cache,
+        true,
+    )
+}
+
+fn exact_local_function_id_with_generator_mode<'a>(
+    expression: &oxc_ast::ast::Expression<'a>,
+    ctx: &crate::context::LintContext<'a>,
+    visited_symbol_ids: &mut Vec<oxc_semantic::SymbolId>,
+    resolution_cache: &mut LocalFunctionResolutionCache,
+    include_generators: bool,
+) -> Option<oxc_semantic::NodeId> {
     let expression = expression.get_inner_expression();
     if let Some(member) = expression.as_member_expression()
         && matches!(member.static_property_name(), Some("call" | "apply"))
     {
-        return exact_local_function_id(member.object(), ctx, visited_symbol_ids, resolution_cache);
+        return exact_local_function_id_with_generator_mode(
+            member.object(),
+            ctx,
+            visited_symbol_ids,
+            resolution_cache,
+            include_generators,
+        );
     }
     if let oxc_ast::ast::Expression::CallExpression(call) = expression
         && let Some(member) = call.callee.as_member_expression()
         && member.static_property_name() == Some("bind")
     {
-        return exact_local_function_id(member.object(), ctx, visited_symbol_ids, resolution_cache);
+        return exact_local_function_id_with_generator_mode(
+            member.object(),
+            ctx,
+            visited_symbol_ids,
+            resolution_cache,
+            include_generators,
+        );
     }
     if let Some(member) = expression.as_member_expression() {
         return exact_member_function_id(
@@ -701,11 +744,14 @@ fn exact_local_function_id<'a>(
             ctx,
             visited_symbol_ids,
             resolution_cache,
+            include_generators,
         );
     }
     match expression {
         oxc_ast::ast::Expression::ArrowFunctionExpression(function) => Some(function.node_id.get()),
-        oxc_ast::ast::Expression::FunctionExpression(function) if !function.generator => {
+        oxc_ast::ast::Expression::FunctionExpression(function)
+            if include_generators || !function.generator =>
+        {
             Some(function.node_id.get())
         }
         oxc_ast::ast::Expression::Identifier(identifier) => {
@@ -717,7 +763,7 @@ fn exact_local_function_id<'a>(
             let declaration = ctx.symbol_declaration(symbol_id);
             match declaration.kind() {
                 oxc_ast::AstKind::Function(function)
-                    if !function.generator
+                    if (include_generators || !function.generator)
                         && !cached_symbol_has_write(symbol_id, ctx, resolution_cache) =>
                 {
                     Some(declaration.id())
@@ -732,11 +778,12 @@ fn exact_local_function_id<'a>(
                         .get_binding_identifier()
                         .is_some_and(|binding| binding.symbol_id() == symbol_id) =>
                 {
-                    exact_local_function_id(
+                    exact_local_function_id_with_generator_mode(
                         declarator.init.as_ref()?,
                         ctx,
                         visited_symbol_ids,
                         resolution_cache,
+                        include_generators,
                     )
                 }
                 _ => None,
@@ -752,6 +799,7 @@ fn exact_member_function_id<'a>(
     ctx: &crate::context::LintContext<'a>,
     visited_symbol_ids: &mut Vec<oxc_semantic::SymbolId>,
     resolution_cache: &mut LocalFunctionResolutionCache,
+    include_generators: bool,
 ) -> Option<oxc_semantic::NodeId> {
     let property_name = member.static_property_name()?;
     let receiver = member.object().get_inner_expression();
@@ -763,6 +811,7 @@ fn exact_member_function_id<'a>(
                 ctx,
                 visited_symbol_ids,
                 resolution_cache,
+                include_generators,
             );
         }
         oxc_ast::ast::Expression::ClassExpression(class) => {
@@ -772,6 +821,7 @@ fn exact_member_function_id<'a>(
                 ctx,
                 visited_symbol_ids,
                 resolution_cache,
+                include_generators,
             );
         }
         _ => {}
@@ -802,6 +852,7 @@ fn exact_member_function_id<'a>(
                             ctx,
                             &mut visited_symbol_ids.clone(),
                             resolution_cache,
+                            include_generators,
                         )
                     }
                     oxc_ast::ast::Expression::ClassExpression(class) => {
@@ -811,6 +862,7 @@ fn exact_member_function_id<'a>(
                             ctx,
                             &mut visited_symbol_ids.clone(),
                             resolution_cache,
+                            include_generators,
                         )
                     }
                     _ => None,
@@ -823,6 +875,7 @@ fn exact_member_function_id<'a>(
             ctx,
             &mut visited_symbol_ids.clone(),
             resolution_cache,
+            include_generators,
         ),
         _ => None,
     };
@@ -834,6 +887,7 @@ fn exact_member_function_id<'a>(
         ctx,
         visited_symbol_ids,
         resolution_cache,
+        include_generators,
     )
 }
 
@@ -843,6 +897,7 @@ fn exact_object_property_function_id<'a>(
     ctx: &crate::context::LintContext<'a>,
     visited_symbol_ids: &mut Vec<oxc_semantic::SymbolId>,
     resolution_cache: &mut LocalFunctionResolutionCache,
+    include_generators: bool,
 ) -> Option<oxc_semantic::NodeId> {
     for property in object.properties.iter().rev() {
         let oxc_ast::ast::ObjectPropertyKind::ObjectProperty(property) = property else {
@@ -855,7 +910,13 @@ fn exact_object_property_function_id<'a>(
         if property.kind != oxc_ast::ast::PropertyKind::Init {
             return None;
         }
-        return exact_local_function_id(&property.value, ctx, visited_symbol_ids, resolution_cache);
+        return exact_local_function_id_with_generator_mode(
+            &property.value,
+            ctx,
+            visited_symbol_ids,
+            resolution_cache,
+            include_generators,
+        );
     }
     None
 }
@@ -866,6 +927,7 @@ fn exact_class_property_function_id<'a>(
     ctx: &crate::context::LintContext<'a>,
     visited_symbol_ids: &mut Vec<oxc_semantic::SymbolId>,
     resolution_cache: &mut LocalFunctionResolutionCache,
+    include_generators: bool,
 ) -> Option<oxc_semantic::NodeId> {
     for element in class.body.body.iter().rev() {
         match element {
@@ -883,11 +945,12 @@ fn exact_class_property_function_id<'a>(
                 if candidate_name != property_name {
                     continue;
                 }
-                return exact_local_function_id(
+                return exact_local_function_id_with_generator_mode(
                     property.value.as_ref()?,
                     ctx,
                     visited_symbol_ids,
                     resolution_cache,
+                    include_generators,
                 );
             }
             _ => {}
@@ -904,6 +967,7 @@ fn resolve_exact_assigned_member_function(
     ctx: &crate::context::LintContext<'_>,
     visited_symbol_ids: &mut Vec<oxc_semantic::SymbolId>,
     resolution_cache: &mut LocalFunctionResolutionCache,
+    include_generators: bool,
 ) -> Option<oxc_semantic::NodeId> {
     let member_node = ctx.nodes().get_node(member_node_id);
     let call_boundary = execution_boundary(member_node, ctx);
@@ -946,11 +1010,12 @@ fn resolve_exact_assigned_member_function(
                 _ => None,
             };
             let assigned_function_id = assigned_expression.and_then(|expression| {
-                exact_local_function_id(
+                exact_local_function_id_with_generator_mode(
                     expression,
                     ctx,
                     &mut visited_symbol_ids.clone(),
                     resolution_cache,
+                    include_generators,
                 )
             });
             let is_definite = assigned_property_name.as_deref() == Some(property_name)

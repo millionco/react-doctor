@@ -7,7 +7,9 @@ import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const requireFromRepository = createRequire(path.join(repositoryRoot, "package.json"));
+const requireFromCore = createRequire(
+  path.join(repositoryRoot, "packages", "core", "package.json"),
+);
 const nativeRules = JSON.parse(
   fs.readFileSync(path.join(repositoryRoot, "native", "oxlint", "upstream.json"), "utf8"),
 ).nativeRules;
@@ -47,13 +49,13 @@ if (!nativeBindingPath)
 if (!fs.existsSync(nativeBindingPath))
   throw new Error(`native binding not found: ${nativeBindingPath}`);
 
-const oxlintMainPath = requireFromRepository.resolve("oxlint");
+const oxlintMainPath = requireFromCore.resolve("oxlint");
 const oxlintBinaryPath = path.join(
   path.resolve(path.dirname(oxlintMainPath), ".."),
   "bin",
   "oxlint",
 );
-const pluginPath = requireFromRepository.resolve("oxlint-plugin-react-doctor");
+const pluginPath = requireFromCore.resolve("oxlint-plugin-react-doctor");
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-native-parity-"));
 const fixtureDirectory = path.join(temporaryDirectory, "production-fixtures");
 const fixturePath = path.join(fixtureDirectory, "app", "error.tsx");
@@ -119,6 +121,7 @@ const r3fInlinePrimitiveFixturePath = path.join(
 );
 const r3fInlineResourceFixturePath = path.join(fixtureDirectory, "app", "r3f-inline-resource.tsx");
 const r3fManualResizeFixturePath = path.join(fixtureDirectory, "app", "r3f-manual-resize.tsx");
+const r3fAnimationMixerFixturePath = path.join(fixtureDirectory, "app", "r3f-animation-mixer.tsx");
 const r3fShadowsFixturePath = path.join(fixtureDirectory, "app", "r3f-shadows.tsx");
 const r3fTextureRepeatFixturePath = path.join(fixtureDirectory, "app", "r3f-texture-repeat.tsx");
 const safeGlobalErrorFixturePath = path.join(fixtureDirectory, "app", "safe", "global-error.tsx");
@@ -381,6 +384,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-inline-primitive-object": 1,
   "r3f-no-inline-resource-prop": 1,
   "r3f-no-manual-canvas-resize": 1,
+  "r3f-require-animation-mixer-update": 2,
   "react-router-csp-nonce-consistency": 1,
   "react-router-descendant-routes-require-splat": 1,
   "react-router-guard-aborted-handle-error": 0,
@@ -2791,6 +2795,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     r3fManualResizeFixturePath,
     `import { useThree } from "@react-three/fiber";\nexport const ResizeScene = () => { const gl = useThree((state) => state.gl); window.addEventListener("resize", () => gl.setSize(1, 1)); return null; };\n`,
+  );
+  fs.writeFileSync(
+    r3fAnimationMixerFixturePath,
+    `import { useFrame } from "@react-three/fiber";\nimport { AnimationMixer } from "three";\nexport const MixerScene = ({ model, clip }) => { const mixer = new AnimationMixer(model); mixer.clipAction(clip).play(); useFrame(() => {}); return null; };\nexport const GeneratorMixerScene = ({ model, clip }) => { const generatorMixer = new AnimationMixer(model); generatorMixer.clipAction(clip).play(); useFrame(function* () { generatorMixer.update(1); }); return null; };\n`,
   );
   fs.writeFileSync(
     r3fShadowsFixturePath,

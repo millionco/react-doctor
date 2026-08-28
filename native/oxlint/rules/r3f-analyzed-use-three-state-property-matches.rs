@@ -28,7 +28,7 @@ impl Default for R3fAnalyzedAssignedExpressionCache<'_> {
 }
 
 fn r3f_analyzed_use_three_state_property_matches<'a>(
-    expression: &'a oxc_ast::ast::Expression<'a>,
+    expression: &oxc_ast::ast::Expression<'a>,
     property_name: &str,
     analysis: &PossibleStaticPropertyWriteAnalysis,
     node_index: &LocalCallbackNearestFunctionNodeIndex,
@@ -49,7 +49,7 @@ fn r3f_analyzed_use_three_state_property_matches<'a>(
 }
 
 fn r3f_analyzed_use_three_state_property_matches_inner<'a>(
-    expression: &'a R3fAnalyzedExpression<'a>,
+    expression: &R3fAnalyzedExpression<'a>,
     property_name: &str,
     analysis: &PossibleStaticPropertyWriteAnalysis,
     node_index: &LocalCallbackNearestFunctionNodeIndex,
@@ -207,7 +207,7 @@ fn r3f_analyzed_resolves_to_whole_use_three_state<'a>(
 }
 
 fn r3f_analyzed_use_three_selector_returns_property<'a>(
-    call_expression: &'a oxc_ast::ast::CallExpression<'a>,
+    call_expression: &oxc_ast::ast::CallExpression<'a>,
     property_name: &str,
     analysis: &PossibleStaticPropertyWriteAnalysis,
     node_index: &LocalCallbackNearestFunctionNodeIndex,

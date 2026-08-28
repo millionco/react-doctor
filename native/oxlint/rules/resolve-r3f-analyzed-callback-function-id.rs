@@ -7,7 +7,7 @@ const R3F_ANALYZED_CALLBACK_REACT_RUNTIME_MODULES: [&str; 5] = [
 ];
 
 fn resolve_r3f_analyzed_callback_function_id<'a>(
-    expression: &'a oxc_ast::ast::Expression<'a>,
+    expression: &oxc_ast::ast::Expression<'a>,
     analysis: &PossibleStaticPropertyWriteAnalysis,
     ctx: &crate::context::LintContext<'a>,
     resolution_cache: &mut LocalFunctionResolutionCache,
@@ -17,11 +17,15 @@ fn resolve_r3f_analyzed_callback_function_id<'a>(
         ctx,
         &mut Vec::new(),
         resolution_cache,
-    )
-    {
+    ) {
         return Some(function_id);
     }
-    let wrapper_call = r3f_analyzed_callback_wrapper_call(expression, ctx, &mut Vec::new())?;
+    let wrapper_call_id = r3f_analyzed_callback_wrapper_call_id(expression, ctx, &mut Vec::new())?;
+    let oxc_ast::AstKind::CallExpression(wrapper_call) =
+        ctx.nodes().get_node(wrapper_call_id).kind()
+    else {
+        return None;
+    };
     if !r3f_analyzed_react_use_callback_matches(wrapper_call, analysis, ctx) {
         return None;
     }
@@ -33,14 +37,14 @@ fn resolve_r3f_analyzed_callback_function_id<'a>(
     )
 }
 
-fn r3f_analyzed_callback_wrapper_call<'a>(
-    expression: &'a oxc_ast::ast::Expression<'a>,
+fn r3f_analyzed_callback_wrapper_call_id<'a>(
+    expression: &oxc_ast::ast::Expression<'a>,
     ctx: &crate::context::LintContext<'a>,
     visited_symbol_ids: &mut Vec<oxc_semantic::SymbolId>,
-) -> Option<&'a oxc_ast::ast::CallExpression<'a>> {
+) -> Option<oxc_semantic::NodeId> {
     let expression = expression.get_inner_expression();
     if let oxc_ast::ast::Expression::CallExpression(call_expression) = expression {
-        return Some(call_expression);
+        return Some(call_expression.node_id.get());
     }
     let oxc_ast::ast::Expression::Identifier(identifier) = expression else {
         return None;
@@ -68,7 +72,7 @@ fn r3f_analyzed_callback_wrapper_call<'a>(
     {
         return None;
     }
-    r3f_analyzed_callback_wrapper_call(declarator.init.as_ref()?, ctx, visited_symbol_ids)
+    r3f_analyzed_callback_wrapper_call_id(declarator.init.as_ref()?, ctx, visited_symbol_ids)
 }
 
 fn r3f_analyzed_react_use_callback_matches<'a>(

@@ -179,6 +179,26 @@ const r3fDynamicBufferUsageFixturePath = path.join(
   "app",
   "r3f-dynamic-buffer-usage.tsx",
 );
+const r3fOwnedTextureCleanupFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-owned-texture-cleanup.tsx",
+);
+const r3fPositionBufferUpdateFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-position-buffer-update.tsx",
+);
+const r3fProjectionMatrixUpdateFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-projection-matrix-update.tsx",
+);
+const r3fRenderTargetResetFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-render-target-reset.tsx",
+);
 const r3fRootUnmountFixturePath = path.join(fixtureDirectory, "app", "r3f-root-unmount.tsx");
 const r3fAnimationMixerFixturePath = path.join(fixtureDirectory, "app", "r3f-animation-mixer.tsx");
 const r3fFrameDeltaFixturePath = path.join(fixtureDirectory, "app", "r3f-frame-delta.tsx");
@@ -473,7 +493,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-sync-readback-in-use-frame": 8,
   "r3f-no-unstable-args": 6,
   "r3f-prefer-gpu-instanced-animation": 3,
-  "r3f-prefer-gpu-position-animation": 4,
+  "r3f-prefer-gpu-position-animation": 6,
   "r3f-prefer-instanced-mesh": 2,
   "r3f-prefer-use-loader": 3,
   "r3f-require-animation-mixer-update": 2,
@@ -483,6 +503,10 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-require-global-effect-cleanup": 6,
   "r3f-require-instanced-buffer-update": 4,
   "r3f-require-lit-material-normals": 2,
+  "r3f-require-owned-texture-cleanup": 1,
+  "r3f-require-position-buffer-update": 7,
+  "r3f-require-projection-matrix-update": 1,
+  "r3f-require-render-target-reset": 2,
   "r3f-require-root-unmount": 8,
   "r3f-require-uv-for-texture-map": 4,
   "react-router-csp-nonce-consistency": 1,
@@ -591,7 +615,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-ctrl-c-handler-requires-exit-option": 1,
   "ink-no-live-hooks-in-render-to-string": 1,
   "ink-no-repeated-render": 4,
-  "hook-use-state": 26,
+  "hook-use-state": 28,
   "rendering-svg-precision": 1,
   "no-document-start-view-transition": 1,
   "no-permanent-will-change": 2,
@@ -3380,6 +3404,89 @@ export const DynamicBufferScene = () => {
     <bufferAttribute ref={staticBuffer} />
     <bufferAttribute ref={dynamicBuffer} usage={DynamicDrawUsage} />
   </>;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fOwnedTextureCleanupFixturePath,
+    `import React from "react";
+import { CanvasTexture } from "three";
+
+export const MissingTextureCleanup = ({ canvas }) => {
+  const [texture] = React.useState(() => new CanvasTexture(canvas));
+  return <meshStandardMaterial map={texture} />;
+};
+export const CompleteTextureCleanup = ({ canvas }) => {
+  const [texture] = React.useState(() => new CanvasTexture(canvas));
+  React.useEffect(() => () => texture.dispose(), [texture]);
+  return <meshStandardMaterial map={texture} />;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fPositionBufferUpdateFixturePath,
+    `import { useFrame } from "@react-three/fiber";
+
+export const MissingPositionUpload = ({ geometry }) => {
+  useFrame(() => {
+    for (let index = 0; index < 10; index += 1) geometry.attributes.position.setX(index, index);
+  });
+  return null;
+};
+export const CompletePositionUpload = ({ geometry }) => {
+  useFrame(() => {
+    for (let index = 0; index < 10; index += 1) geometry.attributes.position.setX(index, index);
+    geometry.attributes.position.needsUpdate = true;
+  });
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fProjectionMatrixUpdateFixturePath,
+    `import { useFrame } from "@react-three/fiber";
+
+export const MissingProjectionRefresh = () => {
+  useFrame(({ camera }) => {
+    camera.aspect = 2;
+  });
+  return null;
+};
+export const CompleteProjectionRefresh = () => {
+  useFrame(({ camera }) => {
+    camera.aspect = 2;
+    camera.updateProjectionMatrix();
+  });
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fRenderTargetResetFixturePath,
+    `import { useFrame } from "@react-three/fiber";
+import { WebGLRenderTarget } from "three";
+
+const target = new WebGLRenderTarget(256, 256);
+export const MissingTargetReset = ({ scene, camera }) => {
+  useFrame(({ gl }) => {
+    gl.setRenderTarget(target);
+    gl.render(scene, camera);
+  });
+  return null;
+};
+export const ConditionalTargetReset = () => {
+  useFrame(({ gl }) => {
+    gl.setRenderTarget(target);
+    if (shouldRestore) gl.setRenderTarget(null);
+  });
+  return null;
+};
+export const CompleteTargetReset = () => {
+  useFrame(({ gl }) => {
+    gl.setRenderTarget(target);
+    gl.setRenderTarget(null);
+  });
+  return null;
 };
 `,
   );

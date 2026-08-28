@@ -429,6 +429,23 @@ impl Rule for ${delegatedRule.struct} {
       ["r3f-require-data-texture-update", ["jsx_attribute_expression"]],
       ["r3f-require-dynamic-buffer-usage", ["jsx_attribute_expression"]],
       ["r3f-require-instanced-buffer-update", ["jsx_attribute_expression"]],
+      [
+        "r3f-require-owned-texture-cleanup",
+        [
+          "r3f_analyze_owned_root_lifecycle",
+          "r3f_analyzed_use_three_state_property_matches",
+          "statement_always_exits",
+        ],
+      ],
+      ["r3f-require-position-buffer-update", ["jsx_attribute_expression"]],
+      [
+        "r3f-require-projection-matrix-update",
+        [
+          "jsx_attribute_expression",
+          "r3f_analyzed_use_three_state_property_matches",
+          "statement_always_exits",
+        ],
+      ],
       ["r3f-require-root-unmount", ["statement_always_exits"]],
     ]);
     for (const nativeRuleId of upstream.nativeRules) {

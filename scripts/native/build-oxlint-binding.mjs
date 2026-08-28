@@ -520,6 +520,15 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       [
+        "three-require-worker-loader-cleanup",
+        [
+          "r3f_analyze_owned_root_lifecycle",
+          "r3f_owned_root_access_has_non_allocation_identity_write",
+          "statement_always_exits",
+        ],
+      ],
+      ["three-require-uv-for-texture-map", ["get_static_string_expression"]],
+      [
         "three-require-render-target-cleanup",
         ["r3f_analyze_owned_root_lifecycle", "statement_always_exits"],
       ],

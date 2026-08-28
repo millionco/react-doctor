@@ -364,6 +364,32 @@ const threeRendererCleanupFixturePath = path.join(
   "app",
   "three-renderer-cleanup.tsx",
 );
+const threeDynamicBufferUsageFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-dynamic-buffer-usage.ts",
+);
+const threeEnvironmentForMetalFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-environment-for-metal.ts",
+);
+const threeFrameDeltaFixturePath = path.join(fixtureDirectory, "app", "three-frame-delta.ts");
+const threeTextureUpdateAfterWrappingChangeFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-texture-update-after-wrapping-change.ts",
+);
+const threeUvForTextureMapFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-uv-for-texture-map.ts",
+);
+const threeWorkerLoaderCleanupFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-worker-loader-cleanup.tsx",
+);
 const threeControlsCleanupFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -883,6 +909,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-require-controls-cleanup": 7,
   "three-require-controls-update": 1,
   "three-require-data-texture-update": 4,
+  "three-require-dynamic-buffer-usage": 3,
+  "three-require-environment-for-metal": 2,
+  "three-require-frame-delta": 4,
   "three-require-instanced-buffer-update": 11,
   "three-require-ktx2-detect-support": 2,
   "three-require-lit-material-normals": 3,
@@ -897,11 +926,14 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-require-owned-texture-cleanup": 4,
   "three-require-position-buffer-update": 1,
   "three-require-projection-matrix-update": 9,
-  "three-require-render-in-animation-loop": 1,
+  "three-require-render-in-animation-loop": 4,
   "three-require-render-target-cleanup": 1,
   "three-require-renderer-dom-attachment": 3,
   "three-require-renderer-size": 3,
   "three-require-shadows-enabled": 1,
+  "three-require-texture-update-after-wrapping-change": 1,
+  "three-require-uv-for-texture-map": 7,
+  "three-require-worker-loader-cleanup": 2,
   "three-webgpu-no-legacy-material-api": 3,
   "three-gpu-computation-handle-init-error": 4,
   "three-gpu-computation-valid-variable-name": 6,
@@ -4948,6 +4980,130 @@ export const DuplicateEffect = ({ canvas, enabled }) => {
   if (enabled) useEffect(setup, [canvas]);
   useEffect(setup, [canvas]);
   return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    threeDynamicBufferUsageFixturePath,
+    `/* oxlint-disable react-doctor/three-require-render-in-animation-loop, react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { BufferAttribute, DynamicDrawUsage, StaticDrawUsage, WebGLRenderer } from "three";
+
+const firstRenderer = new WebGLRenderer();
+const firstAttribute = new BufferAttribute(new Float32Array(9), 3);
+firstRenderer.setAnimationLoop(() => {
+  firstAttribute.needsUpdate = true;
+});
+
+const secondRenderer = new WebGLRenderer();
+const secondAttribute = new BufferAttribute(new Float32Array(9), 3);
+secondAttribute.setUsage(StaticDrawUsage);
+secondRenderer.setAnimationLoop(() => {
+  secondAttribute.needsUpdate = true;
+});
+
+const thirdRenderer = new WebGLRenderer();
+const thirdAttribute = new BufferAttribute(new Float32Array(9), 3);
+thirdRenderer.setAnimationLoop(() => {
+  thirdAttribute.needsUpdate = true;
+});
+thirdAttribute.setUsage(DynamicDrawUsage);
+`,
+  );
+  fs.writeFileSync(
+    threeEnvironmentForMetalFixturePath,
+    `/* oxlint-disable react-doctor/three-require-lighting-for-pbr, react-doctor/three-require-lit-material-normals, react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { DirectionalLight, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, PerspectiveCamera, Scene, WebGLRenderer } from "three";
+
+const firstScene = new Scene();
+firstScene.add(new Mesh(geometry, new MeshStandardMaterial({ metalness: 1 })));
+firstScene.add(new DirectionalLight());
+new WebGLRenderer().render(firstScene, new PerspectiveCamera());
+
+const secondScene = new Scene();
+const secondMaterial = new MeshPhysicalMaterial();
+secondMaterial.metalness = 0.75;
+secondScene.add(new Mesh(geometry, secondMaterial));
+const secondRenderer = new WebGLRenderer();
+secondRenderer.render(secondScene, camera);
+`,
+  );
+  fs.writeFileSync(
+    threeFrameDeltaFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { MathUtils, Mesh, WebGLRenderer } from "three";
+
+const firstRenderer = new WebGLRenderer();
+const firstMesh = new Mesh();
+firstRenderer.setAnimationLoop(() => { firstMesh.rotation.y += 0.01; });
+
+const secondRenderer = new WebGLRenderer();
+const secondMesh = new Mesh();
+secondRenderer.setAnimationLoop(() => { secondMesh.position.x++; });
+
+const thirdRenderer = new WebGLRenderer();
+const thirdMesh = new Mesh();
+const targetMesh = new Mesh();
+thirdRenderer.setAnimationLoop(() => { thirdMesh.position.lerp(targetMesh.position, 0.1); });
+
+const fourthRenderer = new WebGLRenderer();
+fourthRenderer.setAnimationLoop(() => { opacity = MathUtils.lerp(opacity, targetOpacity, 0.1); });
+`,
+  );
+  fs.writeFileSync(
+    threeTextureUpdateAfterWrappingChangeFixturePath,
+    `/* oxlint-disable react-doctor/three-require-render-in-animation-loop, react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { RepeatWrapping, Texture, WebGLRenderer } from "three";
+
+const renderer = new WebGLRenderer();
+const texture = new Texture();
+renderer.setAnimationLoop(() => {
+  renderer.render(scene, camera);
+  texture.wrapS = RepeatWrapping;
+  if (changed) texture.needsUpdate = true;
+});
+`,
+  );
+  fs.writeFileSync(
+    threeUvForTextureMapFixturePath,
+    `/* oxlint-disable react-doctor/three-require-lit-material-normals */
+import { BufferAttribute, BufferGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Texture } from "three";
+
+const firstGeometry = new BufferGeometry();
+firstGeometry.setAttribute("position", new BufferAttribute(firstPositions, 3));
+const firstMaterial = new MeshStandardMaterial({ map: new Texture() });
+new Mesh(firstGeometry, firstMaterial);
+
+const secondGeometry = new BufferGeometry();
+secondGeometry.setAttribute("position", new BufferAttribute(secondPositions, 3));
+const secondMaterial = new MeshStandardMaterial();
+secondMaterial.normalMap = new Texture();
+new Mesh(secondGeometry, secondMaterial);
+
+const thirdGeometry = new BufferGeometry();
+thirdGeometry.setAttribute("position", new BufferAttribute(thirdPositions, 3));
+new Mesh(thirdGeometry, new MeshPhysicalMaterial({ anisotropyMap: new Texture() }));
+
+const fourthGeometry = new BufferGeometry();
+fourthGeometry.setAttribute("position", new BufferAttribute(fourthPositions, 3));
+const fourthMesh = new Mesh(
+  fourthGeometry,
+  new MeshStandardMaterial({ map: new Texture() }),
+);
+fourthMesh.visible = false;
+fourthMesh.visible = true;
+`,
+  );
+  fs.writeFileSync(
+    threeWorkerLoaderCleanupFixturePath,
+    `/* oxlint-disable react-doctor/preact-no-react-hooks-import, react-doctor/react-compiler-no-manual-memoization */
+import { useMemo } from "react";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
+
+export const Scene = () => {
+  const draco = useMemo(() => new DRACOLoader(), []);
+  const ktx = useMemo(() => new KTX2Loader(), []);
+  return draco.decoderPath ?? ktx.transcoderPath;
 };
 `,
   );

@@ -154,7 +154,19 @@ const r3fStatePointerMoveFixturePath = path.join(
   "app",
   "r3f-state-pointer-move.tsx",
 );
+const r3fStateInFrameFixturePath = path.join(fixtureDirectory, "app", "r3f-state-in-frame.tsx");
 const r3fSyncReadbackFixturePath = path.join(fixtureDirectory, "app", "r3f-sync-readback.tsx");
+const r3fUnstableArgsFixturePath = path.join(fixtureDirectory, "app", "r3f-unstable-args.tsx");
+const r3fGpuInstancedAnimationFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-gpu-instanced-animation.tsx",
+);
+const r3fGpuPositionAnimationFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-gpu-position-animation.tsx",
+);
 const r3fRootUnmountFixturePath = path.join(fixtureDirectory, "app", "r3f-root-unmount.tsx");
 const r3fAnimationMixerFixturePath = path.join(fixtureDirectory, "app", "r3f-animation-mixer.tsx");
 const r3fFrameDeltaFixturePath = path.join(fixtureDirectory, "app", "r3f-frame-delta.tsx");
@@ -445,7 +457,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-recursive-raf-with-use-frame": 6,
   "r3f-no-shader-configuration-mutation-in-use-frame": 4,
   "r3f-no-state-in-pointer-move": 7,
+  "r3f-no-state-in-use-frame": 5,
   "r3f-no-sync-readback-in-use-frame": 8,
+  "r3f-no-unstable-args": 6,
+  "r3f-prefer-gpu-instanced-animation": 3,
+  "r3f-prefer-gpu-position-animation": 4,
   "r3f-require-animation-mixer-update": 2,
   "r3f-require-frame-delta": 13,
   "r3f-require-global-effect-cleanup": 6,
@@ -3147,6 +3163,123 @@ useFrame(function* ({ gl }) {
 const Fiber = require("@react-three/fiber");
 Fiber.useFrame = runOnce;
 Fiber.useFrame(() => canvas.getContext("2d").getImageData(0, 0, 1, 1));
+`,
+  );
+  fs.writeFileSync(
+    r3fStateInFrameFixturePath,
+    `import React from "react";
+import { flushSync } from "react-dom";
+import { useFrame } from "@react-three/fiber";
+
+export const FrameStateScene = () => {
+  const [active, setActive] = React.useState(false);
+  const [, dispatch] = React.useReducer(reducer, initialState);
+  const updateActive = setActive;
+  const updateFromHelper = () => setActive(false);
+  useFrame(() => {
+    setActive(true);
+    updateActive(false);
+    dispatch({ type: "tick" });
+    updateFromHelper();
+    [1].forEach(() => flushSync(() => setActive(false)));
+  });
+  return active ? <mesh /> : null;
+};
+
+export const GuardedFrameStateScene = () => {
+  const [active, setActive] = React.useState(false);
+  useFrame(() => {
+    if (!active) setActive(true);
+  });
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fUnstableArgsFixturePath,
+    `import React from "react";
+import "@react-three/fiber";
+import { Vector3 } from "three";
+
+const stableOrigin = new Vector3();
+const stableArgs = [stableOrigin];
+
+export const UnstableArgsScene = ({ wide, inheritedArgs, props }) => {
+  const localArgs = [{ width: 1 }];
+  const conditionalArgs = wide ? [new Vector3()] : inheritedArgs;
+  const spreadArgs = [{ width: 2 }];
+  return <>
+    <shapeGeometry args={[new Vector3()]} />
+    <mesh args={localArgs} />
+    <boxGeometry args={conditionalArgs} />
+    <boxGeometry args={[...spreadArgs]} />
+    <mesh args={[{ width: 4 }]} {...props} />
+    <mesh {...props} args={[{ width: 5 }]} />
+    <mesh args={[{ width: 6 }]} {...{ visible: true }} />
+    <mesh args={[{ width: 7 }]} {...{ args: stableArgs }} />
+    <mesh args={[1, 2, 3]} />
+    <div args={[{ ignored: true }]} />
+  </>;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fGpuInstancedAnimationFixturePath,
+    `import React from "react";
+import { useFrame } from "@react-three/fiber";
+import { InstancedMesh } from "three";
+
+const directMesh = new InstancedMesh(geometry, material, 4);
+
+export const InstancedAnimationScene = ({ count }) => {
+  const instances = React.useRef(null);
+  const ordinaryMesh = React.useRef(null);
+  useFrame(() => {
+    for (let index = 0; index < count; index += 1) {
+      instances.current.setMatrixAt(index, matrix);
+    }
+    [0, 1].forEach((index) => instances.current.setMatrixAt(index, matrix));
+    instances.current.instanceMatrix.needsUpdate = true;
+    ordinaryMesh.current.setMatrixAt(0, matrix);
+  });
+  return <><instancedMesh ref={instances} /><mesh ref={ordinaryMesh} /></>;
+};
+
+useFrame(() => {
+  for (const index of indices) directMesh.setMatrixAt(index, matrix);
+});
+`,
+  );
+  fs.writeFileSync(
+    r3fGpuPositionAnimationFixturePath,
+    `import React from "react";
+import { useFrame } from "@react-three/fiber";
+
+export const PositionAnimationScene = ({ geometry, nextPositions }) => {
+  const positions = React.useRef(null);
+  useFrame(() => {
+    for (let index = 0; index < 100; index += 1) {
+      positions.current.setXYZ(index, index, 0, 0);
+    }
+  });
+  useFrame(() => {
+    const positionArray = geometry.attributes.position.array;
+    for (let index = 0; index < positionArray.length; index += 1) {
+      positionArray[index] += 1;
+    }
+    geometry.getAttribute("position").array.set(nextPositions);
+  });
+  useFrame(() => {
+    [0, 1, 2].forEach((index) => geometry.getAttribute("position").setY(index, index));
+  });
+  useFrame(() => geometry.attributes.position.array.fill(0));
+  useFrame(() => {
+    geometry.attributes.position.setX(0, 1);
+    geometry.attributes.position.array[0] = 1;
+    if (enabled) geometry.attributes.position.array.fill(0);
+  });
+  return <bufferGeometry><bufferAttribute ref={positions} attach="attributes-position" /></bufferGeometry>;
+};
 `,
   );
   fs.writeFileSync(

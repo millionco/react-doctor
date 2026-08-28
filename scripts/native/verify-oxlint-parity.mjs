@@ -234,6 +234,21 @@ const r3fWebgpuNoHighPrecisionInstancingFixturePath = path.join(
   "app",
   "r3f-webgpu-no-high-precision-instancing.tsx",
 );
+const threeEffectComposerRequireSizeOnResizeFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-effect-composer-require-size-on-resize.ts",
+);
+const threeGpuComputationRequireInitBeforeComputeFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-gpu-computation-require-init-before-compute.ts",
+);
+const threeNoAllocationInPointerMoveFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-no-allocation-in-pointer-move.tsx",
+);
 const threeControlsCleanupFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -733,6 +748,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-valid-physical-material-properties": 2,
   "three-valid-data-texture-data-length": 4,
   "three-valid-material-opacity": 3,
+  "three-effect-composer-require-size-on-resize": 3,
+  "three-gpu-computation-require-init-before-compute": 4,
+  "three-no-allocation-in-pointer-move": 3,
   "three-require-camera-aspect-on-resize": 1,
   "three-require-controls-cleanup": 7,
   "three-require-controls-update": 1,
@@ -747,7 +765,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-require-renderer-size": 3,
   "three-require-shadows-enabled": 1,
   "three-webgpu-no-legacy-material-api": 3,
-  "three-gpu-computation-handle-init-error": 2,
+  "three-gpu-computation-handle-init-error": 4,
   "three-gpu-computation-valid-variable-name": 6,
   "three-effect-composer-output-pass-last": 1,
   "three-webgpu-no-high-precision-instancing": 1,
@@ -3741,6 +3759,89 @@ export const IncompleteTransformControlsCleanup = ({ camera, element }) => {
   useEffect(() => () => controls.disconnect(), [controls]);
   return null;
 };
+`,
+  );
+  fs.writeFileSync(
+    threeEffectComposerRequireSizeOnResizeFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment */
+import { WebGLRenderer } from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+
+{
+  const renderer = new WebGLRenderer();
+  const composer = new EffectComposer(renderer);
+  window.addEventListener("resize", () => renderer.setSize(innerWidth, innerHeight));
+  void composer;
+}
+{
+  const renderer = new WebGLRenderer();
+  const composer = new EffectComposer(renderer);
+  const resize = () => renderer.setSize(width, height);
+  window.onresize = resize;
+  void composer;
+}
+{
+  const renderer = new WebGLRenderer();
+  const first = new EffectComposer(renderer);
+  const second = new EffectComposer(renderer);
+  window.addEventListener("resize", () => {
+    renderer.setSize(width, height);
+    first.setSize(width, height);
+  });
+  void second;
+}
+`,
+  );
+  fs.writeFileSync(
+    threeGpuComputationRequireInitBeforeComputeFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { WebGLRenderer } from "three";
+import { GPUComputationRenderer } from "three/addons/misc/GPUComputationRenderer.js";
+
+{
+  const computation = new GPUComputationRenderer(4, 4, renderer);
+  computation.compute();
+}
+export const startComputation = () => {
+  const computation = new GPUComputationRenderer(4, 4, renderer);
+  if (ready) computation.init();
+  computation.compute();
+};
+{
+  const renderer = new WebGLRenderer();
+  const computation = new GPUComputationRenderer(4, 4, renderer);
+  renderer.setAnimationLoop(() => {
+    computation.compute();
+    renderer.render(scene, camera);
+  });
+}
+{
+  const renderer = new WebGLRenderer();
+  const computation = new GPUComputationRenderer(4, 4, renderer);
+  renderer.setAnimationLoop(() => {
+    computation.compute();
+    renderer.render(scene, camera);
+  });
+  computation.init();
+}
+`,
+  );
+  fs.writeFileSync(
+    threeNoAllocationInPointerMoveFixturePath,
+    `import React from "react";
+import { Raycaster, Vector2, Vector3, WebGLRenderer } from "three";
+
+export const PointerCanvas = () => <canvas onPointerMove={() => new Vector2()} />;
+{
+  const renderer = new WebGLRenderer();
+  const move = () => new Raycaster();
+  renderer.domElement.addEventListener("pointermove", move);
+}
+{
+  const renderer = new WebGLRenderer();
+  const point = new Vector3();
+  renderer.domElement.addEventListener("pointermove", () => point.clone());
+}
 `,
   );
   fs.writeFileSync(

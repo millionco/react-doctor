@@ -464,6 +464,7 @@ impl Rule for ${delegatedRule.struct} {
         "three-require-render-target-cleanup",
         ["r3f_analyze_owned_root_lifecycle", "statement_always_exits"],
       ],
+      ["three-no-allocation-in-pointer-move", ["jsx_attribute_expression"]],
     ]);
     for (const nativeRuleId of upstream.nativeRules) {
       const delegatedRule = delegatedRules.get(nativeRuleId);

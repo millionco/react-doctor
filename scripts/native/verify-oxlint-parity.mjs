@@ -349,6 +349,21 @@ const threeOwnedMaterialCleanupFixturePath = path.join(
   "app",
   "three-owned-material-cleanup.tsx",
 );
+const threeGpuComputationCleanupFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-gpu-computation-cleanup.tsx",
+);
+const threePostprocessingCleanupFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-postprocessing-cleanup.tsx",
+);
+const threeRendererCleanupFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-renderer-cleanup.tsx",
+);
 const threeControlsCleanupFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -872,6 +887,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-require-ktx2-detect-support": 2,
   "three-require-lit-material-normals": 3,
   "three-require-loader-error-handling": 7,
+  "three-require-gpu-computation-cleanup": 3,
+  "three-require-postprocessing-cleanup": 2,
+  "three-require-renderer-cleanup": 6,
   "three-require-transparent-for-opacity": 2,
   "three-require-lighting-for-pbr": 1,
   "three-require-owned-geometry-cleanup": 6,
@@ -4822,6 +4840,115 @@ const renderer = new WebGLRenderer({ canvas });
 const camera = new PerspectiveCamera();
 window.addEventListener("resize", () => renderer.setSize(innerWidth, innerHeight));
 renderer.render(new Scene(), camera);
+`,
+  );
+  fs.writeFileSync(
+    threeGpuComputationCleanupFixturePath,
+    `/* oxlint-disable react-doctor/preact-no-react-hooks-import, react-doctor/three-gpu-computation-handle-init-error */
+import { useEffect } from "react";
+import { GPUComputationRenderer } from "three/addons/misc/GPUComputationRenderer.js";
+
+export const Scene = ({ renderer }) => {
+  useEffect(() => {
+    const computation = new GPUComputationRenderer(64, 64, renderer);
+    computation.init();
+    computation.compute();
+  }, [renderer]);
+  return null;
+};
+
+export const ReassignedScene = ({ renderer }) => {
+  useEffect(() => {
+    let computation = new GPUComputationRenderer(64, 64, renderer);
+    ({ computation } = getReplacement());
+    return () => computation.dispose();
+  }, [renderer]);
+  return null;
+};
+
+export const DuplicateEffectScene = ({ enabled, renderer }) => {
+  const setup = () => {
+    const computation = new GPUComputationRenderer(64, 64, renderer);
+    return () => computation.dispose();
+  };
+  if (enabled) useEffect(setup, [renderer]);
+  useEffect(setup, [renderer]);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    threePostprocessingCleanupFixturePath,
+    `/* oxlint-disable react-doctor/preact-no-react-hooks-import, react-doctor/react-compiler-no-manual-memoization */
+import { useEffect, useMemo } from "react";
+import { EffectComposer as ThreeComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { EffectComposer as LegacyComposer } from "three/examples/jsm/postprocessing/EffectComposer";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass";
+import { AdaptiveToneMappingPass } from "three/examples/jsm/postprocessing/AdaptiveToneMappingPass";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { EffectComposer as PmndrsComposer } from "postprocessing";
+
+export const Scene = ({ renderer, shader }) => {
+  const first = useMemo(() => new ThreeComposer(renderer), [renderer]);
+  const second = useMemo(() => new LegacyComposer(renderer), [renderer]);
+  const third = useMemo(() => new PmndrsComposer(renderer), [renderer]);
+  const fourth = useMemo(() => new ShaderPass(shader), [shader]);
+  const fifth = useMemo(() => new OutputPass(), []);
+  const sixth = useMemo(() => new AdaptiveToneMappingPass(), []);
+  const seventh = useMemo(() => new UnrealBloomPass(), []);
+  return first.enabled || second.enabled || third.enabled || fourth.enabled || fifth.enabled || sixth.enabled || seventh.enabled;
+};
+
+export const ReassignedScene = ({ renderer }) => {
+  let composer = useMemo(() => new PmndrsComposer(renderer), [renderer]);
+  ({ composer } = getReplacement());
+  useEffect(() => () => composer.dispose(), [composer]);
+  return composer.enabled;
+};
+`,
+  );
+  fs.writeFileSync(
+    threeRendererCleanupFixturePath,
+    `/* oxlint-disable react-doctor/preact-no-react-hooks-import */
+import { useEffect } from "react";
+import { WebGLRenderer as Renderer } from "three";
+import * as THREE from "three/webgpu";
+
+export const First = ({ canvas }) => {
+  useEffect(() => {
+    const renderer = new Renderer({ canvas });
+    renderer.render(scene, camera);
+  }, [canvas]);
+  return null;
+};
+
+export const Second = ({ canvas }) => {
+  useEffect(() => {
+    const renderer = new THREE.WebGPURenderer({ canvas });
+    renderer.renderAsync(scene, camera);
+  }, [canvas]);
+  return null;
+};
+
+export const Reassigned = ({ canvas }) => {
+  useEffect(() => {
+    let renderer = new Renderer({ canvas });
+    ({ renderer } = getReplacement());
+    return () => renderer.dispose();
+  }, [canvas]);
+  return null;
+};
+
+export const DuplicateEffect = ({ canvas, enabled }) => {
+  const setup = () => {
+    const renderer = new Renderer({ canvas });
+    return () => renderer.dispose();
+  };
+  if (enabled) useEffect(setup, [canvas]);
+  useEffect(setup, [canvas]);
+  return null;
+};
 `,
   );
   fs.writeFileSync(

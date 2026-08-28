@@ -494,6 +494,32 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       [
+        "three-require-gpu-computation-cleanup",
+        [
+          "r3f_analyze_owned_root_lifecycle",
+          "r3f_analyzed_use_three_state_property_matches",
+          "r3f_owned_root_access_has_non_allocation_identity_write",
+          "statement_always_exits",
+        ],
+      ],
+      [
+        "three-require-postprocessing-cleanup",
+        [
+          "r3f_analyze_owned_root_lifecycle",
+          "r3f_owned_root_access_has_non_allocation_identity_write",
+          "statement_always_exits",
+        ],
+      ],
+      [
+        "three-require-renderer-cleanup",
+        [
+          "jsx_attribute_expression",
+          "r3f_analyze_owned_root_lifecycle",
+          "r3f_owned_root_access_has_non_allocation_identity_write",
+          "statement_always_exits",
+        ],
+      ],
+      [
         "three-require-render-target-cleanup",
         ["r3f_analyze_owned_root_lifecycle", "statement_always_exits"],
       ],

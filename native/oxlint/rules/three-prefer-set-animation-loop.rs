@@ -1,6 +1,7 @@
 use oxc_ast::AstKind;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
+use oxc_span::GetSpan;
 
 use crate::{context::LintContext, rule::Rule};
 
@@ -20,20 +21,25 @@ declare_oxc_lint!(
 
 impl Rule for ThreePreferSetAnimationLoop {
     fn run_once(&self, ctx: &LintContext<'_>) {
-        let mut reported_callback_spans = Vec::new();
+        let node_index = build_local_callback_nearest_function_node_index(ctx);
+        let mut resolution_cache = LocalFunctionResolutionCache::default();
+        let mut reported_callback_ids = rustc_hash::FxHashSet::default();
         for node in ctx.nodes().iter() {
             let AstKind::CallExpression(call_expression) = node.kind() else {
                 continue;
             };
-            let Some((_, callback_span)) =
-                resolve_recursive_animation_frame_callback(call_expression, true, ctx)
-            else {
+            let Some(callback_id) = resolve_analyzed_recursive_animation_frame_callback_id(
+                call_expression,
+                true,
+                &node_index,
+                ctx,
+                &mut resolution_cache,
+            ) else {
                 continue;
             };
-            if reported_callback_spans.contains(&callback_span) {
+            if !reported_callback_ids.insert(callback_id) {
                 continue;
             }
-            reported_callback_spans.push(callback_span);
             ctx.diagnostic(OxcDiagnostic::warn(MESSAGE).with_label(call_expression.span));
         }
     }

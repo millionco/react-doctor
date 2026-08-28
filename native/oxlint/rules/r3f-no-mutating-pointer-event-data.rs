@@ -245,7 +245,7 @@ fn r3f_pointer_event_call_mutated_span<'a>(
     ctx: &LintContext<'a>,
 ) -> Option<Span> {
     let member_expression = call.callee.get_inner_expression().as_member_expression()?;
-    let method_name = r3f_pointer_event_member_property_name(member_expression)?;
+    let method_name = static_member_expression_property_name(member_expression)?;
     if R3F_POINTER_EVENT_MUTATING_VECTOR_METHOD_NAMES.contains(&method_name)
         && r3f_pointer_event_expression_is_shared_or_descendant(
             member_expression.object(),
@@ -475,20 +475,8 @@ fn r3f_pointer_event_member_property_matches(
     member_expression: &MemberExpression<'_>,
     property_name: &str,
 ) -> bool {
-    r3f_pointer_event_member_property_name(member_expression)
+    static_member_expression_property_name(member_expression)
         .is_some_and(|candidate| candidate == property_name)
-}
-
-fn r3f_pointer_event_member_property_name<'a>(
-    member_expression: &'a MemberExpression<'a>,
-) -> Option<&'a str> {
-    match member_expression {
-        MemberExpression::StaticMemberExpression(member) => Some(member.property.name.as_str()),
-        MemberExpression::ComputedMemberExpression(member) => {
-            r3f_pointer_event_computed_expression_name(&member.expression)
-        }
-        MemberExpression::PrivateFieldExpression(_) => None,
-    }
 }
 
 fn r3f_pointer_event_property_key_matches(
@@ -515,22 +503,4 @@ fn r3f_pointer_event_property_key_matches(
         };
     }
     property_key_matches_name(property_key, property_name)
-}
-
-fn r3f_pointer_event_computed_expression_name<'a>(
-    expression: &'a Expression<'a>,
-) -> Option<&'a str> {
-    match expression.get_inner_expression() {
-        Expression::StringLiteral(literal) => Some(literal.value.as_str()),
-        Expression::TemplateLiteral(template) if template.expressions.is_empty() => {
-            template.quasis.first().map(|quasi| {
-                quasi
-                    .value
-                    .cooked
-                    .as_ref()
-                    .map_or(quasi.value.raw.as_str(), |cooked| cooked.as_str())
-            })
-        }
-        _ => None,
-    }
 }

@@ -10,27 +10,22 @@ use crate::{
     rule::{Rule, RuleCategory, RuleInfo, RuleMeta},
 };
 
-const LIT_MATERIAL_CONSTRUCTOR_NAMES: [&str; 5] = [
-    "MeshLambertMaterial",
-    "MeshPhongMaterial",
-    "MeshPhysicalMaterial",
-    "MeshStandardMaterial",
-    "MeshToonMaterial",
-];
-#[derive(Debug, Default, Clone)]
-pub struct R3FRequireLitMaterialNormals;
+const UV_ATTRIBUTE_NAMES: [&str; 4] = ["uv", "uv1", "uv2", "uv3"];
 
-impl RuleMeta for R3FRequireLitMaterialNormals {
-    const NAME: &'static str = "r3f-require-lit-material-normals";
+#[derive(Debug, Default, Clone)]
+pub struct R3FRequireUvForTextureMap;
+
+impl RuleMeta for R3FRequireUvForTextureMap {
+    const NAME: &'static str = "r3f-require-uv-for-texture-map";
     const PLUGIN: &'static str = "react_doctor_native";
     const CATEGORY: RuleCategory = RuleCategory::Correctness;
     const VERSION: &'static str = "0.1.0";
     const INFO: RuleInfo = RuleInfo {
-        short_description: "Require normals for normal-mapped React Three Fiber geometry.",
+        short_description: "Require UVs for texture-mapped React Three Fiber geometry.",
     };
 }
 
-impl Rule for R3FRequireLitMaterialNormals {
+impl Rule for R3FRequireUvForTextureMap {
     fn should_run(&self, ctx: &ContextHost) -> bool {
         ctx.source_type().is_jsx()
     }
@@ -72,19 +67,20 @@ impl Rule for R3FRequireLitMaterialNormals {
                         .is_some_and(|(element_type, _)| element_type == "bufferGeometry")
                 })
                 .collect::<Vec<_>>();
-            let material_children = element_children
+            let mapped_material_children = element_children
                 .iter()
                 .copied()
-                .filter(|element| is_active_lit_normal_map_material(&element.opening_element, ctx))
+                .filter(|element| is_active_uv_mapped_material(&element.opening_element, ctx))
                 .collect::<Vec<_>>();
-            if geometry_children.len() != 1 || material_children.len() != 1 {
+            if geometry_children.len() != 1 || mapped_material_children.len() != 1 {
                 continue;
             }
             let geometry = geometry_children[0];
-            let material = material_children[0];
+            let material = mapped_material_children[0];
             if element_children.iter().any(|element| {
                 !std::ptr::eq(*element, geometry) && !std::ptr::eq(*element, material)
             }) || !is_r3f_host_intrinsic(&geometry.opening_element, ctx)
+                || !is_r3f_host_intrinsic(&material.opening_element, ctx)
             {
                 continue;
             }
@@ -92,22 +88,34 @@ impl Rule for R3FRequireLitMaterialNormals {
             let attributes = get_closed_r3f_buffer_geometry_attributes(geometry, ctx);
             if !attributes.is_complete
                 || !attributes.attribute_names.contains("position")
-                || attributes.attribute_names.contains("normal")
-                || get_r3f_surface_visibility(
-                    mesh,
-                    &material.opening_element,
-                    node.id(),
-                    &mut analysis,
-                    ctx,
-                ) != Some(true)
+                || UV_ATTRIBUTE_NAMES
+                    .iter()
+                    .any(|attribute_name| attributes.attribute_names.contains(*attribute_name))
             {
                 continue;
             }
-            let material_type = resolve_jsx_element_type(&material.opening_element, ctx)
-                .map_or("This lit material", |(element_type, _)| element_type);
+            let Some((material_type, _)) = resolve_jsx_element_type(&material.opening_element, ctx)
+            else {
+                continue;
+            };
+            if get_r3f_surface_visibility(
+                mesh,
+                &material.opening_element,
+                node.id(),
+                &mut analysis,
+                ctx,
+            ) != Some(true)
+            {
+                continue;
+            }
+            let texture_property_names = get_active_r3f_material_texture_property_names(
+                &material.opening_element,
+                &r3f_constructor_name(material_type),
+            );
             ctx.diagnostic(
                 OxcDiagnostic::error(format!(
-                    "{material_type} applies a normalMap to this custom bufferGeometry, but the geometry defines positions without the normals needed to establish its normal basis"
+                    "{material_type} samples {}, but this custom bufferGeometry defines positions without any UV attribute",
+                    texture_property_names.join(", ")
                 ))
                 .with_label(geometry.opening_element.span),
             );
@@ -115,21 +123,18 @@ impl Rule for R3FRequireLitMaterialNormals {
     }
 }
 
-fn is_active_lit_normal_map_material<'a>(
+fn is_active_uv_mapped_material<'a>(
     opening_element: &JSXOpeningElement<'a>,
     ctx: &LintContext<'a>,
 ) -> bool {
     let Some((element_type, _)) = resolve_jsx_element_type(opening_element, ctx) else {
         return false;
     };
-    let constructor_name = r3f_constructor_name(element_type);
-    LIT_MATERIAL_CONSTRUCTOR_NAMES.contains(&constructor_name.as_str())
-        && !has_any_jsx_spread_attribute(opening_element)
-        && get_authoritative_jsx_attribute(opening_element, "normalMap", true).is_some_and(
-            |normal_map_attribute| {
-                jsx_attribute_expression(normal_map_attribute)
-                    .is_none_or(|expression| !is_nullish_expression(expression))
-            },
+    !has_any_jsx_spread_attribute(opening_element)
+        && !get_active_r3f_material_texture_property_names(
+            opening_element,
+            &r3f_constructor_name(element_type),
         )
+        .is_empty()
         && get_authoritative_jsx_attribute(opening_element, "attach", true).is_none()
 }

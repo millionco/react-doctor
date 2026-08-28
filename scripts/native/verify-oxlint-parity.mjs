@@ -137,6 +137,13 @@ const r3fMutatingPointerEventDataFixturePath = path.join(
   "r3f-mutating-pointer-event-data.tsx",
 );
 const r3fNewInFrameFixturePath = path.join(fixtureDirectory, "app", "r3f-new-in-frame.tsx");
+const r3fObjectPointerCaptureFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-object-pointer-capture.tsx",
+);
+const r3fRecursiveRafFixturePath = path.join(fixtureDirectory, "app", "r3f-recursive-raf.tsx");
+const r3fRootUnmountFixturePath = path.join(fixtureDirectory, "app", "r3f-root-unmount.tsx");
 const r3fAnimationMixerFixturePath = path.join(fixtureDirectory, "app", "r3f-animation-mixer.tsx");
 const r3fFrameDeltaFixturePath = path.join(fixtureDirectory, "app", "r3f-frame-delta.tsx");
 const r3fGlobalEffectCleanupFixturePath = path.join(
@@ -154,6 +161,7 @@ const r3fLitMaterialNormalsFixturePath = path.join(
   "app",
   "r3f-lit-material-normals.tsx",
 );
+const r3fRequireUvFixturePath = path.join(fixtureDirectory, "app", "r3f-require-uv.tsx");
 const r3fShadowsFixturePath = path.join(fixtureDirectory, "app", "r3f-shadows.tsx");
 const r3fTextureRepeatFixturePath = path.join(fixtureDirectory, "app", "r3f-texture-repeat.tsx");
 const safeGlobalErrorFixturePath = path.join(fixtureDirectory, "app", "safe", "global-error.tsx");
@@ -420,11 +428,15 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-mutate-uniform-prop-source-in-use-frame": 3,
   "r3f-no-mutating-pointer-event-data": 6,
   "r3f-no-new-in-use-frame": 4,
+  "r3f-no-object-pointer-capture": 6,
+  "r3f-no-recursive-raf-with-use-frame": 6,
   "r3f-require-animation-mixer-update": 2,
   "r3f-require-frame-delta": 13,
   "r3f-require-global-effect-cleanup": 6,
   "r3f-require-instanced-buffer-update": 4,
   "r3f-require-lit-material-normals": 2,
+  "r3f-require-root-unmount": 8,
+  "r3f-require-uv-for-texture-map": 4,
   "react-router-csp-nonce-consistency": 1,
   "react-router-descendant-routes-require-splat": 1,
   "react-router-guard-aborted-handle-error": 0,
@@ -544,7 +556,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-no-shadows-on-unsupported-light": 1,
   "three-no-async-animation-loop": 2,
   "three-cap-device-pixel-ratio": 1,
-  "three-prefer-set-animation-loop": 1,
+  "three-prefer-set-animation-loop": 5,
   "three-no-ignored-basic-material-properties": 3,
   "three-no-ignored-linewidth": 2,
   "three-no-normalized-float-buffer-attribute": 2,
@@ -610,7 +622,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-server-middleware-return-response": 1,
   "react-router-session-mutation-requires-commit": 1,
   "no-create-store-in-render": 1,
-  "react-compiler-no-manual-memoization": 8,
+  "react-compiler-no-manual-memoization": 10,
   "no-giant-component": 1,
   "no-nested-component-definition": 1,
   "no-high-complexity-react-function": 1,
@@ -721,7 +733,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-valid-pbr-material-properties": 1,
   "r3f-valid-physical-material-properties": 1,
   "r3f-require-transparent-for-opacity": 1,
-  "r3f-require-lighting-for-pbr": 1,
+  "r3f-require-lighting-for-pbr": 2,
   "r3f-require-environment-for-metal": 1,
   "r3f-require-shadows-enabled": 1,
   "r3f-texture-repeat-requires-wrapping": 1,
@@ -2944,6 +2956,117 @@ useFrame(function* () {
 `,
   );
   fs.writeFileSync(
+    r3fObjectPointerCaptureFixturePath,
+    `import React from "react";
+import { Canvas } from "@react-three/fiber";
+
+const direct = <mesh onPointerDown={(event) => {
+  event.object.setPointerCapture(event.pointerId);
+  event.eventObject[\`releasePointerCapture\`](event.pointerId);
+}} />;
+const destructured = <mesh onPointerMove={({ object: hitObject }) => hitObject.hasPointerCapture(1)} />;
+const computed = <mesh onPointerUp={(event) => { const { ["eventObject"]: hitObject } = event; hitObject.setPointerCapture(1); }} />;
+const CommonReact = require("react");
+const callback = CommonReact.useCallback((event) => event.object.setPointerCapture(1), []);
+const commonJs = <group onPointerDown={callback} />;
+const line = <line onPointerDown={(event) => event.object.setPointerCapture(1)} />;
+
+const reassigned = <mesh onPointerDown={({ object }) => { object = target; object.setPointerCapture(1); }} />;
+const domTarget = <mesh onPointerDown={(event) => event.target.setPointerCapture(1)} />;
+const dom = <div onPointerDown={(event) => event.object.setPointerCapture(1)} />;
+const obscured = <mesh onPointerDown={(event) => event.object.setPointerCapture(1)} {...props} />;
+void Canvas;
+`,
+  );
+  fs.writeFileSync(
+    r3fRecursiveRafFixturePath,
+    `import React from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import { importedAnimation } from "./animation-callbacks";
+
+const renderLoop = () => requestAnimationFrame(renderLoop);
+const effectLoop = () => requestAnimationFrame(effectLoop);
+const helperLoop = () => requestAnimationFrame(helperLoop);
+const startHelperLoop = () => requestAnimationFrame(helperLoop);
+const loops = { animate() { requestAnimationFrame(loops.animate); } };
+
+export const CompetingLoopScene = () => {
+  useFrame(() => {});
+  requestAnimationFrame(renderLoop);
+  requestAnimationFrame(loops.animate);
+  startHelperLoop();
+  React.useEffect(() => requestAnimationFrame(effectLoop), []);
+  const gl = useThree((state) => state.gl);
+  const { renderer } = useThree();
+  gl.setAnimationLoop(importedAnimation);
+  renderer[\`setAnimationLoop\`](() => renderFrame());
+  return null;
+};
+
+export const QuietLoopScene = ({ renderer }) => {
+  useFrame(() => {});
+  requestAnimationFrame(() => renderFrame());
+  setTimeout(() => requestAnimationFrame(renderLoop), 0);
+  renderer.setAnimationLoop(() => renderFrame());
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fRootUnmountFixturePath,
+    `import React from "react";
+import { createRoot } from "@react-three/fiber";
+import { createRoot as createNativeRoot } from "@react-three/fiber/native";
+import * as Fiber from "@react-three/fiber/webgpu";
+
+export const MissingEffectCleanup = ({ canvas }) => {
+  React.useEffect(() => { const root = createRoot(canvas); root.configure({}); }, [canvas]);
+  return null;
+};
+export const MissingProvenanceCleanup = ({ firstCanvas, secondCanvas }) => {
+  React.useEffect(() => { const firstRoot = createNativeRoot(firstCanvas); firstRoot.configure({}); }, [firstCanvas]);
+  React.useEffect(() => { const secondRoot = Fiber.createRoot(secondCanvas); secondRoot.configure({}); }, [secondCanvas]);
+  return null;
+};
+export const MissingStableCleanup = ({ canvas }) => {
+  const root = React.useMemo(() => createRoot(canvas), []);
+  root.configure({});
+  return null;
+};
+export const MissingLazyRefCleanup = ({ canvas }) => {
+  const rootRef = React.useRef(null);
+  if (!rootRef.current) rootRef.current = createRoot(canvas);
+  return null;
+};
+export const MissingReturnedDisposerInvocation = (canvas) => {
+  const root = createRoot(canvas);
+  return () => root.unmount();
+};
+export const NestedPromiseIsNotCleanup = ({ canvas, ready }) => {
+  React.useEffect(() => { const root = createRoot(canvas); ready.then(() => () => root.unmount()); }, [canvas, ready]);
+  return null;
+};
+
+export const ExactCleanup = ({ canvas }) => {
+  React.useEffect(() => { const root = createRoot(canvas); const alias = root; return () => alias.unmount(); }, [canvas]);
+  return null;
+};
+export const StructuredStableCleanup = ({ canvas }) => {
+  const { root } = React.useMemo(() => ({ root: createRoot(canvas) }), []);
+  React.useEffect(() => () => root.unmount(), []);
+  return null;
+};
+const moduleRoot = createRoot(document.querySelector("canvas"));
+export const TransferredRoots = ({ canvas, manager }) => {
+  const returnedRoot = createRoot(canvas);
+  const adoptedRoot = createRoot(canvas);
+  manager.adopt(adoptedRoot);
+  return returnedRoot;
+};
+void moduleRoot;
+`,
+  );
+  fs.writeFileSync(
     r3fFrameDeltaFixturePath,
     `import React, { createRef } from "react";
 import { useRef } from "preact/hooks";
@@ -3070,6 +3193,61 @@ export const PhongMaterialScene = ({ texture }) => (
       <meshPhongMaterial normalMap={texture} />
     </mesh>
   </Root>
+);
+`,
+  );
+  fs.writeFileSync(
+    r3fRequireUvFixturePath,
+    `import React from "react";
+import { Canvas } from "@react-three/fiber";
+
+export const StandardMappedScene = ({ alpha, texture }) => (
+  <Canvas>
+    <ambientLight />
+    <mesh>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+      </bufferGeometry>
+      <meshStandardMaterial map={texture} alphaMap={alpha} />
+    </mesh>
+  </Canvas>
+);
+
+export const PhysicalMappedScene = ({ texture }) => (
+  <Canvas>
+    <ambientLight />
+    <mesh>
+      <bufferGeometry>
+        <float32BufferAttribute attach="attributes-position" args={[positions, 3]} />
+      </bufferGeometry>
+      <meshPhysicalMaterial anisotropyMap={texture} />
+    </mesh>
+  </Canvas>
+);
+
+export const UvMappedScene = ({ texture }) => (
+  <Canvas>
+    <mesh>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        <bufferAttribute attach="attributes-uv3" args={[uvs, 2]} />
+      </bufferGeometry>
+      <meshStandardMaterial map={texture} />
+    </mesh>
+  </Canvas>
+);
+
+export const HiddenMappedScene = ({ texture }) => (
+  <Canvas>
+    <group visible={false}>
+      <mesh>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        </bufferGeometry>
+        <meshStandardMaterial map={texture} />
+      </mesh>
+    </group>
+  </Canvas>
 );
 `,
   );

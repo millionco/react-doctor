@@ -1,8 +1,6 @@
 use oxc_ast::{
     AstKind,
-    ast::{
-        Expression, JSXAttributeItem, JSXChild, JSXElement, JSXOpeningElement,
-    },
+    ast::{Expression, JSXAttributeItem, JSXChild, JSXElement, JSXOpeningElement},
 };
 
 use crate::{context::LintContext, globals::HTML_TAG};
@@ -126,7 +124,7 @@ fn visit_r3f_lighting_element<'a>(
         analysis.is_complete = false;
         return;
     }
-    let constructor_name = r3f_lighting_constructor_name(element_type);
+    let constructor_name = r3f_constructor_name(element_type);
     let intensity = r3f_lighting_attribute_expression(opening_element, "intensity")
         .and_then(|expression| resolve_static_number(expression, ctx));
     if child_is_visible
@@ -292,8 +290,7 @@ fn r3f_lighting_has_non_nullish_attribute(
     let Some(attribute) = get_authoritative_jsx_attribute(opening_element, name, true) else {
         return false;
     };
-    jsx_attribute_expression(attribute)
-        .is_none_or(|expression| !is_nullish_expression(expression))
+    jsx_attribute_expression(attribute).is_none_or(|expression| !is_nullish_expression(expression))
 }
 
 fn r3f_lighting_attribute_expression<'a, 'b>(
@@ -341,12 +338,4 @@ fn is_r3f_lighting_host_intrinsic<'a>(
                     resolve_jsx_element_type(ancestor, ctx)
                         .is_some_and(|(ancestor_type, _)| ancestor_type == "svg")
                 })))
-}
-
-fn r3f_lighting_constructor_name(element_type: &str) -> String {
-    let mut characters = element_type.chars();
-    let Some(first_character) = characters.next() else {
-        return String::new();
-    };
-    first_character.to_uppercase().chain(characters).collect()
 }

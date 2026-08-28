@@ -358,6 +358,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-route-request-expression",
         "statement-always-exits",
         "resolve-recursive-animation-frame-callback",
+        "resolve-analyzed-recursive-animation-frame-callback-id",
         "resolve-raw-device-pixel-ratio",
         "get-static-object-property-value",
         "resolve-static-number",
@@ -365,6 +366,12 @@ impl Rule for ${delegatedRule.struct} {
         "resolve-static-array-like-length",
         "is-float-typed-array",
         "resolve-r3f-fresh-value",
+        "r3f-constructor-name",
+        "get-closed-r3f-buffer-geometry-attributes",
+        "get-r3f-surface-visibility",
+        "get-active-r3f-material-texture-property-names",
+        "static-member-expression-property-name",
+        "r3f-analyze-owned-root-lifecycle",
         "has-possible-static-property-write-before",
         "module-api-reference-matches",
         "resolve-loader-cache-provenance",
@@ -382,6 +389,10 @@ impl Rule for ${delegatedRule.struct} {
     );
     const nativeUtilityDependencies = new Map([
       ["is_imported_or_stable_parameter_call", ["has_possible_static_property_write_before"]],
+      [
+        "resolve_analyzed_recursive_animation_frame_callback_id",
+        ["has_possible_static_property_write_before", "resolve_recursive_animation_frame_callback"],
+      ],
     ]);
     const nativeRuleUtilityDependencies = new Map([
       [
@@ -392,8 +403,13 @@ impl Rule for ${delegatedRule.struct} {
         "r3f-no-mutating-pointer-event-data",
         ["has_possible_static_property_write_before", "r3f_callback_state_property_matches"],
       ],
+      [
+        "r3f-no-object-pointer-capture",
+        ["has_possible_static_property_write_before", "r3f_callback_state_property_matches"],
+      ],
       ["r3f-no-mutate-uniform-prop-source-in-use-frame", ["jsx_attribute_expression"]],
       ["r3f-require-instanced-buffer-update", ["jsx_attribute_expression"]],
+      ["r3f-require-root-unmount", ["statement_always_exits"]],
     ]);
     for (const nativeRuleId of upstream.nativeRules) {
       const delegatedRule = delegatedRules.get(nativeRuleId);

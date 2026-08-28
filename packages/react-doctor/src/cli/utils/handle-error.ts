@@ -161,18 +161,17 @@ export const handleError = (error: unknown, options: CliHandleErrorOptions = {})
  * Discord link, or Sentry reference — because there is no bug to report.
  */
 export const handleUserError = (error: unknown, options: { shouldExit?: boolean } = {}): void => {
-  const isEnvError = isEnvironmentError(error);
-  if (isEnvError) {
+  let message = formatErrorForReport(error);
+
+  if (isNpmCacheCorruptionError(error)) {
+    recordCount(METRIC.cliEnvironmentError, 1, { code: "NPX_CACHE_CORRUPTION" });
+    message = formatNpmCacheCorruptionError(error);
+  } else if (isEnvironmentError(error)) {
     recordCount(METRIC.cliEnvironmentError, 1, {
       code: (isErrnoException(error) ? error.code : undefined) ?? "unknown",
     });
+    message = formatEnvironmentError(error);
   }
-
-  const message = isNpmCacheCorruptionError(error)
-    ? formatNpmCacheCorruptionError(error)
-    : isEnvError
-      ? formatEnvironmentError(error)
-      : formatErrorForReport(error);
 
   Effect.runSync(
     Effect.gen(function* () {

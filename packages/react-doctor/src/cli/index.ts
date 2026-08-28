@@ -590,7 +590,8 @@ Promise.resolve()
       process.exit(1);
     }
     if (isUserError) {
-      handleUserError(error);
+      handleUserError(error, { shouldExit: false });
+      await Promise.all([flushSentry(), shutdownTelemetry()]);
       return;
     }
     handleError(error, { sentryEventId });

@@ -2,15 +2,25 @@ import { messageFromUnknown } from "@react-doctor/core";
 
 interface ModuleNotFoundError extends Error {
   code: string;
-  requireStack?: string[];
+  requireStack?: unknown;
 }
 
-const isModuleNotFoundError = (error: unknown): error is ModuleNotFoundError =>
-  error instanceof Error &&
-  "code" in error &&
-  error.code === "MODULE_NOT_FOUND";
+interface NpmCacheCorruptionMatch {
+  cacheKey: string;
+  moduleNotFoundError: ModuleNotFoundError;
+}
 
-const findNpmCacheCorruptionError = (error: unknown): ModuleNotFoundError | null => {
+const MISSING_AJV_META_SCHEMA_MESSAGES = new Set([
+  "Cannot find module './meta/unevaluated.json'",
+  "Cannot find module './meta/validation.json'",
+]);
+const NPX_AJV_META_SCHEMA_REQUIRE_PATH_PATTERN =
+  /(?:^|\/)_npx\/(?<cacheKey>[a-f0-9]{16})\/node_modules\/ajv\/dist\/refs\/json-schema-2020-12\/index\.js$/;
+
+const isModuleNotFoundError = (error: unknown): error is ModuleNotFoundError =>
+  error instanceof Error && "code" in error && error.code === "MODULE_NOT_FOUND";
+
+const findNpmCacheCorruptionError = (error: unknown): NpmCacheCorruptionMatch | null => {
   const pendingErrors: unknown[] = [error];
   const visitedErrors = new Set<object>();
 
@@ -21,16 +31,21 @@ const findNpmCacheCorruptionError = (error: unknown): ModuleNotFoundError | null
     visitedErrors.add(currentError);
 
     if (isModuleNotFoundError(currentError)) {
-      const message = currentError.message;
-      const requireStack = currentError.requireStack ?? [];
-      const allPaths = [message, ...requireStack].join(" ");
-
-      const isNpxCache = allPaths.includes("_npx") || allPaths.includes("npx");
-      const normalizedPaths = allPaths.replaceAll("\\", "/");
-      const isConfOrAjv = normalizedPaths.includes("/ajv/") || normalizedPaths.includes("/conf/");
-
-      if (isNpxCache && isConfOrAjv) {
-        return currentError;
+      const [message] = currentError.message.split("\n");
+      if (message && MISSING_AJV_META_SCHEMA_MESSAGES.has(message)) {
+        const requireStack = Array.isArray(currentError.requireStack)
+          ? currentError.requireStack
+          : [];
+        for (const requirePath of requireStack) {
+          if (typeof requirePath !== "string") continue;
+          const match = requirePath
+            .replaceAll("\\", "/")
+            .match(NPX_AJV_META_SCHEMA_REQUIRE_PATH_PATTERN);
+          const cacheKey = match?.groups?.cacheKey;
+          if (cacheKey !== undefined) {
+            return { cacheKey, moduleNotFoundError: currentError };
+          }
+        }
       }
     }
 
@@ -46,26 +61,16 @@ export const isNpmCacheCorruptionError = (error: unknown): boolean =>
   findNpmCacheCorruptionError(error) !== null;
 
 export const formatNpmCacheCorruptionError = (error: unknown): string => {
-  const moduleError = findNpmCacheCorruptionError(error);
-  if (!moduleError) return messageFromUnknown(error);
-
-  const platform = process.platform;
-  const clearCacheCommand =
-    platform === "win32"
-      ? 'rd /s /q "%LOCALAPPDATA%\\npm-cache\\_npx"'
-      : "rm -rf ~/.npm/_npx";
+  const corruptionMatch = findNpmCacheCorruptionError(error);
+  if (!corruptionMatch) return messageFromUnknown(error);
 
   return [
-    "The npx cache has an incomplete installation. This is a known issue with npm 12 + Node 26.",
+    "The npx cache has an incomplete Ajv installation.",
     "",
-    "To fix, clear the npx cache and try again:",
-    `  ${clearCacheCommand}`,
-    "  npm cache clean --force",
+    "Remove this cache entry, then run React Doctor again:",
+    `  npm cache npx rm ${corruptionMatch.cacheKey}`,
+    "  npx react-doctor@latest",
     "",
-    "Or use an alternative package manager:",
-    "  bunx react-doctor@latest",
-    "  pnpm dlx react-doctor@latest",
-    "",
-    `Original error: ${moduleError.message}`,
+    `Original error: ${corruptionMatch.moduleNotFoundError.message}`,
   ].join("\n");
 };

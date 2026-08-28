@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+vi.mock("../src/cli/utils/record-metric.js", () => ({
+  recordCount: vi.fn(),
+}));
+
 import { GitBaseBranchInvalid, ReactDoctorError } from "@react-doctor/core";
+import { METRIC } from "../src/cli/utils/constants.js";
 import { buildErrorIssueUrl, handleError, handleUserError } from "../src/cli/utils/handle-error.js";
+import { recordCount } from "../src/cli/utils/record-metric.js";
 
 const OTLP_ENDPOINT_ENVIRONMENT_VARIABLE = "REACT_DOCTOR_OTLP_ENDPOINT";
 const OTLP_AUTH_HEADER_ENVIRONMENT_VARIABLE = "REACT_DOCTOR_OTLP_AUTH_HEADER";
@@ -102,6 +109,7 @@ describe("handleUserError", () => {
   let savedExitCode: number | string | undefined;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     savedExitCode = process.exitCode;
   });
 
@@ -133,5 +141,25 @@ describe("handleUserError", () => {
     expect(output).not.toContain("Discord");
     expect(output).not.toContain("Reference (mention this when reporting)");
     expect(process.exitCode).toBe(1);
+  });
+
+  it("records incomplete npx installs as environment errors", () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const cacheError = Object.assign(new Error("Cannot find module './meta/unevaluated.json'"), {
+      code: "MODULE_NOT_FOUND",
+      requireStack: [
+        "/home/user/.npm/_npx/81e833f6d16d6127/node_modules/ajv/dist/refs/json-schema-2020-12/index.js",
+      ],
+    });
+
+    try {
+      handleUserError(cacheError, { shouldExit: false });
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+
+    expect(recordCount).toHaveBeenCalledWith(METRIC.cliEnvironmentError, 1, {
+      code: "NPX_CACHE_CORRUPTION",
+    });
   });
 });

@@ -30,10 +30,9 @@ import { isNpmCacheCorruptionError } from "./is-npm-cache-corruption-error.js";
  *   actionable message instead of crashing. See `is-environment-error.ts` for
  *   why the set stays narrow (codes that usually mean our bug keep reaching
  *   Sentry).
- * - **npm cache corruption** (`MODULE_NOT_FOUND` for ajv/conf in the npx
- *   cache) — incomplete package installations in the npx cache, a known issue
- *   with npm 12 + Node 26. The user can clear the cache to recover; not a
- *   react-doctor bug.
+ * - **npm cache corruption** (missing Ajv meta-schema files inside `_npx`) —
+ *   an incomplete npx package installation that the user can remove and
+ *   reinstall.
  *
  * This composes the existing core narrowers rather than introducing a new
  * error-shape helper (AGENTS.md): it encodes CLI-layer reporting policy, not

@@ -130,6 +130,7 @@ impl Rule for ${delegatedRule.struct} {
     };
     const nativeUtilitySources = new Map(
       [
+        "r3f-state-setter-transition",
         "is-non-production-file",
         "is-create-element-call",
         "is-react-api-call",
@@ -365,6 +366,9 @@ impl Rule for ${delegatedRule.struct} {
         "resolve-static-number-argument",
         "resolve-static-array-like-length",
         "is-float-typed-array",
+        "is-cpu-typed-array",
+        "is-context-from-get-context",
+        "is-webgl-context-reference",
         "resolve-r3f-fresh-value",
         "r3f-constructor-name",
         "get-closed-r3f-buffer-geometry-attributes",
@@ -407,6 +411,8 @@ impl Rule for ${delegatedRule.struct} {
         "r3f-no-object-pointer-capture",
         ["has_possible_static_property_write_before", "r3f_callback_state_property_matches"],
       ],
+      ["r3f-no-shader-configuration-mutation-in-use-frame", ["jsx_attribute_expression"]],
+      ["r3f-no-state-in-pointer-move", ["r3f_state_setter_transition"]],
       ["r3f-no-mutate-uniform-prop-source-in-use-frame", ["jsx_attribute_expression"]],
       ["r3f-require-instanced-buffer-update", ["jsx_attribute_expression"]],
       ["r3f-require-root-unmount", ["statement_always_exits"]],

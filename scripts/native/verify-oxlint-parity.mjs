@@ -137,12 +137,24 @@ const r3fMutatingPointerEventDataFixturePath = path.join(
   "r3f-mutating-pointer-event-data.tsx",
 );
 const r3fNewInFrameFixturePath = path.join(fixtureDirectory, "app", "r3f-new-in-frame.tsx");
+const r3fNullLoaderFixturePath = path.join(fixtureDirectory, "app", "r3f-null-loader.tsx");
 const r3fObjectPointerCaptureFixturePath = path.join(
   fixtureDirectory,
   "app",
   "r3f-object-pointer-capture.tsx",
 );
 const r3fRecursiveRafFixturePath = path.join(fixtureDirectory, "app", "r3f-recursive-raf.tsx");
+const r3fShaderConfigurationFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-shader-configuration.tsx",
+);
+const r3fStatePointerMoveFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-state-pointer-move.tsx",
+);
+const r3fSyncReadbackFixturePath = path.join(fixtureDirectory, "app", "r3f-sync-readback.tsx");
 const r3fRootUnmountFixturePath = path.join(fixtureDirectory, "app", "r3f-root-unmount.tsx");
 const r3fAnimationMixerFixturePath = path.join(fixtureDirectory, "app", "r3f-animation-mixer.tsx");
 const r3fFrameDeltaFixturePath = path.join(fixtureDirectory, "app", "r3f-frame-delta.tsx");
@@ -428,8 +440,12 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-mutate-uniform-prop-source-in-use-frame": 3,
   "r3f-no-mutating-pointer-event-data": 6,
   "r3f-no-new-in-use-frame": 4,
+  "r3f-no-null-loader-input": 11,
   "r3f-no-object-pointer-capture": 6,
   "r3f-no-recursive-raf-with-use-frame": 6,
+  "r3f-no-shader-configuration-mutation-in-use-frame": 4,
+  "r3f-no-state-in-pointer-move": 7,
+  "r3f-no-sync-readback-in-use-frame": 8,
   "r3f-require-animation-mixer-update": 2,
   "r3f-require-frame-delta": 13,
   "r3f-require-global-effect-cleanup": 6,
@@ -543,7 +559,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-ctrl-c-handler-requires-exit-option": 1,
   "ink-no-live-hooks-in-render-to-string": 1,
   "ink-no-repeated-render": 4,
-  "hook-use-state": 25,
+  "hook-use-state": 26,
   "rendering-svg-precision": 1,
   "no-document-start-view-transition": 1,
   "no-permanent-will-change": 2,
@@ -2956,6 +2972,35 @@ useFrame(function* () {
 `,
   );
   fs.writeFileSync(
+    r3fNullLoaderFixturePath,
+    `import { useLoader } from "@react-three/fiber";
+import * as NativeFiber from "@react-three/fiber/native";
+import { useCubeTexture, useGLTF, useTexture } from "@react-three/drei";
+import type { useGLTF as typeOnlyUseGLTF } from "@react-three/drei/native";
+
+useLoader(TextureLoader, null);
+NativeFiber.useLoader(TextureLoader, undefined);
+useLoader(TextureLoader, void missingUrl);
+const modelUrl = enabled ? url : null;
+const selectedUrl = modelUrl;
+useGLTF(selectedUrl);
+useGLTF(asset?.url);
+useCubeTexture([px, nx, undefined, ny, pz, nz]);
+useTexture({ map: colorUrl, normalMap: enabled ? normalUrl : null });
+const { useGLTF: loadRequiredModel } = require("@react-three/drei");
+const Drei = require("@react-three/drei");
+const loadModel = require("@react-three/drei").useGLTF;
+loadRequiredModel(null);
+Drei.useGLTF(null);
+loadModel(null);
+typeOnlyUseGLTF(null);
+
+useLoader(TextureLoader, realUrl);
+useGLTF(true ? realUrl : null);
+useTexture(realUrl, null);
+`,
+  );
+  fs.writeFileSync(
     r3fObjectPointerCaptureFixturePath,
     `import React from "react";
 import { Canvas } from "@react-three/fiber";
@@ -3010,6 +3055,98 @@ export const QuietLoopScene = ({ renderer }) => {
   renderer.setAnimationLoop(() => renderFrame());
   return null;
 };
+`,
+  );
+  fs.writeFileSync(
+    r3fShaderConfigurationFixturePath,
+    `import React from "react";
+import { useFrame } from "@react-three/fiber";
+
+export const ShaderConfigurationScene = () => {
+  const materialRef = React.useRef();
+  useFrame(() => {
+    materialRef.current.fragmentShader = buildShader();
+    (materialRef.current.vertexShader as unknown) = buildVertexShader();
+    materialRef.current.defines.MODE = mode;
+    materialRef.current.uniforms = makeUniforms();
+  });
+  return <shaderMaterial ref={materialRef} />;
+};
+
+export const StableShaderConfigurationScene = () => {
+  const materialRef = React.useRef();
+  useFrame(() => {
+    materialRef.current.uniforms.time.value += 1;
+    if (changed) materialRef.current.defines.MODE = mode;
+  });
+  return <rawShaderMaterial ref={materialRef} />;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fStatePointerMoveFixturePath,
+    `import React from "react";
+import { flushSync } from "react-dom";
+import "@react-three/fiber";
+
+export const PointerStateScene = () => {
+  const [point, setPoint] = React.useState(null);
+  const [, dispatch] = React.useReducer(reducer, initial);
+  const updatePoint = setPoint;
+  const pointState = React.useState(null);
+  const [, setWorldBucket] = React.useState(0);
+  const [, setScreenBucket] = React.useState(0);
+  const [, setFace] = React.useState(0);
+  return <>
+    <mesh onPointerMove={(event) => { setPoint(event.point); dispatch(event); }} />
+    <mesh onPointerMove={(event) => updatePoint(event.point)} />
+    <mesh onPointerMove={(event) => {
+      setWorldBucket(Math.floor(event.point.x / 2));
+      setScreenBucket(Math.round(event.clientX / 100));
+      setFace(event.faceIndex);
+    }} />
+    <mesh onPointerMove={(event) => {
+      pointState[1](event.point);
+      flushSync(() => pointState[1](event.point));
+    }} />
+    <mesh onPointerMove={(event) => {
+      if (point !== event.point) setPoint(event.point);
+    }} />
+  </>;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fSyncReadbackFixturePath,
+    `import { startTransition } from "react";
+import { useFrame } from "@react-three/fiber";
+
+useFrame(({ gl }) => gl.readRenderTargetPixels(target, 0, 0, 1, 1, pixels));
+useFrame((state) => state.renderer.readRenderTargetPixels(target, 0, 0, 1, 1, pixels));
+const pixels = new Uint8Array(4);
+const { defaultPixels = new Uint8Array(4) } = buffers;
+useFrame(() => {
+  const context = canvas.getContext("2d");
+  context.getImageData(0, 0, canvas.width, canvas.height);
+  const webgl = canvas.getContext("webgl2");
+  webgl.readPixels(0, 0, 1, 1, RGBA, UNSIGNED_BYTE, pixels);
+  webgl.readPixels(0, 0, 1, 1, RGBA, UNSIGNED_BYTE, defaultPixels);
+  const { contextFromDefault = canvas.getContext("2d") } = source;
+  contextFromDefault[\`getImageData\`](0, 0, canvas.width, canvas.height);
+});
+useFrame(({ gl }) => {
+  [target].forEach(() => gl.readRenderTargetPixels(target, 0, 0, 1, 1, pixels));
+  startTransition(() => gl.readRenderTargetPixels(target, 0, 0, 1, 1, pixels));
+});
+useFrame(({ gl }) => {
+  if (captureRequested.current) gl.readRenderTargetPixels(target, 0, 0, 1, 1, pixels);
+});
+useFrame(function* ({ gl }) {
+  gl.readRenderTargetPixels(target, 0, 0, 1, 1, pixels);
+});
+const Fiber = require("@react-three/fiber");
+Fiber.useFrame = runOnce;
+Fiber.useFrame(() => canvas.getContext("2d").getImageData(0, 0, 1, 1));
 `,
   );
   fs.writeFileSync(
@@ -3794,14 +3931,14 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
   if (JSON.stringify(nativeDiagnostics) !== JSON.stringify(stockDiagnostics)) {
     const nativeDiagnosticKeys = new Set(nativeDiagnostics.map(JSON.stringify));
     const stockDiagnosticKeys = new Set(stockDiagnostics.map(JSON.stringify));
-    const stockOnlyDiagnostic = stockDiagnostics.find(
+    const stockOnlyDiagnostics = stockDiagnostics.filter(
       (diagnostic) => !nativeDiagnosticKeys.has(JSON.stringify(diagnostic)),
     );
-    const nativeOnlyDiagnostic = nativeDiagnostics.find(
+    const nativeOnlyDiagnostics = nativeDiagnostics.filter(
       (diagnostic) => !stockDiagnosticKeys.has(JSON.stringify(diagnostic)),
     );
     throw new Error(
-      `native parity failed\nstock count=${stockDiagnostics.length}\nnative count=${nativeDiagnostics.length}\nstock only=${JSON.stringify(stockOnlyDiagnostic, null, 2)}\nnative only=${JSON.stringify(nativeOnlyDiagnostic, null, 2)}`,
+      `native parity failed\nstock count=${stockDiagnostics.length}\nnative count=${nativeDiagnostics.length}\nstock only=${JSON.stringify(stockOnlyDiagnostics, null, 2)}\nnative only=${JSON.stringify(nativeOnlyDiagnostics, null, 2)}`,
     );
   }
   process.stdout.write(`Native parity passed for ${stockDiagnostics.length} diagnostics.\n`);

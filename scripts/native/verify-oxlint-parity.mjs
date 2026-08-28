@@ -254,6 +254,16 @@ const threePositionBufferUpdateFixturePath = path.join(
   "app",
   "three-position-buffer-update.ts",
 );
+const threeProjectionMatrixUpdateFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-projection-matrix-update.ts",
+);
+const threeRenderInAnimationLoopFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-render-in-animation-loop.ts",
+);
 const threeRenderTargetCleanupFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -270,6 +280,11 @@ const threeRendererDomAttachmentFixturePath = path.join(
   "three-renderer-dom-attachment.ts",
 );
 const threeRendererSizeFixturePath = path.join(fixtureDirectory, "app", "three-renderer-size.ts");
+const threeShadowsEnabledFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-shadows-enabled.ts",
+);
 const r3fRootUnmountFixturePath = path.join(fixtureDirectory, "app", "r3f-root-unmount.tsx");
 const r3fAnimationMixerFixturePath = path.join(fixtureDirectory, "app", "r3f-animation-mixer.tsx");
 const r3fFrameDeltaFixturePath = path.join(fixtureDirectory, "app", "r3f-frame-delta.tsx");
@@ -725,9 +740,12 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-require-lighting-for-pbr": 1,
   "three-require-owned-texture-cleanup": 4,
   "three-require-position-buffer-update": 1,
+  "three-require-projection-matrix-update": 9,
+  "three-require-render-in-animation-loop": 1,
   "three-require-render-target-cleanup": 1,
   "three-require-renderer-dom-attachment": 3,
   "three-require-renderer-size": 3,
+  "three-require-shadows-enabled": 1,
   "three-webgpu-no-legacy-material-api": 3,
   "three-gpu-computation-handle-init-error": 2,
   "three-gpu-computation-valid-variable-name": 6,
@@ -3770,6 +3788,52 @@ renderer.setAnimationLoop(() => {
 `,
   );
   fs.writeFileSync(
+    threeProjectionMatrixUpdateFixturePath,
+    `import { OrthographicCamera, PerspectiveCamera } from "three";
+
+export const resizePerspective = () => {
+  const camera = new PerspectiveCamera();
+  camera.aspect = width / height;
+};
+export const zoomOrthographic = () => {
+  const camera = new OrthographicCamera();
+  camera.zoom++;
+};
+export const conditionallyRefresh = () => {
+  const camera = new PerspectiveCamera();
+  camera.aspect = width / height;
+  if (shouldRefresh) camera.updateProjectionMatrix();
+};
+export const conditionalResize = () => {
+  const camera = new PerspectiveCamera();
+  if (shouldResize) camera.aspect = width / height;
+};
+export const nestedConditionalRefresh = () => {
+  const camera = new PerspectiveCamera();
+  if (shouldResize) {
+    camera.aspect = width / height;
+    if (shouldRefresh) camera.updateProjectionMatrix();
+  }
+};
+export const oppositeBranchRefresh = () => {
+  const camera = new PerspectiveCamera();
+  if (shouldResize) camera.aspect = width / height;
+  else camera.updateProjectionMatrix();
+};
+`,
+  );
+  fs.writeFileSync(
+    threeRenderInAnimationLoopFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { WebGLRenderer } from "three";
+
+const renderer = new WebGLRenderer({ canvas });
+renderer.setAnimationLoop(() => {
+  mesh.rotation.x += 0.01;
+});
+`,
+  );
+  fs.writeFileSync(
     threeRenderTargetCleanupFixturePath,
     `/* oxlint-disable react-doctor/preact-no-react-hooks-import, react-doctor/react-compiler-no-manual-memoization */
 import { useMemo } from "react";
@@ -3820,6 +3884,20 @@ renderer.render(new THREE.Scene(), new THREE.PerspectiveCamera());
 const wrappedRenderer = new THREE.WebGLRenderer();
 container.appendChild(wrappedRenderer.domElement);
 (wrappedRenderer as any).render(scene, camera);
+`,
+  );
+  fs.writeFileSync(
+    threeShadowsEnabledFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-size */
+import { Mesh, PerspectiveCamera, Scene, WebGLRenderer } from "three";
+
+const renderer = new WebGLRenderer({ canvas });
+const scene = new Scene();
+const camera = new PerspectiveCamera();
+const mesh = new Mesh();
+mesh.castShadow = true;
+scene.add(mesh);
+renderer.render(scene, camera);
 `,
   );
   fs.writeFileSync(

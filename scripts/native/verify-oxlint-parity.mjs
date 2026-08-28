@@ -106,6 +106,7 @@ const r3fExtendNamespaceFixturePath = path.join(
   "r3f-extend-namespace.tsx",
 );
 const r3fFreshPortalFixturePath = path.join(fixtureDirectory, "app", "r3f-fresh-portal.tsx");
+const r3fFreshSelectorFixturePath = path.join(fixtureDirectory, "app", "r3f-fresh-selector.tsx");
 const r3fInlinePrimitiveFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -368,6 +369,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-extend-in-render": 0,
   "r3f-no-extend-three-namespace": 4,
   "r3f-no-fresh-portal-container": 1,
+  "r3f-no-fresh-use-three-selector": 1,
   "r3f-no-inline-primitive-object": 1,
   "react-router-csp-nonce-consistency": 1,
   "react-router-descendant-routes-require-splat": 1,
@@ -2759,6 +2761,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     r3fFreshPortalFixturePath,
     `import React from "react";\nimport { createPortal } from "@react-three/fiber";\nexport const FreshPortalScene = ({ source }) => createPortal(<mesh />, source.clone());\nexport const StablePortalScene = ({ container }) => createPortal(<mesh />, container);\n`,
+  );
+  fs.writeFileSync(
+    r3fFreshSelectorFixturePath,
+    `import { useThree } from "@react-three/fiber";\nexport const FreshSelectorScene = () => useThree((state) => ({ camera: state.camera }));\nexport const StableSelectorScene = () => useThree((state) => state.camera);\nexport const OrderedSelectorScene = ({ enabled }) => useThree((state) => enabled ? (() => state.camera) : ({ camera: state.camera }));\n`,
   );
   fs.writeFileSync(
     r3fInlinePrimitiveFixturePath,

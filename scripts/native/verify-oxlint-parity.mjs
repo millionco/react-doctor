@@ -199,6 +199,41 @@ const r3fRenderTargetResetFixturePath = path.join(
   "app",
   "r3f-render-target-reset.tsx",
 );
+const r3fRenderWithPositivePriorityFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-render-with-positive-priority.tsx",
+);
+const r3fRenderWithPositivePriorityWorkingFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-render-with-positive-priority-working.tsx",
+);
+const r3fRenderWithPositivePriorityNamespaceFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-render-with-positive-priority-namespace.tsx",
+);
+const r3fRenderWithPositivePriorityTemplateFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-render-with-positive-priority-template.tsx",
+);
+const r3fValidTextureColorSpaceFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-valid-texture-color-space.tsx",
+);
+const r3fWebgpuNoGlStateFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-webgpu-no-gl-state.tsx",
+);
+const r3fWebgpuNoHighPrecisionInstancingFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-webgpu-no-high-precision-instancing.tsx",
+);
 const r3fRootUnmountFixturePath = path.join(fixtureDirectory, "app", "r3f-root-unmount.tsx");
 const r3fAnimationMixerFixturePath = path.join(fixtureDirectory, "app", "r3f-animation-mixer.tsx");
 const r3fFrameDeltaFixturePath = path.join(fixtureDirectory, "app", "r3f-frame-delta.tsx");
@@ -507,6 +542,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-require-position-buffer-update": 7,
   "r3f-require-projection-matrix-update": 1,
   "r3f-require-render-target-reset": 2,
+  "r3f-require-render-with-positive-priority": 11,
   "r3f-require-root-unmount": 8,
   "r3f-require-uv-for-texture-map": 4,
   "react-router-csp-nonce-consistency": 1,
@@ -817,9 +853,12 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-valid-spot-light-properties": 1,
   "r3f-valid-perspective-camera": 1,
   "r3f-valid-orthographic-camera": 1,
+  "r3f-valid-texture-color-space": 3,
   "r3f-no-use-frame-dependency-array": 1,
   "r3f-no-normalized-float-buffer-attribute": 1,
   "r3f-webgpu-canvas-prop-compatibility": 1,
+  "r3f-webgpu-no-gl-state": 10,
+  "r3f-webgpu-no-high-precision-instancing": 1,
   "r3f-limit-shadowed-point-lights": 1,
   "rn-bottom-sheet-use-integrated-scrollable": 1,
   "no-focusable-content-in-aria-hidden": 1,
@@ -3488,6 +3527,117 @@ export const CompleteTargetReset = () => {
   });
   return null;
 };
+`,
+  );
+  fs.writeFileSync(
+    r3fRenderWithPositivePriorityFixturePath,
+    `import { useFrame as scheduleFrame } from "@react-three/fiber";
+
+const renderPriority = +2 as number;
+export const PositiveStaticPriority = () => {
+  scheduleFrame(() => update(), 1);
+  scheduleFrame(() => updateAgain(), renderPriority);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fRenderWithPositivePriorityWorkingFixturePath,
+    `import { useFrame } from "@react-three/fiber";
+
+export const PositiveWorkingCallbacks = () => {
+  useFrame(() => { updateOne(); return null; }, 1);
+  useFrame(() => { updateTwo(); return null; }, 2);
+  useFrame(() => (updateThree(), null), 3);
+  useFrame(() => true, 4);
+  useFrame(() => undefined, 5);
+  useFrame(() => void updateSix(), 6);
+  useFrame(() => {}, 7);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fRenderWithPositivePriorityNamespaceFixturePath,
+    `import * as Fiber from "@react-three/fiber";
+
+export const PositiveNamespaceAlias = () => {
+  const updateFrame = () => tick();
+  const updateFrameAlias = updateFrame;
+  Fiber["useFrame"](updateFrameAlias, 1);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fRenderWithPositivePriorityTemplateFixturePath,
+    `import Mustache from "mustache";
+import * as Handlebars from "handlebars";
+import { useFrame } from "@react-three/fiber";
+
+const templates = Mustache;
+export const PositiveTemplateRender = () => {
+  useFrame(() => {
+    templates.render(source, view);
+    Handlebars.render(source, view);
+  }, 1);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fValidTextureColorSpaceFixturePath,
+    `import React from "react";
+import { Canvas } from "@react-three/fiber";
+import { NoColorSpace, SRGBColorSpace, Texture } from "three";
+
+const color = new Texture();
+color.colorSpace = NoColorSpace;
+const normal = new Texture();
+normal.colorSpace = SRGBColorSpace;
+export const InvalidTextureColorSpace = () => <Canvas>
+  <meshPhysicalMaterial map={color} emissiveMap={color} normalMap={normal} />
+</Canvas>;
+`,
+  );
+  fs.writeFileSync(
+    r3fWebgpuNoGlStateFixturePath,
+    `import { useFrame, useThree } from "@react-three/fiber/webgpu";
+import * as Fiber from "@react-three/fiber/webgpu";
+
+const { useCallback } = require("react");
+const selectedRenderer = useThree((state) => state.gl);
+const { gl: destructuredRenderer } = useThree();
+const selectedState = useThree();
+const directRenderer = selectedState["gl"];
+Fiber.useFrame(({ gl }) => gl.render(scene, camera));
+Fiber.useFrame((state) => state.gl.render(scene, camera));
+useThree((state) => { const { gl } = state; return gl; });
+useFrame((state) => { const { ["gl"]: renderer } = state; renderer.render(scene, camera); });
+useThree((state) => { const { gl = fallbackRenderer } = state; return gl; });
+useFrame((state) => {
+  const { ["gl"]: renderer = fallbackRenderer } = state;
+  renderer.render(scene, camera);
+});
+const updateFrame = useCallback((state) => state.gl.render(scene, camera), []);
+useFrame(updateFrame);
+`,
+  );
+  fs.writeFileSync(
+    r3fWebgpuNoHighPrecisionInstancingFixturePath,
+    `import React from "react";
+import { Canvas } from "@react-three/fiber";
+import { WebGPURenderer } from "three/webgpu";
+
+const createHighPrecisionRenderer = async () => {
+  const renderer = new WebGPURenderer();
+  renderer.highPrecision = true;
+  await renderer.init();
+  return renderer;
+};
+export const HighPrecisionInstancing = () => <Canvas gl={createHighPrecisionRenderer}>
+  <instancedMesh args={[geometry, material, 10]} />
+</Canvas>;
 `,
   );
   fs.writeFileSync(

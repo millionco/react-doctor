@@ -429,6 +429,7 @@ impl Rule for ${delegatedRule.struct} {
       ["r3f-require-data-texture-update", ["jsx_attribute_expression"]],
       ["r3f-require-dynamic-buffer-usage", ["jsx_attribute_expression"]],
       ["r3f-require-instanced-buffer-update", ["jsx_attribute_expression"]],
+      ["r3f-valid-texture-color-space", ["jsx_attribute_expression"]],
       [
         "r3f-require-owned-texture-cleanup",
         [

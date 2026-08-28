@@ -239,6 +239,26 @@ const threeControlsCleanupFixturePath = path.join(
   "app",
   "three-controls-cleanup.tsx",
 );
+const threeCameraAspectOnResizeFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-camera-aspect-on-resize.ts",
+);
+const threeOwnedTextureCleanupFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-owned-texture-cleanup.tsx",
+);
+const threePositionBufferUpdateFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-position-buffer-update.ts",
+);
+const threeRenderTargetCleanupFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-render-target-cleanup.tsx",
+);
 const threeControlsUpdateFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -554,7 +574,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-require-global-effect-cleanup": 6,
   "r3f-require-instanced-buffer-update": 4,
   "r3f-require-lit-material-normals": 2,
-  "r3f-require-owned-texture-cleanup": 1,
+  "r3f-require-owned-texture-cleanup": 4,
   "r3f-require-position-buffer-update": 7,
   "r3f-require-projection-matrix-update": 1,
   "r3f-require-render-target-reset": 2,
@@ -698,10 +718,14 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-valid-physical-material-properties": 2,
   "three-valid-data-texture-data-length": 4,
   "three-valid-material-opacity": 3,
+  "three-require-camera-aspect-on-resize": 1,
   "three-require-controls-cleanup": 7,
   "three-require-controls-update": 1,
   "three-require-transparent-for-opacity": 2,
   "three-require-lighting-for-pbr": 1,
+  "three-require-owned-texture-cleanup": 4,
+  "three-require-position-buffer-update": 1,
+  "three-require-render-target-cleanup": 1,
   "three-require-renderer-dom-attachment": 3,
   "three-require-renderer-size": 3,
   "three-webgpu-no-legacy-material-api": 3,
@@ -3697,6 +3721,63 @@ export const MissingReactiveControlsDependency = ({ camera, element }) => {
 export const IncompleteTransformControlsCleanup = ({ camera, element }) => {
   const controls = useMemo(() => new TransformControls(camera, element), [camera, element]);
   useEffect(() => () => controls.disconnect(), [controls]);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    threeCameraAspectOnResizeFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { PerspectiveCamera, Scene, WebGLRenderer } from "three";
+
+const renderer = new WebGLRenderer({ canvas });
+const camera = new PerspectiveCamera();
+window.addEventListener("resize", () => renderer.setSize(innerWidth, innerHeight));
+renderer.render(new Scene(), camera);
+`,
+  );
+  fs.writeFileSync(
+    threeOwnedTextureCleanupFixturePath,
+    `/* oxlint-disable react-doctor/preact-no-react-hooks-import, react-doctor/react-compiler-no-manual-memoization */
+import * as THREE from "three";
+import { CanvasTexture as Texture, DepthTexture } from "three";
+import { useEffect, useMemo } from "react";
+
+export const Scene = ({ canvas, video }) => {
+  const first = useMemo(() => new Texture(canvas), [canvas]);
+  const depth = useMemo(() => new DepthTexture(), []);
+  useEffect(() => {
+    const second = new THREE.VideoTexture(video);
+    second.needsUpdate = true;
+  }, [video]);
+  return first.image ?? depth.image;
+};
+`,
+  );
+  fs.writeFileSync(
+    threePositionBufferUpdateFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import * as THREE from "three";
+
+const renderer = new THREE.WebGLRenderer({ canvas });
+const geometry = new THREE.BufferGeometry();
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera();
+renderer.setAnimationLoop(() => {
+  for (let index = 0; index < 100; index += 1) geometry.attributes.position.setXYZ(index, index, 0, 0);
+  renderer.render(scene, camera);
+});
+`,
+  );
+  fs.writeFileSync(
+    threeRenderTargetCleanupFixturePath,
+    `/* oxlint-disable react-doctor/preact-no-react-hooks-import, react-doctor/react-compiler-no-manual-memoization */
+import { useMemo } from "react";
+import { WebGLRenderTarget } from "three";
+
+export const Scene = () => {
+  const target = useMemo(() => new WebGLRenderTarget(1, 1), []);
+  target.width;
   return null;
 };
 `,

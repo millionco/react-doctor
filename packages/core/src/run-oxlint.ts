@@ -14,6 +14,7 @@ import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
 import { detectUserLintConfigPaths } from "./detect-user-lint-config.js";
+import { readAdoptedLintConfigSettings } from "./read-adopted-lint-config-settings.js";
 import { ReactDoctorError } from "./errors.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
 import { computeRulesetHash } from "./runners/oxlint/compute-ruleset-hash.js";
@@ -328,6 +329,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   // the parser crash + misleading warning. Drop them up front so the
   // scan starts in the same state the fallback would land in.
   const extendsPaths = detectedConfigPaths.filter(canOxlintExtendConfig);
+  const adoptedSettings =
+    extendsPaths.length > 0 ? readAdoptedLintConfigSettings(extendsPaths) : {};
   const userPlugins =
     includedTags.size > 0 ? [] : resolveUserPlugins(userConfig?.plugins, configSourceDirectory);
 
@@ -452,6 +455,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         serverAuthFunctionNames,
         projectIndexModuleSources,
         severityControls,
+        adoptedSettings,
         userPlugins,
         disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
         ruleSelection: overrides.ruleSelection,

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { runOxlint } from "@react-doctor/core";
 import { buildTestProject } from "../regressions/_helpers.js";
-import { USER_OXLINT_CONFIG_BROKEN_DIRECTORY, USER_OXLINT_CONFIG_DIRECTORY } from "./_helpers.js";
+import {
+  USER_OXLINT_CONFIG_BROKEN_DIRECTORY,
+  USER_OXLINT_CONFIG_DIRECTORY,
+  USER_TAILWIND_CONFIG_DIRECTORY,
+} from "./_helpers.js";
 
 describe("runOxlint", () => {
   describe("adoptExistingLintConfig", () => {
@@ -86,6 +90,22 @@ describe("runOxlint", () => {
       const stderrOutput = stderrChunks.join("");
       expect(stderrOutput).not.toContain("could not adopt existing lint config");
       expect(stderrOutput).not.toContain("retrying without extends");
+    });
+
+    it("adopts tailwindcss settings from .oxlintrc.json", async () => {
+      const diagnostics = await runOxlint({
+        rootDirectory: USER_TAILWIND_CONFIG_DIRECTORY,
+        project: buildTestProject({
+          rootDirectory: USER_TAILWIND_CONFIG_DIRECTORY,
+          tailwindVersion: "^4.0.0",
+        }),
+      });
+
+      const tailwindErrors = diagnostics.filter((diagnostic) =>
+        diagnostic.message.includes("`settings.tailwindcss.entryPoint` is required"),
+      );
+
+      expect(tailwindErrors).toHaveLength(0);
     });
   });
 });

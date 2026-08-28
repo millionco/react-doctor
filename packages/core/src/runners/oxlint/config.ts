@@ -29,6 +29,13 @@ export interface OxlintConfigOptions {
   projectIndexModuleSources?: ReadonlyArray<string>;
   severityControls?: RuleSeverityControls;
   /**
+   * Settings from adopted lint configs (`.oxlintrc.json`, `.eslintrc.json`),
+   * already read + extracted via `readAdoptedLintConfigSettings`. These
+   * settings are merged with react-doctor's own settings to preserve
+   * plugin configurations like `tailwindcss.entryPoint`.
+   */
+  adoptedSettings?: Record<string, unknown>;
+  /**
    * User-declared plugins from `react-doctor.config.json`'s
    * `plugins: [...]`, already resolved + introspected via
    * `resolveUserPlugins`. Each plugin's rules are opt-in: they don't
@@ -134,6 +141,7 @@ export const createOxlintConfig = ({
   serverAuthFunctionNames,
   projectIndexModuleSources,
   severityControls,
+  adoptedSettings = {},
   userPlugins = [],
   disableReactHooksJsPlugin = false,
   ruleSelection,
@@ -281,6 +289,7 @@ export const createOxlintConfig = ({
     plugins: [],
     jsPlugins: [...jsPlugins, pluginPath],
     settings: {
+      ...adoptedSettings,
       "react-doctor": {
         portedRuleMode: "curated",
         framework: project.framework,

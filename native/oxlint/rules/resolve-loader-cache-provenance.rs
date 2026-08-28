@@ -54,16 +54,23 @@ const SKELETON_UTILS_MODULE_SOURCES: [&str; 5] = [
 
 fn resolve_loader_cache_provenance<'a>(
     expression: &oxc_ast::ast::Expression<'a>,
+    analysis: &PossibleStaticPropertyWriteAnalysis,
     ctx: &crate::context::LintContext<'a>,
 ) -> bool {
-    loader_cache_provenance(expression, ctx, &mut Vec::new())
+    loader_cache_provenance(
+        expression,
+        analysis,
+        ctx,
+        &mut rustc_hash::FxHashSet::default(),
+    )
         .is_some_and(|provenance| provenance.kind == LoaderCacheProvenanceKind::Cached)
 }
 
 fn loader_cache_provenance<'a>(
     expression: &oxc_ast::ast::Expression<'a>,
+    analysis: &PossibleStaticPropertyWriteAnalysis,
     ctx: &crate::context::LintContext<'a>,
-    visited_symbol_ids: &mut Vec<oxc_semantic::SymbolId>,
+    visited_symbol_ids: &mut rustc_hash::FxHashSet<oxc_semantic::SymbolId>,
 ) -> Option<LoaderCacheProvenance> {
     let expression = expression.get_inner_expression();
     if let oxc_ast::ast::Expression::CallExpression(call_expression) = expression {
@@ -71,6 +78,7 @@ fn loader_cache_provenance<'a>(
             && member_expression.static_property_name() == Some("clone")
             && let Some(cloned_provenance) = loader_cache_provenance(
                 member_expression.object(),
+                analysis,
                 ctx,
                 &mut visited_symbol_ids.clone(),
             )
@@ -87,11 +95,11 @@ fn loader_cache_provenance<'a>(
                 terminal_property_name: None,
             });
         }
-        if module_api_path_matches(
+        if loader_cache_api_reference_matches(
             &call_expression.callee,
-            &["clone"],
+            "clone",
             &SKELETON_UTILS_MODULE_SOURCES,
-            false,
+            analysis,
             ctx,
         ) && call_expression
             .arguments
@@ -100,6 +108,7 @@ fn loader_cache_provenance<'a>(
             .is_some_and(|argument| {
                 loader_cache_provenance(
                     argument,
+                    analysis,
                     ctx,
                     &mut visited_symbol_ids.clone(),
                 )
@@ -112,7 +121,7 @@ fn loader_cache_provenance<'a>(
                 terminal_property_name: None,
             });
         }
-        return is_cached_loader_call(call_expression, ctx).then(|| LoaderCacheProvenance {
+        return is_cached_loader_call(call_expression, analysis, ctx).then(|| LoaderCacheProvenance {
             is_material_value: false,
             kind: LoaderCacheProvenanceKind::Cached,
             terminal_property_name: None,
@@ -122,6 +131,7 @@ fn loader_cache_provenance<'a>(
         let property_name = loader_cache_member_property_name(member_expression)?;
         let receiver_provenance = loader_cache_provenance(
             member_expression.object(),
+            analysis,
             ctx,
             visited_symbol_ids,
         )?;
@@ -134,12 +144,11 @@ fn loader_cache_provenance<'a>(
         .scoping()
         .get_reference(identifier.reference_id())
         .symbol_id()?;
-    if visited_symbol_ids.contains(&symbol_id) {
+    if !visited_symbol_ids.insert(symbol_id) {
         return None;
     }
-    visited_symbol_ids.push(symbol_id);
     if let Some(callback_source) = loader_cache_callback_source(symbol_id, ctx) {
-        return loader_cache_provenance(callback_source, ctx, visited_symbol_ids);
+        return loader_cache_provenance(callback_source, analysis, ctx, visited_symbol_ids);
     }
     let declaration = ctx.symbol_declaration(symbol_id);
     let oxc_ast::AstKind::VariableDeclarator(declarator) = declaration.kind() else {
@@ -152,8 +161,14 @@ fn loader_cache_provenance<'a>(
     ) {
         return None;
     }
+    let initializer = binding_pattern_initializer_for_symbol(
+        &declarator.id,
+        symbol_id,
+        declarator.init.as_ref(),
+    )?;
     let initializer_provenance = loader_cache_provenance(
-        declarator.init.as_ref()?,
+        initializer,
+        analysis,
         ctx,
         visited_symbol_ids,
     )?;
@@ -236,11 +251,12 @@ fn javascript_number_property_name_is_integer(property_name: &str) -> bool {
 
 fn is_cached_loader_call<'a>(
     call_expression: &oxc_ast::ast::CallExpression<'a>,
+    analysis: &PossibleStaticPropertyWriteAnalysis,
     ctx: &crate::context::LintContext<'a>,
 ) -> bool {
-    module_api_path_matches(
+    loader_cache_api_reference_matches(
         &call_expression.callee,
-        &["useLoader"],
+        "useLoader",
         &[
             "@react-three/fiber",
             "@react-three/fiber/legacy",
@@ -248,17 +264,34 @@ fn is_cached_loader_call<'a>(
             "@react-three/fiber/webgpu",
             "react-three-fiber",
         ],
-        false,
+        analysis,
         ctx,
     ) || DREI_CACHED_LOADER_HOOK_NAMES.iter().any(|hook_name| {
-        module_api_path_matches(
+        loader_cache_api_reference_matches(
             &call_expression.callee,
-            &[hook_name],
+            hook_name,
             &["@react-three/drei", "@react-three/drei/native"],
-            false,
+            analysis,
             ctx,
         )
     })
+}
+
+fn loader_cache_api_reference_matches<'a>(
+    expression: &oxc_ast::ast::Expression<'a>,
+    api_name: &str,
+    module_sources: &[&str],
+    analysis: &PossibleStaticPropertyWriteAnalysis,
+    ctx: &crate::context::LintContext<'a>,
+) -> bool {
+    module_api_reference_matches(expression, api_name, module_sources, analysis, ctx)
+        || type_import_module_api_reference_matches(
+            expression,
+            api_name,
+            module_sources,
+            analysis,
+            ctx,
+        )
 }
 
 fn loader_cache_member_property_name(

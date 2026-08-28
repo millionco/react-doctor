@@ -121,6 +121,22 @@ const r3fInlinePrimitiveFixturePath = path.join(
 );
 const r3fInlineResourceFixturePath = path.join(fixtureDirectory, "app", "r3f-inline-resource.tsx");
 const r3fManualResizeFixturePath = path.join(fixtureDirectory, "app", "r3f-manual-resize.tsx");
+const r3fMutateLoaderCacheFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-mutate-loader-cache.tsx",
+);
+const r3fMutateUniformSourceFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-mutate-uniform-source.tsx",
+);
+const r3fMutatingPointerEventDataFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-mutating-pointer-event-data.tsx",
+);
+const r3fNewInFrameFixturePath = path.join(fixtureDirectory, "app", "r3f-new-in-frame.tsx");
 const r3fAnimationMixerFixturePath = path.join(fixtureDirectory, "app", "r3f-animation-mixer.tsx");
 const r3fFrameDeltaFixturePath = path.join(fixtureDirectory, "app", "r3f-frame-delta.tsx");
 const r3fGlobalEffectCleanupFixturePath = path.join(
@@ -400,6 +416,10 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-inline-primitive-object": 1,
   "r3f-no-inline-resource-prop": 1,
   "r3f-no-manual-canvas-resize": 1,
+  "r3f-no-mutate-loader-cache": 4,
+  "r3f-no-mutate-uniform-prop-source-in-use-frame": 3,
+  "r3f-no-mutating-pointer-event-data": 6,
+  "r3f-no-new-in-use-frame": 4,
   "r3f-require-animation-mixer-update": 2,
   "r3f-require-frame-delta": 13,
   "r3f-require-global-effect-cleanup": 6,
@@ -2819,6 +2839,109 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     r3fAnimationMixerFixturePath,
     `import { useFrame } from "@react-three/fiber";\nimport { AnimationMixer } from "three";\nexport const MixerScene = ({ model, clip }) => { const mixer = new AnimationMixer(model); mixer.clipAction(clip).play(); useFrame(() => {}); return null; };\nexport const GeneratorMixerScene = ({ model, clip }) => { const generatorMixer = new AnimationMixer(model); generatorMixer.clipAction(clip).play(); useFrame(function* () { generatorMixer.update(1); }); return null; };\n`,
+  );
+  fs.writeFileSync(
+    r3fMutateLoaderCacheFixturePath,
+    `import { useThree } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
+import type { useGLTF as typedUseGLTF } from "@react-three/drei";
+import * as Drei from "@react-three/drei";
+import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+
+const { nodes, scene } = useGLTF(url);
+nodes.Mesh.geometry.center();
+scene.rotation.x = 1;
+const root = useThree((state) => state.scene);
+root.add(scene);
+typedUseGLTF(url).scene.clear();
+
+const clone = scene.clone();
+clone.position.set(1, 2, 3);
+texture.dispose();
+const { scene: fallbackScene = localScene } = useGLTF(url);
+fallbackScene.clear();
+Drei.useGLTF = localHook;
+Drei.useGLTF(url).scene.clear();
+SkeletonUtils.clone = localClone;
+SkeletonUtils.clone(scene).geometry.center();
+`,
+  );
+  fs.writeFileSync(
+    r3fMutateUniformSourceFixturePath,
+    `import React from "react";
+import * as Fiber from "@react-three/fiber";
+
+export const DirectUniformScene = () => {
+  const uniforms = { time: { value: 0 } };
+  Fiber.useFrame(() => {
+    uniforms.time.value = 1;
+  });
+  return <shaderMaterial uniforms={uniforms} />;
+};
+
+export const AliasUniformScene = () => {
+  const source = { color: { value: [1, 0, 0] } };
+  const alias = source;
+  Fiber.useFrame(() => {
+    alias.color.value[0]++;
+  });
+  return <rawShaderMaterial uniforms={source} />;
+};
+
+export const HelperUniformScene = () => {
+  const uniforms = { time: { value: 0 } };
+  const tick = () => {
+    uniforms.time.value += 1;
+  };
+  Fiber.useFrame(() => tick());
+  return <shaderMaterial uniforms={uniforms} />;
+};
+
+export const ObscuredUniformScene = () => {
+  const uniforms = { time: { value: 0 } };
+  Fiber.useFrame(() => {
+    uniforms.time.value = 1;
+  });
+  return <shaderMaterial uniforms={uniforms} {...props} />;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fMutatingPointerEventDataFixturePath,
+    `import React, { startTransition } from "react";
+import { Canvas } from "@react-three/fiber";
+
+const direct = <mesh onPointerMove={(event) => event[\`point\`][\`set\`](1, 2, 3)} />;
+const assigned = <mesh onPointerDown={(event) => { const point = event.point; point.x = 1; }} />;
+const destructured = <mesh onClick={({ [\`point\`]: hitPoint }) => hitPoint.applyMatrix4(matrix)} />;
+const converted = <mesh onPointerUp={(event) => object.worldToLocal(event.ray.origin)} />;
+const captured = <mesh onPointerOut={(event) => { const mutate = () => { event.uv.x++; }; mutate(); }} />;
+const immediate = <mesh onWheel={(event) => { startTransition(() => event.normal.normalize()); }} />;
+
+const propertyName = "point";
+const computed = <mesh onPointerMove={(event) => event[propertyName].set(1, 2, 3)} />;
+const obscured = <mesh onPointerMove={(event) => event.point.set(1, 2, 3)} {...props} />;
+void Canvas;
+`,
+  );
+  fs.writeFileSync(
+    r3fNewInFrameFixturePath,
+    `import { startTransition } from "react";
+import { useFrame } from "@react-three/fiber";
+
+const allocate = () => new BufferGeometry();
+useFrame(() => {
+  new Vector3();
+  allocate();
+  startTransition(() => new Quaternion());
+  [event].map(() => new Event());
+  scheduler.map(() => new DeferredEvent());
+  if (needsResize) new Matrix4();
+});
+useFrame(function* () {
+  yield new Euler();
+});
+`,
   );
   fs.writeFileSync(
     r3fFrameDeltaFixturePath,

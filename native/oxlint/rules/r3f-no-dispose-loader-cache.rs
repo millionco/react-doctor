@@ -3,7 +3,6 @@ use oxc_diagnostics::OxcDiagnostic;
 use oxc_span::GetSpan;
 
 use crate::{
-    AstNode,
     context::LintContext,
     rule::{Rule, RuleCategory, RuleInfo, RuleMeta},
 };
@@ -24,17 +23,20 @@ impl RuleMeta for R3FNoDisposeLoaderCache {
 }
 
 impl Rule for R3FNoDisposeLoaderCache {
-    fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
-        let AstKind::CallExpression(call_expression) = node.kind() else {
-            return;
-        };
-        let Some(member_expression) = call_expression.callee.as_member_expression() else {
-            return;
-        };
-        if member_expression.static_property_name() == Some("dispose")
-            && resolve_loader_cache_provenance(member_expression.object(), ctx)
-        {
-            ctx.diagnostic(OxcDiagnostic::warn(MESSAGE).with_label(node.span()));
+    fn run_once<'a>(&self, ctx: &LintContext<'a>) {
+        let analysis = build_possible_static_property_write_analysis(ctx);
+        for node in ctx.nodes().iter() {
+            let AstKind::CallExpression(call_expression) = node.kind() else {
+                continue;
+            };
+            let Some(member_expression) = call_expression.callee.as_member_expression() else {
+                continue;
+            };
+            if member_expression.static_property_name() == Some("dispose")
+                && resolve_loader_cache_provenance(member_expression.object(), &analysis, ctx)
+            {
+                ctx.diagnostic(OxcDiagnostic::warn(MESSAGE).with_label(node.span()));
+            }
         }
     }
 }

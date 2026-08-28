@@ -388,6 +388,11 @@ impl Rule for ${delegatedRule.struct} {
         "r3f-require-global-effect-cleanup",
         ["r3f_analyzed_use_three_state_property_matches", "statement_always_exits"],
       ],
+      [
+        "r3f-no-mutating-pointer-event-data",
+        ["has_possible_static_property_write_before", "r3f_callback_state_property_matches"],
+      ],
+      ["r3f-no-mutate-uniform-prop-source-in-use-frame", ["jsx_attribute_expression"]],
       ["r3f-require-instanced-buffer-update", ["jsx_attribute_expression"]],
     ]);
     for (const nativeRuleId of upstream.nativeRules) {

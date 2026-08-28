@@ -47,10 +47,32 @@ fn can_expression_override_jsx_attribute(
                 )
             }
             oxc_ast::ast::ObjectPropertyKind::ObjectProperty(object_property) => {
-                let Some(property_name) = object_property.key.static_name() else {
+                let property_name = match &object_property.key {
+                    oxc_ast::ast::PropertyKey::StaticIdentifier(identifier)
+                        if !object_property.computed =>
+                    {
+                        Some(identifier.name.as_str())
+                    }
+                    oxc_ast::ast::PropertyKey::StringLiteral(literal) => {
+                        Some(literal.value.as_str())
+                    }
+                    oxc_ast::ast::PropertyKey::TemplateLiteral(template)
+                        if object_property.computed && template.expressions.is_empty() =>
+                    {
+                        template.quasis.first().map(|quasi| {
+                            quasi
+                                .value
+                                .cooked
+                                .as_ref()
+                                .map_or(quasi.value.raw.as_str(), |cooked| cooked.as_str())
+                        })
+                    }
+                    _ => None,
+                };
+                let Some(property_name) = property_name.filter(|property_name| !property_name.is_empty()) else {
                     return true;
                 };
-                names_match(property_name.as_ref(), target_name, is_case_sensitive)
+                names_match(property_name, target_name, is_case_sensitive)
             }
         })
 }

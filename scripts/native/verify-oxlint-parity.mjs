@@ -122,6 +122,22 @@ const r3fInlinePrimitiveFixturePath = path.join(
 const r3fInlineResourceFixturePath = path.join(fixtureDirectory, "app", "r3f-inline-resource.tsx");
 const r3fManualResizeFixturePath = path.join(fixtureDirectory, "app", "r3f-manual-resize.tsx");
 const r3fAnimationMixerFixturePath = path.join(fixtureDirectory, "app", "r3f-animation-mixer.tsx");
+const r3fFrameDeltaFixturePath = path.join(fixtureDirectory, "app", "r3f-frame-delta.tsx");
+const r3fGlobalEffectCleanupFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-global-effect-cleanup.tsx",
+);
+const r3fInstancedBufferUpdateFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-instanced-buffer-update.tsx",
+);
+const r3fLitMaterialNormalsFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-lit-material-normals.tsx",
+);
 const r3fShadowsFixturePath = path.join(fixtureDirectory, "app", "r3f-shadows.tsx");
 const r3fTextureRepeatFixturePath = path.join(fixtureDirectory, "app", "r3f-texture-repeat.tsx");
 const safeGlobalErrorFixturePath = path.join(fixtureDirectory, "app", "safe", "global-error.tsx");
@@ -385,6 +401,10 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-inline-resource-prop": 1,
   "r3f-no-manual-canvas-resize": 1,
   "r3f-require-animation-mixer-update": 2,
+  "r3f-require-frame-delta": 13,
+  "r3f-require-global-effect-cleanup": 6,
+  "r3f-require-instanced-buffer-update": 4,
+  "r3f-require-lit-material-normals": 2,
   "react-router-csp-nonce-consistency": 1,
   "react-router-descendant-routes-require-splat": 1,
   "react-router-guard-aborted-handle-error": 0,
@@ -2801,6 +2821,212 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
     `import { useFrame } from "@react-three/fiber";\nimport { AnimationMixer } from "three";\nexport const MixerScene = ({ model, clip }) => { const mixer = new AnimationMixer(model); mixer.clipAction(clip).play(); useFrame(() => {}); return null; };\nexport const GeneratorMixerScene = ({ model, clip }) => { const generatorMixer = new AnimationMixer(model); generatorMixer.clipAction(clip).play(); useFrame(function* () { generatorMixer.update(1); }); return null; };\n`,
   );
   fs.writeFileSync(
+    r3fFrameDeltaFixturePath,
+    `import React, { createRef } from "react";
+import { useRef } from "preact/hooks";
+import { useFrame, useThree } from "@react-three/fiber";
+import type { useThree as typedUseThree } from "@react-three/fiber";
+import { MathUtils } from "three";
+
+export const FrameDeltaScene = () => {
+  useFrame(({ scene }) => {
+    scene.rotation.y += 0.01;
+    scene.position.x++;
+    MathUtils.lerp(0, 1, 0.1);
+  });
+  return null;
+};
+
+export const RefFrameDeltaScene = () => {
+  const meshRef = useRef(null);
+  const createdRef = createRef();
+  const colorRef = useRef(null);
+  const camera = useThree((state) => state.camera);
+
+  useFrame((_, delta) => {
+    const frameDelta = delta;
+    meshRef.current.position.x += speed * frameDelta;
+    if (meshRef.current) meshRef.current.rotation.y += 0.03;
+    if (createdRef.current) createdRef.current.rotation.y += 0.03;
+    colorRef.current.lerp(targetColor, 0.1);
+    camera.position.lerp(targetPosition, 0.1);
+  });
+
+  return (
+    <>
+      <mesh ref={meshRef} />
+      <mesh ref={createdRef} />
+      <color ref={colorRef} />
+    </>
+  );
+};
+
+export const LookAtScene = () => {
+  const globeRef = useRef(null);
+
+  useFrame(() => {
+    if (!globeRef.current) return;
+    globeRef.current.lookAt(center);
+    globeRef.current.rotation.z += Math.PI / 2;
+  });
+
+  return <group ref={globeRef} />;
+};
+
+export const DelegatedFrameScene = () => {
+  const delegatedRef = useRef(null);
+  const advance = () => {
+    delegatedRef.current.scale.x += 0.1;
+  };
+  const delegatedFrame = () => {
+    advance();
+  };
+
+  useFrame(delegatedFrame);
+  return <mesh ref={delegatedRef} />;
+};
+
+export const SelectorParityScene = () => {
+  const selectors = { camera: (state) => state.camera };
+  const memberCamera = useThree(selectors.camera);
+  const conditionalCamera = useThree((state) => flag ? state.camera : state.camera);
+  const partialCamera = useThree((state) => { if (flag) return state.camera; });
+  const typedCamera = typedUseThree((state) => state.camera);
+  const typedState = typedUseThree();
+
+  useFrame(() => {
+    memberCamera.position.x += 0.1;
+    conditionalCamera.position.x += 0.1;
+    partialCamera.position.x += 0.1;
+    typedCamera.position.x += 0.1;
+    typedState.camera.position.x += 0.1;
+  });
+
+  return null;
+};
+
+export const BindingParityScene = () => {
+  useFrame(({ [\`scene\`]: scene }, delta) => {
+    const { frameDelta } = { frameDelta: delta };
+    const { alpha = 0.2 } = {};
+    scene.scale.x += 0.1;
+    scene.position.x += speed * frameDelta;
+    scene.position.lerp(targetPosition, alpha);
+  });
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fLitMaterialNormalsFixturePath,
+    `const React = require("react"), Fiber = require("@react-three/fiber");
+const { Canvas } = Fiber;
+
+const positionAttachment = "attributes-position";
+const Root = Canvas;
+
+export const StandardMaterialScene = ({ texture }) => (
+  <Canvas>
+    <ambientLight />
+    <mesh>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+      </bufferGeometry>
+      <meshStandardMaterial normalMap={texture} />
+    </mesh>
+  </Canvas>
+);
+
+export const PhongMaterialScene = ({ texture }) => (
+  <Root>
+    <ambientLight />
+    <mesh>
+      <bufferGeometry>
+        <float32BufferAttribute attach={positionAttachment} args={[positions, 3]} />
+      </bufferGeometry>
+      <meshPhongMaterial normalMap={texture} />
+    </mesh>
+  </Root>
+);
+`,
+  );
+  fs.writeFileSync(
+    r3fGlobalEffectCleanupFixturePath,
+    `import React from "react";
+import { addAfterEffect, addEffect, addTail, useFrame } from "@react-three/fiber";
+import type { startTransition } from "react";
+
+export const GlobalEffectScene = ({ callback }) => {
+  React.useEffect(() => {
+    const dispose = addEffect(callback);
+    const cleanup = () => dispose();
+    const getCleanup = () => cleanup;
+    return (getCleanup as typeof getCleanup)();
+  }, [callback]);
+  React.useLayoutEffect(() => {
+    addAfterEffect(callback);
+    addTail(callback);
+  }, [callback]);
+  React.useEffect(() => addEffect(callback), [callback]);
+  React.useEffect(() => {
+    startTransition(() => {
+      addEffect(callback);
+    });
+  }, [callback]);
+  React.useEffect(() => {
+    (promise.then as typeof promise.then)(() => {
+      addEffect(callback);
+    });
+  }, [callback]);
+  React.useEffect = fakeEffect;
+  const { useEffect: mutatedUseEffect } = React;
+  mutatedUseEffect(() => {
+    addEffect(callback);
+  }, [callback]);
+  addEffect(callback);
+  useFrame(() => {
+    addTail(callback);
+  });
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fInstancedBufferUpdateFixturePath,
+    `import React from "react";
+import { useRef } from "preact/hooks";
+import { useFrame } from "@react-three/fiber";
+
+export const InstancedBufferScene = () => {
+  const meshRef = useRef(null);
+  useFrame(() => {
+    meshRef.current.setMatrixAt(0, matrix);
+    meshRef.current.setColorAt(0, color);
+  });
+  const updateMorph = () => meshRef.current.setMorphAt(0, sourceMesh);
+  const updateAndUploadMatrix = () => {
+    meshRef.current.setMatrixAt(1, matrix);
+    meshRef.current.instanceMatrix.needsUpdate = true;
+  };
+  const updateWithWrappedArray = () => {
+    (Array as typeof Array).from(items, () => {
+      meshRef.current.setMatrixAt(2, matrix);
+    });
+    meshRef.current.instanceMatrix.needsUpdate = true;
+  };
+  return <instancedMesh ref={meshRef} />;
+};
+
+export const UncertainStaticSpreadScene = () => {
+  const uncertainRef = useRef(null);
+  useFrame(() => {
+    uncertainRef.current.setMatrixAt(0, matrix);
+  });
+  return <instancedMesh ref={uncertainRef} {...{"": true}} />;
+};
+`,
+  );
+  fs.writeFileSync(
     r3fShadowsFixturePath,
     `import React from "react";\nimport { Canvas } from "@react-three/fiber";\nexport const ShadowScene = () => <Canvas><directionalLight castShadow /><mesh receiveShadow /></Canvas>;\n`,
   );
@@ -3491,8 +3717,17 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
     nativeEnvironment,
     frameworkEnvironmentRouteFixturePath,
   ).diagnostics;
+  const stableFrameworkEnvironmentRouteStockDiagnostics =
+    frameworkEnvironmentRouteStockDiagnostics.filter(
+      (diagnostic) => !diagnostic.code.includes("(react-router-no-loader-request-body)"),
+    );
+  const platformSpecificFrameworkEnvironmentRouteStockDiagnostics =
+    frameworkEnvironmentRouteStockDiagnostics.filter((diagnostic) =>
+      diagnostic.code.includes("(react-router-no-loader-request-body)"),
+    );
   if (
-    frameworkEnvironmentRouteStockDiagnostics.length !== 5 ||
+    stableFrameworkEnvironmentRouteStockDiagnostics.length !== 5 ||
+    platformSpecificFrameworkEnvironmentRouteStockDiagnostics.length > 1 ||
     JSON.stringify(frameworkEnvironmentRouteNativeDiagnostics) !==
       JSON.stringify(frameworkEnvironmentRouteStockDiagnostics)
   ) {

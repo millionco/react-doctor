@@ -50,7 +50,7 @@ fn resolve_expression_key(
         ) {
             return Some(symbol_key);
         }
-        let Some(initializer) = resolve_expression_key_binding_initializer(
+        let Some(initializer) = binding_pattern_initializer_for_symbol(
             &declarator.id,
             symbol_id,
             declarator.init.as_ref(),
@@ -125,71 +125,6 @@ fn resolve_expression_key_property_name(
         }
         oxc_ast::ast::PropertyKey::StringLiteral(literal) => Some(literal.value.to_string()),
         _ => None,
-    }
-}
-
-fn resolve_expression_key_binding_initializer<'a>(
-    pattern: &'a oxc_ast::ast::BindingPattern<'a>,
-    symbol_id: oxc_semantic::SymbolId,
-    base_initializer: Option<&'a oxc_ast::ast::Expression<'a>>,
-) -> Option<&'a oxc_ast::ast::Expression<'a>> {
-    match pattern {
-        oxc_ast::ast::BindingPattern::BindingIdentifier(binding) => {
-            (binding.symbol_id() == symbol_id)
-                .then_some(base_initializer)
-                .flatten()
-        }
-        oxc_ast::ast::BindingPattern::AssignmentPattern(assignment) => {
-            resolve_expression_key_binding_initializer(
-                &assignment.left,
-                symbol_id,
-                Some(&assignment.right),
-            )
-        }
-        oxc_ast::ast::BindingPattern::ObjectPattern(pattern) => {
-            for property in &pattern.properties {
-                let property_initializer = match &property.value {
-                    oxc_ast::ast::BindingPattern::AssignmentPattern(assignment) => {
-                        Some(&assignment.right)
-                    }
-                    _ => base_initializer,
-                };
-                if let Some(initializer) = resolve_expression_key_binding_initializer(
-                    &property.value,
-                    symbol_id,
-                    property_initializer,
-                ) {
-                    return Some(initializer);
-                }
-            }
-            pattern.rest.as_ref().and_then(|rest| {
-                resolve_expression_key_binding_initializer(
-                    &rest.argument,
-                    symbol_id,
-                    base_initializer,
-                )
-            })
-        }
-        oxc_ast::ast::BindingPattern::ArrayPattern(pattern) => {
-            for element in pattern.elements.iter().flatten() {
-                let element_initializer = match element {
-                    oxc_ast::ast::BindingPattern::AssignmentPattern(assignment) => {
-                        Some(&assignment.right)
-                    }
-                    _ => base_initializer,
-                };
-                if let Some(initializer) = resolve_expression_key_binding_initializer(
-                    element,
-                    symbol_id,
-                    element_initializer,
-                ) {
-                    return Some(initializer);
-                }
-            }
-            pattern.rest.as_ref().and_then(|rest| {
-                resolve_expression_key_binding_initializer(&rest.argument, symbol_id, None)
-            })
-        }
     }
 }
 

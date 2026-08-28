@@ -128,7 +128,7 @@ fn r3f_analyzed_use_three_state_property_matches_inner<'a>(
         });
     }
     let Some(initializer) =
-        r3f_analyzed_binding_initializer(&declarator.id, symbol_id, declarator.init.as_ref())
+        binding_pattern_initializer_for_symbol(&declarator.id, symbol_id, declarator.init.as_ref())
     else {
         return false;
     };
@@ -154,13 +154,19 @@ fn r3f_analyzed_resolves_to_whole_use_three_state<'a>(
     let expression = expression.get_inner_expression();
     if let R3fAnalyzedExpression::CallExpression(call_expression) = expression {
         return call_expression.arguments.is_empty()
-            && module_api_reference_matches(
+            && (module_api_reference_matches(
                 &call_expression.callee,
                 "useThree",
                 &R3F_ANALYZED_PUBLIC_MODULES,
                 analysis,
                 ctx,
-            );
+            ) || type_import_module_api_reference_matches(
+                &call_expression.callee,
+                "useThree",
+                &R3F_ANALYZED_PUBLIC_MODULES,
+                analysis,
+                ctx,
+            ));
     }
     let R3fAnalyzedExpression::Identifier(identifier) = expression else {
         return false;
@@ -192,7 +198,7 @@ fn r3f_analyzed_resolves_to_whole_use_three_state<'a>(
         return false;
     }
     let Some(initializer) =
-        r3f_analyzed_binding_initializer(&declarator.id, symbol_id, declarator.init.as_ref())
+        binding_pattern_initializer_for_symbol(&declarator.id, symbol_id, declarator.init.as_ref())
     else {
         return false;
     };
@@ -210,6 +216,12 @@ fn r3f_analyzed_use_three_selector_returns_property<'a>(
     assigned_expression_cache: &mut R3fAnalyzedAssignedExpressionCache<'a>,
 ) -> bool {
     if !module_api_reference_matches(
+        &call_expression.callee,
+        "useThree",
+        &R3F_ANALYZED_PUBLIC_MODULES,
+        analysis,
+        ctx,
+    ) && !type_import_module_api_reference_matches(
         &call_expression.callee,
         "useThree",
         &R3F_ANALYZED_PUBLIC_MODULES,
@@ -243,61 +255,6 @@ fn r3f_analyzed_use_three_selector_returns_property<'a>(
         &mut Vec::new(),
         &mut Vec::new(),
     )
-}
-
-fn r3f_analyzed_binding_initializer<'a>(
-    pattern: &'a oxc_ast::ast::BindingPattern<'a>,
-    symbol_id: oxc_semantic::SymbolId,
-    base_initializer: Option<&'a R3fAnalyzedExpression<'a>>,
-) -> Option<&'a R3fAnalyzedExpression<'a>> {
-    match pattern {
-        oxc_ast::ast::BindingPattern::BindingIdentifier(binding) => (binding.symbol_id()
-            == symbol_id)
-            .then_some(base_initializer)
-            .flatten(),
-        oxc_ast::ast::BindingPattern::AssignmentPattern(assignment) => {
-            r3f_analyzed_binding_initializer(&assignment.left, symbol_id, Some(&assignment.right))
-        }
-        oxc_ast::ast::BindingPattern::ObjectPattern(pattern) => {
-            for property in &pattern.properties {
-                let property_initializer = match &property.value {
-                    oxc_ast::ast::BindingPattern::AssignmentPattern(assignment) => {
-                        Some(&assignment.right)
-                    }
-                    _ => base_initializer,
-                };
-                if let Some(initializer) = r3f_analyzed_binding_initializer(
-                    &property.value,
-                    symbol_id,
-                    property_initializer,
-                ) {
-                    return Some(initializer);
-                }
-            }
-            pattern.rest.as_ref().and_then(|rest| {
-                r3f_analyzed_binding_initializer(&rest.argument, symbol_id, base_initializer)
-            })
-        }
-        oxc_ast::ast::BindingPattern::ArrayPattern(pattern) => {
-            for element in pattern.elements.iter().flatten() {
-                let element_initializer = match element {
-                    oxc_ast::ast::BindingPattern::AssignmentPattern(assignment) => {
-                        Some(&assignment.right)
-                    }
-                    _ => base_initializer,
-                };
-                if let Some(initializer) =
-                    r3f_analyzed_binding_initializer(element, symbol_id, element_initializer)
-                {
-                    return Some(initializer);
-                }
-            }
-            pattern
-                .rest
-                .as_ref()
-                .and_then(|rest| r3f_analyzed_binding_initializer(&rest.argument, symbol_id, None))
-        }
-    }
 }
 
 fn r3f_analyzed_property_key_matches(
@@ -655,7 +612,7 @@ fn r3f_analyzed_callback_state_property_matches<'a>(
         return false;
     }
     visited_symbol_ids.push(symbol_id);
-    if r3f_analyzed_binding_initializer(&declarator.id, symbol_id, declarator.init.as_ref())
+    if binding_pattern_initializer_for_symbol(&declarator.id, symbol_id, declarator.init.as_ref())
         .is_some_and(|initializer| {
             r3f_analyzed_callback_state_property_matches(
                 initializer,
@@ -710,7 +667,7 @@ fn r3f_analyzed_resolves_to_callback_state<'a>(
     ) {
         return false;
     }
-    r3f_analyzed_binding_initializer(&declarator.id, symbol_id, declarator.init.as_ref())
+    binding_pattern_initializer_for_symbol(&declarator.id, symbol_id, declarator.init.as_ref())
         .is_some_and(|initializer| {
             r3f_analyzed_resolves_to_callback_state(
                 initializer,

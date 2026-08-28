@@ -138,12 +138,14 @@ impl Rule for ${delegatedRule.struct} {
         "is-proven-global-namespace-reference",
         "is-proven-dom-event-target",
         "binding-pattern-has-symbol",
+        "binding-pattern-initializer-for-symbol",
         "binding-property-name-for-symbol",
         "is-process-stdout-member",
         "member-expression-identifier-property-name",
         "strip-parenthesized-expression",
         "property-key-matches-name",
         "property-key-identifier-name",
+        "program-references-r3f",
         "is-type-only-import",
         "global-require-module-source",
         "is-r3f-canvas",
@@ -166,6 +168,7 @@ impl Rule for ${delegatedRule.struct} {
         "parse-static-jsx-number",
         "get-authoritative-jsx-attribute",
         "jsx-attribute-expression",
+        "jsx-module-api-reference-matches",
         "is-proven-intrinsic-jsx-element",
         "find-jsx-attribute",
         "get-static-class-name",
@@ -251,6 +254,7 @@ impl Rule for ${delegatedRule.struct} {
         "imported-module-api-matches",
         "resolve-identifier-import",
         "identifier-initializer",
+        "identifier-symbol-id-with-lexical-fallback",
         "resolve-direct-unreassigned-symbol-initializer",
         "resolve-direct-unreassigned-initializer",
         "module-jsx-tree-index",
@@ -376,21 +380,38 @@ impl Rule for ${delegatedRule.struct} {
         fs.readFileSync(path.join(nativeRulesDirectory, `${utilityName}.rs`), "utf8").trim(),
       ]),
     );
+    const nativeUtilityDependencies = new Map([
+      ["is_imported_or_stable_parameter_call", ["has_possible_static_property_write_before"]],
+    ]);
+    const nativeRuleUtilityDependencies = new Map([
+      [
+        "r3f-require-global-effect-cleanup",
+        ["r3f_analyzed_use_three_state_property_matches", "statement_always_exits"],
+      ],
+      ["r3f-require-instanced-buffer-update", ["jsx_attribute_expression"]],
+    ]);
     for (const nativeRuleId of upstream.nativeRules) {
       const delegatedRule = delegatedRules.get(nativeRuleId);
       const nativeRuleSource = delegatedRule
         ? buildDelegatedRuleSource(delegatedRule)
         : fs.readFileSync(path.join(nativeRulesDirectory, `${nativeRuleId}.rs`), "utf8");
       const requiredUtilitySources = [];
+      const requiredUtilityNames = new Set(nativeRuleUtilityDependencies.get(nativeRuleId) ?? []);
       let sourceWithUtilities = nativeRuleSource;
       const remainingUtilitySources = new Map(nativeUtilitySources);
       while (true) {
-        const requiredUtility = [...remainingUtilitySources].find(([utilityName]) =>
-          sourceWithUtilities.includes(`${utilityName}(`),
+        const requiredUtility = [...remainingUtilitySources].find(
+          ([utilityName]) =>
+            requiredUtilityNames.has(utilityName) ||
+            sourceWithUtilities.includes(`${utilityName}(`),
         );
         if (!requiredUtility) break;
         const [utilityName, utilitySource] = requiredUtility;
         remainingUtilitySources.delete(utilityName);
+        requiredUtilityNames.delete(utilityName);
+        for (const dependencyName of nativeUtilityDependencies.get(utilityName) ?? []) {
+          requiredUtilityNames.add(dependencyName);
+        }
         requiredUtilitySources.push(utilitySource);
         sourceWithUtilities += `\n${utilitySource}`;
       }

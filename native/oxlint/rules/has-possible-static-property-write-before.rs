@@ -96,6 +96,22 @@ fn has_possible_static_property_write_before<'a>(
     let Some(root_symbol_id) = resolve_const_identifier_root_symbol(identifier, ctx) else {
         return false;
     };
+    has_possible_static_property_write_for_symbol_before(
+        root_symbol_id,
+        property_name,
+        reference_node,
+        analysis,
+        ctx,
+    )
+}
+
+fn has_possible_static_property_write_for_symbol_before<'a>(
+    root_symbol_id: oxc_semantic::SymbolId,
+    property_name: &str,
+    reference_node: &crate::AstNode<'a>,
+    analysis: &PossibleStaticPropertyWriteAnalysis,
+    ctx: &crate::context::LintContext<'a>,
+) -> bool {
     potential_alias_symbol_ids(root_symbol_id, ctx)
         .into_iter()
         .flat_map(|symbol_id| ctx.scoping().get_resolved_references(symbol_id))

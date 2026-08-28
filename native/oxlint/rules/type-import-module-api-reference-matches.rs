@@ -34,13 +34,18 @@ fn type_import_module_api_reference_matches_inner<'a>(
             return false;
         };
         let member_node = ctx.nodes().get_node(expression.node_id());
+        let Some(namespace_symbol_id) =
+            identifier_symbol_id_with_lexical_fallback(namespace_identifier, ctx)
+        else {
+            return false;
+        };
         return type_import_module_namespace_identifier_matches(
             namespace_identifier,
             module_sources,
             ctx,
             &mut visited_symbol_ids.clone(),
-        ) && !has_possible_static_property_write_before(
-            namespace_identifier,
+        ) && !has_possible_static_property_write_for_symbol_before(
+            namespace_symbol_id,
             api_name,
             member_node,
             analysis,
@@ -50,11 +55,7 @@ fn type_import_module_api_reference_matches_inner<'a>(
     let oxc_ast::ast::Expression::Identifier(identifier) = expression else {
         return false;
     };
-    let Some(symbol_id) = ctx
-        .scoping()
-        .get_reference(identifier.reference_id())
-        .symbol_id()
-    else {
+    let Some(symbol_id) = identifier_symbol_id_with_lexical_fallback(identifier, ctx) else {
         return false;
     };
     if visited_symbol_ids.contains(&symbol_id) {
@@ -133,11 +134,7 @@ fn type_import_module_namespace_identifier_matches<'a>(
     ctx: &crate::context::LintContext<'a>,
     visited_symbol_ids: &mut Vec<oxc_semantic::SymbolId>,
 ) -> bool {
-    let Some(symbol_id) = ctx
-        .scoping()
-        .get_reference(identifier.reference_id())
-        .symbol_id()
-    else {
+    let Some(symbol_id) = identifier_symbol_id_with_lexical_fallback(identifier, ctx) else {
         return false;
     };
     if visited_symbol_ids.contains(&symbol_id) {
@@ -157,8 +154,10 @@ fn type_import_module_namespace_identifier_matches<'a>(
         {
             return false;
         }
-        let Some(oxc_ast::ast::Expression::Identifier(next_identifier)) =
-            declarator.init.as_ref().map(|initializer| initializer.get_inner_expression())
+        let Some(oxc_ast::ast::Expression::Identifier(next_identifier)) = declarator
+            .init
+            .as_ref()
+            .map(|initializer| initializer.get_inner_expression())
         else {
             return false;
         };

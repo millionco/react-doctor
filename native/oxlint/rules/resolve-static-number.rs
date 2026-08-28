@@ -54,15 +54,15 @@ fn resolve_static_number_inner<'a>(
             else {
                 return None;
             };
-            if !variable_declaration.kind.is_const()
-                || declarator
-                    .id
-                    .get_binding_identifier()
-                    .is_none_or(|binding_identifier| binding_identifier.symbol_id() != symbol_id)
-            {
+            if !variable_declaration.kind.is_const() {
                 return None;
             }
-            resolve_static_number_inner(declarator.init.as_ref()?, ctx, visited_symbol_ids)?
+            let initializer = binding_pattern_initializer_for_symbol(
+                &declarator.id,
+                symbol_id,
+                declarator.init.as_ref(),
+            )?;
+            resolve_static_number_inner(initializer, ctx, visited_symbol_ids)?
         }
         oxc_ast::ast::Expression::BinaryExpression(binary_expression) => {
             let left = resolve_static_number_inner(

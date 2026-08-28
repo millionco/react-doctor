@@ -198,7 +198,19 @@ fn analyzed_execution_immediate_react_callback<'a>(
         &["react"],
         analysis,
         ctx,
+    ) || type_import_module_api_reference_matches(
+        &call_expression.callee,
+        "startTransition",
+        &["react"],
+        analysis,
+        ctx,
     ) || module_api_reference_matches(
+        &call_expression.callee,
+        "flushSync",
+        &["react-dom"],
+        analysis,
+        ctx,
+    ) || type_import_module_api_reference_matches(
         &call_expression.callee,
         "flushSync",
         &["react-dom"],
@@ -281,6 +293,12 @@ fn analyzed_execution_resolves_to_use_transition_starter<'a>(
             &["react"],
             analysis,
             ctx,
+        ) || type_import_module_api_reference_matches(
+            &call.callee,
+            "useTransition",
+            &["react"],
+            analysis,
+            ctx,
         ))
     }) {
         return true;
@@ -305,6 +323,12 @@ fn analyzed_execution_is_use_transition_tuple<'a>(
     let expression = expression.get_inner_expression();
     if let oxc_ast::ast::Expression::CallExpression(call_expression) = expression {
         return module_api_reference_matches(
+            &call_expression.callee,
+            "useTransition",
+            &["react"],
+            analysis,
+            ctx,
+        ) || type_import_module_api_reference_matches(
             &call_expression.callee,
             "useTransition",
             &["react"],

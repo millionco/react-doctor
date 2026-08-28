@@ -334,6 +334,21 @@ const threeLitMaterialNormalsFixturePath = path.join(
   "app",
   "three-lit-material-normals.ts",
 );
+const threeLoaderErrorHandlingFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-loader-error-handling.ts",
+);
+const threeOwnedGeometryCleanupFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-owned-geometry-cleanup.tsx",
+);
+const threeOwnedMaterialCleanupFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-owned-material-cleanup.tsx",
+);
 const threeControlsCleanupFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -856,8 +871,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-require-instanced-buffer-update": 11,
   "three-require-ktx2-detect-support": 2,
   "three-require-lit-material-normals": 3,
+  "three-require-loader-error-handling": 7,
   "three-require-transparent-for-opacity": 2,
   "three-require-lighting-for-pbr": 1,
+  "three-require-owned-geometry-cleanup": 6,
+  "three-require-owned-material-cleanup": 6,
   "three-require-owned-texture-cleanup": 4,
   "three-require-position-buffer-update": 1,
   "three-require-projection-matrix-update": 9,
@@ -4681,6 +4699,118 @@ import {
   mesh.visible = false;
   mesh.visible = true;
 }
+`,
+  );
+  fs.writeFileSync(
+    threeLoaderErrorHandlingFixturePath,
+    `import { TextureLoader } from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const textureLoader = new TextureLoader();
+const modelLoader = new GLTFLoader();
+textureLoader.load("/texture.png", onLoad);
+void modelLoader.loadAsync("/model.glb");
+`,
+  );
+  fs.writeFileSync(
+    threeOwnedGeometryCleanupFixturePath,
+    `/* oxlint-disable react-doctor/preact-no-react-hooks-import, react-doctor/react-compiler-no-manual-memoization, react-doctor/three-no-object-construction-in-render, react-doctor/three-require-owned-material-cleanup */
+import * as THREE from "three";
+import { BoxGeometry as Geometry, Mesh, MeshBasicMaterial } from "three";
+import { useEffect, useMemo } from "react";
+
+export const GeometryScene = () => {
+  const first = useMemo(() => new Geometry(), []);
+  const second = new THREE.BufferGeometry();
+  useEffect(() => {
+    const third = new THREE.SphereGeometry();
+    third.computeBoundingSphere();
+  }, []);
+  return first.name + second.name;
+};
+
+export const GeometryMeshScene = () => {
+  const geometry = useMemo(() => new Geometry(), []);
+  const mesh = new Mesh(geometry, new MeshBasicMaterial());
+  return mesh.name;
+};
+
+export const GeometryReplacementScene = () => {
+  let geometry = useMemo(() => new Geometry(), []);
+  ({ geometry } = getReplacement());
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  return geometry.name;
+};
+
+export const GeometryDefaultReadScene = () => {
+  const geometry = useMemo(() => new Geometry(), []);
+  ({ replacement = geometry } = getReplacement());
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  return geometry.name;
+};
+
+export const GeometryDefaultBindingScene = () => {
+  let geometry = useMemo(() => new Geometry(), []);
+  ({ geometry = getFallback() } = getReplacement());
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  return geometry.name;
+};
+`,
+  );
+  fs.writeFileSync(
+    threeOwnedMaterialCleanupFixturePath,
+    `/* oxlint-disable react-doctor/preact-no-react-hooks-import, react-doctor/react-compiler-no-manual-memoization, react-doctor/three-no-object-construction-in-render, react-doctor/three-require-owned-geometry-cleanup */
+import * as THREE from "three";
+import { BoxGeometry, Mesh, MeshBasicMaterial as BasicMaterial } from "three";
+import { useEffect, useMemo, useRef } from "react";
+
+export const MaterialScene = () => {
+  const first = useMemo(() => new BasicMaterial(), []);
+  const second = new THREE.ShaderMaterial();
+  useEffect(() => {
+    const third = new THREE.MeshStandardMaterial();
+    third.needsUpdate = true;
+  }, []);
+  return first.name + second.name;
+};
+
+export const MaterialMeshScene = () => {
+  const material = useMemo(() => new BasicMaterial(), []);
+  const mesh = new Mesh(new BoxGeometry(), material);
+  return mesh.name;
+};
+
+export const MaterialReplacementScene = () => {
+  let material = useMemo(() => new BasicMaterial(), []);
+  ({ material } = getReplacement());
+  useEffect(() => () => material.dispose(), [material]);
+  return material.name;
+};
+
+const setupMaterial = () => {
+  const material = new BasicMaterial();
+  return () => material.dispose();
+};
+
+export const MaterialDuplicateEffectScene = ({ enabled }) => {
+  if (enabled) useEffect(setupMaterial, []);
+  useEffect(setupMaterial, []);
+  return null;
+};
+
+export const MaterialParenthesizedInitializationScene = () => {
+  const materialRef = useRef(null);
+  if (!materialRef.current) materialRef.current = (new BasicMaterial());
+  useEffect(() => () => materialRef.current.dispose(), []);
+  return materialRef.current.name;
+};
+
+export const MaterialDefaultBindingScene = () => {
+  let material = useMemo(() => new BasicMaterial(), []);
+  ({ selected: material = getFallback() } = getReplacement());
+  useEffect(() => () => material.dispose(), [material]);
+  return material.name;
+};
 `,
   );
   fs.writeFileSync(

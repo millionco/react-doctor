@@ -218,32 +218,6 @@ fn r3f_owned_root_lifecycle_has_identity_write<'a>(
     false
 }
 
-fn r3f_owned_root_access_has_non_allocation_identity_write<'a>(
-    resource_access: &crate::AstNode<'a>,
-    allocation: &crate::AstNode<'a>,
-    ctx: &LintContext<'a>,
-) -> bool {
-    let allocation_root = transparent_expression_root(allocation, ctx);
-    let mut current = transparent_expression_root(resource_access, ctx);
-    for parent in ctx.nodes().ancestors(current.id()) {
-        match parent.kind() {
-            AstKind::AssignmentExpression(assignment) => {
-                if !assignment.left.span().contains_inclusive(current.span()) {
-                    return false;
-                }
-                return assignment.right.get_inner_expression().span() != allocation_root.span();
-            }
-            AstKind::UpdateExpression(update) => {
-                return update.argument.span().contains_inclusive(current.span());
-            }
-            AstKind::Function(_) | AstKind::ArrowFunctionExpression(_) => return false,
-            _ if parent.kind().as_member_expression_kind().is_some() => return false,
-            _ => current = parent,
-        }
-    }
-    false
-}
-
 fn r3f_owned_root_lifecycle_has_unknown_transfer(
     lifecycle: &R3fOwnedRootLifecycle,
     effect_entries: &[R3fRootEffectEntry],

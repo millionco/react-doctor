@@ -377,6 +377,7 @@ impl Rule for ${delegatedRule.struct} {
         "get-active-r3f-material-texture-property-names",
         "static-member-expression-property-name",
         "r3f-analyze-owned-root-lifecycle",
+        "r3f-owned-root-access-has-non-allocation-identity-write",
         "has-possible-static-property-write-before",
         "module-api-reference-matches",
         "resolve-loader-cache-provenance",
@@ -452,7 +453,10 @@ impl Rule for ${delegatedRule.struct} {
           "statement_always_exits",
         ],
       ],
-      ["r3f-require-root-unmount", ["statement_always_exits"]],
+      [
+        "r3f-require-root-unmount",
+        ["r3f_owned_root_access_has_non_allocation_identity_write", "statement_always_exits"],
+      ],
       [
         "three-require-controls-cleanup",
         ["r3f_analyze_owned_root_lifecycle", "statement_always_exits"],
@@ -462,6 +466,22 @@ impl Rule for ${delegatedRule.struct} {
         [
           "r3f_analyze_owned_root_lifecycle",
           "r3f_analyzed_use_three_state_property_matches",
+          "statement_always_exits",
+        ],
+      ],
+      [
+        "three-require-owned-geometry-cleanup",
+        [
+          "r3f_analyze_owned_root_lifecycle",
+          "r3f_owned_root_access_has_non_allocation_identity_write",
+          "statement_always_exits",
+        ],
+      ],
+      [
+        "three-require-owned-material-cleanup",
+        [
+          "r3f_analyze_owned_root_lifecycle",
+          "r3f_owned_root_access_has_non_allocation_identity_write",
           "statement_always_exits",
         ],
       ],

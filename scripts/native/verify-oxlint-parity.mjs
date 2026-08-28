@@ -167,6 +167,18 @@ const r3fGpuPositionAnimationFixturePath = path.join(
   "app",
   "r3f-gpu-position-animation.tsx",
 );
+const r3fInstancedMeshFixturePath = path.join(fixtureDirectory, "app", "r3f-instanced-mesh.tsx");
+const r3fPreferUseLoaderFixturePath = path.join(fixtureDirectory, "app", "r3f-use-loader.tsx");
+const r3fDataTextureUpdateFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-data-texture-update.tsx",
+);
+const r3fDynamicBufferUsageFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-dynamic-buffer-usage.tsx",
+);
 const r3fRootUnmountFixturePath = path.join(fixtureDirectory, "app", "r3f-root-unmount.tsx");
 const r3fAnimationMixerFixturePath = path.join(fixtureDirectory, "app", "r3f-animation-mixer.tsx");
 const r3fFrameDeltaFixturePath = path.join(fixtureDirectory, "app", "r3f-frame-delta.tsx");
@@ -462,7 +474,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-unstable-args": 6,
   "r3f-prefer-gpu-instanced-animation": 3,
   "r3f-prefer-gpu-position-animation": 4,
+  "r3f-prefer-instanced-mesh": 2,
+  "r3f-prefer-use-loader": 3,
   "r3f-require-animation-mixer-update": 2,
+  "r3f-require-data-texture-update": 2,
+  "r3f-require-dynamic-buffer-usage": 1,
   "r3f-require-frame-delta": 13,
   "r3f-require-global-effect-cleanup": 6,
   "r3f-require-instanced-buffer-update": 4,
@@ -3279,6 +3295,91 @@ export const PositionAnimationScene = ({ geometry, nextPositions }) => {
     if (enabled) geometry.attributes.position.array.fill(0);
   });
   return <bufferGeometry><bufferAttribute ref={positions} attach="attributes-position" /></bufferGeometry>;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fInstancedMeshFixturePath,
+    `import React from "react";
+import "@react-three/fiber";
+
+const geometry = createGeometry();
+const material = createMaterial();
+const renderMesh = (index) => <mesh key={index} geometry={geometry} material={material} />;
+
+export const InstancedMeshScene = () => <>
+  {[0, 1].map((index) => <mesh key={index} geometry={geometry} material={material} />)}
+  {[0, 1, 2].map(renderMesh)}
+  {[0].map((index) => <mesh key={index} geometry={geometry} material={material} />)}
+  {[0, 1].map((index) => <mesh key={index} geometry={geometries[index]} material={material} />)}
+</>;
+`,
+  );
+  fs.writeFileSync(
+    r3fPreferUseLoaderFixturePath,
+    `import React from "react";
+import { useFrame } from "@react-three/fiber";
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const textureLoader = new THREE.TextureLoader();
+const gltfLoader = new GLTFLoader();
+
+export const LoaderScene = () => {
+  useFrame(() => {});
+  React.useEffect(() => {
+    new THREE.CubeTextureLoader().load(["px", "nx"]);
+    textureLoader.loadAsync("texture.png");
+    const loadModel = () => gltfLoader.load("model.glb");
+    loadModel();
+    setTimeout(() => textureLoader.load("later.png"), 0);
+  }, []);
+  return <mesh />;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fDataTextureUpdateFixturePath,
+    `import React from "react";
+import { useFrame } from "@react-three/fiber";
+import { DataTexture } from "three";
+
+const pixels = new Uint8Array(16);
+const texture = new DataTexture(pixels, 2, 2);
+
+export const DataTextureScene = () => {
+  const managedTexture = React.useRef(null);
+  useFrame(() => {
+    texture.image.data[0] = 255;
+  });
+  useFrame(() => {
+    managedTexture.current.image.data.fill(0);
+  });
+  useFrame(() => {
+    texture.image.data[1] = 255;
+    texture.needsUpdate = true;
+  });
+  return <dataTexture ref={managedTexture} />;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fDynamicBufferUsageFixturePath,
+    `import React from "react";
+import { useFrame } from "@react-three/fiber";
+import { DynamicDrawUsage } from "three";
+
+export const DynamicBufferScene = () => {
+  const staticBuffer = React.useRef(null);
+  const dynamicBuffer = React.useRef(null);
+  useFrame(() => {
+    staticBuffer.current.needsUpdate = true;
+    dynamicBuffer.current.needsUpdate = true;
+  });
+  return <>
+    <bufferAttribute ref={staticBuffer} />
+    <bufferAttribute ref={dynamicBuffer} usage={DynamicDrawUsage} />
+  </>;
 };
 `,
   );

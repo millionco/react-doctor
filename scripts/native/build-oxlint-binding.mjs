@@ -417,7 +417,17 @@ impl Rule for ${delegatedRule.struct} {
       ["r3f-no-state-in-use-frame", ["r3f_state_setter_transition"]],
       ["r3f-no-unstable-args", ["jsx_attribute_expression"]],
       ["r3f-prefer-gpu-position-animation", ["jsx_attribute_expression"]],
+      [
+        "r3f-prefer-instanced-mesh",
+        [
+          "jsx_attribute_expression",
+          "r3f_analyzed_use_three_state_property_matches",
+          "statement_always_exits",
+        ],
+      ],
       ["r3f-no-mutate-uniform-prop-source-in-use-frame", ["jsx_attribute_expression"]],
+      ["r3f-require-data-texture-update", ["jsx_attribute_expression"]],
+      ["r3f-require-dynamic-buffer-usage", ["jsx_attribute_expression"]],
       ["r3f-require-instanced-buffer-update", ["jsx_attribute_expression"]],
       ["r3f-require-root-unmount", ["statement_always_exits"]],
     ]);

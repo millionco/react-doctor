@@ -448,6 +448,10 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       ["r3f-require-root-unmount", ["statement_always_exits"]],
+      [
+        "three-require-controls-cleanup",
+        ["r3f_analyze_owned_root_lifecycle", "statement_always_exits"],
+      ],
     ]);
     for (const nativeRuleId of upstream.nativeRules) {
       const delegatedRule = delegatedRules.get(nativeRuleId);

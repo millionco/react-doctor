@@ -234,6 +234,22 @@ const r3fWebgpuNoHighPrecisionInstancingFixturePath = path.join(
   "app",
   "r3f-webgpu-no-high-precision-instancing.tsx",
 );
+const threeControlsCleanupFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-controls-cleanup.tsx",
+);
+const threeControlsUpdateFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-controls-update.ts",
+);
+const threeRendererDomAttachmentFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-renderer-dom-attachment.ts",
+);
+const threeRendererSizeFixturePath = path.join(fixtureDirectory, "app", "three-renderer-size.ts");
 const r3fRootUnmountFixturePath = path.join(fixtureDirectory, "app", "r3f-root-unmount.tsx");
 const r3fAnimationMixerFixturePath = path.join(fixtureDirectory, "app", "r3f-animation-mixer.tsx");
 const r3fFrameDeltaFixturePath = path.join(fixtureDirectory, "app", "r3f-frame-delta.tsx");
@@ -682,8 +698,12 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-valid-physical-material-properties": 2,
   "three-valid-data-texture-data-length": 4,
   "three-valid-material-opacity": 3,
+  "three-require-controls-cleanup": 7,
+  "three-require-controls-update": 1,
   "three-require-transparent-for-opacity": 2,
   "three-require-lighting-for-pbr": 1,
+  "three-require-renderer-dom-attachment": 3,
+  "three-require-renderer-size": 3,
   "three-webgpu-no-legacy-material-api": 3,
   "three-gpu-computation-handle-init-error": 2,
   "three-gpu-computation-valid-variable-name": 6,
@@ -3638,6 +3658,87 @@ const createHighPrecisionRenderer = async () => {
 export const HighPrecisionInstancing = () => <Canvas gl={createHighPrecisionRenderer}>
   <instancedMesh args={[geometry, material, 10]} />
 </Canvas>;
+`,
+  );
+  fs.writeFileSync(
+    threeControlsCleanupFixturePath,
+    `/* oxlint-disable react-doctor/preact-no-react-hooks-import, react-doctor/react-compiler-no-manual-memoization, react-doctor/rerender-lazy-ref-init */
+import React, { useEffect, useMemo, useRef } from "react";
+import { MapControls } from "three-stdlib";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
+
+export const MissingSupportedControlsCleanup = ({ camera, element }) => {
+  const orbit = useMemo(() => new OrbitControls(camera, element), [camera, element]);
+  const transform = useMemo(() => new TransformControls(camera, element), [camera, element]);
+  const map = new MapControls(camera, element);
+  return <><primitive object={orbit} /><primitive object={transform} /><primitive object={map} /></>;
+};
+export const ConditionalControlsCleanupGap = ({ camera, enabled, shouldDisconnect }) => {
+  const controls = useMemo(() => new PointerLockControls(camera), [camera]);
+  useEffect(() => {
+    if (enabled) {
+      controls.connect();
+      if (shouldDisconnect) return () => controls.disconnect();
+    }
+  }, [controls, enabled, shouldDisconnect]);
+  return null;
+};
+export const MissingRefControlsCleanup = ({ camera, element }) => {
+  const controlsRef = useRef(new OrbitControls(camera, element));
+  return <primitive object={controlsRef.current} />;
+};
+export const MissingReactiveControlsDependency = ({ camera, element }) => {
+  const controls = useMemo(() => new OrbitControls(camera, element), [camera, element]);
+  useEffect(() => () => controls.dispose(), []);
+  return <primitive object={controls} />;
+};
+export const IncompleteTransformControlsCleanup = ({ camera, element }) => {
+  const controls = useMemo(() => new TransformControls(camera, element), [camera, element]);
+  useEffect(() => () => controls.disconnect(), [controls]);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    threeControlsUpdateFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const renderer = new THREE.WebGLRenderer();
+container.appendChild(renderer.domElement);
+renderer.setSize(width, height);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+renderer.setAnimationLoop(() => renderer.render(scene, camera));
+`,
+  );
+  fs.writeFileSync(
+    threeRendererDomAttachmentFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-size */
+import { PerspectiveCamera, Scene, WebGLRenderer } from "three";
+
+const renderer = new WebGLRenderer({ antialias: true });
+renderer.setSize(width, height);
+renderer.render(new Scene(), new PerspectiveCamera());
+const wrappedRenderer = new WebGLRenderer();
+wrappedRenderer.setSize(width, height);
+(wrappedRenderer as any).render(new Scene(), new PerspectiveCamera());
+`,
+  );
+  fs.writeFileSync(
+    threeRendererSizeFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment */
+import * as THREE from "three";
+
+const renderer = new THREE.WebGLRenderer();
+container.appendChild(renderer.domElement);
+renderer.render(new THREE.Scene(), new THREE.PerspectiveCamera());
+const wrappedRenderer = new THREE.WebGLRenderer();
+container.appendChild(wrappedRenderer.domElement);
+(wrappedRenderer as any).render(scene, camera);
 `,
   );
   fs.writeFileSync(

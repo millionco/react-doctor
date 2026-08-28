@@ -214,6 +214,7 @@ impl Rule for ${delegatedRule.struct} {
         "children-forwarding-components",
         "ink-render-call-is-related-to-node",
         "is-inside-stable-react-initializer",
+        "is-inside-stable-r3f-react-initializer",
         "resolve-imported-jsx-component-name",
         "resolve-jsx-import-api-path",
         "resolve-shadcn-component-name",

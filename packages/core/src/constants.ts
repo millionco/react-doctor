@@ -737,6 +737,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "r3f-no-fresh-use-three-selector",
   "r3f-no-imperative-attach-of-managed-ref",
   "r3f-no-inline-primitive-object",
+  "r3f-no-inline-resource-prop",
   "react-router-csp-nonce-consistency",
   "react-router-descendant-routes-require-splat",
   "react-router-guard-aborted-handle-error",

@@ -249,6 +249,46 @@ const threeNoAllocationInPointerMoveFixturePath = path.join(
   "app",
   "three-no-allocation-in-pointer-move.tsx",
 );
+const threeNoCloneInAnimationLoopFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-no-clone-in-animation-loop.ts",
+);
+const threeNoCompileInAnimationLoopFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-no-compile-in-animation-loop.ts",
+);
+const threeNoMaterialRecompileInAnimationLoopFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-no-material-recompile-in-animation-loop.ts",
+);
+const threeNoNewInAnimationLoopFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-no-new-in-animation-loop.ts",
+);
+const threeNoObjectConstructionInRenderFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-no-object-construction-in-render.tsx",
+);
+const threeNoRedundantUniformsNeedUpdateFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-no-redundant-uniforms-need-update.ts",
+);
+const threeNoShaderConfigurationMutationInAnimationLoopFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-no-shader-configuration-mutation-in-animation-loop.ts",
+);
+const threeNoStateInAnimationLoopFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-no-state-in-animation-loop.ts",
+);
 const threeControlsCleanupFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -730,7 +770,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-no-shadows-on-unsupported-light": 1,
   "three-no-async-animation-loop": 2,
   "three-cap-device-pixel-ratio": 1,
-  "three-prefer-set-animation-loop": 5,
+  "three-prefer-set-animation-loop": 8,
   "three-no-ignored-basic-material-properties": 3,
   "three-no-ignored-linewidth": 2,
   "three-no-normalized-float-buffer-attribute": 2,
@@ -751,6 +791,14 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-effect-composer-require-size-on-resize": 3,
   "three-gpu-computation-require-init-before-compute": 4,
   "three-no-allocation-in-pointer-move": 3,
+  "three-no-clone-in-animation-loop": 2,
+  "three-no-compile-in-animation-loop": 3,
+  "three-no-material-recompile-in-animation-loop": 2,
+  "three-no-new-in-animation-loop": 4,
+  "three-no-object-construction-in-render": 11,
+  "three-no-redundant-uniforms-need-update": 2,
+  "three-no-shader-configuration-mutation-in-animation-loop": 3,
+  "three-no-state-in-animation-loop": 2,
   "three-require-camera-aspect-on-resize": 1,
   "three-require-controls-cleanup": 7,
   "three-require-controls-update": 1,
@@ -3842,6 +3890,234 @@ export const PointerCanvas = () => <canvas onPointerMove={() => new Vector2()} /
   const point = new Vector3();
   renderer.domElement.addEventListener("pointermove", () => point.clone());
 }
+`,
+  );
+  fs.writeFileSync(
+    threeNoCloneInAnimationLoopFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import * as THREE from "three";
+import { Vector3, WebGLRenderer } from "three";
+
+{
+  const renderer = new WebGLRenderer();
+  const position = new Vector3();
+  renderer.setAnimationLoop(() => {
+    position.clone();
+    renderer.render(scene, camera);
+  });
+}
+{
+  const renderer = new THREE.WebGLRenderer();
+  const mesh = new THREE.Mesh();
+  const frame = () => {
+    mesh.position.clone();
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+`,
+  );
+  fs.writeFileSync(
+    threeNoCompileInAnimationLoopFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { WebGLRenderer } from "three";
+
+{
+  const renderer = new WebGLRenderer();
+  renderer.setAnimationLoop(() => {
+    renderer.compile(scene, camera);
+    renderer.compileAsync(scene, camera);
+    renderer.render(scene, camera);
+  });
+}
+{
+  const renderer = new WebGLRenderer();
+  let stage = 0;
+  renderer.setAnimationLoop(() => {
+    switch (stage) {
+      case 0:
+        renderer.compile(scene, camera);
+        break;
+    }
+    renderer.render(scene, camera);
+  });
+}
+`,
+  );
+  fs.writeFileSync(
+    threeNoMaterialRecompileInAnimationLoopFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import * as THREE from "three";
+import { MeshStandardMaterial, WebGLRenderer } from "three";
+
+{
+  const renderer = new WebGLRenderer();
+  const material = new MeshStandardMaterial();
+  renderer.setAnimationLoop(() => {
+    material.needsUpdate = true;
+    renderer.render(scene, camera);
+  });
+}
+{
+  const renderer = new THREE.WebGLRenderer();
+  const material = new THREE.ShaderMaterial();
+  const refresh = () => {
+    material["needsUpdate"] = true;
+  };
+  const frame = () => {
+    refresh();
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+`,
+  );
+  fs.writeFileSync(
+    threeNoNewInAnimationLoopFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import * as THREE from "three";
+import { WebGLRenderer } from "three";
+
+{
+  const renderer = new WebGLRenderer();
+  renderer.setAnimationLoop(() => {
+    const position = new Vector3();
+    renderer.render(scene, camera);
+    void position;
+  });
+}
+{
+  const renderer = new THREE.WebGLRenderer();
+  const frame = () => {
+    const matrix = new Matrix4();
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+    void matrix;
+  };
+  requestAnimationFrame(frame);
+}
+{
+  const renderer = new WebGLRenderer();
+  const allocate = () => new Vector3();
+  renderer.setAnimationLoop(() => {
+    allocate();
+    renderer.render(scene, camera);
+  });
+}
+{
+  const renderer = new WebGLRenderer();
+  let positions = new Float32Array(12);
+  renderer.setAnimationLoop(() => {
+    positions &&= new Float32Array(12);
+    renderer.render(scene, camera);
+  });
+}
+`,
+  );
+  fs.writeFileSync(
+    threeNoObjectConstructionInRenderFixturePath,
+    `/* oxlint-disable react-doctor/rerender-lazy-ref-init, react-doctor/no-eager-new-in-use-state-initializer, react-doctor/hook-use-state, react-doctor/preact-no-react-hooks-import, react-doctor/react-in-jsx-scope */
+import { Scene, Vector3 } from "three";
+import * as THREE from "three";
+import { useRef, useState } from "react";
+import { useFrame } from "@react-three/fiber";
+
+export const SceneView = () => {
+  const scene = new Scene();
+  return <canvas data-scene={Boolean(scene)} />;
+};
+export function useCamera() {
+  return new THREE.PerspectiveCamera();
+}
+export const RefView = () => {
+  const scene = useRef(new Scene());
+  return <canvas data-scene={Boolean(scene.current)} />;
+};
+export const StateView = () => {
+  const [scene] = useState(new Scene());
+  return <canvas data-scene={Boolean(scene)} />;
+};
+export function CameraRig({ vector = new Vector3() }) {
+  return useFrame(() => vector.set(0, 0, 0));
+}
+export const CameraView = () => <CameraRig />;
+`,
+  );
+  fs.writeFileSync(
+    threeNoRedundantUniformsNeedUpdateFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import * as THREE from "three";
+import { ShaderMaterial, WebGLRenderer } from "three";
+
+{
+  const renderer = new WebGLRenderer();
+  const material = new ShaderMaterial();
+  renderer.setAnimationLoop(() => {
+    material.uniformsNeedUpdate = true;
+    renderer.render(scene, camera);
+  });
+}
+{
+  const renderer = new THREE.WebGLRenderer();
+  const material = new THREE.RawShaderMaterial();
+  renderer.setAnimationLoop(() => {
+    material.uniformsNeedUpdate = true;
+    renderer.render(scene, camera);
+  });
+}
+`,
+  );
+  fs.writeFileSync(
+    threeNoShaderConfigurationMutationInAnimationLoopFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import * as THREE from "three";
+import { ShaderMaterial, WebGLRenderer } from "three";
+
+{
+  const renderer = new WebGLRenderer();
+  const material = new ShaderMaterial();
+  renderer.setAnimationLoop(() => {
+    material.fragmentShader = buildShader();
+    material.uniforms = { time: { value: performance.now() } };
+    renderer.render(scene, camera);
+  });
+}
+{
+  const renderer = new THREE.WebGLRenderer();
+  const material = new THREE.RawShaderMaterial();
+  renderer.setAnimationLoop(() => {
+    material.defines.MODE = frame;
+    renderer.render(scene, camera);
+  });
+}
+`,
+  );
+  fs.writeFileSync(
+    threeNoStateInAnimationLoopFixturePath,
+    `/* oxlint-disable react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size, react-doctor/preact-no-react-hooks-import */
+import React, { useState } from "react";
+import * as THREE from "three";
+import { WebGLRenderer } from "three";
+
+export const DirectStateScene = () => {
+  const [, setFrame] = useState(0);
+  const renderer = new WebGLRenderer();
+  renderer.setAnimationLoop(() => {
+    setFrame((frame) => frame + 1);
+    renderer.render(scene, camera);
+  });
+};
+export const HelperStateScene = () => {
+  const [, setFrame] = React.useState(0);
+  const updateReact = () => setFrame(Date.now());
+  const renderer = new THREE.WebGLRenderer();
+  renderer.setAnimationLoop(() => {
+    updateReact();
+    renderer.render(scene, camera);
+  });
+};
 `,
   );
   fs.writeFileSync(

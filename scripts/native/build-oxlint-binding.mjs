@@ -415,6 +415,11 @@ impl Rule for ${delegatedRule.struct} {
       ["r3f-no-shader-configuration-mutation-in-use-frame", ["jsx_attribute_expression"]],
       ["r3f-no-state-in-pointer-move", ["r3f_state_setter_transition"]],
       ["r3f-no-state-in-use-frame", ["r3f_state_setter_transition"]],
+      ["three-no-state-in-animation-loop", ["r3f_state_setter_transition"]],
+      [
+        "three-no-object-construction-in-render",
+        ["r3f_analyzed_use_three_state_property_matches", "statement_always_exits"],
+      ],
       ["r3f-no-unstable-args", ["jsx_attribute_expression"]],
       ["r3f-prefer-gpu-position-animation", ["jsx_attribute_expression"]],
       [
@@ -491,7 +496,17 @@ impl Rule for ${delegatedRule.struct} {
         requiredUtilitySources.push(utilitySource);
         sourceWithUtilities += `\n${utilitySource}`;
       }
-      const requiredUtilities = requiredUtilitySources.join("\n\n");
+      const emittedUtilityImports = new Set();
+      const requiredUtilities = requiredUtilitySources
+        .join("\n\n")
+        .split("\n")
+        .filter((line) => {
+          if (!line.startsWith("use ") || !line.endsWith(";")) return true;
+          if (emittedUtilityImports.has(line)) return false;
+          emittedUtilityImports.add(line);
+          return true;
+        })
+        .join("\n");
       fs.writeFileSync(
         path.join(upstreamRulesDirectory, `${nativeRuleId.replaceAll("-", "_")}.rs`),
         requiredUtilities ? `${requiredUtilities}\n\n${nativeRuleSource}` : nativeRuleSource,

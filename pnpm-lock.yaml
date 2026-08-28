@@ -25,6 +25,9 @@ importers:
       '@rayhanadev/truffler':
         specifier: ^0.4.2
         version: 0.4.2
+      '@react-doctor/core':
+        specifier: workspace:*
+        version: link:packages/core
       '@sentry/cli':
         specifier: ^3.4.3
         version: 3.4.3
@@ -140,6 +143,9 @@ importers:
       parse5:
         specifier: ^8.0.1
         version: 8.0.1
+      picocolors:
+        specifier: ^1.1.1
+        version: 1.1.1
       picomatch:
         specifier: ^4.0.4
         version: 4.0.4
@@ -153,6 +159,9 @@ importers:
       '@effect/vitest':
         specifier: 4.0.0-beta.102
         version: 4.0.0-beta.102(effect@4.0.0-beta.102)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(vite@7.3.1(@types/node@25.6.0)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.46.0)(tsx@4.22.4)(yaml@2.9.0)))
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
@@ -250,6 +259,9 @@ importers:
       eslint-plugin-react-hooks:
         specifier: ^7.1.1
         version: 7.1.1(eslint@9.39.2(jiti@2.7.0))
+      is-unicode-supported:
+        specifier: ^2.1.0
+        version: 2.1.0
       jiti:
         specifier: ^2.7.0
         version: 2.7.0

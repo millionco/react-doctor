@@ -3,7 +3,15 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { DISABLE_DIRECTIVE_BACKUP_DIRECTORY_SEGMENTS } from "../src/constants.js";
 import { neutralizeDisableDirectives } from "../src/neutralize-disable-directives.js";
+
+const getBackupRelativePath = (sourceRelativePath: string, scanRootRelativePath = ""): string =>
+  path.join(
+    scanRootRelativePath,
+    ...DISABLE_DIRECTIVE_BACKUP_DIRECTORY_SEGMENTS,
+    path.relative(scanRootRelativePath, sourceRelativePath),
+  );
 
 // A committed build-output bundle (e.g. `dist/`) is no longer scanned, so its
 // inline disable directives must not be rewritten either — regardless of
@@ -161,7 +169,7 @@ describe("neutralizeDisableDirectives — build-output exclusion", () => {
     expect(readNestedFile("packages/app/src/app.tsx")).toBe(SOURCE);
   }, 5_000);
 
-  it("discards a lease when its final restore fails", async () => {
+  it("keeps the backup when its final restore fails", async () => {
     writeNestedFile("src/app.tsx", SOURCE);
     const restoreFirstScan = await neutralizeDisableDirectives(temporaryDirectory);
     fs.rmSync(path.join(temporaryDirectory, "src/app.tsx"));
@@ -170,8 +178,177 @@ describe("neutralizeDisableDirectives — build-output exclusion", () => {
     const replacement = "// eslint-disable-next-line -- replacement\nexport const value = 2;\n";
     writeNestedFile("src/app.tsx", replacement);
     const restoreSecondScan = await neutralizeDisableDirectives(temporaryDirectory);
-    expect(readNestedFile("src/app.tsx")).toContain("eslint_disable");
+    expect(readNestedFile("src/app.tsx")).toBe(replacement);
     restoreSecondScan();
     expect(readNestedFile("src/app.tsx")).toBe(replacement);
+    expect(readNestedFile(getBackupRelativePath("src/app.tsx"))).toBe(SOURCE);
+  });
+});
+
+describe("neutralizeDisableDirectives — backup recovery after ungraceful exit", () => {
+  let temporaryDirectory: string;
+
+  const writeNestedFile = (relativePath: string, contents: string): void => {
+    const filePath = path.join(temporaryDirectory, relativePath);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, contents);
+  };
+
+  const readNestedFile = (relativePath: string): string =>
+    fs.readFileSync(path.join(temporaryDirectory, relativePath), "utf-8");
+
+  const fileExists = (relativePath: string): boolean => {
+    try {
+      fs.accessSync(path.join(temporaryDirectory, relativePath));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const SOURCE = "// eslint-disable-next-line\nexport const value = 1;\n";
+
+  beforeEach(() => {
+    temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-neutralize-backup-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  });
+
+  it("creates backup files when neutralizing", async () => {
+    writeNestedFile("src/app.tsx", SOURCE);
+
+    const restore = await neutralizeDisableDirectives(temporaryDirectory);
+
+    expect(readNestedFile("src/app.tsx")).toContain("eslint_disable");
+    expect(fileExists(getBackupRelativePath("src/app.tsx"))).toBe(true);
+    expect(readNestedFile(getBackupRelativePath("src/app.tsx"))).toBe(SOURCE);
+
+    restore();
+  });
+
+  it("deletes backup files after successful restoration", async () => {
+    writeNestedFile("src/app.tsx", SOURCE);
+
+    const restore = await neutralizeDisableDirectives(temporaryDirectory);
+    expect(fileExists(getBackupRelativePath("src/app.tsx"))).toBe(true);
+
+    restore();
+
+    expect(readNestedFile("src/app.tsx")).toBe(SOURCE);
+    expect(fileExists(getBackupRelativePath("src/app.tsx"))).toBe(false);
+  });
+
+  it("restores orphaned backups from previous ungraceful exit", async () => {
+    const NEUTRALIZED = "// eslint_disable-next-line\nexport const value = 1;\n";
+    writeNestedFile("src/app.tsx", NEUTRALIZED);
+    writeNestedFile(getBackupRelativePath("src/app.tsx"), SOURCE);
+
+    await neutralizeDisableDirectives(temporaryDirectory, undefined, {
+      recoverOnly: true,
+    });
+
+    expect(readNestedFile("src/app.tsx")).toBe(SOURCE);
+    expect(fileExists(getBackupRelativePath("src/app.tsx"))).toBe(false);
+  });
+
+  it("restores multiple orphaned backups", async () => {
+    const SOURCE_2 = "// oxlint-disable\nexport const other = 2;\n";
+    const NEUTRALIZED_1 = "// eslint_disable-next-line\nexport const value = 1;\n";
+    const NEUTRALIZED_2 = "// oxlint_disable\nexport const other = 2;\n";
+
+    writeNestedFile("src/app.tsx", NEUTRALIZED_1);
+    writeNestedFile(getBackupRelativePath("src/app.tsx"), SOURCE);
+    writeNestedFile("src/utils.ts", NEUTRALIZED_2);
+    writeNestedFile(getBackupRelativePath("src/utils.ts"), SOURCE_2);
+
+    await neutralizeDisableDirectives(temporaryDirectory, undefined, {
+      recoverOnly: true,
+    });
+
+    expect(readNestedFile("src/app.tsx")).toBe(SOURCE);
+    expect(readNestedFile("src/utils.ts")).toBe(SOURCE_2);
+    expect(fileExists(getBackupRelativePath("src/app.tsx"))).toBe(false);
+    expect(fileExists(getBackupRelativePath("src/utils.ts"))).toBe(false);
+  });
+
+  it("keeps the backup when the original file is missing", async () => {
+    writeNestedFile(getBackupRelativePath("src/app.tsx"), SOURCE);
+
+    await neutralizeDisableDirectives(temporaryDirectory, undefined, {
+      recoverOnly: true,
+    });
+
+    expect(fileExists("src/app.tsx")).toBe(false);
+    expect(fileExists(getBackupRelativePath("src/app.tsx"))).toBe(true);
+  });
+
+  it("does not overwrite a file changed after an ungraceful exit", async () => {
+    const changedSource = "export const value = 2;\n";
+    writeNestedFile("src/app.tsx", changedSource);
+    writeNestedFile(getBackupRelativePath("src/app.tsx"), SOURCE);
+
+    await neutralizeDisableDirectives(temporaryDirectory, undefined, {
+      recoverOnly: true,
+    });
+
+    expect(readNestedFile("src/app.tsx")).toBe(changedSource);
+    expect(readNestedFile(getBackupRelativePath("src/app.tsx"))).toBe(SOURCE);
+  });
+
+  it("does not overwrite a file changed during a scan", async () => {
+    writeNestedFile("src/app.tsx", SOURCE);
+    const restore = await neutralizeDisableDirectives(temporaryDirectory);
+    const changedSource = "export const value = 3;\n";
+    writeNestedFile("src/app.tsx", changedSource);
+
+    restore();
+
+    expect(readNestedFile("src/app.tsx")).toBe(changedSource);
+    expect(readNestedFile(getBackupRelativePath("src/app.tsx"))).toBe(SOURCE);
+  });
+
+  it("deletes a stale backup after the source was already restored", async () => {
+    writeNestedFile("src/app.tsx", SOURCE);
+    writeNestedFile(getBackupRelativePath("src/app.tsx"), SOURCE);
+
+    await neutralizeDisableDirectives(temporaryDirectory, undefined, {
+      recoverOnly: true,
+    });
+
+    expect(readNestedFile("src/app.tsx")).toBe(SOURCE);
+    expect(fileExists(getBackupRelativePath("src/app.tsx"))).toBe(false);
+  });
+
+  it("does not restore backups outside the scan scope", async () => {
+    const SOURCE_NESTED = "// eslint-disable\nconst nested = 1;\n";
+    const NEUTRALIZED_NESTED = "// eslint_disable\nconst nested = 1;\n";
+
+    writeNestedFile("packages/app/src/app.tsx", NEUTRALIZED_NESTED);
+    writeNestedFile(
+      getBackupRelativePath("packages/app/src/app.tsx", "packages/app"),
+      SOURCE_NESTED,
+    );
+
+    writeNestedFile("packages/other/src/other.tsx", NEUTRALIZED_NESTED);
+    writeNestedFile(
+      getBackupRelativePath("packages/other/src/other.tsx", "packages/other"),
+      SOURCE_NESTED,
+    );
+
+    await neutralizeDisableDirectives(path.join(temporaryDirectory, "packages/app"), undefined, {
+      recoverOnly: true,
+    });
+
+    expect(readNestedFile("packages/app/src/app.tsx")).toBe(SOURCE_NESTED);
+    expect(fileExists(getBackupRelativePath("packages/app/src/app.tsx", "packages/app"))).toBe(
+      false,
+    );
+
+    expect(readNestedFile("packages/other/src/other.tsx")).toBe(NEUTRALIZED_NESTED);
+    expect(
+      fileExists(getBackupRelativePath("packages/other/src/other.tsx", "packages/other")),
+    ).toBe(true);
   });
 });

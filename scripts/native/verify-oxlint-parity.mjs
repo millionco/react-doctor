@@ -118,6 +118,7 @@ const r3fInlinePrimitiveFixturePath = path.join(
   "r3f-inline-primitive.tsx",
 );
 const r3fInlineResourceFixturePath = path.join(fixtureDirectory, "app", "r3f-inline-resource.tsx");
+const r3fManualResizeFixturePath = path.join(fixtureDirectory, "app", "r3f-manual-resize.tsx");
 const r3fShadowsFixturePath = path.join(fixtureDirectory, "app", "r3f-shadows.tsx");
 const r3fTextureRepeatFixturePath = path.join(fixtureDirectory, "app", "r3f-texture-repeat.tsx");
 const safeGlobalErrorFixturePath = path.join(fixtureDirectory, "app", "safe", "global-error.tsx");
@@ -379,6 +380,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-imperative-attach-of-managed-ref": 1,
   "r3f-no-inline-primitive-object": 1,
   "r3f-no-inline-resource-prop": 1,
+  "r3f-no-manual-canvas-resize": 1,
   "react-router-csp-nonce-consistency": 1,
   "react-router-descendant-routes-require-splat": 1,
   "react-router-guard-aborted-handle-error": 0,
@@ -2785,6 +2787,10 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     r3fInlineResourceFixturePath,
     `import React from "react";\nimport "@react-three/fiber";\nimport { MeshBasicMaterial } from "three";\nexport const ResourceScene = () => <mesh material={new MeshBasicMaterial()} />;\n`,
+  );
+  fs.writeFileSync(
+    r3fManualResizeFixturePath,
+    `import { useThree } from "@react-three/fiber";\nexport const ResizeScene = () => { const gl = useThree((state) => state.gl); window.addEventListener("resize", () => gl.setSize(1, 1)); return null; };\n`,
   );
   fs.writeFileSync(
     r3fShadowsFixturePath,

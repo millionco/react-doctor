@@ -208,6 +208,7 @@ impl Rule for ${delegatedRule.struct} {
         "split-css-top-level",
         "motion-react-api-path-matches",
         "is-render-phase-component-or-hook",
+        "find-render-phase-component-or-hook",
         "function-executes-during-render",
         "component-renders-ink",
         "children-forwarding-components",

@@ -364,6 +364,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-no-deep-use-three-selector": 3,
   "r3f-no-dispose-loader-cache": 8,
   "r3f-no-duplicate-primitive-object": 5,
+  "r3f-no-extend-in-render": 0,
   "r3f-no-extend-three-namespace": 4,
   "r3f-no-inline-primitive-object": 1,
   "react-router-csp-nonce-consistency": 1,

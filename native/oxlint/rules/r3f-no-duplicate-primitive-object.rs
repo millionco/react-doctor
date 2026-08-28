@@ -218,7 +218,7 @@ fn primitive_mounting_render_owner<'a, 'b>(
     ctx: &'b LintContext<'a>,
 ) -> Option<&'b AstNode<'a>> {
     let nearest_function = crate::ast_util::get_enclosing_function(node, ctx)?;
-    let Some(render_owner) = primitive_render_owner(nearest_function, ctx) else {
+    let Some(render_owner) = find_render_phase_component_or_hook(node, ctx) else {
         return Some(nearest_function);
     };
     if nearest_function.id() == render_owner.id() {
@@ -257,26 +257,6 @@ fn primitive_mounting_render_owner<'a, 'b>(
         current_function = next_function;
     }
     Some(render_owner)
-}
-
-fn primitive_render_owner<'a, 'b>(
-    mut function_node: &'b AstNode<'a>,
-    ctx: &'b LintContext<'a>,
-) -> Option<&'b AstNode<'a>> {
-    loop {
-        if component_or_hook_function_name(function_node, ctx).is_some() {
-            return Some(function_node);
-        }
-        if !function_executes_during_render(function_node, ctx) {
-            return None;
-        }
-        function_node = ctx.nodes().ancestors(function_node.id()).find(|ancestor| {
-            matches!(
-                ancestor.kind(),
-                AstKind::Function(_) | AstKind::ArrowFunctionExpression(_)
-            )
-        })?;
-    }
 }
 
 fn primitive_mount_site_ids(
@@ -433,7 +413,7 @@ fn primitive_is_inside_repeated_map<'a>(
     let Some(enclosing_function) = crate::ast_util::get_enclosing_function(node, ctx) else {
         return false;
     };
-    let render_owner = primitive_render_owner(enclosing_function, ctx);
+    let render_owner = find_render_phase_component_or_hook(node, ctx);
     let mut current_function = Some(enclosing_function);
     while let Some(function_node) = current_function {
         if render_owner.is_some_and(|owner| owner.id() == function_node.id()) {
@@ -576,8 +556,7 @@ fn primitive_call_executes_during_render<'a>(
     call_node: &AstNode<'a>,
     ctx: &LintContext<'a>,
 ) -> bool {
-    crate::ast_util::get_enclosing_function(call_node, ctx)
-        .is_some_and(|function_node| primitive_render_owner(function_node, ctx).is_some())
+    find_render_phase_component_or_hook(call_node, ctx).is_some()
 }
 
 fn primitive_callback_symbol_id(

@@ -1269,6 +1269,13 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "effect-listener-cleanup-mismatch",
   "effect-listener-cleanup-reference-mismatch",
   "effect-observer-needs-disconnect",
+  "js-batch-dom-css",
+  "js-combine-iterations",
+  "js-hoist-intl",
+  "js-hoist-regexp",
+  "js-index-maps",
+  "no-array-index-key",
+  "no-fill-map-element-as-key",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

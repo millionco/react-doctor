@@ -710,7 +710,14 @@
     "jsx-no-jsx-as-prop",
     "effect-listener-cleanup-mismatch",
     "effect-listener-cleanup-reference-mismatch",
-    "effect-observer-needs-disconnect"
+    "effect-observer-needs-disconnect",
+    "js-batch-dom-css",
+    "js-combine-iterations",
+    "js-hoist-intl",
+    "js-hoist-regexp",
+    "js-index-maps",
+    "no-array-index-key",
+    "no-fill-map-element-as-key"
   ],
   "delegatedRules": [
     {

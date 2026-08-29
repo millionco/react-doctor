@@ -1461,6 +1461,13 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "effect-listener-cleanup-mismatch": 0,
   "effect-listener-cleanup-reference-mismatch": 0,
   "effect-observer-needs-disconnect": 0,
+  "js-batch-dom-css": 0,
+  "js-combine-iterations": 0,
+  "js-hoist-intl": 0,
+  "js-hoist-regexp": 0,
+  "js-index-maps": 0,
+  "no-array-index-key": 0,
+  "no-fill-map-element-as-key": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1540,6 +1547,13 @@ const FOCUSED_PARITY_RULE_IDS = [
   "effect-listener-cleanup-mismatch",
   "effect-listener-cleanup-reference-mismatch",
   "effect-observer-needs-disconnect",
+  "js-batch-dom-css",
+  "js-combine-iterations",
+  "js-hoist-intl",
+  "js-hoist-regexp",
+  "js-index-maps",
+  "no-array-index-key",
+  "no-fill-map-element-as-key",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1613,6 +1627,13 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "effect-listener-cleanup-mismatch": 1,
   "effect-listener-cleanup-reference-mismatch": 1,
   "effect-observer-needs-disconnect": 2,
+  "js-batch-dom-css": 1,
+  "js-combine-iterations": 1,
+  "js-hoist-intl": 1,
+  "js-hoist-regexp": 1,
+  "js-index-maps": 1,
+  "no-array-index-key": 1,
+  "no-fill-map-element-as-key": 1,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -6548,6 +6569,28 @@ const FocusedObserverNamedCallback = () => {
   }, []);
   return null;
 };
+const FocusedBatchDomCss = ({ elements }) => {
+  for (const element of elements) {
+    const width = element.offsetWidth;
+    element.style.width = width + "px";
+    element.style.height = "20px";
+  }
+};
+const FocusedCombinedIterations = focusedRows.filter((row) => row.active).map((row) => row.id).filter((id) => id > 0);
+const FocusedIntl = () => new Intl.NumberFormat("en-US").format(1000);
+let focusedLocalRegexp;
+({ [globalThis.RegExp]: focusedLocalRegexp } = focusedRegexpSource);
+const FocusedRegexp = ({ values }) => values.map((value) => new RegExp("^prefix").test(value));
+const FocusedIndexMaps = ({ ids, users: A }) => {
+  for (const id of ids) A.find((user) => user.id === id);
+};
+const FocusedCloneElementIndexKey = ({ children }) => children.map((child, index) => React.cloneElement(child, { key: String(index) }));
+const FocusedFilledRows = () => {
+  const rows = Array(3).fill("row");
+  console["log"](rows);
+  return rows.map((row) => <Row key={row} />);
+};
+const FocusedInlineFilledRows = () => Array(3).fill("row").map((row) => <Row key={row} />);
 let ReassignedMemo = memo(Base);
 ReassignedMemo = Base;
 const ComparatorMemo = memo(Base, () => true);

@@ -1468,6 +1468,19 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "js-index-maps": 0,
   "no-array-index-key": 0,
   "no-fill-map-element-as-key": 0,
+  "no-async-event-handler-without-reentry-guard": 0,
+  "no-blocked-paste": 0,
+  "no-boolean-toggle-without-functional-update": 0,
+  "no-scale-from-zero": 0,
+  "no-side-tab-border": 0,
+  "no-transition-all": 0,
+  "no-unguarded-numeric-input-parse": 0,
+  "no-call-component-as-function": 0,
+  "no-create-ref-in-function-component": 1,
+  "no-mixed-icon-libraries": 0,
+  "no-reduced-motion-content-removal": 0,
+  "no-spread-accumulator-in-reduce": 0,
+  "no-unescaped-dynamic-string-in-regexp": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1554,6 +1567,19 @@ const FOCUSED_PARITY_RULE_IDS = [
   "js-index-maps",
   "no-array-index-key",
   "no-fill-map-element-as-key",
+  "no-async-event-handler-without-reentry-guard",
+  "no-blocked-paste",
+  "no-boolean-toggle-without-functional-update",
+  "no-scale-from-zero",
+  "no-side-tab-border",
+  "no-transition-all",
+  "no-unguarded-numeric-input-parse",
+  "no-call-component-as-function",
+  "no-create-ref-in-function-component",
+  "no-mixed-icon-libraries",
+  "no-reduced-motion-content-removal",
+  "no-spread-accumulator-in-reduce",
+  "no-unescaped-dynamic-string-in-regexp",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1582,7 +1608,7 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "no-non-null-assertion-on-maybe-undefined-result": 1,
   "no-collapsed-literal-or-chain-as-value": 4,
   "no-excessive-motion-stagger": 1,
-  "prefer-motion-transform-property": 1,
+  "prefer-motion-transform-property": 2,
   "rn-animation-reaction-as-derived": 1,
   "nextjs-async-dynamic-api-not-awaited": 1,
   "three-shader-no-invalid-clamp-bounds": 2,
@@ -1634,6 +1660,19 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "js-index-maps": 1,
   "no-array-index-key": 1,
   "no-fill-map-element-as-key": 1,
+  "no-async-event-handler-without-reentry-guard": 1,
+  "no-blocked-paste": 1,
+  "no-boolean-toggle-without-functional-update": 1,
+  "no-scale-from-zero": 1,
+  "no-side-tab-border": 1,
+  "no-transition-all": 1,
+  "no-unguarded-numeric-input-parse": 1,
+  "no-call-component-as-function": 1,
+  "no-create-ref-in-function-component": 1,
+  "no-mixed-icon-libraries": 1,
+  "no-reduced-motion-content-removal": 1,
+  "no-spread-accumulator-in-reduce": 1,
+  "no-unescaped-dynamic-string-in-regexp": 1,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -6370,9 +6409,11 @@ import { makeAutoObservable, reaction as focusedMobxReaction } from "mobx";
 import { observer } from "mobx-react-lite";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as Preact from "preact";
-import { createContext, memo, useEffect, useMemo, useRef } from "react";
+import { createContext, createRef, memo, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector as focusedReduxUseSelector } from "react-redux";
-import { motion } from "motion/react";
+import { HomeIcon } from "@heroicons/react/24/outline";
+import { Search as FocusedLucideSearch } from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
 import { useAnimatedReaction } from "react-native-reanimated";
 import { GLSL3 as StaticGLSL3, RawShaderMaterial as StaticRawShaderMaterial, ShaderMaterial as StaticShaderMaterial, Vector3 as StaticVector3 } from "three";
 import * as ReassignedThree from "three";
@@ -6591,6 +6632,36 @@ const FocusedFilledRows = () => {
   return rows.map((row) => <Row key={row} />);
 };
 const FocusedInlineFilledRows = () => Array(3).fill("row").map((row) => <Row key={row} />);
+const FocusedAsyncEventHandler = () => {
+  const [, setDone] = useState(false);
+  return <button onClick={async () => { await api.post("/x"); setDone(true); }} />;
+};
+const FocusedGuardedAsyncEventHandler = () => {
+  const [, setIsSaving] = React.useState(false);
+  return <form onSubmit={async () => { setIsSaving(true); try { await api.post("/x"); } finally { setIsSaving(false); } }} />;
+};
+const FocusedBlockedPaste = () => <input type="password" onPaste={(event) => event.preventDefault()} />;
+const FocusedBooleanToggle = () => {
+  const [open, setOpen] = useState(false);
+  setTimeout(() => setOpen(!open), 1);
+};
+const FocusedScaleFromZero = () => <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} />;
+const FocusedSideTabBorder = () => <div className="border-l-4 border-red-500" />;
+const FocusedTransitionAll = () => <div style={{ transition: "all 0.3s ease" }} />;
+const FocusedNumericInput = () => <input onChange={(event) => {
+  const parsed = Number(event.target.value);
+  submit(Number.isNaN(parsed) ? undefined : parsed);
+}} />;
+const FocusedCallableRow = ({ item }) => <li>{item}</li>;
+const FocusedCalledComponent = ({ items }) => <ul>{items.map((item) => FocusedCallableRow({ item }))}</ul>;
+const useFocusedDriveItemActions = () => {
+  const nameInputRef = useMemo(() => createRef(), []);
+  return { nameInputRef };
+};
+const FocusedMixedIcons = () => <><FocusedLucideSearch /><HomeIcon /></>;
+const FocusedReducedMotionRemoval = () => useReducedMotion() ? null : <p>Upload complete</p>;
+const FocusedSpreadAccumulator = ({ items }) => items.reduce((accumulator, item) => [...accumulator, item], []);
+const FocusedUnsafeDynamicRegexp = ({ highlight }) => RegExp(highlight, "gi");
 let ReassignedMemo = memo(Base);
 ReassignedMemo = Base;
 const ComparatorMemo = memo(Base, () => true);
@@ -6724,7 +6795,7 @@ const CopyReaction = ({ source, target }) => {
 
 void MemoProps; void SpreadProps; void RenderProps; void AliasSmoothScroll; void SmoothScroll; void HiddenPulse; void VisiblePulse; void RepeatedText; void InvalidMobxObserver; void MobxChildStore;
 void directDerivedAtom; void castDerivedAtom; void DirectQueryResult; void CastQueryResult; void DirectRedirect; void SamePageRedirect;
-void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues; void PendingNextCookies; void InvalidStaticShader; void OutOfBoundsShader; void NonuniformDerivativeShader; void Glsl3LegacySyntaxShader; void InvalidBitOperationShader; void InvalidMathShader; void InvalidSmoothstepShader; void UniformInverseShader; void RedeclaredBuiltinShader; void RedundantFragmentDepthShader; void ReservedIdentifierShader; void SmallIntegerPowerShader; void SquaredDistanceShader; void IncompatibleUniformShader; void MissingFragmentOutputShader; void MissingPositionShader; void InvalidGlobalInitializerShader; void MissingRawFloatPrecisionShader; void ConditionalRawFloatPrecisionShader; void MissingRawGlsl3VersionShader; void MismatchedUniformShader; void DuplicateFragmentUniformShader; void MismatchedVaryingShader; void InvalidShaderInterfaceSyntaxShader; void MissingUniformBindingShader; void InvalidUniformBindingSyntaxShader; void InvalidUniformDefinitionShader; void MacroOnlyIndexShader; void SuppressedReassignedShader; void MotionExamples; void CopyReaction;
+void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues; void PendingNextCookies; void InvalidStaticShader; void OutOfBoundsShader; void NonuniformDerivativeShader; void Glsl3LegacySyntaxShader; void InvalidBitOperationShader; void InvalidMathShader; void InvalidSmoothstepShader; void UniformInverseShader; void RedeclaredBuiltinShader; void RedundantFragmentDepthShader; void ReservedIdentifierShader; void SmallIntegerPowerShader; void SquaredDistanceShader; void IncompatibleUniformShader; void MissingFragmentOutputShader; void MissingPositionShader; void InvalidGlobalInitializerShader; void MissingRawFloatPrecisionShader; void ConditionalRawFloatPrecisionShader; void MissingRawGlsl3VersionShader; void MismatchedUniformShader; void DuplicateFragmentUniformShader; void MismatchedVaryingShader; void InvalidShaderInterfaceSyntaxShader; void MissingUniformBindingShader; void InvalidUniformBindingSyntaxShader; void InvalidUniformDefinitionShader; void MacroOnlyIndexShader; void SuppressedReassignedShader; void MotionExamples; void CopyReaction; void FocusedAsyncEventHandler; void FocusedGuardedAsyncEventHandler; void FocusedBlockedPaste; void FocusedBooleanToggle; void FocusedScaleFromZero; void FocusedSideTabBorder; void FocusedTransitionAll; void FocusedNumericInput; void FocusedCalledComponent; void useFocusedDriveItemActions; void FocusedMixedIcons; void FocusedReducedMotionRemoval; void FocusedSpreadAccumulator; void FocusedUnsafeDynamicRegexp;
 `,
   );
   fs.writeFileSync(
@@ -7488,13 +7559,35 @@ export const App = () => <>
         .length,
     ]),
   );
+  const focusedParityNativeDiagnosticCounts = Object.fromEntries(
+    FOCUSED_PARITY_RULE_IDS.map((ruleId) => [
+      ruleId,
+      focusedParityNativeDiagnostics.filter((diagnostic) => diagnostic.code.includes(`(${ruleId})`))
+        .length,
+    ]),
+  );
   if (
     JSON.stringify(focusedParityDiagnosticCounts) !==
       JSON.stringify(EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS) ||
     JSON.stringify(focusedParityNativeDiagnostics) !== JSON.stringify(focusedParityStockDiagnostics)
   ) {
+    const focusedParityDifferenceIndex = focusedParityStockDiagnostics.findIndex(
+      (diagnostic, index) =>
+        JSON.stringify(diagnostic) !== JSON.stringify(focusedParityNativeDiagnostics[index]),
+    );
+    const focusedParityDifference =
+      focusedParityDifferenceIndex === -1
+        ? {
+            stockCount: focusedParityStockDiagnostics.length,
+            nativeCount: focusedParityNativeDiagnostics.length,
+          }
+        : {
+            index: focusedParityDifferenceIndex,
+            stock: focusedParityStockDiagnostics[focusedParityDifferenceIndex],
+            native: focusedParityNativeDiagnostics[focusedParityDifferenceIndex],
+          };
     throw new Error(
-      `native focused parity failed\nexpected=${JSON.stringify(EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS, null, 2)}\nreceived=${JSON.stringify(focusedParityDiagnosticCounts, null, 2)}\nstock=${JSON.stringify(focusedParityStockDiagnostics, null, 2)}\nnative=${JSON.stringify(focusedParityNativeDiagnostics, null, 2)}`,
+      `native focused parity failed\nexpected=${JSON.stringify(EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS, null, 2)}\nreceived=${JSON.stringify(focusedParityDiagnosticCounts, null, 2)}\nnativeReceived=${JSON.stringify(focusedParityNativeDiagnosticCounts, null, 2)}\nfirstDifference=${JSON.stringify(focusedParityDifference, null, 2)}\nstock=${JSON.stringify(focusedParityStockDiagnostics, null, 2)}\nnative=${JSON.stringify(focusedParityNativeDiagnostics, null, 2)}`,
     );
   }
 

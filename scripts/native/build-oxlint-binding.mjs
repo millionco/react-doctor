@@ -414,6 +414,64 @@ impl Rule for ${delegatedRule.struct} {
     const nativeRuleUtilityDependencies = new Map([
       ["no-array-index-deref-without-bounds-or-empty-guard", ["statement_always_exits"]],
       ["no-object-keys-values-entries-on-maybe-undefined", ["statement_always_exits"]],
+      [
+        "no-async-event-handler-without-reentry-guard",
+        ["has_possible_static_property_write_before"],
+      ],
+      [
+        "no-blocked-paste",
+        ["get_direct_string_literal_attribute_value", "has_possible_static_property_write_before"],
+      ],
+      [
+        "no-call-component-as-function",
+        ["function_contains_react_render_output", "is_non_production_file"],
+      ],
+      [
+        "no-create-ref-in-function-component",
+        [
+          "component_or_hook_function_name",
+          "function_contains_react_render_output",
+          "imported_module_api_matches",
+          "is_proven_intrinsic_jsx_element",
+          "is_react_api_call",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "no-mixed-icon-libraries",
+        [
+          "is_non_production_file",
+          "static_member_expression_property_name",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "no-reduced-motion-content-removal",
+        [
+          "get_authoritative_jsx_attribute",
+          "get_effective_static_style_property",
+          "get_object_property_string_value",
+          "has_capability_or_unspecified",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "no-spread-accumulator-in-reduce",
+        [
+          "is_node_reachable_within_function",
+          "is_non_production_file",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "no-unescaped-dynamic-string-in-regexp",
+        [
+          "get_static_string_expression",
+          "identifier_initializer",
+          "resolve_identifier_import",
+          "static_member_expression_property_name",
+        ],
+      ],
       ["query-no-mutation-in-effect-as-read", ["for_each_local_callback_execution_node"]],
       [
         "query-no-query-in-effect",

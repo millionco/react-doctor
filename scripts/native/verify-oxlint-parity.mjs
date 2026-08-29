@@ -1412,6 +1412,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "nextjs-no-use-search-params-without-suspense": 0,
   "js-length-check-first": 0,
   "js-min-max-loop": 0,
+  "js-set-map-lookups": 0,
+  "no-non-null-assertion-on-maybe-undefined-result": 0,
+  "no-collapsed-literal-or-chain-as-value": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1442,6 +1445,9 @@ const FOCUSED_PARITY_RULE_IDS = [
   "nextjs-no-use-search-params-without-suspense",
   "js-length-check-first",
   "js-min-max-loop",
+  "js-set-map-lookups",
+  "no-non-null-assertion-on-maybe-undefined-result",
+  "no-collapsed-literal-or-chain-as-value",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1466,6 +1472,9 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "nextjs-no-use-search-params-without-suspense": 2,
   "js-length-check-first": 1,
   "js-min-max-loop": 1,
+  "js-set-map-lookups": 1,
+  "no-non-null-assertion-on-maybe-undefined-result": 1,
+  "no-collapsed-literal-or-chain-as-value": 4,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -6259,10 +6268,22 @@ const NormalizedObject = (attrs?: object) => { attrs = attrs ?? {}; return Objec
 const SearchPage = () => { useSearchParams(); return null; };
 const CompareArrays = ({ left, right }) => left.every((value, index) => value === right[index]);
 const SortedMinimum = () => [3, 1, 2].sort((left, right) => left - right)[0];
+const RepeatedMembership = ({ values, queries }) => { for (const query of queries) { if (values.includes(query)) console.log(query); } };
+const UnsafeFindAssertion = (values) => values.find((value) => value.active)!.name;
+const CollapsedLiteralValues = ({ code, method, searchMethod, text, value }) => {
+  text[\`includes\`]((("a" || \`b\`) as string));
+  const numeric = code !== (+1 && -2);
+  const regex = value.match(/a/ || /b/);
+  switch (method) { case "GET" || "HEAD" || "OPTIONS": break; }
+  text[searchMethod]("a" || "b");
+  text.includes("a" || 1);
+  const saved = "a" || "b";
+  return { numeric, regex, saved };
+};
 
 void MemoProps; void SpreadProps; void RenderProps; void AliasSmoothScroll; void SmoothScroll; void HiddenPulse; void VisiblePulse; void RepeatedText;
 void directDerivedAtom; void castDerivedAtom; void DirectQueryResult; void CastQueryResult; void DirectRedirect; void SamePageRedirect;
-void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum;
+void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues;
 `,
   );
   fs.writeFileSync(

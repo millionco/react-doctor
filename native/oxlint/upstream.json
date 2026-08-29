@@ -661,7 +661,10 @@
     "no-object-keys-values-entries-on-maybe-undefined",
     "nextjs-no-use-search-params-without-suspense",
     "js-length-check-first",
-    "js-min-max-loop"
+    "js-min-max-loop",
+    "js-set-map-lookups",
+    "no-non-null-assertion-on-maybe-undefined-result",
+    "no-collapsed-literal-or-chain-as-value"
   ],
   "delegatedRules": [
     {

@@ -518,7 +518,11 @@ const runSingleProjectScan = async (
     process.stdout.write("No changed source files in the selected project.\n");
     return { shouldFail: false };
   }
-  const presentation = resolveScanPresentation(input, [projectScan], rootScanTarget.resolvedDirectory);
+  const presentation = resolveScanPresentation(
+    input,
+    [projectScan],
+    rootScanTarget.resolvedDirectory,
+  );
   return runMountedScan(projectScan.directory, presentation, blockingLevel, async (context) => {
     const result = await inspectProject(projectScan.directory, {
       ...resolveTuiInspectOptions(input, projectScan.config),

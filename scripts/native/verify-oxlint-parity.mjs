@@ -1443,6 +1443,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-shader-require-matching-varyings": 0,
   "three-shader-require-uniform-bindings": 0,
   "three-shader-valid-uniform-definitions": 0,
+  "mobx-no-observer-wrapped-memo": 0,
+  "mobx-no-make-auto-observable-in-inheritance": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1504,6 +1506,8 @@ const FOCUSED_PARITY_RULE_IDS = [
   "three-shader-require-matching-varyings",
   "three-shader-require-uniform-bindings",
   "three-shader-valid-uniform-definitions",
+  "mobx-no-observer-wrapped-memo",
+  "mobx-no-make-auto-observable-in-inheritance",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1559,6 +1563,8 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "three-shader-require-matching-varyings": 1,
   "three-shader-require-uniform-bindings": 4,
   "three-shader-valid-uniform-definitions": 1,
+  "mobx-no-observer-wrapped-memo": 1,
+  "mobx-no-make-auto-observable-in-inheritance": 1,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -1582,6 +1588,10 @@ const REACT_DOCTOR_SETTINGS = {
       "shadcn",
       "radix-ui",
       "react-aria",
+      "mobx:4",
+      "mobx:6",
+      "mobx-react-binding-observer-memo-guard",
+      "mobx-react-lite-observer-memo-guard",
     ],
   },
 };
@@ -6283,6 +6293,7 @@ export const UncertainStaticSpreadScene = () => {
   fs.writeFileSync(
     focusedParityFixturePath,
     `import { atom, useAtomValue } from "jotai";
+import { makeAutoObservable } from "mobx";
 import { observer } from "mobx-react-lite";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as Preact from "preact";
@@ -6409,6 +6420,9 @@ const InvalidShaderInterfaceSyntaxShader = new StaticShaderMaterial({ uniforms: 
 const MissingUniformBindingShader = new StaticShaderMaterial({ fragmentShader: "uniform float time; void main() { gl_FragColor = vec4(time); }" });
 const InvalidUniformBindingSyntaxShader = new StaticShaderMaterial({ fragmentShader: "uniform float time; @ void main() { gl_FragColor = vec4(time); }" });
 const InvalidUniformDefinitionShader = new StaticShaderMaterial({ uniforms: { time: 1 } });
+const InvalidMobxObserver = observer(memo(Base));
+class MobxBaseStore { constructor() { makeAutoObservable(this); } }
+class MobxChildStore extends MobxBaseStore {}
 const MacroOnlyIndexShader = new StaticShaderMaterial({ fragmentShader: "uniform float values[2];\\n#define BAD values[2]\\nvoid main() { gl_FragColor = vec4(1.0); }" });
 ReassignedThree.ShaderMaterial = class {};
 const SuppressedReassignedShader = new ReassignedThree.ShaderMaterial({
@@ -6427,7 +6441,7 @@ const CopyReaction = ({ source, target }) => {
   return null;
 };
 
-void MemoProps; void SpreadProps; void RenderProps; void AliasSmoothScroll; void SmoothScroll; void HiddenPulse; void VisiblePulse; void RepeatedText;
+void MemoProps; void SpreadProps; void RenderProps; void AliasSmoothScroll; void SmoothScroll; void HiddenPulse; void VisiblePulse; void RepeatedText; void InvalidMobxObserver; void MobxChildStore;
 void directDerivedAtom; void castDerivedAtom; void DirectQueryResult; void CastQueryResult; void DirectRedirect; void SamePageRedirect;
 void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues; void PendingNextCookies; void InvalidStaticShader; void OutOfBoundsShader; void NonuniformDerivativeShader; void Glsl3LegacySyntaxShader; void InvalidBitOperationShader; void InvalidMathShader; void InvalidSmoothstepShader; void UniformInverseShader; void RedeclaredBuiltinShader; void RedundantFragmentDepthShader; void ReservedIdentifierShader; void SmallIntegerPowerShader; void SquaredDistanceShader; void IncompatibleUniformShader; void MissingFragmentOutputShader; void MissingPositionShader; void InvalidGlobalInitializerShader; void MissingRawFloatPrecisionShader; void ConditionalRawFloatPrecisionShader; void MissingRawGlsl3VersionShader; void MismatchedUniformShader; void DuplicateFragmentUniformShader; void MismatchedVaryingShader; void InvalidShaderInterfaceSyntaxShader; void MissingUniformBindingShader; void InvalidUniformBindingSyntaxShader; void InvalidUniformDefinitionShader; void MacroOnlyIndexShader; void SuppressedReassignedShader; void MotionExamples; void CopyReaction;
 `,
@@ -6830,7 +6844,18 @@ export const App = () => <>
     "react-doctor": {
       ...REACT_DOCTOR_SETTINGS["react-doctor"],
       rootDirectory: focusedParityDirectory,
-      capabilities: ["react", "nextjs", "nextjs:15", "preact", "tailwind", "three:181"],
+      capabilities: [
+        "react",
+        "nextjs",
+        "nextjs:15",
+        "preact",
+        "tailwind",
+        "three:181",
+        "mobx:4",
+        "mobx:6",
+        "mobx-react-binding-observer-memo-guard",
+        "mobx-react-lite-observer-memo-guard",
+      ],
     },
   };
   fs.writeFileSync(

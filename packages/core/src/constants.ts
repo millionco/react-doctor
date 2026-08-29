@@ -1251,6 +1251,8 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "three-shader-require-matching-varyings",
   "three-shader-require-uniform-bindings",
   "three-shader-valid-uniform-definitions",
+  "mobx-no-observer-wrapped-memo",
+  "mobx-no-make-auto-observable-in-inheritance",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

@@ -692,7 +692,9 @@
     "three-shader-require-matching-uniforms",
     "three-shader-require-matching-varyings",
     "three-shader-require-uniform-bindings",
-    "three-shader-valid-uniform-definitions"
+    "three-shader-valid-uniform-definitions",
+    "mobx-no-observer-wrapped-memo",
+    "mobx-no-make-auto-observable-in-inheritance"
   ],
   "delegatedRules": [
     {

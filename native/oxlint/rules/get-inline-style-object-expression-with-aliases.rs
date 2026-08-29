@@ -60,6 +60,8 @@ fn inline_style_object_binding_is_mutated(
     symbol_id: oxc_semantic::SymbolId,
     ctx: &crate::context::LintContext<'_>,
 ) -> bool {
+    use oxc_span::GetSpan;
+
     ctx.scoping()
         .get_resolved_references(symbol_id)
         .any(|reference| {

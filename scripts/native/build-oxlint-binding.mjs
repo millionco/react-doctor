@@ -133,6 +133,7 @@ impl Rule for ${delegatedRule.struct} {
         "r3f-state-setter-transition",
         "node-is-inside-repeated-execution",
         "is-non-production-file",
+        "is-program-owned-variable-declarator",
         "is-create-element-call",
         "is-react-api-call",
         "is-react-hook-call",
@@ -174,6 +175,7 @@ impl Rule for ${delegatedRule.struct} {
         "is-proven-intrinsic-jsx-element",
         "find-jsx-attribute",
         "get-static-class-name",
+        "get-object-property-string-value",
         "does-tailwind-variant-scope-cover",
         "tailwind-token-priority",
         "update-effective-tailwind-boolean-state",
@@ -394,6 +396,7 @@ impl Rule for ${delegatedRule.struct} {
       ]),
     );
     const nativeUtilityDependencies = new Map([
+      ["is_inside_statically_hidden_jsx_subtree", ["get_object_property_string_value"]],
       ["is_imported_or_stable_parameter_call", ["has_possible_static_property_write_before"]],
       [
         "resolve_analyzed_recursive_animation_frame_callback_id",
@@ -609,7 +612,7 @@ impl Rule for ${delegatedRule.struct} {
       const emittedUtilityImports = new Set();
       const requiredUtilities = requiredUtilitySources
         .join("\n\n")
-        .split("\n")
+        .split(/\r?\n/)
         .filter((line) => {
           if (!line.startsWith("use ") || !line.endsWith(";")) return true;
           if (emittedUtilityImports.has(line)) return false;

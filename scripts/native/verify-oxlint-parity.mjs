@@ -636,6 +636,23 @@ const safePageFixturePath = path.join(fixtureDirectory, "app", "page.tsx");
 const safeRouteHandlerFixturePath = path.join(fixtureDirectory, "app", "safe", "route.ts");
 const nonProductionFixturePath = path.join(temporaryDirectory, "fixture.test.tsx");
 const deepNonProductionFixturePath = path.join(temporaryDirectory, "deep-fixture.test.tsx");
+const nextjsNoImgCrossFileDirectory = path.join(temporaryDirectory, "nextjs-no-img-cross-file");
+const nextjsNoImgCrossFileHelperPath = path.join(nextjsNoImgCrossFileDirectory, "lib", "card.tsx");
+const nextjsNoImgCrossFileRoutePath = path.join(
+  nextjsNoImgCrossFileDirectory,
+  "app",
+  "api",
+  "card",
+  "route.tsx",
+);
+const focusedParityDirectory = path.join(temporaryDirectory, "focused-native-parity");
+const focusedParityFixturePath = path.join(focusedParityDirectory, "app", "page.tsx");
+const focusedParityWrappedMetadataPath = path.join(
+  focusedParityDirectory,
+  "app",
+  "wrapped",
+  "page.tsx",
+);
 const nonReactJsxFixturePath = path.join(temporaryDirectory, "solid-fixture.tsx");
 const configuredFixturePath = path.join(temporaryDirectory, "configured.tsx");
 const inactiveRouterFixtureDirectory = path.join(temporaryDirectory, "inactive-router-package");
@@ -667,6 +684,22 @@ const frameworkServerEntryFixturePath = path.join(
 );
 const stockConfigPath = path.join(temporaryDirectory, "stock.json");
 const nativeConfigPath = path.join(temporaryDirectory, "native.json");
+const nextjsNoImgCrossFileStockConfigPath = path.join(
+  temporaryDirectory,
+  "nextjs-no-img-cross-file-stock.json",
+);
+const nextjsNoImgCrossFileNativeConfigPath = path.join(
+  temporaryDirectory,
+  "nextjs-no-img-cross-file-native.json",
+);
+const focusedParityStockConfigPath = path.join(
+  temporaryDirectory,
+  "focused-native-parity-stock.json",
+);
+const focusedParityNativeConfigPath = path.join(
+  temporaryDirectory,
+  "focused-native-parity-native.json",
+);
 const configuredStockConfigPath = path.join(temporaryDirectory, "configured-stock.json");
 const configuredNativeConfigPath = path.join(temporaryDirectory, "configured-native.json");
 const jsxFilenameAsNeededFixturePath = path.join(temporaryDirectory, "as-needed.jsx");
@@ -1163,7 +1196,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-server-middleware-return-response": 1,
   "react-router-session-mutation-requires-commit": 1,
   "no-create-store-in-render": 1,
-  "react-compiler-no-manual-memoization": 10,
+  "react-compiler-no-manual-memoization": 12,
   "no-giant-component": 1,
   "no-nested-component-definition": 1,
   "no-high-complexity-react-function": 1,
@@ -1226,7 +1259,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-impure-call-at-module-scope": 7,
   "no-impure-state-updater": 1,
   "no-inline-hoc-on-component": 1,
-  "no-inline-prop-on-memo-component": 1,
+  "no-inline-prop-on-memo-component": 4,
   "no-invisible-focus-control": 1,
   "no-json-parse-stringify-clone": 1,
   "no-jsx-element-type": 1,
@@ -1341,6 +1374,29 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "rn-no-falsy-and-render": 2,
   "rn-no-renderitem-key": 1,
   "rn-no-raw-text": 3,
+  "jsx-no-new-array-as-prop": 0,
+  "jsx-no-new-function-as-prop": 0,
+  "jsx-no-new-object-as-prop": 0,
+  "jsx-no-useless-fragment": 6,
+  "jsx-pascal-case": 5,
+  "jsx-props-no-spreading": 7,
+  "no-render-prop-children": 0,
+  "jsx-numeric-and-leaked-render": 2,
+  "nextjs-metadata-url-consistency": 0,
+  "nextjs-missing-metadata": 0,
+  "nextjs-no-client-side-redirect": 0,
+  "nextjs-no-img-element": 21,
+  "nextjs-no-native-script": 5,
+  "no-pulsing-status-dot": 0,
+  "no-radial-halo": 0,
+  "no-repeated-container-text": 0,
+  "no-shape-assembled-illustration": 0,
+  "no-smooth-scroll-without-reduced-motion": 0,
+  "preact-no-render-arguments": 0,
+  "radio-input-missing-name": 0,
+  "jotai-derived-atom-returns-fresh-object": 0,
+  "jotai-select-atom-in-render-body": 1,
+  "jotai-tq-use-raw-query-atom": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1348,6 +1404,38 @@ const BENCHMARK_FINDING_COUNT_PER_FILE = 500;
 const BENCHMARK_SAMPLE_COUNT = 5;
 const CORPUS_PARITY_DIFF_LIMIT = 20;
 const OXLINT_OUTPUT_MAX_BYTES = 256 * 1024 * 1024;
+const FOCUSED_PARITY_RULE_IDS = [
+  "jsx-no-new-array-as-prop",
+  "jsx-no-new-function-as-prop",
+  "jsx-no-new-object-as-prop",
+  "jsx-props-no-spreading",
+  "no-render-prop-children",
+  "jsx-numeric-and-leaked-render",
+  "nextjs-missing-metadata",
+  "nextjs-no-client-side-redirect",
+  "no-pulsing-status-dot",
+  "no-repeated-container-text",
+  "no-smooth-scroll-without-reduced-motion",
+  "preact-no-render-arguments",
+  "jotai-derived-atom-returns-fresh-object",
+  "jotai-tq-use-raw-query-atom",
+];
+const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
+  "jsx-no-new-array-as-prop": 2,
+  "jsx-no-new-function-as-prop": 2,
+  "jsx-no-new-object-as-prop": 2,
+  "jsx-props-no-spreading": 1,
+  "no-render-prop-children": 1,
+  "jsx-numeric-and-leaked-render": 2,
+  "nextjs-missing-metadata": 0,
+  "nextjs-no-client-side-redirect": 1,
+  "no-pulsing-status-dot": 1,
+  "no-repeated-container-text": 1,
+  "no-smooth-scroll-without-reduced-motion": 1,
+  "preact-no-render-arguments": 1,
+  "jotai-derived-atom-returns-fresh-object": 1,
+  "jotai-tq-use-raw-query-atom": 1,
+};
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
   nursery: "off",
@@ -1463,6 +1551,8 @@ import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
 import { redirect as nextRedirect } from "next/navigation";
+import { atom as makeJotaiAtom } from "jotai";
+import { selectAtom as makeSelectAtom } from "jotai/utils";
 import React, { Activity as ReactActivity, Children, createContext as makeContext, useEffect, useEffectEvent as useReactEffectEvent, useLayoutEffect, useMemo, useReducer, useRef, useState, Component, forwardRef as wrapRef, ViewTransition, memo, startTransition as beginRouteTransition, type FunctionComponent as LegacyContextFunctionComponent } from "react";
 import ReactDOM, { hydrate as legacyHydrate } from "react-dom";
 import { act as legacyAct, Simulate as LegacySimulate } from "react-dom/test-utils";
@@ -3120,6 +3210,10 @@ const RandomKeyList = () => <div key={Math.random()} />;
 const RefCleanupBeforeReact19 = () => <div ref={(node) => () => node.remove()} />;
 const UncontrolledInput = ({ value }) => <input value={value} />;
 const UndeferredThirdParty = () => <script src="https://cdn.example.com/widget.js" />;
+const baseJotaiAtom = makeJotaiAtom({ value: 1 });
+const safeAssignedJotaiAtom = makeJotaiAtom((get) => Object.assign(Object.create(null), { value: get(baseJotaiAtom).value }));
+const NestedJotaiMemo = () => useMemo(() => { const buildAtom = () => makeSelectAtom(baseJotaiAtom, (value) => value.value); return buildAtom(); }, []);
+{ const NestedMemoCard = memo(() => null); const nestedMemoUse = <NestedMemoCard rows={[]} onClick={() => run()} options={{}} />; void nestedMemoUse; }
 `;
 
 const normalizeDiagnostics = (diagnostics) =>
@@ -6029,9 +6123,95 @@ export const UncertainStaticSpreadScene = () => {
     safeRouteHandlerFixturePath,
     "export const GET = () => new Response();\nexport default function handler() {}\n",
   );
+  fs.mkdirSync(path.dirname(nextjsNoImgCrossFileHelperPath), { recursive: true });
+  fs.mkdirSync(path.dirname(nextjsNoImgCrossFileRoutePath), { recursive: true });
+  fs.writeFileSync(
+    nextjsNoImgCrossFileHelperPath,
+    'export const cardLayout = function(source) { return <div><img src={source} alt="" width={10} height={10} /></div>; };\n',
+  );
+  fs.writeFileSync(
+    nextjsNoImgCrossFileRoutePath,
+    'import { ImageResponse } from "next/og";\nimport { cardLayout } from "../../../lib/card";\nexport const GET = () => new ImageResponse(cardLayout("/photo.png"));\n',
+  );
+  fs.mkdirSync(path.dirname(focusedParityFixturePath), { recursive: true });
+  fs.mkdirSync(path.dirname(focusedParityWrappedMetadataPath), { recursive: true });
+  fs.writeFileSync(
+    focusedParityFixturePath,
+    `import { atom, useAtomValue } from "jotai";
+import { observer } from "mobx-react-lite";
+import { useRouter } from "next/navigation";
+import * as Preact from "preact";
+import { memo, useEffect } from "react";
+import ThirdParty from "third-party";
+import { userQueryAtom } from "./atoms";
+
+void 0;
+"use client";
+
+const Base = () => null;
+const ObserverComponent = observer(Base, { forwardRef: true });
+let ReassignedMemo = memo(Base);
+ReassignedMemo = Base;
+const ComparatorMemo = memo(Base, () => true);
+const MemoProps = () => <>
+  <ObserverComponent items={[]} unstableArray={[]} handler={() => undefined} options={{}} unstableObject={{}} />
+  <ReassignedMemo items={[]} unstableArray={[]} handler={() => undefined} options={{}} unstableObject={{}} />
+  <ComparatorMemo items={[]} handler={() => undefined} options={{}} />
+</>;
+
+const SpreadProps = (props) => <><this.Component {...props} /><Base {...props} /></>;
+const LocalThirdParty = ThirdParty;
+const RenderProps = ({ header, body, footer }) => <>
+  <LocalThirdParty renderHeader={header} renderBody={body} renderFooter={footer} />
+  <ThirdParty renderHeader={header} renderBody={body} renderFooter={footer} />
+</>;
+
+const smoothStyle = { scrollBehavior: "smooth" };
+const AliasSmoothScroll = () => <div style={smoothStyle} />;
+const SmoothScroll = () => <div style={{ scrollBehavior: "smooth" }} />;
+const hiddenStyle = { display: "none" };
+const HiddenPulse = () => <header style={hiddenStyle}><span className="size-2 rounded-full animate-pulse" /></header>;
+const VisiblePulse = () => <header><span className="size-2 rounded-full animate-pulse" /></header>;
+const RepeatedText = () => <div className="rounded border p-4">
+  <span className="p-1">Ready</span>
+  <span className="p-2">Ready</span>
+  <span className="sr-only" style={dynamicStyle}>Ready</span>
+</div>;
+
+const baseAtom = atom({ value: 1 });
+type Reader = (get: (source: unknown) => unknown) => unknown;
+const directDerivedAtom = atom((get) => ({ value: get(baseAtom) }));
+const castDerivedAtom = atom(((get) => ({ value: get(baseAtom) })) as Reader);
+type QueryResult = { data: unknown };
+const DirectQueryResult = () => { const { data } = useAtomValue(userQueryAtom); return data; };
+const CastQueryResult = () => { const result = useAtomValue(userQueryAtom) as QueryResult; return result.data; };
+
+const DirectRedirect = () => { const router = useRouter(); useEffect(() => { router.replace("/done"); }, []); return null; };
+const pathname = "pathname";
+const SamePageRedirect = () => { const router = useRouter(); useEffect(() => { router.replace(router[pathname]); }, []); return null; };
+const PollingRedirect = () => { const router = useRouter(); useEffect(() => { const poll = function inner() { router.replace("/done"); setTimeout(poll, 10); }; poll(); }, []); return null; };
+
+const render = "render";
+class PreactCard extends Preact.Component { [render](props) { return null; } }
+const DirectMap = ({ items }) => <>{items.length && items.map((item) => <span>{item}</span>)}</>;
+const WrappedMap = ({ items }) => <>{items.length && items.map(((item) => <span>{item}</span>))}</>;
+
+void MemoProps; void SpreadProps; void RenderProps; void AliasSmoothScroll; void SmoothScroll; void HiddenPulse; void VisiblePulse; void RepeatedText;
+void directDerivedAtom; void castDerivedAtom; void DirectQueryResult; void CastQueryResult; void DirectRedirect; void SamePageRedirect;
+void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap;
+`,
+  );
+  fs.writeFileSync(
+    focusedParityWrappedMetadataPath,
+    'import { redirect } from "next/navigation";\nexport default (async () => await redirect("/docs"));\n',
+  );
   fs.writeFileSync(
     nonProductionFixturePath,
     `import { Canvas, useFrame } from "@react-three/fiber"; const ignoredTestLineWidth = <lineBasicMaterial linewidth={4} />; const unsupportedTestShadowLight = <ambientLight castShadow />; const ignoredTestBasicMaterialProperty = <meshBasicMaterial roughness={0.4} />; const invalidTestMaterialOpacity = <meshStandardMaterial opacity={1.2} />; const invalidTestPbrMaterialFactor = <meshStandardMaterial roughness={1.2} />; const invalidTestPhysicalMaterialProperty = <meshPhysicalMaterial clearcoat={2} />; const ignoredTestOpacity = <meshBasicMaterial opacity={0.5} />; const invalidTestBufferAttributeItemSize = <bufferAttribute args={[data, 0]} />; const invalidTestBufferAttributeArrayLength = <bufferAttribute args={[new Float32Array(8), 3]} />; const invalidTestShadowMapSize = <directionalLight castShadow shadow-mapSize={[1000, 1024]} />; const invalidTestRaycasterRange = <raycaster near={-1} />; const invalidTestFogParameters = <fog args={["white", 10, 5]} />; const invalidTestSpotLightAngle = <spotLight angle={2} />; const invalidTestPerspectiveCamera = <perspectiveCamera aspect={0} />; const invalidTestOrthographicCamera = <orthographicCamera left={2} right={2} />; const invalidTestNormalizedFloatAttribute = <float32BufferAttribute args={[data, 3, true]} />; const invalidTestWebgpuCanvas = <Canvas gl={{}} renderer={{}} />; const invalidTestShadowedPointLights = () => <group><pointLight castShadow /><pointLight castShadow /><pointLight castShadow /></group>; const shortcut = <button accessKey="s" />; const classicJsx = <div />; const inlineNextScript = <Script>window.analytics = true;</Script>; const smallTestInput = <input style={{ fontSize: 14 }} />; function nested(first, second, third, fourth) { if (first) { if (second) { if (third) { if (fourth) run(); } } } } items.map((item) => item.value).filter(Boolean); useEffect(() => {}, [{}]); useRef(buildCache()); useState(buildRows()); useState(new Worker("worker.js")); useMemo(() => value + 1, [value]); function TestCounter() { const [count, setCount] = useState(0); setTimeout(() => setCount(count + 1), 0); } function TestEventEffect() { const [payload, setPayload] = useState(null); useEffect(() => { if (payload) post(payload); }, [payload]); return { onClick: () => setPayload({ ok: true }) }; } useFrame(() => update(), []); void Canvas;`,
+  );
+  fs.appendFileSync(
+    nonProductionFixturePath,
+    '\nconst smoothTestScroll = <div style={{ scrollBehavior: "smooth" }} />;\n',
   );
   fs.writeFileSync(
     deepNonProductionFixturePath,
@@ -6385,6 +6565,59 @@ export const App = () => <>
     nativeConfigPath,
     JSON.stringify(buildConfig({ isNative: true, settings: REACT_DOCTOR_SETTINGS })),
   );
+  const nextjsNoImgCrossFileSettings = {
+    "react-doctor": {
+      ...REACT_DOCTOR_SETTINGS["react-doctor"],
+      rootDirectory: nextjsNoImgCrossFileDirectory,
+    },
+  };
+  fs.writeFileSync(
+    nextjsNoImgCrossFileStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: nextjsNoImgCrossFileSettings,
+        ruleIds: ["nextjs-no-img-element"],
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    nextjsNoImgCrossFileNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: nextjsNoImgCrossFileSettings,
+        ruleIds: ["nextjs-no-img-element"],
+      }),
+    ),
+  );
+  const focusedParitySettings = {
+    "react-doctor": {
+      ...REACT_DOCTOR_SETTINGS["react-doctor"],
+      rootDirectory: focusedParityDirectory,
+      capabilities: ["react", "nextjs", "preact", "tailwind"],
+    },
+  };
+  fs.writeFileSync(
+    focusedParityStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: focusedParitySettings,
+        ruleIds: FOCUSED_PARITY_RULE_IDS,
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    focusedParityNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: focusedParitySettings,
+        ruleIds: FOCUSED_PARITY_RULE_IDS,
+      }),
+    ),
+  );
   fs.writeFileSync(
     corpusStockConfigPath,
     JSON.stringify(
@@ -6674,6 +6907,53 @@ export const App = () => <>
   }
   process.stdout.write(`Native parity passed for ${stockDiagnostics.length} diagnostics.\n`);
 
+  const nextjsNoImgCrossFileStockDiagnostics = runOxlint(
+    nextjsNoImgCrossFileStockConfigPath,
+    process.env,
+    nextjsNoImgCrossFileHelperPath,
+  ).diagnostics;
+  const nextjsNoImgCrossFileNativeDiagnostics = runOxlint(
+    nextjsNoImgCrossFileNativeConfigPath,
+    nativeEnvironment,
+    nextjsNoImgCrossFileHelperPath,
+  ).diagnostics;
+  if (
+    nextjsNoImgCrossFileStockDiagnostics.length !== 0 ||
+    JSON.stringify(nextjsNoImgCrossFileNativeDiagnostics) !==
+      JSON.stringify(nextjsNoImgCrossFileStockDiagnostics)
+  ) {
+    throw new Error(
+      `native Next.js generated-image ownership parity failed\nstock=${JSON.stringify(nextjsNoImgCrossFileStockDiagnostics, null, 2)}\nnative=${JSON.stringify(nextjsNoImgCrossFileNativeDiagnostics, null, 2)}`,
+    );
+  }
+
+  const focusedParityStockDiagnostics = runOxlint(
+    focusedParityStockConfigPath,
+    process.env,
+    focusedParityDirectory,
+  ).diagnostics;
+  const focusedParityNativeDiagnostics = runOxlint(
+    focusedParityNativeConfigPath,
+    nativeEnvironment,
+    focusedParityDirectory,
+  ).diagnostics;
+  const focusedParityDiagnosticCounts = Object.fromEntries(
+    FOCUSED_PARITY_RULE_IDS.map((ruleId) => [
+      ruleId,
+      focusedParityStockDiagnostics.filter((diagnostic) => diagnostic.code.includes(`(${ruleId})`))
+        .length,
+    ]),
+  );
+  if (
+    JSON.stringify(focusedParityDiagnosticCounts) !==
+      JSON.stringify(EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS) ||
+    JSON.stringify(focusedParityNativeDiagnostics) !== JSON.stringify(focusedParityStockDiagnostics)
+  ) {
+    throw new Error(
+      `native focused parity failed\nexpected=${JSON.stringify(EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS, null, 2)}\nreceived=${JSON.stringify(focusedParityDiagnosticCounts, null, 2)}\nstock=${JSON.stringify(focusedParityStockDiagnostics, null, 2)}\nnative=${JSON.stringify(focusedParityNativeDiagnostics, null, 2)}`,
+    );
+  }
+
   const stockNonProductionDiagnostics = runOxlint(
     stockConfigPath,
     process.env,
@@ -6686,7 +6966,7 @@ export const App = () => <>
   ).diagnostics;
   const expectedNonProductionDiagnosticCounts = {
     ...Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0])),
-    "react-in-jsx-scope": 25,
+    "react-in-jsx-scope": 26,
     "no-small-form-control-text": 1,
     "hook-use-state": 2,
     "r3f-no-ignored-linewidth": 1,
@@ -6708,6 +6988,7 @@ export const App = () => <>
     "r3f-no-normalized-float-buffer-attribute": 1,
     "r3f-webgpu-canvas-prop-compatibility": 1,
     "r3f-limit-shadowed-point-lights": 1,
+    "no-smooth-scroll-without-reduced-motion": 1,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(stockNonProductionDiagnostics)) !==

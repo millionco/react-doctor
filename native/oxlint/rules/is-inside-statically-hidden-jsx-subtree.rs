@@ -19,7 +19,8 @@ fn is_statically_hidden_opening_element<'a>(
     }
     let style_attribute = get_authoritative_jsx_attribute(opening_element, "style", true);
     if let Some(style_expression) =
-        style_attribute.and_then(|attribute| get_inline_style_object_expression(attribute))
+        style_attribute
+            .and_then(|attribute| get_inline_style_object_expression_with_aliases(attribute, ctx))
     {
         if get_effective_static_style_property(style_expression, "display")
             .and_then(get_object_property_string_value)
@@ -41,13 +42,4 @@ fn is_statically_hidden_opening_element<'a>(
     };
     get_tailwind_visibility_at_breakpoints(class_name)
         .is_some_and(|visibility| visibility.iter().all(|is_visible| !is_visible))
-}
-
-fn get_object_property_string_value<'a>(
-    property: &'a oxc_ast::ast::ObjectProperty<'a>,
-) -> Option<&'a str> {
-    let oxc_ast::ast::Expression::StringLiteral(string_literal) = &property.value else {
-        return None;
-    };
-    Some(string_literal.value.as_str())
 }

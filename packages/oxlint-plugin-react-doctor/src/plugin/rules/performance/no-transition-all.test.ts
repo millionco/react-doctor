@@ -317,4 +317,22 @@ describe("no-transition-all", () => {
     const result = runRule(noTransitionAll, code);
     expect(result.diagnostics).toHaveLength(3);
   });
+
+  it("does NOT flag tw-animate-css entrance animations (animate-in + duration-*)", () => {
+    const code = `const A = () => <div className="animate-in fade-in slide-in-from-bottom-2 duration-300" />;`;
+    const result = runRule(noTransitionAll, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag tw-animate-css exit animations (animate-out + duration-*)", () => {
+    const code = `const A = () => <div className="animate-out fade-out zoom-out duration-200" />;`;
+    const result = runRule(noTransitionAll, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag keyframe animations with duration-* utilities", () => {
+    const code = `const A = () => <div className="animate-bounce duration-1000" />;`;
+    const result = runRule(noTransitionAll, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

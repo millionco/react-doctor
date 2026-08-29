@@ -17,6 +17,11 @@ import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 const ALL_TRANSITION_PROPERTY_NAMES = new Set(["all"]);
 
+const isAnimationUtility = (utility: string): boolean =>
+  utility.startsWith("animate-") ||
+  utility.startsWith("[animation:") ||
+  utility.startsWith("[animation-name:");
+
 const isTransitionDurationSetter = (utility: string): boolean =>
   !utility.startsWith("[transition-property:") &&
   (utility.startsWith("duration-") ||
@@ -57,6 +62,12 @@ const hasMergedTransitionAll = (
         getTailwindTransitionAllState(parsedToken.utility) !== null &&
         doesTailwindVariantScopeCover(parsedToken.variants, variantScope),
     );
+    const hasAnimationUtility = parsedTokens.some(
+      (parsedToken) =>
+        isAnimationUtility(parsedToken.utility) &&
+        doesTailwindVariantScopeCover(parsedToken.variants, variantScope),
+    );
+    if (hasAnimationUtility) return false;
     const transitionAllState = resolveTailwindBooleanPropertyState(
       parsedTokens,
       variantScope,

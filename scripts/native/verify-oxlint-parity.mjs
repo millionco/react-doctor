@@ -654,6 +654,12 @@ const focusedParityWrappedMetadataPath = path.join(
   "page.tsx",
 );
 const focusedParityGetRoutePath = path.join(focusedParityDirectory, "app", "logout", "route.ts");
+const focusedParitySearchComponentPath = path.join(
+  focusedParityDirectory,
+  "components",
+  "search-client.tsx",
+);
+const focusedParitySearchPagePath = path.join(focusedParityDirectory, "app", "search", "page.tsx");
 const nonReactJsxFixturePath = path.join(temporaryDirectory, "solid-fixture.tsx");
 const configuredFixturePath = path.join(temporaryDirectory, "configured.tsx");
 const inactiveRouterFixtureDirectory = path.join(temporaryDirectory, "inactive-router-package");
@@ -1403,6 +1409,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-array-find-result-member-access-without-guard": 0,
   "no-array-index-deref-without-bounds-or-empty-guard": 0,
   "no-object-keys-values-entries-on-maybe-undefined": 0,
+  "nextjs-no-use-search-params-without-suspense": 0,
+  "js-length-check-first": 0,
+  "js-min-max-loop": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1430,6 +1439,9 @@ const FOCUSED_PARITY_RULE_IDS = [
   "no-array-find-result-member-access-without-guard",
   "no-array-index-deref-without-bounds-or-empty-guard",
   "no-object-keys-values-entries-on-maybe-undefined",
+  "nextjs-no-use-search-params-without-suspense",
+  "js-length-check-first",
+  "js-min-max-loop",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1451,6 +1463,9 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "no-array-find-result-member-access-without-guard": 2,
   "no-array-index-deref-without-bounds-or-empty-guard": 4,
   "no-object-keys-values-entries-on-maybe-undefined": 5,
+  "nextjs-no-use-search-params-without-suspense": 2,
+  "js-length-check-first": 1,
+  "js-min-max-loop": 1,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -6152,11 +6167,21 @@ export const UncertainStaticSpreadScene = () => {
   fs.mkdirSync(path.dirname(focusedParityFixturePath), { recursive: true });
   fs.mkdirSync(path.dirname(focusedParityWrappedMetadataPath), { recursive: true });
   fs.mkdirSync(path.dirname(focusedParityGetRoutePath), { recursive: true });
+  fs.mkdirSync(path.dirname(focusedParitySearchComponentPath), { recursive: true });
+  fs.mkdirSync(path.dirname(focusedParitySearchPagePath), { recursive: true });
+  fs.writeFileSync(
+    focusedParitySearchComponentPath,
+    `'use client';\nimport { useSearchParams } from "next/navigation";\nexport const SearchClient = () => { const params = useSearchParams(); return <span>{params.get("q")}</span>; };\n`,
+  );
+  fs.writeFileSync(
+    focusedParitySearchPagePath,
+    'import { SearchClient } from "../../components/search-client";\nexport const metadata = { title: "Search" };\nexport default function Page() { return <main><SearchClient /></main>; }\n',
+  );
   fs.writeFileSync(
     focusedParityFixturePath,
     `import { atom, useAtomValue } from "jotai";
 import { observer } from "mobx-react-lite";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import * as Preact from "preact";
 import { memo, useEffect } from "react";
 import ThirdParty from "third-party";
@@ -6231,10 +6256,13 @@ const ConjoinedOptionalAccessGuard = ({ other, response }) => { if (response?.da
 const DeferredObjectNormalization = (params?: object) => { let callback; callback = () => params = params ?? {}; void callback; return Object.keys(params); };
 const GuardedObject = (attrs?: object) => { if (!attrs) return []; return Object.entries(attrs); };
 const NormalizedObject = (attrs?: object) => { attrs = attrs ?? {}; return Object.entries(attrs); };
+const SearchPage = () => { useSearchParams(); return null; };
+const CompareArrays = ({ left, right }) => left.every((value, index) => value === right[index]);
+const SortedMinimum = () => [3, 1, 2].sort((left, right) => left - right)[0];
 
 void MemoProps; void SpreadProps; void RenderProps; void AliasSmoothScroll; void SmoothScroll; void HiddenPulse; void VisiblePulse; void RepeatedText;
 void directDerivedAtom; void castDerivedAtom; void DirectQueryResult; void CastQueryResult; void DirectRedirect; void SamePageRedirect;
-void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject;
+void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum;
 `,
   );
   fs.writeFileSync(

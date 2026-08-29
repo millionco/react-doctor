@@ -658,7 +658,10 @@
     "no-arithmetic-on-optional-chained-operand",
     "no-array-find-result-member-access-without-guard",
     "no-array-index-deref-without-bounds-or-empty-guard",
-    "no-object-keys-values-entries-on-maybe-undefined"
+    "no-object-keys-values-entries-on-maybe-undefined",
+    "nextjs-no-use-search-params-without-suspense",
+    "js-length-check-first",
+    "js-min-max-loop"
   ],
   "delegatedRules": [
     {

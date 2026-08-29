@@ -141,8 +141,10 @@ vi.mock("../../src/cli/utils/detect-launchable-agents.js", () => ({
   detectLaunchableAgents: vi.fn(async () => []),
 }));
 
+const mockIsReactDoctorWorkflowInstalled = vi.hoisted(() => vi.fn(() => true));
+
 vi.mock("../../src/cli/utils/install-github-workflow.js", () => ({
-  isReactDoctorWorkflowInstalled: vi.fn(() => true),
+  isReactDoctorWorkflowInstalled: mockIsReactDoctorWorkflowInstalled,
 }));
 
 vi.mock("../../src/cli/utils/set-up-github-actions.js", () => ({
@@ -915,8 +917,9 @@ describe("runScanApp", () => {
     );
   });
 
-  it("recommends GitHub Actions after scanning multiple projects", async () => {
+  it("recommends GitHub Actions when CI is not configured at root", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    mockIsReactDoctorWorkflowInstalled.mockReturnValue(false);
     const rootDirectory = "/repo";
     const webDirectory = "/repo/apps/web";
     const adminDirectory = "/repo/apps/admin";
@@ -936,6 +939,51 @@ describe("runScanApp", () => {
     );
     mockState.inspectResults.set(webDirectory, buildInspectResult(webDirectory));
     mockState.inspectResults.set(adminDirectory, buildInspectResult(adminDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.ciRecommendationStates).toEqual([true]);
+  });
+
+  it("does not recommend CI when root workflow already exists (issue #1696)", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    mockIsReactDoctorWorkflowInstalled.mockReturnValue(true);
+    const rootDirectory = "/repo";
+    const webDirectory = "/repo/apps/web";
+    const adminDirectory = "/repo/apps/admin";
+
+    mockState.projectDirectories.push(webDirectory, adminDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      webDirectory,
+      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+    );
+    mockState.scanTargets.set(
+      adminDirectory,
+      buildScanTarget(adminDirectory, adminDirectory, null, adminDirectory),
+    );
+    mockState.inspectResults.set(webDirectory, buildInspectResult(webDirectory));
+    mockState.inspectResults.set(adminDirectory, buildInspectResult(adminDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.ciRecommendationStates).toEqual([false]);
+  });
+
+  it("checks root directory for CI config in single-project scans", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    mockIsReactDoctorWorkflowInstalled.mockReturnValue(false);
+    const rootDirectory = "/repo";
+
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
 
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 

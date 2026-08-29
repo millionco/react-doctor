@@ -1,12 +1,12 @@
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::{Path as ReactNativeTargetPath, PathBuf as ReactNativeTargetPathBuf},
     sync::{Arc, LazyLock, Mutex},
 };
 
 #[derive(Debug)]
 struct ReactNativePackageSummary {
-    directory: PathBuf,
+    directory: ReactNativeTargetPathBuf,
     platform: ReactNativePackagePlatform,
 }
 
@@ -52,7 +52,7 @@ const WEB_FRAMEWORK_DEPENDENCY_NAMES: [&str; 17] = [
 ];
 
 static REACT_NATIVE_PACKAGE_SUMMARIES: LazyLock<
-    Mutex<HashMap<PathBuf, Option<Arc<ReactNativePackageSummary>>>>,
+    Mutex<HashMap<ReactNativeTargetPathBuf, Option<Arc<ReactNativePackageSummary>>>>,
 > = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn is_react_native_file_target(ctx: &crate::context::ContextHost<'_>) -> bool {
@@ -112,12 +112,12 @@ fn has_platform_file_extension(filename: &str, platforms: &[&str]) -> bool {
 
 fn react_doctor_root_directory_for_platform(
     ctx: &crate::context::ContextHost<'_>,
-) -> Option<PathBuf> {
+) -> Option<ReactNativeTargetPathBuf> {
     react_doctor_platform_settings(ctx)?
         .get("rootDirectory")?
         .as_str()
         .filter(|root_directory| !root_directory.is_empty())
-        .map(PathBuf::from)
+        .map(ReactNativeTargetPathBuf::from)
 }
 
 fn react_doctor_platform_settings<'a>(
@@ -130,7 +130,10 @@ fn react_doctor_platform_settings<'a>(
         .as_object()
 }
 
-fn package_is_nested_within_root(package_directory: &Path, root_directory: &Path) -> bool {
+fn package_is_nested_within_root(
+    package_directory: &ReactNativeTargetPath,
+    root_directory: &ReactNativeTargetPath,
+) -> bool {
     let resolved_package_directory = package_directory
         .canonicalize()
         .unwrap_or_else(|_| package_directory.to_path_buf());
@@ -139,7 +142,7 @@ fn package_is_nested_within_root(package_directory: &Path, root_directory: &Path
 }
 
 fn nearest_react_native_package_summary(
-    file_path: &Path,
+    file_path: &ReactNativeTargetPath,
 ) -> Option<Arc<ReactNativePackageSummary>> {
     let mut directory = file_path.parent()?;
     let mut visited_directories = Vec::new();
@@ -170,7 +173,7 @@ fn nearest_react_native_package_summary(
 }
 
 fn cache_react_native_package_summary(
-    directories: &[PathBuf],
+    directories: &[ReactNativeTargetPathBuf],
     summary: Option<Arc<ReactNativePackageSummary>>,
 ) {
     let mut summaries = REACT_NATIVE_PACKAGE_SUMMARIES
@@ -182,8 +185,8 @@ fn cache_react_native_package_summary(
 }
 
 fn read_react_native_package_summary(
-    package_directory: &Path,
-    package_json_path: &Path,
+    package_directory: &ReactNativeTargetPath,
+    package_json_path: &ReactNativeTargetPath,
 ) -> Option<Arc<ReactNativePackageSummary>> {
     let package_json = std::fs::read_to_string(package_json_path).ok()?;
     let manifest = serde_json::from_str::<serde_json::Value>(&package_json).ok()?;

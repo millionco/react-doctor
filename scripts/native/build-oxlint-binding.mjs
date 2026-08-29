@@ -401,6 +401,11 @@ impl Rule for ${delegatedRule.struct} {
       ],
     ]);
     const nativeRuleUtilityDependencies = new Map([
+      ["query-no-mutation-in-effect-as-read", ["for_each_local_callback_execution_node"]],
+      [
+        "query-no-query-in-effect",
+        ["for_each_local_callback_execution_node", "has_possible_static_property_write_before"],
+      ],
       [
         "r3f-require-global-effect-cleanup",
         ["r3f_analyzed_use_three_state_property_matches", "statement_always_exits"],
@@ -418,10 +423,30 @@ impl Rule for ${delegatedRule.struct} {
       ["r3f-no-state-in-use-frame", ["r3f_state_setter_transition"]],
       ["three-no-state-in-animation-loop", ["r3f_state_setter_transition"]],
       [
+        "three-no-state-in-pointer-move",
+        ["jsx_attribute_expression", "r3f_state_setter_transition"],
+      ],
+      [
         "three-no-object-construction-in-render",
         ["r3f_analyzed_use_three_state_property_matches", "statement_always_exits"],
       ],
       ["r3f-no-unstable-args", ["jsx_attribute_expression"]],
+      [
+        "r3f-webgpu-no-legacy-effect-composer",
+        [
+          "jsx_attribute_expression",
+          "r3f_analyzed_use_three_state_property_matches",
+          "statement_always_exits",
+        ],
+      ],
+      [
+        "r3f-webgpu-no-legacy-material-api",
+        [
+          "jsx_attribute_expression",
+          "r3f_analyzed_use_three_state_property_matches",
+          "statement_always_exits",
+        ],
+      ],
       ["r3f-prefer-gpu-position-animation", ["jsx_attribute_expression"]],
       [
         "r3f-prefer-instanced-mesh",
@@ -445,6 +470,10 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       ["r3f-require-position-buffer-update", ["jsx_attribute_expression"]],
+      [
+        "three-prefer-instanced-mesh",
+        ["r3f_analyzed_use_three_state_property_matches", "statement_always_exits"],
+      ],
       [
         "r3f-require-projection-matrix-update",
         [
@@ -533,6 +562,24 @@ impl Rule for ${delegatedRule.struct} {
         ["r3f_analyze_owned_root_lifecycle", "statement_always_exits"],
       ],
       ["three-no-allocation-in-pointer-move", ["jsx_attribute_expression"]],
+      [
+        "tanstack-form-on-submit-requires-prevent-default",
+        ["has_possible_static_property_write_before"],
+      ],
+      ["tanstack-virtual-measure-element-requires-data-index", ["jsx_attribute_expression"]],
+      [
+        "motion-animate-presence-must-outlive-child",
+        [
+          "get_static_motion_property_object",
+          "has_possible_static_property_write_before",
+          "local_callback_nearest_function_node_index",
+          "r3f_analyzed_use_three_state_property_matches",
+        ],
+      ],
+      ["motion-drag-axis-constraint-mismatch", ["get_static_motion_property_object"]],
+      ["motion-layout-on-inline-element", ["get_static_motion_property_object"]],
+      ["motion-unstable-layout-id-in-iteration", ["get_static_motion_property_object"]],
+      ["rn-no-raw-text", ["children_forwarding_components"]],
     ]);
     for (const nativeRuleId of upstream.nativeRules) {
       const delegatedRule = delegatedRules.get(nativeRuleId);

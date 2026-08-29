@@ -234,6 +234,31 @@ const r3fWebgpuNoHighPrecisionInstancingFixturePath = path.join(
   "app",
   "r3f-webgpu-no-high-precision-instancing.tsx",
 );
+const r3fWebgpuNoJsUniformBranchFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-webgpu-no-js-uniform-branch.tsx",
+);
+const r3fWebgpuNoLegacyEffectComposerFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-webgpu-no-legacy-effect-composer.tsx",
+);
+const r3fWebgpuNoLegacyMaterialApiFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-webgpu-no-legacy-material-api.tsx",
+);
+const r3fWebgpuNoUnregisteredPipelinePassFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-webgpu-no-unregistered-pipeline-pass.ts",
+);
+const r3fWebgpuRequireAsyncInitFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "r3f-webgpu-require-async-init.tsx",
+);
 const threeEffectComposerRequireSizeOnResizeFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -390,6 +415,150 @@ const threeWorkerLoaderCleanupFixturePath = path.join(
   "app",
   "three-worker-loader-cleanup.tsx",
 );
+const threeNoStateInPointerMoveFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-no-state-in-pointer-move.tsx",
+);
+const threePreferGpuInstancedAnimationFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-prefer-gpu-instanced-animation.ts",
+);
+const threePreferGpuPositionAnimationFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-prefer-gpu-position-animation.ts",
+);
+const threePreferInstancedMeshFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-prefer-instanced-mesh.ts",
+);
+const threeRequireRenderTargetResetFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-require-render-target-reset.ts",
+);
+const threeTextureRepeatRequiresWrappingFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-texture-repeat-requires-wrapping.ts",
+);
+const threeTslNoJsUniformBranchFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-tsl-no-js-uniform-branch.ts",
+);
+const threeValidTextureColorSpaceFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-valid-texture-color-space.ts",
+);
+const threeWebgpuRequireInitBeforeSyncOperationFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "three-webgpu-require-init-before-sync-operation.ts",
+);
+const queryDestructureResultFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "query-destructure-result.ts",
+);
+const queryFloatingMutateAsyncFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "query-floating-mutate-async.ts",
+);
+const queryMutationMissingInvalidationFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "query-mutation-missing-invalidation.ts",
+);
+const queryMutationLegacyImportFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "query-mutation-legacy-import.ts",
+);
+const queryNoMutationInEffectAsReadFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "query-no-mutation-in-effect-as-read.tsx",
+);
+const queryNoQueryInEffectFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "query-no-query-in-effect.tsx",
+);
+const queryNoUsequeryForMutationFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "query-no-usequery-for-mutation.ts",
+);
+const queryStableQueryClientFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "query-stable-query-client.tsx",
+);
+const tanstackFormOnSubmitRequiresPreventDefaultFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "tanstack-form-on-submit-requires-prevent-default.tsx",
+);
+const tanstackTableNoUnstableDataOrColumnsFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "tanstack-table-no-unstable-data-or-columns.ts",
+);
+const tanstackVirtualMeasureElementRequiresDataIndexFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "tanstack-virtual-measure-element-requires-data-index.tsx",
+);
+const motionAnimatePresenceMustOutliveChildFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "motion-animate-presence-must-outlive-child.tsx",
+);
+const motionDragAxisConstraintMismatchFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "motion-drag-axis-constraint-mismatch.tsx",
+);
+const motionLayoutOnInlineElementFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "motion-layout-on-inline-element.tsx",
+);
+const motionUnstableLayoutIdInIterationFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "motion-unstable-layout-id-in-iteration.tsx",
+);
+const webAnimationOffsetsValidFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "web-animation-offsets-valid.ts",
+);
+const rnNoDeepImportsFixturePath = path.join(fixtureDirectory, "app", "rn-no-deep-imports.ts");
+const rnNoDeepImportsWebFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "rn-no-deep-imports.web.ts",
+);
+const rnNoDimensionsGetFixturePath = path.join(fixtureDirectory, "app", "rn-no-dimensions-get.ts");
+const rnNoDimensionsShadowFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "rn-no-dimensions-shadow.ts",
+);
+const rnNoFalsyAndRenderFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "rn-no-falsy-and-render.tsx",
+);
+const rnNoRenderitemKeyFixturePath = path.join(fixtureDirectory, "app", "rn-no-renderitem-key.tsx");
+const rnNoRawTextFixturePath = path.join(fixtureDirectory, "app", "rn-no-raw-text.native.tsx");
 const threeControlsCleanupFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -555,14 +724,14 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-moment": 1,
   "no-namespace": 2,
   "no-react-children": 2,
-  "preact-no-react-hooks-import": 2,
+  "preact-no-react-hooks-import": 5,
   "rn-bottom-sheet-prefer-native": 1,
   "rn-no-deprecated-modules": 1,
   "rn-no-legacy-expo-packages": 1,
   "rn-no-panresponder": 1,
   "rn-prefer-pressable": 1,
   "rn-prefer-reanimated": 2,
-  "use-lazy-motion": 1,
+  "use-lazy-motion": 5,
   "html-has-lang": 3,
   "no-access-key": 1,
   "no-clone-element": 1,
@@ -581,7 +750,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   scope: 1,
   "no-set-state": 2,
   "no-find-dom-node": 2,
-  "react-in-jsx-scope": 0,
+  "react-in-jsx-scope": 6,
   "tabindex-no-positive": 7,
   "no-autoplay-without-muted": 1,
   "details-requires-summary": 1,
@@ -646,7 +815,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-cascading-set-state": 0,
   "rn-animate-layout-property": 0,
   "rn-prefer-content-inset-adjustment": 0,
-  "rn-no-inline-flatlist-renderitem": 2,
+  "rn-no-inline-flatlist-renderitem": 3,
   "rn-no-image-children": 2,
   "motion-imperative-animation-in-render": 5,
   "motion-value-subscription-in-render": 2,
@@ -655,6 +824,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-create-object-url-in-render": 4,
   "no-create-context-in-render": 3,
   "no-async-effect-callback": 3,
+  "query-destructure-result": 2,
+  "query-floating-mutate-async": 2,
+  "query-mutation-missing-invalidation": 7,
+  "query-no-mutation-in-effect-as-read": 1,
+  "query-no-query-in-effect": 1,
   "query-no-rest-destructuring": 2,
   "query-no-void-query-fn": 1,
   "react-router-no-router-in-render": 2,
@@ -789,7 +963,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "js-early-exit": 1,
   "js-flatmap-filter": 4,
   "hooks-no-nan-in-deps": 5,
-  "rendering-conditional-render": 2,
+  "rendering-conditional-render": 4,
   "no-uppercase-tracked-navigation-label": 1,
   "no-redundant-title-tooltip": 1,
   "no-symmetric-text-button-padding": 1,
@@ -896,13 +1070,17 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-no-compile-in-animation-loop": 3,
   "three-no-material-recompile-in-animation-loop": 2,
   "three-no-new-in-animation-loop": 4,
-  "three-no-object-construction-in-render": 11,
+  "three-no-object-construction-in-render": 12,
   "three-no-redundant-uniforms-need-update": 2,
   "three-no-shader-configuration-mutation-in-animation-loop": 3,
   "three-no-state-in-animation-loop": 2,
+  "three-no-state-in-pointer-move": 1,
   "three-no-sync-readback-in-animation-loop": 1,
   "three-no-unconditional-renderer-resize-in-animation-loop": 2,
   "three-on-before-compile-require-program-cache-key": 21,
+  "three-prefer-gpu-instanced-animation": 1,
+  "three-prefer-gpu-position-animation": 2,
+  "three-prefer-instanced-mesh": 1,
   "three-require-animation-mixer-cleanup": 12,
   "three-require-animation-mixer-update": 2,
   "three-require-camera-aspect-on-resize": 1,
@@ -912,33 +1090,38 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-require-dynamic-buffer-usage": 3,
   "three-require-environment-for-metal": 2,
   "three-require-frame-delta": 4,
-  "three-require-instanced-buffer-update": 11,
+  "three-require-instanced-buffer-update": 12,
   "three-require-ktx2-detect-support": 2,
   "three-require-lit-material-normals": 3,
   "three-require-loader-error-handling": 7,
   "three-require-gpu-computation-cleanup": 3,
   "three-require-postprocessing-cleanup": 2,
-  "three-require-renderer-cleanup": 6,
+  "three-require-renderer-cleanup": 7,
   "three-require-transparent-for-opacity": 2,
   "three-require-lighting-for-pbr": 1,
   "three-require-owned-geometry-cleanup": 6,
   "three-require-owned-material-cleanup": 6,
   "three-require-owned-texture-cleanup": 4,
-  "three-require-position-buffer-update": 1,
+  "three-require-position-buffer-update": 2,
   "three-require-projection-matrix-update": 9,
   "three-require-render-in-animation-loop": 4,
   "three-require-render-target-cleanup": 1,
+  "three-require-render-target-reset": 1,
   "three-require-renderer-dom-attachment": 3,
   "three-require-renderer-size": 3,
   "three-require-shadows-enabled": 1,
   "three-require-texture-update-after-wrapping-change": 1,
   "three-require-uv-for-texture-map": 7,
   "three-require-worker-loader-cleanup": 2,
+  "three-texture-repeat-requires-wrapping": 2,
+  "three-tsl-no-js-uniform-branch": 1,
+  "three-valid-texture-color-space": 1,
   "three-webgpu-no-legacy-material-api": 3,
   "three-gpu-computation-handle-init-error": 4,
   "three-gpu-computation-valid-variable-name": 6,
   "three-effect-composer-output-pass-last": 1,
   "three-webgpu-no-high-precision-instancing": 1,
+  "three-webgpu-require-init-before-sync-operation": 2,
   "three-limit-shadowed-point-lights": 1,
   "base-ui-tabs-tab-requires-list": 1,
   "shadcn-tabs-trigger-requires-list": 1,
@@ -1109,6 +1292,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-webgpu-canvas-prop-compatibility": 1,
   "r3f-webgpu-no-gl-state": 10,
   "r3f-webgpu-no-high-precision-instancing": 1,
+  "r3f-webgpu-no-js-uniform-branch": 1,
+  "r3f-webgpu-no-legacy-effect-composer": 1,
+  "r3f-webgpu-no-legacy-material-api": 1,
+  "r3f-webgpu-no-unregistered-pipeline-pass": 1,
+  "r3f-webgpu-require-async-init": 1,
   "r3f-limit-shadowed-point-lights": 1,
   "rn-bottom-sheet-use-integrated-scrollable": 1,
   "no-focusable-content-in-aria-hidden": 1,
@@ -1138,6 +1326,21 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "data-table-requires-accessible-name": 3,
   "expo-no-non-inlined-env": 0,
   "html-no-nested-interactive": 0,
+  "query-no-usequery-for-mutation": 1,
+  "query-stable-query-client": 1,
+  "tanstack-form-on-submit-requires-prevent-default": 1,
+  "tanstack-table-no-unstable-data-or-columns": 1,
+  "tanstack-virtual-measure-element-requires-data-index": 1,
+  "motion-animate-presence-must-outlive-child": 2,
+  "motion-drag-axis-constraint-mismatch": 2,
+  "motion-layout-on-inline-element": 2,
+  "motion-unstable-layout-id-in-iteration": 1,
+  "web-animation-offsets-valid": 3,
+  "rn-no-deep-imports": 1,
+  "rn-no-dimensions-get": 5,
+  "rn-no-falsy-and-render": 2,
+  "rn-no-renderitem-key": 1,
+  "rn-no-raw-text": 3,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -5108,6 +5311,242 @@ export const Scene = () => {
 `,
   );
   fs.writeFileSync(
+    queryDestructureResultFixturePath,
+    `import { useQuery } from "@tanstack/react-query";
+
+export const useChartConfig = () => {
+  const query = useQuery({ queryKey: ["chart"] });
+  const snapshot = { ...query, label: "chart" };
+  return snapshot.data;
+};
+
+export const useWrappedChartConfig = () => {
+  const query = useQuery({ queryKey: ["wrapped-chart"] });
+  return ({ ...query } as typeof query);
+};
+`,
+  );
+  fs.writeFileSync(
+    queryFloatingMutateAsyncFixturePath,
+    `/* oxlint-disable react-doctor/preact-no-react-hooks-import */
+import { useInsertionEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
+
+const mutation = useMutation({ mutationFn: save });
+mutation.mutateAsync(payload);
+
+export const Styles = () => {
+  useInsertionEffect(() => mutation.mutateAsync(payload), []);
+  return null;
+};
+
+for (items.map(() => mutation.mutateAsync(payload)); false; ) {}
+`,
+  );
+  fs.writeFileSync(
+    queryMutationMissingInvalidationFixturePath,
+    `import { useMutation, useQuery } from "@tanstack/react-query";
+
+useQuery({ queryKey: ["posts"], queryFn: fetchPosts });
+useMutation({ mutationFn: deletePost });
+useMutation({
+  mutationFn: updatePost,
+  onSuccess: () => queryClient["invalidateQueries"](),
+});
+
+function finishSave(result = refreshQueryCache()) {
+  console.log(result);
+}
+useMutation({ mutationFn: savePost, onSuccess: finishSave });
+
+export const useSavePost = ({ onSuccess = () => {} }) => useMutation({
+  mutationFn: savePost,
+  onSuccess,
+});
+`,
+  );
+  fs.writeFileSync(
+    queryMutationLegacyImportFixturePath,
+    `import { useMutation } from "react-query";
+
+export const useLegacySave = () => useMutation({ mutationFn: saveLegacyPost });
+`,
+  );
+  fs.writeFileSync(
+    queryNoMutationInEffectAsReadFixturePath,
+    `import { useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
+
+export const User = ({ id }) => {
+  const { mutateAsync: fetchUser, data } = useMutation({ mutationFn });
+  const deferredMutation = useMutation({ mutationFn });
+  const invokeDeferredFetch = () => deferredMutation.mutate(id);
+  useEffect(() => { fetchUser(id); }, [id]);
+  useEffect(() => {
+    if (deferredMutation.isSuccess) return;
+    invokeDeferredFetch();
+  }, [deferredMutation.isSuccess, id]);
+  return <div data-deferred={deferredMutation.data} data-user={data}>User</div>;
+};
+`,
+  );
+  fs.writeFileSync(
+    queryNoQueryInEffectFixturePath,
+    `import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+export const Dashboard = () => {
+  const query = useQuery({ queryKey: ["item"] });
+  const namedReload = () => query.refetch();
+  const outerReload = () => query.refetch();
+  useEffect(() => { query.refetch(); }, [query]);
+  useEffect(namedReload, [namedReload]);
+  useEffect(() => { outerReload(); }, [outerReload]);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    r3fWebgpuNoJsUniformBranchFixturePath,
+    `import { useLocalNodes } from "@react-three/fiber/webgpu";
+
+useLocalNodes(({ uniforms }) => {
+  if (uniforms.mode.value) return { colorNode: red };
+  return { colorNode: blue };
+});
+`,
+  );
+  fs.writeFileSync(
+    r3fWebgpuNoLegacyEffectComposerFixturePath,
+    `import { Canvas } from "@react-three/fiber/webgpu";
+import { EffectComposer } from "@react-three/postprocessing";
+
+export const Scene = () => <Canvas><EffectComposer /></Canvas>;
+`,
+  );
+  fs.writeFileSync(
+    r3fWebgpuNoLegacyMaterialApiFixturePath,
+    `import { Canvas } from "@react-three/fiber/webgpu";
+
+export const Scene = () => <Canvas><shaderMaterial /></Canvas>;
+`,
+  );
+  fs.writeFileSync(
+    r3fWebgpuNoUnregisteredPipelinePassFixturePath,
+    `import { useRenderPipeline } from "@react-three/fiber/webgpu";
+
+useRenderPipeline(({ passes }) => {
+  passes.custom = customPass;
+});
+`,
+  );
+  fs.writeFileSync(
+    r3fWebgpuRequireAsyncInitFixturePath,
+    `import { Canvas } from "@react-three/fiber";
+import { WebGPURenderer } from "three/webgpu";
+
+export const Scene = () => <Canvas gl={async () => new WebGPURenderer()} />;
+`,
+  );
+  fs.writeFileSync(
+    threeNoStateInPointerMoveFixturePath,
+    `import { useState } from "react";
+import { WebGLRenderer } from "three";
+
+export const Scene = () => {
+  const [, setPoint] = useState(null);
+  const renderer = new WebGLRenderer();
+  renderer.domElement.addEventListener("pointermove", (event) => setPoint(event.clientX));
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    threePreferGpuInstancedAnimationFixturePath,
+    `/* oxlint-disable react-doctor/three-require-frame-delta, react-doctor/three-require-render-in-animation-loop, react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { InstancedMesh, WebGLRenderer } from "three";
+
+const renderer = new WebGLRenderer();
+const instances = new InstancedMesh(geometry, material, count);
+renderer.setAnimationLoop(() => {
+  for (const index of indices) instances.setMatrixAt(index, matrix);
+  renderer.render(scene, camera);
+});
+`,
+  );
+  fs.writeFileSync(
+    threePreferGpuPositionAnimationFixturePath,
+    `/* oxlint-disable react-doctor/three-require-frame-delta, react-doctor/three-require-render-in-animation-loop, react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { WebGLRenderer } from "three";
+
+const renderer = new WebGLRenderer();
+const positions = geometry.attributes.position;
+renderer.setAnimationLoop(() => {
+  for (let index = 0; index < positions.count; index += 1) positions.setX(index, index);
+});
+`,
+  );
+  fs.writeFileSync(
+    threePreferInstancedMeshFixturePath,
+    `import { Mesh, Scene } from "three";
+
+const scene = new Scene();
+scene.add(...[0, 1].map(() => new Mesh(geometry, material)));
+`,
+  );
+  fs.writeFileSync(
+    threeRequireRenderTargetResetFixturePath,
+    `/* oxlint-disable react-doctor/three-require-render-in-animation-loop, react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { WebGLRenderer, WebGLRenderTarget } from "three";
+
+const renderer = new WebGLRenderer();
+const target = new WebGLRenderTarget(256, 256);
+renderer.setRenderTarget(target);
+renderer.render(scene, camera);
+`,
+  );
+  fs.writeFileSync(
+    threeTextureRepeatRequiresWrappingFixturePath,
+    `import { Texture } from "three";
+
+const texture = new Texture();
+texture.repeat.set(2, 2);
+`,
+  );
+  fs.writeFileSync(
+    threeTslNoJsUniformBranchFixturePath,
+    `import { Fn, uniform } from "three/tsl";
+
+const mode = uniform(0);
+Fn(() => {
+  if (mode.value) return red;
+  return blue;
+});
+`,
+  );
+  fs.writeFileSync(
+    threeValidTextureColorSpaceFixturePath,
+    `import { MeshStandardMaterial, NoColorSpace, Texture } from "three";
+
+const texture = new Texture();
+texture.colorSpace = NoColorSpace;
+new MeshStandardMaterial({ map: texture });
+`,
+  );
+  fs.writeFileSync(
+    threeWebgpuRequireInitBeforeSyncOperationFixturePath,
+    `/* oxlint-disable react-doctor/three-require-render-in-animation-loop, react-doctor/three-require-renderer-dom-attachment, react-doctor/three-require-renderer-size */
+import { WebGPURenderer } from "three/webgpu";
+
+export const start = async () => {
+  const renderer = new WebGPURenderer();
+  (renderer.render)(scene, camera);
+  await (renderer.init)();
+  (renderer.render)(scene, camera);
+};
+`,
+  );
+  fs.writeFileSync(
     threeOwnedTextureCleanupFixturePath,
     `/* oxlint-disable react-doctor/preact-no-react-hooks-import, react-doctor/react-compiler-no-manual-memoization */
 import * as THREE from "three";
@@ -5749,6 +6188,194 @@ const configuredFloatSpacingNumberedSections = <main><section><span style={{ fon
   fs.writeFileSync(
     frameworkServerEntryFixturePath,
     'import { captureException } from "@sentry/node";\nimport { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ handleError: (error, { request }) => { captureException(error); if (!request.signal.aborted) captureException(error); } }]);\n',
+  );
+  fs.writeFileSync(
+    queryNoUsequeryForMutationFixturePath,
+    `import { useQuery } from "@tanstack/react-query";
+
+export const useSave = () => useQuery({
+  queryKey: ["save"],
+  queryFn: () => fetch("/api/items", { method: "POST" }),
+});
+`,
+  );
+  fs.writeFileSync(
+    queryStableQueryClientFixturePath,
+    `import React from "react";
+import { QueryClient } from "@tanstack/react-query";
+
+export const App = () => <main>{Boolean(new QueryClient())}</main>;
+`,
+  );
+  fs.writeFileSync(
+    tanstackFormOnSubmitRequiresPreventDefaultFixturePath,
+    `import React from "react";
+import { useForm } from "@tanstack/react-form";
+
+export const App = () => {
+  const form = useForm({ defaultValues: { name: "" } });
+  return <form onSubmit={form.handleSubmit}>Save</form>;
+};
+`,
+  );
+  fs.writeFileSync(
+    tanstackTableNoUnstableDataOrColumnsFixturePath,
+    `import { useReactTable } from "@tanstack/react-table";
+
+export const useTable = () => useReactTable({ data: [] });
+`,
+  );
+  fs.writeFileSync(
+    tanstackVirtualMeasureElementRequiresDataIndexFixturePath,
+    `import React from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+
+export const List = () => {
+  const virtualizer = useVirtualizer({ count: 1, getScrollElement: () => null, estimateSize: () => 40 });
+  return <div ref={virtualizer.measureElement}>Row</div>;
+};
+`,
+  );
+  fs.writeFileSync(
+    motionAnimatePresenceMustOutliveChildFixturePath,
+    `import React from "react";
+import { AnimatePresence, motion } from "motion/react";
+
+export const Panel = ({ open }) => open && <AnimatePresence><motion.div exit={{ opacity: 0 }} /></AnimatePresence>;
+
+export const List = ({ items, open }) => open && <AnimatePresence>{items.map((item) => {
+  const child = <motion.div key={item.id} exit={{ opacity: 0 }} />;
+  return child;
+})}</AnimatePresence>;
+`,
+  );
+  fs.writeFileSync(
+    motionDragAxisConstraintMismatchFixturePath,
+    `/* oxlint-disable react-doctor/jsx-curly-brace-presence */
+import React from "react";
+import { motion } from "motion/react";
+
+export const Panel = () => <motion.div drag="x" dragConstraints={{ top: -40, bottom: 40 }} />;
+export const EscapedAxis = () => <motion.div drag={\`\\x78\`} dragConstraints={{ top: -40, bottom: 40 }} />;
+`,
+  );
+  fs.writeFileSync(
+    motionLayoutOnInlineElementFixturePath,
+    `import React from "react";
+import { motion } from "motion/react";
+
+export const Panel = () => <motion.span layout className="inline" />;
+export const ImportantPanel = () => <motion.span layout className="inline!" />;
+`,
+  );
+  fs.writeFileSync(
+    motionUnstableLayoutIdInIterationFixturePath,
+    `import React from "react";
+import { motion } from "motion/react";
+
+export const List = ({ items }) => items.map(() => <motion.div layoutId="card" />);
+`,
+  );
+  fs.writeFileSync(
+    webAnimationOffsetsValidFixturePath,
+    `document.body.animate([{ offset: 0.8 }, { offset: 1e21 }]);
+document.body.animate([{ offset: (2) }]);
+matchMedia("(prefers-reduced-motion: reduce)").animate([{ offset: 2 }]);
+
+const targetFor = (selector) => document.querySelector(selector);
+targetFor("#app").animate([{ offset: 1 }, { offset: 0 }]);
+
+const maybeTarget = (flag) => {
+  if (flag) return document.body;
+  return {};
+};
+maybeTarget(true).animate([{ offset: 1 }, { offset: 0 }]);
+`,
+  );
+  fs.writeFileSync(
+    rnNoDeepImportsFixturePath,
+    `import { Alert } from "react-native/Libraries/Alert/Alert";
+
+export const showAlert = () => Alert.alert("Hello");
+`,
+  );
+  fs.writeFileSync(
+    rnNoDeepImportsWebFixturePath,
+    `import { Alert } from "react-native/Libraries/Alert/Alert";
+
+export const showWebAlert = () => Alert.alert("Hello");
+`,
+  );
+  fs.writeFileSync(
+    rnNoDimensionsGetFixturePath,
+    `import { Dimensions } from "react-native";
+
+const get = "get";
+export const width = () => Dimensions.get("window").width;
+export const height = () => Dimensions[get]("window").height;
+export const ignored = () => Dimensions["get"]("window").width;
+
+export const inspectPath = (path) => {
+  path.get("body");
+  for (const path of []) consume(path);
+};
+
+export const inspectArgument = () => {
+  const path = value;
+  for (const path of []) path.get("argument");
+};
+
+const ReactNative = require("react-native");
+const { Dimensions: AliasedDimensions } = ReactNative;
+export const aliasedWidth = () => AliasedDimensions.get("window").width;
+export const aliasedMemberWidth = () => ReactNative.Dimensions.get("window").width;
+
+const { path: nativePath } = require("react-native");
+const NativePath = require("react-native").Anything;
+export const nativePathValue = () => nativePath.get("window");
+export const nativePathMemberValue = () => NativePath.get("window");
+`,
+  );
+  fs.writeFileSync(
+    rnNoDimensionsShadowFixturePath,
+    `import Dimensions = require("./local-dimensions");
+
+export const localValue = () => Dimensions.get("window");
+`,
+  );
+  fs.writeFileSync(
+    rnNoFalsyAndRenderFixturePath,
+    `import React from "react";
+import { Text, View } from "react-native";
+
+const length = "length";
+export const App = ({ items }) => <View>
+  {items.length && <Text>Items</Text>}
+  {items[length] && <Text>More</Text>}
+  {items["length"] && <Text>Ignored</Text>}
+</View>;
+`,
+  );
+  fs.writeFileSync(
+    rnNoRenderitemKeyFixturePath,
+    `import React from "react";
+import { FlatList } from "react-native";
+
+export const App = ({ items }) => <FlatList data={items} renderItem={({ item }) => <Row key={item.id} />} />;
+`,
+  );
+  fs.writeFileSync(
+    rnNoRawTextFixturePath,
+    `import React from "react";
+import { View } from "react-native";
+
+export const App = () => <>
+  <View>Hello</View>
+  <View>{1e21}</View>
+  <_local>Local text</_local>
+  <View><>Ignored</></View>
+</>;
+`,
   );
   fs.writeFileSync(
     stockConfigPath,

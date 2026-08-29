@@ -1458,6 +1458,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "effect-raf-loop-needs-cancel": 1,
   "context-provider-value-from-unmemoized-local-literal": 0,
   "jsx-no-jsx-as-prop": 0,
+  "effect-listener-cleanup-mismatch": 0,
+  "effect-listener-cleanup-reference-mismatch": 0,
+  "effect-observer-needs-disconnect": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1534,6 +1537,9 @@ const FOCUSED_PARITY_RULE_IDS = [
   "effect-raf-loop-needs-cancel",
   "context-provider-value-from-unmemoized-local-literal",
   "jsx-no-jsx-as-prop",
+  "effect-listener-cleanup-mismatch",
+  "effect-listener-cleanup-reference-mismatch",
+  "effect-observer-needs-disconnect",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1604,6 +1610,9 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "effect-raf-loop-needs-cancel": 1,
   "context-provider-value-from-unmemoized-local-literal": 3,
   "jsx-no-jsx-as-prop": 1,
+  "effect-listener-cleanup-mismatch": 1,
+  "effect-listener-cleanup-reference-mismatch": 1,
+  "effect-observer-needs-disconnect": 2,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -6433,6 +6442,112 @@ const FocusedContextNonOutput = () => {
 };
 const FocusedJsxPropChild = memo(() => null);
 const FocusedJsxProp = () => <FocusedJsxPropChild payload={<span />} />;
+const FocusedListenerCleanupMismatch = () => {
+  useEffect(() => {
+    const handleResize = () => refresh();
+    const wrongHandleResize = () => refresh();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", wrongHandleResize);
+  }, []);
+  return null;
+};
+const FocusedListenerCleanupDestructuredCall = () => {
+  useEffect(() => {
+    const handleResize = () => refresh();
+    const wrongHandleResize = () => refresh();
+    const { removeEventListener } = window;
+    window.addEventListener("resize", handleResize);
+    return () => {
+      removeEventListener.call(window, "resize", handleResize);
+      window.removeEventListener("resize", wrongHandleResize);
+    };
+  }, []);
+  return null;
+};
+const FocusedListenerCleanupBoundAbort = () => {
+  useEffect(() => {
+    const controller = new AbortController();
+    const abortListener = controller.abort.bind(controller);
+    const wrongHandleResize = () => refresh();
+    window.addEventListener("resize", () => refresh(), { signal: controller.signal });
+    return () => {
+      window.removeEventListener("resize", wrongHandleResize);
+      abortListener();
+    };
+  }, []);
+  return null;
+};
+const FocusedListenerCleanupConsumedOnce = () => {
+  useEffect(() => {
+    const target = new EventTarget();
+    const wrongHandleChange = () => refresh();
+    target.addEventListener("change", () => {}, { once: true });
+    target.dispatchEvent(new Event("change"));
+    return () => target.removeEventListener("change", wrongHandleChange);
+  }, []);
+  return null;
+};
+const FocusedListenerCleanupExhaustiveSetupAbort = ({ shouldAbort }) => {
+  useEffect(() => {
+    const controller = new AbortController();
+    const wrongHandleResize = () => refresh();
+    window.addEventListener("resize", () => refresh(), { signal: controller.signal });
+    if (shouldAbort) controller.abort();
+    else controller.abort();
+    return () => window.removeEventListener("resize", wrongHandleResize);
+  }, [shouldAbort]);
+  return null;
+};
+const FocusedListenerCleanupGuaranteedLoop = () => {
+  useEffect(() => {
+    const handleResize = () => refresh();
+    const wrongHandleResize = () => refresh();
+    window.addEventListener("resize", handleResize);
+    return () => {
+      for (const cleanupListener of [handleResize]) {
+        window.removeEventListener("resize", cleanupListener);
+      }
+      window.removeEventListener("resize", wrongHandleResize);
+    };
+  }, []);
+  return null;
+};
+const FocusedListenerCleanupReferenceMismatch = () => {
+  useEffect(() => {
+    focusedEmitter.subscribe((event) => consume(event));
+    return () => focusedEmitter.unsubscribe((event) => consume(event));
+  }, []);
+  return null;
+};
+const FocusedObserverLeak = () => {
+  useEffect(() => {
+    const observer = new ResizeObserver(() => measure());
+    observer.observe(focusedNode);
+  }, []);
+  return null;
+};
+const FocusedObserverMatchingForEach = ({ itemIds }) => {
+  useEffect(() => {
+    const observer = new ResizeObserver(() => measure());
+    itemIds.forEach((itemId) => {
+      const element = document.getElementById(itemId);
+      if (element) observer.observe(element);
+    });
+    return () => itemIds.forEach((itemId) => {
+      const element = document.getElementById(itemId);
+      if (element) observer.unobserve(element);
+    });
+  }, [itemIds]);
+  return null;
+};
+const focusedObserverNamedCallback = (_entries, observer) => observer.disconnect();
+const FocusedObserverNamedCallback = () => {
+  useEffect(() => {
+    const observer = new ResizeObserver(focusedObserverNamedCallback);
+    observer.observe(focusedNode);
+  }, []);
+  return null;
+};
 let ReassignedMemo = memo(Base);
 ReassignedMemo = Base;
 const ComparatorMemo = memo(Base, () => true);

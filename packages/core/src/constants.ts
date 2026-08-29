@@ -1266,6 +1266,9 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "effect-raf-loop-needs-cancel",
   "context-provider-value-from-unmemoized-local-literal",
   "jsx-no-jsx-as-prop",
+  "effect-listener-cleanup-mismatch",
+  "effect-listener-cleanup-reference-mismatch",
+  "effect-observer-needs-disconnect",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

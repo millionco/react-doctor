@@ -623,6 +623,9 @@ impl Rule for ${delegatedRule.struct} {
       ["debounce-no-cleanup", ["for_each_local_callback_execution_node"]],
       ["effect-raf-loop-needs-cancel", ["for_each_local_callback_execution_node"]],
       ["jsx-no-jsx-as-prop", ["should_use_curated_port_behavior"]],
+      ["effect-listener-cleanup-mismatch", ["for_each_local_callback_execution_node"]],
+      ["effect-listener-cleanup-reference-mismatch", ["has_possible_static_property_write_before"]],
+      ["effect-observer-needs-disconnect", ["for_each_local_callback_execution_node"]],
     ]);
     for (const nativeRuleId of upstream.nativeRules) {
       const delegatedRule = delegatedRules.get(nativeRuleId);

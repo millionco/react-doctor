@@ -707,7 +707,10 @@
     "debounce-no-cleanup",
     "effect-raf-loop-needs-cancel",
     "context-provider-value-from-unmemoized-local-literal",
-    "jsx-no-jsx-as-prop"
+    "jsx-no-jsx-as-prop",
+    "effect-listener-cleanup-mismatch",
+    "effect-listener-cleanup-reference-mismatch",
+    "effect-observer-needs-disconnect"
   ],
   "delegatedRules": [
     {

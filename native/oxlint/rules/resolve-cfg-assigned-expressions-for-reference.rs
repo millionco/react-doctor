@@ -1,5 +1,4 @@
 use oxc_ast::{AstKind as AssignedExpressionAstKind, ast::Expression as AssignedExpression};
-use oxc_span::GetSpan as AssignedExpressionGetSpan;
 
 use crate::context::LintContext as AssignedExpressionLintContext;
 

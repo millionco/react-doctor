@@ -1452,6 +1452,12 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "zustand-no-whole-store-destructure": 0,
   "mobx-reaction-disposer-discarded": 0,
   "no-autofocus": 0,
+  "client-passive-event-listeners": 0,
+  "effect-remove-listener-inline-handler": 0,
+  "debounce-no-cleanup": 0,
+  "effect-raf-loop-needs-cancel": 1,
+  "context-provider-value-from-unmemoized-local-literal": 0,
+  "jsx-no-jsx-as-prop": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1522,6 +1528,12 @@ const FOCUSED_PARITY_RULE_IDS = [
   "zustand-no-whole-store-destructure",
   "mobx-reaction-disposer-discarded",
   "no-autofocus",
+  "client-passive-event-listeners",
+  "effect-remove-listener-inline-handler",
+  "debounce-no-cleanup",
+  "effect-raf-loop-needs-cancel",
+  "context-provider-value-from-unmemoized-local-literal",
+  "jsx-no-jsx-as-prop",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1586,6 +1598,12 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "zustand-no-whole-store-destructure": 1,
   "mobx-reaction-disposer-discarded": 1,
   "no-autofocus": 1,
+  "client-passive-event-listeners": 1,
+  "effect-remove-listener-inline-handler": 1,
+  "debounce-no-cleanup": 2,
+  "effect-raf-loop-needs-cancel": 1,
+  "context-provider-value-from-unmemoized-local-literal": 3,
+  "jsx-no-jsx-as-prop": 1,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -6317,11 +6335,12 @@ export const UncertainStaticSpreadScene = () => {
   fs.writeFileSync(
     focusedParityFixturePath,
     `import { atom, useAtomValue } from "jotai";
+import { debounce } from "lodash";
 import { makeAutoObservable, reaction as focusedMobxReaction } from "mobx";
 import { observer } from "mobx-react-lite";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as Preact from "preact";
-import { memo, useEffect } from "react";
+import { createContext, memo, useEffect, useMemo, useRef } from "react";
 import { useSelector as focusedReduxUseSelector } from "react-redux";
 import { motion } from "motion/react";
 import { useAnimatedReaction } from "react-native-reanimated";
@@ -6352,6 +6371,68 @@ const FocusedMobxReactionStore = class {
   }
 };
 const FocusedAutofocus = () => <input autoFocus />;
+document.addEventListener("wheel", () => refresh());
+let focusedLatePassiveHandler;
+document.addEventListener("touchmove", focusedLatePassiveHandler);
+focusedLatePassiveHandler = (event) => event.preventDefault();
+let focusedShadowedPassiveHandler = () => refresh();
+document.addEventListener("touchstart", focusedShadowedPassiveHandler);
+{
+  let focusedShadowedPassiveHandler;
+focusedShadowedPassiveHandler = (event) => event.preventDefault();
+}
+const focusedCustomThenHandler = (event) => custom.then(() => consume(event));
+document.addEventListener("mousewheel", focusedCustomThenHandler);
+focusedEmitter.on("data", focusedHandler);
+focusedEmitter.off("data", () => refresh());
+const FocusedDebounce = () => {
+  const apply = useMemo(() => debounce(() => { document.title = "ready"; }, 50), []);
+  useEffect(() => { apply(); }, [apply]);
+  return null;
+};
+const FocusedDebounceExternalRefGuard = () => {
+  const apply = useMemo(() => debounce(() => {
+    if (!externalRef.current) return;
+    document.title = "ready";
+  }, 50), []);
+  useEffect(() => { apply(); }, [apply]);
+  return null;
+};
+const FocusedDebounceLateGuardReturn = () => {
+  const node = useRef(null);
+  const apply = useMemo(() => debounce(() => {
+    if (!node.current) { refresh(); return; }
+    document.title = "ready";
+  }, 50), []);
+  useEffect(() => { apply(); }, [apply]);
+  return null;
+};
+const FocusedRafLoop = () => {
+  useEffect(() => { requestAnimationFrame(function tick() { refresh(); requestAnimationFrame(tick); }); }, []);
+  return null;
+};
+const FocusedContext = createContext(null);
+const FocusedContextProvider = () => {
+  const value = { ready: true };
+  return <FocusedContext.Provider value={value} />;
+};
+const FocusedContextIife = () => (() => {
+  const value = { ready: true };
+  return <FocusedContext.Provider value={value} />;
+})();
+const FocusedContextAliasedIife = () => {
+  const child = (() => {
+    const value = { ready: true };
+    return <FocusedContext.Provider value={value} />;
+  })();
+  return <>{child}</>;
+};
+const FocusedContextNonOutput = () => {
+  const value = { ready: true };
+  return Boolean(renderSynchronously(() => <FocusedContext.Provider value={value} />));
+};
+const FocusedJsxPropChild = memo(() => null);
+const FocusedJsxProp = () => <FocusedJsxPropChild payload={<span />} />;
 let ReassignedMemo = memo(Base);
 ReassignedMemo = Base;
 const ComparatorMemo = memo(Base, () => true);

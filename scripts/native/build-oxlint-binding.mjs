@@ -611,6 +611,18 @@ impl Rule for ${delegatedRule.struct} {
         "zustand-no-whole-store-destructure",
         ["resolve_cfg_assigned_expressions_for_reference", "resolve_zustand_api"],
       ],
+      [
+        "client-passive-event-listeners",
+        [
+          "has_possible_static_property_write_before",
+          "is_proven_dom_event_target",
+          "resolve_direct_unreassigned_symbol_initializer",
+          "transparent_expression_root",
+        ],
+      ],
+      ["debounce-no-cleanup", ["for_each_local_callback_execution_node"]],
+      ["effect-raf-loop-needs-cancel", ["for_each_local_callback_execution_node"]],
+      ["jsx-no-jsx-as-prop", ["should_use_curated_port_behavior"]],
     ]);
     for (const nativeRuleId of upstream.nativeRules) {
       const delegatedRule = delegatedRules.get(nativeRuleId);

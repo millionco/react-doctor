@@ -701,7 +701,13 @@
     "zustand-no-get-during-initialization",
     "zustand-no-whole-store-destructure",
     "mobx-reaction-disposer-discarded",
-    "no-autofocus"
+    "no-autofocus",
+    "client-passive-event-listeners",
+    "effect-remove-listener-inline-handler",
+    "debounce-no-cleanup",
+    "effect-raf-loop-needs-cancel",
+    "context-provider-value-from-unmemoized-local-literal",
+    "jsx-no-jsx-as-prop"
   ],
   "delegatedRules": [
     {

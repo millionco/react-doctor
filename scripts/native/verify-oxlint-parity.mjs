@@ -1421,6 +1421,22 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "nextjs-async-dynamic-api-not-awaited": 0,
   "three-shader-no-invalid-clamp-bounds": 0,
   "three-shader-no-version-directive": 0,
+  "three-shader-no-constant-out-of-bounds-index": 0,
+  "three-shader-no-derivatives-in-nonuniform-flow": 0,
+  "three-shader-no-glsl1-syntax-with-glsl3": 0,
+  "three-shader-no-invalid-constant-bit-operations": 0,
+  "three-shader-no-invalid-constant-math": 0,
+  "three-shader-no-invalid-smoothstep-edges": 0,
+  "three-shader-no-inverse-of-uniform": 0,
+  "three-shader-no-redeclared-builtins": 0,
+  "three-shader-no-redundant-frag-depth": 0,
+  "three-shader-no-reserved-identifiers": 0,
+  "three-shader-prefer-small-integer-pow": 0,
+  "three-shader-prefer-squared-distance-comparison": 0,
+  "three-shader-require-compatible-uniform-values": 0,
+  "three-shader-require-fragment-output-on-all-paths": 0,
+  "three-shader-require-position-on-all-paths": 0,
+  "three-shader-valid-global-initializers": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1460,6 +1476,22 @@ const FOCUSED_PARITY_RULE_IDS = [
   "nextjs-async-dynamic-api-not-awaited",
   "three-shader-no-invalid-clamp-bounds",
   "three-shader-no-version-directive",
+  "three-shader-no-constant-out-of-bounds-index",
+  "three-shader-no-derivatives-in-nonuniform-flow",
+  "three-shader-no-glsl1-syntax-with-glsl3",
+  "three-shader-no-invalid-constant-bit-operations",
+  "three-shader-no-invalid-constant-math",
+  "three-shader-no-invalid-smoothstep-edges",
+  "three-shader-no-inverse-of-uniform",
+  "three-shader-no-redeclared-builtins",
+  "three-shader-no-redundant-frag-depth",
+  "three-shader-no-reserved-identifiers",
+  "three-shader-prefer-small-integer-pow",
+  "three-shader-prefer-squared-distance-comparison",
+  "three-shader-require-compatible-uniform-values",
+  "three-shader-require-fragment-output-on-all-paths",
+  "three-shader-require-position-on-all-paths",
+  "three-shader-valid-global-initializers",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1493,6 +1525,22 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "nextjs-async-dynamic-api-not-awaited": 1,
   "three-shader-no-invalid-clamp-bounds": 2,
   "three-shader-no-version-directive": 2,
+  "three-shader-no-constant-out-of-bounds-index": 1,
+  "three-shader-no-derivatives-in-nonuniform-flow": 1,
+  "three-shader-no-glsl1-syntax-with-glsl3": 1,
+  "three-shader-no-invalid-constant-bit-operations": 1,
+  "three-shader-no-invalid-constant-math": 1,
+  "three-shader-no-invalid-smoothstep-edges": 1,
+  "three-shader-no-inverse-of-uniform": 1,
+  "three-shader-no-redeclared-builtins": 1,
+  "three-shader-no-redundant-frag-depth": 1,
+  "three-shader-no-reserved-identifiers": 1,
+  "three-shader-prefer-small-integer-pow": 1,
+  "three-shader-prefer-squared-distance-comparison": 1,
+  "three-shader-require-compatible-uniform-values": 1,
+  "three-shader-require-fragment-output-on-all-paths": 1,
+  "three-shader-require-position-on-all-paths": 1,
+  "three-shader-valid-global-initializers": 1,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -6223,7 +6271,8 @@ import * as Preact from "preact";
 import { memo, useEffect } from "react";
 import { motion } from "motion/react";
 import { useAnimatedReaction } from "react-native-reanimated";
-import { ShaderMaterial as StaticShaderMaterial } from "three";
+import { GLSL3 as StaticGLSL3, RawShaderMaterial as StaticRawShaderMaterial, ShaderMaterial as StaticShaderMaterial, Vector3 as StaticVector3 } from "three";
+import * as ReassignedThree from "three";
 import ThirdParty from "third-party";
 import { userQueryAtom } from "./atoms";
 
@@ -6316,6 +6365,28 @@ const InvalidStaticShader = new StaticShaderMaterial({
   vertexShader: "#version 300 es\\nvoid main() { float x = clamp(value, +2.0, -1.0); gl_Position = vec4(x); }",
   fragmentShader: "#version 300 es\\nvoid main() { float x = clamp(value, 4, 3); gl_FragColor = vec4(x); }",
 });
+const OutOfBoundsShader = new StaticShaderMaterial({ fragmentShader: "uniform float values[2]; void main() { gl_FragColor = vec4(values[2]); }" });
+const NonuniformDerivativeShader = new StaticShaderMaterial({ fragmentShader: "varying float value; void main() { float width = 0.0; if (value > 0.0) width = fwidth(value); gl_FragColor = vec4(width); }" });
+const Glsl3LegacySyntaxShader = new StaticRawShaderMaterial({ glslVersion: StaticGLSL3, vertexShader: "attribute vec3 position; void main() { gl_Position = vec4(position, 1.0); }" });
+const InvalidBitOperationShader = new StaticShaderMaterial({ fragmentShader: "void main() { int value = 1 << 32; gl_FragColor = vec4(float(value)); }" });
+const InvalidMathShader = new StaticShaderMaterial({ fragmentShader: "void main() { float value = sqrt(-1.0); gl_FragColor = vec4(value); }" });
+const InvalidSmoothstepShader = new StaticShaderMaterial({ fragmentShader: "void main() { float value = smoothstep(1.0, 0.0, inputValue); gl_FragColor = vec4(value); }" });
+const UniformInverseShader = new StaticShaderMaterial({ vertexShader: "uniform mat4 transform; void main() { gl_Position = inverse(transform) * vec4(0.0); }" });
+const RedeclaredBuiltinShader = new StaticShaderMaterial({ vertexShader: "uniform mat4 projectionMatrix; void main() { gl_Position = projectionMatrix * vec4(0.0); }" });
+const RedundantFragmentDepthShader = new StaticShaderMaterial({ fragmentShader: "void main() { gl_FragDepth = gl_FragCoord.z; gl_FragColor = vec4(1.0); }" });
+const ReservedIdentifierShader = new StaticShaderMaterial({ fragmentShader: "float user__color; void main() { gl_FragColor = vec4(user__color); }" });
+const SmallIntegerPowerShader = new StaticShaderMaterial({ fragmentShader: "void main() { float value = pow(inputValue, 2.0); gl_FragColor = vec4(value); }" });
+const SquaredDistanceShader = new StaticShaderMaterial({ fragmentShader: "void main() { bool nearby = distance(first, second) < 2.0; gl_FragColor = vec4(float(nearby)); }" });
+const IncompatibleUniformShader = new StaticShaderMaterial({ uniforms: { time: { value: new StaticVector3() } }, fragmentShader: "uniform float time; void main() { gl_FragColor = vec4(time); }" });
+const MissingFragmentOutputShader = new StaticShaderMaterial({ fragmentShader: "void main() { if (enabled) gl_FragColor = vec4(1.0); }" });
+const MissingPositionShader = new StaticShaderMaterial({ vertexShader: "void main() { float value = 1.0; }" });
+const InvalidGlobalInitializerShader = new StaticShaderMaterial({ fragmentShader: "uniform float time = 1.0; void main() { gl_FragColor = vec4(time); }" });
+const MacroOnlyIndexShader = new StaticShaderMaterial({ fragmentShader: "uniform float values[2];\\n#define BAD values[2]\\nvoid main() { gl_FragColor = vec4(1.0); }" });
+ReassignedThree.ShaderMaterial = class {};
+const SuppressedReassignedShader = new ReassignedThree.ShaderMaterial({
+  vertexShader: "uniform mat4 transform; void main() { gl_Position = inverse(transform) * vec4(0.0); }",
+  fragmentShader: "uniform float values[2]; void main() { int bits = 1 << 32; float root = sqrt(-1.0); float edge = smoothstep(1.0, 0.0, values[2]); gl_FragColor = vec4(root + edge + float(bits)); }",
+});
 const MotionExamples = () => <>
   <motion.ul transition={{ staggerChildren: 0.2 }} />
   <motion.div animate={{ x: 100, scale: 0.95 }} />
@@ -6330,7 +6401,7 @@ const CopyReaction = ({ source, target }) => {
 
 void MemoProps; void SpreadProps; void RenderProps; void AliasSmoothScroll; void SmoothScroll; void HiddenPulse; void VisiblePulse; void RepeatedText;
 void directDerivedAtom; void castDerivedAtom; void DirectQueryResult; void CastQueryResult; void DirectRedirect; void SamePageRedirect;
-void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues; void PendingNextCookies; void InvalidStaticShader; void MotionExamples; void CopyReaction;
+void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues; void PendingNextCookies; void InvalidStaticShader; void OutOfBoundsShader; void NonuniformDerivativeShader; void Glsl3LegacySyntaxShader; void InvalidBitOperationShader; void InvalidMathShader; void InvalidSmoothstepShader; void UniformInverseShader; void RedeclaredBuiltinShader; void RedundantFragmentDepthShader; void ReservedIdentifierShader; void SmallIntegerPowerShader; void SquaredDistanceShader; void IncompatibleUniformShader; void MissingFragmentOutputShader; void MissingPositionShader; void InvalidGlobalInitializerShader; void MacroOnlyIndexShader; void SuppressedReassignedShader; void MotionExamples; void CopyReaction;
 `,
   );
   fs.writeFileSync(

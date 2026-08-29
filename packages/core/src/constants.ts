@@ -1229,6 +1229,22 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "nextjs-async-dynamic-api-not-awaited",
   "three-shader-no-invalid-clamp-bounds",
   "three-shader-no-version-directive",
+  "three-shader-no-constant-out-of-bounds-index",
+  "three-shader-no-derivatives-in-nonuniform-flow",
+  "three-shader-no-glsl1-syntax-with-glsl3",
+  "three-shader-no-invalid-constant-bit-operations",
+  "three-shader-no-invalid-constant-math",
+  "three-shader-no-invalid-smoothstep-edges",
+  "three-shader-no-inverse-of-uniform",
+  "three-shader-no-redeclared-builtins",
+  "three-shader-no-redundant-frag-depth",
+  "three-shader-no-reserved-identifiers",
+  "three-shader-prefer-small-integer-pow",
+  "three-shader-prefer-squared-distance-comparison",
+  "three-shader-require-compatible-uniform-values",
+  "three-shader-require-fragment-output-on-all-paths",
+  "three-shader-require-position-on-all-paths",
+  "three-shader-valid-global-initializers",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

@@ -794,4 +794,26 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
       }
     `);
   });
+
+  it("does not treat a message substring search as array membership", () => {
+    expectPass(
+      `function translateError(rawMessage: string, locale: string) {
+        const POSTGRES_CODE_MESSAGES = { "23505": { en: "Duplicate", es: "Duplicado" } };
+        for (const [code, friendly] of Object.entries(POSTGRES_CODE_MESSAGES)) {
+          if (rawMessage.includes(code)) return friendly[locale];
+        }
+      }`,
+    );
+  });
+
+  it("infers an untyped message receiver as a substring source", () => {
+    expectPass(
+      `function translateError(rawMessage, locale) {
+        const POSTGRES_CODE_MESSAGES = { "23505": { en: "Duplicate", es: "Duplicado" } };
+        for (const [code, friendly] of Object.entries(POSTGRES_CODE_MESSAGES)) {
+          if (rawMessage.includes(code)) return friendly[locale];
+        }
+      }`,
+    );
+  });
 });

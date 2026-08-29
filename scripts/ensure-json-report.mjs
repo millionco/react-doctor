@@ -37,7 +37,11 @@ const fallbackReport = {
 const KNOWN_SCHEMA_VERSIONS = new Set([1, 2, 3]);
 
 try {
-  const raw = fs.readFileSync(reportPath, "utf8").trim();
+  let raw = fs.readFileSync(reportPath, "utf8").trim();
+  const firstBrace = raw.indexOf("{");
+  if (firstBrace > 0) {
+    raw = raw.slice(firstBrace);
+  }
   const parsed = JSON.parse(raw);
   if (parsed && KNOWN_SCHEMA_VERSIONS.has(parsed.schemaVersion) && typeof parsed.ok === "boolean") {
     process.exit(0);

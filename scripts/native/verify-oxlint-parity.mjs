@@ -1445,6 +1445,13 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-shader-valid-uniform-definitions": 0,
   "mobx-no-observer-wrapped-memo": 0,
   "mobx-no-make-auto-observable-in-inheritance": 0,
+  "redux-useselector-inline-derivation": 0,
+  "redux-useselector-returns-new-collection": 0,
+  "zustand-no-fresh-selector-result": 0,
+  "zustand-no-get-during-initialization": 0,
+  "zustand-no-whole-store-destructure": 0,
+  "mobx-reaction-disposer-discarded": 0,
+  "no-autofocus": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1508,6 +1515,13 @@ const FOCUSED_PARITY_RULE_IDS = [
   "three-shader-valid-uniform-definitions",
   "mobx-no-observer-wrapped-memo",
   "mobx-no-make-auto-observable-in-inheritance",
+  "redux-useselector-inline-derivation",
+  "redux-useselector-returns-new-collection",
+  "zustand-no-fresh-selector-result",
+  "zustand-no-get-during-initialization",
+  "zustand-no-whole-store-destructure",
+  "mobx-reaction-disposer-discarded",
+  "no-autofocus",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1565,6 +1579,13 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "three-shader-valid-uniform-definitions": 1,
   "mobx-no-observer-wrapped-memo": 1,
   "mobx-no-make-auto-observable-in-inheritance": 1,
+  "redux-useselector-inline-derivation": 1,
+  "redux-useselector-returns-new-collection": 1,
+  "zustand-no-fresh-selector-result": 1,
+  "zustand-no-get-during-initialization": 1,
+  "zustand-no-whole-store-destructure": 1,
+  "mobx-reaction-disposer-discarded": 1,
+  "no-autofocus": 1,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -1592,6 +1613,9 @@ const REACT_DOCTOR_SETTINGS = {
       "mobx:6",
       "mobx-react-binding-observer-memo-guard",
       "mobx-react-lite-observer-memo-guard",
+      "zustand",
+      "zustand:1",
+      "zustand:5",
     ],
   },
 };
@@ -6293,16 +6317,18 @@ export const UncertainStaticSpreadScene = () => {
   fs.writeFileSync(
     focusedParityFixturePath,
     `import { atom, useAtomValue } from "jotai";
-import { makeAutoObservable } from "mobx";
+import { makeAutoObservable, reaction as focusedMobxReaction } from "mobx";
 import { observer } from "mobx-react-lite";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as Preact from "preact";
 import { memo, useEffect } from "react";
+import { useSelector as focusedReduxUseSelector } from "react-redux";
 import { motion } from "motion/react";
 import { useAnimatedReaction } from "react-native-reanimated";
 import { GLSL3 as StaticGLSL3, RawShaderMaterial as StaticRawShaderMaterial, ShaderMaterial as StaticShaderMaterial, Vector3 as StaticVector3 } from "three";
 import * as ReassignedThree from "three";
 import ThirdParty from "third-party";
+import { create as createFocusedZustandStore } from "zustand";
 import { userQueryAtom } from "./atoms";
 
 void 0;
@@ -6310,6 +6336,22 @@ void 0;
 
 const Base = () => null;
 const ObserverComponent = observer(Base, { forwardRef: true });
+const focusedReduxDerivedRows = focusedReduxUseSelector((state) => state.rows.filter(Boolean));
+const focusedReduxFreshCollection = focusedReduxUseSelector((state) => ({ count: state.count }));
+const useFocusedZustandFreshStore = createFocusedZustandStore(() => ({ count: 0 }));
+const focusedZustandSummary = useFocusedZustandFreshStore((state) => ({ count: state.count }));
+const useFocusedZustandGetStore = createFocusedZustandStore((_set, get) => ({ count: get().count }));
+const useFocusedZustandWholeStore = createFocusedZustandStore(() => ({ count: 0 }));
+const FocusedZustandWholeStore = () => {
+  const state = useFocusedZustandWholeStore();
+  return <span>{state.count}</span>;
+};
+const FocusedMobxReactionStore = class {
+  start() {
+    focusedMobxReaction(() => externalStore.value, refresh);
+  }
+};
+const FocusedAutofocus = () => <input autoFocus />;
 let ReassignedMemo = memo(Base);
 ReassignedMemo = Base;
 const ComparatorMemo = memo(Base, () => true);
@@ -6855,6 +6897,9 @@ export const App = () => <>
         "mobx:6",
         "mobx-react-binding-observer-memo-guard",
         "mobx-react-lite-observer-memo-guard",
+        "zustand",
+        "zustand:1",
+        "zustand:5",
       ],
     },
   };

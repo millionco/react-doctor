@@ -1253,6 +1253,13 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "three-shader-valid-uniform-definitions",
   "mobx-no-observer-wrapped-memo",
   "mobx-no-make-auto-observable-in-inheritance",
+  "redux-useselector-inline-derivation",
+  "redux-useselector-returns-new-collection",
+  "zustand-no-fresh-selector-result",
+  "zustand-no-get-during-initialization",
+  "zustand-no-whole-store-destructure",
+  "mobx-reaction-disposer-discarded",
+  "no-autofocus",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

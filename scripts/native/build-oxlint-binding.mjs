@@ -155,6 +155,8 @@ impl Rule for ${delegatedRule.struct} {
         "r3f-jsx-event-handler-expression",
         "for-each-named-import",
         "for-each-value-import",
+        "collect-react-redux-selector-alias-names",
+        "resolve-zustand-api",
         "resolve-jsx-element-name",
         "resolve-jsx-element-type",
         "resolve-configured-jsx-element-type",
@@ -381,6 +383,7 @@ impl Rule for ${delegatedRule.struct} {
         "r3f-analyze-owned-root-lifecycle",
         "r3f-owned-root-access-has-non-allocation-identity-write",
         "has-possible-static-property-write-before",
+        "resolve-cfg-assigned-expressions-for-reference",
         "module-api-reference-matches",
         "resolve-loader-cache-provenance",
         "has-r3f-runtime-import",
@@ -401,6 +404,11 @@ impl Rule for ${delegatedRule.struct} {
       [
         "resolve_analyzed_recursive_animation_frame_callback_id",
         ["has_possible_static_property_write_before", "resolve_recursive_animation_frame_callback"],
+      ],
+      ["resolve_zustand_api", ["has_possible_static_property_write_before"]],
+      [
+        "resolve_cfg_assigned_expressions_for_reference",
+        ["local_callback_nearest_function_id", "transparent_expression_root"],
       ],
     ]);
     const nativeRuleUtilityDependencies = new Map([
@@ -585,6 +593,24 @@ impl Rule for ${delegatedRule.struct} {
       ["motion-layout-on-inline-element", ["get_static_motion_property_object"]],
       ["motion-unstable-layout-id-in-iteration", ["get_static_motion_property_object"]],
       ["rn-no-raw-text", ["children_forwarding_components"]],
+      [
+        "zustand-no-fresh-selector-result",
+        [
+          "binding_pattern_initializer_for_symbol",
+          "has_possible_static_property_write_before",
+          "is_react_api_call",
+          "local_callback_nearest_function_id",
+          "resolve_zustand_api",
+        ],
+      ],
+      [
+        "zustand-no-get-during-initialization",
+        ["has_possible_static_property_write_before", "resolve_zustand_api"],
+      ],
+      [
+        "zustand-no-whole-store-destructure",
+        ["resolve_cfg_assigned_expressions_for_reference", "resolve_zustand_api"],
+      ],
     ]);
     for (const nativeRuleId of upstream.nativeRules) {
       const delegatedRule = delegatedRules.get(nativeRuleId);

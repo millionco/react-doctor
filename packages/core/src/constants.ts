@@ -1226,6 +1226,9 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-excessive-motion-stagger",
   "prefer-motion-transform-property",
   "rn-animation-reaction-as-derived",
+  "nextjs-async-dynamic-api-not-awaited",
+  "three-shader-no-invalid-clamp-bounds",
+  "three-shader-no-version-directive",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

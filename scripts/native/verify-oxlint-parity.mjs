@@ -1418,6 +1418,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-excessive-motion-stagger": 0,
   "prefer-motion-transform-property": 3,
   "rn-animation-reaction-as-derived": 0,
+  "nextjs-async-dynamic-api-not-awaited": 0,
+  "three-shader-no-invalid-clamp-bounds": 0,
+  "three-shader-no-version-directive": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1454,6 +1457,9 @@ const FOCUSED_PARITY_RULE_IDS = [
   "no-excessive-motion-stagger",
   "prefer-motion-transform-property",
   "rn-animation-reaction-as-derived",
+  "nextjs-async-dynamic-api-not-awaited",
+  "three-shader-no-invalid-clamp-bounds",
+  "three-shader-no-version-directive",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1484,6 +1490,9 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "no-excessive-motion-stagger": 1,
   "prefer-motion-transform-property": 1,
   "rn-animation-reaction-as-derived": 1,
+  "nextjs-async-dynamic-api-not-awaited": 1,
+  "three-shader-no-invalid-clamp-bounds": 2,
+  "three-shader-no-version-directive": 2,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -1499,7 +1508,15 @@ const REACT_DOCTOR_SETTINGS = {
     portedRuleMode: "curated",
     framework: "unknown",
     rootDirectory: repositoryRoot,
-    capabilities: ["react", "three:181", "base-ui", "shadcn", "radix-ui", "react-aria"],
+    capabilities: [
+      "react",
+      "three:181",
+      "nextjs:15",
+      "base-ui",
+      "shadcn",
+      "radix-ui",
+      "react-aria",
+    ],
   },
 };
 const CONFIGURED_REACT_DOCTOR_SETTINGS = {
@@ -1599,6 +1616,7 @@ const fixture = `
 import moment from "moment";
 import type { Moment } from "moment";
 import { ImageResponse } from "@vercel/og";
+import { cookies as nextCookies } from "next/headers";
 import { redirect as nextRedirect } from "next/navigation";
 import { atom as makeJotaiAtom } from "jotai";
 import { selectAtom as makeSelectAtom } from "jotai/utils";
@@ -1648,6 +1666,7 @@ import { Video as RemotionVideo } from "@remotion/media";
 import { Box as InkBox, measureElement, render as renderInk, renderToString as renderInkToString, Static as InkStatic, Text as InkText, useApp, useCursor, useFocusManager, useInput, useStdin } from "ink";
 import { ImportedInkLabel, ImportedInkPanel } from "./ink-wrappers";
 import { spawn as spawnChild } from "node:child_process";
+import { ShaderMaterial as StaticShaderMaterial } from "three";
 import * as ThreeRuntime from "three";
 import { WebGPURenderer } from "three/webgpu";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
@@ -6204,6 +6223,7 @@ import * as Preact from "preact";
 import { memo, useEffect } from "react";
 import { motion } from "motion/react";
 import { useAnimatedReaction } from "react-native-reanimated";
+import { ShaderMaterial as StaticShaderMaterial } from "three";
 import ThirdParty from "third-party";
 import { userQueryAtom } from "./atoms";
 
@@ -6291,6 +6311,11 @@ const CollapsedLiteralValues = ({ code, method, searchMethod, text, value }) => 
   const saved = "a" || "b";
   return { numeric, regex, saved };
 };
+const PendingNextCookies = nextCookies().get("session");
+const InvalidStaticShader = new StaticShaderMaterial({
+  vertexShader: "#version 300 es\\nvoid main() { float x = clamp(value, +2.0, -1.0); gl_Position = vec4(x); }",
+  fragmentShader: "#version 300 es\\nvoid main() { float x = clamp(value, 4, 3); gl_FragColor = vec4(x); }",
+});
 const MotionExamples = () => <>
   <motion.ul transition={{ staggerChildren: 0.2 }} />
   <motion.div animate={{ x: 100, scale: 0.95 }} />
@@ -6305,7 +6330,7 @@ const CopyReaction = ({ source, target }) => {
 
 void MemoProps; void SpreadProps; void RenderProps; void AliasSmoothScroll; void SmoothScroll; void HiddenPulse; void VisiblePulse; void RepeatedText;
 void directDerivedAtom; void castDerivedAtom; void DirectQueryResult; void CastQueryResult; void DirectRedirect; void SamePageRedirect;
-void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues; void MotionExamples; void CopyReaction;
+void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues; void PendingNextCookies; void InvalidStaticShader; void MotionExamples; void CopyReaction;
 `,
   );
   fs.writeFileSync(
@@ -6706,7 +6731,7 @@ export const App = () => <>
     "react-doctor": {
       ...REACT_DOCTOR_SETTINGS["react-doctor"],
       rootDirectory: focusedParityDirectory,
-      capabilities: ["react", "nextjs", "preact", "tailwind"],
+      capabilities: ["react", "nextjs", "nextjs:15", "preact", "tailwind", "three:181"],
     },
   };
   fs.writeFileSync(

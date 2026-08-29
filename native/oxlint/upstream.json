@@ -667,7 +667,10 @@
     "no-collapsed-literal-or-chain-as-value",
     "no-excessive-motion-stagger",
     "prefer-motion-transform-property",
-    "rn-animation-reaction-as-derived"
+    "rn-animation-reaction-as-derived",
+    "nextjs-async-dynamic-api-not-awaited",
+    "three-shader-no-invalid-clamp-bounds",
+    "three-shader-no-version-directive"
   ],
   "delegatedRules": [
     {

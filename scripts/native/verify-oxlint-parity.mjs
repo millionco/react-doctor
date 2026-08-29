@@ -1415,6 +1415,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "js-set-map-lookups": 0,
   "no-non-null-assertion-on-maybe-undefined-result": 0,
   "no-collapsed-literal-or-chain-as-value": 0,
+  "no-excessive-motion-stagger": 0,
+  "prefer-motion-transform-property": 3,
+  "rn-animation-reaction-as-derived": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1448,6 +1451,9 @@ const FOCUSED_PARITY_RULE_IDS = [
   "js-set-map-lookups",
   "no-non-null-assertion-on-maybe-undefined-result",
   "no-collapsed-literal-or-chain-as-value",
+  "no-excessive-motion-stagger",
+  "prefer-motion-transform-property",
+  "rn-animation-reaction-as-derived",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1475,6 +1481,9 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "js-set-map-lookups": 1,
   "no-non-null-assertion-on-maybe-undefined-result": 1,
   "no-collapsed-literal-or-chain-as-value": 4,
+  "no-excessive-motion-stagger": 1,
+  "prefer-motion-transform-property": 1,
+  "rn-animation-reaction-as-derived": 1,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -6193,6 +6202,8 @@ import { observer } from "mobx-react-lite";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as Preact from "preact";
 import { memo, useEffect } from "react";
+import { motion } from "motion/react";
+import { useAnimatedReaction } from "react-native-reanimated";
 import ThirdParty from "third-party";
 import { userQueryAtom } from "./atoms";
 
@@ -6280,10 +6291,21 @@ const CollapsedLiteralValues = ({ code, method, searchMethod, text, value }) => 
   const saved = "a" || "b";
   return { numeric, regex, saved };
 };
+const MotionExamples = () => <>
+  <motion.ul transition={{ staggerChildren: 0.2 }} />
+  <motion.div animate={{ x: 100, scale: 0.95 }} />
+  <motion transition={{ staggerChildren: 0.2 }} />
+  <motion.ul transition={{ staggerChildren: 0.2, "": 1 }} />
+  <motion.div animate={{ "": 1, x: 100 }} />
+</>;
+const CopyReaction = ({ source, target }) => {
+  useAnimatedReaction(() => source.value, (current) => { target.value = current; });
+  return null;
+};
 
 void MemoProps; void SpreadProps; void RenderProps; void AliasSmoothScroll; void SmoothScroll; void HiddenPulse; void VisiblePulse; void RepeatedText;
 void directDerivedAtom; void castDerivedAtom; void DirectQueryResult; void CastQueryResult; void DirectRedirect; void SamePageRedirect;
-void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues;
+void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues; void MotionExamples; void CopyReaction;
 `,
   );
   fs.writeFileSync(

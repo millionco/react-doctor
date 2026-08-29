@@ -51,9 +51,34 @@ describe("resolver directory index resolution", () => {
     const importerPath = path.join(rootDirectory, "src/screens/bar.tsx");
     const resolved = resolver.resolveModule("@/features/foo", importerPath);
 
-    // Log the resolved path for debugging
-    console.log("Resolved path:", resolved.resolvedPath);
-    console.log("Expected to contain:", path.join(rootDirectory, "src/features/foo/index.ts"));
+    expect(resolved.resolvedPath).toBeDefined();
+    expect(resolved.resolvedPath).toMatch(/features\/foo\/index\.ts$/);
+    expect(resolved.isExternal).toBe(false);
+  });
+
+  it("resolves directory path with moduleResolution bundler to index.ts", () => {
+    const rootDirectory = createProject({
+      "src/screens/bar.tsx": `import { FooList } from "@/features/foo";`,
+      "src/features/foo/index.ts": `export * from "./foo-list";`,
+      "src/features/foo/foo-list.tsx": `export const FooList = () => <div>Foo List</div>;`,
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: {
+          baseUrl: ".",
+          paths: { "@/*": ["./src/*"] },
+          moduleResolution: "bundler",
+        },
+      }),
+    });
+
+    const tsconfigPath = path.join(rootDirectory, "tsconfig.json");
+    const resolver = createResolver(
+      { rootDir: rootDirectory, tsConfigPath: tsconfigPath },
+      [],
+      {},
+    );
+
+    const importerPath = path.join(rootDirectory, "src/screens/bar.tsx");
+    const resolved = resolver.resolveModule("@/features/foo", importerPath);
 
     expect(resolved.resolvedPath).toBeDefined();
     expect(resolved.resolvedPath).toMatch(/features\/foo\/index\.ts$/);

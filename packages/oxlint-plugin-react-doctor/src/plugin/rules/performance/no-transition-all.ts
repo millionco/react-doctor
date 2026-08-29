@@ -67,17 +67,19 @@ const hasMergedTransitionAll = (
         isAnimationUtility(parsedToken.utility) &&
         doesTailwindVariantScopeCover(parsedToken.variants, variantScope),
     );
-    if (hasAnimationUtility) return false;
     const transitionAllState = resolveTailwindBooleanPropertyState(
       parsedTokens,
       variantScope,
       getTailwindTransitionAllState,
     );
-    const durationState = resolveTailwindTransitionDurationState(
-      parsedTokens,
-      variantScope,
-      ALL_TRANSITION_PROPERTY_NAMES,
-    );
+    const durationState =
+      hasAnimationUtility
+        ? null
+        : resolveTailwindTransitionDurationState(
+            parsedTokens,
+            variantScope,
+            ALL_TRANSITION_PROPERTY_NAMES,
+          );
     const hasImportantTransitionProperty = hasImportantTailwindClassNameToken(
       parsedTokens,
       variantScope,

@@ -335,4 +335,10 @@ describe("no-transition-all", () => {
     const result = runRule(noTransitionAll, code);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags inline transition: all even when animate-in is present", () => {
+    const code = `const A = () => <div className="animate-in fade-in" style={{ transition: "all 200ms" }} />;`;
+    const result = runRule(noTransitionAll, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -653,6 +653,7 @@ const focusedParityWrappedMetadataPath = path.join(
   "wrapped",
   "page.tsx",
 );
+const focusedParityGetRoutePath = path.join(focusedParityDirectory, "app", "logout", "route.ts");
 const nonReactJsxFixturePath = path.join(temporaryDirectory, "solid-fixture.tsx");
 const configuredFixturePath = path.join(temporaryDirectory, "configured.tsx");
 const inactiveRouterFixtureDirectory = path.join(temporaryDirectory, "inactive-router-package");
@@ -1397,6 +1398,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jotai-derived-atom-returns-fresh-object": 0,
   "jotai-select-atom-in-render-body": 1,
   "jotai-tq-use-raw-query-atom": 0,
+  "nextjs-no-side-effect-in-get-handler": 0,
+  "no-arithmetic-on-optional-chained-operand": 0,
+  "no-array-find-result-member-access-without-guard": 0,
+  "no-array-index-deref-without-bounds-or-empty-guard": 0,
+  "no-object-keys-values-entries-on-maybe-undefined": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1419,6 +1425,11 @@ const FOCUSED_PARITY_RULE_IDS = [
   "preact-no-render-arguments",
   "jotai-derived-atom-returns-fresh-object",
   "jotai-tq-use-raw-query-atom",
+  "nextjs-no-side-effect-in-get-handler",
+  "no-arithmetic-on-optional-chained-operand",
+  "no-array-find-result-member-access-without-guard",
+  "no-array-index-deref-without-bounds-or-empty-guard",
+  "no-object-keys-values-entries-on-maybe-undefined",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1435,6 +1446,11 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "preact-no-render-arguments": 1,
   "jotai-derived-atom-returns-fresh-object": 1,
   "jotai-tq-use-raw-query-atom": 1,
+  "nextjs-no-side-effect-in-get-handler": 1,
+  "no-arithmetic-on-optional-chained-operand": 2,
+  "no-array-find-result-member-access-without-guard": 2,
+  "no-array-index-deref-without-bounds-or-empty-guard": 4,
+  "no-object-keys-values-entries-on-maybe-undefined": 5,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -6135,6 +6151,7 @@ export const UncertainStaticSpreadScene = () => {
   );
   fs.mkdirSync(path.dirname(focusedParityFixturePath), { recursive: true });
   fs.mkdirSync(path.dirname(focusedParityWrappedMetadataPath), { recursive: true });
+  fs.mkdirSync(path.dirname(focusedParityGetRoutePath), { recursive: true });
   fs.writeFileSync(
     focusedParityFixturePath,
     `import { atom, useAtomValue } from "jotai";
@@ -6195,15 +6212,38 @@ const render = "render";
 class PreactCard extends Preact.Component { [render](props) { return null; } }
 const DirectMap = ({ items }) => <>{items.length && items.map((item) => <span>{item}</span>)}</>;
 const WrappedMap = ({ items }) => <>{items.length && items.map(((item) => <span>{item}</span>))}</>;
+const OptionalMath = ({ config, factor, threshold }) => config?.limit * factor < threshold;
+const ArithmeticSubstringGuard = ({ a, data, factor, ok, threshold }) => data && ok ? a?.limit * factor < threshold : false;
+const FoundMember = ({ values }) => values.find(Boolean).id;
+const ComputedFindGuard = ({ items, predicate }) => items["some"](predicate) && items.find(predicate).id;
+const TruthyShadowedBoolean = ({ Boolean, maybe }) => [1, maybe].find(Boolean).id;
+const SplitMember = ({ input }) => /v(\\d+)/.exec(input)[1].trim();
+const DiscardedIncludes = ({ value }) => { value.includes("."); return value.split(".")[1].trim(); };
+const DiscardedMatch = ({ value }) => { value.match(/x/); return value.match(/x/)[1].trim(); };
+const GuardedSplit = ({ value }) => { if (!value.includes(".")) return ""; return value.split(".")[1].trim(); };
+const GuardedMatch = ({ value }) => { if (!value.match(/x/)) return ""; return value.match(/x/)[1].trim(); };
+const GuardedSplitAfterUnrelatedExit = ({ ready, value }) => { if (!value.includes(".")) return ""; if (!ready) return ""; return value.split(".")[1].trim(); };
+const OuterGuardedSplit = ({ ready, value }) => value.includes(".") ? (ready ? value.split(".")[1].trim() : "") : "";
+const MaybeObject = ({ response }) => Object.keys(response?.data);
+const NestedObjectGuard = (params?: object, other?: boolean) => { if (other) { if (!params) return null; } return Object.keys(params); };
+const ConjoinedObjectGuard = (params?: object, other?: boolean) => { if (params === null && other) return []; return Object.keys(params); };
+const ConjoinedOptionalAccessGuard = ({ other, response }) => { if (response?.data === null && other) return []; return Object.keys(response?.data); };
+const DeferredObjectNormalization = (params?: object) => { let callback; callback = () => params = params ?? {}; void callback; return Object.keys(params); };
+const GuardedObject = (attrs?: object) => { if (!attrs) return []; return Object.entries(attrs); };
+const NormalizedObject = (attrs?: object) => { attrs = attrs ?? {}; return Object.entries(attrs); };
 
 void MemoProps; void SpreadProps; void RenderProps; void AliasSmoothScroll; void SmoothScroll; void HiddenPulse; void VisiblePulse; void RepeatedText;
 void directDerivedAtom; void castDerivedAtom; void DirectQueryResult; void CastQueryResult; void DirectRedirect; void SamePageRedirect;
-void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap;
+void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject;
 `,
   );
   fs.writeFileSync(
     focusedParityWrappedMetadataPath,
     'import { redirect } from "next/navigation";\nexport default (async () => await redirect("/docs"));\n',
+  );
+  fs.writeFileSync(
+    focusedParityGetRoutePath,
+    'import { cookies } from "next/headers";\nexport async function GET() {\n  cookies().delete("session");\n  return Response.redirect("/");\n}\n',
   );
   fs.writeFileSync(
     nonProductionFixturePath,

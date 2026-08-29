@@ -653,7 +653,12 @@
     "radio-input-missing-name",
     "jotai-derived-atom-returns-fresh-object",
     "jotai-select-atom-in-render-body",
-    "jotai-tq-use-raw-query-atom"
+    "jotai-tq-use-raw-query-atom",
+    "nextjs-no-side-effect-in-get-handler",
+    "no-arithmetic-on-optional-chained-operand",
+    "no-array-find-result-member-access-without-guard",
+    "no-array-index-deref-without-bounds-or-empty-guard",
+    "no-object-keys-values-entries-on-maybe-undefined"
   ],
   "delegatedRules": [
     {

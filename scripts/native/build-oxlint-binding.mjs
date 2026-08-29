@@ -404,6 +404,8 @@ impl Rule for ${delegatedRule.struct} {
       ],
     ]);
     const nativeRuleUtilityDependencies = new Map([
+      ["no-array-index-deref-without-bounds-or-empty-guard", ["statement_always_exits"]],
+      ["no-object-keys-values-entries-on-maybe-undefined", ["statement_always_exits"]],
       ["query-no-mutation-in-effect-as-read", ["for_each_local_callback_execution_node"]],
       [
         "query-no-query-in-effect",

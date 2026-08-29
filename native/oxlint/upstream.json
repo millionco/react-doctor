@@ -686,7 +686,13 @@
     "three-shader-require-compatible-uniform-values",
     "three-shader-require-fragment-output-on-all-paths",
     "three-shader-require-position-on-all-paths",
-    "three-shader-valid-global-initializers"
+    "three-shader-valid-global-initializers",
+    "three-raw-shader-require-fragment-float-precision",
+    "three-raw-shader-require-glsl3-version",
+    "three-shader-require-matching-uniforms",
+    "three-shader-require-matching-varyings",
+    "three-shader-require-uniform-bindings",
+    "three-shader-valid-uniform-definitions"
   ],
   "delegatedRules": [
     {

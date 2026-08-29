@@ -1245,6 +1245,12 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "three-shader-require-fragment-output-on-all-paths",
   "three-shader-require-position-on-all-paths",
   "three-shader-valid-global-initializers",
+  "three-raw-shader-require-fragment-float-precision",
+  "three-raw-shader-require-glsl3-version",
+  "three-shader-require-matching-uniforms",
+  "three-shader-require-matching-varyings",
+  "three-shader-require-uniform-bindings",
+  "three-shader-valid-uniform-definitions",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

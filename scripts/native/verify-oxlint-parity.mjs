@@ -1437,6 +1437,12 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-shader-require-fragment-output-on-all-paths": 0,
   "three-shader-require-position-on-all-paths": 0,
   "three-shader-valid-global-initializers": 0,
+  "three-raw-shader-require-fragment-float-precision": 0,
+  "three-raw-shader-require-glsl3-version": 0,
+  "three-shader-require-matching-uniforms": 0,
+  "three-shader-require-matching-varyings": 0,
+  "three-shader-require-uniform-bindings": 0,
+  "three-shader-valid-uniform-definitions": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1492,6 +1498,12 @@ const FOCUSED_PARITY_RULE_IDS = [
   "three-shader-require-fragment-output-on-all-paths",
   "three-shader-require-position-on-all-paths",
   "three-shader-valid-global-initializers",
+  "three-raw-shader-require-fragment-float-precision",
+  "three-raw-shader-require-glsl3-version",
+  "three-shader-require-matching-uniforms",
+  "three-shader-require-matching-varyings",
+  "three-shader-require-uniform-bindings",
+  "three-shader-valid-uniform-definitions",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1537,10 +1549,16 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "three-shader-no-reserved-identifiers": 1,
   "three-shader-prefer-small-integer-pow": 1,
   "three-shader-prefer-squared-distance-comparison": 1,
-  "three-shader-require-compatible-uniform-values": 1,
+  "three-shader-require-compatible-uniform-values": 2,
   "three-shader-require-fragment-output-on-all-paths": 1,
   "three-shader-require-position-on-all-paths": 1,
   "three-shader-valid-global-initializers": 1,
+  "three-raw-shader-require-fragment-float-precision": 1,
+  "three-raw-shader-require-glsl3-version": 1,
+  "three-shader-require-matching-uniforms": 2,
+  "three-shader-require-matching-varyings": 1,
+  "three-shader-require-uniform-bindings": 4,
+  "three-shader-valid-uniform-definitions": 1,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -6381,6 +6399,16 @@ const IncompatibleUniformShader = new StaticShaderMaterial({ uniforms: { time: {
 const MissingFragmentOutputShader = new StaticShaderMaterial({ fragmentShader: "void main() { if (enabled) gl_FragColor = vec4(1.0); }" });
 const MissingPositionShader = new StaticShaderMaterial({ vertexShader: "void main() { float value = 1.0; }" });
 const InvalidGlobalInitializerShader = new StaticShaderMaterial({ fragmentShader: "uniform float time = 1.0; void main() { gl_FragColor = vec4(time); }" });
+const MissingRawFloatPrecisionShader = new StaticRawShaderMaterial({ fragmentShader: "void main() { float value = 1.0; gl_FragColor = vec4(value); }" });
+const ConditionalRawFloatPrecisionShader = new StaticRawShaderMaterial({ fragmentShader: "#ifdef GL_ES\\nprecision highp float;\\n#endif\\nvoid main() { gl_FragColor = vec4(1.0); }" });
+const MissingRawGlsl3VersionShader = new StaticRawShaderMaterial({ vertexShader: "in vec3 position; void main() { gl_Position = vec4(position, 1.0); }" });
+const MismatchedUniformShader = new StaticShaderMaterial({ uniforms: { time: { value: 1 } }, vertexShader: "uniform float time; void main() { gl_Position = vec4(time); }", fragmentShader: "uniform vec2 time; void main() { gl_FragColor = vec4(time, 0.0, 1.0); }" });
+const DuplicateFragmentUniformShader = new StaticShaderMaterial({ uniforms: { signal: { value: 1 } }, vertexShader: "uniform vec3 signal; void main() { gl_Position = vec4(signal, 1.0); }", fragmentShader: "uniform vec2 signal; uniform vec4 signal; void main() { gl_FragColor = signal; }" });
+const MismatchedVaryingShader = new StaticShaderMaterial({ vertexShader: "varying vec3 signal; void main() { signal = vec3(1.0); gl_Position = vec4(0.0); }", fragmentShader: "varying vec2 signal; void main() { gl_FragColor = vec4(signal, 0.0, 1.0); }" });
+const InvalidShaderInterfaceSyntaxShader = new StaticShaderMaterial({ uniforms: { tone: { value: new StaticVector3() } }, vertexShader: "uniform vec3 tone; varying vec3 signal; void main() { signal = tone; gl_Position = vec4(0.0); }", fragmentShader: "uniform vec4 tone; varying vec2 signal; @ void main() { gl_FragColor = tone + vec4(signal, 0.0, 1.0); }" });
+const MissingUniformBindingShader = new StaticShaderMaterial({ fragmentShader: "uniform float time; void main() { gl_FragColor = vec4(time); }" });
+const InvalidUniformBindingSyntaxShader = new StaticShaderMaterial({ fragmentShader: "uniform float time; @ void main() { gl_FragColor = vec4(time); }" });
+const InvalidUniformDefinitionShader = new StaticShaderMaterial({ uniforms: { time: 1 } });
 const MacroOnlyIndexShader = new StaticShaderMaterial({ fragmentShader: "uniform float values[2];\\n#define BAD values[2]\\nvoid main() { gl_FragColor = vec4(1.0); }" });
 ReassignedThree.ShaderMaterial = class {};
 const SuppressedReassignedShader = new ReassignedThree.ShaderMaterial({
@@ -6401,7 +6429,7 @@ const CopyReaction = ({ source, target }) => {
 
 void MemoProps; void SpreadProps; void RenderProps; void AliasSmoothScroll; void SmoothScroll; void HiddenPulse; void VisiblePulse; void RepeatedText;
 void directDerivedAtom; void castDerivedAtom; void DirectQueryResult; void CastQueryResult; void DirectRedirect; void SamePageRedirect;
-void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues; void PendingNextCookies; void InvalidStaticShader; void OutOfBoundsShader; void NonuniformDerivativeShader; void Glsl3LegacySyntaxShader; void InvalidBitOperationShader; void InvalidMathShader; void InvalidSmoothstepShader; void UniformInverseShader; void RedeclaredBuiltinShader; void RedundantFragmentDepthShader; void ReservedIdentifierShader; void SmallIntegerPowerShader; void SquaredDistanceShader; void IncompatibleUniformShader; void MissingFragmentOutputShader; void MissingPositionShader; void InvalidGlobalInitializerShader; void MacroOnlyIndexShader; void SuppressedReassignedShader; void MotionExamples; void CopyReaction;
+void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues; void PendingNextCookies; void InvalidStaticShader; void OutOfBoundsShader; void NonuniformDerivativeShader; void Glsl3LegacySyntaxShader; void InvalidBitOperationShader; void InvalidMathShader; void InvalidSmoothstepShader; void UniformInverseShader; void RedeclaredBuiltinShader; void RedundantFragmentDepthShader; void ReservedIdentifierShader; void SmallIntegerPowerShader; void SquaredDistanceShader; void IncompatibleUniformShader; void MissingFragmentOutputShader; void MissingPositionShader; void InvalidGlobalInitializerShader; void MissingRawFloatPrecisionShader; void ConditionalRawFloatPrecisionShader; void MissingRawGlsl3VersionShader; void MismatchedUniformShader; void DuplicateFragmentUniformShader; void MismatchedVaryingShader; void InvalidShaderInterfaceSyntaxShader; void MissingUniformBindingShader; void InvalidUniformBindingSyntaxShader; void InvalidUniformDefinitionShader; void MacroOnlyIndexShader; void SuppressedReassignedShader; void MotionExamples; void CopyReaction;
 `,
   );
   fs.writeFileSync(

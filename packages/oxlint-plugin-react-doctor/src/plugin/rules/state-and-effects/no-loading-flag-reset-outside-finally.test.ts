@@ -156,6 +156,47 @@ describe("no-loading-flag-reset-outside-finally", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when the reset is in finally after other statements (issue #1698 case A)", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const submit = async () => {
+        setIsProcessing(true)
+        try {
+          await doPayment()
+        } catch (err) {
+          showSnackbar(messageOf(err), "error")
+        } finally {
+          guard.unlock()
+          setIsProcessing(false)
+        }
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when the reset in finally is guarded for stale responses (issue #1698 case B)", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useRef, useState } from "react";
+       const Component = () => {
+         const [, setIsLoading] = useState(false);
+         const reqIdRef = useRef(0);
+         const currentReqRef = useRef(0);
+         const load = async () => {
+           const id = ++reqIdRef.current;
+           currentReqRef.current = id;
+           setIsLoading(true);
+           try {
+             await fetchData();
+           } finally {
+             if (currentReqRef.current === id) setIsLoading(false);
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet when an effect cleanup lifecycle guard wraps a reset in finally", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
@@ -3434,22 +3475,22 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("distinguishes opaque calls before and after catch and finally resets", () => {
+  it("distinguishes explicit abrupt completions before and after catch and finally resets", () => {
     const catchBefore = runRule(
       noLoadingFlagResetOutsideFinally,
-      `const run = async () => { setLoading(true); try { await load(); } catch { risky(); setLoading(false); } };`,
+      `const run = async () => { setLoading(true); try { await load(); } catch { throw new Error(); setLoading(false); } };`,
     );
     const catchAfter = runRule(
       noLoadingFlagResetOutsideFinally,
-      `const run = async () => { setLoading(true); try { await load(); } catch { setLoading(false); risky(); } };`,
+      `const run = async () => { setLoading(true); try { await load(); } catch { setLoading(false); throw new Error(); } };`,
     );
     const finallyBefore = runRule(
       noLoadingFlagResetOutsideFinally,
-      `const run = async () => { setLoading(true); try { await load(); } finally { risky(); setLoading(false); } };`,
+      `const run = async () => { setLoading(true); try { await load(); } finally { return; setLoading(false); } };`,
     );
     const finallyAfter = runRule(
       noLoadingFlagResetOutsideFinally,
-      `const run = async () => { setLoading(true); try { await load(); } finally { setLoading(false); risky(); } };`,
+      `const run = async () => { setLoading(true); try { await load(); } finally { setLoading(false); return; } };`,
     );
     expect(catchBefore.diagnostics).toHaveLength(1);
     expect(catchAfter.diagnostics).toHaveLength(0);

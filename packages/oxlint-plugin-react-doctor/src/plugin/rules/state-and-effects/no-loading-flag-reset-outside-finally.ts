@@ -1824,6 +1824,26 @@ const subtreeCallsDefinitelyThrowingLocalFunction = (
   return doesDefinitelyThrow;
 };
 
+const hasExplicitAbruptCompletionBefore = (
+  boundary: EsTreeNode,
+  node: EsTreeNode,
+): boolean => {
+  const nodeStart = getNodeStart(node);
+  if (nodeStart === null) return true;
+  let hasAbruptCompletion = false;
+  walkAst(boundary, (child: EsTreeNode) => {
+    if (hasAbruptCompletion) return false;
+    if (child !== boundary && isFunctionLike(child)) return false;
+    const childStart = getNodeStart(child);
+    if (childStart === null || childStart >= nodeStart) return;
+    if (isNodeOfType(child, "ReturnStatement") || isNodeOfType(child, "ThrowStatement")) {
+      hasAbruptCompletion = true;
+      return false;
+    }
+  });
+  return hasAbruptCompletion;
+};
+
 const hasAbruptCompletionBefore = (
   boundary: EsTreeNode,
   node: EsTreeNode,
@@ -1917,7 +1937,7 @@ const getExceptionalResetProtection = (
         isUnconditional:
           isUnconditional &&
           Boolean(cursor.finalizer) &&
-          !hasAbruptCompletionBefore(cursor.finalizer, callNode, context),
+          !hasExplicitAbruptCompletionBefore(cursor.finalizer, callNode),
       };
     }
     child = cursor;

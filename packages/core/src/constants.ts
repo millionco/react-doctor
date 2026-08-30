@@ -1326,6 +1326,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "rerender-transitions-scroll",
   "rn-prefer-pressable-over-gesture-detector",
   "rn-scrollview-flex-in-content-container",
+  "no-sync-xhr",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

@@ -124,6 +124,7 @@ const derivedStateHookFixturePath = path.join(fixtureDirectory, "app", "derived-
 const scrollTransitionFixturePath = path.join(fixtureDirectory, "app", "scroll-transition.tsx");
 const pressableGestureFixturePath = path.join(fixtureDirectory, "app", "pressable-gesture.tsx");
 const scrollViewFlexFixturePath = path.join(fixtureDirectory, "app", "scrollview-flex.tsx");
+const syncXhrFixturePath = path.join(fixtureDirectory, "app", "sync-xhr.ts");
 const r3fLightingFixturePath = path.join(fixtureDirectory, "app", "r3f-lighting.tsx");
 const r3fMetalEnvironmentFixturePath = path.join(
   fixtureDirectory,
@@ -1568,6 +1569,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "rerender-transitions-scroll": 2,
   "rn-prefer-pressable-over-gesture-detector": 2,
   "rn-scrollview-flex-in-content-container": 2,
+  "no-sync-xhr": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1704,6 +1706,7 @@ const FOCUSED_PARITY_RULE_IDS = [
   "rerender-transitions-scroll",
   "rn-prefer-pressable-over-gesture-detector",
   "rn-scrollview-flex-in-content-container",
+  "no-sync-xhr",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1834,6 +1837,7 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "rerender-transitions-scroll": 0,
   "rn-prefer-pressable-over-gesture-detector": 0,
   "rn-scrollview-flex-in-content-container": 0,
+  "no-sync-xhr": 0,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -4089,6 +4093,22 @@ export const FlexibleScrollView = () => (
 export const DefaultStyleScrollView = ({
   styles = StyleSheet.create({ container: { flex: 1 } }),
 }) => <ScrollView contentContainerStyle={styles.container} />;
+`,
+  );
+  fs.writeFileSync(
+    syncXhrFixturePath,
+    `const request = new XMLHttpRequest();
+request.open("GET", "/api", false);
+
+declare const externalMutator: (request: XMLHttpRequest) => void;
+const inspectRequest = (_request: XMLHttpRequest) => {};
+const mutateRequest = (request: XMLHttpRequest) => {
+  inspectRequest(request);
+  externalMutator(request);
+};
+const escapedRequest = new XMLHttpRequest();
+mutateRequest(escapedRequest);
+escapedRequest.open("GET", "/escaped", false);
 `,
   );
   fs.writeFileSync(

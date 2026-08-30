@@ -767,7 +767,8 @@
     "rerender-derived-state-from-hook",
     "rerender-transitions-scroll",
     "rn-prefer-pressable-over-gesture-detector",
-    "rn-scrollview-flex-in-content-container"
+    "rn-scrollview-flex-in-content-container",
+    "no-sync-xhr"
   ],
   "delegatedRules": [
     {

@@ -489,6 +489,7 @@ impl Rule for ${delegatedRule.struct} {
       ["no-render-in-render", ["has_possible_static_property_write_before"]],
       ["no-controlled-selection-focus-effect", ["has_possible_static_property_write_before"]],
       ["pointer-capture-needs-cancel-handler", ["has_possible_static_property_write_before"]],
+      ["no-sync-xhr", ["has_possible_static_property_write_before"]],
       ["rn-no-scroll-state", ["member_expression_identifier_property_name"]],
       [
         "no-this-in-sfc",

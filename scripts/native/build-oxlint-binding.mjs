@@ -627,6 +627,28 @@ impl Rule for ${delegatedRule.struct} {
           "collect_binding_pattern_names",
         ],
       ],
+      ["server-hoist-static-io", ["collect_binding_pattern_names", "is_in_project_directory"]],
+      ["server-no-mutable-module-state", ["find_guarding_try_statement"]],
+      [
+        "styled-components-non-transient-custom-prop-on-intrinsic-element",
+        ["module_api_path_matches"],
+      ],
+      ["no-array-index-as-key", ["member_expression_identifier_property_name"]],
+      [
+        "no-img-without-dimensions",
+        [
+          "is_generated_image_render_filename",
+          "generated_image_jsx_opening_element_ids",
+          "has_capability_or_unspecified",
+          "resolve_jsx_element_type",
+          "get_authoritative_jsx_attribute",
+          "get_inline_style_object_expression",
+          "get_effective_static_style_property",
+          "get_static_class_name",
+          "tailwind_class_name_tokens",
+          "get_effective_tailwind_class_name_token",
+        ],
+      ],
       ["rn-no-scroll-state", ["member_expression_identifier_property_name"]],
       [
         "no-this-in-sfc",

@@ -197,6 +197,20 @@ const memoBeforeEarlyReturnFixturePath = path.join(
   "app",
   "memo-before-early-return.tsx",
 );
+const arrayIndexKeyFixturePath = path.join(fixtureDirectory, "app", "array-index-key.tsx");
+const imageDimensionsFixturePath = path.join(fixtureDirectory, "app", "image-dimensions.tsx");
+const styledNonTransientPropFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "styled-non-transient-prop.tsx",
+);
+const serverHoistStaticIoFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "static-data",
+  "route.ts",
+);
+const serverMutableStateFixturePath = path.join(fixtureDirectory, "app", "server-mutable-state.ts");
 const r3fLightingFixturePath = path.join(fixtureDirectory, "app", "r3f-lighting.tsx");
 const r3fMetalEnvironmentFixturePath = path.join(
   fixtureDirectory,
@@ -1520,7 +1534,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "nextjs-metadata-url-consistency": 0,
   "nextjs-missing-metadata": 0,
   "nextjs-no-client-side-redirect": 0,
-  "nextjs-no-img-element": 21,
+  "nextjs-no-img-element": 22,
   "nextjs-no-native-script": 5,
   "no-pulsing-status-dot": 0,
   "no-radial-halo": 0,
@@ -1665,15 +1679,20 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "media-has-caption": 5,
   "no-multi-component-file": 168,
   "no-fetch-response-used-without-status-check": 5,
+  "no-img-without-dimensions": 20,
   "no-loading-flag-reset-outside-finally": 1,
   "no-noninteractive-element-interactions": 0,
   "no-noninteractive-tabindex": 5,
   "no-redundant-roles": 2,
   "no-responsive-hidden-accessible-name": 0,
   "no-static-element-interactions": 2,
+  "no-array-index-as-key": 2,
   "prefer-tag-over-role": 12,
   "rerender-defer-reads-hook": 1,
   "rerender-memo-before-early-return": 1,
+  "server-hoist-static-io": 2,
+  "server-no-mutable-module-state": 1,
+  "styled-components-non-transient-custom-prop-on-intrinsic-element": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1829,6 +1848,7 @@ const FOCUSED_PARITY_RULE_IDS = [
   "media-has-caption",
   "no-multi-component-file",
   "no-fetch-response-used-without-status-check",
+  "no-img-without-dimensions",
   "no-loading-flag-reset-outside-finally",
   "no-noninteractive-element-interactions",
   "no-noninteractive-tabindex",
@@ -1838,6 +1858,10 @@ const FOCUSED_PARITY_RULE_IDS = [
   "prefer-tag-over-role",
   "rerender-defer-reads-hook",
   "rerender-memo-before-early-return",
+  "no-array-index-as-key",
+  "server-hoist-static-io",
+  "server-no-mutable-module-state",
+  "styled-components-non-transient-custom-prop-on-intrinsic-element",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1987,6 +2011,7 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "media-has-caption": 0,
   "no-multi-component-file": 58,
   "no-fetch-response-used-without-status-check": 0,
+  "no-img-without-dimensions": 0,
   "no-loading-flag-reset-outside-finally": 3,
   "no-noninteractive-element-interactions": 0,
   "no-noninteractive-tabindex": 0,
@@ -1996,6 +2021,10 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "prefer-tag-over-role": 0,
   "rerender-defer-reads-hook": 0,
   "rerender-memo-before-early-return": 0,
+  "no-array-index-as-key": 0,
+  "server-hoist-static-io": 0,
+  "server-no-mutable-module-state": 0,
+  "styled-components-non-transient-custom-prop-on-intrinsic-element": 0,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -4565,6 +4594,43 @@ export const Profile = ({ isLoading }) => {
   if (isLoading) return null;
   return content;
 };
+`,
+  );
+  fs.writeFileSync(
+    arrayIndexKeyFixturePath,
+    `import React from "react";
+export const List = ({ items }) => items.map((item, index) => <div key={index}>{item}</div>);
+`,
+  );
+  fs.writeFileSync(
+    imageDimensionsFixturePath,
+    `import React from "react";
+export const Hero = () => <img src="/hero.png" alt="" />;
+`,
+  );
+  fs.writeFileSync(
+    styledNonTransientPropFixturePath,
+    `import styled from "styled-components";
+export const Card = styled.div<{ active: boolean }>\`color: red;\`;
+`,
+  );
+  fs.mkdirSync(path.dirname(serverHoistStaticIoFixturePath), { recursive: true });
+  fs.writeFileSync(
+    serverHoistStaticIoFixturePath,
+    `import { readFile } from "node:fs/promises";
+export async function GET() {
+  const content = await readFile(new URL("./content.json", import.meta.url), "utf8");
+  return Response.json({ content });
+}
+`,
+  );
+  fs.writeFileSync(
+    serverMutableStateFixturePath,
+    `"use server";
+let requestCount = 0;
+export async function recordRequest() {
+  requestCount += 1;
+}
 `,
   );
   fs.writeFileSync(

@@ -1345,15 +1345,20 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "media-has-caption",
   "no-multi-component-file",
   "no-fetch-response-used-without-status-check",
+  "no-img-without-dimensions",
   "no-loading-flag-reset-outside-finally",
   "no-noninteractive-element-interactions",
   "no-noninteractive-tabindex",
   "no-redundant-roles",
   "no-responsive-hidden-accessible-name",
   "no-static-element-interactions",
+  "no-array-index-as-key",
   "prefer-tag-over-role",
   "rerender-defer-reads-hook",
   "rerender-memo-before-early-return",
+  "server-hoist-static-io",
+  "server-no-mutable-module-state",
+  "styled-components-non-transient-custom-prop-on-intrinsic-element",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

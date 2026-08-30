@@ -192,4 +192,23 @@ describe("rerender-state-only-in-handlers", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("still flags state not consumed even with member expression non-hook calls", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `
+      function Widget() {
+        const [logged, setLogged] = useState(false);
+        const onClick = () => {
+          Math.random();
+          setLogged(true);
+        };
+        return <button onClick={onClick}>go</button>;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("logged");
+  });
 });

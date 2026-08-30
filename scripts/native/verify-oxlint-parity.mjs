@@ -164,6 +164,39 @@ const expoNativeFixtureDirectory = path.join(fixtureDirectory, "expo-native");
 const expoImageFixturePath = path.join(expoNativeFixtureDirectory, "src", "expo-image.tsx");
 const rnBoxShadowFixturePath = path.join(expoNativeFixtureDirectory, "src", "box-shadow.tsx");
 const serverFetchFixturePath = path.join(fixtureDirectory, "app", "cache", "route.ts");
+const langFixturePath = path.join(fixtureDirectory, "app", "invalid-lang.tsx");
+const mediaCaptionFixturePath = path.join(fixtureDirectory, "app", "media-caption.tsx");
+const multiComponentFixturePath = path.join(fixtureDirectory, "app", "multi-component.tsx");
+const fetchResponseFixturePath = path.join(fixtureDirectory, "app", "fetch-response.ts");
+const loadingResetFixturePath = path.join(fixtureDirectory, "app", "loading-reset.ts");
+const noninteractiveInteractionsFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "noninteractive-interactions.tsx",
+);
+const noninteractiveTabindexFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "noninteractive-tabindex.tsx",
+);
+const redundantRoleFixturePath = path.join(fixtureDirectory, "app", "redundant-role.tsx");
+const responsiveHiddenNameFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "responsive-hidden-name.tsx",
+);
+const staticElementInteractionsFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "static-element-interactions.tsx",
+);
+const preferTagOverRoleFixturePath = path.join(fixtureDirectory, "app", "prefer-tag-over-role.tsx");
+const deferReadsHookFixturePath = path.join(fixtureDirectory, "app", "defer-reads-hook.tsx");
+const memoBeforeEarlyReturnFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "memo-before-early-return.tsx",
+);
 const r3fLightingFixturePath = path.join(fixtureDirectory, "app", "r3f-lighting.tsx");
 const r3fMetalEnvironmentFixturePath = path.join(
   fixtureDirectory,
@@ -859,7 +892,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-moment": 1,
   "no-namespace": 2,
   "no-react-children": 2,
-  "preact-no-react-hooks-import": 6,
+  "preact-no-react-hooks-import": 7,
   "rn-bottom-sheet-prefer-native": 1,
   "rn-no-deprecated-modules": 1,
   "rn-no-legacy-expo-packages": 1,
@@ -1298,7 +1331,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-server-middleware-return-response": 1,
   "react-router-session-mutation-requires-commit": 1,
   "no-create-store-in-render": 1,
-  "react-compiler-no-manual-memoization": 13,
+  "react-compiler-no-manual-memoization": 14,
   "no-giant-component": 1,
   "no-nested-component-definition": 1,
   "no-high-complexity-react-function": 1,
@@ -1446,7 +1479,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "button-has-type": 5,
   "checked-requires-onchange-or-readonly": 6,
   "class-component-missing-component-will-unmount-teardown": 3,
-  "click-events-have-key-events": 3,
+  "click-events-have-key-events": 5,
   "control-has-associated-label": 54,
   "display-name": 10,
   "forbid-component-props": 0,
@@ -1628,6 +1661,19 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "role-button-requires-complete-keyboard-activation": 1,
   "server-after-nonblocking": 1,
   "server-fetch-without-revalidate": 0,
+  lang: 1,
+  "media-has-caption": 5,
+  "no-multi-component-file": 168,
+  "no-fetch-response-used-without-status-check": 5,
+  "no-loading-flag-reset-outside-finally": 1,
+  "no-noninteractive-element-interactions": 0,
+  "no-noninteractive-tabindex": 5,
+  "no-redundant-roles": 2,
+  "no-responsive-hidden-accessible-name": 0,
+  "no-static-element-interactions": 2,
+  "prefer-tag-over-role": 12,
+  "rerender-defer-reads-hook": 1,
+  "rerender-memo-before-early-return": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1779,6 +1825,19 @@ const FOCUSED_PARITY_RULE_IDS = [
   "role-button-requires-complete-keyboard-activation",
   "server-after-nonblocking",
   "server-fetch-without-revalidate",
+  "lang",
+  "media-has-caption",
+  "no-multi-component-file",
+  "no-fetch-response-used-without-status-check",
+  "no-loading-flag-reset-outside-finally",
+  "no-noninteractive-element-interactions",
+  "no-noninteractive-tabindex",
+  "no-redundant-roles",
+  "no-responsive-hidden-accessible-name",
+  "no-static-element-interactions",
+  "prefer-tag-over-role",
+  "rerender-defer-reads-hook",
+  "rerender-memo-before-early-return",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1924,6 +1983,19 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "role-button-requires-complete-keyboard-activation": 0,
   "server-after-nonblocking": 0,
   "server-fetch-without-revalidate": 0,
+  lang: 0,
+  "media-has-caption": 0,
+  "no-multi-component-file": 58,
+  "no-fetch-response-used-without-status-check": 0,
+  "no-loading-flag-reset-outside-finally": 3,
+  "no-noninteractive-element-interactions": 0,
+  "no-noninteractive-tabindex": 0,
+  "no-redundant-roles": 0,
+  "no-responsive-hidden-accessible-name": 0,
+  "no-static-element-interactions": 0,
+  "prefer-tag-over-role": 0,
+  "rerender-defer-reads-hook": 0,
+  "rerender-memo-before-early-return": 0,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -4361,6 +4433,138 @@ export const ShadowCard = () => <View style={{ shadowColor: "#000", shadowRadius
   fs.writeFileSync(
     serverFetchFixturePath,
     `export const GET = () => fetch("https://example.com/api/data");
+`,
+  );
+  fs.writeFileSync(
+    langFixturePath,
+    `import React from "react";
+export const DocumentRoot = () => <html lang="zzzz" />;
+`,
+  );
+  fs.writeFileSync(
+    mediaCaptionFixturePath,
+    `import React from "react";
+export const ProductDemo = () => <video src="/product-demo.mp4" />;
+`,
+  );
+  fs.writeFileSync(
+    multiComponentFixturePath,
+    `import React from "react";
+const AlphaCard = () => <article />;
+const BetaCard = () => <article />;
+const GammaCard = () => <article />;
+`,
+  );
+  fs.writeFileSync(
+    fetchResponseFixturePath,
+    `export async function loadProfile() {
+  const response = await fetch("/api/profile");
+  return response.json();
+}
+
+const responseValidators = {
+  isSuccessful(response) {
+    return response.ok;
+  },
+};
+
+export async function loadValidatedProfile() {
+  const response = await fetch("/api/validated-profile");
+  if (!responseValidators.isSuccessful(response)) throw new Error("request failed");
+  return response.json();
+}
+
+export async function exportCanvas(canvas: HTMLCanvasElement) {
+  const response = await fetch(canvas.toDataURL("image/png"));
+  return response.blob();
+}
+
+export async function exportComputedCanvas() {
+  const canvas = document["createElement"]("canvas");
+  const response = await fetch(canvas.toDataURL("image/png"));
+  return response.blob();
+}
+`,
+  );
+  fs.writeFileSync(
+    loadingResetFixturePath,
+    `export async function saveProfile() {
+  setLoading(true);
+  await persistProfile();
+  setLoading(false);
+}
+
+export async function resolveLocalValue() {
+  setLoading(true);
+  await 42;
+  setLoading(false);
+}
+
+export async function resolveLocalValues() {
+  setLoading(true);
+  await Promise.all([1, "ready"]);
+  setLoading(false);
+}
+`,
+  );
+  fs.writeFileSync(
+    noninteractiveInteractionsFixturePath,
+    `import React from "react";
+export const ClickablePanel = ({ activate }) => <div onClick={activate} />;
+`,
+  );
+  fs.writeFileSync(
+    noninteractiveTabindexFixturePath,
+    `import React from "react";
+export const TabbablePanel = () => <div tabIndex={0} />;
+export const ConditionalTabbablePanel = ({ isActive }) => <div tabIndex={isActive ? 0 : 1} />;
+`,
+  );
+  fs.writeFileSync(
+    redundantRoleFixturePath,
+    `import React from "react";
+export const MainContent = () => <main role="main" />;
+`,
+  );
+  fs.writeFileSync(
+    responsiveHiddenNameFixturePath,
+    `import React from "react";
+export const SaveButton = () => (
+  <button type="button">
+    <span className="sm:hidden">Save</span>
+  </button>
+);
+`,
+  );
+  fs.writeFileSync(
+    staticElementInteractionsFixturePath,
+    `import React from "react";
+export const ClickTarget = ({ activate }) => <div onClick={activate} />;
+`,
+  );
+  fs.writeFileSync(
+    preferTagOverRoleFixturePath,
+    `import React from "react";
+export const Action = () => <div role="button">Continue</div>;
+`,
+  );
+  fs.writeFileSync(
+    deferReadsHookFixturePath,
+    `import React from "react";
+export const SearchAction = () => {
+  const searchParams = useSearchParams();
+  return <button onClick={() => searchParams.get("query")}>Search</button>;
+};
+`,
+  );
+  fs.writeFileSync(
+    memoBeforeEarlyReturnFixturePath,
+    `import React, { useMemo } from "react";
+export const Profile = ({ isLoading }) => {
+  const content = useMemo(() => <section>Profile</section>, []);
+  if (isLoading) return null;
+  return content;
+};
 `,
   );
   fs.writeFileSync(

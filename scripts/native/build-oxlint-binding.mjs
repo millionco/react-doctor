@@ -555,6 +555,78 @@ impl Rule for ${delegatedRule.struct} {
         "role-button-requires-complete-keyboard-activation",
         ["has_possible_static_property_write_before"],
       ],
+      ["lang", ["resolve_configured_jsx_element_type"]],
+      ["media-has-caption", ["is_local_test_scaffold_jsx", "resolve_configured_jsx_element_type"]],
+      ["no-multi-component-file", ["is_non_production_file", "is_react_api_call"]],
+      [
+        "no-fetch-response-used-without-status-check",
+        ["has_possible_static_property_write_before"],
+      ],
+      [
+        "no-redundant-roles",
+        [
+          "get_implicit_role",
+          "is_local_test_scaffold_jsx",
+          "resolve_configured_jsx_element_type",
+          "should_use_curated_port_behavior",
+        ],
+      ],
+      [
+        "no-responsive-hidden-accessible-name",
+        [
+          "get_authoritative_jsx_attribute",
+          "get_tailwind_visibility_at_breakpoints",
+          "get_tailwind_visibility_effect",
+          "has_any_jsx_spread_attribute",
+          "has_capability_or_unspecified",
+          "is_proven_intrinsic_jsx_element",
+          "resolve_jsx_element_type",
+          "resolve_jsx_element_type_name",
+          "tailwind_class_name_tokens",
+        ],
+      ],
+      [
+        "no-noninteractive-element-interactions",
+        ["is_non_production_file", "resolve_configured_jsx_element_type"],
+      ],
+      [
+        "no-noninteractive-tabindex",
+        [
+          "has_any_jsx_spread_attribute",
+          "is_non_production_file",
+          "parse_static_jsx_number",
+          "resolve_configured_jsx_element_type",
+        ],
+      ],
+      [
+        "no-static-element-interactions",
+        [
+          "file_is_non_react_jsx_dialect",
+          "is_non_production_file",
+          "should_use_curated_port_behavior",
+          "resolve_configured_jsx_element_type",
+          "is_statically_hidden_from_screen_reader",
+        ],
+      ],
+      [
+        "prefer-tag-over-role",
+        [
+          "file_is_non_react_jsx_dialect",
+          "is_non_production_file",
+          "resolve_configured_jsx_element_type",
+          "is_statically_hidden_from_screen_reader",
+          "has_any_jsx_spread_attribute",
+        ],
+      ],
+      ["rerender-defer-reads-hook", ["is_non_production_file"]],
+      [
+        "rerender-memo-before-early-return",
+        [
+          "is_non_production_file",
+          "resolve_cfg_assigned_expressions_for_reference",
+          "collect_binding_pattern_names",
+        ],
+      ],
       ["rn-no-scroll-state", ["member_expression_identifier_property_name"]],
       [
         "no-this-in-sfc",

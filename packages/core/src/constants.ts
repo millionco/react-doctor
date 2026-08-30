@@ -1341,6 +1341,19 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "role-button-requires-complete-keyboard-activation",
   "server-after-nonblocking",
   "server-fetch-without-revalidate",
+  "lang",
+  "media-has-caption",
+  "no-multi-component-file",
+  "no-fetch-response-used-without-status-check",
+  "no-loading-flag-reset-outside-finally",
+  "no-noninteractive-element-interactions",
+  "no-noninteractive-tabindex",
+  "no-redundant-roles",
+  "no-responsive-hidden-accessible-name",
+  "no-static-element-interactions",
+  "prefer-tag-over-role",
+  "rerender-defer-reads-hook",
+  "rerender-memo-before-early-return",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

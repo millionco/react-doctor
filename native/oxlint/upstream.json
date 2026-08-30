@@ -730,7 +730,12 @@
     "no-mixed-icon-libraries",
     "no-reduced-motion-content-removal",
     "no-spread-accumulator-in-reduce",
-    "no-unescaped-dynamic-string-in-regexp"
+    "no-unescaped-dynamic-string-in-regexp",
+    "no-barrel-import",
+    "no-tiny-text",
+    "no-locale-format-in-render",
+    "no-mixed-animation-owners",
+    "no-mutate-queried-dom-node-in-component"
   ],
   "delegatedRules": [
     {

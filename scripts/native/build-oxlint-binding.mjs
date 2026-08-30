@@ -10,6 +10,7 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const requireFromScript = createRequire(import.meta.url);
 const nativeDirectory = path.join(repositoryRoot, "native", "oxlint");
 const nativeRulesDirectory = path.join(nativeDirectory, "rules");
+const nativeScansDirectory = path.join(nativeDirectory, "scans");
 const upstream = JSON.parse(fs.readFileSync(path.join(nativeDirectory, "upstream.json"), "utf8"));
 const patchPath = path.join(nativeDirectory, "react-doctor.patch");
 const delegatedRules = new Map(
@@ -73,6 +74,21 @@ try {
     process.exitCode = 0;
   } else {
     run("git", ["apply", patchPath], { cwd: checkoutDirectory });
+    const upstreamScansDirectory = path.join(
+      checkoutDirectory,
+      "crates",
+      "oxc_linter",
+      "src",
+      "react_doctor_scan",
+    );
+    fs.mkdirSync(upstreamScansDirectory, { recursive: true });
+    for (const scanSourceFilename of fs.readdirSync(nativeScansDirectory)) {
+      if (!scanSourceFilename.endsWith(".rs")) continue;
+      fs.copyFileSync(
+        path.join(nativeScansDirectory, scanSourceFilename),
+        path.join(upstreamScansDirectory, scanSourceFilename.replaceAll("-", "_")),
+      );
+    }
     const upstreamRulesDirectory = path.join(
       checkoutDirectory,
       "crates",
@@ -412,6 +428,64 @@ impl Rule for ${delegatedRule.struct} {
       ],
     ]);
     const nativeRuleUtilityDependencies = new Map([
+      ["no-barrel-import", ["is_non_production_file", "is_react_native_file_target"]],
+      [
+        "no-locale-format-in-render",
+        [
+          "component_or_hook_function_name",
+          "find_render_phase_component_or_hook",
+          "identifier_initializer",
+          "is_non_production_file",
+          "is_react_native_file_target",
+          "static_member_expression_property_name",
+        ],
+      ],
+      [
+        "no-mixed-animation-owners",
+        [
+          "does_tailwind_variant_scope_cover",
+          "get_authoritative_jsx_attribute",
+          "get_inline_style_object_expression_with_aliases",
+          "get_static_jsx_attribute_string_values",
+          "get_static_motion_property_object",
+          "has_any_jsx_spread_attribute",
+          "has_capability",
+          "has_capability_or_unspecified",
+          "tailwind_class_name_tokens",
+        ],
+      ],
+      [
+        "no-mutate-queried-dom-node-in-component",
+        [
+          "component_or_hook_function_name",
+          "find_render_phase_component_or_hook",
+          "get_authoritative_jsx_attribute",
+          "is_react_hook_call",
+        ],
+      ],
+      [
+        "no-tiny-text",
+        [
+          "format_javascript_number",
+          "get_authoritative_jsx_attribute",
+          "get_effective_nonzero_tailwind_tracking",
+          "get_effective_static_style_property",
+          "get_effective_tailwind_class_name_token",
+          "get_inline_style_object_expression",
+          "get_object_property_string_value",
+          "get_static_class_name",
+          "get_static_effective_font_size",
+          "get_static_style_property_number_value",
+          "get_tailwind_visibility_at_breakpoints",
+          "has_any_jsx_spread_attribute",
+          "has_capability_or_unspecified",
+          "is_js_whitespace",
+          "is_non_production_file",
+          "is_statically_hidden_from_screen_reader",
+          "resolve_jsx_element_type",
+          "tailwind_class_name_tokens",
+        ],
+      ],
       ["no-array-index-deref-without-bounds-or-empty-guard", ["statement_always_exits"]],
       ["no-object-keys-values-entries-on-maybe-undefined", ["statement_always_exits"]],
       [
@@ -791,6 +865,14 @@ impl Rule for ${delegatedRule.struct} {
       if (typeof nativeBinding.lint !== "function") {
         throw new Error(`built binding does not export lint: ${outputBindingPath}`);
       }
+      if (typeof nativeBinding.scanReactDoctorFile !== "function") {
+        throw new Error(`built binding does not export scanReactDoctorFile: ${outputBindingPath}`);
+      }
+      if (typeof nativeBinding.reactDoctorNativeScanRuleIds !== "function") {
+        throw new Error(
+          `built binding does not export reactDoctorNativeScanRuleIds: ${outputBindingPath}`,
+        );
+      }
 
       const sha256 = (filePath) =>
         crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
@@ -804,6 +886,7 @@ impl Rule for ${delegatedRule.struct} {
             oxlintVersion: upstream.oxlintVersion,
             rustToolchain: upstream.rustToolchain,
             nativeRules: upstream.nativeRules,
+            nativeScanRules: nativeBinding.reactDoctorNativeScanRuleIds(),
             bindingFile: bindingFileName,
             bindingSha256: sha256(outputBindingPath),
             patchSha256: sha256(patchPath),

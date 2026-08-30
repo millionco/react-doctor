@@ -1481,6 +1481,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-reduced-motion-content-removal": 0,
   "no-spread-accumulator-in-reduce": 0,
   "no-unescaped-dynamic-string-in-regexp": 0,
+  "no-barrel-import": 0,
+  "no-tiny-text": 0,
+  "no-locale-format-in-render": 0,
+  "no-mixed-animation-owners": 0,
+  "no-mutate-queried-dom-node-in-component": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1580,6 +1585,11 @@ const FOCUSED_PARITY_RULE_IDS = [
   "no-reduced-motion-content-removal",
   "no-spread-accumulator-in-reduce",
   "no-unescaped-dynamic-string-in-regexp",
+  "no-barrel-import",
+  "no-tiny-text",
+  "no-locale-format-in-render",
+  "no-mixed-animation-owners",
+  "no-mutate-queried-dom-node-in-component",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1673,6 +1683,11 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "no-reduced-motion-content-removal": 1,
   "no-spread-accumulator-in-reduce": 1,
   "no-unescaped-dynamic-string-in-regexp": 1,
+  "no-barrel-import": 1,
+  "no-tiny-text": 2,
+  "no-locale-format-in-render": 1,
+  "no-mixed-animation-owners": 1,
+  "no-mutate-queried-dom-node-in-component": 1,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -6393,6 +6408,20 @@ export const UncertainStaticSpreadScene = () => {
   fs.mkdirSync(path.dirname(focusedParityGetRoutePath), { recursive: true });
   fs.mkdirSync(path.dirname(focusedParitySearchComponentPath), { recursive: true });
   fs.mkdirSync(path.dirname(focusedParitySearchPagePath), { recursive: true });
+  const focusedBarrelFixtureDirectory = path.join(focusedParityDirectory, "app", "barrel");
+  fs.mkdirSync(focusedBarrelFixtureDirectory, { recursive: true });
+  fs.writeFileSync(
+    path.join(focusedBarrelFixtureDirectory, "index.ts"),
+    'export { BarrelPrimary } from "./primary";\nexport { BarrelSecondary } from "./secondary";\n',
+  );
+  fs.writeFileSync(
+    path.join(focusedBarrelFixtureDirectory, "primary.ts"),
+    'export const BarrelPrimary = () => "primary";\n',
+  );
+  fs.writeFileSync(
+    path.join(focusedBarrelFixtureDirectory, "secondary.ts"),
+    'export const BarrelSecondary = () => "secondary";\n',
+  );
   fs.writeFileSync(
     focusedParitySearchComponentPath,
     `'use client';\nimport { useSearchParams } from "next/navigation";\nexport const SearchClient = () => { const params = useSearchParams(); return <span>{params.get("q")}</span>; };\n`,
@@ -6404,6 +6433,7 @@ export const UncertainStaticSpreadScene = () => {
   fs.writeFileSync(
     focusedParityFixturePath,
     `import { atom, useAtomValue } from "jotai";
+import { BarrelPrimary } from "./barrel";
 import { debounce } from "lodash";
 import { makeAutoObservable, reaction as focusedMobxReaction } from "mobx";
 import { observer } from "mobx-react-lite";
@@ -6662,6 +6692,18 @@ const FocusedMixedIcons = () => <><FocusedLucideSearch /><HomeIcon /></>;
 const FocusedReducedMotionRemoval = () => useReducedMotion() ? null : <p>Upload complete</p>;
 const FocusedSpreadAccumulator = ({ items }) => items.reduce((accumulator, item) => [...accumulator, item], []);
 const FocusedUnsafeDynamicRegexp = ({ highlight }) => RegExp(highlight, "gi");
+const TinyPrefixParity = ({ translatedDescription }) => <><div className="flex flex-col"><span style={{ fontSize: "8px" }}>Readable copy</span></div><div className="docx-shortcut-item"><div style={{ fontSize: "11px" }}>{translatedDescription}</div></div></>;
+const FocusedLocaleFormat = ({ value }) => {
+  useState(0);
+  return <time>{new Date(value).toLocaleString()}</time>;
+};
+const FocusedMixedAnimationOwners = () => <motion.div animate={{ opacity: 1 }} className="transition-opacity duration-200" />;
+const FocusedMutatedQueriedNode = ({ opacity }) => {
+  const row = document.getElementById("focused-row");
+  row.style.opacity = "0";
+  return <div id="focused-row" style={{ opacity }} />;
+};
+const barrelPrimaryValue = BarrelPrimary();
 let ReassignedMemo = memo(Base);
 ReassignedMemo = Base;
 const ComparatorMemo = memo(Base, () => true);
@@ -6795,7 +6837,7 @@ const CopyReaction = ({ source, target }) => {
 
 void MemoProps; void SpreadProps; void RenderProps; void AliasSmoothScroll; void SmoothScroll; void HiddenPulse; void VisiblePulse; void RepeatedText; void InvalidMobxObserver; void MobxChildStore;
 void directDerivedAtom; void castDerivedAtom; void DirectQueryResult; void CastQueryResult; void DirectRedirect; void SamePageRedirect;
-void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues; void PendingNextCookies; void InvalidStaticShader; void OutOfBoundsShader; void NonuniformDerivativeShader; void Glsl3LegacySyntaxShader; void InvalidBitOperationShader; void InvalidMathShader; void InvalidSmoothstepShader; void UniformInverseShader; void RedeclaredBuiltinShader; void RedundantFragmentDepthShader; void ReservedIdentifierShader; void SmallIntegerPowerShader; void SquaredDistanceShader; void IncompatibleUniformShader; void MissingFragmentOutputShader; void MissingPositionShader; void InvalidGlobalInitializerShader; void MissingRawFloatPrecisionShader; void ConditionalRawFloatPrecisionShader; void MissingRawGlsl3VersionShader; void MismatchedUniformShader; void DuplicateFragmentUniformShader; void MismatchedVaryingShader; void InvalidShaderInterfaceSyntaxShader; void MissingUniformBindingShader; void InvalidUniformBindingSyntaxShader; void InvalidUniformDefinitionShader; void MacroOnlyIndexShader; void SuppressedReassignedShader; void MotionExamples; void CopyReaction; void FocusedAsyncEventHandler; void FocusedGuardedAsyncEventHandler; void FocusedBlockedPaste; void FocusedBooleanToggle; void FocusedScaleFromZero; void FocusedSideTabBorder; void FocusedTransitionAll; void FocusedNumericInput; void FocusedCalledComponent; void useFocusedDriveItemActions; void FocusedMixedIcons; void FocusedReducedMotionRemoval; void FocusedSpreadAccumulator; void FocusedUnsafeDynamicRegexp;
+void PollingRedirect; void PreactCard; void DirectMap; void WrappedMap; void OptionalMath; void ArithmeticSubstringGuard; void FoundMember; void ComputedFindGuard; void TruthyShadowedBoolean; void SplitMember; void DiscardedIncludes; void DiscardedMatch; void GuardedSplit; void GuardedMatch; void GuardedSplitAfterUnrelatedExit; void OuterGuardedSplit; void MaybeObject; void NestedObjectGuard; void ConjoinedObjectGuard; void ConjoinedOptionalAccessGuard; void DeferredObjectNormalization; void GuardedObject; void NormalizedObject; void SearchPage; void CompareArrays; void SortedMinimum; void RepeatedMembership; void UnsafeFindAssertion; void CollapsedLiteralValues; void PendingNextCookies; void InvalidStaticShader; void OutOfBoundsShader; void NonuniformDerivativeShader; void Glsl3LegacySyntaxShader; void InvalidBitOperationShader; void InvalidMathShader; void InvalidSmoothstepShader; void UniformInverseShader; void RedeclaredBuiltinShader; void RedundantFragmentDepthShader; void ReservedIdentifierShader; void SmallIntegerPowerShader; void SquaredDistanceShader; void IncompatibleUniformShader; void MissingFragmentOutputShader; void MissingPositionShader; void InvalidGlobalInitializerShader; void MissingRawFloatPrecisionShader; void ConditionalRawFloatPrecisionShader; void MissingRawGlsl3VersionShader; void MismatchedUniformShader; void DuplicateFragmentUniformShader; void MismatchedVaryingShader; void InvalidShaderInterfaceSyntaxShader; void MissingUniformBindingShader; void InvalidUniformBindingSyntaxShader; void InvalidUniformDefinitionShader; void MacroOnlyIndexShader; void SuppressedReassignedShader; void MotionExamples; void CopyReaction; void FocusedAsyncEventHandler; void FocusedGuardedAsyncEventHandler; void FocusedBlockedPaste; void FocusedBooleanToggle; void FocusedScaleFromZero; void FocusedSideTabBorder; void FocusedTransitionAll; void FocusedNumericInput; void FocusedCalledComponent; void useFocusedDriveItemActions; void FocusedMixedIcons; void FocusedReducedMotionRemoval; void FocusedSpreadAccumulator; void FocusedUnsafeDynamicRegexp; void TinyPrefixParity; void FocusedLocaleFormat; void FocusedMixedAnimationOwners; void FocusedMutatedQueriedNode; void barrelPrimaryValue;
 `,
   );
   fs.writeFileSync(
@@ -7201,6 +7243,7 @@ export const App = () => <>
         "nextjs",
         "nextjs:15",
         "preact",
+        "ssr",
         "tailwind",
         "three:181",
         "mobx:4",

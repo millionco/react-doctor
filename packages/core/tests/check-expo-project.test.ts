@@ -380,6 +380,59 @@ describe("checkExpoProject — metro config", () => {
       rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
     ).not.toContain("expo-metro-config");
   });
+
+  it("stays quiet when metro.config.js requires a local wrapper with a relative path", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    writeFile(
+      projectDirectory,
+      "metro-helper.js",
+      'const { getDefaultConfig } = require("expo/metro-config");\nmodule.exports = { getWrappedConfig: (root) => getDefaultConfig(root) };\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.js"),
+      'const { getWrappedConfig } = require("./metro-helper");\nmodule.exports = getWrappedConfig(__dirname);\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).not.toContain("expo-metro-config");
+  });
+
+  it("stays quiet when metro.config.js requires a parent directory wrapper", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.js"),
+      'const getConfig = require("../shared/metro-config");\nmodule.exports = getConfig(__dirname);\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).not.toContain("expo-metro-config");
+  });
+
+  it("stays quiet when metro.config.mjs uses ESM import from a relative path", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.mjs"),
+      'import getConfig from "./metro-helper.mjs";\nexport default getConfig();\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).not.toContain("expo-metro-config");
+  });
+
+  it("flags a config with only unrelated imports, no expo/metro-config or relative requires", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.js"),
+      'const path = require("path");\nmodule.exports = { resolver: { sourceExts: ["js"] } };\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).toContain("expo-metro-config");
+  });
 });
 
 describe("checkExpoProject — env local files (git)", () => {

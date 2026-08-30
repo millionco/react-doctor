@@ -33,6 +33,15 @@ const EXPO_METRO_CONFIG_EXTEND_SIGNALS: ReadonlyArray<string> = [
   "getSentryExpoConfig",
 ];
 
+// Patterns that indicate the config might delegate to a local wrapper that
+// extends Expo's config. User-defined helpers (e.g. `./metro-helper.js`)
+// and monorepo shared configs (e.g. `../shared/metro`) are common patterns
+// where `expo/metro-config` is required by the wrapper, not the config
+// itself. A relative require or import is a signal that indirection is
+// happening. Matches both CJS `require("./...")` and ESM `import ... from "./..."`.
+const hasRelativeImport = (contents: string): boolean =>
+  /(?:require\s*\(\s*|from\s+)["']\.\.?\//u.test(contents);
+
 export const checkExpoMetroConfig = (context: ExpoCheckContext): Diagnostic[] => {
   const metroConfigPath = METRO_CONFIG_FILE_NAMES.map((fileName) =>
     path.join(context.rootDirectory, fileName),
@@ -46,6 +55,7 @@ export const checkExpoMetroConfig = (context: ExpoCheckContext): Diagnostic[] =>
     return [];
   }
   if (EXPO_METRO_CONFIG_EXTEND_SIGNALS.some((signal) => contents.includes(signal))) return [];
+  if (hasRelativeImport(contents)) return [];
 
   return [
     buildExpoDiagnostic({

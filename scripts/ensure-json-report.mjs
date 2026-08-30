@@ -36,10 +36,34 @@ const fallbackReport = {
 // unparseable or unrecognized payload is treated as a failed scan.
 const KNOWN_SCHEMA_VERSIONS = new Set([1, 2, 3]);
 
+const findValidReport = (raw) => {
+  const candidateStarts = [0];
+  for (const match of raw.matchAll(/\r?\n(?=\s*\{)/g)) {
+    candidateStarts.push(match.index + match[0].length);
+  }
+
+  for (const candidateStart of candidateStarts) {
+    const candidate = raw.slice(candidateStart).trim();
+    try {
+      const parsed = JSON.parse(candidate);
+      if (
+        parsed &&
+        KNOWN_SCHEMA_VERSIONS.has(parsed.schemaVersion) &&
+        typeof parsed.ok === "boolean"
+      ) {
+        return candidate;
+      }
+    } catch {}
+  }
+
+  return null;
+};
+
 try {
   const raw = fs.readFileSync(reportPath, "utf8").trim();
-  const parsed = JSON.parse(raw);
-  if (parsed && KNOWN_SCHEMA_VERSIONS.has(parsed.schemaVersion) && typeof parsed.ok === "boolean") {
+  const validReport = findValidReport(raw);
+  if (validReport !== null) {
+    if (validReport !== raw) fs.writeFileSync(reportPath, `${validReport}\n`);
     process.exit(0);
   }
 } catch {

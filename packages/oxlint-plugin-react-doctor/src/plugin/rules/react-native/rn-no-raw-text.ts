@@ -129,55 +129,25 @@ export const rnNoRawText = defineRule({
       elementName !== null &&
       (isNonTextHostName(elementName) || autoDetectedNonTextWrappers.has(elementName));
 
-    // Resolve an imported component cross-file: "nonText" (renders children into
-    // a host) → reported; "text" or unresolvable (`node_modules`, namespace
-    // imports, shadowed bindings, unanalyzable exports) → left alone.
+    const resolveImportedWrapper = (elementName: string | null, contextNode: EsTreeNode) => {
+      if (elementName === null || !isReactComponentName(elementName)) return null;
+      const { filename } = context;
+      if (filename === undefined) return null;
+      return resolveImportedComponentForwarding(
+        contextNode,
+        context.scopes,
+        filename,
+        elementName,
+        isTextHandlingComponent,
+        isNonTextHostName,
+      );
+    };
+
     const isImportedNonTextWrapper = (
       elementName: string | null,
       contextNode: EsTreeNode,
-    ): boolean => {
-      if (elementName === null || !isReactComponentName(elementName)) return false;
-      const { filename } = context;
-      if (filename === undefined) return false;
-      const forwardingKind = resolveImportedComponentForwarding(
-        contextNode,
-        context.scopes,
-        filename,
-        elementName,
-        isTextHandlingComponent,
-        isNonTextHostName,
-      );
-      return forwardingKind === "nonText";
-    };
+    ): boolean => resolveImportedWrapper(elementName, contextNode) === "nonText";
 
-    // Resolve an imported component as a text wrapper: true when the cross-file
-    // analysis confirms it renders children into `<Text>`, making it safe for
-    // transparent wrappers like `<fbt>` to nest inside.
-    const isImportedTextWrapper = (
-      elementName: string | null,
-      contextNode: EsTreeNode,
-    ): boolean => {
-      if (elementName === null || !isReactComponentName(elementName)) return false;
-      const { filename } = context;
-      if (filename === undefined) return false;
-      const forwardingKind = resolveImportedComponentForwarding(
-        contextNode,
-        context.scopes,
-        filename,
-        elementName,
-        isTextHandlingComponent,
-        isNonTextHostName,
-      );
-      return forwardingKind === "text";
-    };
-
-    // Walks ancestors to a real text component, stepping through transparent
-    // wrappers. Returns false as soon as a non-transparent, non-text element
-    // breaks the chain — so the text boundary is only honored when every link
-    // up to the <Text> is itself transparent. Now checks auto-detected same-file
-    // wrappers and cross-file imported wrappers in addition to built-in text
-    // components, so `<fbt>` inside a custom text-wrapping component is correctly
-    // exempted (fixes #1722).
     const isInsideTextHandlingComponent = (node: EsTreeNodeOfType<"JSXElement">): boolean => {
       let parentNode = node.parent;
       while (parentNode) {
@@ -190,7 +160,7 @@ export const rnNoRawText = defineRule({
           parentName &&
           (isTextHandlingComponent(parentName) ||
             autoDetectedTextWrappers.has(parentName) ||
-            isImportedTextWrapper(parentName, parentNode))
+            resolveImportedWrapper(parentName, parentNode) === "text")
         ) {
           return true;
         }

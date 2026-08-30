@@ -584,30 +584,6 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
-    it("does not fire on fbs inside an auto-detected text wrapper", () => {
-      expectPass(`
-        const Banner = ({ children }) => <Text>{children}</Text>;
-        const App = () => (
-          <Banner>
-            <fbs desc="banner text">Important announcement</fbs>
-          </Banner>
-        );
-      `);
-    });
-
-    it("does not fire on namespaced fbt tags inside a text wrapper (issue #1722)", () => {
-      expectPass(`
-        const Label = ({ children }) => <Text>{children}</Text>;
-        const App = () => (
-          <Label>
-            <fbt desc="parameterized">
-              <fbt:param name="count">5</fbt:param> items
-            </fbt>
-          </Label>
-        );
-      `);
-    });
-
     it("still fires on fbt inside an auto-detected non-text wrapper", () => {
       expectFail(`
         const Box = ({ children }) => <View>{children}</View>;

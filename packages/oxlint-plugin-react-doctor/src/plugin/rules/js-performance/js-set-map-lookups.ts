@@ -133,6 +133,7 @@ const STRING_TYPED_IDENTIFIER_SUFFIXES: ReadonlyArray<string> = [
   "Line",
   "Filename",
   "Filepath",
+  "Message",
 ];
 
 const hasStringTypedSuffix = (name: string): boolean => {

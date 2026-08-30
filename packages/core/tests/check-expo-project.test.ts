@@ -380,6 +380,82 @@ describe("checkExpoProject — metro config", () => {
       rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
     ).not.toContain("expo-metro-config");
   });
+
+  it("stays quiet when a local Metro helper extends expo/metro-config", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro-helper.js"),
+      'const { getDefaultConfig } = require("expo/metro-config");\nmodule.exports = { getWrappedConfig: getDefaultConfig };\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.js"),
+      'const { getWrappedConfig } = require("./metro-helper");\nmodule.exports = getWrappedConfig(__dirname);\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).not.toContain("expo-metro-config");
+  });
+
+  it("stays quiet when metro.config.js uses PostHog's Expo wrapper", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.js"),
+      'const { getPostHogExpoConfig } = require("posthog-react-native/metro");\nmodule.exports = getPostHogExpoConfig(__dirname);\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).not.toContain("expo-metro-config");
+  });
+
+  it("flags a local Metro helper that does not extend expo/metro-config", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro-helper.js"),
+      "module.exports = { getWrappedConfig: () => ({ resolver: {} }) };\n",
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.js"),
+      'const { getWrappedConfig } = require("./metro-helper");\nmodule.exports = getWrappedConfig(__dirname);\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).toContain("expo-metro-config");
+  });
+
+  it("does not follow type-only imports to Metro helpers", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro-helper.ts"),
+      'export type Config = typeof import("expo/metro-config");\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.ts"),
+      'import type { Config } from "./metro-helper";\nconst config: Config = { resolver: {} };\nexport default config;\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).toContain("expo-metro-config");
+  });
+
+  it("handles cyclic local Metro helpers", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro-helper.js"),
+      'require("./metro.config");\nmodule.exports = { resolver: {} };\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.js"),
+      'module.exports = require("./metro-helper");\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).toContain("expo-metro-config");
+  });
 });
 
 describe("checkExpoProject — env local files (git)", () => {

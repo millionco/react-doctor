@@ -1313,6 +1313,19 @@ describe("runInspect — runDeadCode=false short-circuits dead-code", () => {
 });
 
 describe("runInspect — Reporter sees post-filter diagnostics", () => {
+  const projectAnalysisDiagnostics: ReadonlyArray<Diagnostic> = [
+    {
+      ...deadCodeDiagnostic,
+      filePath: "plugins/with-example.ts",
+      rule: "unused-file",
+    },
+    {
+      ...deadCodeDiagnostic,
+      filePath: "package.json",
+      rule: "unused-dependency",
+    },
+  ];
+
   it("filters out a diagnostic on a file ignored by config, then emits remaining", async () => {
     const ignoredDiagnostic: Diagnostic = {
       ...lintDiagnostic,
@@ -1346,6 +1359,47 @@ describe("runInspect — Reporter sees post-filter diagnostics", () => {
     );
     expect(result.output.diagnostics.map((d) => d.filePath)).toEqual(["/repo/src/App.tsx"]);
     expect(result.captured.map((d) => d.filePath)).toEqual(["/repo/src/App.tsx"]);
+  });
+
+  it("applies rule ignores to project-analysis diagnostics", async () => {
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          layersOf({
+            deadCode: projectAnalysisDiagnostics,
+            reactDoctorConfig: {
+              ignore: {
+                rules: ["react-doctor/unused-file", "react-doctor/unused-dependency"],
+              },
+            },
+          }),
+        ),
+      ),
+    );
+
+    expect(output.diagnostics).toEqual([]);
+  });
+
+  it("applies path overrides to project-analysis diagnostics", async () => {
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          layersOf({
+            deadCode: projectAnalysisDiagnostics,
+            reactDoctorConfig: {
+              ignore: {
+                overrides: [
+                  { files: ["plugins/**"], rules: ["react-doctor/unused-file"] },
+                  { files: ["package.json"], rules: ["react-doctor/unused-dependency"] },
+                ],
+              },
+            },
+          }),
+        ),
+      ),
+    );
+
+    expect(output.diagnostics).toEqual([]);
   });
 });
 

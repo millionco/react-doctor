@@ -52,6 +52,19 @@ const hasMergedTransitionAll = (
   if (styleAttribute && !styleExpression) return false;
   const variantScopes = [[], ...parsedTokens.map((parsedToken) => parsedToken.variants)];
   return variantScopes.some((variantScope) => {
+    const hasApplicableAnimationUtility = parsedTokens.some((parsedToken) => {
+      const animationUtility = parsedToken.utility;
+      const hasActiveAnimation =
+        animationUtility !== "animate-none" &&
+        animationUtility !== "[animation:none]" &&
+        animationUtility !== "[animation-name:none]" &&
+        (animationUtility.startsWith("animate-") ||
+          animationUtility.startsWith("[animation:") ||
+          animationUtility.startsWith("[animation-name:"));
+      return (
+        hasActiveAnimation && doesTailwindVariantScopeCover(parsedToken.variants, variantScope)
+      );
+    });
     const hasApplicablePropertySetter = parsedTokens.some(
       (parsedToken) =>
         getTailwindTransitionAllState(parsedToken.utility) !== null &&
@@ -83,7 +96,10 @@ const hasMergedTransitionAll = (
         {
           hasPositiveDuration: durationState === true,
           propertyName:
-            !hasApplicablePropertySetter || transitionAllState === true ? "all" : "opacity",
+            (!hasApplicablePropertySetter && !hasApplicableAnimationUtility) ||
+            transitionAllState === true
+              ? "all"
+              : "opacity",
           sourceNode: reportNode,
         },
       ],

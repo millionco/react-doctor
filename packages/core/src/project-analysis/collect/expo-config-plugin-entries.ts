@@ -2,6 +2,7 @@ import { readFileSync, statSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import fg from "fast-glob";
 import ts from "typescript";
+import { unwrapTypescriptExpression } from "../../utils/unwrap-typescript-expression.js";
 import { EXPO_CONFIG_SCAN_MAX_DEPTH, SOURCE_EXTENSIONS } from "../constants.js";
 
 const EXPO_CONFIG_FILE_GLOBS = ["app.config.{ts,mts,cts,js,mjs,cjs}", "app.json"];
@@ -85,14 +86,6 @@ const getPropertyName = (name: ts.PropertyName): string | undefined => {
   return undefined;
 };
 
-const unwrapExpression = (expression: ts.Expression): ts.Expression => {
-  let currentExpression = expression;
-  while (ts.isParenthesizedExpression(currentExpression)) {
-    currentExpression = currentExpression.expression;
-  }
-  return currentExpression;
-};
-
 const collectExpoPluginPathsFromArray = (
   array: ts.ArrayLiteralExpression,
   entries: Set<string>,
@@ -165,7 +158,7 @@ const collectReturnedExpoConfigPluginPaths = (
   configDirectory: string,
 ): void => {
   if (!ts.isBlock(body)) {
-    const expression = unwrapExpression(body);
+    const expression = unwrapTypescriptExpression(body);
     if (ts.isObjectLiteralExpression(expression)) {
       collectExpoPluginPathsFromConfigObject(
         expression,
@@ -183,7 +176,7 @@ const collectReturnedExpoConfigPluginPaths = (
       return;
 
     if (ts.isReturnStatement(node) && node.expression) {
-      const expression = unwrapExpression(node.expression);
+      const expression = unwrapTypescriptExpression(node.expression);
       if (ts.isObjectLiteralExpression(expression)) {
         collectExpoPluginPathsFromConfigObject(
           expression,
@@ -211,7 +204,7 @@ const collectExpoPluginPathsFromConfigExpression = (
   bindings: StaticConfigBindings,
   seenIdentifiers = new Set<string>(),
 ): void => {
-  const configExpression = unwrapExpression(expression);
+  const configExpression = unwrapTypescriptExpression(expression);
   if (ts.isObjectLiteralExpression(configExpression)) {
     collectExpoPluginPathsFromConfigObject(
       configExpression,

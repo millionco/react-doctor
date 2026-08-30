@@ -1828,6 +1828,7 @@ const hasAbruptCompletionBefore = (
   boundary: EsTreeNode,
   node: EsTreeNode,
   context: RuleContext,
+  shouldTreatPotentiallyThrowingCallsAsAbrupt = true,
 ): boolean => {
   const nodeStart = getNodeStart(node);
   if (nodeStart === null) return true;
@@ -1846,6 +1847,7 @@ const hasAbruptCompletionBefore = (
       return false;
     }
     if (
+      shouldTreatPotentiallyThrowingCallsAsAbrupt &&
       isNodeOfType(child, "CallExpression") &&
       !isProvenNonThrowingSynchronousCall(child, context)
     ) {
@@ -1917,7 +1919,7 @@ const getExceptionalResetProtection = (
         isUnconditional:
           isUnconditional &&
           Boolean(cursor.finalizer) &&
-          !hasAbruptCompletionBefore(cursor.finalizer, callNode, context),
+          !hasAbruptCompletionBefore(cursor.finalizer, callNode, context, false),
       };
     }
     child = cursor;

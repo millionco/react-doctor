@@ -103,6 +103,27 @@ const rnScrollViewDynamicPaddingFixturePath = path.join(
   "app",
   "rn-scrollview-dynamic-padding.tsx",
 );
+const controlledSelectionFocusFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "controlled-selection-focus.ts",
+);
+const freshEffectDepsFixturePath = path.join(fixtureDirectory, "app", "fresh-effect-deps.tsx");
+const floatingThenHandlerFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "floating-then-handler.tsx",
+);
+const pointerCaptureFixturePath = path.join(fixtureDirectory, "app", "pointer-capture.tsx");
+const stableEmptyFallbackFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "stable-empty-fallback.tsx",
+);
+const derivedStateHookFixturePath = path.join(fixtureDirectory, "app", "derived-state-hook.tsx");
+const scrollTransitionFixturePath = path.join(fixtureDirectory, "app", "scroll-transition.tsx");
+const pressableGestureFixturePath = path.join(fixtureDirectory, "app", "pressable-gesture.tsx");
+const scrollViewFlexFixturePath = path.join(fixtureDirectory, "app", "scrollview-flex.tsx");
 const r3fLightingFixturePath = path.join(fixtureDirectory, "app", "r3f-lighting.tsx");
 const r3fMetalEnvironmentFixturePath = path.join(
   fixtureDirectory,
@@ -793,7 +814,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-moment": 1,
   "no-namespace": 2,
   "no-react-children": 2,
-  "preact-no-react-hooks-import": 5,
+  "preact-no-react-hooks-import": 6,
   "rn-bottom-sheet-prefer-native": 1,
   "rn-no-deprecated-modules": 1,
   "rn-no-legacy-expo-packages": 1,
@@ -819,7 +840,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   scope: 1,
   "no-set-state": 2,
   "no-find-dom-node": 2,
-  "react-in-jsx-scope": 6,
+  "react-in-jsx-scope": 20,
   "tabindex-no-positive": 7,
   "no-autoplay-without-muted": 1,
   "details-requires-summary": 1,
@@ -1046,7 +1067,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-full-viewport-centered-hero": 1,
   "no-overwide-text-measure": 1,
   "require-autoplay-video-poster": 3,
-  "rerender-dependencies": 4,
+  "rerender-dependencies": 5,
   "rerender-lazy-ref-init": 7,
   "no-inert-sticky-position": 1,
   "no-crushed-letter-spacing": 1,
@@ -1232,7 +1253,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "react-router-server-middleware-return-response": 1,
   "react-router-session-mutation-requires-commit": 1,
   "no-create-store-in-render": 1,
-  "react-compiler-no-manual-memoization": 12,
+  "react-compiler-no-manual-memoization": 13,
   "no-giant-component": 1,
   "no-nested-component-definition": 1,
   "no-high-complexity-react-function": 1,
@@ -1327,7 +1348,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-undersized-icon-button": 0,
   "no-ungated-tailwind-animation": 2,
   "no-unthrottled-scroll-mutation": 0,
-  "preact-prefer-oninput": 2,
+  "preact-prefer-oninput": 3,
   "waapi-animation-in-render": 0,
   "zod-v4-no-deprecated-error-apis": 0,
   "zod-v4-no-deprecated-error-customization": 0,
@@ -1381,7 +1402,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "checked-requires-onchange-or-readonly": 6,
   "class-component-missing-component-will-unmount-teardown": 3,
   "click-events-have-key-events": 3,
-  "control-has-associated-label": 53,
+  "control-has-associated-label": 54,
   "display-name": 10,
   "forbid-component-props": 0,
   "forbid-dom-props": 0,
@@ -1538,6 +1559,15 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "rn-detox-missing-await": 1,
   "rn-no-scrollview-mapped-list": 2,
   "rn-scrollview-dynamic-padding": 1,
+  "no-controlled-selection-focus-effect": 1,
+  "no-effect-with-fresh-deps": 8,
+  "no-floating-then-in-jsx-handler": 1,
+  "pointer-capture-needs-cancel-handler": 2,
+  "prefer-stable-empty-fallback": 1,
+  "rerender-derived-state-from-hook": 1,
+  "rerender-transitions-scroll": 2,
+  "rn-prefer-pressable-over-gesture-detector": 2,
+  "rn-scrollview-flex-in-content-container": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1665,6 +1695,15 @@ const FOCUSED_PARITY_RULE_IDS = [
   "rn-detox-missing-await",
   "rn-no-scrollview-mapped-list",
   "rn-scrollview-dynamic-padding",
+  "no-controlled-selection-focus-effect",
+  "no-effect-with-fresh-deps",
+  "no-floating-then-in-jsx-handler",
+  "pointer-capture-needs-cancel-handler",
+  "prefer-stable-empty-fallback",
+  "rerender-derived-state-from-hook",
+  "rerender-transitions-scroll",
+  "rn-prefer-pressable-over-gesture-detector",
+  "rn-scrollview-flex-in-content-container",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1786,6 +1825,15 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "rn-detox-missing-await": 0,
   "rn-no-scrollview-mapped-list": 0,
   "rn-scrollview-dynamic-padding": 0,
+  "no-controlled-selection-focus-effect": 0,
+  "no-effect-with-fresh-deps": 0,
+  "no-floating-then-in-jsx-handler": 0,
+  "pointer-capture-needs-cancel-handler": 0,
+  "prefer-stable-empty-fallback": 0,
+  "rerender-derived-state-from-hook": 0,
+  "rerender-transitions-scroll": 0,
+  "rn-prefer-pressable-over-gesture-detector": 0,
+  "rn-scrollview-flex-in-content-container": 0,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -3915,6 +3963,132 @@ import { ScrollView } from "react-native";
 export const PaddedScrollView = ({ bottomInset }) => (
   <ScrollView contentContainerStyle={{ paddingBottom: bottomInset }} />
 );
+`,
+  );
+  fs.writeFileSync(
+    controlledSelectionFocusFixturePath,
+    `import { useModernLayoutEffect } from "./use-modern-layout-effect";
+export const useListNavigation = ({ selectedIndex, focusItem }) => {
+  const indexRef = useRef(null);
+  useModernLayoutEffect(() => {
+    indexRef.current = selectedIndex;
+    focusItem(indexRef);
+  }, [focusItem, selectedIndex]);
+};
+`,
+  );
+  fs.writeFileSync(
+    freshEffectDepsFixturePath,
+    `import { useEffect } from "react";
+export const FreshDeps = ({ first, second }) => {
+  useEffect(() => sync(first, second), [{ first, second }]);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    floatingThenHandlerFixturePath,
+    `export const FloatingThen = ({ value }) => (
+  <input onChange={() => api.update(value).then(refetch)} />
+);
+`,
+  );
+  fs.writeFileSync(
+    pointerCaptureFixturePath,
+    `export const Slider = () => (
+  <div
+    onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
+    onPointerMove={move}
+    onPointerUp={finish}
+  />
+);
+
+const boundCapture = (event) => event.currentTarget.setPointerCapture(event.pointerId);
+export const BoundSlider = () => (
+  <div
+    onPointerDown={(boundCapture.bind as any)(null)}
+    onPointerMove={move}
+    onPointerUp={finish}
+  />
+);
+
+const useCallback = (callback) => callback;
+export const LocalCallbackSlider = () => {
+  const capture = useCallback((event) =>
+    event.currentTarget.setPointerCapture(event.pointerId),
+  );
+  return <div onPointerDown={capture} onPointerMove={move} onPointerUp={finish} />;
+};
+
+export const ParameterDefaultSlider = () => (
+  <div
+    onPointerDown={(event, ignored = event.currentTarget.setPointerCapture(event.pointerId)) => {}}
+    onPointerMove={move}
+    onPointerUp={finish}
+  />
+);
+`,
+  );
+  fs.writeFileSync(
+    stableEmptyFallbackFixturePath,
+    `import { memo } from "react";
+const PostList = memo(({ posts }) => null);
+export const StableEmptyFallback = (props) => <PostList posts={props.posts || []} />;
+`,
+  );
+  fs.writeFileSync(
+    derivedStateHookFixturePath,
+    `export function DerivedStateHook() {
+  const width = useWindowWidth();
+  const isMobile = width < 768;
+  return <div>{isMobile ? "mobile" : "desktop"}</div>;
+}
+
+export function DerivedStateHookWithShadowedBinding() {
+  const width = useWindowWidth();
+  const isMobile = width < 768;
+  function readWidth(width) {
+    return width;
+  }
+  return <div>{isMobile ? "mobile" : "desktop"}</div>;
+}
+`,
+  );
+  fs.writeFileSync(
+    scrollTransitionFixturePath,
+    `export function ScrollTransition() {
+  const [, setScrollY] = useState(0);
+  useEffect(() => {
+    window.addEventListener("scroll", () => setScrollY(window.scrollY));
+  }, []);
+  return null;
+}
+`,
+  );
+  fs.writeFileSync(
+    pressableGestureFixturePath,
+    `import { Gesture, GestureDetector } from "react-native-gesture-handler";
+export const GestureButton = () => (
+  <GestureDetector gesture={Gesture.Tap()}>
+    <Animated.View />
+  </GestureDetector>
+);
+export const DefaultGestureButton = ({ tap = Gesture.Tap() }) => (
+  <GestureDetector gesture={tap}>
+    <Animated.View />
+  </GestureDetector>
+);
+`,
+  );
+  fs.writeFileSync(
+    scrollViewFlexFixturePath,
+    `import { ScrollView, StyleSheet } from "react-native";
+export const FlexibleScrollView = () => (
+  <ScrollView contentContainerStyle={{ flex: 1 }} />
+);
+export const DefaultStyleScrollView = ({
+  styles = StyleSheet.create({ container: { flex: 1 } }),
+}) => <ScrollView contentContainerStyle={styles.container} />;
 `,
   );
   fs.writeFileSync(
@@ -7947,6 +8121,7 @@ export const App = () => <>
     "r3f-webgpu-canvas-prop-compatibility": 1,
     "r3f-limit-shadowed-point-lights": 1,
     "no-smooth-scroll-without-reduced-motion": 1,
+    "no-effect-with-fresh-deps": 1,
   };
   if (
     JSON.stringify(countDiagnosticsByRule(stockNonProductionDiagnostics)) !==

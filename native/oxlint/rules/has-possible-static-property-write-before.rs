@@ -374,7 +374,7 @@ fn possible_local_function_ids<'a>(
         );
     }
     if let oxc_ast::ast::Expression::CallExpression(call) = expression
-        && let Some(member) = call.callee.as_member_expression()
+        && let Some(member) = call.callee.get_inner_expression().as_member_expression()
         && member.static_property_name() == Some("bind")
     {
         return possible_local_function_ids(
@@ -742,7 +742,7 @@ fn exact_local_function_id_with_generator_mode<'a>(
         );
     }
     if let oxc_ast::ast::Expression::CallExpression(call) = expression
-        && let Some(member) = call.callee.as_member_expression()
+        && let Some(member) = call.callee.get_inner_expression().as_member_expression()
         && member.static_property_name() == Some("bind")
     {
         return exact_local_function_id_with_generator_mode(

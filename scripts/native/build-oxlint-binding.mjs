@@ -175,6 +175,7 @@ impl Rule for ${delegatedRule.struct} {
         "binding-pattern-has-symbol",
         "binding-pattern-initializer-for-symbol",
         "binding-property-name-for-symbol",
+        "identifier-direct-or-default-initializer",
         "is-process-stdout-member",
         "member-expression-identifier-property-name",
         "strip-parenthesized-expression",
@@ -435,6 +436,8 @@ impl Rule for ${delegatedRule.struct} {
       ]),
     );
     const nativeUtilityDependencies = new Map([
+      ["identifier_direct_or_default_initializer", ["binding_pattern_initializer_for_symbol"]],
+      ["has_possible_static_property_write_before", ["member_expression_identifier_property_name"]],
       ["is_inside_statically_hidden_jsx_subtree", ["get_object_property_string_value"]],
       ["is_imported_or_stable_parameter_call", ["has_possible_static_property_write_before"]],
       [
@@ -484,6 +487,8 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       ["no-render-in-render", ["has_possible_static_property_write_before"]],
+      ["no-controlled-selection-focus-effect", ["has_possible_static_property_write_before"]],
+      ["pointer-capture-needs-cancel-handler", ["has_possible_static_property_write_before"]],
       ["rn-no-scroll-state", ["member_expression_identifier_property_name"]],
       [
         "no-this-in-sfc",

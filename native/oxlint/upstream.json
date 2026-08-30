@@ -768,7 +768,15 @@
     "rerender-transitions-scroll",
     "rn-prefer-pressable-over-gesture-detector",
     "rn-scrollview-flex-in-content-container",
-    "no-sync-xhr"
+    "no-sync-xhr",
+    "no-dynamic-import-path",
+    "preact-no-children-length",
+    "remotion-calculate-metadata-fetch-signal",
+    "rn-pressable-shared-value-mutation",
+    "role-has-required-aria-props",
+    "role-supports-aria-props",
+    "prefer-html-dialog",
+    "prefer-explicit-variants"
   ],
   "delegatedRules": [
     {

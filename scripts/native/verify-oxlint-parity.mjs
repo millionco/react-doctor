@@ -125,6 +125,30 @@ const scrollTransitionFixturePath = path.join(fixtureDirectory, "app", "scroll-t
 const pressableGestureFixturePath = path.join(fixtureDirectory, "app", "pressable-gesture.tsx");
 const scrollViewFlexFixturePath = path.join(fixtureDirectory, "app", "scrollview-flex.tsx");
 const syncXhrFixturePath = path.join(fixtureDirectory, "app", "sync-xhr.ts");
+const dynamicImportPathFixturePath = path.join(fixtureDirectory, "app", "dynamic-import-path.ts");
+const preactChildrenLengthFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "preact-children-length.tsx",
+);
+const remotionMetadataSignalFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "remotion-metadata-signal.tsx",
+);
+const pressableSharedValueFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "pressable-shared-value.tsx",
+);
+const roleRequiredPropsFixturePath = path.join(fixtureDirectory, "app", "role-required-props.tsx");
+const roleSupportsPropsFixturePath = path.join(fixtureDirectory, "app", "role-supports-props.tsx");
+const preferHtmlDialogFixturePath = path.join(fixtureDirectory, "app", "prefer-html-dialog.tsx");
+const preferExplicitVariantsFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "prefer-explicit-variants.tsx",
+);
 const r3fLightingFixturePath = path.join(fixtureDirectory, "app", "r3f-lighting.tsx");
 const r3fMetalEnvironmentFixturePath = path.join(
   fixtureDirectory,
@@ -711,6 +735,7 @@ const focusedParitySearchComponentPath = path.join(
 const focusedParitySearchPagePath = path.join(focusedParityDirectory, "app", "search", "page.tsx");
 const nonReactJsxFixturePath = path.join(temporaryDirectory, "solid-fixture.tsx");
 const configuredFixturePath = path.join(temporaryDirectory, "configured.tsx");
+const configuredAriaFixturePath = path.join(temporaryDirectory, "configured-aria.tsx");
 const inactiveRouterFixtureDirectory = path.join(temporaryDirectory, "inactive-router-package");
 const inactiveRouterFixturePath = path.join(inactiveRouterFixtureDirectory, "src", "fixture.tsx");
 const activeRouterFixtureDirectory = path.join(temporaryDirectory, "active-router-package");
@@ -758,6 +783,8 @@ const focusedParityNativeConfigPath = path.join(
 );
 const configuredStockConfigPath = path.join(temporaryDirectory, "configured-stock.json");
 const configuredNativeConfigPath = path.join(temporaryDirectory, "configured-native.json");
+const configuredAriaStockConfigPath = path.join(temporaryDirectory, "configured-aria-stock.json");
+const configuredAriaNativeConfigPath = path.join(temporaryDirectory, "configured-aria-native.json");
 const jsxFilenameAsNeededFixturePath = path.join(temporaryDirectory, "as-needed.jsx");
 const jsxFilenameIgnoredFixturePath = path.join(temporaryDirectory, "ignored.jsx");
 const jsxFilenameAsNeededStockConfigPath = path.join(
@@ -1570,6 +1597,14 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "rn-prefer-pressable-over-gesture-detector": 2,
   "rn-scrollview-flex-in-content-container": 2,
   "no-sync-xhr": 1,
+  "no-dynamic-import-path": 1,
+  "preact-no-children-length": 1,
+  "remotion-calculate-metadata-fetch-signal": 2,
+  "rn-pressable-shared-value-mutation": 1,
+  "role-has-required-aria-props": 3,
+  "role-supports-aria-props": 3,
+  "prefer-html-dialog": 3,
+  "prefer-explicit-variants": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1707,6 +1742,14 @@ const FOCUSED_PARITY_RULE_IDS = [
   "rn-prefer-pressable-over-gesture-detector",
   "rn-scrollview-flex-in-content-container",
   "no-sync-xhr",
+  "no-dynamic-import-path",
+  "preact-no-children-length",
+  "remotion-calculate-metadata-fetch-signal",
+  "rn-pressable-shared-value-mutation",
+  "role-has-required-aria-props",
+  "role-supports-aria-props",
+  "prefer-html-dialog",
+  "prefer-explicit-variants",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1838,6 +1881,14 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "rn-prefer-pressable-over-gesture-detector": 0,
   "rn-scrollview-flex-in-content-container": 0,
   "no-sync-xhr": 0,
+  "no-dynamic-import-path": 0,
+  "preact-no-children-length": 1,
+  "remotion-calculate-metadata-fetch-signal": 0,
+  "rn-pressable-shared-value-mutation": 0,
+  "role-has-required-aria-props": 0,
+  "role-supports-aria-props": 0,
+  "prefer-html-dialog": 0,
+  "prefer-explicit-variants": 0,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -4109,6 +4160,113 @@ const mutateRequest = (request: XMLHttpRequest) => {
 const escapedRequest = new XMLHttpRequest();
 mutateRequest(escapedRequest);
 escapedRequest.open("GET", "/escaped", false);
+`,
+  );
+  fs.writeFileSync(
+    dynamicImportPathFixturePath,
+    `declare const moduleName: string;
+export const loadDynamicModule = () => import(moduleName);
+
+const staticModuleName = "./static-module";
+export const loadStaticModule = () => import(staticModuleName);
+
+void import(null);
+void import(true);
+void import(42);
+void import(42n);
+void import(/static-module/);
+require(null);
+require(true);
+require(42);
+require(42n);
+require(/static-module/);
+require("./static-module");
+`,
+  );
+  fs.writeFileSync(
+    preactChildrenLengthFixturePath,
+    `export function ChildrenCount(props) {
+  return props.children.length;
+}
+
+export function SafeChildrenCount(props) {
+  return props.items.length;
+}
+`,
+  );
+  fs.writeFileSync(
+    remotionMetadataSignalFixturePath,
+    `import React from "react";
+import { Composition } from "remotion";
+
+const calculateMetadata = async ({ abortSignal }) => {
+  const response = await fetch("/metadata");
+  return { props: await response.json() };
+};
+
+const calculateSafeMetadata = async ({ abortSignal }) => {
+  const response = await fetch("/metadata", { signal: abortSignal });
+  return { props: await response.json() };
+};
+
+async function* calculateGeneratorMetadata({ abortSignal }) {
+  const response = await fetch("/generator-metadata");
+  yield { props: await response.json() };
+}
+
+export const RemotionRoot = () => (
+  <>
+    <Composition id="unsafe" calculateMetadata={calculateMetadata} />
+    <Composition id="safe" calculateMetadata={calculateSafeMetadata} />
+    <Composition id="generator" calculateMetadata={calculateGeneratorMetadata} />
+  </>
+);
+`,
+  );
+  fs.writeFileSync(
+    pressableSharedValueFixturePath,
+    `import React from "react";
+import { Pressable } from "react-native";
+import { useSharedValue } from "react-native-reanimated";
+
+export const AnimatedPressable = () => {
+  const scale = useSharedValue(1);
+  return <Pressable accessibilityLabel="Scale" onPress={() => { scale.value = 0.9; }} />;
+};
+`,
+  );
+  fs.writeFileSync(
+    roleRequiredPropsFixturePath,
+    `import React from "react";
+export const MissingCheckboxState = () => <div role="checkbox" aria-label="Selection" />;
+export const CompleteCheckboxState = () => <div role="checkbox" aria-label="Selection" aria-checked={false} />;
+`,
+  );
+  fs.writeFileSync(
+    roleSupportsPropsFixturePath,
+    `import React from "react";
+export const UnsupportedButtonState = () => <button aria-checked>Unsafe</button>;
+export const SupportedButtonState = () => <button aria-pressed>Safe</button>;
+`,
+  );
+  fs.writeFileSync(
+    preferHtmlDialogFixturePath,
+    `import React from "react";
+export const LegacyDialog = () => <div role="dialog" aria-label="Account settings">Account settings</div>;
+export const NativeDialog = () => <dialog aria-label="Account settings">Account settings</dialog>;
+`,
+  );
+  fs.writeFileSync(
+    preferExplicitVariantsFixturePath,
+    `import React from "react";
+export function ProductCard({ isCompact, hasMedia }) {
+  return (
+    <div>
+      {isCompact ? <section /> : <article />}
+      {hasMedia ? <aside /> : <footer />}
+    </div>
+  );
+}
 `,
   );
   fs.writeFileSync(
@@ -7447,6 +7605,13 @@ const configuredPrefixedWeightNumberedSections = <main><section><span style={{ f
 const configuredFloatSpacingNumberedSections = <main><section><span style={{ fontSize: 12, letterSpacing: " +1e-1em" }}>01</span><h2>Principles</h2></section><section><span style={{ fontSize: 12, letterSpacing: " +1e-1em" }}>02</span><h2>Process</h2></section></main>;
 `,
   );
+  fs.writeFileSync(
+    configuredAriaFixturePath,
+    `import React from "react";
+export const NativeOptionRole = () => <Library.Box as="option" role="option" />;
+export const UnsupportedOptionState = () => <Box as="option" aria-expanded />;
+`,
+  );
   const routerGateFixture =
     'import { createBrowserRouter, Outlet, redirect as routeRedirect, redirectDocument as routeDocument, useNavigate, useOutlet as useChildOutlet } from "react-router-dom"; export function App() { const navigate = useNavigate(); navigate("/next"); createBrowserRouter([{ Component: () => <main />, children: [{ path: "child", element: <span /> }] }, { Component: () => <main>{useChildOutlet()}</main>, children: [{ path: "safe-hook", element: <span /> }] }, { Component: () => <Layout />, children: [{ path: "safe-component", element: <span /> }] }, { element: <main><Layout /></main>, children: [{ path: "safe-element", element: <span /> }] }, { Component: () => <main />, children: null }, { Component: () => { const Unused = () => <Outlet />; return <main />; }, children: [{ path: "nested-helper", element: <span /> }] }, { path: "lazy", lazy: async () => ({ ["path"]: "/changed", Component }) }, { path: "conditional-lazy", lazy: async () => { if (compact) return ({ id: "compact" } as const); const nested = () => ({ children: [] }); return { loader }; } }, { path: "safe-lazy", lazy: async () => ({ Component, loader }) }, { path: "loader-body", loader: async ({ request: routeRequest }) => routeRequest["json"]() }, { path: "safe-action-body", action: async ({ request }) => request.formData() }, { path: "swallowed-redirect", loader: async () => { try { throw routeRedirect("/login"); } catch (error) { return null; } } }, { path: "swallowed-document-redirect", clientLoader: async () => { try { (() => { throw routeDocument("/client"); })(); } catch (error) { return null; } } }, { path: "returned-redirect", action: async () => { try { return routeRedirect("/safe"); } catch (error) { return null; } } }, { path: "rethrown-redirect", clientAction: async () => { try { throw routeRedirect("/safe"); } catch (error) { throw error; } } }, { path: "helper", Component: () => { const helper = { lazy: async () => ({ path: "/ignored" }), loader: async ({ request }) => request.text() }; return <button onClick={helper.lazy} />; } }]); return null; }';
   fs.mkdirSync(path.dirname(inactiveRouterFixturePath), { recursive: true });
@@ -7857,6 +8022,34 @@ export const App = () => <>
       }),
     ),
   );
+  const configuredAriaSettings = {
+    "jsx-a11y": {
+      components: { option: "div" },
+      polymorphicPropName: "as",
+    },
+    "react-doctor": REACT_DOCTOR_SETTINGS["react-doctor"],
+  };
+  const configuredAriaRuleIds = ["role-has-required-aria-props", "role-supports-aria-props"];
+  fs.writeFileSync(
+    configuredAriaStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: configuredAriaSettings,
+        ruleIds: configuredAriaRuleIds,
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    configuredAriaNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: configuredAriaSettings,
+        ruleIds: configuredAriaRuleIds,
+      }),
+    ),
+  );
   const jsxFilenameAsNeededSettings = {
     "react-doctor": {
       ...REACT_DOCTOR_SETTINGS["react-doctor"],
@@ -8255,6 +8448,31 @@ export const App = () => <>
     );
     throw new Error(
       `native configured parity failed\nexpected counts=${JSON.stringify(expectedConfiguredDiagnosticCounts, null, 2)}\nstock counts=${JSON.stringify(countDiagnosticsByRule(configuredStockDiagnostics), null, 2)}\nstock only=${JSON.stringify(configuredStockOnlyDiagnostic, null, 2)}\nnative only=${JSON.stringify(configuredNativeOnlyDiagnostic, null, 2)}`,
+    );
+  }
+
+  const configuredAriaStockDiagnostics = runOxlint(
+    configuredAriaStockConfigPath,
+    process.env,
+    configuredAriaFixturePath,
+  ).diagnostics;
+  const configuredAriaNativeDiagnostics = runOxlint(
+    configuredAriaNativeConfigPath,
+    nativeEnvironment,
+    configuredAriaFixturePath,
+  ).diagnostics;
+  const expectedConfiguredAriaDiagnosticCounts = {
+    ...Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0])),
+    "role-supports-aria-props": 1,
+  };
+  if (
+    JSON.stringify(countDiagnosticsByRule(configuredAriaStockDiagnostics)) !==
+      JSON.stringify(expectedConfiguredAriaDiagnosticCounts) ||
+    JSON.stringify(configuredAriaNativeDiagnostics) !==
+      JSON.stringify(configuredAriaStockDiagnostics)
+  ) {
+    throw new Error(
+      `native configured ARIA parity failed\nexpected counts=${JSON.stringify(expectedConfiguredAriaDiagnosticCounts, null, 2)}\nstock counts=${JSON.stringify(countDiagnosticsByRule(configuredAriaStockDiagnostics), null, 2)}\nstock=${JSON.stringify(configuredAriaStockDiagnostics, null, 2)}\nnative=${JSON.stringify(configuredAriaNativeDiagnostics, null, 2)}`,
     );
   }
 

@@ -47,7 +47,6 @@ import {
 const RETAINED_NATIVE_SCAN_RULE_IDS = [
   "active-static-asset",
   "dangerous-html-sink",
-  "mdx-ssr-execution-risk",
   "nosql-injection-risk",
   "raw-sql-injection-risk",
   "supabase-client-owned-authz-field",

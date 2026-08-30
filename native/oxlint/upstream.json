@@ -742,7 +742,9 @@
     "style-prop-object",
     "rn-bottom-sheet-no-state-in-on-animate",
     "prefer-dynamic-import",
-    "no-full-lodash-import"
+    "no-full-lodash-import",
+    "no-controlled-input-value-without-state-update",
+    "no-enter-submit-without-ime-composition-guard"
   ],
   "delegatedRules": [
     {

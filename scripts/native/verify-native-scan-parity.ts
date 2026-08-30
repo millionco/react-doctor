@@ -36,7 +36,6 @@ interface ScanParityFixtureInput {
 const RETAINED_SCAN_RULE_IDS = [
   "active-static-asset",
   "dangerous-html-sink",
-  "mdx-ssr-execution-risk",
   "nosql-injection-risk",
   "raw-sql-injection-risk",
   "supabase-client-owned-authz-field",
@@ -162,24 +161,6 @@ const REGRESSION_FIXTURE_INPUTS: ReadonlyArray<ScanParityFixtureInput> = [
     relativePath: "public/widget.global.js",
     content: "element.innerHTML = props.html;\n",
     isGeneratedBundle: true,
-  },
-  {
-    name: "mdx-tenant-content",
-    relativePath: "src/app/docs/page.tsx",
-    content:
-      'import { compileMDX } from "next-mdx-remote/rsc";\nconst result = await compileMDX({ source: tenantDocumentSource });\n',
-  },
-  {
-    name: "mdx-owned-content",
-    relativePath: "components/mdx-content/index.tsx",
-    content:
-      'import { MDXRemote } from "next-mdx-remote/rsc";\nexport const Content = ({ children }) => <MDXRemote source={children} />;\n',
-  },
-  {
-    name: "mdx-reporter-lookalike",
-    relativePath: "packages/node-loader/lib/index.js",
-    content:
-      'import { createFormatAwareProcessors } from "@mdx-js/mdx/internal-create-format-aware-processors";\nimport { reporter } from "vfile-reporter";\nexport const load = async (url) => reporter(await createFormatAwareProcessors().process(url));\n',
   },
   {
     name: "nosql-request-json",

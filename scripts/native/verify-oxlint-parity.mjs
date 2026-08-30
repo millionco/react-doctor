@@ -753,6 +753,8 @@ const REACT_JSX_ONLY_COHORT_RULE_IDS = [
   "no-giant-component",
   "no-high-complexity-react-function",
   "no-nested-component-definition",
+  "no-controlled-input-value-without-state-update",
+  "no-enter-submit-without-ime-composition-guard",
 ];
 const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-no-duplicate-props": 1,
@@ -1298,7 +1300,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-undersized-icon-button": 0,
   "no-ungated-tailwind-animation": 2,
   "no-unthrottled-scroll-mutation": 0,
-  "preact-prefer-oninput": 1,
+  "preact-prefer-oninput": 2,
   "waapi-animation-in-render": 0,
   "zod-v4-no-deprecated-error-apis": 0,
   "zod-v4-no-deprecated-error-customization": 0,
@@ -1493,6 +1495,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "rn-bottom-sheet-no-state-in-on-animate": 0,
   "prefer-dynamic-import": 0,
   "no-full-lodash-import": 0,
+  "no-controlled-input-value-without-state-update": 1,
+  "no-enter-submit-without-ime-composition-guard": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1604,6 +1608,8 @@ const FOCUSED_PARITY_RULE_IDS = [
   "rn-bottom-sheet-no-state-in-on-animate",
   "prefer-dynamic-import",
   "no-full-lodash-import",
+  "no-controlled-input-value-without-state-update",
+  "no-enter-submit-without-ime-composition-guard",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1709,6 +1715,8 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "rn-bottom-sheet-no-state-in-on-animate": 1,
   "prefer-dynamic-import": 3,
   "no-full-lodash-import": 3,
+  "no-controlled-input-value-without-state-update": 0,
+  "no-enter-submit-without-ime-composition-guard": 0,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -3500,6 +3508,8 @@ const PreventDefaultLink = () => <a href="https://example.com" onClick={(event) 
 const RandomKeyList = () => <div key={Math.random()} />;
 const RefCleanupBeforeReact19 = () => <div ref={(node) => () => node.remove()} />;
 const UncontrolledInput = ({ value }) => <input value={value} />;
+const FixedControlledInput = () => <input aria-label="Locked" value="locked" onChange={(event) => log(event)} />;
+const ImeUnsafeInput = () => <input aria-label="Search" onKeyDown={(event) => { if (event.key === "Enter") submitForm(); }} />;
 const UndeferredThirdParty = () => <script src="https://cdn.example.com/widget.js" />;
 const baseJotaiAtom = makeJotaiAtom({ value: 1 });
 const safeAssignedJotaiAtom = makeJotaiAtom((get) => Object.assign(Object.create(null), { value: get(baseJotaiAtom).value }));
@@ -6970,6 +6980,8 @@ const ignoredSolidNormalizedFloatAttribute = <float32BufferAttribute args={[data
 const ignoredSolidWebgpuCanvas = <Canvas gl={{}} renderer={{}} />;
 const ignoredSolidShadowedPointLights = () => <group><pointLight castShadow /><pointLight castShadow /><pointLight castShadow /></group>;
 const ignoredSolidDuplicatePrimitive = ({ scene }) => <><primitive object={scene} /><primitive object={scene} /></>;
+const ignoredSolidFixedControlledInput = () => <input value="locked" onChange={(event) => log(event)} />;
+const ignoredSolidImeUnsafeInput = () => <input onKeyDown={(event) => { if (event.key === "Enter") submitForm(); }} />;
 void Canvas;
 export const SolidGiant = () => {
   createSignal(0);

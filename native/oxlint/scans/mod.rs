@@ -6,7 +6,6 @@ mod active_static_asset;
 mod dangerous_html_sink;
 mod get_location_at_index;
 mod is_production_file_path;
-mod mdx_ssr_execution_risk;
 mod normalize_js_regex_content;
 mod nosql_injection_risk;
 mod raw_sql_injection_risk;
@@ -23,7 +22,6 @@ pub use scan_finding::ScanFinding;
 const NATIVE_SCAN_RULE_IDS: &[&str] = &[
     "active-static-asset",
     "dangerous-html-sink",
-    "mdx-ssr-execution-risk",
     "nosql-injection-risk",
     "raw-sql-injection-risk",
     "supabase-client-owned-authz-field",
@@ -64,9 +62,6 @@ pub fn scan_file(input: &ScanFileInput) -> BTreeMap<String, Vec<ScanFinding>> {
                 &input.content,
                 input.is_generated_bundle,
             ),
-            "mdx-ssr-execution-risk" => {
-                mdx_ssr_execution_risk::scan(&input.relative_path, &input.content)
-            }
             "nosql-injection-risk" => {
                 nosql_injection_risk::scan(&input.relative_path, &input.content)
             }

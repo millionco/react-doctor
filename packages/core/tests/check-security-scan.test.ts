@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { checkSecurityScan, checkSecurityScanCooperative } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
 import { REACT_DOCTOR_RULES } from "oxlint-plugin-react-doctor";
-import { MINIFIED_SNIFF_BYTES } from "../src/constants.js";
+import { MINIFIED_SNIFF_BYTES, REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV } from "../src/constants.js";
 
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures", "check-security-scan");
 
@@ -31,6 +31,7 @@ const setOrDeleteEnv = (name: string, value: string | undefined): void => {
 
 let originalGitConfigGlobal: string | undefined;
 let originalGitConfigSystem: string | undefined;
+let originalNativeBindingPath: string | undefined;
 
 beforeEach(() => {
   temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-security-scan-"));
@@ -41,14 +42,17 @@ beforeEach(() => {
   // stay deterministic regardless of the host's git setup.
   originalGitConfigGlobal = process.env.GIT_CONFIG_GLOBAL;
   originalGitConfigSystem = process.env.GIT_CONFIG_SYSTEM;
+  originalNativeBindingPath = process.env[REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV];
   process.env.GIT_CONFIG_GLOBAL = "/dev/null";
   process.env.GIT_CONFIG_SYSTEM = "/dev/null";
+  delete process.env[REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV];
 });
 
 afterEach(() => {
   fs.rmSync(temporaryRoot, { recursive: true, force: true });
   setOrDeleteEnv("GIT_CONFIG_GLOBAL", originalGitConfigGlobal);
   setOrDeleteEnv("GIT_CONFIG_SYSTEM", originalGitConfigSystem);
+  setOrDeleteEnv(REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV, originalNativeBindingPath);
   vi.restoreAllMocks();
 });
 
@@ -487,6 +491,56 @@ alter table data enable row level security;
   });
 
   describe("supabase-table-missing-rls", () => {
+    it("routes supported scan rules through the configured native binding", () => {
+      writeFile(
+        "supabase/migrations/001_native.sql",
+        "create table native_todos (id uuid primary key);\n",
+      );
+      const bindingPath = path.join(temporaryRoot, "native-scan-binding.cjs");
+      fs.writeFileSync(
+        bindingPath,
+        `module.exports = {
+  reactDoctorNativeScanRuleIds: () => ["supabase-table-missing-rls"],
+  scanReactDoctorFile: () => JSON.stringify({
+    "supabase-table-missing-rls": [{
+      message: "native scanner marker",
+      line: 1,
+      column: 1,
+    }],
+  }),
+};\n`,
+      );
+      process.env[REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV] = bindingPath;
+
+      const nativeDiagnostic = checkSecurityScan(temporaryRoot).find(
+        (diagnostic) => diagnostic.rule === "supabase-table-missing-rls",
+      );
+
+      expect(nativeDiagnostic?.message).toBe("native scanner marker");
+    });
+
+    it("falls back to the TypeScript scanner when native output is invalid", () => {
+      writeFile(
+        "supabase/migrations/001_fallback.sql",
+        "create table fallback_todos (id uuid primary key);\n",
+      );
+      const bindingPath = path.join(temporaryRoot, "invalid-native-scan-binding.cjs");
+      fs.writeFileSync(
+        bindingPath,
+        `module.exports = {
+  reactDoctorNativeScanRuleIds: () => ["supabase-table-missing-rls"],
+  scanReactDoctorFile: () => "not json",
+};\n`,
+      );
+      process.env[REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV] = bindingPath;
+
+      const fallbackDiagnostic = checkSecurityScan(temporaryRoot).find(
+        (diagnostic) => diagnostic.rule === "supabase-table-missing-rls",
+      );
+
+      expect(fallbackDiagnostic?.message).toContain("never enables Row Level Security");
+    });
+
     it("flags a vibe-coded Supabase migration that creates a public table without RLS", () => {
       expect(fixtureRules("supabase-public-table-missing-rls")).toEqual(
         new Set(["supabase-table-missing-rls"]),

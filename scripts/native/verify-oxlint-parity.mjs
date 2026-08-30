@@ -1486,6 +1486,13 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-locale-format-in-render": 0,
   "no-mixed-animation-owners": 0,
   "no-mutate-queried-dom-node-in-component": 0,
+  "loading-action-preserves-trigger": 0,
+  "no-prop-types": 0,
+  "no-this-in-sfc": 0,
+  "style-prop-object": 0,
+  "rn-bottom-sheet-no-state-in-on-animate": 0,
+  "prefer-dynamic-import": 0,
+  "no-full-lodash-import": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1590,6 +1597,13 @@ const FOCUSED_PARITY_RULE_IDS = [
   "no-locale-format-in-render",
   "no-mixed-animation-owners",
   "no-mutate-queried-dom-node-in-component",
+  "loading-action-preserves-trigger",
+  "no-prop-types",
+  "no-this-in-sfc",
+  "style-prop-object",
+  "rn-bottom-sheet-no-state-in-on-animate",
+  "prefer-dynamic-import",
+  "no-full-lodash-import",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1688,6 +1702,13 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "no-locale-format-in-render": 1,
   "no-mixed-animation-owners": 1,
   "no-mutate-queried-dom-node-in-component": 1,
+  "loading-action-preserves-trigger": 1,
+  "no-prop-types": 1,
+  "no-this-in-sfc": 1,
+  "style-prop-object": 1,
+  "rn-bottom-sheet-no-state-in-on-animate": 1,
+  "prefer-dynamic-import": 3,
+  "no-full-lodash-import": 3,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -6434,13 +6455,19 @@ export const UncertainStaticSpreadScene = () => {
     focusedParityFixturePath,
     `import { atom, useAtomValue } from "jotai";
 import { BarrelPrimary } from "./barrel";
+import { Chart as FocusedChart } from "chart.js";
+import FocusedShadowedChart from "react-chartjs-2";
+import FocusedJsxShadowedChart from "react-quill";
 import { debounce } from "lodash";
+import { throttle as FocusedShadowedLodash } from "lodash";
+import { uniq as FocusedCatchShadowedLodash } from "lodash";
 import { makeAutoObservable, reaction as focusedMobxReaction } from "mobx";
 import { observer } from "mobx-react-lite";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as Preact from "preact";
 import { createContext, createRef, memo, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector as focusedReduxUseSelector } from "react-redux";
+import BottomSheet from "@gorhom/bottom-sheet";
 import { HomeIcon } from "@heroicons/react/24/outline";
 import { Search as FocusedLucideSearch } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
@@ -6692,6 +6719,66 @@ const FocusedMixedIcons = () => <><FocusedLucideSearch /><HomeIcon /></>;
 const FocusedReducedMotionRemoval = () => useReducedMotion() ? null : <p>Upload complete</p>;
 const FocusedSpreadAccumulator = ({ items }) => items.reduce((accumulator, item) => [...accumulator, item], []);
 const FocusedUnsafeDynamicRegexp = ({ highlight }) => RegExp(highlight, "gi");
+const FocusedLoadingAction = () => {
+  const [isPending, setIsPending] = useState(false);
+  const load = async () => {
+    setIsPending(true);
+    await fetch("/api/focused");
+    setIsPending(false);
+  };
+  return isPending ? <span>Loading</span> : <button type="button" onClick={load}>Load</button>;
+};
+const FocusedLetStateLoadingAction = () => {
+  let [isPending, setIsPending] = useState(false);
+  const load = async () => {
+    setIsPending(true);
+    await fetch("/api/focused");
+    setIsPending(false);
+  };
+  return isPending ? <span>Loading</span> : <button type="button" onClick={load}>Load</button>;
+};
+const FocusedLetHandlerLoadingAction = () => {
+  const [isPending, setIsPending] = useState(false);
+  let load = async () => {
+    setIsPending(true);
+    await fetch("/api/focused");
+    setIsPending(false);
+  };
+  return isPending ? <span>Loading</span> : <button type="button" onClick={load}>Load</button>;
+};
+const FocusedPropTypes = () => <div />;
+FocusedPropTypes.propTypes = {};
+function FocusedMapLikeSchema({ store }) {
+  if (store.items.length) return store.items.map((item) => <span>{item}</span>);
+  return null;
+}
+FocusedMapLikeSchema.propTypes = {};
+function FocusedDerivedMapSchema({ values }) {
+  const filteredValues = values.filter(Boolean);
+  if (filteredValues.length) return filteredValues.map((value) => <span>{value}</span>);
+  return null;
+}
+FocusedDerivedMapSchema.propTypes = {};
+const FocusedThisComponent = () => <div>{this.props.value}</div>;
+const FocusedInvalidStyle = () => <div style="display: none" style="color: red" />;
+const FocusedBottomSheetState = () => {
+  const [, setSheetIndex] = useState(0);
+  return <BottomSheet onAnimate={() => setSheetIndex(1)} />;
+};
+const focusedChartConstructor = FocusedChart;
+const focusedShadowedImportNames = () => {
+  const FocusedShadowedChart = "local chart";
+  const FocusedShadowedLodash = "local lodash";
+  return FocusedShadowedChart + ":" + FocusedShadowedLodash;
+};
+const FocusedJsxParameterShadow = (FocusedJsxShadowedChart) => <FocusedJsxShadowedChart />;
+const focusedCatchBindingShadow = () => {
+  try {
+    throw new Error("focused");
+  } catch (FocusedCatchShadowedLodash) {
+    return FocusedCatchShadowedLodash;
+  }
+};
 const TinyPrefixParity = ({ translatedDescription }) => <><div className="flex flex-col"><span style={{ fontSize: "8px" }}>Readable copy</span></div><div className="docx-shortcut-item"><div style={{ fontSize: "11px" }}>{translatedDescription}</div></div></>;
 const FocusedLocaleFormat = ({ value }) => {
   useState(0);
@@ -7240,6 +7327,7 @@ export const App = () => <>
       rootDirectory: focusedParityDirectory,
       capabilities: [
         "react",
+        "react-native",
         "nextjs",
         "nextjs:15",
         "preact",

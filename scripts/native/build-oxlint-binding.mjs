@@ -11,6 +11,7 @@ const requireFromScript = createRequire(import.meta.url);
 const nativeDirectory = path.join(repositoryRoot, "native", "oxlint");
 const nativeRulesDirectory = path.join(nativeDirectory, "rules");
 const nativeScansDirectory = path.join(nativeDirectory, "scans");
+const nativeProjectAnalysisDirectory = path.join(nativeDirectory, "project-analysis");
 const upstream = JSON.parse(fs.readFileSync(path.join(nativeDirectory, "upstream.json"), "utf8"));
 const patchPath = path.join(nativeDirectory, "react-doctor.patch");
 const delegatedRules = new Map(
@@ -87,6 +88,21 @@ try {
       fs.copyFileSync(
         path.join(nativeScansDirectory, scanSourceFilename),
         path.join(upstreamScansDirectory, scanSourceFilename.replaceAll("-", "_")),
+      );
+    }
+    const upstreamProjectAnalysisDirectory = path.join(
+      checkoutDirectory,
+      "crates",
+      "oxc_linter",
+      "src",
+      "react_doctor_project_analysis",
+    );
+    fs.mkdirSync(upstreamProjectAnalysisDirectory, { recursive: true });
+    for (const projectSourceFilename of fs.readdirSync(nativeProjectAnalysisDirectory)) {
+      if (!projectSourceFilename.endsWith(".rs")) continue;
+      fs.copyFileSync(
+        path.join(nativeProjectAnalysisDirectory, projectSourceFilename),
+        path.join(upstreamProjectAnalysisDirectory, projectSourceFilename),
       );
     }
     const upstreamRulesDirectory = path.join(
@@ -254,6 +270,10 @@ impl Rule for ${delegatedRule.struct} {
         "parenthesized-expression-root",
         "component-or-hook-function-name",
         "function-contains-react-render-output",
+        "is-proven-react-component-symbol",
+        "is-import-absent-from-client-bundle",
+        "is-published-library-package",
+        "is-outside-browser-bundle",
         "file-is-non-react-jsx-dialect",
         "module-api-path-matches",
         "object-has-accessible-child",
@@ -426,8 +446,80 @@ impl Rule for ${delegatedRule.struct} {
         "resolve_cfg_assigned_expressions_for_reference",
         ["local_callback_nearest_function_id", "transparent_expression_root"],
       ],
+      [
+        "is_proven_react_component_symbol",
+        [
+          "function_contains_react_render_output",
+          "is_react_api_call",
+          "is_react_hook_call",
+          "module_api_path_matches",
+          "property_key_matches_name",
+          "resolve_stable_identifier_symbol",
+          "symbol_has_write_before",
+        ],
+      ],
+      ["is_outside_browser_bundle", ["is_published_library_package"]],
     ]);
     const nativeRuleUtilityDependencies = new Map([
+      [
+        "loading-action-preserves-trigger",
+        [
+          "get_authoritative_jsx_attribute",
+          "has_any_jsx_spread_attribute",
+          "is_node_reachable_within_function",
+          "is_proven_intrinsic_jsx_element",
+          "is_react_api_call",
+          "jsx_attribute_expression",
+          "nodes_can_co_execute",
+          "resolve_jsx_element_type_name",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "no-prop-types",
+        [
+          "is_non_production_file",
+          "is_proven_react_component_symbol",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "no-this-in-sfc",
+        ["function_contains_react_render_output", "should_use_curated_port_behavior"],
+      ],
+      [
+        "style-prop-object",
+        ["is_create_element_call", "resolve_jsx_element_type", "should_use_curated_port_behavior"],
+      ],
+      ["no-legacy-context-api", ["is_proven_react_component_symbol"]],
+      [
+        "rn-bottom-sheet-no-state-in-on-animate",
+        [
+          "find_jsx_attribute",
+          "is_react_hook_call",
+          "jsx_attribute_expression",
+          "local_callback_nearest_function_id",
+          "resolve_const_identifier_root_symbol",
+          "resolve_imported_jsx_component_name",
+        ],
+      ],
+      [
+        "prefer-dynamic-import",
+        [
+          "is_import_absent_from_client_bundle",
+          "is_non_production_file",
+          "is_published_library_package",
+        ],
+      ],
+      [
+        "no-full-lodash-import",
+        [
+          "is_import_absent_from_client_bundle",
+          "is_non_production_file",
+          "is_outside_browser_bundle",
+          "is_published_library_package",
+        ],
+      ],
       ["no-barrel-import", ["is_non_production_file", "is_react_native_file_target"]],
       [
         "no-locale-format-in-render",
@@ -873,6 +965,16 @@ impl Rule for ${delegatedRule.struct} {
           `built binding does not export reactDoctorNativeScanRuleIds: ${outputBindingPath}`,
         );
       }
+      if (typeof nativeBinding.analyzeReactDoctorProjectGraph !== "function") {
+        throw new Error(
+          `built binding does not export analyzeReactDoctorProjectGraph: ${outputBindingPath}`,
+        );
+      }
+      if (typeof nativeBinding.reactDoctorNativeProjectRuleIds !== "function") {
+        throw new Error(
+          `built binding does not export reactDoctorNativeProjectRuleIds: ${outputBindingPath}`,
+        );
+      }
 
       const sha256 = (filePath) =>
         crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
@@ -887,6 +989,7 @@ impl Rule for ${delegatedRule.struct} {
             rustToolchain: upstream.rustToolchain,
             nativeRules: upstream.nativeRules,
             nativeScanRules: nativeBinding.reactDoctorNativeScanRuleIds(),
+            nativeProjectRules: nativeBinding.reactDoctorNativeProjectRuleIds(),
             bindingFile: bindingFileName,
             bindingSha256: sha256(outputBindingPath),
             patchSha256: sha256(patchPath),

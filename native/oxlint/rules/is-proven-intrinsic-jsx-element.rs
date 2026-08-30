@@ -1,5 +1,5 @@
 fn is_proven_intrinsic_jsx_element<'a>(
-    opening_element: &'a oxc_ast::ast::JSXOpeningElement<'a>,
+    opening_element: &oxc_ast::ast::JSXOpeningElement<'a>,
     ctx: &crate::context::LintContext<'a>,
 ) -> bool {
     let identifier = match &opening_element.name {

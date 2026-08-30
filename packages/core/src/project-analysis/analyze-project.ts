@@ -45,6 +45,7 @@ import { extractBuildScriptConsumedFiles } from "./collect/build-script-consumed
 import { buildPlatformSiblingIndex } from "./utils/build-platform-sibling-index.js";
 import { collectUnpluginAutoImportReferences } from "./collect/unplugin-auto-import-entries.js";
 import { markCompletePackageGraphs } from "./utils/mark-complete-package-graphs.js";
+import { runNativeProjectAnalysis } from "./run-native-project-analysis.js";
 
 export interface AnalyzeProjectInput {
   readonly rootDirectory: string;
@@ -443,16 +444,21 @@ const analyzeProjectConfig = async (
       module: "report",
       contextDescription: "while building project findings",
     });
-  const unusedFiles = runReportDetector(
-    "detectOrphanFiles",
-    () => detectOrphanFiles(moduleGraph),
-    [],
+  const nativeProjectAnalysis = runReportDetector(
+    "runNativeProjectAnalysis",
+    () => runNativeProjectAnalysis(moduleGraph),
+    null,
   );
-  const verifiedUnusedFiles = runReportDetector(
-    "detectVerifiedOrphanFiles",
-    () => detectOrphanFiles(moduleGraph, { requireCompletePackageGraph: true }),
-    [],
-  );
+  const unusedFiles =
+    nativeProjectAnalysis?.unusedFiles ??
+    runReportDetector("detectOrphanFiles", () => detectOrphanFiles(moduleGraph), []);
+  const verifiedUnusedFiles =
+    nativeProjectAnalysis?.verifiedUnusedFiles ??
+    runReportDetector(
+      "detectVerifiedOrphanFiles",
+      () => detectOrphanFiles(moduleGraph, { requireCompletePackageGraph: true }),
+      [],
+    );
   const unusedExports = runReportDetector(
     "detectDeadExports",
     () => detectDeadExports(moduleGraph, config, platformSiblingIndex),

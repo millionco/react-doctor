@@ -9,6 +9,7 @@ import {
   type SecurityScanRuleEntry,
 } from "./checks/security-scan/build-security-scan-diagnostic.js";
 import { collectSecurityScanFiles } from "./checks/security-scan/collect-security-scan-files.js";
+import { loadNativeSecurityScan } from "./checks/security-scan/load-native-security-scan.js";
 import { COOPERATIVE_YIELD_BUDGET_MS } from "./constants.js";
 import { getCapabilities, shouldEnableRule } from "./project-info/capabilities.js";
 import type { Diagnostic, ProjectInfo } from "./types/index.js";
@@ -31,6 +32,7 @@ export interface CheckSecurityScanOptions {
 interface EnabledScanRule {
   readonly entry: SecurityScanRuleEntry;
   readonly scan: FileScan;
+  readonly isNative: boolean;
   // `rule.committedFilesOnly`, precomputed per rule (see `Rule` for semantics).
   readonly committedFilesOnly: boolean;
 }
@@ -57,6 +59,7 @@ const createSecurityScanSession = (
   const capabilities = options.project ? getCapabilities(options.project) : new Set<Capability>();
   const ignoredTags = options.ignoredTags ?? new Set<string>();
   const includedTags = options.includedTags ?? new Set<string>();
+  const nativeSecurityScan = loadNativeSecurityScan();
 
   const enabledScanRules: EnabledScanRule[] = REACT_DOCTOR_SCAN_RULES.flatMap((entry) => {
     const rule = entry.rule;
@@ -82,9 +85,19 @@ const createSecurityScanSession = (
     ) {
       return [];
     }
-    return [{ entry, scan, committedFilesOnly: rule.committedFilesOnly === true }];
+    return [
+      {
+        entry,
+        scan,
+        committedFilesOnly: rule.committedFilesOnly === true,
+        isNative: nativeSecurityScan?.ruleIds.has(entry.id) === true,
+      },
+    ];
   });
   if (enabledScanRules.length === 0) return null;
+  const nativeRuleIds = enabledScanRules
+    .filter((rule) => rule.isNative)
+    .map((rule) => rule.entry.id);
 
   const diagnostics: Diagnostic[] = [];
   const seen = new Set<string>();
@@ -100,8 +113,14 @@ const createSecurityScanSession = (
 
   const scanFileByRule = function* (file: ScannedFile | null): Generator<void, void, void> {
     if (file === null) return;
-    for (const { entry, scan, committedFilesOnly } of enabledScanRules) {
-      for (const finding of scan(file)) {
+    const nativeFindingsByRule =
+      nativeRuleIds.length > 0 ? (nativeSecurityScan?.scanFile(file, nativeRuleIds) ?? null) : null;
+    for (const { entry, scan, committedFilesOnly, isNative } of enabledScanRules) {
+      const findings =
+        isNative && nativeFindingsByRule !== null
+          ? (nativeFindingsByRule.get(entry.id) ?? [])
+          : scan(file);
+      for (const finding of findings) {
         // A committed-file rule's finding doesn't apply to a path git ignores
         // (it isn't actually checked in). The check is deferred to here, gated
         // on an actual finding, on purpose: `scan` is cheap regex but

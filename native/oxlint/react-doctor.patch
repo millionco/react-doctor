@@ -222,21 +222,41 @@ index baa13c5..7c21b9d 100644
 diff --git a/crates/oxc_linter/src/lib.rs b/crates/oxc_linter/src/lib.rs
 --- a/crates/oxc_linter/src/lib.rs
 +++ b/crates/oxc_linter/src/lib.rs
-@@ -47,6 +47,7 @@ mod tsgolint;
+@@ -47,6 +47,8 @@ mod tsgolint;
  mod utils;
  
  pub mod loader;
 +pub mod react_doctor_scan;
++pub mod react_doctor_project_analysis;
  pub mod rules;
  pub mod table;
  
 diff --git a/apps/oxlint/src/run.rs b/apps/oxlint/src/run.rs
 --- a/apps/oxlint/src/run.rs
 +++ b/apps/oxlint/src/run.rs
-@@ -239,6 +239,23 @@ async fn lint_impl(
+@@ -239,6 +239,42 @@ async fn lint_impl(
      cli_runner.run(&mut stdout)
  }
  
++#[napi]
++pub fn react_doctor_native_project_rule_ids() -> Vec<String> {
++    oxc_linter::react_doctor_project_analysis::native_project_rule_ids()
++}
++
++#[napi]
++pub fn analyze_react_doctor_project_graph(input_json: String) -> napi::Result<String> {
++    let input = serde_json::from_str::<
++        oxc_linter::react_doctor_project_analysis::ProjectAnalysisGraphInput,
++    >(&input_json)
++    .map_err(|error| {
++        napi::Error::from_reason(format!("Invalid React Doctor project graph input: {error}"))
++    })?;
++    let findings = oxc_linter::react_doctor_project_analysis::analyze_project_graph(&input);
++    serde_json::to_string(&findings).map_err(|error| {
++        napi::Error::from_reason(format!("Failed to serialize React Doctor project findings: {error}"))
++    })
++}
++
 +#[napi]
 +pub fn react_doctor_native_scan_rule_ids() -> Vec<String> {
 +    oxc_linter::react_doctor_scan::native_scan_rule_ids()

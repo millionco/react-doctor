@@ -133,12 +133,13 @@ describe("checkExpoProject — redundant transitive dependencies", () => {
       dependencies: {
         expo: "~51.0.0",
         "expo-modules-core": "~1.0.0",
+        "@expo/metro-config": "~0.18.0",
       },
     });
     const diagnostics = checkExpoProject(projectDirectory, buildExpoProject(projectDirectory));
     expect(
       rulesOf(diagnostics).filter((rule) => rule === "expo-no-redundant-dependency"),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
 
   it("only flags SDK-gated packages when the resolved SDK is high enough", () => {
@@ -165,22 +166,76 @@ describe("checkExpoProject — redundant transitive dependencies", () => {
     ).toHaveLength(1);
   });
 
-  it("does NOT flag @expo/metro-config as redundant (subpaths like babel-transformer are not re-exported by expo)", () => {
+  it("keeps @expo/metro-config when a package subpath is imported", () => {
     const projectDirectory = makeProjectDirectory();
     writePackageJson(projectDirectory, {
       name: "expo-app",
       dependencies: {
-        expo: "~57.0.0",
-        "@expo/metro-config": "~57.0.12",
+        expo: "~57.0.18",
+        "@expo/metro-config": "57.0.12",
       },
     });
+    writeFile(
+      projectDirectory,
+      "metro.transformer.cjs",
+      `const upstreamTransformer = require("@expo/metro-config/babel-transformer");`,
+    );
+
     const diagnostics = checkExpoProject(
       projectDirectory,
-      buildExpoProject(projectDirectory, "~57.0.0"),
+      buildExpoProject(projectDirectory, "~57.0.18"),
     );
     expect(
       rulesOf(diagnostics).filter((rule) => rule === "expo-no-redundant-dependency"),
     ).toHaveLength(0);
+  });
+
+  it("still flags @expo/metro-config when only the package root is imported", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "expo-app",
+      dependencies: {
+        expo: "~57.0.18",
+        "@expo/metro-config": "57.0.12",
+      },
+    });
+    writeFile(
+      projectDirectory,
+      "metro.config.js",
+      `const { getDefaultConfig } = require("@expo/metro-config");`,
+    );
+
+    const diagnostics = checkExpoProject(
+      projectDirectory,
+      buildExpoProject(projectDirectory, "~57.0.18"),
+    );
+    expect(
+      rulesOf(diagnostics).filter((rule) => rule === "expo-no-redundant-dependency"),
+    ).toHaveLength(1);
+  });
+
+  it("still flags @expo/metro-config when a package subpath only appears in a comment", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "expo-app",
+      dependencies: {
+        expo: "~57.0.18",
+        "@expo/metro-config": "57.0.12",
+      },
+    });
+    writeFile(
+      projectDirectory,
+      "metro.config.js",
+      `// require("@expo/metro-config/babel-transformer");\nmodule.exports = {};`,
+    );
+
+    const diagnostics = checkExpoProject(
+      projectDirectory,
+      buildExpoProject(projectDirectory, "~57.0.18"),
+    );
+    expect(
+      rulesOf(diagnostics).filter((rule) => rule === "expo-no-redundant-dependency"),
+    ).toHaveLength(1);
   });
 });
 

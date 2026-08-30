@@ -84,6 +84,25 @@ const rnLegacyShadowStylesFixturePath = path.join(
   "rn-legacy-shadow-styles.tsx",
 );
 const webglSyncReadbackFixturePath = path.join(fixtureDirectory, "app", "webgl-sync-readback.ts");
+const unboundedAnimationFrameFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "unbounded-animation-frame.ts",
+);
+const renderingHoistJsxFixturePath = path.join(fixtureDirectory, "app", "rendering-hoist-jsx.tsx");
+const rnListPerfFixturePath = path.join(fixtureDirectory, "app", "rn-list-perf.tsx");
+const rnScrollStateFixturePath = path.join(fixtureDirectory, "app", "rn-scroll-state.tsx");
+const rnDetoxFixturePath = path.join(fixtureDirectory, "e2e", "detox-flow.e2e.ts");
+const rnScrollViewMappedListFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "rn-scrollview-mapped-list.tsx",
+);
+const rnScrollViewDynamicPaddingFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "rn-scrollview-dynamic-padding.tsx",
+);
 const r3fLightingFixturePath = path.join(fixtureDirectory, "app", "r3f-lighting.tsx");
 const r3fMetalEnvironmentFixturePath = path.join(
   fixtureDirectory,
@@ -865,7 +884,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-cascading-set-state": 0,
   "rn-animate-layout-property": 0,
   "rn-prefer-content-inset-adjustment": 0,
-  "rn-no-inline-flatlist-renderitem": 3,
+  "rn-no-inline-flatlist-renderitem": 4,
   "rn-no-image-children": 2,
   "motion-imperative-animation-in-render": 5,
   "motion-value-subscription-in-render": 2,
@@ -1095,7 +1114,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-no-shadows-on-unsupported-light": 1,
   "three-no-async-animation-loop": 2,
   "three-cap-device-pixel-ratio": 1,
-  "three-prefer-set-animation-loop": 9,
+  "three-prefer-set-animation-loop": 10,
   "three-no-ignored-basic-material-properties": 3,
   "three-no-ignored-linewidth": 2,
   "three-no-normalized-float-buffer-attribute": 2,
@@ -1489,7 +1508,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-create-ref-in-function-component": 1,
   "no-mixed-icon-libraries": 0,
   "no-reduced-motion-content-removal": 0,
-  "no-spread-accumulator-in-reduce": 0,
+  "no-spread-accumulator-in-reduce": 1,
   "no-unescaped-dynamic-string-in-regexp": 0,
   "no-barrel-import": 0,
   "no-tiny-text": 0,
@@ -1509,6 +1528,16 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "server-dedup-props": 1,
   "rn-no-legacy-shadow-styles": 1,
   "webgl-no-sync-readback-in-animation-loop": 2,
+  "no-unbounded-animation-frame-loop": 9,
+  "rendering-hoist-jsx": 2,
+  "rn-list-callback-per-row": 1,
+  "rn-list-missing-estimated-item-size": 1,
+  "rn-no-inline-object-in-list-item": 1,
+  "rn-list-data-mapped": 1,
+  "rn-no-scroll-state": 1,
+  "rn-detox-missing-await": 1,
+  "rn-no-scrollview-mapped-list": 2,
+  "rn-scrollview-dynamic-padding": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1626,6 +1655,16 @@ const FOCUSED_PARITY_RULE_IDS = [
   "server-dedup-props",
   "rn-no-legacy-shadow-styles",
   "webgl-no-sync-readback-in-animation-loop",
+  "no-unbounded-animation-frame-loop",
+  "rendering-hoist-jsx",
+  "rn-list-callback-per-row",
+  "rn-list-missing-estimated-item-size",
+  "rn-no-inline-object-in-list-item",
+  "rn-list-data-mapped",
+  "rn-no-scroll-state",
+  "rn-detox-missing-await",
+  "rn-no-scrollview-mapped-list",
+  "rn-scrollview-dynamic-padding",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1737,6 +1776,16 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "server-dedup-props": 0,
   "rn-no-legacy-shadow-styles": 0,
   "webgl-no-sync-readback-in-animation-loop": 0,
+  "no-unbounded-animation-frame-loop": 0,
+  "rendering-hoist-jsx": 0,
+  "rn-list-callback-per-row": 0,
+  "rn-list-missing-estimated-item-size": 0,
+  "rn-no-inline-object-in-list-item": 0,
+  "rn-list-data-mapped": 0,
+  "rn-no-scroll-state": 0,
+  "rn-detox-missing-await": 0,
+  "rn-no-scrollview-mapped-list": 0,
+  "rn-scrollview-dynamic-padding": 0,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -3792,6 +3841,80 @@ const drawFrame = () => {
   requestAnimationFrame(drawFrame);
 };
 requestAnimationFrame(drawFrame);
+`,
+  );
+  fs.writeFileSync(
+    unboundedAnimationFrameFixturePath,
+    `function drawFrame() {
+  renderFrame();
+  requestAnimationFrame(drawFrame);
+}
+requestAnimationFrame(drawFrame);
+`,
+  );
+  fs.writeFileSync(
+    renderingHoistJsxFixturePath,
+    `import React from "react";
+export const StaticPanel = () => {
+  const staticHeading = <h1>Welcome</h1>;
+  return <section>{staticHeading}</section>;
+};
+`,
+  );
+  fs.writeFileSync(
+    rnListPerfFixturePath,
+    `import React from "react";
+import { FlashList } from "@shopify/flash-list";
+export const FastList = ({ items }) => (
+  <FlashList
+    data={items.map(normalizeItem)}
+    renderItem={({ item }) => <Row onPress={() => select(item.id)} metadata={{ id: item.id }} />}
+  />
+);
+`,
+  );
+  fs.writeFileSync(
+    rnScrollStateFixturePath,
+    `import React from "react";
+import { ScrollView } from "react-native";
+export const ScrollPanel = () => {
+  const [scrollOffset, setScrollOffset] = React.useState(0);
+  const handleScroll = (event) => setScrollOffset(event.nativeEvent.contentOffset.y);
+  return <ScrollView onScroll={handleScroll} contentOffset={{ y: scrollOffset }} />;
+};
+`,
+  );
+  fs.mkdirSync(path.dirname(rnDetoxFixturePath), { recursive: true });
+  fs.writeFileSync(
+    rnDetoxFixturePath,
+    `element(by.id("continue")).tap();
+`,
+  );
+  fs.writeFileSync(
+    rnScrollViewMappedListFixturePath,
+    `import React from "react";
+import { ScrollView } from "react-native";
+export const MappedScrollView = ({ items }) => (
+  <ScrollView>{items.map((item) => <Row key={item.id} item={item} />)}</ScrollView>
+);
+export const ReducedScrollView = ({ items }) => (
+  <ScrollView>
+    {items.reduce((rows, item) => [...rows, <Row key={item.id} item={item} />], [])}
+  </ScrollView>
+);
+export const FixedDestructuredScrollView = (props) => {
+  const { rows = [1, 2] } = props;
+  return <ScrollView>{rows.map((row) => <Row key={row} />)}</ScrollView>;
+};
+`,
+  );
+  fs.writeFileSync(
+    rnScrollViewDynamicPaddingFixturePath,
+    `import React from "react";
+import { ScrollView } from "react-native";
+export const PaddedScrollView = ({ bottomInset }) => (
+  <ScrollView contentContainerStyle={{ paddingBottom: bottomInset }} />
+);
 `,
   );
   fs.writeFileSync(

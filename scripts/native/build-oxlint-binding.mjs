@@ -484,6 +484,7 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       ["no-render-in-render", ["has_possible_static_property_write_before"]],
+      ["rn-no-scroll-state", ["member_expression_identifier_property_name"]],
       [
         "no-this-in-sfc",
         ["function_contains_react_render_output", "should_use_curated_port_behavior"],

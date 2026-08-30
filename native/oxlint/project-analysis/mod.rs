@@ -1,11 +1,18 @@
 use serde::{Deserialize, Serialize};
 
+#[path = "circular-dependency.rs"]
+mod circular_dependency;
 #[path = "unused-export.rs"]
 mod unused_export;
 #[path = "unused-file.rs"]
 mod unused_file;
 
-const NATIVE_PROJECT_RULE_IDS: &[&str] = &["unused-export", "unused-file", "unused-type"];
+const NATIVE_PROJECT_RULE_IDS: &[&str] = &[
+    "circular-dependency",
+    "unused-export",
+    "unused-file",
+    "unused-type",
+];
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,6 +34,7 @@ pub struct ProjectModuleInput {
     pub member_accesses: Vec<ProjectMemberAccessInput>,
     pub whole_object_uses: Vec<String>,
     pub local_identifier_references: Vec<String>,
+    pub top_level_import_references: Vec<String>,
     pub parse_error_codes: Vec<String>,
     pub is_reachable: bool,
     pub is_entry_point: bool,
@@ -63,6 +71,8 @@ pub struct ProjectEdgeInput {
     pub imported_symbols: Vec<ProjectLinkedSymbolInput>,
     pub is_re_export_edge: bool,
     pub is_dynamic: bool,
+    pub is_side_effect: bool,
+    pub is_type_only: bool,
     pub re_exported_names: Vec<String>,
     pub re_export_mappings: Vec<ProjectReExportMappingInput>,
 }
@@ -72,6 +82,7 @@ pub struct ProjectEdgeInput {
 pub struct ProjectLinkedSymbolInput {
     pub imported_name: String,
     pub local_name: String,
+    pub is_type_only: bool,
     pub is_namespace: bool,
     pub is_default: bool,
 }
@@ -113,17 +124,25 @@ pub struct UnusedExportFinding {
     pub is_type_only: bool,
 }
 
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CircularDependencyFinding {
+    pub files: Vec<String>,
+}
+
 #[derive(Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectAnalysisOutput {
     pub unused_files: Vec<UnusedFileFinding>,
     pub verified_unused_files: Vec<UnusedFileFinding>,
     pub unused_exports: Vec<UnusedExportFinding>,
+    pub circular_dependencies: Vec<CircularDependencyFinding>,
 }
 
 pub fn analyze_project_graph(graph: &ProjectAnalysisGraphInput) -> ProjectAnalysisOutput {
     let mut output = unused_file::analyze(graph);
     output.unused_exports = unused_export::analyze(graph);
+    output.circular_dependencies = circular_dependency::analyze(graph);
     output
 }
 
@@ -149,6 +168,7 @@ mod tests {
                     "memberAccesses": [],
                     "wholeObjectUses": [],
                     "localIdentifierReferences": [],
+                    "topLevelImportReferences": [],
                     "parseErrorCodes": [],
                     "isReachable": false,
                     "isEntryPoint": false,
@@ -174,7 +194,8 @@ mod tests {
             serde_json::json!({
                 "unusedFiles": [{ "path": "src/orphan.ts" }],
                 "verifiedUnusedFiles": [{ "path": "src/orphan.ts" }],
-                "unusedExports": []
+                "unusedExports": [],
+                "circularDependencies": []
             })
         );
     }
@@ -183,7 +204,12 @@ mod tests {
     fn exports_the_implemented_project_rule_ids() {
         assert_eq!(
             native_project_rule_ids(),
-            ["unused-export", "unused-file", "unused-type"]
+            [
+                "circular-dependency",
+                "unused-export",
+                "unused-file",
+                "unused-type"
+            ]
         );
     }
 }

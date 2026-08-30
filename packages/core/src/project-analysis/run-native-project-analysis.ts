@@ -2,7 +2,13 @@ import { loadNativeOxlintBinding } from "../runners/oxlint/load-native-oxlint-bi
 import { isRecord } from "../utils/is-record.js";
 import { buildExportKey } from "./utils/build-export-key.js";
 import { collectConventionConsumedExportKeys } from "./utils/collect-convention-consumed-export-keys.js";
-import type { DependencyGraph, ProjectAnalysisConfig, UnusedExport, UnusedFile } from "./types.js";
+import type {
+  CircularDependency,
+  DependencyGraph,
+  ProjectAnalysisConfig,
+  UnusedExport,
+  UnusedFile,
+} from "./types.js";
 
 export interface RunNativeProjectAnalysisInput {
   readonly graph: DependencyGraph;
@@ -14,6 +20,7 @@ export interface NativeProjectAnalysisResult {
   readonly unusedFiles?: ReadonlyArray<UnusedFile>;
   readonly verifiedUnusedFiles?: ReadonlyArray<UnusedFile>;
   readonly unusedExports?: ReadonlyArray<UnusedExport>;
+  readonly circularDependencies?: ReadonlyArray<CircularDependency>;
 }
 
 const parseUnusedFiles = (value: unknown): UnusedFile[] | null => {
@@ -53,6 +60,28 @@ const parseUnusedExports = (value: unknown): UnusedExport[] | null => {
   return unusedExports;
 };
 
+const parseCircularDependencies = (value: unknown): CircularDependency[] | null => {
+  if (!Array.isArray(value)) return null;
+  const circularDependencies: CircularDependency[] = [];
+  for (const entry of value) {
+    if (
+      !isRecord(entry) ||
+      !Array.isArray(entry.files) ||
+      entry.files.length < 2 ||
+      !entry.files.every((filePath) => typeof filePath === "string")
+    ) {
+      return null;
+    }
+    circularDependencies.push({ files: entry.files });
+  }
+  circularDependencies.sort((left, right) => {
+    const lengthDifference = left.files.length - right.files.length;
+    if (lengthDifference !== 0) return lengthDifference;
+    return left.files[0].localeCompare(right.files[0]);
+  });
+  return circularDependencies;
+};
+
 export const runNativeProjectAnalysis = (
   input: RunNativeProjectAnalysisInput,
 ): NativeProjectAnalysisResult | null => {
@@ -75,7 +104,8 @@ export const runNativeProjectAnalysis = (
   const hasNativeUnusedFile = nativeRuleIds.includes("unused-file");
   const hasNativeUnusedExports =
     nativeRuleIds.includes("unused-export") && nativeRuleIds.includes("unused-type");
-  if (!hasNativeUnusedFile && !hasNativeUnusedExports) return null;
+  const hasNativeCircularDependency = nativeRuleIds.includes("circular-dependency");
+  if (!hasNativeUnusedFile && !hasNativeUnusedExports && !hasNativeCircularDependency) return null;
   const conventionConsumedExportKeys = hasNativeUnusedExports
     ? collectConventionConsumedExportKeys(graph)
     : new Set<string>();
@@ -100,6 +130,7 @@ export const runNativeProjectAnalysis = (
         memberAccesses: module.memberAccesses,
         wholeObjectUses: module.wholeObjectUses,
         localIdentifierReferences: module.localIdentifierReferences,
+        topLevelImportReferences: module.topLevelImportReferences,
         parseErrorCodes: module.parseErrors.flatMap((parseError) =>
           typeof parseError.code === "string" ? [parseError.code] : [],
         ),
@@ -119,11 +150,14 @@ export const runNativeProjectAnalysis = (
         importedSymbols: edge.importedSymbols.map((symbol) => ({
           importedName: symbol.importedName,
           localName: symbol.localName,
+          isTypeOnly: symbol.isTypeOnly,
           isNamespace: symbol.isNamespace,
           isDefault: symbol.isDefault,
         })),
         isReExportEdge: edge.isReExportEdge,
         isDynamic: edge.isDynamic,
+        isSideEffect: edge.isSideEffect,
+        isTypeOnly: edge.isTypeOnly,
         reExportedNames: edge.reExportedNames,
         reExportMappings: edge.reExportMappings,
       })),
@@ -156,10 +190,14 @@ export const runNativeProjectAnalysis = (
     ? parseUnusedFiles(output.verifiedUnusedFiles)
     : null;
   const unusedExports = hasNativeUnusedExports ? parseUnusedExports(output.unusedExports) : null;
+  const circularDependencies = hasNativeCircularDependency
+    ? parseCircularDependencies(output.circularDependencies)
+    : null;
   return {
     ...(unusedFiles !== null && verifiedUnusedFiles !== null
       ? { unusedFiles, verifiedUnusedFiles }
       : {}),
     ...(unusedExports === null ? {} : { unusedExports }),
+    ...(circularDependencies === null ? {} : { circularDependencies }),
   };
 };

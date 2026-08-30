@@ -476,11 +476,9 @@ const analyzeProjectConfig = async (
     () => detectStalePackages(moduleGraph, config),
     { unusedDependencies: [], skippedDependencies: [] },
   );
-  const circularDependencies = runReportDetector(
-    "detectCycles",
-    () => detectCycles(moduleGraph),
-    [],
-  );
+  const circularDependencies =
+    nativeProjectAnalysis?.circularDependencies ??
+    runReportDetector("detectCycles", () => detectCycles(moduleGraph), []);
   const analysisResult: ProjectAnalysisInternalResult = {
     unusedFiles,
     verifiedUnusedFiles,

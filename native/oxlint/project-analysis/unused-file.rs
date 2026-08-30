@@ -232,6 +232,7 @@ mod tests {
                     },
                 ],
                 unused_exports: vec![],
+                circular_dependencies: vec![],
             }
         );
     }
@@ -254,6 +255,7 @@ mod tests {
                 }],
                 verified_unused_files: vec![],
                 unused_exports: vec![],
+                circular_dependencies: vec![],
             }
         );
     }

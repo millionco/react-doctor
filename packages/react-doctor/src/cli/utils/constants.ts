@@ -321,6 +321,7 @@ export const METRIC = {
   tuiIssueStreamShown: "tui.issue_stream_shown",
   tuiProjectPathContextShown: "tui.project_path_context_shown",
   tuiProjectSelectShown: "tui.project_select_shown",
+  tuiCiRecommendationShown: "tui.ci_recommendation_shown",
   tuiReportActionSelected: "tui.report_action_selected",
   tuiCancelled: "tui.cancelled",
   tuiScanInlineShown: "tui.scan_inline_shown",

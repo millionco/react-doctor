@@ -128,6 +128,7 @@ const qualifyDiagnosticPaths = (
 const resolveScanPresentation = (
   input: RunScanAppInput,
   projectScans: ReadonlyArray<ResolvedProjectScan>,
+  rootDirectory: string,
 ): ScanPresentation => {
   const isScoreDisabled =
     input.options?.noScore === true ||
@@ -140,9 +141,7 @@ const resolveScanPresentation = (
     initialProgress: projectScans.length > 1 ? "Indexing workspace files…" : "Scanning project…",
     noScoreMessage: buildNoScoreMessage({ isScoreDisabled }),
     outputDirectory: input.options?.outputDirectory,
-    shouldRecommendCi:
-      projectScans.length > 1 ||
-      projectScans.some((projectScan) => isCiUnconfigured(projectScan.directory)),
+    shouldRecommendCi: isCiUnconfigured(rootDirectory),
     verbose: input.options?.verbose === true,
   };
 };
@@ -460,6 +459,7 @@ const runMountedScan = async (
     const completedScan = await executeScan(context);
     mountedRenderer.dispose();
     mountedRenderer = mountRenderer("report");
+    if (presentation.shouldRecommendCi) recordCount(METRIC.tuiCiRecommendationShown);
     await mountedRenderer.instance.waitUntilExit();
     mountedRenderer.dispose();
     if (presentation.outputDirectory !== undefined || presentation.verbose) {
@@ -519,7 +519,11 @@ const runSingleProjectScan = async (
     process.stdout.write("No changed source files in the selected project.\n");
     return { shouldFail: false };
   }
-  const presentation = resolveScanPresentation(input, [projectScan]);
+  const presentation = resolveScanPresentation(
+    input,
+    [projectScan],
+    rootScanTarget.resolvedDirectory,
+  );
   return runMountedScan(projectScan.directory, presentation, blockingLevel, async (context) => {
     const result = await inspectProject(projectScan.directory, {
       ...resolveTuiInspectOptions(input, projectScan.config),
@@ -624,6 +628,7 @@ const runMultiProjectScan = async (
   const presentation = resolveScanPresentation(
     input,
     projectScans.map(({ projectScan }) => projectScan),
+    rootDirectory,
   );
   return runMountedScan(rootDirectory, presentation, blockingLevel, async (context) => {
     const startTime = performance.now();

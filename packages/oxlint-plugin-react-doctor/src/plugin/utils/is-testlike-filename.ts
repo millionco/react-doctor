@@ -1,7 +1,8 @@
-// Directory names that mark a file as part of a test / fixture /
-// Storybook / Cypress / docs-site (`.dumi`) / example surface, regardless
-// of the file's own suffix.
-const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
+// Unambiguous non-production directory names: test/fixture/story/benchmark/
+// demo/example surfaces that are never shipped code, regardless of nesting depth.
+// Includes `/demo/` and `/examples/` because even nested in component source
+// (e.g. `components/Button/demos/`), they're demonstration code, not production.
+const UNAMBIGUOUS_NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/test/",
   "/tests/",
   "/testing/",
@@ -41,11 +42,15 @@ const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/__benchmarks__/",
   "/perf/",
   "/perf-tests/",
-  // CLI / one-shot / build-time tooling — never shipped in the
-  // user-facing bundle, no render-perf or React-rule concerns. Captures
-  // top-level `scripts/`, `cli/`, `bin/`, `tooling/`, `tools/`,
-  // `codemods/`, `migrations/`, `generators/`, `runbooks/`, etc. as well
-  // as `src/scripts/...` shaped layouts.
+];
+
+// Ambiguous directory names: build tooling/infrastructure that marks
+// non-production code at the repo root but can be feature areas when
+// nested inside source roots. E.g. `<repo>/tools/` is build tooling, but
+// `src/components/tools/` is typically an admin-tools UI section.
+// Excludes `/demo/`, `/examples/` which remain unambiguous even in component
+// libraries (where `components/Button/demos/` is genuinely non-production).
+const AMBIGUOUS_NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/scripts/",
   "/cli/",
   "/bin/",
@@ -200,7 +205,7 @@ const SOURCE_ROOT_SEGMENTS: ReadonlyArray<string> = [
 // like `.dumi/pages/.../components/...` — so they're checked against the
 // FULL path, before the source-root scoping below cuts them off.
 const DOT_PREFIXED_NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> =
-  NON_PRODUCTION_PATH_SEGMENTS.filter((segment) => segment.startsWith("/."));
+  UNAMBIGUOUS_NON_PRODUCTION_PATH_SEGMENTS.filter((segment) => segment.startsWith("/."));
 
 const sliceBelowSourceRoot = (filename: string): string => {
   let cutAt = -1;
@@ -260,15 +265,28 @@ const computeIsTestlikeFilename = (
   // INSIDE the fixture project. Critical for any test runner that
   // builds a fake project under a test directory to assert rule
   // behaviour.
-  // Dot-directories (`/.storybook/`, `/.dumi/`) are tooling/docs surfaces
-  // that can never BE a source root, yet often CONTAIN one (`.dumi/pages/
-  // index/components/Group.tsx`) — so they're matched against the full
-  // path, before the source-root cut hides them.
   const scopedFilename = sliceBelowSourceRoot(filename);
-  for (const segment of NON_PRODUCTION_PATH_SEGMENTS) {
+  const isWithinSourceRoot = scopedFilename !== filename;
+
+  // Check UNAMBIGUOUS segments on the scoped path (below source roots).
+  // These are test/fixture/story/benchmark directories that are never
+  // shipped code at any depth.
+  for (const segment of UNAMBIGUOUS_NON_PRODUCTION_PATH_SEGMENTS) {
     if (ignoredPathSegments.has(segment)) continue;
     const haystack = segment.startsWith("/.") ? filename : scopedFilename;
     if (haystack.includes(segment)) return true;
   }
+
+  // Check AMBIGUOUS segments (tooling/demo/examples/migrations) only when
+  // the file is NOT within a source root. Once inside `/src/`, `/app/`,
+  // `/components/`, etc., a directory named `tools` or `demo` is far more
+  // likely to be a product feature area than build tooling.
+  if (!isWithinSourceRoot) {
+    for (const segment of AMBIGUOUS_NON_PRODUCTION_PATH_SEGMENTS) {
+      if (ignoredPathSegments.has(segment)) continue;
+      if (filename.includes(segment)) return true;
+    }
+  }
+
   return false;
 };

@@ -776,7 +776,13 @@
     "role-has-required-aria-props",
     "role-supports-aria-props",
     "prefer-html-dialog",
-    "prefer-explicit-variants"
+    "prefer-explicit-variants",
+    "react-markdown-unsanitized-raw-html",
+    "rn-prefer-expo-image",
+    "rn-style-prefer-boxshadow",
+    "role-button-requires-complete-keyboard-activation",
+    "server-after-nonblocking",
+    "server-fetch-without-revalidate"
   ],
   "delegatedRules": [
     {

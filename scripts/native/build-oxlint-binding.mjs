@@ -550,6 +550,11 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       ["prefer-explicit-variants", ["file_is_non_react_jsx_dialect", "is_non_production_file"]],
+      ["rn-prefer-expo-image", ["jsx_attribute_expression"]],
+      [
+        "role-button-requires-complete-keyboard-activation",
+        ["has_possible_static_property_write_before"],
+      ],
       ["rn-no-scroll-state", ["member_expression_identifier_property_name"]],
       [
         "no-this-in-sfc",

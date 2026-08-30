@@ -1335,6 +1335,12 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "role-supports-aria-props",
   "prefer-html-dialog",
   "prefer-explicit-variants",
+  "react-markdown-unsanitized-raw-html",
+  "rn-prefer-expo-image",
+  "rn-style-prefer-boxshadow",
+  "role-button-requires-complete-keyboard-activation",
+  "server-after-nonblocking",
+  "server-fetch-without-revalidate",
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch

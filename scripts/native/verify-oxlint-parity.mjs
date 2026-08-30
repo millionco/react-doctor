@@ -149,6 +149,21 @@ const preferExplicitVariantsFixturePath = path.join(
   "app",
   "prefer-explicit-variants.tsx",
 );
+const reactMarkdownRawHtmlFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "react-markdown-raw-html.tsx",
+);
+const roleButtonKeyboardFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "role-button-keyboard.tsx",
+);
+const serverAfterFixturePath = path.join(fixtureDirectory, "app", "server-after.ts");
+const expoNativeFixtureDirectory = path.join(fixtureDirectory, "expo-native");
+const expoImageFixturePath = path.join(expoNativeFixtureDirectory, "src", "expo-image.tsx");
+const rnBoxShadowFixturePath = path.join(expoNativeFixtureDirectory, "src", "box-shadow.tsx");
+const serverFetchFixturePath = path.join(fixtureDirectory, "app", "cache", "route.ts");
 const r3fLightingFixturePath = path.join(fixtureDirectory, "app", "r3f-lighting.tsx");
 const r3fMetalEnvironmentFixturePath = path.join(
   fixtureDirectory,
@@ -785,6 +800,8 @@ const configuredStockConfigPath = path.join(temporaryDirectory, "configured-stoc
 const configuredNativeConfigPath = path.join(temporaryDirectory, "configured-native.json");
 const configuredAriaStockConfigPath = path.join(temporaryDirectory, "configured-aria-stock.json");
 const configuredAriaNativeConfigPath = path.join(temporaryDirectory, "configured-aria-native.json");
+const serverFetchStockConfigPath = path.join(temporaryDirectory, "server-fetch-stock.json");
+const serverFetchNativeConfigPath = path.join(temporaryDirectory, "server-fetch-native.json");
 const jsxFilenameAsNeededFixturePath = path.join(temporaryDirectory, "as-needed.jsx");
 const jsxFilenameIgnoredFixturePath = path.join(temporaryDirectory, "ignored.jsx");
 const jsxFilenameAsNeededStockConfigPath = path.join(
@@ -1575,7 +1592,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-enter-submit-without-ime-composition-guard": 1,
   "no-render-in-render": 1,
   "server-dedup-props": 1,
-  "rn-no-legacy-shadow-styles": 1,
+  "rn-no-legacy-shadow-styles": 2,
   "webgl-no-sync-readback-in-animation-loop": 2,
   "no-unbounded-animation-frame-loop": 9,
   "rendering-hoist-jsx": 2,
@@ -1605,6 +1622,12 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "role-supports-aria-props": 3,
   "prefer-html-dialog": 3,
   "prefer-explicit-variants": 1,
+  "react-markdown-unsanitized-raw-html": 1,
+  "rn-prefer-expo-image": 1,
+  "rn-style-prefer-boxshadow": 2,
+  "role-button-requires-complete-keyboard-activation": 1,
+  "server-after-nonblocking": 1,
+  "server-fetch-without-revalidate": 0,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1750,6 +1773,12 @@ const FOCUSED_PARITY_RULE_IDS = [
   "role-supports-aria-props",
   "prefer-html-dialog",
   "prefer-explicit-variants",
+  "react-markdown-unsanitized-raw-html",
+  "rn-prefer-expo-image",
+  "rn-style-prefer-boxshadow",
+  "role-button-requires-complete-keyboard-activation",
+  "server-after-nonblocking",
+  "server-fetch-without-revalidate",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1889,6 +1918,12 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "role-supports-aria-props": 0,
   "prefer-html-dialog": 0,
   "prefer-explicit-variants": 0,
+  "react-markdown-unsanitized-raw-html": 0,
+  "rn-prefer-expo-image": 0,
+  "rn-style-prefer-boxshadow": 0,
+  "role-button-requires-complete-keyboard-activation": 0,
+  "server-after-nonblocking": 0,
+  "server-fetch-without-revalidate": 0,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -4267,6 +4302,65 @@ export function ProductCard({ isCompact, hasMedia }) {
     </div>
   );
 }
+`,
+  );
+  fs.writeFileSync(
+    reactMarkdownRawHtmlFixturePath,
+    `import React from "react";
+import Markdown from "react-markdown";
+import raw from "rehype-raw";
+export const MarkdownPreview = ({ content }) => (
+  <Markdown rehypePlugins={[raw]}>{content}</Markdown>
+);
+`,
+  );
+  fs.writeFileSync(
+    roleButtonKeyboardFixturePath,
+    `import React from "react";
+export const KeyboardButton = ({ activate }) => (
+  <div
+    role="button"
+    aria-label="Activate"
+    tabIndex={0}
+    onClick={activate}
+    onKeyDown={(event) => {
+      if (event.key === "Enter") activate();
+    }}
+  />
+);
+`,
+  );
+  fs.writeFileSync(
+    serverAfterFixturePath,
+    `"use server";
+export async function saveDocument(document) {
+  analytics.track("saved", document);
+}
+`,
+  );
+  fs.mkdirSync(path.dirname(expoImageFixturePath), { recursive: true });
+  fs.writeFileSync(
+    path.join(expoNativeFixtureDirectory, "package.json"),
+    JSON.stringify({ dependencies: { expo: "54.0.0", "react-native": "0.82.0" } }),
+  );
+  fs.writeFileSync(
+    expoImageFixturePath,
+    `import React from "react";
+import { Image } from "react-native";
+export const RemoteAvatar = () => <Image source={{ uri: "https://example.com/avatar.png" }} />;
+`,
+  );
+  fs.writeFileSync(
+    rnBoxShadowFixturePath,
+    `import React from "react";
+import { View } from "react-native";
+export const ShadowCard = () => <View style={{ shadowColor: "#000", shadowRadius: 4 }} />;
+`,
+  );
+  fs.mkdirSync(path.dirname(serverFetchFixturePath), { recursive: true });
+  fs.writeFileSync(
+    serverFetchFixturePath,
+    `export const GET = () => fetch("https://example.com/api/data");
 `,
   );
   fs.writeFileSync(
@@ -8050,6 +8144,35 @@ export const App = () => <>
       }),
     ),
   );
+  const serverFetchSettings = {
+    "react-doctor": {
+      ...REACT_DOCTOR_SETTINGS["react-doctor"],
+      capabilities: REACT_DOCTOR_SETTINGS["react-doctor"].capabilities.filter(
+        (capability) => capability !== "nextjs:15",
+      ),
+    },
+  };
+  const serverFetchRuleIds = ["server-fetch-without-revalidate"];
+  fs.writeFileSync(
+    serverFetchStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: serverFetchSettings,
+        ruleIds: serverFetchRuleIds,
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    serverFetchNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: serverFetchSettings,
+        ruleIds: serverFetchRuleIds,
+      }),
+    ),
+  );
   const jsxFilenameAsNeededSettings = {
     "react-doctor": {
       ...REACT_DOCTOR_SETTINGS["react-doctor"],
@@ -8473,6 +8596,30 @@ export const App = () => <>
   ) {
     throw new Error(
       `native configured ARIA parity failed\nexpected counts=${JSON.stringify(expectedConfiguredAriaDiagnosticCounts, null, 2)}\nstock counts=${JSON.stringify(countDiagnosticsByRule(configuredAriaStockDiagnostics), null, 2)}\nstock=${JSON.stringify(configuredAriaStockDiagnostics, null, 2)}\nnative=${JSON.stringify(configuredAriaNativeDiagnostics, null, 2)}`,
+    );
+  }
+
+  const serverFetchStockDiagnostics = runOxlint(
+    serverFetchStockConfigPath,
+    process.env,
+    serverFetchFixturePath,
+  ).diagnostics;
+  const serverFetchNativeDiagnostics = runOxlint(
+    serverFetchNativeConfigPath,
+    nativeEnvironment,
+    serverFetchFixturePath,
+  ).diagnostics;
+  const expectedServerFetchDiagnosticCounts = {
+    ...Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0])),
+    "server-fetch-without-revalidate": 1,
+  };
+  if (
+    JSON.stringify(countDiagnosticsByRule(serverFetchStockDiagnostics)) !==
+      JSON.stringify(expectedServerFetchDiagnosticCounts) ||
+    JSON.stringify(serverFetchNativeDiagnostics) !== JSON.stringify(serverFetchStockDiagnostics)
+  ) {
+    throw new Error(
+      `native server fetch parity failed\nexpected counts=${JSON.stringify(expectedServerFetchDiagnosticCounts, null, 2)}\nstock counts=${JSON.stringify(countDiagnosticsByRule(serverFetchStockDiagnostics), null, 2)}\nstock=${JSON.stringify(serverFetchStockDiagnostics, null, 2)}\nnative=${JSON.stringify(serverFetchNativeDiagnostics, null, 2)}`,
     );
   }
 

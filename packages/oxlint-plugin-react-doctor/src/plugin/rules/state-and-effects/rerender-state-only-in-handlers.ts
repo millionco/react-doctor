@@ -74,8 +74,16 @@ const collectComponentStateUsageInfo = (
   const effectInfos: EffectDependencyInfo[] = [];
   walkAst(componentBody, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "CallExpression")) return;
+    let calleeName: string | null = null;
     if (isNodeOfType(child.callee, "Identifier")) {
-      const calleeName = child.callee.name;
+      calleeName = child.callee.name;
+    } else if (
+      isNodeOfType(child.callee, "MemberExpression") &&
+      isNodeOfType(child.callee.property, "Identifier")
+    ) {
+      calleeName = child.callee.property.name;
+    }
+    if (calleeName !== null) {
       if (setterNames.has(calleeName)) calledSetterNames.add(calleeName);
       if (
         isReactHookName(calleeName) &&

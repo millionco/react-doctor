@@ -1353,6 +1353,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-responsive-hidden-accessible-name",
   "no-static-element-interactions",
   "no-array-index-as-key",
+  "no-unsafe-json-parse",
   "prefer-tag-over-role",
   "rerender-defer-reads-hook",
   "rerender-memo-before-early-return",

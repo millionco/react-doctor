@@ -635,6 +635,10 @@ impl Rule for ${delegatedRule.struct} {
       ],
       ["no-array-index-as-key", ["member_expression_identifier_property_name"]],
       [
+        "no-unsafe-json-parse",
+        ["is_non_production_file", "statement_always_exits", "transparent_expression_root"],
+      ],
+      [
         "no-img-without-dimensions",
         [
           "is_generated_image_render_filename",

@@ -211,6 +211,7 @@ const serverHoistStaticIoFixturePath = path.join(
   "route.ts",
 );
 const serverMutableStateFixturePath = path.join(fixtureDirectory, "app", "server-mutable-state.ts");
+const unsafeJsonParseFixturePath = path.join(fixtureDirectory, "app", "unsafe-json-parse.ts");
 const r3fLightingFixturePath = path.join(fixtureDirectory, "app", "r3f-lighting.tsx");
 const r3fMetalEnvironmentFixturePath = path.join(
   fixtureDirectory,
@@ -1687,6 +1688,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-responsive-hidden-accessible-name": 0,
   "no-static-element-interactions": 2,
   "no-array-index-as-key": 2,
+  "no-unsafe-json-parse": 3,
   "prefer-tag-over-role": 12,
   "rerender-defer-reads-hook": 1,
   "rerender-memo-before-early-return": 1,
@@ -1859,6 +1861,7 @@ const FOCUSED_PARITY_RULE_IDS = [
   "rerender-defer-reads-hook",
   "rerender-memo-before-early-return",
   "no-array-index-as-key",
+  "no-unsafe-json-parse",
   "server-hoist-static-io",
   "server-no-mutable-module-state",
   "styled-components-non-transient-custom-prop-on-intrinsic-element",
@@ -2022,6 +2025,7 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "rerender-defer-reads-hook": 0,
   "rerender-memo-before-early-return": 0,
   "no-array-index-as-key": 0,
+  "no-unsafe-json-parse": 0,
   "server-hoist-static-io": 0,
   "server-no-mutable-module-state": 0,
   "styled-components-non-transient-custom-prop-on-intrinsic-element": 0,
@@ -4631,6 +4635,48 @@ let requestCount = 0;
 export async function recordRequest() {
   requestCount += 1;
 }
+`,
+  );
+  fs.writeFileSync(
+    unsafeJsonParseFixturePath,
+    `export const message = JSON.parse(raw).message;
+
+function éééééé(value) {
+  return JSON.parse(value).id;
+}
+
+function codec() {
+  const serializeItem = (value) => JSON.stringify(value);
+  const deserializeItem = (value) => JSON.parse(value).id;
+  return [serializeItem, deserializeItem];
+}
+
+let validatedRaw = validatedInput;
+const isValidJson = (value) => {
+  try {
+    JSON.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+if (!isValidJson(validatedRaw)) throw new Error();
+JSON.parse(validatedRaw).id;
+
+let callbackPayload = JSON.stringify(callbackValue);
+callbackPayload = getPayload();
+items.map(() => JSON.parse(callbackPayload).id);
+
+let destructuredRaw = destructuredInput;
+JSON.parse(destructuredRaw);
+[destructuredRaw] = payloads;
+JSON.parse(destructuredRaw).id;
+
+try {
+  new (function () {
+    JSON.parse(constructorRaw).id;
+  })();
+} catch {}
 `,
   );
   fs.writeFileSync(

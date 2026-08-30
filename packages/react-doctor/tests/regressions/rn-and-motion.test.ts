@@ -10,6 +10,9 @@
  *              children
  *   #581     — fbtee `<fbt>` / `<fbs>` translation tags stay transparent to
  *              the `<Text>` boundary (so raw text inside them isn't flagged)
+ *   #1722    — `<fbt>` children of text-wrapping custom components are safe
+ *              (the transparent wrapper check now sees through auto-detected
+ *              and imported text wrappers, not just built-in text components)
  *   #76      — maintained Expo packages are not treated as legacy packages
  *   #94      — `MotionConfig reducedMotion="user"` must satisfy the
  *              reduced-motion accessibility check (so the rule doesn't
@@ -408,6 +411,107 @@ export const App = () => (
 
     const diagnostics = await getRnNoRawTextDiagnostics(projectDirectory);
     expect(diagnostics).toHaveLength(1);
+  });
+});
+
+describe("issue #1722: fbt inside text-wrapping custom components is not flagged", () => {
+  const buildFbtInWrapperProject = (projectName: string, appSource: string) =>
+    setupReactProject(tempRoot, projectName, {
+      packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "^0.79.0" } },
+      files: { "src/App.tsx": appSource },
+    });
+
+  const getRnNoRawTextDiagnostics = async (projectDirectory: string) => {
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDirectory,
+      project: buildTestProject({
+        rootDirectory: projectDirectory,
+        framework: "react-native",
+      }),
+    });
+    return diagnostics.filter((diagnostic) => diagnostic.rule === "rn-no-raw-text");
+  };
+
+  it("does not report fbt inside an auto-detected text wrapper", async () => {
+    const projectDirectory = buildFbtInWrapperProject(
+      "issue-1722-fbt-in-card",
+      `import { Text } from "react-native";
+
+const Card = ({ children }) => <Text>{children}</Text>;
+
+export const App = () => (
+  <Card>
+    <fbt desc="card content">Fbt in Card</fbt>
+  </Card>
+);
+`,
+    );
+
+    const diagnostics = await getRnNoRawTextDiagnostics(projectDirectory);
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("does not report fbt passed as a prop to a text wrapper", async () => {
+    const projectDirectory = buildFbtInWrapperProject(
+      "issue-1722-fbt-as-prop",
+      `import { Text } from "react-native";
+
+const Card = ({ title }) => <Text>{title}</Text>;
+
+export const App = () => (
+  <Card title={<fbt desc="title">Scrollable content</fbt>} />
+);
+`,
+    );
+
+    const diagnostics = await getRnNoRawTextDiagnostics(projectDirectory);
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still reports fbt inside a non-text wrapper", async () => {
+    const projectDirectory = buildFbtInWrapperProject(
+      "issue-1722-fbt-in-view-wrapper",
+      `import { View } from "react-native";
+
+const Box = ({ children }) => <View>{children}</View>;
+
+export const App = () => (
+  <Box>
+    <fbt desc="box content">This will crash</fbt>
+  </Box>
+);
+`,
+    );
+
+    const diagnostics = await getRnNoRawTextDiagnostics(projectDirectory);
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("handles the matrix case from the issue report", async () => {
+    const projectDirectory = buildFbtInWrapperProject(
+      "issue-1722-matrix",
+      `import { Text } from "react-native";
+
+const Card = ({ children }) => <Text>{children}</Text>;
+const Button = ({ children }) => <Text>{children}</Text>;
+
+export const CardString = () => <Card>Plain string in Card</Card>;
+export const CardFbt = () => (
+  <Card>
+    <fbt desc="d">Fbt in Card</fbt>
+  </Card>
+);
+export const ButtonString = () => <Button>Plain string in Button</Button>;
+export const ButtonFbt = () => (
+  <Button>
+    <fbt desc="d">Fbt in Button</fbt>
+  </Button>
+);
+`,
+    );
+
+    const diagnostics = await getRnNoRawTextDiagnostics(projectDirectory);
+    expect(diagnostics).toHaveLength(0);
   });
 });
 

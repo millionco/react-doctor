@@ -554,6 +554,70 @@ describe("react-native/rn-no-raw-text", () => {
         );
       `);
     });
+
+    it("does not fire on fbt inside an auto-detected text wrapper (issue #1722)", () => {
+      expectPass(`
+        const Card = ({ children }) => <Text>{children}</Text>;
+        const App = () => (
+          <Card>
+            <fbt desc="greeting">Fbt in Card</fbt>
+          </Card>
+        );
+      `);
+    });
+
+    it("does not fire on fbt inside a text-named wrapper (issue #1722)", () => {
+      expectPass(`
+        const Button = ({ children }) => <Text>{children}</Text>;
+        const App = () => (
+          <Button>
+            <fbt desc="cta">Click me</fbt>
+          </Button>
+        );
+      `);
+    });
+
+    it("does not fire on fbt passed as a prop to a text wrapper (issue #1722)", () => {
+      expectPass(`
+        const Card = ({ title }) => <Text>{title}</Text>;
+        const App = () => <Card title={<fbt desc="title">Scrollable content</fbt>} />;
+      `);
+    });
+
+    it("does not fire on fbs inside an auto-detected text wrapper", () => {
+      expectPass(`
+        const Banner = ({ children }) => <Text>{children}</Text>;
+        const App = () => (
+          <Banner>
+            <fbs desc="banner text">Important announcement</fbs>
+          </Banner>
+        );
+      `);
+    });
+
+    it("does not fire on namespaced fbt tags inside a text wrapper (issue #1722)", () => {
+      expectPass(`
+        const Label = ({ children }) => <Text>{children}</Text>;
+        const App = () => (
+          <Label>
+            <fbt desc="parameterized">
+              <fbt:param name="count">5</fbt:param> items
+            </fbt>
+          </Label>
+        );
+      `);
+    });
+
+    it("still fires on fbt inside an auto-detected non-text wrapper", () => {
+      expectFail(`
+        const Box = ({ children }) => <View>{children}</View>;
+        const App = () => (
+          <Box>
+            <fbt desc="greeting">Hello</fbt>
+          </Box>
+        );
+      `);
+    });
   });
 
   describe("test-noise suppression", () => {

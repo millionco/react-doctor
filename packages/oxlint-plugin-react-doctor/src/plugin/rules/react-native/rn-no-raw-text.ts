@@ -80,25 +80,6 @@ const isTextHandlingComponent = (elementName: string): boolean => {
 const isTransparentTextWrapper = (elementName: string | null): boolean =>
   elementName !== null && REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS.has(elementName);
 
-// Walks ancestors to a real text component, stepping through transparent
-// wrappers. Returns false as soon as a non-transparent, non-text element
-// breaks the chain — so the text boundary is only honored when every link
-// up to the <Text> is itself transparent.
-const isInsideTextHandlingComponent = (node: EsTreeNodeOfType<"JSXElement">): boolean => {
-  let parentNode = node.parent;
-  while (parentNode) {
-    if (!isNodeOfType(parentNode, "JSXElement")) {
-      parentNode = parentNode.parent;
-      continue;
-    }
-    const parentName = resolveTextBoundaryName(parentNode.openingElement);
-    if (parentName && isTextHandlingComponent(parentName)) return true;
-    if (!isTransparentTextWrapper(parentName)) return false;
-    parentNode = parentNode.parent;
-  }
-  return false;
-};
-
 export const rnNoRawText = defineRule({
   id: "rn-no-raw-text",
   title: "Raw text outside a Text component",
@@ -167,6 +148,56 @@ export const rnNoRawText = defineRule({
         isNonTextHostName,
       );
       return forwardingKind === "nonText";
+    };
+
+    // Resolve an imported component as a text wrapper: true when the cross-file
+    // analysis confirms it renders children into `<Text>`, making it safe for
+    // transparent wrappers like `<fbt>` to nest inside.
+    const isImportedTextWrapper = (
+      elementName: string | null,
+      contextNode: EsTreeNode,
+    ): boolean => {
+      if (elementName === null || !isReactComponentName(elementName)) return false;
+      const { filename } = context;
+      if (filename === undefined) return false;
+      const forwardingKind = resolveImportedComponentForwarding(
+        contextNode,
+        context.scopes,
+        filename,
+        elementName,
+        isTextHandlingComponent,
+        isNonTextHostName,
+      );
+      return forwardingKind === "text";
+    };
+
+    // Walks ancestors to a real text component, stepping through transparent
+    // wrappers. Returns false as soon as a non-transparent, non-text element
+    // breaks the chain — so the text boundary is only honored when every link
+    // up to the <Text> is itself transparent. Now checks auto-detected same-file
+    // wrappers and cross-file imported wrappers in addition to built-in text
+    // components, so `<fbt>` inside a custom text-wrapping component is correctly
+    // exempted (fixes #1722).
+    const isInsideTextHandlingComponent = (node: EsTreeNodeOfType<"JSXElement">): boolean => {
+      let parentNode = node.parent;
+      while (parentNode) {
+        if (!isNodeOfType(parentNode, "JSXElement")) {
+          parentNode = parentNode.parent;
+          continue;
+        }
+        const parentName = resolveTextBoundaryName(parentNode.openingElement);
+        if (
+          parentName &&
+          (isTextHandlingComponent(parentName) ||
+            autoDetectedTextWrappers.has(parentName) ||
+            isImportedTextWrapper(parentName, parentNode))
+        ) {
+          return true;
+        }
+        if (!isTransparentTextWrapper(parentName)) return false;
+        parentNode = parentNode.parent;
+      }
+      return false;
     };
 
     return {

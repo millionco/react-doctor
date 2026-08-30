@@ -3204,4 +3204,78 @@ describe("analyzeProject", () => {
       "packages/application/src/value.weapp.ts",
     );
   });
+
+  it("discovers Expo config plugins through TypeScript type annotations", async () => {
+    const rootDirectory = createProject(
+      {
+        "app.config.ts": `
+          import type { ExpoConfig } from "expo/config";
+
+          const config = {
+            name: "repro",
+            slug: "repro",
+            plugins: [
+              "expo-build-properties",
+              "@config-plugins/react-native-webrtc",
+              "./plugins/with-example",
+            ],
+          } satisfies ExpoConfig;
+
+          export default config;
+        `,
+        "plugins/with-example.ts": "export default (config: unknown) => config;",
+        "src/index.tsx": "export const App = () => null;",
+      },
+      {
+        dependencies: {
+          expo: "^56.0.0",
+          "expo-build-properties": "^56.0.0",
+          "@config-plugins/react-native-webrtc": "^14.0.0",
+          react: "19.0.0",
+          "react-native": "0.85.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+    const unusedFilePaths = relativePaths(rootDirectory, result.unusedFiles);
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedFilePaths).not.toContain("plugins/with-example.ts");
+    expect(unusedPackageNames).not.toContain("expo-build-properties");
+    expect(unusedPackageNames).not.toContain("@config-plugins/react-native-webrtc");
+  });
+
+  it("discovers Expo config plugins through as expressions", async () => {
+    const rootDirectory = createProject(
+      {
+        "app.config.ts": `
+          import type { ExpoConfig } from "expo/config";
+
+          export default {
+            name: "repro",
+            slug: "repro",
+            plugins: ["expo-build-properties", "./plugins/with-example"],
+          } as ExpoConfig;
+        `,
+        "plugins/with-example.ts": "export default (config: unknown) => config;",
+        "src/index.tsx": "export const App = () => null;",
+      },
+      {
+        dependencies: {
+          expo: "^56.0.0",
+          "expo-build-properties": "^56.0.0",
+          react: "19.0.0",
+          "react-native": "0.85.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+    const unusedFilePaths = relativePaths(rootDirectory, result.unusedFiles);
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedFilePaths).not.toContain("plugins/with-example.ts");
+    expect(unusedPackageNames).not.toContain("expo-build-properties");
+  });
 });

@@ -87,7 +87,13 @@ const getPropertyName = (name: ts.PropertyName): string | undefined => {
 
 const unwrapExpression = (expression: ts.Expression): ts.Expression => {
   let currentExpression = expression;
-  while (ts.isParenthesizedExpression(currentExpression)) {
+  while (
+    ts.isParenthesizedExpression(currentExpression) ||
+    ts.isSatisfiesExpression(currentExpression) ||
+    ts.isAsExpression(currentExpression) ||
+    ts.isNonNullExpression(currentExpression) ||
+    ts.isTypeAssertionExpression(currentExpression)
+  ) {
     currentExpression = currentExpression.expression;
   }
   return currentExpression;

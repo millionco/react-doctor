@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { isRecord } from "../../utils/is-record.js";
 import { resolveNativeOxlintBindingPath } from "./resolve-paths.js";
 
-const bundledRequire = createRequire(import.meta.url);
+const bundledRequire = createRequire(new URL("./load-native-oxlint-binding.cjs", import.meta.url));
 const bindingByPath = new Map<string, Record<string, unknown> | null>();
 
 export const loadNativeOxlintBinding = (): Record<string, unknown> | null => {

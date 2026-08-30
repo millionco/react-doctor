@@ -14,6 +14,7 @@ import { runScanApp } from "../../src/cli/ink/run-scan-app.js";
 import type { ScanStore, TuiHandoffRequest } from "../../src/cli/ink/scan-store.js";
 import { preserveActiveTuiRendererOutput } from "../../src/cli/utils/active-tui-renderer.js";
 import { computeProjectedScore } from "../../src/cli/utils/compute-score-projection.js";
+import { METRIC } from "../../src/cli/utils/constants.js";
 import { inspect } from "../../src/inspect.js";
 import { buildDiagnostic, buildTestProject } from "../regressions/_helpers.js";
 
@@ -48,6 +49,13 @@ const mockState = vi.hoisted(() => ({
   initialProgressStates: new Array<string | null>(),
   ciRecommendationStates: new Array<boolean>(),
 }));
+
+const mockRecordCount = vi.hoisted(() => vi.fn());
+
+vi.mock("../../src/cli/utils/record-metric.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/cli/utils/record-metric.js")>();
+  return { ...actual, recordCount: mockRecordCount };
+});
 
 vi.mock("ink", async (importOriginal) => {
   const actual = await importOriginal<typeof import("ink")>();
@@ -943,6 +951,8 @@ describe("runScanApp", () => {
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 
     expect(mockState.ciRecommendationStates).toEqual([true]);
+    expect(mockIsReactDoctorWorkflowInstalled).toHaveBeenCalledWith(rootDirectory);
+    expect(mockRecordCount).toHaveBeenCalledWith(METRIC.tuiCiRecommendationShown);
   });
 
   it("does not recommend CI when root workflow already exists (issue #1696)", async () => {
@@ -971,6 +981,8 @@ describe("runScanApp", () => {
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 
     expect(mockState.ciRecommendationStates).toEqual([false]);
+    expect(mockIsReactDoctorWorkflowInstalled).toHaveBeenCalledWith(rootDirectory);
+    expect(mockRecordCount).not.toHaveBeenCalledWith(METRIC.tuiCiRecommendationShown);
   });
 
   it("checks root directory for CI config in single-project scans", async () => {

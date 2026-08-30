@@ -459,6 +459,7 @@ const runMountedScan = async (
     const completedScan = await executeScan(context);
     mountedRenderer.dispose();
     mountedRenderer = mountRenderer("report");
+    if (presentation.shouldRecommendCi) recordCount(METRIC.tuiCiRecommendationShown);
     await mountedRenderer.instance.waitUntilExit();
     mountedRenderer.dispose();
     if (presentation.outputDirectory !== undefined || presentation.verbose) {

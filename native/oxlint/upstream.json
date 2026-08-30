@@ -744,7 +744,11 @@
     "prefer-dynamic-import",
     "no-full-lodash-import",
     "no-controlled-input-value-without-state-update",
-    "no-enter-submit-without-ime-composition-guard"
+    "no-enter-submit-without-ime-composition-guard",
+    "no-render-in-render",
+    "server-dedup-props",
+    "rn-no-legacy-shadow-styles",
+    "webgl-no-sync-readback-in-animation-loop"
   ],
   "delegatedRules": [
     {

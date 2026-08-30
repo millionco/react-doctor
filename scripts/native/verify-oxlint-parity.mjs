@@ -76,6 +76,14 @@ const globalErrorFixturePath = path.join(fixtureDirectory, "app", "global-error.
 const ogImageFixturePath = path.join(fixtureDirectory, "app", "opengraph-image.tsx");
 const routeHandlerFixturePath = path.join(fixtureDirectory, "app", "api", "route.ts");
 const asyncClientFixturePath = path.join(fixtureDirectory, "app", "async-client.tsx");
+const noRenderInRenderFixturePath = path.join(fixtureDirectory, "app", "no-render-in-render.tsx");
+const serverDedupPropsFixturePath = path.join(fixtureDirectory, "app", "server-dedup-props.tsx");
+const rnLegacyShadowStylesFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "rn-legacy-shadow-styles.tsx",
+);
+const webglSyncReadbackFixturePath = path.join(fixtureDirectory, "app", "webgl-sync-readback.ts");
 const r3fLightingFixturePath = path.join(fixtureDirectory, "app", "r3f-lighting.tsx");
 const r3fMetalEnvironmentFixturePath = path.join(
   fixtureDirectory,
@@ -1074,7 +1082,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-ctrl-c-handler-requires-exit-option": 1,
   "ink-no-live-hooks-in-render-to-string": 1,
   "ink-no-repeated-render": 4,
-  "hook-use-state": 28,
+  "hook-use-state": 29,
   "rendering-svg-precision": 1,
   "no-document-start-view-transition": 1,
   "no-permanent-will-change": 2,
@@ -1087,7 +1095,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "three-no-shadows-on-unsupported-light": 1,
   "three-no-async-animation-loop": 2,
   "three-cap-device-pixel-ratio": 1,
-  "three-prefer-set-animation-loop": 8,
+  "three-prefer-set-animation-loop": 9,
   "three-no-ignored-basic-material-properties": 3,
   "three-no-ignored-linewidth": 2,
   "three-no-normalized-float-buffer-attribute": 2,
@@ -1497,6 +1505,10 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-full-lodash-import": 0,
   "no-controlled-input-value-without-state-update": 1,
   "no-enter-submit-without-ime-composition-guard": 1,
+  "no-render-in-render": 1,
+  "server-dedup-props": 1,
+  "rn-no-legacy-shadow-styles": 1,
+  "webgl-no-sync-readback-in-animation-loop": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1610,6 +1622,10 @@ const FOCUSED_PARITY_RULE_IDS = [
   "no-full-lodash-import",
   "no-controlled-input-value-without-state-update",
   "no-enter-submit-without-ime-composition-guard",
+  "no-render-in-render",
+  "server-dedup-props",
+  "rn-no-legacy-shadow-styles",
+  "webgl-no-sync-readback-in-animation-loop",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -1717,6 +1733,10 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "no-full-lodash-import": 3,
   "no-controlled-input-value-without-state-update": 0,
   "no-enter-submit-without-ime-composition-guard": 0,
+  "no-render-in-render": 0,
+  "server-dedup-props": 0,
+  "rn-no-legacy-shadow-styles": 0,
+  "webgl-no-sync-readback-in-animation-loop": 0,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -3738,6 +3758,41 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(
     asyncClientFixturePath,
     `'use client';\nimport React from "react";\nexport default async function AsyncProfile() { return <div />; }\nconst AsyncSettings = async () => <section />;\nconst FrozenClient = Object.freeze(Object.seal(async () => <main />));\nconst SyncClient = Object.freeze(() => <aside />);\n`,
+  );
+  fs.writeFileSync(
+    noRenderInRenderFixturePath,
+    `import React from "react";
+const renderStatus = () => {
+  const [open] = React.useState(false);
+  return <span>{String(open)}</span>;
+};
+export const StatusPanel = () => <div>{renderStatus()}</div>;
+`,
+  );
+  fs.writeFileSync(
+    serverDedupPropsFixturePath,
+    `import React from "react";
+export const ServerList = ({ items }) => <ClientList items={items} sortedItems={items.toSorted()} />;
+`,
+  );
+  fs.writeFileSync(
+    rnLegacyShadowStylesFixturePath,
+    `import React from "react";
+import { StyleSheet, View } from "react-native";
+const styles = StyleSheet.create({ card: { shadowColor: "black" } });
+export const ShadowCard = () => <View style={styles.card} />;
+`,
+  );
+  fs.writeFileSync(
+    webglSyncReadbackFixturePath,
+    `const frameContext = canvas.getContext("webgl");
+const framePixels = new Uint8Array(4);
+const drawFrame = () => {
+  frameContext.readPixels(0, 0, 1, 1, frameContext.RGBA, frameContext.UNSIGNED_BYTE, framePixels);
+  requestAnimationFrame(drawFrame);
+};
+requestAnimationFrame(drawFrame);
+`,
   );
   fs.writeFileSync(
     r3fLightingFixturePath,

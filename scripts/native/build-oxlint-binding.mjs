@@ -483,6 +483,7 @@ impl Rule for ${delegatedRule.struct} {
           "transparent_expression_root",
         ],
       ],
+      ["no-render-in-render", ["has_possible_static_property_write_before"]],
       [
         "no-this-in-sfc",
         ["function_contains_react_render_output", "should_use_curated_port_behavior"],

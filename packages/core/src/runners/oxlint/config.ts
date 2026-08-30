@@ -7,6 +7,7 @@ import {
 } from "oxlint-plugin-react-doctor/core";
 import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor/core";
 import type { ProjectInfo, RuleSeverityControls } from "../../types/index.js";
+import type { AdoptedLintConfigSettings } from "../../read-adopted-lint-config-settings.js";
 import { resolveRuleSeverityOverride } from "../../resolve-rule-severity-override.js";
 import { COMPILER_CLEANUP_BUCKET, COMPILER_CLEANUP_RULE_KEYS } from "../../constants.js";
 import { getCapabilities, shouldEnableRule } from "../../project-info/capabilities.js";
@@ -28,13 +29,7 @@ export interface OxlintConfigOptions {
   serverAuthFunctionNames?: ReadonlyArray<string>;
   projectIndexModuleSources?: ReadonlyArray<string>;
   severityControls?: RuleSeverityControls;
-  /**
-   * Settings from adopted lint configs (`.oxlintrc.json`, `.eslintrc.json`),
-   * already read + extracted via `readAdoptedLintConfigSettings`. These
-   * settings are merged with react-doctor's own settings to preserve
-   * plugin configurations like `tailwindcss.entryPoint`.
-   */
-  adoptedSettings?: Record<string, unknown>;
+  adoptedSettings?: AdoptedLintConfigSettings;
   /**
    * User-declared plugins from `react-doctor.config.json`'s
    * `plugins: [...]`, already resolved + introspected via

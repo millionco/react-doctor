@@ -330,7 +330,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   // scan starts in the same state the fallback would land in.
   const extendsPaths = detectedConfigPaths.filter(canOxlintExtendConfig);
   const adoptedSettings =
-    extendsPaths.length > 0 ? readAdoptedLintConfigSettings(extendsPaths) : {};
+    detectedConfigPaths.length > 0 ? readAdoptedLintConfigSettings(detectedConfigPaths) : {};
   const userPlugins =
     includedTags.size > 0 ? [] : resolveUserPlugins(userConfig?.plugins, configSourceDirectory);
 

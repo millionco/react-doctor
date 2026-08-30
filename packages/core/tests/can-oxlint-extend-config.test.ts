@@ -94,7 +94,7 @@ describe("canOxlintExtendConfig", () => {
   "extends": ["next", "plugin:@typescript-eslint/recommended"],
   "rules": {
     // "off-for-now": "off"
-  }
+  },
 }
 `,
     );

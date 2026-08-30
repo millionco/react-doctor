@@ -634,9 +634,25 @@ impl Rule for ${delegatedRule.struct} {
         ["module_api_path_matches"],
       ],
       ["no-array-index-as-key", ["member_expression_identifier_property_name"]],
+      ["no-flush-sync", ["is_non_production_file"]],
+      [
+        "no-spread-props-over-defaults-clobbers-with-undefined",
+        [
+          "component_or_hook_function_name",
+          "identifier_symbol_id_with_lexical_fallback",
+          "is_non_production_file",
+          "parenthesized_expression_root",
+          "resolve_const_identifier_root_symbol",
+          "transparent_expression_root",
+        ],
+      ],
       [
         "no-unsafe-json-parse",
         ["is_non_production_file", "statement_always_exits", "transparent_expression_root"],
+      ],
+      [
+        "prefer-module-scope-pure-function",
+        ["has_capability", "is_non_production_file", "transparent_expression_root"],
       ],
       [
         "no-img-without-dimensions",

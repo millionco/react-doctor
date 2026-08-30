@@ -211,6 +211,17 @@ const serverHoistStaticIoFixturePath = path.join(
   "route.ts",
 );
 const serverMutableStateFixturePath = path.join(fixtureDirectory, "app", "server-mutable-state.ts");
+const noFlushSyncFixturePath = path.join(fixtureDirectory, "app", "no-flush-sync.ts");
+const preferModuleScopeFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "prefer-module-scope-pure-function.ts",
+);
+const spreadPropsDefaultsFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "spread-props-defaults.ts",
+);
 const unsafeJsonParseFixturePath = path.join(fixtureDirectory, "app", "unsafe-json-parse.ts");
 const r3fLightingFixturePath = path.join(fixtureDirectory, "app", "r3f-lighting.tsx");
 const r3fMetalEnvironmentFixturePath = path.join(
@@ -1688,7 +1699,10 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-responsive-hidden-accessible-name": 0,
   "no-static-element-interactions": 2,
   "no-array-index-as-key": 2,
+  "no-flush-sync": 3,
+  "no-spread-props-over-defaults-clobbers-with-undefined": 4,
   "no-unsafe-json-parse": 3,
+  "prefer-module-scope-pure-function": 13,
   "prefer-tag-over-role": 12,
   "rerender-defer-reads-hook": 1,
   "rerender-memo-before-early-return": 1,
@@ -1861,7 +1875,10 @@ const FOCUSED_PARITY_RULE_IDS = [
   "rerender-defer-reads-hook",
   "rerender-memo-before-early-return",
   "no-array-index-as-key",
+  "no-flush-sync",
+  "no-spread-props-over-defaults-clobbers-with-undefined",
   "no-unsafe-json-parse",
+  "prefer-module-scope-pure-function",
   "server-hoist-static-io",
   "server-no-mutable-module-state",
   "styled-components-non-transient-custom-prop-on-intrinsic-element",
@@ -2025,7 +2042,10 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "rerender-defer-reads-hook": 0,
   "rerender-memo-before-early-return": 0,
   "no-array-index-as-key": 0,
+  "no-flush-sync": 0,
+  "no-spread-props-over-defaults-clobbers-with-undefined": 0,
   "no-unsafe-json-parse": 0,
+  "prefer-module-scope-pure-function": 0,
   "server-hoist-static-io": 0,
   "server-no-mutable-module-state": 0,
   "styled-components-non-transient-custom-prop-on-intrinsic-element": 0,
@@ -4635,6 +4655,107 @@ let requestCount = 0;
 export async function recordRequest() {
   requestCount += 1;
 }
+`,
+  );
+  fs.writeFileSync(
+    noFlushSyncFixturePath,
+    `import { flushSync } from "react-dom";
+`,
+  );
+  fs.writeFileSync(
+    preferModuleScopeFixturePath,
+    `function normalize(value) {
+  return value.trim();
+}
+
+function App() {
+  const format = (value) => normalize(value);
+  return null;
+}
+
+function useHelper() {
+  return 1;
+}
+
+const NotComponent = function helper() {
+  const pure = () => 1;
+  return null;
+};
+
+function TypedApp() {
+  type Local = { value: number };
+  const pure = (input: Local) => input.value;
+  return null;
+}
+
+var Forwarded = (0, (0, React.forwardRef))(function () {
+  function helper(value) {
+    return value;
+  }
+  return null;
+});
+`,
+  );
+  fs.writeFileSync(
+    spreadPropsDefaultsFixturePath,
+    `interface DeepProps {
+  width?: number;
+  transform?: (value: number) => number;
+}
+type Props0 = Props1;
+type Props1 = Props2;
+type Props2 = Props3;
+type Props3 = Props4;
+type Props4 = Props5;
+type Props5 = Props6;
+type Props6 = Props7;
+type Props7 = Props8;
+type Props8 = Props9;
+type Props9 = Props10;
+type Props10 = Props11;
+type Props11 = Props12;
+type Props12 = Props13;
+type Props13 = Props14;
+type Props14 = DeepProps;
+
+function identity(value: number) {
+  return value;
+}
+
+const defaults = { width: 100, transform: identity };
+
+namespace Helpers {
+  export type Partial<Value> = Value;
+}
+
+export const Panel = (props: Props0) => {
+  const direct = ({ ...defaults, ...props }).width * 2;
+  const merged = { ...defaults, ...props };
+  const transformed = merged.transform(1);
+  const aliasMerged = { ...defaults, ...props };
+  const alias = aliasMerged;
+  alias.width ??= 100;
+  const safeAlias = alias.width * 2;
+  const rootRepaired = { ...defaults, ...props };
+  rootRepaired.width ??= 100;
+  const rootAlias = rootRepaired;
+  const unsafeAlias = rootAlias.width * 2;
+  const qualifiedProps: Helpers.Partial<{ width: number }> = { width: 1 };
+  const qualified = { ...defaults, ...qualifiedProps };
+  const qualifiedValue = qualified.width * 2;
+  const wrappedMerge = ({ ...defaults, ...props } as Props0);
+  const wrappedMergeValue = wrappedMerge.width * 2;
+  const wrappedAlias = (merged as Props0);
+  const wrappedAliasValue = wrappedAlias.width * 2;
+  const reassignedProps = props;
+  reassignedProps = props;
+  const reassignedMerge = { ...defaults, ...reassignedProps };
+  const reassignedValue = reassignedMerge.width * 2;
+  const guardedMerge = { ...defaults, ...props };
+  if (guardedMerge.width == null) return null;
+  const guardedValue = guardedMerge.width * 2;
+  return direct + transformed + safeAlias + unsafeAlias + qualifiedValue + wrappedMergeValue + wrappedAliasValue + reassignedValue + guardedValue;
+};
 `,
   );
   fs.writeFileSync(

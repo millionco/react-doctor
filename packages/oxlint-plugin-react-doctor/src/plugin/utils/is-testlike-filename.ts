@@ -1,3 +1,39 @@
+// These names describe non-application code at the repository root, but they
+// also name common product areas below an application source root.
+const AMBIGUOUS_NON_PRODUCTION_PATH_SEGMENTS: ReadonlySet<string> = new Set([
+  "/playground/",
+  "/playgrounds/",
+  "/examples/",
+  "/example/",
+  "/demo/",
+  "/demos/",
+  "/sandbox/",
+  "/sandboxes/",
+  "/specs/",
+  "/spec/",
+  "/integration/",
+  "/it/",
+  "/perf/",
+  "/scripts/",
+  "/cli/",
+  "/bin/",
+  "/tooling/",
+  "/tools/",
+  "/codemods/",
+  "/codemod/",
+  "/migrations/",
+  "/migration/",
+  "/generators/",
+  "/generator/",
+  "/runbooks/",
+  "/devtools/",
+  "/internal-tools/",
+  "/seeds/",
+  "/seed/",
+  "/dev-seeder/",
+]);
+const EMPTY_IGNORED_PATH_SEGMENTS: ReadonlySet<string> = new Set();
+
 // Directory names that mark a file as part of a test / fixture /
 // Storybook / Cypress / docs-site (`.dumi`) / example surface, regardless
 // of the file's own suffix.
@@ -21,48 +57,14 @@ const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/.dumi/",
   "/stories/",
   "/__stories__/",
-  "/playground/",
-  "/playgrounds/",
-  "/examples/",
-  "/example/",
-  "/demo/",
-  "/demos/",
-  "/sandbox/",
-  "/sandboxes/",
+  ...AMBIGUOUS_NON_PRODUCTION_PATH_SEGMENTS,
   "/e2e/",
   "/e2e-tests/",
-  "/specs/",
-  "/spec/",
   "/integration-tests/",
-  "/integration/",
-  "/it/",
   "/benchmarks/",
   "/benchmark/",
   "/__benchmarks__/",
-  "/perf/",
   "/perf-tests/",
-  // CLI / one-shot / build-time tooling — never shipped in the
-  // user-facing bundle, no render-perf or React-rule concerns. Captures
-  // top-level `scripts/`, `cli/`, `bin/`, `tooling/`, `tools/`,
-  // `codemods/`, `migrations/`, `generators/`, `runbooks/`, etc. as well
-  // as `src/scripts/...` shaped layouts.
-  "/scripts/",
-  "/cli/",
-  "/bin/",
-  "/tooling/",
-  "/tools/",
-  "/codemods/",
-  "/codemod/",
-  "/migrations/",
-  "/migration/",
-  "/generators/",
-  "/generator/",
-  "/runbooks/",
-  "/devtools/",
-  "/internal-tools/",
-  "/seeds/",
-  "/seed/",
-  "/dev-seeder/",
 ];
 
 // True iff `filename` looks like test / spec / Storybook / Cypress /
@@ -217,6 +219,8 @@ const sliceBelowSourceRoot = (filename: string): string => {
 // call per file.
 let lastFilename: string | undefined;
 let lastResult = false;
+let lastTestNoiseFilename: string | undefined;
+let lastTestNoiseResult = false;
 
 export const isTestlikeFilename = (rawFilename: string | undefined): boolean => {
   if (!rawFilename) return false;
@@ -226,6 +230,22 @@ export const isTestlikeFilename = (rawFilename: string | undefined): boolean => 
   return lastResult;
 };
 
+export const isTestNoiseFilename = (rawFilename: string | undefined): boolean => {
+  if (!rawFilename) return false;
+  if (rawFilename === lastTestNoiseFilename) return lastTestNoiseResult;
+  lastTestNoiseFilename = rawFilename;
+  const filename = rawFilename.replaceAll("\\", "/");
+  const rootedFilename = filename.startsWith("/") ? filename : `/${filename}`;
+  const isBelowSourceRoot = SOURCE_ROOT_SEGMENTS.some((segment) =>
+    rootedFilename.includes(segment),
+  );
+  lastTestNoiseResult = computeIsTestlikeFilename(
+    rootedFilename,
+    isBelowSourceRoot ? AMBIGUOUS_NON_PRODUCTION_PATH_SEGMENTS : EMPTY_IGNORED_PATH_SEGMENTS,
+  );
+  return lastTestNoiseResult;
+};
+
 export const isTestlikeFilenameIgnoringPathSegments = (
   rawFilename: string | undefined,
   ignoredPathSegments: ReadonlySet<string>,
@@ -233,7 +253,7 @@ export const isTestlikeFilenameIgnoringPathSegments = (
 
 const computeIsTestlikeFilename = (
   rawFilename: string,
-  ignoredPathSegments: ReadonlySet<string> = new Set(),
+  ignoredPathSegments: ReadonlySet<string> = EMPTY_IGNORED_PATH_SEGMENTS,
 ): boolean => {
   const filename = rawFilename.replaceAll("\\", "/");
   const lastSlash = filename.lastIndexOf("/");

@@ -90,13 +90,6 @@ const FLAGGED_DEPENDENCIES: ReadonlyArray<FlaggedDependency> = [
     help: "Remove `expo-modules-core` from your package.json and import from `expo` instead",
   },
   {
-    packageName: "@expo/metro-config",
-    rule: "expo-no-redundant-dependency",
-    message:
-      '"@expo/metro-config" should not be a direct dependency. Expo pins the compatible Metro config, and a direct entry can drift to a version that breaks bundling',
-    help: "Remove `@expo/metro-config` and import `expo/metro-config` in your metro.config.js",
-  },
-  {
     packageName: "@types/react-native",
     rule: "expo-no-redundant-dependency",
     message:

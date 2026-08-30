@@ -63,6 +63,7 @@
     "conf": "^15.1.0",
     "confbox": "^0.2.4",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "is-unicode-supported": "^2.1.0",
     "jiti": "^2.7.0",
     "magicast": "^0.5.3",
     "oxc-parser": "^0.146.0",

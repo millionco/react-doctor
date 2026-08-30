@@ -45,12 +45,14 @@
     "oxlint": ">=1.79.0 <1.80.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "parse5": "^8.0.1",
+    "picocolors": "^1.1.1",
     "picomatch": "^4.0.4",
     "semver": "^7.7.4",
     "typescript": ">=5.0.4 <7"
   },
   "devDependencies": {
     "@effect/vitest": "4.0.0-beta.102",
+    "@types/mdast": "^4.0.4",
     "@types/node": "^25.6.0",
     "@types/picomatch": "^4.0.3",
     "@types/semver": "^7.7.1"

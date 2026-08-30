@@ -69,6 +69,33 @@ describe("unused-file graph completeness", () => {
     expect(unusedFilePaths(rootDirectory, result.unusedFiles)).toEqual(["src/lib/orphan.ts"]);
   });
 
+  it("keeps a directory barrel reachable through a tsconfig alias", async () => {
+    const rootDirectory = createProject(
+      {
+        "app/page.tsx":
+          'import { FooList } from "@/features/foo"; export default () => <FooList />;',
+        "src/features/foo/index.ts": 'export { FooList } from "./foo-list";',
+        "src/features/foo/foo-list.tsx": "export const FooList = () => <div />;",
+        "src/orphan.ts": "export const orphan = true;",
+        "tsconfig.json": JSON.stringify({
+          compilerOptions: {
+            baseUrl: ".",
+            moduleResolution: "bundler",
+            paths: { "@/*": ["src/*"] },
+          },
+        }),
+      },
+      { dependencies: { next: "^14.0.0", react: "^18.0.0" } },
+    );
+
+    const result = await analyzeProject({
+      rootDirectory,
+      tsConfigPath: path.join(rootDirectory, "tsconfig.json"),
+    });
+
+    expect(unusedFilePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
   it.each([
     {
       name: "default entry heuristic",

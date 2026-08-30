@@ -1,7 +1,9 @@
 import * as Effect from "effect/Effect";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { DISABLE_DIRECTIVE_BACKUP_DIRECTORY_SEGMENTS } from "./constants.js";
 import { hasIgnoredPathSegment } from "./utils/has-ignored-path-segment.js";
+import { isPathInsideDirectory } from "./utils/is-path-inside-directory.js";
 import { isLintableSourceFile } from "./utils/is-lintable-source-file.js";
 import { messageFromUnknown } from "./utils/message-from-unknown.js";
 import { walkSourceTreeFiles } from "./utils/walk-source-tree-files.js";
@@ -9,8 +11,27 @@ import { Git } from "./services/git.js";
 
 const DISABLE_DIRECTIVE_PATTERN = /(eslint|oxlint)-disable/;
 
+const getBackupRootDirectory = (rootDirectory: string): string =>
+  path.join(rootDirectory, ...DISABLE_DIRECTIVE_BACKUP_DIRECTORY_SEGMENTS);
+
+const getBackupPath = (rootDirectory: string, absolutePath: string): string | null => {
+  if (!isPathInsideDirectory(absolutePath, rootDirectory)) return null;
+  return path.join(
+    getBackupRootDirectory(rootDirectory),
+    path.relative(rootDirectory, absolutePath),
+  );
+};
+
+const removeBackupRootIfEmpty = (rootDirectory: string): void => {
+  const backupRootDirectory = getBackupRootDirectory(rootDirectory);
+  if (!walkSourceTreeFiles(backupRootDirectory).next().done) return;
+  fs.rmSync(backupRootDirectory, { recursive: true, force: true });
+};
+
 interface NeutralizedFileLease {
+  backupPath: string;
   originalContent: string;
+  neutralizedContent: string;
   referenceCount: number;
 }
 
@@ -138,6 +159,7 @@ const findFilesWithDisableDirectives = async (
 interface NeutralizationOptions {
   /** Test seam for deterministically exercising asynchronous discovery races. */
   readonly findFiles?: (rootDirectory: string, includePaths?: string[]) => Promise<string[]>;
+  readonly recoverOnly?: boolean;
 }
 
 const neutralizeContent = (content: string): string =>
@@ -187,12 +209,66 @@ const collectNeutralizationCandidatePaths = (
   return candidatePaths;
 };
 
+const recoverOrphanedBackups = (rootDirectory: string): Set<string> => {
+  const blockedPaths = new Set<string>();
+  const backupRootDirectory = getBackupRootDirectory(rootDirectory);
+  for (const { absolutePath: backupPath } of walkSourceTreeFiles(backupRootDirectory)) {
+    const originalPath = path.join(rootDirectory, path.relative(backupRootDirectory, backupPath));
+    if (neutralizedFileLeases.has(originalPath)) continue;
+    let backupContent: string;
+    let currentContent: string;
+    try {
+      backupContent = fs.readFileSync(backupPath, "utf-8");
+      currentContent = fs.readFileSync(originalPath, "utf-8");
+    } catch (error) {
+      process.stderr.write(
+        `[react-doctor] Could not recover ${originalPath}: ${messageFromUnknown(error)}. The backup remains at ${backupPath}.\n`,
+      );
+      blockedPaths.add(originalPath);
+      continue;
+    }
+
+    if (currentContent === backupContent) {
+      try {
+        fs.rmSync(backupPath);
+      } catch (error) {
+        process.stderr.write(
+          `[react-doctor] Failed to delete stale backup ${backupPath}: ${messageFromUnknown(error)}\n`,
+        );
+        blockedPaths.add(originalPath);
+      }
+      continue;
+    }
+
+    if (currentContent !== neutralizeContent(backupContent)) {
+      process.stderr.write(
+        `[react-doctor] Did not overwrite changed file ${originalPath}. Recover it manually from ${backupPath}.\n`,
+      );
+      blockedPaths.add(originalPath);
+      continue;
+    }
+
+    try {
+      fs.writeFileSync(originalPath, backupContent);
+      fs.rmSync(backupPath);
+    } catch (error) {
+      process.stderr.write(
+        `[react-doctor] Failed to restore ${originalPath} from backup: ${messageFromUnknown(error)}\n`,
+      );
+      blockedPaths.add(originalPath);
+    }
+  }
+  removeBackupRootIfEmpty(rootDirectory);
+  return blockedPaths;
+};
+
 export const neutralizeDisableDirectives = async (
   rootDirectory: string,
   includePaths?: string[],
   options: NeutralizationOptions = {},
 ): Promise<() => void> => {
   const resolvedRootDirectory = fs.realpathSync(rootDirectory);
+  const blockedPaths = new Set<string>();
   const leasedPaths = new Set<string>();
 
   let isRestored = false;
@@ -209,17 +285,27 @@ export const neutralizeDisableDirectives = async (
       // scan adopt stale original content and overwrite a newer file.
       neutralizedFileLeases.delete(absolutePath);
       try {
-        fs.writeFileSync(absolutePath, lease.originalContent);
+        const currentContent = fs.readFileSync(absolutePath, "utf-8");
+        if (
+          currentContent !== lease.neutralizedContent &&
+          currentContent !== lease.originalContent
+        ) {
+          process.stderr.write(
+            `[react-doctor] Did not overwrite changed file ${absolutePath}. Recover it manually from ${lease.backupPath}.\n`,
+          );
+          continue;
+        }
+        if (currentContent === lease.neutralizedContent) {
+          fs.writeFileSync(absolutePath, lease.originalContent);
+        }
+        fs.rmSync(lease.backupPath, { force: true });
       } catch (error) {
-        // HACK: surface failed restores so the user can manually revert.
-        // Silently swallowing left source files with `eslint_disable` /
-        // `oxlint_disable` (neutralized form) and no signal anything broke.
         process.stderr.write(
-          `[react-doctor] Failed to restore inline disable directives in ${absolutePath}: ${messageFromUnknown(error)}\n` +
-            `[react-doctor] Run: git checkout -- ${absolutePath}\n`,
+          `[react-doctor] Failed to restore inline disable directives in ${absolutePath}: ${messageFromUnknown(error)}. The backup remains at ${lease.backupPath}.\n`,
         );
       }
     }
+    removeBackupRootIfEmpty(resolvedRootDirectory);
   };
 
   // HACK: register an "exit" listener so that any path that goes through
@@ -235,6 +321,7 @@ export const neutralizeDisableDirectives = async (
 
   const leaseCandidatePath = (absolutePath: string): void => {
     if (leasedPaths.has(absolutePath)) return;
+    if (blockedPaths.has(absolutePath)) return;
     const existingLease = neutralizedFileLeases.get(absolutePath);
     if (existingLease) {
       existingLease.referenceCount += 1;
@@ -251,14 +338,34 @@ export const neutralizeDisableDirectives = async (
 
     const neutralizedContent = neutralizeContent(originalContent);
     if (neutralizedContent !== originalContent) {
+      const backupPath = getBackupPath(resolvedRootDirectory, absolutePath);
+      if (backupPath === null) return;
+      try {
+        fs.mkdirSync(path.dirname(backupPath), { recursive: true });
+        fs.writeFileSync(backupPath, originalContent, { flag: "wx" });
+      } catch (error) {
+        process.stderr.write(
+          `[react-doctor] Did not modify ${absolutePath}: ${messageFromUnknown(error)}. Check ${backupPath}.\n`,
+        );
+        return;
+      }
       fs.writeFileSync(absolutePath, neutralizedContent);
-      neutralizedFileLeases.set(absolutePath, { originalContent, referenceCount: 1 });
+      neutralizedFileLeases.set(absolutePath, {
+        backupPath,
+        originalContent,
+        neutralizedContent,
+        referenceCount: 1,
+      });
       leasedPaths.add(absolutePath);
     }
   };
 
   try {
     await withOverlappingInitializationLock(resolvedRootDirectory, async () => {
+      for (const blockedPath of recoverOrphanedBackups(resolvedRootDirectory)) {
+        blockedPaths.add(blockedPath);
+      }
+      if (options.recoverOnly) return;
       // Adopt active leases before the asynchronous discovery. This prevents
       // their owners from restoring the files while git grep is observing the
       // neutralized spellings. The overlap lock also prevents a newer nested

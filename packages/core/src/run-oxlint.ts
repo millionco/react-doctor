@@ -334,12 +334,11 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   // HACK: only neutralize disable comments in audit mode. Default
   // behavior respects the user's existing `// eslint-disable*` /
   // `// oxlint-disable*` directives — we let oxlint apply them.
-  const restoreDisableDirectives = respectInlineDisables
-    ? () => {}
-    : await neutralizeDisableDirectives(
-        rootDirectory,
-        includePaths ?? options.precomputedSourceFiles?.map((sourceFile) => sourceFile.path),
-      );
+  const restoreDisableDirectives = await neutralizeDisableDirectives(
+    rootDirectory,
+    includePaths ?? options.precomputedSourceFiles?.map((sourceFile) => sourceFile.path),
+    { recoverOnly: respectInlineDisables },
+  );
 
   // Created last so any throw in the setup above (plugin resolution,
   // user-plugin loading) happens before the temp dir exists — nothing

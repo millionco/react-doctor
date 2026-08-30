@@ -211,4 +211,19 @@ describe("rerender-state-only-in-handlers", () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("logged");
   });
+
+  it("does not treat an unrelated member call as the state setter", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `
+      function Widget() {
+        const [logged, setLogged] = useState(false);
+        const store = { setLogged: (value) => console.log(value) };
+        return <button onClick={() => store.setLogged(true)}>go</button>;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
 });

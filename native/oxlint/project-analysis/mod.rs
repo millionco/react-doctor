@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[path = "circular-dependency.rs"]
 mod circular_dependency;
+#[path = "duplicate-jsx-subtree.rs"]
+mod duplicate_jsx_subtree;
 #[path = "unused-dependency.rs"]
 mod unused_dependency;
 #[path = "unused-export.rs"]
@@ -9,8 +11,14 @@ mod unused_export;
 #[path = "unused-file.rs"]
 mod unused_file;
 
+pub use duplicate_jsx_subtree::{
+    analyze_duplicate_jsx, DuplicateJsxAnalysisInput, DuplicateJsxCandidateInput,
+    DuplicateJsxFamily, DuplicateJsxOccurrence,
+};
+
 const NATIVE_PROJECT_RULE_IDS: &[&str] = &[
     "circular-dependency",
+    "duplicate-jsx-subtree",
     "unused-dependency",
     "unused-dev-dependency",
     "unused-export",
@@ -284,6 +292,7 @@ mod tests {
             native_project_rule_ids(),
             [
                 "circular-dependency",
+                "duplicate-jsx-subtree",
                 "unused-dependency",
                 "unused-dev-dependency",
                 "unused-export",

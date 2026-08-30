@@ -15,6 +15,7 @@ import {
 import { getTypescriptScriptKind } from "../utils/get-typescript-script-kind.js";
 import { unwrapTypescriptExpression } from "../utils/unwrap-typescript-expression.js";
 import { yieldToEventLoop } from "../utils/yield-to-event-loop.js";
+import { runNativeDuplicateJsxAnalysis } from "./run-native-duplicate-jsx-analysis.js";
 import { isNonReactJsxSource } from "./utils/is-non-react-jsx-source.js";
 
 export interface JsxDuplicationSource {
@@ -84,7 +85,7 @@ export interface DuplicateJsxSubtreesResult {
   incompleteReasons: JsxDuplicationIncompleteReason[];
 }
 
-interface ResolvedJsxDuplicationOptions {
+export interface ResolvedJsxDuplicationOptions {
   minimumNodeCount: number;
   minimumDepth: number;
   minimumOccurrences: number;
@@ -95,13 +96,13 @@ interface ResolvedJsxDuplicationOptions {
   maxFamilies: number;
 }
 
-interface JsxSubtreeMetadata {
+export interface JsxSubtreeMetadata {
   fingerprint: string;
   nodeCount: number;
   depth: number;
 }
 
-interface JsxSubtreeCandidate {
+export interface JsxSubtreeCandidate {
   metadata: JsxSubtreeMetadata;
   occurrence: DuplicateJsxSubtreeOccurrence;
 }
@@ -697,9 +698,10 @@ const buildFamilies = (
 };
 
 const buildResult = (input: BuildDuplicateJsxResultInput): DuplicateJsxSubtreesResult => {
-  const builtFamilies = buildFamilies(input.candidates, input.options);
+  const nativeFamilies = runNativeDuplicateJsxAnalysis(input.candidates, input.options);
+  const families = nativeFamilies ?? buildFamilies(input.candidates, input.options).families;
   return {
-    families: builtFamilies.families.slice(0, input.options.maxFamilies),
+    families: families.slice(0, input.options.maxFamilies),
     scannedSourceFileCount: input.scannedSourceFileCount,
     scannedJsxNodeCount: input.scannedJsxNodeCount,
     incomplete: input.incompleteReasons.length > 0,

@@ -975,6 +975,11 @@ impl Rule for ${delegatedRule.struct} {
           `built binding does not export reactDoctorNativeProjectRuleIds: ${outputBindingPath}`,
         );
       }
+      if (typeof nativeBinding.analyzeReactDoctorDuplicateJsx !== "function") {
+        throw new Error(
+          `built binding does not export analyzeReactDoctorDuplicateJsx: ${outputBindingPath}`,
+        );
+      }
 
       const sha256 = (filePath) =>
         crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");

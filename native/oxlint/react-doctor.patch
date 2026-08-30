@@ -234,10 +234,24 @@ diff --git a/crates/oxc_linter/src/lib.rs b/crates/oxc_linter/src/lib.rs
 diff --git a/apps/oxlint/src/run.rs b/apps/oxlint/src/run.rs
 --- a/apps/oxlint/src/run.rs
 +++ b/apps/oxlint/src/run.rs
-@@ -239,6 +239,42 @@ async fn lint_impl(
+@@ -239,6 +239,56 @@ async fn lint_impl(
      cli_runner.run(&mut stdout)
  }
  
++#[napi]
++pub fn analyze_react_doctor_duplicate_jsx(input_json: String) -> napi::Result<String> {
++    let input = serde_json::from_str::<
++        oxc_linter::react_doctor_project_analysis::DuplicateJsxAnalysisInput,
++    >(&input_json)
++    .map_err(|error| {
++        napi::Error::from_reason(format!("Invalid React Doctor duplicate JSX input: {error}"))
++    })?;
++    let findings = oxc_linter::react_doctor_project_analysis::analyze_duplicate_jsx(&input);
++    serde_json::to_string(&findings).map_err(|error| {
++        napi::Error::from_reason(format!("Failed to serialize React Doctor duplicate JSX findings: {error}"))
++    })
++}
++
 +#[napi]
 +pub fn react_doctor_native_project_rule_ids() -> Vec<String> {
 +    oxc_linter::react_doctor_project_analysis::native_project_rule_ids()

@@ -471,11 +471,17 @@ const analyzeProjectConfig = async (
       () => detectDeadExports(moduleGraph, config, platformSiblingIndex),
       [],
     );
-  const stalePackageReport = runReportDetector(
-    "detectStalePackages",
-    () => detectStalePackages(moduleGraph, config),
-    { unusedDependencies: [], skippedDependencies: [] },
-  );
+  const stalePackageReport =
+    nativeProjectAnalysis?.unusedDependencies !== undefined &&
+    nativeProjectAnalysis.skippedDependencies !== undefined
+      ? {
+          unusedDependencies: nativeProjectAnalysis.unusedDependencies,
+          skippedDependencies: nativeProjectAnalysis.skippedDependencies,
+        }
+      : runReportDetector("detectStalePackages", () => detectStalePackages(moduleGraph, config), {
+          unusedDependencies: [],
+          skippedDependencies: [],
+        });
   const circularDependencies =
     nativeProjectAnalysis?.circularDependencies ??
     runReportDetector("detectCycles", () => detectCycles(moduleGraph), []);

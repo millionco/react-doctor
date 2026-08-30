@@ -1,14 +1,18 @@
 import { loadNativeOxlintBinding } from "../runners/oxlint/load-native-oxlint-binding.js";
 import { isRecord } from "../utils/is-record.js";
-import { buildExportKey } from "./utils/build-export-key.js";
-import { collectConventionConsumedExportKeys } from "./utils/collect-convention-consumed-export-keys.js";
+import { collectStalePackageAnalysisInput } from "./report/packages.js";
 import type {
   CircularDependency,
   DependencyGraph,
   ProjectAnalysisConfig,
+  SkippedDependency,
+  SkippedDependencyReason,
+  UnusedDependency,
   UnusedExport,
   UnusedFile,
 } from "./types.js";
+import { buildExportKey } from "./utils/build-export-key.js";
+import { collectConventionConsumedExportKeys } from "./utils/collect-convention-consumed-export-keys.js";
 
 export interface RunNativeProjectAnalysisInput {
   readonly graph: DependencyGraph;
@@ -20,8 +24,16 @@ export interface NativeProjectAnalysisResult {
   readonly unusedFiles?: ReadonlyArray<UnusedFile>;
   readonly verifiedUnusedFiles?: ReadonlyArray<UnusedFile>;
   readonly unusedExports?: ReadonlyArray<UnusedExport>;
+  readonly unusedDependencies?: ReadonlyArray<UnusedDependency>;
+  readonly skippedDependencies?: ReadonlyArray<SkippedDependency>;
   readonly circularDependencies?: ReadonlyArray<CircularDependency>;
 }
+
+const isSkippedDependencyReason = (value: unknown): value is SkippedDependencyReason =>
+  value === "allowlisted-name" ||
+  value === "ambiguous-binary" ||
+  value === "provides-binary" ||
+  value === "incomplete-peer-metadata";
 
 const parseUnusedFiles = (value: unknown): UnusedFile[] | null => {
   if (!Array.isArray(value)) return null;
@@ -58,6 +70,49 @@ const parseUnusedExports = (value: unknown): UnusedExport[] | null => {
     });
   }
   return unusedExports;
+};
+
+const parseUnusedDependencies = (value: unknown): UnusedDependency[] | null => {
+  if (!Array.isArray(value)) return null;
+  const unusedDependencies: UnusedDependency[] = [];
+  for (const entry of value) {
+    if (
+      !isRecord(entry) ||
+      typeof entry.name !== "string" ||
+      typeof entry.isDevDependency !== "boolean" ||
+      typeof entry.reason !== "string"
+    ) {
+      return null;
+    }
+    unusedDependencies.push({
+      name: entry.name,
+      isDevDependency: entry.isDevDependency,
+      reason: entry.reason,
+    });
+  }
+  return unusedDependencies;
+};
+
+const parseSkippedDependencies = (value: unknown): SkippedDependency[] | null => {
+  if (!Array.isArray(value)) return null;
+  const skippedDependencies: SkippedDependency[] = [];
+  for (const entry of value) {
+    if (
+      !isRecord(entry) ||
+      typeof entry.name !== "string" ||
+      typeof entry.isDevDependency !== "boolean" ||
+      !Array.isArray(entry.reasons) ||
+      !entry.reasons.every(isSkippedDependencyReason)
+    ) {
+      return null;
+    }
+    skippedDependencies.push({
+      name: entry.name,
+      isDevDependency: entry.isDevDependency,
+      reasons: entry.reasons,
+    });
+  }
+  return skippedDependencies;
 };
 
 const parseCircularDependencies = (value: unknown): CircularDependency[] | null => {
@@ -104,11 +159,23 @@ export const runNativeProjectAnalysis = (
   const hasNativeUnusedFile = nativeRuleIds.includes("unused-file");
   const hasNativeUnusedExports =
     nativeRuleIds.includes("unused-export") && nativeRuleIds.includes("unused-type");
+  const hasNativeUnusedDependencyAnalysis =
+    nativeRuleIds.includes("unused-dependency") && nativeRuleIds.includes("unused-dev-dependency");
   const hasNativeCircularDependency = nativeRuleIds.includes("circular-dependency");
-  if (!hasNativeUnusedFile && !hasNativeUnusedExports && !hasNativeCircularDependency) return null;
+  if (
+    !hasNativeUnusedFile &&
+    !hasNativeUnusedExports &&
+    !hasNativeUnusedDependencyAnalysis &&
+    !hasNativeCircularDependency
+  ) {
+    return null;
+  }
   const conventionConsumedExportKeys = hasNativeUnusedExports
     ? collectConventionConsumedExportKeys(graph)
     : new Set<string>();
+  const stalePackageAnalysis = hasNativeUnusedDependencyAnalysis
+    ? collectStalePackageAnalysisInput(graph, config)
+    : null;
   const outputJson = binding.analyzeReactDoctorProjectGraph(
     JSON.stringify({
       modules: graph.modules.map((module) => ({
@@ -173,6 +240,7 @@ export const runNativeProjectAnalysis = (
       ),
       reportTypes: config.reportTypes,
       includeEntryExports: config.includeEntryExports,
+      ...(stalePackageAnalysis === null ? {} : { stalePackageAnalysis }),
     }),
   );
   if (typeof outputJson !== "string") {
@@ -190,6 +258,12 @@ export const runNativeProjectAnalysis = (
     ? parseUnusedFiles(output.verifiedUnusedFiles)
     : null;
   const unusedExports = hasNativeUnusedExports ? parseUnusedExports(output.unusedExports) : null;
+  const unusedDependencies = hasNativeUnusedDependencyAnalysis
+    ? parseUnusedDependencies(output.unusedDependencies)
+    : null;
+  const skippedDependencies = hasNativeUnusedDependencyAnalysis
+    ? parseSkippedDependencies(output.skippedDependencies)
+    : null;
   const circularDependencies = hasNativeCircularDependency
     ? parseCircularDependencies(output.circularDependencies)
     : null;
@@ -198,6 +272,9 @@ export const runNativeProjectAnalysis = (
       ? { unusedFiles, verifiedUnusedFiles }
       : {}),
     ...(unusedExports === null ? {} : { unusedExports }),
+    ...(unusedDependencies !== null && skippedDependencies !== null
+      ? { unusedDependencies, skippedDependencies }
+      : {}),
     ...(circularDependencies === null ? {} : { circularDependencies }),
   };
 };

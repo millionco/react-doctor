@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[path = "circular-dependency.rs"]
 mod circular_dependency;
+#[path = "unused-dependency.rs"]
+mod unused_dependency;
 #[path = "unused-export.rs"]
 mod unused_export;
 #[path = "unused-file.rs"]
@@ -9,6 +11,8 @@ mod unused_file;
 
 const NATIVE_PROJECT_RULE_IDS: &[&str] = &[
     "circular-dependency",
+    "unused-dependency",
+    "unused-dev-dependency",
     "unused-export",
     "unused-file",
     "unused-type",
@@ -23,6 +27,37 @@ pub struct ProjectAnalysisGraphInput {
     pub convention_consumed_exports: Vec<ProjectExportKeyInput>,
     pub report_types: bool,
     pub include_entry_exports: bool,
+    pub stale_package_analysis: Option<StalePackageAnalysisInput>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StalePackageAnalysisInput {
+    pub declared_dependencies: Vec<DeclaredDependencyAnalysisInput>,
+    pub sorted_declared_dependency_names: Vec<String>,
+    pub observed_package_names: Vec<String>,
+    pub used_package_names: Vec<String>,
+    pub peer_satisfied_package_names: Vec<String>,
+    pub ambiguous_binary_package_names: Vec<String>,
+    pub source_file_rescued_package_names: Vec<String>,
+    pub override_mappings: Vec<OverrideMappingInput>,
+    pub final_peer_satisfied_package_names: Vec<String>,
+    pub is_peer_metadata_complete: bool,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeclaredDependencyAnalysisInput {
+    pub name: String,
+    pub is_dev_dependency: bool,
+    pub is_always_considered_used: bool,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OverrideMappingInput {
+    pub from_package: String,
+    pub to_package: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -126,6 +161,22 @@ pub struct UnusedExportFinding {
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UnusedDependencyFinding {
+    pub name: String,
+    pub is_dev_dependency: bool,
+    pub reason: String,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkippedDependencyFinding {
+    pub name: String,
+    pub is_dev_dependency: bool,
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CircularDependencyFinding {
     pub files: Vec<String>,
 }
@@ -136,12 +187,17 @@ pub struct ProjectAnalysisOutput {
     pub unused_files: Vec<UnusedFileFinding>,
     pub verified_unused_files: Vec<UnusedFileFinding>,
     pub unused_exports: Vec<UnusedExportFinding>,
+    pub unused_dependencies: Vec<UnusedDependencyFinding>,
+    pub skipped_dependencies: Vec<SkippedDependencyFinding>,
     pub circular_dependencies: Vec<CircularDependencyFinding>,
 }
 
 pub fn analyze_project_graph(graph: &ProjectAnalysisGraphInput) -> ProjectAnalysisOutput {
     let mut output = unused_file::analyze(graph);
     output.unused_exports = unused_export::analyze(graph);
+    if let Some(stale_package_analysis) = &graph.stale_package_analysis {
+        unused_dependency::analyze(stale_package_analysis, &mut output);
+    }
     output.circular_dependencies = circular_dependency::analyze(graph);
     output
 }
@@ -184,7 +240,23 @@ mod tests {
                 "platformSiblingIndices": [],
                 "conventionConsumedExports": [],
                 "reportTypes": true,
-                "includeEntryExports": false
+                "includeEntryExports": false,
+                "stalePackageAnalysis": {
+                    "declaredDependencies": [{
+                        "name": "unused-development-package",
+                        "isDevDependency": true,
+                        "isAlwaysConsideredUsed": false
+                    }],
+                    "sortedDeclaredDependencyNames": ["unused-development-package"],
+                    "observedPackageNames": [],
+                    "usedPackageNames": [],
+                    "peerSatisfiedPackageNames": [],
+                    "ambiguousBinaryPackageNames": [],
+                    "sourceFileRescuedPackageNames": [],
+                    "overrideMappings": [],
+                    "finalPeerSatisfiedPackageNames": [],
+                    "isPeerMetadataComplete": true
+                }
             }"#,
         )
         .unwrap();
@@ -195,6 +267,12 @@ mod tests {
                 "unusedFiles": [{ "path": "src/orphan.ts" }],
                 "verifiedUnusedFiles": [{ "path": "src/orphan.ts" }],
                 "unusedExports": [],
+                "unusedDependencies": [{
+                    "name": "unused-development-package",
+                    "isDevDependency": true,
+                    "reason": "\"unused-development-package\" is declared in devDependencies but is never imported or referenced by any source file, script, or config — remove it from package.json if it is genuinely unused"
+                }],
+                "skippedDependencies": [],
                 "circularDependencies": []
             })
         );
@@ -206,6 +284,8 @@ mod tests {
             native_project_rule_ids(),
             [
                 "circular-dependency",
+                "unused-dependency",
+                "unused-dev-dependency",
                 "unused-export",
                 "unused-file",
                 "unused-type"

@@ -320,12 +320,12 @@ describe("no-placeholder-only-field", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not report placeholder-only fields in non-production files", () => {
+  it("reports placeholder-only fields in application demo directories", () => {
     const result = runRule(
       noPlaceholderOnlyField,
       `const Example = () => <input placeholder="Demo value" />;`,
       { filename: "src/demo/example.tsx" },
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

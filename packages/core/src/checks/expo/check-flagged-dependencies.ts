@@ -1,6 +1,7 @@
 import type { Diagnostic } from "../../types/index.js";
 import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
+import { hasStaticModuleSubpath } from "./utils/has-static-module-subpath.js";
 import { isExpoSdkAtLeast } from "./utils/is-expo-sdk-at-least.js";
 
 interface FlaggedDependency {
@@ -8,6 +9,7 @@ interface FlaggedDependency {
   readonly rule: string;
   readonly message: string;
   readonly help: string;
+  readonly skipWhenSubpathImported?: boolean;
   /**
    * Lowest Expo SDK major the finding applies to. When set, the entry
    * stays quiet unless the resolved SDK major is known AND at least this
@@ -95,6 +97,7 @@ const FLAGGED_DEPENDENCIES: ReadonlyArray<FlaggedDependency> = [
     message:
       '"@expo/metro-config" should not be a direct dependency. Expo pins the compatible Metro config, and a direct entry can drift to a version that breaks bundling',
     help: "Remove `@expo/metro-config` and import `expo/metro-config` in your metro.config.js",
+    skipWhenSubpathImported: true,
   },
   {
     packageName: "@types/react-native",
@@ -165,8 +168,19 @@ const FLAGGED_DEPENDENCIES: ReadonlyArray<FlaggedDependency> = [
 export const checkExpoFlaggedDependencies = (context: ExpoCheckContext): Diagnostic[] =>
   FLAGGED_DEPENDENCIES.filter((flaggedDependency) => {
     if (!context.directDependencyNames.has(flaggedDependency.packageName)) return false;
-    if (flaggedDependency.minSdkMajor === undefined) return true;
-    return isExpoSdkAtLeast(context.expoSdkMajor, flaggedDependency.minSdkMajor);
+    if (
+      flaggedDependency.minSdkMajor !== undefined &&
+      !isExpoSdkAtLeast(context.expoSdkMajor, flaggedDependency.minSdkMajor)
+    ) {
+      return false;
+    }
+    if (
+      flaggedDependency.skipWhenSubpathImported &&
+      hasStaticModuleSubpath(context.rootDirectory, flaggedDependency.packageName)
+    ) {
+      return false;
+    }
+    return true;
   }).map((flaggedDependency) =>
     buildExpoDiagnostic({
       rule: flaggedDependency.rule,

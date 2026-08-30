@@ -4,6 +4,7 @@ import {
   collectJsxRuntimeImports,
   jsxAttributeIsNonReactDialectMarker,
 } from "./non-react-jsx-dialect.js";
+import { isTestNoiseFilename } from "./is-testlike-filename.js";
 import { skipNonProductionFiles } from "./skip-non-production-files.js";
 import { shouldCreateRuleVisitors } from "./should-create-rule-visitors.js";
 import type { Rule } from "./rule.js";
@@ -121,7 +122,7 @@ export const defineRule = (rule: RuleDefinition): Rule => {
     wrappedCreate = wrapCreateForReactJsxOnly(wrappedCreate as never) as never;
   }
   if (honorsTestNoise) {
-    wrappedCreate = skipNonProductionFiles(wrappedCreate);
+    wrappedCreate = skipNonProductionFiles(wrappedCreate, isTestNoiseFilename);
   }
   if (rule.disabledWhen) {
     wrappedCreate = wrapCreateForCapabilities(wrappedCreate, rule.disabledWhen);

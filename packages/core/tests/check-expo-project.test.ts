@@ -165,6 +165,78 @@ describe("checkExpoProject — redundant transitive dependencies", () => {
       ),
     ).toHaveLength(1);
   });
+
+  it("keeps @expo/metro-config when a package subpath is imported", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "expo-app",
+      dependencies: {
+        expo: "~57.0.18",
+        "@expo/metro-config": "57.0.12",
+      },
+    });
+    writeFile(
+      projectDirectory,
+      "metro.transformer.cjs",
+      `const upstreamTransformer = require("@expo/metro-config/babel-transformer");`,
+    );
+
+    const diagnostics = checkExpoProject(
+      projectDirectory,
+      buildExpoProject(projectDirectory, "~57.0.18"),
+    );
+    expect(
+      rulesOf(diagnostics).filter((rule) => rule === "expo-no-redundant-dependency"),
+    ).toHaveLength(0);
+  });
+
+  it("still flags @expo/metro-config when only the package root is imported", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "expo-app",
+      dependencies: {
+        expo: "~57.0.18",
+        "@expo/metro-config": "57.0.12",
+      },
+    });
+    writeFile(
+      projectDirectory,
+      "metro.config.js",
+      `const { getDefaultConfig } = require("@expo/metro-config");`,
+    );
+
+    const diagnostics = checkExpoProject(
+      projectDirectory,
+      buildExpoProject(projectDirectory, "~57.0.18"),
+    );
+    expect(
+      rulesOf(diagnostics).filter((rule) => rule === "expo-no-redundant-dependency"),
+    ).toHaveLength(1);
+  });
+
+  it("still flags @expo/metro-config when a package subpath only appears in a comment", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "expo-app",
+      dependencies: {
+        expo: "~57.0.18",
+        "@expo/metro-config": "57.0.12",
+      },
+    });
+    writeFile(
+      projectDirectory,
+      "metro.config.js",
+      `// require("@expo/metro-config/babel-transformer");\nmodule.exports = {};`,
+    );
+
+    const diagnostics = checkExpoProject(
+      projectDirectory,
+      buildExpoProject(projectDirectory, "~57.0.18"),
+    );
+    expect(
+      rulesOf(diagnostics).filter((rule) => rule === "expo-no-redundant-dependency"),
+    ).toHaveLength(1);
+  });
 });
 
 describe("checkExpoProject — dependency overrides", () => {

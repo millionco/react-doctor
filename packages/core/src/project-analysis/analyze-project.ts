@@ -446,7 +446,12 @@ const analyzeProjectConfig = async (
     });
   const nativeProjectAnalysis = runReportDetector(
     "runNativeProjectAnalysis",
-    () => runNativeProjectAnalysis(moduleGraph),
+    () =>
+      runNativeProjectAnalysis({
+        graph: moduleGraph,
+        config,
+        platformSiblingIndex,
+      }),
     null,
   );
   const unusedFiles =
@@ -459,11 +464,13 @@ const analyzeProjectConfig = async (
       () => detectOrphanFiles(moduleGraph, { requireCompletePackageGraph: true }),
       [],
     );
-  const unusedExports = runReportDetector(
-    "detectDeadExports",
-    () => detectDeadExports(moduleGraph, config, platformSiblingIndex),
-    [],
-  );
+  const unusedExports =
+    nativeProjectAnalysis?.unusedExports ??
+    runReportDetector(
+      "detectDeadExports",
+      () => detectDeadExports(moduleGraph, config, platformSiblingIndex),
+      [],
+    );
   const stalePackageReport = runReportDetector(
     "detectStalePackages",
     () => detectStalePackages(moduleGraph, config),

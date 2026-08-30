@@ -209,6 +209,7 @@ mod tests {
         let graph = ProjectAnalysisGraphInput {
             modules: vec![module("src/z.ts"), module("src/a.ts")],
             edges: vec![],
+            ..ProjectAnalysisGraphInput::default()
         };
 
         assert_eq!(
@@ -230,6 +231,7 @@ mod tests {
                         path: "src/a.ts".to_string()
                     },
                 ],
+                unused_exports: vec![],
             }
         );
     }
@@ -241,6 +243,7 @@ mod tests {
         let graph = ProjectAnalysisGraphInput {
             modules: vec![incomplete_module],
             edges: vec![],
+            ..ProjectAnalysisGraphInput::default()
         };
 
         assert_eq!(
@@ -250,6 +253,7 @@ mod tests {
                     path: "src/orphan.ts".to_string(),
                 }],
                 verified_unused_files: vec![],
+                unused_exports: vec![],
             }
         );
     }
@@ -264,7 +268,9 @@ mod tests {
                 source: 0,
                 target: 1,
                 is_re_export_edge: false,
+                ..ProjectEdgeInput::default()
             }],
+            ..ProjectAnalysisGraphInput::default()
         };
 
         assert!(analyze(&graph).unused_files.is_empty());
@@ -280,7 +286,9 @@ mod tests {
                 source: 0,
                 target: 1,
                 is_re_export_edge: true,
+                ..ProjectEdgeInput::default()
             }],
+            ..ProjectAnalysisGraphInput::default()
         };
 
         assert_eq!(analyze(&graph).unused_files.len(), 1);
@@ -292,6 +300,7 @@ mod tests {
         barrel.exports.push(ProjectExportInput {
             is_namespace_re_export: true,
             is_synthetic: false,
+            ..ProjectExportInput::default()
         });
         let mut source = module("src/source.ts");
         source.is_reachable = true;
@@ -301,7 +310,9 @@ mod tests {
                 source: 0,
                 target: 1,
                 is_re_export_edge: true,
+                ..ProjectEdgeInput::default()
             }],
+            ..ProjectAnalysisGraphInput::default()
         };
 
         assert!(analyze(&graph).unused_files.is_empty());
@@ -320,6 +331,7 @@ mod tests {
         let graph = ProjectAnalysisGraphInput {
             modules: paths.into_iter().map(module).collect(),
             edges: vec![],
+            ..ProjectAnalysisGraphInput::default()
         };
 
         assert!(analyze(&graph).unused_files.is_empty());
@@ -342,11 +354,9 @@ mod tests {
         ];
 
         assert!(excluded_filenames.into_iter().all(is_config_filename));
-        assert!(
-            included_filenames
-                .into_iter()
-                .all(|filename| !is_config_filename(filename))
-        );
+        assert!(included_filenames
+            .into_iter()
+            .all(|filename| !is_config_filename(filename)));
     }
 
     #[test]
@@ -369,6 +379,7 @@ mod tests {
         let graph = ProjectAnalysisGraphInput {
             modules,
             edges: vec![],
+            ..ProjectAnalysisGraphInput::default()
         };
 
         assert!(analyze(&graph).unused_files.is_empty());
@@ -379,6 +390,7 @@ mod tests {
         let graph = ProjectAnalysisGraphInput {
             modules: vec![module("src/scripts/node_modules/package/index.ts")],
             edges: vec![],
+            ..ProjectAnalysisGraphInput::default()
         };
 
         assert_eq!(analyze(&graph).unused_files.len(), 1);
@@ -393,6 +405,7 @@ mod tests {
         let graph = ProjectAnalysisGraphInput {
             modules: vec![opaque_module],
             edges: vec![],
+            ..ProjectAnalysisGraphInput::default()
         };
 
         assert!(analyze(&graph).unused_files.is_empty());

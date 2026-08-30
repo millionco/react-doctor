@@ -212,16 +212,28 @@ const serverHoistStaticIoFixturePath = path.join(
 );
 const serverMutableStateFixturePath = path.join(fixtureDirectory, "app", "server-mutable-state.ts");
 const noFlushSyncFixturePath = path.join(fixtureDirectory, "app", "no-flush-sync.ts");
+const nondeterministicIdFixturePath = path.join(fixtureDirectory, "app", "nondeterministic-id.tsx");
 const preferModuleScopeFixturePath = path.join(
   fixtureDirectory,
   "app",
   "prefer-module-scope-pure-function.ts",
+);
+const preferModuleScopeStaticValueFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "prefer-module-scope-static-value.tsx",
 );
 const spreadPropsDefaultsFixturePath = path.join(
   fixtureDirectory,
   "app",
   "spread-props-defaults.ts",
 );
+const hydrationMismatchTimeFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "hydration-mismatch-time.tsx",
+);
+const valtioProxyReadFixturePath = path.join(fixtureDirectory, "app", "valtio-proxy-read.tsx");
 const unsafeJsonParseFixturePath = path.join(fixtureDirectory, "app", "unsafe-json-parse.ts");
 const r3fLightingFixturePath = path.join(fixtureDirectory, "app", "r3f-lighting.tsx");
 const r3fMetalEnvironmentFixturePath = path.join(
@@ -1601,6 +1613,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "mobx-no-make-auto-observable-in-inheritance": 0,
   "redux-useselector-inline-derivation": 0,
   "redux-useselector-returns-new-collection": 0,
+  "valtio-no-proxy-read-in-render": 2,
   "zustand-no-fresh-selector-result": 0,
   "zustand-no-get-during-initialization": 0,
   "zustand-no-whole-store-destructure": 0,
@@ -1700,10 +1713,13 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-static-element-interactions": 2,
   "no-array-index-as-key": 2,
   "no-flush-sync": 3,
+  "no-nondeterministic-id-value-in-render-body": 1,
   "no-spread-props-over-defaults-clobbers-with-undefined": 4,
   "no-unsafe-json-parse": 3,
   "prefer-module-scope-pure-function": 13,
+  "prefer-module-scope-static-value": 10,
   "prefer-tag-over-role": 12,
+  "rendering-hydration-mismatch-time": 3,
   "rerender-defer-reads-hook": 1,
   "rerender-memo-before-early-return": 1,
   "server-hoist-static-io": 2,
@@ -1774,6 +1790,7 @@ const FOCUSED_PARITY_RULE_IDS = [
   "mobx-no-make-auto-observable-in-inheritance",
   "redux-useselector-inline-derivation",
   "redux-useselector-returns-new-collection",
+  "valtio-no-proxy-read-in-render",
   "zustand-no-fresh-selector-result",
   "zustand-no-get-during-initialization",
   "zustand-no-whole-store-destructure",
@@ -1876,9 +1893,12 @@ const FOCUSED_PARITY_RULE_IDS = [
   "rerender-memo-before-early-return",
   "no-array-index-as-key",
   "no-flush-sync",
+  "no-nondeterministic-id-value-in-render-body",
   "no-spread-props-over-defaults-clobbers-with-undefined",
   "no-unsafe-json-parse",
   "prefer-module-scope-pure-function",
+  "prefer-module-scope-static-value",
+  "rendering-hydration-mismatch-time",
   "server-hoist-static-io",
   "server-no-mutable-module-state",
   "styled-components-non-transient-custom-prop-on-intrinsic-element",
@@ -1941,6 +1961,7 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "mobx-no-make-auto-observable-in-inheritance": 1,
   "redux-useselector-inline-derivation": 1,
   "redux-useselector-returns-new-collection": 1,
+  "valtio-no-proxy-read-in-render": 0,
   "zustand-no-fresh-selector-result": 1,
   "zustand-no-get-during-initialization": 1,
   "zustand-no-whole-store-destructure": 1,
@@ -2043,9 +2064,12 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "rerender-memo-before-early-return": 0,
   "no-array-index-as-key": 0,
   "no-flush-sync": 0,
+  "no-nondeterministic-id-value-in-render-body": 0,
   "no-spread-props-over-defaults-clobbers-with-undefined": 0,
   "no-unsafe-json-parse": 0,
   "prefer-module-scope-pure-function": 0,
+  "prefer-module-scope-static-value": 2,
+  "rendering-hydration-mismatch-time": 0,
   "server-hoist-static-io": 0,
   "server-no-mutable-module-state": 0,
   "styled-components-non-transient-custom-prop-on-intrinsic-element": 0,
@@ -2076,6 +2100,8 @@ const REACT_DOCTOR_SETTINGS = {
       "mobx:6",
       "mobx-react-binding-observer-memo-guard",
       "mobx-react-lite-observer-memo-guard",
+      "valtio",
+      "valtio:1",
       "zustand",
       "zustand:1",
       "zustand:5",
@@ -4663,6 +4689,17 @@ export async function recordRequest() {
 `,
   );
   fs.writeFileSync(
+    nondeterministicIdFixturePath,
+    `import React from "react";
+import { nanoid } from "nanoid";
+
+export function NondeterministicId() {
+  const id = nanoid();
+  return <label htmlFor={id}>Name</label>;
+}
+`,
+  );
+  fs.writeFileSync(
     preferModuleScopeFixturePath,
     `function normalize(value) {
   return value.trim();
@@ -4694,6 +4731,31 @@ var Forwarded = (0, (0, React.forwardRef))(function () {
   }
   return null;
 });
+`,
+  );
+  fs.writeFileSync(
+    preferModuleScopeStaticValueFixturePath,
+    `import React from "react";
+import { externalValue } from "./values";
+
+export function App({ localValue }) {
+  const STATIC = [1, 2, 3];
+  const CONFIG = { enabled: true };
+  const FROM_MODULE = [externalValue];
+  const LOCAL = [localValue];
+  const RANDOM = [Math.random()];
+  return <div>{STATIC.length + Number(CONFIG.enabled) + FROM_MODULE.length + LOCAL.length + RANDOM.length}</div>;
+}
+
+export const Wrapped = withWrapper(function Card() {
+  const SIZES = ["small", "large"];
+  return <div>{SIZES.length}</div>;
+});
+
+export function useOptions() {
+  const DEFAULTS = { staleTime: 1000 };
+  return DEFAULTS;
+}
 `,
   );
   fs.writeFileSync(
@@ -4756,6 +4818,38 @@ export const Panel = (props: Props0) => {
   const guardedValue = guardedMerge.width * 2;
   return direct + transformed + safeAlias + unsafeAlias + qualifiedValue + wrappedMergeValue + wrappedAliasValue + reassignedValue + guardedValue;
 };
+`,
+  );
+  fs.writeFileSync(
+    valtioProxyReadFixturePath,
+    `import React from "react";
+import { useSnapshot } from "valtio";
+
+export function DirectCounter({ state }) {
+  const snapshot = useSnapshot(state);
+  return <span>{state.count + snapshot.count}</span>;
+}
+
+export function AliasedProfile({ state }) {
+  const profile = state.profile;
+  const snapshot = useSnapshot(profile);
+  return <span>{profile.name + snapshot.name}</span>;
+}
+
+export function ReplacedProfile({ state, nextProfile }) {
+  const snapshot = useSnapshot(state.profile);
+  state.profile = nextProfile;
+  return <span>{state.profile.name + snapshot.name}</span>;
+}
+`,
+  );
+  fs.writeFileSync(
+    hydrationMismatchTimeFixturePath,
+    `import React from "react";
+
+export function Clock() {
+  return <time>{Date.now()}</time>;
+}
 `,
   );
   fs.writeFileSync(
@@ -8418,6 +8512,8 @@ export const App = () => <>
         "mobx:6",
         "mobx-react-binding-observer-memo-guard",
         "mobx-react-lite-observer-memo-guard",
+        "valtio",
+        "valtio:1",
         "zustand",
         "zustand:1",
         "zustand:5",

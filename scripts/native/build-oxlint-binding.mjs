@@ -636,6 +636,15 @@ impl Rule for ${delegatedRule.struct} {
       ["no-array-index-as-key", ["member_expression_identifier_property_name"]],
       ["no-flush-sync", ["is_non_production_file"]],
       [
+        "no-nondeterministic-id-value-in-render-body",
+        [
+          "component_or_hook_function_name",
+          "file_is_non_react_jsx_dialect",
+          "is_react_hook_call",
+          "transparent_expression_root",
+        ],
+      ],
+      [
         "no-spread-props-over-defaults-clobbers-with-undefined",
         [
           "component_or_hook_function_name",
@@ -653,6 +662,28 @@ impl Rule for ${delegatedRule.struct} {
       [
         "prefer-module-scope-pure-function",
         ["has_capability", "is_non_production_file", "transparent_expression_root"],
+      ],
+      [
+        "prefer-module-scope-static-value",
+        [
+          "has_capability",
+          "is_non_production_file",
+          "is_proven_global_namespace_reference",
+          "resolve_const_identifier_root_symbol",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "rendering-hydration-mismatch-time",
+        [
+          "function_executes_during_render",
+          "generated_image_jsx_opening_element_ids",
+          "is_generated_image_render_filename",
+          "is_non_production_file",
+          "is_react_api_call",
+          "is_react_native_file_target",
+          "static_literal_truthiness",
+        ],
       ],
       [
         "no-img-without-dimensions",
@@ -1004,6 +1035,10 @@ impl Rule for ${delegatedRule.struct} {
       ["motion-layout-on-inline-element", ["get_static_motion_property_object"]],
       ["motion-unstable-layout-id-in-iteration", ["get_static_motion_property_object"]],
       ["rn-no-raw-text", ["children_forwarding_components"]],
+      [
+        "valtio-no-proxy-read-in-render",
+        ["find_render_phase_component_or_hook", "has_capability", "transparent_expression_root"],
+      ],
       [
         "zustand-no-fresh-selector-result",
         [

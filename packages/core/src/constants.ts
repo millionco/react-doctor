@@ -1397,6 +1397,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-mutate-then-set-or-return-same-reference",
   "no-prop-callback-in-effect",
   "no-prop-callback-in-render",
+  "no-unguarded-browser-global-at-module-scope",
   "no-unguarded-throwing-parse-call",
   "no-unknown-property",
   "no-unowned-async-error-clear",

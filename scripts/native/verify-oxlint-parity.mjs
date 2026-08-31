@@ -256,6 +256,11 @@ const propCallbackInEffectCustomHookFixturePath = path.join(
   "app",
   "prop-callback-in-effect-custom-hook.ts",
 );
+const browserGlobalParityFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "browser-global-parity.tsx",
+);
 const unownedAsyncErrorClearFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -1872,6 +1877,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-mutate-then-set-or-return-same-reference": 1,
   "no-prop-callback-in-effect": 2,
   "no-prop-callback-in-render": 1,
+  "no-unguarded-browser-global-at-module-scope": 11,
   "no-unguarded-throwing-parse-call": 1,
   "no-unknown-property": 7,
   "no-unowned-async-error-clear": 1,
@@ -2082,6 +2088,7 @@ const FOCUSED_PARITY_RULE_IDS = [
   "no-mutate-then-set-or-return-same-reference",
   "no-prop-callback-in-effect",
   "no-prop-callback-in-render",
+  "no-unguarded-browser-global-at-module-scope",
   "no-unguarded-throwing-parse-call",
   "no-unknown-property",
   "no-unowned-async-error-clear",
@@ -2286,6 +2293,7 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "no-mutate-then-set-or-return-same-reference": 0,
   "no-prop-callback-in-effect": 0,
   "no-prop-callback-in-render": 0,
+  "no-unguarded-browser-global-at-module-scope": 0,
   "no-unguarded-throwing-parse-call": 0,
   "no-unknown-property": 0,
   "no-unowned-async-error-clear": 0,
@@ -5119,6 +5127,21 @@ export default function useOnChange({ control, onChange }) {
     onChange(values);
   }, [onChange, values]);
 }
+`,
+  );
+  fs.writeFileSync(
+    browserGlobalParityFixturePath,
+    `interface BrowserShape {
+  localStorage: string;
+}
+
+type BrowserAliasShape = {
+  window: string;
+};
+
+const moduleWidth = window.innerWidth;
+
+export const BrowserWidth = () => window.innerWidth + moduleWidth;
 `,
   );
   fs.writeFileSync(

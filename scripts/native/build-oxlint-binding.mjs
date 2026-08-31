@@ -679,6 +679,10 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       [
+        "no-unguarded-browser-global-at-module-scope",
+        ["is_non_production_file", "is_non_source_file", "transparent_expression_root"],
+      ],
+      [
         "no-unguarded-throwing-parse-call",
         ["is_non_production_file", "transparent_expression_root"],
       ],

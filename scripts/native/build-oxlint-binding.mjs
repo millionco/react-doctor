@@ -558,6 +558,69 @@ impl Rule for ${delegatedRule.struct} {
       ["lang", ["resolve_configured_jsx_element_type"]],
       ["media-has-caption", ["is_local_test_scaffold_jsx", "resolve_configured_jsx_element_type"]],
       [
+        "styled-components-duplicate-css-property-in-block",
+        ["module_api_path_matches", "resolve_const_identifier_root_symbol"],
+      ],
+      [
+        "no-stale-timer-ref",
+        [
+          "has_possible_static_property_write_before",
+          "is_nullish_expression",
+          "is_react_hook_call",
+          "local_callback_nearest_function_id",
+          "statement_always_exits",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "no-whole-object-default-losing-per-key-defaults",
+        ["is_non_production_file", "transparent_expression_root"],
+      ],
+      [
+        "no-whole-object-dep-with-member-reads",
+        [
+          "component_or_hook_function_name",
+          "is_react_api_call",
+          "local_callback_nearest_function_id",
+          "resolve_const_identifier_root_symbol",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "valtio-no-snapshot-in-callback",
+        [
+          "expression_is_argument_at",
+          "function_executes_during_render",
+          "has_capability",
+          "is_react_api_call",
+          "resolve_direct_unreassigned_symbol_initializer",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "prefer-use-effect-event",
+        [
+          "has_possible_static_property_write_before",
+          "is_react_api_call",
+          "is_react_hook_call",
+          "resolve_expression_key",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "prefer-use-sync-external-store",
+        ["is_non_production_file", "is_no_op_statement", "is_react_api_call"],
+      ],
+      [
+        "no-unstable-nested-components",
+        [
+          "file_is_non_react_jsx_dialect",
+          "is_react_api_call",
+          "resolve_cfg_assigned_expressions_for_reference",
+          "should_use_curated_port_behavior",
+        ],
+      ],
+      [
         "no-derived-useState",
         [
           "collect_binding_pattern_names",

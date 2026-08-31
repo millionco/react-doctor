@@ -169,6 +169,35 @@ const mediaCaptionFixturePath = path.join(fixtureDirectory, "app", "media-captio
 const derivedUseStateFixturePath = path.join(fixtureDirectory, "app", "derived-use-state.tsx");
 const didMountSetStateFixturePath = path.join(fixtureDirectory, "app", "did-mount-set-state.tsx");
 const didUpdateSetStateFixturePath = path.join(fixtureDirectory, "app", "did-update-set-state.tsx");
+const styledDuplicateCssFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "styled-duplicate-css.tsx",
+);
+const staleTimerRefFixturePath = path.join(fixtureDirectory, "app", "stale-timer-ref.tsx");
+const wholeObjectDefaultFixturePath = path.join(fixtureDirectory, "app", "whole-object-default.ts");
+const wholeObjectDepFixturePath = path.join(fixtureDirectory, "app", "whole-object-dep.tsx");
+const valtioSnapshotCallbackFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "valtio-snapshot-callback.tsx",
+);
+const jsxNoUndefFixturePath = path.join(fixtureDirectory, "app", "jsx-no-undef.tsx");
+const preferUseEffectEventFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "prefer-use-effect-event.ts",
+);
+const preferUseSyncExternalStoreFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "prefer-use-sync-external-store.ts",
+);
+const unstableNestedComponentsFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "unstable-nested-components.test.tsx",
+);
 const directStateMutationFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -1760,6 +1789,15 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "server-no-mutable-module-state": 1,
   "server-sequential-independent-await": 6,
   "styled-components-non-transient-custom-prop-on-intrinsic-element": 1,
+  "styled-components-duplicate-css-property-in-block": 1,
+  "no-stale-timer-ref": 1,
+  "no-whole-object-default-losing-per-key-defaults": 1,
+  "no-whole-object-dep-with-member-reads": 1,
+  "valtio-no-snapshot-in-callback": 1,
+  "jsx-no-undef": 76,
+  "prefer-use-effect-event": 1,
+  "prefer-use-sync-external-store": 2,
+  "no-unstable-nested-components": 2,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1947,6 +1985,15 @@ const FOCUSED_PARITY_RULE_IDS = [
   "server-no-mutable-module-state",
   "server-sequential-independent-await",
   "styled-components-non-transient-custom-prop-on-intrinsic-element",
+  "styled-components-duplicate-css-property-in-block",
+  "no-stale-timer-ref",
+  "no-whole-object-default-losing-per-key-defaults",
+  "no-whole-object-dep-with-member-reads",
+  "valtio-no-snapshot-in-callback",
+  "jsx-no-undef",
+  "prefer-use-effect-event",
+  "prefer-use-sync-external-store",
+  "no-unstable-nested-components",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -2128,6 +2175,15 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "server-no-mutable-module-state": 0,
   "server-sequential-independent-await": 0,
   "styled-components-non-transient-custom-prop-on-intrinsic-element": 0,
+  "styled-components-duplicate-css-property-in-block": 0,
+  "no-stale-timer-ref": 0,
+  "no-whole-object-default-losing-per-key-defaults": 0,
+  "no-whole-object-dep-with-member-reads": 0,
+  "valtio-no-snapshot-in-callback": 0,
+  "jsx-no-undef": 2,
+  "prefer-use-effect-event": 0,
+  "prefer-use-sync-external-store": 0,
+  "no-unstable-nested-components": 0,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -4623,6 +4679,106 @@ export class UpdatedValue extends React.Component<{ value: string }, { value: st
     return this.state.value;
   }
 }
+`,
+  );
+  fs.writeFileSync(
+    styledDuplicateCssFixturePath,
+    `import styled from "styled-components";
+
+export const StyledDuplicate = styled.div\`
+  color: \${properties => properties.$primary ? "blue" : "gray"};
+  color: \${properties => properties.$danger ? "red" : "black"};
+\`;
+`,
+  );
+  fs.writeFileSync(
+    staleTimerRefFixturePath,
+    `import React from "react";
+
+export const StaleTimer = () => {
+  const timerRef = React.useRef(null);
+  const schedule = () => {
+    if (timerRef.current) return;
+    timerRef.current = setTimeout(run, 100);
+  };
+  const cancel = () => clearTimeout(timerRef.current);
+  return <button onClick={schedule} onBlur={cancel}>Schedule</button>;
+};
+`,
+  );
+  fs.writeFileSync(
+    wholeObjectDefaultFixturePath,
+    `export const configure = ({ exact, loading } = { exact: true, loading: false }) => {
+  return [exact, loading];
+};
+`,
+  );
+  fs.writeFileSync(
+    wholeObjectDepFixturePath,
+    `import React from "react";
+
+export const WholeObjectDependency = (properties) => {
+  React.useImperativeHandle(properties.ref, () => ({ focus: properties.onFocus }), [properties]);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    valtioSnapshotCallbackFixturePath,
+    `import React from "react";
+import { useSnapshot } from "valtio";
+
+export const SnapshotCallback = () => {
+  const snapshot = useSnapshot(state);
+  return <button onClick={() => console.log(snapshot.count)}>Read</button>;
+};
+`,
+  );
+  fs.writeFileSync(
+    jsxNoUndefFixturePath,
+    `import React from "react";
+
+export const UndefinedComponent = () => <MissingComponent />;
+`,
+  );
+  fs.writeFileSync(
+    preferUseEffectEventFixturePath,
+    `import React from "react";
+
+export const DeferredCallback = ({ delay, onComplete }) => {
+  React.useEffect(() => {
+    const timeoutId = setTimeout(() => onComplete(), delay);
+    return () => clearTimeout(timeoutId);
+  }, [delay, onComplete]);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    preferUseSyncExternalStoreFixturePath,
+    `import React from "react";
+
+let sharedState = "default";
+const listeners = new Set();
+const subscribe = (listener) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
+export const useSharedState = () => {
+  const [state, setState] = React.useState(sharedState);
+  React.useEffect(() => subscribe(setState), []);
+  return state;
+};
+`,
+  );
+  fs.writeFileSync(
+    unstableNestedComponentsFixturePath,
+    `import React from "react";
+
+export const NestedComponentOwner = () => {
+  const NestedComponent = () => <span />;
+  return <NestedComponent />;
+};
 `,
   );
   fs.writeFileSync(
@@ -9142,6 +9298,7 @@ export const App = () => <>
   const expectedNonProductionDiagnosticCounts = {
     ...Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0])),
     "react-in-jsx-scope": 26,
+    "jsx-no-undef": 1,
     "no-small-form-control-text": 1,
     "hook-use-state": 2,
     "r3f-no-ignored-linewidth": 1,

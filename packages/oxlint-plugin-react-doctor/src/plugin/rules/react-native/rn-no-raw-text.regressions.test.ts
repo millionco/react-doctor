@@ -85,3 +85,48 @@ describe("react-native/rn-no-raw-text — regressions: DOM intrinsics are web ma
     `);
   });
 });
+
+describe("react-native/rn-no-raw-text — regressions: components returning transparent wrappers (issue #1729)", () => {
+  it("does not fire on a component whose entire return is an fbt tag", () => {
+    expectPass(`
+      const FbtLabel = () => <fbt desc="d">Travel with confidence</fbt>;
+      const Screen = () => (
+        <Text>
+          <FbtLabel />
+        </Text>
+      );
+    `);
+  });
+
+  it("does not fire on a component returning fbt with conditional branches", () => {
+    expectPass(`
+      const MotivationLabel = ({ motivation }) => {
+        switch (motivation) {
+          case "travel": {
+            return <fbt desc="travel">Travel with confidence</fbt>;
+          }
+          case "career": {
+            return <fbt desc="career">Grow my career</fbt>;
+          }
+        }
+      };
+      const Screen = () => (
+        <Text>
+          <MotivationLabel motivation="travel" />
+        </Text>
+      );
+    `);
+  });
+
+  it("does not fire when component returns only fbt or fbs", () => {
+    expectPass(`
+      const Label = ({ type }) => 
+        type === "a" ? <fbt desc="a">A</fbt> : <fbs>B</fbs>;
+      const Screen = () => (
+        <Text>
+          <Label type="a" />
+        </Text>
+      );
+    `);
+  });
+});

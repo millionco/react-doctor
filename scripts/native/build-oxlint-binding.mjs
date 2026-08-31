@@ -632,6 +632,22 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       ["no-ref-current-in-render", ["is_react_api_call"]],
+      ["no-collapse-request-error-to-empty-state", ["has_possible_static_property_write_before"]],
+      [
+        "no-promise-then-side-effect-in-effect-without-catch",
+        ["has_possible_static_property_write_before"],
+      ],
+      [
+        "no-self-updating-effect",
+        [
+          "is_non_production_file",
+          "is_react_hook_call",
+          "local_callback_nearest_function_id",
+          "local_callback_nearest_function_node_index",
+          "resolve_direct_unreassigned_initializer",
+        ],
+      ],
+      ["no-set-state-after-await-in-effect", ["has_possible_static_property_write_before"]],
       [
         "no-unguarded-throwing-parse-call",
         ["is_non_production_file", "transparent_expression_root"],

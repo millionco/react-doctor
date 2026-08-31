@@ -205,6 +205,16 @@ const effectEventHandlerFixturePath = path.join(
   "effect-event-handler.tsx",
 );
 const fetchInEffectFixturePath = path.join(fixtureDirectory, "app", "fetch-in-effect.tsx");
+const collapseRequestErrorFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "collapse-request-error.tsx",
+);
+const promiseThenSideEffectFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "promise-then-side-effect.tsx",
+);
 const refCurrentInRenderFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -216,6 +226,16 @@ const unguardedThrowingParseCallFixturePath = path.join(
   "unguarded-throwing-parse-call.tsx",
 );
 const unknownPropertyFixturePath = path.join(fixtureDirectory, "app", "unknown-property.tsx");
+const selfUpdatingEffectFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "self-updating-effect.tsx",
+);
+const setStateAfterAwaitFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "set-state-after-await.tsx",
+);
 const unownedAsyncErrorClearFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -1007,7 +1027,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-moment": 1,
   "no-namespace": 2,
   "no-react-children": 2,
-  "preact-no-react-hooks-import": 16,
+  "preact-no-react-hooks-import": 20,
   "rn-bottom-sheet-prefer-native": 1,
   "rn-no-deprecated-modules": 1,
   "rn-no-legacy-expo-packages": 1,
@@ -1033,7 +1053,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   scope: 1,
   "no-set-state": 5,
   "no-find-dom-node": 2,
-  "react-in-jsx-scope": 22,
+  "react-in-jsx-scope": 24,
   "tabindex-no-positive": 7,
   "no-autoplay-without-muted": 1,
   "details-requires-summary": 1,
@@ -1783,9 +1803,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-did-mount-set-state": 1,
   "no-did-update-set-state": 2,
   "no-direct-state-mutation": 1,
-  "no-multi-comp": 245,
+  "no-multi-comp": 249,
   "no-multi-component-file": 168,
-  "no-fetch-response-used-without-status-check": 5,
+  "no-fetch-response-used-without-status-check": 7,
   "no-img-without-dimensions": 20,
   "no-loading-flag-reset-outside-finally": 1,
   "no-effect-wrapper-discards-callback-cleanup-return": 1,
@@ -1817,14 +1837,18 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-whole-object-default-losing-per-key-defaults": 1,
   "no-whole-object-dep-with-member-reads": 1,
   "valtio-no-snapshot-in-callback": 1,
-  "jsx-no-undef": 76,
+  "jsx-no-undef": 77,
   "prefer-use-effect-event": 1,
   "prefer-use-sync-external-store": 2,
   "no-unstable-nested-components": 2,
   "jsx-key": 2,
   "no-effect-event-handler": 1,
-  "no-fetch-in-effect": 9,
+  "no-fetch-in-effect": 10,
   "no-ref-current-in-render": 2,
+  "no-collapse-request-error-to-empty-state": 1,
+  "no-promise-then-side-effect-in-effect-without-catch": 1,
+  "no-self-updating-effect": 1,
+  "no-set-state-after-await-in-effect": 2,
   "no-unguarded-throwing-parse-call": 1,
   "no-unknown-property": 7,
   "no-unowned-async-error-clear": 1,
@@ -2028,6 +2052,10 @@ const FOCUSED_PARITY_RULE_IDS = [
   "no-effect-event-handler",
   "no-fetch-in-effect",
   "no-ref-current-in-render",
+  "no-collapse-request-error-to-empty-state",
+  "no-promise-then-side-effect-in-effect-without-catch",
+  "no-self-updating-effect",
+  "no-set-state-after-await-in-effect",
   "no-unguarded-throwing-parse-call",
   "no-unknown-property",
   "no-unowned-async-error-clear",
@@ -2225,6 +2253,10 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "no-effect-event-handler": 0,
   "no-fetch-in-effect": 0,
   "no-ref-current-in-render": 0,
+  "no-collapse-request-error-to-empty-state": 0,
+  "no-promise-then-side-effect-in-effect-without-catch": 0,
+  "no-self-updating-effect": 0,
+  "no-set-state-after-await-in-effect": 0,
   "no-unguarded-throwing-parse-call": 0,
   "no-unknown-property": 0,
   "no-unowned-async-error-clear": 0,
@@ -4858,6 +4890,64 @@ export const RequestOnMount = () => {
 `,
   );
   fs.writeFileSync(
+    collapseRequestErrorFixturePath,
+    `import { useState } from "react";
+
+export const Search = () => {
+  const [items, setItems] = useState([]);
+  const load = async () => {
+    try {
+      setItems(await (await fetch("/api/items")).json());
+    } catch {
+      setItems([]);
+    }
+  };
+  const loadWithAbsorbedFailure = async () => {
+    try {
+      setItems(
+        await fetch("/api/items").catch(() => {
+          console.warn("Using empty fallback");
+          return Promise.resolve([]);
+        }),
+      );
+      setItems(
+        await fetch("/api/backup-items").catch(
+          () => new Promise((resolve) => resolve([])),
+        ),
+      );
+    } catch {
+      setItems([]);
+    }
+  };
+  if (!items.length) return <p>No results found</p>;
+  return <ResultList items={items} load={load} retry={loadWithAbsorbedFailure} />;
+};
+`,
+  );
+  fs.writeFileSync(
+    promiseThenSideEffectFixturePath,
+    `import { useEffect, useState } from "react";
+
+const loadHandled = async (url) => {
+  try {
+    return await fetch(url);
+  } catch {
+    return null;
+  }
+};
+
+export const Request = ({ url, editorInstance }) => {
+  const [, setUser] = useState();
+  useEffect(() => {
+    editorInstance?.setEditable(true);
+    fetch(url).then((response) => response.json()).then(setUser);
+    loadHandled(url).then(setUser);
+  }, [url, editorInstance]);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
     refCurrentInRenderFixturePath,
     `import { useRef } from "react";
 
@@ -4876,6 +4966,85 @@ export const RenderRefWrite = ({ value }) => {
   fs.writeFileSync(
     unknownPropertyFixturePath,
     `export const UnknownProperty = () => <div transform-origin="center" />;
+`,
+  );
+  fs.writeFileSync(
+    selfUpdatingEffectFixturePath,
+    `import { useEffect, useState } from "react";
+
+export const Counter = () => {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (count === null) return;
+    setCount((value) => value + 1);
+  }, [count]);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    setStateAfterAwaitFixturePath,
+    `import { useEffect, useState } from "react";
+
+export const Request = ({ id }) => {
+  const [, setUser] = useState();
+  useEffect(() => {
+    const run = async () => {
+      const user = await load(id);
+      setUser(user);
+    };
+    run();
+  }, [id]);
+  return null;
+};
+
+const effectAlias = useEffect;
+export const AliasedEffect = ({ id }) => {
+  const [, setUser] = useState();
+  effectAlias(() => {
+    const run = async () => {
+      setUser(await load(id));
+    };
+    run();
+  }, [id]);
+  return null;
+};
+
+export const StoredPromise = ({ id, request }) => {
+  const [, setUser] = useState();
+  useEffect(() => {
+    request
+      .then(async () => {
+        setUser(await load(id));
+      })
+      .catch(() => {});
+  }, [id, request]);
+  return null;
+};
+
+const { stableConfig } = { stableConfig: {} };
+export const StableDestructuredDependency = () => {
+  const [, setUser] = useState();
+  useEffect(() => {
+    const run = async () => {
+      setUser(await load(stableConfig));
+    };
+    run();
+  }, [stableConfig]);
+  return null;
+};
+
+export const GeneratorRequest = ({ id }) => {
+  const [, setUser] = useState();
+  useEffect(() => {
+    async function* run() {
+      const user = await load(id);
+      setUser(user);
+    }
+    run();
+  }, [id]);
+  return null;
+};
 `,
   );
   fs.writeFileSync(

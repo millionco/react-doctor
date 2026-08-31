@@ -832,6 +832,10 @@
     "no-effect-event-handler",
     "no-fetch-in-effect",
     "no-ref-current-in-render",
+    "no-collapse-request-error-to-empty-state",
+    "no-promise-then-side-effect-in-effect-without-catch",
+    "no-self-updating-effect",
+    "no-set-state-after-await-in-effect",
     "no-unguarded-throwing-parse-call",
     "no-unknown-property",
     "no-unowned-async-error-clear"

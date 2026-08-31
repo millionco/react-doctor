@@ -1893,7 +1893,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-initialize-state": 0,
   "no-prop-callback-in-effect": 2,
   "no-prop-callback-in-render": 1,
-  "no-unguarded-browser-global-at-module-scope": 11,
+  "no-unguarded-browser-global-at-module-scope": 10,
   "no-unguarded-throwing-parse-call": 1,
   "no-unknown-property": 7,
   "no-unowned-async-error-clear": 1,

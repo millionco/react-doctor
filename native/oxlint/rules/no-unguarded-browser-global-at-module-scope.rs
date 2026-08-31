@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use oxc_allocator::Allocator;
 use oxc_ast::{
     AstKind,
-    ast::{ExportDefaultDeclarationKind, Expression, PropertyKey, Statement, TSSignature},
+    ast::{ExportDefaultDeclarationKind, Expression, Statement},
 };
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
@@ -82,15 +82,6 @@ impl Rule for NoUnguardedBrowserGlobalAtModuleScope {
                         diagnostic_span: node.span(),
                     });
                 }
-                AstKind::TSInterfaceDeclaration(interface)
-                    if is_evaluated_at_import_time(node.id(), ctx) =>
-                {
-                    collect_browser_global_property_candidates(
-                        node.id(),
-                        &interface.body.body,
-                        &mut candidates,
-                    );
-                }
                 _ => {}
             }
         }
@@ -134,28 +125,6 @@ impl Rule for NoUnguardedBrowserGlobalAtModuleScope {
                 ))
                 .with_label(candidate.diagnostic_span),
             );
-        }
-    }
-}
-
-fn collect_browser_global_property_candidates<'a>(
-    owner_node_id: NodeId,
-    members: &'a [TSSignature<'a>],
-    candidates: &mut Vec<BrowserGlobalCandidate<'a>>,
-) {
-    for member in members {
-        let TSSignature::TSPropertySignature(property) = member else {
-            continue;
-        };
-        let PropertyKey::StaticIdentifier(identifier) = &property.key else {
-            continue;
-        };
-        if !property.computed && BROWSER_GLOBAL_NAMES.contains(&identifier.name.as_str()) {
-            candidates.push(BrowserGlobalCandidate {
-                node_id: owner_node_id,
-                global_name: identifier.name.as_str(),
-                diagnostic_span: identifier.span,
-            });
         }
     }
 }

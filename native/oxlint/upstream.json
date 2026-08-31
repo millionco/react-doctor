@@ -830,8 +830,11 @@
     "no-unstable-nested-components",
     "jsx-key",
     "no-effect-event-handler",
+    "no-fetch-in-effect",
     "no-ref-current-in-render",
-    "no-unknown-property"
+    "no-unguarded-throwing-parse-call",
+    "no-unknown-property",
+    "no-unowned-async-error-clear"
   ],
   "delegatedRules": [
     {

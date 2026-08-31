@@ -621,8 +621,33 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       ["no-effect-event-handler", ["has_possible_static_property_write_before"]],
+      [
+        "no-fetch-in-effect",
+        [
+          "has_possible_static_property_write_before",
+          "is_react_hook_call",
+          "local_callback_nearest_function_id",
+          "resolve_expression_key",
+          "statement_always_exits",
+        ],
+      ],
       ["no-ref-current-in-render", ["is_react_api_call"]],
+      [
+        "no-unguarded-throwing-parse-call",
+        ["is_non_production_file", "transparent_expression_root"],
+      ],
       ["no-unknown-property", ["file_is_non_react_jsx_dialect"]],
+      [
+        "no-unowned-async-error-clear",
+        [
+          "file_is_non_react_jsx_dialect",
+          "is_react_api_call",
+          "local_callback_nearest_function_id",
+          "local_callback_nearest_function_node_index",
+          "statement_always_exits",
+          "transparent_expression_root",
+        ],
+      ],
       [
         "no-derived-useState",
         [

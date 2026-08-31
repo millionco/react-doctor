@@ -204,12 +204,23 @@ const effectEventHandlerFixturePath = path.join(
   "app",
   "effect-event-handler.tsx",
 );
+const fetchInEffectFixturePath = path.join(fixtureDirectory, "app", "fetch-in-effect.tsx");
 const refCurrentInRenderFixturePath = path.join(
   fixtureDirectory,
   "app",
   "ref-current-in-render.tsx",
 );
+const unguardedThrowingParseCallFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "unguarded-throwing-parse-call.tsx",
+);
 const unknownPropertyFixturePath = path.join(fixtureDirectory, "app", "unknown-property.tsx");
+const unownedAsyncErrorClearFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "unowned-async-error-clear.tsx",
+);
 const directStateMutationFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -996,7 +1007,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-moment": 1,
   "no-namespace": 2,
   "no-react-children": 2,
-  "preact-no-react-hooks-import": 14,
+  "preact-no-react-hooks-import": 16,
   "rn-bottom-sheet-prefer-native": 1,
   "rn-no-deprecated-modules": 1,
   "rn-no-legacy-expo-packages": 1,
@@ -1022,7 +1033,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   scope: 1,
   "no-set-state": 5,
   "no-find-dom-node": 2,
-  "react-in-jsx-scope": 21,
+  "react-in-jsx-scope": 22,
   "tabindex-no-positive": 7,
   "no-autoplay-without-muted": 1,
   "details-requires-summary": 1,
@@ -1812,8 +1823,11 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-unstable-nested-components": 2,
   "jsx-key": 2,
   "no-effect-event-handler": 1,
+  "no-fetch-in-effect": 9,
   "no-ref-current-in-render": 2,
+  "no-unguarded-throwing-parse-call": 1,
   "no-unknown-property": 7,
+  "no-unowned-async-error-clear": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -2012,8 +2026,11 @@ const FOCUSED_PARITY_RULE_IDS = [
   "no-unstable-nested-components",
   "jsx-key",
   "no-effect-event-handler",
+  "no-fetch-in-effect",
   "no-ref-current-in-render",
+  "no-unguarded-throwing-parse-call",
   "no-unknown-property",
+  "no-unowned-async-error-clear",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -2206,8 +2223,11 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "no-unstable-nested-components": 0,
   "jsx-key": 4,
   "no-effect-event-handler": 0,
+  "no-fetch-in-effect": 0,
   "no-ref-current-in-render": 0,
+  "no-unguarded-throwing-parse-call": 0,
   "no-unknown-property": 0,
+  "no-unowned-async-error-clear": 0,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -4826,6 +4846,18 @@ export const SubmittedToast = ({ status }) => {
 `,
   );
   fs.writeFileSync(
+    fetchInEffectFixturePath,
+    `import { useEffect } from "react";
+
+export const RequestOnMount = () => {
+  useEffect(() => {
+    fetch("/api/profile");
+  }, []);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
     refCurrentInRenderFixturePath,
     `import { useRef } from "react";
 
@@ -4837,8 +4869,28 @@ export const RenderRefWrite = ({ value }) => {
 `,
   );
   fs.writeFileSync(
+    unguardedThrowingParseCallFixturePath,
+    `export const decodeRoute = (params) => decodeURIComponent(params.slug);
+`,
+  );
+  fs.writeFileSync(
     unknownPropertyFixturePath,
     `export const UnknownProperty = () => <div transform-origin="center" />;
+`,
+  );
+  fs.writeFileSync(
+    unownedAsyncErrorClearFixturePath,
+    `import { useState } from "react";
+
+export const RequestCard = ({ currentRequest, respond }) => {
+  const [deliveryError, setDeliveryError] = useState(null);
+  const deliver = async (request) => {
+    const result = await respond(request);
+    if (result.ok) setDeliveryError(null);
+    else setDeliveryError({ requestId: request.requestId, reason: result.reason });
+  };
+  return <button onClick={() => deliver(currentRequest)}>Send</button>;
+};
 `,
   );
   fs.writeFileSync(

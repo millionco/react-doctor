@@ -1394,6 +1394,8 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-promise-then-side-effect-in-effect-without-catch",
   "no-self-updating-effect",
   "no-set-state-after-await-in-effect",
+  "no-mutate-then-set-or-return-same-reference",
+  "no-prop-callback-in-render",
   "no-unguarded-throwing-parse-call",
   "no-unknown-property",
   "no-unowned-async-error-clear",

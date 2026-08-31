@@ -649,6 +649,25 @@ impl Rule for ${delegatedRule.struct} {
       ],
       ["no-set-state-after-await-in-effect", ["has_possible_static_property_write_before"]],
       [
+        "no-mutate-then-set-or-return-same-reference",
+        [
+          "can_node_reach_later_node_within_function",
+          "is_non_production_file",
+          "is_react_api_call",
+          "is_result_discarded_call",
+          "resolve_const_identifier_root_symbol",
+        ],
+      ],
+      [
+        "no-prop-callback-in-render",
+        [
+          "is_react_api_call",
+          "is_proven_react_component_symbol",
+          "is_result_discarded_call",
+          "transparent_expression_root",
+        ],
+      ],
+      [
         "no-unguarded-throwing-parse-call",
         ["is_non_production_file", "transparent_expression_root"],
       ],

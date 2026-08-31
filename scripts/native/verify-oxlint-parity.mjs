@@ -236,6 +236,16 @@ const setStateAfterAwaitFixturePath = path.join(
   "app",
   "set-state-after-await.tsx",
 );
+const mutateSameReferenceFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "mutate-same-reference.tsx",
+);
+const propCallbackInRenderFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "prop-callback-in-render.tsx",
+);
 const unownedAsyncErrorClearFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -1053,7 +1063,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   scope: 1,
   "no-set-state": 5,
   "no-find-dom-node": 2,
-  "react-in-jsx-scope": 24,
+  "react-in-jsx-scope": 25,
   "tabindex-no-positive": 7,
   "no-autoplay-without-muted": 1,
   "details-requires-summary": 1,
@@ -1849,6 +1859,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-promise-then-side-effect-in-effect-without-catch": 1,
   "no-self-updating-effect": 1,
   "no-set-state-after-await-in-effect": 2,
+  "no-mutate-then-set-or-return-same-reference": 1,
+  "no-prop-callback-in-render": 1,
   "no-unguarded-throwing-parse-call": 1,
   "no-unknown-property": 7,
   "no-unowned-async-error-clear": 1,
@@ -2056,6 +2068,8 @@ const FOCUSED_PARITY_RULE_IDS = [
   "no-promise-then-side-effect-in-effect-without-catch",
   "no-self-updating-effect",
   "no-set-state-after-await-in-effect",
+  "no-mutate-then-set-or-return-same-reference",
+  "no-prop-callback-in-render",
   "no-unguarded-throwing-parse-call",
   "no-unknown-property",
   "no-unowned-async-error-clear",
@@ -2257,6 +2271,8 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "no-promise-then-side-effect-in-effect-without-catch": 0,
   "no-self-updating-effect": 0,
   "no-set-state-after-await-in-effect": 0,
+  "no-mutate-then-set-or-return-same-reference": 0,
+  "no-prop-callback-in-render": 0,
   "no-unguarded-throwing-parse-call": 0,
   "no-unknown-property": 0,
   "no-unowned-async-error-clear": 0,
@@ -5044,6 +5060,26 @@ export const GeneratorRequest = ({ id }) => {
     run();
   }, [id]);
   return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    mutateSameReferenceFixturePath,
+    `export const mutateSameReference = () => {
+  const [items, setItems] = useState([]);
+  setItems((currentItems) => {
+    currentItems.push("next");
+    return currentItems;
+  });
+  return items.length;
+};
+`,
+  );
+  fs.writeFileSync(
+    propCallbackInRenderFixturePath,
+    `export const NotifyDuringRender = ({ onValue }) => {
+  onValue("ready");
+  return <div />;
 };
 `,
   );

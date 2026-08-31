@@ -557,10 +557,38 @@ impl Rule for ${delegatedRule.struct} {
       ],
       ["lang", ["resolve_configured_jsx_element_type"]],
       ["media-has-caption", ["is_local_test_scaffold_jsx", "resolve_configured_jsx_element_type"]],
+      ["no-direct-state-mutation", ["is_react_hook_call", "transparent_expression_root"]],
       ["no-multi-component-file", ["is_non_production_file", "is_react_api_call"]],
+      [
+        "no-transitioned-composite-widget-state",
+        [
+          "does_tailwind_variant_scope_cover",
+          "file_is_non_react_jsx_dialect",
+          "get_authoritative_jsx_attribute",
+          "get_inline_style_object_expression_with_aliases",
+          "get_static_class_name",
+          "is_non_production_file",
+          "is_proven_intrinsic_jsx_element",
+          "normalize_tailwind_arbitrary_utility_value",
+          "parse_color_to_rgb",
+          "resolve_effective_tailwind_class_name_token",
+          "tailwind_class_name_tokens",
+          "transparent_expression_root",
+        ],
+      ],
       [
         "no-fetch-response-used-without-status-check",
         ["has_possible_static_property_write_before"],
+      ],
+      [
+        "no-effect-wrapper-discards-callback-cleanup-return",
+        [
+          "component_or_hook_function_name",
+          "is_react_api_call",
+          "is_react_hook_call",
+          "symbol_has_write_before",
+          "transparent_expression_root",
+        ],
       ],
       [
         "no-redundant-roles",
@@ -630,6 +658,10 @@ impl Rule for ${delegatedRule.struct} {
       ["server-hoist-static-io", ["collect_binding_pattern_names", "is_in_project_directory"]],
       ["server-no-mutable-module-state", ["find_guarding_try_statement"]],
       [
+        "server-sequential-independent-await",
+        ["async_local_function_is_order_independent", "has_possible_static_property_write_before"],
+      ],
+      [
         "styled-components-non-transient-custom-prop-on-intrinsic-element",
         ["module_api_path_matches"],
       ],
@@ -673,6 +705,7 @@ impl Rule for ${delegatedRule.struct} {
           "transparent_expression_root",
         ],
       ],
+      ["prefer-useReducer", ["is_non_production_file", "is_react_hook_call"]],
       [
         "rendering-hydration-mismatch-time",
         [
@@ -685,6 +718,7 @@ impl Rule for ${delegatedRule.struct} {
           "static_literal_truthiness",
         ],
       ],
+      ["rendering-usetransition-loading", ["is_non_production_file"]],
       [
         "no-img-without-dimensions",
         [

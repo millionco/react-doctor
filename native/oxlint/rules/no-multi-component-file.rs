@@ -10,7 +10,7 @@ use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_semantic::SymbolId;
 use oxc_span::{GetSpan, Span};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     AstNode,
@@ -26,12 +26,12 @@ const MESSAGE: &str =
 pub struct NoMultiComponentFile;
 
 #[derive(Clone)]
-struct MultiComponentCandidate {
-    span: Span,
-    body_span: Span,
-    symbol_id: Option<SymbolId>,
-    is_stateless: bool,
-    is_directly_exported: bool,
+pub(super) struct MultiComponentCandidate {
+    pub(super) span: Span,
+    pub(super) body_span: Span,
+    pub(super) symbol_id: Option<SymbolId>,
+    pub(super) is_stateless: bool,
+    pub(super) is_directly_exported: bool,
 }
 
 struct MultiComponentJsxEntry {
@@ -128,10 +128,10 @@ impl Rule for NoMultiComponentFile {
             }) {
                 continue;
             }
-            if ignore_stateless && candidate.is_stateless {
-                continue;
-            }
             top_level.push(candidate);
+        }
+        if ignore_stateless {
+            top_level.retain(|candidate| !candidate.is_stateless);
         }
         if top_level.len() <= 2 {
             return;
@@ -167,9 +167,9 @@ impl Rule for NoMultiComponentFile {
     }
 }
 
-fn multi_component_candidates(ctx: &LintContext<'_>) -> Vec<MultiComponentCandidate> {
-    let mut candidates = Vec::new();
-    let mut seen_body_spans = FxHashSet::default();
+pub(super) fn multi_component_candidates(ctx: &LintContext<'_>) -> Vec<MultiComponentCandidate> {
+    let mut candidates = Vec::<MultiComponentCandidate>::new();
+    let mut candidate_index_by_body_span = FxHashMap::<(u32, u32), usize>::default();
     let jsx_index = MultiComponentJsxIndex::new(ctx);
     for node in ctx.nodes().iter() {
         let candidate = match node.kind() {
@@ -286,26 +286,26 @@ fn multi_component_candidates(ctx: &LintContext<'_>) -> Vec<MultiComponentCandid
                 })
             }
             AstKind::ExportDefaultDeclaration(declaration) => {
-                let expression = match &declaration.declaration {
+                let candidate_spans = match &declaration.declaration {
                     ExportDefaultDeclarationKind::FunctionDeclaration(function)
                         if function.id.is_none() && jsx_index.contains(function.span) =>
                     {
-                        Some(function.span)
+                        Some((function.span, function.span))
                     }
                     ExportDefaultDeclarationKind::ArrowFunctionExpression(function)
                         if jsx_index.contains(function.span) =>
                     {
-                        Some(function.span)
+                        Some((function.span, function.span))
                     }
                     ExportDefaultDeclarationKind::CallExpression(call)
                         if multi_component_is_hoc_component(call, &jsx_index, ctx) =>
                     {
-                        Some(call.span)
+                        Some((declaration.span, call.span))
                     }
                     _ => None,
                 };
-                expression.map(|body_span| MultiComponentCandidate {
-                    span: declaration.span,
+                candidate_spans.map(|(span, body_span)| MultiComponentCandidate {
+                    span,
                     body_span,
                     symbol_id: None,
                     is_stateless: true,
@@ -317,7 +317,13 @@ fn multi_component_candidates(ctx: &LintContext<'_>) -> Vec<MultiComponentCandid
         let Some(candidate) = candidate else {
             continue;
         };
-        if seen_body_spans.insert((candidate.body_span.start, candidate.body_span.end)) {
+        let body_span_key = (candidate.body_span.start, candidate.body_span.end);
+        if let Some(&existing_index) = candidate_index_by_body_span.get(&body_span_key) {
+            if candidate.span.start < candidates[existing_index].span.start {
+                candidates[existing_index] = candidate;
+            }
+        } else {
+            candidate_index_by_body_span.insert(body_span_key, candidates.len());
             candidates.push(candidate);
         }
     }
@@ -437,13 +443,18 @@ fn multi_component_function_expression_is_component(
     }
     match expression {
         Expression::ArrowFunctionExpression(function) => {
-            function.get_expression().is_some_and(Expression::is_null)
-                || function.get_function_body().is_some_and(|body| {
-                    body.statements.iter().any(|statement| {
-                        matches!(statement, Statement::ReturnStatement(statement)
+            function.get_expression().is_some_and(|expression| {
+                expression.is_null()
+                    || matches!(
+                        expression.get_inner_expression(),
+                        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+                    ) && multi_component_function_expression_is_component(expression, jsx_index)
+            }) || function.get_function_body().is_some_and(|body| {
+                body.statements.iter().any(|statement| {
+                    matches!(statement, Statement::ReturnStatement(statement)
                             if statement.argument.as_ref().is_some_and(Expression::is_null))
-                    })
                 })
+            })
         }
         Expression::FunctionExpression(function) => function.body.as_ref().is_some_and(|body| {
             body.statements.iter().any(|statement| {
@@ -661,11 +672,13 @@ fn multi_component_is_react_namespace_expression(
     let AstKind::VariableDeclarator(declarator) = declaration.kind() else {
         return false;
     };
-    if !matches!(ctx.nodes().parent_kind(declaration.id()), AstKind::VariableDeclaration(declaration) if declaration.kind.is_const())
-        || declarator
-            .id
-            .get_binding_identifier()
-            .is_none_or(|binding| binding.symbol_id() != symbol_id)
+    if !matches!(
+        ctx.nodes().parent_kind(declaration.id()),
+        AstKind::VariableDeclaration(_)
+    ) || declarator
+        .id
+        .get_binding_identifier()
+        .is_none_or(|binding| binding.symbol_id() != symbol_id)
     {
         return false;
     }
@@ -708,10 +721,9 @@ fn multi_component_is_react_require_call(
 }
 
 fn multi_component_is_passthrough_function(function: &oxc_ast::ast::Function<'_>) -> bool {
-    function
-        .body
-        .as_ref()
-        .is_some_and(|body| multi_component_is_single_return_passthrough(&body.statements))
+    function.body.as_ref().is_some_and(|body| {
+        body.directives.is_empty() && multi_component_is_single_return_passthrough(&body.statements)
+    })
 }
 
 fn multi_component_is_passthrough_arrow(
@@ -720,9 +732,10 @@ fn multi_component_is_passthrough_arrow(
     function
         .get_expression()
         .is_some_and(multi_component_is_simple_jsx_passthrough)
-        || function
-            .get_function_body()
-            .is_some_and(|body| multi_component_is_single_return_passthrough(&body.statements))
+        || function.get_function_body().is_some_and(|body| {
+            body.directives.is_empty()
+                && multi_component_is_single_return_passthrough(&body.statements)
+        })
 }
 
 fn multi_component_is_single_return_passthrough(statements: &[Statement<'_>]) -> bool {

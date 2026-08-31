@@ -166,9 +166,19 @@ const rnBoxShadowFixturePath = path.join(expoNativeFixtureDirectory, "src", "box
 const serverFetchFixturePath = path.join(fixtureDirectory, "app", "cache", "route.ts");
 const langFixturePath = path.join(fixtureDirectory, "app", "invalid-lang.tsx");
 const mediaCaptionFixturePath = path.join(fixtureDirectory, "app", "media-caption.tsx");
+const directStateMutationFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "direct-state-mutation.ts",
+);
 const multiComponentFixturePath = path.join(fixtureDirectory, "app", "multi-component.tsx");
 const fetchResponseFixturePath = path.join(fixtureDirectory, "app", "fetch-response.ts");
 const loadingResetFixturePath = path.join(fixtureDirectory, "app", "loading-reset.ts");
+const discardedEffectCleanupFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "discarded-effect-cleanup.ts",
+);
 const noninteractiveInteractionsFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -189,6 +199,11 @@ const staticElementInteractionsFixturePath = path.join(
   fixtureDirectory,
   "app",
   "static-element-interactions.tsx",
+);
+const transitionedCompositeWidgetFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "transitioned-composite-widget.tsx",
 );
 const preferTagOverRoleFixturePath = path.join(fixtureDirectory, "app", "prefer-tag-over-role.tsx");
 const deferReadsHookFixturePath = path.join(fixtureDirectory, "app", "defer-reads-hook.tsx");
@@ -211,6 +226,11 @@ const serverHoistStaticIoFixturePath = path.join(
   "route.ts",
 );
 const serverMutableStateFixturePath = path.join(fixtureDirectory, "app", "server-mutable-state.ts");
+const serverSequentialAwaitFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "server-sequential-await.ts",
+);
 const noFlushSyncFixturePath = path.join(fixtureDirectory, "app", "no-flush-sync.ts");
 const nondeterministicIdFixturePath = path.join(fixtureDirectory, "app", "nondeterministic-id.tsx");
 const preferModuleScopeFixturePath = path.join(
@@ -223,6 +243,8 @@ const preferModuleScopeStaticValueFixturePath = path.join(
   "app",
   "prefer-module-scope-static-value.tsx",
 );
+const preferUseReducerFixturePath = path.join(fixtureDirectory, "app", "prefer-use-reducer.ts");
+const transitionLoadingFixturePath = path.join(fixtureDirectory, "app", "transition-loading.ts");
 const spreadPropsDefaultsFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -930,7 +952,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-moment": 1,
   "no-namespace": 2,
   "no-react-children": 2,
-  "preact-no-react-hooks-import": 7,
+  "preact-no-react-hooks-import": 11,
   "rn-bottom-sheet-prefer-native": 1,
   "rn-no-deprecated-modules": 1,
   "rn-no-legacy-expo-packages": 1,
@@ -1238,7 +1260,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-ctrl-c-handler-requires-exit-option": 1,
   "ink-no-live-hooks-in-render-to-string": 1,
   "ink-no-repeated-render": 4,
-  "hook-use-state": 29,
+  "hook-use-state": 30,
   "rendering-svg-precision": 1,
   "no-document-start-view-transition": 1,
   "no-permanent-will-change": 2,
@@ -1518,7 +1540,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "checked-requires-onchange-or-readonly": 6,
   "class-component-missing-component-will-unmount-teardown": 3,
   "click-events-have-key-events": 5,
-  "control-has-associated-label": 54,
+  "control-has-associated-label": 58,
   "display-name": 10,
   "forbid-component-props": 0,
   "forbid-dom-props": 0,
@@ -1702,15 +1724,19 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "server-fetch-without-revalidate": 0,
   lang: 1,
   "media-has-caption": 5,
+  "no-direct-state-mutation": 1,
+  "no-multi-comp": 245,
   "no-multi-component-file": 168,
   "no-fetch-response-used-without-status-check": 5,
   "no-img-without-dimensions": 20,
   "no-loading-flag-reset-outside-finally": 1,
+  "no-effect-wrapper-discards-callback-cleanup-return": 1,
   "no-noninteractive-element-interactions": 0,
   "no-noninteractive-tabindex": 5,
   "no-redundant-roles": 2,
   "no-responsive-hidden-accessible-name": 0,
   "no-static-element-interactions": 2,
+  "no-transitioned-composite-widget-state": 1,
   "no-array-index-as-key": 2,
   "no-flush-sync": 3,
   "no-nondeterministic-id-value-in-render-body": 1,
@@ -1718,12 +1744,15 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-unsafe-json-parse": 3,
   "prefer-module-scope-pure-function": 13,
   "prefer-module-scope-static-value": 10,
+  "prefer-useReducer": 1,
   "prefer-tag-over-role": 12,
   "rendering-hydration-mismatch-time": 3,
+  "rendering-usetransition-loading": 1,
   "rerender-defer-reads-hook": 1,
   "rerender-memo-before-early-return": 1,
   "server-hoist-static-io": 2,
   "server-no-mutable-module-state": 1,
+  "server-sequential-independent-await": 6,
   "styled-components-non-transient-custom-prop-on-intrinsic-element": 1,
 };
 const BENCHMARK_FILE_COUNT = 100;
@@ -1879,15 +1908,19 @@ const FOCUSED_PARITY_RULE_IDS = [
   "server-fetch-without-revalidate",
   "lang",
   "media-has-caption",
+  "no-direct-state-mutation",
+  "no-multi-comp",
   "no-multi-component-file",
   "no-fetch-response-used-without-status-check",
   "no-img-without-dimensions",
   "no-loading-flag-reset-outside-finally",
+  "no-effect-wrapper-discards-callback-cleanup-return",
   "no-noninteractive-element-interactions",
   "no-noninteractive-tabindex",
   "no-redundant-roles",
   "no-responsive-hidden-accessible-name",
   "no-static-element-interactions",
+  "no-transitioned-composite-widget-state",
   "prefer-tag-over-role",
   "rerender-defer-reads-hook",
   "rerender-memo-before-early-return",
@@ -1898,9 +1931,12 @@ const FOCUSED_PARITY_RULE_IDS = [
   "no-unsafe-json-parse",
   "prefer-module-scope-pure-function",
   "prefer-module-scope-static-value",
+  "prefer-useReducer",
   "rendering-hydration-mismatch-time",
+  "rendering-usetransition-loading",
   "server-hoist-static-io",
   "server-no-mutable-module-state",
+  "server-sequential-independent-await",
   "styled-components-non-transient-custom-prop-on-intrinsic-element",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
@@ -2050,15 +2086,19 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "server-fetch-without-revalidate": 0,
   lang: 0,
   "media-has-caption": 0,
+  "no-direct-state-mutation": 0,
+  "no-multi-comp": 58,
   "no-multi-component-file": 58,
   "no-fetch-response-used-without-status-check": 0,
   "no-img-without-dimensions": 0,
   "no-loading-flag-reset-outside-finally": 3,
+  "no-effect-wrapper-discards-callback-cleanup-return": 0,
   "no-noninteractive-element-interactions": 0,
   "no-noninteractive-tabindex": 0,
   "no-redundant-roles": 0,
   "no-responsive-hidden-accessible-name": 0,
   "no-static-element-interactions": 0,
+  "no-transitioned-composite-widget-state": 0,
   "prefer-tag-over-role": 0,
   "rerender-defer-reads-hook": 0,
   "rerender-memo-before-early-return": 0,
@@ -2069,9 +2109,12 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "no-unsafe-json-parse": 0,
   "prefer-module-scope-pure-function": 0,
   "prefer-module-scope-static-value": 2,
+  "prefer-useReducer": 0,
   "rendering-hydration-mismatch-time": 0,
+  "rendering-usetransition-loading": 0,
   "server-hoist-static-io": 0,
   "server-no-mutable-module-state": 0,
+  "server-sequential-independent-await": 0,
   "styled-components-non-transient-custom-prop-on-intrinsic-element": 0,
 };
 const DISABLED_RULE_CATEGORIES = {
@@ -4527,11 +4570,35 @@ export const ProductDemo = () => <video src="/product-demo.mp4" />;
 `,
   );
   fs.writeFileSync(
+    directStateMutationFixturePath,
+    `import { useState } from "react";
+
+export function MutableList() {
+  const [items, setItems] = useState<string[]>([]);
+  items.push("new");
+  void setItems;
+  return items.length;
+}
+`,
+  );
+  fs.writeFileSync(
     multiComponentFixturePath,
     `import React from "react";
 const AlphaCard = () => <article />;
 const BetaCard = () => <article />;
 const GammaCard = () => <article />;
+`,
+  );
+  fs.writeFileSync(
+    transitionedCompositeWidgetFixturePath,
+    `import React from "react";
+
+export const CompositeWidgets = ({ selected }: { selected: boolean }) => <>
+  <div role="option" aria-selected={selected ? "true" : "false"} className="bg-[#fff] transition-colors aria-selected:bg-[#000]" />
+  <div role="option" aria-selected="true" className="transition-colors duration-0 aria-selected:bg-[#ff0000]" />
+  <div role="menuitem" aria-current="page" style={{ color: "#ff0000", transition: "color 120ms" }} />
+  <div role="tab" aria-selected="true" className="transition-colors duration-150 aria-selected:bg-[#ff0000]" />
+</>;
 `,
   );
   fs.writeFileSync(
@@ -4583,6 +4650,17 @@ export async function resolveLocalValues() {
   setLoading(true);
   await Promise.all([1, "ready"]);
   setLoading(false);
+}
+`,
+  );
+  fs.writeFileSync(
+    discardedEffectCleanupFixturePath,
+    `import { useEffect, type EffectCallback } from "react";
+
+export function useForwardedEffect(callback: EffectCallback) {
+  useEffect(() => {
+    callback();
+  }, [callback]);
 }
 `,
   );
@@ -4684,6 +4762,15 @@ export async function recordRequest() {
 `,
   );
   fs.writeFileSync(
+    serverSequentialAwaitFixturePath,
+    `export default async function Page() {
+  const user = await fetchUser();
+  const posts = await fetchPosts();
+  return [user, posts];
+}
+`,
+  );
+  fs.writeFileSync(
     noFlushSyncFixturePath,
     `import { flushSync } from "react-dom";
 `,
@@ -4755,6 +4842,37 @@ export const Wrapped = withWrapper(function Card() {
 export function useOptions() {
   const DEFAULTS = { staleTime: 1000 };
   return DEFAULTS;
+}
+`,
+  );
+  fs.writeFileSync(
+    preferUseReducerFixturePath,
+    `import { useState } from "react";
+
+export function CoordinatedForm() {
+  const [first, setFirst] = useState("");
+  const [second, setSecond] = useState("");
+  const [third, setThird] = useState("");
+  const [fourth, setFourth] = useState("");
+  const [fifth, setFifth] = useState("");
+  const submit = () => {
+    setFirst("one");
+    setSecond("two");
+    setThird("three");
+    setFourth("four");
+    setFifth("five");
+  };
+  return [first, second, third, fourth, fifth, submit];
+}
+`,
+  );
+  fs.writeFileSync(
+    transitionLoadingFixturePath,
+    `import { useState } from "react";
+
+export function LoadingFlag() {
+  const [isLoading] = useState(false);
+  return isLoading;
 }
 `,
   );

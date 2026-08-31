@@ -198,6 +198,18 @@ const unstableNestedComponentsFixturePath = path.join(
   "app",
   "unstable-nested-components.test.tsx",
 );
+const jsxKeyFixturePath = path.join(fixtureDirectory, "app", "jsx-key.tsx");
+const effectEventHandlerFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "effect-event-handler.tsx",
+);
+const refCurrentInRenderFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "ref-current-in-render.tsx",
+);
+const unknownPropertyFixturePath = path.join(fixtureDirectory, "app", "unknown-property.tsx");
 const directStateMutationFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -984,7 +996,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-moment": 1,
   "no-namespace": 2,
   "no-react-children": 2,
-  "preact-no-react-hooks-import": 12,
+  "preact-no-react-hooks-import": 14,
   "rn-bottom-sheet-prefer-native": 1,
   "rn-no-deprecated-modules": 1,
   "rn-no-legacy-expo-packages": 1,
@@ -1010,7 +1022,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   scope: 1,
   "no-set-state": 5,
   "no-find-dom-node": 2,
-  "react-in-jsx-scope": 20,
+  "react-in-jsx-scope": 21,
   "tabindex-no-positive": 7,
   "no-autoplay-without-muted": 1,
   "details-requires-summary": 1,
@@ -1798,6 +1810,10 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "prefer-use-effect-event": 1,
   "prefer-use-sync-external-store": 2,
   "no-unstable-nested-components": 2,
+  "jsx-key": 2,
+  "no-effect-event-handler": 1,
+  "no-ref-current-in-render": 2,
+  "no-unknown-property": 7,
 };
 const BENCHMARK_FILE_COUNT = 100;
 const BENCHMARK_CALL_COUNT_PER_FILE = 500;
@@ -1994,6 +2010,10 @@ const FOCUSED_PARITY_RULE_IDS = [
   "prefer-use-effect-event",
   "prefer-use-sync-external-store",
   "no-unstable-nested-components",
+  "jsx-key",
+  "no-effect-event-handler",
+  "no-ref-current-in-render",
+  "no-unknown-property",
 ];
 const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "jsx-no-new-array-as-prop": 2,
@@ -2184,6 +2204,10 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "prefer-use-effect-event": 0,
   "prefer-use-sync-external-store": 0,
   "no-unstable-nested-components": 0,
+  "jsx-key": 4,
+  "no-effect-event-handler": 0,
+  "no-ref-current-in-render": 0,
+  "no-unknown-property": 0,
 };
 const DISABLED_RULE_CATEGORIES = {
   correctness: "off",
@@ -4779,6 +4803,42 @@ export const NestedComponentOwner = () => {
   const NestedComponent = () => <span />;
   return <NestedComponent />;
 };
+`,
+  );
+  fs.writeFileSync(
+    jsxKeyFixturePath,
+    `import React from "react";
+
+export const MissingKey = () => [<span />];
+`,
+  );
+  fs.writeFileSync(
+    effectEventHandlerFixturePath,
+    `import { useEffect } from "react";
+
+export const SubmittedToast = ({ status }) => {
+  useEffect(() => {
+    if (status !== "submitted") return;
+    toast("Order submitted");
+  }, [status]);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    refCurrentInRenderFixturePath,
+    `import { useRef } from "react";
+
+export const RenderRefWrite = ({ value }) => {
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    unknownPropertyFixturePath,
+    `export const UnknownProperty = () => <div transform-origin="center" />;
 `,
   );
   fs.writeFileSync(

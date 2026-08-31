@@ -620,6 +620,9 @@ impl Rule for ${delegatedRule.struct} {
           "should_use_curated_port_behavior",
         ],
       ],
+      ["no-effect-event-handler", ["has_possible_static_property_write_before"]],
+      ["no-ref-current-in-render", ["is_react_api_call"]],
+      ["no-unknown-property", ["file_is_non_react_jsx_dialect"]],
       [
         "no-derived-useState",
         [

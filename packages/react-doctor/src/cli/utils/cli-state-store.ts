@@ -37,11 +37,13 @@ export const INITIAL_LIFECYCLE_VERSION = 1;
 //   surface               kind       scope    id / migration id   wired in
 //   ────────────────────  ─────────  ───────  ──────────────────  ────────────────────────
 //   first-run onboarding  gate       global   onboarding          onboarding-state.ts
+//   telemetry disclosure  gate       global   telemetry-disclosure telemetry-disclosure.ts
 //   "add to CI?" pitch    gate       project  ci-pitch            ci-prompt-decision.ts
 //   @v1 → @v2 offer       gate       project  action-upgrade-v2   action-upgrade-prompt.ts
 //   agent install hint    gate       project  setup-hint          prompt-install-setup.ts
 //   config json → ts      migration  project  config-json-to-ts   cli-migrations.ts
 export const ONBOARDING_EVENT = "onboarding";
+export const TELEMETRY_DISCLOSURE_EVENT = "telemetry-disclosure";
 export const CI_PITCH_EVENT = "ci-pitch";
 export const ACTION_UPGRADE_EVENT = "action-upgrade-v2";
 export const SETUP_HINT_EVENT = "setup-hint";

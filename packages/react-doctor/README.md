@@ -84,17 +84,18 @@ URLs, source paths, and React profiling details. Treat it as sensitive applicati
 
 ## Telemetry
 
-The CLI reports crashes, basic run traces, and anonymous usage counters to [Sentry](https://sentry.io/) to help us fix bugs and prioritize work.
+Telemetry is on by default. The CLI sends crash reports to [Sentry](https://sentry.io/) and usage telemetry to [Axiom](https://axiom.co/). We use this data to operate React Doctor and improve its diagnostic rules.
 
 We collect:
 
 - Environment: CLI version, platform, Node version
 - Invocation: which command, package manager, and run context (whether it's local vs. CI vs. coding agent)
-- Project shape: framework, React version, TypeScript, project size (NO file contents)
-- Rules fired: rule names and counts only (e.g. `react-doctor/no-array-index-as-key`) (NO code or specific findings)
+- Project shape: framework, React version, TypeScript, and project size
+- Rules fired: rule names and counts (e.g. `react-doctor/no-array-index-as-key`)
+- Rule evidence: up to 24 minimized, identifier-redacted token patterns from source spans that trigger diagnostics, with no more than 3 patterns per rule and 160 tokens per pattern. Patterns contain no identifier names, literal contents, comments, or file paths. Score submissions also contain diagnostic file paths after path and secret scrubbing, line and column numbers, diagnostic messages, and help text. Submissions may include repository and commit details. The score service logs the request IP address and user agent. We use the patterns to fix false positives, which are incorrect diagnostics, and false negatives, which are issues that rules miss. React Doctor does not collect complete source files
 - De-minified React Doctor CLI stack traces
 
-To opt out, run: `npx react-doctor@latest --no-telemetry`
+To disable telemetry and skip the score API and share URL for a run: `npx react-doctor@latest --no-telemetry`
 
 ## Contributing
 

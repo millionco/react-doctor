@@ -84,6 +84,7 @@ const buildScoreRequestBody = (
   return gzipSync(
     JSON.stringify({
       diagnostics: sanitizeScoreDiagnostics(diagnostics),
+      ...(options.ruleEvidence !== undefined ? { ruleEvidence: options.ruleEvidence } : {}),
       ...buildScoreRequestMetadata(options.metadata),
     }),
   );

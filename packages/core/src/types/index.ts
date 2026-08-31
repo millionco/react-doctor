@@ -66,6 +66,7 @@ export type { PromptMultiselectChoiceState, PromptMultiselectContext } from "./p
 // See that file for the duplication rationale.
 export type {
   CalculateScoreOptions,
+  ScoreRuleEvidence,
   ScoreRequestMetadata,
   ScoreResult,
   RulePriority,

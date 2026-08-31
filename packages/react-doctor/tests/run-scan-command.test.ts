@@ -29,6 +29,10 @@ vi.mock("../src/cli/utils/should-use-tui.js", () => ({
   shouldUseTui: vi.fn(() => true),
 }));
 
+vi.mock("../src/cli/utils/telemetry-disclosure.js", () => ({
+  showTelemetryDisclosureIfNeeded: vi.fn(),
+}));
+
 vi.mock("../src/cli/utils/resolve-scope.js", () => ({
   warnDeprecatedDiff: vi.fn(),
 }));
@@ -61,6 +65,7 @@ import { recordCount } from "../src/cli/utils/record-metric.js";
 import { resolveCliInspectOptions } from "../src/cli/utils/resolve-cli-inspect-options.js";
 import { warnDeprecatedDiff } from "../src/cli/utils/resolve-scope.js";
 import { shouldUseTui } from "../src/cli/utils/should-use-tui.js";
+import { showTelemetryDisclosureIfNeeded } from "../src/cli/utils/telemetry-disclosure.js";
 import { validateModeFlags } from "../src/cli/utils/validate-mode-flags.js";
 import { warnDeprecatedFailOn } from "../src/cli/utils/warn-deprecated-fail-on.js";
 
@@ -117,6 +122,7 @@ describe("runScanCommand", () => {
     expect(warnDeprecatedFailOn).toHaveBeenCalledWith(flags, null);
     expect(warnDeprecatedDiff).toHaveBeenCalledWith(flags, null);
     expect(inspectAction).not.toHaveBeenCalled();
+    expect(showTelemetryDisclosureIfNeeded).toHaveBeenCalledWith({ isInteractive: true });
   });
 
   it("uses headless output when the TUI gate rejects the environment or flags", async () => {
@@ -129,6 +135,7 @@ describe("runScanCommand", () => {
     expect(runScanApp).not.toHaveBeenCalled();
     expect(runProjectMigrations).not.toHaveBeenCalled();
     expect(recordCount).not.toHaveBeenCalled();
+    expect(showTelemetryDisclosureIfNeeded).toHaveBeenCalledWith({ isInteractive: false });
   });
 
   it("preserves the TUI scan exit code", async () => {

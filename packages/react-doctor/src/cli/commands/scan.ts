@@ -9,6 +9,7 @@ import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.j
 import { resolveTuiEnvironment } from "../utils/resolve-tui-environment.js";
 import { warnDeprecatedDiff } from "../utils/resolve-scope.js";
 import { shouldUseTui } from "../utils/should-use-tui.js";
+import { showTelemetryDisclosureIfNeeded } from "../utils/telemetry-disclosure.js";
 import { validateModeFlags } from "../utils/validate-mode-flags.js";
 import { warnDeprecatedFailOn } from "../utils/warn-deprecated-fail-on.js";
 
@@ -27,6 +28,16 @@ export const runScanCommand = async (input: RunScanCommandInput): Promise<void> 
 
   if (!shouldUseTui(tuiEnvironment)) {
     await inspectAction(input.directory, input.flags, input.invocationCommand);
+    showTelemetryDisclosureIfNeeded({
+      isInteractive:
+        !tuiEnvironment.isNonInteractiveEnvironment &&
+        tuiEnvironment.stdinIsTty &&
+        tuiEnvironment.outputIsTty &&
+        input.flags.json !== true &&
+        input.flags.jsonCompact !== true &&
+        input.flags.jsonOut === undefined &&
+        input.flags.score !== true,
+    });
     return;
   }
 
@@ -47,4 +58,5 @@ export const runScanCommand = async (input: RunScanCommandInput): Promise<void> 
     flags: input.flags,
   });
   if (shouldFail) process.exitCode = 1;
+  showTelemetryDisclosureIfNeeded({ isInteractive: true });
 };

@@ -1,10 +1,24 @@
 import type { ProjectInfo } from "./project-info.js";
+import type { Diagnostic, DiagnosticFileContext } from "./diagnostic.js";
 
 export type RuleTier = "P0" | "P1" | "P2" | "P3";
 
 export interface CalculateScoreOptions {
   isCi?: boolean;
   metadata?: ScoreRequestMetadata;
+  ruleEvidence?: ReadonlyArray<ScoreRuleEvidence>;
+}
+
+export interface ScoreRuleEvidence {
+  readonly schemaVersion: 1;
+  readonly category: string;
+  readonly fileContext: DiagnosticFileContext;
+  readonly pattern: string;
+  readonly plugin: string;
+  readonly rule: string;
+  readonly severity: Diagnostic["severity"];
+  readonly tokenCount: number;
+  readonly truncated: boolean;
 }
 
 export interface ScoreRequestMetadata {

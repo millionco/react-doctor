@@ -237,7 +237,7 @@ const program = new Command()
       "scan source files listed in a newline-delimited changed-files file",
     ).hideHelp(),
   )
-  .option("--no-score", "skip the score API, the share URL, and crash reporting")
+  .option("--no-score", "skip the score API, the share URL, and all telemetry")
   .addOption(
     new Option(
       "--category <category>",
@@ -246,7 +246,7 @@ const program = new Command()
   )
   .option(
     "--no-telemetry",
-    "alias for --no-score (skip the score API, share URL, and crash reporting)",
+    "disable all telemetry, including identifier-redacted code patterns (also skips the score API and share URL)",
   )
   .option(
     "--staged",
@@ -521,7 +521,7 @@ program
   .addOption(new Option("--no-dead-code").hideHelp())
   .option("--no-supply-chain", "skip the dependency supply-chain scan")
   .option("--score", "only print the numeric score (for scripts and CI)")
-  .option("--no-score", "skip the score API, the share URL, and crash reporting")
+  .option("--no-score", "skip the score API, the share URL, and all telemetry")
   .option("--no-cache", "disable all scan caches for this run")
   .option("--max-duration <seconds>", MAX_DURATION_OPTION_DESCRIPTION)
   .option("-p, --project <names>", "scan specific workspace projects (comma-separated, or *)")

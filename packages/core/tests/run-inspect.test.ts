@@ -12,6 +12,7 @@ import type {
   Diagnostic,
   ProjectInfo,
   ReactDoctorConfig,
+  ScoreRuleEvidence,
   SourceFileEntry,
 } from "@react-doctor/core";
 import {
@@ -500,6 +501,43 @@ describe("runInspect — happy path", () => {
     expect(output.diagnostics).toEqual([]);
     expect(output.didLintFail).toBe(false);
     expect(output.didDeadCodeFail).toBe(false);
+  });
+
+  it("attaches collected rule evidence to the score request", async () => {
+    const ruleEvidence: ScoreRuleEvidence = {
+      schemaVersion: 1,
+      category: "Correctness",
+      fileContext: "production",
+      pattern: "identifier_1 ( )",
+      plugin: "react-doctor",
+      rule: "react-doctor/no-derived-state",
+      severity: "error",
+      tokenCount: 4,
+      truncated: false,
+    };
+    let receivedRuleEvidence: ReadonlyArray<ScoreRuleEvidence> | undefined;
+    const scoreLayer = Layer.succeed(
+      Score,
+      Score.of({
+        compute: (input) =>
+          Effect.sync(() => {
+            receivedRuleEvidence = input.ruleEvidence;
+            return { score: 85, label: "Good" };
+          }),
+      }),
+    );
+
+    await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        collectScoreEvidence: (diagnostics) => {
+          expect(diagnostics).toEqual([lintDiagnostic]);
+          return [ruleEvidence];
+        },
+      }).pipe(Effect.provide(layersOf({ diagnostics: [lintDiagnostic], scoreLayer }))),
+    );
+
+    expect(receivedRuleEvidence).toEqual([ruleEvidence]);
   });
 
   it("adds local authenticated GitHub viewer permission to score metadata", async () => {

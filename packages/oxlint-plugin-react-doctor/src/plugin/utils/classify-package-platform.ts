@@ -5,8 +5,6 @@ import {
 import { readNearestPackageManifest } from "./read-nearest-package-manifest.js";
 import type { PackageManifest } from "./read-nearest-package-manifest.js";
 
-export { findNearestPackageDirectory } from "./read-nearest-package-manifest.js";
-
 // Packages that mark the manifest as a web-only React target. If a manifest
 // contains one of these AND has no React Native indicator, every React
 // Native rule must skip files inside that package. `react-dom` covers

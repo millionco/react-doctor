@@ -5,6 +5,7 @@ import {
   TSCONFIG_EXTENDS_MAX_DEPTH,
 } from "../constants/thresholds.js";
 import { recordContentProbe } from "./cross-file-probe-recorder.js";
+import { isObjectRecord } from "./is-object-record.js";
 import { resolveModuleFileFromAbsolutePath } from "./resolve-relative-import-path.js";
 
 interface ResolvedTsconfig {
@@ -16,9 +17,6 @@ interface ResolvedTsconfig {
 }
 
 const TSCONFIG_FILE_NAMES = ["tsconfig.json", "jsconfig.json"];
-
-const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
 
 // Strips `//` line + `/* */` block comments and trailing commas from a
 // JSONC document (tsconfig.json is JSONC), while preserving comment-like

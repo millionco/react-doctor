@@ -8,7 +8,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // True for a non-computed `.<name>` member access (covers both the plain
 // `.current` and the optional-chained `?.current` forms — the optional
 // flag doesn't change the node shape, only `node.optional`).
-const isStaticMemberNamed = (node: EsTreeNode, name: string): boolean =>
+const isStaticMemberNamed = (
+  node: EsTreeNode,
+  name: string,
+): node is EsTreeNodeOfType<"MemberExpression"> =>
   isNodeOfType(node, "MemberExpression") &&
   !node.computed &&
   isNodeOfType(node.property, "Identifier") &&
@@ -31,10 +34,7 @@ export const rnNoSetNativeProps = defineRule({
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callee = node.callee;
-      // Callee must be `<receiver>.setNativeProps` (static, non-computed).
       if (!isStaticMemberNamed(callee, "setNativeProps")) return;
-      if (!isNodeOfType(callee, "MemberExpression")) return;
-      // Receiver must be a `*.current` access — the React ref shape.
       if (!isStaticMemberNamed(stripParenExpression(callee.object), "current")) return;
       context.report({
         node,

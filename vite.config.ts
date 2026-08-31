@@ -12,7 +12,6 @@ export default defineConfig({
       "build",
       "node_modules",
       "packages/core/tests/fixtures/**",
-      "packages/react-doctor/tests/fixtures/**",
       "packages/fuzz/corpus/react-bench-0.9.7-audit/**",
     ],
     plugins: ["typescript", "react", "import"],

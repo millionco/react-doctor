@@ -29,18 +29,16 @@ import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import {
   batchIncludePaths,
-  createOxlintConfig,
-  OXLINT_MAX_FILES_PER_BATCH,
-  runOxlint,
-  SPAWN_ARGS_MAX_LENGTH_CHARS,
-} from "@react-doctor/core";
-import {
   clearPackageJsonCache,
+  createOxlintConfig,
   discoverProject,
   discoverReactSubprojects,
   isDirectory,
+  OXLINT_MAX_FILES_PER_BATCH,
   readDirectoryEntries,
   readPackageJson,
+  runOxlint,
+  SPAWN_ARGS_MAX_LENGTH_CHARS,
 } from "@react-doctor/core";
 import {
   getStagedSourceFiles,

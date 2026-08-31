@@ -217,6 +217,35 @@ export const rnNoRawText = defineRule({
           return;
         }
 
+        if (isTransparentTextWrapper(elementName)) {
+          let parentNode = node.parent;
+          while (parentNode) {
+            if (
+              isNodeOfType(parentNode, "ArrowFunctionExpression") ||
+              isNodeOfType(parentNode, "FunctionExpression") ||
+              isNodeOfType(parentNode, "FunctionDeclaration")
+            ) {
+              const functionParent = parentNode.parent;
+              if (
+                isNodeOfType(functionParent, "VariableDeclarator") &&
+                isNodeOfType(functionParent.id, "Identifier")
+              ) {
+                const componentName = functionParent.id.name;
+                if (autoDetectedTextWrappers.has(componentName)) return;
+              }
+              if (
+                isNodeOfType(parentNode, "FunctionDeclaration") &&
+                isNodeOfType(parentNode.id, "Identifier")
+              ) {
+                const componentName = parentNode.id.name;
+                if (autoDetectedTextWrappers.has(componentName)) return;
+              }
+              break;
+            }
+            parentNode = parentNode.parent;
+          }
+        }
+
         // The cross-file lookup is the one expensive step, so gate it behind the
         // raw-text check and the cheap built-in/in-file checks.
         if (!(node.children ?? []).some(isRawTextContent)) return;

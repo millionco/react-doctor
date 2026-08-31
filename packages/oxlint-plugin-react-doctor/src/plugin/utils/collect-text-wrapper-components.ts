@@ -6,6 +6,7 @@ import { isReactComponentName } from "./is-react-component-name.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 import { resolveJsxElementName } from "./resolve-jsx-element-name.js";
+import { REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS } from "../constants/react-native.js";
 
 type FunctionNode =
   | EsTreeNodeOfType<"ArrowFunctionExpression">
@@ -475,6 +476,17 @@ export const classifyChildrenForwarding = (
     }
     if (jsxRootForwardsChildrenIntoText(jsxRoot, bindings, isTextHandlingElement)) return "text";
   }
+  const allRootsAreTransparentTextWrappers =
+    jsxRoots.length > 0 &&
+    jsxRoots.every((jsxRoot) => {
+      if (isNodeOfType(jsxRoot, "JSXElement")) {
+        const rootName = resolveJsxElementName(jsxRoot.openingElement);
+        return rootName !== null && REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS.has(rootName);
+      }
+      if (isNodeOfType(jsxRoot, "JSXFragment")) return true;
+      return false;
+    });
+  if (allRootsAreTransparentTextWrappers) return "text";
   return "unknown";
 };
 

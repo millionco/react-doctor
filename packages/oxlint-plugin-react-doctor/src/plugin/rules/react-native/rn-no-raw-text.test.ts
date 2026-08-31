@@ -594,6 +594,103 @@ describe("react-native/rn-no-raw-text", () => {
         );
       `);
     });
+
+    it("does not fire on a component whose entire return is fbt (issue #1729)", () => {
+      expectPass(`
+        const FbtLabel = () => <fbt desc="d">Travel with confidence</fbt>;
+        const Screen = () => (
+          <Text>
+            <FbtLabel />
+          </Text>
+        );
+      `);
+    });
+
+    it("does not fire on a component whose entire return is fbs", () => {
+      expectPass(`
+        const FbsLabel = () => <fbs>Hello</fbs>;
+        const Screen = () => (
+          <Text>
+            <FbsLabel />
+          </Text>
+        );
+      `);
+    });
+
+    it("does not fire on a component returning fbt with conditional branches", () => {
+      expectPass(`
+        const MotivationLabel = ({ motivation }) => {
+          switch (motivation) {
+            case "travel": {
+              return <fbt desc="travel">Travel with confidence</fbt>;
+            }
+            case "career": {
+              return <fbt desc="career">Grow my career</fbt>;
+            }
+          }
+        };
+        const Screen = () => (
+          <Text>
+            <MotivationLabel motivation="travel" />
+          </Text>
+        );
+      `);
+    });
+
+    it("does not fire on a component returning fbt inside Fragment", () => {
+      expectPass(`
+        const FbtLabel = () => (
+          <Fragment>
+            <fbt desc="d">Travel with confidence</fbt>
+          </Fragment>
+        );
+        const Screen = () => (
+          <Text>
+            <FbtLabel />
+          </Text>
+        );
+      `);
+    });
+
+    it("does not fire on a function declaration returning fbt", () => {
+      expectPass(`
+        function FbtLabel() {
+          return <fbt desc="d">Travel with confidence</fbt>;
+        }
+        const Screen = () => (
+          <Text>
+            <FbtLabel />
+          </Text>
+        );
+      `);
+    });
+
+    it("does not fire on component usage even when used incorrectly (limitation)", () => {
+      expectPass(`
+        const FbtLabel = () => <fbt desc="d">Travel with confidence</fbt>;
+        const Screen = () => (
+          <View>
+            <FbtLabel />
+          </View>
+        );
+      `);
+    });
+
+    it("still fires on fbt inside a component that also returns non-transparent elements", () => {
+      expectFail(`
+        const MixedComponent = ({ type }) => {
+          if (type === "fbt") {
+            return <fbt desc="d">Text</fbt>;
+          }
+          return <View>Non-text</View>;
+        };
+        const Screen = () => (
+          <Text>
+            <MixedComponent type="fbt" />
+          </Text>
+        );
+      `);
+    });
   });
 
   describe("test-noise suppression", () => {

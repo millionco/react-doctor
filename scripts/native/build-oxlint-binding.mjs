@@ -659,6 +659,17 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       [
+        "no-chain-state-updates",
+        [
+          "for_each_local_callback_execution_node",
+          "has_capability",
+          "is_non_production_file",
+          "is_react_hook_call",
+          "resolve_expression_key",
+          "transparent_expression_root",
+        ],
+      ],
+      [
         "no-initialize-state",
         [
           "for_each_local_callback_execution_node",

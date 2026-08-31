@@ -1889,6 +1889,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-self-updating-effect": 1,
   "no-set-state-after-await-in-effect": 2,
   "no-mutate-then-set-or-return-same-reference": 1,
+  "no-chain-state-updates": 2,
   "no-initialize-state": 0,
   "no-prop-callback-in-effect": 2,
   "no-prop-callback-in-render": 1,
@@ -1903,8 +1904,9 @@ const BENCHMARK_FINDING_COUNT_PER_FILE = 500;
 const BENCHMARK_SAMPLE_COUNT = 5;
 const CORPUS_PARITY_DIFF_LIMIT = 20;
 const OXLINT_OUTPUT_MAX_BYTES = 256 * 1024 * 1024;
-const STATE_EFFECTS_PARITY_RULE_IDS = ["no-initialize-state"];
+const STATE_EFFECTS_PARITY_RULE_IDS = ["no-chain-state-updates", "no-initialize-state"];
 const EXPECTED_STATE_EFFECTS_PARITY_DIAGNOSTIC_COUNTS = {
+  "no-chain-state-updates": 1,
   "no-initialize-state": 1,
 };
 const FOCUSED_PARITY_RULE_IDS = [
@@ -8322,9 +8324,16 @@ export const UncertainStaticSpreadScene = () => {
     `import { useEffect, useState } from "react";
 
 export const StateEffectsParity = () => {
+  const [step, setStep] = useState(0);
+  const [ready, setReady] = useState(false);
+  const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const advance = () => setStep((current) => current + 1);
+  const reveal = () => { console.log(step); setVisible(true); };
+  useEffect(() => { setReady(true); }, [step]);
+  useEffect(() => { reveal(); }, [step]);
   useEffect(() => { setMounted(true); }, []);
-  return <span>{String(mounted)}</span>;
+  return <button onClick={advance}>{String(mounted)}{String(ready)}{String(visible)}</button>;
 };
 `,
   );

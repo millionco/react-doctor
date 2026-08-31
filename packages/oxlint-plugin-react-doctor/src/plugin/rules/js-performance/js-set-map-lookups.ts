@@ -262,7 +262,8 @@ const isLikelyStringReceiver = (receiver: EsTreeNode | null | undefined): boolea
   if (
     isNodeOfType(receiver, "CallExpression") &&
     isNodeOfType(receiver.callee, "Identifier") &&
-    receiver.callee.name === "String"
+    receiver.callee.name === "String" &&
+    findVariableInitializer(receiver.callee, receiver.callee.name) === null
   ) {
     return true;
   }

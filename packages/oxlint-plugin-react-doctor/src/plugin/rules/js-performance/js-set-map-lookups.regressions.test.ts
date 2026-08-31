@@ -816,4 +816,38 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
       }`,
     );
   });
+
+  it("does not flag String(x).includes() inside a loop (issue #1733)", () => {
+    expectPass(
+      `const hasCode = (messages: unknown[], code: string) => messages.some((entry) => String(entry).includes(code))`,
+    );
+  });
+
+  it("does not flag String(x).includes() in a for-of loop", () => {
+    expectPass(
+      `function hasCode(messages: unknown[], code: string) {
+        for (const entry of messages) {
+          if (String(entry).includes(code)) return true;
+        }
+        return false;
+      }`,
+    );
+  });
+
+  it("does not flag String(x).includes() in a filter callback", () => {
+    expectPass(
+      `const withCode = (messages: unknown[], code: string) => messages.filter((entry) => String(entry).includes(code))`,
+    );
+  });
+
+  it("flags String(x).includes() when String is a shadowed local variable returning non-string", () => {
+    expectFail(
+      `function test() {
+        const String = (x: unknown) => JSON.stringify(x);
+        const hasCode = (messages: unknown[], code: string) =>
+          messages.some((entry) => String(entry).includes(code));
+        return hasCode;
+      }`,
+    );
+  });
 });

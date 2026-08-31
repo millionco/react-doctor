@@ -56,7 +56,12 @@ export const REACT_NATIVE_TEXT_COMPONENT_KEYWORDS = new Set([
 // whether they wrap children in a <Text> is a per-project provider choice, so
 // they belong in an opt-in `transparentComponents` config instead.
 // Ref: https://github.com/millionco/react-doctor/issues/581
-export const REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS = new Set(["Fragment", "fbt", "fbs"]);
+export const REACT_NATIVE_TRANSLATION_TEXT_COMPONENTS = new Set(["fbt", "fbs"]);
+
+export const REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS = new Set([
+  "Fragment",
+  ...REACT_NATIVE_TRANSLATION_TEXT_COMPONENTS,
+]);
 
 // HACK: Maps (not plain objects) so that an unusual `import { constructor }
 // from "react-native"` (or any other Object.prototype name) doesn't fall

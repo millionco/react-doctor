@@ -19,6 +19,7 @@ import { resolveImportedComponentForwarding } from "../../utils/resolve-imported
 import { isExpoUiComponentElement } from "./utils/is-expo-ui-component-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
 
 const truncateText = (text: string): string => {
   const collapsedText = text.replace(/\s+/g, " ");
@@ -105,6 +106,7 @@ export const rnNoRawText = defineRule({
     // the rest (`node_modules` and anything the resolver can't follow).
     let autoDetectedTextWrappers: ReadonlySet<string> = new Set();
     let autoDetectedNonTextWrappers: ReadonlySet<string> = new Set();
+    let autoDetectedTranslationTextReturnComponents: ReadonlySet<string> = new Set();
 
     // A built-in crash host: a React Native host primitive, or a lowercase
     // intrinsic that is NOT a known HTML/SVG tag (`fbt`, a typo'd primitive).
@@ -180,6 +182,8 @@ export const rnNoRawText = defineRule({
         );
         autoDetectedTextWrappers = childrenForwarding.textWrappers;
         autoDetectedNonTextWrappers = childrenForwarding.nonTextWrappers;
+        autoDetectedTranslationTextReturnComponents =
+          childrenForwarding.translationTextReturnComponents;
       },
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         if (isDomComponentFile) return;
@@ -217,33 +221,11 @@ export const rnNoRawText = defineRule({
           return;
         }
 
-        if (isTransparentTextWrapper(elementName)) {
-          let parentNode = node.parent;
-          while (parentNode) {
-            if (
-              isNodeOfType(parentNode, "ArrowFunctionExpression") ||
-              isNodeOfType(parentNode, "FunctionExpression") ||
-              isNodeOfType(parentNode, "FunctionDeclaration")
-            ) {
-              const functionParent = parentNode.parent;
-              if (
-                isNodeOfType(functionParent, "VariableDeclarator") &&
-                isNodeOfType(functionParent.id, "Identifier")
-              ) {
-                const componentName = functionParent.id.name;
-                if (autoDetectedTextWrappers.has(componentName)) return;
-              }
-              if (
-                isNodeOfType(parentNode, "FunctionDeclaration") &&
-                isNodeOfType(parentNode.id, "Identifier")
-              ) {
-                const componentName = parentNode.id.name;
-                if (autoDetectedTextWrappers.has(componentName)) return;
-              }
-              break;
-            }
-            parentNode = parentNode.parent;
-          }
+        if (
+          isTransparentTextWrapper(elementName) &&
+          autoDetectedTranslationTextReturnComponents.has(enclosingComponentOrHookName(node) ?? "")
+        ) {
+          return;
         }
 
         // The cross-file lookup is the one expensive step, so gate it behind the

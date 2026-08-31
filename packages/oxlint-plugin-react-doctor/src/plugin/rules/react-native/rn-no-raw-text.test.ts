@@ -595,29 +595,20 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
-    it("does not fire on a component whose entire return is fbt (issue #1729)", () => {
+    it("does not fire on a component whose direct return is fbt (issue #1729)", () => {
       expectPass(`
         const FbtLabel = () => <fbt desc="d">Travel with confidence</fbt>;
+        const StringLabel = () => "Travel with confidence";
         const Screen = () => (
           <Text>
             <FbtLabel />
+            <StringLabel />
           </Text>
         );
       `);
     });
 
-    it("does not fire on a component whose entire return is fbs", () => {
-      expectPass(`
-        const FbsLabel = () => <fbs>Hello</fbs>;
-        const Screen = () => (
-          <Text>
-            <FbsLabel />
-          </Text>
-        );
-      `);
-    });
-
-    it("does not fire on a component returning fbt with conditional branches", () => {
+    it("does not fire when every direct JSX return is fbt or fbs", () => {
       expectPass(`
         const MotivationLabel = ({ motivation }) => {
           switch (motivation) {
@@ -625,7 +616,7 @@ describe("react-native/rn-no-raw-text", () => {
               return <fbt desc="travel">Travel with confidence</fbt>;
             }
             case "career": {
-              return <fbt desc="career">Grow my career</fbt>;
+              return <fbs>Grow my career</fbs>;
             }
           }
         };
@@ -637,41 +628,13 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
-    it("does not fire on a component returning fbt inside Fragment", () => {
+    it("does not fire on an HOC-wrapped function returning fbt", () => {
       expectPass(`
-        const FbtLabel = () => (
-          <Fragment>
-            <fbt desc="d">Travel with confidence</fbt>
-          </Fragment>
-        );
+        const FbtLabel = memo(() => <fbt desc="d">Travel with confidence</fbt>);
         const Screen = () => (
           <Text>
             <FbtLabel />
           </Text>
-        );
-      `);
-    });
-
-    it("does not fire on a function declaration returning fbt", () => {
-      expectPass(`
-        function FbtLabel() {
-          return <fbt desc="d">Travel with confidence</fbt>;
-        }
-        const Screen = () => (
-          <Text>
-            <FbtLabel />
-          </Text>
-        );
-      `);
-    });
-
-    it("does not fire on component usage even when used incorrectly (limitation)", () => {
-      expectPass(`
-        const FbtLabel = () => <fbt desc="d">Travel with confidence</fbt>;
-        const Screen = () => (
-          <View>
-            <FbtLabel />
-          </View>
         );
       `);
     });
@@ -688,6 +651,28 @@ describe("react-native/rn-no-raw-text", () => {
           <Text>
             <MixedComponent type="fbt" />
           </Text>
+        );
+      `);
+    });
+
+    it("still fires when fbt is nested under a fragment return", () => {
+      expectFail(`
+        const FbtMarker = () => (
+          <Fragment>
+            <fbt desc="d">Travel with confidence</fbt>
+          </Fragment>
+        );
+        const Screen = () => <Text><FbtMarker /></Text>;
+      `);
+    });
+
+    it("does not classify a direct fbt return as a Text wrapper", () => {
+      expectFail(`
+        const FbtMarker = ({ children }) => <fbt desc="d">Label</fbt>;
+        const Screen = () => (
+          <FbtMarker>
+            <fbt desc="nested">Nested label</fbt>
+          </FbtMarker>
         );
       `);
     });

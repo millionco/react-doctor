@@ -1,12 +1,12 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { REACT_NATIVE_TRANSLATION_TEXT_COMPONENTS } from "../constants/react-native.js";
 import { isJsxFragmentElement } from "./is-jsx-fragment-element.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactComponentName } from "./is-react-component-name.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 import { resolveJsxElementName } from "./resolve-jsx-element-name.js";
-import { REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS } from "../constants/react-native.js";
 
 type FunctionNode =
   | EsTreeNodeOfType<"ArrowFunctionExpression">
@@ -408,11 +408,27 @@ const resolveClassRenderFunction = (classNode: EsTreeNode): FunctionNode | null 
   return null;
 };
 
+const returnsOnlyTranslationTextElements = (definitionNode: EsTreeNode): boolean => {
+  const unwrapped = unwrapComponentDefinition(definitionNode);
+  if (!isFunctionNode(unwrapped)) return false;
+  const jsxRoots = collectReturnedJsxRoots(unwrapped);
+  return (
+    jsxRoots.length > 0 &&
+    jsxRoots.every((jsxRoot) => {
+      if (!isNodeOfType(jsxRoot, "JSXElement")) return false;
+      const rootName = resolveJsxElementName(jsxRoot.openingElement);
+      return rootName !== null && REACT_NATIVE_TRANSLATION_TEXT_COMPONENTS.has(rootName);
+    })
+  );
+};
+
 export interface ChildrenForwardingComponents {
   // Forward their children into a `<Text>` — raw text inside them is safe.
   textWrappers: ReadonlySet<string>;
   // Proven to render their children into a non-text host.
   nonTextWrappers: ReadonlySet<string>;
+  // Return only direct translation text elements such as `<fbt>` or `<fbs>`.
+  translationTextReturnComponents: ReadonlySet<string>;
 }
 
 interface ComponentDeclaration {
@@ -476,17 +492,6 @@ export const classifyChildrenForwarding = (
     }
     if (jsxRootForwardsChildrenIntoText(jsxRoot, bindings, isTextHandlingElement)) return "text";
   }
-  const allRootsAreTransparentTextWrappers =
-    jsxRoots.length > 0 &&
-    jsxRoots.every((jsxRoot) => {
-      if (isNodeOfType(jsxRoot, "JSXElement")) {
-        const rootName = resolveJsxElementName(jsxRoot.openingElement);
-        return rootName !== null && REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS.has(rootName);
-      }
-      if (isNodeOfType(jsxRoot, "JSXFragment")) return true;
-      return false;
-    });
-  if (allRootsAreTransparentTextWrappers) return "text";
   return "unknown";
 };
 
@@ -531,6 +536,7 @@ export const collectTextWrapperComponents = (
 ): ChildrenForwardingComponents => {
   const wrappers = new Set<string>();
   const nonTextWrappers = new Set<string>();
+  const translationTextReturnComponents = new Set<string>();
   const componentBindingCounts = new Map<string, number>();
   const componentDeclarations: ComponentDeclaration[] = [];
   let didContainJsxElement = false;
@@ -565,7 +571,9 @@ export const collectTextWrapperComponents = (
       componentDeclarations.push({ componentName, definitionNode: node });
     }
   });
-  if (!didContainJsxElement) return { textWrappers: wrappers, nonTextWrappers };
+  if (!didContainJsxElement) {
+    return { textWrappers: wrappers, nonTextWrappers, translationTextReturnComponents };
+  }
   const isTextHandlingElement = (elementName: string, contextNode: EsTreeNode): boolean =>
     isTextHandlingRoot(elementName, contextNode) || wrappers.has(elementName);
   const isNonTextHostElement = (elementName: string, contextNode: EsTreeNode): boolean =>
@@ -583,6 +591,15 @@ export const collectTextWrapperComponents = (
     );
   };
 
+  for (const declaration of componentDeclarations) {
+    if (
+      componentBindingCounts.get(declaration.componentName) === 1 &&
+      returnsOnlyTranslationTextElements(declaration.definitionNode)
+    ) {
+      translationTextReturnComponents.add(declaration.componentName);
+    }
+  }
+
   while (true) {
     const wrappersSizeBeforePass = wrappers.size;
     const nonTextSizeBeforePass = nonTextWrappers.size;
@@ -599,5 +616,5 @@ export const collectTextWrapperComponents = (
 
   for (const wrapperName of wrappers) nonTextWrappers.delete(wrapperName);
 
-  return { textWrappers: wrappers, nonTextWrappers };
+  return { textWrappers: wrappers, nonTextWrappers, translationTextReturnComponents };
 };

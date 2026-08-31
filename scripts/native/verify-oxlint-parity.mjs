@@ -941,6 +941,12 @@ const focusedParitySearchComponentPath = path.join(
   "search-client.tsx",
 );
 const focusedParitySearchPagePath = path.join(focusedParityDirectory, "app", "search", "page.tsx");
+const stateEffectsParityDirectory = path.join(temporaryDirectory, "state-effects-native-parity");
+const stateEffectsParityFixturePath = path.join(
+  stateEffectsParityDirectory,
+  "app",
+  "state-effects.tsx",
+);
 const nonReactJsxFixturePath = path.join(temporaryDirectory, "solid-fixture.tsx");
 const configuredFixturePath = path.join(temporaryDirectory, "configured.tsx");
 const configuredAriaFixturePath = path.join(temporaryDirectory, "configured-aria.tsx");
@@ -988,6 +994,14 @@ const focusedParityStockConfigPath = path.join(
 const focusedParityNativeConfigPath = path.join(
   temporaryDirectory,
   "focused-native-parity-native.json",
+);
+const stateEffectsParityStockConfigPath = path.join(
+  temporaryDirectory,
+  "state-effects-native-parity-stock.json",
+);
+const stateEffectsParityNativeConfigPath = path.join(
+  temporaryDirectory,
+  "state-effects-native-parity-native.json",
 );
 const configuredStockConfigPath = path.join(temporaryDirectory, "configured-stock.json");
 const configuredNativeConfigPath = path.join(temporaryDirectory, "configured-native.json");
@@ -1875,6 +1889,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-self-updating-effect": 1,
   "no-set-state-after-await-in-effect": 2,
   "no-mutate-then-set-or-return-same-reference": 1,
+  "no-initialize-state": 0,
   "no-prop-callback-in-effect": 2,
   "no-prop-callback-in-render": 1,
   "no-unguarded-browser-global-at-module-scope": 11,
@@ -1888,6 +1903,10 @@ const BENCHMARK_FINDING_COUNT_PER_FILE = 500;
 const BENCHMARK_SAMPLE_COUNT = 5;
 const CORPUS_PARITY_DIFF_LIMIT = 20;
 const OXLINT_OUTPUT_MAX_BYTES = 256 * 1024 * 1024;
+const STATE_EFFECTS_PARITY_RULE_IDS = ["no-initialize-state"];
+const EXPECTED_STATE_EFFECTS_PARITY_DIAGNOSTIC_COUNTS = {
+  "no-initialize-state": 1,
+};
 const FOCUSED_PARITY_RULE_IDS = [
   "jsx-no-new-array-as-prop",
   "jsx-no-new-function-as-prop",
@@ -8297,6 +8316,18 @@ export const UncertainStaticSpreadScene = () => {
     nextjsNoImgCrossFileRoutePath,
     'import { ImageResponse } from "next/og";\nimport { cardLayout } from "../../../lib/card";\nexport const GET = () => new ImageResponse(cardLayout("/photo.png"));\n',
   );
+  fs.mkdirSync(path.dirname(stateEffectsParityFixturePath), { recursive: true });
+  fs.writeFileSync(
+    stateEffectsParityFixturePath,
+    `import { useEffect, useState } from "react";
+
+export const StateEffectsParity = () => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  return <span>{String(mounted)}</span>;
+};
+`,
+  );
   fs.mkdirSync(path.dirname(focusedParityFixturePath), { recursive: true });
   fs.mkdirSync(path.dirname(focusedParityWrappedMetadataPath), { recursive: true });
   fs.mkdirSync(path.dirname(focusedParityGetRoutePath), { recursive: true });
@@ -9248,6 +9279,33 @@ export const App = () => <>
       }),
     ),
   );
+  const stateEffectsParitySettings = {
+    "react-doctor": {
+      ...REACT_DOCTOR_SETTINGS["react-doctor"],
+      rootDirectory: stateEffectsParityDirectory,
+      capabilities: ["react"],
+    },
+  };
+  fs.writeFileSync(
+    stateEffectsParityStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: stateEffectsParitySettings,
+        ruleIds: STATE_EFFECTS_PARITY_RULE_IDS,
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    stateEffectsParityNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: stateEffectsParitySettings,
+        ruleIds: STATE_EFFECTS_PARITY_RULE_IDS,
+      }),
+    ),
+  );
   fs.writeFileSync(
     corpusStockConfigPath,
     JSON.stringify(
@@ -9611,6 +9669,43 @@ export const App = () => <>
   ) {
     throw new Error(
       `native Next.js generated-image ownership parity failed\nstock=${JSON.stringify(nextjsNoImgCrossFileStockDiagnostics, null, 2)}\nnative=${JSON.stringify(nextjsNoImgCrossFileNativeDiagnostics, null, 2)}`,
+    );
+  }
+
+  const stateEffectsParityStockDiagnostics = runOxlint(
+    stateEffectsParityStockConfigPath,
+    process.env,
+    stateEffectsParityFixturePath,
+  ).diagnostics;
+  const stateEffectsParityNativeDiagnostics = runOxlint(
+    stateEffectsParityNativeConfigPath,
+    nativeEnvironment,
+    stateEffectsParityFixturePath,
+  ).diagnostics;
+  const stateEffectsParityDiagnosticCounts = Object.fromEntries(
+    STATE_EFFECTS_PARITY_RULE_IDS.map((ruleId) => [
+      ruleId,
+      stateEffectsParityStockDiagnostics.filter((diagnostic) =>
+        diagnostic.code.includes(`(${ruleId})`),
+      ).length,
+    ]),
+  );
+  const stateEffectsParityNativeDiagnosticCounts = Object.fromEntries(
+    STATE_EFFECTS_PARITY_RULE_IDS.map((ruleId) => [
+      ruleId,
+      stateEffectsParityNativeDiagnostics.filter((diagnostic) =>
+        diagnostic.code.includes(`(${ruleId})`),
+      ).length,
+    ]),
+  );
+  if (
+    JSON.stringify(stateEffectsParityDiagnosticCounts) !==
+      JSON.stringify(EXPECTED_STATE_EFFECTS_PARITY_DIAGNOSTIC_COUNTS) ||
+    JSON.stringify(stateEffectsParityNativeDiagnostics) !==
+      JSON.stringify(stateEffectsParityStockDiagnostics)
+  ) {
+    throw new Error(
+      `native state-effects parity failed\nexpected=${JSON.stringify(EXPECTED_STATE_EFFECTS_PARITY_DIAGNOSTIC_COUNTS, null, 2)}\nreceived=${JSON.stringify(stateEffectsParityDiagnosticCounts, null, 2)}\nnativeReceived=${JSON.stringify(stateEffectsParityNativeDiagnosticCounts, null, 2)}\nstock=${JSON.stringify(stateEffectsParityStockDiagnostics, null, 2)}\nnative=${JSON.stringify(stateEffectsParityNativeDiagnostics, null, 2)}`,
     );
   }
 

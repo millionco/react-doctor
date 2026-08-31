@@ -659,6 +659,16 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       [
+        "no-initialize-state",
+        [
+          "for_each_local_callback_execution_node",
+          "is_non_production_file",
+          "is_react_hook_call",
+          "setter_is_written_only_from_event_handlers",
+          "transparent_expression_root",
+        ],
+      ],
+      [
         "no-prop-callback-in-render",
         [
           "is_react_api_call",

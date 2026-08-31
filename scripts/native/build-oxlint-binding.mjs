@@ -670,6 +670,32 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       [
+        "no-derived-state",
+        [
+          "are_nodes_in_mutually_exclusive_branches",
+          "for_each_local_callback_execution_node",
+          "is_non_production_file",
+          "is_react_hook_call",
+          "resolve_const_identifier_root_symbol",
+          "setter_is_written_only_from_event_handlers",
+          "statement_always_exits",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "no-derived-state-effect",
+        [
+          "are_nodes_in_mutually_exclusive_branches",
+          "for_each_local_callback_execution_node",
+          "is_non_production_file",
+          "is_react_hook_call",
+          "resolve_const_identifier_root_symbol",
+          "setter_is_written_only_from_event_handlers",
+          "statement_always_exits",
+          "transparent_expression_root",
+        ],
+      ],
+      [
         "no-initialize-state",
         [
           "for_each_local_callback_execution_node",

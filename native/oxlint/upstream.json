@@ -838,6 +838,8 @@
     "no-set-state-after-await-in-effect",
     "no-mutate-then-set-or-return-same-reference",
     "no-chain-state-updates",
+    "no-derived-state",
+    "no-derived-state-effect",
     "no-initialize-state",
     "no-prop-callback-in-effect",
     "no-prop-callback-in-render",

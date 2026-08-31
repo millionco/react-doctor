@@ -1890,6 +1890,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-set-state-after-await-in-effect": 2,
   "no-mutate-then-set-or-return-same-reference": 1,
   "no-chain-state-updates": 2,
+  "no-derived-state": 0,
+  "no-derived-state-effect": 0,
   "no-initialize-state": 0,
   "no-prop-callback-in-effect": 2,
   "no-prop-callback-in-render": 1,

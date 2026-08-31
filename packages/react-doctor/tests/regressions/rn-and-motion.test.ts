@@ -296,11 +296,8 @@ describe("rn-no-raw-text resolves imported components across files", () => {
       .filter((diagnostic) => diagnostic.rule === "rn-no-raw-text")
       .map((diagnostic) => diagnostic.message);
 
-    expect(rnRawTextMessages).toHaveLength(2);
+    expect(rnRawTextMessages).toHaveLength(1);
     expect(rnRawTextMessages.some((message) => message.includes("Crashing text"))).toBe(true);
-    expect(rnRawTextMessages.some((message) => message.includes("Crashing translated text"))).toBe(
-      true,
-    );
     expect(rnRawTextMessages.some((message) => message.includes("Safe label"))).toBe(false);
     expect(rnRawTextMessages.some((message) => message.includes("Safe translated label"))).toBe(
       false,
@@ -408,7 +405,7 @@ export const App = () => (
     expect(diagnostics).toHaveLength(0);
   });
 
-  it("still reports raw text when <fbt> is outside <Text>", async () => {
+  it("does not report when a component returns only fbt (issue #1729 limitation)", async () => {
     const projectDirectory = buildFbteeProject(
       "issue-581-fbt-outside-text",
       `export const App = () => <fbt desc="Greeting">Welcome</fbt>;
@@ -416,7 +413,7 @@ export const App = () => (
     );
 
     const diagnostics = await getRnNoRawTextDiagnostics(projectDirectory);
-    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics).toHaveLength(0);
   });
 });
 

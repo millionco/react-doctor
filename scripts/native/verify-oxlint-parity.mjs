@@ -166,6 +166,9 @@ const rnBoxShadowFixturePath = path.join(expoNativeFixtureDirectory, "src", "box
 const serverFetchFixturePath = path.join(fixtureDirectory, "app", "cache", "route.ts");
 const langFixturePath = path.join(fixtureDirectory, "app", "invalid-lang.tsx");
 const mediaCaptionFixturePath = path.join(fixtureDirectory, "app", "media-caption.tsx");
+const derivedUseStateFixturePath = path.join(fixtureDirectory, "app", "derived-use-state.tsx");
+const didMountSetStateFixturePath = path.join(fixtureDirectory, "app", "did-mount-set-state.tsx");
+const didUpdateSetStateFixturePath = path.join(fixtureDirectory, "app", "did-update-set-state.tsx");
 const directStateMutationFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -952,7 +955,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-moment": 1,
   "no-namespace": 2,
   "no-react-children": 2,
-  "preact-no-react-hooks-import": 11,
+  "preact-no-react-hooks-import": 12,
   "rn-bottom-sheet-prefer-native": 1,
   "rn-no-deprecated-modules": 1,
   "rn-no-legacy-expo-packages": 1,
@@ -976,7 +979,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "aria-unsupported-elements": 2,
   "no-unescaped-entities": 1,
   scope: 1,
-  "no-set-state": 2,
+  "no-set-state": 5,
   "no-find-dom-node": 2,
   "react-in-jsx-scope": 20,
   "tabindex-no-positive": 7,
@@ -991,7 +994,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-redundant-should-component-update": 3,
   "no-direct-mutation-state": 2,
   "no-string-refs": 2,
-  "state-in-constructor": 1,
+  "state-in-constructor": 3,
   "nextjs-inline-script-missing-id": 1,
   "no-aria-hidden-on-body": 2,
   "html-xml-lang-mismatch": 1,
@@ -1098,7 +1101,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-fragments": 2,
   "jsx-no-constructed-context-values": 1,
   "prefer-es6-class": 1,
-  "prefer-function-component": 8,
+  "prefer-function-component": 10,
   "aria-activedescendant-has-tabindex": 1,
   "aria-role": 5,
   "anchor-ambiguous-text": 2,
@@ -1260,7 +1263,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-ctrl-c-handler-requires-exit-option": 1,
   "ink-no-live-hooks-in-render-to-string": 1,
   "ink-no-repeated-render": 4,
-  "hook-use-state": 30,
+  "hook-use-state": 31,
   "rendering-svg-precision": 1,
   "no-document-start-view-transition": 1,
   "no-permanent-will-change": 2,
@@ -1724,6 +1727,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "server-fetch-without-revalidate": 0,
   lang: 1,
   "media-has-caption": 5,
+  "no-derived-useState": 1,
+  "no-did-mount-set-state": 1,
+  "no-did-update-set-state": 2,
   "no-direct-state-mutation": 1,
   "no-multi-comp": 245,
   "no-multi-component-file": 168,
@@ -1908,6 +1914,9 @@ const FOCUSED_PARITY_RULE_IDS = [
   "server-fetch-without-revalidate",
   "lang",
   "media-has-caption",
+  "no-derived-useState",
+  "no-did-mount-set-state",
+  "no-did-update-set-state",
   "no-direct-state-mutation",
   "no-multi-comp",
   "no-multi-component-file",
@@ -2086,6 +2095,9 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "server-fetch-without-revalidate": 0,
   lang: 0,
   "media-has-caption": 0,
+  "no-derived-useState": 0,
+  "no-did-mount-set-state": 0,
+  "no-did-update-set-state": 0,
   "no-direct-state-mutation": 0,
   "no-multi-comp": 58,
   "no-multi-component-file": 58,
@@ -4567,6 +4579,50 @@ export const DocumentRoot = () => <html lang="zzzz" />;
     mediaCaptionFixturePath,
     `import React from "react";
 export const ProductDemo = () => <video src="/product-demo.mp4" />;
+`,
+  );
+  fs.writeFileSync(
+    derivedUseStateFixturePath,
+    `import { useState } from "react";
+
+export function ProfileName({ name }: { name: string }) {
+  const [displayName] = useState(name);
+  return displayName;
+}
+`,
+  );
+  fs.writeFileSync(
+    didMountSetStateFixturePath,
+    `import React from "react";
+
+export class MountedValue extends React.Component<{ value: string }, { value: string }> {
+  state = { value: "" };
+  componentDidMount() {
+    this.setState({ value: this.props.value });
+  }
+  render() {
+    return this.state.value;
+  }
+}
+`,
+  );
+  fs.writeFileSync(
+    didUpdateSetStateFixturePath,
+    `import React from "react";
+
+const setState = "setState";
+
+export class UpdatedValue extends React.Component<{ value: string }, { value: string }> {
+  state = { value: "" };
+  componentDidUpdate() {
+    this.setState({ value: this.props.value });
+    this[setState]({ value: this.props.value });
+    this["setState"]({ value: this.props.value });
+  }
+  render() {
+    return this.state.value;
+  }
+}
 `,
   );
   fs.writeFileSync(

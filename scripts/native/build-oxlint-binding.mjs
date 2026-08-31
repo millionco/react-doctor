@@ -557,6 +557,23 @@ impl Rule for ${delegatedRule.struct} {
       ],
       ["lang", ["resolve_configured_jsx_element_type"]],
       ["media-has-caption", ["is_local_test_scaffold_jsx", "resolve_configured_jsx_element_type"]],
+      [
+        "no-derived-useState",
+        [
+          "collect_binding_pattern_names",
+          "is_non_production_file",
+          "is_react_hook_call",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "no-did-mount-set-state",
+        [
+          "find_guarding_try_statement",
+          "for_each_analyzed_synchronous_execution_node",
+          "local_callback_nearest_function_node_index",
+        ],
+      ],
       ["no-direct-state-mutation", ["is_react_hook_call", "transparent_expression_root"]],
       ["no-multi-component-file", ["is_non_production_file", "is_react_api_call"]],
       [

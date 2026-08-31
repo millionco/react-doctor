@@ -408,18 +408,24 @@ const resolveClassRenderFunction = (classNode: EsTreeNode): FunctionNode | null 
   return null;
 };
 
+const isTranslationTextJsxRoot = (jsxRoot: EsTreeNode): boolean => {
+  const fragmentChildren = fragmentChildrenOrNull(jsxRoot);
+  if (fragmentChildren !== null) {
+    const elementChildren = fragmentChildren.filter(
+      (child) => isNodeOfType(child, "JSXElement") || isNodeOfType(child, "JSXFragment"),
+    );
+    return elementChildren.length > 0 && elementChildren.every(isTranslationTextJsxRoot);
+  }
+  if (!isNodeOfType(jsxRoot, "JSXElement")) return false;
+  const rootName = resolveJsxElementName(jsxRoot.openingElement);
+  return rootName !== null && REACT_NATIVE_TRANSLATION_TEXT_COMPONENTS.has(rootName);
+};
+
 const returnsOnlyTranslationTextElements = (definitionNode: EsTreeNode): boolean => {
   const unwrapped = unwrapComponentDefinition(definitionNode);
   if (!isFunctionNode(unwrapped)) return false;
   const jsxRoots = collectReturnedJsxRoots(unwrapped);
-  return (
-    jsxRoots.length > 0 &&
-    jsxRoots.every((jsxRoot) => {
-      if (!isNodeOfType(jsxRoot, "JSXElement")) return false;
-      const rootName = resolveJsxElementName(jsxRoot.openingElement);
-      return rootName !== null && REACT_NATIVE_TRANSLATION_TEXT_COMPONENTS.has(rootName);
-    })
-  );
+  return jsxRoots.length > 0 && jsxRoots.every(isTranslationTextJsxRoot);
 };
 
 export interface ChildrenForwardingComponents {

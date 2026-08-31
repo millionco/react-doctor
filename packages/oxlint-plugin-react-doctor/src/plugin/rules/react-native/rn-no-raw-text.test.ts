@@ -655,14 +655,54 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
-    it("still fires when fbt is nested under a fragment return", () => {
-      expectFail(`
+    it("does not fire when fbt is nested under a fragment return", () => {
+      expectPass(`
         const FbtMarker = () => (
           <Fragment>
             <fbt desc="d">Travel with confidence</fbt>
           </Fragment>
         );
         const Screen = () => <Text><FbtMarker /></Text>;
+      `);
+    });
+
+    it("still fires when a fragment return mixes fbt with a non-text element", () => {
+      expectFail(`
+        const MixedComponent = () => (
+          <>
+            <fbt desc="label">Morning</fbt>
+            <View>icon</View>
+          </>
+        );
+        const Screen = () => (
+          <Text>
+            <MixedComponent />
+          </Text>
+        );
+      `);
+    });
+
+    it("does not fire on fragment returns mixing fbt with literal text (issue #1731)", () => {
+      expectPass(`
+        const ReminderLabel = ({ reminder }) => {
+          switch (reminder) {
+            case "none": {
+              return <fbt desc="no reminder">No reminder</fbt>;
+            }
+            case "morning": {
+              return (
+                <>
+                  <fbt desc="morning reminder">Morning</fbt>, 7:00 AM
+                </>
+              );
+            }
+          }
+        };
+        const Screen = () => (
+          <Text>
+            <ReminderLabel reminder="morning" />
+          </Text>
+        );
       `);
     });
 

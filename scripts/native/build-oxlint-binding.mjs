@@ -668,6 +668,17 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       [
+        "no-prop-callback-in-effect",
+        [
+          "for_each_local_callback_execution_node",
+          "has_possible_static_property_write_before",
+          "is_non_production_file",
+          "is_react_api_call",
+          "is_react_hook_call",
+          "transparent_expression_root",
+        ],
+      ],
+      [
         "no-unguarded-throwing-parse-call",
         ["is_non_production_file", "transparent_expression_root"],
       ],

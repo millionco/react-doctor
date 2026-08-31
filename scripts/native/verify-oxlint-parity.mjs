@@ -246,6 +246,16 @@ const propCallbackInRenderFixturePath = path.join(
   "app",
   "prop-callback-in-render.tsx",
 );
+const propCallbackInEffectFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "prop-callback-in-effect.tsx",
+);
+const propCallbackInEffectCustomHookFixturePath = path.join(
+  fixtureDirectory,
+  "app",
+  "prop-callback-in-effect-custom-hook.ts",
+);
 const unownedAsyncErrorClearFixturePath = path.join(
   fixtureDirectory,
   "app",
@@ -1037,7 +1047,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-moment": 1,
   "no-namespace": 2,
   "no-react-children": 2,
-  "preact-no-react-hooks-import": 20,
+  "preact-no-react-hooks-import": 22,
   "rn-bottom-sheet-prefer-native": 1,
   "rn-no-deprecated-modules": 1,
   "rn-no-legacy-expo-packages": 1,
@@ -1345,7 +1355,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "ink-ctrl-c-handler-requires-exit-option": 1,
   "ink-no-live-hooks-in-render-to-string": 1,
   "ink-no-repeated-render": 4,
-  "hook-use-state": 31,
+  "hook-use-state": 32,
   "rendering-svg-precision": 1,
   "no-document-start-view-transition": 1,
   "no-permanent-will-change": 2,
@@ -1860,6 +1870,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-self-updating-effect": 1,
   "no-set-state-after-await-in-effect": 2,
   "no-mutate-then-set-or-return-same-reference": 1,
+  "no-prop-callback-in-effect": 2,
   "no-prop-callback-in-render": 1,
   "no-unguarded-throwing-parse-call": 1,
   "no-unknown-property": 7,
@@ -2069,6 +2080,7 @@ const FOCUSED_PARITY_RULE_IDS = [
   "no-self-updating-effect",
   "no-set-state-after-await-in-effect",
   "no-mutate-then-set-or-return-same-reference",
+  "no-prop-callback-in-effect",
   "no-prop-callback-in-render",
   "no-unguarded-throwing-parse-call",
   "no-unknown-property",
@@ -2272,6 +2284,7 @@ const EXPECTED_FOCUSED_PARITY_DIAGNOSTIC_COUNTS = {
   "no-self-updating-effect": 0,
   "no-set-state-after-await-in-effect": 0,
   "no-mutate-then-set-or-return-same-reference": 0,
+  "no-prop-callback-in-effect": 0,
   "no-prop-callback-in-render": 0,
   "no-unguarded-throwing-parse-call": 0,
   "no-unknown-property": 0,
@@ -5081,6 +5094,31 @@ export const GeneratorRequest = ({ id }) => {
   onValue("ready");
   return <div />;
 };
+`,
+  );
+  fs.writeFileSync(
+    propCallbackInEffectFixturePath,
+    `import { useEffect, useState } from "react";
+
+export const NotifyFromEffect = ({ onValue }) => {
+  const [value] = useState("ready");
+  useEffect(() => {
+    onValue(value);
+  }, [value, onValue]);
+  return null;
+};
+`,
+  );
+  fs.writeFileSync(
+    propCallbackInEffectCustomHookFixturePath,
+    `import { useEffect } from "react";
+
+export default function useOnChange({ control, onChange }) {
+  const values = useWatch({ control });
+  useEffect(() => {
+    onChange(values);
+  }, [onChange, values]);
+}
 `,
   );
   fs.writeFileSync(

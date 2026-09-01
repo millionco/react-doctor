@@ -2,7 +2,7 @@ import type { Diagnostic, ReactDoctorConfig, ReactDoctorIgnoreOverride } from ".
 import { isPlainObject } from "./project-info/index.js";
 import { isSameRuleKey } from "./rule-key-aliases.js";
 import { compileGlobPatternsLenient } from "./utils/match-glob-pattern.js";
-import { toRelativePath } from "./utils/to-relative-path.js";
+import { toNormalizedRelativePath } from "./utils/to-normalized-relative-path.js";
 import { warnConfigIssue } from "./utils/warn-config-issue.js";
 
 interface CompiledIgnoreOverride {
@@ -76,7 +76,7 @@ export const isDiagnosticIgnoredByOverrides = (
   overrides: CompiledIgnoreOverride[],
 ): boolean => {
   if (overrides.length === 0) return false;
-  const relativeFilePath = toRelativePath(diagnostic.filePath, rootDirectory);
+  const relativeFilePath = toNormalizedRelativePath(diagnostic.filePath, rootDirectory);
   const ruleIdentifier = `${diagnostic.plugin}/${diagnostic.rule}`;
 
   return overrides.some(

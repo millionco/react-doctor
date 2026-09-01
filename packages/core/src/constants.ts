@@ -1398,6 +1398,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "no-chain-state-updates",
   "no-derived-state",
   "no-derived-state-effect",
+  "only-export-components",
   "no-initialize-state",
   "no-prop-callback-in-effect",
   "no-prop-callback-in-render",

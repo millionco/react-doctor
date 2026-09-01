@@ -1892,6 +1892,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-chain-state-updates": 2,
   "no-derived-state": 0,
   "no-derived-state-effect": 0,
+  "only-export-components": 0,
   "no-initialize-state": 0,
   "no-prop-callback-in-effect": 2,
   "no-prop-callback-in-render": 1,

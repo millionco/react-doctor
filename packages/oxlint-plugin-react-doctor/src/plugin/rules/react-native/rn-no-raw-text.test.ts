@@ -706,6 +706,63 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
+    it("does not fire on static expression text beside translation elements", () => {
+      expectPass(`
+        const FbtMarker = () => (
+          <>
+            <fbt desc="label">Morning</fbt>
+            {", 7:00 AM"}
+          </>
+        );
+        const Screen = () => <Text><FbtMarker /></Text>;
+      `);
+    });
+
+    it("does not fire on translation elements inside nested fragment expressions", () => {
+      expectPass(`
+        const FbtMarker = ({ useShortLabel }) => (
+          <>
+            <Fragment>
+              {useShortLabel ? <fbt desc="short">AM</fbt> : <fbs>Morning</fbs>}
+            </Fragment>
+          </>
+        );
+        const Screen = () => <Text><FbtMarker useShortLabel /></Text>;
+      `);
+    });
+
+    it("still fires when a fragment contains an opaque expression", () => {
+      expectFail(`
+        const MixedComponent = ({ content }) => (
+          <>
+            <fbt desc="label">Morning</fbt>
+            {content}
+          </>
+        );
+        const Screen = () => (
+          <Text>
+            <MixedComponent content={<View>icon</View>} />
+          </Text>
+        );
+      `);
+    });
+
+    it("still fires when an expression can render a non-text element", () => {
+      expectFail(`
+        const MixedComponent = ({ showIcon }) => (
+          <>
+            <fbt desc="label">Morning</fbt>
+            {showIcon && <View>icon</View>}
+          </>
+        );
+        const Screen = () => (
+          <Text>
+            <MixedComponent showIcon />
+          </Text>
+        );
+      `);
+    });
+
     it("does not classify a direct fbt return as a Text wrapper", () => {
       expectFail(`
         const FbtMarker = ({ children }) => <fbt desc="d">Label</fbt>;

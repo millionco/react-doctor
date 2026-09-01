@@ -5,6 +5,7 @@ import { isJsxFragmentElement } from "./is-jsx-fragment-element.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactComponentName } from "./is-react-component-name.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
+import { visitStaticJsxChildren } from "./visit-static-jsx-children.js";
 import { walkAst } from "./walk-ast.js";
 import { resolveJsxElementName } from "./resolve-jsx-element-name.js";
 
@@ -411,10 +412,24 @@ const resolveClassRenderFunction = (classNode: EsTreeNode): FunctionNode | null 
 const isTranslationTextJsxRoot = (jsxRoot: EsTreeNode): boolean => {
   const fragmentChildren = fragmentChildrenOrNull(jsxRoot);
   if (fragmentChildren !== null) {
-    const elementChildren = fragmentChildren.filter(
-      (child) => isNodeOfType(child, "JSXElement") || isNodeOfType(child, "JSXFragment"),
-    );
-    return elementChildren.length > 0 && elementChildren.every(isTranslationTextJsxRoot);
+    let didContainTranslationTextElement = false;
+    let didContainUnsupportedChild = false;
+    visitStaticJsxChildren(fragmentChildren, {
+      onElement: (element) => {
+        if (isJsxFragmentElement(element.openingElement)) return true;
+        const elementName = resolveJsxElementName(element.openingElement);
+        if (elementName && REACT_NATIVE_TRANSLATION_TEXT_COMPONENTS.has(elementName)) {
+          didContainTranslationTextElement = true;
+        } else {
+          didContainUnsupportedChild = true;
+        }
+        return false;
+      },
+      onOpaqueExpression: () => {
+        didContainUnsupportedChild = true;
+      },
+    });
+    return didContainTranslationTextElement && !didContainUnsupportedChild;
   }
   if (!isNodeOfType(jsxRoot, "JSXElement")) return false;
   const rootName = resolveJsxElementName(jsxRoot.openingElement);

@@ -739,6 +739,22 @@ impl Rule for ${delegatedRule.struct} {
         ["is_non_production_file", "is_non_source_file", "transparent_expression_root"],
       ],
       [
+        "no-unguarded-browser-global-in-render-or-hook-init",
+        [
+          "find_render_phase_component_or_hook",
+          "function_executes_during_render",
+          "generated_image_jsx_opening_element_ids",
+          "is_non_production_file",
+          "is_react_api_call",
+          "is_react_native_file_target",
+          "property_key_matches_name",
+          "resolve_identifier_import",
+          "statement_always_exits",
+          "static_literal_truthiness",
+          "transparent_expression_root",
+        ],
+      ],
+      [
         "no-unguarded-throwing-parse-call",
         ["is_non_production_file", "transparent_expression_root"],
       ],
@@ -930,6 +946,15 @@ impl Rule for ${delegatedRule.struct} {
           "is_react_api_call",
           "is_react_native_file_target",
           "static_literal_truthiness",
+        ],
+      ],
+      [
+        "rendering-hydration-no-flicker",
+        [
+          "is_non_production_file",
+          "is_react_api_call",
+          "is_react_hook_call",
+          "resolve_direct_unreassigned_symbol_initializer",
         ],
       ],
       ["rendering-usetransition-loading", ["is_non_production_file"]],

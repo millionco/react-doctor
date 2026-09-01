@@ -812,6 +812,7 @@
     "prefer-useReducer",
     "prefer-tag-over-role",
     "rendering-hydration-mismatch-time",
+    "rendering-hydration-no-flicker",
     "rendering-usetransition-loading",
     "rerender-defer-reads-hook",
     "rerender-memo-before-early-return",
@@ -845,6 +846,7 @@
     "no-prop-callback-in-effect",
     "no-prop-callback-in-render",
     "no-unguarded-browser-global-at-module-scope",
+    "no-unguarded-browser-global-in-render-or-hook-init",
     "no-unguarded-throwing-parse-call",
     "no-unknown-property",
     "no-unowned-async-error-clear"

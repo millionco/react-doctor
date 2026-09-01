@@ -75,7 +75,7 @@ export const isDiagnosticOnSurface = (
 };
 
 export const filterDiagnosticsForSurface = (
-  diagnostics: Diagnostic[],
+  diagnostics: ReadonlyArray<Diagnostic>,
   surface: DiagnosticSurface,
   config: ReactDoctorConfig | null,
 ): Diagnostic[] =>

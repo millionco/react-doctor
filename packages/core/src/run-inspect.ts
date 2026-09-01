@@ -100,6 +100,8 @@ const LINT_NATIVE_BINDING_FAIL_TEXT = (nodeVersion: string): string =>
   `Scanning failed — oxlint native binding not found (Node ${nodeVersion}).`;
 const MAINTAINABILITY_FAIL_TEXT = "Scanning failed (maintainability analysis, non-fatal).";
 
+const missingGitMetadata = (): string | null => null;
+
 const formatLintFailText = (
   reasonTag: ReactDoctorErrorReason["_tag"] | null,
   nodeVersion: string,
@@ -241,13 +243,9 @@ export const runInspect = <HooksR = never>(
     }
     const [repo, sha, defaultBranch] = yield* Effect.all(
       [
-        gitService
-          .githubRepo(scanDirectory)
-          .pipe(Effect.orElseSucceed(() => null as string | null)),
-        gitService.headSha(scanDirectory).pipe(Effect.orElseSucceed(() => null as string | null)),
-        gitService
-          .defaultBranch(scanDirectory)
-          .pipe(Effect.orElseSucceed(() => null as string | null)),
+        gitService.githubRepo(scanDirectory).pipe(Effect.orElseSucceed(missingGitMetadata)),
+        gitService.headSha(scanDirectory).pipe(Effect.orElseSucceed(missingGitMetadata)),
+        gitService.defaultBranch(scanDirectory).pipe(Effect.orElseSucceed(missingGitMetadata)),
       ],
       { concurrency: 3 },
     );
@@ -256,7 +254,7 @@ export const runInspect = <HooksR = never>(
       input.resolveLocalGithubViewerPermission === true && !input.isCi && repo !== null
         ? gitService
             .githubViewerPermission({ directory: scanDirectory, repo })
-            .pipe(Effect.orElseSucceed(() => null as string | null))
+            .pipe(Effect.orElseSucceed(missingGitMetadata))
         : Effect.succeed(null as string | null),
     );
 
@@ -311,12 +309,14 @@ export const runInspect = <HooksR = never>(
     const isDiffMode = input.includePaths.length > 0;
 
     const showWarnings = input.warnings ?? resolvedConfig.config?.warnings ?? DEFAULT_SHOW_WARNINGS;
+    const severityControls = buildRuleSeverityControls(resolvedConfig.config);
 
     const transform = buildDiagnosticPipeline({
       rootDirectory: scanDirectory,
       userConfig: resolvedConfig.config,
       readFileLinesSync: fileReader(filesService, scanDirectory),
       respectInlineDisables: input.respectInlineDisables,
+      severityControls,
       showWarnings,
     });
 
@@ -495,26 +495,26 @@ export const runInspect = <HooksR = never>(
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
     const projectCapabilities = getCapabilities(project);
-    const projectRuleSelections = resolveProjectRuleSelections(
-      buildRuleSeverityControls(resolvedConfig.config),
-    ).filter((selection) => {
-      const rule = REACT_DOCTOR_RULE_REGISTRY[selection.ruleId];
-      return (
-        rule !== undefined &&
-        shouldEnableRule(
-          rule.requires,
-          rule.tags,
-          projectCapabilities,
-          input.ignoredTags,
-          rule.disabledWhen,
-          input.includedTags,
-        ) &&
-        (selection.ruleId === MAINTAINABILITY_DUPLICATE_JSX_RULE
-          ? input.runDeadCode
-          : !isDiffMode) &&
-        (showWarnings || projectRuleSelectionsMaySurfaceWhenWarningsAreHidden([selection]))
-      );
-    });
+    const projectRuleSelections = resolveProjectRuleSelections(severityControls).filter(
+      (selection) => {
+        const rule = REACT_DOCTOR_RULE_REGISTRY[selection.ruleId];
+        return (
+          rule !== undefined &&
+          shouldEnableRule(
+            rule.requires,
+            rule.tags,
+            projectCapabilities,
+            input.ignoredTags,
+            rule.disabledWhen,
+            input.includedTags,
+          ) &&
+          (selection.ruleId === MAINTAINABILITY_DUPLICATE_JSX_RULE
+            ? input.runDeadCode
+            : !isDiffMode) &&
+          (showWarnings || projectRuleSelectionsMaySurfaceWhenWarningsAreHidden([selection]))
+        );
+      },
+    );
     const enabledProjectRuleIds = new Set(
       projectRuleSelections.map((selection) => selection.ruleId),
     );
@@ -646,14 +646,13 @@ export const runInspect = <HooksR = never>(
           ),
         ),
       );
-    const rawLintStream = baseLintStream;
 
     // Lint phase cap (Effect-side, runtime-independent of the per-batch
     // spawn timeout and the bounded split cascade): on timeout, fold into
     // the existing lint-failure contract (score becomes null) with an
     // `OxlintBatchExceeded`-tagged reason so renderers dispatch on it, and
     // yield an empty chunk so the rest of the scan still completes.
-    const collectLintDiagnostics = Stream.runCollect(filterPerElementPipeline(rawLintStream));
+    const collectLintDiagnostics = Stream.runCollect(filterPerElementPipeline(baseLintStream));
     const filteredLintDiagnostics = yield* lintPhaseTimeoutMs === null
       ? collectLintDiagnostics
       : collectLintDiagnostics.pipe(
@@ -802,7 +801,7 @@ export const runInspect = <HooksR = never>(
 
     const scoreSurface: DiagnosticSurface = input.scoreSurface ?? "score";
     const scoreDiagnostics = filterDiagnosticsForSurface(
-      [...finalDiagnostics],
+      finalDiagnostics,
       scoreSurface,
       resolvedConfig.config,
     );

@@ -1,13 +1,12 @@
 import { REACT_ROUTER_PACKAGE_NAMES } from "../constants/react-router.js";
-import {
-  declaresAnyDependency,
-  declaresDependency,
-  findNearestPackageDirectory,
-} from "./classify-package-platform.js";
+import { declaresAnyDependency, declaresDependency } from "./classify-package-platform.js";
 import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import { isPackageWithinProjectRoot } from "./is-package-within-project-root.js";
 import { normalizeFilename } from "./normalize-filename.js";
-import { readNearestPackageManifest } from "./read-nearest-package-manifest.js";
+import {
+  findNearestPackageDirectory,
+  readNearestPackageManifest,
+} from "./read-nearest-package-manifest.js";
 import type { RuleContext } from "./rule-context.js";
 
 interface ReactRouterFileActivationOptions {

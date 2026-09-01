@@ -3,6 +3,7 @@ import type {
   Diagnostic,
   DiagnosticFileContext,
   ReactDoctorConfig,
+  RuleSeverityControls,
   RuleSeverityOverride,
   SuppressedRuleCount,
 } from "./types/index.js";
@@ -17,9 +18,9 @@ import { getDiagnosticRuleIdentity } from "./get-diagnostic-rule-identity.js";
 import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignored-file.js";
 import { classifyFileContext } from "./classify-file-context.js";
 import { resolveRuleSeverityOverride } from "./resolve-rule-severity-override.js";
-import { isSameRuleKey } from "./rule-key-aliases.js";
 import { APP_ONLY_RULE_KEYS } from "./constants.js";
 import { classifyPackageRole } from "./utils/classify-package-role.js";
+import { isSameRuleKeyInSet } from "./utils/is-same-rule-key-in-set.js";
 import { resolveCandidateReadPath } from "./utils/resolve-candidate-read-path.js";
 import {
   isInsideStringOnlyWrapper,
@@ -31,6 +32,7 @@ interface BuildDiagnosticPipelineInput {
   readonly userConfig: ReactDoctorConfig | null;
   readonly readFileLinesSync: (filePath: string) => string[] | null;
   readonly respectInlineDisables: boolean;
+  readonly severityControls?: RuleSeverityControls;
   /**
    * Whether `"warning"`-severity diagnostics are allowed through. When
    * `true` (the default), warnings show; when `false`, every warning is
@@ -109,7 +111,7 @@ export const buildDiagnosticPipeline = (
   const { rootDirectory, userConfig, readFileLinesSync, respectInlineDisables, showWarnings } =
     input;
 
-  const severityControls = buildRuleSeverityControls(userConfig);
+  const severityControls = input.severityControls ?? buildRuleSeverityControls(userConfig);
   const ignoredRules = new Set(
     Array.isArray(userConfig?.ignore?.rules)
       ? userConfig.ignore.rules.filter((rule): rule is string => typeof rule === "string")
@@ -179,13 +181,6 @@ export const buildDiagnosticPipeline = (
     return getFileContext(diagnostic.filePath) !== "production";
   };
 
-  const matchesRuleKey = (ruleIdentifier: string, candidates: Iterable<string>): boolean => {
-    for (const candidate of candidates) {
-      if (isSameRuleKey(candidate, ruleIdentifier)) return true;
-    }
-    return false;
-  };
-
   const isRnRawTextSuppressedByConfig = (diagnostic: Diagnostic): boolean => {
     if (diagnostic.rule !== "rn-no-raw-text") return false;
     if (diagnostic.line <= 0) return false;
@@ -238,13 +233,9 @@ export const buildDiagnosticPipeline = (
 
       let current = diagnostic;
       let explicitSeverityOverride: RuleSeverityOverride | undefined;
-      // A *per-rule* override (vs. a broad `categories` bump) — the only signal
-      // that should re-enable an app-only rule on a library file.
       let explicitRuleOverride: RuleSeverityOverride | undefined;
       if (severityControls) {
         const { ruleKey, category } = getDiagnosticRuleIdentity(current);
-        // No `category` → resolves against `rules` (+ aliases) only, ignoring
-        // any matching `categories` entry.
         explicitRuleOverride = resolveRuleSeverityOverride({ ruleKey }, severityControls);
         explicitSeverityOverride = resolveRuleSeverityOverride(
           { ruleKey, category },
@@ -263,7 +254,10 @@ export const buildDiagnosticPipeline = (
       // deliberate "I want static-components in my library" and must not leak
       // these rules back into published packages.
       if (explicitRuleOverride === undefined) {
-        if (matchesRuleKey(ruleIdentifier, APP_ONLY_RULE_KEYS) && isLibraryFile(current.filePath)) {
+        if (
+          isSameRuleKeyInSet(APP_ONLY_RULE_KEYS, ruleIdentifier) &&
+          isLibraryFile(current.filePath)
+        ) {
           return null;
         }
       }
@@ -277,7 +271,7 @@ export const buildDiagnosticPipeline = (
       }
 
       if (userConfig) {
-        if (matchesRuleKey(ruleIdentifier, ignoredRules)) return suppress(current, "config");
+        if (isSameRuleKeyInSet(ignoredRules, ruleIdentifier)) return suppress(current, "config");
         if (isFileIgnoredByPatterns(current.filePath, rootDirectory, ignoredFilePatterns)) {
           return null;
         }

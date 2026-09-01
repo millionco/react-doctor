@@ -1,12 +1,11 @@
-import {
-  declaresAnyDependency,
-  declaresDependency,
-  findNearestPackageDirectory,
-} from "./classify-package-platform.js";
+import { declaresAnyDependency, declaresDependency } from "./classify-package-platform.js";
 import { isPackageWithinProjectRoot } from "./is-package-within-project-root.js";
 import { normalizeFilename } from "./normalize-filename.js";
 import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
-import { readNearestPackageManifest } from "./read-nearest-package-manifest.js";
+import {
+  findNearestPackageDirectory,
+  readNearestPackageManifest,
+} from "./read-nearest-package-manifest.js";
 import type { RuleContext } from "./rule-context.js";
 
 // Whether Next.js rules should run on `filename`. The project-level

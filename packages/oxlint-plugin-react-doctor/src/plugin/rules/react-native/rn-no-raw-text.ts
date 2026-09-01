@@ -71,11 +71,12 @@ const resolveTextBoundaryName = (
   return resolveJsxElementName(openingElement);
 };
 
-const TEXT_COMPONENT_KEYWORDS: ReadonlyArray<string> = [...REACT_NATIVE_TEXT_COMPONENT_KEYWORDS];
-
 const isTextHandlingComponent = (elementName: string): boolean => {
   if (REACT_NATIVE_TEXT_COMPONENTS.has(elementName)) return true;
-  return TEXT_COMPONENT_KEYWORDS.some((keyword) => elementName.includes(keyword));
+  for (const keyword of REACT_NATIVE_TEXT_COMPONENT_KEYWORDS) {
+    if (elementName.includes(keyword)) return true;
+  }
+  return false;
 };
 
 const isTransparentTextWrapper = (elementName: string | null): boolean =>
@@ -90,13 +91,6 @@ export const rnNoRawText = defineRule({
   recommendation:
     "Text outside a `<Text>` component crashes on React Native. Wrap it like `<Text>{value}</Text>`.",
   create: (context: RuleContext) => {
-    // The package-boundary gate (`isReactNativeFileActive`) lives on the
-    // rule wrapper applied at registry load — by the time we get here
-    // the file is confirmed to belong to a React Native / Expo package
-    // (or to be ambiguous enough that we err on the side of running).
-    // The only file-level branch we still need is "use dom", which is
-    // Expo Router's directive that opts a single file into being rendered
-    // in a WebView as DOM rather than on React Native primitives.
     let isDomComponentFile = false;
 
     // In-file components classified by where they forward their children (see

@@ -2,23 +2,6 @@ import { EMPTY_RULE_VISITORS } from "./empty-rule-visitors.js";
 import { isReactNativeFileActive } from "./is-react-native-file.js";
 import type { Rule } from "./rule.js";
 
-// Wraps a rule whose `create` should only run on files that belong to a
-// React Native or Expo package.
-//
-// Rather than have every `rn-*` rule re-implement the
-// `package.json`-walking + `.web.tsx` checks at the top of its `create`,
-// we apply a single shared gate at registry load time. When the file
-// owning `context.filename` does not match a React Native package,
-// we return empty visitors so oxlint never invokes the rule body — no
-// allocations, no AST walks, no diagnostics. The wrapper deliberately
-// preserves the underlying rule's identity for non-RN-aware callers
-// (`Object.assign({}, rule)`) so `framework`, `category`, `severity`,
-// `requires`, `tags`, and `recommendation` continue to flow through.
-//
-// Used by the rule registry to wrap every `framework: "react-native"`
-// rule; `wrapNextjsRule` is the parallel gate for `framework: "nextjs"`
-// rules (same mixed-monorepo file-level ambiguity, keyed on a `next`
-// dependency in the nearest manifest instead of platform classification).
 export const wrapReactNativeRule = (rule: Rule): Rule => {
   const innerCreate = rule.create.bind(rule);
   return {

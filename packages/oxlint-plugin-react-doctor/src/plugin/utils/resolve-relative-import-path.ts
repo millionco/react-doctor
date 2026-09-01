@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { recordContentProbe, recordExistenceProbe } from "./cross-file-probe-recorder.js";
+import { isObjectRecord } from "./is-object-record.js";
 
 const MODULE_FILE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"];
 const PACKAGE_EXPORT_CONDITIONS = ["import", "default", "module", "browser", "require"];
@@ -65,9 +66,6 @@ const getModuleFilePathCandidates = (modulePath: string): string[] => {
 
   return [modulePath];
 };
-
-const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
 
 const getConditionalExportEntry = (exportEntry: unknown): string | null => {
   if (typeof exportEntry === "string") return exportEntry;

@@ -1,8 +1,6 @@
-import {
-  classifyPackagePlatform,
-  findNearestPackageDirectory,
-} from "./classify-package-platform.js";
+import { classifyPackagePlatform } from "./classify-package-platform.js";
 import { isPackageWithinProjectRoot } from "./is-package-within-project-root.js";
+import { findNearestPackageDirectory } from "./read-nearest-package-manifest.js";
 import { normalizeFilename } from "./normalize-filename.js";
 import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import type { RuleContext } from "./rule-context.js";

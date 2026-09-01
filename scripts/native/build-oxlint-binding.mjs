@@ -33,6 +33,7 @@ const outputDirectory = path.resolve(
 );
 const shouldCheckOnly = argumentsList.includes("--check-only");
 const shouldCompileCheck = argumentsList.includes("--compile-check");
+const shouldBuildDebug = argumentsList.includes("--debug");
 const shouldUseAllocator = !argumentsList.includes("--no-allocator");
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-oxc-"));
 const checkoutDirectory = path.join(temporaryDirectory, "oxc");
@@ -771,6 +772,50 @@ impl Rule for ${delegatedRule.struct} {
           "statement_always_exits",
         ],
       ],
+      ["exhaustive-deps", ["binding_pattern_initializer_for_symbol", "is_non_production_file"]],
+      [
+        "no-pass-data-to-parent",
+        [
+          "binding_pattern_has_symbol",
+          "binding_property_name_for_symbol",
+          "component_or_hook_function_name",
+          "for_each_local_callback_execution_node",
+          "has_possible_static_property_write_before",
+          "is_non_production_file",
+          "is_react_hook_call",
+          "local_callback_nearest_function_node_index",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "no-pass-live-state-to-parent",
+        [
+          "binding_pattern_has_symbol",
+          "binding_property_name_for_symbol",
+          "component_or_hook_function_name",
+          "for_each_local_callback_execution_node",
+          "has_possible_static_property_write_before",
+          "is_non_production_file",
+          "is_react_hook_call",
+          "local_callback_nearest_function_node_index",
+          "transparent_expression_root",
+        ],
+      ],
+      [
+        "rules-of-hooks",
+        [
+          "binding_property_name_for_symbol",
+          "has_possible_static_property_write_before",
+          "is_node_conditionally_executed",
+          "is_non_production_file",
+          "resolve_const_identifier_root_symbol",
+          "resolve_direct_unreassigned_symbol_initializer",
+          "resolve_identifier_import",
+          "statement_always_exits",
+          "symbol_has_write_before",
+          "transparent_expression_root",
+        ],
+      ],
       [
         "no-unguarded-throwing-parse-call",
         ["is_non_production_file", "transparent_expression_root"],
@@ -1457,7 +1502,8 @@ impl Rule for ${delegatedRule.struct} {
       const targetDirectory = path.resolve(
         process.env.CARGO_TARGET_DIR ?? path.join(temporaryDirectory, "target"),
       );
-      const cargoArguments = ["build", "--locked", "-p", "oxlint", "--release", "--lib"];
+      const cargoArguments = ["build", "--locked", "-p", "oxlint", "--lib"];
+      if (!shouldBuildDebug) cargoArguments.push("--release");
       if (shouldUseAllocator) cargoArguments.push("--features", "allocator");
       run("cargo", cargoArguments, {
         cwd: checkoutDirectory,
@@ -1475,7 +1521,8 @@ impl Rule for ${delegatedRule.struct} {
           ? `${process.platform}-${process.arch}-gnu`
           : `${process.platform}-${process.arch}`;
       const bindingFileName = `oxlint-react-doctor.${platformSuffix}.node`;
-      const builtLibraryPath = path.join(targetDirectory, "release", libraryName);
+      const profileDirectory = shouldBuildDebug ? "debug" : "release";
+      const builtLibraryPath = path.join(targetDirectory, profileDirectory, libraryName);
       const outputBindingPath = path.join(outputDirectory, bindingFileName);
       fs.mkdirSync(outputDirectory, { recursive: true });
       fs.copyFileSync(builtLibraryPath, outputBindingPath);

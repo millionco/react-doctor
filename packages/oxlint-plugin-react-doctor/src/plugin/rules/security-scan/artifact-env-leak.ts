@@ -7,6 +7,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { findSuspiciousPublicEnvSecretNamePattern } from "./utils/find-suspicious-public-env-secret-name.js";
 import { hasFullEnvLeakShape } from "./utils/has-full-env-leak-shape.js";
 import { maskSourceComments } from "./utils/mask-source-comments.js";
+import { maskThirdPartySourceMapSources } from "./utils/mask-third-party-source-map-sources.js";
 import { scanArtifactLeak } from "./utils/scan-artifact-leak.js";
 
 const ARTIFACT_ENV_LEAK_MESSAGE =
@@ -23,6 +24,9 @@ export const artifactEnvLeak = defineRule({
   recommendation:
     "Treat public env prefixes as publication, not secrecy; keep secret env vars server-only and rebuild after rotating leaked keys.",
   scan: (file) => {
+    const artifactContent = maskThirdPartySourceMapSources(file.relativePath, file.content);
+    const artifactFile =
+      artifactContent === file.content ? file : { ...file, content: artifactContent };
     let isRawCandidateExact = false;
     const findRawCandidatePattern = (content: string): RegExp | undefined => {
       const suspiciousPublicNamePattern = findSuspiciousPublicEnvSecretNamePattern(content);
@@ -40,7 +44,7 @@ export const artifactEnvLeak = defineRule({
         : undefined;
     };
     const rawCandidateFindings = scanArtifactLeak(
-      file,
+      artifactFile,
       findRawCandidatePattern,
       ARTIFACT_ENV_LEAK_MESSAGE,
     );
@@ -48,15 +52,15 @@ export const artifactEnvLeak = defineRule({
 
     const rawFindings = isRawCandidateExact
       ? rawCandidateFindings
-      : scanArtifactLeak(file, findArtifactEnvLeakPattern, ARTIFACT_ENV_LEAK_MESSAGE);
+      : scanArtifactLeak(artifactFile, findArtifactEnvLeakPattern, ARTIFACT_ENV_LEAK_MESSAGE);
 
-    const executableContent = maskSourceComments(file.relativePath, file.content);
+    const executableContent = maskSourceComments(artifactFile.relativePath, artifactFile.content);
     if (executableContent === undefined) return rawCandidateFindings;
-    if (executableContent === file.content) return rawFindings;
+    if (executableContent === artifactFile.content) return rawFindings;
 
     return scanArtifactLeak(
       {
-        ...file,
+        ...artifactFile,
         content: executableContent,
       },
       findArtifactEnvLeakPattern,

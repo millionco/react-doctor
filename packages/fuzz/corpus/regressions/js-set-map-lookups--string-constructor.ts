@@ -4,4 +4,4 @@
 // verdict: pass
 
 const hasCode = (messages: unknown[], code: string) =>
-  messages.some((entry) => String(entry).includes(code))
+  messages.some((entry) => String(entry).includes(code));

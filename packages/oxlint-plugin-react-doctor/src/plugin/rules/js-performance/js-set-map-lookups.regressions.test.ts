@@ -840,14 +840,27 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
     );
   });
 
-  it("flags String(x).includes() when String is a shadowed local variable returning non-string", () => {
+  it("does not flag String(x).indexOf() as a substring search", () => {
+    expectPass(
+      `const hasCode = (messages: unknown[], code: string) => messages.some((entry) => String(entry).indexOf(code) !== -1)`,
+    );
+  });
+
+  it("flags String(x).includes() when String is a shadowed local collection factory", () => {
     expectFail(
       `function test() {
-        const String = (x: unknown) => JSON.stringify(x);
+        const String = (value: unknown) => [value];
         const hasCode = (messages: unknown[], code: string) =>
           messages.some((entry) => String(entry).includes(code));
         return hasCode;
       }`,
+    );
+  });
+
+  it("flags String(x).includes() when String is a function parameter", () => {
+    expectFail(
+      `const hasCode = (String, messages: unknown[], code: string) =>
+        messages.some((entry) => String(entry).includes(code))`,
     );
   });
 });

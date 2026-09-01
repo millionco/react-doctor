@@ -213,4 +213,83 @@ export const client = {};`,
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent on DATABASE_URL in node_modules JSDoc via sourcemap sourcesContent (#1738)", () => {
+    const sourcemapContent = JSON.stringify({
+      version: 3,
+      sources: ["../../node_modules/@reatom/core/dist/index.js", "../../src/config.ts"],
+      sourcesContent: [
+        '/** Example:\n * const db = dbVar.set(process.env.DATABASE_URL)\n */\nexport function connect() {}',
+        'export const token = import.meta.env.VITE_STYTCH_PUBLIC_TOKEN;'
+      ],
+      mappings: "AAAA;AACA",
+      names: []
+    });
+
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/index-BUe3yDzZ.js.map",
+      content: sourcemapContent,
+      isGeneratedBundle: true,
+    });
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags executable DATABASE_URL in app source via sourcemap", () => {
+    const sourcemapContent = JSON.stringify({
+      version: 3,
+      sources: ["../../src/server/db.ts"],
+      sourcesContent: ['export const databaseUrl = process.env.DATABASE_URL;'],
+      mappings: "AAAA",
+      names: []
+    });
+
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/index-abc.js.map",
+      content: sourcemapContent,
+      isGeneratedBundle: true,
+    });
+
+    expect(findings.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on VITE_*_PUBLIC_TOKEN (intentionally public) (#1738)", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/index-abc.js",
+      content: 'const token = "VITE_STYTCH_PUBLIC_TOKEN";',
+      isGeneratedBundle: true,
+    });
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on NEXT_PUBLIC_*_PUBLIC_KEY (intentionally public)", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/index-abc.js",
+      content: 'const key = "NEXT_PUBLIC_STRIPE_PUBLIC_KEY";',
+      isGeneratedBundle: true,
+    });
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on EXPO_PUBLIC_*_PUBLIC_SECRET (intentionally public despite 'secret' keyword)", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/index-abc.js",
+      content: 'const secret = "EXPO_PUBLIC_AUTH_PUBLIC_SECRET";',
+      isGeneratedBundle: true,
+    });
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it("correctly exempts VITE_*_PUBLISHABLE_* which is already trusted", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/index-abc.js",
+      content: 'const token = "VITE_MY_PUBLISHABLE_KEY";',
+      isGeneratedBundle: true,
+    });
+
+    expect(findings).toHaveLength(0);
+  });
 });

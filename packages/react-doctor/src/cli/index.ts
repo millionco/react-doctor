@@ -530,10 +530,10 @@ program
   .option("--max-duration <seconds>", MAX_DURATION_OPTION_DESCRIPTION)
   .option("-p, --project <names>", "scan specific workspace projects (comma-separated, or *)")
   .option("-y, --yes", "skip the project prompt and scan every discovered project")
-  .action(async (directory = ".", _localOptions, command) => {
+  .action(async (paths: string[] = [], _localOptions, command) => {
     const { runScanCommand } = await import("./commands/scan.js");
     return runScanCommand({
-      directory,
+      paths,
       flags: command.optsWithGlobals(),
       invocationCommand: "experimental-tui",
     });

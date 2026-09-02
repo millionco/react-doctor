@@ -638,6 +638,28 @@ describe("analyzeProject", () => {
     expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.jsx"]);
   });
 
+  it("treats Sanity blueprint configuration as a convention entry", async () => {
+    const rootDirectory = createProject(
+      {
+        "sanity.config.ts": `export default { name: "studio", title: "Studio" };`,
+        "sanity.blueprint.ts": `
+          import { defineBlueprint } from "@sanity/blueprints";
+          import { blueprintHelper } from "./lib/blueprint-helper";
+          export default defineBlueprint({
+            resources: blueprintHelper,
+          });
+        `,
+        "lib/blueprint-helper.ts": "export const blueprintHelper = [];",
+        "src/orphan.ts": "export const orphan = true;",
+      },
+      { dependencies: { sanity: "1.0.0", "@sanity/blueprints": "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
   it("discovers static entries from CoffeeScript interpolated require factories", async () => {
     const rootDirectory = createProject(
       {

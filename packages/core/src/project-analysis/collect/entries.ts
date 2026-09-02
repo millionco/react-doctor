@@ -2726,7 +2726,7 @@ const FRAMEWORK_PATTERNS: ToolingPluginDefinition[] = [
     enablers: ["sanity", "@sanity/cli"],
     enablerPrefixes: ["@sanity/"],
     entryPatterns: [],
-    alwaysUsed: ["sanity.config.{ts,js}", "sanity.cli.{ts,js}"],
+    alwaysUsed: ["sanity.config.{ts,js}", "sanity.cli.{ts,js}", "sanity.blueprint.{ts,js}"],
   },
   {
     enablers: ["astro"],

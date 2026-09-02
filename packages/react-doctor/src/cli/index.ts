@@ -15,6 +15,7 @@ import { normalizeHelpInvocation } from "./utils/normalize-help-command.js";
 import { printDebugTrace } from "./utils/print-debug-trace.js";
 import { assertNoRemovedFlags } from "./utils/removed-cli-flags.js";
 import { reportErrorToSentry } from "./utils/report-error.js";
+import { resolvePositionalScanInput } from "./utils/resolve-positional-scan-input.js";
 import { stripUnknownCliFlags } from "./utils/strip-unknown-cli-flags.js";
 import { unrefStdin } from "./utils/unref-stdin.js";
 import { VERSION } from "./utils/version.js";
@@ -58,6 +59,7 @@ ${highlighter.dim("Examples:")}
 ${formatExampleLines([
   ["react-doctor", "scan the current project"],
   ["react-doctor ./apps/web", "scan a specific directory"],
+  ["react-doctor src/a.tsx src/b.tsx", "scan only selected files"],
   ["react-doctor scan http://localhost:3000", "profile one interaction in a running React app"],
   ["react-doctor --scope changed --base main", "scan only new issues vs. main"],
   ["react-doctor --project modules/a,modules/b", "score each module separately (names or paths)"],
@@ -180,7 +182,7 @@ const program = new Command()
   .name("react-doctor")
   .description("Diagnose React codebase health")
   .version(VERSION, "-v, --version", "display the version number")
-  .argument("[directory]", "project directory to scan", ".")
+  .argument("[paths...]", "one project directory or source file paths to scan")
   .option("--lint", "enable linting")
   .option("--no-lint", "skip linting")
   .addOption(new Option("--dead-code").hideHelp())
@@ -273,10 +275,11 @@ const program = new Command()
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .addHelpText("after", renderRootHelpEpilog);
 
-program.action(async (directory = ".", flags: InspectFlags) => {
+program.action(async (positionalPaths: string[] = [], flags: InspectFlags) => {
   const { runScanCommand } = await import("./commands/scan.js");
+  const scanInput = resolvePositionalScanInput(positionalPaths);
   return runScanCommand({
-    directory,
+    ...scanInput,
     flags,
     invocationCommand: "inspect",
   });

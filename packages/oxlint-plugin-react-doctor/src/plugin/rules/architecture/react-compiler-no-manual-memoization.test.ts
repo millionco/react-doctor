@@ -315,4 +315,104 @@ export default Wrapped;`,
       0,
     );
   });
+
+  it("does not flag `useMemo` in a component with 'use no memo' directive", () => {
+    expectDiagnosticCount(
+      `import { useMemo } from "react";
+export function Component() {
+  "use no memo";
+  const cachedValue = useMemo(() => 1, []);
+  return <span>{cachedValue}</span>;
+}`,
+      0,
+    );
+  });
+
+  it("does not flag `useCallback` in a component with 'use no memo' directive", () => {
+    expectDiagnosticCount(
+      `import { useCallback } from "react";
+export function Component() {
+  "use no memo";
+  const handler = useCallback(() => undefined, []);
+  return <button onClick={handler} />;
+}`,
+      0,
+    );
+  });
+
+  it("does not flag `memo` wrapping a component with 'use no memo' directive", () => {
+    expectDiagnosticCount(
+      `import { memo } from "react";
+const Inner = memo(function Component({ value }) {
+  "use no memo";
+  return <span>{value}</span>;
+});
+export default Inner;`,
+      0,
+    );
+  });
+
+  it("does not flag multiple hooks in a component with 'use no memo' directive", () => {
+    expectDiagnosticCount(
+      `import { useMemo, useCallback } from "react";
+export function Component({ value }) {
+  "use no memo";
+  const computed = useMemo(() => value * 2, [value]);
+  const handler = useCallback(() => console.log(computed), [computed]);
+  return <button onClick={handler}>{computed}</button>;
+}`,
+      0,
+    );
+  });
+
+  it("does not flag `React.useMemo` in a component with 'use no memo' directive (namespace import)", () => {
+    expectDiagnosticCount(
+      `import * as React from "react";
+export function Component() {
+  "use no memo";
+  const cachedValue = React.useMemo(() => 1, []);
+  return <span>{cachedValue}</span>;
+}`,
+      0,
+    );
+  });
+
+  it("does not flag when 'use no memo' appears in single quotes", () => {
+    expectDiagnosticCount(
+      `import { useMemo } from "react";
+export function Component() {
+  'use no memo';
+  const cachedValue = useMemo(() => 1, []);
+  return <span>{cachedValue}</span>;
+}`,
+      0,
+    );
+  });
+
+  it("still flags `useMemo` in a nested function without 'use no memo' inside a component that has the directive", () => {
+    expectDiagnosticCount(
+      `import { useMemo } from "react";
+export function OuterComponent() {
+  "use no memo";
+  const InnerComponent = () => {
+    const cachedValue = useMemo(() => 1, []);
+    return <span>{cachedValue}</span>;
+  };
+  return <InnerComponent />;
+}`,
+      1,
+    );
+  });
+
+  it("does not flag `useMemo` in arrow function component with 'use no memo'", () => {
+    expectDiagnosticCount(
+      `import { useMemo } from "react";
+export const Component = () => {
+  "use no memo";
+  const cachedValue = useMemo(() => 1, []);
+  return <span>{cachedValue}</span>;
+};`,
+      0,
+    );
+  });
 });

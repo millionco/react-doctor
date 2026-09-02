@@ -6,6 +6,7 @@ import {
   getImportedNameFromModule,
   isImportedFromModule,
 } from "../../utils/find-import-source-for-name.js";
+import { hasUseNoMemoDirective } from "../../utils/has-use-no-memo-directive.js";
 import { isCanonicalReactNamespaceName } from "../../utils/is-canonical-react-namespace-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
@@ -158,6 +159,8 @@ export const reactCompilerNoManualMemoization = defineRule({
       if (apiName === "memo") {
         const comparatorArgument = node.arguments?.[1];
         if (comparatorArgument && !isNullishComparatorArgument(comparatorArgument)) return;
+        const wrappedComponent = stripParenExpression(node.arguments?.[0]);
+        if (wrappedComponent && hasUseNoMemoDirective(wrappedComponent)) return;
       } else {
         // `useMemo` / `useCallback` are only redundant inside a function
         // the compiler will actually compile. Inside a function it skips
@@ -165,6 +168,7 @@ export const reactCompilerNoManualMemoization = defineRule({
         // helper) nothing is auto-cached, so the manual memoization stays.
         const enclosingFunction = findEnclosingFunction(node);
         if (!enclosingFunction || !isCompilerInferableFunction(enclosingFunction)) return;
+        if (hasUseNoMemoDirective(enclosingFunction)) return;
       }
       const removalMessage = REMOVAL_MESSAGE_BY_REACT_API_NAME.get(apiName);
       if (!removalMessage) return;

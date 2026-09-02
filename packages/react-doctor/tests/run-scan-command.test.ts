@@ -92,7 +92,7 @@ describe("runScanCommand", () => {
       yes: true,
     };
 
-    await runScanCommand({ directory: "/tmp/project", flags, invocationCommand: "inspect" });
+    await runScanCommand({ paths: ["/tmp/project"], flags, invocationCommand: "inspect" });
 
     expect(resolveCliInspectOptions).toHaveBeenCalledWith(flags, null);
     expect(runScanApp).toHaveBeenCalledWith({
@@ -123,9 +123,9 @@ describe("runScanCommand", () => {
     vi.mocked(shouldUseTui).mockReturnValue(false);
     const flags = { json: true };
 
-    await runScanCommand({ directory: "/tmp/project", flags, invocationCommand: "inspect" });
+    await runScanCommand({ paths: ["/tmp/project"], flags, invocationCommand: "inspect" });
 
-    expect(inspectAction).toHaveBeenCalledWith("/tmp/project", flags, "inspect");
+    expect(inspectAction).toHaveBeenCalledWith("/tmp/project", flags, "inspect", null);
     expect(runScanApp).not.toHaveBeenCalled();
     expect(runProjectMigrations).not.toHaveBeenCalled();
     expect(recordCount).not.toHaveBeenCalled();
@@ -134,18 +134,43 @@ describe("runScanCommand", () => {
   it("preserves the TUI scan exit code", async () => {
     vi.mocked(runScanApp).mockResolvedValue({ shouldFail: true });
 
-    await runScanCommand({ directory: "/tmp/project", flags: {}, invocationCommand: "inspect" });
+    await runScanCommand({ paths: ["/tmp/project"], flags: {}, invocationCommand: "inspect" });
 
     expect(process.exitCode).toBe(1);
   });
 
   it("disables every scan cache when requested", async () => {
     await runScanCommand({
-      directory: "/tmp/project",
+      paths: ["/tmp/project"],
       flags: { cache: false },
       invocationCommand: "inspect",
     });
 
     expect(process.env.REACT_DOCTOR_NO_CACHE).toBe("1");
+  });
+
+  it("defaults to current directory when no paths provided", async () => {
+    vi.mocked(shouldUseTui).mockReturnValue(false);
+
+    await runScanCommand({ paths: [], flags: {}, invocationCommand: "inspect" });
+
+    expect(inspectAction).toHaveBeenCalledWith(".", {}, "inspect", null);
+  });
+
+  it("passes multiple file paths to inspectAction when provided", async () => {
+    vi.mocked(shouldUseTui).mockReturnValue(false);
+    const paths = ["src/a.tsx", "src/b.tsx"];
+
+    await runScanCommand({ paths, flags: {}, invocationCommand: "inspect" });
+
+    expect(inspectAction).toHaveBeenCalledWith(".", {}, "inspect", paths);
+  });
+
+  it("treats single path as directory for backward compatibility", async () => {
+    vi.mocked(shouldUseTui).mockReturnValue(false);
+
+    await runScanCommand({ paths: ["./apps/web"], flags: {}, invocationCommand: "inspect" });
+
+    expect(inspectAction).toHaveBeenCalledWith("./apps/web", {}, "inspect", null);
   });
 });

@@ -58,6 +58,7 @@ ${highlighter.dim("Examples:")}
 ${formatExampleLines([
   ["react-doctor", "scan the current project"],
   ["react-doctor ./apps/web", "scan a specific directory"],
+  ["react-doctor src/a.tsx src/b.tsx", "scan specific files"],
   ["react-doctor scan http://localhost:3000", "profile one interaction in a running React app"],
   ["react-doctor --scope changed --base main", "scan only new issues vs. main"],
   ["react-doctor --project modules/a,modules/b", "score each module separately (names or paths)"],
@@ -180,7 +181,10 @@ const program = new Command()
   .name("react-doctor")
   .description("Diagnose React codebase health")
   .version(VERSION, "-v, --version", "display the version number")
-  .argument("[directory]", "project directory to scan", ".")
+  .argument(
+    "[paths...]",
+    "file paths to scan, or project directory (defaults to current directory)",
+  )
   .option("--lint", "enable linting")
   .option("--no-lint", "skip linting")
   .addOption(new Option("--dead-code").hideHelp())
@@ -273,10 +277,10 @@ const program = new Command()
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .addHelpText("after", renderRootHelpEpilog);
 
-program.action(async (directory = ".", flags: InspectFlags) => {
+program.action(async (paths: string[] = [], flags: InspectFlags) => {
   const { runScanCommand } = await import("./commands/scan.js");
   return runScanCommand({
-    directory,
+    paths,
     flags,
     invocationCommand: "inspect",
   });
@@ -526,10 +530,10 @@ program
   .option("--max-duration <seconds>", MAX_DURATION_OPTION_DESCRIPTION)
   .option("-p, --project <names>", "scan specific workspace projects (comma-separated, or *)")
   .option("-y, --yes", "skip the project prompt and scan every discovered project")
-  .action(async (directory = ".", _localOptions, command) => {
+  .action(async (paths: string[] = [], _localOptions, command) => {
     const { runScanCommand } = await import("./commands/scan.js");
     return runScanCommand({
-      directory,
+      paths,
       flags: command.optsWithGlobals(),
       invocationCommand: "experimental-tui",
     });

@@ -1,5 +1,12 @@
 # @react-doctor/fuzz
 
+## 0.0.31
+
+### Patch Changes
+
+- Updated dependencies [[`ffc2d14`](https://github.com/millionco/react-doctor/commit/ffc2d142545167107b11908f004d764ac4e31399), [`f7efb7d`](https://github.com/millionco/react-doctor/commit/f7efb7d1c4fc564fa647a0dc26c48867da9166c9), [`05ef989`](https://github.com/millionco/react-doctor/commit/05ef98926de787b01e817c8853101d6c31e2071a), [`a04b933`](https://github.com/millionco/react-doctor/commit/a04b933c027f6addf4161ba0df1c11eb8922b879), [`adc3a91`](https://github.com/millionco/react-doctor/commit/adc3a9129190315263a5fa92bda7ea3e3e2ba94a), [`2c4560f`](https://github.com/millionco/react-doctor/commit/2c4560fc0abbf70f1574fe847402d320347d061e), [`e1d4c51`](https://github.com/millionco/react-doctor/commit/e1d4c51abfd9d15ec96f5001259c3e8f332f7d50), [`905607f`](https://github.com/millionco/react-doctor/commit/905607f7fc2240304cbad5f41d3ad496eab06b17), [`17eeeb5`](https://github.com/millionco/react-doctor/commit/17eeeb5367177e6a3ba814ca8d107d009addc9dc), [`afa1780`](https://github.com/millionco/react-doctor/commit/afa1780254bfd72175e6d0025841560582d32ad1), [`025d69d`](https://github.com/millionco/react-doctor/commit/025d69d701581092632caa87ea59e5a719094ab9), [`0f59a3b`](https://github.com/millionco/react-doctor/commit/0f59a3b84dd5233f6bcf5e4a621da6699c432405), [`5bc88ae`](https://github.com/millionco/react-doctor/commit/5bc88ae6a0cd7518ffa8c6348f9176868d00ea77), [`4bf7aff`](https://github.com/millionco/react-doctor/commit/4bf7aff4398383adb6b3dace48f72050dfd195a6), [`bd08406`](https://github.com/millionco/react-doctor/commit/bd08406381618785181aedf8bee956047ad107d3), [`2b0f06e`](https://github.com/millionco/react-doctor/commit/2b0f06ec70943f083d8893f8a1b989eba2ae40c6), [`8c2f03a`](https://github.com/millionco/react-doctor/commit/8c2f03aea9885f24da8f2002e85a32ac186bf5bf), [`6416370`](https://github.com/millionco/react-doctor/commit/6416370836deaa0a09189343a8579fb3f5d13494), [`28d4343`](https://github.com/millionco/react-doctor/commit/28d4343e4d90a8d80c0fdb5eac0173bdd8826866)]:
+  - oxlint-plugin-react-doctor@0.9.13
+
 ## 0.0.30
 
 ### Patch Changes

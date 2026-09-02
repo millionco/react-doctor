@@ -41,8 +41,8 @@ const runScanWithArgs = (
   });
 
 describe.skipIf(!hasBuiltCli)("multiple file paths", () => {
-  it("scans specific files when multiple paths are provided", async () => {
-    const projectDirectory = setupReactProject(temporaryRoot, "multi-file", {
+  it("treats single path as directory for backward compatibility", async () => {
+    const projectDirectory = setupReactProject(temporaryRoot, "single-path", {
       files: {
         "src/App.tsx": `
           export const App = ({ items }: { items: string[] }) => (
@@ -51,21 +51,14 @@ describe.skipIf(!hasBuiltCli)("multiple file paths", () => {
             </main>
           );
         `,
-        "src/Other.tsx": `
-          export const Other = () => {
-            const x = 1;
-            return <div>Hello</div>;
-          };
-        `,
       },
     });
 
-    const result = await runScanWithArgs(projectDirectory, ["src/App.tsx"]);
+    const result = await runScanWithArgs(projectDirectory, ["src"]);
     expect(result.exitCode, result.stderr).toBe(0);
     const report = JSON.parse(result.stdout);
     const files = report.diagnostics.map((d: { filePath: string }) => d.filePath);
-    expect(files).toContain("src/App.tsx");
-    expect(files).not.toContain("src/Other.tsx");
+    expect(files.some((f: string) => f.includes("App.tsx"))).toBe(true);
   }, 60_000);
 
   it("scans multiple files when provided", async () => {

@@ -63,7 +63,7 @@ declare_oxc_lint!(
 
 impl Rule for RulesOfHooks {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx)
+        !is_test_noise_file(ctx)
             && !ctx
                 .file_extension()
                 .is_some_and(|extension| extension == "vue" || extension == "svelte")

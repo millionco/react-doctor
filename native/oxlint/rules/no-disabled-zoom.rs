@@ -2,7 +2,11 @@ use oxc_ast::AstKind;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 
-use crate::{AstNode, context::LintContext, rule::Rule};
+use crate::{
+    AstNode,
+    context::{ContextHost, LintContext},
+    rule::Rule,
+};
 
 const MINIMUM_ACCESSIBLE_ZOOM_SCALE: f64 = 2.0;
 const USER_SCALABLE_MESSAGE: &str = "Your users can't pinch to zoom because user-scalable=no blocks it, which fails accessibility (WCAG 1.4.4). Remove it & fix the layout if it breaks at 200%.";
@@ -20,6 +24,10 @@ declare_oxc_lint!(
 );
 
 impl Rule for NoDisabledZoom {
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        !is_test_noise_file(ctx)
+    }
+
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
         let AstKind::JSXOpeningElement(opening_element) = node.kind() else {
             return;

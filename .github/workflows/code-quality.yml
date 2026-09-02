@@ -16,9 +16,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# First-party PRs can read the Turbo cache, but only trusted push runs can write it.
 env:
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+  TURBO_CACHE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && 'local:rw,remote:r' || github.event_name == 'pull_request' && 'local:rw' || 'local:rw,remote:rw' }}
 
 jobs:
   lint:

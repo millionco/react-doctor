@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
+import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { buildJsonReport } from "@react-doctor/core";
 import type { Diagnostic, InspectResult, ProjectInfo } from "@react-doctor/core";
 
@@ -114,6 +116,32 @@ describe("buildJsonReport", () => {
     expect(report.diagnostics[0].tags).toEqual([...report.diagnostics[0].tags].sort());
     expect(report.diagnostics[0]).not.toHaveProperty("ruleId");
     expect(report.diagnostics[0]).not.toHaveProperty("location");
+  });
+
+  it("normalizes a diagnostic file URL without changing the report schema", () => {
+    const fileUrl = pathToFileURL(path.join(projectInfo.rootDirectory, "src", "App.tsx")).href;
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: projectInfo.rootDirectory,
+      mode: "full",
+      diff: null,
+      scans: [
+        {
+          directory: projectInfo.rootDirectory,
+          result: result({ diagnostics: [{ ...errorDiagnostic, filePath: fileUrl }] }),
+        },
+      ],
+      totalElapsedMilliseconds: 1200,
+    });
+
+    expect(report.schemaVersion).toBe(3);
+    expect(report.diagnostics[0]).toMatchObject({
+      filePath: fileUrl,
+      normalizedFilePath: "src/App.tsx",
+      id: expect.stringMatching(
+        /^src\/App\.tsx::12:1::react-doctor\/no-array-index-as-key::[a-f0-9]{64}$/,
+      ),
+    });
   });
 
   it("assigns distinct occurrence identities to same-site findings from one rule", () => {

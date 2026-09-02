@@ -5,7 +5,11 @@ use oxc_ast::{
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 
-use crate::{AstNode, context::LintContext, rule::Rule};
+use crate::{
+    AstNode,
+    context::{ContextHost, LintContext},
+    rule::Rule,
+};
 
 const MESSAGE: &str = "This is slow to render because you animate <svg> directly, so wrap it in a <div> or <motion.div> & animate that instead";
 const MOTION_ANIMATION_PROPERTY_NAMES: [&str; 8] = [
@@ -32,6 +36,10 @@ declare_oxc_lint!(
 );
 
 impl Rule for RenderingAnimateSvgWrapper {
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        !is_test_noise_file(ctx)
+    }
+
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
         let AstKind::JSXOpeningElement(opening_element) = node.kind() else {
             return;

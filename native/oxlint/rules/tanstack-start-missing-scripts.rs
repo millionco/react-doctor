@@ -36,7 +36,8 @@ declare_oxc_lint!(
 
 impl Rule for TanstackStartMissingScripts {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        is_tanstack_root_route_filename(&ctx.file_path().to_string_lossy())
+        !is_test_noise_file(ctx)
+            && is_tanstack_root_route_filename(&ctx.file_path().to_string_lossy())
     }
 
     fn run_once(&self, ctx: &LintContext<'_>) {

@@ -15,6 +15,7 @@ import {
 } from "../../constants/react.js";
 import { INERT_REF_ONE_SHOT_TIMER_MAX_DELAY_MS } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { doesEffectInvokeStoredDisposer } from "../../utils/does-effect-invoke-stored-disposer.js";
 import { canNodeReachLaterNodeWithinFunction } from "../../utils/can-node-reach-later-node-within-function.js";
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { resolveImportedExportName } from "../../utils/find-exported-function-body.js";
@@ -5944,6 +5945,68 @@ const oneShotTimerHasUnmountGuard = (usage: SubscribeLikeUsage, context: RuleCon
   return hasUnmountInvalidation;
 };
 
+const hasReturnedObserverDisconnectAfterSynchronousIteration = (
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  const usageFunction = findEnclosingFunction(usage.node);
+  if (
+    usage.kind !== "subscribe" ||
+    usage.registrationVerbName !== "observe" ||
+    usage.receiverKey === null ||
+    !usageFunction ||
+    !isSynchronousIteratorCallback(usageFunction) ||
+    !isFunctionLike(callback) ||
+    !isNodeOfType(callback.body, "BlockStatement")
+  ) {
+    return false;
+  }
+  const matchingCleanupReturns: EsTreeNode[] = [];
+  walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "ReturnStatement") || !child.argument) return;
+    const cleanupFunction = resolveRefOwnedCleanupFunction(child.argument, context);
+    if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return;
+    const disconnectCalls: EsTreeNode[] = [];
+    walkAst(cleanupFunction.body, (cleanupChild: EsTreeNode) => {
+      if (cleanupChild !== cleanupFunction.body && isFunctionLike(cleanupChild)) return false;
+      const cleanupCall = isNodeOfType(cleanupChild, "ChainExpression")
+        ? cleanupChild.expression
+        : cleanupChild;
+      const cleanupCallee = isNodeOfType(cleanupCall, "CallExpression")
+        ? stripParenExpression(cleanupCall.callee)
+        : null;
+      if (
+        isNodeOfType(cleanupCall, "CallExpression") &&
+        isNodeOfType(cleanupCallee, "MemberExpression") &&
+        !cleanupCallee.computed &&
+        isNodeOfType(cleanupCallee.property, "Identifier") &&
+        cleanupCallee.property.name === "disconnect" &&
+        resolveExpressionKey(cleanupCallee.object, context) === usage.receiverKey
+      ) {
+        disconnectCalls.push(cleanupChild);
+      }
+    });
+    if (doNodesCoverEveryPathFromFunctionEntry(cleanupFunction, disconnectCalls, context)) {
+      matchingCleanupReturns.push(child);
+    }
+  });
+  return doMatchingNodesCoverEveryPathAfterUsage(usage.node, matchingCleanupReturns, context);
+};
+
+const hasEffectLocalStoredDisposerCleanup = (
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean =>
+  doesEffectInvokeStoredDisposer({
+    context,
+    effectCallback: callback,
+    resourceNode: usage.node,
+    doesFunctionReleaseResource: (functionNode) =>
+      isFunctionLike(functionNode) && doesCleanupFunctionReleaseUsage(functionNode, usage, context),
+  });
+
 const effectHasCleanupForUsage = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -5960,6 +6023,8 @@ const effectHasCleanupForUsage = (
   if (
     cleanupRegistryReleasesUsage(callback, usage, context) ||
     symmetricForEachListenerCleanupReleasesUsage(callback, usage, context) ||
+    hasReturnedObserverDisconnectAfterSynchronousIteration(callback, usage, context) ||
+    hasEffectLocalStoredDisposerCleanup(callback, usage, context) ||
     oneShotTimerHasUnmountGuard(usage, context) ||
     hasGuaranteedRefOwnedUnmountCleanup(callback, usage, context)
   ) {
@@ -6758,6 +6823,55 @@ const isReactRefListenerReplacementRelease = (
   );
 };
 
+const isReactRefObserverReplacementRelease = (
+  releaseCall: EsTreeNodeOfType<"CallExpression">,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  if (
+    usage.kind !== "subscribe" ||
+    usage.registrationVerbName !== "observe" ||
+    usage.receiverKey === null ||
+    !isNodeOfType(usage.node, "CallExpression")
+  ) {
+    return false;
+  }
+  const ownerFunction = findEnclosingFunction(usage.node);
+  const releaseCallee = stripParenExpression(releaseCall.callee);
+  if (
+    !ownerFunction ||
+    !isFunctionLike(ownerFunction) ||
+    ownerFunction !== findEnclosingFunction(releaseCall) ||
+    !isFunctionUsedAsReactRef(ownerFunction, context) ||
+    !isNodeOfType(releaseCallee, "MemberExpression") ||
+    releaseCallee.computed ||
+    !isNodeOfType(releaseCallee.property, "Identifier") ||
+    releaseCallee.property.name !== "disconnect"
+  ) {
+    return false;
+  }
+  const nodeParameterKey = resolveExpressionKey(ownerFunction.params[0], context);
+  const releaseRefSymbol = resolveReactRefCurrentReceiverSymbol(releaseCallee.object, context);
+  if (!nodeParameterKey || usage.eventKey !== nodeParameterKey || !releaseRefSymbol) return false;
+  const ownershipAssignments: EsTreeNode[] = [];
+  walkAst(ownerFunction.body, (child: EsTreeNode) => {
+    if (child !== ownerFunction.body && isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "AssignmentExpression") &&
+      child.operator === "=" &&
+      resolveReactRefSymbol(stripParenExpression(child.left), context.scopes)?.id ===
+        releaseRefSymbol.id &&
+      resolveExpressionKey(child.right, context) === usage.receiverKey
+    ) {
+      ownershipAssignments.push(child);
+    }
+  });
+  return (
+    doNodesCoverEveryPathFromFunctionEntry(ownerFunction, [releaseCall], context) &&
+    doMatchingNodesCoverEveryPathAfterUsage(usage.node, ownershipAssignments, context)
+  );
+};
+
 const findDirectExhaustiveForEachCleanupFunction = (
   releaseNode: EsTreeNode,
   requiredCollectionKeys: ReadonlySet<string>,
@@ -7153,7 +7267,12 @@ const doesReleaseCallMatchUsage = (
     return true;
   }
 
-  if (isReactRefListenerReplacementRelease(callNode, usage, context)) return true;
+  if (
+    isReactRefListenerReplacementRelease(callNode, usage, context) ||
+    isReactRefObserverReplacementRelease(callNode, usage, context)
+  ) {
+    return true;
+  }
 
   if (doesSocketOwnerReleaseListenerUsage(releaseReceiverKey, releaseVerbName, usage, context)) {
     return true;

@@ -79,7 +79,18 @@ fn exact_local_callback_function_id<'a>(
     ctx: &crate::context::LintContext<'a>,
     visited_symbol_ids: &mut Vec<oxc_semantic::SymbolId>,
 ) -> Option<oxc_semantic::NodeId> {
-    match expression.get_inner_expression() {
+    let expression = expression.get_inner_expression();
+    if matches!(
+        expression,
+        oxc_ast::ast::Expression::ArrowFunctionExpression(_)
+    ) || matches!(expression, oxc_ast::ast::Expression::FunctionExpression(function) if !function.generator)
+    {
+        return Some(expression.node_id());
+    }
+    if visited_symbol_ids.len() >= 15 {
+        return None;
+    }
+    match expression {
         oxc_ast::ast::Expression::ArrowFunctionExpression(function) => Some(function.node_id.get()),
         oxc_ast::ast::Expression::FunctionExpression(function) if !function.generator => {
             Some(function.node_id.get())

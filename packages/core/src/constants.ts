@@ -494,6 +494,11 @@ export const ES_TARGET_YEAR_BY_NAME: Readonly<Record<string, number>> = {
  */
 export const TSCONFIG_FILENAMES = ["tsconfig.json", "tsconfig.base.json"] as const;
 
+export const DISABLE_DIRECTIVE_BACKUP_DIRECTORY_SEGMENTS = [
+  ".react-doctor",
+  "audit-backups",
+] as const;
+
 /**
  * Project-config files that `StagedFiles.materialize` copies into
  * the temp directory alongside staged sources so oxlint resolves

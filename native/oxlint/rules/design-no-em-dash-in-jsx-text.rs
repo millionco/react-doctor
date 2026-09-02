@@ -40,7 +40,7 @@ declare_oxc_lint!(
 
 impl Rule for DesignNoEmDashInJsxText {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx) && !is_long_form_content_path(ctx)
+        !is_test_noise_file(ctx) && !is_long_form_content_path(ctx)
     }
 
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {

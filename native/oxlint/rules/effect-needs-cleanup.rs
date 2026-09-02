@@ -66,6 +66,16 @@ const SYNCHRONOUS_ITERATOR_METHOD_NAMES: [&str; 8] = [
     "map",
     "some",
 ];
+const SYNCHRONOUS_ITERATOR_CALLBACK_METHOD_NAMES: [&str; 8] = [
+    "every",
+    "filter",
+    "flatMap",
+    "forEach",
+    "map",
+    "reduce",
+    "reduceRight",
+    "some",
+];
 const PROMISE_CHAIN_METHOD_NAMES: [&str; 3] = ["then", "catch", "finally"];
 const INERT_REF_ONE_SHOT_TIMER_MAX_DELAY_MS: f64 = 300.0;
 
@@ -107,7 +117,7 @@ declare_oxc_lint!(
 
 impl Rule for EffectNeedsCleanup {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx)
+        !is_test_noise_file(ctx)
     }
 
     fn run_once<'a>(&self, ctx: &LintContext<'a>) {
@@ -1894,7 +1904,16 @@ fn effect_cleanup_exact_local_function_id<'a>(
     ctx: &LintContext<'a>,
     visited_symbol_ids: &mut FxHashSet<SymbolId>,
 ) -> Option<NodeId> {
-    match expression.get_inner_expression() {
+    let expression = expression.get_inner_expression();
+    if matches!(expression, Expression::ArrowFunctionExpression(_))
+        || matches!(expression, Expression::FunctionExpression(_))
+    {
+        return Some(expression.node_id());
+    }
+    if visited_symbol_ids.len() >= 15 {
+        return None;
+    }
+    match expression {
         Expression::ArrowFunctionExpression(function) => Some(function.node_id.get()),
         Expression::FunctionExpression(function) => Some(function.node_id.get()),
         Expression::Identifier(identifier) => {
@@ -4252,6 +4271,31 @@ fn effect_cleanup_has_returned_release(
     if effect_cleanup_function_is_async(callback_id, ctx) {
         return false;
     }
+    if effect_cleanup_has_returned_observer_disconnect_after_synchronous_iteration(
+        callback_id,
+        usage,
+        ctx,
+    ) {
+        return true;
+    }
+    if effect_invokes_stored_disposer(
+        callback_id,
+        usage.node_id,
+        ctx,
+        |expression| {
+            effect_cleanup_exact_local_function_id(expression, ctx, &mut FxHashSet::default())
+        },
+        |cleanup_function_id| {
+            effect_cleanup_function_releases_usage(
+                cleanup_function_id,
+                usage,
+                ctx,
+                &mut FxHashSet::default(),
+            )
+        },
+    ) {
+        return true;
+    }
     let returned_expressions = effect_cleanup_return_expressions(callback_id, ctx);
     if returned_expressions.is_empty() {
         return false;
@@ -4299,6 +4343,115 @@ fn effect_cleanup_has_returned_release(
                 ctx,
             )
     }) || effect_cleanup_nodes_cover_if_branches(callback_id, &return_nodes, ctx)
+}
+
+fn effect_cleanup_has_returned_observer_disconnect_after_synchronous_iteration(
+    callback_id: NodeId,
+    usage: &ResourceUsage,
+    ctx: &LintContext<'_>,
+) -> bool {
+    if usage.kind != ResourceKind::Subscribe
+        || usage.registration_method.as_deref() != Some("observe")
+        || usage.receiver_key.is_none()
+    {
+        return false;
+    }
+    let Some(usage_function_id) = effect_cleanup_nearest_function_id(usage.node_id, ctx) else {
+        return false;
+    };
+    let Some(iterator_call) =
+        effect_cleanup_synchronous_iterator_call_for_callback(usage_function_id, ctx)
+    else {
+        return false;
+    };
+    let callback_node = ctx.nodes().get_node(callback_id);
+    if effect_cleanup_nearest_function_id(iterator_call.id(), ctx) != Some(callback_id) {
+        return false;
+    }
+    let matching_return_spans = effect_cleanup_return_expressions(callback_id, ctx)
+        .into_iter()
+        .filter(|expression| {
+            let Some(cleanup_function_id) =
+                effect_cleanup_exact_local_function_id(expression, ctx, &mut FxHashSet::default())
+            else {
+                return false;
+            };
+            let cleanup_function = ctx.nodes().get_node(cleanup_function_id);
+            let disconnect_calls = ctx
+                .nodes()
+                .iter()
+                .filter(|candidate| {
+                    if effect_cleanup_nearest_function_id(candidate.id(), ctx)
+                        != Some(cleanup_function_id)
+                    {
+                        return false;
+                    }
+                    let AstKind::CallExpression(call) = candidate.kind() else {
+                        return false;
+                    };
+                    let Expression::StaticMemberExpression(member) =
+                        call.callee.get_inner_expression()
+                    else {
+                        return false;
+                    };
+                    member.property.name == "disconnect"
+                        && effect_cleanup_expression_key(
+                            &member.object,
+                            ctx,
+                            &mut FxHashSet::default(),
+                        ) == usage.receiver_key
+                })
+                .collect::<Vec<_>>();
+            do_nodes_cover_every_path_after_node(
+                cleanup_function,
+                &disconnect_calls,
+                cleanup_function,
+                ctx,
+            )
+        })
+        .map(Expression::span)
+        .collect::<Vec<_>>();
+    let matching_returns = ctx
+        .nodes()
+        .iter()
+        .filter(|candidate| {
+            effect_cleanup_nearest_function_id(candidate.id(), ctx) == Some(callback_id)
+                && matches!(candidate.kind(), AstKind::ReturnStatement(statement)
+                if statement.argument.as_ref().is_some_and(|argument| {
+                    matching_return_spans.contains(&argument.span())
+                }))
+        })
+        .collect::<Vec<_>>();
+    do_nodes_cover_every_path_after_node(iterator_call, &matching_returns, callback_node, ctx)
+}
+
+fn effect_cleanup_synchronous_iterator_call_for_callback<'a, 'ctx>(
+    function_id: NodeId,
+    ctx: &'ctx LintContext<'a>,
+) -> Option<&'ctx AstNode<'a>> {
+    let function_node = ctx.nodes().get_node(function_id);
+    let parent = ctx.nodes().parent_node(function_id);
+    let AstKind::CallExpression(call) = parent.kind() else {
+        return None;
+    };
+    let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression() else {
+        return None;
+    };
+    let callback_index = if member.property.name == "from"
+        && matches!(member.object.get_inner_expression(), Expression::Identifier(identifier)
+            if identifier.name == "Array")
+    {
+        1
+    } else if SYNCHRONOUS_ITERATOR_CALLBACK_METHOD_NAMES.contains(&member.property.name.as_str()) {
+        0
+    } else {
+        return None;
+    };
+    call.arguments
+        .get(callback_index)
+        .and_then(Argument::as_expression)
+        .is_some_and(|callback| callback.span() == function_node.span())
+        .then_some(parent)
 }
 
 fn effect_cleanup_returned_release_covers_function_entry(
@@ -5099,7 +5252,14 @@ fn effect_cleanup_release_call_matches<'a>(
     let Some(release_method) = effect_cleanup_resolved_member_name(member, ctx) else {
         return false;
     };
-    if effect_cleanup_is_react_ref_listener_replacement_release(release_node_id, call, usage, ctx) {
+    if effect_cleanup_is_react_ref_listener_replacement_release(release_node_id, call, usage, ctx)
+        || effect_cleanup_is_react_ref_observer_replacement_release(
+            release_node_id,
+            call,
+            usage,
+            ctx,
+        )
+    {
         return true;
     }
     let receiver_key = if parameter_keys.is_empty() {
@@ -5374,6 +5534,90 @@ fn effect_cleanup_is_react_ref_listener_replacement_release<'a>(
         ctx.nodes().get_node(usage.node_id),
         &matching_assignments,
         ctx.nodes().get_node(owner_function_id),
+        ctx,
+    )
+}
+
+fn effect_cleanup_is_react_ref_observer_replacement_release<'a>(
+    release_node_id: NodeId,
+    release_call: &'a CallExpression<'a>,
+    usage: &ResourceUsage,
+    ctx: &LintContext<'a>,
+) -> bool {
+    if usage.kind != ResourceKind::Subscribe
+        || usage.registration_method.as_deref() != Some("observe")
+        || usage.receiver_key.is_none()
+        || usage.event_key.is_none()
+    {
+        return false;
+    }
+    let Some(owner_function_id) = effect_cleanup_nearest_function_id(usage.node_id, ctx) else {
+        return false;
+    };
+    if effect_cleanup_nearest_function_id(release_node_id, ctx) != Some(owner_function_id)
+        || !effect_cleanup_function_is_react_ref_callback(owner_function_id, ctx)
+    {
+        return false;
+    }
+    let parameters = match ctx.nodes().get_node(owner_function_id).kind() {
+        AstKind::Function(function) => &function.params,
+        AstKind::ArrowFunctionExpression(function) => &function.params,
+        _ => return false,
+    };
+    let Some(parameter_key) = parameters
+        .items
+        .first()
+        .and_then(|parameter| parameter.pattern.get_binding_identifier())
+        .map(|parameter| format!("symbol:{:?}", parameter.symbol_id()))
+    else {
+        return false;
+    };
+    if usage.event_key.as_ref() != Some(&parameter_key) {
+        return false;
+    }
+    let Some(release_member) = release_call
+        .callee
+        .get_inner_expression()
+        .as_member_expression()
+    else {
+        return false;
+    };
+    if !matches!(release_member, MemberExpression::StaticMemberExpression(member)
+        if member.property.name == "disconnect")
+    {
+        return false;
+    }
+    let Some(release_receiver_key) =
+        effect_cleanup_react_ref_current_receiver_key(release_member.object(), ctx)
+    else {
+        return false;
+    };
+    let owner_function = ctx.nodes().get_node(owner_function_id);
+    let release_node = ctx.nodes().get_node(release_node_id);
+    if !do_nodes_cover_every_path_after_node(owner_function, &[release_node], owner_function, ctx) {
+        return false;
+    }
+    let matching_assignments = ctx
+        .nodes()
+        .iter()
+        .filter(|candidate| {
+            if effect_cleanup_nearest_function_id(candidate.id(), ctx) != Some(owner_function_id) {
+                return false;
+            }
+            let AstKind::AssignmentExpression(assignment) = candidate.kind() else {
+                return false;
+            };
+            assignment.operator.as_str() == "="
+                && effect_cleanup_assignment_target_key(&assignment.left, ctx).as_ref()
+                    == Some(&release_receiver_key)
+                && effect_cleanup_expression_key(&assignment.right, ctx, &mut FxHashSet::default())
+                    == usage.receiver_key
+        })
+        .collect::<Vec<_>>();
+    do_nodes_cover_every_path_after_node(
+        ctx.nodes().get_node(usage.node_id),
+        &matching_assignments,
+        owner_function,
         ctx,
     )
 }

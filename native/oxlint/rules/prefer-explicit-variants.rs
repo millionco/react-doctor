@@ -84,7 +84,7 @@ declare_oxc_lint!(
 
 impl Rule for PreferExplicitVariants {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        ctx.source_type().is_jsx() && !is_non_production_file(ctx)
+        ctx.source_type().is_jsx() && !is_test_noise_file(ctx)
     }
 
     fn run_once<'a>(&self, ctx: &LintContext<'a>) {

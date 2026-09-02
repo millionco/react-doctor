@@ -22,6 +22,7 @@ export const USER_OXLINT_CONFIG_BROKEN_DIRECTORY = path.join(
   FIXTURES_DIRECTORY,
   "user-oxlint-config-broken",
 );
+export const USER_TAILWIND_CONFIG_DIRECTORY = path.join(FIXTURES_DIRECTORY, "user-tailwind-config");
 
 const findDiagnosticsByRule = (diagnostics: Diagnostic[], rule: string): Diagnostic[] =>
   diagnostics.filter((diagnostic) => diagnostic.rule === rule);

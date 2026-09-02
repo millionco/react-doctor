@@ -57,7 +57,7 @@ declare_oxc_lint!(
 
 impl Rule for NoUnguardedThrowingParseCall {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        if is_non_production_file(ctx) {
+        if is_test_noise_file(ctx) {
             return false;
         }
         let filename = format!("/{}", ctx.file_path().to_string_lossy().replace('\\', "/"));

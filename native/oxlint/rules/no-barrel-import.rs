@@ -72,7 +72,7 @@ impl Rule for NoBarrelImport {
     fn should_run(&self, ctx: &ContextHost) -> bool {
         let filename = ctx.file_path().to_string_lossy().replace('\\', "/");
         !filename.is_empty()
-            && !is_non_production_file(ctx)
+            && !is_test_noise_file(ctx)
             && !barrel_import_is_declaration_file(&filename)
             && !barrel_import_is_server_only_file(&filename)
     }

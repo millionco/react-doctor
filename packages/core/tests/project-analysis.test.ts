@@ -141,6 +141,47 @@ describe("analyzeProject", () => {
     ).toEqual(expect.arrayContaining(["src/cycle-a.ts", "src/cycle-b.ts"]));
   });
 
+  it("treats Expo plugins behind a satisfies expression as used", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/App.tsx": "export const App = () => <>hello</>;",
+        "plugins/with-example.ts": "export default (config: unknown) => config;",
+        "app.config.ts": `
+          import type { ExpoConfig } from "expo/config";
+          const config = {
+            name: "repro",
+            slug: "repro",
+            plugins: [
+              "@config-plugins/react-native-webrtc",
+              "./plugins/with-example",
+            ],
+          } satisfies ExpoConfig;
+          export default config;
+        `,
+      },
+      {
+        dependencies: {
+          expo: "56.0.0",
+          "@config-plugins/react-native-webrtc": "14.0.0",
+          "unused-package": "1.0.0",
+          react: "19.2.3",
+          "react-native": "0.85.3",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/App.tsx"] });
+    const unusedDependencyNames = result.unusedDependencies.map(
+      (unusedDependency) => unusedDependency.name,
+    );
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain(
+      "plugins/with-example.ts",
+    );
+    expect(unusedDependencyNames).not.toContain("@config-plugins/react-native-webrtc");
+    expect(unusedDependencyNames).toContain("unused-package");
+  });
+
   it("keeps exported types referenced by other exported type declarations", async () => {
     const rootDirectory = createProject(
       {

@@ -8,7 +8,10 @@ use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_span::GetSpan;
 
-use crate::{context::LintContext, rule::Rule};
+use crate::{
+    context::{ContextHost, LintContext},
+    rule::Rule,
+};
 
 const REMOVAL_METHOD_NAMES: [&str; 3] = ["removeEventListener", "removeListener", "off"];
 const REGISTRATION_METHOD_NAMES: [&str; 4] = ["addEventListener", "addListener", "on", "once"];
@@ -27,6 +30,10 @@ declare_oxc_lint!(
 );
 
 impl Rule for EffectRemoveListenerInlineHandler {
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        !is_test_noise_file(ctx)
+    }
+
     fn run_once<'a>(&self, ctx: &LintContext<'a>) {
         let registration_keys = collect_registration_keys(ctx);
         for node in ctx.nodes().iter() {

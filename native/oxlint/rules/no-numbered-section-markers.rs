@@ -8,7 +8,10 @@ use oxc_macros::declare_oxc_lint;
 use oxc_semantic::NodeId;
 use oxc_span::{GetSpan, Span};
 
-use crate::{context::LintContext, rule::Rule};
+use crate::{
+    context::{ContextHost, LintContext},
+    rule::Rule,
+};
 
 const NUMBERED_SECTION_LABEL_MAX_CHARACTERS: usize = 40;
 const NUMBERED_SECTION_LABEL_MAX_FONT_SIZE_PX: f64 = 13.0;
@@ -65,6 +68,10 @@ declare_oxc_lint!(
 );
 
 impl Rule for NoNumberedSectionMarkers {
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        !is_test_noise_file(ctx)
+    }
+
     fn run_once<'a>(&self, ctx: &LintContext<'a>) {
         let has_tailwind = has_capability_or_unspecified(ctx, "tailwind");
         let mut marker_buckets = Vec::<(NodeId, Vec<(u32, Span)>)>::new();

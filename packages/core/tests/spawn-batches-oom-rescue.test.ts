@@ -8,7 +8,7 @@
  * partial result; a file that STILL aborts alone stays dropped and reported.
  *
  * The oxlint binary is stood in for by a `node -e` stub that aborts itself
- * via `process.abort()` on each file's first attempt (tracked via per-file
+ * on each file's first attempt (tracked via per-file
  * marker files) and emits one diagnostic per file on later attempts.
  * `process.abort()` raises a real SIGABRT on POSIX; on Windows — which has
  * no POSIX signals, so a self-aborting child can never surface a signal to
@@ -83,7 +83,8 @@ const buildAbortOnceScript = (abortStatement = "process.abort();"): string =>
     "process.stdout.write(JSON.stringify({ diagnostics, number_of_files: files.length, number_of_rules: 1 }));",
   ].join("\n");
 
-const ALWAYS_ABORT_SCRIPT = "process.abort();";
+// HACK: Exit 134 preserves abort classification without generating repeated core dumps under CI load.
+const ALWAYS_ABORT_SCRIPT = "process.exit(134);";
 
 // "poison" files abort on their first attempt (so they enter the rescue),
 // then print non-JSON stdout — a non-splittable `OxlintOutputUnparseable`

@@ -202,6 +202,7 @@ const STRING_IDENTIFIER_SUFFIXES: &[&str] = &[
     "Line",
     "Filename",
     "Filepath",
+    "Message",
 ];
 
 #[derive(Debug, Default, Clone)]
@@ -218,7 +219,7 @@ declare_oxc_lint!(
 
 impl Rule for JsSetMapLookups {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx)
+        !is_test_noise_file(ctx)
     }
 
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
@@ -541,6 +542,11 @@ fn is_likely_string_call<'a>(call: &CallExpression<'a>, ctx: &LintContext<'a>) -
     match call.callee.get_inner_expression() {
         Expression::Identifier(identifier) => {
             identifier.name == "String"
+                && ctx
+                    .scoping()
+                    .get_reference(identifier.reference_id())
+                    .symbol_id()
+                    .is_none()
                 || matches!(identifier.name.as_str(), name if name.starts_with("normalize") || name.starts_with("format") || name.starts_with("stringify") || name.starts_with("serialize"))
         }
         callee => callee.as_member_expression().is_some_and(|member| {

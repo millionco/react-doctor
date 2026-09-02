@@ -27,7 +27,7 @@ declare_oxc_lint!(
 impl Rule for ReactRouterNoClientModuleInServerRender {
     fn should_run(&self, ctx: &ContextHost) -> bool {
         ctx.source_type().is_jsx()
-            && !is_non_production_file(ctx)
+            && !is_test_noise_file(ctx)
             && is_react_router_file_active(ctx)
             && is_react_router_framework_file_active(ctx)
             && !is_client_only_file(&ctx.file_path().to_string_lossy().replace('\\', "/"))

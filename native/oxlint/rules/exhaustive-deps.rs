@@ -367,7 +367,7 @@ fn react_import_for_symbol<'a>(
 
 impl Rule for ExhaustiveDeps {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx)
+        !is_test_noise_file(ctx)
             && !ctx
                 .file_extension()
                 .is_some_and(|extension| extension == "vue" || extension == "svelte")

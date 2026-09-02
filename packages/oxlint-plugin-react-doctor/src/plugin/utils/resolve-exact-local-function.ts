@@ -1,3 +1,4 @@
+import { FUNCTION_RESOLUTION_MAX_DEPTH } from "../constants/thresholds.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
@@ -67,15 +68,21 @@ const resolveObjectPropertyFunction = (
   propertyName: string,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
+  remainingDepth: number,
 ): EsTreeNode | null => {
-  if (!isNodeOfType(objectExpression, "ObjectExpression")) return null;
+  if (remainingDepth <= 0 || !isNodeOfType(objectExpression, "ObjectExpression")) return null;
   for (const property of objectExpression.properties.toReversed()) {
     if (!isNodeOfType(property, "Property")) return null;
     const candidatePropertyName = getResolvedStaticPropertyName(property, scopes);
     if (candidatePropertyName === null) return null;
     if (candidatePropertyName !== propertyName) continue;
     if (property.kind !== "init") return null;
-    return resolveExactLocalFunctionInternal(property.value, scopes, visitedSymbolIds);
+    return resolveExactLocalFunctionInternal(
+      property.value,
+      scopes,
+      visitedSymbolIds,
+      remainingDepth - 1,
+    );
   }
   return null;
 };
@@ -85,8 +92,9 @@ const resolvePossibleObjectPropertyFunctions = (
   propertyName: string,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
+  remainingDepth: number,
 ): EsTreeNode[] => {
-  if (!isNodeOfType(objectExpression, "ObjectExpression")) return [];
+  if (remainingDepth <= 0 || !isNodeOfType(objectExpression, "ObjectExpression")) return [];
   let possibleFunctions: EsTreeNode[] = [];
   const possibleFunctionSet = new Set<EsTreeNode>();
   for (const property of objectExpression.properties) {
@@ -94,7 +102,12 @@ const resolvePossibleObjectPropertyFunctions = (
     const candidatePropertyName = getResolvedStaticPropertyName(property, scopes);
     const candidateFunction =
       property.kind === "init" || property.kind === "get"
-        ? resolveExactLocalFunctionInternal(property.value, scopes, new Set(visitedSymbolIds))
+        ? resolveExactLocalFunctionInternal(
+            property.value,
+            scopes,
+            new Set(visitedSymbolIds),
+            remainingDepth - 1,
+          )
         : null;
     if (candidatePropertyName === propertyName) {
       possibleFunctions = candidateFunction ? [candidateFunction] : [];
@@ -117,8 +130,12 @@ const resolveStaticClassFunction = (
   propertyName: string,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
+  remainingDepth: number,
 ): EsTreeNode | null => {
-  if (!isNodeOfType(classNode, "ClassDeclaration") && !isNodeOfType(classNode, "ClassExpression")) {
+  if (
+    remainingDepth <= 0 ||
+    (!isNodeOfType(classNode, "ClassDeclaration") && !isNodeOfType(classNode, "ClassExpression"))
+  ) {
     return null;
   }
   for (const classElement of classNode.body.body.toReversed()) {
@@ -136,7 +153,12 @@ const resolveStaticClassFunction = (
       return null;
     }
     return classElement.value
-      ? resolveExactLocalFunctionInternal(classElement.value, scopes, visitedSymbolIds)
+      ? resolveExactLocalFunctionInternal(
+          classElement.value,
+          scopes,
+          visitedSymbolIds,
+          remainingDepth - 1,
+        )
       : null;
   }
   return null;
@@ -147,8 +169,12 @@ const resolvePossibleStaticClassFunctions = (
   propertyName: string,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
+  remainingDepth: number,
 ): EsTreeNode[] => {
-  if (!isNodeOfType(classNode, "ClassDeclaration") && !isNodeOfType(classNode, "ClassExpression")) {
+  if (
+    remainingDepth <= 0 ||
+    (!isNodeOfType(classNode, "ClassDeclaration") && !isNodeOfType(classNode, "ClassExpression"))
+  ) {
     return [];
   }
   let possibleFunctions: EsTreeNode[] = [];
@@ -167,7 +193,12 @@ const resolvePossibleStaticClassFunctions = (
       (!isNodeOfType(classElement, "MethodDefinition") ||
         classElement.kind === "method" ||
         classElement.kind === "get")
-        ? resolveExactLocalFunctionInternal(classElement.value, scopes, new Set(visitedSymbolIds))
+        ? resolveExactLocalFunctionInternal(
+            classElement.value,
+            scopes,
+            new Set(visitedSymbolIds),
+            remainingDepth - 1,
+          )
         : null;
     if (candidatePropertyName === propertyName) {
       possibleFunctions = candidateFunction ? [candidateFunction] : [];
@@ -193,9 +224,10 @@ const resolveAssignedMemberFunction = (
   initialPossibleFunctions: EsTreeNode[],
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
+  remainingDepth: number,
 ): MemberFunctionResolution => {
   const callBoundary = getExecutionBoundary(memberExpression);
-  if (!callBoundary || !isNodeOfType(receiver, "Identifier")) {
+  if (remainingDepth <= 0 || !callBoundary || !isNodeOfType(receiver, "Identifier")) {
     return { exactFunction: null, possibleFunctions: [] };
   }
   const mutations: MemberFunctionMutation[] = [];
@@ -265,6 +297,7 @@ const resolveAssignedMemberFunction = (
           mutation.assignedExpression,
           scopes,
           new Set(visitedSymbolIds),
+          remainingDepth - 1,
         )
       : null;
     if (mutation.isDefinite) {
@@ -287,8 +320,9 @@ const resolveMemberFunction = (
   memberExpression: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
+  remainingDepth: number,
 ): MemberFunctionResolution => {
-  if (!isNodeOfType(memberExpression, "MemberExpression")) {
+  if (remainingDepth <= 0 || !isNodeOfType(memberExpression, "MemberExpression")) {
     return { exactFunction: null, possibleFunctions: [] };
   }
   const propertyName = getStaticPropertyName(memberExpression);
@@ -300,6 +334,7 @@ const resolveMemberFunction = (
       propertyName,
       scopes,
       visitedSymbolIds,
+      remainingDepth,
     );
     return {
       exactFunction,
@@ -308,6 +343,7 @@ const resolveMemberFunction = (
         propertyName,
         scopes,
         visitedSymbolIds,
+        remainingDepth,
       ),
     };
   }
@@ -317,6 +353,7 @@ const resolveMemberFunction = (
       propertyName,
       scopes,
       visitedSymbolIds,
+      remainingDepth,
     );
     return {
       exactFunction,
@@ -325,6 +362,7 @@ const resolveMemberFunction = (
         propertyName,
         scopes,
         visitedSymbolIds,
+        remainingDepth,
       ),
     };
   }
@@ -345,12 +383,14 @@ const resolveMemberFunction = (
       propertyName,
       scopes,
       visitedSymbolIds,
+      remainingDepth,
     );
     initialPossibleFunctions = resolvePossibleObjectPropertyFunctions(
       initializer,
       propertyName,
       scopes,
       visitedSymbolIds,
+      remainingDepth,
     );
   } else if (receiverSymbol.kind === "class" && receiverSymbol.initializer) {
     initialFunction = resolveStaticClassFunction(
@@ -358,12 +398,14 @@ const resolveMemberFunction = (
       propertyName,
       scopes,
       visitedSymbolIds,
+      remainingDepth,
     );
     initialPossibleFunctions = resolvePossibleStaticClassFunctions(
       receiverSymbol.initializer,
       propertyName,
       scopes,
       visitedSymbolIds,
+      remainingDepth,
     );
   }
   return resolveAssignedMemberFunction(
@@ -374,6 +416,7 @@ const resolveMemberFunction = (
     initialPossibleFunctions,
     scopes,
     visitedSymbolIds,
+    remainingDepth,
   );
 };
 
@@ -381,12 +424,19 @@ const resolvePossibleLocalFunctionsInternal = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
+  remainingDepth: number,
 ): EsTreeNode[] => {
+  if (remainingDepth <= 0) return [];
   const unwrappedExpression = stripParenExpression(expression);
   if (isNodeOfType(unwrappedExpression, "CallExpression")) {
     const callee = stripParenExpression(unwrappedExpression.callee);
     return isNodeOfType(callee, "MemberExpression") && getStaticPropertyName(callee) === "bind"
-      ? resolvePossibleLocalFunctionsInternal(callee.object, scopes, visitedSymbolIds)
+      ? resolvePossibleLocalFunctionsInternal(
+          callee.object,
+          scopes,
+          visitedSymbolIds,
+          remainingDepth - 1,
+        )
       : [];
   }
   if (isNodeOfType(unwrappedExpression, "MemberExpression")) {
@@ -396,14 +446,17 @@ const resolvePossibleLocalFunctionsInternal = (
         unwrappedExpression.object,
         scopes,
         visitedSymbolIds,
+        remainingDepth - 1,
       );
     }
-    return resolveMemberFunction(unwrappedExpression, scopes, visitedSymbolIds).possibleFunctions;
+    return resolveMemberFunction(unwrappedExpression, scopes, visitedSymbolIds, remainingDepth)
+      .possibleFunctions;
   }
   const exactFunction = resolveExactLocalFunctionInternal(
     unwrappedExpression,
     scopes,
     visitedSymbolIds,
+    remainingDepth,
   );
   return exactFunction ? [exactFunction] : [];
 };
@@ -412,13 +465,20 @@ const resolveExactLocalFunctionInternal = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number>,
+  remainingDepth: number,
 ): EsTreeNode | null => {
   const unwrappedExpression = stripParenExpression(expression);
   if (isFunctionLike(unwrappedExpression)) return unwrappedExpression;
+  if (remainingDepth <= 0) return null;
   if (isNodeOfType(unwrappedExpression, "CallExpression")) {
     const callee = stripParenExpression(unwrappedExpression.callee);
     if (isNodeOfType(callee, "MemberExpression") && getStaticPropertyName(callee) === "bind") {
-      return resolveExactLocalFunctionInternal(callee.object, scopes, visitedSymbolIds);
+      return resolveExactLocalFunctionInternal(
+        callee.object,
+        scopes,
+        visitedSymbolIds,
+        remainingDepth - 1,
+      );
     }
     return null;
   }
@@ -429,9 +489,11 @@ const resolveExactLocalFunctionInternal = (
         unwrappedExpression.object,
         scopes,
         visitedSymbolIds,
+        remainingDepth - 1,
       );
     }
-    return resolveMemberFunction(unwrappedExpression, scopes, visitedSymbolIds).exactFunction;
+    return resolveMemberFunction(unwrappedExpression, scopes, visitedSymbolIds, remainingDepth)
+      .exactFunction;
   }
   if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
   const symbol = resolveConstIdentifierAlias(unwrappedExpression, scopes);
@@ -442,15 +504,27 @@ const resolveExactLocalFunctionInternal = (
     return !isReassigned && isFunctionLike(symbol.declarationNode) ? symbol.declarationNode : null;
   }
   if (symbol.kind !== "const" || !symbol.initializer) return null;
-  return resolveExactLocalFunctionInternal(symbol.initializer, scopes, visitedSymbolIds);
+  return resolveExactLocalFunctionInternal(
+    symbol.initializer,
+    scopes,
+    visitedSymbolIds,
+    remainingDepth - 1,
+  );
 };
 
 export const resolveExactLocalFunction = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
-): EsTreeNode | null => resolveExactLocalFunctionInternal(expression, scopes, new Set());
+): EsTreeNode | null =>
+  resolveExactLocalFunctionInternal(expression, scopes, new Set(), FUNCTION_RESOLUTION_MAX_DEPTH);
 
 export const resolvePossibleLocalFunctions = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
-): EsTreeNode[] => resolvePossibleLocalFunctionsInternal(expression, scopes, new Set());
+): EsTreeNode[] =>
+  resolvePossibleLocalFunctionsInternal(
+    expression,
+    scopes,
+    new Set(),
+    FUNCTION_RESOLUTION_MAX_DEPTH,
+  );

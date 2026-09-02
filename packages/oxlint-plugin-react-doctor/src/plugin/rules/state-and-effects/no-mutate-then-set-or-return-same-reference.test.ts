@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noMutateThenSetOrReturnSameReference } from "./no-mutate-then-set-or-return-same-reference.js";
 
+const MEASUREMENT_SAMPLE_COUNT = 3;
+
 describe("no-mutate-then-set-or-return-same-reference", () => {
   it("flags setX(state.add(index)) on a state Set", () => {
     const result = runRule(
@@ -582,10 +584,10 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
     runRule(noMutateThenSetOrReturnSameReference, buildSource(200));
     const measureFastestDuration = (pairCount: number): number => {
       let fastestDuration = Number.POSITIVE_INFINITY;
-      for (let repetition = 0; repetition < 2; repetition += 1) {
-        const start = performance.now();
+      for (let repetition = 0; repetition < MEASUREMENT_SAMPLE_COUNT; repetition += 1) {
+        const startedAt = performance.now();
         const result = runRule(noMutateThenSetOrReturnSameReference, buildSource(pairCount));
-        fastestDuration = Math.min(fastestDuration, performance.now() - start);
+        fastestDuration = Math.min(fastestDuration, performance.now() - startedAt);
         expect(result.diagnostics).toHaveLength(0);
       }
       return fastestDuration;

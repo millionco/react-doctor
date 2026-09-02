@@ -73,7 +73,7 @@ struct RerenderStateBinding<'a> {
 
 impl Rule for RerenderStateOnlyInHandlers {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx)
+        !is_test_noise_file(ctx)
     }
 
     fn run_once<'a>(&self, ctx: &LintContext<'a>) {
@@ -937,10 +937,11 @@ fn rerender_node_is_custom_hook_argument(
         let AstKind::CallExpression(call_expression) = ancestor.kind() else {
             continue;
         };
-        let Expression::Identifier(callee) = &call_expression.callee else {
-            continue;
+        let callee_name = match call_expression.callee.get_inner_expression() {
+            Expression::Identifier(callee) => callee.name.as_str(),
+            Expression::StaticMemberExpression(member) => member.property.name.as_str(),
+            _ => continue,
         };
-        let callee_name = callee.name.as_str();
         if !rerender_is_hook_name(callee_name)
             || RERENDER_BUILTIN_HOOK_NAMES.contains(&callee_name)
             || is_react_hook_call(call_expression, &RERENDER_BUILTIN_HOOK_NAMES, ctx)

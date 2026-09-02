@@ -165,7 +165,9 @@ impl Rule for ${delegatedRule.struct} {
       [
         "r3f-state-setter-transition",
         "node-is-inside-repeated-execution",
+        "effect-invokes-stored-disposer",
         "is-non-production-file",
+        "is-test-noise-file",
         "is-program-owned-variable-declarator",
         "is-create-element-call",
         "is-react-api-call",
@@ -437,6 +439,7 @@ impl Rule for ${delegatedRule.struct} {
       ]),
     );
     const nativeUtilityDependencies = new Map([
+      ["is_test_noise_file", ["is_non_production_file"]],
       ["identifier_direct_or_default_initializer", ["binding_pattern_initializer_for_symbol"]],
       ["has_possible_static_property_write_before", ["member_expression_identifier_property_name"]],
       ["is_inside_statically_hidden_jsx_subtree", ["get_object_property_string_value"]],
@@ -675,7 +678,7 @@ impl Rule for ${delegatedRule.struct} {
         [
           "are_nodes_in_mutually_exclusive_branches",
           "for_each_local_callback_execution_node",
-          "is_non_production_file",
+          "is_test_noise_file",
           "is_react_hook_call",
           "resolve_const_identifier_root_symbol",
           "setter_is_written_only_from_event_handlers",

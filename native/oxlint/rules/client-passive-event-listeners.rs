@@ -12,7 +12,11 @@ use oxc_macros::declare_oxc_lint;
 use oxc_semantic::{NodeId, SymbolId as PassiveSymbolId};
 use oxc_span::GetSpan;
 
-use crate::{AstNode, context::LintContext, rule::Rule};
+use crate::{
+    AstNode,
+    context::{ContextHost, LintContext},
+    rule::Rule,
+};
 
 const PASSIVE_EVENT_NAMES: [&str; 4] = ["wheel", "mousewheel", "touchstart", "touchmove"];
 const DEFERRED_CALLBACK_NAMES: [&str; 6] = [
@@ -37,6 +41,10 @@ declare_oxc_lint!(
 );
 
 impl Rule for ClientPassiveEventListeners {
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        !is_test_noise_file(ctx)
+    }
+
     fn run_once<'a>(&self, ctx: &LintContext<'a>) {
         if client_passive_is_generated_docs_archive(ctx) {
             return;

@@ -31,7 +31,7 @@ declare_oxc_lint!(
 impl Rule for RnListMissingEstimatedItemSize {
     fn should_run(&self, ctx: &ContextHost) -> bool {
         ctx.source_type().is_jsx()
-            && !is_non_production_file(ctx)
+            && !is_test_noise_file(ctx)
             && is_react_native_file_active(ctx)
     }
 

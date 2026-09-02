@@ -29,7 +29,7 @@ declare_oxc_lint!(
 
 impl Rule for NoTransitionAll {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx)
+        !is_test_noise_file(ctx)
     }
 
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
@@ -131,6 +131,16 @@ fn no_transition_all_has_merged_transition_all(
         }
     }
     variant_scopes.into_iter().any(|scope| {
+        let has_animation_utility = tokens.iter().any(|token| {
+            let utility = token.utility;
+            utility != "animate-none"
+                && utility != "[animation:none]"
+                && utility != "[animation-name:none]"
+                && (utility.starts_with("animate-")
+                    || utility.starts_with("[animation:")
+                    || utility.starts_with("[animation-name:"))
+                && does_tailwind_variant_scope_cover(&token.variants, &scope)
+        });
         let has_property_setter = tokens.iter().any(|token| {
             no_transition_all_property_effect(token.utility).is_some()
                 && does_tailwind_variant_scope_cover(&token.variants, &scope)
@@ -149,7 +159,9 @@ fn no_transition_all_has_merged_transition_all(
             &scope,
             no_transition_all_is_duration_setter,
         );
-        let default_property = if !has_property_setter || transition_all_state == Some(true) {
+        let default_property = if (!has_property_setter && !has_animation_utility)
+            || transition_all_state == Some(true)
+        {
             "all"
         } else {
             "opacity"

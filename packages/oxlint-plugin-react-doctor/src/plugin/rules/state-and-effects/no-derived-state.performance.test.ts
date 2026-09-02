@@ -29,7 +29,7 @@ const buildEffectWithLocalDerivations = (localCount: number): string => {
   `;
 };
 
-const measureDuration = (localCount: number): number => {
+const measureFastestDuration = (localCount: number): number => {
   const source = buildEffectWithLocalDerivations(localCount);
   const sampleDurations = Array.from({ length: MEASUREMENT_SAMPLE_COUNT }, () => {
     const startedAt = process.hrtime.bigint();
@@ -38,16 +38,15 @@ const measureDuration = (localCount: number): number => {
     expect(result.diagnostics).toHaveLength(1);
     return Number(process.hrtime.bigint() - startedAt);
   });
-  sampleDurations.sort((firstDuration, secondDuration) => firstDuration - secondDuration);
-  return sampleDurations[Math.floor(sampleDurations.length / 2)] ?? Number.POSITIVE_INFINITY;
+  return Math.min(...sampleDurations);
 };
 
 describe("no-derived-state performance", () => {
   it("scales near-linearly with effect-local derivations", () => {
-    measureDuration(SMALL_LOCAL_COUNT);
-    measureDuration(LARGE_LOCAL_COUNT);
-    const smallDuration = measureDuration(SMALL_LOCAL_COUNT);
-    const largeDuration = measureDuration(LARGE_LOCAL_COUNT);
+    measureFastestDuration(SMALL_LOCAL_COUNT);
+    measureFastestDuration(LARGE_LOCAL_COUNT);
+    const smallDuration = measureFastestDuration(SMALL_LOCAL_COUNT);
+    const largeDuration = measureFastestDuration(LARGE_LOCAL_COUNT);
     expect(largeDuration).toBeLessThan(smallDuration * MAXIMUM_SCALING_MULTIPLIER);
   });
 });

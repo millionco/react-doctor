@@ -8,7 +8,11 @@ use oxc_semantic::{NodeId, SymbolId};
 use oxc_span::GetSpan;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{AstNode, context::LintContext, rule::Rule};
+use crate::{
+    AstNode,
+    context::{ContextHost, LintContext},
+    rule::Rule,
+};
 
 const EFFECT_HOOK_NAMES: [&str; 2] = ["useEffect", "useLayoutEffect"];
 const TIMER_AND_SCHEDULER_NAMES: [&str; 5] = [
@@ -62,6 +66,10 @@ struct CallableReadClassification {
 }
 
 impl Rule for PreferUseEffectEvent {
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        !is_test_noise_file(ctx)
+    }
+
     fn run_once<'a>(&self, ctx: &LintContext<'a>) {
         let mut resolution_cache = LocalFunctionResolutionCache::default();
         let mut changing_callbacks_by_component = FxHashMap::<NodeId, FxHashSet<String>>::default();

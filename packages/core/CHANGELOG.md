@@ -1,5 +1,26 @@
 # @react-doctor/core
 
+## 0.9.13
+
+### Patch Changes
+
+- [#1695](https://github.com/millionco/react-doctor/pull/1695) [`ac87f7d`](https://github.com/millionco/react-doctor/commit/ac87f7d7f64d77cc0a648ee863dd50b3c69c0257) Thanks [@skoshx](https://github.com/skoshx)! - Preserve plugin settings when React Doctor adopts an existing lint config.
+
+- [#1713](https://github.com/millionco/react-doctor/pull/1713) [`40b9d79`](https://github.com/millionco/react-doctor/commit/40b9d79703c398f47ba92488ce1bdea011f12109) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize Expo config plugin packages and local plugin paths behind TypeScript `satisfies` expressions.
+
+- [#1728](https://github.com/millionco/react-doctor/pull/1728) [`6adf55e`](https://github.com/millionco/react-doctor/commit/6adf55ed8841c9a6f63a3e93cc0d2ccfbe4ca852) Thanks [@skoshx](https://github.com/skoshx)! - Keep `@expo/metro-config` as a direct dependency when project code imports a package subpath that the `expo/metro-config` umbrella does not expose.
+
+- [#1718](https://github.com/millionco/react-doctor/pull/1718) [`990daaf`](https://github.com/millionco/react-doctor/commit/990daafa6277b966aab30152a8e23c194bcce738) Thanks [@skoshx](https://github.com/skoshx)! - Fix Expo Metro config false positives for local helpers and the PostHog Expo wrapper.
+
+- [#1666](https://github.com/millionco/react-doctor/pull/1666) [`77aec24`](https://github.com/millionco/react-doctor/commit/77aec24f42fa8a2c55504550df929ea3985b7748) Thanks [@skoshx](https://github.com/skoshx)! - Use entry points from discovered implicit subprojects outside declared workspace globs, preventing legitimate files from being reported as unused.
+
+- [#1676](https://github.com/millionco/react-doctor/pull/1676) [`79d8007`](https://github.com/millionco/react-doctor/commit/79d80072817eb86c74f3dd42ce91c8104f448810) Thanks [@aidenybai](https://github.com/aidenybai)! - Compare automatic changed scopes against the remote default branch, so committed branch changes are not mistaken for working-tree changes or skipped when no local default branch exists.
+
+- [#1690](https://github.com/millionco/react-doctor/pull/1690) [`a163de9`](https://github.com/millionco/react-doctor/commit/a163de9afa0c4a84c2d6e13ddd7ac55c910dacc3) Thanks [@skoshx](https://github.com/skoshx)! - Recover audit-mode source files after an interrupted process, without overwriting files that changed after the interruption.
+
+- Updated dependencies [[`ffc2d14`](https://github.com/millionco/react-doctor/commit/ffc2d142545167107b11908f004d764ac4e31399), [`f7efb7d`](https://github.com/millionco/react-doctor/commit/f7efb7d1c4fc564fa647a0dc26c48867da9166c9), [`05ef989`](https://github.com/millionco/react-doctor/commit/05ef98926de787b01e817c8853101d6c31e2071a), [`a04b933`](https://github.com/millionco/react-doctor/commit/a04b933c027f6addf4161ba0df1c11eb8922b879), [`adc3a91`](https://github.com/millionco/react-doctor/commit/adc3a9129190315263a5fa92bda7ea3e3e2ba94a), [`2c4560f`](https://github.com/millionco/react-doctor/commit/2c4560fc0abbf70f1574fe847402d320347d061e), [`e1d4c51`](https://github.com/millionco/react-doctor/commit/e1d4c51abfd9d15ec96f5001259c3e8f332f7d50), [`905607f`](https://github.com/millionco/react-doctor/commit/905607f7fc2240304cbad5f41d3ad496eab06b17), [`17eeeb5`](https://github.com/millionco/react-doctor/commit/17eeeb5367177e6a3ba814ca8d107d009addc9dc), [`afa1780`](https://github.com/millionco/react-doctor/commit/afa1780254bfd72175e6d0025841560582d32ad1), [`025d69d`](https://github.com/millionco/react-doctor/commit/025d69d701581092632caa87ea59e5a719094ab9), [`0f59a3b`](https://github.com/millionco/react-doctor/commit/0f59a3b84dd5233f6bcf5e4a621da6699c432405), [`5bc88ae`](https://github.com/millionco/react-doctor/commit/5bc88ae6a0cd7518ffa8c6348f9176868d00ea77), [`4bf7aff`](https://github.com/millionco/react-doctor/commit/4bf7aff4398383adb6b3dace48f72050dfd195a6), [`bd08406`](https://github.com/millionco/react-doctor/commit/bd08406381618785181aedf8bee956047ad107d3), [`2b0f06e`](https://github.com/millionco/react-doctor/commit/2b0f06ec70943f083d8893f8a1b989eba2ae40c6), [`8c2f03a`](https://github.com/millionco/react-doctor/commit/8c2f03aea9885f24da8f2002e85a32ac186bf5bf), [`6416370`](https://github.com/millionco/react-doctor/commit/6416370836deaa0a09189343a8579fb3f5d13494), [`28d4343`](https://github.com/millionco/react-doctor/commit/28d4343e4d90a8d80c0fdb5eac0173bdd8826866)]:
+  - oxlint-plugin-react-doctor@0.9.13
+
 ## 0.9.12
 
 ### Patch Changes

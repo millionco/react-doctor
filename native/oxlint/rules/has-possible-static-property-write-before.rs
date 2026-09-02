@@ -3,6 +3,8 @@ struct PossibleStaticPropertyWriteAnalysis {
     first_await_by_function: rustc_hash::FxHashMap<oxc_semantic::NodeId, u32>,
 }
 
+const EXACT_LOCAL_FUNCTION_MAX_DEPTH: usize = 15;
+
 #[derive(Default)]
 struct LocalFunctionResolutionCache {
     symbol_has_write: rustc_hash::FxHashMap<oxc_semantic::SymbolId, bool>,
@@ -730,6 +732,17 @@ fn exact_local_function_id_with_generator_mode<'a>(
     include_generators: bool,
 ) -> Option<oxc_semantic::NodeId> {
     let expression = expression.get_inner_expression();
+    if matches!(
+        expression,
+        oxc_ast::ast::Expression::ArrowFunctionExpression(_)
+    ) || matches!(expression, oxc_ast::ast::Expression::FunctionExpression(function)
+            if include_generators || !function.generator)
+    {
+        return Some(expression.node_id());
+    }
+    if visited_symbol_ids.len() >= EXACT_LOCAL_FUNCTION_MAX_DEPTH {
+        return None;
+    }
     if let Some(member) = expression.as_member_expression()
         && matches!(member.static_property_name(), Some("call" | "apply"))
     {

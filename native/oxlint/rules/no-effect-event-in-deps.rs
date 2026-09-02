@@ -5,7 +5,11 @@ use oxc_ast::{
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 
-use crate::{AstNode, context::LintContext, rule::Rule};
+use crate::{
+    AstNode,
+    context::{ContextHost, LintContext},
+    rule::Rule,
+};
 
 const EFFECT_EVENT_DEPENDENCY_HOOKS: [&str; 4] =
     ["useEffect", "useLayoutEffect", "useMemo", "useCallback"];
@@ -23,6 +27,10 @@ declare_oxc_lint!(
 );
 
 impl Rule for NoEffectEventInDeps {
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        !is_test_noise_file(ctx)
+    }
+
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
         let AstKind::CallExpression(hook_call) = node.kind() else {
             return;

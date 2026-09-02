@@ -11,4 +11,18 @@ describe("js-performance/js-flatmap-filter — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("recommends a direct single-pass rewrite instead of flatMap", () => {
+    const result = runRule(jsFlatmapFilter, `items.map((item) => item.value).filter(Boolean);`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("measured hot path");
+    expect(result.diagnostics[0].message).toContain(".reduce()");
+    expect(result.diagnostics[0].message).toContain("for...of");
+    expect(result.diagnostics[0].message).not.toContain("flatMap");
+    expect(jsFlatmapFilter.recommendation).toContain("measured hot path");
+    expect(jsFlatmapFilter.recommendation).toContain("`.reduce()`");
+    expect(jsFlatmapFilter.recommendation).toContain("`for...of`");
+    expect(jsFlatmapFilter.recommendation).not.toContain("flatMap");
+  });
 });

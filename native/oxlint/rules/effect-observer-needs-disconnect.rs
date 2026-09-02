@@ -38,7 +38,7 @@ const MESSAGE: &str = "This observer is created and started in the effect but ne
 #[derive(Debug, Default, Clone)]
 pub struct EffectObserverNeedsDisconnect;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct TrackedObserver {
     construction_id: NodeId,
     binding_symbols: FxHashSet<SymbolId>,
@@ -130,6 +130,34 @@ impl Rule for EffectObserverNeedsDisconnect {
             let returned_expressions =
                 collect_effect_return_expressions(callback_id, ctx, &function_node_ids);
             for tracked in &mut tracked_observers {
+                let release_candidate = tracked.clone();
+                if effect_invokes_stored_disposer(
+                    callback_id,
+                    tracked.construction_id,
+                    ctx,
+                    |expression| exact_local_callback_function_id(expression, ctx, &mut Vec::new()),
+                    |cleanup_function_id| {
+                        let mut cleanup_candidate = release_candidate.clone();
+                        for_each_observer_execution_node(
+                            cleanup_function_id,
+                            ctx,
+                            &function_node_ids,
+                            &mut |candidate| {
+                                record_observer_call(
+                                    candidate,
+                                    std::slice::from_mut(&mut cleanup_candidate),
+                                    ctx,
+                                );
+                            },
+                        );
+                        cleanup_candidate.did_release_all
+                            || (!cleanup_candidate.did_observe_unknown_target
+                                && cleanup_candidate.observed_iteration_target_keys.is_empty()
+                                && cleanup_candidate.observed_target_keys.is_empty())
+                    },
+                ) {
+                    release_all_observations(tracked);
+                }
                 if returned_expressions.iter().any(|expression| {
                     is_bound_observer_disconnect(
                         expression,

@@ -7,6 +7,7 @@ import {
 } from "oxlint-plugin-react-doctor/core";
 import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor/core";
 import type { ProjectInfo, RuleSeverityControls } from "../../types/index.js";
+import type { AdoptedLintConfigSettings } from "../../read-adopted-lint-config-settings.js";
 import { resolveRuleSeverityOverride } from "../../resolve-rule-severity-override.js";
 import {
   COMPILER_CLEANUP_BUCKET,
@@ -32,6 +33,7 @@ export interface OxlintConfigOptions {
   serverAuthFunctionNames?: ReadonlyArray<string>;
   projectIndexModuleSources?: ReadonlyArray<string>;
   severityControls?: RuleSeverityControls;
+  adoptedSettings?: AdoptedLintConfigSettings;
   /**
    * User-declared plugins from `react-doctor.config.json`'s
    * `plugins: [...]`, already resolved + introspected via
@@ -139,6 +141,7 @@ export const createOxlintConfig = ({
   serverAuthFunctionNames,
   projectIndexModuleSources,
   severityControls,
+  adoptedSettings = {},
   userPlugins = [],
   disableReactHooksJsPlugin = false,
   ruleSelection,
@@ -293,6 +296,7 @@ export const createOxlintConfig = ({
     plugins: didEnableNativeReactDoctorRule ? [NATIVE_REACT_DOCTOR_PLUGIN_NAME] : [],
     jsPlugins: [...jsPlugins, pluginPath],
     settings: {
+      ...adoptedSettings,
       "react-doctor": {
         portedRuleMode: "curated",
         framework: project.framework,

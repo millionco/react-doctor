@@ -20,7 +20,7 @@ declare_oxc_lint!(
 
 impl Rule for RnNoRawText {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx) && is_react_native_file_active(ctx)
+        !is_test_noise_file(ctx) && is_react_native_file_active(ctx)
     }
 
     fn run_once<'a>(&self, ctx: &LintContext<'a>) {
@@ -34,6 +34,7 @@ impl Rule for RnNoRawText {
             ctx.semantic(),
             ctx.module_record(),
         );
+        let translation_return_function_ids = rn_raw_text_translation_return_function_ids(ctx);
         let mut imported_forwarding_kinds = FxHashMap::default();
         for node in ctx.nodes().iter() {
             if !rn_raw_text_is_static_child(node, ctx) {
@@ -45,8 +46,21 @@ impl Rule for RnNoRawText {
             let AstKind::JSXElement(receiver_element) = receiver.kind() else {
                 continue;
             };
-            if rn_raw_text_is_inside_text_boundary(receiver, ctx)
-                || rn_raw_text_is_expo_list_item(receiver_element, ctx)
+            let receiver_name =
+                react_native_jsx_element_name(&receiver_element.opening_element.name);
+            if receiver_name.is_some_and(rn_raw_text_is_transparent_name)
+                && rn_raw_text_nearest_function_id(receiver.id(), ctx).is_some_and(|function_id| {
+                    translation_return_function_ids.contains(&function_id)
+                })
+            {
+                continue;
+            }
+            if rn_raw_text_is_inside_text_boundary(
+                receiver,
+                ctx,
+                &forwarding_kinds,
+                &mut imported_forwarding_kinds,
+            ) || rn_raw_text_is_expo_list_item(receiver_element, ctx)
                 || rn_raw_text_is_inside_platform_web_branch(node, ctx)
             {
                 continue;
@@ -274,6 +288,8 @@ fn rn_raw_text_receiver<'a, 'b>(
 fn rn_raw_text_is_inside_text_boundary<'a>(
     receiver: &crate::AstNode<'a>,
     ctx: &LintContext<'a>,
+    forwarding_kinds: &FxHashMap<SymbolId, ChildrenForwardingKind>,
+    imported_forwarding_kinds: &mut FxHashMap<SymbolId, ChildrenForwardingKind>,
 ) -> bool {
     let AstKind::JSXElement(receiver_element) = receiver.kind() else {
         return false;
@@ -281,9 +297,12 @@ fn rn_raw_text_is_inside_text_boundary<'a>(
     let mut current_is_transparent =
         react_native_jsx_element_name(&receiver_element.opening_element.name)
             .is_some_and(rn_raw_text_is_transparent_name);
-    if react_native_jsx_element_name(&receiver_element.opening_element.name)
-        .is_some_and(react_native_is_text_name)
-    {
+    if rn_raw_text_element_is_text_boundary(
+        receiver_element,
+        ctx,
+        forwarding_kinds,
+        imported_forwarding_kinds,
+    ) {
         return true;
     }
     for ancestor in ctx.nodes().ancestors(receiver.id()) {
@@ -296,12 +315,266 @@ fn rn_raw_text_is_inside_text_boundary<'a>(
         let Some(name) = react_native_jsx_element_name(&element.opening_element.name) else {
             return false;
         };
-        if react_native_is_text_name(name) {
+        if rn_raw_text_element_is_text_boundary(
+            element,
+            ctx,
+            forwarding_kinds,
+            imported_forwarding_kinds,
+        ) {
             return true;
         }
         current_is_transparent = rn_raw_text_is_transparent_name(name);
     }
     false
+}
+
+fn rn_raw_text_element_is_text_boundary<'a>(
+    element: &oxc_ast::ast::JSXElement<'a>,
+    ctx: &LintContext<'a>,
+    forwarding_kinds: &FxHashMap<SymbolId, ChildrenForwardingKind>,
+    imported_forwarding_kinds: &mut FxHashMap<SymbolId, ChildrenForwardingKind>,
+) -> bool {
+    match react_native_jsx_receiver_kind(&element.opening_element, ctx.semantic(), forwarding_kinds)
+    {
+        ChildrenForwardingKind::Text => true,
+        ChildrenForwardingKind::NonText => false,
+        ChildrenForwardingKind::Unknown => {
+            let Some(symbol_id) =
+                jsx_element_symbol_id(&element.opening_element.name, ctx.semantic())
+            else {
+                return false;
+            };
+            *imported_forwarding_kinds
+                .entry(symbol_id)
+                .or_insert_with(|| {
+                    resolve_imported_react_native_component_forwarding(
+                        &element.opening_element,
+                        ctx.file_path(),
+                        ctx.semantic(),
+                        ctx.module_record(),
+                    )
+                })
+                == ChildrenForwardingKind::Text
+        }
+    }
+}
+
+fn rn_raw_text_translation_return_function_ids(
+    ctx: &LintContext<'_>,
+) -> FxHashSet<oxc_semantic::NodeId> {
+    ctx.nodes()
+        .iter()
+        .filter(|function_node| {
+            matches!(
+                function_node.kind(),
+                AstKind::Function(_) | AstKind::ArrowFunctionExpression(_)
+            ) && component_or_hook_function_name(function_node, ctx).is_some()
+        })
+        .filter_map(|function_node| {
+            let returned_roots = rn_raw_text_returned_jsx_roots(function_node.id(), ctx);
+            (!returned_roots.is_empty()
+                && returned_roots
+                    .iter()
+                    .all(|root| rn_raw_text_translation_root_state(root, ctx) == (true, true)))
+            .then_some(function_node.id())
+        })
+        .collect()
+}
+
+fn rn_raw_text_returned_jsx_roots<'a>(
+    function_id: oxc_semantic::NodeId,
+    ctx: &LintContext<'a>,
+) -> Vec<&'a Expression<'a>> {
+    let mut roots = Vec::new();
+    if let AstKind::ArrowFunctionExpression(function) = ctx.nodes().get_node(function_id).kind()
+        && let Some(expression) = function.get_expression()
+    {
+        rn_raw_text_collect_returned_jsx_roots(expression, &mut roots);
+    }
+    for node in ctx.nodes().iter() {
+        let AstKind::ReturnStatement(statement) = node.kind() else {
+            continue;
+        };
+        if rn_raw_text_nearest_function_id(node.id(), ctx) != Some(function_id) {
+            continue;
+        }
+        if let Some(argument) = &statement.argument {
+            rn_raw_text_collect_returned_jsx_roots(argument, &mut roots);
+        }
+    }
+    roots
+}
+
+fn rn_raw_text_collect_returned_jsx_roots<'a>(
+    expression: &'a Expression<'a>,
+    roots: &mut Vec<&'a Expression<'a>>,
+) {
+    match expression.get_inner_expression() {
+        expression @ (Expression::JSXElement(_) | Expression::JSXFragment(_)) => {
+            roots.push(expression);
+        }
+        Expression::ConditionalExpression(conditional) => {
+            rn_raw_text_collect_returned_jsx_roots(&conditional.consequent, roots);
+            rn_raw_text_collect_returned_jsx_roots(&conditional.alternate, roots);
+        }
+        Expression::LogicalExpression(logical) => {
+            rn_raw_text_collect_returned_jsx_roots(&logical.left, roots);
+            rn_raw_text_collect_returned_jsx_roots(&logical.right, roots);
+        }
+        _ => {}
+    }
+}
+
+fn rn_raw_text_translation_root_state(
+    expression: &Expression<'_>,
+    ctx: &LintContext<'_>,
+) -> (bool, bool) {
+    match expression.get_inner_expression() {
+        Expression::JSXElement(element) => {
+            let name = react_native_jsx_element_name(&element.opening_element.name);
+            if matches!(name, Some("fbt" | "fbs")) {
+                return (true, true);
+            }
+            if rn_raw_text_is_fragment_element(&element.opening_element.name) {
+                return rn_raw_text_translation_children_state(&element.children, ctx);
+            }
+            (false, false)
+        }
+        Expression::JSXFragment(fragment) => {
+            rn_raw_text_translation_children_state(&fragment.children, ctx)
+        }
+        _ => (false, false),
+    }
+}
+
+fn rn_raw_text_translation_children_state(
+    children: &[oxc_ast::ast::JSXChild<'_>],
+    ctx: &LintContext<'_>,
+) -> (bool, bool) {
+    let mut did_contain_translation = false;
+    for child in children {
+        let state = match child {
+            oxc_ast::ast::JSXChild::Text(_) => (true, false),
+            oxc_ast::ast::JSXChild::Element(element) => {
+                rn_raw_text_translation_element_state(element, ctx)
+            }
+            oxc_ast::ast::JSXChild::Fragment(fragment) => {
+                rn_raw_text_translation_children_state(&fragment.children, ctx)
+            }
+            oxc_ast::ast::JSXChild::ExpressionContainer(container) => container
+                .expression
+                .as_expression()
+                .map_or((true, false), |expression| {
+                    rn_raw_text_translation_expression_state(expression, ctx)
+                }),
+            _ => (true, false),
+        };
+        if !state.0 {
+            return (false, false);
+        }
+        did_contain_translation |= state.1;
+    }
+    (true, did_contain_translation)
+}
+
+fn rn_raw_text_translation_element_state(
+    element: &oxc_ast::ast::JSXElement<'_>,
+    ctx: &LintContext<'_>,
+) -> (bool, bool) {
+    let name = react_native_jsx_element_name(&element.opening_element.name);
+    if matches!(name, Some("fbt" | "fbs")) {
+        (true, true)
+    } else if rn_raw_text_is_fragment_element(&element.opening_element.name) {
+        rn_raw_text_translation_children_state(&element.children, ctx)
+    } else {
+        (false, false)
+    }
+}
+
+fn rn_raw_text_is_fragment_element(name: &oxc_ast::ast::JSXElementName<'_>) -> bool {
+    match name {
+        oxc_ast::ast::JSXElementName::Identifier(identifier) => identifier.name == "Fragment",
+        oxc_ast::ast::JSXElementName::IdentifierReference(identifier) => {
+            identifier.name == "Fragment"
+        }
+        oxc_ast::ast::JSXElementName::MemberExpression(member) => {
+            member.property.name == "Fragment"
+                && matches!(
+                    &member.object,
+                    oxc_ast::ast::JSXMemberExpressionObject::IdentifierReference(identifier)
+                        if identifier.name == "React"
+                )
+        }
+        _ => false,
+    }
+}
+
+fn rn_raw_text_translation_expression_state(
+    expression: &Expression<'_>,
+    ctx: &LintContext<'_>,
+) -> (bool, bool) {
+    match expression.get_inner_expression() {
+        Expression::StringLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_)
+        | Expression::BigIntLiteral(_)
+        | Expression::RegExpLiteral(_)
+        | Expression::TemplateLiteral(_) => (true, false),
+        Expression::Identifier(identifier) if identifier.name == "undefined" => (true, false),
+        Expression::ArrayExpression(array) => {
+            let mut did_contain_translation = false;
+            for element in &array.elements {
+                let state = match element {
+                    oxc_ast::ast::ArrayExpressionElement::Elision(_) => (true, false),
+                    oxc_ast::ast::ArrayExpressionElement::SpreadElement(_) => {
+                        return (false, false);
+                    }
+                    element => element
+                        .as_expression()
+                        .map_or((false, false), |expression| {
+                            rn_raw_text_translation_expression_state(expression, ctx)
+                        }),
+                };
+                if !state.0 {
+                    return (false, false);
+                }
+                did_contain_translation |= state.1;
+            }
+            (true, did_contain_translation)
+        }
+        Expression::JSXElement(element) => rn_raw_text_translation_element_state(element, ctx),
+        Expression::JSXFragment(fragment) => {
+            rn_raw_text_translation_children_state(&fragment.children, ctx)
+        }
+        Expression::ConditionalExpression(conditional) => {
+            let consequent = rn_raw_text_translation_expression_state(&conditional.consequent, ctx);
+            let alternate = rn_raw_text_translation_expression_state(&conditional.alternate, ctx);
+            (consequent.0 && alternate.0, consequent.1 || alternate.1)
+        }
+        Expression::LogicalExpression(logical) => {
+            let right = rn_raw_text_translation_expression_state(&logical.right, ctx);
+            if logical.operator == oxc_syntax::operator::LogicalOperator::And {
+                return right;
+            }
+            let left = rn_raw_text_translation_expression_state(&logical.left, ctx);
+            (left.0 && right.0, left.1 || right.1)
+        }
+        _ => (false, false),
+    }
+}
+
+fn rn_raw_text_nearest_function_id(
+    node_id: oxc_semantic::NodeId,
+    ctx: &LintContext<'_>,
+) -> Option<oxc_semantic::NodeId> {
+    ctx.nodes().ancestors(node_id).find_map(|ancestor| {
+        matches!(
+            ancestor.kind(),
+            AstKind::Function(_) | AstKind::ArrowFunctionExpression(_)
+        )
+        .then(|| ancestor.id())
+    })
 }
 
 fn rn_raw_text_is_expo_list_item<'a>(

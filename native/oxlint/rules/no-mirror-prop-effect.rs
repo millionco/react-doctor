@@ -30,7 +30,7 @@ declare_oxc_lint!(
 
 impl Rule for NoMirrorPropEffect {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx)
+        !is_test_noise_file(ctx)
     }
 
     fn run_once<'a>(&self, ctx: &LintContext<'a>) {

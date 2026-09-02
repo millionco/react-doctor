@@ -298,6 +298,31 @@ describe("createOxlintConfig settings", () => {
     });
   });
 
+  it("merges adopted settings without replacing react-doctor settings", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: tailwindViteWebProject,
+      runtimeGlobals: ["DatePicker"],
+      adoptedSettings: {
+        tailwindcss: {
+          entryPoint: "src/styles.css",
+        },
+        "other-plugin": {
+          option: "value",
+        },
+      },
+    });
+
+    expect(config.settings.tailwindcss).toEqual({
+      entryPoint: "src/styles.css",
+    });
+    expect(config.settings["other-plugin"]).toEqual({
+      option: "value",
+    });
+    expect(config.settings["react-doctor"].framework).toBe("vite");
+    expect(config.settings["react-doctor"].runtimeGlobals).toEqual(["DatePicker"]);
+  });
+
   it("never registers security scan rules (they run as a core environment check)", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

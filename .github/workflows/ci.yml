@@ -20,12 +20,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Turbo Remote Cache: share build/typecheck/test artifacts across runs, runners,
-# and branches. Both are repo secrets, so they're empty on fork PRs (secrets are
-# withheld there) — turbo just runs cold, it does not fail.
+# Turbo Remote Cache: first-party PRs can read shared artifacts, but only
+# trusted push runs can write them. Fork PRs use the local cache only.
 env:
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+  TURBO_CACHE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && 'local:rw,remote:r' || github.event_name == 'pull_request' && 'local:rw' || 'local:rw,remote:rw' }}
 
 jobs:
   test:

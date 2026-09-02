@@ -5,7 +5,11 @@ use oxc_ast::{
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 
-use crate::{AstNode, context::LintContext, rule::Rule};
+use crate::{
+    AstNode,
+    context::{ContextHost, LintContext},
+    rule::Rule,
+};
 
 const MESSAGE: &str = "next/script inside next/head is silently ignored. Move <Script> outside <Head> so it actually loads.";
 
@@ -22,6 +26,10 @@ declare_oxc_lint!(
 );
 
 impl Rule for NextjsNoScriptInHead {
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        !is_test_noise_file(ctx)
+    }
+
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
         let AstKind::JSXOpeningElement(opening_element) = node.kind() else {
             return;

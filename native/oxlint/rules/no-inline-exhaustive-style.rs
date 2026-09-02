@@ -25,7 +25,7 @@ declare_oxc_lint!(
 
 impl Rule for NoInlineExhaustiveStyle {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx) && !is_generated_image_render_filename(ctx)
+        !is_test_noise_file(ctx) && !is_generated_image_render_filename(ctx)
     }
 
     fn run_once<'a>(&self, ctx: &LintContext<'a>) {

@@ -1505,7 +1505,6 @@ fn only_export_build_workspace_index(workspace_root: &Path) -> OnlyExportWorkspa
 
 fn only_export_find_workspace_root(package_directory: &Path) -> Option<PathBuf> {
     let mut current = Some(package_directory);
-    let mut workspace_root = None;
     while let Some(directory) = current {
         let manifest = fs::read_to_string(directory.join("package.json"))
             .ok()
@@ -1517,11 +1516,11 @@ fn only_export_find_workspace_root(package_directory: &Path) -> Option<PathBuf> 
                 .iter()
                 .any(|filename| directory.join(filename).is_file())
         {
-            workspace_root = Some(directory.to_path_buf());
+            return Some(directory.to_path_buf());
         }
         current = directory.parent();
     }
-    workspace_root
+    None
 }
 
 fn only_export_workspace_packages(workspace_root: &Path) -> Vec<(PathBuf, serde_json::Value)> {

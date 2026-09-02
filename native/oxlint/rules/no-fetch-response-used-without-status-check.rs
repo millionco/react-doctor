@@ -48,7 +48,7 @@ impl Rule for NoFetchResponseUsedWithoutStatusCheck {
             .next()
             .unwrap_or(filename.as_str())
             .to_ascii_lowercase();
-        !is_non_production_file(ctx)
+        !is_test_noise_file(ctx)
             && !basename.starts_with("gatsby-node.")
             && !basename.starts_with("gatsby-config.")
             && !basename.starts_with("gatsby-ssr.")

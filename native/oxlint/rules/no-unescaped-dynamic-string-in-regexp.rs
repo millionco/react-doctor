@@ -35,7 +35,7 @@ declare_oxc_lint!(
 
 impl Rule for NoUnescapedDynamicStringInRegexp {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !regexp_test_context_file(ctx)
+        !is_test_noise_file(ctx) && !regexp_test_context_file(ctx)
     }
 
     fn run_once<'a>(&self, ctx: &LintContext<'a>) {

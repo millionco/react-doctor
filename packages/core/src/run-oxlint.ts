@@ -14,6 +14,7 @@ import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
 import { detectUserLintConfigPaths } from "./detect-user-lint-config.js";
+import { readAdoptedLintConfigSettings } from "./read-adopted-lint-config-settings.js";
 import { ReactDoctorError } from "./errors.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
 import { computeRulesetHash } from "./runners/oxlint/compute-ruleset-hash.js";
@@ -329,18 +330,19 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   // the parser crash + misleading warning. Drop them up front so the
   // scan starts in the same state the fallback would land in.
   const extendsPaths = detectedConfigPaths.filter(canOxlintExtendConfig);
+  const adoptedSettings =
+    detectedConfigPaths.length > 0 ? readAdoptedLintConfigSettings(detectedConfigPaths) : {};
   const userPlugins =
     includedTags.size > 0 ? [] : resolveUserPlugins(userConfig?.plugins, configSourceDirectory);
 
   // HACK: only neutralize disable comments in audit mode. Default
   // behavior respects the user's existing `// eslint-disable*` /
   // `// oxlint-disable*` directives — we let oxlint apply them.
-  const restoreDisableDirectives = respectInlineDisables
-    ? () => {}
-    : await neutralizeDisableDirectives(
-        rootDirectory,
-        includePaths ?? options.precomputedSourceFiles?.map((sourceFile) => sourceFile.path),
-      );
+  const restoreDisableDirectives = await neutralizeDisableDirectives(
+    rootDirectory,
+    includePaths ?? options.precomputedSourceFiles?.map((sourceFile) => sourceFile.path),
+    { recoverOnly: respectInlineDisables },
+  );
 
   // Created last so any throw in the setup above (plugin resolution,
   // user-plugin loading) happens before the temp dir exists — nothing
@@ -455,6 +457,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         serverAuthFunctionNames,
         projectIndexModuleSources,
         severityControls,
+        adoptedSettings,
         userPlugins,
         disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
         ruleSelection: overrides.ruleSelection,

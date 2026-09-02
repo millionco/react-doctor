@@ -13,7 +13,7 @@ const buildNestedJsxSource = (nestingDepth: number): string => {
   return `export const DeepTree = () => (${openingElements}{value}${closingElements});`;
 };
 
-const measureDuration = (nestingDepth: number): number => {
+const measureFastestDuration = (nestingDepth: number): number => {
   const source = buildNestedJsxSource(nestingDepth);
   const sampleDurations = Array.from({ length: MEASUREMENT_SAMPLE_COUNT }, () => {
     const startedAt = process.hrtime.bigint();
@@ -22,16 +22,15 @@ const measureDuration = (nestingDepth: number): number => {
     expect(result.diagnostics).toEqual([]);
     return Number(process.hrtime.bigint() - startedAt);
   });
-  sampleDurations.sort((firstDuration, secondDuration) => firstDuration - secondDuration);
-  return sampleDurations[Math.floor(sampleDurations.length / 2)] ?? Number.POSITIVE_INFINITY;
+  return Math.min(...sampleDurations);
 };
 
 describe("no-tiny-text performance", () => {
   it("scales near-linearly across deeply nested JSX", () => {
-    measureDuration(SMALL_NESTING_DEPTH);
-    measureDuration(LARGE_NESTING_DEPTH);
-    const smallDuration = measureDuration(SMALL_NESTING_DEPTH);
-    const largeDuration = measureDuration(LARGE_NESTING_DEPTH);
+    measureFastestDuration(SMALL_NESTING_DEPTH);
+    measureFastestDuration(LARGE_NESTING_DEPTH);
+    const smallDuration = measureFastestDuration(SMALL_NESTING_DEPTH);
+    const largeDuration = measureFastestDuration(LARGE_NESTING_DEPTH);
     expect(largeDuration).toBeLessThan(smallDuration * MAXIMUM_SCALING_MULTIPLIER);
   });
 });

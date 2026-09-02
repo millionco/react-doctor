@@ -165,11 +165,13 @@ const SOURCE_ROOT_SEGMENTS: &[&str] = &[
     "/client/",
 ];
 
+#[allow(dead_code)]
 fn is_non_production_file(ctx: &crate::context::ContextHost) -> bool {
     let filename = ctx.file_path().to_string_lossy().replace('\\', "/");
     is_non_production_filename(&filename)
 }
 
+#[allow(dead_code)]
 fn is_non_production_filename(filename: &str) -> bool {
     let basename = filename.rsplit('/').next().unwrap_or(filename);
     let lowercase_basename = basename.to_lowercase();

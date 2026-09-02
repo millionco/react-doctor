@@ -69,6 +69,33 @@ describe("unused-file graph completeness", () => {
     expect(unusedFilePaths(rootDirectory, result.unusedFiles)).toEqual(["src/lib/orphan.ts"]);
   });
 
+  it("keeps a directory barrel reachable through a tsconfig alias", async () => {
+    const rootDirectory = createProject(
+      {
+        "app/page.tsx":
+          'import { FooList } from "@/features/foo"; export default () => <FooList />;',
+        "src/features/foo/index.ts": 'export { FooList } from "./foo-list";',
+        "src/features/foo/foo-list.tsx": "export const FooList = () => <div />;",
+        "src/orphan.ts": "export const orphan = true;",
+        "tsconfig.json": JSON.stringify({
+          compilerOptions: {
+            baseUrl: ".",
+            moduleResolution: "bundler",
+            paths: { "@/*": ["src/*"] },
+          },
+        }),
+      },
+      { dependencies: { next: "^14.0.0", react: "^18.0.0" } },
+    );
+
+    const result = await analyzeProject({
+      rootDirectory,
+      tsConfigPath: path.join(rootDirectory, "tsconfig.json"),
+    });
+
+    expect(unusedFilePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
   it.each([
     {
       name: "default entry heuristic",
@@ -370,6 +397,28 @@ describe("unused-file graph completeness", () => {
       expect(result.unusedFiles).toEqual([]);
     },
   );
+
+  it("uses entry points from implicit sub-projects outside workspace patterns", async () => {
+    const rootDirectory = createProject(
+      {
+        "index.js": "console.log('root');",
+        "packages/real/package.json": JSON.stringify({ name: "real", main: "index.js" }),
+        "packages/real/index.js": "export const value = 1;",
+        "sub/package.json": JSON.stringify({ name: "sub", main: "cli.js" }),
+        "sub/cli.js": "const { helper } = require('./helper'); console.log(helper());",
+        "sub/helper.js": "module.exports.helper = () => 'hi';",
+      },
+      {
+        name: "root",
+        workspaces: ["packages/*"],
+        main: "index.js",
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(unusedFilePaths(rootDirectory, result.unusedFiles)).toEqual([]);
+  });
 
   it("isolates uncertainty to its owning workspace package", async () => {
     const rootDirectory = createProject(

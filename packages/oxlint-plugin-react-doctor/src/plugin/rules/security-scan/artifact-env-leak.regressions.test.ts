@@ -12,6 +12,80 @@ describe("security-scan/artifact-env-leak — regressions", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("stays silent on public tokens inside a browser artifact", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/index-abc123.js",
+      content: `const config = { token: "VITE_STYTCH_PUBLIC_TOKEN" };`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags secret-qualified public token names", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/index-abc123.js",
+      content: `const config = { token: "VITE_STYTCH_PUBLIC_TOKEN_SECRET" };`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("ignores env examples from node_modules sources embedded in a source map", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/index-abc123.js.map",
+      content: JSON.stringify({
+        version: 3,
+        sources: [
+          "../../node_modules/.pnpm/@reatom+core@1001.3.0/node_modules/@reatom/core/dist/index.js",
+        ],
+        sourcesContent: [
+          `/** Example: const db = dbVar.set(process.env.DATABASE_URL) */\nexport const atom = {};`,
+        ],
+      }),
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("ignores third-party sources when sourceRoot points into node_modules", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/index-abc123.js.map",
+      content: JSON.stringify({
+        version: 3,
+        sourceRoot: "../../node_modules/",
+        sources: ["@reatom/core/dist/index.js"],
+        sourcesContent: [`export const databaseUrl = process.env.DATABASE_URL;`],
+      }),
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags first-party env access embedded in a source map", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/index-abc123.js.map",
+      content: JSON.stringify({
+        version: 3,
+        sources: ["../../node_modules/@reatom/core/dist/index.js", "../../src/config.ts"],
+        sourcesContent: [
+          `/** Example: process.env.DATABASE_URL */`,
+          `export const databaseUrl = process.env.DATABASE_URL;`,
+        ],
+      }),
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("keeps conservative raw matching for malformed source maps", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: "dist/assets/index-abc123.js.map",
+      content: `{"sources":["../../node_modules/example.js"],"sourcesContent":["process.env.DATABASE_URL"`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("stays silent on generated API-reference markdown (medusa TypeList shape)", () => {
     const findings = runScanRule(artifactEnvLeak, {
       relativePath: "www/apps/resources/references/types/CommonTypes/page.mdx",

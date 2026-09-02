@@ -53,7 +53,7 @@ declare_oxc_lint!(
 
 impl Rule for NoUnsafeJsonParse {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx)
+        !is_test_noise_file(ctx)
             && !unsafe_json_is_node_script_filename(&ctx.file_path().to_string_lossy())
     }
 

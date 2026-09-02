@@ -78,14 +78,14 @@ import {
 } from "../utils/finalize-cli-scans.js";
 import { runStagedInspect } from "../utils/run-staged-inspect.js";
 
-const buildChangedFilesDiffInfo = (changedFiles: string[]): DiffInfo => ({
+const buildFileSelectionDiffInfo = (filePaths: ReadonlyArray<string>): DiffInfo => ({
   currentBranch: process.env.GITHUB_HEAD_REF?.trim() || null,
   baseBranch: process.env.GITHUB_BASE_REF?.trim() || "pull request target",
   // The GitHub Action forwards the PR base commit so baseline mode can read
   // base content against a SHA that's actually fetched (branch names rarely
   // resolve in a shallow PR checkout). Empty in non-Action runs.
   baseSha: process.env.REACT_DOCTOR_BASE_SHA?.trim() || undefined,
-  changedFiles,
+  changedFiles: [...filePaths],
   isCurrentChanges: false,
 });
 
@@ -261,6 +261,7 @@ export const inspectAction = async (
   directory: string,
   flags: InspectFlags,
   invocationCommand = "inspect",
+  selectedFilePaths?: ReadonlyArray<string>,
 ): Promise<void> => {
   const isScoreOnly = Boolean(flags.score);
   const isJsonMode = Boolean(flags.json);
@@ -375,19 +376,22 @@ export const inspectAction = async (
       userConfig?.projects,
     );
     const projectSelectionCompletedTime = performance.now();
-    let changedFilesDiffInfo = flags.changedFilesFrom
-      ? buildChangedFilesDiffInfo(readChangedFilesFrom(path.resolve(flags.changedFilesFrom)))
-      : null;
-    if (changedFilesDiffInfo !== null && scanTarget.didRedirectViaRootDir) {
+    const hasPositionalFileSelection = selectedFilePaths !== undefined;
+    let providedFilesDiffInfo = hasPositionalFileSelection
+      ? buildFileSelectionDiffInfo(selectedFilePaths)
+      : flags.changedFilesFrom
+        ? buildFileSelectionDiffInfo(readChangedFilesFrom(path.resolve(flags.changedFilesFrom)))
+        : null;
+    if (providedFilesDiffInfo !== null && requestedDirectory !== resolvedDirectory) {
       const relativeProjectDirectory = resolveProjectRelativeDirectory(
         requestedDirectory,
         resolvedDirectory,
       );
       if (relativeProjectDirectory) {
         const projectPrefix = `${relativeProjectDirectory}/`;
-        changedFilesDiffInfo = {
-          ...changedFilesDiffInfo,
-          changedFiles: changedFilesDiffInfo.changedFiles.flatMap((filePath) => {
+        providedFilesDiffInfo = {
+          ...providedFilesDiffInfo,
+          changedFiles: providedFilesDiffInfo.changedFiles.flatMap((filePath) => {
             return filePath.startsWith(projectPrefix) ? [filePath.slice(projectPrefix.length)] : [];
           }),
         };
@@ -397,11 +401,11 @@ export const inspectAction = async (
     // Untracked files only exist in a local working tree, so this is a
     // CLI-only modifier (like `--staged`) — off unless the user opts in.
     const includeUntracked = flags.includeUntracked ?? false;
-    // The internal `--changed-files-from` path (the GitHub Action) implies the
-    // `changed` scope when the user didn't pick one explicitly — it always ran
-    // in diff mode historically.
-    const scopeRequest: RequestedScope =
-      requestedScope.scope === undefined && changedFilesDiffInfo !== null
+    // Positional files are an exact selection. The internal
+    // `--changed-files-from` path implies the historical `changed` scope.
+    const scopeRequest: RequestedScope = hasPositionalFileSelection
+      ? { scope: "files", base: undefined, usedDeprecatedDiff: false }
+      : requestedScope.scope === undefined && providedFilesDiffInfo !== null
         ? { ...requestedScope, scope: "changed" }
         : requestedScope;
     // Validate against the EFFECTIVE scope (post `--changed-files-from`
@@ -423,10 +427,10 @@ export const inspectAction = async (
     // "full vs changed" prompt never appears for users on a feature branch who
     // didn't explicitly pass a scope.
     const shouldDetectDiff =
-      changedFilesDiffInfo === null &&
+      providedFilesDiffInfo === null &&
       (wantsDiffMode || (scopeRequest.scope === undefined && !skipPrompts && !isQuiet));
     const diffInfo =
-      changedFilesDiffInfo ??
+      providedFilesDiffInfo ??
       (shouldDetectDiff
         ? await getDiffInfo(resolvedDirectory, scopeRequest.base, includeUntracked)
         : null);
@@ -449,7 +453,7 @@ export const inspectAction = async (
     // exact base (`diffBaseRef`). `null` when uncommitted, detached, or git is
     // unavailable. Shared by `changed` (baseline) and `lines` (hunk ranges).
     const comparisonBaseRef =
-      isDiffMode && diffInfo && !diffInfo.isCurrentChanges
+      isDiffMode && diffInfo && !diffInfo.isCurrentChanges && !hasPositionalFileSelection
         ? diffInfo.baseSha
           ? await resolveMergeBaseRef(resolvedDirectory, diffInfo.baseSha)
           : (diffInfo.diffBaseRef ??
@@ -497,7 +501,10 @@ export const inspectAction = async (
     setJsonReportMode(baselineRef ? "baseline" : isDiffMode ? "diff" : "full");
 
     if (isDiffMode && diffInfo && !isQuiet) {
-      if (diffInfo.isCurrentChanges) {
+      if (hasPositionalFileSelection) {
+        const fileLabel = diffInfo.changedFiles.length === 1 ? "file" : "files";
+        logger.log(`Scanning ${diffInfo.changedFiles.length} selected ${fileLabel}`);
+      } else if (diffInfo.isCurrentChanges) {
         logger.log("Scanning uncommitted changes");
       } else {
         const currentBranchLabel = diffInfo.currentBranch ?? "(detached HEAD)";

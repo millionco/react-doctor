@@ -6,7 +6,11 @@ use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_span::GetSpan;
 
-use crate::{context::LintContext, rule::Rule, AstNode};
+use crate::{
+    context::{ContextHost, LintContext},
+    rule::Rule,
+    AstNode,
+};
 
 const LIST_COMPONENT_NAMES: [&str; 9] = [
     "FlatList",
@@ -33,6 +37,10 @@ declare_oxc_lint!(
 );
 
 impl Rule for RnNoInlineFlatlistRenderitem {
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        !is_test_noise_file(ctx)
+    }
+
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
         let AstKind::JSXOpeningElement(opening_element) = node.kind() else {
             return;

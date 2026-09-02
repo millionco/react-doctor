@@ -9,21 +9,28 @@ import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.j
 import { resolveTuiEnvironment } from "../utils/resolve-tui-environment.js";
 import { warnDeprecatedDiff } from "../utils/resolve-scope.js";
 import { shouldUseTui } from "../utils/should-use-tui.js";
-import { validateModeFlags } from "../utils/validate-mode-flags.js";
+import { validateFilePathSelectionFlags, validateModeFlags } from "../utils/validate-mode-flags.js";
 import { warnDeprecatedFailOn } from "../utils/warn-deprecated-fail-on.js";
 
 export interface RunScanCommandInput {
   readonly directory: string;
+  readonly filePaths?: ReadonlyArray<string>;
   readonly flags: InspectFlags;
   readonly invocationCommand: string;
 }
 
 export const runScanCommand = async (input: RunScanCommandInput): Promise<void> => {
   if (input.flags.cache === false) process.env.REACT_DOCTOR_NO_CACHE = "1";
+  if (input.filePaths !== undefined) validateFilePathSelectionFlags(input.flags);
   const tuiEnvironment = {
     flags: input.flags,
     ...resolveTuiEnvironment(),
   };
+
+  if (input.filePaths !== undefined) {
+    await inspectAction(input.directory, input.flags, input.invocationCommand, input.filePaths);
+    return;
+  }
 
   if (!shouldUseTui(tuiEnvironment)) {
     await inspectAction(input.directory, input.flags, input.invocationCommand);

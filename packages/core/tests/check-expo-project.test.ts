@@ -165,6 +165,78 @@ describe("checkExpoProject — redundant transitive dependencies", () => {
       ),
     ).toHaveLength(1);
   });
+
+  it("keeps @expo/metro-config when a package subpath is imported", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "expo-app",
+      dependencies: {
+        expo: "~57.0.18",
+        "@expo/metro-config": "57.0.12",
+      },
+    });
+    writeFile(
+      projectDirectory,
+      "metro.transformer.cjs",
+      `const upstreamTransformer = require("@expo/metro-config/babel-transformer");`,
+    );
+
+    const diagnostics = checkExpoProject(
+      projectDirectory,
+      buildExpoProject(projectDirectory, "~57.0.18"),
+    );
+    expect(
+      rulesOf(diagnostics).filter((rule) => rule === "expo-no-redundant-dependency"),
+    ).toHaveLength(0);
+  });
+
+  it("still flags @expo/metro-config when only the package root is imported", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "expo-app",
+      dependencies: {
+        expo: "~57.0.18",
+        "@expo/metro-config": "57.0.12",
+      },
+    });
+    writeFile(
+      projectDirectory,
+      "metro.config.js",
+      `const { getDefaultConfig } = require("@expo/metro-config");`,
+    );
+
+    const diagnostics = checkExpoProject(
+      projectDirectory,
+      buildExpoProject(projectDirectory, "~57.0.18"),
+    );
+    expect(
+      rulesOf(diagnostics).filter((rule) => rule === "expo-no-redundant-dependency"),
+    ).toHaveLength(1);
+  });
+
+  it("still flags @expo/metro-config when a package subpath only appears in a comment", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "expo-app",
+      dependencies: {
+        expo: "~57.0.18",
+        "@expo/metro-config": "57.0.12",
+      },
+    });
+    writeFile(
+      projectDirectory,
+      "metro.config.js",
+      `// require("@expo/metro-config/babel-transformer");\nmodule.exports = {};`,
+    );
+
+    const diagnostics = checkExpoProject(
+      projectDirectory,
+      buildExpoProject(projectDirectory, "~57.0.18"),
+    );
+    expect(
+      rulesOf(diagnostics).filter((rule) => rule === "expo-no-redundant-dependency"),
+    ).toHaveLength(1);
+  });
 });
 
 describe("checkExpoProject — dependency overrides", () => {
@@ -379,6 +451,82 @@ describe("checkExpoProject — metro config", () => {
     expect(
       rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
     ).not.toContain("expo-metro-config");
+  });
+
+  it("stays quiet when a local Metro helper extends expo/metro-config", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro-helper.js"),
+      'const { getDefaultConfig } = require("expo/metro-config");\nmodule.exports = { getWrappedConfig: getDefaultConfig };\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.js"),
+      'const { getWrappedConfig } = require("./metro-helper");\nmodule.exports = getWrappedConfig(__dirname);\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).not.toContain("expo-metro-config");
+  });
+
+  it("stays quiet when metro.config.js uses PostHog's Expo wrapper", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.js"),
+      'const { getPostHogExpoConfig } = require("posthog-react-native/metro");\nmodule.exports = getPostHogExpoConfig(__dirname);\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).not.toContain("expo-metro-config");
+  });
+
+  it("flags a local Metro helper that does not extend expo/metro-config", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro-helper.js"),
+      "module.exports = { getWrappedConfig: () => ({ resolver: {} }) };\n",
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.js"),
+      'const { getWrappedConfig } = require("./metro-helper");\nmodule.exports = getWrappedConfig(__dirname);\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).toContain("expo-metro-config");
+  });
+
+  it("does not follow type-only imports to Metro helpers", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro-helper.ts"),
+      'export type Config = typeof import("expo/metro-config");\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.ts"),
+      'import type { Config } from "./metro-helper";\nconst config: Config = { resolver: {} };\nexport default config;\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).toContain("expo-metro-config");
+  });
+
+  it("handles cyclic local Metro helpers", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro-helper.js"),
+      'require("./metro.config");\nmodule.exports = { resolver: {} };\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.js"),
+      'module.exports = require("./metro-helper");\n',
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).toContain("expo-metro-config");
   });
 });
 

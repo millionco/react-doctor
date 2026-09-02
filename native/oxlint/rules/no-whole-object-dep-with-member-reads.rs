@@ -9,7 +9,11 @@ use oxc_span::GetSpan;
 use oxc_syntax::operator::UnaryOperator;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{AstNode, context::LintContext, rule::Rule};
+use crate::{
+    AstNode,
+    context::{ContextHost, LintContext},
+    rule::Rule,
+};
 
 const HOOK_NAMES: [&str; 3] = ["useMemo", "useCallback", "useImperativeHandle"];
 const CALLBACK_CONSUMER_NAMES: [&str; 27] = [
@@ -61,6 +65,10 @@ declare_oxc_lint!(
 );
 
 impl Rule for NoWholeObjectDepWithMemberReads {
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        !is_test_noise_file(ctx)
+    }
+
     fn run_once<'a>(&self, ctx: &LintContext<'a>) {
         let mut member_bindings_by_props = FxHashMap::<SymbolId, FxHashSet<SymbolId>>::default();
         let mut usage_by_callback_and_props =

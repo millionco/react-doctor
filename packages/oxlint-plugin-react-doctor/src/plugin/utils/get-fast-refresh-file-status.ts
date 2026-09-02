@@ -712,12 +712,11 @@ const isWorkspaceRoot = (directory: string, manifest: PackageManifest | null): b
 
 const findWorkspaceRoot = (packageDirectory: string): string | null => {
   let currentDirectory = packageDirectory;
-  let workspaceRoot: string | null = null;
   while (true) {
     const manifest = readPackageManifest(currentDirectory);
-    if (isWorkspaceRoot(currentDirectory, manifest)) workspaceRoot = currentDirectory;
+    if (isWorkspaceRoot(currentDirectory, manifest)) return currentDirectory;
     const parentDirectory = path.dirname(currentDirectory);
-    if (parentDirectory === currentDirectory) return workspaceRoot;
+    if (parentDirectory === currentDirectory) return null;
     currentDirectory = parentDirectory;
   }
 };

@@ -29,7 +29,7 @@ declare_oxc_lint!(
 
 impl Rule for NextjsNoNativeScript {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx) && is_next_file_active(ctx)
+        !is_test_noise_file(ctx) && is_next_file_active(ctx)
     }
 
     fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {

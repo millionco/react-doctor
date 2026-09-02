@@ -1,5 +1,12 @@
 # @react-doctor/api
 
+## 0.9.13
+
+### Patch Changes
+
+- Updated dependencies [[`ac87f7d`](https://github.com/millionco/react-doctor/commit/ac87f7d7f64d77cc0a648ee863dd50b3c69c0257), [`40b9d79`](https://github.com/millionco/react-doctor/commit/40b9d79703c398f47ba92488ce1bdea011f12109), [`6adf55e`](https://github.com/millionco/react-doctor/commit/6adf55ed8841c9a6f63a3e93cc0d2ccfbe4ca852), [`990daaf`](https://github.com/millionco/react-doctor/commit/990daafa6277b966aab30152a8e23c194bcce738), [`77aec24`](https://github.com/millionco/react-doctor/commit/77aec24f42fa8a2c55504550df929ea3985b7748), [`79d8007`](https://github.com/millionco/react-doctor/commit/79d80072817eb86c74f3dd42ce91c8104f448810), [`a163de9`](https://github.com/millionco/react-doctor/commit/a163de9afa0c4a84c2d6e13ddd7ac55c910dacc3)]:
+  - @react-doctor/core@0.9.13
+
 ## 0.9.12
 
 ### Patch Changes

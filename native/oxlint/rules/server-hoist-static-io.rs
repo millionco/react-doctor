@@ -8,7 +8,10 @@ use oxc_semantic::NodeId;
 use oxc_span::{GetSpan, Span};
 use rustc_hash::FxHashSet;
 
-use crate::{context::LintContext, rule::Rule};
+use crate::{
+    context::{ContextHost, LintContext},
+    rule::Rule,
+};
 
 const ROUTE_HANDLER_HTTP_METHODS: [&str; 7] =
     ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"];
@@ -61,6 +64,10 @@ declare_oxc_lint!(
 );
 
 impl Rule for ServerHoistStaticIo {
+    fn should_run(&self, ctx: &ContextHost) -> bool {
+        !is_test_noise_file(ctx)
+    }
+
     fn run_once<'a>(&self, ctx: &LintContext<'a>) {
         for statement in &ctx.nodes().program().body {
             match statement {

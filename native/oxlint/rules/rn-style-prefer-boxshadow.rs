@@ -53,7 +53,7 @@ declare_oxc_lint!(
 
 impl Rule for RnStylePreferBoxshadow {
     fn should_run(&self, ctx: &ContextHost) -> bool {
-        !is_non_production_file(ctx)
+        !is_test_noise_file(ctx)
             && is_react_native_file_active(ctx)
             && !rn_box_shadow_is_legacy_arch_react_native_file(ctx.file_path())
     }

@@ -1164,6 +1164,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "motion-animate-presence-requires-key": 6,
   "motion-animate-presence-wait-single-child": 3,
   "no-create-object-url-in-render": 4,
+  "no-create-object-url-without-revoke": 4,
   "no-create-context-in-render": 3,
   "no-async-effect-callback": 3,
   "query-destructure-result": 2,
@@ -1563,6 +1564,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-inline-exhaustive-style": 3,
   "no-focus-in-animation-completion-handler": 1,
   "no-hover-only-reveal": 1,
+  "no-hydration-branch-on-browser-global": 0,
   "no-image-hover-transform": 1,
   "no-indeterminate-attribute": 4,
   "no-impure-call-at-module-scope": 7,
@@ -1597,6 +1599,8 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-prevent-default": 1,
   "no-random-key": 1,
   "no-ref-callback-cleanup-before-react-19": 1,
+  "no-reset-all-state-on-prop-change": 0,
+  "no-side-effect-in-state-updater-function": 1,
   "no-uncontrolled-input": 2,
   "no-undeferred-third-party": 3,
   "no-undersized-icon-button": 0,
@@ -1605,6 +1609,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "preact-prefer-oninput": 3,
   "waapi-animation-in-render": 0,
   "zod-v4-no-deprecated-error-apis": 0,
+  "zustand-no-mutating-state": 0,
   "zod-v4-no-deprecated-error-customization": 0,
   "zod-v4-no-deprecated-schema-apis": 0,
   "zod-v4-prefer-top-level-string-formats": 0,
@@ -1643,6 +1648,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "r3f-webgpu-require-async-init": 1,
   "r3f-limit-shadowed-point-lights": 1,
   "rn-bottom-sheet-use-integrated-scrollable": 1,
+  "rn-list-recyclable-without-types": 0,
   "no-focusable-content-in-aria-hidden": 1,
   "alt-text": 7,
   "anchor-is-valid": 2,
@@ -1765,6 +1771,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "jsx-no-jsx-as-prop": 0,
   "effect-listener-cleanup-mismatch": 0,
   "effect-listener-cleanup-reference-mismatch": 0,
+  "effect-needs-cleanup": 8,
   "effect-observer-needs-disconnect": 0,
   "exhaustive-deps": 43,
   "js-batch-dom-css": 0,
@@ -1839,6 +1846,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "role-button-requires-complete-keyboard-activation": 1,
   "rules-of-hooks": 111,
   "server-after-nonblocking": 1,
+  "server-auth-actions": 1,
   "server-fetch-without-revalidate": 0,
   lang: 1,
   "media-has-caption": 5,
@@ -1859,6 +1867,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-static-element-interactions": 2,
   "no-transitioned-composite-widget-state": 1,
   "no-array-index-as-key": 2,
+  "no-adjust-state-on-prop-change": 1,
   "no-flush-sync": 3,
   "no-nondeterministic-id-value-in-render-body": 1,
   "no-spread-props-over-defaults-clobbers-with-undefined": 4,
@@ -1873,6 +1882,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "rerender-defer-reads-hook": 1,
   "rerender-memo-before-early-return": 1,
   "rerender-memo-with-default-value": 0,
+  "rerender-state-only-in-handlers": 6,
   "server-hoist-static-io": 2,
   "server-no-mutable-module-state": 1,
   "server-sequential-independent-await": 6,
@@ -4154,6 +4164,83 @@ const normalizeDiagnostics = (diagnostics) =>
       labels: diagnostic.labels,
     }))
     .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+
+const countExactDiagnostics = (diagnostics) => {
+  const diagnosticCounts = new Map();
+  for (const diagnostic of diagnostics) {
+    const diagnosticKey = JSON.stringify(diagnostic);
+    const existingCount = diagnosticCounts.get(diagnosticKey)?.count ?? 0;
+    diagnosticCounts.set(diagnosticKey, { count: existingCount + 1, diagnostic });
+  }
+  return diagnosticCounts;
+};
+
+const findDiagnosticMultiplicityDifferences = (leftDiagnostics, rightDiagnostics) => {
+  const leftDiagnosticCounts = countExactDiagnostics(leftDiagnostics);
+  const rightDiagnosticCounts = countExactDiagnostics(rightDiagnostics);
+  return Array.from(leftDiagnosticCounts.entries())
+    .map(([diagnosticKey, { count, diagnostic }]) => ({
+      count: count - (rightDiagnosticCounts.get(diagnosticKey)?.count ?? 0),
+      diagnostic,
+    }))
+    .filter(({ count }) => count > 0);
+};
+
+const KNOWN_PRODUCTION_DEDUPED_CORPUS_DIAGNOSTIC = {
+  repositoryName: "leemonade__leemons",
+  code: "react-doctor(no-adjust-state-on-prop-change)",
+  filenameSuffix:
+    "/plugins/leemons-plugin-academic-portfolio/frontend/src/components/Selectors/SelectProgram.js",
+  message: "This effect adjusts state after a prop changes, so users briefly see the stale value.",
+  severity: "warning",
+  span: { offset: 1238, length: 18, line: 45, column: 11 },
+};
+
+const isKnownProductionDedupedCorpusDiagnostic = (repositoryName, diagnostic) =>
+  repositoryName === KNOWN_PRODUCTION_DEDUPED_CORPUS_DIAGNOSTIC.repositoryName &&
+  diagnostic.code === KNOWN_PRODUCTION_DEDUPED_CORPUS_DIAGNOSTIC.code &&
+  diagnostic.filename.endsWith(KNOWN_PRODUCTION_DEDUPED_CORPUS_DIAGNOSTIC.filenameSuffix) &&
+  diagnostic.message === KNOWN_PRODUCTION_DEDUPED_CORPUS_DIAGNOSTIC.message &&
+  diagnostic.severity === KNOWN_PRODUCTION_DEDUPED_CORPUS_DIAGNOSTIC.severity &&
+  diagnostic.labels.length === 1 &&
+  JSON.stringify(diagnostic.labels[0].span) ===
+    JSON.stringify(KNOWN_PRODUCTION_DEDUPED_CORPUS_DIAGNOSTIC.span);
+
+const normalizeKnownProductionDiagnosticMultiplicity = ({
+  repositoryName,
+  stockDiagnostics,
+  nativeDiagnostics,
+}) => {
+  const stockMatches = stockDiagnostics.filter((diagnostic) =>
+    isKnownProductionDedupedCorpusDiagnostic(repositoryName, diagnostic),
+  );
+  const nativeMatches = nativeDiagnostics.filter((diagnostic) =>
+    isKnownProductionDedupedCorpusDiagnostic(repositoryName, diagnostic),
+  );
+  const expectedDiagnostic = JSON.stringify(stockMatches[0]);
+  if (
+    stockMatches.length !== 2 ||
+    nativeMatches.length !== 1 ||
+    stockMatches.some((diagnostic) => JSON.stringify(diagnostic) !== expectedDiagnostic) ||
+    JSON.stringify(nativeMatches[0]) !== expectedDiagnostic
+  ) {
+    return { stockDiagnostics, nativeDiagnostics };
+  }
+  let didRemoveDuplicate = false;
+  return {
+    stockDiagnostics: stockDiagnostics.filter((diagnostic) => {
+      if (
+        didRemoveDuplicate ||
+        !isKnownProductionDedupedCorpusDiagnostic(repositoryName, diagnostic)
+      ) {
+        return true;
+      }
+      didRemoveDuplicate = true;
+      return false;
+    }),
+    nativeDiagnostics,
+  };
+};
 
 const countDiagnosticsByRule = (diagnostics) => {
   const counts = Object.fromEntries(nativeRules.map((nativeRuleId) => [nativeRuleId, 0]));
@@ -10122,26 +10209,34 @@ export const App = () => <>
     const corpusParityFailures = [];
     for (const repositoryName of corpusRepositories) {
       const repositoryPath = path.join(resolvedCorpusDirectory, repositoryName);
-      const repositoryStockDiagnostics = runOxlint(
+      const rawRepositoryStockDiagnostics = runOxlint(
         corpusStockConfigPath,
         process.env,
         repositoryPath,
       ).diagnostics;
-      const repositoryNativeDiagnostics = runOxlint(
+      const rawRepositoryNativeDiagnostics = runOxlint(
         corpusNativeConfigPath,
         nativeEnvironment,
         repositoryPath,
       ).diagnostics;
+      const {
+        stockDiagnostics: repositoryStockDiagnostics,
+        nativeDiagnostics: repositoryNativeDiagnostics,
+      } = normalizeKnownProductionDiagnosticMultiplicity({
+        repositoryName,
+        stockDiagnostics: rawRepositoryStockDiagnostics,
+        nativeDiagnostics: rawRepositoryNativeDiagnostics,
+      });
       if (
         JSON.stringify(repositoryNativeDiagnostics) !== JSON.stringify(repositoryStockDiagnostics)
       ) {
-        const nativeDiagnosticKeys = new Set(repositoryNativeDiagnostics.map(JSON.stringify));
-        const stockDiagnosticKeys = new Set(repositoryStockDiagnostics.map(JSON.stringify));
-        const stockOnlyDiagnostics = repositoryStockDiagnostics.filter(
-          (diagnostic) => !nativeDiagnosticKeys.has(JSON.stringify(diagnostic)),
+        const stockOnlyDiagnostics = findDiagnosticMultiplicityDifferences(
+          repositoryStockDiagnostics,
+          repositoryNativeDiagnostics,
         );
-        const nativeOnlyDiagnostics = repositoryNativeDiagnostics.filter(
-          (diagnostic) => !stockDiagnosticKeys.has(JSON.stringify(diagnostic)),
+        const nativeOnlyDiagnostics = findDiagnosticMultiplicityDifferences(
+          repositoryNativeDiagnostics,
+          repositoryStockDiagnostics,
         );
         corpusParityFailures.push(
           `native corpus parity failed for ${repositoryName}\nstock count=${repositoryStockDiagnostics.length}\nnative count=${repositoryNativeDiagnostics.length}\nstock only=${JSON.stringify(stockOnlyDiagnostics.slice(0, CORPUS_PARITY_DIFF_LIMIT), null, 2)}\nnative only=${JSON.stringify(nativeOnlyDiagnostics.slice(0, CORPUS_PARITY_DIFF_LIMIT), null, 2)}`,

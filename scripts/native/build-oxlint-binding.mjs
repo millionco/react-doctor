@@ -948,6 +948,8 @@ impl Rule for ${delegatedRule.struct} {
         ],
       ],
       ["server-hoist-static-io", ["collect_binding_pattern_names", "is_in_project_directory"]],
+      ["server-auth-actions", ["is_node_reachable_within_function"]],
+      ["no-adjust-state-on-prop-change", ["statement_always_exits"]],
       ["server-no-mutable-module-state", ["find_guarding_try_statement"]],
       [
         "server-sequential-independent-await",
@@ -1407,6 +1409,10 @@ impl Rule for ${delegatedRule.struct} {
         ["resolve_cfg_assigned_expressions_for_reference", "resolve_zustand_api"],
       ],
       [
+        "zustand-no-mutating-state",
+        ["for_each_local_callback_execution_node", "resolve_zustand_api"],
+      ],
+      [
         "client-passive-event-listeners",
         [
           "has_possible_static_property_write_before",
@@ -1420,7 +1426,30 @@ impl Rule for ${delegatedRule.struct} {
       ["jsx-no-jsx-as-prop", ["should_use_curated_port_behavior"]],
       ["effect-listener-cleanup-mismatch", ["for_each_local_callback_execution_node"]],
       ["effect-listener-cleanup-reference-mismatch", ["has_possible_static_property_write_before"]],
+      [
+        "effect-needs-cleanup",
+        [
+          "binding_property_name_for_symbol",
+          "do_nodes_cover_every_path_after_node",
+          "is_node_reachable_within_function",
+          "statement_always_exits",
+          "static_literal_truthiness",
+        ],
+      ],
       ["effect-observer-needs-disconnect", ["for_each_local_callback_execution_node"]],
+      [
+        "no-create-object-url-without-revoke",
+        [
+          "get_static_string_expression",
+          "has_possible_static_property_write_before",
+          "is_node_conditionally_executed",
+          "is_node_reachable_within_function",
+          "is_proven_global_namespace_reference",
+          "resolve_const_identifier_root_symbol",
+          "statement_always_exits",
+          "transparent_expression_root",
+        ],
+      ],
     ]);
     for (const nativeRuleId of upstream.nativeRules) {
       const delegatedRule = delegatedRules.get(nativeRuleId);

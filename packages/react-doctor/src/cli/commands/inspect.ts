@@ -261,6 +261,7 @@ export const inspectAction = async (
   directory: string,
   flags: InspectFlags,
   invocationCommand = "inspect",
+  filePaths: string[] | null = null,
 ): Promise<void> => {
   const isScoreOnly = Boolean(flags.score);
   const isJsonMode = Boolean(flags.json);
@@ -377,7 +378,9 @@ export const inspectAction = async (
     const projectSelectionCompletedTime = performance.now();
     let changedFilesDiffInfo = flags.changedFilesFrom
       ? buildChangedFilesDiffInfo(readChangedFilesFrom(path.resolve(flags.changedFilesFrom)))
-      : null;
+      : filePaths !== null
+        ? buildChangedFilesDiffInfo(filePaths)
+        : null;
     if (changedFilesDiffInfo !== null && scanTarget.didRedirectViaRootDir) {
       const relativeProjectDirectory = resolveProjectRelativeDirectory(
         requestedDirectory,

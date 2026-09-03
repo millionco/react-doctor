@@ -435,3 +435,30 @@ git push --force origin v2   # the force applies to the moving major tag only
   gitignored)
 - `~/Developer/react-doctor-evals/src/` — sister application this codebase's runtime
   patterns are modeled on (Schemas.ts, Runner.ts, Worker.ts, errors.ts shapes)
+
+## Cursor Cloud specific instructions
+
+- **Node version gotcha (most important).** `pnpm lint` / `pnpm format` /
+  `pnpm format:check` (vite-plus / oxlint) load the TypeScript config
+  `vite.config.ts`, which requires Node `^20.19.0 || >=22.18.0`. The Cloud VM's
+  daemon-pinned `node` on `PATH` (`/exec-daemon/node`) is **v22.14.0**, which
+  satisfies the repo `engines` but is below the lint tool's `>=22.18.0` floor, so
+  lint/format fail with `ERR_UNKNOWN_FILE_EXTENSION` for `.ts` if run with it.
+  The agent's `~/.bashrc` is configured to prefer an nvm-managed Node 22
+  (`>=22.18`) on `PATH`, so a fresh shell already runs the right node — just run
+  the commands normally. If `node --version` ever shows `22.14.0`, run
+  `nvm use 22` (or open a fresh shell) before linting/formatting.
+- **`ni`/`nr` (@antfu/ni) are NOT installed here.** Despite the General Rules
+  above, use `pnpm` / `pnpm run <script>` directly in this environment
+  (e.g. `pnpm dev`, `pnpm test`, `pnpm build`).
+- **The product is a CLI** — there is no app server, database, or external
+  service to run. Standard checks (`pnpm test` / `lint` / `typecheck` /
+  `format:check` / `smoke:json-report`) are documented in the Testing section
+  above. To exercise the CLI end-to-end after `pnpm build`, run the bin against
+  any React project: `node packages/react-doctor/bin/react-doctor.js <dir>
+--yes --no-score` (use `--no-score`/`--no-telemetry` to skip the network score
+  API + Sentry; add `--verbose` for the full per-rule list, `--json` for the
+  schema report).
+- **Optional website** (`packages/website`, Next.js): start with
+  `pnpm --filter website dev` (serves on `http://localhost:3000`). It is a
+  marketing/docs satellite, not part of the diagnostic product.

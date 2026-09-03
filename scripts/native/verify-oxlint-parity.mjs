@@ -978,6 +978,10 @@ const zustandRequiredFireParityDirectory = path.join(
 const nonReactJsxFixturePath = path.join(temporaryDirectory, "solid-fixture.tsx");
 const configuredFixturePath = path.join(temporaryDirectory, "configured.tsx");
 const configuredAriaFixturePath = path.join(temporaryDirectory, "configured-aria.tsx");
+const configuredTargetBlankFixturePath = path.join(
+  temporaryDirectory,
+  "configured-target-blank.tsx",
+);
 const inactiveRouterFixtureDirectory = path.join(temporaryDirectory, "inactive-router-package");
 const inactiveRouterFixturePath = path.join(inactiveRouterFixtureDirectory, "src", "fixture.tsx");
 const activeRouterFixtureDirectory = path.join(temporaryDirectory, "active-router-package");
@@ -1060,6 +1064,14 @@ const configuredStockConfigPath = path.join(temporaryDirectory, "configured-stoc
 const configuredNativeConfigPath = path.join(temporaryDirectory, "configured-native.json");
 const configuredAriaStockConfigPath = path.join(temporaryDirectory, "configured-aria-stock.json");
 const configuredAriaNativeConfigPath = path.join(temporaryDirectory, "configured-aria-native.json");
+const configuredTargetBlankStockConfigPath = path.join(
+  temporaryDirectory,
+  "configured-target-blank-stock.json",
+);
+const configuredTargetBlankNativeConfigPath = path.join(
+  temporaryDirectory,
+  "configured-target-blank-native.json",
+);
 const serverFetchStockConfigPath = path.join(temporaryDirectory, "server-fetch-stock.json");
 const serverFetchNativeConfigPath = path.join(temporaryDirectory, "server-fetch-native.json");
 const jsxFilenameAsNeededFixturePath = path.join(temporaryDirectory, "as-needed.jsx");
@@ -1727,6 +1739,9 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "html-no-invalid-paragraph-child": 1,
   "html-no-invalid-table-nesting": 1,
   "auth-token-in-web-storage": 1,
+  "no-secrets-in-client-code": 1,
+  "jsx-no-target-blank": 1,
+  "window-open-without-noopener": 1,
   "client-localstorage-no-version": 1,
   "data-table-requires-accessible-name": 3,
   "expo-no-non-inlined-env": 0,
@@ -1968,7 +1983,7 @@ const EXPECTED_DIAGNOSTIC_COUNTS = {
   "no-initialize-state": 0,
   "no-prop-callback-in-effect": 2,
   "no-prop-callback-in-render": 1,
-  "no-unguarded-browser-global-at-module-scope": 10,
+  "no-unguarded-browser-global-at-module-scope": 11,
   "no-unguarded-browser-global-in-render-or-hook-init": 6,
   "no-unguarded-throwing-parse-call": 1,
   "no-unknown-property": 7,
@@ -2643,6 +2658,9 @@ ReanimatedRuntime.runOnRuntime(runtime, () => {});
 document.write("a");
 document.writeln("b");
 const runDynamicEvaluation = (userInput) => globalThis.eval(userInput);
+const hardcodedPaymentSecret = "sk_live_x";
+const unsafeBlankLink = <a href="https://example.com" target="_blank">Documentation</a>;
+window.open(userControlledPopupUrl);
 document["write"]("c");
 document[\`writeln\`]("d");
 document?.write("e");
@@ -4532,7 +4550,7 @@ export const ValueRoute = TanStackRouter.createRootRoute({ component: ValueRoot 
   fs.writeFileSync(routeHandlerFixturePath, "export default function handler() {}\n");
   fs.writeFileSync(
     asyncClientFixturePath,
-    `'use client';\nimport React from "react";\nexport default async function AsyncProfile() { return <div />; }\nconst AsyncSettings = async () => <section />;\nconst FrozenClient = Object.freeze(Object.seal(async () => <main />));\nconst SyncClient = Object.freeze(() => <aside />);\n`,
+    `'use client';\nimport React from "react";\nexport default async function AsyncProfile() { return <div />; }\nconst AsyncSettings = async () => <section />;\nconst FrozenClient = Object.freeze(Object.seal(async () => <main />));\nconst SyncClient = Object.freeze(() => <aside />);\nTanStack.createServerFn().handler(() => { const clientAuthToken = "9f8e7d6c5b4a39281706f5e4d3c2b1a0"; return clientAuthToken; });\n`,
   );
   fs.writeFileSync(
     noRenderInRenderFixturePath,
@@ -9313,6 +9331,13 @@ export const NativeOptionRole = () => <Library.Box as="option" role="option" />;
 export const UnsupportedOptionState = () => <Box as="option" aria-expanded />;
 `,
   );
+  fs.writeFileSync(
+    configuredTargetBlankFixturePath,
+    `import React from "react";
+export const ExternalLink = () => <Link to="https://example.com" target="_blank">Example</Link>;
+export const EmptySpreadKeyLink = () => <a href="https://example.com" target="_blank" {...{ [""]: true }}>Example</a>;
+`,
+  );
   const routerGateFixture =
     'import { createBrowserRouter, Outlet, redirect as routeRedirect, redirectDocument as routeDocument, useNavigate, useOutlet as useChildOutlet } from "react-router-dom"; export function App() { const navigate = useNavigate(); navigate("/next"); createBrowserRouter([{ Component: () => <main />, children: [{ path: "child", element: <span /> }] }, { Component: () => <main>{useChildOutlet()}</main>, children: [{ path: "safe-hook", element: <span /> }] }, { Component: () => <Layout />, children: [{ path: "safe-component", element: <span /> }] }, { element: <main><Layout /></main>, children: [{ path: "safe-element", element: <span /> }] }, { Component: () => <main />, children: null }, { Component: () => { const Unused = () => <Outlet />; return <main />; }, children: [{ path: "nested-helper", element: <span /> }] }, { path: "lazy", lazy: async () => ({ ["path"]: "/changed", Component }) }, { path: "conditional-lazy", lazy: async () => { if (compact) return ({ id: "compact" } as const); const nested = () => ({ children: [] }); return { loader }; } }, { path: "safe-lazy", lazy: async () => ({ Component, loader }) }, { path: "loader-body", loader: async ({ request: routeRequest }) => routeRequest["json"]() }, { path: "safe-action-body", action: async ({ request }) => request.formData() }, { path: "swallowed-redirect", loader: async () => { try { throw routeRedirect("/login"); } catch (error) { return null; } } }, { path: "swallowed-document-redirect", clientLoader: async () => { try { (() => { throw routeDocument("/client"); })(); } catch (error) { return null; } } }, { path: "returned-redirect", action: async () => { try { return routeRedirect("/safe"); } catch (error) { return null; } } }, { path: "rethrown-redirect", clientAction: async () => { try { throw routeRedirect("/safe"); } catch (error) { throw error; } } }, { path: "helper", Component: () => { const helper = { lazy: async () => ({ path: "/ignored" }), loader: async ({ request }) => request.text() }; return <button onClick={helper.lazy} />; } }]); return null; }';
   fs.mkdirSync(path.dirname(inactiveRouterFixturePath), { recursive: true });
@@ -9877,6 +9902,33 @@ export const App = () => <>
       }),
     ),
   );
+  const configuredTargetBlankSettings = {
+    react: {
+      linkComponents: [{ name: "Link", linkAttribute: "to" }],
+    },
+    "react-doctor": REACT_DOCTOR_SETTINGS["react-doctor"],
+  };
+  const configuredTargetBlankRuleIds = ["jsx-no-target-blank"];
+  fs.writeFileSync(
+    configuredTargetBlankStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: configuredTargetBlankSettings,
+        ruleIds: configuredTargetBlankRuleIds,
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    configuredTargetBlankNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: configuredTargetBlankSettings,
+        ruleIds: configuredTargetBlankRuleIds,
+      }),
+    ),
+  );
   const serverFetchSettings = {
     "react-doctor": {
       ...REACT_DOCTOR_SETTINGS["react-doctor"],
@@ -10086,9 +10138,18 @@ export const App = () => <>
     fixtureDirectory,
   ).diagnostics;
   const stockDiagnosticCounts = countDiagnosticsByRule(stockDiagnostics);
-  if (JSON.stringify(stockDiagnosticCounts) !== JSON.stringify(EXPECTED_DIAGNOSTIC_COUNTS)) {
+  const diagnosticCoverageDifferences = [
+    ...new Set([...Object.keys(EXPECTED_DIAGNOSTIC_COUNTS), ...Object.keys(stockDiagnosticCounts)]),
+  ]
+    .filter((ruleId) => EXPECTED_DIAGNOSTIC_COUNTS[ruleId] !== stockDiagnosticCounts[ruleId])
+    .map((ruleId) => ({
+      ruleId,
+      expected: EXPECTED_DIAGNOSTIC_COUNTS[ruleId],
+      received: stockDiagnosticCounts[ruleId],
+    }));
+  if (diagnosticCoverageDifferences.length > 0) {
     throw new Error(
-      `unexpected JavaScript diagnostic coverage\nexpected=${JSON.stringify(EXPECTED_DIAGNOSTIC_COUNTS, null, 2)}\nreceived=${JSON.stringify(stockDiagnosticCounts, null, 2)}`,
+      `unexpected JavaScript diagnostic coverage\n${JSON.stringify(diagnosticCoverageDifferences, null, 2)}`,
     );
   }
   if (JSON.stringify(nativeDiagnostics) !== JSON.stringify(stockDiagnostics)) {
@@ -10453,6 +10514,26 @@ export const App = () => <>
   ) {
     throw new Error(
       `native configured ARIA parity failed\nexpected counts=${JSON.stringify(expectedConfiguredAriaDiagnosticCounts, null, 2)}\nstock counts=${JSON.stringify(countDiagnosticsByRule(configuredAriaStockDiagnostics), null, 2)}\nstock=${JSON.stringify(configuredAriaStockDiagnostics, null, 2)}\nnative=${JSON.stringify(configuredAriaNativeDiagnostics, null, 2)}`,
+    );
+  }
+
+  const configuredTargetBlankStockDiagnostics = runOxlint(
+    configuredTargetBlankStockConfigPath,
+    process.env,
+    configuredTargetBlankFixturePath,
+  ).diagnostics;
+  const configuredTargetBlankNativeDiagnostics = runOxlint(
+    configuredTargetBlankNativeConfigPath,
+    nativeEnvironment,
+    configuredTargetBlankFixturePath,
+  ).diagnostics;
+  if (
+    configuredTargetBlankStockDiagnostics.length !== 1 ||
+    JSON.stringify(configuredTargetBlankNativeDiagnostics) !==
+      JSON.stringify(configuredTargetBlankStockDiagnostics)
+  ) {
+    throw new Error(
+      `native configured target-blank parity failed\nstock=${JSON.stringify(configuredTargetBlankStockDiagnostics, null, 2)}\nnative=${JSON.stringify(configuredTargetBlankNativeDiagnostics, null, 2)}`,
     );
   }
 

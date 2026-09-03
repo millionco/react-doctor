@@ -48,7 +48,522 @@ const CORE_FIXTURE_DIRECTORIES = [
   "supabase-rls-client-owned-authz",
 ];
 
+const parityStripeSecret = ["sk", "live", "nativeParityCredentialValue"].join("_");
+
 const REGRESSION_FIXTURE_INPUTS: ReadonlyArray<ScanParityFixtureInput> = [
+  {
+    name: "agent-tool-capability-risk-positive",
+    relativePath: "src/agents/tools/run.ts",
+    content:
+      'import { exec } from "node:child_process";\nexport const run = tool({ execute: ({ command }) => exec(command) });\n',
+  },
+  {
+    name: "agent-tool-capability-risk-negative-description",
+    relativePath: "src/agents/tools/read.ts",
+    content:
+      'export const read = tool({ description: "Always fetch the current value", execute: getValue });\n',
+  },
+  {
+    name: "artifact-baas-authority-surface-positive",
+    relativePath: "dist/assets/app.js",
+    content:
+      'initializeApp({ apiKey: "public", projectId: "demo" }); collection("users"); const user = { isAdmin: true };\n',
+    isGeneratedBundle: true,
+  },
+  {
+    name: "artifact-baas-authority-surface-negative-path",
+    relativePath: "src/server/firebase.ts",
+    content:
+      'initializeApp({ apiKey: "public", projectId: "demo" }); collection("users"); const user = { isAdmin: true };\n',
+  },
+  {
+    name: "artifact-env-leak-positive",
+    relativePath: "dist/assets/env.js",
+    content: 'export const name = "NEXT_PUBLIC_SERVICE_ROLE_SECRET";\n',
+    isGeneratedBundle: true,
+  },
+  {
+    name: "artifact-env-leak-negative-public-name",
+    relativePath: "dist/assets/env.js",
+    content: 'export const name = "VITE_STYTCH_PUBLIC_TOKEN";\n',
+    isGeneratedBundle: true,
+  },
+  {
+    name: "artifact-secret-leak-positive",
+    relativePath: "dist/assets/billing.js",
+    content: `export const key = "${parityStripeSecret}";\n`,
+    isGeneratedBundle: true,
+  },
+  {
+    name: "artifact-secret-leak-negative-path",
+    relativePath: "src/server/billing.ts",
+    content: `export const key = "${parityStripeSecret}";\n`,
+  },
+  {
+    name: "build-pipeline-secret-boundary-positive",
+    relativePath: ".github/workflows/release.yml",
+    content: "steps:\n  - run: pnpm install\n    env:\n      TOKEN: ${{ secrets.RELEASE_TOKEN }}\n",
+  },
+  {
+    name: "build-pipeline-secret-boundary-negative-step-scope",
+    relativePath: ".github/workflows/release.yml",
+    content:
+      "steps:\n  - run: pnpm install\n  - run: pnpm publish\n    env:\n      TOKEN: ${{ secrets.RELEASE_TOKEN }}\n",
+  },
+  {
+    name: "clickjacking-redirect-risk-positive",
+    relativePath: "src/redirect.ts",
+    content: "export const GET = () => redirect(next);\n",
+  },
+  {
+    name: "clickjacking-redirect-risk-negative-sanitized",
+    relativePath: "src/redirect.ts",
+    content: "export const GET = () => redirect(validateSafeRedirect(next));\n",
+  },
+  {
+    name: "command-execution-input-risk-positive",
+    relativePath: "src/server/convert.ts",
+    content: 'exec("convert " + req.body.filename);\n',
+  },
+  {
+    name: "command-execution-input-risk-negative-argv",
+    relativePath: "src/server/git.ts",
+    content: 'spawn("git", ["log", req.query.branch]);\n',
+  },
+  {
+    name: "cors-cookie-trust-risk-positive",
+    relativePath: "src/server/cors.ts",
+    content:
+      'headers["Access-Control-Allow-Credentials"] = "true";\nheaders["Access-Control-Allow-Origin"] = "*";\n',
+  },
+  {
+    name: "cors-cookie-trust-risk-negative",
+    relativePath: "src/server/cors.ts",
+    content: 'headers["Access-Control-Allow-Origin"] = "*";\n',
+  },
+  {
+    name: "firebase-client-owned-authz-field-positive",
+    relativePath: "src/features/create.ts",
+    content: 'addDoc(collection(db, "projects"), { ownerId: user.id });\n',
+  },
+  {
+    name: "firebase-client-owned-authz-field-negative-server-path",
+    relativePath: "src/server/create.ts",
+    content: 'addDoc(collection(db, "projects"), { ownerId: user.id });\n',
+  },
+  {
+    name: "firebase-permissive-rules-positive",
+    relativePath: "firestore.rules",
+    content: "match /users/{uid} {\n  allow read, write: if true;\n}\n",
+  },
+  {
+    name: "firebase-permissive-rules-negative-comment",
+    relativePath: "firestore.rules",
+    content: "// allow read, write: if true;\n",
+  },
+  {
+    name: "firebase-query-filter-as-auth-positive",
+    relativePath: "src/hooks/documents.ts",
+    content: 'db.collection("documents").where("uid", "==", user.uid);\n',
+  },
+  {
+    name: "firebase-query-filter-as-auth-negative-server-path",
+    relativePath: "src/server/documents.ts",
+    content: 'db.collection("documents").where("uid", "==", user.uid);\n',
+  },
+  {
+    name: "git-provider-url-injection-risk-positive",
+    relativePath: "src/server/repos.ts",
+    content: "export const url = `https://api.github.com/repos/${req.query.owner}/repo`;\n",
+  },
+  {
+    name: "git-provider-url-injection-risk-negative-encoded",
+    relativePath: "src/server/repos.ts",
+    content:
+      "export const url = `https://api.github.com/repos/${encodeURIComponent(req.query.owner)}/repo`;\n",
+  },
+  {
+    name: "import-metadata-execution-risk-positive",
+    relativePath: "src/server/import.ts",
+    content: 'import { exec } from "node:child_process";\nexec(`unzip ${uploadPath}`);\n',
+  },
+  {
+    name: "import-metadata-execution-risk-negative-static",
+    relativePath: "src/server/import.ts",
+    content: 'import { exec } from "node:child_process";\nexec("unzip fixture.zip");\n',
+  },
+  {
+    name: "insecure-crypto-risk-positive",
+    relativePath: "src/server/auth.ts",
+    content: 'export const digest = createHash("md5").update(password);\n',
+  },
+  {
+    name: "insecure-crypto-risk-negative-fingerprint",
+    relativePath: "src/files.ts",
+    content: 'export const fingerprint = createHash("md5").update(file);\n',
+  },
+  {
+    name: "insecure-session-cookie-positive",
+    relativePath: "src/server/session.ts",
+    content: 'res.cookie("session", token, { httpOnly: false });\n',
+  },
+  {
+    name: "insecure-session-cookie-negative-http-only",
+    relativePath: "src/server/session.ts",
+    content: 'res.cookie("session", token, { httpOnly: true });\n',
+  },
+  {
+    name: "jwt-insecure-verification-positive",
+    relativePath: "src/server/jwt.ts",
+    content: 'jwt.verify(token, key, { algorithms: ["none"] });\n',
+  },
+  {
+    name: "jwt-insecure-verification-negative-string",
+    relativePath: "src/server/jwt.ts",
+    content: 'throw new Error("Never use algorithms: [\\"none\\"] for jwt");\n',
+  },
+  {
+    name: "key-lifecycle-risk-positive",
+    relativePath: "config/deploy.pem",
+    content:
+      "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA7c1QpDK0N77BSO0FbGCPzcgMCS8ssCXd2eicCRb45fJsbiCe\n-----END RSA PRIVATE KEY-----\n",
+  },
+  {
+    name: "key-lifecycle-risk-negative-documentation",
+    relativePath: "README.md",
+    content:
+      "-----BEGIN PRIVATE KEY-----\nMIIEpAIBAAKCAQEA7c1QpDK0N77BSO0FbGCPzcgMCS8ssCXd2eicCRb45fJsbiCe\n-----END PRIVATE KEY-----\n",
+  },
+  {
+    name: "agent-tool-capability-risk-positive-ascii-boundary",
+    relativePath: "src/agents/tools/run.ts",
+    content: "étool({ execute: () => fetch(endpoint) });\n",
+  },
+  {
+    name: "artifact-env-leak-positive-html-marker-string",
+    relativePath: "dist/assets/env.js",
+    content: 'const marker = "<!--"; const databaseUrl = process.env.DATABASE_URL;\n',
+    isGeneratedBundle: true,
+  },
+  {
+    name: "artifact-secret-leak-positive-localhost-lookalike",
+    relativePath: "dist/assets/config.js",
+    content: 'const url = "postgres://native:strongCredential@localhost.evil.example/app";\n',
+    isGeneratedBundle: true,
+  },
+  {
+    name: "artifact-secret-leak-positive-localhost-control-lookalike",
+    relativePath: "dist/assets/config.js",
+    content: 'const url = "postgres://native:strongCredential@localhost\u001c.evil.example/app";\n',
+    isGeneratedBundle: true,
+  },
+  {
+    name: "build-pipeline-secret-boundary-positive-commented-steps-key",
+    relativePath: ".github/workflows/install.yml",
+    content:
+      'steps:  # dependency install\n  - run: "🙂 pnpm install"\n    env:\n      TOKEN: ${{ secrets.INSTALL_TOKEN }}\n',
+  },
+  {
+    name: "clickjacking-redirect-risk-negative-safe-prefix",
+    relativePath: "src/redirect.ts",
+    content: "export const GET = () => redirect(safeRedirect(next));\n",
+  },
+  {
+    name: "command-execution-input-risk-positive-pattern-priority",
+    relativePath: "src/server/commands.ts",
+    content: "spawn(request.command);\nexec(req.body.command);\n",
+  },
+  {
+    name: "cors-cookie-trust-risk-positive-source-order",
+    relativePath: "src/server/cors.ts",
+    content:
+      'const cookie = "session=value; Domain=.example.com";\nheaders["Access-Control-Allow-Credentials"] = "true";\nheaders["Access-Control-Allow-Origin"] = "*";\n',
+  },
+  {
+    name: "import-metadata-execution-risk-negative-single-token-literal",
+    relativePath: "src/server/import.ts",
+    content: 'import { exec } from "node:child_process";\nexec("metadata");\n',
+  },
+  {
+    name: "insecure-crypto-risk-positive-single-letter-call",
+    relativePath: "src/server/signature.ts",
+    content: 'import crypto from "node:crypto";\nif (computedSignature === X()) reject();\n',
+  },
+  {
+    name: "key-lifecycle-risk-positive-utf16-column",
+    relativePath: "config/deploy.pem",
+    content:
+      "🙂-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA7c1QpDK0N77BSO0FbGCPzcgMCS8ssCXd2eicCRb45fJsbiCe\n-----END RSA PRIVATE KEY-----\n",
+  },
+  {
+    name: "agent-tool-capability-risk-positive-multibyte-escape",
+    relativePath: "src/agents/tools/run.ts",
+    content: String.raw`const note = "\🙂"; tool({ execute: () => fetch(endpoint) });`,
+  },
+  {
+    name: "insecure-session-cookie-positive-multibyte-escape",
+    relativePath: "src/server/session.ts",
+    content: String.raw`res.cookie("session", token, { note: "\🙂", httpOnly: false });`,
+  },
+  {
+    name: "jwt-insecure-verification-positive-multibyte-escape",
+    relativePath: "src/server/jwt.ts",
+    content: String.raw`const note = "\🙂"; jwt.verify(token, key, { algorithms: ["none"] });`,
+  },
+  {
+    name: "mcp-tool-capability-risk-positive",
+    relativePath: "src/mcp/tools.ts",
+    content:
+      'import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";\nserver.tool("run", async ({ command }) => execSync(command));\n',
+  },
+  {
+    name: "mcp-tool-capability-risk-negative-description",
+    relativePath: "src/mcp/tools.ts",
+    content:
+      'import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";\nserver.tool("list", { description: "Always fetch the current value" }, getValue);\n',
+  },
+  {
+    name: "mdx-ssr-execution-risk-positive",
+    relativePath: "src/app/docs/page.tsx",
+    content:
+      'import { compileMDX } from "next-mdx-remote/rsc";\nexport const page = () => compileMDX({ source: tenantDocumentSource });\n',
+  },
+  {
+    name: "mdx-ssr-execution-risk-negative-owned-content",
+    relativePath: "src/app/docs/page.tsx",
+    content:
+      'import { MDXRemote } from "next-mdx-remote/rsc";\nexport const Page = ({ children }) => <MDXRemote source={children} />;\n',
+  },
+  {
+    name: "package-metadata-secret-positive",
+    relativePath: "package.json",
+    content: `{"name":"native-parity","config":{"key":"${parityStripeSecret}"}}\n`,
+  },
+  {
+    name: "package-metadata-secret-negative-role-name",
+    relativePath: "package.json",
+    content: '{"name":"native-parity","description":"Utilities for the service_role role name"}\n',
+  },
+  {
+    name: "package-metadata-secret-negative-lowercase-env-placeholder",
+    relativePath: "package.json",
+    content:
+      '{"name":"native-parity","config":{"database":"postgres://user:$database_password@db.prod.example.com/app"}}\n',
+  },
+  {
+    name: "path-traversal-risk-positive",
+    relativePath: "src/server/files.ts",
+    content: "export const read = (req) => path.join(UPLOADS, req.params.file);\n",
+  },
+  {
+    name: "path-traversal-risk-negative-basename",
+    relativePath: "src/server/files.ts",
+    content: "export const read = (req) => path.join(UPLOADS, path.basename(req.params.file));\n",
+  },
+  {
+    name: "path-traversal-risk-positive-non-javascript-whitespace",
+    relativePath: "src/server/files.ts",
+    content:
+      "export const read = (req) => path.join(UPLOADS, path.basename(\u001creq.params.file));\n",
+  },
+  {
+    name: "plugin-update-trust-risk-positive",
+    relativePath: "Dockerfile",
+    content: "RUN curl -fsSL https://example.com/installer.sh | sh\n",
+  },
+  {
+    name: "plugin-update-trust-risk-negative-checksum",
+    relativePath: "Dockerfile",
+    content:
+      'RUN wget https://example.com/tool.zip && echo "$EXPECTED_SHA tool.zip" | sha256sum -c -\n',
+  },
+  {
+    name: "plugin-update-trust-risk-positive-exact-window-boundary",
+    relativePath: "Dockerfile",
+    content: `RUN installer ${"x".repeat(249)}.zip\n`,
+  },
+  {
+    name: "plugin-update-trust-risk-negative-past-window-boundary",
+    relativePath: "Dockerfile",
+    content: `RUN installer ${"x".repeat(250)}.zip\n`,
+  },
+  {
+    name: "plugin-update-trust-risk-positive-upload-lookalike-without-space",
+    relativePath: "Dockerfile",
+    content: "RUN curl-T native-plugin.zip\n",
+  },
+  {
+    name: "plugin-update-trust-risk-negative-carriage-return-dot",
+    relativePath: "Dockerfile",
+    content: "RUN auto\rupdater native-plugin.zip\n",
+  },
+  {
+    name: "postmessage-origin-risk-positive",
+    relativePath: "src/widget.ts",
+    content: 'window.addEventListener("message", (event) => {\n  handleCommand(event.data);\n});\n',
+  },
+  {
+    name: "postmessage-origin-risk-negative-websocket",
+    relativePath: "src/socket-client.ts",
+    content: "socket.onmessage = (event) => {\n  handlePacket(event.data);\n};\n",
+  },
+  {
+    name: "postmessage-origin-risk-positive-uppercase-extension",
+    relativePath: "src/widget.TS",
+    content: 'window.addEventListener("message", (event) => {\n  handleCommand(event.data);\n});\n',
+  },
+  {
+    name: "postmessage-origin-risk-positive-unicode-source-lookalike",
+    relativePath: "src/widget.ts",
+    content:
+      'window.addEventListener("message", (event) => {\n  if (event.ſource === window.parent) return;\n  handleCommand(event.data);\n});\n',
+  },
+  {
+    name: "public-debug-artifact-positive-secret-escalation",
+    relativePath: "public/debug.log",
+    content: `billing key: ${parityStripeSecret}\n`,
+  },
+  {
+    name: "public-debug-artifact-negative-locale",
+    relativePath: "public/locales/en/trace.json",
+    content: '{"title":"Trace details"}\n',
+  },
+  {
+    name: "public-env-secret-name-positive",
+    relativePath: "src/client.ts",
+    content: "export const databaseUrl = import.meta.env.VITE_DATABASE_URL;\n",
+  },
+  {
+    name: "public-env-secret-name-negative-publishable",
+    relativePath: "src/client.ts",
+    content: "export const token = import.meta.env.VITE_PUBLIC_POSTHOG_TOKEN;\n",
+  },
+  {
+    name: "repository-secret-file-positive",
+    relativePath: ".env.production",
+    content: "DATABASE_URL=postgres://native:r7Qm2vL9pX4z@db.internal.example.com/app\n",
+  },
+  {
+    name: "repository-secret-file-negative-template",
+    relativePath: ".env.production.template",
+    content: "DATABASE_URL=postgres://native:r7Qm2vL9pX4z@db.internal.example.com/app\n",
+  },
+  {
+    name: "repository-secret-file-negative-uppercase-x-placeholder",
+    relativePath: ".env.production",
+    content: "DATABASE_URL=postgres://native:XXXXXXXX@db.internal.example.com/app\n",
+  },
+  {
+    name: "request-body-mass-assignment-positive",
+    relativePath: "src/server/users.ts",
+    content: "await database.user.update({ data: { ...req.body } });\n",
+  },
+  {
+    name: "request-body-mass-assignment-negative-allowlist",
+    relativePath: "src/server/users.ts",
+    content: "await database.user.update({ data: { ...allowlistedFields } });\n",
+  },
+  {
+    name: "secret-in-fallback-positive",
+    relativePath: "src/server/billing.ts",
+    content: `export const key = process.env.STRIPE_SECRET_KEY ?? "${parityStripeSecret}";\n`,
+  },
+  {
+    name: "secret-in-fallback-negative-numeric",
+    relativePath: "src/server/session.ts",
+    content: 'export const timeout = process.env.SESSION_TOKEN_TIMEOUT ?? "18000000";\n',
+  },
+  {
+    name: "secret-in-fallback-negative-uppercase-name-placeholder",
+    relativePath: "src/server/session.ts",
+    content: 'export const token = process.env.CLIENT_SECRET ?? "CBOARD_CLIENT_TOKEN";\n',
+  },
+  {
+    name: "svg-filter-clickjacking-risk-positive",
+    relativePath: "src/payment-frame.tsx",
+    content:
+      'export const Payment = ({ src }) => <iframe src={src} style={{ filter: "url(#warp)" }} />;\n',
+  },
+  {
+    name: "svg-filter-clickjacking-risk-negative-sibling",
+    relativePath: "src/payment-frame.tsx",
+    content:
+      'export const Payment = ({ src }) => <><iframe src={src} /><img style={{ filter: "url(#shadow)" }} /></>;\n',
+  },
+  {
+    name: "tenant-static-proxy-risk-positive",
+    relativePath: "app/api/static/route.ts",
+    content: "export const GET = () => fetch(`${CDN_BASE}/${tenant}/${assetPath}`);\n",
+  },
+  {
+    name: "tenant-static-proxy-risk-negative-request-options",
+    relativePath: "app/api/users/route.ts",
+    content:
+      'export const GET = ({ params }) => fetch("/api/users", { body: JSON.stringify(params) });\n',
+  },
+  {
+    name: "tenant-static-proxy-risk-negative-organization-property",
+    relativePath: "app/api/static/route.ts",
+    content: "export const GET = () => fetch(`${url.organization}/x`);\n",
+  },
+  {
+    name: "untrusted-redirect-following-positive",
+    relativePath: "app/api/preview/route.ts",
+    content:
+      "export const POST = async (request) => {\n  const { imageUrl } = await request.json();\n  return fetch(imageUrl);\n};\n",
+  },
+  {
+    name: "untrusted-redirect-following-negative-manual",
+    relativePath: "app/api/preview/route.ts",
+    content:
+      'export const POST = async (request) => {\n  const { imageUrl } = await request.json();\n  return fetch(imageUrl, { redirect: "manual" });\n};\n',
+  },
+  {
+    name: "untrusted-redirect-following-negative-unicode-whitespace-manual",
+    relativePath: "app/api/preview/route.ts",
+    content:
+      'export const GET = (request) => fetch(request.nextUrl.searchParams.get("url"), { redirect\u00a0:\u00a0"manual" });\n',
+  },
+  {
+    name: "url-prefilled-privileged-action-positive",
+    relativePath: "src/app/invite/page.tsx",
+    content: 'const invitedRole = searchParams.get("role");\n',
+  },
+  {
+    name: "url-prefilled-privileged-action-negative-validator",
+    relativePath: "src/app/invite/page.tsx",
+    content: 'const invitedRole = parseRoleSearchParam(searchParams.get("role"));\n',
+  },
+  {
+    name: "webhook-signature-risk-positive",
+    relativePath: "app/api/webhook/route.ts",
+    content:
+      "export const POST = async (request) => {\n  const event = await request.json();\n  return Response.json(event);\n};\n",
+  },
+  {
+    name: "webhook-signature-risk-negative-delegated",
+    relativePath: "app/api/webhook/route.ts",
+    content:
+      'export const POST = async (request) => {\n  const token = request.headers.get("x-webhook-token");\n  if (!isValidSecret(token)) return new Response("no");\n  return Response.json(await request.json());\n};\n',
+  },
+  {
+    name: "webhook-signature-risk-negative-unicode-whitespace-helper",
+    relativePath: "app/api/webhook/route.ts",
+    content:
+      'export const POST = async (request) => {\n  if (!isValidSecret\u00a0(request.headers.get("x-signature"))) return new Response("no");\n  return Response.json(await request.json());\n};\n',
+  },
+  {
+    name: "webhook-signature-risk-positive-line-continuation-string",
+    relativePath: "src/server/receiver.ts",
+    content:
+      'const label = "webhook\\\ncopy";\nexport async function POST(request) {\n  return Response.json(await request.json());\n}\n',
+  },
+  {
+    name: "webhook-signature-risk-positive-carriage-return-dot",
+    relativePath: "app/api/webhook/route.ts",
+    content:
+      "const verify\rsignature = false;\nexport async function POST(request) {\n  return Response.json(await request.json());\n}\n",
+  },
   {
     name: "active-svg-metadata-and-location",
     relativePath: "public/logo.svg",

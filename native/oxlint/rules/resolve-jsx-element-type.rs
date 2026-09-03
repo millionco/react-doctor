@@ -8,7 +8,9 @@ fn resolve_jsx_element_type<'a>(
         }
         oxc_ast::ast::JSXElementName::IdentifierReference(identifier) => {
             let reference = ctx.scoping().get_reference(identifier.reference_id());
-            let symbol_id = reference.symbol_id()?;
+            let Some(symbol_id) = reference.symbol_id() else {
+                return Some((identifier.name.as_str(), identifier.span));
+            };
             let declaration = ctx.symbol_declaration(symbol_id);
             let oxc_ast::AstKind::VariableDeclarator(declarator) = declaration.kind() else {
                 return Some((identifier.name.as_str(), identifier.span));

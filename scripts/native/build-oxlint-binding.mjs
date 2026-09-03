@@ -1094,6 +1094,21 @@ impl Rule for ${delegatedRule.struct} {
       ],
       ["no-barrel-import", ["is_non_production_file", "is_react_native_file_target"]],
       [
+        "no-secrets-in-client-code",
+        ["component_or_hook_function_name", "member_expression_identifier_property_name"],
+      ],
+      [
+        "jsx-no-target-blank",
+        [
+          "has_capability",
+          "has_possible_static_property_write_before",
+          "resolve_const_identifier_root_symbol",
+          "resolve_jsx_element_type",
+          "should_use_curated_port_behavior",
+          "transparent_expression_root",
+        ],
+      ],
+      [
         "no-locale-format-in-render",
         [
           "component_or_hook_function_name",

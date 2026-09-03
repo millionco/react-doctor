@@ -583,8 +583,12 @@ alter table data enable row level security;
       process.env[REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV] = bindingPath;
       process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV] = "1";
 
+      const omittedRuleIds = [...NATIVE_REACT_DOCTOR_SCAN_RULE_IDS].filter(
+        (ruleId) => ruleId !== "supabase-table-missing-rls",
+      );
+
       expect(() => checkSecurityScan(temporaryRoot)).toThrow(
-        "The required native security scan does not advertise supported rules: active-static-asset, dangerous-html-sink, nosql-injection-risk, raw-sql-injection-risk, supabase-client-owned-authz-field, supabase-rls-policy-risk, unsafe-json-in-html.",
+        `The required native security scan does not advertise supported rules: ${omittedRuleIds.join(", ")}.`,
       );
     });
 

@@ -29,7 +29,7 @@ pub fn strip_comments_preserving_positions(source: &str) -> String {
         let byte = source.as_bytes()[cursor];
         if let Some(delimiter) = string_delimiter {
             if byte == b'\\' {
-                cursor = (cursor + 2).min(source.len());
+                cursor = escaped_character_end(source, cursor);
                 continue;
             }
             if byte == delimiter {
@@ -79,6 +79,141 @@ pub fn strip_comments_preserving_positions(source: &str) -> String {
         cursor += 1;
     }
     String::from_utf8(output).unwrap_or_else(|_| source.to_string())
+}
+
+pub fn strip_comments_and_string_literals_preserving_positions(source: &str) -> String {
+    let mut output = source.as_bytes().to_vec();
+    let mut cursor = 0;
+    let mut string_delimiter = None;
+    let mut is_blanking_string = false;
+    let mut template_expression_depths = Vec::new();
+
+    while cursor < source.len() {
+        let byte = source.as_bytes()[cursor];
+        if let Some(delimiter) = string_delimiter {
+            if byte == b'\\' {
+                let escape_end = escaped_character_end(source, cursor);
+                if is_blanking_string {
+                    blank_range(&mut output, source, cursor, escape_end);
+                }
+                cursor = escape_end;
+                continue;
+            }
+            if byte == delimiter {
+                string_delimiter = None;
+                cursor += 1;
+                continue;
+            }
+            if byte == b'\n' && delimiter != b'`' {
+                string_delimiter = None;
+                cursor += 1;
+                continue;
+            }
+            if delimiter == b'`' && byte == b'$' && source.as_bytes().get(cursor + 1) == Some(&b'{')
+            {
+                template_expression_depths.push(0usize);
+                string_delimiter = None;
+                cursor += 2;
+                continue;
+            }
+            if is_blanking_string {
+                let character_end =
+                    cursor + source[cursor..].chars().next().map_or(1, char::len_utf8);
+                blank_range(&mut output, source, cursor, character_end);
+                cursor = character_end;
+            } else {
+                cursor += source[cursor..].chars().next().map_or(1, char::len_utf8);
+            }
+            continue;
+        }
+
+        if matches!(byte, b'\'' | b'"') {
+            string_delimiter = Some(byte);
+            is_blanking_string = quoted_literal_has_whitespace(source, cursor, byte);
+            cursor += 1;
+            continue;
+        }
+        if byte == b'`' {
+            string_delimiter = Some(byte);
+            is_blanking_string = true;
+            cursor += 1;
+            continue;
+        }
+        if byte == b'/' && source.as_bytes().get(cursor + 1) == Some(&b'/') {
+            let end = source.as_bytes()[cursor..]
+                .iter()
+                .position(|candidate| *candidate == b'\n')
+                .map_or(source.len(), |offset| cursor + offset);
+            blank_range(&mut output, source, cursor, end);
+            cursor = end;
+            continue;
+        }
+        if byte == b'/' && source.as_bytes().get(cursor + 1) == Some(&b'*') {
+            let end = source.as_bytes()[cursor + 2..]
+                .windows(2)
+                .position(|window| window == b"*/")
+                .map_or(source.len(), |offset| cursor + offset + 4);
+            blank_range(&mut output, source, cursor, end);
+            cursor = end;
+            continue;
+        }
+        if byte == b'/'
+            && is_regex_literal_start(source, &output, cursor)
+            && let Some(regex_end) = find_regex_literal_end(source, cursor)
+        {
+            if regex_end > cursor + 2 {
+                blank_range(&mut output, source, cursor + 1, regex_end - 1);
+            }
+            cursor = regex_end;
+            continue;
+        }
+        if let Some(depth) = template_expression_depths.last_mut() {
+            if byte == b'{' {
+                *depth += 1;
+            } else if byte == b'}' {
+                if *depth == 0 {
+                    template_expression_depths.pop();
+                    string_delimiter = Some(b'`');
+                    is_blanking_string = true;
+                } else {
+                    *depth -= 1;
+                }
+            }
+        }
+        cursor += source[cursor..].chars().next().map_or(1, char::len_utf8);
+    }
+
+    String::from_utf8(output).unwrap_or_else(|_| source.to_string())
+}
+
+fn quoted_literal_has_whitespace(source: &str, open_quote_index: usize, delimiter: u8) -> bool {
+    let mut cursor = open_quote_index + 1;
+    while cursor < source.len() {
+        let byte = source.as_bytes()[cursor];
+        if byte == b'\\' {
+            cursor = escaped_character_end(source, cursor);
+            continue;
+        }
+        if byte == delimiter {
+            return false;
+        }
+        let character = source[cursor..].chars().next().unwrap_or('\0');
+        if is_js_whitespace(character) {
+            return true;
+        }
+        cursor += character.len_utf8();
+    }
+    false
+}
+
+fn escaped_character_end(source: &str, backslash_index: usize) -> usize {
+    let escaped_start = backslash_index + 1;
+    source
+        .get(escaped_start..)
+        .and_then(|tail| tail.chars().next())
+        .map_or(source.len(), |character| {
+            escaped_start + character.len_utf8()
+        })
 }
 
 fn is_regex_literal_start(source: &str, output: &[u8], slash_index: usize) -> bool {
@@ -188,7 +323,10 @@ fn blank_range(output: &mut [u8], source: &str, start: usize, end: usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_comments_preserving_positions;
+    use super::{
+        strip_comments_and_string_literals_preserving_positions,
+        strip_comments_preserving_positions,
+    };
 
     #[test]
     fn preserves_utf16_length_while_blanking_comments() {
@@ -202,5 +340,20 @@ mod tests {
         );
         assert!(stripped.starts_with("before "));
         assert!(stripped.ends_with(" after"));
+    }
+
+    #[test]
+    fn blanks_prose_but_preserves_specifiers_and_template_expressions() {
+        let source = "description: \"always fetch data\"; import \"axios\"; `text ${fetch(url)}`";
+        let stripped = strip_comments_and_string_literals_preserving_positions(source);
+
+        assert!(!stripped.contains("always fetch data"));
+        assert!(stripped.contains("axios"));
+        assert!(stripped.contains("fetch(url)"));
+        assert_eq!(stripped.len(), source.len());
+        assert_eq!(
+            stripped.encode_utf16().count(),
+            source.encode_utf16().count()
+        );
     }
 }

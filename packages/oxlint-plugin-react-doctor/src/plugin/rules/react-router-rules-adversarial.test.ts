@@ -200,6 +200,21 @@ describe("React Router adversarial rule contracts", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("recognizes a server entry with Windows separators", () => {
+    const result = runRule(
+      reactRouterGuardAbortedHandleError,
+      "export function handleError(error, { request }) { console.error(error); }",
+      {
+        filename: "C:\\project\\app\\entry.server.tsx",
+        settings: {
+          "react-doctor": { capabilities: ["react-router:7", "react-router-framework"] },
+        },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts explicitly undefined route properties", () => {
     const result = runRule(
       reactRouterValidRouteObject,

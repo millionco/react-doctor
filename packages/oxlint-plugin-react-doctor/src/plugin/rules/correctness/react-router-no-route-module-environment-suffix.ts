@@ -4,7 +4,8 @@ import { findExportedValue } from "../../utils/find-exported-value.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
-const ROUTE_MODULE_ENVIRONMENT_PATTERN = /(?:^|\/)routes\/[^/]+\.(?:client|server)\.[cm]?[jt]sx?$/;
+const ROUTE_MODULE_ENVIRONMENT_PATTERN =
+  /(?:^|[\\/])routes[\\/][^\\/]+\.(?:client|server)\.[cm]?[jt]sx?$/;
 
 export const reactRouterNoRouteModuleEnvironmentSuffix = wrapReactRouterRule(
   defineRule({

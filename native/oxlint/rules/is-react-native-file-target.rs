@@ -137,8 +137,11 @@ fn package_is_nested_within_root(
     let resolved_package_directory = package_directory
         .canonicalize()
         .unwrap_or_else(|_| package_directory.to_path_buf());
-    resolved_package_directory != root_directory
-        && resolved_package_directory.starts_with(root_directory)
+    let resolved_root_directory = root_directory
+        .canonicalize()
+        .unwrap_or_else(|_| root_directory.to_path_buf());
+    resolved_package_directory != resolved_root_directory
+        && resolved_package_directory.starts_with(resolved_root_directory)
 }
 
 fn nearest_react_native_package_summary(

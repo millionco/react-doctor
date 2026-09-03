@@ -10,7 +10,10 @@ fn is_react_router_framework_file_active(ctx: &crate::context::ContextHost<'_>) 
             let resolved_package_directory = package_directory
                 .canonicalize()
                 .unwrap_or(package_directory);
-            resolved_package_directory.starts_with(root_directory)
+            let resolved_root_directory = root_directory
+                .canonicalize()
+                .unwrap_or_else(|_| root_directory.to_path_buf());
+            resolved_package_directory.starts_with(resolved_root_directory)
         });
     if is_project_package && has_any_dependency {
         return has_framework_dependency;

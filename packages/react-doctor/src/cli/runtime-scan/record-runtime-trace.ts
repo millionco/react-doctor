@@ -165,7 +165,11 @@ const endDevtoolsTrace = async (cdpSession: CDPSession): Promise<string> => {
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const traceTimeout = new Promise<never>((_resolve, reject) => {
     timeoutHandle = setTimeout(() => {
-      reject(new Error("Chrome did not finish the performance trace in time."));
+      reject(
+        new CliInputError(
+          "Chrome did not finalize the performance trace within 60 seconds. Try recording a shorter interaction or reduce the amount of trace data by closing other browser tabs.",
+        ),
+      );
     }, RUNTIME_SCAN_TRACING_COMPLETE_TIMEOUT_MS);
   });
   let stream: string | undefined;

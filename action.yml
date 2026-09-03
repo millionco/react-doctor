@@ -20,6 +20,9 @@ inputs:
   comment:
     description: "Create or update a sticky pull request summary comment. Automatically skipped when the pull request changes no React-eligible files (`.tsx`/`.jsx` or framework entry files)."
     default: "true"
+  comment-on-clean:
+    description: "When comment is enabled, whether to post a comment when the scan finds no issues. Set to false to only comment when there are issues to fix, reducing PR noise. Existing comments are still updated."
+    default: "true"
   review-comments:
     description: "Post inline review comments on the changed lines that triggered diagnostics (pull requests only)."
     default: "true"
@@ -386,6 +389,8 @@ runs:
       env:
         REACT_DOCTOR_COMMENT_FILE: ${{ steps.render.outputs.comment-file }}
         REACT_DOCTOR_SKIPPED: ${{ steps.render.outputs.skipped }}
+        REACT_DOCTOR_CLEAN: ${{ steps.render.outputs.clean }}
+        REACT_DOCTOR_COMMENT_ON_CLEAN: ${{ inputs.comment-on-clean }}
       with:
         script: |
           const fs = require("fs");
@@ -401,6 +406,12 @@ runs:
           // changes were reverted out of the PR.
           const skipped = process.env.REACT_DOCTOR_SKIPPED === "true";
 
+          // A clean scan (no issues found) can optionally skip creating new
+          // comments via the `comment-on-clean` input, reducing PR noise. Existing
+          // comments are still updated so stale findings don't linger.
+          const clean = process.env.REACT_DOCTOR_CLEAN === "true";
+          const commentOnClean = process.env.REACT_DOCTOR_COMMENT_ON_CLEAN !== "false";
+
           const marker = "<!-- react-doctor:summary -->";
           try {
             const { data: comments } = await github.rest.issues.listComments({
@@ -410,6 +421,7 @@ runs:
             });
             const previous = comments.find((comment) => comment.body?.startsWith(marker));
             if (skipped && !previous) return;
+            if (clean && !commentOnClean && !previous) return;
             if (previous) {
               await github.rest.issues.updateComment({
                 ...context.repo,

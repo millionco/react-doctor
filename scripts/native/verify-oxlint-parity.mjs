@@ -1005,6 +1005,7 @@ const frameworkServerEntryFixturePath = path.join(
   "app",
   "entry.server.tsx",
 );
+const frameworkRootFixturePath = path.join(frameworkRouterFixtureDirectory, "app", "root.tsx");
 const stockConfigPath = path.join(temporaryDirectory, "stock.json");
 const nativeConfigPath = path.join(temporaryDirectory, "native.json");
 const nextjsNoImgCrossFileStockConfigPath = path.join(
@@ -1089,6 +1090,8 @@ const frameworkServerEntryNativeConfigPath = path.join(
   temporaryDirectory,
   "framework-server-entry-native.json",
 );
+const frameworkRootStockConfigPath = path.join(temporaryDirectory, "framework-root-stock.json");
+const frameworkRootNativeConfigPath = path.join(temporaryDirectory, "framework-root-native.json");
 const corpusStockConfigPath = path.join(temporaryDirectory, "corpus-stock.json");
 const corpusNativeConfigPath = path.join(temporaryDirectory, "corpus-native.json");
 const nonReactJsxStockConfigPath = path.join(temporaryDirectory, "solid-stock.json");
@@ -9347,6 +9350,10 @@ export const UnsupportedOptionState = () => <Box as="option" aria-expanded />;
     'import { captureException } from "@sentry/node";\nimport { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ handleError: (error, { request }) => { captureException(error); if (!request.signal.aborted) captureException(error); } }]);\n',
   );
   fs.writeFileSync(
+    frameworkRootFixturePath,
+    'import { useLoaderData } from "react-router";\nexport function Layout() { useLoaderData(); return null; }\n',
+  );
+  fs.writeFileSync(
     queryNoUsequeryForMutationFixturePath,
     `import { useQuery } from "@tanstack/react-query";
 
@@ -9991,7 +9998,7 @@ export const App = () => <>
       buildConfig({ isNative: true, settings: routerSettings, ruleIds: routerRuleIds }),
     ),
   );
-  const frameworkServerEntrySettings = {
+  const frameworkRouterSettings = {
     "react-doctor": {
       ...routerSettings["react-doctor"],
       rootDirectory: fs.realpathSync(frameworkRouterFixtureDirectory),
@@ -10002,7 +10009,7 @@ export const App = () => <>
     JSON.stringify(
       buildConfig({
         isNative: false,
-        settings: frameworkServerEntrySettings,
+        settings: frameworkRouterSettings,
         ruleIds: ["react-router-guard-aborted-handle-error"],
       }),
     ),
@@ -10012,8 +10019,28 @@ export const App = () => <>
     JSON.stringify(
       buildConfig({
         isNative: true,
-        settings: frameworkServerEntrySettings,
+        settings: frameworkRouterSettings,
         ruleIds: ["react-router-guard-aborted-handle-error"],
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    frameworkRootStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: frameworkRouterSettings,
+        ruleIds: ["react-router-no-use-loader-data-in-error-ui"],
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    frameworkRootNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: frameworkRouterSettings,
+        ruleIds: ["react-router-no-use-loader-data-in-error-ui"],
       }),
     ),
   );
@@ -10569,6 +10596,25 @@ export const App = () => <>
   ) {
     throw new Error(
       `native React Router framework server entry parity failed\nstock=${JSON.stringify(frameworkServerEntryStockDiagnostics, null, 2)}\nnative=${JSON.stringify(frameworkServerEntryNativeDiagnostics, null, 2)}`,
+    );
+  }
+  const canonicalFrameworkRootFixturePath = fs.realpathSync(frameworkRootFixturePath);
+  const frameworkRootStockDiagnostics = runOxlint(
+    frameworkRootStockConfigPath,
+    process.env,
+    canonicalFrameworkRootFixturePath,
+  ).diagnostics;
+  const frameworkRootNativeDiagnostics = runOxlint(
+    frameworkRootNativeConfigPath,
+    nativeEnvironment,
+    canonicalFrameworkRootFixturePath,
+  ).diagnostics;
+  if (
+    frameworkRootStockDiagnostics.length !== 1 ||
+    JSON.stringify(frameworkRootNativeDiagnostics) !== JSON.stringify(frameworkRootStockDiagnostics)
+  ) {
+    throw new Error(
+      `native React Router framework root parity failed\nstock=${JSON.stringify(frameworkRootStockDiagnostics, null, 2)}\nnative=${JSON.stringify(frameworkRootNativeDiagnostics, null, 2)}`,
     );
   }
 

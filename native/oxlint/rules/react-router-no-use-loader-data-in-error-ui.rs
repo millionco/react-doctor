@@ -81,7 +81,7 @@ impl Rule for ReactRouterNoUseLoaderDataInErrorUi {
 
 fn is_react_router_root_route_filename(ctx: &LintContext<'_>) -> bool {
     ctx.file_path()
-        .to_str()
-        .and_then(|filename| filename.rsplit('/').next())
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
         .is_some_and(|filename| ROOT_ROUTE_FILENAMES.contains(&filename))
 }

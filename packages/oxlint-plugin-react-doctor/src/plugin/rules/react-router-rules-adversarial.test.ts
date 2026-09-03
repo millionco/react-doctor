@@ -11,6 +11,7 @@ import { reactRouterNoMultipleBlockers } from "./correctness/react-router-no-mul
 import { reactRouterNoNestedRouter } from "./correctness/react-router-no-nested-router.js";
 import { reactRouterNoRouteModuleEnvironmentSuffix } from "./correctness/react-router-no-route-module-environment-suffix.js";
 import { reactRouterNoStaticCookieExpires } from "./correctness/react-router-no-static-cookie-expires.js";
+import { reactRouterNoUseLoaderDataInErrorUi } from "./correctness/react-router-no-use-loader-data-in-error-ui.js";
 import { reactRouterResourceLinkRequiresReload } from "./correctness/react-router-resource-link-requires-reload.js";
 import { reactRouterReturnNavigationPromiseInTransition } from "./correctness/react-router-return-navigation-promise-in-transition.js";
 import { reactRouterSessionMutationRequiresCommit } from "./correctness/react-router-session-mutation-requires-commit.js";
@@ -206,6 +207,21 @@ describe("React Router adversarial rule contracts", () => {
       "export function handleError(error, { request }) { console.error(error); }",
       {
         filename: "C:\\project\\app\\entry.server.tsx",
+        settings: {
+          "react-doctor": { capabilities: ["react-router:7", "react-router-framework"] },
+        },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes a framework root layout with Windows separators", () => {
+    const result = runRule(
+      reactRouterNoUseLoaderDataInErrorUi,
+      'import { useLoaderData } from "react-router"; export function Layout() { useLoaderData(); return null; }',
+      {
+        filename: "C:\\project\\app\\root.tsx",
         settings: {
           "react-doctor": { capabilities: ["react-router:7", "react-router-framework"] },
         },

@@ -171,6 +171,19 @@ describe("React Router adversarial rule contracts", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("recognizes a React Router config filename with Windows separators", () => {
+    const result = runRule(
+      reactRouterV8NoRemovedFutureFlags,
+      "export default { future: { v8_middleware: true } };",
+      {
+        ...V8_FRAMEWORK_CONFIG_OPTIONS,
+        filename: "C:\\project\\react-router.config.ts",
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts explicitly undefined route properties", () => {
     const result = runRule(
       reactRouterValidRouteObject,

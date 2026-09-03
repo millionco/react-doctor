@@ -25,6 +25,11 @@ mod implementation {
             Unknown,
         }
 
+        enum ZustandMutationPath {
+            Known(Vec<String>),
+            Unknown,
+        }
+
         struct ZustandBinding {
             creator_function_id: NodeId,
             get_symbol_id: Option<SymbolId>,
@@ -349,19 +354,26 @@ mod implementation {
                     continue;
                 };
                 let reuses_mutated_reference = returned_expressions.is_empty()
-                    || returned_expressions.iter().any(|expression| {
-                        zustand_binding_snapshot_path(expression, binding, ctx).is_some_and(
-                            |snapshot_path| {
-                                zustand_path_preserves_target(&snapshot_path, &mutation_path)
-                            },
-                        ) || zustand_update_expression_disposition(
-                            expression,
-                            &mutation_path,
-                            candidate,
-                            state_symbol_id,
-                            ctx,
-                        ) == ReplacementDisposition::Reused
-                    });
+                    || match &mutation_path {
+                        ZustandMutationPath::Known(mutation_path) => {
+                            returned_expressions.iter().any(|expression| {
+                                zustand_binding_snapshot_path(expression, binding, ctx).is_some_and(
+                                    |snapshot_path| {
+                                        zustand_path_preserves_target(&snapshot_path, mutation_path)
+                                    },
+                                ) || zustand_update_expression_disposition(
+                                    expression,
+                                    mutation_path,
+                                    candidate,
+                                    state_symbol_id,
+                                    ctx,
+                                ) == ReplacementDisposition::Reused
+                            })
+                        }
+                        ZustandMutationPath::Unknown => returned_expressions
+                            .iter()
+                            .any(|expression| zustand_expression_is_no_update(expression, ctx)),
+                    };
                 if reuses_mutated_reference && reported_spans.insert(candidate.span()) {
                     ctx.diagnostic(
                         OxcDiagnostic::error(ZUSTAND_MESSAGE).with_label(candidate.span()),
@@ -444,48 +456,39 @@ mod implementation {
             state_symbol_id: SymbolId,
             binding: &ZustandBinding,
             ctx: &LintContext<'a>,
-        ) -> Option<Vec<String>> {
+        ) -> Option<ZustandMutationPath> {
             match node.kind() {
                 AstKind::AssignmentExpression(assignment) => {
-                    let mut path = zustand_path_from_symbol_source(
-                        assignment.left.get_expression()?,
+                    let member = assignment.left.as_member_expression()?;
+                    zustand_mutation_path_from_symbol_source(
+                        member.object(),
                         state_symbol_id,
                         node,
                         ctx,
-                        &mut Vec::new(),
-                    )?;
-                    (!path.is_empty()).then(|| {
-                        path.pop();
-                        path
-                    })
+                    )
                 }
                 AstKind::UpdateExpression(update) => {
-                    let mut path = zustand_path_from_symbol_source(
-                        update.argument.get_expression()?,
+                    let member = update.argument.as_member_expression()?;
+                    zustand_mutation_path_from_symbol_source(
+                        member.object(),
                         state_symbol_id,
                         node,
                         ctx,
-                        &mut Vec::new(),
-                    )?;
-                    (!path.is_empty()).then(|| {
-                        path.pop();
-                        path
-                    })
+                    )
                 }
                 AstKind::UnaryExpression(unary)
                     if unary.operator == oxc_syntax::operator::UnaryOperator::Delete =>
                 {
-                    let mut path = zustand_path_from_symbol_source(
-                        &unary.argument,
+                    let member = unary
+                        .argument
+                        .get_inner_expression()
+                        .as_member_expression()?;
+                    zustand_mutation_path_from_symbol_source(
+                        member.object(),
                         state_symbol_id,
                         node,
                         ctx,
-                        &mut Vec::new(),
-                    )?;
-                    (!path.is_empty()).then(|| {
-                        path.pop();
-                        path
-                    })
+                    )
                 }
                 AstKind::CallExpression(call) => {
                     zustand_mutating_call_path(call, node, state_symbol_id, binding, ctx)
@@ -500,7 +503,7 @@ mod implementation {
             state_symbol_id: SymbolId,
             binding: &ZustandBinding,
             ctx: &LintContext<'a>,
-        ) -> Option<Vec<String>> {
+        ) -> Option<ZustandMutationPath> {
             let member = call.callee.get_inner_expression().as_member_expression()?;
             let method_name = member.static_property_name()?;
             if matches!(
@@ -514,12 +517,11 @@ mod implementation {
                     .first()
                     .and_then(Argument::as_expression)
                     .and_then(|expression| {
-                        zustand_path_from_symbol_source(
+                        zustand_mutation_path_from_symbol_source(
                             expression,
                             state_symbol_id,
                             call_node,
                             ctx,
-                            &mut Vec::new(),
                         )
                     });
             }
@@ -544,7 +546,94 @@ mod implementation {
             ) && binding.array_paths.contains(&path);
             let is_collection_mutator = matches!(method_name, "add" | "clear" | "delete" | "set")
                 && binding.map_or_set_paths.contains(&path);
-            (is_array_mutator || is_collection_mutator).then_some(path)
+            (is_array_mutator || is_collection_mutator).then_some(ZustandMutationPath::Known(path))
+        }
+
+        fn zustand_mutation_path_from_symbol_source<'a>(
+            expression: &Expression<'a>,
+            source_symbol_id: SymbolId,
+            target_node: &AstNode<'a>,
+            ctx: &LintContext<'a>,
+        ) -> Option<ZustandMutationPath> {
+            if let Some(path) = zustand_path_from_symbol_source(
+                expression,
+                source_symbol_id,
+                target_node,
+                ctx,
+                &mut Vec::new(),
+            ) {
+                return Some(ZustandMutationPath::Known(path));
+            }
+            zustand_expression_reaches_symbol_source(
+                expression,
+                source_symbol_id,
+                target_node,
+                ctx,
+                &mut Vec::new(),
+            )
+            .then_some(ZustandMutationPath::Unknown)
+        }
+
+        fn zustand_expression_reaches_symbol_source<'a>(
+            expression: &Expression<'a>,
+            source_symbol_id: SymbolId,
+            target_node: &AstNode<'a>,
+            ctx: &LintContext<'a>,
+            visited_symbol_ids: &mut Vec<SymbolId>,
+        ) -> bool {
+            let expression = expression.get_inner_expression();
+            if let Some(member) = expression.as_member_expression() {
+                return zustand_expression_reaches_symbol_source(
+                    member.object(),
+                    source_symbol_id,
+                    target_node,
+                    ctx,
+                    visited_symbol_ids,
+                );
+            }
+            match expression {
+                Expression::Identifier(identifier) => {
+                    let Some(symbol_id) = ctx
+                        .scoping()
+                        .get_reference(identifier.reference_id())
+                        .symbol_id()
+                    else {
+                        return false;
+                    };
+                    if symbol_id == source_symbol_id {
+                        return true;
+                    }
+                    if visited_symbol_ids.contains(&symbol_id) {
+                        return false;
+                    }
+                    visited_symbol_ids.push(symbol_id);
+                    if let Some(rebinding) =
+                        latest_dominating_rebinding(symbol_id, target_node, ctx)
+                    {
+                        return zustand_expression_reaches_symbol_source(
+                            rebinding,
+                            source_symbol_id,
+                            target_node,
+                            ctx,
+                            visited_symbol_ids,
+                        );
+                    }
+                    let declaration = ctx.symbol_declaration(symbol_id);
+                    let AstKind::VariableDeclarator(declarator) = declaration.kind() else {
+                        return false;
+                    };
+                    declarator.init.as_ref().is_some_and(|initializer| {
+                        zustand_expression_reaches_symbol_source(
+                            initializer,
+                            source_symbol_id,
+                            declaration,
+                            ctx,
+                            visited_symbol_ids,
+                        )
+                    })
+                }
+                _ => false,
+            }
         }
 
         fn zustand_path_from_symbol_source<'a>(
@@ -725,6 +814,21 @@ mod implementation {
                     .all(|(candidate, target)| candidate == target)
         }
 
+        fn zustand_expression_is_no_update(
+            expression: &Expression<'_>,
+            ctx: &LintContext<'_>,
+        ) -> bool {
+            match expression.get_inner_expression() {
+                Expression::UnaryExpression(unary) => {
+                    unary.operator == oxc_syntax::operator::UnaryOperator::Void
+                }
+                Expression::Identifier(identifier) => {
+                    identifier.name == "undefined" && zustand_identifier_is_global(identifier, ctx)
+                }
+                _ => false,
+            }
+        }
+
         fn zustand_update_expression_disposition<'a>(
             expression: &Expression<'a>,
             mutation_path: &[String],
@@ -750,11 +854,7 @@ mod implementation {
                     },
                 );
             }
-            if matches!(expression, Expression::UnaryExpression(unary)
-                if unary.operator == oxc_syntax::operator::UnaryOperator::Void)
-                || matches!(expression, Expression::Identifier(identifier)
-                    if identifier.name == "undefined" && zustand_identifier_is_global(identifier, ctx))
-            {
+            if zustand_expression_is_no_update(expression, ctx) {
                 return ReplacementDisposition::Reused;
             }
             if zustand_path_from_symbol_source(
@@ -1006,34 +1106,47 @@ mod implementation {
             binding: &ZustandBinding,
             get_is_reactive: bool,
             ctx: &LintContext<'a>,
-        ) -> Option<(Vec<String>, SymbolId)> {
-            let (expression, drops_leaf_property) = match node.kind() {
+        ) -> Option<(ZustandMutationPath, SymbolId)> {
+            let expression = match node.kind() {
                 AstKind::AssignmentExpression(assignment) => {
-                    (assignment.left.get_expression()?, true)
+                    assignment.left.as_member_expression()?.object()
                 }
-                AstKind::UpdateExpression(update) => (update.argument.get_expression()?, true),
+                AstKind::UpdateExpression(update) => {
+                    update.argument.as_member_expression()?.object()
+                }
                 AstKind::UnaryExpression(unary)
                     if unary.operator == oxc_syntax::operator::UnaryOperator::Delete =>
                 {
-                    (&unary.argument, true)
-                }
-                AstKind::CallExpression(call) => (
-                    call.callee
+                    unary
+                        .argument
                         .get_inner_expression()
                         .as_member_expression()?
-                        .object(),
-                    false,
-                ),
+                        .object()
+                }
+                AstKind::CallExpression(call) => call
+                    .callee
+                    .get_inner_expression()
+                    .as_member_expression()?
+                    .object(),
                 _ => return None,
             };
-            let (mut path, source_symbol_id) =
-                zustand_snapshot_path(expression, binding, get_is_reactive, node, ctx)?;
-            if drops_leaf_property {
-                if path.is_empty() {
-                    return None;
-                }
-                path.pop();
-            }
+            let (mutation_path, source_symbol_id) = if let Some((path, source_symbol_id)) =
+                zustand_snapshot_path(expression, binding, get_is_reactive, node, ctx)
+            {
+                (ZustandMutationPath::Known(path), source_symbol_id)
+            } else {
+                (
+                    ZustandMutationPath::Unknown,
+                    zustand_snapshot_source_symbol(
+                        expression,
+                        binding,
+                        get_is_reactive,
+                        node,
+                        ctx,
+                        &mut Vec::new(),
+                    )?,
+                )
+            };
             if let AstKind::CallExpression(call) = node.kind() {
                 let method_name = call
                     .callee
@@ -1051,15 +1164,84 @@ mod implementation {
                         | "reverse"
                         | "fill"
                         | "copyWithin"
-                ) && binding.array_paths.contains(&path);
-                let is_collection_mutator =
-                    matches!(method_name, "add" | "clear" | "delete" | "set")
-                        && binding.map_or_set_paths.contains(&path);
+                ) && matches!(&mutation_path, ZustandMutationPath::Known(path) if binding.array_paths.contains(path));
+                let is_collection_mutator = matches!(
+                    method_name,
+                    "add" | "clear" | "delete" | "set"
+                ) && matches!(&mutation_path, ZustandMutationPath::Known(path) if binding.map_or_set_paths.contains(path));
                 if !is_array_mutator && !is_collection_mutator {
                     return None;
                 }
             }
-            Some((path, source_symbol_id))
+            Some((mutation_path, source_symbol_id))
+        }
+
+        fn zustand_snapshot_source_symbol<'a>(
+            expression: &Expression<'a>,
+            binding: &ZustandBinding,
+            get_is_reactive: bool,
+            target_node: &AstNode<'a>,
+            ctx: &LintContext<'a>,
+            visited_symbol_ids: &mut Vec<SymbolId>,
+        ) -> Option<SymbolId> {
+            let expression = expression.get_inner_expression();
+            if let Some(member) = expression.as_member_expression() {
+                return zustand_snapshot_source_symbol(
+                    member.object(),
+                    binding,
+                    get_is_reactive,
+                    target_node,
+                    ctx,
+                    visited_symbol_ids,
+                );
+            }
+            if let Expression::CallExpression(call) = expression {
+                if get_is_reactive
+                    && binding
+                        .get_symbol_id
+                        .is_some_and(|symbol_id| zustand_call_targets_symbol(call, symbol_id, ctx))
+                {
+                    return binding.get_symbol_id;
+                }
+                let store_symbol_id = zustand_store_method_symbol(call, "getState", ctx)?;
+                return binding
+                    .store_symbol_ids
+                    .contains(&store_symbol_id)
+                    .then_some(store_symbol_id);
+            }
+            let Expression::Identifier(identifier) = expression else {
+                return None;
+            };
+            let symbol_id = ctx
+                .scoping()
+                .get_reference(identifier.reference_id())
+                .symbol_id()?;
+            if visited_symbol_ids.contains(&symbol_id) {
+                return None;
+            }
+            visited_symbol_ids.push(symbol_id);
+            if let Some(rebinding) = latest_dominating_rebinding(symbol_id, target_node, ctx) {
+                return zustand_snapshot_source_symbol(
+                    rebinding,
+                    binding,
+                    get_is_reactive,
+                    target_node,
+                    ctx,
+                    visited_symbol_ids,
+                );
+            }
+            let declaration = ctx.symbol_declaration(symbol_id);
+            let AstKind::VariableDeclarator(declarator) = declaration.kind() else {
+                return None;
+            };
+            zustand_snapshot_source_symbol(
+                declarator.init.as_ref()?,
+                binding,
+                get_is_reactive,
+                declaration,
+                ctx,
+                visited_symbol_ids,
+            )
         }
 
         fn zustand_snapshot_path<'a>(
@@ -1132,7 +1314,7 @@ mod implementation {
 
         fn zustand_following_notifier_disposition(
             mutation_node: &AstNode<'_>,
-            mutation_path: &[String],
+            mutation_path: &ZustandMutationPath,
             source_symbol_id: SymbolId,
             binding: &ZustandBinding,
             ctx: &LintContext<'_>,
@@ -1149,7 +1331,7 @@ mod implementation {
             let mut found_notifier = updater_function_id.is_some();
             let mut disposition = ReplacementDisposition::Reused;
             if let Some(updater_function_id) = updater_function_id {
-                let updater_disposition = zustand_return_disposition(
+                let updater_disposition = zustand_notifier_return_disposition(
                     &zustand_returned_expressions(updater_function_id, ctx),
                     mutation_path,
                     mutation_node,
@@ -1263,7 +1445,7 @@ mod implementation {
 
         fn zustand_notifier_call_disposition<'a>(
             call: &oxc_ast::ast::CallExpression<'a>,
-            mutation_path: &[String],
+            mutation_path: &ZustandMutationPath,
             mutation_node: &AstNode<'_>,
             source_symbol_id: SymbolId,
             binding: &ZustandBinding,
@@ -1275,7 +1457,7 @@ mod implementation {
             if let Some(function_id) =
                 exact_local_callback_function_id(argument, ctx, &mut Vec::new())
             {
-                return zustand_return_disposition(
+                return zustand_notifier_return_disposition(
                     &zustand_returned_expressions(function_id, ctx),
                     mutation_path,
                     mutation_node,
@@ -1284,13 +1466,40 @@ mod implementation {
                     ctx,
                 );
             }
-            zustand_update_expression_disposition(
-                argument,
-                mutation_path,
-                mutation_node,
-                source_symbol_id,
-                ctx,
-            )
+            match mutation_path {
+                ZustandMutationPath::Known(mutation_path) => zustand_update_expression_disposition(
+                    argument,
+                    mutation_path,
+                    mutation_node,
+                    source_symbol_id,
+                    ctx,
+                ),
+                ZustandMutationPath::Unknown => ReplacementDisposition::Unknown,
+            }
+        }
+
+        fn zustand_notifier_return_disposition<'a>(
+            returned_expressions: &[&Expression<'a>],
+            mutation_path: &ZustandMutationPath,
+            mutation_node: &AstNode<'_>,
+            source_symbol_id: SymbolId,
+            binding: &ZustandBinding,
+            ctx: &LintContext<'a>,
+        ) -> ReplacementDisposition {
+            match mutation_path {
+                ZustandMutationPath::Known(mutation_path) => zustand_return_disposition(
+                    returned_expressions,
+                    mutation_path,
+                    mutation_node,
+                    source_symbol_id,
+                    binding,
+                    ctx,
+                ),
+                ZustandMutationPath::Unknown if returned_expressions.is_empty() => {
+                    ReplacementDisposition::Reused
+                }
+                ZustandMutationPath::Unknown => ReplacementDisposition::Unknown,
+            }
         }
 
         fn zustand_node_has_future_conditional_ancestor(
@@ -1318,7 +1527,7 @@ mod implementation {
 
         fn zustand_notifier_if_flow_disposition(
             statement: &oxc_ast::ast::IfStatement<'_>,
-            mutation_path: &[String],
+            mutation_path: &ZustandMutationPath,
             mutation_node: &AstNode<'_>,
             source_symbol_id: SymbolId,
             binding: &ZustandBinding,
@@ -1366,7 +1575,7 @@ mod implementation {
 
         fn zustand_notifier_branch_flow_disposition(
             statement: &oxc_ast::ast::Statement<'_>,
-            mutation_path: &[String],
+            mutation_path: &ZustandMutationPath,
             mutation_node: &AstNode<'_>,
             source_symbol_id: SymbolId,
             binding: &ZustandBinding,

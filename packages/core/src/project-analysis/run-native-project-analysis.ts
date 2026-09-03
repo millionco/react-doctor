@@ -1,3 +1,5 @@
+import { NATIVE_REACT_DOCTOR_PROJECT_GRAPH_RULE_IDS } from "../constants.js";
+import { handleNativeOxlintFailure } from "../runners/oxlint/handle-native-oxlint-failure.js";
 import { loadNativeOxlintBinding } from "../runners/oxlint/load-native-oxlint-binding.js";
 import { isRecord } from "../utils/is-record.js";
 import { collectStalePackageAnalysisInput } from "./report/packages.js";
@@ -147,6 +149,9 @@ export const runNativeProjectAnalysis = (
     typeof binding.reactDoctorNativeProjectRuleIds !== "function" ||
     typeof binding.analyzeReactDoctorProjectGraph !== "function"
   ) {
+    handleNativeOxlintFailure(
+      "The required native Oxlint binding does not provide the project analysis APIs.",
+    );
     return null;
   }
   const nativeRuleIds = binding.reactDoctorNativeProjectRuleIds();
@@ -156,18 +161,30 @@ export const runNativeProjectAnalysis = (
   ) {
     throw new Error("Native project analysis returned invalid rule ids.");
   }
-  const hasNativeUnusedFile = nativeRuleIds.includes("unused-file");
+  const nativeRuleIdSet = new Set(nativeRuleIds);
+  const missingNativeRuleIds = [...NATIVE_REACT_DOCTOR_PROJECT_GRAPH_RULE_IDS].filter(
+    (ruleId) => !nativeRuleIdSet.has(ruleId),
+  );
+  if (missingNativeRuleIds.length > 0) {
+    handleNativeOxlintFailure(
+      `The required native project analysis does not advertise supported rules: ${missingNativeRuleIds.join(", ")}.`,
+    );
+  }
+  const hasNativeUnusedFile = nativeRuleIdSet.has("unused-file");
   const hasNativeUnusedExports =
-    nativeRuleIds.includes("unused-export") && nativeRuleIds.includes("unused-type");
+    nativeRuleIdSet.has("unused-export") && nativeRuleIdSet.has("unused-type");
   const hasNativeUnusedDependencyAnalysis =
-    nativeRuleIds.includes("unused-dependency") && nativeRuleIds.includes("unused-dev-dependency");
-  const hasNativeCircularDependency = nativeRuleIds.includes("circular-dependency");
+    nativeRuleIdSet.has("unused-dependency") && nativeRuleIdSet.has("unused-dev-dependency");
+  const hasNativeCircularDependency = nativeRuleIdSet.has("circular-dependency");
   if (
     !hasNativeUnusedFile &&
     !hasNativeUnusedExports &&
     !hasNativeUnusedDependencyAnalysis &&
     !hasNativeCircularDependency
   ) {
+    handleNativeOxlintFailure(
+      "The required native project analysis does not advertise any supported rules.",
+    );
     return null;
   }
   const conventionConsumedExportKeys = hasNativeUnusedExports
@@ -267,6 +284,29 @@ export const runNativeProjectAnalysis = (
   const circularDependencies = hasNativeCircularDependency
     ? parseCircularDependencies(output.circularDependencies)
     : null;
+  if (hasNativeUnusedFile && (unusedFiles === null || verifiedUnusedFiles === null)) {
+    handleNativeOxlintFailure(
+      "The required native project analysis returned invalid unused-file results.",
+    );
+  }
+  if (hasNativeUnusedExports && unusedExports === null) {
+    handleNativeOxlintFailure(
+      "The required native project analysis returned invalid unused-export results.",
+    );
+  }
+  if (
+    hasNativeUnusedDependencyAnalysis &&
+    (unusedDependencies === null || skippedDependencies === null)
+  ) {
+    handleNativeOxlintFailure(
+      "The required native project analysis returned invalid dependency results.",
+    );
+  }
+  if (hasNativeCircularDependency && circularDependencies === null) {
+    handleNativeOxlintFailure(
+      "The required native project analysis returned invalid circular-dependency results.",
+    );
+  }
   return {
     ...(unusedFiles !== null && verifiedUnusedFiles !== null
       ? { unusedFiles, verifiedUnusedFiles }

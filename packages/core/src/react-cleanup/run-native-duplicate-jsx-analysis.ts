@@ -1,4 +1,5 @@
 import { loadNativeOxlintBinding } from "../runners/oxlint/load-native-oxlint-binding.js";
+import { handleNativeOxlintFailure } from "../runners/oxlint/handle-native-oxlint-failure.js";
 import { isRecord } from "../utils/is-record.js";
 import type {
   DuplicateJsxSubtreeFamily,
@@ -102,6 +103,9 @@ export const runNativeDuplicateJsxAnalysis = (
 ): DuplicateJsxSubtreeFamily[] | null => {
   const binding = loadNativeOxlintBinding();
   if (binding === null || typeof binding.analyzeReactDoctorDuplicateJsx !== "function") {
+    handleNativeOxlintFailure(
+      "The required native Oxlint binding does not provide duplicate JSX analysis.",
+    );
     return null;
   }
   const pathSortIndexByPath = buildLocaleSortIndexes(
@@ -132,15 +136,32 @@ export const runNativeDuplicateJsxAnalysis = (
         maxFamilies: options.maxFamilies,
       }),
     );
-  } catch {
+  } catch (error) {
+    handleNativeOxlintFailure("The required native duplicate JSX analysis failed.", error);
     return null;
   }
-  if (typeof outputJson !== "string") return null;
+  if (typeof outputJson !== "string") {
+    handleNativeOxlintFailure(
+      "The required native duplicate JSX analysis returned a non-string result.",
+    );
+    return null;
+  }
   let output: unknown;
   try {
     output = JSON.parse(outputJson);
-  } catch {
+  } catch (error) {
+    handleNativeOxlintFailure(
+      "The required native duplicate JSX analysis returned invalid JSON.",
+      error,
+    );
     return null;
   }
-  return parseFamilies(output);
+  const families = parseFamilies(output);
+  if (families === null) {
+    handleNativeOxlintFailure(
+      "The required native duplicate JSX analysis returned an invalid result.",
+    );
+    return null;
+  }
+  return families;
 };

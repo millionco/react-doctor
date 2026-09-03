@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { NATIVE_REACT_DOCTOR_SCAN_RULE_IDS } from "../../packages/core/src/constants.js";
 import {
   classifySecurityScanFile,
   REACT_DOCTOR_SCAN_RULES,
@@ -33,16 +34,7 @@ interface ScanParityFixtureInput {
   readonly isGeneratedBundle?: boolean;
 }
 
-const RETAINED_SCAN_RULE_IDS = [
-  "active-static-asset",
-  "dangerous-html-sink",
-  "nosql-injection-risk",
-  "raw-sql-injection-risk",
-  "supabase-client-owned-authz-field",
-  "supabase-rls-policy-risk",
-  "supabase-table-missing-rls",
-  "unsafe-json-in-html",
-].sort();
+const RETAINED_SCAN_RULE_IDS = [...NATIVE_REACT_DOCTOR_SCAN_RULE_IDS].sort();
 
 const CORE_FIXTURE_DIRECTORIES = [
   "eva-mintlify-docs-platform",

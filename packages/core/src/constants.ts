@@ -563,9 +563,31 @@ export const OXLINT_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
 
 export const REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV = "REACT_DOCTOR_NATIVE_OXLINT_BINDING_PATH";
 
+export const REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV = "REACT_DOCTOR_NATIVE_OXLINT_REQUIRED";
+
 export const OXLINT_NATIVE_LIBRARY_PATH_ENV = "NAPI_RS_NATIVE_LIBRARY_PATH";
 
 export const NATIVE_REACT_DOCTOR_PLUGIN_NAME = "react-doctor-native";
+
+export const NATIVE_REACT_DOCTOR_SCAN_RULE_IDS: ReadonlySet<string> = new Set([
+  "active-static-asset",
+  "dangerous-html-sink",
+  "nosql-injection-risk",
+  "raw-sql-injection-risk",
+  "supabase-client-owned-authz-field",
+  "supabase-rls-policy-risk",
+  "supabase-table-missing-rls",
+  "unsafe-json-in-html",
+]);
+
+export const NATIVE_REACT_DOCTOR_PROJECT_GRAPH_RULE_IDS: ReadonlySet<string> = new Set([
+  "circular-dependency",
+  "unused-dependency",
+  "unused-dev-dependency",
+  "unused-export",
+  "unused-file",
+  "unused-type",
+]);
 
 export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
   "jsx-no-duplicate-props",

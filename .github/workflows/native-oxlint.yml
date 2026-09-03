@@ -4,22 +4,34 @@ on:
   push:
     branches: [main]
     paths:
+      - "LICENSE"
       - "native/oxlint/**"
       - "scripts/native/**"
       - "package.json"
-      - "packages/core/src/constants.ts"
-      - "packages/core/src/run-oxlint.ts"
-      - "packages/core/src/runners/oxlint/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - "packages/api/**"
+      - "packages/core/**"
+      - "packages/oxlint-plugin-react-doctor/**"
+      - "packages/react-doctor/**"
+      - "skills/**"
       - ".github/workflows/native-oxlint.yml"
   pull_request:
     branches: [main]
     paths:
+      - "LICENSE"
       - "native/oxlint/**"
       - "scripts/native/**"
       - "package.json"
-      - "packages/core/src/constants.ts"
-      - "packages/core/src/run-oxlint.ts"
-      - "packages/core/src/runners/oxlint/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - "packages/api/**"
+      - "packages/core/**"
+      - "packages/oxlint-plugin-react-doctor/**"
+      - "packages/react-doctor/**"
+      - "skills/**"
       - ".github/workflows/native-oxlint.yml"
 
 permissions:
@@ -34,10 +46,15 @@ jobs:
         with:
           persist-credentials: false
       - run: node scripts/native/build-oxlint-binding.mjs --check-only
+      - run: node --test native/oxlint/npm/react-doctor-rust/tests/*.test.js
 
   build:
     needs: verify-patch
     timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: 1
+      CARGO_INCREMENTAL: 0
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target/native-oxlint
     strategy:
       fail-fast: false
       matrix:
@@ -52,20 +69,30 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --prefer-offline
       - uses: dtolnay/rust-toolchain@1.97.1
         with:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: native-oxlint-${{ matrix.runner }}
-      - run: node scripts/native/build-oxlint-binding.mjs --output dist/native-oxlint
+      - run: pnpm native:oxlint:build -- --output dist/native-oxlint
+      - run: pnpm --filter oxlint-plugin-react-doctor build
+      - run: pnpm native:oxlint:parity -- --directory dist/native-oxlint
+      - run: pnpm native:oxlint:scan-parity
+      - run: pnpm native:oxlint:project-parity
       - uses: actions/upload-artifact@v7
         with:
           name: native-oxlint-${{ matrix.runner }}
           path: dist/native-oxlint/*
           if-no-files-found: error
 
-  parity:
+  package:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -79,9 +106,49 @@ jobs:
           node-version: "22.18.0"
           cache: pnpm
       - run: pnpm install --frozen-lockfile --prefer-offline
-      - run: pnpm --filter oxlint-plugin-react-doctor build
+      - run: pnpm exec turbo run build --filter=react-doctor
       - uses: actions/download-artifact@v8
         with:
-          name: native-oxlint-ubuntu-24.04
-          path: dist/native-oxlint
-      - run: node scripts/native/verify-oxlint-parity.mjs --directory dist/native-oxlint
+          pattern: native-oxlint-*
+          path: dist/native-oxlint-all
+          merge-multiple: true
+      - run: pnpm native:rust:assemble -- --artifacts dist/native-oxlint-all
+      - run: pnpm native:rust:pack
+      - uses: actions/upload-artifact@v7
+        with:
+          name: react-doctor-rust-packages
+          path: dist/react-doctor-rust-tarballs/*
+          if-no-files-found: error
+
+  smoke:
+    needs: package
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            node-version: "20.19.0"
+          - runner: ubuntu-24.04
+            node-version: "22.18.0"
+          - runner: ubuntu-24.04-arm
+            node-version: "22.18.0"
+          - runner: macos-15-intel
+            node-version: "22.18.0"
+          - runner: macos-15
+            node-version: "22.18.0"
+          - runner: windows-2025
+            node-version: "22.18.0"
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: react-doctor-rust-packages
+          path: dist/react-doctor-rust-tarballs
+      - run: node scripts/native/smoke-react-doctor-rust-package.mjs

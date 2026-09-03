@@ -13,6 +13,7 @@
 import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ProjectInfo } from "@react-doctor/core";
+import { REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV } from "../src/constants.js";
 
 interface SpawnMockState {
   callCount: number;
@@ -93,6 +94,29 @@ beforeEach(() => {
 });
 
 describe("spawnLintBatches binary-split cascade bound", () => {
+  it("propagates a terminal single-file failure when native Oxlint is required", async () => {
+    const previousRequiredValue = process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV];
+    process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV] = "1";
+    try {
+      await expect(
+        spawnLintBatches({
+          baseArgs: ["--stub"],
+          fileBatches: [["src/failing.tsx"]],
+          rootDirectory: process.cwd(),
+          nodeBinaryPath: process.execPath,
+          project,
+        }),
+      ).rejects.toThrow("The required native Oxlint batch failed.");
+    } finally {
+      if (previousRequiredValue === undefined) {
+        delete process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV];
+      } else {
+        process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV] = previousRequiredValue;
+      }
+    }
+    expect(spawnState.callCount).toBe(1);
+  });
+
   it("drops the whole batch after one spawn when the cumulative split budget is exhausted", async () => {
     const partialFailures: string[] = [];
     const diagnostics = await spawnLintBatches({

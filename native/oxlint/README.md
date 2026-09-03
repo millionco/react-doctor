@@ -15,10 +15,20 @@ REACT_DOCTOR_NATIVE_OXLINT_BINDING_PATH=dist/native-oxlint/<binding>.node nr nat
 REACT_DOCTOR_NATIVE_OXLINT_BINDING_PATH=dist/native-oxlint/<binding>.node nr native:oxlint:parity --corpus packages/fuzz/tmp/corpus-repos
 ```
 
-Set `CARGO_BUILD_JOBS=2` for the compile-check and release build on memory-constrained builders.
+Set `CARGO_BUILD_JOBS=1` and `CARGO_INCREMENTAL=0` for the compile-check and release build on memory-constrained builders.
 
 `native:oxlint:verify` clones the pinned tag, checks its commit, and proves the patch still applies. `native:oxlint:check` overlays every native rule, regenerates Oxc's rule registry, and compile-checks the linter. `native:oxlint:build` performs the same source assembly, compiles and loads the N-API binding, and writes the binding plus provenance and SHA-256 hashes to `dist/native-oxlint`.
 
 The parity check runs the JavaScript and native implementations over the same adversarial TypeScript fixture and compares normalized diagnostics. Pass `--corpus` with a directory of repositories to compare every repository independently. A native rule should not be added to `nativeRules` or `NATIVE_REACT_DOCTOR_RULE_IDS` until both checks pass.
 
 The workflow builds artifacts for Linux x64/arm64, macOS x64/arm64, and Windows x64. It does not publish them. Shipping or making the native patch the default should happen only after corpus parity shows no diagnostic drift and benchmarks show at least a 15% p50 lint improvement.
+
+## Experimental package
+
+`react-doctor-rust` is a separate launcher for the source-patched binding. It does not change the `react-doctor` package, fails before startup when the matching native package is missing or incompatible, and exits on native analysis failures instead of falling back to TypeScript.
+
+The native workflow builds, verifies, packages, and smoke-tests Linux glibc x64/arm64, macOS x64/arm64, and Windows x64 independently. Every platform runs exact fixture parity, native scan parity, and native project-analysis parity before its artifact can enter the package assembly job. The assembly job verifies the recorded binding and patch SHA-256 hashes, generates one optional platform package per target, and emits packed tarballs plus `SHA256SUMS`. Each target then installs and scans with those exact tarballs on its native runner.
+
+The package remains private and CI-only until a separately approved release workflow publishes it under the `experimental` npm tag. A release assembly must pass both `--version` and `--react-doctor-version`; that exact `react-doctor` version must already be published with required-native execution support. Publishing must remove `private` from the launcher and all platform packages, publish the five platform packages before the launcher, and preserve the shared version.
+
+The packed CI smoke installs explicit local tarballs to validate their contents. After publishing, run `nr native:rust:smoke -- --package react-doctor-rust@<exact-version>` on every supported runner. That mode installs only the registry launcher, proving npm selects its current platform binding and resolves the compatible `react-doctor` dependency. Do not promote the experimental tag until every postpublish smoke passes. Musl and other targets are unsupported until they have native build and install smoke lanes.

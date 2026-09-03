@@ -14,6 +14,7 @@ export interface CoreRuleMetadata {
   readonly tags?: ReadonlyArray<string>;
   readonly defaultEnabled?: boolean;
   readonly matchByOccurrence?: boolean;
+  readonly lifecycle?: "retired";
   readonly isScanRule: boolean;
   readonly isProjectRule?: boolean;
 }

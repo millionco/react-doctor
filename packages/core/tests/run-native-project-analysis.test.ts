@@ -2,6 +2,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import {
+  NATIVE_REACT_DOCTOR_PROJECT_GRAPH_RULE_IDS,
+  REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV,
+} from "../src/constants.js";
 import { analyzeProject } from "../src/project-analysis/analyze-project.js";
 import { defineProjectAnalysisConfig } from "../src/project-analysis/config.js";
 import { runNativeProjectAnalysis } from "../src/project-analysis/run-native-project-analysis.js";
@@ -219,6 +223,56 @@ describe("runNativeProjectAnalysis unused exports", () => {
       verifiedUnusedFiles: [{ path: "/project/src/orphan.ts" }],
     });
   });
+
+  it("fails when required native output is malformed", () => {
+    loadNativeOxlintBindingMock.mockReturnValue({
+      reactDoctorNativeProjectRuleIds: () => [...NATIVE_REACT_DOCTOR_PROJECT_GRAPH_RULE_IDS],
+      analyzeReactDoctorProjectGraph: () =>
+        JSON.stringify({
+          unusedFiles: [],
+          verifiedUnusedFiles: [],
+          unusedExports: null,
+          unusedDependencies: [],
+          skippedDependencies: [],
+          circularDependencies: [],
+        }),
+    });
+    process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV] = "1";
+
+    try {
+      expect(() =>
+        runNativeProjectAnalysis({
+          graph: projectGraph(),
+          config: defineProjectAnalysisConfig({ rootDir: "/project" }),
+          platformSiblingIndex: new Map(),
+        }),
+      ).toThrow("The required native project analysis returned invalid unused-export results.");
+    } finally {
+      delete process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV];
+    }
+  });
+
+  it("fails when required native project analysis omits a supported rule", () => {
+    loadNativeOxlintBindingMock.mockReturnValue({
+      reactDoctorNativeProjectRuleIds: () => ["unused-export", "unused-type"],
+      analyzeReactDoctorProjectGraph: () => JSON.stringify({ unusedExports: [] }),
+    });
+    process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV] = "1";
+
+    try {
+      expect(() =>
+        runNativeProjectAnalysis({
+          graph: projectGraph(),
+          config: defineProjectAnalysisConfig({ rootDir: "/project" }),
+          platformSiblingIndex: new Map(),
+        }),
+      ).toThrow(
+        "The required native project analysis does not advertise supported rules: circular-dependency, unused-dependency, unused-dev-dependency, unused-file.",
+      );
+    } finally {
+      delete process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV];
+    }
+  });
 });
 
 describe("runNativeProjectAnalysis circular dependencies", () => {
@@ -318,12 +372,53 @@ describe("runNativeProjectAnalysis circular dependencies", () => {
       'import { valueA } from "./a"; export const valueB = valueA + 1;',
     );
     loadNativeOxlintBindingMock.mockReturnValue({
-      reactDoctorNativeProjectRuleIds: () => ["circular-dependency"],
-      analyzeReactDoctorProjectGraph: () => JSON.stringify({ circularDependencies: null }),
+      reactDoctorNativeProjectRuleIds: () => [...NATIVE_REACT_DOCTOR_PROJECT_GRAPH_RULE_IDS],
+      analyzeReactDoctorProjectGraph: () =>
+        JSON.stringify({
+          unusedFiles: [],
+          verifiedUnusedFiles: [],
+          unusedExports: [],
+          unusedDependencies: [],
+          skippedDependencies: [],
+          circularDependencies: null,
+        }),
     });
 
     const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
 
     expect(result.circularDependencies).toHaveLength(1);
+  });
+
+  it("does not swallow required native project failures", async () => {
+    const rootDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "react-doctor-required-native-project-analysis-"),
+    );
+    temporaryDirectories.push(rootDirectory);
+    fs.writeFileSync(path.join(rootDirectory, "package.json"), "{}");
+    fs.mkdirSync(path.join(rootDirectory, "src"));
+    fs.writeFileSync(path.join(rootDirectory, "src/index.ts"), "export const value = 1;");
+    loadNativeOxlintBindingMock.mockReturnValue({
+      reactDoctorNativeProjectRuleIds: () => [...NATIVE_REACT_DOCTOR_PROJECT_GRAPH_RULE_IDS],
+      analyzeReactDoctorProjectGraph: () =>
+        JSON.stringify({
+          unusedFiles: [],
+          verifiedUnusedFiles: [],
+          unusedExports: [],
+          unusedDependencies: [],
+          skippedDependencies: [],
+          circularDependencies: null,
+        }),
+    });
+    process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV] = "1";
+
+    try {
+      await expect(
+        analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] }),
+      ).rejects.toThrow(
+        "The required native project analysis returned invalid circular-dependency results.",
+      );
+    } finally {
+      delete process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV];
+    }
   });
 });

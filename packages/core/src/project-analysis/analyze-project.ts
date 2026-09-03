@@ -46,6 +46,7 @@ import { buildPlatformSiblingIndex } from "./utils/build-platform-sibling-index.
 import { collectUnpluginAutoImportReferences } from "./collect/unplugin-auto-import-entries.js";
 import { markCompletePackageGraphs } from "./utils/mark-complete-package-graphs.js";
 import { runNativeProjectAnalysis } from "./run-native-project-analysis.js";
+import { isNativeOxlintRequired } from "../runners/oxlint/is-native-oxlint-required.js";
 
 export interface AnalyzeProjectInput {
   readonly rootDirectory: string;
@@ -444,16 +445,15 @@ const analyzeProjectConfig = async (
       module: "report",
       contextDescription: "while building project findings",
     });
-  const nativeProjectAnalysis = runReportDetector(
-    "runNativeProjectAnalysis",
-    () =>
-      runNativeProjectAnalysis({
-        graph: moduleGraph,
-        config,
-        platformSiblingIndex,
-      }),
-    null,
-  );
+  const analyzeNativeProject = () =>
+    runNativeProjectAnalysis({
+      graph: moduleGraph,
+      config,
+      platformSiblingIndex,
+    });
+  const nativeProjectAnalysis = isNativeOxlintRequired()
+    ? analyzeNativeProject()
+    : runReportDetector("runNativeProjectAnalysis", analyzeNativeProject, null);
   const unusedFiles =
     nativeProjectAnalysis?.unusedFiles ??
     runReportDetector("detectOrphanFiles", () => detectOrphanFiles(moduleGraph), []);

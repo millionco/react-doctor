@@ -1551,7 +1551,9 @@ impl Rule for ${delegatedRule.struct} {
       const platformSuffix =
         process.platform === "linux"
           ? `${process.platform}-${process.arch}-gnu`
-          : `${process.platform}-${process.arch}`;
+          : process.platform === "win32"
+            ? `${process.platform}-${process.arch}-msvc`
+            : `${process.platform}-${process.arch}`;
       const bindingFileName = `oxlint-react-doctor.${platformSuffix}.node`;
       const profileDirectory = shouldBuildDebug ? "debug" : "release";
       const builtLibraryPath = path.join(targetDirectory, profileDirectory, libraryName);

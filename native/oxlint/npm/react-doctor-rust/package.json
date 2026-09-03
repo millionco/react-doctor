@@ -1,0 +1,53 @@
+{
+  "name": "react-doctor-rust",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Experimental native Rust engine for React Doctor.",
+  "keywords": [
+    "diagnostics",
+    "native",
+    "oxc",
+    "oxlint",
+    "react",
+    "rust"
+  ],
+  "homepage": "https://github.com/millionco/react-doctor#readme",
+  "bugs": {
+    "url": "https://github.com/millionco/react-doctor/issues"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Million Software, Inc",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/millionco/react-doctor.git",
+    "directory": "native/oxlint/npm/react-doctor-rust"
+  },
+  "bin": {
+    "react-doctor-rust": "./bin/react-doctor-rust.js"
+  },
+  "files": [
+    "bin/**",
+    "LICENSE",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "dependencies": {
+    "react-doctor": "0.0.0"
+  },
+  "napi": {
+    "binaryName": "oxlint-react-doctor",
+    "packageName": "react-doctor-rust-binding",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.13.0"
+  },
+  "preferUnplugged": true
+}

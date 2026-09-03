@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV } from "../src/constants.js";
 import type {
   JsxSubtreeCandidate,
   ResolvedJsxDuplicationOptions,
@@ -106,5 +107,18 @@ describe("runNativeDuplicateJsxAnalysis", () => {
     bindingState.analyze.mockReturnValue(JSON.stringify([{ fingerprint: "incomplete" }]));
 
     expect(runNativeDuplicateJsxAnalysis([], options)).toBeNull();
+  });
+
+  it("fails when required native output is invalid", () => {
+    bindingState.analyze.mockReturnValue(JSON.stringify([{ fingerprint: "incomplete" }]));
+    process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV] = "1";
+
+    try {
+      expect(() => runNativeDuplicateJsxAnalysis([], options)).toThrow(
+        "The required native duplicate JSX analysis returned an invalid result.",
+      );
+    } finally {
+      delete process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV];
+    }
   });
 });

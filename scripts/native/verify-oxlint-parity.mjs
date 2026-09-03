@@ -13,6 +13,25 @@ const requireFromCore = createRequire(
 const nativeRules = JSON.parse(
   fs.readFileSync(path.join(repositoryRoot, "native", "oxlint", "upstream.json"), "utf8"),
 ).nativeRules;
+const ruleRegistryData = JSON.parse(
+  fs.readFileSync(
+    path.join(
+      repositoryRoot,
+      "packages",
+      "oxlint-plugin-react-doctor",
+      "src",
+      "plugin",
+      "core-rule-registry-data.json",
+    ),
+    "utf8",
+  ),
+);
+const nonReportingNativeRuleIds = new Set(
+  ruleRegistryData
+    .filter(({ rule }) => rule.isProjectRule === true || rule.lifecycle === "retired")
+    .map(({ id }) => id),
+);
+const coveredNativeRuleIds = new Set();
 const argumentsList = process.argv.slice(2);
 const readOption = (name) => {
   const optionIndex = argumentsList.indexOf(name);
@@ -947,6 +966,15 @@ const stateEffectsParityFixturePath = path.join(
   "app",
   "state-effects.tsx",
 );
+const requiredFireParityDirectory = path.join(temporaryDirectory, "required-fire-native-parity");
+const expoRequiredFireParityDirectory = path.join(
+  temporaryDirectory,
+  "expo-required-fire-native-parity",
+);
+const zustandRequiredFireParityDirectory = path.join(
+  temporaryDirectory,
+  "zustand-required-fire-native-parity",
+);
 const nonReactJsxFixturePath = path.join(temporaryDirectory, "solid-fixture.tsx");
 const configuredFixturePath = path.join(temporaryDirectory, "configured.tsx");
 const configuredAriaFixturePath = path.join(temporaryDirectory, "configured-aria.tsx");
@@ -1002,6 +1030,30 @@ const stateEffectsParityStockConfigPath = path.join(
 const stateEffectsParityNativeConfigPath = path.join(
   temporaryDirectory,
   "state-effects-native-parity-native.json",
+);
+const requiredFireParityStockConfigPath = path.join(
+  temporaryDirectory,
+  "required-fire-native-parity-stock.json",
+);
+const requiredFireParityNativeConfigPath = path.join(
+  temporaryDirectory,
+  "required-fire-native-parity-native.json",
+);
+const expoRequiredFireParityStockConfigPath = path.join(
+  temporaryDirectory,
+  "expo-required-fire-native-parity-stock.json",
+);
+const expoRequiredFireParityNativeConfigPath = path.join(
+  temporaryDirectory,
+  "expo-required-fire-native-parity-native.json",
+);
+const zustandRequiredFireParityStockConfigPath = path.join(
+  temporaryDirectory,
+  "zustand-required-fire-native-parity-stock.json",
+);
+const zustandRequiredFireParityNativeConfigPath = path.join(
+  temporaryDirectory,
+  "zustand-required-fire-native-parity-native.json",
 );
 const configuredStockConfigPath = path.join(temporaryDirectory, "configured-stock.json");
 const configuredNativeConfigPath = path.join(temporaryDirectory, "configured-native.json");
@@ -1930,6 +1982,27 @@ const EXPECTED_STATE_EFFECTS_PARITY_DIAGNOSTIC_COUNTS = {
   "no-chain-state-updates": 1,
   "no-initialize-state": 1,
 };
+const REQUIRED_FIRE_PARITY_RULE_IDS = [
+  "r3f-no-extend-in-render",
+  "no-hydration-branch-on-browser-global",
+  "no-reset-all-state-on-prop-change",
+  "rn-list-recyclable-without-types",
+  "html-no-nested-interactive",
+  "nextjs-metadata-url-consistency",
+  "nextjs-missing-metadata",
+  "no-radial-halo",
+  "no-shape-assembled-illustration",
+  "radio-input-missing-name",
+  "no-noninteractive-element-interactions",
+  "no-responsive-hidden-accessible-name",
+  "rendering-hydration-no-flicker",
+  "rerender-memo-with-default-value",
+  "no-derived-state",
+  "no-derived-state-effect",
+  "only-export-components",
+];
+const EXPO_REQUIRED_FIRE_PARITY_RULE_IDS = ["expo-no-non-inlined-env"];
+const ZUSTAND_REQUIRED_FIRE_PARITY_RULE_IDS = ["zustand-no-mutating-state"];
 const FOCUSED_PARITY_RULE_IDS = [
   "jsx-no-new-array-as-prop",
   "jsx-no-new-function-as-prop",
@@ -4281,9 +4354,19 @@ const runOxlint = (configPath, environment, targetPath = fixturePath) => {
   if (result.status !== 0 && result.status !== 1) {
     throw new Error(result.stderr || `oxlint exited with status ${result.status}`);
   }
+  const diagnostics = normalizeDiagnostics(parsed.diagnostics);
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  if (Array.isArray(config.plugins) && config.plugins.includes("react-doctor-native")) {
+    for (const diagnostic of diagnostics) {
+      const ruleId = nativeRules.find((candidateRuleId) =>
+        diagnostic.code.includes(`(${candidateRuleId})`),
+      );
+      if (ruleId !== undefined) coveredNativeRuleIds.add(ruleId);
+    }
+  }
   return {
     durationMs: performance.now() - startedAt,
-    diagnostics: normalizeDiagnostics(parsed.diagnostics),
+    diagnostics,
   };
 };
 
@@ -8443,6 +8526,142 @@ export const StateEffectsParity = () => {
 };
 `,
   );
+  const requiredFireParityFixtures = {
+    "src/r3f-extend.tsx": `import { extend } from "@react-three/fiber";
+export const Scene = () => {
+  extend({ CustomObject });
+  return <customObject />;
+};
+`,
+    "src/hydration.web.tsx": `"use client";
+export const HydrationPage = () =>
+  typeof window === "undefined" ? <Server /> : <Client />;
+`,
+    "src/reset-state.tsx": `import { useEffect, useState } from "react";
+export const Editor = ({ documentId, previewUrl }) => {
+  const [draft, setDraft] = useState("");
+  const [previewFailed, setPreviewFailed] = useState(false);
+  useEffect(() => {
+    setDraft("");
+    setPreviewFailed(false);
+  }, [documentId, previewUrl]);
+  return <><input value={draft} onChange={(event) => setDraft(event.target.value)} /><img src={previewUrl} onError={() => setPreviewFailed(true)} /></>;
+};
+`,
+    "src/recyclable-list.native.tsx": `import { FlashList } from "@shopify/flash-list";
+export const List = ({ items }) => <FlashList recycleItems data={items} renderItem={({ item }) => item.kind === "header" ? <Header /> : <Row />} />;
+`,
+    "src/nested-interactive.tsx": `export const Toolbar = () => <button type="button"><button type="button">Inner</button></button>;
+`,
+    "app/meta/page.tsx": `export const metadata = {
+  alternates: { canonical: "https://example.com/docs" },
+  openGraph: { url: "https://example.com/help" },
+};
+export default function Page() { return <main>Metadata</main>; }
+`,
+    "app/no-meta/page.tsx": `export default function Page() { return <main>Home</main>; }
+`,
+    "src/visuals.tsx": `export const Halo = () => <div style={{ backgroundColor: "#050816", backgroundImage: "radial-gradient(circle at center, rgb(56 189 248 / 80%) 0%, transparent 70%)" }} />;
+export const Illustration = () => <svg width={200} height={200}><rect fill="#111" /><rect fill="#111" /><circle fill="#fff" /><circle fill="#fff" /><ellipse fill="#777" /><polygon fill="#777" /><rect fill="#111" /><circle fill="#fff" /></svg>;
+`,
+    "src/accessibility.tsx": `export const Radio = () => <input type="radio" value="yes" />;
+export const ClickableArticle = () => <article role="article" onClick={() => {}}>Open</article>;
+export const ResponsiveButton = () => <button><span className="hidden md:inline">Settings</span></button>;
+`,
+    "src/state.tsx": `import { useEffect, useMemo, useState } from "react";
+export const HydrationState = () => {
+  const [ready, setReady] = useState(false);
+  useEffect(() => { setReady(true); }, []);
+  return <div>{String(ready)}</div>;
+};
+export const Chart = ({ places = [] }) => {
+  const placesByKey = useMemo(() => new Map(places.map((place) => [place.key, place])), [places]);
+  return <div>{placesByKey.size}</div>;
+};
+export const FullName = ({ firstName, lastName }) => {
+  const [fullName, setFullName] = useState("");
+  useEffect(() => { setFullName(firstName + " " + lastName); }, [firstName, lastName]);
+  return fullName;
+};
+`,
+    "src/card.tsx": `export const Card = () => <div />;
+export const cardLabel = getLabel();
+`,
+  };
+  fs.mkdirSync(requiredFireParityDirectory, { recursive: true });
+  fs.writeFileSync(
+    path.join(requiredFireParityDirectory, "package.json"),
+    JSON.stringify({ dependencies: { react: "18.2.0", "react-scripts": "5.0.1" } }),
+  );
+  fs.mkdirSync(path.join(expoRequiredFireParityDirectory, "src", "screens"), {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    path.join(expoRequiredFireParityDirectory, "package.json"),
+    JSON.stringify({ dependencies: { expo: "55.0.0", react: "18.2.0" } }),
+  );
+  fs.writeFileSync(
+    path.join(expoRequiredFireParityDirectory, "src", "screens", "home.tsx"),
+    `export const apiUrl = process.env["EXPO_PUBLIC_API_URL"];
+`,
+  );
+  fs.mkdirSync(path.join(zustandRequiredFireParityDirectory, "src"), { recursive: true });
+  fs.writeFileSync(
+    path.join(zustandRequiredFireParityDirectory, "package.json"),
+    JSON.stringify({ dependencies: { react: "18.2.0", zustand: "5.0.0" } }),
+  );
+  fs.writeFileSync(
+    path.join(zustandRequiredFireParityDirectory, "src", "store.ts"),
+    `import { create } from "zustand";
+export const useStore = create((set) => ({
+  user: { name: "Ada" },
+  records: { primary: { count: 0, name: "Ada" } },
+  count: 0,
+  rename: (name) => set((state) => {
+    state.user.name = name;
+    return { user: state.user };
+  }),
+  increment: () => set((state) => {
+    state.count++;
+    return state;
+  }),
+  incrementKey: (key) => set((state) => {
+    state[key]++;
+    return state;
+  }),
+  renameNestedKey: (key, name) => set((state) => {
+    state.records[key].name = name;
+  }),
+  incrementNestedKey: (key) => set((state) => {
+    state.records[key].count += 1;
+  }),
+  decrementNestedKey: (key) => set((state) => {
+    state.records[key].count--;
+  }),
+  reuseDynamicReceiver: (key) => set((state) => {
+    state.records[key].count++;
+    return state;
+  }),
+}));
+export const mutateSnapshotKey = (key) => {
+  const snapshot = useStore.getState();
+  snapshot.records[key].count += 1;
+};
+export const publishSnapshotKey = (key) => {
+  const snapshot = useStore.getState();
+  snapshot.records[key].count += 1;
+  useStore.setState(snapshot);
+};
+`,
+  );
+  for (const [relativeFixturePath, fixtureSource] of Object.entries(requiredFireParityFixtures)) {
+    const requiredFireParityFixturePath = path.join(
+      requiredFireParityDirectory,
+      relativeFixturePath,
+    );
+    fs.mkdirSync(path.dirname(requiredFireParityFixturePath), { recursive: true });
+    fs.writeFileSync(requiredFireParityFixturePath, fixtureSource);
+  }
   fs.mkdirSync(path.dirname(focusedParityFixturePath), { recursive: true });
   fs.mkdirSync(path.dirname(focusedParityWrappedMetadataPath), { recursive: true });
   fs.mkdirSync(path.dirname(focusedParityGetRoutePath), { recursive: true });
@@ -9421,6 +9640,99 @@ export const App = () => <>
       }),
     ),
   );
+  const requiredFireParitySettings = {
+    "react-doctor": {
+      ...REACT_DOCTOR_SETTINGS["react-doctor"],
+      rootDirectory: requiredFireParityDirectory,
+      capabilities: [
+        "react",
+        "react-native",
+        "expo",
+        "r3f",
+        "ssr",
+        "nextjs",
+        "nextjs:15",
+        "tailwind",
+        "zustand",
+        "zustand:1",
+        "zustand:5",
+      ],
+    },
+  };
+  fs.writeFileSync(
+    requiredFireParityStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: requiredFireParitySettings,
+        ruleIds: REQUIRED_FIRE_PARITY_RULE_IDS,
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    requiredFireParityNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: requiredFireParitySettings,
+        ruleIds: REQUIRED_FIRE_PARITY_RULE_IDS,
+      }),
+    ),
+  );
+  const expoRequiredFireParitySettings = {
+    "react-doctor": {
+      ...REACT_DOCTOR_SETTINGS["react-doctor"],
+      rootDirectory: expoRequiredFireParityDirectory,
+      capabilities: ["react", "react-native", "expo"],
+    },
+  };
+  fs.writeFileSync(
+    expoRequiredFireParityStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: expoRequiredFireParitySettings,
+        ruleIds: EXPO_REQUIRED_FIRE_PARITY_RULE_IDS,
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    expoRequiredFireParityNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: expoRequiredFireParitySettings,
+        ruleIds: EXPO_REQUIRED_FIRE_PARITY_RULE_IDS,
+      }),
+    ),
+  );
+  const zustandRequiredFireParitySettings = {
+    "react-doctor": {
+      ...REACT_DOCTOR_SETTINGS["react-doctor"],
+      rootDirectory: zustandRequiredFireParityDirectory,
+      capabilities: ["react", "zustand", "zustand:1", "zustand:5"],
+    },
+  };
+  fs.writeFileSync(
+    zustandRequiredFireParityStockConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: false,
+        settings: zustandRequiredFireParitySettings,
+        ruleIds: ZUSTAND_REQUIRED_FIRE_PARITY_RULE_IDS,
+      }),
+    ),
+  );
+  fs.writeFileSync(
+    zustandRequiredFireParityNativeConfigPath,
+    JSON.stringify(
+      buildConfig({
+        isNative: true,
+        settings: zustandRequiredFireParitySettings,
+        ruleIds: ZUSTAND_REQUIRED_FIRE_PARITY_RULE_IDS,
+      }),
+    ),
+  );
   fs.writeFileSync(
     corpusStockConfigPath,
     JSON.stringify(
@@ -9824,6 +10136,72 @@ export const App = () => <>
     );
   }
 
+  const requiredFireParityStockDiagnostics = runOxlint(
+    requiredFireParityStockConfigPath,
+    process.env,
+    requiredFireParityDirectory,
+  ).diagnostics;
+  const requiredFireParityNativeDiagnostics = runOxlint(
+    requiredFireParityNativeConfigPath,
+    nativeEnvironment,
+    requiredFireParityDirectory,
+  ).diagnostics;
+  const expoRequiredFireParityStockDiagnostics = runOxlint(
+    expoRequiredFireParityStockConfigPath,
+    process.env,
+    expoRequiredFireParityDirectory,
+  ).diagnostics;
+  const expoRequiredFireParityNativeDiagnostics = runOxlint(
+    expoRequiredFireParityNativeConfigPath,
+    nativeEnvironment,
+    expoRequiredFireParityDirectory,
+  ).diagnostics;
+  const zustandRequiredFireParityStockDiagnostics = runOxlint(
+    zustandRequiredFireParityStockConfigPath,
+    process.env,
+    zustandRequiredFireParityDirectory,
+  ).diagnostics;
+  const zustandRequiredFireParityNativeDiagnostics = runOxlint(
+    zustandRequiredFireParityNativeConfigPath,
+    nativeEnvironment,
+    zustandRequiredFireParityDirectory,
+  ).diagnostics;
+  const allRequiredFireParityRuleIds = [
+    ...REQUIRED_FIRE_PARITY_RULE_IDS,
+    ...EXPO_REQUIRED_FIRE_PARITY_RULE_IDS,
+    ...ZUSTAND_REQUIRED_FIRE_PARITY_RULE_IDS,
+  ];
+  const allRequiredFireParityStockDiagnostics = [
+    ...requiredFireParityStockDiagnostics,
+    ...expoRequiredFireParityStockDiagnostics,
+    ...zustandRequiredFireParityStockDiagnostics,
+  ];
+  const allRequiredFireParityNativeDiagnostics = [
+    ...requiredFireParityNativeDiagnostics,
+    ...expoRequiredFireParityNativeDiagnostics,
+    ...zustandRequiredFireParityNativeDiagnostics,
+  ];
+  const missingRequiredFireParityRuleIds = allRequiredFireParityRuleIds.filter(
+    (ruleId) =>
+      !allRequiredFireParityNativeDiagnostics.some((diagnostic) =>
+        diagnostic.code.includes(`(${ruleId})`),
+      ),
+  );
+  if (
+    missingRequiredFireParityRuleIds.length > 0 ||
+    JSON.stringify(allRequiredFireParityNativeDiagnostics) !==
+      JSON.stringify(allRequiredFireParityStockDiagnostics)
+  ) {
+    const differenceIndex = allRequiredFireParityStockDiagnostics.findIndex(
+      (diagnostic, index) =>
+        JSON.stringify(diagnostic) !==
+        JSON.stringify(allRequiredFireParityNativeDiagnostics[index]),
+    );
+    throw new Error(
+      `native required-fire parity failed\nmissing=${JSON.stringify(missingRequiredFireParityRuleIds)}\nfirstDifference=${JSON.stringify({ index: differenceIndex, stock: allRequiredFireParityStockDiagnostics[differenceIndex], native: allRequiredFireParityNativeDiagnostics[differenceIndex] }, null, 2)}\nstockCount=${allRequiredFireParityStockDiagnostics.length}\nnativeCount=${allRequiredFireParityNativeDiagnostics.length}`,
+    );
+  }
+
   const focusedParityStockDiagnostics = runOxlint(
     focusedParityStockConfigPath,
     process.env,
@@ -10191,6 +10569,16 @@ export const App = () => <>
   ) {
     throw new Error(
       `native React Router framework server entry parity failed\nstock=${JSON.stringify(frameworkServerEntryStockDiagnostics, null, 2)}\nnative=${JSON.stringify(frameworkServerEntryNativeDiagnostics, null, 2)}`,
+    );
+  }
+
+  const uncoveredNativeRuleIds = nativeRules.filter(
+    (nativeRuleId) =>
+      !nonReportingNativeRuleIds.has(nativeRuleId) && !coveredNativeRuleIds.has(nativeRuleId),
+  );
+  if (uncoveredNativeRuleIds.length > 0) {
+    throw new Error(
+      `Native parity fixtures did not exercise ${uncoveredNativeRuleIds.length} rules: ${uncoveredNativeRuleIds.join(", ")}`,
     );
   }
 

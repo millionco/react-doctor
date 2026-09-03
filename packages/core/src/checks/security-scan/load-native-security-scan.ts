@@ -1,4 +1,6 @@
 import type { ScanFinding, ScannedFile } from "oxlint-plugin-react-doctor/core";
+import { NATIVE_REACT_DOCTOR_SCAN_RULE_IDS } from "../../constants.js";
+import { handleNativeOxlintFailure } from "../../runners/oxlint/handle-native-oxlint-failure.js";
 import { loadNativeOxlintBinding } from "../../runners/oxlint/load-native-oxlint-binding.js";
 import { isRecord } from "../../utils/is-record.js";
 
@@ -47,6 +49,9 @@ export const loadNativeSecurityScan = (): NativeSecurityScan | null => {
     typeof binding.reactDoctorNativeScanRuleIds !== "function" ||
     typeof binding.scanReactDoctorFile !== "function"
   ) {
+    handleNativeOxlintFailure(
+      "The required native Oxlint binding does not provide the security scan APIs.",
+    );
     return null;
   }
   const nativeRuleIds = binding.reactDoctorNativeScanRuleIds();
@@ -54,28 +59,45 @@ export const loadNativeSecurityScan = (): NativeSecurityScan | null => {
     !Array.isArray(nativeRuleIds) ||
     !nativeRuleIds.every((ruleId) => typeof ruleId === "string")
   ) {
+    handleNativeOxlintFailure(
+      "The required native Oxlint binding returned invalid security scan rule ids.",
+    );
     return null;
+  }
+  const nativeRuleIdSet = new Set(nativeRuleIds);
+  const missingNativeRuleIds = [...NATIVE_REACT_DOCTOR_SCAN_RULE_IDS].filter(
+    (ruleId) => !nativeRuleIdSet.has(ruleId),
+  );
+  if (missingNativeRuleIds.length > 0) {
+    handleNativeOxlintFailure(
+      `The required native security scan does not advertise supported rules: ${missingNativeRuleIds.join(", ")}.`,
+    );
   }
   const scanReactDoctorFile = binding.scanReactDoctorFile;
   return {
-    ruleIds: new Set(nativeRuleIds),
+    ruleIds: nativeRuleIdSet,
     scanFile: (file, ruleIds) => {
+      let outputJson: unknown;
       try {
-        return parseScanOutput(
-          scanReactDoctorFile(
-            JSON.stringify({
-              absolutePath: file.absolutePath,
-              relativePath: file.relativePath,
-              content: file.content,
-              isGeneratedBundle: file.isGeneratedBundle,
-              ruleIds,
-            }),
-          ),
-          ruleIds,
+        outputJson = scanReactDoctorFile(
+          JSON.stringify({
+            absolutePath: file.absolutePath,
+            relativePath: file.relativePath,
+            content: file.content,
+            isGeneratedBundle: file.isGeneratedBundle,
+            ruleIds,
+          }),
         );
-      } catch {
+      } catch (error) {
+        handleNativeOxlintFailure("The required native security scan failed.", error);
         return null;
       }
+      const findingsByRule = parseScanOutput(outputJson, ruleIds);
+      if (findingsByRule === null) {
+        handleNativeOxlintFailure("The required native security scan returned an invalid result.");
+        return null;
+      }
+      return findingsByRule;
     },
   };
 };

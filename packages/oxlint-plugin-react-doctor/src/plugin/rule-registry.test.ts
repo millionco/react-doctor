@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { CORE_RULE_REGISTRY } from "./core-rule-registry.js";
 import plugin from "./react-doctor-plugin.js";
 import { reactDoctorRules, ruleRegistry } from "./rule-registry.js";
 import { parseSourceText } from "./utils/parse-source-file.js";
@@ -87,6 +88,11 @@ describe("rule registry", () => {
   it("keeps the cascading setState rule retired", () => {
     expect(ruleRegistry[CASCADING_SET_STATE_RULE_ID]?.lifecycle).toBe("retired");
     expect(ruleRegistry[CASCADING_SET_STATE_RULE_ID]?.defaultEnabled).toBe(false);
+  });
+
+  it("serializes retired lifecycle metadata for core consumers", () => {
+    expect(CORE_RULE_REGISTRY[REANIMATED_LAYOUT_RULE_ID]?.lifecycle).toBe("retired");
+    expect(CORE_RULE_REGISTRY[CASCADING_SET_STATE_RULE_ID]?.lifecycle).toBe("retired");
   });
 
   it("keeps the in-house hook import rename rule in custom-only scans", () => {

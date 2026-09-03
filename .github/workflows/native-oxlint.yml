@@ -50,7 +50,7 @@ jobs:
 
   build:
     needs: verify-patch
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       CARGO_BUILD_JOBS: 1
       CARGO_INCREMENTAL: 0

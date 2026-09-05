@@ -2,10 +2,12 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import {
   getImportedNameFromModule,
   isImportedFromModule,
 } from "../../utils/find-import-source-for-name.js";
+import { hasReactCompilerOptOutDirective } from "../../utils/has-react-compiler-opt-out-directive.js";
 import { isCanonicalReactNamespaceName } from "../../utils/is-canonical-react-namespace-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
@@ -147,31 +149,50 @@ export const reactCompilerNoManualMemoization = defineRule({
   requires: ["react-compiler"],
   recommendation:
     "Profile compiler-managed code and remove `useMemo`, `useCallback`, or `memo` only when the manual cache no longer carries behavioral or performance intent.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const apiName = resolveReactApiNameForCallee(node.callee, context);
-      if (!apiName) return;
-      // `memo(Component, areEqual)` with a custom comparator encodes
-      // bespoke equality the compiler can't replicate, so it isn't
-      // redundant — leave it alone. A nullish second arg is no comparator
-      // at all, so it doesn't earn the exemption.
-      if (apiName === "memo") {
-        const comparatorArgument = node.arguments?.[1];
-        if (comparatorArgument && !isNullishComparatorArgument(comparatorArgument)) return;
-      } else {
-        // `useMemo` / `useCallback` are only redundant inside a function
-        // the compiler will actually compile. Inside a function it skips
-        // (an anonymous arrow handed to a non-React HOC, a non-component
-        // helper) nothing is auto-cached, so the manual memoization stays.
-        const enclosingFunction = findEnclosingFunction(node);
-        if (!enclosingFunction || !isCompilerInferableFunction(enclosingFunction)) return;
-      }
-      const removalMessage = REMOVAL_MESSAGE_BY_REACT_API_NAME.get(apiName);
-      if (!removalMessage) return;
-      context.report({
-        node,
-        message: removalMessage,
-      });
-    },
-  }),
+  create: (context: RuleContext) => {
+    let doesModuleOptOutOfReactCompiler = false;
+    return {
+      Program(node: EsTreeNodeOfType<"Program">) {
+        doesModuleOptOutOfReactCompiler = hasReactCompilerOptOutDirective(node);
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (doesModuleOptOutOfReactCompiler) return;
+        const apiName = resolveReactApiNameForCallee(node.callee, context);
+        if (!apiName) return;
+        // `memo(Component, areEqual)` with a custom comparator encodes
+        // bespoke equality the compiler can't replicate, so it isn't
+        // redundant — leave it alone. A nullish second arg is no comparator
+        // at all, so it doesn't earn the exemption.
+        if (apiName === "memo") {
+          const comparatorArgument = node.arguments?.[1];
+          if (comparatorArgument && !isNullishComparatorArgument(comparatorArgument)) return;
+          let wrappedComponent = stripParenExpression(node.arguments?.[0]);
+          if (wrappedComponent && isNodeOfType(wrappedComponent, "Identifier")) {
+            const componentBinding = findVariableInitializer(
+              wrappedComponent,
+              wrappedComponent.name,
+            );
+            if (componentBinding?.initializer) {
+              wrappedComponent = stripParenExpression(componentBinding.initializer);
+            }
+          }
+          if (wrappedComponent && hasReactCompilerOptOutDirective(wrappedComponent)) return;
+        } else {
+          // `useMemo` / `useCallback` are only redundant inside a function
+          // the compiler will actually compile. Inside a function it skips
+          // (an anonymous arrow handed to a non-React HOC, a non-component
+          // helper) nothing is auto-cached, so the manual memoization stays.
+          const enclosingFunction = findEnclosingFunction(node);
+          if (!enclosingFunction || !isCompilerInferableFunction(enclosingFunction)) return;
+          if (hasReactCompilerOptOutDirective(enclosingFunction)) return;
+        }
+        const removalMessage = REMOVAL_MESSAGE_BY_REACT_API_NAME.get(apiName);
+        if (!removalMessage) return;
+        context.report({
+          node,
+          message: removalMessage,
+        });
+      },
+    };
+  },
 });

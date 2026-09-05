@@ -4,6 +4,7 @@ import {
   ROUTE_HANDLER_FILE_PATTERN,
 } from "../../constants/nextjs.js";
 import { GET_HANDLER_BINDING_RESOLUTION_DEPTH } from "../../constants/thresholds.js";
+import { collectHelperParameterSafeBindings } from "../../utils/collect-helper-parameter-safe-bindings.js";
 import { collectLocallyScopedCookieBindings } from "../../utils/collect-locally-scoped-cookie-bindings.js";
 import { collectLocallyScopedSafeBindings } from "../../utils/collect-locally-scoped-safe-bindings.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -203,24 +204,31 @@ const resolveGetHandlerBodies = (
 // `destroySession()` whose body does `cookies().delete(...)`). Collect those
 // helper bodies so they're scanned alongside the handler body; helpers called
 // from within helpers are NOT followed.
-const collectCalledSameFileHelperBodies = (
+interface HelperBodyInfo {
+  body: EsTreeNode;
+  helperFunction: EsTreeNode;
+  callExpression: EsTreeNodeOfType<"CallExpression">;
+}
+
+const collectCalledSameFileHelpers = (
   handlerBody: EsTreeNode,
   resolveBinding: (identifierName: string) => EsTreeNode | null,
-): EsTreeNode[] => {
-  const helperBodies: EsTreeNode[] = [];
-  const visitedHelperNames = new Set<string>();
+): HelperBodyInfo[] => {
+  const helpers: HelperBodyInfo[] = [];
   walkAst(handlerBody, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "Identifier")) return;
     const helperName = child.callee.name;
-    if (visitedHelperNames.has(helperName)) return;
-    visitedHelperNames.add(helperName);
     const helperBinding = resolveBinding(helperName);
     if (!isFunctionLike(helperBinding) || !helperBinding.body) return;
     if (helperBinding.body === handlerBody) return;
-    helperBodies.push(helperBinding.body);
+    helpers.push({
+      body: helperBinding.body,
+      helperFunction: helperBinding,
+      callExpression: child,
+    });
   });
-  return helperBodies;
+  return helpers;
 };
 
 export const nextjsNoSideEffectInGetHandler = defineRule({
@@ -257,21 +265,44 @@ export const nextjsNoSideEffectInGetHandler = defineRule({
 
         const handlerBodies = resolveGetHandlerBodies(node, resolveBinding);
         for (const handlerBody of handlerBodies) {
-          const bodiesToScan = [
-            handlerBody,
-            ...collectCalledSameFileHelperBodies(handlerBody, resolveBinding),
-          ];
-          for (const scanBody of bodiesToScan) {
-            const sideEffect = findSideEffect(scanBody, {
-              locallyScopedSafeBindings: collectLocallyScopedSafeBindings(scanBody),
-              locallyScopedCookieBindings: collectLocallyScopedCookieBindings(scanBody),
-            });
-            if (!sideEffect) continue;
+          const locallyScopedSafeBindings = collectLocallyScopedSafeBindings(handlerBody);
+          const locallyScopedCookieBindings = collectLocallyScopedCookieBindings(handlerBody);
+
+          const sideEffectInHandler = findSideEffect(handlerBody, {
+            locallyScopedSafeBindings,
+            locallyScopedCookieBindings,
+          });
+          if (sideEffectInHandler) {
             const message = mutatingSegment
-              ? `This GET handler on the "/${mutatingSegment}" route performs a side effect (${sideEffect}) and is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`
-              : `This GET handler's side effect (${sideEffect}) is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`;
+              ? `This GET handler on the "/${mutatingSegment}" route performs a side effect (${sideEffectInHandler}) and is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`
+              : `This GET handler's side effect (${sideEffectInHandler}) is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`;
             context.report({ node, message });
             return;
+          }
+
+          const helpers = collectCalledSameFileHelpers(handlerBody, resolveBinding);
+          for (const { body: helperBody, helperFunction, callExpression } of helpers) {
+            const helperParameterSafeBindings = collectHelperParameterSafeBindings(
+              callExpression,
+              helperFunction,
+              locallyScopedSafeBindings,
+            );
+            const effectiveSafeBindings = new Set([
+              ...locallyScopedSafeBindings,
+              ...helperParameterSafeBindings,
+            ]);
+
+            const sideEffectInHelper = findSideEffect(helperBody, {
+              locallyScopedSafeBindings: effectiveSafeBindings,
+              locallyScopedCookieBindings,
+            });
+            if (sideEffectInHelper) {
+              const message = mutatingSegment
+                ? `This GET handler on the "/${mutatingSegment}" route performs a side effect (${sideEffectInHelper}) and is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`
+                : `This GET handler's side effect (${sideEffectInHelper}) is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`;
+              context.report({ node, message });
+              return;
+            }
           }
         }
       },

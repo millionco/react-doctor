@@ -1491,6 +1491,17 @@ const analyzeConfigIdentifier = (
   );
 };
 
+const hasReactCompilerConfigInSentryWrapperArgument = (
+  callExpression: ts.CallExpression,
+  analysis: ConfigExpressionAnalysis,
+  moduleSpecifier: string,
+  exportName: string,
+): boolean => {
+  if (moduleSpecifier !== "@sentry/nextjs" || exportName !== "withSentryConfig") return false;
+  const [configArgument] = callExpression.arguments;
+  return Boolean(configArgument && analyzeConfigNode(configArgument, analysis, false));
+};
+
 const analyzeConfigCallTarget = (
   callExpression: ts.CallExpression,
   analysis: ConfigExpressionAnalysis,
@@ -1543,6 +1554,16 @@ const analyzeConfigCallTarget = (
     ) {
       return true;
     }
+    if (
+      hasReactCompilerConfigInSentryWrapperArgument(
+        callExpression,
+        analysis,
+        requiredModuleSpecifier,
+        propertyName,
+      )
+    ) {
+      return true;
+    }
     const hasCompilerTransform = analyzeImportedConfig({
       analysis,
       moduleSpecifier: requiredModuleSpecifier,
@@ -1567,6 +1588,16 @@ const analyzeConfigCallTarget = (
     if (
       allowCompilerTransform &&
       isCompilerTransformModule(importBinding.moduleSpecifier, propertyName)
+    ) {
+      return true;
+    }
+    if (
+      hasReactCompilerConfigInSentryWrapperArgument(
+        callExpression,
+        analysis,
+        importBinding.moduleSpecifier,
+        propertyName,
+      )
     ) {
       return true;
     }
@@ -1861,6 +1892,16 @@ const analyzeConfigNode = (
           if (
             allowCompilerTransform &&
             isCompilerTransformModule(importBinding.moduleSpecifier, importBinding.exportName)
+          ) {
+            return true;
+          }
+          if (
+            hasReactCompilerConfigInSentryWrapperArgument(
+              node,
+              analysis,
+              importBinding.moduleSpecifier,
+              importBinding.exportName,
+            )
           ) {
             return true;
           }

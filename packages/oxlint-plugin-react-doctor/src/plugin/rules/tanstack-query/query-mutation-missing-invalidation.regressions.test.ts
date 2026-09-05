@@ -311,4 +311,57 @@ describe("tanstack-query/query-mutation-missing-invalidation — regressions", (
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].message).toContain("can leave");
   });
+
+  it("stays silent for a magic-link delivery mutation", () => {
+    const sendMagicLink = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      export function useSendMagicLink() {
+        return useMutation({
+          mutationFn: (params: { email: string }) => api.sendMagicLink(params),
+        });
+      }`,
+    );
+    expect(sendMagicLink.diagnostics).toHaveLength(0);
+  });
+
+  it("still reports generic send, notify, and email mutations", () => {
+    const diagnostics = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      export function useSendMessage() {
+        return useMutation({
+          mutationFn: (message) => api.sendMessage(message),
+        });
+      }
+
+      export function useNotifyUser() {
+        return useMutation({
+          mutationFn: (userId) => api.notifyUser(userId),
+        });
+      }
+
+      export function useEmailInvite() {
+        return useMutation({
+          mutationFn: (email) => api.emailInvite(email),
+        });
+      }`,
+    ).diagnostics;
+
+    expect(diagnostics).toHaveLength(3);
+  });
+
+  it("stays silent when the magic-link signal comes from the mutation function", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      export function useAuthenticationEmail() {
+        return useMutation({
+          mutationFn: (email) => api.sendMagicLink(email),
+        });
+      }`,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

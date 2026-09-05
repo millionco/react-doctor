@@ -498,4 +498,39 @@ describe("performance/async-defer-await — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("stays silent on a run.live liveness guard in a React effect", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const refreshSession: () => Promise<boolean>;
+      declare const setOk: (value: boolean) => void;
+      const run = { live: true };
+      export const effect = async () => {
+        const refreshed = await refreshSession();
+        if (!run.live) return;
+        setOk(refreshed);
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still reports guards with unrelated names that contain live", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const loadDelivery: () => Promise<string>;
+      declare const deliverNow: boolean;
+      export const deliver = async () => {
+        const payload = await loadDelivery();
+        if (!deliverNow) return;
+        console.log(payload);
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

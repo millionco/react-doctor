@@ -119,6 +119,8 @@ const CANCELLATION_GUARD_NAMES: ReadonlySet<string> = new Set([
   "isActive",
   "stale",
   "isStale",
+  "live",
+  "isLive",
   "ignore",
   "signal",
   "abortSignal",
@@ -202,7 +204,7 @@ const isCancellationGuardTest = (test: EsTreeNode | null): boolean => {
   // `controller.signal.aborted`, `this._destroyed`, `batch.aborted`,
   // `seq !== getSeq.current`, `token !== runToken`.
   for (const name of collectAllTestNames(test)) {
-    if (isCancellationLikeName(name)) return true;
+    if (CANCELLATION_GUARD_NAMES.has(name) || isCancellationLikeName(name)) return true;
   }
   return testReadsRefCurrent(test);
 };

@@ -168,4 +168,55 @@ export default function ({ onPress }) {
     );
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not flag useMemo inside a component with 'use no memo' directive (issue #1749)", () => {
+    const result = run(
+      `import { useMemo } from "react";
+export function SomeComponent() {
+  "use no memo";
+  const something = useMemo(() => getSomething(), []);
+  return <div>{something}</div>;
+}`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag useCallback inside a component with 'use no memo' directive", () => {
+    const result = run(
+      `import { useCallback } from "react";
+export function LegacyComponent() {
+  "use no memo";
+  const handler = useCallback(() => console.log("click"), []);
+  return <button onClick={handler}>Click</button>;
+}`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag memo wrapping a component with 'use no memo' directive", () => {
+    const result = run(
+      `import { memo } from "react";
+const Component = memo(function Inner({ value }) {
+  "use no memo";
+  return <span>{value}</span>;
+});`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags useMemo in a nested component without 'use no memo' inside a parent with the directive", () => {
+    const result = run(
+      `import { useMemo } from "react";
+export function OuterComponent() {
+  "use no memo";
+  const InnerComponent = () => {
+    const cached = useMemo(() => 1, []);
+    return <div>{cached}</div>;
+  };
+  return <InnerComponent />;
+}`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("useMemo");
+  });
 });

@@ -158,7 +158,15 @@ const startDevtoolsTrace = async (cdpSession: CDPSession): Promise<void> => {
   }
 };
 
-const endDevtoolsTrace = async (cdpSession: CDPSession): Promise<string> => {
+interface DevtoolsTraceSession {
+  once(event: "Tracing.tracingComplete", listener: (event: { stream?: string }) => void): void;
+  send(method: "Tracing.end"): Promise<unknown>;
+}
+
+export const endDevtoolsTrace = async (
+  cdpSession: DevtoolsTraceSession,
+  timeoutMs = RUNTIME_SCAN_TRACING_COMPLETE_TIMEOUT_MS,
+): Promise<string> => {
   const traceComplete = new Promise<{ stream?: string }>((resolve) => {
     cdpSession.once("Tracing.tracingComplete", resolve);
   });
@@ -167,10 +175,10 @@ const endDevtoolsTrace = async (cdpSession: CDPSession): Promise<string> => {
     timeoutHandle = setTimeout(() => {
       reject(
         new CliInputError(
-          "Chrome did not finalize the performance trace within 60 seconds. Try recording a shorter interaction or reduce the amount of trace data by closing other browser tabs.",
+          "Chrome did not finalize the performance trace within 60 seconds. Record a shorter interaction and retry.",
         ),
       );
-    }, RUNTIME_SCAN_TRACING_COMPLETE_TIMEOUT_MS);
+    }, timeoutMs);
   });
   let stream: string | undefined;
   try {

@@ -7,7 +7,9 @@ import {
   RUNTIME_SCAN_MAX_LOAF_ENTRIES,
   RUNTIME_SCAN_MAX_SNAPSHOT_PAYLOAD_BYTES,
   RUNTIME_SCAN_MAX_STRING_LENGTH,
+  RUNTIME_SCAN_TRACING_COMPLETE_TIMEOUT_MS,
 } from "../src/cli/runtime-scan/constants.js";
+import { endDevtoolsTrace } from "../src/cli/runtime-scan/record-runtime-trace.js";
 import { formatRuntimeScanReport } from "../src/cli/runtime-scan/format-runtime-scan-report.js";
 import { mergeRuntimeScanProbeSnapshots } from "../src/cli/runtime-scan/merge-runtime-scan-probe-snapshots.js";
 import {
@@ -19,6 +21,8 @@ import { resolveRuntimeTracePath } from "../src/cli/runtime-scan/resolve-runtime
 import { sanitizeRuntimeUrl } from "../src/cli/runtime-scan/sanitize-runtime-url.js";
 import type { RuntimeScanProbeSnapshot } from "../src/cli/runtime-scan/types.js";
 import { scrubRunArguments } from "../src/cli/utils/scrub-run-arguments.js";
+
+const TEST_TRACE_TIMEOUT_MS = 1;
 
 const snapshot: RuntimeScanProbeSnapshot = {
   timeOrigin: 1_000,
@@ -348,6 +352,38 @@ describe("runtime scan report", () => {
 });
 
 describe("runtime scan input", () => {
+  it("allows 60 seconds for Chrome to finalize a trace", () => {
+    expect(RUNTIME_SCAN_TRACING_COMPLETE_TIMEOUT_MS).toBe(60_000);
+  });
+
+  it("returns the trace stream after Chrome reports completion", async () => {
+    let completeTrace: ((event: { stream?: string }) => void) | undefined;
+    const cdpSession = {
+      once: (_event: "Tracing.tracingComplete", listener: (event: { stream?: string }) => void) => {
+        completeTrace = listener;
+      },
+      send: async (_method: "Tracing.end") => {
+        completeTrace?.({ stream: "trace-stream" });
+      },
+    };
+
+    await expect(endDevtoolsTrace(cdpSession)).resolves.toBe("trace-stream");
+  });
+
+  it("reports an actionable error when Chrome does not finish a trace", async () => {
+    const cdpSession = {
+      once: (
+        _event: "Tracing.tracingComplete",
+        _listener: (event: { stream?: string }) => void,
+      ) => {},
+      send: async (_method: "Tracing.end") => {},
+    };
+
+    await expect(endDevtoolsTrace(cdpSession, TEST_TRACE_TIMEOUT_MS)).rejects.toThrow(
+      "Record a shorter interaction and retry",
+    );
+  });
+
   it("requires an explicit URL outside an interactive terminal", async () => {
     await expect(runtimeScanAction(undefined, { format: "text" })).rejects.toThrow(
       "A URL is required outside an interactive terminal",

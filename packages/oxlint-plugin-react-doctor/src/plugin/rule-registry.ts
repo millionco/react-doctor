@@ -514,6 +514,7 @@ import { preferEs6Class } from "./rules/react-builtins/prefer-es6-class.js";
 import { preferExplicitVariants } from "./rules/architecture/prefer-explicit-variants.js";
 import { preferFunctionComponent } from "./rules/react-builtins/prefer-function-component.js";
 import { preferHtmlDialog } from "./rules/a11y/prefer-html-dialog.js";
+import { preferKeybindLibrary } from "./rules/architecture/prefer-keybind-library.js";
 import { preferModuleScopePureFunction } from "./rules/architecture/prefer-module-scope-pure-function.js";
 import { preferModuleScopeStaticValue } from "./rules/architecture/prefer-module-scope-static-value.js";
 import { preferMotionTransformProperty } from "./rules/performance/prefer-motion-transform-property.js";
@@ -7012,6 +7013,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(preferHtmlDialog.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/prefer-keybind-library",
+    id: "prefer-keybind-library",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferKeybindLibrary,
+      framework: "global",
+      category: "Maintainability",
     },
   },
   {

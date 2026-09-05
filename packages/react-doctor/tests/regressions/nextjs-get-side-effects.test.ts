@@ -294,24 +294,56 @@ export async function GET() {
       expect(filterRule(diagnostics)).toHaveLength(0);
     });
 
-    it("locally-built Headers with destructured parameter", async () => {
+    it("does not transfer a safe argument to a different helper", async () => {
       const diagnostics = await writeRouteAndLint(
-        "issue-1757-destructured",
+        "issue-1757-helper-identity",
         "src/app/api/config/route.ts",
         `import { NextResponse } from "next/server";
 
-function applyConfig({ headers }: { headers: Headers }) {
-  headers.set("X-Config", "applied");
+const cache = new Map<string, number>();
+
+function applyHeaders(headers: Headers) {
+  headers.set("Cache-Control", "max-age=60");
+}
+
+function updateCache(cacheMap: Map<string, number>) {
+  cacheMap.set("requests", Date.now());
 }
 
 export async function GET() {
   const headers = new Headers();
-  applyConfig({ headers });
+  applyHeaders(headers);
+  updateCache(cache);
   return new NextResponse(null, { headers });
 }
 `,
       );
-      expect(filterRule(diagnostics)).toHaveLength(0);
+      const hits = filterRule(diagnostics);
+      expect(hits).toHaveLength(1);
+      expect(hits[0].message).toContain("cacheMap.set()");
+    });
+
+    it("reports when one helper receives both safe and external receivers", async () => {
+      const diagnostics = await writeRouteAndLint(
+        "issue-1757-mixed-helper-calls",
+        "src/app/api/config/route.ts",
+        `import { NextResponse } from "next/server";
+
+const cache = new Map<string, string>();
+
+function applyValue(target: Headers | Map<string, string>) {
+  target.set("Cache-Control", "max-age=60");
+}
+
+export async function GET() {
+  const headers = new Headers();
+  applyValue(headers);
+  applyValue(cache);
+  return new NextResponse(null, { headers });
+}
+`,
+      );
+      expect(filterRule(diagnostics)).toHaveLength(1);
     });
 
     it("aliased read-only `headers()` — `const h = headers(); h.get('user-agent')`", async () => {

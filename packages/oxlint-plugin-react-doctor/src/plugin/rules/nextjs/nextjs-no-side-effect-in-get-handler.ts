@@ -207,6 +207,7 @@ const resolveGetHandlerBodies = (
 interface HelperBodyInfo {
   body: EsTreeNode;
   helperFunction: EsTreeNode;
+  callExpression: EsTreeNodeOfType<"CallExpression">;
 }
 
 const collectCalledSameFileHelpers = (
@@ -214,17 +215,18 @@ const collectCalledSameFileHelpers = (
   resolveBinding: (identifierName: string) => EsTreeNode | null,
 ): HelperBodyInfo[] => {
   const helpers: HelperBodyInfo[] = [];
-  const visitedHelperNames = new Set<string>();
   walkAst(handlerBody, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "Identifier")) return;
     const helperName = child.callee.name;
-    if (visitedHelperNames.has(helperName)) return;
-    visitedHelperNames.add(helperName);
     const helperBinding = resolveBinding(helperName);
     if (!isFunctionLike(helperBinding) || !helperBinding.body) return;
     if (helperBinding.body === handlerBody) return;
-    helpers.push({ body: helperBinding.body, helperFunction: helperBinding });
+    helpers.push({
+      body: helperBinding.body,
+      helperFunction: helperBinding,
+      callExpression: child,
+    });
   });
   return helpers;
 };
@@ -279,9 +281,9 @@ export const nextjsNoSideEffectInGetHandler = defineRule({
           }
 
           const helpers = collectCalledSameFileHelpers(handlerBody, resolveBinding);
-          for (const { body: helperBody, helperFunction } of helpers) {
+          for (const { body: helperBody, helperFunction, callExpression } of helpers) {
             const helperParameterSafeBindings = collectHelperParameterSafeBindings(
-              handlerBody,
+              callExpression,
               helperFunction,
               locallyScopedSafeBindings,
             );

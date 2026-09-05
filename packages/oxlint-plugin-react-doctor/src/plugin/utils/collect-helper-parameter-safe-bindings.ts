@@ -1,39 +1,31 @@
-import { collectPatternNames } from "./collect-pattern-names.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { walkAst } from "./walk-ast.js";
 
 export const collectHelperParameterSafeBindings = (
-  handlerBody: EsTreeNode,
+  callExpression: EsTreeNode,
   helperFunction: EsTreeNode,
   locallyScopedSafeBindings: Set<string>,
 ): Set<string> => {
   const parameterSafeBindings = new Set<string>();
 
-  if (!isFunctionLike(helperFunction)) return parameterSafeBindings;
+  if (!isNodeOfType(callExpression, "CallExpression") || !isFunctionLike(helperFunction)) {
+    return parameterSafeBindings;
+  }
 
   const helperParameters = helperFunction.params ?? [];
   if (helperParameters.length === 0) return parameterSafeBindings;
 
-  walkAst(handlerBody, (node: EsTreeNode) => {
-    if (!isNodeOfType(node, "CallExpression")) return;
-    if (!isNodeOfType(node.callee, "Identifier")) return;
+  for (let argumentIndex = 0; argumentIndex < callExpression.arguments.length; argumentIndex++) {
+    const argument = callExpression.arguments[argumentIndex];
+    if (!isNodeOfType(argument, "Identifier")) continue;
+    if (!locallyScopedSafeBindings.has(argument.name)) continue;
 
-    const callArguments = node.arguments ?? [];
-    if (callArguments.length === 0) return;
+    const correspondingParameter = helperParameters[argumentIndex];
+    if (!isNodeOfType(correspondingParameter, "Identifier")) continue;
 
-    for (let argumentIndex = 0; argumentIndex < callArguments.length; argumentIndex++) {
-      const argument = callArguments[argumentIndex];
-      if (!isNodeOfType(argument, "Identifier")) continue;
-      if (!locallyScopedSafeBindings.has(argument.name)) continue;
-
-      const correspondingParameter = helperParameters[argumentIndex];
-      if (!correspondingParameter) continue;
-
-      collectPatternNames(correspondingParameter, parameterSafeBindings);
-    }
-  });
+    parameterSafeBindings.add(correspondingParameter.name);
+  }
 
   return parameterSafeBindings;
 };

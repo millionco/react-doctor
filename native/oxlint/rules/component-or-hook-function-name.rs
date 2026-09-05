@@ -20,10 +20,15 @@ fn component_or_hook_function_name<'a, 'b>(
             })
         });
         if !is_first_argument
-            || !matches!(
+            || !(matches!(
                 call_expression.callee_name(),
                 Some("memo" | "forwardRef" | "observer" | "lazy")
-            )
+            ) || matches!(call_expression.callee.get_inner_expression(),
+                oxc_ast::ast::Expression::StaticMemberExpression(member)
+                    if member.property.name == "assign"
+                        && matches!(member.object.get_inner_expression(),
+                            oxc_ast::ast::Expression::Identifier(identifier)
+                                if identifier.name == "Object")))
         {
             break;
         }

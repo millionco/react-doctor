@@ -1575,12 +1575,32 @@ fn derived_state_effect_has_deferred_setter_writer(
             else {
                 return false;
             };
-            if derived_function_expression_node_id(written_value).is_some() {
-                return false;
-            }
             let Some(state_symbol_id) = state_symbol_id else {
                 return false;
             };
+            if let Some(updater_id) = derived_function_expression_node_id(written_value) {
+                let mut has_returned_value = false;
+                let mut has_unknown_return = false;
+                derived_for_each_returned_expression(updater_id, ctx, |returned_value| {
+                    has_returned_value = true;
+                    has_unknown_return |= !derived_expression_is_render_known(
+                        returned_value,
+                        component_id,
+                        state_symbol_id,
+                        ctx,
+                        &mut Vec::new(),
+                        &mut DerivedStateEffectFxHashSet::default(),
+                        &DerivedStateEffectFxHashMap::default(),
+                        1,
+                    ) && !derived_state_effect_expression_is_pure_constant(
+                        returned_value,
+                        ctx,
+                        &DerivedStateEffectFxHashMap::default(),
+                        &mut Vec::new(),
+                    );
+                });
+                return !has_returned_value || has_unknown_return;
+            }
             let is_render_known =
                 derived_state_effect_setter_value_contexts(call_node, execution_node_ids, ctx)
                     .iter()
@@ -2098,25 +2118,10 @@ fn derived_expression_is_render_known<'node, 'ast>(
                     .get_reference(identifier.reference_id())
                     .symbol_id()
                 else {
-                    if !matches!(
+                    if !derived_global_reference_is_render_known(
+                        candidate,
                         identifier.name.as_str(),
-                        "Array"
-                            | "BigInt"
-                            | "Boolean"
-                            | "Date"
-                            | "Infinity"
-                            | "JSON"
-                            | "Math"
-                            | "NaN"
-                            | "Number"
-                            | "Object"
-                            | "Set"
-                            | "String"
-                            | "encodeURIComponent"
-                            | "parseFloat"
-                            | "parseInt"
-                            | "structuredClone"
-                            | "undefined"
+                        ctx,
                     ) {
                         return false;
                     }
@@ -2518,8 +2523,10 @@ fn derived_state_effect_expression_is_pure_constant<'node, 'ast>(
                     .get_reference(identifier.reference_id())
                     .symbol_id()
                 else {
-                    if !derived_state_effect_identifier_name_is_allowed_global(
+                    if !derived_global_reference_is_render_known(
+                        candidate,
                         identifier.name.as_str(),
+                        ctx,
                     ) {
                         return false;
                     }
@@ -2831,6 +2838,35 @@ fn derived_identifier_is_callee(node_id: NodeId, ctx: &LintContext<'_>) -> bool 
     matches!(parent.kind(), AstKind::CallExpression(call) if call.callee.span() == root.span())
 }
 
+fn derived_global_reference_is_render_known(
+    node: &AstNode<'_>,
+    name: &str,
+    ctx: &LintContext<'_>,
+) -> bool {
+    if matches!(name, "undefined" | "NaN" | "Infinity") {
+        return true;
+    }
+    ctx.nodes()
+        .ancestors(node.id())
+        .any(|ancestor| match ancestor.kind() {
+            AstKind::CallExpression(call) => match call.callee.get_inner_expression() {
+                Expression::Identifier(identifier) => {
+                    identifier.span == node.span() && derived_is_pure_call(call, ctx)
+                }
+                callee => callee.as_member_expression().is_some_and(|member| {
+                    member.object().get_inner_expression().span() == node.span()
+                        && member.static_property_name().is_some_and(|property_name| {
+                            derived_state_effect_pure_namespace_member_name(name, property_name)
+                        })
+                }),
+            },
+            AstKind::NewExpression(construction) => {
+                construction.callee.span() == node.span() && matches!(name, "Date" | "Set")
+            }
+            _ => false,
+        })
+}
+
 fn derived_symbol_is_render_known<'node, 'ast>(
     symbol_id: SymbolId,
     component_id: NodeId,
@@ -2908,9 +2944,10 @@ fn derived_symbol_is_render_known<'node, 'ast>(
             ) {
                 return None;
             }
+            let initializer = declarator.init.as_ref()?;
             visited_symbol_ids.push(symbol_id);
             let is_render_known = derived_expression_is_render_known(
-                declarator.init.as_ref()?,
+                initializer,
                 component_id,
                 written_state_symbol_id,
                 ctx,
@@ -2919,8 +2956,19 @@ fn derived_symbol_is_render_known<'node, 'ast>(
                 substitutions,
                 remaining_call_frames,
             );
+            let source_evidence = if is_render_known {
+                Some(true)
+            } else {
+                derived_state_effect_expression_is_pure_constant(
+                    initializer,
+                    ctx,
+                    substitutions,
+                    visited_symbol_ids,
+                )
+                .then_some(false)
+            };
             visited_symbol_ids.pop();
-            is_render_known.then_some(true)
+            source_evidence
         }
         _ => None,
     }

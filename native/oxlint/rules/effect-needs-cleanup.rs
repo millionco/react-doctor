@@ -2091,6 +2091,26 @@ fn effect_cleanup_execution_function_ids(
             );
         }
     }
+    for candidate in ctx.nodes().iter() {
+        if !matches!(
+            candidate.kind(),
+            AstKind::Function(_) | AstKind::ArrowFunctionExpression(_)
+        ) || effect_cleanup_synchronous_iterator_call_for_callback(candidate.id(), ctx).is_none()
+        {
+            continue;
+        }
+        let mut owner_id = effect_cleanup_nearest_function_id(candidate.id(), ctx);
+        while let Some(function_id) = owner_id {
+            if execution_function_ids.contains(&function_id) {
+                execution_function_ids.insert(candidate.id());
+                break;
+            }
+            if effect_cleanup_synchronous_iterator_call_for_callback(function_id, ctx).is_none() {
+                break;
+            }
+            owner_id = effect_cleanup_nearest_function_id(function_id, ctx);
+        }
+    }
     EffectCleanupExecution {
         function_ids: execution_function_ids,
         external_listener_function_ids,
@@ -2486,7 +2506,7 @@ fn effect_cleanup_collect_usages(
             _ => {}
         }
     }
-    usages.sort_by_key(|usage| (usage.span.start, usage.span.end));
+    usages.sort_by_key(|usage| (usage.span.start, std::cmp::Reverse(usage.span.end)));
     usages
 }
 
@@ -4296,6 +4316,19 @@ fn effect_cleanup_has_returned_release(
     ) {
         return true;
     }
+    let mut path_anchor = ctx.nodes().get_node(usage.node_id);
+    if usage.kind == ResourceKind::Socket
+        && let Some(owner_id) = effect_cleanup_nearest_function_id(usage.node_id, ctx)
+        && owner_id != callback_id
+        && effect_cleanup_retained_function_binding_symbol_id(owner_id, ctx).is_some()
+    {
+        let Some(invocation_id) =
+            effect_cleanup_single_direct_invocation(owner_id, callback_id, ctx)
+        else {
+            return false;
+        };
+        path_anchor = ctx.nodes().get_node(invocation_id);
+    }
     let returned_expressions = effect_cleanup_return_expressions(callback_id, ctx);
     if returned_expressions.is_empty() {
         return false;
@@ -4330,7 +4363,7 @@ fn effect_cleanup_has_returned_release(
         })
         .collect::<Vec<_>>();
     do_nodes_cover_every_path_after_node(
-        ctx.nodes().get_node(usage.node_id),
+        path_anchor,
         &return_nodes,
         callback_node,
         ctx,
@@ -4343,6 +4376,31 @@ fn effect_cleanup_has_returned_release(
                 ctx,
             )
     }) || effect_cleanup_nodes_cover_if_branches(callback_id, &return_nodes, ctx)
+}
+
+fn effect_cleanup_single_direct_invocation(
+    function_id: NodeId,
+    callback_id: NodeId,
+    ctx: &LintContext<'_>,
+) -> Option<NodeId> {
+    let symbol_id = effect_cleanup_retained_function_binding_symbol_id(function_id, ctx)?;
+    let mut references = ctx.scoping().get_resolved_references(symbol_id);
+    let reference = references.next()?;
+    if references.next().is_some() {
+        return None;
+    }
+    let reference_root_id = effect_cleanup_transparent_root_node_id(reference.node_id(), ctx);
+    let reference_root = ctx.nodes().get_node(reference_root_id);
+    let invocation = ctx.nodes().parent_node(reference_root_id);
+    let AstKind::CallExpression(call) = invocation.kind() else {
+        return None;
+    };
+    (call.callee.span() == reference_root.span()
+        && effect_cleanup_exact_local_function_id(&call.callee, ctx, &mut FxHashSet::default())
+            == Some(function_id)
+        && effect_cleanup_nearest_function_id(invocation.id(), ctx) == Some(callback_id)
+        && effect_cleanup_node_is_reachable(invocation, callback_id, ctx))
+        .then_some(invocation.id())
 }
 
 fn effect_cleanup_has_returned_observer_disconnect_after_synchronous_iteration(

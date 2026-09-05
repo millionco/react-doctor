@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
+import { CROSS_FILE_PARSE_MAX_BYTES } from "../../constants/thresholds.js";
 import { resetManifestCaches } from "../../utils/read-nearest-package-manifest.js";
 import { onlyExportComponents } from "./only-export-components.js";
 
@@ -53,6 +54,69 @@ const runMixedExportRule = (projectDirectory: string, relativeFilename = "src/ca
     `export const Card = () => <div />; export const cardLabel = getLabel();`,
     { filename: path.join(projectDirectory, relativeFilename) },
   );
+
+describe("only-export-components runtime star target syntax", () => {
+  it.each(["d.ts", "d.mts", "d.cts"])("retains unknown export evidence for .%s", (extension) => {
+    const projectDirectory = createProject({
+      dependencies: { next: "15.0.0", react: "19.0.0" },
+      manifestFields: { scripts: { dev: "next dev" } },
+    });
+    fs.writeFileSync(
+      path.join(projectDirectory, "src", `types.${extension}`),
+      "export interface Options { value: string }",
+    );
+    const result = runRule(
+      onlyExportComponents,
+      `export * from './types.${extension}'; export const Widget = () => <div />;`,
+      { filename: path.join(projectDirectory, "src", "components.tsx") },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains unknown export evidence beyond the cross-file parse limit", () => {
+    const projectDirectory = createProject({
+      dependencies: { next: "15.0.0", react: "19.0.0" },
+      manifestFields: { scripts: { dev: "next dev" } },
+    });
+    fs.writeFileSync(
+      path.join(projectDirectory, "src", "helpers.ts"),
+      `/*${" ".repeat(CROSS_FILE_PARSE_MAX_BYTES)}*/ export default 1;`,
+    );
+    const result = runRule(
+      onlyExportComponents,
+      "export * from './helpers'; export const Widget = () => <div />;",
+      { filename: path.join(projectDirectory, "src", "components.tsx") },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it.each([
+    { source: "const helper = () => 1\nexport { helper }\n", expectedCount: 1 },
+    { source: "const helper = () => 1; export { helper };", expectedCount: 1 },
+    {
+      source: "const helper = () => 1;\n// A named runtime export.\nexport { helper };",
+      expectedCount: 1,
+    },
+    {
+      source: "interface Options { value: string }\nexport type { Options }\n",
+      expectedCount: 0,
+    },
+  ])("resolves $source", ({ source, expectedCount }) => {
+    const projectDirectory = createProject({
+      dependencies: { next: "15.0.0", react: "19.0.0" },
+      manifestFields: { scripts: { dev: "next dev" } },
+    });
+    fs.writeFileSync(path.join(projectDirectory, "src", "helpers.ts"), source);
+    const result = runRule(
+      onlyExportComponents,
+      "export * from './helpers'; export const Widget = () => <div />;",
+      { filename: path.join(projectDirectory, "src", "components.tsx") },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+});
 
 describe("only-export-components Fast Refresh applicability", () => {
   it.each([

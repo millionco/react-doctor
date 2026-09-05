@@ -494,7 +494,6 @@ fn fetch_status_response_is_unguarded(
     let mut consumptions = Vec::new();
     let mut status_references = Vec::new();
     let mut validator_calls = Vec::new();
-    let mut presence_guards = Vec::new();
     for symbol_id in &response_symbol_ids {
         for reference in ctx.scoping().get_resolved_references(*symbol_id) {
             let reference_node = ctx.nodes().get_node(reference.node_id());
@@ -587,12 +586,6 @@ fn fetch_status_response_is_unguarded(
                 && fetch_status_is_condition_use(parent, ctx)
             {
                 consumptions.push(parent);
-            } else if can_be_undefined
-                && let AstKind::UnaryExpression(unary) = parent.kind()
-                && unary.operator == UnaryOperator::LogicalNot
-                && let Some(guard) = fetch_status_early_exit_condition(parent, ctx)
-            {
-                presence_guards.push(guard);
             }
         }
     }
@@ -600,12 +593,9 @@ fn fetch_status_response_is_unguarded(
         && consumptions.iter().any(|consumption| {
             !status_references.iter().any(|status_reference| {
                 fetch_status_guard_protects(status_reference, consumption, owner_function_id, ctx)
-            }) && !presence_guards
+            }) && !validator_calls
                 .iter()
-                .any(|guard| node_dominates_node(guard, consumption, ctx))
-                && !validator_calls
-                    .iter()
-                    .any(|validator| node_dominates_node(validator, consumption, ctx))
+                .any(|validator| node_dominates_node(validator, consumption, ctx))
                 && !fetch_status_consumption_result_is_guarded(
                     consumption,
                     &status_references,
@@ -618,28 +608,6 @@ fn fetch_status_response_is_unguarded(
 struct FetchStatusReference<'node, 'ast> {
     node: &'node AstNode<'ast>,
     is_ok: bool,
-}
-
-fn fetch_status_early_exit_condition<'ast, 'node>(
-    condition_node: &'node AstNode<'ast>,
-    ctx: &'node LintContext<'ast>,
-) -> Option<&'node AstNode<'ast>> {
-    for ancestor in ctx.nodes().ancestors(condition_node.id()) {
-        match ancestor.kind() {
-            AstKind::IfStatement(statement)
-                if statement
-                    .test
-                    .span()
-                    .contains_inclusive(condition_node.span())
-                    && fetch_status_statement_always_exits(&statement.consequent) =>
-            {
-                return Some(ancestor);
-            }
-            AstKind::Function(_) | AstKind::ArrowFunctionExpression(_) => return None,
-            _ => {}
-        }
-    }
-    None
 }
 
 fn fetch_status_consumption_result_is_guarded<'a>(
@@ -997,7 +965,7 @@ fn fetch_status_guard_protects(
                     return false;
                 };
                 let consequent_exit_guards =
-                    fetch_status_statement_always_exits(&statement.consequent)
+                    fetch_status_statement_is_early_exit(&statement.consequent)
                         && fetch_status_expression_guarantees_reference(
                             &statement.test,
                             status_node.span(),
@@ -1012,7 +980,7 @@ fn fetch_status_guard_protects(
                                 true,
                             ));
                 let alternate_exit_guards = statement.alternate.as_ref().is_some_and(|alternate| {
-                    fetch_status_statement_always_exits(alternate)
+                    fetch_status_statement_is_early_exit(alternate)
                         && fetch_status_expression_guarantees_reference(
                             &statement.test,
                             status_node.span(),
@@ -1042,8 +1010,11 @@ fn fetch_status_expression_guarantees_reference(
     branch_runs_when_truthy: bool,
     must_guarantee_truthy_reference: bool,
 ) -> bool {
-    let expression = expression.get_inner_expression();
-    if expression.span() == reference_span {
+    let expression = expression.without_parentheses();
+    if expression.span() == reference_span
+        && (matches!(expression, Expression::Identifier(_))
+            || expression.as_member_expression().is_some())
+    {
         return !must_guarantee_truthy_reference || branch_runs_when_truthy;
     }
     if !expression.span().contains_inclusive(reference_span) {
@@ -1151,19 +1122,16 @@ fn fetch_status_expression_guarantees_reference(
     }
 }
 
-fn fetch_status_statement_always_exits(statement: &Statement<'_>) -> bool {
+fn fetch_status_statement_is_early_exit(statement: &Statement<'_>) -> bool {
+    if statement_always_exits(statement) {
+        return true;
+    }
     match statement {
-        Statement::ReturnStatement(_) | Statement::ThrowStatement(_) => true,
+        Statement::ContinueStatement(_) | Statement::BreakStatement(_) => true,
         Statement::BlockStatement(block) => block
             .body
             .last()
-            .is_some_and(fetch_status_statement_always_exits),
-        Statement::IfStatement(statement) => {
-            statement.alternate.as_ref().is_some_and(|alternate| {
-                fetch_status_statement_always_exits(&statement.consequent)
-                    && fetch_status_statement_always_exits(alternate)
-            })
-        }
+            .is_some_and(fetch_status_statement_is_early_exit),
         _ => false,
     }
 }
@@ -1302,7 +1270,7 @@ fn fetch_status_function_has_response_shape_guard(
             let Statement::IfStatement(if_statement) = statement else {
                 return false;
             };
-            fetch_status_statement_always_exits(&if_statement.consequent)
+            fetch_status_statement_is_early_exit(&if_statement.consequent)
                 && fetch_status_test_has_typed_parameter_status_property(
                     &if_statement.test,
                     parameter_symbol_id,

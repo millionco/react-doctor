@@ -1,0 +1,1765 @@
+[
+  {
+    "name": "self-recursive-helper-terminates",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "\"use client\"; const recurse = () => recurse(); export const Preview = () => recurse() ? <div /> : <span />;",
+    "expectedCount": 0
+  },
+  {
+    "name": "mutually-recursive-helpers-terminate",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "\"use client\"; const first = () => second(); const second = () => first(); export const Preview = () => first() ? <div /> : <span />;",
+    "expectedCount": 0
+  },
+  {
+    "name": "parameterized-recursive-helper-terminates",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "\"use client\"; const recurse = (value) => recurse(value); export const Preview = () => recurse(true) ? <div /> : <span />;",
+    "expectedCount": 0
+  },
+  {
+    "name": "recursive-edge-retains-independent-browser-predicate",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "\"use client\"; const recurse = () => recurse() || typeof window !== \"undefined\"; export const Preview = () => recurse() ? <div /> : <span />;",
+    "expectedCount": 1
+  },
+  {
+    "name": "type-only-react-import-is-client-evidence",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "import type { ReactNode } from \"react\"; export const Preview = (): ReactNode => typeof window === \"undefined\" ? <div /> : <section />;",
+    "expectedCount": 1
+  },
+  {
+    "name": "side-effect-react-import-is-client-evidence",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "import \"react\"; export const Preview = () => typeof document === \"undefined\" ? <div /> : <section />;",
+    "expectedCount": 1
+  },
+  {
+    "name": "missing-react-evidence-remains-suppressed",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "export const Preview = () => typeof document === \"undefined\" ? <div /> : <section />;",
+    "expectedCount": 0
+  },
+  {
+    "name": "nested-strict-boolean-equality-fires",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "\"use client\"; export const Preview = () => (typeof window !== \"undefined\") === true ? <div /> : <section />;",
+    "expectedCount": 1
+  },
+  {
+    "name": "nested-strict-equality-invariant-remains-suppressed",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "\"use client\"; export const Preview = () => (typeof window !== \"undefined\") === 42 ? <div /> : <section />;",
+    "expectedCount": 0
+  },
+  {
+    "name": "nested-loose-equality-fires",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "\"use client\"; export const Preview = () => (typeof window !== \"undefined\") == 1 ? <div /> : <section />;",
+    "expectedCount": 1
+  },
+  {
+    "name": "reflexive-runtime-alias-remains-suppressed",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "\"use client\"; export const Preview = () => { const runtime = typeof window === \"undefined\" ? \"server\" : \"client\"; return runtime === runtime ? <div /> : <section />; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "unknown-runtime-value-equality-preserves-match",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "\"use client\"; const getMode = () => typeof document === \"undefined\" ? \"system\" : localStorage.getItem(\"mode\"); export const Preview = () => { const mode = getMode(); return mode === \"dark\" ? <div /> : <section />; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "aliased-import-browser-predicate-fires",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/page.tsx",
+    "source": "import React from \"react\"; import { isBrowser } from \"@/runtime\"; export const Preview = () => isBrowser() ? <div /> : <section />;",
+    "expectedCount": 1,
+    "files": {
+      "tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"@/*\":[\"src/*\"]}}}",
+      "src/runtime.ts": "export function isBrowser() { return typeof document !== \"undefined\"; }"
+    }
+  },
+  {
+    "name": "aliased-import-unknown-equality-fires",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/page.tsx",
+    "source": "import React from \"react\"; import { getMode } from \"@/runtime\"; export const Preview = () => { const mode = getMode(); return mode === \"dark\" ? <div /> : <section />; };",
+    "expectedCount": 1,
+    "files": {
+      "tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"@/*\":[\"src/*\"]}}}",
+      "src/runtime.ts": "export function getMode() { return validateMode(typeof document === \"undefined\" ? \"system\" : localStorage.getItem(\"mode\")); } function validateMode(mode) { return mode === \"dark\" || mode === \"light\" ? mode : \"system\"; }"
+    }
+  },
+  {
+    "name": "aliased-import-unrelated-browser-helper-does-not-fire",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/page.tsx",
+    "source": "import React from \"react\"; import { readValue } from \"@/runtime\"; export const Preview = () => readValue() ? <div /> : <section />;",
+    "expectedCount": 0,
+    "files": {
+      "tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"@/*\":[\"src/*\"]}}}",
+      "src/runtime.ts": "export function readValue() { return 1; } export function isBrowser() { return typeof document !== \"undefined\"; }"
+    }
+  },
+  {
+    "name": "memoized-relative-import-unrelated-browser-helper-does-not-fire",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/page.tsx",
+    "source": "import { useMemo } from \"react\"; import { readValue } from \"./runtime\"; export const Preview = ({ enabled }) => { const value = useMemo(() => { if (!enabled) return false; return readValue({ enabled }); }, [enabled]); return value && <div />; };",
+    "expectedCount": 0,
+    "files": {
+      "src/runtime.ts": "export const readValue = ({ enabled }) => enabled; export function isBrowser() { return typeof document !== \"undefined\"; }"
+    }
+  },
+  {
+    "name": "imported-destructured-parameter-remains-unsupported",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/page.tsx",
+    "source": "import React from \"react\"; import { readValue } from \"./runtime\"; export const Preview = () => readValue({}) ? <div /> : <section />;",
+    "expectedCount": 0,
+    "files": {
+      "src/runtime.ts": "export function readValue({ enabled }) { return typeof document !== \"undefined\"; }"
+    }
+  },
+  {
+    "name": "relative-import-browser-helper-still-fires",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/page.tsx",
+    "source": "import React from \"react\"; import { isBrowser } from \"./runtime\"; export const Preview = () => isBrowser() ? <div /> : <section />;",
+    "expectedCount": 1,
+    "files": {
+      "src/runtime.ts": "export function isBrowser() { return typeof document !== \"undefined\"; }"
+    }
+  },
+  {
+    "name": "function-body-following-return-fires",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "import React from \"react\"; export function Preview() { if (typeof window === \"undefined\") return <div />; return <section />; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "function-body-wrapper-versus-children-fires",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "import React from \"react\"; export const Preview = (props) => { if (typeof window !== \"undefined\") return <section>{props.children}</section>; return props.children; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "function-body-fragment-versus-provider-fires",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "import React from \"react\"; export function Preview({ children }) { if (typeof window !== \"undefined\") return <>{children}</>; return <Provider>{children}</Provider>; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "function-body-equivalent-following-return-does-not-fire",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "import React from \"react\"; export function Preview() { if (typeof window === \"undefined\") return <div />; return <div />; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "function-body-initial-mount-return-remains-suppressed",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "source": "import { useState } from \"react\"; export function Preview() { const [mounted] = useState(false); if (!mounted) return null; if (typeof window === \"undefined\") return <div />; return <section />; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "cross-context-parameter-cycle-terminates",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/page.tsx",
+    "source": "import React from \"react\"; import { checkValue } from \"./runtime\"; export const Preview = ({ value }) => checkValue(value) ? <div /> : <section />;",
+    "expectedCount": 0,
+    "files": {
+      "src/runtime.ts": "export const checkValue = (value) => isReady(value); const isReady = (value) => value === \"ready\";"
+    }
+  },
+  {
+    "name": "cross-context-parameter-cycle-retains-independent-browser-predicate",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/page.tsx",
+    "source": "import React from \"react\"; import { checkValue } from \"./runtime\"; export const Preview = ({ value }) => checkValue(value) ? <div /> : <section />;",
+    "expectedCount": 1,
+    "files": {
+      "src/runtime.ts": "export const checkValue = (value) => isReady(value) || typeof document !== \"undefined\"; const isReady = (value) => value === \"ready\";"
+    }
+  },
+  {
+    "name": "missing-dependency-suppresses-broader-dependency-redundancy",
+    "ruleId": "exhaustive-deps",
+    "source": "import { useCallback, useState } from 'react'; export function Component(props) { const [count] = useState(0); return useCallback(() => props.value + count, [props, props.value]); }",
+    "expectedCount": 1
+  },
+  {
+    "name": "broader-dependency-redundancy-with-complete-dependencies",
+    "ruleId": "exhaustive-deps",
+    "source": "import { useCallback, useState } from 'react'; export function Component(props) { const [count] = useState(0); return useCallback(() => props.value + count, [props, props.value, count]); }",
+    "expectedCount": 1
+  },
+  {
+    "name": "module-array-reports-only-outer-scope-dependency",
+    "ruleId": "exhaustive-deps",
+    "source": "import { useMemo } from 'react'; const elements = [{ value: 1 }]; export function Component() { return useMemo(() => elements.map(element => element.value), [elements]); }",
+    "expectedCount": 1
+  },
+  {
+    "name": "render-local-array-still-reports-unstable-dependency",
+    "ruleId": "exhaustive-deps",
+    "source": "import { useMemo } from 'react'; export function Component() { const elements = [{ value: 1 }]; return useMemo(() => elements.map(element => element.value), [elements]); }",
+    "expectedCount": 1
+  },
+  {
+    "name": "default-callback-capturing-enclosing-factory-parameter-is-reactive",
+    "ruleId": "exhaustive-deps",
+    "source": "import { useCallback } from 'react'; export function makeHook(outer) { return function useThing({ serialize = value => String(value) + outer }) { return useCallback(value => serialize(value), []); }; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "default-callback-capturing-only-module-value-is-stable",
+    "ruleId": "exhaustive-deps",
+    "source": "import { useCallback } from 'react'; const suffix = 'suffix'; export function useThing({ serialize = value => String(value) + suffix }) { return useCallback(value => serialize(value), []); }",
+    "expectedCount": 0
+  },
+  {
+    "name": "deprecated-dom-commonjs-namespace-is-outside-canonical-contract",
+    "ruleId": "no-react-dom-deprecated-apis",
+    "source": "const ReactDOM = require('react-dom'); ReactDOM.render(<div />, document.body);",
+    "expectedCount": 0
+  },
+  {
+    "name": "deprecated-dom-import-equals-is-outside-canonical-contract",
+    "ruleId": "no-react-dom-deprecated-apis",
+    "filename": "src/import-equals.tsx",
+    "source": "import ReactDOM = require('react-dom'); ReactDOM.render(<div />, document.body);",
+    "expectedCount": 0
+  },
+  {
+    "name": "deprecated-dom-default-import",
+    "ruleId": "no-react-dom-deprecated-apis",
+    "source": "import ReactDOM from 'react-dom'; ReactDOM.render(<div />, document.body);",
+    "expectedCount": 1
+  },
+  {
+    "name": "deprecated-dom-namespace-const-alias",
+    "ruleId": "no-react-dom-deprecated-apis",
+    "source": "import * as ReactDOM from 'react-dom'; const DomAlias = ReactDOM; DomAlias.render(<div />, document.body);",
+    "expectedCount": 1
+  },
+  {
+    "name": "deprecated-dom-named-default-is-not-recorded-as-namespace",
+    "ruleId": "no-react-dom-deprecated-apis",
+    "source": "import { default as ReactDOM } from 'react-dom'; ReactDOM.render(<div />, document.body);",
+    "expectedCount": 0
+  },
+  {
+    "name": "deprecated-dom-type-default-import-is-ignored",
+    "ruleId": "no-react-dom-deprecated-apis",
+    "filename": "src/type-default.tsx",
+    "source": "import type ReactDOM from 'react-dom'; ReactDOM.render(<div />, document.body);",
+    "expectedCount": 0
+  },
+  {
+    "name": "deprecated-dom-inline-type-named-import-is-ignored",
+    "ruleId": "no-react-dom-deprecated-apis",
+    "filename": "src/type-named.tsx",
+    "source": "import { type render } from 'react-dom'; export interface RenderOptions { callback: typeof render }",
+    "expectedCount": 0
+  },
+  {
+    "name": "deprecated-dom-named-api-import",
+    "ruleId": "no-react-dom-deprecated-apis",
+    "source": "import { render } from 'react-dom'; render(<div />, document.body);",
+    "expectedCount": 1
+  },
+  {
+    "name": "deprecated-test-utils-type-import-retains-canonical-extra-source-handler",
+    "ruleId": "no-react-dom-deprecated-apis",
+    "filename": "src/test-utils-type.tsx",
+    "source": "import type { act } from 'react-dom/test-utils'; export interface ActOptions { callback: typeof act }",
+    "expectedCount": 1
+  },
+  {
+    "name": "legacy-context-commonjs-namespace-is-outside-canonical-contract",
+    "ruleId": "no-legacy-context-api",
+    "source": "const React = require('react'); export class Component extends React.Component { static contextTypes = {}; getChildContext() { return {}; } }",
+    "expectedCount": 0
+  },
+  {
+    "name": "legacy-context-import-equals-is-outside-canonical-contract",
+    "ruleId": "no-legacy-context-api",
+    "filename": "src/legacy-import-equals.tsx",
+    "source": "import React = require('react'); export class Component extends React.Component { static contextTypes = {}; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "legacy-context-default-import",
+    "ruleId": "no-legacy-context-api",
+    "source": "import React from 'react'; export class Component extends React.Component { static contextTypes = {}; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "legacy-context-namespace-const-alias",
+    "ruleId": "no-legacy-context-api",
+    "source": "import * as React from 'react'; const ReactAlias = React; export class Component extends ReactAlias.Component { static contextTypes = {}; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "legacy-context-named-default-retains-canonical-namespace-support",
+    "ruleId": "no-legacy-context-api",
+    "source": "import { default as React } from 'react'; export class Component extends React.Component { static contextTypes = {}; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "legacy-context-type-default-retains-canonical-import-recognition",
+    "ruleId": "no-legacy-context-api",
+    "filename": "src/legacy-type-default.tsx",
+    "source": "import type React from 'react'; export class Component extends React.Component { static contextTypes = {}; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "legacy-context-type-named-retains-canonical-import-recognition",
+    "ruleId": "no-legacy-context-api",
+    "filename": "src/legacy-type-named.tsx",
+    "source": "import type { Component as ReactComponent } from 'react'; export class Component extends ReactComponent { static contextTypes = {}; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "legacy-context-preact-compat-runtime-source",
+    "ruleId": "no-legacy-context-api",
+    "source": "import React from 'preact/compat'; export class Component extends React.Component { static contextTypes = {}; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "legacy-context-react-dom-runtime-source",
+    "ruleId": "no-legacy-context-api",
+    "source": "import { Component as ReactComponent } from 'react-dom'; export class Component extends ReactComponent { static contextTypes = {}; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "legacy-context-named-component-const-alias",
+    "ruleId": "no-legacy-context-api",
+    "source": "import { Component as ReactComponent } from 'react'; const Base = ReactComponent; export class Component extends Base { static contextTypes = {}; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "legacy-context-unrelated-class-is-ignored",
+    "ruleId": "no-legacy-context-api",
+    "source": "export class Component { static contextTypes = {}; getChildContext() { return {}; } }",
+    "expectedCount": 0
+  },
+  {
+    "name": "legacy-context-commonjs-class-assignment-is-ignored",
+    "ruleId": "no-legacy-context-api",
+    "source": "const React = require('react'); class Component extends React.Component {} Component.contextTypes = {};",
+    "expectedCount": 0
+  },
+  {
+    "name": "legacy-context-commonjs-class-alias-assignment-is-ignored",
+    "ruleId": "no-legacy-context-api",
+    "source": "const React = require('react'); class Component extends React.Component {} const Alias = Component; Alias.contextTypes = {};",
+    "expectedCount": 0
+  },
+  {
+    "name": "legacy-context-esm-class-alias-assignment-is-retained",
+    "ruleId": "no-legacy-context-api",
+    "source": "import React from 'react'; class Component extends React.Component {} const Alias = Component; Alias.contextTypes = {};",
+    "expectedCount": 1
+  },
+  {
+    "name": "array-predicate-child-data-direct",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; export function Child({ rows, onChange }) { const selected = new Set(['a']); useEffect(() => { onChange(rows.filter(row => selected.has(row.id))); }, [rows, onChange]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "Seanime"
+  },
+  {
+    "name": "array-predicate-child-data-object-logical",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; export function Child({ rows, onChange }) { const selected = new Set(['a']); useEffect(() => { onChange({ rows: rows.filter(row => selected.has(row.id)) ?? [] }); }, [rows, onChange]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "Seanime"
+  },
+  {
+    "name": "array-predicate-parent-only-object-logical",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; export function Child({ rows, selected, onChange }) { useEffect(() => { onChange({ rows: rows.filter(row => selected.includes(row.id)) ?? [] }); }, [rows, selected, onChange]); return null; }",
+    "expectedCount": 0,
+    "sourceReference": "Seanime"
+  },
+  {
+    "name": "state-initializer-mutable-prop-parts-parse-int",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useState } from 'react'; export function Child({ initial, onChange }) { let parts = []; if (initial === 'custom') parts = ['1', 'day']; else parts = initial.split('-'); const [value] = useState(parseInt(parts[0])); useEffect(() => { onChange(`${value}`); }, [value, onChange]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "CustomUpcomingLength"
+  },
+  {
+    "name": "state-initializer-immutable-prop-parts-parse-int",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useState } from 'react'; export function Child({ initial, onChange }) { const parts = initial.split('-'); const [value] = useState(parseInt(parts[0])); useEffect(() => { onChange(`${value}`); }, [value, onChange]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "CustomUpcomingLength"
+  },
+  {
+    "name": "state-initializer-mutable-prop-parts-without-parse-int",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useState } from 'react'; export function Child({ initial, onChange }) { let parts = []; if (initial === 'custom') parts = ['1', 'day']; else parts = initial.split('-'); const [value] = useState(parts[0]); useEffect(() => { onChange(`${value}`); }, [value, onChange]); return null; }",
+    "expectedCount": 0,
+    "sourceReference": "CustomUpcomingLength"
+  },
+  {
+    "name": "state-initializer-global-parse-int-literal",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useState } from 'react'; export function Child({ onChange }) { const [value] = useState(parseInt('1')); useEffect(() => { onChange(value); }, [value, onChange]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "CustomUpcomingLength"
+  },
+  {
+    "name": "live-state-void-transparent-async-data-prop-reader",
+    "ruleId": "no-pass-live-state-to-parent",
+    "source": "import { useCallback, useEffect, useState } from 'react'; export function Child({ accountId }) { const [count] = useState(0); const read = useCallback(async value => { console.log(accountId, value); }, [accountId]); useEffect(() => { void read(count); }, [read, count]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "ImportTransactionsModal"
+  },
+  {
+    "name": "live-state-transparent-async-data-prop-reader",
+    "ruleId": "no-pass-live-state-to-parent",
+    "source": "import { useCallback, useEffect, useState } from 'react'; export function Child({ accountId }) { const [count] = useState(0); const read = useCallback(async value => { console.log(accountId, value); }, [accountId]); useEffect(() => { read(count); }, [read, count]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "ImportTransactionsModal"
+  },
+  {
+    "name": "live-state-void-direct-parent-callback",
+    "ruleId": "no-pass-live-state-to-parent",
+    "source": "import { useEffect, useState } from 'react'; export function Child({ onChange }) { const [count] = useState(0); useEffect(() => { void onChange(count); }, [onChange, count]); return null; }",
+    "expectedCount": 0,
+    "sourceReference": "ImportTransactionsModal"
+  },
+  {
+    "name": "effect-event-nested-parent-notification-and-fetched-local-data",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useEffectEvent, useState } from 'react'; import { fetchRows } from 'data-service'; export function Child({ setLoading }) { const [rows, setRows] = useState([]); async function loadRows() { const nextRows = await fetchRows(); setRows(nextRows); } const init = useEffectEvent(() => { async function loadData() { await loadRows(); setLoading(false); } void loadData(); }); useEffect(() => { return init(); }, []); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "ManageRules"
+  },
+  {
+    "name": "effect-event-direct-parent-notification-and-fetched-data",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useEffectEvent } from 'react'; import { readRows } from 'data-service'; export function Child({ onChange }) { const init = useEffectEvent(() => { const rows = readRows(); onChange(rows); }); useEffect(() => { return init(); }, []); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "ManageRules"
+  },
+  {
+    "name": "effect-event-nested-parent-notification-static-only",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useEffectEvent } from 'react'; export function Child({ setLoading }) { const init = useEffectEvent(() => { async function loadData() { setLoading(false); } void loadData(); }); useEffect(() => { return init(); }, []); return null; }",
+    "expectedCount": 0,
+    "sourceReference": "ManageRules"
+  },
+  {
+    "name": "ref-callback-parameter-destructure-stable-assignment",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useRef } from 'react'; import { createValue } from 'data-service'; export function Child({ onChange }) { const callbackRef = useRef(onChange); callbackRef.current = onChange; useEffect(() => { callbackRef.current?.(createValue()); }, []); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "HiddenProseMirror"
+  },
+  {
+    "name": "ref-callback-body-destructure-stable-assignment",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useRef } from 'react'; import { createValue } from 'data-service'; export function Child(props) { const { onChange } = props; const callbackRef = useRef(onChange); callbackRef.current = onChange; useEffect(() => { callbackRef.current?.(createValue()); }, []); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "HiddenProseMirror"
+  },
+  {
+    "name": "ref-callback-body-destructure-without-assignment",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useRef } from 'react'; import { createValue } from 'data-service'; export function Child(props) { const { onChange } = props; const callbackRef = useRef(onChange); useEffect(() => { callbackRef.current?.(createValue()); }, []); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "HiddenProseMirror"
+  },
+  {
+    "name": "ref-callback-effect-sync-custom-hook-data",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useRef } from 'react'; import { useCells } from 'cell-store'; export function Child({ initial, onChange }) { const { cells, dimensions } = useCells({ initial }); const callbackRef = useRef(onChange); useEffect(() => { callbackRef.current = onChange; }, [onChange]); useEffect(() => { const output = {}; for (const [key, value] of cells) output[key] = value; callbackRef.current({ dimensions, cells: output }); }, [cells, dimensions]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "SpreadsheetDocumentEditor"
+  },
+  {
+    "name": "object-assign-forward-ref-owner",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { forwardRef, useEffect } from 'react'; import { readValue } from 'data-service'; export const Child = Object.assign(forwardRef((props, ref) => { const value = readValue(); useEffect(() => { props.onChange(value); }, [value, props.onChange]); return null; }), { label: 'child' });",
+    "expectedCount": 1,
+    "sourceReference": "ExcalidrawSidebar"
+  },
+  {
+    "name": "forward-ref-owner-without-object-assign",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { forwardRef, useEffect } from 'react'; import { readValue } from 'data-service'; export const Child = forwardRef((props, ref) => { const value = readValue(); useEffect(() => { props.onChange(value); }, [value, props.onChange]); return null; });",
+    "expectedCount": 1,
+    "sourceReference": "ExcalidrawSidebar"
+  },
+  {
+    "name": "object-rest-props-callback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; import { readValue } from 'data-service'; export function Child({ initial, ...props }) { const value = readValue(); useEffect(() => { props.onChange(value); }, [value]); return null; }",
+    "expectedCount": 0,
+    "sourceReference": "CalcomDatePicker"
+  },
+  {
+    "name": "returned-named-hook-expression-owner",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; import { readValue } from 'data-service'; export function createHook() { return function useValue({ onChange }) { const value = readValue(); useEffect(() => { onChange(value); }, [value, onChange]); return value; }; }",
+    "expectedCount": 0,
+    "sourceReference": "MantineStorage"
+  },
+  {
+    "name": "declared-custom-hook-owner",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; import { readValue } from 'data-service'; export function useValue({ onChange }) { const value = readValue(); useEffect(() => { onChange(value); }, [value, onChange]); return value; }",
+    "expectedCount": 1,
+    "sourceReference": "MantineStorage"
+  },
+  {
+    "name": "ordinary-helper-parent-handoff",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; import { readValue } from 'data-service'; export function Child({ onChange }) { const value = readValue(); const forward = next => { onChange(next); }; useEffect(() => forward(value), [value]); return null; }",
+    "expectedCount": 0,
+    "sourceReference": "QtyInputField"
+  },
+  {
+    "name": "memoized-helper-parent-handoff",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useCallback, useEffect } from 'react'; import { readValue } from 'data-service'; export function Child({ onChange }) { const value = readValue(); const forward = useCallback(next => { onChange(next); }, [onChange]); useEffect(() => { forward(value); }, [value]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "QtyInputField"
+  },
+  {
+    "name": "imported-array-search-logical-state-initializer",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useState } from 'react'; import { options } from 'option-config'; export function Child({ selected, onChange }) { const [value] = useState(options.find(option => option.id === selected) || options[0]); useEffect(() => { onChange(value.id); }, [value, onChange]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "CalcomAlby"
+  },
+  {
+    "name": "imported-array-search-direct-state-initializer",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useState } from 'react'; import { options } from 'option-config'; export function Child({ selected, onChange }) { const [value] = useState(options.find(option => option.id === selected)); useEffect(() => { onChange(value.id); }, [value, onChange]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "CalcomAlby"
+  },
+  {
+    "name": "namespaced-query-result-parent-logical-fallback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; import { api } from 'query-api'; export function Child({ currentValue, onChange }) { const { data } = api.viewer.useQuery(); useEffect(() => { onChange(currentValue || data?.value || ''); }, [currentValue, data, onChange]); return null; }",
+    "expectedCount": 0,
+    "sourceReference": "CalcomPremiumTextfield"
+  },
+  {
+    "name": "direct-query-result-parent-logical-fallback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; import { useQuery } from 'query-api'; export function Child({ currentValue, onChange }) { const { data } = useQuery(); useEffect(() => { onChange(currentValue || data?.value || ''); }, [currentValue, data, onChange]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "CalcomPremiumTextfield"
+  },
+  {
+    "name": "wrapper-through-data-prop-reader-without-parent-notification",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useCallback, useEffect } from 'react'; import { readValue, useLocalStore } from 'data-service'; export function Child({ options }) { const { update } = useLocalStore(); const convert = useCallback(value => options.enabled ? value.trim() : value, [options]); const forward = useCallback(value => { update(convert(value)); }, [update, convert]); useEffect(() => { forward(readValue()); }, [forward]); return null; }",
+    "expectedCount": 0,
+    "sourceReference": "CalcomDateRangeFilter"
+  },
+  {
+    "name": "two-stage-parent-seeded-hook-return-callback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; import { useForm, readValue } from 'form-library'; export function Child({ initial }) { const methods = useForm({ defaultValues: initial }); const { reset } = methods; const value = readValue(); useEffect(() => { reset(value); }, [value, reset]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "PlaneIssueForm"
+  },
+  {
+    "name": "direct-parent-seeded-hook-return-callback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; import { useForm, readValue } from 'form-library'; export function Child({ initial }) { const { reset } = useForm({ defaultValues: initial }); const value = readValue(); useEffect(() => { reset(value); }, [value, reset]); return null; }",
+    "expectedCount": 0,
+    "sourceReference": "PlaneIssueForm"
+  },
+  {
+    "name": "memoized-parent-callback-literal-argument",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useCallback, useEffect } from 'react'; export function Child({ toggle }) { const setVisible = useCallback(value => { toggle(value); }, [toggle]); useEffect(() => { setVisible(false); }, [setVisible]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "PlaneResizableSidebar"
+  },
+  {
+    "name": "direct-parent-callback-literal-argument",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; export function Child({ toggle }) { useEffect(() => { toggle(false); }, [toggle]); return null; }",
+    "expectedCount": 0,
+    "sourceReference": "PlaneResizableSidebar"
+  },
+  {
+    "name": "lazy-state-parent-derived-imported-transform",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useState } from 'react'; import { flatten } from 'array-library'; export function Child({ items, initialId, onChange }) { const [selected] = useState(() => { if (!initialId) return null; const allItems = flatten(items); const item = allItems.find(item => item.id === initialId); return item || null; }); useEffect(() => { onChange(selected); }, [selected, onChange]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "OutlineDocumentExplorer"
+  },
+  {
+    "name": "eager-state-parent-derived-imported-transform",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useState } from 'react'; import { flatten } from 'array-library'; export function Child({ items, onChange }) { const [selected] = useState(flatten(items)); useEffect(() => { onChange(selected); }, [selected, onChange]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "OutlineDocumentExplorer"
+  },
+  {
+    "name": "wrapper-parent-notification-also-uses-react-ref",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useCallback, useEffect, useRef } from 'react'; import { createValue } from 'data-service'; export function Child({ onChange }) { const rootRef = useRef(null); const run = useCallback(value => { rootRef.current?.update(value); onChange(createValue(value)); }, [onChange]); useEffect(() => { run(createValue()); }, [run]); return null; }",
+    "expectedCount": 0,
+    "sourceReference": "PagedEditor"
+  },
+  {
+    "name": "wrapper-parent-notification-without-react-ref",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useCallback, useEffect } from 'react'; import { createValue } from 'data-service'; export function Child({ onChange }) { const run = useCallback(value => { onChange(createValue(value)); }, [onChange]); useEffect(() => { run(createValue()); }, [run]); return null; }",
+    "expectedCount": 1,
+    "sourceReference": "PagedEditor"
+  },
+  {
+    "name": "qualified-lazy-state-imported-transform",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import * as React from 'react'; import { flatten } from 'array-library'; export function Child({ items, onChange }) { const [selected] = React.useState(() => flatten(items)); React.useEffect(() => { onChange(selected); }, [selected]); return null; }"
+  },
+  {
+    "name": "qualified-eager-state-imported-transform",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import * as React from 'react'; import { flatten } from 'array-library'; export function Child({ items, onChange }) { const [selected] = React.useState(flatten(items)); React.useEffect(() => { onChange(selected); }, [selected]); return null; }"
+  },
+  {
+    "name": "guarded-effect-ref-sync-custom-hook-data",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import { useEffect, useRef } from 'react'; import { useCells } from 'cell-store'; export function Child({ initial, onChange }) { const { cells, dimensions } = useCells({ initial }); const callbackRef = useRef(onChange); useEffect(() => { callbackRef.current = onChange; }, [onChange]); const skipRef = useRef(true); useEffect(() => { if (skipRef.current) { skipRef.current = false; return; } const output = {}; for (const [key, value] of cells) output[key] = value; callbackRef.current({ dimensions, cells: output }); }, [cells, dimensions]); return null; }"
+  },
+  {
+    "name": "imported-member-call-data",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import { useEffect } from 'react'; import { api } from 'query-api'; export function Child({ onChange }) { const value = api.read(); useEffect(() => { onChange(value); }, [value]); return null; }"
+  },
+  {
+    "name": "imported-member-call-callback-parameter",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import { useEffect } from 'react'; import { options } from 'option-config'; export function Child({ selected, onChange }) { const value = options.find(option => option.id === selected); useEffect(() => { onChange(value); }, [value]); return null; }"
+  },
+  {
+    "name": "parent-wired-hook-object-argument-callback",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import { useEffect } from 'react'; import { useForm, readValue } from 'form-library'; export function Child({ initial }) { const methods = useForm({ defaultValues: initial }); const reset = methods.reset; useEffect(() => { reset(readValue()); }, [reset]); return null; }"
+  },
+  {
+    "name": "optional status guard",
+    "ruleId": "no-fetch-response-used-without-status-check",
+    "source": "export async function load() { let response; try { response = await fetch('/items'); } catch {} if (!response?.ok) throw new Error('failed'); return response.json(); }",
+    "expectedCount": 1
+  },
+  {
+    "name": "direct status guard",
+    "ruleId": "no-fetch-response-used-without-status-check",
+    "source": "export async function load() { let response; try { response = await fetch('/items'); } catch {} if (!response.ok) throw new Error('failed'); return response.json(); }",
+    "expectedCount": 0
+  },
+  {
+    "name": "asserted status guard",
+    "ruleId": "no-fetch-response-used-without-status-check",
+    "source": "export async function load() { const response = await fetch('/items'); if (!(response.ok as boolean)) throw new Error('failed'); return response.json(); }",
+    "expectedCount": 1
+  },
+  {
+    "name": "presence guard still lacks status",
+    "ruleId": "no-fetch-response-used-without-status-check",
+    "source": "export async function load() { let response; try { response = await fetch('/items'); } catch {} if (!response) throw new Error('failed'); return response.json(); }",
+    "expectedCount": 1
+  },
+  {
+    "name": "callback before finally reset",
+    "ruleId": "no-loading-flag-reset-outside-finally",
+    "source": "export async function save() { setLoading(true); try { await request(); } finally { notify?.(false); setLoading(false); } }",
+    "expectedCount": 0
+  },
+  {
+    "name": "callback before catch reset",
+    "ruleId": "no-loading-flag-reset-outside-finally",
+    "source": "export async function save() { setLoading(true); try { await request(); } catch { notify?.(false); setLoading(false); } }",
+    "expectedCount": 1
+  },
+  {
+    "name": "throw before finally reset",
+    "ruleId": "no-loading-flag-reset-outside-finally",
+    "source": "export async function save() { setLoading(true); try { await request(); } finally { throw new Error('failed'); setLoading(false); } }",
+    "expectedCount": 1
+  },
+  {
+    "name": "new before finally reset",
+    "ruleId": "no-loading-flag-reset-outside-finally",
+    "source": "export async function save() { setLoading(true); try { await request(); } finally { const resource = new Resource(); setLoading(false); } }",
+    "expectedCount": 1
+  },
+  {
+    "name": "relative-cli-path-finds-static-id-in-another-source-file",
+    "ruleId": "anchor-target-exists",
+    "filename": "src/link.tsx",
+    "files": {
+      "package.json": "{\"name\":\"anchor-cross-file-probe\",\"private\":true,\"dependencies\":{\"react\":\"18.3.1\"}}",
+      "src/link.tsx": "export const Link = () => <a href=\"#usage\">Usage</a>;\n",
+      "src/target.tsx": "export const Target = () => <section id=\"usage\">Details</section>;\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "relative-cli-path-still-reports-missing-cross-file-id",
+    "ruleId": "anchor-target-exists",
+    "filename": "src/link.tsx",
+    "files": {
+      "package.json": "{\"name\":\"anchor-missing-target-probe\",\"private\":true,\"dependencies\":{\"react\":\"18.3.1\"}}",
+      "src/link.tsx": "export const Link = () => <a href=\"#usage\">Usage</a>;\n",
+      "src/target.tsx": "export const Target = () => <section id=\"other\">Details</section>;\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "bare import serialization",
+    "ruleId": "async-parallel",
+    "source": "export async function load() { const first = await import('./first'); const second = await import('./second'); await import('./style.css'); return [first, second]; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "bound imports independent",
+    "ruleId": "async-parallel",
+    "source": "export async function load() { const first = await import('./first'); const second = await import('./second'); const third = await import('./third'); return [first, second, third]; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "bare constructor serialization",
+    "ruleId": "async-parallel",
+    "source": "export async function load() { const first = await new Request('/first'); const second = await new Request('/second'); await new Request('/third'); return [first, second]; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "bound constructors independent",
+    "ruleId": "async-parallel",
+    "source": "export async function load() { const first = await new Request('/first'); const second = await new Request('/second'); const third = await new Request('/third'); return [first, second, third]; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater aliases optional DOM lookup",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "source": "import { useState, useRef } from 'react'; export function Toggle() { const [wrapped, setWrapped] = useState(false); const elementRef = useRef(null); const toggle = () => setWrapped(previous => { const next = !previous; const element = elementRef.current?.closest('.code'); if (element) { if (next) element.setAttribute('data-wrapped', 'true'); else element.removeAttribute('data-wrapped'); } return next; }); return <button onClick={toggle}>{String(wrapped)}</button>; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater aliases external call",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "source": "import { useState } from 'react'; export function Toggle({ getElement }) { const [wrapped, setWrapped] = useState(false); const toggle = () => setWrapped(previous => { const element = getElement(); element.setAttribute('data-wrapped', 'true'); return !previous; }); return <button onClick={toggle}>{String(wrapped)}</button>; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater local fresh object mutation",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "source": "import { useState } from 'react'; export function Toggle() { const [wrapped, setWrapped] = useState(false); const toggle = () => setWrapped(previous => { const values = new Map(); values.set('wrapped', !previous); return !previous; }); return <button onClick={toggle}>{String(wrapped)}</button>; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "fluent-on-subscribe-message",
+    "ruleId": "effect-needs-cleanup",
+    "expectedCount": 1,
+    "source": "import { useEffect } from 'react'; export function Child({ channel, handler }) { useEffect(() => { channel.on('change', handler).subscribe(handler); }, [channel, handler]); return null; }"
+  },
+  {
+    "name": "fluent-subscribe-on-message",
+    "ruleId": "effect-needs-cleanup",
+    "expectedCount": 1,
+    "source": "import { useEffect } from 'react'; export function Child({ channel, handler }) { useEffect(() => { channel.subscribe(handler).on('change', handler); }, [channel, handler]); return null; }"
+  },
+  {
+    "name": "separate-on-subscribe-message",
+    "ruleId": "effect-needs-cleanup",
+    "expectedCount": 1,
+    "source": "import { useEffect } from 'react'; export function Child({ channel, handler }) { useEffect(() => { channel.on('change', handler); channel.subscribe(handler); }, [channel, handler]); return null; }"
+  },
+  {
+    "name": "fluent-subscription-channel-removal-message",
+    "ruleId": "effect-needs-cleanup",
+    "expectedCount": 1,
+    "source": "import { useEffect } from 'react'; export function Child({ client, handler }) { useEffect(() => { const channel = client.channel('room'); channel.on('change', {}, handler).subscribe(handler); return () => { client.removeChannel(channel); }; }, [client, handler]); return null; }"
+  },
+  {
+    "name": "direct-event-source-cleanup",
+    "ruleId": "effect-needs-cleanup",
+    "expectedCount": 0,
+    "source": "import { useEffect } from 'react'; export function Child({ url }) { useEffect(() => { const connection = new EventSource(url); return () => connection.close(); }, [url]); return null; }"
+  },
+  {
+    "name": "single-helper-event-source-cleanup",
+    "ruleId": "effect-needs-cleanup",
+    "expectedCount": 0,
+    "source": "import { useEffect } from 'react'; export function Child({ url }) { useEffect(() => { let connection = null; const connect = () => { connection = new EventSource(url); }; connect(); return () => connection?.close(); }, [url]); return null; }"
+  },
+  {
+    "name": "repeated-helper-event-source-cleanup",
+    "ruleId": "effect-needs-cleanup",
+    "expectedCount": 1,
+    "source": "import { useEffect } from 'react'; export function Child({ url }) { useEffect(() => { let connection = null; const connect = () => { connection = new EventSource(url); }; connect(); connect(); return () => connection?.close(); }, [url]); return null; }"
+  },
+  {
+    "name": "deferred-helper-event-source-cleanup",
+    "ruleId": "effect-needs-cleanup",
+    "expectedCount": 1,
+    "source": "import { useEffect } from 'react'; export function Child({ url }) { useEffect(() => { let connection = null; const connect = () => { connection = new EventSource(url); }; connect(); const timer = setTimeout(connect, 1000); return () => { clearTimeout(timer); connection?.close(); }; }, [url]); return null; }"
+  },
+  {
+    "name": "guarded-reconnecting-event-source-cleanup",
+    "ruleId": "effect-needs-cleanup",
+    "expectedCount": 1,
+    "source": "import { useEffect, useRef } from 'react'; export function Child({ url }) { const timer = useRef(null); useEffect(() => { let connection = null; let mounted = true; const connect = () => { if (!mounted) return; connection = new EventSource(url); connection.onerror = () => { if (!mounted) return; connection?.close(); connection = null; timer.current = setTimeout(() => { if (mounted) connect(); }, 1000); }; }; connect(); return () => { mounted = false; connection?.close(); clearTimeout(timer.current); }; }, [url]); return null; }"
+  },
+  {
+    "name": "single-guarded-helper-event-source-cleanup",
+    "ruleId": "effect-needs-cleanup",
+    "expectedCount": 0,
+    "source": "import { useEffect } from 'react'; export function Child({ url }) { useEffect(() => { let connection = null; let mounted = true; const connect = () => { if (!mounted) return; connection = new EventSource(url); }; connect(); return () => { mounted = false; connection?.close(); }; }, [url]); return null; }"
+  },
+  {
+    "name": "repeated-helper-with-prior-release",
+    "ruleId": "effect-needs-cleanup",
+    "expectedCount": 1,
+    "source": "import { useEffect } from 'react'; export function Child({ url }) { useEffect(() => { let connection = null; const connect = () => { connection?.close(); connection = new EventSource(url); }; connect(); connect(); return () => connection?.close(); }, [url]); return null; }"
+  },
+  {
+    "name": "synchronous-handler-with-listener-cleanup",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items }) => { const [selected, setSelected] = useState([]); useEffect(() => { function update() { setSelected(items.slice(0, 1)); } update(); window.addEventListener('scroll', update); return () => window.removeEventListener('scroll', update); }, [items]); return <div>{selected}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "synchronous-handler-with-functional-updater-and-cleanup",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items, single }) => { const [selected, setSelected] = useState([]); useEffect(() => { function update() { if (single) setSelected(items.slice(0, 1)); else setSelected((current) => current.length ? items.slice(items.indexOf(current[0])) : items.slice(-1)); } update(); window.addEventListener('scroll', update); return () => window.removeEventListener('scroll', update); }, [items, single]); return <div>{selected}</div>; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "synchronous-handler-with-dom-guard",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items }) => { const [selected, setSelected] = useState([]); useEffect(() => { function update() { const element = document.scrollingElement; if (!element) return; if (element.scrollTop === 0) setSelected(items.slice(0, 1)); } update(); window.addEventListener('scroll', update); return () => window.removeEventListener('scroll', update); }, [items]); return <div>{selected}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "synchronous-handler-with-observer-writer",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items }) => { const [selected, setSelected] = useState([]); useEffect(() => { let visible = []; const observer = new IntersectionObserver((entries) => { visible = entries.map((entry) => entry.target.id); setSelected(visible); }); function update() { setSelected(items.slice(0, 1)); } update(); window.addEventListener('scroll', update); return () => { window.removeEventListener('scroll', update); observer.disconnect(); }; }, [items]); return <div>{selected}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "functional-updater-without-listener",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items, single }) => { const [selected, setSelected] = useState([]); useEffect(() => { function update() { if (single) setSelected(items.slice(0, 1)); else setSelected((current) => current.length ? items.slice(items.indexOf(current[0])) : items.slice(-1)); } update(); return () => {}; }, [items, single]); return <div>{selected}</div>; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "functional-updater-without-cleanup",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items, single }) => { const [selected, setSelected] = useState([]); useEffect(() => { function update() { if (single) setSelected(items.slice(0, 1)); else setSelected((current) => current.length ? items.slice(items.indexOf(current[0])) : items.slice(-1)); } update(); }, [items, single]); return <div>{selected}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "constant-functional-updater-with-cleanup",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items, single }) => { const [selected, setSelected] = useState([]); useEffect(() => { if (single) setSelected(items.slice(0, 1)); else setSelected(() => []); return () => {}; }, [items, single]); return <div>{selected}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "unknown-functional-updater-with-cleanup",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items, single }) => { const [selected, setSelected] = useState([]); useEffect(() => { if (single) setSelected(items.slice(0, 1)); else setSelected((current) => transform(current)); return () => {}; }, [items, single]); return <div>{selected}</div>; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "runtime-star-target-semicolonless-named-export",
+    "ruleId": "only-export-components",
+    "filename": "src/components.tsx",
+    "source": "export * from './helpers'\nexport const Widget = () => <div />\n",
+    "files": {
+      "package.json": "{\"name\":\"refresh-probe\",\"scripts\":{\"dev\":\"next dev\"},\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\"}}",
+      "src/helpers.ts": "const helper = () => 1\nexport { helper }\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "runtime-star-target-semicolon-named-export-control",
+    "ruleId": "only-export-components",
+    "filename": "src/components.tsx",
+    "source": "export * from './helpers'; export const Widget = () => <div />;",
+    "files": {
+      "package.json": "{\"name\":\"refresh-probe\",\"scripts\":{\"dev\":\"next dev\"},\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\"}}",
+      "src/helpers.ts": "const helper = () => 1; export { helper };"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "runtime-star-target-comment-before-named-export",
+    "ruleId": "only-export-components",
+    "filename": "src/components.tsx",
+    "source": "export * from './helpers'; export const Widget = () => <div />;",
+    "files": {
+      "package.json": "{\"name\":\"refresh-probe\",\"scripts\":{\"dev\":\"next dev\"},\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\"}}",
+      "src/helpers.ts": "const helper = () => 1;\n// A named runtime export.\nexport { helper };"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "runtime-star-target-type-only-control",
+    "ruleId": "only-export-components",
+    "filename": "src/components.tsx",
+    "source": "export * from './helpers'; export const Widget = () => <div />;",
+    "files": {
+      "package.json": "{\"name\":\"refresh-probe\",\"scripts\":{\"dev\":\"next dev\"},\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\"}}",
+      "src/helpers.ts": "interface Options { value: string }\nexport type { Options }\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "block-row-destructured-item-composite-key",
+    "ruleId": "no-array-index-as-key",
+    "source": "export const List = ({ items }) => <div>{items.map(({ name }, index) => <p key={`${name}-${index}`}>{name}</p>)}</div>;",
+    "expectedCount": 0
+  },
+  {
+    "name": "block-row-primitive-item-composite-key",
+    "ruleId": "no-array-index-as-key",
+    "source": "export const List = ({ items }) => <div>{items.map((name, index) => <p key={`${name}-${index}`}>{name}</p>)}</div>;",
+    "expectedCount": 0
+  },
+  {
+    "name": "block-row-bare-index-control",
+    "ruleId": "no-array-index-as-key",
+    "source": "export const List = ({ items }) => <div>{items.map(({ name }, index) => <p key={index}>{name}</p>)}</div>;",
+    "expectedCount": 1
+  },
+  {
+    "name": "block-row-composite-key-stateful-control",
+    "ruleId": "no-array-index-as-key",
+    "source": "export const List = ({ items }) => <div>{items.map(({ name }, index) => <p key={`${name}-${index}`}><input defaultValue={name} /></p>)}</div>;",
+    "expectedCount": 1
+  },
+  {
+    "name": "ensure-map-member-key-for-of-const",
+    "ruleId": "no-non-null-assertion-on-maybe-undefined-result",
+    "source": "const grouped = new Map<string, string[]>(); for (const item of items) { if (!grouped.has(item.group)) grouped.set(item.group, []); grouped.get(item.group)!.push('value'); }",
+    "expectedCount": 0
+  },
+  {
+    "name": "ensure-map-member-key-local-const-control",
+    "ruleId": "no-non-null-assertion-on-maybe-undefined-result",
+    "source": "const grouped = new Map<string, string[]>(); const item = getItem(); if (!grouped.has(item.group)) grouped.set(item.group, []); grouped.get(item.group)!.push('value');",
+    "expectedCount": 1
+  },
+  {
+    "name": "ensure-map-member-key-for-of-let-control",
+    "ruleId": "no-non-null-assertion-on-maybe-undefined-result",
+    "source": "const grouped = new Map<string, string[]>(); for (let item of items) { if (!grouped.has(item.group)) grouped.set(item.group, []); grouped.get(item.group)!.push('value'); }",
+    "expectedCount": 1
+  },
+  {
+    "name": "ensure-map-member-key-for-of-invalidation-control",
+    "ruleId": "no-non-null-assertion-on-maybe-undefined-result",
+    "source": "const grouped = new Map<string, string[]>(); for (const item of items) { if (!grouped.has(item.group)) grouped.set(item.group, []); grouped.delete(item.group); grouped.get(item.group)!.push('value'); }",
+    "expectedCount": 1
+  },
+  {
+    "name": "async-map-conditional-bound-promise-array",
+    "ruleId": "async-await-in-loop",
+    "source": "async function load(items, enabled) { const jobs = enabled ? [] : items.map(async item => await fetch(item)); await Promise.all(jobs); }",
+    "expectedCount": 0
+  },
+  {
+    "name": "async-map-logical-bound-promise-array",
+    "ruleId": "async-await-in-loop",
+    "source": "async function load(items, existing) { const jobs = existing || items.map(async item => await fetch(item)); await Promise.all(jobs); }",
+    "expectedCount": 0
+  },
+  {
+    "name": "async-map-chained-bound-promise-array",
+    "ruleId": "async-await-in-loop",
+    "source": "async function load(items) { const jobs = items.map(async item => await fetch(item)).filter(Boolean); await Promise.all(jobs); }",
+    "expectedCount": 0
+  },
+  {
+    "name": "async-map-conditional-uncombined-control",
+    "ruleId": "async-await-in-loop",
+    "source": "async function load(items, enabled) { const jobs = enabled ? [] : items.map(async item => await fetch(item)); return jobs; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "async-map-nontransparent-call-control",
+    "ruleId": "async-await-in-loop",
+    "source": "async function load(items) { await Promise.all(wrap(items.map(async item => await fetch(item)))); }",
+    "expectedCount": 1
+  },
+  {
+    "name": "async-map-unrelated-function-binding-control",
+    "ruleId": "async-await-in-loop",
+    "source": "async function load(items) { const jobs = items.map(async item => await fetch(item)); return jobs; } async function other(jobs) { await Promise.all(jobs); }",
+    "expectedCount": 1
+  },
+  {
+    "name": "optional local fresh container",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "source": "import { useState } from 'react'; const makeValues = () => new Map(); export function Child() { const [value,setValue] = useState(0); return <button onClick={() => setValue(previous => { const values = makeValues?.(); values.set('count', previous); return previous + 1; })}>{value}</button>; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "block row key does not own another item symbol",
+    "ruleId": "no-array-index-as-key",
+    "source": "export const List = ({ items }) => <div>{items.map(({ name, value }, index) => <p key={`${name}-${index}`}>{value}</p>)}</div>;",
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-imported-helper-const-alias",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/view.tsx",
+    "source": "import React from 'react'; import { isBrowser } from './entry'; const alias = isBrowser; export const View = () => alias() ? <div /> : <span />;",
+    "files": {
+      "src/entry.ts": "export const isBrowser = () => typeof window !== 'undefined';"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "hydration-imported-helper-direct-control",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/view.tsx",
+    "source": "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+    "files": {
+      "src/entry.ts": "export const isBrowser = () => typeof window !== 'undefined';"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-imported-helper-star-barrel",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/view.tsx",
+    "source": "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+    "files": {
+      "src/entry.ts": "export * from './helper';",
+      "src/helper.ts": "export const isBrowser = () => typeof window !== 'undefined';"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-imported-helper-named-barrel-control",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/view.tsx",
+    "source": "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+    "files": {
+      "src/entry.ts": "export { isBrowser } from './helper';",
+      "src/helper.ts": "export const isBrowser = () => typeof window !== 'undefined';"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-imported-helper-named-chain-3-files",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/view.tsx",
+    "source": "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+    "files": {
+      "src/entry.ts": "export { isBrowser } from './level-2';",
+      "src/level-2.ts": "export { isBrowser } from './level-3';",
+      "src/level-3.ts": "export const isBrowser = () => typeof window !== 'undefined';"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-imported-helper-named-chain-4-files",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/view.tsx",
+    "source": "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+    "files": {
+      "src/entry.ts": "export { isBrowser } from './level-2';",
+      "src/level-2.ts": "export { isBrowser } from './level-3';",
+      "src/level-3.ts": "export { isBrowser } from './level-4';",
+      "src/level-4.ts": "export const isBrowser = () => typeof window !== 'undefined';"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-imported-helper-named-chain-5-files",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/view.tsx",
+    "source": "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+    "files": {
+      "src/entry.ts": "export { isBrowser } from './level-2';",
+      "src/level-2.ts": "export { isBrowser } from './level-3';",
+      "src/level-3.ts": "export { isBrowser } from './level-4';",
+      "src/level-4.ts": "export { isBrowser } from './level-5';",
+      "src/level-5.ts": "export const isBrowser = () => typeof window !== 'undefined';"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "hydration-ambiguous-star-exports",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/view.tsx",
+    "source": "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+    "files": {
+      "src/entry.ts": "export * from './browser'; export * from './constant';",
+      "src/browser.ts": "export const isBrowser = () => typeof window !== 'undefined';",
+      "src/constant.ts": "export const isBrowser = () => false;"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "hydration-same-origin-star-exports",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/view.tsx",
+    "source": "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+    "files": {
+      "src/entry.ts": "export * from './first'; export * from './second';",
+      "src/first.ts": "export { isBrowser } from './browser';",
+      "src/second.ts": "export { isBrowser } from './browser';",
+      "src/browser.ts": "export const isBrowser = () => typeof window !== 'undefined';"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-named-export-precedes-star",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "src/view.tsx",
+    "source": "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+    "files": {
+      "src/entry.ts": "export * from './browser'; export { isBrowser } from './constant';",
+      "src/browser.ts": "export const isBrowser = () => typeof window !== 'undefined';",
+      "src/constant.ts": "export const isBrowser = () => false;"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "synchronous-handler-with-listener-cleanup",
+    "ruleId": "no-derived-state-effect",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items }) => { const [selected, setSelected] = useState([]); useEffect(() => { function update() { setSelected(items.slice(0, 1)); } update(); window.addEventListener('scroll', update); return () => window.removeEventListener('scroll', update); }, [items]); return <div>{selected}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "synchronous-handler-with-functional-updater-and-cleanup",
+    "ruleId": "no-derived-state-effect",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items, single }) => { const [selected, setSelected] = useState([]); useEffect(() => { function update() { if (single) setSelected(items.slice(0, 1)); else setSelected((current) => current.length ? items.slice(items.indexOf(current[0])) : items.slice(-1)); } update(); window.addEventListener('scroll', update); return () => window.removeEventListener('scroll', update); }, [items, single]); return <div>{selected}</div>; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "synchronous-handler-with-dom-guard",
+    "ruleId": "no-derived-state-effect",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items }) => { const [selected, setSelected] = useState([]); useEffect(() => { function update() { const element = document.scrollingElement; if (!element) return; if (element.scrollTop === 0) setSelected(items.slice(0, 1)); } update(); window.addEventListener('scroll', update); return () => window.removeEventListener('scroll', update); }, [items]); return <div>{selected}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "synchronous-handler-with-observer-writer",
+    "ruleId": "no-derived-state-effect",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items }) => { const [selected, setSelected] = useState([]); useEffect(() => { let visible = []; const observer = new IntersectionObserver((entries) => { visible = entries.map((entry) => entry.target.id); setSelected(visible); }); function update() { setSelected(items.slice(0, 1)); } update(); window.addEventListener('scroll', update); return () => { window.removeEventListener('scroll', update); observer.disconnect(); }; }, [items]); return <div>{selected}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "functional-updater-without-listener",
+    "ruleId": "no-derived-state-effect",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items, single }) => { const [selected, setSelected] = useState([]); useEffect(() => { function update() { if (single) setSelected(items.slice(0, 1)); else setSelected((current) => current.length ? items.slice(items.indexOf(current[0])) : items.slice(-1)); } update(); return () => {}; }, [items, single]); return <div>{selected}</div>; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "functional-updater-without-cleanup",
+    "ruleId": "no-derived-state-effect",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items, single }) => { const [selected, setSelected] = useState([]); useEffect(() => { function update() { if (single) setSelected(items.slice(0, 1)); else setSelected((current) => current.length ? items.slice(items.indexOf(current[0])) : items.slice(-1)); } update(); }, [items, single]); return <div>{selected}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "constant-functional-updater-with-cleanup",
+    "ruleId": "no-derived-state-effect",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items, single }) => { const [selected, setSelected] = useState([]); useEffect(() => { if (single) setSelected(items.slice(0, 1)); else setSelected(() => []); return () => {}; }, [items, single]); return <div>{selected}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "unknown-functional-updater-with-cleanup",
+    "ruleId": "no-derived-state-effect",
+    "source": "import { useEffect, useState } from 'react'; export const Preview = ({ items, single }) => { const [selected, setSelected] = useState([]); useEffect(() => { if (single) setSelected(items.slice(0, 1)); else setSelected((current) => transform(current)); return () => {}; }, [items, single]); return <div>{selected}</div>; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "fetch-body-try-catch-exit",
+    "ruleId": "no-fetch-response-used-without-status-check",
+    "source": "export async function load() { const response = await fetch('/items'); const body = await response.json(); if (!response.ok) { try { return JSON.stringify(body); } catch { return 'invalid'; } } return body; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "fetch-body-partial-catch-exit",
+    "ruleId": "no-fetch-response-used-without-status-check",
+    "source": "export async function load() { const response = await fetch('/items'); const body = await response.json(); if (!response.ok) { try { return JSON.stringify(body); } catch { console.log('invalid'); } } return body; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "fetch-body-finally-exit",
+    "ruleId": "no-fetch-response-used-without-status-check",
+    "source": "export async function load() { const response = await fetch('/items'); const body = await response.json(); if (!response.ok) { try { console.log('invalid'); } finally { return body; } } return body; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "fetch-body-literal-branch-exit",
+    "ruleId": "no-fetch-response-used-without-status-check",
+    "source": "export async function load() { const response = await fetch('/items'); const body = await response.json(); if (!response.ok) { if (true) return body; } return body; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "fetch-body-break-exit",
+    "ruleId": "no-fetch-response-used-without-status-check",
+    "source": "export async function load() { for (const url of urls) { const response = await fetch(url); const body = await response.json(); if (!response.ok) { break; } consume(body); } }",
+    "expectedCount": 0
+  },
+  {
+    "name": "deferred-foreach-timer",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ items }) => { useEffect(() => { const rotate = () => { items.forEach(() => { setTimeout(() => update(), 100); }); }; const interval = setInterval(rotate, 1000); return () => clearInterval(interval); }, [items]); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "deferred-map-collected-timers",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ items }) => { useEffect(() => { const handles = []; const interval = setInterval(() => { items.map(() => { handles.push(setTimeout(() => update(), 100)); }); }, 1000); return () => { clearInterval(interval); handles.forEach(clearTimeout); }; }, [items]); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "deferred-nested-iterators",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ items }) => { useEffect(() => { const interval = setInterval(() => { items.forEach(() => { items.map(() => { setTimeout(() => update(), 100); }); }); }, 1000); return () => clearInterval(interval); }, [items]); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "deferred-reduce-timer",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ items }) => { useEffect(() => { const interval = setInterval(() => { items.reduce(() => { setTimeout(() => update(), 100); }, null); }, 1000); return () => clearInterval(interval); }, [items]); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "deferred-array-from-timer",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ items }) => { useEffect(() => { const interval = setInterval(() => { Array.from(items, () => { setTimeout(() => update(), 100); }); }, 1000); return () => clearInterval(interval); }, [items]); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "deferred-find-timer",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ items }) => { useEffect(() => { const interval = setInterval(() => { items.find(() => { setTimeout(() => update(), 100); }); }, 1000); return () => clearInterval(interval); }, [items]); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "deferred-computed-foreach-timer",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ items }) => { useEffect(() => { const interval = setInterval(() => { items['forEach'](() => { setTimeout(() => update(), 100); }); }, 1000); return () => clearInterval(interval); }, [items]); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "deferred-iterator-named-callback",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ items }) => { useEffect(() => { const allocate = () => { setTimeout(() => update(), 100); }; const interval = setInterval(() => { items.forEach(allocate); }, 1000); return () => clearInterval(interval); }, [items]); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "deferred-iterator-local-helper",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ items }) => { useEffect(() => { const interval = setInterval(() => { items.forEach(() => { const allocate = () => { setTimeout(() => update(), 100); }; allocate(); }); }, 1000); return () => clearInterval(interval); }, [items]); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "deferred-iterator-second-argument",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ items }) => { useEffect(() => { const interval = setInterval(() => { items.forEach(() => {}, () => { setTimeout(() => update(), 100); }); }, 1000); return () => clearInterval(interval); }, [items]); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "deferred-iterator-returned-cleanup",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ items }) => { useEffect(() => { const interval = setInterval(() => { items.forEach(() => { const timeout = setTimeout(() => update(), 100); return () => clearTimeout(timeout); }); }, 1000); return () => clearInterval(interval); }, [items]); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "deferred-iterator-synchronously-released",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ items }) => { useEffect(() => { const interval = setInterval(() => { items.forEach(() => { const timeout = setTimeout(() => update(), 100); clearTimeout(timeout); }); }, 1000); return () => clearInterval(interval); }, [items]); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "deferred-iterator-cancelled-timer-callback",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ items }) => { useEffect(() => { const interval = setInterval(() => { items.forEach(() => { const timeout = setTimeout(() => { setInterval(() => update(), 100); }, 100); clearTimeout(timeout); }); }, 1000); return () => clearInterval(interval); }, [items]); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "live-async-helper-assigned-state",
+    "ruleId": "no-pass-live-state-to-parent",
+    "source": "import { useEffect } from 'react'; import { useRemote } from 'state-library'; export function Child({ config, onChange }) { const state = useRemote(); useEffect(() => { const update = async () => { let value; value = state.value; onChange({ ...config, value }); }; update(); }, [state]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "live-async-helper-direct-state",
+    "ruleId": "no-pass-live-state-to-parent",
+    "source": "import { useEffect } from 'react'; import { useRemote } from 'state-library'; export function Child({ config, onChange }) { const state = useRemote(); useEffect(() => { const update = async () => { onChange({ ...config, value: state.value }); }; update(); }, [state]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "live-async-helper-const-state",
+    "ruleId": "no-pass-live-state-to-parent",
+    "source": "import { useEffect } from 'react'; import { useRemote } from 'state-library'; export function Child({ config, onChange }) { const state = useRemote(); useEffect(() => { const update = async () => { const value = state.value; onChange({ ...config, value }); }; update(); }, [state]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "parent-filter-local-constant-array-includes",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; export function Child({ items, onChange }) { useEffect(() => { const allowed = ['a', 'b']; const filtered = items.filter(item => allowed.includes(item.kind)); onChange(filtered); }, [items]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "parent-filter-string-read-local-constants",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; export function Child({ items, onChange }) { useEffect(() => { const allowed = ['a', 'b']; const filtered = items.filter(item => !(allowed.includes(item.kind) && allowed.includes(item.value.toString()))); onChange(filtered); }, [items]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "parent-filter-child-set-has",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; export function Child({ items, onChange }) { useEffect(() => { const allowed = new Set(['a', 'b']); const filtered = items.filter(item => allowed.has(item.kind)); onChange(filtered); }, [items]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-parent-map-imported-converter",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo } from 'react'; import { convert } from 'data-library'; export function Child({ items, onChange }) { const value = useMemo(() => items.map(item => convert(item)), [items]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-parent-map-local-converted-return",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo } from 'react'; import { convert, isDefined } from 'data-library'; export function Child({ items, onChange }) { const value = useMemo(() => { const filtered = items.filter(item => item.enabled); return filtered.map(item => { const extra = items.find(other => other.id === item.id); return convert(item, extra); }).filter(isDefined); }, [items]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-parent-map-for-of-item",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo } from 'react'; import { convert } from 'data-library'; export function Child({ items, onChange }) { const value = useMemo(() => items.map(item => convert(item)), [items]); useEffect(() => { for (const item of value) onChange(item); }, [value]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-parent-filter-nested-imported-transform",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo, useState } from 'react'; import { normalize } from 'data-library'; export function Child({ items, onChange }) { const [search] = useState(''); const value = useMemo(() => { const term = normalize(search); return items.filter(item => normalize(item.label).includes(term)); }, [items, search]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-parent-filter-nested-local-string",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo, useState } from 'react'; export function Child({ items, onChange }) { const [search] = useState(''); const value = useMemo(() => { const term = search.trim(); return items.filter(item => item.label.includes(term)); }, [items, search]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-parent-filter-nested-imported-transform-chain",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo, useState } from 'react'; import { normalize } from 'data-library'; export function Child({ items, initial, onChange }) { const [search] = useState(''); const [selected] = useState(initial); const filtered = useMemo(() => { const term = normalize(search); return items.filter(item => item.value !== selected?.value && normalize(item.label).includes(term)); }, [items, search, selected]); const value = useMemo(() => selected ? [selected, ...filtered] : filtered, [selected, filtered]); useEffect(() => { onChange?.(value); }, [value]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "live-seeded-async-helper-assigned-state",
+    "ruleId": "no-pass-live-state-to-parent",
+    "source": "import { useEffect } from 'react'; import { useRemote } from 'state-library'; export function Child({ config, onChange }) { const state = useRemote(config); useEffect(() => { const update = async () => { let value; value = state.value; onChange({ ...config, value }); }; update(); }, [state]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "live-seeded-async-helper-direct-state",
+    "ruleId": "no-pass-live-state-to-parent",
+    "source": "import { useEffect } from 'react'; import { useRemote } from 'state-library'; export function Child({ config, onChange }) { const state = useRemote(config); useEffect(() => { const update = async () => { onChange({ ...config, value: state.value }); }; update(); }, [state]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "live-seeded-async-helper-const-state",
+    "ruleId": "no-pass-live-state-to-parent",
+    "source": "import { useEffect } from 'react'; import { useRemote } from 'state-library'; export function Child({ config, onChange }) { const state = useRemote(config); useEffect(() => { const update = async () => { const value = state.value; onChange({ ...config, value }); }; update(); }, [state]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "for-of-parent-items-data-leaf",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; export function Child({ items, onChange }) { useEffect(() => { for (const item of items) onChange(item); }, [items]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-parent-filter-local-initializer-converter",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo } from 'react'; import { convert } from 'data-library'; export function Child({ items, onChange }) { const value = useMemo(() => { const mapped = items.map(item => convert(item)); return mapped; }, [items]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-parent-filter-state-nested-no-local",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo, useState } from 'react'; export function Child({ items, onChange }) { const [search] = useState(''); const value = useMemo(() => items.filter(item => item.label.includes(search)), [items, search]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-parent-filter-local-constant-term",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo } from 'react'; export function Child({ items, onChange }) { const value = useMemo(() => { const term = 'a'; return items.filter(item => item.label.includes(term)); }, [items]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-parent-filter-unused-local-imported-transform",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo, useState } from 'react'; import { normalize } from 'data-library'; export function Child({ items, onChange }) { const [search] = useState(''); const value = useMemo(() => { const term = normalize(search); return items.filter(item => item.enabled); }, [items, search]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-parent-filter-unknown-member-converter",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo } from 'react'; export function Child({ items, onChange }) { const value = useMemo(() => items.filter(item => item.label.normalize()), [items]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "parent-filter-logical-initializer-child-set",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect } from 'react'; export function Child({ items, onChange }) { const allowed = new Set(['a']); useEffect(() => { const value = items.filter(item => allowed.has(item.id)) || []; onChange(value); }, [items]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "anchor-project-cache-retains-first-file-ids",
+    "ruleId": "anchor-target-exists",
+    "filename": "src/first.tsx",
+    "targetPath": "src",
+    "files": {
+      "src/first.tsx": "export const First = () => <><section id=\"first\" /><a href=\"#second\">Second</a></>;",
+      "src/second.tsx": "export const Second = () => <><section id=\"second\" /><a href=\"#first\">First</a></>;"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "array-key-outer-index-first-in-template",
+    "ruleId": "no-array-index-as-key",
+    "source": "export const List = ({ rows }) => rows.map((row, i) => row.values.map((value, idx) => <Item key={`${i}_${idx}`} value={value} />));",
+    "expectedCount": 1
+  },
+  {
+    "name": "array-key-inner-index-first-in-template",
+    "ruleId": "no-array-index-as-key",
+    "source": "export const List = ({ rows }) => rows.map((row, i) => row.values.map((value, idx) => <Item key={`${idx}_${i}`} value={value} />));",
+    "expectedCount": 1
+  },
+  {
+    "name": "derived-value-with-local-constant",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const View = ({ price }) => { const credit = 10; const [total, setTotal] = useState(0); useEffect(() => setTotal(price - credit), [price]); return <div>{total}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "derived-local-constant-alone-is-not-source",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const View = () => { const credit = 10; const [total, setTotal] = useState(0); useEffect(() => setTotal(credit), []); return <div>{total}</div>; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "derived-reduce-basic-control",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const View = ({ items }) => { const [total, setTotal] = useState(0); useEffect(() => { const sum = items.reduce((acc, item) => acc + item.price, 0); setTotal(Math.max(0, sum)); }, [items]); return <div>{total}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "derived-reduce-module-lookup-helper",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; const findValue = (item, key) => item.columns?.find(column => column.key === key)?.value; export const View = ({ items }) => { const [total, setTotal] = useState(0); useEffect(() => { const sum = items.reduce((acc, item) => acc + findValue(item, 'price'), 0); setTotal(Math.max(0, sum)); }, [items]); return <div>{total}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "derived-reduce-module-number-helper",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; const parsePrice = price => { const amount = parseInt(price?.toString().replace('$', '').replace(',', ''), 10); return Number.isNaN(amount) ? 0 : amount; }; export const View = ({ items }) => { const [total, setTotal] = useState(0); useEffect(() => { const sum = items.reduce((acc, item) => acc + parsePrice(item.price), 0); setTotal(Math.max(0, sum)); }, [items]); return <div>{total}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "derived-reduce-nested-module-helpers",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; const findValue = (item, key) => item.columns?.find(column => column.key === key)?.value; const parsePrice = price => { const amount = parseInt(price?.toString().replace('$', '').replace(',', ''), 10); return Number.isNaN(amount) ? 0 : amount; }; export const View = ({ items }) => { const [total, setTotal] = useState(0); useEffect(() => { const sum = items.reduce((acc, item) => acc + parsePrice(findValue(item, 'price')), 0); setTotal(Math.max(0, sum)); }, [items]); return <div>{total}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "derived-cleanup-owned-async-writer",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const View = ({ code }) => { const [status, setStatus] = useState({ kind: 'loading' }); useEffect(() => { if (code) { setStatus({ kind: 'ready', code }); return; } let active = true; async function load() { const result = await fetch('/api'); if (!active) return; if (!result.ok) setStatus({ kind: 'error' }); } load(); return () => { active = false; }; }, [code]); return <div>{status.kind}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "derived-async-writer-without-cleanup-control",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const View = ({ code }) => { const [status, setStatus] = useState({ kind: 'loading' }); useEffect(() => { if (code) { setStatus({ kind: 'ready', code }); return; } async function load() { const result = await fetch('/api'); if (!result.ok) setStatus({ kind: 'error' }); } load(); }, [code]); return <div>{status.kind}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "derived-cleanup-filtered-asserted-missing-parameters",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const View = ({ code, session, key }) => { const [status, setStatus] = useState({ kind: 'loading' }); useEffect(() => { if (code) { setStatus({ kind: 'ready', code }); return; } const missing = [!session ? 'session' : undefined, !key ? 'key' : undefined].filter(Boolean) as string[]; if (missing.length) { setStatus({ kind: 'missing', missing }); return; } let active = true; return () => { active = false; }; }, [code, session, key]); return <div>{status.kind}</div>; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "derived-cleanup-filtered-missing-parameters",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const View = ({ code, session, key }) => { const [status, setStatus] = useState({ kind: 'loading' }); useEffect(() => { if (code) { setStatus({ kind: 'ready', code }); return; } const missing = [!session ? 'session' : undefined, !key ? 'key' : undefined].filter(Boolean); if (missing.length) { setStatus({ kind: 'missing', missing }); return; } let active = true; return () => { active = false; }; }, [code, session, key]); return <div>{status.kind}</div>; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "derived-filtered-missing-parameters-without-cleanup",
+    "ruleId": "no-derived-state",
+    "source": "import { useEffect, useState } from 'react'; export const View = ({ code, session, key }) => { const [status, setStatus] = useState({ kind: 'loading' }); useEffect(() => { if (code) { setStatus({ kind: 'ready', code }); return; } const missing = [!session ? 'session' : undefined, !key ? 'key' : undefined].filter(Boolean); if (missing.length) { setStatus({ kind: 'missing', missing }); return; } }, [code, session, key]); return <div>{status.kind}</div>; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "derived-bare-builtin-unknown",
+    "ruleId": "no-derived-state",
+    "source": "import {useState,useEffect} from 'react'; export const View=({value})=>{const [result,setResult]=useState(null);useEffect(()=>setResult([value, Boolean]),[value]);return <div>{result}</div>}",
+    "expectedCount": 0
+  },
+  {
+    "name": "derived-direct-builtin-call-known",
+    "ruleId": "no-derived-state",
+    "source": "import {useState,useEffect} from 'react'; export const View=({value})=>{const [result,setResult]=useState(null);useEffect(()=>setResult(Boolean(value)),[value]);return <div>{result}</div>}",
+    "expectedCount": 1
+  },
+  {
+    "name": "derived-namespace-call-known",
+    "ruleId": "no-derived-state",
+    "source": "import {useState,useEffect} from 'react'; export const View=({value})=>{const [result,setResult]=useState(null);useEffect(()=>setResult(Math.max(0,value)),[value]);return <div>{result}</div>}",
+    "expectedCount": 1
+  },
+  {
+    "name": "derived-new-date-known",
+    "ruleId": "no-derived-state",
+    "source": "import {useState,useEffect} from 'react'; export const View=({value})=>{const [result,setResult]=useState(null);useEffect(()=>setResult(new Date(value)),[value]);return <div>{result}</div>}",
+    "expectedCount": 1
+  },
+  {
+    "name": "derived-new-set-known",
+    "ruleId": "no-derived-state",
+    "source": "import {useState,useEffect} from 'react'; export const View=({value})=>{const [result,setResult]=useState(null);useEffect(()=>setResult(new Set(value)),[value]);return <div>{result}</div>}",
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-declaration-star-d.ts",
+    "ruleId": "only-export-components",
+    "filename": "src/components.tsx",
+    "source": "export * from './types.d.ts'; export const Widget = () => <div />;",
+    "files": {
+      "src/types.d.ts": "export interface Options { value: string }",
+      "package.json": "{\"name\": \"refresh-probe\", \"scripts\": {\"dev\": \"next dev\"}, \"dependencies\": {\"next\": \"15.0.0\", \"react\": \"19.0.0\"}}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-declaration-star-d.mts",
+    "ruleId": "only-export-components",
+    "filename": "src/components.tsx",
+    "source": "export * from './types.d.mts'; export const Widget = () => <div />;",
+    "files": {
+      "src/types.d.mts": "export interface Options { value: string }",
+      "package.json": "{\"name\": \"refresh-probe\", \"scripts\": {\"dev\": \"next dev\"}, \"dependencies\": {\"next\": \"15.0.0\", \"react\": \"19.0.0\"}}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-declaration-star-d.cts",
+    "ruleId": "only-export-components",
+    "filename": "src/components.tsx",
+    "source": "export * from './types.d.cts'; export const Widget = () => <div />;",
+    "files": {
+      "src/types.d.cts": "export interface Options { value: string }",
+      "package.json": "{\"name\": \"refresh-probe\", \"scripts\": {\"dev\": \"next dev\"}, \"dependencies\": {\"next\": \"15.0.0\", \"react\": \"19.0.0\"}}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "derived-builtin-member-transform-unknown",
+    "ruleId": "no-derived-state",
+    "source": "import {useState,useEffect} from 'react'; export const View=({value})=>{const [result,setResult]=useState(null);useEffect(()=>setResult([value,Boolean.toString()]),[value]);return <div>{result}</div>}",
+    "expectedCount": 0
+  },
+  {
+    "name": "derived-namespace-json-stringify-known",
+    "ruleId": "no-derived-state",
+    "source": "import {useState,useEffect} from 'react'; export const View=({value})=>{const [result,setResult]=useState(null);useEffect(()=>setResult(JSON.stringify(value)),[value]);return <div>{result}</div>}",
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-oversized-target-is-conservative",
+    "ruleId": "only-export-components",
+    "filename": "src/components.tsx",
+    "source": "export * from \"./large\"; export const Widget = () => <div />;",
+    "files": {
+      "package.json": "{\"scripts\": {\"dev\": \"next dev\"}, \"dependencies\": {\"next\": \"15.0.0\", \"react\": \"19.0.0\"}}",
+      "src/large.ts": "export default 1;"
+    },
+    "minimumFileBytes": {
+      "src/large.ts": 2000001
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-nested-transform-bare-control",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import {useEffect,useMemo,useState} from 'react'; import {normalize} from 'data-library'; export function Child({items,onChange}) { const [search]=useState(''); const value=useMemo(()=>{const term=normalize(search);return items.filter(item=>normalize(item.label).includes(term));},[items,search]);useEffect(()=>{onChange(value)},[value]);return null;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-nested-transform-namespace",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import React,{useEffect,useState} from 'react'; import {normalize} from 'data-library'; export function Child({items,onChange}) { const [search]=useState(''); const value=React.useMemo(()=>{const term=normalize(search);return items.filter(item=>normalize(item.label).includes(term));},[items,search]);useEffect(()=>{onChange(value)},[value]);return null;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-nested-transform-renamed-import",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import {useEffect,useMemo as memoize,useState} from 'react'; import {normalize} from 'data-library'; export function Child({items,onChange}) { const [search]=useState(''); const value=memoize(()=>{const term=normalize(search);return items.filter(item=>normalize(item.label).includes(term));},[items,search]);useEffect(()=>{onChange(value)},[value]);return null;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-target-at-parse-limit-remains-readable",
+    "ruleId": "only-export-components",
+    "filename": "src/components.tsx",
+    "source": "export * from \"./large\"; export const Widget = () => <div />;",
+    "files": {
+      "package.json": "{\"scripts\": {\"dev\": \"next dev\"}, \"dependencies\": {\"next\": \"15.0.0\", \"react\": \"19.0.0\"}}",
+      "src/large.ts": "export default 1;"
+    },
+    "minimumFileBytes": {
+      "src/large.ts": 2000000
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "ref-handler-bag-use-callback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useCallback, useEffect, useRef } from 'react'; import { read } from 'data-service'; export function Child({ onReady }) { const readyRef = useRef(onReady); const handle = useCallback(() => read(), []); useEffect(() => { readyRef.current({ handle, inline: () => read() }); }, [handle]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "ref-handler-bag-use-callback-member",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import * as React from 'react'; import { read } from 'data-service'; export function Child({ onReady }) { const readyRef = React.useRef(onReady); const handle = React.useCallback(() => read(), []); React.useEffect(() => { readyRef.current({ handle }); }, [handle]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "ref-handler-bag-use-callback-with-data",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useCallback, useEffect, useRef } from 'react'; import { read } from 'data-service'; export function Child({ onReady }) { const readyRef = useRef(onReady); const handle = useCallback(() => read(), []); useEffect(() => { readyRef.current({ handle, value: read() }); }, [handle]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "ref-handler-bag-renamed-use-callback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useCallback as memoize, useEffect, useRef } from 'react'; import { read } from 'data-service'; export function Child({ onReady }) { const readyRef = useRef(onReady); const handle = memoize(() => read(), []); useEffect(() => { readyRef.current({ handle }); }, [handle]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "ref-handler-bag-use-memo",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useMemo, useEffect, useRef } from 'react'; import { read } from 'data-service'; export function Child({ onReady }) { const readyRef = useRef(onReady); const handle = useMemo(() => () => read(), []); useEffect(() => { readyRef.current({ handle }); }, [handle]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "ref-handler-bag-callback-identifier-argument",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useCallback, useEffect, useRef } from 'react'; import { read } from 'data-service'; export function Child({ onReady }) { const readyRef = useRef(onReady); const work = () => read(); const handle = useCallback(work, []); useEffect(() => { readyRef.current({ handle }); }, [handle]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-namespace-nested-local-imported-transform",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import * as React from 'react'; import { normalize } from 'data-library'; export function Child({ items, onChange }) { const [search] = React.useState(''); const value = React.useMemo(() => { const term = normalize(search); return items.filter(item => normalize(item.label).includes(term)); }, [items, search]); React.useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-renamed-nested-local-imported-transform",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo as memoize, useState } from 'react'; import { normalize } from 'data-library'; export function Child({ items, onChange }) { const [search] = useState(''); const value = memoize(() => { const term = normalize(search); return items.filter(item => normalize(item.label).includes(term)); }, [items, search]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-parent-filter-chain-nullish-fallback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo } from 'react'; import { convert, isDefined } from 'data-library'; export function Child({ config, onChange }) { const value = useMemo(() => { const items = config.items ?? []; const filtered = items.filter(item => item.enabled); return filtered.map(item => convert(item)).filter(isDefined); }, [config]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-parent-filter-chain-or-fallback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo } from 'react'; import { convert, isDefined } from 'data-library'; export function Child({ config, onChange }) { const value = useMemo(() => { const items = config.items || []; const filtered = items.filter(item => item.enabled); return filtered.map(item => convert(item)).filter(isDefined); }, [config]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-parent-filter-chain-child-fallback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo } from 'react'; import { convert, isDefined, readItems } from 'data-library'; export function Child({ config, onChange }) { const value = useMemo(() => { const items = config.items ?? readItems(); const filtered = items.filter(item => item.enabled); return filtered.map(item => convert(item)).filter(isDefined); }, [config]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-parent-filter-chain-populated-literal-fallback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import { useEffect, useMemo } from 'react'; import { convert, isDefined } from 'data-library'; export function Child({ config, onChange }) { const value = useMemo(() => { const items = config.items ?? [{ enabled: true }]; const filtered = items.filter(item => item.enabled); return filtered.map(item => convert(item)).filter(isDefined); }, [config]); useEffect(() => { onChange(value); }, [value]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-function-parent-reader-control",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import {useMemo,useEffect} from 'react'; export function Child({onReady,onRead}) { const handle=useMemo(()=>()=>onRead(),[]); useEffect(()=>{onReady(handle)},[handle]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-function-parent-reader-bag-control",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import {useMemo,useEffect,useRef} from 'react'; export function Child({onReady,onRead}) { const readyRef=useRef(onReady); const handle=useMemo(()=>()=>onRead(),[]); useEffect(()=>{readyRef.current({handle})},[handle]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-function-parent-value-control",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import {useMemo,useEffect} from 'react'; export function Child({onReady,value}) { const handle=useMemo(()=>()=>value,[]); useEffect(()=>{onReady(handle)},[handle]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-function-mixed-parent-state-control",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import {useMemo,useEffect,useState} from 'react'; export function Child({onReady,value}) { const [count]=useState(0); const handle=useMemo(()=>()=>[value,count],[]); useEffect(()=>{onReady(handle)},[handle]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "parent-filter-call-literal-fallback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import {useEffect} from 'react'; export function Child({items,onChange}) { useEffect(()=>{ const value=items.filter(item=>item.enabled)||[]; onChange(value); },[items]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "parent-filter-call-imported-fallback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import {useEffect} from 'react'; import {readItems} from 'data-library'; export function Child({items,onChange}) { useEffect(()=>{ const value=items.filter(item=>item.enabled)||readItems(); onChange(value); },[items]); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "parent-filter-call-child-set-imported-fallback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import {useEffect} from 'react'; import {readItems} from 'data-library'; export function Child({items,onChange}) { const selected=new Set(['a']); useEffect(()=>{ const value=items.filter(item=>selected.has(item.id))||readItems(); onChange(value); },[items]); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "parent-filter-bound-call-child-set-fallback",
+    "ruleId": "no-pass-data-to-parent",
+    "source": "import {useEffect} from 'react'; export function Child({items,onChange}) { const selected=new Set(['a']); useEffect(()=>{ const filtered=items.filter(item=>selected.has(item.id)); const value=filtered||[]; onChange(value); },[items]); return null; }",
+    "expectedCount": 0
+  }
+]

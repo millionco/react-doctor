@@ -19,7 +19,7 @@ Set `CARGO_BUILD_JOBS=1` and `CARGO_INCREMENTAL=0` for the compile-check and rel
 
 `native:oxlint:verify` clones the pinned tag, checks its commit, and proves the patch still applies. `native:oxlint:check` overlays every native rule, regenerates Oxc's rule registry, and compile-checks the linter. `native:oxlint:build` performs the same source assembly, compiles and loads the N-API binding, and writes the binding plus provenance and SHA-256 hashes to `dist/native-oxlint`.
 
-The parity check runs the JavaScript and native implementations over the same adversarial TypeScript fixture and compares normalized diagnostics. Pass `--corpus` with a directory of repositories to compare every repository independently. A native rule should not be added to `nativeRules` or `NATIVE_REACT_DOCTOR_RULE_IDS` until both checks pass.
+The parity check runs the JavaScript and native implementations over the same adversarial TypeScript fixture and compares normalized diagnostics. It also runs isolated cases from `fixtures/ast-parity-boundaries.json`, including multiple files in one process and cross-file parser limits. Each case pins the canonical diagnostic count and compares messages, severity, filenames, spans, and multiplicity; unexpected parser or plugin diagnostics fail the check. Pass `--corpus` with a directory of repositories to compare every repository independently. A native rule should not be added to `nativeRules` or `NATIVE_REACT_DOCTOR_RULE_IDS` until both checks pass.
 
 The workflow builds artifacts for Linux x64/arm64, macOS x64/arm64, and Windows x64. It does not publish them. Shipping or making the native patch the default should happen only after corpus parity shows no diagnostic drift and benchmarks show at least a 15% p50 lint improvement.
 

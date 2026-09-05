@@ -73,12 +73,13 @@ fn check_element_keys<'a>(element: &JSXElement<'a>, node: &AstNode<'a>, ctx: &Li
             ctx,
             0,
         ) {
-            let index_name = jsx_expression_index_candidate_name(
+            let index_name = jsx_expression_index_candidate(
                 &container.expression,
                 index_binding.symbol_id,
                 ctx,
                 0,
             )
+            .map(|candidate| candidate.name)
             .unwrap_or_else(|| index_binding.name.clone());
             ctx.diagnostic(
                 OxcDiagnostic::warn(format!(
@@ -101,11 +102,17 @@ struct PositionalIndexBinding<'node, 'ast> {
     is_placeholder_loop: bool,
 }
 
+struct IndexKeyCandidate {
+    name: String,
+    order: Vec<u32>,
+}
+
 fn find_positional_index_binding<'node, 'ast>(
     node: &AstNode<'ast>,
     key_expression: &JSXExpression<'ast>,
     ctx: &'node LintContext<'ast>,
 ) -> Option<PositionalIndexBinding<'node, 'ast>> {
+    let mut bindings = Vec::new();
     for ancestor in ctx.nodes().ancestors(node.id()) {
         let (parameters, function_span) = match ancestor.kind() {
             AstKind::ArrowFunctionExpression(function) => (&function.params, function.span),
@@ -126,7 +133,7 @@ fn find_positional_index_binding<'node, 'ast>(
                     0,
                 )
             {
-                return Some(PositionalIndexBinding {
+                bindings.push(PositionalIndexBinding {
                     name: identifier.name.to_string(),
                     symbol_id: identifier.symbol_id(),
                     iterator_call,
@@ -152,7 +159,7 @@ fn find_positional_index_binding<'node, 'ast>(
             if !jsx_expression_uses_index_or_alias(key_expression, symbol_id, ctx, 0) {
                 continue;
             }
-            return Some(PositionalIndexBinding {
+            bindings.push(PositionalIndexBinding {
                 name: identifier.name.to_string(),
                 symbol_id,
                 iterator_call,
@@ -170,9 +177,15 @@ fn find_positional_index_binding<'node, 'ast>(
             });
         }
     }
-    key_expression
-        .as_expression()
-        .and_then(|expression| resolve_non_parameter_index_binding(expression, ctx, 0))
+    bindings.extend(
+        key_expression
+            .as_expression()
+            .and_then(|expression| resolve_non_parameter_index_binding(expression, ctx, 0)),
+    );
+    bindings.into_iter().min_by_key(|binding| {
+        jsx_expression_index_candidate(key_expression, binding.symbol_id, ctx, 0)
+            .map_or_else(|| vec![u32::MAX], |candidate| candidate.order)
+    })
 }
 
 fn iterator_source_contains_entries(call: &CallExpression<'_>, ctx: &LintContext<'_>) -> bool {
@@ -1015,29 +1028,32 @@ fn jsx_expression_uses_index_or_alias(
         .is_some_and(|expression| expression_uses_index(expression, symbol_id, ctx, depth))
 }
 
-fn jsx_expression_index_candidate_name(
+fn jsx_expression_index_candidate(
     expression: &JSXExpression<'_>,
     symbol_id: SymbolId,
     ctx: &LintContext<'_>,
     depth: usize,
-) -> Option<String> {
+) -> Option<IndexKeyCandidate> {
     expression
         .as_expression()
-        .and_then(|expression| expression_index_candidate_name(expression, symbol_id, ctx, depth))
+        .and_then(|expression| expression_index_candidate(expression, symbol_id, ctx, depth))
 }
 
-fn expression_index_candidate_name(
+fn expression_index_candidate(
     expression: &Expression<'_>,
     symbol_id: SymbolId,
     ctx: &LintContext<'_>,
     depth: usize,
-) -> Option<String> {
+) -> Option<IndexKeyCandidate> {
     if depth > 4 {
         return None;
     }
     if let Expression::Identifier(identifier) = expression.get_inner_expression() {
         if is_index_reference(expression, symbol_id, ctx) {
-            return Some(identifier.name.to_string());
+            return Some(IndexKeyCandidate {
+                name: identifier.name.to_string(),
+                order: vec![identifier.span.start],
+            });
         }
         if let Some(alias_symbol_id) = ctx
             .scoping()
@@ -1046,9 +1062,12 @@ fn expression_index_candidate_name(
             && let AstKind::VariableDeclarator(declarator) =
                 ctx.symbol_declaration(alias_symbol_id).kind()
             && let Some(initializer) = &declarator.init
-            && expression_uses_index(initializer, symbol_id, ctx, depth + 1)
+            && let Some(mut candidate) =
+                expression_index_candidate(initializer, symbol_id, ctx, depth + 1)
         {
-            return Some(identifier.name.to_string());
+            candidate.name = identifier.name.to_string();
+            candidate.order.insert(0, identifier.span.start);
+            return Some(candidate);
         }
         return None;
     }
@@ -1056,12 +1075,12 @@ fn expression_index_candidate_name(
         Expression::TemplateLiteral(template) => template
             .expressions
             .iter()
-            .find_map(|slot| expression_index_candidate_name(slot, symbol_id, ctx, depth + 1)),
+            .find_map(|slot| expression_index_candidate(slot, symbol_id, ctx, depth + 1)),
         Expression::BinaryExpression(binary) => {
             if binary_expression_uses_index(binary, symbol_id, ctx, depth + 1) {
-                expression_index_candidate_name(&binary.left, symbol_id, ctx, depth + 1).or_else(
-                    || expression_index_candidate_name(&binary.right, symbol_id, ctx, depth + 1),
-                )
+                expression_index_candidate(&binary.left, symbol_id, ctx, depth + 1).or_else(|| {
+                    expression_index_candidate(&binary.right, symbol_id, ctx, depth + 1)
+                })
             } else {
                 None
             }
@@ -1102,62 +1121,53 @@ fn expression_index_candidate_name(
                 _ => None,
             };
             if let Some(selected_expression) = selected_expression {
-                expression_index_candidate_name(selected_expression, symbol_id, ctx, depth + 1)
+                expression_index_candidate(selected_expression, symbol_id, ctx, depth + 1)
             } else {
-                expression_index_candidate_name(&logical.left, symbol_id, ctx, depth + 1).or_else(
-                    || expression_index_candidate_name(&logical.right, symbol_id, ctx, depth + 1),
-                )
+                expression_index_candidate(&logical.left, symbol_id, ctx, depth + 1).or_else(|| {
+                    expression_index_candidate(&logical.right, symbol_id, ctx, depth + 1)
+                })
             }
         }
         Expression::ConditionalExpression(conditional) => {
             match read_static_key_branch_value(&conditional.test, ctx, 0)
                 .and_then(|value| value.is_truthy)
             {
-                Some(true) => expression_index_candidate_name(
-                    &conditional.consequent,
-                    symbol_id,
-                    ctx,
-                    depth + 1,
-                ),
-                Some(false) => expression_index_candidate_name(
-                    &conditional.alternate,
-                    symbol_id,
-                    ctx,
-                    depth + 1,
-                ),
-                None => expression_index_candidate_name(
-                    &conditional.consequent,
-                    symbol_id,
-                    ctx,
-                    depth + 1,
-                )
-                .or_else(|| {
-                    expression_index_candidate_name(
-                        &conditional.alternate,
-                        symbol_id,
-                        ctx,
-                        depth + 1,
-                    )
-                }),
+                Some(true) => {
+                    expression_index_candidate(&conditional.consequent, symbol_id, ctx, depth + 1)
+                }
+                Some(false) => {
+                    expression_index_candidate(&conditional.alternate, symbol_id, ctx, depth + 1)
+                }
+                None => {
+                    expression_index_candidate(&conditional.consequent, symbol_id, ctx, depth + 1)
+                        .or_else(|| {
+                            expression_index_candidate(
+                                &conditional.alternate,
+                                symbol_id,
+                                ctx,
+                                depth + 1,
+                            )
+                        })
+                }
             }
         }
         Expression::SequenceExpression(sequence) => sequence
             .expressions
             .last()
-            .and_then(|final_| expression_index_candidate_name(final_, symbol_id, ctx, depth + 1)),
+            .and_then(|final_| expression_index_candidate(final_, symbol_id, ctx, depth + 1)),
         Expression::UnaryExpression(unary)
             if matches!(
                 unary.operator,
                 UnaryOperator::UnaryNegation | UnaryOperator::UnaryPlus | UnaryOperator::BitwiseNot
             ) =>
         {
-            expression_index_candidate_name(&unary.argument, symbol_id, ctx, depth + 1)
+            expression_index_candidate(&unary.argument, symbol_id, ctx, depth + 1)
         }
         Expression::CallExpression(call) => {
             if let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression()
                 && member.property.name == "toString"
             {
-                return expression_index_candidate_name(&member.object, symbol_id, ctx, depth + 1);
+                return expression_index_candidate(&member.object, symbol_id, ctx, depth + 1);
             }
             if matches!(&call.callee, Expression::Identifier(identifier)
                 if matches!(identifier.name.as_str(), "String" | "Number")
@@ -1168,7 +1178,7 @@ fn expression_index_candidate_name(
                     .first()
                     .and_then(Argument::as_expression)
                     .and_then(|argument| {
-                        expression_index_candidate_name(argument, symbol_id, ctx, depth + 1)
+                        expression_index_candidate(argument, symbol_id, ctx, depth + 1)
                     });
             }
             None
@@ -2019,7 +2029,7 @@ fn element_is_exempt_stateless_row(
     binding: &PositionalIndexBinding<'_, '_>,
     ctx: &LintContext<'_>,
 ) -> bool {
-    let derived_symbol_ids = collect_derived_row_content_symbols(binding, ctx);
+    let mut derived_symbol_ids = collect_derived_row_content_symbols(binding, ctx);
     let has_dynamic_react_children = binding
         .iterator_call
         .and_then(iterator_call_receiver)
@@ -2069,26 +2079,31 @@ fn element_is_exempt_stateless_row(
         return false;
     }
     let is_inline_text = is_inline_text_leaf(name);
-    let key_template_has_bare_item =
-        key_template_has_bare_item_identity(key_expression, &binding.item_symbol_ids, ctx);
+    if !has_dynamic_react_children {
+        derived_symbol_ids.extend(key_template_item_symbols(
+            key_expression,
+            &binding.item_symbol_ids,
+            ctx,
+        ));
+    }
     !children_are_stateful(
         &element.children,
         binding,
         &derived_symbol_ids,
         false,
         is_inline_text,
-        is_inline_text && key_template_has_bare_item && !has_dynamic_react_children,
+        false,
         ctx,
     )
 }
 
-fn key_template_has_bare_item_identity(
+fn key_template_item_symbols(
     key_expression: &JSXExpression<'_>,
     item_symbol_ids: &[SymbolId],
     ctx: &LintContext<'_>,
-) -> bool {
+) -> Vec<SymbolId> {
     let Some(mut expression) = key_expression.as_expression() else {
-        return false;
+        return Vec::new();
     };
     if let Expression::Identifier(identifier) = expression.get_inner_expression()
         && let Some(symbol_id) = ctx
@@ -2101,17 +2116,21 @@ fn key_template_has_bare_item_identity(
         expression = initializer;
     }
     let Expression::TemplateLiteral(template) = expression.get_inner_expression() else {
-        return false;
+        return Vec::new();
     };
-    template.expressions.iter().any(|slot| {
-        let Expression::Identifier(identifier) = slot.get_inner_expression() else {
-            return false;
-        };
-        ctx.scoping()
-            .get_reference(identifier.reference_id())
-            .symbol_id()
-            .is_some_and(|symbol_id| item_symbol_ids.contains(&symbol_id))
-    })
+    template
+        .expressions
+        .iter()
+        .filter_map(|slot| {
+            let Expression::Identifier(identifier) = slot.get_inner_expression() else {
+                return None;
+            };
+            ctx.scoping()
+                .get_reference(identifier.reference_id())
+                .symbol_id()
+                .filter(|symbol_id| item_symbol_ids.contains(symbol_id))
+        })
+        .collect()
 }
 
 fn children_are_stateful(

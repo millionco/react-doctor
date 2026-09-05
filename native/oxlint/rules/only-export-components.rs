@@ -33,6 +33,7 @@ const LOCAL_COMPONENT_MESSAGE: &str =
     "This file has local components but no component export, so Fast Refresh can't preserve them.";
 
 const DEFAULT_HOC_NAMES: [&str; 3] = ["memo", "forwardRef", "lazy"];
+const ONLY_EXPORT_CROSS_FILE_PARSE_MAX_BYTES: u64 = 2_000_000;
 const NON_FAST_REFRESH_PATH_SEGMENTS: [&str; 12] = [
     "/test/",
     "/tests/",
@@ -3448,97 +3449,57 @@ fn only_export_file_has_runtime_named_exports(
     if !visited_files.insert(filename.clone()) {
         return true;
     }
-    let Ok(source) = fs::read_to_string(&filename) else {
-        return true;
-    };
-    if source.lines().any(|line| {
-        let line = line.trim_start();
-        [
-            "export const ",
-            "export let ",
-            "export var ",
-            "export function ",
-            "export class ",
-            "export enum ",
-            "export namespace ",
-        ]
-        .iter()
-        .any(|prefix| line.starts_with(prefix))
+    if filename.to_str().is_some_and(|filename| {
+        [".d.ts", ".d.mts", ".d.cts"]
+            .iter()
+            .any(|extension| filename.ends_with(extension))
+    }) || fs::metadata(&filename).map_or(true, |metadata| {
+        !metadata.is_file() || metadata.len() > ONLY_EXPORT_CROSS_FILE_PARSE_MAX_BYTES
     }) {
         return true;
     }
-    source.split(';').any(|statement| {
-        let statement = statement.trim_start();
-        if statement.starts_with("export default ")
-            || statement.starts_with("export interface ")
-            || statement.starts_with("export type ")
-            || statement.starts_with("export declare function ")
-        {
-            return false;
-        }
-        if [
-            "export const ",
-            "export let ",
-            "export var ",
-            "export function ",
-            "export class ",
-            "export enum ",
-        ]
-        .iter()
-        .any(|prefix| statement.starts_with(prefix))
-        {
-            return true;
-        }
-        if statement.starts_with("export * as ") {
-            return true;
-        }
-        if statement.starts_with("export * from ") {
-            let Some(source) = only_export_quoted_module_source(statement) else {
+    let Ok(source) = fs::read_to_string(&filename) else {
+        return true;
+    };
+    let Ok(source_type) = SourceType::from_path(&filename) else {
+        return true;
+    };
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, &source, source_type).parse();
+    if parsed.panicked || !parsed.diagnostics.is_empty() {
+        return true;
+    }
+    parsed.program.body.iter().any(|statement| match statement {
+        Statement::ExportAllDeclaration(export) if export.export_kind.is_value() => {
+            if export.exported.is_some() {
+                return true;
+            }
+            let Some(target) =
+                only_export_resolve_relative_target(&filename, export.source.value.as_str())
+            else {
                 return true;
             };
-            let Some(target) = only_export_resolve_relative_target(&filename, source) else {
-                return true;
-            };
-            return only_export_file_has_runtime_named_exports(&target, visited_files);
+            only_export_file_has_runtime_named_exports(&target, visited_files)
         }
-        if !statement.starts_with("export {") {
-            return false;
+        Statement::ExportDeclaration(export) => match &export.declaration {
+            Declaration::TSInterfaceDeclaration(_) | Declaration::TSTypeAliasDeclaration(_) => {
+                false
+            }
+            Declaration::FunctionDeclaration(function) => {
+                function.r#type != FunctionType::TSDeclareFunction
+            }
+            _ => true,
+        },
+        Statement::ExportNamedDeclaration(export) if export.export_kind.is_value() => {
+            export.specifiers.iter().any(|specifier| {
+                specifier.export_kind.is_value() && specifier.exported.name() != "default"
+            })
         }
-        let Some((_, remainder)) = statement.split_once('{') else {
-            return true;
-        };
-        let Some((specifiers, _)) = remainder.split_once('}') else {
-            return true;
-        };
-        specifiers.split(',').any(|specifier| {
-            let mut words = specifier.split_whitespace();
-            let Some(first) = words.next() else {
-                return false;
-            };
-            let local = if first == "type" {
-                let Some(local) = words.next() else {
-                    return false;
-                };
-                local
-            } else {
-                first
-            };
-            let exported = if words.next() == Some("as") {
-                words.next().unwrap_or(local)
-            } else {
-                local
-            };
-            first != "type" && exported != "default"
-        })
+        Statement::ExportFromDeclaration(export) if export.export_kind.is_value() => {
+            export.specifiers.iter().any(|specifier| {
+                specifier.export_kind.is_value() && specifier.exported.name() != "default"
+            })
+        }
+        _ => false,
     })
-}
-
-fn only_export_quoted_module_source(statement: &str) -> Option<&str> {
-    let quote_start = statement
-        .char_indices()
-        .find_map(|(index, character)| matches!(character, '\'' | '"').then_some(index))?;
-    let quote = statement.as_bytes()[quote_start];
-    let remainder = &statement[quote_start + 1..];
-    let quote_end = remainder.bytes().position(|byte| byte == quote)?;
-    Some(&remainder[..quote_end])
 }

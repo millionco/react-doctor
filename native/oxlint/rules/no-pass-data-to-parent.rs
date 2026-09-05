@@ -91,6 +91,7 @@ mod implementation {
                             owner_function_id,
                             owner_bindings,
                             &write_analysis,
+                            &node_index,
                             ctx,
                         ) || data_helper_call_reports(
                             candidate,
@@ -159,12 +160,14 @@ mod implementation {
             }
         }
 
+        #[allow(clippy::too_many_arguments)]
         fn data_direct_call_reports<'a>(
             call_node: &AstNode<'a>,
             call: &oxc_ast::ast::CallExpression<'a>,
             owner_function_id: NodeId,
             owner_bindings: &LiveStateOwnerBindings,
             write_analysis: &PossibleStaticPropertyWriteAnalysis,
+            node_index: &LocalCallbackNearestFunctionNodeIndex,
             ctx: &LintContext<'a>,
         ) -> bool {
             let mut callback_names = live_state_resolve_parent_callback_names(
@@ -177,7 +180,7 @@ mod implementation {
                 &mut FxHashSet::default(),
             );
             if data_callee_resolves_to_use_latest(&call.callee, ctx, &mut FxHashSet::default())
-                || data_wrapped_callee_notifies_parent(&call.callee, owner_bindings, ctx)
+                || data_wrapped_callee_notifies_parent(&call.callee, owner_bindings, node_index, ctx)
                     == Some(false)
             {
                 callback_names.clear();
@@ -204,7 +207,7 @@ mod implementation {
             }
             if callback_names.is_empty()
                 && let Some(callback_name) =
-                    data_mutable_alias_parent_callback_name(&call.callee, owner_bindings, ctx)
+                    data_alias_parent_callback_name(&call.callee, owner_bindings, ctx)
             {
                 callback_names.insert(callback_name);
             }
@@ -242,7 +245,10 @@ mod implementation {
             else {
                 return false;
             };
-            if helper_function_id == effect_function_id {
+            if helper_function_id == effect_function_id
+                || data_wrapped_callee_notifies_parent(&call.callee, owner_bindings, node_index, ctx)
+                    != Some(true)
+            {
                 return false;
             }
             if matches!(ctx.nodes().get_node(helper_function_id).kind(),
@@ -254,19 +260,18 @@ mod implementation {
             }
             let outer_call_has_data =
                 data_call_arguments_have_child_data(call, owner_function_id, owner_bindings, ctx);
-            if data_wrapped_callee_notifies_parent(&call.callee, owner_bindings, ctx) == Some(true)
-                && data_function_id_has_child_source(
-                    helper_function_id,
-                    owner_function_id,
-                    owner_bindings,
-                    ctx,
-                )
-            {
-                return true;
-            }
             for function_id in
                 live_state_reachable_helper_functions(helper_function_id, node_index, ctx)
             {
+                if data_function_id_has_child_source(
+                    function_id,
+                    owner_function_id,
+                    owner_bindings,
+                    true,
+                    ctx,
+                ) {
+                    return true;
+                }
                 for &candidate_id in node_index.node_ids(function_id) {
                     let candidate = ctx.nodes().get_node(candidate_id);
                     let AstKind::CallExpression(inner_call) = candidate.kind() else {
@@ -367,6 +372,7 @@ mod implementation {
         fn data_wrapped_callee_notifies_parent<'a>(
             expression: &Expression<'a>,
             owner_bindings: &LiveStateOwnerBindings,
+            node_index: &LocalCallbackNearestFunctionNodeIndex,
             ctx: &LintContext<'a>,
         ) -> Option<bool> {
             let Expression::Identifier(identifier) = expression.get_inner_expression() else {
@@ -395,9 +401,33 @@ mod implementation {
             let wrapped_expression = wrapper_call.arguments.first()?.as_expression()?;
             let wrapped_function_id =
                 exact_local_callback_function_id(wrapped_expression, ctx, &mut Vec::new())?;
+            if matches!(ctx.nodes().get_node(wrapped_function_id).kind(),
+                AstKind::Function(function) if function.r#async)
+                || matches!(ctx.nodes().get_node(wrapped_function_id).kind(),
+                    AstKind::ArrowFunctionExpression(function) if function.r#async)
+            {
+                return Some(false);
+            }
+            for function_id in live_state_reachable_helper_functions(wrapped_function_id, node_index, ctx) {
+                for &candidate_id in node_index.node_ids(function_id) {
+                    let AstKind::CallExpression(call) = ctx.nodes().get_node(candidate_id).kind() else {
+                        continue;
+                    };
+                    let mut callee_root = call.callee.get_inner_expression();
+                    while let Some(member) = callee_root.as_member_expression() {
+                        if member.static_property_name().as_deref() == Some("current") {
+                            return Some(false);
+                        }
+                        callee_root = member.object().get_inner_expression();
+                    }
+                    if live_state_member_receiver_is_react_ref(callee_root, ctx) {
+                        return Some(false);
+                    }
+                }
+            }
+            let wrapped_span = ctx.nodes().get_node(wrapped_function_id).span();
             Some(ctx.nodes().iter().any(|candidate| {
-                if live_state_nearest_function_id(candidate.id(), ctx) != Some(wrapped_function_id)
-                {
+                if !wrapped_span.contains_inclusive(candidate.span()) {
                     return false;
                 }
                 match candidate.kind() {
@@ -450,7 +480,12 @@ mod implementation {
                 && !callback_names
                     .iter()
                     .any(|name| data_is_command_callback_name(name))
-                && !live_state_is_data_sink_call(call, owner_bindings, ctx)
+                && (call
+                    .callee
+                    .get_inner_expression()
+                    .as_member_expression()
+                    .is_some_and(|member| member.static_property_name() == Some("current"))
+                    || !live_state_is_data_sink_call(call, owner_bindings, ctx))
         }
 
         fn data_is_command_callback_name(name: &str) -> bool {
@@ -987,26 +1022,69 @@ mod implementation {
             else {
                 return false;
             };
-            data_function_id_has_child_source(function_id, owner_function_id, owner_bindings, ctx)
+            data_function_id_has_child_source(function_id, owner_function_id, owner_bindings, false, ctx)
         }
 
         fn data_function_id_has_child_source<'a>(
             function_id: NodeId,
             owner_function_id: NodeId,
             owner_bindings: &LiveStateOwnerBindings,
+            include_parameters: bool,
             ctx: &LintContext<'a>,
         ) -> bool {
-            let function_span = ctx.nodes().get_node(function_id).span();
+            let function_node = ctx.nodes().get_node(function_id);
+            let function_span = function_node.span();
+            let function_root = transparent_expression_root(function_node, ctx);
+            let is_memo_callback = matches!(ctx.nodes().parent_node(function_root.id()).kind(),
+                AstKind::CallExpression(call) if is_react_hook_call(call, &["useMemo"], ctx)
+                    && call.arguments.first().is_some_and(|argument| argument.span() == function_root.span()));
+            let mut has_nested_parameter_state_source = None;
             ctx.nodes().iter().any(|candidate| {
-                if !function_span.contains_inclusive(candidate.span())
-                    || live_state_nearest_function_id(candidate.id(), ctx) != Some(function_id)
-                {
+                if !function_span.contains_inclusive(candidate.span()) {
                     return false;
+                }
+                if live_state_nearest_function_id(candidate.id(), ctx) != Some(function_id) {
+                    if !is_memo_callback {
+                        return false;
+                    }
+                    let AstKind::IdentifierReference(identifier) = candidate.kind() else {
+                        return false;
+                    };
+                    if live_state_nearest_function_id(candidate.id(), ctx).is_some_and(|nested_function_id| {
+                        data_identifier_is_function_parameter(identifier, nested_function_id, ctx)
+                    }) {
+                        return *has_nested_parameter_state_source.get_or_insert_with(|| {
+                            ctx.nodes().iter().any(|source_node| {
+                                function_span.contains_inclusive(source_node.span())
+                                    && matches!(source_node.kind(), AstKind::IdentifierReference(source_identifier)
+                                        if live_state_identifier_has_state_source(
+                                            source_identifier,
+                                            owner_function_id,
+                                            owner_bindings,
+                                            ctx,
+                                            &mut FxHashSet::default(),
+                                        ))
+                            })
+                        });
+                    }
+                    return live_state_symbol_id(identifier, ctx).is_some_and(|symbol_id| {
+                        live_state_nearest_function_id(ctx.symbol_declaration(symbol_id).id(), ctx)
+                            == Some(function_id)
+                            && data_identifier_has_child_source(
+                                identifier,
+                                owner_function_id,
+                                owner_bindings,
+                                ctx,
+                                &mut FxHashSet::default(),
+                            )
+                    });
                 }
                 match candidate.kind() {
                     AstKind::IdentifierReference(identifier) => {
-                        !data_identifier_is_function_parameter(identifier, function_id, ctx)
-                            && data_identifier_has_child_source(
+                        if data_identifier_is_function_parameter(identifier, function_id, ctx) {
+                            return include_parameters;
+                        }
+                        data_identifier_has_child_source(
                                 identifier,
                                 owner_function_id,
                                 owner_bindings,
@@ -1024,6 +1102,15 @@ mod implementation {
                             && data_unknown_call_produces_data(call, owner_bindings, ctx)
                     }
                     AstKind::NewExpression(_) => true,
+                    AstKind::VariableDeclarator(declarator) if is_memo_callback => declarator.init.as_ref().is_some_and(|initializer| {
+                        data_expression_has_child_source(
+                            initializer,
+                            owner_function_id,
+                            owner_bindings,
+                            ctx,
+                            &mut FxHashSet::default(),
+                        )
+                    }),
                     _ => false,
                 }
             })
@@ -1064,11 +1151,35 @@ mod implementation {
                     else {
                         return false;
                     };
-                    matches!(
+                    if matches!(
                         property.value.get_inner_expression(),
                         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
                     ) || exact_local_callback_function_id(&property.value, ctx, &mut Vec::new())
                         .is_some()
+                    {
+                        return true;
+                    }
+                    let Expression::Identifier(identifier) = &property.value else {
+                        return false;
+                    };
+                    let Some(symbol_id) = live_state_symbol_id(identifier, ctx) else {
+                        return false;
+                    };
+                    let AstKind::VariableDeclarator(declarator) = ctx.symbol_declaration(symbol_id).kind() else {
+                        return false;
+                    };
+                    let Some(Expression::CallExpression(call)) = &declarator.init else {
+                        return false;
+                    };
+                    let is_callback_wrapper = match &call.callee {
+                        Expression::Identifier(callee) => callee.name == "useCallback",
+                        Expression::StaticMemberExpression(member) => member.property.name == "useCallback",
+                        Expression::ComputedMemberExpression(member) => matches!(&member.expression,
+                            Expression::Identifier(property) if property.name == "useCallback"),
+                        _ => false,
+                    };
+                    is_callback_wrapper && matches!(call.arguments.first().and_then(Argument::as_expression),
+                        Some(Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)))
                 })
         }
 
@@ -1079,6 +1190,23 @@ mod implementation {
             ctx: &LintContext<'a>,
             visited_symbols: &mut FxHashSet<SymbolId>,
         ) -> bool {
+            if let Expression::LogicalExpression(logical) = expression.get_inner_expression()
+                && data_expression_has_immutable_owner_parameter_origin(
+                    expression,
+                    owner_bindings,
+                    ctx,
+                    &mut visited_symbols.clone(),
+                )
+            {
+                return matches!(logical.left.get_inner_expression(), Expression::CallExpression(_))
+                    && data_expression_has_child_source(
+                        &logical.left,
+                        owner_function_id,
+                        owner_bindings,
+                        ctx,
+                        &mut visited_symbols.clone(),
+                    );
+            }
             match expression.get_inner_expression() {
                 Expression::CallExpression(call) => {
                     if data_call_callee_is_owner_callback(call, owner_bindings, ctx)
@@ -1091,37 +1219,7 @@ mod implementation {
                     {
                         return false;
                     }
-                    if call.callee.as_member_expression().is_some_and(|member| {
-                        member.static_property_name().is_some_and(|name| {
-                            matches!(
-                                name.as_ref(),
-                                "every"
-                                    | "filter"
-                                    | "find"
-                                    | "findIndex"
-                                    | "findLast"
-                                    | "findLastIndex"
-                                    | "flatMap"
-                                    | "forEach"
-                                    | "map"
-                                    | "reduce"
-                                    | "reduceRight"
-                                    | "some"
-                            )
-                        })
-                    }) && call.arguments.iter().any(|argument| {
-                        argument.as_expression().is_some_and(|argument| {
-                            data_function_has_child_source(
-                                argument,
-                                owner_function_id,
-                                owner_bindings,
-                                ctx,
-                            )
-                        })
-                    }) {
-                        return true;
-                    }
-                    if data_unknown_call_produces_data(call, owner_bindings, ctx) {
+                    if data_call_has_child_source(call, owner_function_id, owner_bindings, ctx) {
                         return true;
                     }
                 }
@@ -1141,6 +1239,10 @@ mod implementation {
                     return false;
                 }
                 match candidate.kind() {
+                    AstKind::CallExpression(call) if call.span != expression_span => {
+                        data_call_has_child_source(call, owner_function_id, owner_bindings, ctx)
+                    }
+                    AstKind::NewExpression(_) => true,
                     AstKind::IdentifierReference(identifier) => data_identifier_has_child_source(
                         identifier,
                         owner_function_id,
@@ -1154,6 +1256,36 @@ mod implementation {
                 return true;
             }
             false
+        }
+
+        fn data_call_has_child_source<'a>(
+            call: &oxc_ast::ast::CallExpression<'a>,
+            owner_function_id: NodeId,
+            owner_bindings: &LiveStateOwnerBindings,
+            ctx: &LintContext<'a>,
+        ) -> bool {
+            if data_call_callee_is_owner_callback(call, owner_bindings, ctx)
+                || data_parent_wired_hook_result(call, owner_function_id, owner_bindings, ctx)
+            {
+                return false;
+            }
+            let call_root = transparent_expression_root(ctx.nodes().get_node(call.node_id.get()), ctx);
+            let call_is_initializer = matches!(ctx.nodes().parent_node(call_root.id()).kind(),
+                AstKind::VariableDeclarator(declarator)
+                    if declarator.init.as_ref().is_some_and(|initializer| {
+                        initializer.get_inner_expression().span() == call.span
+                    }));
+            (!call_is_initializer && call.callee.as_member_expression().is_some_and(|member| {
+                member.static_property_name().is_some_and(|name| {
+                    matches!(name.as_ref(),
+                        "every" | "filter" | "find" | "findIndex" | "findLast" | "findLastIndex"
+                            | "flatMap" | "forEach" | "map" | "reduce" | "reduceRight" | "some")
+                })
+            }) && call.arguments.iter().any(|argument| {
+                argument.as_expression().is_some_and(|argument| {
+                    data_function_has_child_source(argument, owner_function_id, owner_bindings, ctx)
+                })
+            })) || data_unknown_call_produces_data(call, owner_bindings, ctx)
         }
 
         fn data_identifier_has_child_source<'a>(
@@ -1176,8 +1308,6 @@ mod implementation {
                         | "Number"
                         | "Object"
                         | "String"
-                        | "parseFloat"
-                        | "parseInt"
                         | "undefined"
                 );
             };
@@ -1216,6 +1346,15 @@ mod implementation {
             let AstKind::VariableDeclarator(declarator) = declaration.kind() else {
                 return false;
             };
+            if declarator.init.is_none() {
+                let variable_declaration = ctx.nodes().parent_node(declaration.id());
+                if matches!(ctx.nodes().parent_node(variable_declaration.id()).kind(),
+                    AstKind::ForOfStatement(statement)
+                        if statement.left.span().contains_inclusive(declarator.span))
+                {
+                    return true;
+                }
+            }
             let initializer_has_child_source =
                 declarator.init.as_ref().is_some_and(|initializer| {
                     if let Expression::CallExpression(call) = initializer.get_inner_expression() {
@@ -1223,6 +1362,8 @@ mod implementation {
                             return false;
                         }
                         if data_wrapper_call_is_transparent(call, ctx)
+                            && (!is_react_hook_call(call, &["useMemo"], ctx)
+                                || matches!(call.callee.get_inner_expression(), Expression::Identifier(_)))
                             && call
                                 .arguments
                                 .first()
@@ -1253,6 +1394,52 @@ mod implementation {
                             symbol_id, declarator, call, ctx,
                         ) {
                             return false;
+                        }
+                        if is_react_hook_call(call, &["useMemo"], ctx)
+                            && matches!(call.callee.get_inner_expression(), Expression::Identifier(_))
+                            && let Some(Expression::ArrowFunctionExpression(callback)) =
+                                call.arguments.first().and_then(Argument::as_expression)
+                            && let Some(returned_function) = callback.get_expression()
+                            && matches!(returned_function.get_inner_expression(),
+                                Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_))
+                        {
+                            if !matches!(call.callee.get_inner_expression(), Expression::Identifier(identifier)
+                                if live_state_is_hook_name(identifier.name.as_str()))
+                                || !data_expression_references_owner_parameter(
+                                    initializer,
+                                    owner_bindings,
+                                    ctx,
+                                    &mut FxHashSet::default(),
+                                )
+                            {
+                                return true;
+                            }
+                            let has_parent_callback = ctx.nodes().iter().any(|candidate| {
+                                if !returned_function.span().contains_inclusive(candidate.span()) {
+                                    return false;
+                                }
+                                let AstKind::IdentifierReference(identifier) = candidate.kind() else {
+                                    return false;
+                                };
+                                live_state_symbol_id(identifier, ctx).is_some_and(|symbol_id| {
+                                    if owner_bindings.whole_props_symbols.contains(&symbol_id) {
+                                        return ctx.nodes().parent_node(candidate.id()).kind()
+                                            .as_member_expression_kind()
+                                            .and_then(|member| member.static_property_name())
+                                            .is_some_and(|name| data_is_handler_callback_name(name.as_ref()));
+                                    }
+                                    owner_bindings.is_parameter(symbol_id)
+                                        && data_is_handler_callback_name(identifier.name.as_str())
+                                })
+                            });
+                            return !has_parent_callback && (
+                                data_function_has_child_source(
+                                    returned_function, owner_function_id, owner_bindings, ctx,
+                                ) || live_state_function_has_state_source(
+                                    returned_function, owner_function_id, owner_bindings, ctx,
+                                    &mut FxHashSet::default(),
+                                )
+                            );
                         }
                         if data_unknown_call_produces_data(call, owner_bindings, ctx) {
                             return true;
@@ -1399,6 +1586,8 @@ mod implementation {
                             | Expression::StaticMemberExpression(_)
                             | Expression::ComputedMemberExpression(_)
                             | Expression::PrivateFieldExpression(_)
+                            | Expression::CallExpression(_)
+                            | Expression::LogicalExpression(_)
                     ) && data_expression_has_immutable_owner_parameter_origin(
                         initializer,
                         owner_bindings,
@@ -1406,6 +1595,36 @@ mod implementation {
                         visited_symbols,
                     )
                 }
+                Expression::LogicalExpression(logical)
+                    if matches!(logical.operator,
+                        oxc_syntax::operator::LogicalOperator::Or
+                            | oxc_syntax::operator::LogicalOperator::Coalesce) =>
+                {
+                    data_expression_has_immutable_owner_parameter_origin(
+                        &logical.left,
+                        owner_bindings,
+                        ctx,
+                        &mut visited_symbols.clone(),
+                    ) && ctx.nodes().iter().all(|candidate| {
+                        if !logical.right.span().contains_inclusive(candidate.span()) {
+                            return true;
+                        }
+                        let AstKind::IdentifierReference(identifier) = candidate.kind() else {
+                            return true;
+                        };
+                        live_state_symbol_id(identifier, ctx).is_some_and(|symbol_id| {
+                            owner_bindings.is_parameter(symbol_id) || data_symbol_is_import(symbol_id, ctx)
+                        }) || (identifier.name == "undefined" && live_state_symbol_id(identifier, ctx).is_none())
+                    })
+                }
+                Expression::CallExpression(call) => call.callee.as_member_expression().is_some_and(|member| {
+                    data_expression_has_immutable_owner_parameter_origin(
+                        member.object(),
+                        owner_bindings,
+                        ctx,
+                        visited_symbols,
+                    )
+                }),
                 expression => expression.as_member_expression().is_some_and(|member| {
                     data_expression_has_immutable_owner_parameter_origin(
                         member.object(),
@@ -1417,7 +1636,7 @@ mod implementation {
             }
         }
 
-        fn data_mutable_alias_parent_callback_name<'a>(
+        fn data_alias_parent_callback_name<'a>(
             expression: &Expression<'a>,
             owner_bindings: &LiveStateOwnerBindings,
             ctx: &LintContext<'a>,
@@ -1431,6 +1650,18 @@ mod implementation {
                 return None;
             };
             let initializer = declarator.init.as_ref()?;
+            if !ctx.scoping().get_resolved_references(symbol_id).any(|reference| reference.is_write())
+                && matches!(initializer.get_inner_expression(),
+                    Expression::Identifier(_) | Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_))
+                && data_expression_references_owner_parameter(
+                    initializer,
+                    owner_bindings,
+                    ctx,
+                    &mut FxHashSet::default(),
+                )
+            {
+                return Some(identifier.name.to_string());
+            }
             if !data_expression_has_immutable_owner_parameter_origin(
                 initializer,
                 owner_bindings,
@@ -1907,11 +2138,24 @@ mod implementation {
                 .first()
                 .and_then(Argument::as_expression)
                 .is_some_and(|initializer| {
+                    let has_bare_hook_callee = matches!(call.callee.get_inner_expression(), Expression::Identifier(_));
+                    if has_bare_hook_callee && ctx.nodes().iter().any(|candidate| {
+                        let AstKind::IdentifierReference(identifier) = candidate.kind() else {
+                            return false;
+                        };
+                        initializer.span().contains_inclusive(identifier.span)
+                            && live_state_nearest_function_id(candidate.id(), ctx).is_some_and(|function_id| {
+                                function_id != owner_function_id
+                                    && data_identifier_is_function_parameter(identifier, function_id, ctx)
+                            })
+                    }) {
+                        return true;
+                    }
                     if matches!(
                         initializer.get_inner_expression(),
                         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
                     ) {
-                        return data_function_has_child_source(
+                        return has_bare_hook_callee && data_function_has_child_source(
                             initializer,
                             owner_function_id,
                             owner_bindings,
@@ -2120,12 +2364,23 @@ mod implementation {
             if matches!(call.callee.get_inner_expression(), Expression::Identifier(identifier)
                 if live_state_symbol_id(identifier, ctx).is_none()
                     && matches!(identifier.name.as_str(),
-                        "Array" | "Boolean" | "JSON" | "Math" | "Number" | "Object" | "String" | "parseFloat" | "parseInt" | "undefined"))
+                        "Array" | "Boolean" | "JSON" | "Math" | "Number" | "Object" | "String" | "undefined"))
             {
                 return false;
             }
             if call.callee.as_member_expression().is_some_and(|member| {
-            member.static_property_name().as_deref() == Some("parse")
+                let mut receiver = member.object().get_inner_expression();
+                while let Some(receiver_member) = receiver.as_member_expression() {
+                    receiver = receiver_member.object().get_inner_expression();
+                }
+                matches!(receiver, Expression::Identifier(identifier)
+                    if live_state_symbol_id(identifier, ctx)
+                        .is_some_and(|symbol_id| data_symbol_is_import(symbol_id, ctx)))
+            }) {
+                return false;
+            }
+            if call.callee.as_member_expression().is_some_and(|member| {
+                member.static_property_name().as_deref() == Some("parse")
                 && matches!(member.object().get_inner_expression(), Expression::Identifier(identifier)
                     if identifier.name == "JSON" && live_state_symbol_id(identifier, ctx).is_none())
         }) {

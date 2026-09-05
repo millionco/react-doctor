@@ -1284,25 +1284,34 @@ fn async_loop_is_inside_worker_pool(loop_node: &AstNode<'_>, ctx: &LintContext<'
 }
 
 fn async_map_is_combined_with_promise(call_node: &AstNode<'_>, ctx: &LintContext<'_>) -> bool {
-    for ancestor in ctx.nodes().ancestors(call_node.id()) {
-        if matches!(
-            ancestor.kind(),
-            AstKind::Function(_) | AstKind::ArrowFunctionExpression(_)
-        ) {
-            break;
-        }
-        if matches!(ancestor.kind(), AstKind::CallExpression(call) if async_call_is_promise_concurrency(call))
-        {
-            return true;
-        }
+    let flow_node = ctx
+        .nodes()
+        .get_node(async_promise_flow_node(call_node.id(), ctx));
+    let parent = ctx.nodes().parent_node(flow_node.id());
+    if let AstKind::CallExpression(call) = parent.kind()
+        && async_call_is_promise_concurrency(call)
+        && call
+            .arguments
+            .iter()
+            .any(|argument| argument.span() == flow_node.span())
+    {
+        return true;
     }
-    let parent = ctx.nodes().parent_node(call_node.id());
     let binding_name = match parent.kind() {
-        AstKind::VariableDeclarator(declarator) => declarator
-            .id
-            .get_binding_identifier()
-            .map(|identifier| identifier.name.as_str()),
-        AstKind::AssignmentExpression(assignment) => {
+        AstKind::VariableDeclarator(declarator)
+            if declarator
+                .init
+                .as_ref()
+                .is_some_and(|initializer| initializer.span() == flow_node.span()) =>
+        {
+            declarator
+                .id
+                .get_binding_identifier()
+                .map(|identifier| identifier.name.as_str())
+        }
+        AstKind::AssignmentExpression(assignment)
+            if assignment.right.span() == flow_node.span() =>
+        {
             async_assignment_identifier_name(&assignment.left)
         }
         _ => None,
@@ -1310,7 +1319,19 @@ fn async_map_is_combined_with_promise(call_node: &AstNode<'_>, ctx: &LintContext
     let Some(binding_name) = binding_name else {
         return false;
     };
+    let scope = ctx.nodes().ancestors(parent.id()).find(|ancestor| {
+        matches!(
+            ancestor.kind(),
+            AstKind::Function(_) | AstKind::ArrowFunctionExpression(_) | AstKind::Program(_)
+        )
+    });
+    let Some(scope) = scope else {
+        return false;
+    };
     ctx.nodes().iter().any(|candidate| {
+        if !scope.span().contains_inclusive(candidate.span()) {
+            return false;
+        }
         let AstKind::CallExpression(call) = candidate.kind() else {
             return false;
         };
@@ -1323,4 +1344,48 @@ fn async_map_is_combined_with_promise(call_node: &AstNode<'_>, ctx: &LintContext
         }
         names.contains(binding_name)
     })
+}
+
+fn async_promise_flow_node(mut node_id: NodeId, ctx: &LintContext<'_>) -> NodeId {
+    loop {
+        let current = ctx.nodes().get_node(node_id);
+        let parent = ctx.nodes().parent_node(node_id);
+        match parent.kind() {
+            AstKind::ParenthesizedExpression(_)
+            | AstKind::TSAsExpression(_)
+            | AstKind::TSSatisfiesExpression(_)
+            | AstKind::TSTypeAssertion(_)
+            | AstKind::TSNonNullExpression(_)
+            | AstKind::TSInstantiationExpression(_)
+            | AstKind::ChainExpression(_)
+            | AstKind::SpreadElement(_)
+            | AstKind::ArrayExpression(_)
+            | AstKind::LogicalExpression(_) => node_id = parent.id(),
+            AstKind::ConditionalExpression(conditional)
+                if conditional.test.span() != current.span() =>
+            {
+                node_id = parent.id();
+            }
+            AstKind::StaticMemberExpression(member) if member.object.span() == current.span() => {
+                let grandparent = ctx.nodes().parent_node(parent.id());
+                if !matches!(grandparent.kind(), AstKind::CallExpression(call) if call.callee.span() == parent.span())
+                    || !matches!(
+                        member.property.name.as_str(),
+                        "filter"
+                            | "flat"
+                            | "slice"
+                            | "concat"
+                            | "reverse"
+                            | "sort"
+                            | "toReversed"
+                            | "toSorted"
+                    )
+                {
+                    return node_id;
+                }
+                node_id = grandparent.id();
+            }
+            _ => return node_id,
+        }
+    }
 }

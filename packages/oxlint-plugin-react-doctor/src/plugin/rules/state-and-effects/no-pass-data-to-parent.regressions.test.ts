@@ -2860,3 +2860,252 @@ const Child = ({ animationId, onFrame }) => {
     });
   });
 });
+
+describe("no-pass-data-to-parent — native parity boundaries", () => {
+  it.each([
+    {
+      name: "array-predicate-child-data-direct",
+      source:
+        "import { useEffect } from 'react'; export function Child({ rows, onChange }) { const selected = new Set(['a']); useEffect(() => { onChange(rows.filter(row => selected.has(row.id))); }, [rows, onChange]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "array-predicate-child-data-object-logical",
+      source:
+        "import { useEffect } from 'react'; export function Child({ rows, onChange }) { const selected = new Set(['a']); useEffect(() => { onChange({ rows: rows.filter(row => selected.has(row.id)) ?? [] }); }, [rows, onChange]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "array-predicate-parent-only-object-logical",
+      source:
+        "import { useEffect } from 'react'; export function Child({ rows, selected, onChange }) { useEffect(() => { onChange({ rows: rows.filter(row => selected.includes(row.id)) ?? [] }); }, [rows, selected, onChange]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "state-initializer-mutable-prop-parts-parse-int",
+      source:
+        "import { useEffect, useState } from 'react'; export function Child({ initial, onChange }) { let parts = []; if (initial === 'custom') parts = ['1', 'day']; else parts = initial.split('-'); const [value] = useState(parseInt(parts[0])); useEffect(() => { onChange(`${value}`); }, [value, onChange]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "state-initializer-immutable-prop-parts-parse-int",
+      source:
+        "import { useEffect, useState } from 'react'; export function Child({ initial, onChange }) { const parts = initial.split('-'); const [value] = useState(parseInt(parts[0])); useEffect(() => { onChange(`${value}`); }, [value, onChange]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "state-initializer-mutable-prop-parts-without-parse-int",
+      source:
+        "import { useEffect, useState } from 'react'; export function Child({ initial, onChange }) { let parts = []; if (initial === 'custom') parts = ['1', 'day']; else parts = initial.split('-'); const [value] = useState(parts[0]); useEffect(() => { onChange(`${value}`); }, [value, onChange]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "state-initializer-global-parse-int-literal",
+      source:
+        "import { useEffect, useState } from 'react'; export function Child({ onChange }) { const [value] = useState(parseInt('1')); useEffect(() => { onChange(value); }, [value, onChange]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "effect-event-nested-parent-notification-and-fetched-local-data",
+      source:
+        "import { useEffect, useEffectEvent, useState } from 'react'; import { fetchRows } from 'data-service'; export function Child({ setLoading }) { const [rows, setRows] = useState([]); async function loadRows() { const nextRows = await fetchRows(); setRows(nextRows); } const init = useEffectEvent(() => { async function loadData() { await loadRows(); setLoading(false); } void loadData(); }); useEffect(() => { return init(); }, []); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "effect-event-direct-parent-notification-and-fetched-data",
+      source:
+        "import { useEffect, useEffectEvent } from 'react'; import { readRows } from 'data-service'; export function Child({ onChange }) { const init = useEffectEvent(() => { const rows = readRows(); onChange(rows); }); useEffect(() => { return init(); }, []); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "effect-event-nested-parent-notification-static-only",
+      source:
+        "import { useEffect, useEffectEvent } from 'react'; export function Child({ setLoading }) { const init = useEffectEvent(() => { async function loadData() { setLoading(false); } void loadData(); }); useEffect(() => { return init(); }, []); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "ref-callback-parameter-destructure-stable-assignment",
+      source:
+        "import { useEffect, useRef } from 'react'; import { createValue } from 'data-service'; export function Child({ onChange }) { const callbackRef = useRef(onChange); callbackRef.current = onChange; useEffect(() => { callbackRef.current?.(createValue()); }, []); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "ref-callback-body-destructure-stable-assignment",
+      source:
+        "import { useEffect, useRef } from 'react'; import { createValue } from 'data-service'; export function Child(props) { const { onChange } = props; const callbackRef = useRef(onChange); callbackRef.current = onChange; useEffect(() => { callbackRef.current?.(createValue()); }, []); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "ref-callback-body-destructure-without-assignment",
+      source:
+        "import { useEffect, useRef } from 'react'; import { createValue } from 'data-service'; export function Child(props) { const { onChange } = props; const callbackRef = useRef(onChange); useEffect(() => { callbackRef.current?.(createValue()); }, []); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "ref-callback-effect-sync-custom-hook-data",
+      source:
+        "import { useEffect, useRef } from 'react'; import { useCells } from 'cell-store'; export function Child({ initial, onChange }) { const { cells, dimensions } = useCells({ initial }); const callbackRef = useRef(onChange); useEffect(() => { callbackRef.current = onChange; }, [onChange]); useEffect(() => { const output = {}; for (const [key, value] of cells) output[key] = value; callbackRef.current({ dimensions, cells: output }); }, [cells, dimensions]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "object-assign-forward-ref-owner",
+      source:
+        "import { forwardRef, useEffect } from 'react'; import { readValue } from 'data-service'; export const Child = Object.assign(forwardRef((props, ref) => { const value = readValue(); useEffect(() => { props.onChange(value); }, [value, props.onChange]); return null; }), { label: 'child' });",
+      expectedCount: 1,
+    },
+    {
+      name: "forward-ref-owner-without-object-assign",
+      source:
+        "import { forwardRef, useEffect } from 'react'; import { readValue } from 'data-service'; export const Child = forwardRef((props, ref) => { const value = readValue(); useEffect(() => { props.onChange(value); }, [value, props.onChange]); return null; });",
+      expectedCount: 1,
+    },
+    {
+      name: "object-rest-props-callback",
+      source:
+        "import { useEffect } from 'react'; import { readValue } from 'data-service'; export function Child({ initial, ...props }) { const value = readValue(); useEffect(() => { props.onChange(value); }, [value]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "returned-named-hook-expression-owner",
+      source:
+        "import { useEffect } from 'react'; import { readValue } from 'data-service'; export function createHook() { return function useValue({ onChange }) { const value = readValue(); useEffect(() => { onChange(value); }, [value, onChange]); return value; }; }",
+      expectedCount: 0,
+    },
+    {
+      name: "declared-custom-hook-owner",
+      source:
+        "import { useEffect } from 'react'; import { readValue } from 'data-service'; export function useValue({ onChange }) { const value = readValue(); useEffect(() => { onChange(value); }, [value, onChange]); return value; }",
+      expectedCount: 1,
+    },
+    {
+      name: "ordinary-helper-parent-handoff",
+      source:
+        "import { useEffect } from 'react'; import { readValue } from 'data-service'; export function Child({ onChange }) { const value = readValue(); const forward = next => { onChange(next); }; useEffect(() => forward(value), [value]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "memoized-helper-parent-handoff",
+      source:
+        "import { useCallback, useEffect } from 'react'; import { readValue } from 'data-service'; export function Child({ onChange }) { const value = readValue(); const forward = useCallback(next => { onChange(next); }, [onChange]); useEffect(() => { forward(value); }, [value]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "imported-array-search-logical-state-initializer",
+      source:
+        "import { useEffect, useState } from 'react'; import { options } from 'option-config'; export function Child({ selected, onChange }) { const [value] = useState(options.find(option => option.id === selected) || options[0]); useEffect(() => { onChange(value.id); }, [value, onChange]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "imported-array-search-direct-state-initializer",
+      source:
+        "import { useEffect, useState } from 'react'; import { options } from 'option-config'; export function Child({ selected, onChange }) { const [value] = useState(options.find(option => option.id === selected)); useEffect(() => { onChange(value.id); }, [value, onChange]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "namespaced-query-result-parent-logical-fallback",
+      source:
+        "import { useEffect } from 'react'; import { api } from 'query-api'; export function Child({ currentValue, onChange }) { const { data } = api.viewer.useQuery(); useEffect(() => { onChange(currentValue || data?.value || ''); }, [currentValue, data, onChange]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "direct-query-result-parent-logical-fallback",
+      source:
+        "import { useEffect } from 'react'; import { useQuery } from 'query-api'; export function Child({ currentValue, onChange }) { const { data } = useQuery(); useEffect(() => { onChange(currentValue || data?.value || ''); }, [currentValue, data, onChange]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "wrapper-through-data-prop-reader-without-parent-notification",
+      source:
+        "import { useCallback, useEffect } from 'react'; import { readValue, useLocalStore } from 'data-service'; export function Child({ options }) { const { update } = useLocalStore(); const convert = useCallback(value => options.enabled ? value.trim() : value, [options]); const forward = useCallback(value => { update(convert(value)); }, [update, convert]); useEffect(() => { forward(readValue()); }, [forward]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "two-stage-parent-seeded-hook-return-callback",
+      source:
+        "import { useEffect } from 'react'; import { useForm, readValue } from 'form-library'; export function Child({ initial }) { const methods = useForm({ defaultValues: initial }); const { reset } = methods; const value = readValue(); useEffect(() => { reset(value); }, [value, reset]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "direct-parent-seeded-hook-return-callback",
+      source:
+        "import { useEffect } from 'react'; import { useForm, readValue } from 'form-library'; export function Child({ initial }) { const { reset } = useForm({ defaultValues: initial }); const value = readValue(); useEffect(() => { reset(value); }, [value, reset]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "memoized-parent-callback-literal-argument",
+      source:
+        "import { useCallback, useEffect } from 'react'; export function Child({ toggle }) { const setVisible = useCallback(value => { toggle(value); }, [toggle]); useEffect(() => { setVisible(false); }, [setVisible]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "direct-parent-callback-literal-argument",
+      source:
+        "import { useEffect } from 'react'; export function Child({ toggle }) { useEffect(() => { toggle(false); }, [toggle]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "lazy-state-parent-derived-imported-transform",
+      source:
+        "import { useEffect, useState } from 'react'; import { flatten } from 'array-library'; export function Child({ items, initialId, onChange }) { const [selected] = useState(() => { if (!initialId) return null; const allItems = flatten(items); const item = allItems.find(item => item.id === initialId); return item || null; }); useEffect(() => { onChange(selected); }, [selected, onChange]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "eager-state-parent-derived-imported-transform",
+      source:
+        "import { useEffect, useState } from 'react'; import { flatten } from 'array-library'; export function Child({ items, onChange }) { const [selected] = useState(flatten(items)); useEffect(() => { onChange(selected); }, [selected, onChange]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "wrapper-parent-notification-also-uses-react-ref",
+      source:
+        "import { useCallback, useEffect, useRef } from 'react'; import { createValue } from 'data-service'; export function Child({ onChange }) { const rootRef = useRef(null); const run = useCallback(value => { rootRef.current?.update(value); onChange(createValue(value)); }, [onChange]); useEffect(() => { run(createValue()); }, [run]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "wrapper-parent-notification-without-react-ref",
+      source:
+        "import { useCallback, useEffect } from 'react'; import { createValue } from 'data-service'; export function Child({ onChange }) { const run = useCallback(value => { onChange(createValue(value)); }, [onChange]); useEffect(() => { run(createValue()); }, [run]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "qualified-lazy-state-imported-transform",
+      source:
+        "import * as React from 'react'; import { flatten } from 'array-library'; export function Child({ items, onChange }) { const [selected] = React.useState(() => flatten(items)); React.useEffect(() => { onChange(selected); }, [selected]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "qualified-eager-state-imported-transform",
+      source:
+        "import * as React from 'react'; import { flatten } from 'array-library'; export function Child({ items, onChange }) { const [selected] = React.useState(flatten(items)); React.useEffect(() => { onChange(selected); }, [selected]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "guarded-effect-ref-sync-custom-hook-data",
+      source:
+        "import { useEffect, useRef } from 'react'; import { useCells } from 'cell-store'; export function Child({ initial, onChange }) { const { cells, dimensions } = useCells({ initial }); const callbackRef = useRef(onChange); useEffect(() => { callbackRef.current = onChange; }, [onChange]); const skipRef = useRef(true); useEffect(() => { if (skipRef.current) { skipRef.current = false; return; } const output = {}; for (const [key, value] of cells) output[key] = value; callbackRef.current({ dimensions, cells: output }); }, [cells, dimensions]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "imported-member-call-data",
+      source:
+        "import { useEffect } from 'react'; import { api } from 'query-api'; export function Child({ onChange }) { const value = api.read(); useEffect(() => { onChange(value); }, [value]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "imported-member-call-callback-parameter",
+      source:
+        "import { useEffect } from 'react'; import { options } from 'option-config'; export function Child({ selected, onChange }) { const value = options.find(option => option.id === selected); useEffect(() => { onChange(value); }, [value]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "parent-wired-hook-object-argument-callback",
+      source:
+        "import { useEffect } from 'react'; import { useForm, readValue } from 'form-library'; export function Child({ initial }) { const methods = useForm({ defaultValues: initial }); const reset = methods.reset; useEffect(() => { reset(readValue()); }, [reset]); return null; }",
+      expectedCount: 1,
+    },
+  ])("$name", ({ source, expectedCount }) => {
+    const result = runRule(noPassDataToParent, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+});

@@ -417,6 +417,13 @@ fn live_state_owner_bindings(
     if (!is_custom_hook && !is_component) || is_unwrapped_component_function_expression {
         return LiveStateOwnerBindings::default();
     }
+    if matches!(function_node.kind(), AstKind::Function(function)
+        if function.r#type == oxc_ast::ast::FunctionType::FunctionExpression)
+        && matches!(ctx.nodes().parent_node(transparent_expression_root(function_node, ctx).id()).kind(),
+            AstKind::ReturnStatement(_))
+    {
+        return LiveStateOwnerBindings::default();
+    }
     let mut bindings = LiveStateOwnerBindings {
         is_custom_hook,
         ..LiveStateOwnerBindings::default()
@@ -454,12 +461,6 @@ fn live_state_owner_bindings(
                     .insert(symbol_id, identifier.name.to_string());
             }
             pattern => {
-                if matches!(pattern, BindingPattern::ObjectPattern(object)
-                if object.rest.as_ref().is_some_and(|rest| {
-                    binding_pattern_has_symbol(&rest.argument, symbol_id)
-                })) {
-                    bindings.whole_props_symbols.insert(symbol_id);
-                }
                 let name = binding_property_name_for_symbol(pattern, symbol_id)
                     .unwrap_or_else(|| identifier.name.to_string());
                 bindings.names_by_symbol.insert(symbol_id, name);
@@ -515,7 +516,9 @@ fn live_state_direct_call_reports<'a>(
     write_analysis: &PossibleStaticPropertyWriteAnalysis,
     ctx: &LintContext<'a>,
 ) -> bool {
-    if !live_state_call_is_synchronous(call_node, ctx) {
+    if !live_state_call_is_synchronous(call_node, ctx)
+        && live_state_local_helper_function_id(&call.callee, ctx).is_none()
+    {
         return false;
     }
     let mut callback_names = live_state_resolve_parent_callback_names(
@@ -892,36 +895,6 @@ fn live_state_symbol_has_state_source<'a>(
             visited_symbols,
         ) {
             return true;
-        }
-    }
-    for reference in ctx.scoping().get_resolved_references(symbol_id) {
-        let reference_node = ctx.nodes().get_node(reference.node_id());
-        let mut reference_root = transparent_expression_root(reference_node, ctx);
-        loop {
-            let parent = ctx.nodes().parent_node(reference_root.id());
-            let Some(member) = parent.kind().as_member_expression_kind() else {
-                break;
-            };
-            if member.object().span() != reference_root.span() {
-                break;
-            }
-            reference_root = transparent_expression_root(parent, ctx);
-        }
-        let parent = ctx.nodes().parent_node(reference_root.id());
-        match parent.kind() {
-            AstKind::AssignmentExpression(assignment)
-                if assignment.left.span() == reference_root.span()
-                    && live_state_expression_has_state_source(
-                        &assignment.right,
-                        owner_function_id,
-                        owner_bindings,
-                        ctx,
-                        &mut visited_symbols.clone(),
-                    ) =>
-            {
-                return true;
-            }
-            _ => {}
         }
     }
     false
@@ -1569,7 +1542,7 @@ fn live_state_resolve_ref_callback_names<'a>(
         snapshot_offset,
         write_analysis,
         ctx,
-        visited_symbols,
+        &mut visited_symbols.clone(),
     );
     if names.is_empty() {
         return names;

@@ -4243,7 +4243,7 @@ const NestedJotaiMemo = () => useMemo(() => { const buildAtom = () => makeSelect
 { const NestedMemoCard = memo(() => null); const nestedMemoUse = <NestedMemoCard rows={[]} onClick={() => run()} options={{}} />; void nestedMemoUse; }
 `;
 
-const normalizeDiagnostics = (diagnostics) =>
+const normalizeDiagnostics = (diagnostics, workingDirectory = repositoryRoot) =>
   diagnostics
     .filter(
       (diagnostic) =>
@@ -4252,7 +4252,7 @@ const normalizeDiagnostics = (diagnostics) =>
     )
     .map((diagnostic) => ({
       code: diagnostic.code.replace("react-doctor-native", "react-doctor"),
-      filename: path.relative(repositoryRoot, path.resolve(repositoryRoot, diagnostic.filename)),
+      filename: path.relative(repositoryRoot, path.resolve(workingDirectory, diagnostic.filename)),
       message: diagnostic.message,
       severity: diagnostic.severity,
       labels: diagnostic.labels,
@@ -4347,13 +4347,18 @@ const countDiagnosticsByRule = (diagnostics) => {
   return counts;
 };
 
-const runOxlint = (configPath, environment, targetPath = fixturePath) => {
+const runOxlint = (
+  configPath,
+  environment,
+  targetPath = fixturePath,
+  workingDirectory = repositoryRoot,
+) => {
   const startedAt = performance.now();
   const result = spawnSync(
     process.execPath,
     [oxlintBinaryPath, "-c", configPath, "--format", "json", targetPath],
     {
-      cwd: repositoryRoot,
+      cwd: workingDirectory,
       env: environment,
       encoding: "utf8",
       maxBuffer: OXLINT_OUTPUT_MAX_BYTES,
@@ -4375,7 +4380,7 @@ const runOxlint = (configPath, environment, targetPath = fixturePath) => {
   if (result.status !== 0 && result.status !== 1) {
     throw new Error(result.stderr || `oxlint exited with status ${result.status}`);
   }
-  const diagnostics = normalizeDiagnostics(parsed.diagnostics);
+  const diagnostics = normalizeDiagnostics(parsed.diagnostics, workingDirectory);
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
   if (Array.isArray(config.plugins) && config.plugins.includes("react-doctor-native")) {
     for (const diagnostic of diagnostics) {
@@ -4388,6 +4393,7 @@ const runOxlint = (configPath, environment, targetPath = fixturePath) => {
   return {
     durationMs: performance.now() - startedAt,
     diagnostics,
+    unfilteredDiagnostics: parsed.diagnostics,
   };
 };
 
@@ -10166,6 +10172,84 @@ export const App = () => <>
     );
   }
   process.stdout.write(`Native parity passed for ${stockDiagnostics.length} diagnostics.\n`);
+
+  const boundaryFixtures = JSON.parse(
+    fs.readFileSync(
+      path.join(repositoryRoot, "native", "oxlint", "fixtures", "ast-parity-boundaries.json"),
+      "utf8",
+    ),
+  );
+  const boundaryFailures = [];
+  let boundaryDiagnosticCount = 0;
+  for (const [fixtureIndex, boundaryFixture] of boundaryFixtures.entries()) {
+    const boundaryDirectory = path.join(temporaryDirectory, "boundaries", String(fixtureIndex));
+    fs.mkdirSync(boundaryDirectory, { recursive: true });
+    const rootDirectory = fs.realpathSync(boundaryDirectory);
+    const filename = boundaryFixture.filename ?? "src/component.tsx";
+    const source = boundaryFixture.source ?? boundaryFixture.files?.[filename];
+    if (typeof source !== "string" || !nativeRules.includes(boundaryFixture.ruleId)) {
+      throw new Error(`Invalid native boundary fixture: ${boundaryFixture.name}`);
+    }
+    const files = { ...boundaryFixture.files, [filename]: source };
+    for (const [relativePath, fileSource] of Object.entries(files)) {
+      const filePath = path.join(rootDirectory, relativePath);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      const minimumFileBytes = boundaryFixture.minimumFileBytes?.[relativePath] ?? 0;
+      const paddingLength = Math.max(0, minimumFileBytes - Buffer.byteLength(fileSource));
+      fs.writeFileSync(filePath, fileSource + " ".repeat(paddingLength));
+    }
+    const settings = {
+      "react-doctor": {
+        rootDirectory,
+        framework: "nextjs",
+        reactMajorVersion: 19,
+        portedRuleMode: "curated",
+      },
+    };
+    const results = [];
+    for (const isNative of [false, true]) {
+      const configPath = path.join(rootDirectory, `${isNative ? "native" : "stock"}-config.json`);
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify(
+          buildConfig({
+            isNative,
+            settings,
+            ruleIds: [boundaryFixture.ruleId],
+          }),
+        ),
+      );
+      results.push(
+        runOxlint(
+          configPath,
+          isNative ? nativeEnvironment : process.env,
+          boundaryFixture.targetPath ?? filename,
+          rootDirectory,
+        ),
+      );
+    }
+    const [stockResult, nativeResult] = results;
+    if (
+      results.some((result) => result.unfilteredDiagnostics.length !== result.diagnostics.length) ||
+      stockResult.diagnostics.length !== boundaryFixture.expectedCount ||
+      JSON.stringify(stockResult.diagnostics) !== JSON.stringify(nativeResult.diagnostics)
+    ) {
+      boundaryFailures.push({
+        name: boundaryFixture.name,
+        ruleId: boundaryFixture.ruleId,
+        expectedCount: boundaryFixture.expectedCount,
+        stock: stockResult.unfilteredDiagnostics,
+        native: nativeResult.unfilteredDiagnostics,
+      });
+    }
+    boundaryDiagnosticCount += stockResult.diagnostics.length;
+  }
+  if (boundaryFailures.length > 0) {
+    throw new Error(`Native boundary parity failed\n${JSON.stringify(boundaryFailures, null, 2)}`);
+  }
+  process.stdout.write(
+    `Native boundary parity passed for ${boundaryFixtures.length} fixtures and ${boundaryDiagnosticCount} diagnostics.\n`,
+  );
 
   const nextjsNoImgCrossFileStockDiagnostics = runOxlint(
     nextjsNoImgCrossFileStockConfigPath,

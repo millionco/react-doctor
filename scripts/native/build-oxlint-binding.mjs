@@ -875,7 +875,7 @@ impl Rule for ${delegatedRule.struct} {
       ],
       [
         "no-fetch-response-used-without-status-check",
-        ["has_possible_static_property_write_before"],
+        ["has_possible_static_property_write_before", "statement_always_exits"],
       ],
       [
         "no-effect-wrapper-discards-callback-cleanup-return",

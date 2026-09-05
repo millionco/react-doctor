@@ -1048,3 +1048,30 @@ describe("no-pass-live-state-to-parent — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 });
+
+describe("no-pass-live-state-to-parent — native parity boundaries", () => {
+  it.each([
+    {
+      name: "live-state-void-transparent-async-data-prop-reader",
+      source:
+        "import { useCallback, useEffect, useState } from 'react'; export function Child({ accountId }) { const [count] = useState(0); const read = useCallback(async value => { console.log(accountId, value); }, [accountId]); useEffect(() => { void read(count); }, [read, count]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-transparent-async-data-prop-reader",
+      source:
+        "import { useCallback, useEffect, useState } from 'react'; export function Child({ accountId }) { const [count] = useState(0); const read = useCallback(async value => { console.log(accountId, value); }, [accountId]); useEffect(() => { read(count); }, [read, count]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-void-direct-parent-callback",
+      source:
+        "import { useEffect, useState } from 'react'; export function Child({ onChange }) { const [count] = useState(0); useEffect(() => { void onChange(count); }, [onChange, count]); return null; }",
+      expectedCount: 0,
+    },
+  ])("$name", ({ source, expectedCount }) => {
+    const result = runRule(noPassLiveStateToParent, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+});

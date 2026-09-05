@@ -1,4 +1,7 @@
-use oxc_ast::{AstKind, ast::ImportDeclarationSpecifier};
+use oxc_ast::{
+    AstKind,
+    ast::{Expression, ImportDeclarationSpecifier},
+};
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
 use oxc_span::GetSpan;
@@ -6,7 +9,6 @@ use oxc_span::GetSpan;
 use crate::{AstNode, context::LintContext, rule::Rule};
 
 const GENERIC_TEST_UTILS_MESSAGE: &str = "react-dom/test-utils is removed in React 19, so your tests break. Use `act` from `react` & `fireEvent` / `render` from `@testing-library/react` instead";
-const REACT_DOM_MODULE_SOURCES: [&str; 1] = ["react-dom"];
 
 #[derive(Debug, Default, Clone)]
 pub struct NoReactDomDeprecatedApis;
@@ -60,13 +62,19 @@ impl Rule for NoReactDomDeprecatedApis {
                 else {
                     return;
                 };
-                if module_api_path_matches(
-                    &member_expression.object,
-                    &[],
-                    &REACT_DOM_MODULE_SOURCES,
-                    true,
-                    ctx,
-                ) {
+                let Expression::Identifier(receiver) =
+                    member_expression.object.get_inner_expression()
+                else {
+                    return;
+                };
+                if resolve_identifier_import(receiver, ctx).is_some_and(|entry| {
+                    entry.module_request.name() == "react-dom"
+                        && matches!(
+                            entry.import_name,
+                            crate::module_record::ImportImportName::Default(_)
+                                | crate::module_record::ImportImportName::NamespaceObject
+                        )
+                }) {
                     ctx.diagnostic(OxcDiagnostic::warn(message).with_label(member_expression.span));
                 }
             }

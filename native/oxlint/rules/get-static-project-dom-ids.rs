@@ -44,25 +44,31 @@ fn get_static_project_dom_ids(
 ) -> Option<std::collections::HashSet<String>> {
     let mut current_ids = std::collections::HashSet::new();
     collect_current_static_jsx_dom_ids(ctx, &mut current_ids);
-    let Some(root_directory) = resolve_static_project_dom_id_root(ctx) else {
+    let Ok(current_file_path) = std::path::absolute(ctx.file_path()) else {
         return Some(current_ids);
     };
-    let current_file_path = ctx.file_path();
+    let Some(root_directory) = resolve_static_project_dom_id_root(ctx, &current_file_path) else {
+        return Some(current_ids);
+    };
     let mut cached_ids_by_root = STATIC_PROJECT_DOM_IDS_BY_ROOT.lock().ok()?;
     if let Some(cached_ids) = cached_ids_by_root.get(&root_directory) {
         let mut project_ids = cached_ids.clone()?;
         project_ids.extend(current_ids);
         return Some(project_ids);
     }
-    let project_ids = collect_static_project_dom_ids(&root_directory, current_file_path);
+    let project_ids = collect_static_project_dom_ids(&root_directory, &current_file_path).map(
+        |mut project_ids| {
+            project_ids.extend(current_ids);
+            project_ids
+        },
+    );
     cached_ids_by_root.insert(root_directory, project_ids.clone());
-    let mut project_ids = project_ids?;
-    project_ids.extend(current_ids);
-    Some(project_ids)
+    project_ids
 }
 
 fn resolve_static_project_dom_id_root(
     ctx: &crate::context::LintContext<'_>,
+    current_file_path: &std::path::Path,
 ) -> Option<std::path::PathBuf> {
     let root_directory = ctx
         .settings()
@@ -73,7 +79,6 @@ fn resolve_static_project_dom_id_root(
         .and_then(|settings| settings.get("rootDirectory"))
         .and_then(serde_json::Value::as_str)
         .map(std::path::PathBuf::from)?;
-    let current_file_path = ctx.file_path();
     if !root_directory.is_absolute()
         || !current_file_path.is_absolute()
         || current_file_path.strip_prefix(&root_directory).is_err()
@@ -272,7 +277,9 @@ fn collect_parsed_source_static_dom_ids(
     if parser_return.panicked || !parser_return.diagnostics.is_empty() {
         return None;
     }
-    let semantic_return = oxc_semantic::SemanticBuilder::new().build(&parser_return.program);
+    let semantic_return = oxc_semantic::SemanticBuilder::new()
+        .with_build_nodes(true)
+        .build(&parser_return.program);
     collect_semantic_static_jsx_dom_ids(&semantic_return.semantic, ids);
     Some(())
 }

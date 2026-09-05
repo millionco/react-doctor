@@ -1085,7 +1085,7 @@ impl Rule for ExhaustiveDeps {
                 })
             })
             .collect::<Vec<_>>();
-        if !is_effect {
+        if !is_effect && undeclared_deps.is_empty() {
             for dependency in &declared_dependencies {
                 let is_used = found_dependencies
                     .iter()
@@ -1143,7 +1143,16 @@ impl Rule for ExhaustiveDeps {
             && let Some(dep) = ordered_declared_dependencies.iter().find(|dep| {
                 dep.chain.is_empty()
                     && dep.symbol_id.is_some_and(|symbol_id| {
-                        !is_recursive_initializer_capture(symbol_id, callback_node.span(), ctx)
+                        let symbol_scope_id = ctx.scoping().symbol_scope_id(symbol_id);
+                        (symbol_scope_id == component_scope_id
+                            || ctx
+                                .scoping()
+                                .scope_is_descendant_of(symbol_scope_id, component_scope_id))
+                            && !is_recursive_initializer_capture(
+                                symbol_id,
+                                callback_node.span(),
+                                ctx,
+                            )
                             && !is_symbol_function_value(symbol_id, ctx)
                             && is_symbol_declaration_referentially_unique(symbol_id, ctx)
                     })
@@ -4613,13 +4622,33 @@ fn is_function_stable<'a, 'b>(
     };
 
     deps.iter().all(|dep| {
+        let stability_scope_id = dep
+            .symbol_id
+            .and_then(|symbol_id| {
+                let symbol_scope_id = ctx.scoping().symbol_scope_id(symbol_id);
+                if symbol_scope_id == component_scope_id
+                    || ctx
+                        .scoping()
+                        .scope_is_descendant_of(symbol_scope_id, component_scope_id)
+                {
+                    return None;
+                }
+                ctx.nodes()
+                    .ancestors(ctx.symbol_declaration(symbol_id).id())
+                    .find_map(|owner| match owner.kind() {
+                        AstKind::Function(function) => Some(function.scope_id()),
+                        AstKind::ArrowFunctionExpression(function) => Some(function.scope_id()),
+                        _ => None,
+                    })
+            })
+            .unwrap_or(component_scope_id);
         dep.symbol_id == function_symbol_id
             || !is_identifier_a_dependency_impl(
                 dep.name,
                 dep.reference_id,
                 dep.span,
                 ctx,
-                component_scope_id,
+                stability_scope_id,
                 visited,
             )
     })

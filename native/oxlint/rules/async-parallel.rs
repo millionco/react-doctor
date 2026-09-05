@@ -342,6 +342,9 @@ fn parallel_sequence_has_serialization_signal(
             return true;
         }
         let Expression::CallExpression(call) = expression else {
+            if matches!(statement, Statement::ExpressionStatement(_)) {
+                return true;
+            }
             continue;
         };
         if parallel_member_call_may_be_mutated(call, ctx) {

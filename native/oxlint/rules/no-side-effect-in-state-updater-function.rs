@@ -1257,6 +1257,18 @@ fn updater_receiver_is_external_inner(
                         &mut FxHashSet::default(),
                     );
                 }
+                Expression::ChainExpression(chain) => {
+                    return match &chain.expression {
+                        oxc_ast::ast::ChainElement::CallExpression(call) => {
+                            !updater_call_returns_only_fresh_containers(
+                                call,
+                                ctx,
+                                &mut FxHashSet::default(),
+                            )
+                        }
+                        _ => true,
+                    };
+                }
                 expression if expression.as_member_expression().is_some() => return true,
                 _ => {}
             }

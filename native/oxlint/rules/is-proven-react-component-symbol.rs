@@ -61,26 +61,25 @@ fn is_react_component_class_expression<'a>(
     ) {
         return true;
     }
-    if ["Component", "PureComponent"].iter().any(|component_name| {
-        module_api_path_matches(
-            expression,
-            &[*component_name],
-            &REACT_MODULE_SOURCES,
-            true,
-            ctx,
-        )
-    }) && !static_member_was_replaced_before(expression, ctx)
-    {
-        return true;
+    if let Some(member_expression) = expression.as_member_expression() {
+        let Some(component_name) = member_expression.static_property_name() else {
+            return false;
+        };
+        let ReactComponentExpression::Identifier(receiver) =
+            member_expression.object().get_inner_expression()
+        else {
+            return false;
+        };
+        return matches!(component_name, "Component" | "PureComponent")
+            && !static_member_was_replaced_before(expression, ctx)
+            && identifier_symbol_id_with_lexical_fallback(receiver, ctx).is_some_and(
+                |symbol_id| react_component_class_import_matches(symbol_id, true, ctx),
+            );
     }
     let ReactComponentExpression::Identifier(identifier) = expression else {
         return false;
     };
-    let Some(symbol_id) = ctx
-        .scoping()
-        .get_reference(identifier.reference_id())
-        .symbol_id()
-    else {
+    let Some(symbol_id) = identifier_symbol_id_with_lexical_fallback(identifier, ctx) else {
         return false;
     };
     if visited_symbol_ids.contains(&symbol_id)
@@ -89,6 +88,9 @@ fn is_react_component_class_expression<'a>(
         return false;
     }
     visited_symbol_ids.push(symbol_id);
+    if react_component_class_import_matches(symbol_id, false, ctx) {
+        return true;
+    }
     let declaration = ctx.symbol_declaration(symbol_id);
     match declaration.kind() {
         ReactComponentAstKind::Class(class) => {
@@ -111,6 +113,65 @@ fn is_react_component_class_expression<'a>(
         }
         _ => false,
     }
+}
+
+fn react_component_class_import_matches(
+    mut symbol_id: ReactComponentSymbolId,
+    is_namespace: bool,
+    ctx: &ReactComponentLintContext<'_>,
+) -> bool {
+    let mut visited_symbol_ids = Vec::new();
+    while is_namespace {
+        if visited_symbol_ids.contains(&symbol_id) {
+            return false;
+        }
+        visited_symbol_ids.push(symbol_id);
+        let declaration = ctx.symbol_declaration(symbol_id);
+        let ReactComponentAstKind::VariableDeclarator(declarator) = declaration.kind() else {
+            break;
+        };
+        if !matches!(ctx.nodes().parent_node(declaration.id()).kind(),
+            ReactComponentAstKind::VariableDeclaration(variable) if variable.kind.is_const())
+            || declarator
+                .id
+                .get_binding_identifier()
+                .is_none_or(|binding| binding.symbol_id() != symbol_id)
+        {
+            return false;
+        }
+        let Some(ReactComponentExpression::Identifier(identifier)) = declarator
+            .init
+            .as_ref()
+            .map(|initializer| initializer.get_inner_expression())
+        else {
+            return false;
+        };
+        let Some(next_symbol_id) = identifier_symbol_id_with_lexical_fallback(identifier, ctx)
+        else {
+            return false;
+        };
+        symbol_id = next_symbol_id;
+    }
+    let declaration = ctx.symbol_declaration(symbol_id);
+    let matching_specifier = match declaration.kind() {
+        ReactComponentAstKind::ImportDefaultSpecifier(_)
+        | ReactComponentAstKind::ImportNamespaceSpecifier(_) => is_namespace,
+        ReactComponentAstKind::ImportSpecifier(specifier) => {
+            let imported_name = specifier.imported.name();
+            if is_namespace {
+                imported_name == "default"
+            } else {
+                matches!(imported_name.as_str(), "Component" | "PureComponent")
+            }
+        }
+        _ => false,
+    };
+    matching_specifier
+        && matches!(
+            ctx.nodes().parent_node(declaration.id()).kind(),
+            ReactComponentAstKind::ImportDeclaration(import)
+                if REACT_RUNTIME_MODULE_SOURCES.contains(&import.source.value.as_str())
+        )
 }
 
 fn static_member_was_replaced_before<'a>(

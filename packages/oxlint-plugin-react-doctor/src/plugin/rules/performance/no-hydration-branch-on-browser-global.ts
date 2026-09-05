@@ -58,6 +58,7 @@ interface HydrationArgumentValue {
 
 interface HydrationResolutionState {
   readonly parameterValuesBySymbolId: Map<number, HydrationArgumentValue>;
+  readonly visitedArgumentValues: Set<HydrationArgumentValue>;
   readonly visitedFunctionNodes: Set<EsTreeNode>;
   readonly visitedSymbolIds: Set<number>;
 }
@@ -494,6 +495,8 @@ const readHydrationPrimitiveResult = (
     const symbol = context.scopes.symbolFor(unwrappedExpression);
     const parameterValue = symbol ? state.parameterValuesBySymbolId.get(symbol.id) : null;
     if (symbol && parameterValue && !state.visitedSymbolIds.has(symbol.id)) {
+      if (state.visitedArgumentValues.has(parameterValue)) return null;
+      state.visitedArgumentValues.add(parameterValue);
       state.visitedSymbolIds.add(symbol.id);
       const result = readHydrationPrimitiveResult(
         parameterValue.expression,
@@ -502,6 +505,7 @@ const readHydrationPrimitiveResult = (
         createArgumentResolutionState(state, parameterValue.context, context),
       );
       state.visitedSymbolIds.delete(symbol.id);
+      state.visitedArgumentValues.delete(parameterValue);
       return result;
     }
     if (
@@ -599,6 +603,8 @@ const readHydrationConditionResult = (
     ? state.parameterValuesBySymbolId.get(expressionSymbol.id)
     : null;
   if (expressionSymbol && parameterValue && !state.visitedSymbolIds.has(expressionSymbol.id)) {
+    if (state.visitedArgumentValues.has(parameterValue)) return null;
+    state.visitedArgumentValues.add(parameterValue);
     state.visitedSymbolIds.add(expressionSymbol.id);
     const result = readHydrationConditionResult(
       parameterValue.expression,
@@ -607,6 +613,7 @@ const readHydrationConditionResult = (
       createArgumentResolutionState(state, parameterValue.context, context),
     );
     state.visitedSymbolIds.delete(expressionSymbol.id);
+    state.visitedArgumentValues.delete(parameterValue);
     return result;
   }
   if (
@@ -685,6 +692,7 @@ const readHydrationConditionResult = (
     }
     return readHydrationFunctionResult(helperFunction, helperContext, runtime, {
       parameterValuesBySymbolId,
+      visitedArgumentValues: state.visitedArgumentValues,
       visitedFunctionNodes: state.visitedFunctionNodes,
       visitedSymbolIds: helperContext === context ? state.visitedSymbolIds : new Set(),
     });
@@ -1013,6 +1021,8 @@ const matchHydrationConditionInternal = (
     const symbol = context.scopes.symbolFor(unwrappedExpression);
     const parameterValue = symbol ? state.parameterValuesBySymbolId.get(symbol.id) : null;
     if (symbol && parameterValue && !state.visitedSymbolIds.has(symbol.id)) {
+      if (state.visitedArgumentValues.has(parameterValue)) return null;
+      state.visitedArgumentValues.add(parameterValue);
       state.visitedSymbolIds.add(symbol.id);
       const match = matchHydrationConditionInternal(
         parameterValue.expression,
@@ -1020,6 +1030,7 @@ const matchHydrationConditionInternal = (
         createArgumentResolutionState(state, parameterValue.context, context),
       );
       state.visitedSymbolIds.delete(symbol.id);
+      state.visitedArgumentValues.delete(parameterValue);
       return match;
     }
     if (
@@ -1240,6 +1251,7 @@ const matchHydrationConditionInternal = (
     }
     const match = matchHydrationFunctionResult(helperFunction, helperContext, {
       parameterValuesBySymbolId,
+      visitedArgumentValues: state.visitedArgumentValues,
       visitedFunctionNodes: state.visitedFunctionNodes,
       visitedSymbolIds: helperContext === context ? state.visitedSymbolIds : new Set(),
     });
@@ -1412,6 +1424,7 @@ const matchHydrationCondition = (
 ): HydrationConditionMatch | null =>
   matchHydrationConditionInternal(expression, context, {
     parameterValuesBySymbolId: new Map(),
+    visitedArgumentValues: new Set(),
     visitedFunctionNodes: new Set(),
     visitedSymbolIds: new Set(),
   });

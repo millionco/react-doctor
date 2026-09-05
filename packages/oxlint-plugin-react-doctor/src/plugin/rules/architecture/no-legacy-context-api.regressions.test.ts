@@ -2,6 +2,69 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noLegacyContextApi } from "./no-legacy-context-api.js";
 
+describe("no-legacy-context-api import boundaries", () => {
+  it.each([
+    {
+      name: "CommonJS class members",
+      source:
+        "const React = require('react'); export class Component extends React.Component { static contextTypes = {}; }",
+      expectedCount: 0,
+    },
+    {
+      name: "CommonJS class alias assignment",
+      source:
+        "const React = require('react'); class Component extends React.Component {} const Alias = Component; Alias.contextTypes = {};",
+      expectedCount: 0,
+    },
+    {
+      name: "ESM class alias assignment",
+      source:
+        "import React from 'react'; class Component extends React.Component {} const Alias = Component; Alias.contextTypes = {};",
+      expectedCount: 1,
+    },
+    {
+      name: "TypeScript import equals",
+      source:
+        "import React = require('react'); export class Component extends React.Component { static contextTypes = {}; }",
+      expectedCount: 0,
+    },
+    {
+      name: "named default import",
+      source:
+        "import { default as React } from 'react'; export class Component extends React.Component { static contextTypes = {}; }",
+      expectedCount: 1,
+    },
+    {
+      name: "type-only default import",
+      source:
+        "import type React from 'react'; export class Component extends React.Component { static contextTypes = {}; }",
+      expectedCount: 1,
+    },
+    {
+      name: "type-only named class import",
+      source:
+        "import type { Component as ReactComponent } from 'react'; export class Component extends ReactComponent { static contextTypes = {}; }",
+      expectedCount: 1,
+    },
+    {
+      name: "preact compatibility namespace",
+      source:
+        "import React from 'preact/compat'; export class Component extends React.Component { static contextTypes = {}; }",
+      expectedCount: 1,
+    },
+    {
+      name: "React DOM named class import",
+      source:
+        "import { Component as ReactComponent } from 'react-dom'; export class Component extends ReactComponent { static contextTypes = {}; }",
+      expectedCount: 1,
+    },
+  ])("preserves the canonical contract for $name", ({ source, expectedCount }) => {
+    const result = runRule(noLegacyContextApi, source, { filename: "src/component.tsx" });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+});
+
 describe("architecture/no-legacy-context-api — regressions", () => {
   it("flags a provider class using childContextTypes and getChildContext", () => {
     const result = runRule(

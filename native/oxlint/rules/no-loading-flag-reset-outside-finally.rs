@@ -1649,6 +1649,7 @@ fn loading_reset_exceptional_reset_is_unconditional(
     cross_file_analysis: &LoadingResetCrossFileAnalysis,
 ) -> bool {
     let mut protection_span = None;
+    let mut is_finalizer = false;
     let mut child = reset_node;
     for ancestor in ctx.nodes().ancestors(reset_node.id()) {
         if ancestor.id() == function_node.id() {
@@ -1679,6 +1680,7 @@ fn loading_reset_exceptional_reset_is_unconditional(
                     .as_ref()
                     .is_some_and(|finalizer| finalizer.span() == child.span()) =>
             {
+                is_finalizer = true;
                 protection_span = statement
                     .finalizer
                     .as_ref()
@@ -1706,7 +1708,7 @@ fn loading_reset_exceptional_reset_is_unconditional(
                     | AstKind::ThrowStatement(_)
                     | AstKind::NewExpression(_) => true,
                     AstKind::CallExpression(call) => {
-                        !loading_reset_is_proven_non_throwing_call(call, ctx)
+                        !is_finalizer && !loading_reset_is_proven_non_throwing_call(call, ctx)
                     }
                     _ => false,
                 }

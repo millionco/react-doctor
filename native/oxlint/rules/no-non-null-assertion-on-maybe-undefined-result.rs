@@ -3142,7 +3142,7 @@ fn non_null_is_unconditional_in_scope(
     scope: &AstNode<'_>,
     ctx: &LintContext<'_>,
 ) -> bool {
-    for ancestor in ctx.nodes().ancestors(candidate.id()).skip(1) {
+    for ancestor in ctx.nodes().ancestors(candidate.id()) {
         if ancestor.id() == scope.id() {
             return true;
         }

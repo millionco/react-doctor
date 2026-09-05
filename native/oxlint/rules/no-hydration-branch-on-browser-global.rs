@@ -1,4 +1,9 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    rc::Rc,
+};
+
+use oxc_allocator::Allocator;
 
 use oxc_ast::{
     AstKind,
@@ -8,21 +13,29 @@ use oxc_ast::{
     },
 };
 use oxc_diagnostics::OxcDiagnostic;
+use oxc_ecmascript::StringToNumber;
 use oxc_macros::declare_oxc_lint;
-use oxc_semantic::{NodeId, SymbolId};
-use oxc_span::Span;
+use oxc_parser::Parser;
+use oxc_semantic::{NodeId, SemanticBuilder, SymbolId};
+use oxc_span::{SourceType, Span};
 use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    AstNode,
-    context::{ContextHost, LintContext},
+    AllowWarnDeny, AstNode,
+    config::LintConfig,
+    context::{ContextHost, ContextSubHost, ContextSubHostOptions, LintContext},
+    module_record::ModuleRecord,
+    options::LintOptions,
     rule::Rule,
+    rules::RuleEnum,
 };
 
 const EMAIL_TEMPLATE_MODULES: [&str; 4] =
     ["@faire/mjml-react", "mjml-react", "mjml", "react-email"];
 const EMAIL_TEMPLATE_MODULE_PREFIXES: [&str; 2] = ["@react-email/", "jsx-email"];
+const MAX_IMPORTED_SOURCE_BYTES: u64 = 2_000_000;
+const MAX_IMPORTED_BARREL_FILES: usize = 4;
 
 #[derive(Debug, Default, Clone)]
 pub struct NoHydrationBranchOnBrowserGlobal;
@@ -42,6 +55,55 @@ struct HydrationBranchMatch {
     predicate_span: Span,
     client_result: Option<bool>,
     server_result: Option<bool>,
+}
+
+#[derive(Clone, PartialEq)]
+enum HydrationPrimitiveValue {
+    Boolean(bool),
+    Null,
+    Number(f64),
+    String(String),
+    Undefined,
+}
+
+#[derive(Clone)]
+struct HydrationArgumentResult {
+    condition_match: Option<HydrationBranchMatch>,
+    client_result: Option<bool>,
+    server_result: Option<bool>,
+    client_value: Option<HydrationPrimitiveValue>,
+    server_value: Option<HydrationPrimitiveValue>,
+}
+
+struct HydrationImportedExport {
+    file_path: PathBuf,
+    value_span: Span,
+    condition_match: Option<HydrationBranchMatch>,
+}
+
+#[derive(Default, Clone)]
+struct HydrationBranchSymbols {
+    visited: FxHashSet<SymbolId>,
+    arguments: FxHashMap<SymbolId, HydrationArgumentResult>,
+    imports: FxHashSet<(PathBuf, String)>,
+}
+
+impl HydrationBranchSymbols {
+    fn fork(&self) -> Self {
+        Self {
+            arguments: self.arguments.clone(),
+            imports: self.imports.clone(),
+            ..Self::default()
+        }
+    }
+
+    fn insert(&mut self, symbol_id: SymbolId) -> bool {
+        self.visited.insert(symbol_id)
+    }
+
+    fn remove(&mut self, symbol_id: &SymbolId) {
+        self.visited.remove(symbol_id);
+    }
 }
 
 impl Rule for NoHydrationBranchOnBrowserGlobal {
@@ -79,7 +141,7 @@ impl Rule for NoHydrationBranchOnBrowserGlobal {
                     hydration_branch_match_logical(
                         logical,
                         ctx,
-                        &mut FxHashSet::default(),
+                        &mut HydrationBranchSymbols::default(),
                         &mut FxHashSet::default(),
                     )
                     .map(|condition_match| (condition_match, &logical.right, None, true))
@@ -195,7 +257,7 @@ fn hydration_branch_match<'a>(
     hydration_branch_match_expression(
         expression,
         ctx,
-        &mut FxHashSet::default(),
+        &mut HydrationBranchSymbols::default(),
         &mut FxHashSet::default(),
     )
 }
@@ -203,7 +265,7 @@ fn hydration_branch_match<'a>(
 fn hydration_branch_match_expression<'a>(
     expression: &Expression<'a>,
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<HydrationBranchMatch> {
     let expression = expression.get_inner_expression();
@@ -241,6 +303,9 @@ fn hydration_branch_match_expression<'a>(
                 .scoping()
                 .get_reference(identifier.reference_id())
                 .symbol_id()?;
+            if let Some(argument) = visited_symbols.arguments.get(&symbol_id) {
+                return argument.condition_match.clone();
+            }
             if !visited_symbols.insert(symbol_id) {
                 return None;
             }
@@ -380,7 +445,12 @@ fn hydration_branch_match_expression<'a>(
                     visited_functions,
                 );
             }
-            if let Some(imported_match) = hydration_branch_match_imported_helper(call, ctx) {
+            if let Some(imported_match) = hydration_branch_match_imported_helper(
+                call,
+                ctx,
+                visited_symbols,
+                visited_functions,
+            ) {
                 return Some(imported_match);
             }
             let function_id =
@@ -420,17 +490,26 @@ fn hydration_branch_match_expression<'a>(
                 expression,
                 true,
                 ctx,
-                &mut FxHashSet::default(),
+                &mut visited_symbols.fork(),
                 &mut FxHashSet::default(),
             );
             let server_result = hydration_branch_read_condition(
                 expression,
                 false,
                 ctx,
-                &mut FxHashSet::default(),
+                &mut visited_symbols.fork(),
                 &mut FxHashSet::default(),
             );
-            (client_result != server_result).then_some(HydrationBranchMatch {
+            if client_result.is_some() && client_result == server_result
+                || hydration_branch_spans_binding_equivalent(
+                    binary.left.span(),
+                    binary.right.span(),
+                    ctx,
+                ) && hydration_branch_is_reflexive(&binary.left, ctx, &mut FxHashSet::default())
+            {
+                return None;
+            }
+            Some(HydrationBranchMatch {
                 client_result,
                 server_result,
                 ..condition_match
@@ -443,7 +522,7 @@ fn hydration_branch_match_expression<'a>(
 fn hydration_branch_match_logical<'a>(
     logical: &oxc_ast::ast::LogicalExpression<'a>,
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<HydrationBranchMatch> {
     let left_match =
@@ -457,14 +536,14 @@ fn hydration_branch_match_logical<'a>(
             &logical.left,
             true,
             ctx,
-            &mut FxHashSet::default(),
+            &mut visited_symbols.fork(),
             &mut FxHashSet::default(),
         ),
         hydration_branch_read_condition(
             &logical.right,
             true,
             ctx,
-            &mut FxHashSet::default(),
+            &mut visited_symbols.fork(),
             &mut FxHashSet::default(),
         ),
     );
@@ -474,14 +553,14 @@ fn hydration_branch_match_logical<'a>(
             &logical.left,
             false,
             ctx,
-            &mut FxHashSet::default(),
+            &mut visited_symbols.fork(),
             &mut FxHashSet::default(),
         ),
         hydration_branch_read_condition(
             &logical.right,
             false,
             ctx,
-            &mut FxHashSet::default(),
+            &mut visited_symbols.fork(),
             &mut FxHashSet::default(),
         ),
     );
@@ -498,131 +577,294 @@ fn hydration_branch_match_logical<'a>(
 fn hydration_branch_match_imported_helper<'a>(
     call: &oxc_ast::ast::CallExpression<'a>,
     ctx: &LintContext<'a>,
+    visited_symbols: &mut HydrationBranchSymbols,
+    visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<HydrationBranchMatch> {
     let Expression::Identifier(identifier) = call.callee.get_inner_expression() else {
         return None;
     };
+    if call.arguments.iter().any(|argument| argument.is_spread()) {
+        return None;
+    }
+    let symbol_id = ctx
+        .scoping()
+        .get_reference(identifier.reference_id())
+        .symbol_id()?;
+    if !matches!(
+        ctx.symbol_declaration(symbol_id).kind(),
+        AstKind::ImportSpecifier(_)
+            | AstKind::ImportDefaultSpecifier(_)
+            | AstKind::ImportNamespaceSpecifier(_)
+    ) {
+        return None;
+    }
     let import_entry = resolve_identifier_import(identifier, ctx)?;
     let imported_name = match &import_entry.import_name {
         crate::module_record::ImportImportName::Name(name) => name.name(),
         crate::module_record::ImportImportName::Default(_) => "default",
         crate::module_record::ImportImportName::NamespaceObject => return None,
     };
-    let module_source = import_entry.module_request.name();
-    if !module_source.starts_with('.') {
+    let module_path = super::window_open_without_noopener::resolve_window_open_module_path(
+        ctx.file_path(),
+        import_entry.module_request.name(),
+    )?;
+    let arguments = call
+        .arguments
+        .iter()
+        .filter_map(|argument| {
+            argument.as_expression().map(|expression| {
+                hydration_branch_argument_result(
+                    expression,
+                    ctx,
+                    visited_symbols,
+                    visited_functions,
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut condition_match = hydration_branch_match_imported_export(
+        &module_path,
+        imported_name,
+        &arguments,
+        ctx,
+        &visited_symbols.imports,
+        &FxHashSet::default(),
+    )?
+    .condition_match?;
+    condition_match.predicate_span = call.span;
+    Some(condition_match)
+}
+
+fn hydration_branch_match_imported_export(
+    module_path: &Path,
+    imported_name: &str,
+    arguments: &[HydrationArgumentResult],
+    caller_ctx: &LintContext<'_>,
+    visited_imports: &FxHashSet<(PathBuf, String)>,
+    visited_barrel_files: &FxHashSet<PathBuf>,
+) -> Option<HydrationImportedExport> {
+    let file_path = std::fs::canonicalize(module_path).ok()?;
+    if visited_barrel_files.len() >= MAX_IMPORTED_BARREL_FILES
+        || visited_barrel_files.contains(&file_path)
+    {
         return None;
     }
-    let module_path = hydration_branch_resolve_relative_module(ctx.file_path(), module_source)?;
-    let metadata = std::fs::metadata(&module_path).ok()?;
-    if metadata.len() > 2_000_000 {
+    let import_key = (file_path.clone(), imported_name.to_owned());
+    if visited_imports.contains(&import_key) {
+        return None;
+    }
+    let mut imports = visited_imports.clone();
+    imports.insert(import_key);
+    let mut barrel_files = visited_barrel_files.clone();
+    barrel_files.insert(file_path.clone());
+    let metadata = std::fs::metadata(module_path).ok()?;
+    if !metadata.is_file() || metadata.len() > MAX_IMPORTED_SOURCE_BYTES {
         return None;
     }
     let source = std::fs::read_to_string(module_path).ok()?;
-    if imported_name != "default"
-        && !source.contains(&format!("export const {imported_name}"))
-        && !source.contains(&format!("export function {imported_name}"))
-        && !source.contains(&format!("export {{ {imported_name}"))
-    {
+    let allocator = Allocator::default();
+    let parsed = Parser::new(
+        &allocator,
+        &source,
+        SourceType::from_path(module_path).ok()?,
+    )
+    .parse();
+    if parsed.panicked || !parsed.diagnostics.is_empty() {
         return None;
     }
-    let compact_source = source
-        .chars()
-        .filter(|character| !character.is_whitespace())
-        .collect::<String>();
-    let arrow_prefix = format!("exportconst{imported_name}=(");
-    let direct_arrow = compact_source
-        .find(&arrow_prefix)
-        .and_then(|start| compact_source.get(start + arrow_prefix.len()..))
-        .and_then(|function_source| {
-            let (parameters, body) = function_source.split_once(")=>")?;
-            (!body.starts_with('{')).then_some((parameters, body.split(';').next()?))
+    let program = allocator.alloc(parsed.program);
+    let analyzed = SemanticBuilder::new_linter().with_cfg(true).build(program);
+    if !analyzed.diagnostics.is_empty() {
+        return None;
+    }
+    let semantic = analyzed.semantic;
+    let module_record = ModuleRecord::new(module_path, &parsed.module_record, &semantic);
+    let local_name = module_record.local_export_entries.iter().find_map(|entry| {
+        let matches_name = match &entry.export_name {
+            crate::module_record::ExportExportName::Name(name) => name.name() == imported_name,
+            crate::module_record::ExportExportName::Default(_) => imported_name == "default",
+            crate::module_record::ExportExportName::Null => false,
+        };
+        matches_name.then(|| entry.local_name.name()).flatten()
+    });
+    let local_declaration = local_name
+        .and_then(|name| semantic.scoping().get_root_binding(name.into()))
+        .map(|symbol_id| semantic.symbol_declaration(symbol_id));
+    let function_id = local_declaration
+        .and_then(|declaration| match declaration.kind() {
+            AstKind::Function(_) => Some(declaration.id()),
+            AstKind::VariableDeclarator(declarator) => {
+                match declarator.init.as_ref()?.get_inner_expression() {
+                    Expression::ArrowFunctionExpression(function) => Some(function.node_id.get()),
+                    Expression::FunctionExpression(function) => Some(function.node_id.get()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .or_else(|| {
+            if imported_name != "default" {
+                return None;
+            }
+            semantic.nodes().iter().find_map(|node| {
+                let AstKind::ExportDefaultDeclaration(export) = node.kind() else {
+                    return None;
+                };
+                match &export.declaration {
+                    oxc_ast::ast::ExportDefaultDeclarationKind::FunctionDeclaration(function) => {
+                        Some(function.node_id.get())
+                    }
+                    oxc_ast::ast::ExportDefaultDeclarationKind::ArrowFunctionExpression(
+                        function,
+                    ) => Some(function.node_id.get()),
+                    _ => None,
+                }
+            })
         });
-    if let Some((parameters, body)) = direct_arrow {
-        for (parameter_index, parameter_name) in parameters.split(',').enumerate() {
-            let Some(argument) = call
-                .arguments
-                .get(parameter_index)
-                .and_then(oxc_ast::ast::Argument::as_expression)
+    let Some(function_id) = function_id else {
+        if let Some(declaration) = local_declaration {
+            let value_span = match declaration.kind() {
+                AstKind::VariableDeclarator(declarator) => declarator
+                    .init
+                    .as_ref()
+                    .map(|initializer| initializer.span()),
+                _ => Some(declaration.span()),
+            };
+            if let Some(value_span) = value_span {
+                return Some(HydrationImportedExport {
+                    file_path,
+                    value_span,
+                    condition_match: None,
+                });
+            }
+        }
+        if imported_name == "default"
+            && let Some(value_span) = semantic.nodes().iter().find_map(|node| {
+                let AstKind::ExportDefaultDeclaration(export) = node.kind() else {
+                    return None;
+                };
+                Some(export.declaration.span())
+            })
+        {
+            return Some(HydrationImportedExport {
+                file_path,
+                value_span,
+                condition_match: None,
+            });
+        }
+        let mut targets = module_record
+            .indirect_export_entries
+            .iter()
+            .filter_map(|entry| {
+                let matches_name = match &entry.export_name {
+                    crate::module_record::ExportExportName::Name(name) => {
+                        name.name() == imported_name
+                    }
+                    crate::module_record::ExportExportName::Default(_) => {
+                        imported_name == "default"
+                    }
+                    crate::module_record::ExportExportName::Null => false,
+                };
+                if !matches_name {
+                    return None;
+                }
+                let crate::module_record::ExportImportName::Name(name) = &entry.import_name else {
+                    return None;
+                };
+                Some((entry.module_request.as_ref()?.name(), name.name()))
+            })
+            .collect::<Vec<_>>();
+        if targets.is_empty() {
+            targets.extend(semantic.nodes().iter().filter_map(|node| {
+                let AstKind::ExportAllDeclaration(export) = node.kind() else {
+                    return None;
+                };
+                if export.export_kind.is_type() || export.exported.is_some() {
+                    return None;
+                }
+                Some((export.source.value.as_str(), imported_name))
+            }));
+        } else {
+            targets.truncate(1);
+        }
+        let mut resolved_exports = FxHashMap::default();
+        for (target_source, target_name) in targets {
+            let Some(target_path) =
+                super::window_open_without_noopener::resolve_window_open_module_path(
+                    module_path,
+                    target_source,
+                )
             else {
                 continue;
             };
-            if body == parameter_name
-                && let Some(mut argument_match) = hydration_branch_match(argument, ctx)
-            {
-                argument_match.predicate_span = call.span;
-                return Some(argument_match);
-            }
-            let client_argument = hydration_branch_read_condition(
-                argument,
-                true,
-                ctx,
-                &mut FxHashSet::default(),
-                &mut FxHashSet::default(),
-            );
-            let server_argument = hydration_branch_read_condition(
-                argument,
-                false,
-                ctx,
-                &mut FxHashSet::default(),
-                &mut FxHashSet::default(),
-            );
-            if client_argument.is_some()
-                && client_argument == server_argument
-                && (body.starts_with(&format!("{parameter_name}&&"))
-                    && client_argument == Some(false)
-                    || body.starts_with(&format!("{parameter_name}||"))
-                        && client_argument == Some(true))
-            {
-                return None;
+            if let Some(resolved) = hydration_branch_match_imported_export(
+                &target_path,
+                target_name,
+                arguments,
+                caller_ctx,
+                &imports,
+                &barrel_files,
+            ) {
+                resolved_exports.insert(
+                    (
+                        resolved.file_path.clone(),
+                        resolved.value_span.start,
+                        resolved.value_span.end,
+                    ),
+                    resolved,
+                );
             }
         }
-    }
-    let browser_source = direct_arrow.map_or(source.as_str(), |(_, body)| body);
-    let browser_global_name = if browser_source.contains("typeofdocument")
-        || browser_source.contains("typeofglobalThis.document")
-        || browser_source.contains("typeof document")
-        || browser_source.contains("typeof globalThis.document")
-    {
-        "document"
-    } else if browser_source.contains("typeofwindow")
-        || browser_source.contains("typeofglobalThis.window")
-        || browser_source.contains("typeof window")
-        || browser_source.contains("typeof globalThis.window")
-    {
-        "window"
-    } else {
-        return None;
+        return (resolved_exports.len() == 1)
+            .then(|| resolved_exports.into_values().next())
+            .flatten();
     };
-    let return_false_count = browser_source.matches("return false").count();
-    let return_true_count = browser_source.matches("return true").count();
-    let return_count = browser_source.matches("return ").count();
-    if return_count > 0 && (return_false_count == return_count || return_true_count == return_count)
-    {
-        return None;
-    }
-    Some(HydrationBranchMatch {
-        browser_global_name,
-        predicate_span: call.span,
-        client_result: Some(true),
-        server_result: Some(false),
+    let value_span = semantic.nodes().get_node(function_id).span();
+    let sub_host = ContextSubHost::new(
+        semantic,
+        std::sync::Arc::new(module_record),
+        0,
+        ContextSubHostOptions::default(),
+    );
+    let config = LintConfig {
+        settings: caller_ctx.settings().clone(),
+        globals: caller_ctx.globals().clone(),
+        env: caller_ctx.env().clone(),
+        ..LintConfig::default()
+    };
+    let host = Rc::new(ContextHost::new(
+        module_path,
+        vec![sub_host],
+        &allocator,
+        LintOptions::default(),
+        std::sync::Arc::new(config),
+    ));
+    let rule = RuleEnum::ReactDoctorNativeNoHydrationBranchOnBrowserGlobal(
+        NoHydrationBranchOnBrowserGlobal,
+    );
+    let imported_ctx = host.spawn(&rule, AllowWarnDeny::Warn);
+    let condition_match = hydration_branch_match_function_with_arguments(
+        function_id,
+        arguments,
+        &imported_ctx,
+        &mut HydrationBranchSymbols {
+            imports,
+            ..HydrationBranchSymbols::default()
+        },
+        &mut FxHashSet::default(),
+    );
+    Some(HydrationImportedExport {
+        file_path,
+        value_span,
+        condition_match,
     })
-}
-
-fn hydration_branch_resolve_relative_module(file_path: &Path, source: &str) -> Option<PathBuf> {
-    let base = file_path.parent()?.join(source);
-    let mut candidates = vec![base.clone()];
-    for extension in ["ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs"] {
-        candidates.push(base.with_extension(extension));
-        candidates.push(base.join(format!("index.{extension}")));
-    }
-    candidates.into_iter().find(|candidate| candidate.is_file())
 }
 
 fn hydration_branch_match_mutable_symbol<'a>(
     symbol_id: SymbolId,
     read_span: Span,
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<HydrationBranchMatch> {
     let write_nodes = ctx
@@ -676,7 +918,7 @@ fn hydration_branch_match_function_property<'a>(
     function_id: NodeId,
     property_name: &str,
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<HydrationBranchMatch> {
     if !visited_functions.insert(function_id) {
@@ -847,11 +1089,257 @@ fn hydration_branch_string_literal<'a>(expression: &'a Expression<'a>) -> Option
     Some(literal.value.as_str())
 }
 
+fn hydration_branch_primitive_truthiness(value: Option<&HydrationPrimitiveValue>) -> Option<bool> {
+    match value? {
+        HydrationPrimitiveValue::Boolean(value) => Some(*value),
+        HydrationPrimitiveValue::Null | HydrationPrimitiveValue::Undefined => Some(false),
+        HydrationPrimitiveValue::Number(value) => Some(*value != 0.0 && !value.is_nan()),
+        HydrationPrimitiveValue::String(value) => Some(!value.is_empty()),
+    }
+}
+
+fn hydration_branch_loosely_equal(
+    left: &HydrationPrimitiveValue,
+    right: &HydrationPrimitiveValue,
+) -> bool {
+    match (left, right) {
+        (HydrationPrimitiveValue::Null, HydrationPrimitiveValue::Undefined)
+        | (HydrationPrimitiveValue::Undefined, HydrationPrimitiveValue::Null) => true,
+        (HydrationPrimitiveValue::Boolean(value), other)
+            if !matches!(other, HydrationPrimitiveValue::Boolean(_)) =>
+        {
+            hydration_branch_loosely_equal(
+                &HydrationPrimitiveValue::Number(if *value { 1.0 } else { 0.0 }),
+                other,
+            )
+        }
+        (other, HydrationPrimitiveValue::Boolean(value))
+            if !matches!(other, HydrationPrimitiveValue::Boolean(_)) =>
+        {
+            hydration_branch_loosely_equal(
+                other,
+                &HydrationPrimitiveValue::Number(if *value { 1.0 } else { 0.0 }),
+            )
+        }
+        (HydrationPrimitiveValue::Number(number), HydrationPrimitiveValue::String(text))
+        | (HydrationPrimitiveValue::String(text), HydrationPrimitiveValue::Number(number)) => {
+            *number == text.as_str().string_to_number()
+        }
+        _ => left == right,
+    }
+}
+
+fn hydration_branch_read_primitive<'a>(
+    expression: &Expression<'a>,
+    client_runtime: bool,
+    ctx: &LintContext<'a>,
+    visited_symbols: &mut HydrationBranchSymbols,
+    visited_functions: &mut FxHashSet<NodeId>,
+) -> Option<HydrationPrimitiveValue> {
+    let expression = expression.get_inner_expression();
+    if let Some(predicate) = hydration_branch_direct_predicate(expression, ctx) {
+        return (if client_runtime {
+            predicate.client_result
+        } else {
+            predicate.server_result
+        })
+        .map(HydrationPrimitiveValue::Boolean);
+    }
+    match expression {
+        Expression::BooleanLiteral(value) => Some(HydrationPrimitiveValue::Boolean(value.value)),
+        Expression::NullLiteral(_) => Some(HydrationPrimitiveValue::Null),
+        Expression::NumericLiteral(value) => Some(HydrationPrimitiveValue::Number(value.value)),
+        Expression::StringLiteral(value) => {
+            Some(HydrationPrimitiveValue::String(value.value.to_string()))
+        }
+        Expression::Identifier(identifier) => {
+            if identifier.name == "undefined" && ctx.is_reference_to_global_variable(identifier) {
+                return Some(HydrationPrimitiveValue::Undefined);
+            }
+            let symbol_id = ctx
+                .scoping()
+                .get_reference(identifier.reference_id())
+                .symbol_id()?;
+            if let Some(argument) = visited_symbols.arguments.get(&symbol_id) {
+                return if client_runtime {
+                    argument.client_value.clone()
+                } else {
+                    argument.server_value.clone()
+                };
+            }
+            if !visited_symbols.insert(symbol_id) {
+                return None;
+            }
+            let declaration = ctx.symbol_declaration(symbol_id);
+            let result = match declaration.kind() {
+                AstKind::VariableDeclarator(declarator)
+                    if hydration_branch_variable_is_immutable(declaration, symbol_id, ctx) =>
+                {
+                    declarator.init.as_ref().and_then(|initializer| {
+                        hydration_branch_read_primitive(
+                            initializer,
+                            client_runtime,
+                            ctx,
+                            visited_symbols,
+                            visited_functions,
+                        )
+                    })
+                }
+                _ => None,
+            };
+            visited_symbols.remove(&symbol_id);
+            result
+        }
+        Expression::UnaryExpression(unary) if unary.operator == UnaryOperator::LogicalNot => {
+            hydration_branch_read_condition(
+                &unary.argument,
+                client_runtime,
+                ctx,
+                visited_symbols,
+                visited_functions,
+            )
+            .map(|value| HydrationPrimitiveValue::Boolean(!value))
+        }
+        Expression::BinaryExpression(binary)
+            if matches!(
+                binary.operator,
+                BinaryOperator::Equality
+                    | BinaryOperator::Inequality
+                    | BinaryOperator::StrictEquality
+                    | BinaryOperator::StrictInequality
+            ) =>
+        {
+            let left = hydration_branch_read_primitive(
+                &binary.left,
+                client_runtime,
+                ctx,
+                visited_symbols,
+                visited_functions,
+            )?;
+            let right = hydration_branch_read_primitive(
+                &binary.right,
+                client_runtime,
+                ctx,
+                visited_symbols,
+                visited_functions,
+            )?;
+            let equal = if matches!(
+                binary.operator,
+                BinaryOperator::Equality | BinaryOperator::Inequality
+            ) {
+                hydration_branch_loosely_equal(&left, &right)
+            } else {
+                left == right
+            };
+            Some(HydrationPrimitiveValue::Boolean(
+                if matches!(
+                    binary.operator,
+                    BinaryOperator::Inequality | BinaryOperator::StrictInequality
+                ) {
+                    !equal
+                } else {
+                    equal
+                },
+            ))
+        }
+        Expression::CallExpression(call) if hydration_branch_is_global_boolean_call(call, ctx) => {
+            hydration_branch_read_condition(
+                call.arguments.first()?.as_expression()?,
+                client_runtime,
+                ctx,
+                visited_symbols,
+                visited_functions,
+            )
+            .map(HydrationPrimitiveValue::Boolean)
+        }
+        _ => None,
+    }
+}
+
+fn hydration_branch_is_reflexive<'a>(
+    expression: &Expression<'a>,
+    ctx: &LintContext<'a>,
+    visited_symbols: &mut FxHashSet<SymbolId>,
+) -> bool {
+    let expression = expression.get_inner_expression();
+    if hydration_branch_direct_predicate(expression, ctx).is_some() {
+        return true;
+    }
+    match expression {
+        Expression::NumericLiteral(value) => !value.value.is_nan(),
+        Expression::NullLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::BigIntLiteral(_)
+        | Expression::RegExpLiteral(_)
+        | Expression::ArrayExpression(_)
+        | Expression::ObjectExpression(_)
+        | Expression::FunctionExpression(_)
+        | Expression::ArrowFunctionExpression(_)
+        | Expression::TemplateLiteral(_) => true,
+        Expression::Identifier(identifier) => {
+            if identifier.name == "undefined" && ctx.is_reference_to_global_variable(identifier) {
+                return true;
+            }
+            let Some(symbol_id) = ctx
+                .scoping()
+                .get_reference(identifier.reference_id())
+                .symbol_id()
+            else {
+                return false;
+            };
+            if !visited_symbols.insert(symbol_id) {
+                return false;
+            }
+            let result = if let AstKind::VariableDeclarator(declarator) =
+                ctx.symbol_declaration(symbol_id).kind()
+            {
+                declarator.init.as_ref().is_some_and(|initializer| {
+                    hydration_branch_is_reflexive(initializer, ctx, visited_symbols)
+                }) && ctx
+                    .scoping()
+                    .get_resolved_references(symbol_id)
+                    .filter(|reference| reference.is_write())
+                    .all(|reference| {
+                        let node = ctx.nodes().get_node(reference.node_id());
+                        let AstKind::AssignmentExpression(assignment) =
+                            ctx.nodes().parent_node(node.id()).kind()
+                        else {
+                            return false;
+                        };
+                        hydration_branch_is_reflexive(&assignment.right, ctx, visited_symbols)
+                    })
+            } else {
+                false
+            };
+            visited_symbols.remove(&symbol_id);
+            result
+        }
+        Expression::ConditionalExpression(conditional) => {
+            hydration_branch_is_reflexive(&conditional.consequent, ctx, visited_symbols)
+                && hydration_branch_is_reflexive(&conditional.alternate, ctx, visited_symbols)
+        }
+        Expression::UnaryExpression(unary) => matches!(
+            unary.operator,
+            UnaryOperator::LogicalNot | UnaryOperator::Typeof | UnaryOperator::Void
+        ),
+        Expression::BinaryExpression(binary) => matches!(
+            binary.operator,
+            BinaryOperator::Equality
+                | BinaryOperator::Inequality
+                | BinaryOperator::StrictEquality
+                | BinaryOperator::StrictInequality
+        ),
+        Expression::CallExpression(call) => hydration_branch_is_global_boolean_call(call, ctx),
+        _ => false,
+    }
+}
+
 fn hydration_branch_read_condition<'a>(
     expression: &Expression<'a>,
     client_runtime: bool,
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<bool> {
     let expression = expression.get_inner_expression();
@@ -874,6 +1362,13 @@ fn hydration_branch_read_condition<'a>(
                 .scoping()
                 .get_reference(identifier.reference_id())
                 .symbol_id()?;
+            if let Some(argument) = visited_symbols.arguments.get(&symbol_id) {
+                return if client_runtime {
+                    argument.client_result
+                } else {
+                    argument.server_result
+                };
+            }
             if !visited_symbols.insert(symbol_id) {
                 return None;
             }
@@ -899,6 +1394,16 @@ fn hydration_branch_read_condition<'a>(
             visited_symbols.remove(&symbol_id);
             result
         }
+        Expression::BinaryExpression(_) => hydration_branch_primitive_truthiness(
+            hydration_branch_read_primitive(
+                expression,
+                client_runtime,
+                ctx,
+                visited_symbols,
+                visited_functions,
+            )
+            .as_ref(),
+        ),
         Expression::UnaryExpression(unary) if unary.operator == UnaryOperator::LogicalNot => {
             hydration_branch_read_condition(
                 &unary.argument,
@@ -953,12 +1458,45 @@ fn hydration_branch_read_condition<'a>(
             };
             let function_id =
                 hydration_branch_resolve_local_function(function_expression, ctx, visited_symbols)?;
-            hydration_branch_read_function_result(
+            if visited_functions.contains(&function_id) {
+                return None;
+            }
+            let arguments = if is_react_api_call(call, "useMemo", ctx)
+                || is_react_api_call(call, "useState", ctx)
+            {
+                Vec::new()
+            } else {
+                if call.arguments.iter().any(|argument| argument.is_spread()) {
+                    return None;
+                }
+                call.arguments
+                    .iter()
+                    .filter_map(|argument| {
+                        argument.as_expression().map(|expression| {
+                            hydration_branch_argument_result(
+                                expression,
+                                ctx,
+                                visited_symbols,
+                                visited_functions,
+                            )
+                        })
+                    })
+                    .collect()
+            };
+            hydration_branch_with_function_arguments(
                 function_id,
-                client_runtime,
+                &arguments,
                 ctx,
                 visited_symbols,
-                visited_functions,
+                |symbols| {
+                    hydration_branch_read_function_result(
+                        function_id,
+                        client_runtime,
+                        ctx,
+                        symbols,
+                        visited_functions,
+                    )
+                },
             )
         }
         _ => None,
@@ -1010,7 +1548,7 @@ fn hydration_branch_is_global_boolean_call(
 fn hydration_branch_resolve_local_function<'a>(
     expression: &Expression<'a>,
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
 ) -> Option<NodeId> {
     match expression.get_inner_expression() {
         Expression::ArrowFunctionExpression(function) => Some(function.node_id.get()),
@@ -1057,7 +1595,7 @@ fn hydration_branch_function_has_no_parameters(function_id: NodeId, ctx: &LintCo
 fn hydration_branch_match_function<'a>(
     function_id: NodeId,
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<HydrationBranchMatch> {
     if !visited_functions.insert(function_id) {
@@ -1103,14 +1641,14 @@ fn hydration_branch_match_function<'a>(
         function_id,
         true,
         ctx,
-        &mut FxHashSet::default(),
+        &mut visited_symbols.fork(),
         &mut FxHashSet::default(),
     );
     let server_result = hydration_branch_read_function_result(
         function_id,
         false,
         ctx,
-        &mut FxHashSet::default(),
+        &mut visited_symbols.fork(),
         &mut FxHashSet::default(),
     );
     if client_result.is_some() && client_result == server_result {
@@ -1121,265 +1659,150 @@ fn hydration_branch_match_function<'a>(
     Some(condition_match)
 }
 
+fn hydration_branch_argument_result<'a>(
+    expression: &Expression<'a>,
+    ctx: &LintContext<'a>,
+    visited_symbols: &mut HydrationBranchSymbols,
+    visited_functions: &mut FxHashSet<NodeId>,
+) -> HydrationArgumentResult {
+    let client_value =
+        hydration_branch_read_primitive(expression, true, ctx, visited_symbols, visited_functions);
+    let server_value =
+        hydration_branch_read_primitive(expression, false, ctx, visited_symbols, visited_functions);
+    HydrationArgumentResult {
+        condition_match: hydration_branch_match_expression(
+            expression,
+            ctx,
+            visited_symbols,
+            visited_functions,
+        ),
+        client_result: hydration_branch_primitive_truthiness(client_value.as_ref()).or_else(|| {
+            hydration_branch_read_condition(
+                expression,
+                true,
+                ctx,
+                visited_symbols,
+                visited_functions,
+            )
+        }),
+        server_result: hydration_branch_primitive_truthiness(server_value.as_ref()).or_else(|| {
+            hydration_branch_read_condition(
+                expression,
+                false,
+                ctx,
+                visited_symbols,
+                visited_functions,
+            )
+        }),
+        client_value,
+        server_value,
+    }
+}
+
 fn hydration_branch_match_called_function<'a>(
     function_id: NodeId,
     call: &oxc_ast::ast::CallExpression<'a>,
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<HydrationBranchMatch> {
-    let function_node = ctx.nodes().get_node(function_id);
-    let parameters = match function_node.kind() {
-        AstKind::ArrowFunctionExpression(function) if !function.r#async => &function.params.items,
-        AstKind::Function(function) if !function.r#async && !function.generator => {
-            &function.params.items
-        }
-        _ => return None,
-    };
-    if parameters
-        .iter()
-        .any(|parameter| parameter.pattern.get_binding_identifier().is_none())
-        || call.arguments.iter().any(|argument| argument.is_spread())
+    if call.arguments.iter().any(|argument| argument.is_spread())
+        || visited_functions.contains(&function_id)
     {
         return None;
     }
-    let parameter_arguments = parameters
+    let arguments = call
+        .arguments
         .iter()
-        .zip(&call.arguments)
-        .filter_map(|(parameter, argument)| {
-            Some((
-                parameter.pattern.get_binding_identifier()?.symbol_id(),
-                argument.as_expression()?,
-            ))
+        .filter_map(|argument| {
+            argument.as_expression().map(|expression| {
+                hydration_branch_argument_result(
+                    expression,
+                    ctx,
+                    visited_symbols,
+                    visited_functions,
+                )
+            })
         })
         .collect::<Vec<_>>();
-    hydration_branch_match_called_function_node(
-        function_node,
-        &parameter_arguments,
+    hydration_branch_match_function_with_arguments(
+        function_id,
+        &arguments,
         ctx,
         visited_symbols,
         visited_functions,
     )
 }
 
-fn hydration_branch_match_called_function_node<'a, 'b>(
-    function_node: &AstNode<'a>,
-    parameter_arguments: &[(SymbolId, &'b Expression<'a>)],
+fn hydration_branch_match_function_with_arguments<'a>(
+    function_id: NodeId,
+    arguments: &[HydrationArgumentResult],
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<HydrationBranchMatch> {
-    match function_node.kind() {
-        AstKind::ArrowFunctionExpression(function) => function
-            .get_expression()
-            .and_then(|expression| {
-                hydration_branch_match_expression_with_arguments(
-                    expression,
-                    parameter_arguments,
-                    ctx,
-                    visited_symbols,
-                    visited_functions,
-                )
-            })
-            .or_else(|| {
-                function.get_function_body().and_then(|body| {
-                    hydration_branch_match_statements_with_arguments(
-                        &body.statements,
-                        parameter_arguments,
-                        ctx,
-                        visited_symbols,
-                        visited_functions,
-                    )
-                })
-            }),
-        AstKind::Function(function) => function.body.as_ref().and_then(|body| {
-            hydration_branch_match_statements_with_arguments(
-                &body.statements,
-                parameter_arguments,
-                ctx,
-                visited_symbols,
-                visited_functions,
-            )
-        }),
-        _ => None,
-    }
+    hydration_branch_with_function_arguments(
+        function_id,
+        arguments,
+        ctx,
+        visited_symbols,
+        |symbols| hydration_branch_match_function(function_id, ctx, symbols, visited_functions),
+    )
 }
 
-fn hydration_branch_match_expression_with_arguments<'a, 'b>(
-    expression: &Expression<'a>,
-    parameter_arguments: &[(SymbolId, &'b Expression<'a>)],
+fn hydration_branch_with_function_arguments<'a, ResultValue>(
+    function_id: NodeId,
+    arguments: &[HydrationArgumentResult],
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
-    visited_functions: &mut FxHashSet<NodeId>,
-) -> Option<HydrationBranchMatch> {
-    let expression = expression.get_inner_expression();
-    if let Expression::Identifier(identifier) = expression
-        && let Some(symbol_id) = ctx
-            .scoping()
-            .get_reference(identifier.reference_id())
-            .symbol_id()
-        && let Some((_, argument)) = parameter_arguments
-            .iter()
-            .find(|(parameter_symbol_id, _)| *parameter_symbol_id == symbol_id)
-    {
-        return hydration_branch_match_expression(
-            argument,
-            ctx,
-            visited_symbols,
-            visited_functions,
-        );
-    }
-    if let Expression::LogicalExpression(logical) = expression
-        && matches!(logical.operator, LogicalOperator::And | LogicalOperator::Or)
-    {
-        let left_static =
-            hydration_branch_parameter_static_value(&logical.left, parameter_arguments, ctx);
-        if logical.operator == LogicalOperator::And && left_static == Some(false)
-            || logical.operator == LogicalOperator::Or && left_static == Some(true)
-        {
-            return None;
-        }
-        return hydration_branch_match_expression_with_arguments(
-            &logical.left,
-            parameter_arguments,
-            ctx,
-            visited_symbols,
-            visited_functions,
-        )
-        .or_else(|| {
-            hydration_branch_match_expression_with_arguments(
-                &logical.right,
-                parameter_arguments,
-                ctx,
-                visited_symbols,
-                visited_functions,
-            )
-        });
-    }
-    hydration_branch_match_expression(expression, ctx, visited_symbols, visited_functions)
-}
-
-fn hydration_branch_parameter_static_value(
-    expression: &Expression<'_>,
-    parameter_arguments: &[(SymbolId, &Expression<'_>)],
-    ctx: &LintContext<'_>,
-) -> Option<bool> {
-    let Expression::Identifier(identifier) = expression.get_inner_expression() else {
-        return None;
+    visited_symbols: &mut HydrationBranchSymbols,
+    evaluate: impl FnOnce(&mut HydrationBranchSymbols) -> Option<ResultValue>,
+) -> Option<ResultValue> {
+    let parameters = match ctx.nodes().get_node(function_id).kind() {
+        AstKind::ArrowFunctionExpression(function) if !function.r#async => &function.params,
+        AstKind::Function(function) if !function.r#async && !function.generator => &function.params,
+        _ => return None,
     };
-    let symbol_id = ctx
-        .scoping()
-        .get_reference(identifier.reference_id())
-        .symbol_id()?;
-    let argument = parameter_arguments
+    if parameters.rest.is_some()
+        || parameters
+            .items
+            .iter()
+            .any(|parameter| !matches!(parameter.pattern, BindingPattern::BindingIdentifier(_)))
+    {
+        return None;
+    }
+    let previous_arguments = parameters
+        .items
         .iter()
-        .find(|(parameter_symbol_id, _)| *parameter_symbol_id == symbol_id)?
-        .1;
-    static_literal_truthiness(argument.get_inner_expression())
-}
-
-fn hydration_branch_match_statements_with_arguments<'a, 'b>(
-    statements: &[Statement<'a>],
-    parameter_arguments: &[(SymbolId, &'b Expression<'a>)],
-    ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
-    visited_functions: &mut FxHashSet<NodeId>,
-) -> Option<HydrationBranchMatch> {
-    for statement in statements {
-        let condition_match = match statement {
-            Statement::ReturnStatement(return_statement) => {
-                return_statement.argument.as_ref().and_then(|argument| {
-                    hydration_branch_match_expression_with_arguments(
-                        argument,
-                        parameter_arguments,
-                        ctx,
-                        visited_symbols,
-                        visited_functions,
-                    )
-                })
-            }
-            Statement::IfStatement(if_statement) => {
-                hydration_branch_match_expression_with_arguments(
-                    &if_statement.test,
-                    parameter_arguments,
-                    ctx,
-                    visited_symbols,
-                    visited_functions,
-                )
-                .or_else(|| {
-                    hydration_branch_match_statement_with_arguments(
-                        &if_statement.consequent,
-                        parameter_arguments,
-                        ctx,
-                        visited_symbols,
-                        visited_functions,
-                    )
-                })
-                .or_else(|| {
-                    if_statement.alternate.as_ref().and_then(|alternate| {
-                        hydration_branch_match_statement_with_arguments(
-                            alternate,
-                            parameter_arguments,
-                            ctx,
-                            visited_symbols,
-                            visited_functions,
-                        )
-                    })
-                })
-            }
-            Statement::BlockStatement(block) => hydration_branch_match_statements_with_arguments(
-                &block.body,
-                parameter_arguments,
-                ctx,
-                visited_symbols,
-                visited_functions,
-            ),
-            _ => None,
-        };
-        if condition_match.is_some() {
-            return condition_match;
-        }
-        if statement_always_exits(statement) {
-            break;
+        .zip(arguments)
+        .map(|(parameter, argument)| {
+            let symbol_id = parameter
+                .pattern
+                .get_binding_identifier()
+                .unwrap()
+                .symbol_id();
+            (
+                symbol_id,
+                visited_symbols
+                    .arguments
+                    .insert(symbol_id, argument.clone()),
+            )
+        })
+        .collect::<Vec<_>>();
+    let result = evaluate(visited_symbols);
+    for (symbol_id, previous) in previous_arguments {
+        if let Some(previous) = previous {
+            visited_symbols.arguments.insert(symbol_id, previous);
+        } else {
+            visited_symbols.arguments.remove(&symbol_id);
         }
     }
-    None
-}
-
-fn hydration_branch_match_statement_with_arguments<'a, 'b>(
-    statement: &Statement<'a>,
-    parameter_arguments: &[(SymbolId, &'b Expression<'a>)],
-    ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
-    visited_functions: &mut FxHashSet<NodeId>,
-) -> Option<HydrationBranchMatch> {
-    match statement {
-        Statement::ReturnStatement(return_statement) => {
-            return_statement.argument.as_ref().and_then(|argument| {
-                hydration_branch_match_expression_with_arguments(
-                    argument,
-                    parameter_arguments,
-                    ctx,
-                    visited_symbols,
-                    visited_functions,
-                )
-            })
-        }
-        Statement::BlockStatement(block) => hydration_branch_match_statements_with_arguments(
-            &block.body,
-            parameter_arguments,
-            ctx,
-            visited_symbols,
-            visited_functions,
-        ),
-        _ => None,
-    }
+    result
 }
 
 fn hydration_branch_match_statements<'a>(
     statements: &[Statement<'a>],
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<HydrationBranchMatch> {
     for statement in statements {
@@ -1439,7 +1862,7 @@ fn hydration_branch_match_statements<'a>(
 fn hydration_branch_match_statement<'a>(
     statement: &Statement<'a>,
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<HydrationBranchMatch> {
     match statement {
@@ -1459,7 +1882,7 @@ fn hydration_branch_read_function_result<'a>(
     function_id: NodeId,
     client_runtime: bool,
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<bool> {
     if !visited_functions.insert(function_id) {
@@ -1510,7 +1933,7 @@ fn hydration_branch_read_returning_statements<'a>(
     statements: &[Statement<'a>],
     client_runtime: bool,
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<bool> {
     for statement in statements {
@@ -1564,7 +1987,7 @@ fn hydration_branch_read_returning_statement<'a>(
     statement: &Statement<'a>,
     client_runtime: bool,
     ctx: &LintContext<'a>,
-    visited_symbols: &mut FxHashSet<SymbolId>,
+    visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
 ) -> Option<bool> {
     match statement {
@@ -1640,18 +2063,19 @@ fn hydration_branch_following_returns<'a>(
     ctx: &LintContext<'a>,
 ) -> Vec<&'a Expression<'a>> {
     let parent = ctx.nodes().parent_node(if_node.id());
-    let AstKind::BlockStatement(block) = parent.kind() else {
-        return Vec::new();
+    let statements = match parent.kind() {
+        AstKind::BlockStatement(block) => block.body.as_slice(),
+        AstKind::FunctionBody(body) => body.statements.as_slice(),
+        _ => return Vec::new(),
     };
-    let Some(statement_index) = block
-        .body
+    let Some(statement_index) = statements
         .iter()
         .position(|statement| statement.span() == if_node.span())
     else {
         return Vec::new();
     };
     let mut returned_values = Vec::new();
-    for statement in block.body.iter().skip(statement_index + 1) {
+    for statement in statements.iter().skip(statement_index + 1) {
         hydration_branch_collect_returned_values(statement, &mut returned_values);
         if statement_always_exits(statement) {
             break;
@@ -2301,19 +2725,22 @@ fn hydration_branch_is_after_client_only_early_return<'a>(
         if ancestor.id() == render_owner.id() {
             break;
         }
-        let AstKind::BlockStatement(block) = ancestor.kind() else {
-            child_span = ancestor.span();
-            continue;
+        let statements = match ancestor.kind() {
+            AstKind::BlockStatement(block) => block.body.as_slice(),
+            AstKind::FunctionBody(body) => body.statements.as_slice(),
+            _ => {
+                child_span = ancestor.span();
+                continue;
+            }
         };
-        let Some(child_index) = block
-            .body
+        let Some(child_index) = statements
             .iter()
             .position(|statement| statement.span().contains_inclusive(child_span))
         else {
             child_span = ancestor.span();
             continue;
         };
-        if block.body[..child_index].iter().any(|statement| {
+        if statements[..child_index].iter().any(|statement| {
             let Statement::IfStatement(if_statement) = statement else {
                 return false;
             };
@@ -2342,11 +2769,8 @@ fn hydration_branch_has_client_render_evidence(ctx: &LintContext<'_>) -> bool {
     }) {
         return true;
     }
-    ctx.module_record()
-        .import_entries
-        .iter()
-        .any(|entry| REACT_RUNTIME_MODULE_SOURCES.contains(&entry.module_request.name()))
-        || ctx.nodes().iter().any(|node| match node.kind() {
+    ctx.nodes().iter().any(|node| match node.kind() {
+            AstKind::ImportDeclaration(import) => REACT_RUNTIME_MODULE_SOURCES.contains(&import.source.value.as_str()),
             AstKind::IdentifierReference(identifier) => {
                 identifier.name == "React" && ctx.is_reference_to_global_variable(identifier)
             }

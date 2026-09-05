@@ -4,6 +4,7 @@ import * as path from "node:path";
 
 export const computeNativeSourceSha256 = (repositoryRoot) => {
   const sourcePaths = [
+    ".github/workflows/native-oxlint.yml",
     "native/oxlint/upstream.json",
     "native/oxlint/react-doctor.patch",
     "scripts/native/build-oxlint-binding.mjs",

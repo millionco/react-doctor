@@ -10,6 +10,7 @@ import { computeNativeSourceSha256 } from "../../../../../scripts/native/utils/c
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../..");
 const sourcePaths = [
+  ".github/workflows/native-oxlint.yml",
   "native/oxlint/upstream.json",
   "native/oxlint/react-doctor.patch",
   "native/oxlint/rules/example.rs",

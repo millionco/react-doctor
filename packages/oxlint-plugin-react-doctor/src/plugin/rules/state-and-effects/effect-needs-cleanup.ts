@@ -6007,6 +6007,144 @@ const hasEffectLocalStoredDisposerCleanup = (
       isFunctionLike(functionNode) && doesCleanupFunctionReleaseUsage(functionNode, usage, context),
   });
 
+const hasAbortSignalDelegatedCleanup = (
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  if (
+    usage.kind !== "subscribe" ||
+    usage.registrationVerbName !== "addEventListener" ||
+    !isNodeOfType(usage.node, "CallExpression") ||
+    !isNodeOfType(callback.body, "BlockStatement")
+  ) {
+    return false;
+  }
+
+  const usageCallee = stripParenExpression(usage.node.callee);
+  const usageReceiver = isNodeOfType(usageCallee, "MemberExpression")
+    ? resolveExpressionKey(usageCallee.object, context)
+    : null;
+  const usageEvent = resolveExpressionKey(usage.node.arguments?.[0], context);
+  const usageHandler = resolveExpressionKey(usage.node.arguments?.[1], context);
+
+  if (!usageReceiver || !usageEvent || !usageHandler) return false;
+
+  let controllerKey: string | null = null;
+  let hasMatchingAbortHandler = false;
+
+  walkAst(callback.body, (child: EsTreeNode) => {
+    if (child !== callback.body && isFunctionLike(child)) {
+      const isAbortListener =
+        isNodeOfType(child.parent, "CallExpression") &&
+        child.parent.arguments?.some((arg) => arg === child);
+      if (!isAbortListener) return false;
+
+      const abortCall = child.parent;
+      const abortCallee = stripParenExpression(abortCall.callee);
+      if (
+        !isNodeOfType(abortCallee, "MemberExpression") ||
+        abortCallee.computed ||
+        !isNodeOfType(abortCallee.property, "Identifier") ||
+        abortCallee.property.name !== "addEventListener"
+      ) {
+        return false;
+      }
+
+      const abortEvent = resolveExpressionKey(abortCall.arguments?.[0], context);
+      if (abortEvent !== `"abort"`) return;
+
+      const signalExpression = stripParenExpression(abortCallee.object);
+      if (!isNodeOfType(signalExpression, "Identifier")) return;
+
+      const signalSymbol = context.scopes.symbolFor(signalExpression);
+      if (!signalSymbol) return;
+
+      const signalInitializer = signalSymbol.initializer
+        ? stripParenExpression(signalSymbol.initializer)
+        : null;
+      if (
+        isNodeOfType(signalInitializer, "MemberExpression") &&
+        !signalInitializer.computed &&
+        isNodeOfType(signalInitializer.property, "Identifier") &&
+        signalInitializer.property.name === "signal"
+      ) {
+        controllerKey = resolveExpressionKey(signalInitializer.object, context);
+      } else if (signalSymbol.bindingIdentifier.parent) {
+        const bindingParent = signalSymbol.bindingIdentifier.parent;
+        if (
+          isNodeOfType(bindingParent, "Property") &&
+          isNodeOfType(bindingParent.parent, "ObjectPattern") &&
+          isNodeOfType(bindingParent.parent.parent, "VariableDeclarator") &&
+          bindingParent.parent.parent.init
+        ) {
+          controllerKey = resolveExpressionKey(bindingParent.parent.parent.init, context);
+        }
+      }
+
+      walkAst(child.body, (handlerChild: EsTreeNode) => {
+        if (handlerChild !== child.body && isFunctionLike(handlerChild)) return false;
+        if (!isNodeOfType(handlerChild, "CallExpression")) return;
+
+        const handlerCallee = stripParenExpression(handlerChild.callee);
+        if (
+          !isNodeOfType(handlerCallee, "MemberExpression") ||
+          handlerCallee.computed ||
+          !isNodeOfType(handlerCallee.property, "Identifier") ||
+          handlerCallee.property.name !== "removeEventListener"
+        ) {
+          return;
+        }
+
+        const removeReceiver = resolveExpressionKey(handlerCallee.object, context);
+        const removeEvent = resolveExpressionKey(handlerChild.arguments?.[0], context);
+        const removeHandler = resolveExpressionKey(handlerChild.arguments?.[1], context);
+
+        if (
+          removeReceiver === usageReceiver &&
+          removeEvent === usageEvent &&
+          removeHandler === usageHandler
+        ) {
+          hasMatchingAbortHandler = true;
+        }
+      });
+      return false;
+    }
+  });
+
+  if (!controllerKey || !hasMatchingAbortHandler) return false;
+
+  const matchingCleanupReturns: EsTreeNode[] = [];
+  walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "ReturnStatement") || !child.argument) return;
+    const cleanupFunction = resolveStableValue(child.argument, context);
+    if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return;
+
+    let hasAbortCall = false;
+    walkAst(cleanupFunction.body, (cleanupChild: EsTreeNode) => {
+      if (cleanupChild !== cleanupFunction.body && isFunctionLike(cleanupChild)) return false;
+      if (!isNodeOfType(cleanupChild, "CallExpression")) return;
+
+      const cleanupCallee = stripParenExpression(cleanupChild.callee);
+      if (
+        isNodeOfType(cleanupCallee, "MemberExpression") &&
+        !cleanupCallee.computed &&
+        isNodeOfType(cleanupCallee.property, "Identifier") &&
+        cleanupCallee.property.name === "abort" &&
+        resolveExpressionKey(cleanupCallee.object, context) === controllerKey
+      ) {
+        hasAbortCall = true;
+      }
+    });
+
+    if (hasAbortCall) {
+      matchingCleanupReturns.push(child);
+    }
+  });
+
+  return doMatchingNodesCoverEveryPathAfterUsage(usage.node, matchingCleanupReturns, context);
+};
+
 const effectHasCleanupForUsage = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -6025,6 +6163,7 @@ const effectHasCleanupForUsage = (
     symmetricForEachListenerCleanupReleasesUsage(callback, usage, context) ||
     hasReturnedObserverDisconnectAfterSynchronousIteration(callback, usage, context) ||
     hasEffectLocalStoredDisposerCleanup(callback, usage, context) ||
+    hasAbortSignalDelegatedCleanup(callback, usage, context) ||
     oneShotTimerHasUnmountGuard(usage, context) ||
     hasGuaranteedRefOwnedUnmountCleanup(callback, usage, context)
   ) {

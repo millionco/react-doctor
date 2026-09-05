@@ -214,7 +214,15 @@ fn effect_cleanup_check_effect<'a>(effect_call: &'a CallExpression<'a>, ctx: &Li
         let has_returned_release =
             effect_cleanup_has_returned_release(usage, callback_id, execution_function_ids, ctx);
         let is_deferred_timer = usage.kind == ResourceKind::Timer
-            && effect_cleanup_nearest_function_id(usage.node_id, ctx) != Some(callback_id);
+            && effect_cleanup_nearest_function_id(usage.node_id, ctx) != Some(callback_id)
+            && !effect_cleanup_mapped_resource_collection_symbol(
+                ctx.nodes().get_node(usage.node_id),
+                ctx,
+            )
+            .is_some_and(|symbol_id| {
+                effect_cleanup_nearest_function_id(ctx.symbol_declaration(symbol_id).id(), ctx)
+                    == Some(callback_id)
+            });
         if !is_deferred_timer {
             let is_deferred_registration = usage.kind == ResourceKind::Subscribe
                 && effect_cleanup_nearest_function_id(usage.node_id, ctx).is_some_and(
@@ -235,6 +243,17 @@ fn effect_cleanup_check_effect<'a>(effect_call: &'a CallExpression<'a>, ctx: &Li
             return is_deferred_registration
                 && !(has_returned_release && has_owned_listener_trigger)
                 || !has_returned_release;
+        }
+        if has_returned_release
+            && effect_cleanup_has_owned_nested_timer_cleanup(
+                usage,
+                &usages,
+                callback_id,
+                execution_function_ids,
+                ctx,
+            )
+        {
+            return false;
         }
         effect_cleanup_has_competing_deferred_allocations(usage, &usages, callback_id, ctx)
             || !has_returned_release
@@ -2386,11 +2405,8 @@ fn effect_cleanup_has_effect_owned_listener_trigger(
 }
 
 fn effect_cleanup_is_synchronous_iterator_call(call: &CallExpression<'_>) -> bool {
-    call.callee
-        .get_inner_expression()
-        .as_member_expression()
-        .and_then(MemberExpression::static_property_name)
-        .is_some_and(|name| SYNCHRONOUS_ITERATOR_METHOD_NAMES.contains(&name))
+    matches!(call.callee.get_inner_expression(), Expression::StaticMemberExpression(member)
+        if SYNCHRONOUS_ITERATOR_METHOD_NAMES.contains(&member.property.name.as_str()))
 }
 
 fn effect_cleanup_collect_usages(
@@ -2694,6 +2710,1017 @@ fn effect_cleanup_expression_has_react_ref_current_receiver<'a>(
             visited_symbol_ids,
         )
     })
+}
+
+fn effect_cleanup_timer_callback_matches(
+    function_id: NodeId,
+    usage: &ResourceUsage,
+    ctx: &LintContext<'_>,
+) -> bool {
+    let AstKind::CallExpression(call) = ctx.nodes().get_node(usage.node_id).kind() else {
+        return false;
+    };
+    let Some(callback) = call.arguments.first().and_then(Argument::as_expression) else {
+        return false;
+    };
+    if effect_cleanup_exact_local_function_id(callback, ctx, &mut FxHashSet::default())
+        == Some(function_id)
+    {
+        return true;
+    }
+    let Expression::Identifier(identifier) = callback else {
+        return false;
+    };
+    let Some(parameter_symbol) = ctx
+        .scoping()
+        .get_reference(identifier.reference_id())
+        .symbol_id()
+    else {
+        return false;
+    };
+    let Some(owner_id) =
+        effect_cleanup_nearest_function_id(ctx.symbol_declaration(parameter_symbol).id(), ctx)
+    else {
+        return false;
+    };
+    let parameters = match ctx.nodes().get_node(owner_id).kind() {
+        AstKind::Function(function) => &function.params,
+        AstKind::ArrowFunctionExpression(function) => &function.params,
+        _ => return false,
+    };
+    let Some(parameter_index) = parameters.items.iter().position(|parameter| {
+        matches!(&parameter.pattern, BindingPattern::BindingIdentifier(binding) if binding.symbol_id() == parameter_symbol)
+    }) else {
+        return false;
+    };
+    let Some(owner_symbol) = effect_cleanup_retained_function_binding_symbol_id(owner_id, ctx)
+    else {
+        return false;
+    };
+    let mut matched = false;
+    for reference in ctx.scoping().get_resolved_references(owner_symbol) {
+        let Some(invocation) = effect_cleanup_direct_call_for_reference(reference.node_id(), ctx)
+        else {
+            return false;
+        };
+        let AstKind::CallExpression(invocation_call) = invocation.kind() else {
+            return false;
+        };
+        let Some(argument) = invocation_call
+            .arguments
+            .get(parameter_index)
+            .and_then(Argument::as_expression)
+        else {
+            return false;
+        };
+        matched |= effect_cleanup_exact_local_function_id(argument, ctx, &mut FxHashSet::default())
+            == Some(function_id);
+    }
+    matched
+}
+
+fn effect_cleanup_direct_call_for_reference<'a, 'ctx>(
+    reference_id: NodeId,
+    ctx: &'ctx LintContext<'a>,
+) -> Option<&'ctx AstNode<'a>> {
+    let root_id = effect_cleanup_transparent_root_node_id(reference_id, ctx);
+    let parent = ctx.nodes().parent_node(root_id);
+    matches!(parent.kind(), AstKind::CallExpression(call)
+        if call.callee.span() == ctx.nodes().get_node(root_id).span())
+    .then_some(parent)
+}
+
+fn effect_cleanup_is_timer_callback_for_same_handle(
+    function_id: NodeId,
+    usage: &ResourceUsage,
+    usages: &[ResourceUsage],
+    ctx: &LintContext<'_>,
+) -> bool {
+    usage.handle_key.is_some()
+        && usages.iter().any(|candidate| {
+            candidate.kind == ResourceKind::Timer
+                && candidate.handle_key == usage.handle_key
+                && effect_cleanup_nearest_function_id(candidate.node_id, ctx) != Some(function_id)
+                && effect_cleanup_timer_callback_matches(function_id, candidate, ctx)
+        })
+}
+
+fn effect_cleanup_outermost_member_reference(mut node_id: NodeId, ctx: &LintContext<'_>) -> NodeId {
+    node_id = effect_cleanup_transparent_root_node_id(node_id, ctx);
+    loop {
+        let parent = ctx.nodes().parent_node(node_id);
+        let object = match parent.kind() {
+            AstKind::StaticMemberExpression(member) => &member.object,
+            AstKind::ComputedMemberExpression(member) => &member.object,
+            _ => return node_id,
+        };
+        if object.span() != ctx.nodes().get_node(node_id).span() {
+            return node_id;
+        }
+        node_id = effect_cleanup_transparent_root_node_id(parent.id(), ctx);
+    }
+}
+
+fn effect_cleanup_nested_timer_storage_symbol(
+    usage: &ResourceUsage,
+    callback_id: NodeId,
+    ctx: &LintContext<'_>,
+) -> Option<SymbolId> {
+    let root_id = effect_cleanup_transparent_root_node_id(usage.node_id, ctx);
+    let AstKind::AssignmentExpression(assignment) = ctx.nodes().parent_node(root_id).kind() else {
+        return None;
+    };
+    if assignment.operator.as_str() != "="
+        || assignment.right.span() != ctx.nodes().get_node(root_id).span()
+    {
+        return None;
+    }
+    if let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(identifier) = &assignment.left
+    {
+        let symbol_id = ctx
+            .scoping()
+            .get_reference(identifier.reference_id())
+            .symbol_id()?;
+        let declaration = ctx.symbol_declaration(symbol_id);
+        return (effect_cleanup_nearest_function_id(declaration.id(), ctx) == Some(callback_id)
+            && matches!(ctx.nodes().parent_node(declaration.id()).kind(), AstKind::VariableDeclaration(variable)
+                if matches!(variable.kind, oxc_ast::ast::VariableDeclarationKind::Let | oxc_ast::ast::VariableDeclarationKind::Var)))
+            .then_some(symbol_id);
+    }
+    let member = assignment
+        .left
+        .as_simple_assignment_target()?
+        .as_member_expression()?;
+    let mut object = member.object().get_inner_expression();
+    while let Some(member) = object.as_member_expression() {
+        object = member.object().get_inner_expression();
+    }
+    let Expression::Identifier(identifier) = object else {
+        return None;
+    };
+    let symbol_id = ctx
+        .scoping()
+        .get_reference(identifier.reference_id())
+        .symbol_id()?;
+    if effect_cleanup_expression_is_react_ref(object, ctx) {
+        return Some(symbol_id);
+    }
+    let declaration = ctx.symbol_declaration(symbol_id);
+    let AstKind::VariableDeclarator(declarator) = declaration.kind() else {
+        return None;
+    };
+    (effect_cleanup_nearest_function_id(declaration.id(), ctx) == Some(callback_id)
+        && matches!(ctx.nodes().parent_node(declaration.id()).kind(), AstKind::VariableDeclaration(variable) if variable.kind.is_const())
+        && matches!(declarator.init.as_ref().map(Expression::get_inner_expression), Some(Expression::ObjectExpression(_))))
+        .then_some(symbol_id)
+}
+
+fn effect_cleanup_has_safe_timer_handle_writes(
+    usage: &ResourceUsage,
+    usages: &[ResourceUsage],
+    handle_symbol: SymbolId,
+    ctx: &LintContext<'_>,
+) -> bool {
+    let usage_owner = effect_cleanup_nearest_function_id(usage.node_id, ctx);
+    let usage_root_id = effect_cleanup_transparent_root_node_id(usage.node_id, ctx);
+    let scalar_handle = matches!(ctx.nodes().parent_node(usage_root_id).kind(), AstKind::AssignmentExpression(assignment)
+        if matches!(assignment.left, oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(_)));
+    ctx.scoping().get_resolved_references(handle_symbol).all(|reference| {
+        let root_id = effect_cleanup_outermost_member_reference(reference.node_id(), ctx);
+        if effect_cleanup_reference_key(root_id, ctx) != usage.handle_key {
+            return scalar_handle;
+        }
+        let assignment_node = ctx.nodes().parent_node(root_id);
+        if matches!(assignment_node.kind(), AstKind::UpdateExpression(update) if update.argument.span() == ctx.nodes().get_node(root_id).span()) {
+            return false;
+        }
+        let AstKind::AssignmentExpression(assignment) = assignment_node.kind() else {
+            return !reference.is_write();
+        };
+        if assignment.left.span() != ctx.nodes().get_node(root_id).span() {
+            return true;
+        }
+        if assignment.operator.as_str() != "=" {
+            return false;
+        }
+        if assignment.right.get_inner_expression().span() == usage.span {
+            return true;
+        }
+        let Some(owner_id) = effect_cleanup_nearest_function_id(assignment_node.id(), ctx) else {
+            return false;
+        };
+        let assigned_timer = usages.iter().find(|candidate| {
+            candidate.kind == ResourceKind::Timer
+                && candidate.handle_key == usage.handle_key
+                && candidate.span == assignment.right.get_inner_expression().span()
+        });
+        if let Some(assigned_timer) = assigned_timer
+            && (effect_cleanup_is_timer_callback_for_same_handle(owner_id, usage, usages, ctx)
+                || usage_owner.is_some_and(|usage_owner| effect_cleanup_timer_callback_matches(usage_owner, assigned_timer, ctx)))
+        {
+            return true;
+        }
+        if !matches!(assignment.right.get_inner_expression(), Expression::NullLiteral(_))
+            && !matches!(assignment.right.get_inner_expression(), Expression::Identifier(identifier)
+                if identifier.name == "undefined" && ctx.is_reference_to_global_variable(identifier))
+        {
+            return false;
+        }
+        if effect_cleanup_is_timer_callback_for_same_handle(owner_id, usage, usages, ctx) {
+            return true;
+        }
+        let release_nodes = ctx.nodes().iter().filter(|candidate| {
+            if candidate.span().start >= assignment_node.span().start
+                || effect_cleanup_nearest_function_id(candidate.id(), ctx) != Some(owner_id)
+            {
+                return false;
+            }
+            let AstKind::CallExpression(call) = candidate.kind() else {
+                return false;
+            };
+            effect_cleanup_release_call_matches(candidate.id(), call, usage, ctx, &FxHashMap::default())
+                || effect_cleanup_exact_local_function_id(&call.callee, ctx, &mut FxHashSet::default())
+                    .is_some_and(|helper| effect_cleanup_function_releases_usage(helper, usage, ctx, &mut FxHashSet::default()))
+        }).collect::<Vec<_>>();
+        effect_cleanup_nodes_cover_every_path_before_node(
+            assignment_node, &release_nodes, ctx.nodes().get_node(owner_id), ctx,
+        )
+    })
+}
+
+fn effect_cleanup_mapped_resource_collection_symbol<'a>(
+    resource_node: &AstNode<'a>,
+    ctx: &LintContext<'a>,
+) -> Option<SymbolId> {
+    let callback_id = effect_cleanup_nearest_function_id(resource_node.id(), ctx)?;
+    let callback = ctx.nodes().get_node(callback_id);
+    if effect_cleanup_function_is_async(callback_id, ctx)
+        || effect_cleanup_function_is_generator(callback_id, ctx)
+    {
+        return None;
+    }
+    let mapping_node = effect_cleanup_synchronous_iterator_call_for_callback(callback_id, ctx)?;
+    let AstKind::CallExpression(mapping) = mapping_node.kind() else {
+        return None;
+    };
+    let Expression::StaticMemberExpression(member) = mapping.callee.get_inner_expression() else {
+        return None;
+    };
+    if member.property.name != "map"
+        && !(member.property.name == "from"
+            && matches!(&member.object, Expression::Identifier(identifier) if identifier.name == "Array"))
+    {
+        return None;
+    }
+    let resource_root = ctx
+        .nodes()
+        .get_node(effect_cleanup_transparent_root_node_id(
+            resource_node.id(),
+            ctx,
+        ));
+    let body = match callback.kind() {
+        AstKind::ArrowFunctionExpression(function) => {
+            if let Some(expression) = function.get_expression() {
+                if expression.span() != resource_root.span() {
+                    return None;
+                }
+                return effect_cleanup_stored_result_symbol_id(mapping_node, ctx);
+            }
+            function.body.as_function_body()?
+        }
+        AstKind::Function(function) => function.body.as_deref()?,
+        _ => return None,
+    };
+    let declaration = ctx.nodes().parent_node(resource_root.id());
+    let resource_symbol = effect_cleanup_stored_result_symbol_id(resource_node, ctx)?;
+    let declaration_statement = ctx.nodes().parent_node(declaration.id());
+    if !matches!(declaration_statement.kind(), AstKind::VariableDeclaration(variable) if variable.kind.is_const())
+        || ctx.nodes().parent_node(declaration_statement.id()).span() != body.span
+    {
+        return None;
+    }
+    let returns = ctx
+        .nodes()
+        .iter()
+        .filter(|node| {
+            matches!(node.kind(), AstKind::ReturnStatement(_))
+                && effect_cleanup_nearest_function_id(node.id(), ctx) == Some(callback_id)
+        })
+        .collect::<Vec<_>>();
+    if returns.len() != 1
+        || body.statements.last()?.span() != returns[0].span()
+        || !matches!(returns[0].kind(), AstKind::ReturnStatement(statement)
+            if matches!(statement.argument.as_ref().map(Expression::get_inner_expression), Some(Expression::Identifier(identifier))
+                if ctx.scoping().get_reference(identifier.reference_id()).symbol_id() == Some(resource_symbol)))
+        || !do_nodes_cover_every_path_after_node(resource_node, &returns, callback, ctx)
+    {
+        return None;
+    }
+    effect_cleanup_stored_result_symbol_id(mapping_node, ctx)
+}
+
+fn effect_cleanup_direct_timer_collection_symbol(
+    usage: &ResourceUsage,
+    ctx: &LintContext<'_>,
+) -> Option<SymbolId> {
+    let root_id = effect_cleanup_transparent_root_node_id(usage.node_id, ctx);
+    let AstKind::CallExpression(push_call) = ctx.nodes().parent_node(root_id).kind() else {
+        return None;
+    };
+    if !push_call
+        .arguments
+        .iter()
+        .any(|argument| argument.span() == ctx.nodes().get_node(root_id).span())
+    {
+        return None;
+    }
+    let Expression::StaticMemberExpression(member) = push_call.callee.get_inner_expression() else {
+        return None;
+    };
+    let Expression::Identifier(identifier) = &member.object else {
+        return None;
+    };
+    if member.property.name != "push" {
+        return None;
+    }
+    let symbol_id = ctx
+        .scoping()
+        .get_reference(identifier.reference_id())
+        .symbol_id()?;
+    let declaration = ctx.symbol_declaration(symbol_id);
+    let declaration_parent = ctx.nodes().parent_node(declaration.id());
+    if matches!(
+        ctx.nodes().parent_node(declaration_parent.id()).kind(),
+        AstKind::ExportNamedDeclaration(_) | AstKind::ExportDefaultDeclaration(_)
+    ) {
+        return None;
+    }
+    matches!(declaration.kind(), AstKind::VariableDeclarator(declarator)
+        if declarator.id.get_binding_identifier().is_some_and(|binding| binding.symbol_id() == symbol_id)
+            && matches!(declarator.init.as_ref().map(Expression::get_inner_expression), Some(Expression::ArrayExpression(array)) if array.elements.is_empty())
+            && matches!(ctx.nodes().parent_node(declaration.id()).kind(), AstKind::VariableDeclaration(variable) if variable.kind.is_const()))
+        .then_some(symbol_id)
+}
+
+fn effect_cleanup_node_mutates_timer_collection<'a>(
+    node: &AstNode<'a>,
+    collection_key: &str,
+    return_escapes: bool,
+    ctx: &LintContext<'a>,
+    visited_functions: &mut FxHashSet<NodeId>,
+) -> bool {
+    let expression_matches = |expression: &Expression<'_>| {
+        effect_cleanup_expression_key(expression, ctx, &mut FxHashSet::default()).as_deref()
+            == Some(collection_key)
+    };
+    let arguments = match node.kind() {
+        AstKind::ReturnStatement(statement) => {
+            return return_escapes && statement.argument.as_ref().is_some_and(expression_matches);
+        }
+        AstKind::AssignmentExpression(assignment) => {
+            let target_key = effect_cleanup_assignment_target_key(&assignment.left, ctx);
+            return target_key.as_deref() == Some(collection_key)
+                || target_key.as_deref() == Some(format!("{collection_key}.length").as_str())
+                || expression_matches(&assignment.right)
+                    && target_key.as_deref() != Some(collection_key)
+                || matches!(&assignment.left, oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(member) if expression_matches(&member.object));
+        }
+        AstKind::UnaryExpression(unary)
+            if unary.operator == oxc_syntax::operator::UnaryOperator::Delete =>
+        {
+            return unary
+                .argument
+                .get_inner_expression()
+                .as_member_expression()
+                .is_some_and(|member| expression_matches(member.object()));
+        }
+        AstKind::UpdateExpression(update) => {
+            return matches!(&update.argument, oxc_ast::ast::SimpleAssignmentTarget::StaticMemberExpression(member)
+                    if member.property.name == "length" && expression_matches(&member.object));
+        }
+        AstKind::NewExpression(construction) => {
+            return construction
+                .arguments
+                .iter()
+                .filter_map(Argument::as_expression)
+                .any(expression_matches);
+        }
+        AstKind::CallExpression(call) => &call.arguments,
+        _ => return false,
+    };
+    let AstKind::CallExpression(call) = node.kind() else {
+        return false;
+    };
+    let member = call.callee.get_inner_expression().as_member_expression();
+    let is_array_copy = matches!(call.callee.get_inner_expression(), Expression::StaticMemberExpression(member)
+        if member.property.name == "from" && matches!(member.object.get_inner_expression(), Expression::Identifier(identifier)
+            if identifier.name == "Array" && ctx.is_reference_to_global_variable(identifier)));
+    if arguments
+        .iter()
+        .filter_map(Argument::as_expression)
+        .any(expression_matches)
+        && !is_array_copy
+    {
+        return true;
+    }
+    if let Some(member) = member
+        && !member.is_computed()
+        && expression_matches(member.object())
+        && matches!(
+            member.static_property_name().as_deref(),
+            Some("pop" | "shift" | "splice" | "fill" | "copyWithin" | "clear" | "delete" | "set")
+        )
+    {
+        return true;
+    }
+    let mut executed_functions = Vec::new();
+    if let Some(function_id) =
+        effect_cleanup_exact_local_function_id(&call.callee, ctx, &mut FxHashSet::default())
+    {
+        executed_functions.push(function_id);
+    }
+    if let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression() {
+        let argument_index = if member.property.name == "from"
+            && matches!(member.object.get_inner_expression(), Expression::Identifier(identifier) if identifier.name == "Array")
+        {
+            Some(1)
+        } else if SYNCHRONOUS_ITERATOR_CALLBACK_METHOD_NAMES
+            .contains(&member.property.name.as_str())
+        {
+            Some(0)
+        } else {
+            None
+        };
+        if let Some(function_id) = argument_index
+            .and_then(|index| call.arguments.get(index))
+            .and_then(Argument::as_expression)
+            .and_then(|callback| {
+                effect_cleanup_exact_local_function_id(callback, ctx, &mut FxHashSet::default())
+            })
+        {
+            executed_functions.push(function_id);
+        }
+    }
+    executed_functions.into_iter().any(|function_id| {
+        !effect_cleanup_function_is_generator(function_id, ctx)
+            && visited_functions.insert(function_id)
+            && ctx.nodes().iter().any(|child| {
+                effect_cleanup_nearest_function_id(child.id(), ctx) == Some(function_id)
+                    && effect_cleanup_node_mutates_timer_collection(
+                        child,
+                        collection_key,
+                        false,
+                        ctx,
+                        visited_functions,
+                    )
+            })
+    })
+}
+
+fn effect_cleanup_is_direct_timer_collection_cleanup<'a>(
+    release_node: &AstNode<'a>,
+    usage: &ResourceUsage,
+    ctx: &LintContext<'a>,
+) -> bool {
+    if usage.kind != ResourceKind::Timer {
+        return false;
+    }
+    let Some(collection_symbol) = effect_cleanup_direct_timer_collection_symbol(usage, ctx)
+        .or_else(|| {
+            effect_cleanup_mapped_resource_collection_symbol(
+                ctx.nodes().get_node(usage.node_id),
+                ctx,
+            )
+        })
+    else {
+        return false;
+    };
+    let AstKind::CallExpression(call) = release_node.kind() else {
+        return false;
+    };
+    let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression() else {
+        return false;
+    };
+    let expected = if usage.resource_name == "setInterval" {
+        "clearInterval"
+    } else {
+        "clearTimeout"
+    };
+    let collection_key = format!("symbol:{collection_symbol:?}");
+    if member.property.name != "forEach"
+        || effect_cleanup_expression_key(&member.object, ctx, &mut FxHashSet::default()).as_ref()
+            != Some(&collection_key)
+    {
+        return false;
+    }
+    let Some(cleanup_callback) = call.arguments.first().and_then(Argument::as_expression) else {
+        return false;
+    };
+    if effect_cleanup_mapped_resource_collection_symbol(ctx.nodes().get_node(usage.node_id), ctx)
+        .is_some()
+        && let Some(callback_id) =
+            effect_cleanup_exact_local_function_id(cleanup_callback, ctx, &mut FxHashSet::default())
+        && effect_cleanup_synchronous_iterator_call_for_callback(callback_id, ctx)
+            .is_some_and(|invocation| invocation.id() == release_node.id())
+    {
+        return ctx.nodes().iter().any(|candidate| {
+            if effect_cleanup_nearest_function_id(candidate.id(), ctx) != Some(callback_id) {
+                return false;
+            }
+            let AstKind::CallExpression(release) = candidate.kind() else {
+                return false;
+            };
+            matches!(release.callee.get_inner_expression(), Expression::Identifier(identifier)
+                        if identifier.name == expected)
+                && release
+                    .arguments
+                    .first()
+                    .and_then(Argument::as_expression)
+                    .is_some_and(|argument| {
+                        let Expression::Identifier(identifier) = argument.get_inner_expression()
+                        else {
+                            return false;
+                        };
+                        ctx.scoping()
+                            .get_reference(identifier.reference_id())
+                            .symbol_id()
+                            .is_some_and(|symbol_id| {
+                                let declaration = ctx.symbol_declaration(symbol_id);
+                                matches!(declaration.kind(), AstKind::FormalParameter(_))
+                                    && effect_cleanup_nearest_function_id(declaration.id(), ctx)
+                                        == Some(callback_id)
+                            })
+                    })
+        });
+    }
+    if !matches!(cleanup_callback, Expression::Identifier(identifier)
+        if identifier.name == expected && ctx.is_reference_to_global_variable(identifier))
+    {
+        return false;
+    }
+    let owner_functions = |node_id| {
+        ctx.nodes()
+            .ancestors(node_id)
+            .filter_map(|ancestor| {
+                matches!(
+                    ancestor.kind(),
+                    AstKind::Function(_) | AstKind::ArrowFunctionExpression(_)
+                )
+                .then_some(ancestor.id())
+            })
+            .collect::<FxHashSet<_>>()
+    };
+    let setup_owners = owner_functions(usage.node_id);
+    let cleanup_owners = owner_functions(release_node.id());
+    !ctx.nodes().iter().any(|node| {
+        effect_cleanup_nearest_function_id(node.id(), ctx).is_some_and(|owner_id| {
+            (setup_owners.contains(&owner_id) && node.span().start > usage.span.start
+                || cleanup_owners.contains(&owner_id)
+                    && node.span().start < release_node.span().start)
+                && effect_cleanup_node_mutates_timer_collection(
+                    node,
+                    &collection_key,
+                    true,
+                    ctx,
+                    &mut FxHashSet::default(),
+                )
+        })
+    })
+}
+
+fn effect_cleanup_has_owned_nested_timer_cleanup(
+    usage: &ResourceUsage,
+    usages: &[ResourceUsage],
+    callback_id: NodeId,
+    execution_function_ids: &FxHashSet<NodeId>,
+    ctx: &LintContext<'_>,
+) -> bool {
+    let Some(owner_id) = effect_cleanup_nearest_function_id(usage.node_id, ctx) else {
+        return false;
+    };
+    if owner_id == callback_id
+        || effect_cleanup_function_is_async(owner_id, ctx)
+        || effect_cleanup_function_is_generator(owner_id, ctx)
+    {
+        return false;
+    }
+    let handle_symbol = effect_cleanup_nested_timer_storage_symbol(usage, callback_id, ctx);
+    let owned_collection =
+        effect_cleanup_direct_timer_collection_symbol(usage, ctx).is_some_and(|symbol_id| {
+            effect_cleanup_nearest_function_id(ctx.symbol_declaration(symbol_id).id(), ctx)
+                == Some(callback_id)
+        });
+    if handle_symbol.is_none() && !owned_collection
+        || handle_symbol.is_some_and(|symbol_id| {
+            effect_cleanup_usage_is_inside_loop(usage.node_id, owner_id, ctx)
+                || !effect_cleanup_has_safe_timer_handle_writes(usage, usages, symbol_id, ctx)
+        })
+    {
+        return false;
+    }
+    let returns = effect_cleanup_return_expressions(callback_id, ctx)
+        .into_iter()
+        .filter(|expression| {
+            expression.span().start >= usage.span.start
+                && effect_cleanup_return_expression_releases_usage(
+                    expression,
+                    usage,
+                    execution_function_ids,
+                    ctx,
+                )
+        })
+        .collect::<Vec<_>>();
+    if returns.is_empty() {
+        return false;
+    }
+    if effect_cleanup_is_timer_callback_for_same_handle(owner_id, usage, usages, ctx) {
+        return true;
+    }
+    let Some(owner_symbol) = effect_cleanup_retained_function_binding_symbol_id(owner_id, ctx)
+    else {
+        return false;
+    };
+    let invocations = ctx
+        .scoping()
+        .get_resolved_references(owner_symbol)
+        .map(|reference| effect_cleanup_direct_call_for_reference(reference.node_id(), ctx))
+        .collect::<Option<Vec<_>>>();
+    let Some(invocations) = invocations.filter(|invocations| !invocations.is_empty()) else {
+        return false;
+    };
+    if handle_symbol.is_some()
+        && invocations.len() > 1
+        && !effect_cleanup_releases_previous_handle(usage, ctx)
+    {
+        let mut direct_invocations = 0;
+        for (index, invocation) in invocations.iter().enumerate() {
+            let Some(invocation_owner) = effect_cleanup_nearest_function_id(invocation.id(), ctx)
+            else {
+                return false;
+            };
+            if invocation_owner == callback_id {
+                direct_invocations += 1;
+            } else if !effect_cleanup_is_timer_callback_for_same_handle(
+                invocation_owner,
+                usage,
+                std::slice::from_ref(usage),
+                ctx,
+            ) {
+                return false;
+            }
+            let function_node = ctx.nodes().get_node(invocation_owner);
+            if invocations.iter().skip(index + 1).any(|later| {
+                effect_cleanup_nearest_function_id(later.id(), ctx) == Some(invocation_owner)
+                    && (can_node_reach_later_node_within_function(
+                        invocation,
+                        later,
+                        function_node,
+                        ctx,
+                    ) || can_node_reach_later_node_within_function(
+                        later,
+                        invocation,
+                        function_node,
+                        ctx,
+                    ))
+            }) {
+                return false;
+            }
+        }
+        if direct_invocations > 1 {
+            return false;
+        }
+    }
+    invocations.iter().all(|invocation| {
+        let Some(invocation_owner) = effect_cleanup_nearest_function_id(invocation.id(), ctx)
+        else {
+            return false;
+        };
+        if invocation_owner == owner_id
+            || effect_cleanup_function_is_generator(invocation_owner, ctx)
+        {
+            return false;
+        }
+        if effect_cleanup_function_is_async(invocation_owner, ctx) {
+            return effect_cleanup_async_helper_has_lifecycle_guard(
+                invocation,
+                invocation_owner,
+                callback_id,
+                execution_function_ids,
+                &returns,
+                ctx,
+            );
+        }
+        effect_cleanup_is_timer_callback_for_same_handle(invocation_owner, usage, usages, ctx)
+            || invocation_owner == callback_id
+                && !effect_cleanup_usage_is_inside_loop(invocation.id(), callback_id, ctx)
+    })
+}
+
+fn effect_cleanup_literal_boolean(expression: &Expression<'_>) -> Option<bool> {
+    match expression.get_inner_expression() {
+        Expression::BooleanLiteral(literal) => Some(literal.value),
+        _ => None,
+    }
+}
+
+fn effect_cleanup_condition_blocks_guard(
+    expression: &Expression<'_>,
+    blocked_value: bool,
+    guard_key: &str,
+    guard_value: bool,
+    ctx: &LintContext<'_>,
+) -> bool {
+    let expression = expression.get_inner_expression();
+    match expression {
+        Expression::UnaryExpression(unary)
+            if unary.operator == oxc_syntax::operator::UnaryOperator::LogicalNot =>
+        {
+            effect_cleanup_condition_blocks_guard(
+                &unary.argument,
+                !blocked_value,
+                guard_key,
+                guard_value,
+                ctx,
+            )
+        }
+        Expression::LogicalExpression(logical) => {
+            ((logical.operator.as_str() == "||" && blocked_value)
+                || (logical.operator.as_str() == "&&" && !blocked_value))
+                && (effect_cleanup_condition_blocks_guard(
+                    &logical.left,
+                    blocked_value,
+                    guard_key,
+                    guard_value,
+                    ctx,
+                ) || effect_cleanup_condition_blocks_guard(
+                    &logical.right,
+                    blocked_value,
+                    guard_key,
+                    guard_value,
+                    ctx,
+                ))
+        }
+        Expression::BinaryExpression(binary)
+            if matches!(binary.operator.as_str(), "==" | "===" | "!=" | "!==") =>
+        {
+            let left = effect_cleanup_literal_boolean(&binary.left);
+            let Some(boolean_value) =
+                left.or_else(|| effect_cleanup_literal_boolean(&binary.right))
+            else {
+                return false;
+            };
+            let compared = if left.is_some() {
+                &binary.right
+            } else {
+                &binary.left
+            };
+            let is_equality = matches!(binary.operator.as_str(), "==" | "===");
+            effect_cleanup_expression_key(compared, ctx, &mut FxHashSet::default()).as_deref()
+                == Some(guard_key)
+                && guard_value
+                    == if is_equality == blocked_value {
+                        boolean_value
+                    } else {
+                        !boolean_value
+                    }
+        }
+        _ => {
+            effect_cleanup_expression_key(expression, ctx, &mut FxHashSet::default()).as_deref()
+                == Some(guard_key)
+                && blocked_value == guard_value
+        }
+    }
+}
+
+fn effect_cleanup_reference_key(node_id: NodeId, ctx: &LintContext<'_>) -> Option<String> {
+    let node = ctx.nodes().get_node(node_id);
+    match node.kind() {
+        AstKind::IdentifierReference(identifier) => ctx
+            .scoping()
+            .get_reference(identifier.reference_id())
+            .symbol_id()
+            .map(|symbol_id| format!("symbol:{symbol_id:?}")),
+        AstKind::StaticMemberExpression(member) => {
+            effect_cleanup_expression_key(&member.object, ctx, &mut FxHashSet::default())
+                .map(|object| format!("{object}.{}", member.property.name))
+        }
+        AstKind::ParenthesizedExpression(wrapper) => {
+            effect_cleanup_expression_key(&wrapper.expression, ctx, &mut FxHashSet::default())
+        }
+        AstKind::TSAsExpression(wrapper) => {
+            effect_cleanup_expression_key(&wrapper.expression, ctx, &mut FxHashSet::default())
+        }
+        AstKind::TSSatisfiesExpression(wrapper) => {
+            effect_cleanup_expression_key(&wrapper.expression, ctx, &mut FxHashSet::default())
+        }
+        AstKind::TSTypeAssertion(wrapper) => {
+            effect_cleanup_expression_key(&wrapper.expression, ctx, &mut FxHashSet::default())
+        }
+        AstKind::TSNonNullExpression(wrapper) => {
+            effect_cleanup_expression_key(&wrapper.expression, ctx, &mut FxHashSet::default())
+        }
+        _ => None,
+    }
+}
+
+fn effect_cleanup_async_helper_has_lifecycle_guard<'a>(
+    invocation: &AstNode<'a>,
+    owner_id: NodeId,
+    callback_id: NodeId,
+    execution_function_ids: &FxHashSet<NodeId>,
+    cleanup_returns: &[&Expression<'a>],
+    ctx: &LintContext<'a>,
+) -> bool {
+    if !execution_function_ids.contains(&owner_id)
+        || effect_cleanup_function_is_generator(owner_id, ctx)
+    {
+        return false;
+    }
+    let owner_root_id = effect_cleanup_transparent_root_node_id(owner_id, ctx);
+    let owner_parent = ctx.nodes().parent_node(owner_root_id);
+    let direct_invocation = if matches!(owner_parent.kind(), AstKind::CallExpression(call)
+        if call.callee.span() == ctx.nodes().get_node(owner_root_id).span())
+    {
+        Some(owner_parent.id())
+    } else {
+        effect_cleanup_single_direct_invocation(owner_id, callback_id, ctx)
+    };
+    let Some(direct_invocation) = direct_invocation else {
+        return false;
+    };
+    if effect_cleanup_nearest_function_id(direct_invocation, ctx) != Some(callback_id)
+        || effect_cleanup_usage_is_inside_loop(direct_invocation, callback_id, ctx)
+    {
+        return false;
+    }
+    let cleanup_functions = cleanup_returns
+        .iter()
+        .filter_map(|expression| {
+            effect_cleanup_exact_local_function_id(expression, ctx, &mut FxHashSet::default())
+        })
+        .collect::<Vec<_>>();
+    if cleanup_functions.is_empty()
+        || cleanup_functions.len() != cleanup_returns.len()
+        || cleanup_functions.iter().any(|function_id| {
+            effect_cleanup_function_is_async(*function_id, ctx)
+                || effect_cleanup_function_is_generator(*function_id, ctx)
+        })
+    {
+        return false;
+    }
+    for declaration_node in ctx.nodes().iter() {
+        if effect_cleanup_nearest_function_id(declaration_node.id(), ctx) != Some(callback_id) {
+            continue;
+        }
+        let AstKind::VariableDeclarator(declarator) = declaration_node.kind() else {
+            continue;
+        };
+        let Some(binding) = declarator.id.get_binding_identifier() else {
+            continue;
+        };
+        let AstKind::VariableDeclaration(variable) =
+            ctx.nodes().parent_node(declaration_node.id()).kind()
+        else {
+            continue;
+        };
+        let property = if variable.kind.is_const() {
+            let Some(Expression::ObjectExpression(object)) = declarator
+                .init
+                .as_ref()
+                .map(Expression::get_inner_expression)
+            else {
+                continue;
+            };
+            let [ObjectPropertyKind::ObjectProperty(property)] = object.properties.as_slice()
+            else {
+                continue;
+            };
+            Some(property)
+        } else if matches!(
+            variable.kind,
+            oxc_ast::ast::VariableDeclarationKind::Let | oxc_ast::ast::VariableDeclarationKind::Var
+        ) {
+            None
+        } else {
+            continue;
+        };
+        let property_name = property.and_then(|property| property.key.static_name());
+        if property.is_some() && property_name.is_none() {
+            continue;
+        }
+        let symbol_id = binding.symbol_id();
+        let guard_key = if let Some(property_name) = &property_name {
+            format!("symbol:{symbol_id:?}.{property_name}")
+        } else {
+            format!("symbol:{symbol_id:?}")
+        };
+        for live_value in [true, false] {
+            let dead_value = !live_value;
+            if property.is_some_and(|property| {
+                effect_cleanup_literal_boolean(&property.value) != Some(live_value)
+            }) {
+                continue;
+            }
+            let only_cleanup_writes = ctx.scoping().get_resolved_references(symbol_id).all(|reference| {
+                let root_id = effect_cleanup_outermost_member_reference(reference.node_id(), ctx);
+                if property.is_some() && effect_cleanup_reference_key(root_id, ctx).as_ref() != Some(&guard_key) {
+                    return false;
+                }
+                let root = ctx.nodes().get_node(root_id);
+                let parent = ctx.nodes().parent_node(root_id);
+                if matches!(parent.kind(), AstKind::UpdateExpression(update) if update.argument.span() == root.span()) {
+                    return false;
+                }
+                let AstKind::AssignmentExpression(assignment) = parent.kind() else {
+                    return !reference.is_write();
+                };
+                if assignment.left.span() != root.span() {
+                    return true;
+                }
+                assignment.operator.as_str() == "="
+                    && effect_cleanup_literal_boolean(&assignment.right) == Some(dead_value)
+                    && effect_cleanup_nearest_function_id(parent.id(), ctx)
+                        .is_some_and(|function_id| cleanup_functions.contains(&function_id))
+            });
+            if !only_cleanup_writes
+                || !cleanup_functions.iter().all(|cleanup_id| {
+                    ctx.nodes().iter().any(|candidate| {
+                        let AstKind::AssignmentExpression(assignment) = candidate.kind() else {
+                            return false;
+                        };
+                        assignment.operator.as_str() == "="
+                            && effect_cleanup_assignment_target_key(&assignment.left, ctx).as_ref()
+                                == Some(&guard_key)
+                            && effect_cleanup_literal_boolean(&assignment.right) == Some(dead_value)
+                            && effect_cleanup_nearest_function_id(candidate.id(), ctx)
+                                == Some(*cleanup_id)
+                            && effect_cleanup_node_is_unconditional_from(
+                                candidate,
+                                *cleanup_id,
+                                ctx,
+                            )
+                    })
+                })
+            {
+                continue;
+            }
+            let guard_nodes = ctx.nodes().iter().filter(|candidate| {
+                if effect_cleanup_nearest_function_id(candidate.id(), ctx) != Some(owner_id) {
+                    return false;
+                }
+                let AstKind::IfStatement(statement) = candidate.kind() else {
+                    return false;
+                };
+                if property.is_some() && !ctx.nodes().iter().any(|guard_member| {
+                    statement.test.span().contains_inclusive(guard_member.span())
+                        && matches!(guard_member.kind(), AstKind::StaticMemberExpression(member)
+                            if matches!(member.object.get_inner_expression(), Expression::Identifier(_)))
+                        && effect_cleanup_reference_key(guard_member.id(), ctx).as_ref() == Some(&guard_key)
+                }) {
+                    return false;
+                }
+                if statement.consequent.span().contains_inclusive(invocation.span()) {
+                    return effect_cleanup_condition_blocks_guard(&statement.test, false, &guard_key, dead_value, ctx);
+                }
+                let Some(consequent) = ctx.nodes().iter().find(|node| {
+                    node.span() == statement.consequent.span()
+                        && ctx.nodes().parent_node(node.id()).id() == candidate.id()
+                }) else { return false; };
+                statement.alternate.is_none()
+                    && !can_node_reach_later_node_within_function(consequent, invocation, ctx.nodes().get_node(owner_id), ctx)
+                    && effect_cleanup_nodes_cover_every_path_before_node(invocation, &[candidate], ctx.nodes().get_node(owner_id), ctx)
+                    && effect_cleanup_condition_blocks_guard(&statement.test, true, &guard_key, dead_value, ctx)
+            });
+            for guard_node in guard_nodes {
+                let has_interruption = ctx.nodes().iter().any(|candidate| {
+                if candidate.span().start <= guard_node.span().start
+                    || candidate.span().start >= invocation.span().start
+                    || effect_cleanup_nearest_function_id(candidate.id(), ctx) != Some(owner_id)
+                {
+                    return false;
+                }
+                let is_interruption = match candidate.kind() {
+                    AstKind::AwaitExpression(_) | AstKind::YieldExpression(_) => true,
+                    AstKind::CallExpression(call) => !super::no_collapse_request_error_to_empty_state::collapse_is_proven_non_throwing_call(call, ctx),
+                    _ => false,
+                };
+                is_interruption && (
+                    can_node_reach_later_node_within_function(candidate, invocation, ctx.nodes().get_node(owner_id), ctx)
+                    || ctx.nodes().ancestors(candidate.id()).take_while(|ancestor| ancestor.id() != owner_id).any(|ancestor| {
+                        matches!(ancestor.kind(), AstKind::TryStatement(statement)
+                            if statement.block.span.contains_inclusive(candidate.span())
+                                && statement.handler.as_ref().is_some_and(|handler| can_node_reach_later_node_within_function(
+                                    ctx.nodes().get_node(handler.body.node_id.get()), invocation, ctx.nodes().get_node(owner_id), ctx)))
+                    })
+                )
+            });
+                if !has_interruption {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 fn effect_cleanup_has_competing_deferred_allocations(
@@ -3342,6 +4369,128 @@ fn effect_cleanup_signal_controller_key<'a>(
     ctx: &LintContext<'a>,
 ) -> Option<String> {
     effect_cleanup_local_abort_controller_key(expression, ctx, &mut FxHashSet::default())
+}
+
+fn effect_cleanup_abort_signal_controller_key(
+    expression: &Expression<'_>,
+    ctx: &LintContext<'_>,
+) -> Option<String> {
+    let expression = expression.get_inner_expression();
+    if let Expression::StaticMemberExpression(member) = expression
+        && member.property.name == "signal"
+    {
+        return effect_cleanup_expression_key(&member.object, ctx, &mut FxHashSet::default());
+    }
+    let Expression::Identifier(identifier) = expression else {
+        return None;
+    };
+    let symbol_id = ctx
+        .scoping()
+        .get_reference(identifier.reference_id())
+        .symbol_id()?;
+    let AstKind::VariableDeclarator(declarator) = ctx.symbol_declaration(symbol_id).kind() else {
+        return None;
+    };
+    let initializer = declarator.init.as_ref()?.get_inner_expression();
+    if let Expression::StaticMemberExpression(member) = initializer
+        && member.property.name == "signal"
+    {
+        return effect_cleanup_expression_key(&member.object, ctx, &mut FxHashSet::default());
+    }
+    matches!(&declarator.id, BindingPattern::ObjectPattern(pattern)
+        if pattern.properties.iter().any(|property| property.key.static_name().as_deref() == Some("signal")
+            && matches!(&property.value, BindingPattern::BindingIdentifier(binding) if binding.symbol_id() == symbol_id)))
+        .then(|| effect_cleanup_expression_key(initializer, ctx, &mut FxHashSet::default()))
+        .flatten()
+}
+
+fn effect_cleanup_listener_abort_controller_key(
+    usage: &ResourceUsage,
+    ctx: &LintContext<'_>,
+) -> Option<String> {
+    if let Some(controller_key) = &usage.local_abort_controller {
+        return Some(controller_key.clone());
+    }
+    if usage.registration_method.as_deref() != Some("addEventListener") {
+        return None;
+    }
+    let owner_id = effect_cleanup_nearest_function_id(usage.node_id, ctx)?;
+    for candidate in ctx.nodes().iter() {
+        if effect_cleanup_nearest_function_id(candidate.id(), ctx) != Some(owner_id) {
+            continue;
+        }
+        let AstKind::CallExpression(call) = candidate.kind() else {
+            continue;
+        };
+        let Some(member) = call.callee.get_inner_expression().as_member_expression() else {
+            continue;
+        };
+        if effect_cleanup_callee_name(call) != Some("addEventListener")
+            || !matches!(call.arguments.first().and_then(Argument::as_expression)
+                .map(Expression::get_inner_expression), Some(Expression::StringLiteral(event)) if event.value == "abort")
+        {
+            continue;
+        }
+        let Some(controller_key) = effect_cleanup_abort_signal_controller_key(member.object(), ctx)
+        else {
+            continue;
+        };
+        let Some(handler_id) = call
+            .arguments
+            .get(1)
+            .and_then(Argument::as_expression)
+            .and_then(|handler| {
+                effect_cleanup_exact_local_function_id(handler, ctx, &mut FxHashSet::default())
+            })
+        else {
+            continue;
+        };
+        if effect_cleanup_function_is_async(handler_id, ctx)
+            || effect_cleanup_function_is_generator(handler_id, ctx)
+        {
+            continue;
+        }
+        let removals = ctx
+            .nodes()
+            .iter()
+            .filter(|removal| {
+                if effect_cleanup_nearest_function_id(removal.id(), ctx) != Some(handler_id) {
+                    return false;
+                }
+                let AstKind::CallExpression(removal_call) = removal.kind() else {
+                    return false;
+                };
+                effect_cleanup_callee_name(removal_call) == Some("removeEventListener")
+                    && effect_cleanup_release_call_matches(
+                        removal.id(),
+                        removal_call,
+                        usage,
+                        ctx,
+                        &FxHashMap::default(),
+                    )
+            })
+            .collect::<Vec<_>>();
+        let handler = ctx.nodes().get_node(handler_id);
+        if do_nodes_cover_every_path_after_node(handler, &removals, handler, ctx) {
+            return Some(controller_key);
+        }
+    }
+    let AstKind::CallExpression(registration) = ctx.nodes().get_node(usage.node_id).kind() else {
+        return None;
+    };
+    if !matches!(registration.arguments.first().and_then(Argument::as_expression)
+        .map(Expression::get_inner_expression), Some(Expression::StringLiteral(event)) if event.value == "abort")
+    {
+        return None;
+    }
+    effect_cleanup_abort_signal_controller_key(
+        registration
+            .callee
+            .get_inner_expression()
+            .as_member_expression()?
+            .object(),
+        ctx,
+    )
 }
 
 fn effect_cleanup_local_abort_controller_key(
@@ -4362,20 +5511,17 @@ fn effect_cleanup_has_returned_release(
             matches!(candidate.kind(), AstKind::ReturnStatement(statement) if statement.argument.as_ref().is_some_and(|argument| matching_return_spans.contains(&argument.span())))
         })
         .collect::<Vec<_>>();
-    do_nodes_cover_every_path_after_node(
-        path_anchor,
-        &return_nodes,
-        callback_node,
-        ctx,
-    ) || return_nodes.iter().any(|node| {
-        effect_cleanup_node_is_unconditional_from(node, callback_id, ctx)
-            || effect_cleanup_nodes_share_branch_path(
-                ctx.nodes().get_node(usage.node_id),
-                node,
-                callback_id,
-                ctx,
-            )
-    }) || effect_cleanup_nodes_cover_if_branches(callback_id, &return_nodes, ctx)
+    do_nodes_cover_every_path_after_node(path_anchor, &return_nodes, callback_node, ctx)
+        || return_nodes.iter().any(|node| {
+            effect_cleanup_node_is_unconditional_from(node, callback_id, ctx)
+                || effect_cleanup_nodes_share_branch_path(
+                    ctx.nodes().get_node(usage.node_id),
+                    node,
+                    callback_id,
+                    ctx,
+                )
+        })
+        || effect_cleanup_nodes_cover_if_branches(callback_id, &return_nodes, ctx)
 }
 
 fn effect_cleanup_single_direct_invocation(
@@ -4400,7 +5546,7 @@ fn effect_cleanup_single_direct_invocation(
             == Some(function_id)
         && effect_cleanup_nearest_function_id(invocation.id(), ctx) == Some(callback_id)
         && effect_cleanup_node_is_reachable(invocation, callback_id, ctx))
-        .then_some(invocation.id())
+    .then_some(invocation.id())
 }
 
 fn effect_cleanup_has_returned_observer_disconnect_after_synchronous_iteration(
@@ -4829,7 +5975,20 @@ fn effect_cleanup_function_releases_usage_with_parameter_keys(
         let AstKind::CallExpression(call) = candidate.kind() else {
             continue;
         };
-        if effect_cleanup_release_call_matches(candidate.id(), call, usage, ctx, parameter_keys) {
+        let is_collection_cleanup =
+            effect_cleanup_is_direct_timer_collection_cleanup(candidate, usage, ctx);
+        if is_collection_cleanup
+            || effect_cleanup_release_call_matches(candidate.id(), call, usage, ctx, parameter_keys)
+        {
+            if is_collection_cleanup
+                && effect_cleanup_mapped_resource_collection_symbol(
+                    ctx.nodes().get_node(usage.node_id),
+                    ctx,
+                )
+                .is_some()
+            {
+                return true;
+            }
             if let Some(for_of_anchor_id) =
                 effect_cleanup_direct_exhaustive_for_of_release_anchor(candidate, ctx)
             {
@@ -5358,12 +6517,9 @@ fn effect_cleanup_release_call_matches<'a>(
             "close" | "cleanup" | "dispose" | "destroy" | "teardown"
         ) && usage.handle_key.as_ref() == receiver_key.as_ref();
     }
-    if usage
-        .local_abort_controller
-        .as_ref()
-        .is_some_and(|controller| {
-            release_method == "abort" && receiver_key.as_ref() == Some(controller)
-        })
+    if release_method == "abort"
+        && effect_cleanup_listener_abort_controller_key(usage, ctx)
+            .is_some_and(|controller| receiver_key.as_ref() == Some(&controller))
     {
         return true;
     }

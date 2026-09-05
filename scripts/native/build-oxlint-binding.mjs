@@ -470,6 +470,7 @@ impl Rule for ${delegatedRule.struct} {
       ["is_outside_browser_bundle", ["is_published_library_package"]],
     ]);
     const nativeRuleUtilityDependencies = new Map([
+      ["nextjs-no-side-effect-in-get-handler", ["find_side_effect"]],
       [
         "loading-action-preserves-trigger",
         [
@@ -1450,6 +1451,7 @@ impl Rule for ${delegatedRule.struct} {
         "effect-needs-cleanup",
         [
           "binding_property_name_for_symbol",
+          "can_node_reach_later_node_within_function",
           "do_nodes_cover_every_path_after_node",
           "is_node_reachable_within_function",
           "statement_always_exits",

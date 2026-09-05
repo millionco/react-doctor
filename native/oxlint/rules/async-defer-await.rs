@@ -39,6 +39,8 @@ const CANCELLATION_GUARD_NAMES: &[&str] = &[
     "isActive",
     "stale",
     "isStale",
+    "live",
+    "isLive",
     "ignore",
     "signal",
     "abortSignal",
@@ -317,7 +319,9 @@ fn defer_test_is_cancellation_guard(test: &Expression<'_>, ctx: &LintContext<'_>
             AstKind::PrivateIdentifier(identifier) => Some(identifier.name.as_str()),
             _ => None,
         };
-        if name.is_some_and(defer_name_is_cancellation_like) {
+        if name.is_some_and(|name| {
+            CANCELLATION_GUARD_NAMES.contains(&name) || defer_name_is_cancellation_like(name)
+        }) {
             return true;
         }
         if let AstKind::StaticMemberExpression(member) = candidate.kind()

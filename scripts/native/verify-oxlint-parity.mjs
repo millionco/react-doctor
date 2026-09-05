@@ -10201,9 +10201,10 @@ export const App = () => <>
     const settings = {
       "react-doctor": {
         rootDirectory,
-        framework: "nextjs",
+        framework: boundaryFixture.framework ?? "nextjs",
         reactMajorVersion: 19,
         portedRuleMode: "curated",
+        capabilities: boundaryFixture.capabilities,
       },
     };
     const results = [];

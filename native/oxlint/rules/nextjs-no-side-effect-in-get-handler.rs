@@ -36,8 +36,8 @@ impl Rule for NextjsNoSideEffectInGetHandler {
         {
             return;
         }
-        let Some((export_span, handler_bodies)) = ctx.nodes().program().body.iter().find_map(
-            |statement| {
+        let Some((export_span, handler_bodies)) =
+            ctx.nodes().program().body.iter().find_map(|statement| {
                 let Statement::ExportDeclaration(export) = statement else {
                     return None;
                 };
@@ -80,18 +80,35 @@ impl Rule for NextjsNoSideEffectInGetHandler {
                         }),
                     _ => None,
                 }
-            },
-        ) else {
+            })
+        else {
             return;
         };
         if handler_bodies.is_empty() {
             return;
         }
-        let side_effect = handler_bodies.into_iter().find_map(|(function_node_id, function_span)| {
-            find_side_effect(function_node_id, function_span, ctx).or_else(|| {
-                nextjs_get_one_hop_side_effect(function_node_id, function_span, ctx)
-            })
-        });
+        let side_effect =
+            handler_bodies
+                .into_iter()
+                .find_map(|(function_node_id, function_span)| {
+                    let (safe_bindings, cookie_bindings) =
+                        collect_side_effect_bindings(function_node_id, function_span, ctx);
+                    find_side_effect_with_bindings(
+                        function_span,
+                        &safe_bindings,
+                        &cookie_bindings,
+                        ctx,
+                    )
+                    .or_else(|| {
+                        nextjs_get_one_hop_side_effect(
+                            function_node_id,
+                            function_span,
+                            &safe_bindings,
+                            &cookie_bindings,
+                            ctx,
+                        )
+                    })
+                });
         let Some(side_effect) = side_effect else {
             return;
         };
@@ -125,12 +142,7 @@ fn nextjs_get_route_is_token_exchange(ctx: &LintContext<'_>) -> bool {
         .any(|segment| {
             matches!(
                 segment.to_ascii_lowercase().as_str(),
-                "callback"
-                    | "verify"
-                    | "verify-email"
-                    | "confirm"
-                    | "confirm-email"
-                    | "magic-link"
+                "callback" | "verify" | "verify-email" | "confirm" | "confirm-email" | "magic-link"
             )
         })
 }
@@ -138,10 +150,11 @@ fn nextjs_get_route_is_token_exchange(ctx: &LintContext<'_>) -> bool {
 fn nextjs_get_route_is_cron(ctx: &LintContext<'_>) -> bool {
     let normalized = ctx.file_path().to_string_lossy().replace('\\', "/");
     let segments = normalized.split('/').collect::<Vec<_>>();
-    segments.iter().any(|segment| segment.eq_ignore_ascii_case("cron"))
+    segments
+        .iter()
+        .any(|segment| segment.eq_ignore_ascii_case("cron"))
         || segments.windows(2).any(|segments| {
-            segments[0].eq_ignore_ascii_case("jobs")
-                && segments[1].eq_ignore_ascii_case("cron")
+            segments[0].eq_ignore_ascii_case("jobs") && segments[1].eq_ignore_ascii_case("cron")
         })
 }
 
@@ -270,15 +283,16 @@ fn nextjs_program_owned_function(
     match parent.kind() {
         AstKind::Program(_) => true,
         AstKind::ExportNamedDeclaration(_) => {
-            matches!(ctx.nodes().parent_node(parent.id()).kind(), AstKind::Program(_))
+            matches!(
+                ctx.nodes().parent_node(parent.id()).kind(),
+                AstKind::Program(_)
+            )
         }
         _ => false,
     }
 }
 
-fn nextjs_chained_get_bodies(
-    initializer: &Expression<'_>,
-) -> Vec<(oxc_semantic::NodeId, Span)> {
+fn nextjs_chained_get_bodies(initializer: &Expression<'_>) -> Vec<(oxc_semantic::NodeId, Span)> {
     let mut bodies = Vec::new();
     let mut cursor = initializer;
     while let Expression::CallExpression(call) = cursor {
@@ -314,6 +328,8 @@ fn nextjs_get_string_like_argument(argument: &Argument<'_>) -> bool {
 fn nextjs_get_one_hop_side_effect(
     function_node_id: oxc_semantic::NodeId,
     function_span: Span,
+    safe_bindings: &rustc_hash::FxHashSet<String>,
+    cookie_bindings: &rustc_hash::FxHashSet<String>,
     ctx: &LintContext<'_>,
 ) -> Option<String> {
     ctx.nodes().iter().find_map(|candidate| {
@@ -328,31 +344,55 @@ fn nextjs_get_one_hop_side_effect(
         };
         let symbol_id = ctx.scoping().get_root_binding(identifier.name)?;
         let declaration = ctx.symbol_declaration(symbol_id);
-        let function = match declaration.kind() {
+        let (helper_span, parameters) = match declaration.kind() {
             AstKind::Function(function)
                 if nextjs_program_owned_function(function, ctx)
                     && function.node_id.get() != function_node_id =>
             {
-                function
+                (function.body.as_ref()?.span, &function.params)
             }
             AstKind::VariableDeclarator(declarator)
-                if is_program_owned_variable_declarator(symbol_id, ctx) => match declarator.init.as_ref()? {
-                Expression::FunctionExpression(function) => function,
-                Expression::ArrowFunctionExpression(arrow) => {
-                    if arrow.node_id.get() == function_node_id {
-                        return None;
+                if is_program_owned_variable_declarator(symbol_id, ctx) =>
+            {
+                match declarator.init.as_ref()? {
+                    Expression::FunctionExpression(function) => {
+                        if function.node_id.get() == function_node_id {
+                            return None;
+                        }
+                        (function.body.as_ref()?.span, &function.params)
                     }
-                    let span = arrow
-                        .get_expression()
-                        .map(GetSpan::span)
-                        .or_else(|| arrow.get_function_body().map(|body| body.span))?;
-                    return find_side_effect(arrow.node_id.get(), span, ctx);
+                    Expression::ArrowFunctionExpression(arrow) => {
+                        if arrow.node_id.get() == function_node_id {
+                            return None;
+                        }
+                        let span = arrow
+                            .get_expression()
+                            .map(GetSpan::span)
+                            .or_else(|| arrow.get_function_body().map(|body| body.span))?;
+                        (span, &arrow.params)
+                    }
+                    _ => return None,
                 }
-                _ => return None,
-            },
+            }
             _ => return None,
         };
-        find_side_effect(function.node_id.get(), function.body.as_ref()?.span, ctx)
+        let mut effective_safe_bindings = safe_bindings.clone();
+        for (argument, parameter) in call.arguments.iter().zip(&parameters.items) {
+            if parameter.initializer.is_some() {
+                continue;
+            }
+            let Some(Expression::Identifier(argument)) = argument.as_expression() else {
+                continue;
+            };
+            let oxc_ast::ast::BindingPattern::BindingIdentifier(parameter) = &parameter.pattern
+            else {
+                continue;
+            };
+            if safe_bindings.contains(argument.name.as_str()) {
+                effective_safe_bindings.insert(parameter.name.to_string());
+            }
+        }
+        find_side_effect_with_bindings(helper_span, &effective_safe_bindings, cookie_bindings, ctx)
     })
 }
 

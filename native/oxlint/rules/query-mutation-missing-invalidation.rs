@@ -44,7 +44,7 @@ const QUERY_READ_METHOD_NAMES: [&str; 4] = [
 ];
 const MUTATION_LIFECYCLE_CALLBACK_NAMES: [&str; 4] =
     ["onSuccess", "onSettled", "onError", "onMutate"];
-const READ_ONLY_MUTATION_WORDS: [&str; 10] = [
+const READ_ONLY_MUTATION_WORDS: [&str; 11] = [
     "download",
     "export",
     "validate",
@@ -55,6 +55,7 @@ const READ_ONLY_MUTATION_WORDS: [&str; 10] = [
     "preview",
     "oauth",
     "pairing",
+    "magiclink",
 ];
 const COMPLETION_CALLBACK_VERBS: [&str; 26] = [
     "save",

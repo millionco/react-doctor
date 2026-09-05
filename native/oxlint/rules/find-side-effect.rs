@@ -3,6 +3,21 @@ fn find_side_effect(
     handler_body_span: oxc_span::Span,
     ctx: &crate::context::LintContext<'_>,
 ) -> Option<String> {
+    let (locally_scoped_safe_bindings, locally_scoped_cookie_bindings) =
+        collect_side_effect_bindings(handler_function_node_id, handler_body_span, ctx);
+    find_side_effect_with_bindings(
+        handler_body_span,
+        &locally_scoped_safe_bindings,
+        &locally_scoped_cookie_bindings,
+        ctx,
+    )
+}
+
+fn collect_side_effect_bindings(
+    handler_function_node_id: oxc_semantic::NodeId,
+    handler_body_span: oxc_span::Span,
+    ctx: &crate::context::LintContext<'_>,
+) -> (rustc_hash::FxHashSet<String>, rustc_hash::FxHashSet<String>) {
     use oxc_ast::AstKind;
     use rustc_hash::FxHashSet;
 
@@ -30,6 +45,17 @@ fn find_side_effect(
         }
     }
 
+    (locally_scoped_safe_bindings, locally_scoped_cookie_bindings)
+}
+
+fn find_side_effect_with_bindings(
+    handler_body_span: oxc_span::Span,
+    locally_scoped_safe_bindings: &rustc_hash::FxHashSet<String>,
+    locally_scoped_cookie_bindings: &rustc_hash::FxHashSet<String>,
+    ctx: &crate::context::LintContext<'_>,
+) -> Option<String> {
+    use oxc_ast::AstKind;
+
     for candidate in ctx.nodes().iter() {
         if !handler_body_span.contains_inclusive(oxc_span::GetSpan::span(&candidate.kind())) {
             continue;
@@ -49,7 +75,7 @@ fn find_side_effect(
         };
         let receiver = member_expression.object().get_inner_expression();
         if matches!(method_name, "set" | "append" | "delete")
-            && is_cookie_receiver(receiver, &locally_scoped_cookie_bindings)
+            && is_cookie_receiver(receiver, locally_scoped_cookie_bindings)
         {
             return Some(format!("cookies().{method_name}()"));
         }
@@ -65,7 +91,7 @@ fn find_side_effect(
                 | "destroy"
                 | "set"
                 | "append"
-        ) || is_safe_receiver_chain(receiver, &locally_scoped_safe_bindings)
+        ) || is_safe_receiver_chain(receiver, locally_scoped_safe_bindings)
         {
             continue;
         }

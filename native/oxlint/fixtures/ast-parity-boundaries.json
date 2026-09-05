@@ -1,5 +1,964 @@
 [
   {
+    "name": "mapped-timer-arrow-dropped-handle",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); return () => { timers.pop(); timers.forEach(timer => clearTimeout(timer)); }; }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-arrow-conditional-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); return () => timers.forEach(timer => { if (enabled) clearTimeout(timer); }); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-arrow-async-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); return () => timers.forEach(async timer => { await refresh(); clearTimeout(timer); }); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-arrow-wrong-parameter",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); return () => timers.forEach((timer, index) => clearTimeout(index)); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-arrow-wrong-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); return () => timers.forEach(timer => clearInterval(timer)); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-arrow-function-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); return () => timers.forEach(function(timer) { clearTimeout(timer); }); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-map-direct-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-from-direct-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = Array.from(delays, delay => setTimeout(refresh, delay)); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-map-block-return",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => { const timer = setTimeout(refresh, delay); return timer; }); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-from-block-return",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = Array.from(delays, delay => { const timer = setTimeout(refresh, delay); return timer; }); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-map-block-direct-return",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => { return setTimeout(refresh, delay); }); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-wrong-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); return () => timers.forEach(clearInterval); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-filtered-handles",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)).filter(Boolean); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-lost-handle",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => { const timer = setTimeout(refresh, delay); return delay; }); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-early-return",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => { const timer = setTimeout(refresh, delay); if (delay) return; return timer; }); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-pop-before-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); return () => { timers.pop(); timers.forEach(clearTimeout); }; }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-clear-after-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); return () => { timers.forEach(clearTimeout); timers.length = 0; }; }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-map-async-callback",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(async delay => setTimeout(refresh, delay)); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-let-collection",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { let timers = delays.map(delay => setTimeout(refresh, delay)); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-map-let-handle",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => { let timer = setTimeout(refresh, delay); return timer; }); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-shadowed-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const clearTimeout = refresh; const timers = delays.map(delay => setTimeout(refresh, delay)); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-conditional-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); return () => { if (enabled) timers.forEach(clearTimeout); }; }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-computed-map",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays[\"map\"](delay => setTimeout(refresh, delay)); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-map-interval",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setInterval(refresh, delay)); return () => timers.forEach(clearInterval); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-map-parenthesized-allocation",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => (setTimeout(refresh, delay))); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-map-block-throw-after-allocation",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => { const timer = setTimeout(refresh, delay); refresh(); return timer; }); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-computed-map-unreleased",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { delays[\"map\"](delay => setTimeout(refresh, delay)); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-computed-for-each-unreleased",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { delays[\"forEach\"](delay => setInterval(refresh, delay)); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-from-unreleased",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { Array.from(delays, delay => setTimeout(refresh, delay)); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-unreleased",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { delays.map(delay => setTimeout(refresh, delay)); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-block-function-expression",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(function(delay) { const timer = setTimeout(refresh, delay); return timer; }); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-map-alias-cleanup",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); const copy = timers; return () => copy.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-map-copy-cleanup",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); const copy = [...timers]; return () => copy.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-cleanup-arrow-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); return () => timers.forEach(timer => clearTimeout(timer)); }, []); return null; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "mapped-timer-map-async-outer",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { let timers = []; void (async () => { await refresh(); timers = delays.map(delay => setTimeout(refresh, delay)); })(); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-block-nested-declaration",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => { { const timer = setTimeout(refresh, delay); return timer; } }); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-block-return-after-throw",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => { const timer = setTimeout(refresh, delay); if (delay) throw new Error(); return timer; }); return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "mapped-timer-map-reassigned-collection",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { let timers = delays.map(delay => setTimeout(refresh, delay)); timers = []; return () => timers.forEach(clearTimeout); }, []); return null; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "rn-scrollview-direct-parameter-default-web-framework-suppressed",
+    "ruleId": "rn-scrollview-flex-in-content-container",
+    "capabilities": ["react", "react-native"],
+    "source": "import { ScrollView, StyleSheet } from 'react-native'; export function Screen(styles = StyleSheet.create({ container: { flex: 1 } })) { return <ScrollView contentContainerStyle={styles.container} />; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "rn-gesture-direct-parameter-default-web-framework-suppressed",
+    "ruleId": "rn-prefer-pressable-over-gesture-detector",
+    "capabilities": ["react", "react-native"],
+    "source": "import { Gesture, GestureDetector } from 'react-native-gesture-handler'; export function Screen(tap = Gesture.Tap()) { return <GestureDetector gesture={tap}><View /></GestureDetector>; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-collection-release-wrong-timer-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const timers = []; const schedule = () => { timers.push(setTimeout(() => {}, 100)); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; timers.forEach(clearInterval); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-collection-release-shadowed-timer-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const timers = []; const clearTimeout = () => {}; const schedule = () => { timers.push(setTimeout(() => {}, 100)); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; timers.forEach(clearTimeout); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-collection-release-dropped-timer",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const timers = []; const schedule = () => { timers.push(setTimeout(() => {}, 100)); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; timers.pop(); timers.forEach(clearTimeout); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-collection-release-escaped-timers",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const timers = []; const schedule = () => { timers.push(setTimeout(() => {}, 100)); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; leak(timers); timers.forEach(clearTimeout); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-collection-release-helper-drops-timer",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const timers = []; const schedule = () => { timers.push(setTimeout(() => {}, 100)); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); const drop = () => timers.pop(); return () => { drop(); run.live = false; timers.forEach(clearTimeout); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-collection-release-cleared-after-release",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const timers = []; const schedule = () => { timers.push(setTimeout(() => {}, 100)); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; timers.forEach(clearTimeout); timers.length = 0; }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-collection-release-unrelated-inert-mutation",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const timers = []; const unused = () => timers.pop(); const schedule = () => { timers.push(setTimeout(() => {}, 100)); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; timers.forEach(clearTimeout); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "rn-scrollview-direct-parameter-default",
+    "ruleId": "rn-scrollview-flex-in-content-container",
+    "framework": "react-native",
+    "capabilities": ["react", "react-native"],
+    "source": "import { ScrollView, StyleSheet } from 'react-native'; export function Screen(styles = StyleSheet.create({ container: { flex: 1 } })) { return <ScrollView contentContainerStyle={styles.container} />; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "rn-scrollview-destructured-container-default-unresolved",
+    "ruleId": "rn-scrollview-flex-in-content-container",
+    "framework": "react-native",
+    "capabilities": ["react", "react-native"],
+    "source": "import { ScrollView, StyleSheet } from 'react-native'; export function Screen({ styles } = { styles: StyleSheet.create({ container: { flex: 1 } }) }) { return <ScrollView contentContainerStyle={styles.container} />; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "rn-gesture-direct-parameter-default",
+    "ruleId": "rn-prefer-pressable-over-gesture-detector",
+    "framework": "react-native",
+    "capabilities": ["react", "react-native"],
+    "source": "import { Gesture, GestureDetector } from 'react-native-gesture-handler'; export function Screen(tap = Gesture.Tap()) { return <GestureDetector gesture={tap}><View /></GestureDetector>; }",
+    "expectedCount": 1
+  },
+  {
+    "name": "rn-gesture-destructured-container-default-unresolved",
+    "ruleId": "rn-prefer-pressable-over-gesture-detector",
+    "framework": "react-native",
+    "capabilities": ["react", "react-native"],
+    "source": "import { Gesture, GestureDetector } from 'react-native-gesture-handler'; export function Screen({ tap } = { tap: Gesture.Tap() }) { return <GestureDetector gesture={tap}><View /></GestureDetector>; }",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-review-object-negated-initializer",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: !false }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-review-object-negated-cleanup",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = !true; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-review-object-computed-cleanup",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run['live'] = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-review-object-computed-guard",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run['live']) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-review-collection-loop",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const timers = []; const schedule = () => { for (const item of items) timers.push(setTimeout(() => {}, 100)); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; timers.forEach(clearTimeout); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-async-comparison-===-true-left",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (true === run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-async-comparison-===-true-right",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (run.live === true) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-async-comparison-===-false-left",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (false === run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-async-comparison-===-false-right",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (run.live === false) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-async-comparison-==-true-left",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (true == run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-async-comparison-==-true-right",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (run.live == true) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-async-comparison-==-false-left",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (false == run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-async-comparison-==-false-right",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (run.live == false) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-async-comparison-!==-true-left",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (true !== run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-async-comparison-!==-true-right",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (run.live !== true) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-async-comparison-!==-false-left",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (false !== run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-async-comparison-!==-false-right",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (run.live !== false) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-async-comparison-!=-true-left",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (true != run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-async-comparison-!=-true-right",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (run.live != true) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-async-comparison-!=-false-left",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (false != run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-async-comparison-!=-false-right",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (run.live != false) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-async-bare-negated",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-async-consequent-conjunction",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (run.live && enabled) { schedule(); } })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-async-alternate-guard",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) {} else { schedule(); } })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-async-unary-comparison",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!(run.live === true)) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-async-or-early-exit",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live || !enabled) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-storage-object-other-read",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const storage = { timer: null }; console.log(storage.other); const schedule = () => { storage.timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; if (storage.timer !== null) clearTimeout(storage.timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-storage-object-other-write",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const storage = { timer: null }; storage.other = 1; const schedule = () => { storage.timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; if (storage.timer !== null) clearTimeout(storage.timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-storage-collection-const-empty",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const timers = []; const schedule = () => { timers.push(setTimeout(() => {}, 100)); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; timers.forEach(clearTimeout); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-storage-collection-let-empty",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timers = []; const schedule = () => { timers.push(setTimeout(() => {}, 100)); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; timers.forEach(clearTimeout); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-storage-collection-const-nonempty",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const timers = [existing]; const schedule = () => { timers.push(setTimeout(() => {}, 100)); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; timers.forEach(clearTimeout); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-storage-collection-computed-push",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const timers = []; const schedule = () => { timers['push'](setTimeout(() => {}, 100)); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; timers.forEach(clearTimeout); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-review-async-console",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; console.log('ready'); schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-review-async-performance",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; performance.now(); schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-review-async-math",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; Math.round(1.2); schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-review-async-early-noop-cleanup",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { if (!enabled) return () => {}; const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-review-async-object-timer",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; const storage = { timer: null }; const schedule = () => { storage.timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; if (storage.timer !== null) clearTimeout(storage.timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-review-abort-signal-default",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const controller = new AbortController(); const { signal = fallback } = controller; const handler = () => {}; document.addEventListener('change', handler); signal.addEventListener('abort', () => { document.removeEventListener('change', handler); }); return () => controller.abort(); }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-review-abort-signal-renamed",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const controller = new AbortController(); const { signal: renamed } = controller; const handler = () => {}; document.addEventListener('change', handler); renamed.addEventListener('abort', () => { document.removeEventListener('change', handler); }); return () => controller.abort(); }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-review-abort-signal-nested",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const controller = new AbortController(); const { signal: { nested } } = controller; const handler = () => {}; document.addEventListener('change', handler); nested.addEventListener('abort', () => { document.removeEventListener('change', handler); }); return () => controller.abort(); }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "compiler-memo-missing-argument",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {memo} from 'react'; export const View = memo();",
+    "expectedCount": 1
+  },
+  {
+    "name": "compiler-memo-spread-argument",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {memo} from 'react'; export const View = memo(...components);",
+    "expectedCount": 1
+  },
+  {
+    "name": "compiler-module-opt-out",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "\"use no memo\"; import {useMemo,memo} from \"react\"; export const View=memo(function View(){const value=useMemo(()=>1,[]);return <div>{value}</div>});",
+    "expectedCount": 0
+  },
+  {
+    "name": "compiler-module-forget-alias",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "\"use no forget\"; import {memo} from \"react\"; export const View=memo(()=> <div/>);",
+    "expectedCount": 0
+  },
+  {
+    "name": "compiler-nearest-function-opt-out",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {useMemo} from \"react\"; export function View(){\"use no memo\"; const value=useMemo(()=>1,[]);return <div>{value}</div>}",
+    "expectedCount": 0
+  },
+  {
+    "name": "compiler-nested-function-still-fires",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {useMemo} from \"react\"; export function View(){\"use no memo\"; const Child=()=>{const value=useMemo(()=>1,[]);return <div>{value}</div>};return <Child/>}",
+    "expectedCount": 1
+  },
+  {
+    "name": "compiler-late-string-still-fires",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {useMemo} from \"react\"; export function View(){prepare();\"use no memo\";const value=useMemo(()=>1,[]);return <div>{value}</div>}",
+    "expectedCount": 1
+  },
+  {
+    "name": "compiler-memo-function-declaration",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {memo} from \"react\"; function View(){\"use no memo\";return <div/>};export default memo(View);",
+    "expectedCount": 0
+  },
+  {
+    "name": "compiler-memo-local-function-cast",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {memo} from \"react\"; const View=()=>{\"use no memo\";return <div/>};export default memo(View as any);",
+    "expectedCount": 0
+  },
+  {
+    "name": "compiler-memo-inline-function-cast",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {memo} from \"react\"; export default memo((()=>{\"use no memo\";return <div/>}) as any);",
+    "expectedCount": 0
+  },
+  {
+    "name": "compiler-memo-one-hop-alias-still-fires",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {memo} from \"react\"; const View=()=>{\"use no memo\";return <div/>};const Alias=View;export default memo(Alias);",
+    "expectedCount": 1
+  },
+  {
+    "name": "compiler-memo-param-default",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {memo} from \"react\"; export function Wrap(View=()=>{\"use no memo\";return <div/>}){return memo(View)}",
+    "expectedCount": 0
+  },
+  {
+    "name": "compiler-memo-destructured-param-default",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {memo} from \"react\"; export function Wrap({View=()=>{\"use no memo\";return <div/>}}){return memo(View)}",
+    "expectedCount": 0
+  },
+  {
+    "name": "compiler-memo-destructured-object-not-resolved",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {memo} from \"react\"; const {View}={View:()=>{\"use no memo\";return <div/>}};export default memo(View);",
+    "expectedCount": 1
+  },
+  {
+    "name": "compiler-memo-initializer-reassigned",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {memo} from \"react\"; let View=()=>{\"use no memo\";return <div/>};View=Other;export default memo(View);",
+    "expectedCount": 0
+  },
+  {
+    "name": "compiler-memo-shadowed-param-still-fires",
+    "ruleId": "react-compiler-no-manual-memoization",
+    "source": "import {memo} from \"react\"; const View=()=>{\"use no memo\";return <div/>};export function Wrap(View){return memo(View)}",
+    "expectedCount": 1
+  },
+  {
+    "name": "get-helper-safe-first-parameter",
+    "ruleId": "nextjs-no-side-effect-in-get-handler",
+    "filename": "src/app/api/cache/route.ts",
+    "source": "function apply(target){target.set(\"x\",\"y\")}export function GET(){const headers=new Headers();apply(headers);return new Response()}",
+    "expectedCount": 0
+  },
+  {
+    "name": "get-helper-safe-second-parameter",
+    "ruleId": "nextjs-no-side-effect-in-get-handler",
+    "filename": "src/app/api/cache/route.ts",
+    "source": "function apply(status,target){target.set(\"x\",\"y\")}export function GET(){const headers=new Headers();apply(200,headers);return new Response()}",
+    "expectedCount": 0
+  },
+  {
+    "name": "get-helper-different-helper-not-safe",
+    "ruleId": "nextjs-no-side-effect-in-get-handler",
+    "filename": "src/app/api/cache/route.ts",
+    "source": "const cache=new Map();function apply(target){target.set(\"x\",\"y\")}function mutate(target){target.set(\"x\",\"y\")}export function GET(){const headers=new Headers();apply(headers);mutate(cache);return new Response()}",
+    "expectedCount": 1
+  },
+  {
+    "name": "get-helper-safe-and-external-calls",
+    "ruleId": "nextjs-no-side-effect-in-get-handler",
+    "filename": "src/app/api/cache/route.ts",
+    "source": "const cache=new Map();function apply(target){target.set(\"x\",\"y\")}export function GET(){const headers=new Headers();apply(headers);apply(cache);return new Response()}",
+    "expectedCount": 1
+  },
+  {
+    "name": "get-helper-external-then-safe-calls",
+    "ruleId": "nextjs-no-side-effect-in-get-handler",
+    "filename": "src/app/api/cache/route.ts",
+    "source": "const cache=new Map();function apply(target){target.set(\"x\",\"y\")}export function GET(){const headers=new Headers();apply(cache);apply(headers);return new Response()}",
+    "expectedCount": 1
+  },
+  {
+    "name": "get-helper-destructured-parameter-not-safe",
+    "ruleId": "nextjs-no-side-effect-in-get-handler",
+    "filename": "src/app/api/cache/route.ts",
+    "source": "function apply({target}){target.set(\"x\",\"y\")}export function GET(){const headers=new Headers();apply({target:headers});return new Response()}",
+    "expectedCount": 1
+  },
+  {
+    "name": "get-helper-default-parameter-not-safe",
+    "ruleId": "nextjs-no-side-effect-in-get-handler",
+    "filename": "src/app/api/cache/route.ts",
+    "source": "function apply(target=new Headers()){target.set(\"x\",\"y\")}export function GET(){const headers=new Headers();apply(headers);return new Response()}",
+    "expectedCount": 1
+  },
+  {
+    "name": "get-helper-inline-construction-not-transferred",
+    "ruleId": "nextjs-no-side-effect-in-get-handler",
+    "filename": "src/app/api/cache/route.ts",
+    "source": "function apply(target){target.set(\"x\",\"y\")}export function GET(){apply(new Headers());return new Response()}",
+    "expectedCount": 1
+  },
+  {
+    "name": "get-helper-helper-local-not-collected",
+    "ruleId": "nextjs-no-side-effect-in-get-handler",
+    "filename": "src/app/api/cache/route.ts",
+    "source": "function apply(){const target=new Headers();target.set(\"x\",\"y\")}export function GET(){apply();return new Response()}",
+    "expectedCount": 1
+  },
+  {
+    "name": "get-helper-handler-safe-name-inherited",
+    "ruleId": "nextjs-no-side-effect-in-get-handler",
+    "filename": "src/app/api/cache/route.ts",
+    "source": "const cache=new Map();function apply(headers){headers.set(\"x\",\"y\")}export function GET(){const headers=new Headers();apply(cache);return new Response()}",
+    "expectedCount": 0
+  },
+  {
+    "name": "get-helper-handler-cookie-name-inherited",
+    "ruleId": "nextjs-no-side-effect-in-get-handler",
+    "filename": "src/app/api/cache/route.ts",
+    "source": "function apply(jar){jar.delete(\"x\")}export async function GET(){const jar=await cookies();apply(jar);return new Response()}",
+    "expectedCount": 1
+  },
+  {
+    "name": "get-helper-helper-local-cookie-generic-message",
+    "ruleId": "nextjs-no-side-effect-in-get-handler",
+    "filename": "src/app/api/cache/route.ts",
+    "source": "function apply(){const jar=cookies();jar.delete(\"x\")}export function GET(){apply();return new Response()}",
+    "expectedCount": 1
+  },
+  {
+    "name": "get-helper-one-hop-only",
+    "ruleId": "nextjs-no-side-effect-in-get-handler",
+    "filename": "src/app/api/cache/route.ts",
+    "source": "function deeper(){cache.set(\"x\",\"y\")}function apply(){deeper()}export function GET(){apply();return new Response()}",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-defer-run-live-guard",
+    "ruleId": "async-defer-await",
+    "source": "declare const load: () => Promise<string>; const run = {live: true}; export const effect = async () => { const value = await load(); if (!run.live) return; console.log(value); };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-defer-run-is-live-guard",
+    "ruleId": "async-defer-await",
+    "source": "declare const load: () => Promise<string>; const run = {isLive: true}; export const effect = async () => { const value = await load(); if (!run.isLive) return; console.log(value); };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-defer-bare-live-guard",
+    "ruleId": "async-defer-await",
+    "source": "declare const load: () => Promise<string>; let live = true; export const effect = async () => { const value = await load(); if (!live) return; console.log(value); };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-defer-unrelated-delivery-guard",
+    "ruleId": "async-defer-await",
+    "source": "declare const load: () => Promise<string>; declare const deliverNow: boolean; export const effect = async () => { const value = await load(); if (!deliverNow) return; console.log(value); };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-defer-unrelated-member-delivery-guard",
+    "ruleId": "async-defer-await",
+    "source": "declare const load: () => Promise<string>; const run = {deliverNow: true}; export const effect = async () => { const value = await load(); if (!run.deliverNow) return; console.log(value); };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-mutation-magic-link-function",
+    "ruleId": "query-mutation-missing-invalidation",
+    "source": "import {useMutation} from '@tanstack/react-query'; export const useAuthenticationEmail = () => useMutation({mutationFn: email => api.sendMagicLink(email)});",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-mutation-magic-link-hook",
+    "ruleId": "query-mutation-missing-invalidation",
+    "source": "import {useMutation} from '@tanstack/react-query'; export const useSendMagicLink = () => useMutation({mutationFn: email => api.deliver(email)});",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-mutation-generic-email-still-fires",
+    "ruleId": "query-mutation-missing-invalidation",
+    "source": "import {useMutation} from '@tanstack/react-query'; export const useEmailInvite = () => useMutation({mutationFn: email => api.emailInvite(email)});",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-mutation-generic-send-still-fires",
+    "ruleId": "query-mutation-missing-invalidation",
+    "source": "import {useMutation} from '@tanstack/react-query'; export const useSendMessage = () => useMutation({mutationFn: message => api.sendMessage(message)});",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-mutation-generic-notify-still-fires",
+    "ruleId": "query-mutation-missing-invalidation",
+    "source": "import {useMutation} from '@tanstack/react-query'; export const useNotifyUser = () => useMutation({mutationFn: user => api.notifyUser(user)});",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-1756-accepts-chained-timers-cleared-by-the-returned-cleanup-helper",
+    "ruleId": "effect-needs-cleanup",
+    "source": "\n      import { useEffect, useState } from \"react\";\n\n      const STEPS = [0, 400, 800];\n\n      const ChainedTimer = () => {\n        const [frame, setFrame] = useState(0);\n        const [loop, setLoop] = useState(0);\n        useEffect(() => {\n          let cancelled = false;\n          let timer: ReturnType<typeof setTimeout> | null = null;\n          let index = 0;\n          const startedAt = Date.now();\n          const clearTimer = () => {\n            if (timer !== null) {\n              clearTimeout(timer);\n              timer = null;\n            }\n          };\n          const scheduleAt = (at: number, callback: () => void) => {\n            timer = setTimeout(callback, Math.max(0, at - (Date.now() - startedAt)));\n          };\n          const advance = () => {\n            timer = null;\n            if (cancelled) return;\n            setFrame(index);\n            index += 1;\n            if (index < STEPS.length) {\n              scheduleAt(STEPS[index], advance);\n            } else {\n              scheduleAt(2000, () => {\n                if (!cancelled) setLoop((count) => count + 1);\n              });\n            }\n          };\n          const onVisibilityChange = () => {\n            if (cancelled) return;\n            if (document.hidden) clearTimer();\n            else setLoop((count) => count + 1);\n          };\n          document.addEventListener(\"visibilitychange\", onVisibilityChange);\n          if (!document.hidden) scheduleAt(STEPS[0], advance);\n          return () => {\n            cancelled = true;\n            clearTimer();\n            document.removeEventListener(\"visibilitychange\", onVisibilityChange);\n          };\n        }, [loop]);\n        return <span>{frame}</span>;\n      };\n    ",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-1756-reports-timer-handle-overwrites-before-the-previous-timer-fires",
+    "ruleId": "effect-needs-cleanup",
+    "source": "\n      import { useEffect } from \"react\";\n\n      const UnsafeTimers = () => {\n        useEffect(() => {\n          let timer: ReturnType<typeof setTimeout> | null = null;\n          const schedule = () => {\n            timer = setTimeout(() => {}, 1000);\n          };\n          schedule();\n          schedule();\n          return () => {\n            if (timer !== null) clearTimeout(timer);\n          };\n        }, []);\n        return null;\n      };\n    ",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-1756-accepts-a-guarded-timer-scheduled-through-a-helper-after-an-await",
+    "ruleId": "effect-needs-cleanup",
+    "source": "\n      import { useEffect, useState } from \"react\";\n\n      declare function refresh(): Promise<\"refreshed\" | \"invalid\">;\n\n      const AsyncBoundedTimer = () => {\n        const [unproven, setUnproven] = useState(false);\n        useEffect(() => {\n          const run = { live: true };\n          let settleTimer: ReturnType<typeof setTimeout> | null = null;\n          const refreshAndBound = () => {\n            settleTimer = setTimeout(() => {\n              settleTimer = null;\n              if (run.live) setUnproven(true);\n            }, 4000);\n          };\n          void (async () => {\n            const outcome = await refresh();\n            if (!run.live) return;\n            if (outcome === \"refreshed\") {\n              refreshAndBound();\n              return;\n            }\n            setUnproven(true);\n          })();\n          return () => {\n            run.live = false;\n            if (settleTimer !== null) clearTimeout(settleTimer);\n          };\n        }, []);\n        return <span>{String(unproven)}</span>;\n      };\n    ",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-1756-reports-a-helper-timer-scheduled-after-an-await-without-a-lifecycle-guard",
+    "ruleId": "effect-needs-cleanup",
+    "source": "\n      import { useEffect } from \"react\";\n\n      declare function refresh(): Promise<void>;\n\n      const UnsafeAsyncTimer = () => {\n        useEffect(() => {\n          let timer: ReturnType<typeof setTimeout> | null = null;\n          const schedule = () => {\n            timer = setTimeout(() => {}, 1000);\n          };\n          void (async () => {\n            await refresh();\n            schedule();\n          })();\n          return () => {\n            if (timer !== null) clearTimeout(timer);\n          };\n        }, []);\n        return null;\n      };\n    ",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-1756-reports-an-interruption-between-the-lifecycle-guard-and-timer-helper",
+    "ruleId": "effect-needs-cleanup",
+    "source": "\n      import { useEffect } from \"react\";\n\n      declare function refresh(): Promise<void>;\n\n      const UnsafeInterruptedTimer = () => {\n        useEffect(() => {\n          const run = { live: true };\n          let timer: ReturnType<typeof setTimeout> | null = null;\n          const schedule = () => {\n            timer = setTimeout(() => {}, 1000);\n          };\n          void (async () => {\n            await refresh();\n            if (!run.live) return;\n            await refresh();\n            schedule();\n          })();\n          return () => {\n            run.live = false;\n            if (timer !== null) clearTimeout(timer);\n          };\n        }, []);\n        return null;\n      };\n    ",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-1756-reports-guarded-async-timer-work-started-repeatedly-by-the-effect",
+    "ruleId": "effect-needs-cleanup",
+    "source": "\n      import { useEffect } from \"react\";\n\n      declare function refresh(): Promise<void>;\n\n      const UnsafeRepeatedAsyncTimer = () => {\n        useEffect(() => {\n          const run = { live: true };\n          let timer: ReturnType<typeof setTimeout> | null = null;\n          const schedule = () => {\n            timer = setTimeout(() => {}, 1000);\n          };\n          for (let index = 0; index < 2; index += 1) {\n            void (async () => {\n              await refresh();\n              if (!run.live) return;\n              schedule();\n            })();\n          }\n          return () => {\n            run.live = false;\n            if (timer !== null) clearTimeout(timer);\n          };\n        }, []);\n        return null;\n      };\n    ",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-1756-accepts-a-listener-released-by-an-abort-handler-when-cleanup-aborts-the-controller",
+    "ruleId": "effect-needs-cleanup",
+    "source": "\n      import { useEffect, useState } from \"react\";\n\n      const AbortTeardown = () => {\n        const [visible, setVisible] = useState(true);\n        useEffect(() => {\n          const controller = new AbortController();\n          const { signal } = controller;\n          const onChange = () => setVisible(!document.hidden);\n          document.addEventListener(\"visibilitychange\", onChange);\n          signal.addEventListener(\n            \"abort\",\n            () => {\n              document.removeEventListener(\"visibilitychange\", onChange);\n            },\n            { once: true },\n          );\n          return () => {\n            controller.abort();\n          };\n        }, []);\n        return <span>{visible ? \"visible\" : \"hidden\"}</span>;\n      };\n    ",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-1756-reports-an-abort-handler-that-removes-a-different-listener",
+    "ruleId": "effect-needs-cleanup",
+    "source": "\n      import { useEffect } from \"react\";\n\n      const UnsafeAbortTeardown = () => {\n        useEffect(() => {\n          const controller = new AbortController();\n          const onChange = () => {};\n          const otherHandler = () => {};\n          document.addEventListener(\"visibilitychange\", onChange);\n          controller.signal.addEventListener(\"abort\", () => {\n            document.removeEventListener(\"visibilitychange\", otherHandler);\n          });\n          return () => controller.abort();\n        }, []);\n        return null;\n      };\n    ",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-cleanup-abort-signal-member-alias",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const controller = new AbortController(); const signal = controller.signal; const handler = () => {}; document.addEventListener('change', handler); signal.addEventListener('abort', () => { document.removeEventListener('change', handler); }); return () => controller.abort(); }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-cleanup-abort-signal-destructured",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const controller = new AbortController(); const { signal } = controller; const handler = () => {}; document.addEventListener('change', handler); signal.addEventListener('abort', () => { document.removeEventListener('change', handler); }); return () => controller.abort(); }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-cleanup-abort-handler-conditional-removal",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const controller = new AbortController(); const signal = controller.signal; const handler = () => {}; document.addEventListener('change', handler); signal.addEventListener('abort', () => { if (ready) document.removeEventListener('change', handler); }); return () => controller.abort(); }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-cleanup-abort-handler-wrong-capture",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const controller = new AbortController(); const signal = controller.signal; const handler = () => {}; document.addEventListener('change', handler, true); signal.addEventListener('abort', () => { document.removeEventListener('change', handler, false); }); return () => controller.abort(); }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-cleanup-abort-handler-external-controller",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const handler = () => {}; document.addEventListener('change', handler); controller.signal.addEventListener('abort', () => document.removeEventListener('change', handler)); return () => controller.abort(); }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-cleanup-abort-handler-no-returned-abort",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const handler = () => {}; document.addEventListener('change', handler); controller.signal.addEventListener('abort', () => document.removeEventListener('change', handler)); }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-cleanup-single-direct-timer-helper",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; schedule(); return () => clearTimeout(timer); }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-cleanup-repeated-direct-timer-helper",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; schedule(); schedule(); return () => clearTimeout(timer); }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-cleanup-guarded-async-boolean-helper",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { let live = true; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!live) return; schedule(); })(); return () => { live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-cleanup-guarded-async-object-helper",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-cleanup-guarded-async-object-extra-property",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true, extra: 1 }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-cleanup-guarded-async-object-escape",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; leak(run); let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-cleanup-guarded-async-object-reactivation",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; run.live = true; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-cleanup-guarded-async-await-after-guard",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; await refresh(); schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-cleanup-guarded-async-call-after-guard",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; refresh(); schedule(); })(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-cleanup-guarded-async-wrong-cleanup",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; void (async () => { await refresh(); if (!run.live) return; schedule(); })(); return () => { run.live = true; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "upstream-cleanup-guarded-named-async-once",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; const start = async () => { await refresh(); if (!run.live) return; schedule(); }; start(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "upstream-cleanup-guarded-named-async-twice",
+    "ruleId": "effect-needs-cleanup",
+    "source": "import { useEffect } from 'react'; export const Preview = ({ controller, items }) => { useEffect(() => { const run = { live: true }; let timer = null; const schedule = () => { timer = setTimeout(() => {}, 100); }; const start = async () => { await refresh(); if (!run.live) return; schedule(); }; start(); start(); return () => { run.live = false; if (timer !== null) clearTimeout(timer); }; }, []); return null; };",
+    "expectedCount": 1
+  },
+  {
     "name": "self-recursive-helper-terminates",
     "ruleId": "no-hydration-branch-on-browser-global",
     "source": "\"use client\"; const recurse = () => recurse(); export const Preview = () => recurse() ? <div /> : <span />;",

@@ -26,6 +26,14 @@ impl Rule for ReactCompilerNoManualMemoization {
         let AstKind::CallExpression(call_expression) = node.kind() else {
             return;
         };
+        if ctx.nodes().program().directives.iter().any(|directive| {
+            matches!(
+                directive.directive.as_str(),
+                "use no memo" | "use no forget"
+            )
+        }) {
+            return;
+        }
         let Some(api_name) = resolve_react_memoization_api(&call_expression.callee, ctx) else {
             return;
         };
@@ -37,12 +45,22 @@ impl Rule for ReactCompilerNoManualMemoization {
             {
                 return;
             }
+            if call_expression
+                .arguments
+                .first()
+                .and_then(oxc_ast::ast::Argument::as_expression)
+                .is_some_and(|component| memoized_component_opts_out(component, ctx))
+            {
+                return;
+            }
         } else {
             let Some(enclosing_function) = crate::ast_util::get_enclosing_function(node, ctx)
             else {
                 return;
             };
-            if !is_compiler_inferable_function(enclosing_function, ctx) {
+            if !is_compiler_inferable_function(enclosing_function, ctx)
+                || compiler_function_opts_out(enclosing_function.kind())
+            {
                 return;
             }
         }
@@ -53,6 +71,54 @@ impl Rule for ReactCompilerNoManualMemoization {
             _ => return,
         };
         ctx.diagnostic(OxcDiagnostic::warn(message).with_label(call_expression.span));
+    }
+}
+
+fn compiler_function_opts_out(kind: AstKind<'_>) -> bool {
+    let directives = match kind {
+        AstKind::Function(function) => function.body.as_ref().map(|body| &body.directives),
+        AstKind::ArrowFunctionExpression(function) => {
+            function.get_function_body().map(|body| &body.directives)
+        }
+        _ => None,
+    };
+    directives.is_some_and(|directives| {
+        directives.iter().any(|directive| {
+            matches!(
+                directive.directive.as_str(),
+                "use no memo" | "use no forget"
+            )
+        })
+    })
+}
+
+fn memoized_component_opts_out<'a>(component: &Expression<'a>, ctx: &LintContext<'a>) -> bool {
+    let component = component.get_inner_expression();
+    let resolved_component = if let Expression::Identifier(identifier) = component {
+        let Some(symbol_id) = ctx
+            .scoping()
+            .get_reference(identifier.reference_id())
+            .symbol_id()
+        else {
+            return false;
+        };
+        match ctx.symbol_declaration(symbol_id).kind() {
+            AstKind::Function(function) => {
+                return compiler_function_opts_out(AstKind::Function(function));
+            }
+            _ => identifier_direct_or_default_initializer(identifier, ctx),
+        }
+    } else {
+        Some(component)
+    };
+    match resolved_component.map(Expression::get_inner_expression) {
+        Some(Expression::FunctionExpression(function)) => {
+            compiler_function_opts_out(AstKind::Function(function))
+        }
+        Some(Expression::ArrowFunctionExpression(function)) => {
+            compiler_function_opts_out(AstKind::ArrowFunctionExpression(function))
+        }
+        _ => false,
     }
 }
 

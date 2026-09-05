@@ -17,9 +17,10 @@ fn identifier_direct_or_default_initializer<'a>(
             }
             pattern => explicit_binding_default_for_symbol(pattern, symbol_id),
         },
-        oxc_ast::AstKind::FormalParameter(parameter) => {
-            explicit_binding_default_for_symbol(&parameter.pattern, symbol_id)
-        }
+        oxc_ast::AstKind::FormalParameter(parameter) => match &parameter.pattern {
+            oxc_ast::ast::BindingPattern::BindingIdentifier(_) => parameter.initializer.as_deref(),
+            pattern => explicit_binding_default_for_symbol(pattern, symbol_id),
+        },
         _ => None,
     }
 }

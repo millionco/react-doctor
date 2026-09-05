@@ -1072,7 +1072,7 @@ fn collapse_inside_absorbing_try(
     false
 }
 
-fn collapse_is_proven_non_throwing_call<'a>(
+pub(super) fn collapse_is_proven_non_throwing_call<'a>(
     call: &CallExpression<'a>,
     ctx: &LintContext<'a>,
 ) -> bool {

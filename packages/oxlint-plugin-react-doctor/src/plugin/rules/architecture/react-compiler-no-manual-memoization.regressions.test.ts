@@ -193,6 +193,13 @@ export function LegacyComponent() {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("reports memo calls without a component argument without throwing", () => {
+    const result = run('import { memo } from "react"; export const Component = memo();');
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("memo()");
+  });
+
   it("does not flag memo wrapping a component with 'use no memo' directive", () => {
     const result = run(
       `import { memo } from "react";

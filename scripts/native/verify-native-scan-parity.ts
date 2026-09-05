@@ -657,6 +657,61 @@ const REGRESSION_FIXTURE_INPUTS: ReadonlyArray<ScanParityFixtureInput> = [
 `,
   },
   {
+    name: "dangerous-html-multiline-serialized-script-callback",
+    relativePath: "app/layout.tsx",
+    content: [
+      "const bootstrap = `(${String(function applyTheme() {",
+      '  const theme = localStorage.getItem("theme");',
+      "  document.documentElement.dataset.theme = theme;",
+      "})})();`;",
+      "export const Theme = () => (",
+      "  <script dangerouslySetInnerHTML={{ __html: bootstrap }} />",
+      ");",
+    ].join("\n"),
+  },
+  {
+    name: "dangerous-html-multiline-declared-template-taint",
+    relativePath: "src/preview.tsx",
+    content:
+      "const markup = `<div>\n${props.html}\n</div>`;\nexport const Preview = () => <div dangerouslySetInnerHTML={{ __html: markup }} />;\n",
+  },
+  {
+    name: "dangerous-html-terminal-template-interpolation",
+    relativePath: "src/preview.tsx",
+    content:
+      "const markup = `${props.html}`;\nexport const Preview = () => <div dangerouslySetInnerHTML={{ __html: markup }} />;\n",
+  },
+  {
+    name: "dangerous-html-unicode-after-template-interpolation",
+    relativePath: "src/preview.tsx",
+    content:
+      "const markup = `${props.html}é`;\nexport const Preview = () => <div dangerouslySetInnerHTML={{ __html: markup }} />;\n",
+  },
+  {
+    name: "dangerous-html-adjacent-template-interpolations",
+    relativePath: "src/preview.tsx",
+    content:
+      "const markup = `${safeHtml}${props.html}`;\nexport const Preview = () => <div dangerouslySetInnerHTML={{ __html: markup }} />;\n",
+  },
+  {
+    name: "dangerous-html-benign-terminal-template-interpolation",
+    relativePath: "src/preview.tsx",
+    content:
+      "const markup = `${label}`;\nexport const Preview = () => <div dangerouslySetInnerHTML={{ __html: markup }} />;\n",
+  },
+  {
+    name: "dangerous-html-benign-template-interpolation-before-unicode",
+    relativePath: "src/preview.tsx",
+    content:
+      "const markup = `${label}é`;\nexport const Preview = () => <div dangerouslySetInnerHTML={{ __html: markup }} />;\n",
+  },
+  {
+    name: "dangerous-html-benign-multiline-template-interpolation",
+    relativePath: "src/preview.tsx",
+    content:
+      "const markup = `localStorage\n${label}\nquery`;\nexport const Preview = () => <div dangerouslySetInnerHTML={{ __html: markup }} />;\n",
+  },
+  {
     name: "dangerous-html-sanitized",
     relativePath: "src/components/safe.tsx",
     content:

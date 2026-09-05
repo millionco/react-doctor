@@ -301,8 +301,13 @@ fn dangerous_html_value_is_exempt(
             if dangerous_html_is_pure_literal_concat(&declaration.initializer) {
                 return true;
             }
+            let initializer_tail = &source[declaration.initializer_index..];
+            let initializer_tail = &initializer_tail[..dangerous_html_byte_index_at_utf16_limit(
+                initializer_tail,
+                DANGEROUS_HTML_TEMPLATE_MAX_CHARS,
+            )];
             if let Some(interpolations) =
-                dangerous_html_template_interpolations(&declaration.initializer)
+                dangerous_html_template_interpolations(initializer_tail)
             {
                 if interpolations.is_empty() {
                     return true;
@@ -2696,8 +2701,8 @@ fn dangerous_html_template_interpolations(value: &str) -> Option<String> {
             break;
         };
         let interpolation_end = interpolation_start + 2 + end_offset + 1;
-        interpolations.push(&body[interpolation_start..=interpolation_end]);
-        start = interpolation_end + 1;
+        interpolations.push(&body[interpolation_start..interpolation_end]);
+        start = interpolation_end;
     }
     Some(interpolations.join(" "))
 }

@@ -91,7 +91,10 @@ const run = (): void => {
   );
   const repositoryDirectories = fs
     .readdirSync(corpusDirectory, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !excludedRepositories.has(entry.name))
+    .filter(
+      (entry) =>
+        (entry.isDirectory() || entry.isSymbolicLink()) && !excludedRepositories.has(entry.name),
+    )
     .sort((left, right) => left.name.localeCompare(right.name));
   const originalBindingPath = process.env[REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV];
   const parityDifferences: string[] = [];

@@ -394,6 +394,50 @@ return <div dangerouslySetInnerHTML={{ __html: content }} />;
     expect(findings).toHaveLength(0);
   });
 
+  it("preserves taint matching inside multiline serialized script callbacks", () => {
+    const content = [
+      "const bootstrap = `(${String(function applyTheme() {",
+      '  const theme = localStorage.getItem("theme");',
+      "  document.documentElement.dataset.theme = theme;",
+      "})})();`;",
+      "export const Theme = () => (",
+      "  <script dangerouslySetInnerHTML={{ __html: bootstrap }} />",
+      ");",
+    ].join("\n");
+    expect(runScanRule(dangerousHtmlSink, { relativePath: "app/layout.tsx", content })).toEqual([
+      {
+        message:
+          "HTML is injected from a dynamic-looking source, which can become XSS if the value is user-controlled or unsanitized.",
+        line: 6,
+        column: 3,
+      },
+    ]);
+  });
+
+  it.each([
+    "`${props.html}`",
+    "`${props.html}é`",
+    "`${safeHtml}${props.html}`",
+    "`<div>\n${props.html}\n</div>`",
+  ])("flags declared templates with tainted interpolation boundaries: %s", (initializer) => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/preview.tsx",
+      content: `const markup = ${initializer};\nexport const Preview = () => <div dangerouslySetInnerHTML={{ __html: markup }} />;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it.each(["`${label}`", "`${label}é`", "`localStorage\n${label}\nquery`"])(
+    "ignores static text around benign declared interpolations: %s",
+    (initializer) => {
+      const findings = runScanRule(dangerousHtmlSink, {
+        relativePath: "src/preview.tsx",
+        content: `const markup = ${initializer};\nexport const Preview = () => <div dangerouslySetInnerHTML={{ __html: markup }} />;\n`,
+      });
+      expect(findings).toHaveLength(0);
+    },
+  );
+
   it("flags templates whose interpolations carry tainted values", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/widgets/meeting-card.ts",

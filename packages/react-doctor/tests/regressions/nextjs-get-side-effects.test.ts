@@ -246,6 +246,74 @@ export async function GET() {
       expect(filterRule(diagnostics)).toHaveLength(0);
     });
 
+    it("locally-built Headers passed to a helper that calls `.set()` (issue #1757)", async () => {
+      const diagnostics = await writeRouteAndLint(
+        "issue-1757-headers-helper",
+        "src/app/api/proxy/route.ts",
+        `import type { NextRequest } from "next/server";
+
+function applyCachePolicy(responseHeaders: Headers) {
+  responseHeaders.set("Cache-Control", "public, max-age=3, stale-while-revalidate=10");
+}
+
+async function handler(request: NextRequest) {
+  const upstream = await fetch(\`https://api.example.com\${request.nextUrl.pathname}\`, {
+    method: request.method,
+  });
+  const headers = new Headers(upstream.headers);
+  if (request.method === "GET" && upstream.ok) {
+    applyCachePolicy(headers);
+  }
+  return new Response(upstream.body, { status: upstream.status, headers });
+}
+
+export const GET = handler;
+export const POST = handler;
+`,
+      );
+      expect(filterRule(diagnostics)).toHaveLength(0);
+    });
+
+    it("locally-built Headers in second parameter position", async () => {
+      const diagnostics = await writeRouteAndLint(
+        "issue-1757-second-param",
+        "src/app/api/cache/route.ts",
+        `import { NextResponse } from "next/server";
+
+function setCacheHeaders(status: number, headers: Headers) {
+  headers.set("Cache-Control", "max-age=60");
+}
+
+export async function GET() {
+  const headers = new Headers();
+  setCacheHeaders(200, headers);
+  return new NextResponse(null, { headers });
+}
+`,
+      );
+      expect(filterRule(diagnostics)).toHaveLength(0);
+    });
+
+    it("locally-built Headers with destructured parameter", async () => {
+      const diagnostics = await writeRouteAndLint(
+        "issue-1757-destructured",
+        "src/app/api/config/route.ts",
+        `import { NextResponse } from "next/server";
+
+function applyConfig({ headers }: { headers: Headers }) {
+  headers.set("X-Config", "applied");
+}
+
+export async function GET() {
+  const headers = new Headers();
+  applyConfig({ headers });
+  return new NextResponse(null, { headers });
+}
+`,
+      );
+      expect(filterRule(diagnostics)).toHaveLength(0);
+    });
+
     it("aliased read-only `headers()` — `const h = headers(); h.get('user-agent')`", async () => {
       const diagnostics = await writeRouteAndLint(
         "issue-206-headers-alias-read",
@@ -432,6 +500,29 @@ export async function GET() {
       const hits = filterRule(diagnostics);
       expect(hits).toHaveLength(1);
       expect(hits[0].message).toContain("cookies().delete()");
+    });
+
+    it("module-level Map passed to helper still fires (not locally scoped)", async () => {
+      const diagnostics = await writeRouteAndLint(
+        "issue-1757-module-map-helper",
+        "src/app/api/cache/route.ts",
+        `import { NextResponse } from "next/server";
+
+const cache = new Map<string, number>();
+
+function updateCache(cacheMap: Map<string, number>, key: string) {
+  cacheMap.set(key, Date.now());
+}
+
+export async function GET(req: Request) {
+  updateCache(cache, req.url);
+  return NextResponse.json({ ok: true });
+}
+`,
+      );
+      const hits = filterRule(diagnostics);
+      expect(hits).toHaveLength(1);
+      expect(hits[0].message).toContain("cacheMap.set()");
     });
 
     it("read-only GET on a mutating route segment `/logout` does NOT fire", async () => {

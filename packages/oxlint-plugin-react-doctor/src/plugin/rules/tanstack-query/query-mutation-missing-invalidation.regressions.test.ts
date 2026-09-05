@@ -311,4 +311,102 @@ describe("tanstack-query/query-mutation-missing-invalidation — regressions", (
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].message).toContain("can leave");
   });
+
+  it("stays silent for send/resend/notify/email mutations (cache-effect-free)", () => {
+    const sendMagicLink = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      export function useSendMagicLink() {
+        return useMutation({
+          mutationFn: (params: { email: string }) => api.sendMagicLink(params),
+        });
+      }`,
+    );
+    expect(sendMagicLink.diagnostics).toHaveLength(0);
+
+    const resendCode = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      export function useResendVerificationCode() {
+        return useMutation({
+          mutationFn: (userId: string) => api.resendVerificationCode(userId),
+        });
+      }`,
+    );
+    expect(resendCode.diagnostics).toHaveLength(0);
+
+    const notifyUser = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      export function useNotifyUser() {
+        return useMutation({
+          mutationFn: (params) => api.notifyUser(params),
+        });
+      }`,
+    );
+    expect(notifyUser.diagnostics).toHaveLength(0);
+
+    const emailInvite = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      export function useEmailInvite() {
+        return useMutation({
+          mutationFn: (email: string) => api.emailInvite(email),
+        });
+      }`,
+    );
+    expect(emailInvite.diagnostics).toHaveLength(0);
+  });
+
+  it("exempts send/resend by mutationFn callee name", () => {
+    const sendViaCallee = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      const posts = useQuery({ queryKey: ["posts"], queryFn: fetchPosts });
+      export const useShareLink = () =>
+        useMutation({
+          mutationFn: (params) => sendShareLink(params),
+        });`,
+    );
+    expect(sendViaCallee.diagnostics).toHaveLength(0);
+
+    const resendViaCallee = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      const users = useQuery({ queryKey: ["users"], queryFn: fetchUsers });
+      export const useRequestCode = () =>
+        useMutation({
+          mutationFn: (phone) => resendOtp(phone),
+        });`,
+    );
+    expect(resendViaCallee.diagnostics).toHaveLength(0);
+  });
+
+  it("exempts send/resend by result binding name", () => {
+    const sendViaBinding = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      function Component() {
+        const posts = useQuery({ queryKey: ["posts"], queryFn: fetchPosts });
+        const sendNotification = useMutation({
+          mutationFn: (message) => api.post("/notify", message),
+        });
+        return null;
+      }`,
+    );
+    expect(sendViaBinding.diagnostics).toHaveLength(0);
+
+    const resendViaBinding = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      function Component() {
+        const tasks = useQuery({ queryKey: ["tasks"], queryFn: fetchTasks });
+        const resendInvite = useMutation({
+          mutationFn: (userId) => api.post("/invites/resend", { userId }),
+        });
+        return null;
+      }`,
+    );
+    expect(resendViaBinding.diagnostics).toHaveLength(0);
+  });
 });

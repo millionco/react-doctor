@@ -50,7 +50,7 @@ jobs:
 
   build:
     needs: verify-patch
-    timeout-minutes: 60
+    timeout-minutes: ${{ matrix.runner == 'macos-15-intel' && 120 || 60 }}
     env:
       CARGO_BUILD_JOBS: 1
       CARGO_INCREMENTAL: 0

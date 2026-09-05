@@ -2704,6 +2704,75 @@ describe("discoverProject", () => {
     },
   );
 
+  it.each([
+    {
+      name: "named-import",
+      config:
+        "import { withSentryConfig } from '@sentry/nextjs'; const nextConfig = { reactCompiler: true }; export default withSentryConfig(nextConfig, { org: 'x' });",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "namespace-import",
+      config:
+        "import * as Sentry from '@sentry/nextjs'; const nextConfig = { reactCompiler: true }; export default Sentry.withSentryConfig(nextConfig, { org: 'x' });",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "commonjs-require",
+      config:
+        "const Sentry = require('@sentry/nextjs'); const nextConfig = { reactCompiler: true }; module.exports = Sentry.withSentryConfig(nextConfig, { org: 'x' });",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "local-wrapper",
+      config:
+        "import { wrap } from './wrapper'; const nextConfig = { reactCompiler: true }; export default wrap(nextConfig);",
+      helper:
+        "import { withSentryConfig } from '@sentry/nextjs'; export const wrap = (config) => withSentryConfig(config, { org: 'x' });",
+      expected: true,
+    },
+    {
+      name: "compiler-only-in-options",
+      config:
+        "import { withSentryConfig } from '@sentry/nextjs'; export default withSentryConfig({ reactCompiler: false }, { reactCompiler: true });",
+      helper: null,
+      expected: false,
+    },
+  ])(
+    "detects React Compiler through Sentry config wrappers: $name",
+    ({ name, config, helper, expected }) => {
+      const projectDirectory = path.join(tempDirectory, `nextjs-sentry-wrapper-${name}`);
+      const wrapperDirectory = path.join(projectDirectory, "node_modules", "@sentry", "nextjs");
+      fs.mkdirSync(wrapperDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({
+          name: `nextjs-sentry-wrapper-${name}`,
+          dependencies: { next: "^16.0.0", react: "^19.0.0", "@sentry/nextjs": "^10.0.0" },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(wrapperDirectory, "package.json"),
+        JSON.stringify({
+          name: "@sentry/nextjs",
+          type: "module",
+          exports: "./index.js",
+        }),
+      );
+      fs.writeFileSync(
+        path.join(wrapperDirectory, "index.js"),
+        "export const withSentryConfig = (_config, _options) => ({ sentry: true });\n",
+      );
+      fs.writeFileSync(path.join(projectDirectory, "next.config.ts"), config);
+      if (helper) fs.writeFileSync(path.join(projectDirectory, "wrapper.ts"), helper);
+
+      expect(discoverProject(projectDirectory).hasReactCompiler).toBe(expected);
+    },
+  );
+
   it("detects the Rsbuild React Compiler transform", () => {
     const projectDirectory = path.join(tempDirectory, "rsbuild-react-compiler");
     fs.mkdirSync(projectDirectory, { recursive: true });

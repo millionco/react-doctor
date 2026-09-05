@@ -415,4 +415,53 @@ export const Component = () => {
       0,
     );
   });
+
+  it("does not flag manual memoization when the module has a compiler opt-out directive", () => {
+    expectDiagnosticCount(
+      `"use no memo";
+import { memo, useMemo } from "react";
+export const Component = memo(function Component() {
+  const cachedValue = useMemo(() => 1, []);
+  return <span>{cachedValue}</span>;
+});`,
+      0,
+    );
+  });
+
+  it("does not flag manual memoization with the 'use no forget' alias", () => {
+    expectDiagnosticCount(
+      `import { useMemo } from "react";
+export function Component() {
+  "use no forget";
+  const cachedValue = useMemo(() => 1, []);
+  return <span>{cachedValue}</span>;
+}`,
+      0,
+    );
+  });
+
+  it("does not flag memo around a local component with a compiler opt-out directive", () => {
+    expectDiagnosticCount(
+      `import { memo } from "react";
+function Component() {
+  "use no memo";
+  return <span>Value</span>;
+}
+export default memo(Component);`,
+      0,
+    );
+  });
+
+  it("still flags manual memoization when the string is outside the directive prologue", () => {
+    expectDiagnosticCount(
+      `import { useMemo } from "react";
+export function Component() {
+  prepare();
+  "use no memo";
+  const cachedValue = useMemo(() => 1, []);
+  return <span>{cachedValue}</span>;
+}`,
+      1,
+    );
+  });
 });

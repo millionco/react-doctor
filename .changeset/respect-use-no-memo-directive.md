@@ -4,6 +4,6 @@
 
 fix: respect "use no memo" directive in react-compiler-no-manual-memoization rule
 
-When a component has the "use no memo" directive, React Compiler skips optimization for that component, so manual memoization (useMemo, useCallback, memo) is still needed. The rule now detects this directive and suppresses warnings in such cases.
+When a function or module has a React Compiler opt-out directive, the compiler skips optimization, so manual memoization can still be necessary. The rule now respects `"use no memo"`, its `"use no forget"` alias, and local components passed to `memo`.
 
 Fixes #1749

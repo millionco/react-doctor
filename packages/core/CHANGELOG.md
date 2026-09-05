@@ -1,5 +1,20 @@
 # @react-doctor/core
 
+## 0.9.14
+
+### Patch Changes
+
+- [#1755](https://github.com/millionco/react-doctor/pull/1755) [`d030b11`](https://github.com/millionco/react-doctor/commit/d030b113306c7d3a56426e4ce4c6be46ca20ae1e) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect React Compiler configuration passed through `withSentryConfig`.
+
+- [#1748](https://github.com/millionco/react-doctor/pull/1748) [`fa72869`](https://github.com/millionco/react-doctor/commit/fa72869c6cdec705c82066693c565ff48831be95) Thanks [@skoshx](https://github.com/skoshx)! - Treat Sanity blueprint files as convention entries
+
+  `sanity.blueprint.ts` is a Sanity Studio convention file loaded by filename by the Sanity CLI (`sanity blueprints deploy`), similar to `sanity.config.ts` and `sanity.cli.ts`. It was incorrectly reported as unused by `react-doctor/unused-file`.
+
+  Fixes [#1747](https://github.com/millionco/react-doctor/issues/1747)
+
+- Updated dependencies [[`ff7dd67`](https://github.com/millionco/react-doctor/commit/ff7dd679e8b9939a7dd8f828a530559a275836f7), [`0fbef9b`](https://github.com/millionco/react-doctor/commit/0fbef9b01162d301167be6ca6b5263714610f4e5), [`6ac8b71`](https://github.com/millionco/react-doctor/commit/6ac8b71985123ce43f7219965e188bdecf11f7b8), [`576d756`](https://github.com/millionco/react-doctor/commit/576d7563ffc7a6208cd77d3e3ec81d7f91bf6143), [`2e3f6eb`](https://github.com/millionco/react-doctor/commit/2e3f6eb98a0eec411b3adf87d8205d3d654538ac)]:
+  - oxlint-plugin-react-doctor@0.9.14
+
 ## 0.9.13
 
 ### Patch Changes

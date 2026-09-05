@@ -1,5 +1,27 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.14
+
+### Patch Changes
+
+- [#1762](https://github.com/millionco/react-doctor/pull/1762) [`ff7dd67`](https://github.com/millionco/react-doctor/commit/ff7dd679e8b9939a7dd8f828a530559a275836f7) Thanks [@skoshx](https://github.com/skoshx)! - Avoid `effect-needs-cleanup` diagnostics for owned chained timers, guarded post-await timers, and listeners released through an abort handler.
+
+- [#1763](https://github.com/millionco/react-doctor/pull/1763) [`0fbef9b`](https://github.com/millionco/react-doctor/commit/0fbef9b01162d301167be6ca6b5263714610f4e5) Thanks [@skoshx](https://github.com/skoshx)! - Fix an `async-defer-await` false positive on exact `live` and `isLive` liveness guards without exempting unrelated names that only contain the same text.
+
+- [#1761](https://github.com/millionco/react-doctor/pull/1761) [`6ac8b71`](https://github.com/millionco/react-doctor/commit/6ac8b71985123ce43f7219965e188bdecf11f7b8) Thanks [@skoshx](https://github.com/skoshx)! - Fix false positive in `nextjs-no-side-effect-in-get-handler` when locally-built `Headers` object is passed to a same-file helper that mutates it.
+
+  The rule now transfers locally-created response object safety through the exact same-file helper call. Calls that pass external state to the same helper remain reportable.
+
+  Fixes [#1757](https://github.com/millionco/react-doctor/issues/1757)
+
+- [#1750](https://github.com/millionco/react-doctor/pull/1750) [`576d756`](https://github.com/millionco/react-doctor/commit/576d7563ffc7a6208cd77d3e3ec81d7f91bf6143) Thanks [@skoshx](https://github.com/skoshx)! - fix: respect "use no memo" directive in react-compiler-no-manual-memoization rule
+
+  When a function or module has a React Compiler opt-out directive, the compiler skips optimization, so manual memoization can still be necessary. The rule now respects `"use no memo"`, its `"use no forget"` alias, and local components passed to `memo`.
+
+  Fixes [#1749](https://github.com/millionco/react-doctor/issues/1749)
+
+- [#1760](https://github.com/millionco/react-doctor/pull/1760) [`2e3f6eb`](https://github.com/millionco/react-doctor/commit/2e3f6eb98a0eec411b3adf87d8205d3d654538ac) Thanks [@skoshx](https://github.com/skoshx)! - Exempt magic-link delivery mutations from `query-mutation-missing-invalidation` while keeping generic send, notification, and email mutations reportable.
+
 ## 0.9.13
 
 ### Patch Changes

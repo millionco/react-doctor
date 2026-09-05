@@ -203,4 +203,53 @@ describe("parseOxlintOutput engine diagnostics", () => {
       title: "document.write/writeln",
     });
   });
+
+  it.each(["react-doctor-native", "eslint-plugin-react-doctor-native"])(
+    "removes generated %s documentation URLs to match canonical diagnostics",
+    (nativePlugin) => {
+      const canonicalDiagnostics = parseOxlintOutput(
+        buildOutput([{ ...HEALTHY_DIAGNOSTIC, url: undefined }]),
+        buildProject(),
+        TEST_ROOT_DIRECTORY,
+      );
+      const nativeDiagnostics = parseOxlintOutput(
+        buildOutput([
+          {
+            ...HEALTHY_DIAGNOSTIC,
+            code: `${nativePlugin}(no-array-index-as-key)`,
+            url: "https://oxc.rs/docs/guide/usage/linter/rules/react_doctor_native/no-array-index-as-key.html",
+          },
+        ]),
+        buildProject(),
+        TEST_ROOT_DIRECTORY,
+      );
+
+      expect(nativeDiagnostics).toEqual(canonicalDiagnostics);
+      expect(nativeDiagnostics[0].url).toBeUndefined();
+    },
+  );
+
+  it.each([
+    [
+      "react-doctor-native(no-array-index-as-key)",
+      "https://react.doctor/rules/no-array-index-as-key",
+    ],
+    ["react-doctor(no-array-index-as-key)", "https://react.doctor/rules/no-array-index-as-key"],
+    [
+      "react-doctor(no-array-index-as-key)",
+      "https://oxc.rs/docs/guide/usage/linter/rules/react_doctor_native/no-array-index-as-key.html",
+    ],
+    [
+      "react(no-array-index-key)",
+      "https://oxc.rs/docs/guide/usage/linter/rules/react/no-array-index-key.html",
+    ],
+  ])("preserves explicit documentation URL for %s", (code, url) => {
+    const diagnostics = parseOxlintOutput(
+      buildOutput([{ ...HEALTHY_DIAGNOSTIC, code, url }]),
+      buildProject(),
+      TEST_ROOT_DIRECTORY,
+    );
+
+    expect(diagnostics[0].url).toBe(url);
+  });
 });

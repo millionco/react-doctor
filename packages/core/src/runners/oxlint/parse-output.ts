@@ -540,7 +540,13 @@ export const parseOxlintOutput = (
         title: resolveDiagnosticTitle(plugin, rule),
         message: cleaned.message,
         help: cleaned.help,
-        url: diagnostic.url,
+        url:
+          (diagnostic.code === `react-doctor-native(${rule})` ||
+            diagnostic.code === `eslint-plugin-react-doctor-native(${rule})`) &&
+          diagnostic.url ===
+            `https://oxc.rs/docs/guide/usage/linter/rules/react_doctor_native/${rule}.html`
+            ? undefined
+            : diagnostic.url,
         line: primaryLineNumber,
         column: primaryColumnNumber,
         ...(primarySpan

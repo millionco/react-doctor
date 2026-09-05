@@ -5074,7 +5074,11 @@ const isTimerCallbackForSameHandle = (
   if (!isFunctionLike(functionNode) || usage.handleKey === null) return false;
   const functionIdentityKeys = getFunctionIdentityKeys(functionNode, context);
   return allUsages.some((candidateUsage) => {
-    if (candidateUsage.kind !== "timer" || candidateUsage.handleKey !== usage.handleKey) {
+    if (
+      candidateUsage.kind !== "timer" ||
+      candidateUsage.handleKey !== usage.handleKey ||
+      findEnclosingFunction(candidateUsage.node) === functionNode
+    ) {
       return false;
     }
     const candidateCallbackIdentityKeys = getTimerCallbackIdentityKeys(candidateUsage, context);
@@ -5275,6 +5279,10 @@ const hasEffectOwnedNestedTimerCleanup = (
     ? context.scopes.symbolFor(functionBindingIdentifier)
     : null;
   if (!functionSymbol || functionSymbol.references.length === 0) return false;
+  const singleInvocationCall =
+    functionSymbol.references.length === 1
+      ? findDirectCallForReference(functionSymbol.references[0].identifier)
+      : null;
   const isSelfRescheduling = isSelfReschedulingOneShotTimer(
     usage,
     usageFunction,
@@ -5285,7 +5293,7 @@ const hasEffectOwnedNestedTimerCleanup = (
     handleStorageSymbol &&
     !isSelfRescheduling &&
     !hasLiveHandleOverwriteProtection(usageFunction, usage, context) &&
-    functionSymbol.references.length !== 1 &&
+    !singleInvocationCall &&
     !hasOnlyOwnedTimerHelperInvocations(callback, usage, usageFunction, functionSymbol, context)
   ) {
     return false;

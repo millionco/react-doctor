@@ -1539,6 +1539,7 @@ export const OXLINT_SPLIT_MAX_DEPTH = 9;
 // { kind: "oom" }` class as a SIGABRT so the binary-split retry and the OOM
 // rescue pass work on Windows too.
 export const ABORT_EXIT_CODES: ReadonlySet<number> = new Set([134, 0xc0000409]);
+export const OXLINT_DIAGNOSTIC_EXIT_CODES: ReadonlySet<number> = new Set([0, 1]);
 
 // Wall-clock cap on the serial OOM rescue pass (replaying OOM-dropped
 // files one at a time after the parallel pass). The rescue is unbounded

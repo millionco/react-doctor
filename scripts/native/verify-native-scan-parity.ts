@@ -413,6 +413,22 @@ const REGRESSION_FIXTURE_INPUTS: ReadonlyArray<ScanParityFixtureInput> = [
     content: 'window.addEventListener("message", (event) => {\n  handleCommand(event.data);\n});\n',
   },
   {
+    name: "postmessage-origin-risk-negative-constructor-bom-whitespace",
+    relativePath: "src/widget.ts",
+    content: "const es = new\uFEFFEventSource(url); es.onmessage = event => use(event.data);\n",
+  },
+  {
+    name: "postmessage-origin-risk-negative-typed-receiver-bom-whitespace",
+    relativePath: "src/widget.ts",
+    content: "const connect = (w:\uFEFFWorker) => { w.onmessage = event => use(event.data); };\n",
+  },
+  {
+    name: "postmessage-origin-risk-negative-local-binding-bom-whitespace",
+    relativePath: "src/widget.ts",
+    content:
+      "window.onmessage = event => { const\uFEFFdata = event.data; if(event.origin) use(data); };\n",
+  },
+  {
     name: "postmessage-origin-risk-positive-unicode-source-lookalike",
     relativePath: "src/widget.ts",
     content:

@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { computeNativeSourceSha256 } from "./utils/compute-native-source-sha256.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const packageTemplateDirectory = path.join(
@@ -17,8 +18,6 @@ const packageTemplatePath = path.join(packageTemplateDirectory, "package.json");
 const oxcLicensePath = path.join(repositoryRoot, "native", "oxlint", "npm", "OXC-LICENSE");
 const patchPath = path.join(repositoryRoot, "native", "oxlint", "react-doctor.patch");
 const reactDoctorLicensePath = path.join(repositoryRoot, "LICENSE");
-const requireFromScript = createRequire(import.meta.url);
-const napiCliPath = path.join(path.dirname(requireFromScript.resolve("@napi-rs/cli")), "cli.js");
 const expectedTargets = [
   { suffix: "darwin-arm64", directory: "darwin-arm64" },
   { suffix: "darwin-x64", directory: "darwin-x64" },
@@ -103,6 +102,7 @@ if (unexpectedArtifactNames.length > 0) {
 
 const sha256 = (filePath) =>
   crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+const sourceSha256 = computeNativeSourceSha256(repositoryRoot);
 const targetArtifacts = expectedTargets.map((target) => {
   const bindingFileName = `oxlint-react-doctor.${target.suffix}.node`;
   const metadataFileName = `${bindingFileName}.json`;
@@ -112,6 +112,11 @@ const targetArtifacts = expectedTargets.map((target) => {
     throw new Error(`Missing ${bindingFileName} or ${metadataFileName}`);
   }
   const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+  if (metadata.sourceSha256 !== sourceSha256) {
+    throw new Error(
+      `${metadataFileName} source SHA-256 mismatch: expected ${sourceSha256}, received ${metadata.sourceSha256}. Rebuild this target from the current native sources.`,
+    );
+  }
   if (metadata.bindingFile !== bindingFileName) {
     throw new Error(`${metadataFileName} identifies ${metadata.bindingFile}`);
   }
@@ -154,6 +159,9 @@ for (const targetArtifact of targetArtifacts.slice(1)) {
     }
   }
 }
+
+const requireFromScript = createRequire(import.meta.url);
+const napiCliPath = path.join(path.dirname(requireFromScript.resolve("@napi-rs/cli")), "cli.js");
 
 fs.rmSync(outputDirectory, { recursive: true, force: true });
 fs.mkdirSync(outputDirectory, { recursive: true });
@@ -243,6 +251,7 @@ const packageManifest = {
   oxlintVersion: firstMetadata.oxlintVersion,
   rustToolchain: firstMetadata.rustToolchain,
   patchSha256: firstMetadata.patchSha256,
+  sourceSha256,
   targets: targetArtifacts.map((targetArtifact) => ({
     suffix: targetArtifact.suffix,
     bindingFile: targetArtifact.bindingFileName,

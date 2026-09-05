@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { computeNativeSourceSha256 } from "./utils/compute-native-source-sha256.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const requireFromScript = createRequire(import.meta.url);
@@ -35,6 +36,7 @@ const shouldCheckOnly = argumentsList.includes("--check-only");
 const shouldCompileCheck = argumentsList.includes("--compile-check");
 const shouldBuildDebug = argumentsList.includes("--debug");
 const shouldUseAllocator = !argumentsList.includes("--no-allocator");
+const sourceSha256 = computeNativeSourceSha256(repositoryRoot);
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-oxc-"));
 const checkoutDirectory = path.join(temporaryDirectory, "oxc");
 
@@ -1605,6 +1607,9 @@ impl Rule for ${delegatedRule.struct} {
 
       const sha256 = (filePath) =>
         crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+      if (computeNativeSourceSha256(repositoryRoot) !== sourceSha256) {
+        throw new Error("Native sources changed during the build. Rebuild before packaging.");
+      }
       fs.writeFileSync(
         path.join(outputDirectory, `${bindingFileName}.json`),
         `${JSON.stringify(
@@ -1620,6 +1625,7 @@ impl Rule for ${delegatedRule.struct} {
             bindingFile: bindingFileName,
             bindingSha256: sha256(outputBindingPath),
             patchSha256: sha256(patchPath),
+            sourceSha256,
           },
           null,
           2,

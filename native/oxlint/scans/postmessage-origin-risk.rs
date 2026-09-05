@@ -73,17 +73,17 @@ pub fn scan(absolute_path: &str, relative_path: &str, source: &str) -> Vec<ScanF
     handlers.sort_unstable_by_key(|(_, handler_span)| handler_span.start);
 
     let mut findings = Vec::new();
+    let normalized_source =
+        super::normalize_js_regex_content::normalize_js_regex_content(source);
     for (target_span, handler_span) in handlers {
-        let target = source_text(source, target_span);
-        let normalized_target =
-            super::normalize_js_regex_content::normalize_js_regex_content(target);
-        if SAME_APPLICATION_CHANNEL_TARGET_PATTERN.is_match(normalized_target.as_ref())
-            || is_same_application_channel_instance(target, source)
-            || is_same_application_channel_typed_receiver(target, source)
+        let target = source_text(normalized_source.as_ref(), target_span);
+        if SAME_APPLICATION_CHANNEL_TARGET_PATTERN.is_match(target)
+            || is_same_application_channel_instance(target, normalized_source.as_ref())
+            || is_same_application_channel_typed_receiver(target, normalized_source.as_ref())
         {
             continue;
         }
-        let node_text = source_text(source, handler_span);
+        let node_text = source_text(normalized_source.as_ref(), handler_span);
         let Some(data) = MESSAGE_DATA_READ_PATTERN.find(node_text) else {
             continue;
         };
@@ -117,11 +117,9 @@ fn first_origin_check_index(source: &str) -> Option<usize> {
             .then_some(index)
         });
     let lowercase_source = source.to_ascii_lowercase();
-    let normalized_source =
-        super::normalize_js_regex_content::normalize_js_regex_content(&lowercase_source);
     match (
         origin_index,
-        SOURCE_CHECK_PATTERN.find(normalized_source.as_ref()),
+        SOURCE_CHECK_PATTERN.find(&lowercase_source),
     ) {
         (Some(origin), Some(source_check)) => Some(origin.min(source_check.start())),
         (Some(origin), None) => Some(origin),

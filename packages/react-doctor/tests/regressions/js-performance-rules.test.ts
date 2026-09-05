@@ -1504,3 +1504,37 @@ describe("issue #543: js-tosorted-immutable is gated off for React Native / Expo
     expect(hits).toHaveLength(1);
   });
 });
+
+describe("performance/async-defer-await", () => {
+  it("stays silent on a run.live liveness guard in a React effect (issue #1758)", async () => {
+    const projectDir = setupReactProject(tempRoot, "async-defer-run-live", {
+      files: {
+        "src/liveness-guard.tsx": `
+          "use client";
+          import { useEffect, useState } from "react";
+
+          declare function refreshSession(): Promise<boolean>;
+
+          export function LivenessGuard() {
+            const [ok, setOk] = useState<boolean | null>(null);
+            useEffect(() => {
+              const run = { live: true };
+              void (async () => {
+                const refreshed = await refreshSession();
+                if (!run.live) return;
+                setOk(refreshed);
+              })();
+              return () => {
+                run.live = false;
+              };
+            }, []);
+            return <span>{String(ok)}</span>;
+          }
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "async-defer-await");
+    expect(hits).toHaveLength(0);
+  });
+});

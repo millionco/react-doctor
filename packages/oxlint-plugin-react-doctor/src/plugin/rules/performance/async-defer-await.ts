@@ -155,6 +155,7 @@ const CANCELLATION_NAME_FRAGMENTS: ReadonlyArray<string> = [
   "destroy",
   "stale",
   "alive",
+  "live",
   "mounted",
   "stopped",
   "settled",

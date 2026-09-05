@@ -50,10 +50,7 @@ const READ_ONLY_MUTATION_WORDS = new Set([
   "oauth",
   "pairing",
   "sign",
-  "send",
-  "resend",
-  "notify",
-  "email",
+  "magiclink",
 ]);
 
 // `sign` followed by one of these is an auth ACTION (signIn / signUp /

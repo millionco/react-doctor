@@ -516,4 +516,21 @@ describe("performance/async-defer-await — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("still reports guards with unrelated names that contain live", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const loadDelivery: () => Promise<string>;
+      declare const deliverNow: boolean;
+      export const deliver = async () => {
+        const payload = await loadDelivery();
+        if (!deliverNow) return;
+        console.log(payload);
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

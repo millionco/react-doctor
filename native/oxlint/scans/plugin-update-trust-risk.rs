@@ -1,6 +1,8 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str = "Code appears to download, install, update, or execute plugin/updater content across a trust boundary.";
 
@@ -22,15 +24,13 @@ static PIPE_TO_SHELL_PATTERN: Lazy<Regex> = lazy_regex!(r"(?i)\|\s*(?:bash|sh)(?
 static CURL_UPLOAD_ARGUMENT_PATTERN: Lazy<Regex> =
     lazy_regex!(r"(?i)^\s+(?:-T(?-u:\b)|--upload-file(?-u:\b))");
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !super::is_production_file_path::is_production_source_path(relative_path)
         && !super::security_file_path::is_trusted_boundary_config_path(relative_path)
     {
         return Vec::new();
     }
-    let scannable =
-        super::get_scannable_content::get_scannable_content(relative_path, source, false);
-    let normalized = super::normalize_js_regex_content::normalize_js_regex_content(&scannable);
+    let normalized = source.normalized_scannable(false);
     let remote_script_index = first_remote_script_execution(normalized.as_ref());
     let updater_index = first_updater_trust_match(normalized.as_ref());
     let Some(index) = remote_script_index.or(updater_index) else {

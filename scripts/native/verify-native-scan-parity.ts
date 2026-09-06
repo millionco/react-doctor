@@ -25,6 +25,7 @@ interface ScanParityFixture {
   readonly relativePath: string;
   readonly content: string;
   readonly isGeneratedBundle: boolean;
+  readonly expectedRuleCounts?: Readonly<Record<string, number>>;
 }
 
 interface ScanParityFixtureInput {
@@ -32,6 +33,7 @@ interface ScanParityFixtureInput {
   readonly relativePath: string;
   readonly content: string;
   readonly isGeneratedBundle?: boolean;
+  readonly expectedRuleCounts?: Readonly<Record<string, number>>;
 }
 
 const RETAINED_SCAN_RULE_IDS = [...NATIVE_REACT_DOCTOR_SCAN_RULE_IDS].sort();
@@ -49,8 +51,132 @@ const CORE_FIXTURE_DIRECTORIES = [
 ];
 
 const parityStripeSecret = ["sk", "live", "nativeParityCredentialValue"].join("_");
+const parityAwsSecret = "N".repeat(40);
+const parityPemBody = "A".repeat(39);
+const parityJwt = [`eyJ${"a".repeat(8)}`, `eyJ${"b".repeat(8)}`, "c".repeat(16)].join(".");
+const parityMixedMaskContent =
+  'tool({ description: "Always fetch(endpoint)", execute: getValue });\ninitializeApp({ apiKey: "public", projectId: "sample" }); collection("users");\nconst secret = process.env.SESSION_SECRET || "embedded credential value";\n';
+const parityCommentedArtifactContent =
+  '// initializeApp({ apiKey: "public", projectId: "sample" }); collection("users");\n';
 
 const REGRESSION_FIXTURE_INPUTS: ReadonlyArray<ScanParityFixtureInput> = [
+  {
+    name: "artifact-secret-leak-aws-bom-separators",
+    relativePath: "public/settings.json",
+    content: `🙂é AWS_SECRET_ACCESS_KEY\uFEFF=\uFEFF"${parityAwsSecret}"\n`,
+    expectedRuleCounts: { "artifact-secret-leak": 1 },
+  },
+  {
+    name: "artifact-secret-leak-aws-non-js-whitespace",
+    relativePath: "public/settings.json",
+    content: `AWS_SECRET_ACCESS_KEY\u0085=\u0085"${parityAwsSecret}"\n`,
+    expectedRuleCounts: { "artifact-secret-leak": 0 },
+  },
+  {
+    name: "artifact-secret-leak-private-key-bom-separators",
+    relativePath: "public/settings.json",
+    content: '🙂é "private_key"\uFEFF:\uFEFF"-----BEGIN PRIVATE KEY-----"\n',
+    expectedRuleCounts: { "artifact-secret-leak": 1 },
+  },
+  {
+    name: "artifact-secret-leak-private-key-non-js-whitespace-location",
+    relativePath: "public/settings.json",
+    content: '🙂é "private_key"\u0085:\u0085"-----BEGIN PRIVATE KEY-----"\n',
+    expectedRuleCounts: { "artifact-secret-leak": 1 },
+  },
+  {
+    name: "artifact-secret-leak-kelvin-key-lookalike",
+    relativePath: "public/settings.json",
+    content: `"Key-${"a".repeat(32)}"\n`,
+    expectedRuleCounts: { "artifact-secret-leak": 0 },
+  },
+  {
+    name: "artifact-secret-leak-long-s-role-lookalike",
+    relativePath: "public/settings.json",
+    content: '"ſervice_role"\n',
+    expectedRuleCounts: { "artifact-secret-leak": 0 },
+  },
+  {
+    name: "artifact-secret-leak-unicode-boundaries-location",
+    relativePath: "public/settings.json",
+    content: `{"value":"🙂é${parityStripeSecret}K"}\n`,
+    expectedRuleCounts: { "artifact-secret-leak": 1 },
+  },
+  {
+    name: "artifact-env-leak-unicode-boundaries-location",
+    relativePath: "dist/assets/settings.js",
+    content: 'export const value = "🙂éNEXT_PUBLIC_SESSION_SECRETK";\n',
+    isGeneratedBundle: true,
+    expectedRuleCounts: { "artifact-env-leak": 1 },
+  },
+  {
+    name: "artifact-env-leak-long-s-name-lookalike",
+    relativePath: "dist/assets/settings.js",
+    content: 'export const value = "NEXT_PUBLIC_ſECRET";\n',
+    isGeneratedBundle: true,
+    expectedRuleCounts: { "artifact-env-leak": 0 },
+  },
+  {
+    name: "artifact-env-leak-kelvin-name-lookalike",
+    relativePath: "dist/assets/settings.js",
+    content: 'export const value = "NEXT_PUBLIC_AWS_ACCESS_KEY";\n',
+    isGeneratedBundle: true,
+    expectedRuleCounts: { "artifact-env-leak": 0 },
+  },
+  {
+    name: "artifact-env-leak-full-env-bom-location",
+    relativePath: "dist/assets/settings.js",
+    content: 'const marker = "🙂é"; const value = process\uFEFF.\uFEFFenv.DATABASE_URL;\n',
+    isGeneratedBundle: true,
+    expectedRuleCounts: { "artifact-env-leak": 1 },
+  },
+  {
+    name: "package-metadata-jwt-unicode-boundaries-location",
+    relativePath: "package.json",
+    content: `{"description":"🙂é${parityJwt}K"}\n`,
+    expectedRuleCounts: { "package-metadata-secret": 1 },
+  },
+  {
+    name: "package-metadata-jwt-ascii-word-prefix",
+    relativePath: "package.json",
+    content: `{"description":"prefix${parityJwt}"}\n`,
+    expectedRuleCounts: { "package-metadata-secret": 0 },
+  },
+  {
+    name: "scan-content-independent-comment-and-string-masks",
+    relativePath: "src/agents/tools/run.ts",
+    content: parityMixedMaskContent,
+    isGeneratedBundle: true,
+    expectedRuleCounts: {
+      "agent-tool-capability-risk": 0,
+      "artifact-baas-authority-surface": 1,
+      "secret-in-fallback": 1,
+    },
+  },
+  {
+    name: "scan-content-independent-comment-and-string-masks-json",
+    relativePath: "src/agents/tools/run.json",
+    content: parityMixedMaskContent,
+    isGeneratedBundle: true,
+    expectedRuleCounts: {
+      "agent-tool-capability-risk": 0,
+      "artifact-baas-authority-surface": 1,
+    },
+  },
+  {
+    name: "scan-content-comments-masked-in-typescript",
+    relativePath: "public/config.ts",
+    content: parityCommentedArtifactContent,
+    isGeneratedBundle: true,
+    expectedRuleCounts: { "artifact-baas-authority-surface": 0 },
+  },
+  {
+    name: "scan-content-comments-retained-in-json",
+    relativePath: "public/config.json",
+    content: parityCommentedArtifactContent,
+    isGeneratedBundle: true,
+    expectedRuleCounts: { "artifact-baas-authority-surface": 1 },
+  },
   {
     name: "agent-tool-capability-risk-positive",
     relativePath: "src/agents/tools/run.ts",
@@ -227,6 +353,132 @@ const REGRESSION_FIXTURE_INPUTS: ReadonlyArray<ScanParityFixtureInput> = [
     relativePath: "config/deploy.pem",
     content:
       "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA7c1QpDK0N77BSO0FbGCPzcgMCS8ssCXd2eicCRb45fJsbiCe\n-----END RSA PRIVATE KEY-----\n",
+  },
+  ...[
+    "\t",
+    "\v",
+    "\f",
+    " ",
+    "\n",
+    "\r",
+    "\u00A0",
+    "\u1680",
+    "\u2000",
+    "\u2001",
+    "\u2002",
+    "\u2003",
+    "\u2004",
+    "\u2005",
+    "\u2006",
+    "\u2007",
+    "\u2008",
+    "\u2009",
+    "\u200A",
+    "\u2028",
+    "\u2029",
+    "\u202F",
+    "\u205F",
+    "\u3000",
+    "\uFEFF",
+  ].flatMap((whitespace) => [
+    {
+      name: `key-lifecycle-risk-pem-body-whitespace-${whitespace.codePointAt(0)}`,
+      relativePath: "config/deploy.pem",
+      content: `🙂é\n-----BEGIN PRIVATE KEY-----\n${"A".repeat(20)}${whitespace}${"B".repeat(18)}-----END PRIVATE KEY-----`,
+      expectedRuleCounts: { "key-lifecycle-risk": 1 },
+    },
+    {
+      name: `key-lifecycle-risk-pem-start-whitespace-${whitespace.codePointAt(0)}`,
+      relativePath: "config/deploy.pem",
+      content: `🙂é\n-----BEGIN PRIVATE KEY-----${whitespace}${parityPemBody}-----END PRIVATE KEY-----`,
+      expectedRuleCounts: { "key-lifecycle-risk": 1 },
+    },
+  ]),
+  {
+    name: "key-lifecycle-risk-pem-body-non-js-whitespace",
+    relativePath: "config/deploy.pem",
+    content: `-----BEGIN PRIVATE KEY-----\n${"A".repeat(20)}\u0085${"B".repeat(18)}-----END PRIVATE KEY-----`,
+    expectedRuleCounts: { "key-lifecycle-risk": 0 },
+  },
+  {
+    name: "key-lifecycle-risk-pem-start-non-js-whitespace",
+    relativePath: "config/deploy.pem",
+    content: `-----BEGIN PRIVATE KEY-----\u0085${parityPemBody}-----END PRIVATE KEY-----`,
+    expectedRuleCounts: { "key-lifecycle-risk": 0 },
+  },
+  {
+    name: "key-lifecycle-risk-pem-lowercase-header",
+    relativePath: "config/deploy.pem",
+    content: `-----begin rsa private key-----\n${parityPemBody}-----end rsa private key-----`,
+    expectedRuleCounts: { "key-lifecycle-risk": 1 },
+  },
+  {
+    name: "key-lifecycle-risk-pem-mixed-case-header",
+    relativePath: "config/deploy.pem",
+    content: `-----bEgIn OpEnSsH pRiVaTe KeY-----\\r\\n\uFEFF${parityPemBody}-----END OPENSSH PRIVATE KEY-----`,
+    expectedRuleCounts: { "key-lifecycle-risk": 1 },
+  },
+  {
+    name: "key-lifecycle-risk-pem-uppercase-escaped-spacing",
+    relativePath: "config/deploy.pem",
+    content: `-----BEGIN PRIVATE KEY-----\\R\\N${parityPemBody}-----END PRIVATE KEY-----`,
+    expectedRuleCounts: { "key-lifecycle-risk": 1 },
+  },
+  ...["ts", "json"].flatMap((extension) => [
+    {
+      name: `key-lifecycle-risk-pem-block-comment-${extension}`,
+      relativePath: `config/deploy.${extension}`,
+      content: `/* 🙂é\u2028-----BEGIN PRIVATE KEY-----\n${parityPemBody}-----END PRIVATE KEY----- */`,
+      expectedRuleCounts: { "key-lifecycle-risk": extension === "ts" ? 0 : 1 },
+    },
+    {
+      name: `key-lifecycle-risk-pem-line-comment-${extension}`,
+      relativePath: `config/deploy.${extension}`,
+      content: `// -----BEGIN PRIVATE KEY----- ${parityPemBody}-----END PRIVATE KEY-----`,
+      expectedRuleCounts: { "key-lifecycle-risk": extension === "ts" ? 0 : 1 },
+    },
+    {
+      name: `key-lifecycle-risk-assignment-comment-${extension}`,
+      relativePath: `config/deploy.${extension}`,
+      content: '/* SIGNING_KEY = "embedded credential value"; */',
+      expectedRuleCounts: { "key-lifecycle-risk": extension === "ts" ? 0 : 1 },
+    },
+  ]),
+  {
+    name: "key-lifecycle-risk-pem-after-unicode-comment",
+    relativePath: "config/deploy.ts",
+    content: `/* 🙂é\u2028 note */\nconst key = "-----BEGIN PRIVATE KEY----- ${parityPemBody}-----END PRIVATE KEY-----";`,
+    expectedRuleCounts: { "key-lifecycle-risk": 1 },
+  },
+  {
+    name: "key-lifecycle-risk-pem-placeholder-window",
+    relativePath: "config/deploy.pem",
+    content: `SaMpLe${" ".repeat(40)}-----BEGIN PRIVATE KEY-----\n${parityPemBody}-----END PRIVATE KEY-----`,
+    expectedRuleCounts: { "key-lifecycle-risk": 0 },
+  },
+  {
+    name: "key-lifecycle-risk-pem-outside-placeholder-window",
+    relativePath: "config/deploy.pem",
+    content: `SaMpLe${" ".repeat(41)}-----BEGIN PRIVATE KEY-----\n${parityPemBody}-----END PRIVATE KEY-----`,
+    expectedRuleCounts: { "key-lifecycle-risk": 1 },
+  },
+  {
+    name: "key-lifecycle-risk-pem-ellipsis-placeholder",
+    relativePath: "config/deploy.pem",
+    content: `-----BEGIN PRIVATE KEY-----\n${parityPemBody}...-----END PRIVATE KEY-----`,
+    expectedRuleCounts: { "key-lifecycle-risk": 0 },
+  },
+  {
+    name: "key-lifecycle-risk-pem-ellipsis-backtracking-below-threshold",
+    relativePath: "config/deploy.pem",
+    content: `-----BEGIN PRIVATE KEY-----\n${"A".repeat(199)}...-----END PRIVATE KEY-----`,
+    expectedRuleCounts: { "key-lifecycle-risk": 0 },
+  },
+  {
+    name: "key-lifecycle-risk-pem-ellipsis-backtracking-at-threshold",
+    relativePath: "config/deploy.pem",
+    content: `-----BEGIN PRIVATE KEY-----\n${"A".repeat(200)}...-----END PRIVATE KEY-----`,
+    expectedRuleCounts: { "key-lifecycle-risk": 1 },
   },
   {
     name: "key-lifecycle-risk-negative-documentation",
@@ -1024,6 +1276,7 @@ const makeFixture = (input: ScanParityFixtureInput, absoluteRoot: string): ScanP
   absolutePath: path.join(absoluteRoot, input.relativePath),
   relativePath: input.relativePath,
   content: input.content,
+  expectedRuleCounts: input.expectedRuleCounts,
   isGeneratedBundle:
     input.isGeneratedBundle ??
     classifySecurityScanFile(input.relativePath)?.isGeneratedBundleByName ??
@@ -1190,29 +1443,39 @@ const run = (): void => {
           const scan = entry?.rule.scan;
           if (typeof scan !== "function") throw new Error(`Missing canonical scan for ${ruleId}`);
           const findings = scan(scannedFile);
+          const expectedCount = fixture.expectedRuleCounts?.[ruleId];
+          if (expectedCount !== undefined) {
+            assert.equal(
+              findings.length,
+              expectedCount,
+              `${fixture.name}: ${ruleId} control count`,
+            );
+          }
           if (findings.length > 0) {
             firingFixtureCountByRule.set(ruleId, (firingFixtureCountByRule.get(ruleId) ?? 0) + 1);
           }
           return [ruleId, normalizeJson(findings)];
         }),
       );
-      const nativeOutputJson = binding.scanReactDoctorFile(
-        JSON.stringify({ ...scannedFile, ruleIds: RETAINED_SCAN_RULE_IDS }),
-      );
-      assert.equal(
-        typeof nativeOutputJson,
-        "string",
-        `${fixture.name}: native scan output must be JSON text`,
-      );
-      const nativeFindingsByRule: unknown = JSON.parse(nativeOutputJson);
-      try {
-        assert.deepEqual(
-          nativeFindingsByRule,
-          canonicalFindingsByRule,
-          `${fixture.name} (${fixture.relativePath})`,
+      for (const ruleIds of [RETAINED_SCAN_RULE_IDS, [...RETAINED_SCAN_RULE_IDS].reverse()]) {
+        const nativeOutputJson = binding.scanReactDoctorFile(
+          JSON.stringify({ ...scannedFile, ruleIds }),
         );
-      } catch (error) {
-        parityDifferences.push(error instanceof Error ? error.message : String(error));
+        assert.equal(
+          typeof nativeOutputJson,
+          "string",
+          `${fixture.name}: native scan output must be JSON text`,
+        );
+        const nativeFindingsByRule: unknown = JSON.parse(nativeOutputJson);
+        try {
+          assert.deepEqual(
+            nativeFindingsByRule,
+            canonicalFindingsByRule,
+            `${fixture.name} (${fixture.relativePath}, first rule: ${ruleIds[0]})`,
+          );
+        } catch (error) {
+          parityDifferences.push(error instanceof Error ? error.message : String(error));
+        }
       }
     }
 
@@ -1221,11 +1484,11 @@ const run = (): void => {
     }
     if (parityDifferences.length > 0) {
       throw new Error(
-        `Native scan parity found ${parityDifferences.length} mismatched fixtures:\n\n${parityDifferences.join("\n\n")}`,
+        `Native scan parity found ${parityDifferences.length} mismatched comparisons:\n\n${parityDifferences.join("\n\n")}`,
       );
     }
     process.stdout.write(
-      `Native scan parity passed: ${RETAINED_SCAN_RULE_IDS.length} rules, ${fixtures.length} fixtures.\n`,
+      `Native scan parity passed: ${RETAINED_SCAN_RULE_IDS.length} rules, ${fixtures.length} fixtures, forward and reverse rule order.\n`,
     );
   } finally {
     fs.rmSync(temporaryRoot, { recursive: true, force: true });

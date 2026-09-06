@@ -1,6 +1,8 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str =
     "Imported metadata, uploads, or plugin manifests appear to reach code execution.";
@@ -16,13 +18,11 @@ static TAINT_PATTERN: Lazy<Regex> = lazy_regex!(
     r"\b(?:exif|metadata|manifest|preset|plugin|upload|drop(?:ped|s)?\b|archive|zip|unzip|untar)"
 );
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !super::is_production_file_path::is_production_source_path(relative_path) {
         return Vec::new();
     }
-    let scannable =
-        super::get_scannable_content::get_scannable_content(relative_path, source, true);
-    let content = super::normalize_js_regex_content::normalize_js_regex_content(&scannable);
+    let content = source.normalized_scannable(true);
     let mut candidates = EXECUTION_CALLEE_PATTERN
         .find_iter(&content)
         .map(|found| (found.start(), found.end()))

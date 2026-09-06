@@ -1,6 +1,6 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent};
 
 const MESSAGE: &str = "Private or long-lived release key material appears in the repository.";
 
@@ -15,24 +15,27 @@ static KEY_ASSIGNMENT_PATTERN: Lazy<Regex> = lazy_regex!(
     r#"(?i)\b(?:SSH_PRIVATE_KEY|GPG_PRIVATE_KEY|DEPLOY_KEY|SIGNING_KEY)\b\s*[:=]\s*["'][^"'\n]{16,}["']"#
 );
 static PEM_HEADER_PATTERN: Lazy<Regex> =
-    lazy_regex!(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----");
+    lazy_regex!(r"(?i)-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----");
 static PLACEHOLDER_PREFIX_PATTERN: Lazy<Regex> =
     lazy_regex!(r"(?is)(?:placeholder|example|sample|dummy|fake).{0,40}$");
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     let normalized_path =
         super::normalize_js_regex_content::normalize_js_regex_content(relative_path);
-    let content = super::normalize_js_regex_content::normalize_js_regex_content(source);
     if TEST_CONTEXT_PATTERN.is_match(&normalized_path)
         || DOCUMENTATION_CONTEXT_PATTERN.is_match(&normalized_path)
-        || !KEY_MARKER_PATTERN.is_match(&content)
+        || !KEY_MARKER_PATTERN.is_match(source)
     {
         return Vec::new();
     }
+    let content = source.normalized_scannable(false);
+    if !KEY_MARKER_PATTERN.is_match(content) {
+        return Vec::new();
+    }
     let assignment_index = KEY_ASSIGNMENT_PATTERN
-        .find(&content)
+        .find(content)
         .map(|found| found.start());
-    let pem_index = PEM_HEADER_PATTERN.find_iter(&content).find_map(|header| {
+    let pem_index = PEM_HEADER_PATTERN.find_iter(content).find_map(|header| {
         let prefix_start = content[..header.start()]
             .char_indices()
             .rev()
@@ -41,12 +44,13 @@ pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
         if PLACEHOLDER_PREFIX_PATTERN.is_match(&content[prefix_start..header.start()]) {
             return None;
         }
-        let body_start = skip_pem_spacing(&content, header.end());
+        let body_start = skip_pem_spacing(content, header.end());
         let body_end = content[body_start..]
             .char_indices()
             .take_while(|(_, character)| {
                 character.is_ascii_alphanumeric()
-                    || matches!(character, '+' | '/' | '=' | ' ' | '\t' | '\r' | '\n')
+                    || matches!(character, '+' | '/' | '=')
+                    || character.is_whitespace()
             })
             .last()
             .map_or(body_start, |(offset, character)| {
@@ -56,7 +60,11 @@ pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
         if body.chars().count() < 39 {
             return None;
         }
-        let before_hyphen = content[body_end..].split('-').next().unwrap_or("");
+        let minimum_body_end = body
+            .char_indices()
+            .nth(39)
+            .map_or(body_end, |(offset, _)| body_start + offset);
+        let before_hyphen = content[minimum_body_end..].split('-').next().unwrap_or("");
         if before_hyphen
             .find("...")
             .is_some_and(|ellipsis_index| before_hyphen[..ellipsis_index].chars().count() <= 160)
@@ -68,7 +76,7 @@ pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
     let Some(index) = assignment_index.into_iter().chain(pem_index).min() else {
         return Vec::new();
     };
-    let (line, column) = get_location_at_index(source, &content, index);
+    let (line, column) = get_location_at_index(source, content, index);
     vec![ScanFinding::inherited(MESSAGE, line, column)]
 }
 
@@ -76,7 +84,10 @@ fn skip_pem_spacing(source: &str, start: usize) -> usize {
     let mut cursor = start;
     loop {
         let tail = &source[cursor..];
-        if tail.starts_with("\\r") || tail.starts_with("\\n") {
+        if ["\\r", "\\n", "\\R", "\\N"]
+            .iter()
+            .any(|&separator| tail.starts_with(separator))
+        {
             cursor += 2;
             continue;
         }

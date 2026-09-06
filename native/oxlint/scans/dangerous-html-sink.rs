@@ -77,14 +77,16 @@ pub fn scan(
 ) -> Vec<ScanFinding> {
     let normalized_path =
         super::normalize_js_regex_content::normalize_js_regex_content(relative_path);
-    let normalized_source = super::normalize_js_regex_content::normalize_js_regex_content(source);
     if is_generated_bundle
         || !dangerous_html_is_production_source_path(relative_path)
         || DANGEROUS_HTML_EMAIL_PATH_PATTERN.is_match(&normalized_path)
         || dangerous_html_is_hidden_tooling_path(relative_path)
         || dangerous_html_is_sanitizer_wrapper_path(&normalized_path)
-        || !DANGEROUS_HTML_SINK_PATTERN.is_match(&normalized_source)
     {
+        return Vec::new();
+    }
+    let normalized_source = super::normalize_js_regex_content::normalize_js_regex_content(source);
+    if !DANGEROUS_HTML_SINK_PATTERN.is_match(&normalized_source) {
         return Vec::new();
     }
 

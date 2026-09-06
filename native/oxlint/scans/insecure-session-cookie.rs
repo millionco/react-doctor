@@ -1,6 +1,8 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str = "An auth/session cookie is exposed to JavaScript (set via document.cookie, with httpOnly: false, or without cookie options), letting an XSS payload steal it.";
 
@@ -11,13 +13,11 @@ static COOKIE_CONFIG_PATTERN: Lazy<Regex> = lazy_regex!(r"(?i)cookie\s*:\s*\{");
 static CLIENT_COOKIE_WRITE_PATTERN: Lazy<Regex> =
     lazy_regex!(r#"(?i)document\.cookie\s*=\s*[`"']"#);
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !super::is_production_file_path::is_production_source_path(relative_path) {
         return Vec::new();
     }
-    let scannable =
-        super::get_scannable_content::get_scannable_content(relative_path, source, false);
-    let content = super::normalize_js_regex_content::normalize_js_regex_content(&scannable);
+    let content = source.normalized_scannable(false);
     if !content.to_ascii_lowercase().contains("cookie") {
         return Vec::new();
     }

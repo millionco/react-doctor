@@ -1,6 +1,8 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str = "Webhook handler code does not show an obvious signature verification step.";
 
@@ -26,7 +28,7 @@ static COMMENT_OR_STRING_PATTERN: Lazy<Regex> = lazy_regex!(
     r#"//[^\n]*|(?s:/\*.*?\*/)|\"(?:\\[^\n\r\u{2028}\u{2029}]|[^\"\\\n])*\"|'(?:\\[^\n\r\u{2028}\u{2029}]|[^'\\\n])*'|`(?:\\[^\n\r\u{2028}\u{2029}]|[^`\\])*`"#
 );
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !super::is_production_file_path::is_production_source_path(relative_path)
         || OUTBOUND_WEBHOOK_CONFIG_PATTERN.is_match(source)
     {
@@ -41,9 +43,7 @@ pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
     {
         return Vec::new();
     }
-    let scannable =
-        super::get_scannable_content::get_scannable_content(relative_path, source, false);
-    let normalized = super::normalize_js_regex_content::normalize_js_regex_content(&scannable);
+    let normalized = source.normalized_scannable(false);
     if !REQUEST_READ_PATTERN.is_match(normalized.as_ref())
         || WEBHOOK_VERIFICATION_SIGNAL_PATTERN.is_match(normalized.as_ref())
         || WEBHOOK_VERIFICATION_HELPER_CALL_PATTERN.is_match(normalized.as_ref())

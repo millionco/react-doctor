@@ -1,9 +1,13 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, first_pattern_finding::first_pattern_finding};
+use super::{
+    ScanFinding, first_pattern_finding::first_pattern_finding, scan_content::ScanContent,
+};
 
 const MESSAGE: &str = "A browser artifact exposes Firebase/Supabase config together with sensitive collections or authorization fields.";
 
+static BAAS_CONFIG_MARKER_PATTERN: Lazy<Regex> =
+    lazy_regex!(r"(?i)initializeApp|firebase|firestore|getFirestore|createClient");
 static FIREBASE_CONFIG_FORWARD_PATTERN: Lazy<Regex> = lazy_regex!(
     r"(?is)\b(?:initializeApp|firebase|firestore|getFirestore)\b.{0,700}\b(?:apiKey|authDomain|projectId|databaseURL|storageBucket)\b"
 );
@@ -18,17 +22,21 @@ static AUTHORITY_SURFACE_PATTERN: Lazy<Regex> = lazy_regex!(
     r#"(?i)\b(?:collection\s*\(\s*["'](?:boosts|sessions|sessions_admin|users|orgs|candidateJobs|conversations|documents)|from\s*\(\s*["'](?:users|profiles|documents|organizations|memberships)|creatorID|creatorId|providerId|ghostOrg|ownerId|orgId|tenantId|workspaceId|isAdmin|SuperAdmin)\b"#
 );
 
-pub fn scan(relative_path: &str, source: &str, is_generated_bundle: bool) -> Vec<ScanFinding> {
+pub fn scan(
+    relative_path: &str,
+    source: &ScanContent<'_>,
+    is_generated_bundle: bool,
+) -> Vec<ScanFinding> {
     if !super::is_browser_artifact_path::is_browser_artifact_path(
         relative_path,
         is_generated_bundle,
     ) {
         return Vec::new();
     }
-    let scannable =
-        super::get_scannable_content::get_scannable_content(relative_path, source, false);
-    let normalized_source =
-        super::normalize_js_regex_content::normalize_js_regex_content(&scannable);
+    if !BAAS_CONFIG_MARKER_PATTERN.is_match(source) {
+        return Vec::new();
+    }
+    let normalized_source = source.normalized_scannable(false);
     if ![
         &*FIREBASE_CONFIG_FORWARD_PATTERN,
         &*FIREBASE_CONFIG_REVERSE_PATTERN,

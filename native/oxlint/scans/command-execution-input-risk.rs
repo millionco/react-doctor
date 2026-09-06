@@ -1,6 +1,8 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str =
     "Command execution appears to include request, query, body, or shell-interpolated input.";
@@ -21,16 +23,14 @@ static SHELL_COMMAND_PATTERN: Lazy<Regex> = lazy_regex!(
     r#"(?i)^\s*['"](?:sh|bash|zsh|dash|ksh|cmd(?:\.exe)?|powershell(?:\.exe)?|pwsh)['"]\s*,\s*\[\s*['"](?:-c|/c|-Command)['"]\s*,"#
 );
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !super::is_production_file_path::is_production_script_source_path(relative_path) {
         return Vec::new();
     }
     if super::security_file_path::is_dev_tooling_path(relative_path) {
         return Vec::new();
     }
-    let scannable =
-        super::get_scannable_content::get_scannable_content(relative_path, source, false);
-    let content = super::normalize_js_regex_content::normalize_js_regex_content(&scannable);
+    let content = source.normalized_scannable(false);
     for found in SHELL_EXEC_PATTERN.find_iter(&content) {
         if is_disallowed_bare_method(&content, found.start(), found.as_str()) {
             continue;

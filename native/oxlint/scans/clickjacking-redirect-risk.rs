@@ -1,6 +1,8 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str = "Redirect or framing configuration may let attacker-controlled URLs chain into privileged UI or clickjacking.";
 
@@ -18,14 +20,13 @@ static FRAME_POLICY_PATTERN: Lazy<Regex> = lazy_regex!(
     r#"(?i)frame-ancestors\s+(?:\*|'self'\s+\*)|X-Frame-Options["']?\s*:\s*["']?ALLOW"#
 );
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !super::is_production_file_path::is_production_source_path(relative_path)
         && !super::is_config_or_ci_path::is_config_or_ci_path(relative_path)
     {
         return Vec::new();
     }
-    let content = super::get_scannable_content::get_scannable_content(relative_path, source, false);
-    let normalized = super::normalize_js_regex_content::normalize_js_regex_content(&content);
+    let normalized = source.normalized_scannable(false);
 
     let redirect_index = REDIRECT_CALL_PATTERN
         .find_iter(&normalized)
@@ -58,7 +59,7 @@ pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
         .into_iter()
         .chain(other_index)
         .min()
-        .map(|index| finding(source, &content, index))
+        .map(|index| finding(source, source.scannable(false), index))
         .unwrap_or_default()
 }
 

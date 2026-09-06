@@ -1,6 +1,8 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str = "The build or install pipeline can execute package lifecycle code while CI secrets may be present.";
 
@@ -13,11 +15,11 @@ static STEPS_KEY_PATTERN: Lazy<Regex> = lazy_regex!(r"^steps:\s*(?:#.*)?$");
 static NON_WORKFLOW_SECRET_PATTERN: Lazy<Regex> = lazy_regex!(r"(?i)\bsecrets\.[A-Z0-9_]+");
 static NON_WORKFLOW_IGNORE_SCRIPTS_PATTERN: Lazy<Regex> = lazy_regex!(r"(?i)--ignore-scripts\b");
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     let normalized_path =
         super::normalize_js_regex_content::normalize_js_regex_content(relative_path);
     if WORKFLOW_PATH_PATTERN.is_match(&normalized_path) {
-        let content = super::normalize_js_regex_content::normalize_js_regex_content(source);
+        let content = source.normalized_source();
         return scan_workflow(&content);
     }
     if !super::is_config_or_ci_path::is_config_or_ci_path(relative_path)
@@ -25,9 +27,7 @@ pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
     {
         return Vec::new();
     }
-    let scannable =
-        super::get_scannable_content::get_scannable_content(relative_path, source, false);
-    let content = super::normalize_js_regex_content::normalize_js_regex_content(&scannable);
+    let content = source.normalized_scannable(false);
     scan_non_workflow(source, &content)
 }
 

@@ -1,6 +1,8 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, first_pattern_finding::first_pattern_finding};
+use super::{
+    ScanFinding, first_pattern_finding::first_pattern_finding, scan_content::ScanContent,
+};
 
 const MESSAGE: &str = "An agent-callable tool appears to expose network, filesystem, shell, or code-execution capability.";
 
@@ -15,22 +17,22 @@ static DANGEROUS_CAPABILITY_PATTERN: Lazy<Regex> = lazy_regex!(
     r"\b(?:exec|execSync|spawn|child_process|eval|new Function|vm\.run|readFile|writeFile|fs\.read|fs\.write|fetch|axios|http\.request|sandbox|runCode|executeCode)\b"
 );
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !super::is_production_file_path::is_production_source_path(relative_path) {
         return Vec::new();
     }
     let normalized_path =
         super::normalize_js_regex_content::normalize_js_regex_content(relative_path);
-    let normalized_source = super::normalize_js_regex_content::normalize_js_regex_content(source);
-    if !TOOL_CONTEXT_PATH_PATTERN.is_match(&normalized_path)
-        || !TOOL_PREFILTER_PATTERN.is_match(&normalized_source)
+    if !TOOL_CONTEXT_PATH_PATTERN.is_match(&normalized_path) {
+        return Vec::new();
+    }
+    let normalized_source = source.normalized_source();
+    if !TOOL_PREFILTER_PATTERN.is_match(&normalized_source)
         || !DANGEROUS_CAPABILITY_PATTERN.is_match(&normalized_source)
     {
         return Vec::new();
     }
-    let scannable =
-        super::get_scannable_content::get_scannable_content(relative_path, source, true);
-    let content = super::normalize_js_regex_content::normalize_js_regex_content(&scannable);
+    let content = source.normalized_scannable(true);
     if !DANGEROUS_CAPABILITY_PATTERN.is_match(&content) {
         return Vec::new();
     }

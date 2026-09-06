@@ -1,6 +1,8 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str = "JWT is configured with the 'none' algorithm, which disables signature verification, so any forged token is accepted.";
 
@@ -8,13 +10,11 @@ static JWT_EVIDENCE_PATTERN: Lazy<Regex> = lazy_regex!(r"(?i)\bjwt\b|jsonwebtoke
 static NONE_ALGORITHM_PATTERN: Lazy<Regex> =
     lazy_regex!(r#"(?i)\b(?:alg|algorithms?)\s*:\s*\[?\s*["'`]none["'`]"#);
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !super::is_production_file_path::is_production_source_path(relative_path) {
         return Vec::new();
     }
-    let scannable =
-        super::get_scannable_content::get_scannable_content(relative_path, source, false);
-    let content = super::normalize_js_regex_content::normalize_js_regex_content(&scannable);
+    let content = source.normalized_scannable(false);
     if !JWT_EVIDENCE_PATTERN.is_match(&content) {
         return Vec::new();
     }

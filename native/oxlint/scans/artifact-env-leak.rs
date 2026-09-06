@@ -19,6 +19,10 @@ static FULL_ENV_COMMENT_TRIVIA_PATTERN: Lazy<Regex> = lazy_regex!(
 static FULL_ENV_SECRET_NAME_PATTERN: Lazy<Regex> = lazy_regex!(
     r"\b(?:DATABASE_URL|AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID|MAILGUN_API_KEY|SALESFORCE_CLIENT_SECRET|OKTA_CLIENT_SECRET|SESSION_SECRET|COOKIE_SECRET|PRIVATE_KEY|SERVICE_ROLE)\b"
 );
+static FULL_ENV_SECRET_NAME_CANDIDATE_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(&FULL_ENV_SECRET_NAME_PATTERN.as_str().replace(r"\b", ""))
+        .expect("valid secret name pattern")
+});
 static SOURCE_PATH_PATTERN: Lazy<Regex> = lazy_regex!(r"(?i)\.[cm]?[jt]sx?$");
 
 pub fn scan(relative_path: &str, source: &str, is_generated_bundle: bool) -> Vec<ScanFinding> {
@@ -61,6 +65,9 @@ pub fn scan(relative_path: &str, source: &str, is_generated_bundle: bool) -> Vec
 fn find_raw_candidate(content: &str) -> Option<(usize, bool)> {
     if let Some(index) = find_suspicious_public_name(content) {
         return Some((index, true));
+    }
+    if !FULL_ENV_SECRET_NAME_CANDIDATE_PATTERN.is_match(content) {
+        return None;
     }
     let normalized = super::normalize_js_regex_content::normalize_js_regex_content(content);
     let secret = FULL_ENV_SECRET_NAME_PATTERN.find(&normalized)?;

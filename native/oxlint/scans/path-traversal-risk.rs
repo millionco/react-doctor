@@ -1,6 +1,8 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str =
     "Filesystem access appears to use request, query, params, or body data as part of the path.";
@@ -11,15 +13,13 @@ static PATH_CALL_PATTERN: Lazy<Regex> = lazy_regex!(r"(?-u:\b)path\.(?:join|reso
 static TAINT_PATTERN: Lazy<Regex> =
     lazy_regex!(r"(?-u:\b)(?:req\.|request\.|params\.|query\.|body\.|parsed\.)");
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !super::is_production_file_path::is_production_source_path(relative_path)
         || super::security_file_path::is_dev_tooling_path(relative_path)
     {
         return Vec::new();
     }
-    let scannable =
-        super::get_scannable_content::get_scannable_content(relative_path, source, false);
-    let normalized = super::normalize_js_regex_content::normalize_js_regex_content(&scannable);
+    let normalized = source.normalized_scannable(false);
     let file_match = FILE_ACCESS_CALL_PATTERN
         .find_iter(normalized.as_ref())
         .find(|found| file_access_argument_has_taint(normalized.as_ref(), found.end()));

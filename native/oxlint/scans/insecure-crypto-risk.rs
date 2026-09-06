@@ -1,6 +1,8 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str = "Code uses weak hashes, deprecated ciphers, timing-unsafe comparisons, or Math.random in a security-shaped context.";
 const SECURITY_CONTEXT_WINDOW_CHARS: usize = 250;
@@ -46,22 +48,21 @@ static UI_NONCE_CONTEXT_PATTERN: Lazy<Regex> = lazy_regex!(
     r"(?i)(?:focus|render|refresh|remount|redraw|animation|layout|cache|update)[-_]?nonce"
 );
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !super::is_production_file_path::is_production_source_path(relative_path) {
         return Vec::new();
     }
     let normalized_path =
         super::normalize_js_regex_content::normalize_js_regex_content(relative_path);
-    let normalized_source = super::normalize_js_regex_content::normalize_js_regex_content(source);
     if DEMO_CONTEXT_PATTERN.is_match(&normalized_path)
         || PROTOCOL_CONTEXT_PATTERN.is_match(&normalized_path)
-        || !CRYPTO_TRIGGER_PATTERN.is_match(&normalized_source)
     {
         return Vec::new();
     }
-    let stripped =
-        super::get_scannable_content::get_scannable_content(relative_path, source, false);
-    let content = super::normalize_js_regex_content::normalize_js_regex_content(&stripped);
+    if !CRYPTO_TRIGGER_PATTERN.is_match(source.normalized_source()) {
+        return Vec::new();
+    }
+    let content = source.normalized_scannable(false);
 
     let mut match_index = WEAK_HASH_PATTERN.find_iter(&content).find_map(|found| {
         let start = content[..found.start()]

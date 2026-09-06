@@ -1,6 +1,8 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str = "A secret env var has a hardcoded string fallback: the literal is a committed secret and the app fails open (uses it) when the variable is unset.";
 
@@ -21,13 +23,11 @@ static PLACEHOLDER_PREFIX_PATTERN: Lazy<Regex> = lazy_regex!(
 );
 static ZERO_FILLED_PATTERN: Lazy<Regex> = lazy_regex!(r"^[A-Za-z0-9_-]{0,12}0{8,}$");
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !super::is_production_file_path::is_production_source_path(relative_path) {
         return Vec::new();
     }
-    let scannable =
-        super::get_scannable_content::get_scannable_content(relative_path, source, false);
-    let normalized = super::normalize_js_regex_content::normalize_js_regex_content(&scannable);
+    let normalized = source.normalized_scannable(false);
     let found = ENV_FALLBACK_PATTERN
         .captures_iter(normalized.as_ref())
         .find_map(|captures| {

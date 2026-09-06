@@ -1,4 +1,4 @@
-use lazy_regex::{Lazy, Regex, lazy_regex};
+use lazy_regex::{Lazy, Regex, lazy_regex, regex::RegexSet};
 
 static PUBLIC_ENV_SECRET_NAME_PATTERN: Lazy<Regex> = lazy_regex!(
     r"(?i-u:\b(?:NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC)_[A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PRIVATE|DATABASE_URL|SERVICE_ROLE|AWS_ACCESS_KEY|AWS_SECRET)[A-Z0-9_]*\b)"
@@ -41,15 +41,28 @@ static CONNECTION_STRING_PATTERN: Lazy<Regex> = lazy_regex!(
     r"(?i)(?-u:\b)(?:postgres|mysql|mongodb(?:\+srv)?|redis)://([^:\x09\x0A\x0B\x0C\x0D\x20\u{00A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}/@]+):([^@\x09\x0A\x0B\x0C\x0D\x20\u{00A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}/]+)@([^\x09\x0A\x0B\x0C\x0D\x20\u{00A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}:/@]*\.[^\x09\x0A\x0B\x0C\x0D\x20\u{00A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}/@]*)"
 );
 
+static SECRET_VALUE_CANDIDATES: Lazy<RegexSet> = Lazy::new(|| {
+    RegexSet::new(
+        SECRET_VALUE_PATTERNS
+            .iter()
+            .map(Regex::as_str)
+            .chain(std::iter::once(CONNECTION_STRING_PATTERN.as_str())),
+    )
+    .expect("valid secret patterns")
+});
+
 pub fn first_suspicious_public_env_secret_name(source: &str) -> Option<usize> {
-    let normalized = super::normalize_js_regex_content::normalize_js_regex_content(source);
     PUBLIC_ENV_SECRET_NAME_PATTERN
-        .find_iter(normalized.as_ref())
+        .find_iter(source)
         .find(|found| !TRUSTED_PUBLIC_SECRET_NAME_PATTERN.is_match(found.as_str()))
         .map(|found| found.start())
 }
 
 pub fn first_secret_value(source: &str, include_service_role: bool) -> Option<usize> {
+    // HACK: JavaScript whitespace includes BOM, which the raw Rust candidate patterns omit.
+    if !source.contains('\u{FEFF}') && !SECRET_VALUE_CANDIDATES.is_match(source) {
+        return None;
+    }
     let normalized = super::normalize_js_regex_content::normalize_js_regex_content(source);
     for (index, pattern) in SECRET_VALUE_PATTERNS.iter().enumerate() {
         if !include_service_role && index == 19 {
@@ -64,9 +77,8 @@ pub fn first_secret_value(source: &str, include_service_role: bool) -> Option<us
 
 pub fn first_package_metadata_secret(source: &str) -> Option<usize> {
     first_secret_value(source, false).or_else(|| {
-        let normalized = super::normalize_js_regex_content::normalize_js_regex_content(source);
         JWT_LITERAL_VALUE_PATTERN
-            .find(normalized.as_ref())
+            .find(source)
             .map(|found| found.start())
     })
 }

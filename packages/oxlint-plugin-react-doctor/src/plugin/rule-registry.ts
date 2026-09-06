@@ -497,6 +497,8 @@ import { noWideLetterSpacing } from "./rules/design/no-wide-letter-spacing.js";
 import { noWillUpdateSetState } from "./rules/react-builtins/no-will-update-set-state.js";
 import { noZIndex9999 } from "./rules/design/no-z-index9999.js";
 import { nosqlInjectionRisk } from "./rules/security-scan/nosql-injection-risk.js";
+import { octaneNoHookInLoop } from "./rules/octane/octane-no-hook-in-loop.js";
+import { octaneNoNativeTextOnchange } from "./rules/octane/octane-no-native-text-onchange.js";
 import { onlyExportComponents } from "./rules/react-builtins/only-export-components.js";
 import { packageMetadataSecret } from "./rules/security-scan/package-metadata-secret.js";
 import { pathTraversalRisk } from "./rules/security-scan/path-traversal-risk.js";
@@ -6815,6 +6817,30 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       tags: [...new Set(["security-scan", ...(nosqlInjectionRisk.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/octane-no-hook-in-loop",
+    id: "octane-no-hook-in-loop",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...octaneNoHookInLoop,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["octane", ...(octaneNoHookInLoop.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/octane-no-native-text-onchange",
+    id: "octane-no-native-text-onchange",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...octaneNoNativeTextOnchange,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["octane", ...(octaneNoNativeTextOnchange.tags ?? [])])],
     },
   },
   {

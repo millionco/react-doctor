@@ -706,6 +706,7 @@ impl Rule for ${delegatedRule.struct} {
         "only-export-components",
         [
           "function_contains_react_render_output",
+          "is_js_whitespace",
           "is_proven_react_component_symbol",
           "react_doctor_framework_setting_from_json",
           "should_use_curated_port_behavior",

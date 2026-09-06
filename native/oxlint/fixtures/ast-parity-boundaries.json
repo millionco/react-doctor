@@ -6678,5 +6678,218 @@
     "ruleId": "no-pass-data-to-parent",
     "expectedCount": 0,
     "source": "import {useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>{const send=(next)=>{type Snapshot=typeof next;onChange(1);};return send;},[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "only-export-workspace-simple-declarations-include-consumer",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "apps/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-workspace-simple-declarations-exclude-unrelated-nested-consumer",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "unrelated/deep/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-workspace-literal-declarations-include-consumer",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"apps/web\",\"packages/ui\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "apps/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-workspace-pnpm-excludes-manifest-declared-consumer",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "apps/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}",
+      "pnpm-workspace.yaml": "packages:\n  - \"packages/*\"\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-workspace-pnpm-includes-consumer-absent-from-manifest-patterns",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "apps/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}",
+      "pnpm-workspace.yaml": "packages:\n  - \"apps/*\"\n  - \"packages/*\"\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-workspace-pnpm-packages-stop-at-next-block",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "apps/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}",
+      "pnpm-workspace.yaml": "packages:\n  - \"packages/*\"\nignored:\n  - \"apps/*\"\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-workspace-pnpm-ignores-list-before-packages-block",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "apps/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}",
+      "pnpm-workspace.yaml": "ignored:\n  - \"apps/*\"\npackages:\n  - \"packages/*\"\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-workspace-pnpm-yaml-precedes-yml",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "apps/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}",
+      "pnpm-workspace.yaml": "packages:\n  - \"packages/*\"\n",
+      "pnpm-workspace.yml": "packages:\n  - \"apps/*\"\n  - \"packages/*\"\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-workspace-pnpm-empty-packages-uses-recursive-fallback",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "unrelated/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}",
+      "pnpm-workspace.yaml": "packages:\nignored:\n  - \"packages/*\"\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-workspace-terminal-double-star-remains-shallow",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"apps/**\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "apps/group/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-workspace-terminal-double-star-includes-direct-child",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"apps/**\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "apps/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-workspace-wildcard-directory-suffix-includes-consumer",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"apps/*/web\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "apps/group/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-workspace-unsupported-negation-uses-unfiltered-recursive-fallback",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"packages/*\",\"!unrelated/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "unrelated/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-workspace-unsupported-braces-use-unfiltered-recursive-fallback",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"packages/*\",\"apps/{web,other}\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "unrelated/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-workspace-multiple-wildcards-use-unfiltered-recursive-fallback",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"packages/*\",\"apps/*/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "unrelated/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-workspace-pnpm-bom-preserves-declared-exclusion",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "unrelated/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}",
+      "pnpm-workspace.yaml": "\uFEFFpackages:\n  - \"packages/*\"\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-workspace-pnpm-next-line-character-preserves-recursive-fallback",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const helper = () => 1;\nexport const Card = () => <div />;\n",
+    "files": {
+      "package.json": "{\"name\":\"workspace-probe\",\"private\":true,\"workspaces\":[\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"ui\",\"main\":\"./src/index.ts\"}",
+      "unrelated/web/package.json": "{\"name\":\"web\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\",\"ui\":\"workspace:*\"}}",
+      "pnpm-workspace.yaml": "\u0085packages:\n  - \"packages/*\"\n"
+    },
+    "expectedCount": 1
   }
 ]

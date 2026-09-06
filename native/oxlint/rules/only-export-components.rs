@@ -1442,19 +1442,13 @@ fn only_export_workspace_fast_refresh_status(
                         })
                 })
         };
-        if let Some(status) = ONLY_EXPORT_WORKSPACE_INDEX_BY_ROOT
-            .lock()
-            .ok()
-            .and_then(|indexes| indexes.get(&workspace_root).map(status_for_index))
-        {
-            return status;
-        }
-        let index = only_export_build_workspace_index(&workspace_root);
-        let status = status_for_index(&index);
         if let Ok(mut indexes) = ONLY_EXPORT_WORKSPACE_INDEX_BY_ROOT.lock() {
-            indexes.insert(workspace_root, index);
+            let index = indexes
+                .entry(workspace_root.clone())
+                .or_insert_with(|| only_export_build_workspace_index(&workspace_root));
+            return status_for_index(index);
         }
-        status
+        status_for_index(&only_export_build_workspace_index(&workspace_root))
     });
     if let Ok(mut statuses) = ONLY_EXPORT_WORKSPACE_STATUS_BY_FILE.lock() {
         statuses.insert(filename.to_path_buf(), status);
@@ -1528,24 +1522,25 @@ fn only_export_workspace_packages(workspace_root: &Path) -> Vec<(PathBuf, serde_
     let root_manifest = fs::read_to_string(workspace_root.join("package.json"))
         .ok()
         .and_then(|source| serde_json::from_str::<serde_json::Value>(&source).ok());
-    let patterns = only_export_workspace_patterns(workspace_root, root_manifest.as_ref());
+    if let Some(directories) =
+        only_export_declared_workspace_directories(workspace_root, root_manifest.as_ref())
+    {
+        return std::iter::once(workspace_root.to_path_buf())
+            .chain(directories)
+            .filter_map(|directory| {
+                let source = fs::read_to_string(directory.join("package.json")).ok()?;
+                let manifest = serde_json::from_str(&source).ok()?;
+                Some((directory, manifest))
+            })
+            .collect();
+    }
     let mut packages = Vec::new();
     let mut pending = vec![workspace_root.to_path_buf()];
     while let Some(directory) = pending.pop() {
         if let Ok(source) = fs::read_to_string(directory.join("package.json"))
             && let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&source)
         {
-            let relative = directory
-                .strip_prefix(workspace_root)
-                .unwrap_or(&directory)
-                .to_string_lossy()
-                .replace('\\', "/");
-            if directory == workspace_root
-                || patterns.is_empty()
-                || only_export_workspace_path_matches(&relative, &patterns)
-            {
-                packages.push((directory.clone(), manifest));
-            }
+            packages.push((directory.clone(), manifest));
         }
         let Ok(entries) = fs::read_dir(&directory) else {
             continue;
@@ -1574,110 +1569,109 @@ fn only_export_workspace_packages(workspace_root: &Path) -> Vec<(PathBuf, serde_
 fn only_export_workspace_patterns(
     workspace_root: &Path,
     manifest: Option<&serde_json::Value>,
-) -> Vec<String> {
-    let mut patterns = Vec::new();
-    if let Some(workspaces) = manifest.and_then(|manifest| manifest.get("workspaces")) {
-        let values = match workspaces {
-            serde_json::Value::Array(values) => Some(values),
-            serde_json::Value::Object(workspaces) => workspaces
-                .get("packages")
-                .and_then(serde_json::Value::as_array),
-            _ => None,
-        };
-        patterns.extend(
-            values
-                .into_iter()
-                .flatten()
-                .filter_map(serde_json::Value::as_str)
-                .map(str::to_string),
-        );
-    }
-    for filename in ["pnpm-workspace.yaml", "pnpm-workspace.yml"] {
-        let Ok(source) = fs::read_to_string(workspace_root.join(filename)) else {
-            continue;
-        };
-        patterns.extend(source.lines().filter_map(|line| {
-            let pattern = line.trim().strip_prefix('-')?.trim();
-            let pattern = pattern.trim_matches(['\'', '"']);
-            (!pattern.is_empty()).then(|| pattern.to_string())
-        }));
-    }
-    patterns
-}
-
-fn only_export_workspace_path_matches(relative_path: &str, patterns: &[String]) -> bool {
-    let mut included = false;
-    for pattern in patterns {
-        let (is_excluded, pattern) = pattern
-            .strip_prefix('!')
-            .map_or((false, pattern.as_str()), |pattern| (true, pattern));
-        if only_export_glob_matches(pattern.trim_end_matches('/'), relative_path) {
-            included = !is_excluded;
-        }
-    }
-    included
-}
-
-fn only_export_glob_matches(pattern: &str, value: &str) -> bool {
-    if let Some(open) = pattern.find('{')
-        && let Some(relative_close) = pattern[open + 1..].find('}')
+) -> Option<Vec<String>> {
+    if let Some(filename) = ["pnpm-workspace.yaml", "pnpm-workspace.yml"]
+        .into_iter()
+        .map(|filename| workspace_root.join(filename))
+        .find(|filename| filename.exists())
+        && let Ok(source) = fs::read_to_string(filename)
     {
-        let close = open + 1 + relative_close;
-        return pattern[open + 1..close].split(',').any(|alternative| {
-            let expanded = format!(
-                "{}{}{}",
-                &pattern[..open],
-                alternative,
-                &pattern[close + 1..]
-            );
-            only_export_glob_matches(&expanded, value)
-        });
-    }
-    fn matches_segments(pattern: &[&str], value: &[&str]) -> bool {
-        let Some((first, remaining_pattern)) = pattern.split_first() else {
-            return value.is_empty();
-        };
-        if *first == "**" {
-            return matches_segments(remaining_pattern, value)
-                || !value.is_empty() && matches_segments(pattern, &value[1..]);
+        let mut patterns = Vec::new();
+        let mut inside_packages = false;
+        for line in source
+            .split('\n')
+            .map(|line| line.trim_matches(is_js_whitespace))
+        {
+            if line == "packages:" {
+                inside_packages = true;
+            } else if inside_packages {
+                if let Some(pattern) = line.strip_prefix('-') {
+                    let pattern = pattern.trim_start_matches(is_js_whitespace);
+                    let pattern = pattern.strip_prefix(['\'', '"']).unwrap_or(pattern);
+                    let pattern = pattern.strip_suffix(['\'', '"']).unwrap_or(pattern);
+                    patterns.push(pattern.to_string());
+                } else if !line.is_empty() && !line.starts_with('#') {
+                    break;
+                }
+            }
         }
-        let Some((value_first, remaining_value)) = value.split_first() else {
-            return false;
-        };
-        only_export_glob_segment_matches(first, value_first)
-            && matches_segments(remaining_pattern, remaining_value)
+        return Some(patterns);
     }
-    matches_segments(
-        &pattern
-            .split('/')
-            .filter(|segment| !segment.is_empty())
-            .collect::<Vec<_>>(),
-        &value
-            .split('/')
-            .filter(|segment| !segment.is_empty())
-            .collect::<Vec<_>>(),
+    let workspaces = manifest?.get("workspaces")?;
+    let patterns = workspaces
+        .as_array()
+        .or_else(|| workspaces.get("packages")?.as_array())?;
+    Some(
+        patterns
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .map(str::to_string)
+            .collect(),
     )
 }
 
-fn only_export_glob_segment_matches(pattern: &str, value: &str) -> bool {
-    let pattern = pattern.as_bytes();
-    let value = value.as_bytes();
-    let mut reachable = vec![false; value.len() + 1];
-    reachable[0] = true;
-    for byte in pattern {
-        if *byte == b'*' {
-            for index in 1..=value.len() {
-                reachable[index] |= reachable[index - 1];
+fn only_export_declared_workspace_directories(
+    workspace_root: &Path,
+    manifest: Option<&serde_json::Value>,
+) -> Option<Vec<PathBuf>> {
+    let patterns = only_export_workspace_patterns(workspace_root, manifest)?;
+    if patterns.is_empty() {
+        return None;
+    }
+    let mut directories = Vec::new();
+    let mut seen_directories = FxHashSet::default();
+    for pattern in patterns {
+        let pattern = pattern
+            .strip_suffix("/**")
+            .map_or(pattern.clone(), |prefix| format!("{prefix}/*"));
+        if pattern.starts_with('!')
+            || pattern.contains(['?', '[', ']', '{', '}'])
+            || pattern.bytes().filter(|byte| *byte == b'*').count() > 1
+        {
+            return None;
+        }
+        let resolved_directories = if let Some(wildcard_index) = pattern.find('*') {
+            let base_directory =
+                only_export_resolve_relative(workspace_root, &pattern[..wildcard_index])?;
+            if !only_export_path_is_inside(&base_directory, workspace_root) {
+                return None;
             }
+            let suffix = &pattern[wildcard_index + 1..];
+            if !suffix.is_empty() && !suffix.starts_with('/') {
+                return None;
+            }
+            let Ok(entries) = fs::read_dir(&base_directory) else {
+                continue;
+            };
+            let mut entries = entries.flatten().collect::<Vec<_>>();
+            entries.sort_by_key(|entry| entry.file_name());
+            let mut resolved_directories = Vec::new();
+            for entry in entries {
+                if !entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
+                    continue;
+                }
+                let directory = only_export_resolve_relative(&entry.path(), &format!(".{suffix}"))?;
+                if !only_export_path_is_inside(&directory, workspace_root) {
+                    return None;
+                }
+                resolved_directories.push(directory);
+            }
+            resolved_directories
         } else {
-            for index in (1..=value.len()).rev() {
-                reachable[index] =
-                    reachable[index - 1] && (*byte == b'?' || *byte == value[index - 1]);
+            let directory = only_export_resolve_relative(workspace_root, &pattern)?;
+            if !only_export_path_is_inside(&directory, workspace_root) {
+                return None;
             }
-            reachable[0] = false;
+            vec![directory]
+        };
+        for directory in resolved_directories {
+            if directory.join("package.json").exists() && seen_directories.insert(directory.clone())
+            {
+                directories.push(directory);
+            }
         }
     }
-    reachable[value.len()]
+    Some(directories)
 }
 
 fn only_export_active_package_alias_roots(
@@ -1764,20 +1758,28 @@ fn only_export_config_alias_roots(path: &Path) -> Option<Vec<PathBuf>> {
 
 fn only_export_resolve_relative(directory: &Path, relative_path: &str) -> Option<PathBuf> {
     let relative_path = Path::new(relative_path);
-    if relative_path.is_absolute() {
-        return Some(relative_path.to_path_buf());
-    }
-    let mut resolved = directory.to_path_buf();
+    let mut resolved = if relative_path.is_absolute() {
+        PathBuf::new()
+    } else {
+        directory.to_path_buf()
+    };
     for component in relative_path.components() {
         match component {
             std::path::Component::CurDir => {}
             std::path::Component::Normal(component) => resolved.push(component),
             std::path::Component::ParentDir => {
-                if !resolved.pop() {
+                resolved.pop();
+            }
+            std::path::Component::Prefix(prefix) if !relative_path.has_root() => {
+                if !matches!(directory.components().next(), Some(std::path::Component::Prefix(base_prefix))
+                    if base_prefix.as_os_str().to_string_lossy().eq_ignore_ascii_case(&prefix.as_os_str().to_string_lossy()))
+                {
                     return None;
                 }
             }
-            std::path::Component::Prefix(_) | std::path::Component::RootDir => return None,
+            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
+                resolved.push(component.as_os_str());
+            }
         }
     }
     Some(resolved)
@@ -1813,10 +1815,14 @@ fn only_export_workspace_dependency_version<'a>(
 }
 
 fn only_export_path_is_inside(path: &Path, root: &Path) -> bool {
-    path == root
-        || path
-            .strip_prefix(root)
-            .is_ok_and(|relative| !relative.as_os_str().is_empty())
+    #[cfg(windows)]
+    {
+        let path = path.to_string_lossy().to_lowercase();
+        let root = root.to_string_lossy().to_lowercase();
+        Path::new(&path).starts_with(root)
+    }
+    #[cfg(not(windows))]
+    path.starts_with(root)
 }
 
 fn only_export_has_react_import(ctx: &LintContext<'_>) -> bool {

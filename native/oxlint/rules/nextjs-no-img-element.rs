@@ -64,6 +64,18 @@ impl Rule for NextjsNoImgElement {
             {
                 continue;
             }
+            let source_attribute = find_jsx_attribute(opening_element, "src");
+            if source_attribute.is_some_and(|attribute| {
+                nextjs_img_source_is_non_optimizable(attribute, uses_local_image_url_factory)
+            }) {
+                continue;
+            }
+            if source_attribute.is_none() && find_jsx_attribute(opening_element, "ref").is_some() {
+                continue;
+            }
+            if nextjs_img_is_markdown_component_override(node, ctx) {
+                continue;
+            }
             if let Some(function_node_id) =
                 nextjs_img_nearest_function_node_id(node, ctx.semantic())
             {
@@ -91,19 +103,6 @@ impl Rule for NextjsNoImgElement {
                 if is_generated_image_owned {
                     continue;
                 }
-            }
-
-            let source_attribute = find_jsx_attribute(opening_element, "src");
-            if source_attribute.is_some_and(|attribute| {
-                nextjs_img_source_is_non_optimizable(attribute, uses_local_image_url_factory)
-            }) {
-                continue;
-            }
-            if source_attribute.is_none() && find_jsx_attribute(opening_element, "ref").is_some() {
-                continue;
-            }
-            if nextjs_img_is_markdown_component_override(node, ctx) {
-                continue;
             }
 
             ctx.diagnostic(OxcDiagnostic::warn(MESSAGE).with_label(opening_element.span));
@@ -310,6 +309,7 @@ struct NextjsImgOwnershipFlow {
 }
 
 struct NextjsImgOwnershipProject {
+    resolver: oxc_resolver::Resolver,
     sources: std::collections::HashMap<std::path::PathBuf, String>,
     consumer_file_paths_by_target:
         std::collections::HashMap<std::path::PathBuf, Vec<std::path::PathBuf>>,
@@ -377,9 +377,25 @@ impl NextjsImgOwnershipProject {
         }
         let mut unresolved_runtime_sources = std::collections::HashSet::new();
         let mut consumer_file_paths_by_target = std::collections::HashMap::new();
+        let resolver = oxc_resolver::Resolver::new(oxc_resolver::ResolveOptions {
+            extensions: oxc_span::VALID_EXTENSIONS
+                .iter()
+                .map(|extension| format!(".{extension}"))
+                .collect(),
+            main_fields: vec!["module".into(), "main".into()],
+            condition_names: vec!["module".into(), "import".into()],
+            extension_alias: vec![
+                (".js".into(), vec![".js".into(), ".ts".into()]),
+                (".mjs".into(), vec![".mjs".into(), ".mts".into()]),
+                (".cjs".into(), vec![".cjs".into(), ".cts".into()]),
+            ],
+            tsconfig: Some(oxc_resolver::TsconfigDiscovery::Auto),
+            ..oxc_resolver::ResolveOptions::default()
+        });
         for file_path in &file_paths {
             let source = sources.get(file_path)?;
             nextjs_img_collect_unresolved_runtime_sources(
+                &resolver,
                 file_path,
                 source,
                 &mut unresolved_runtime_sources,
@@ -387,6 +403,7 @@ impl NextjsImgOwnershipProject {
             )?;
         }
         Some(Self {
+            resolver,
             sources,
             consumer_file_paths_by_target,
             unresolved_runtime_sources,
@@ -448,6 +465,7 @@ impl NextjsImgOwnershipProject {
                     return false;
                 };
                 let Some(consumer_flow) = nextjs_img_classify_imports_from_export(
+                    &self.resolver,
                     consumer_path,
                     consumer_source,
                     &file_path,
@@ -572,6 +590,7 @@ fn nextjs_img_is_source_file_name(file_name: &str) -> bool {
 }
 
 fn nextjs_img_collect_unresolved_runtime_sources(
+    resolver: &oxc_resolver::Resolver,
     file_path: &std::path::Path,
     source: &str,
     unresolved_sources: &mut std::collections::HashSet<String>,
@@ -636,7 +655,7 @@ fn nextjs_img_collect_unresolved_runtime_sources(
         };
         if let Some(module_source) = module_source {
             if let Some(target_path) =
-                nextjs_img_resolve_first_party_module_path(file_path, module_source)
+                nextjs_img_resolve_first_party_module_path(resolver, file_path, module_source)
             {
                 consumer_file_paths_by_target
                     .entry(target_path)
@@ -681,6 +700,7 @@ fn nextjs_img_parse_module<'a>(
 }
 
 fn nextjs_img_classify_imports_from_export(
+    resolver: &oxc_resolver::Resolver,
     consumer_file_path: &std::path::Path,
     consumer_source: &str,
     owner_file_path: &std::path::Path,
@@ -712,7 +732,12 @@ fn nextjs_img_classify_imports_from_export(
             _ => None,
         };
         if module_source.is_some_and(|module_source| {
-            nextjs_img_resolve_first_party_module_path(consumer_file_path, module_source).as_deref()
+            nextjs_img_resolve_first_party_module_path(
+                resolver,
+                consumer_file_path,
+                module_source,
+            )
+            .as_deref()
                 == Some(owner_file_path)
         }) {
             flow.is_unsafe = true;
@@ -725,6 +750,7 @@ fn nextjs_img_classify_imports_from_export(
             oxc_ast::ast::Statement::ImportDeclaration(declaration)
                 if !is_type_only_import(declaration)
                     && nextjs_img_resolve_first_party_module_path(
+                        resolver,
                         consumer_file_path,
                         declaration.source.value.as_str(),
                     )
@@ -780,6 +806,7 @@ fn nextjs_img_classify_imports_from_export(
             oxc_ast::ast::Statement::ExportFromDeclaration(declaration)
                 if !declaration.export_kind.is_type()
                     && nextjs_img_resolve_first_party_module_path(
+                        resolver,
                         consumer_file_path,
                         declaration.source.value.as_str(),
                     )
@@ -808,6 +835,7 @@ fn nextjs_img_classify_imports_from_export(
             oxc_ast::ast::Statement::ExportAllDeclaration(declaration)
                 if !declaration.export_kind.is_type()
                     && nextjs_img_resolve_first_party_module_path(
+                        resolver,
                         consumer_file_path,
                         declaration.source.value.as_str(),
                     )
@@ -1398,24 +1426,10 @@ fn nextjs_img_resolve_identifier_module_import<'a, 'b>(
 }
 
 fn nextjs_img_resolve_first_party_module_path(
+    resolver: &oxc_resolver::Resolver,
     from_file_path: &std::path::Path,
     module_source: &str,
 ) -> Option<std::path::PathBuf> {
-    let resolver = oxc_resolver::Resolver::new(oxc_resolver::ResolveOptions {
-        extensions: oxc_span::VALID_EXTENSIONS
-            .iter()
-            .map(|extension| format!(".{extension}"))
-            .collect(),
-        main_fields: vec!["module".into(), "main".into()],
-        condition_names: vec!["module".into(), "import".into()],
-        extension_alias: vec![
-            (".js".into(), vec![".js".into(), ".ts".into()]),
-            (".mjs".into(), vec![".mjs".into(), ".mts".into()]),
-            (".cjs".into(), vec![".cjs".into(), ".cts".into()]),
-        ],
-        tsconfig: Some(oxc_resolver::TsconfigDiscovery::Auto),
-        ..oxc_resolver::ResolveOptions::default()
-    });
     let resolution = resolver.resolve_file(from_file_path, module_source).ok()?;
     let resolved_path = nextjs_img_normalize_file_identity(resolution.path());
     (!resolved_path

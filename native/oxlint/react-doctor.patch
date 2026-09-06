@@ -156,7 +156,18 @@ index 152f919..7e451af 100644
 +    react_doctor_diagnostic_spans: OnceCell<HashMap<u32, Span>>,
  }
  
-@@ -264,7 +332,18 @@ impl<'a> LintContext<'a> {
+@@ -73,6 +150,10 @@ impl<'a> Deref for LintContext<'a> {
+ 
+ impl<'a> LintContext<'a> {
++    pub(crate) fn react_doctor_next_file_active(&self) -> &OnceCell<bool> {
++        &self.parent.react_doctor_next_file_active
++    }
++
+     /// Get information such as the control flow graph, bound symbols, AST, etc.
+     /// for the file being linted.
+     ///
+     /// Refer to [`Semantic`]'s documentation for more information.
+@@ -264,7 +345,18 @@ impl<'a> LintContext<'a> {
      /// Add a diagnostic message to the list of diagnostics. Outputs a diagnostic with the current rule
      /// name, severity, and a link to the rule's documentation URL.
      fn add_diagnostic(&self, mut message: Message) {
@@ -179,6 +190,22 @@ index 152f919..7e451af 100644
 diff --git a/crates/oxc_linter/src/context/host.rs b/crates/oxc_linter/src/context/host.rs
 --- a/crates/oxc_linter/src/context/host.rs
 +++ b/crates/oxc_linter/src/context/host.rs
+@@ -190,6 +190,7 @@ pub struct ContextHost<'a> {
+     /// every rule in the React Compiler family (`react/hooks`, `react/refs`, …).
+     /// Stays empty until the first such rule runs on this file.
+     pub(super) react_compiler_results: OnceCell<ReactCompilerResults>,
++    pub(crate) react_doctor_next_file_active: OnceCell<bool>,
+ }
+ 
+ impl std::fmt::Debug for ContextHost<'_> {
+@@ -230,6 +231,7 @@ impl<'a> ContextHost<'a> {
+             frameworks: options.framework_hints,
+             with_ignore_fixes: options.with_ignore_fixes,
+             react_compiler_results: OnceCell::new(),
++            react_doctor_next_file_active: OnceCell::new(),
+         }
+         .sniff_for_frameworks()
+     }
 @@ -493,24 +493,26 @@ impl<'a> ContextHost<'a> {
          LintContext {
              parent: self,

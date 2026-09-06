@@ -8,6 +8,7 @@ const DEPENDENCY_SECTION_NAMES: [&str; 4] = [
 trait NextFileContext {
     fn next_file_path(&self) -> &std::path::Path;
     fn next_root_directory(&self) -> Option<&str>;
+    fn next_file_active_cache(&self) -> &std::cell::OnceCell<bool>;
 }
 
 impl NextFileContext for crate::context::LintContext<'_> {
@@ -17,6 +18,10 @@ impl NextFileContext for crate::context::LintContext<'_> {
 
     fn next_root_directory(&self) -> Option<&str> {
         get_next_root_directory(self.settings().json.as_ref())
+    }
+
+    fn next_file_active_cache(&self) -> &std::cell::OnceCell<bool> {
+        self.react_doctor_next_file_active()
     }
 }
 
@@ -28,9 +33,17 @@ impl NextFileContext for crate::context::ContextHost<'_> {
     fn next_root_directory(&self) -> Option<&str> {
         get_next_root_directory(self.settings().json.as_ref())
     }
+
+    fn next_file_active_cache(&self) -> &std::cell::OnceCell<bool> {
+        &self.react_doctor_next_file_active
+    }
 }
 
 fn is_next_file_active(ctx: &impl NextFileContext) -> bool {
+    *ctx.next_file_active_cache().get_or_init(|| resolve_next_file_active(ctx))
+}
+
+fn resolve_next_file_active(ctx: &impl NextFileContext) -> bool {
     let Some(package_directory) = find_nearest_package_directory(ctx.next_file_path()) else {
         return true;
     };

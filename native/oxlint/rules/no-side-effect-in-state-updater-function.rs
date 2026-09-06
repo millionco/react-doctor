@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    cell::OnceCell,
+    path::{Path, PathBuf},
+};
 
 use oxc_allocator::Allocator;
 use oxc_ast::{
@@ -169,15 +172,7 @@ impl Rule for NoSideEffectInStateUpdaterFunction {
                     .push(node.id());
             }
         }
-        let may_require_dayjs_mutability = !state_setter_symbol_ids.is_empty()
-            && call_node_ids.iter().any(|call_node_id| {
-                matches!(ctx.nodes().get_node(*call_node_id).kind(), AstKind::CallExpression(call)
-                if call.callee.get_inner_expression().as_member_expression().is_some_and(|member| {
-                    matches!(member.static_property_name().as_deref(), Some("add" | "set"))
-                }))
-            });
-        let dayjs_bad_mutable_is_active = may_require_dayjs_mutability
-            && updater_program_dayjs_mutability(ctx) != DayjsMutability::Inactive;
+        let dayjs_mutability = OnceCell::new();
 
         let mut reported_spans = FxHashSet::default();
         for call_node_id in call_node_ids {
@@ -294,7 +289,7 @@ impl Rule for NoSideEffectInStateUpdaterFunction {
                             &executed_function_analysis.array_parameter_symbol_ids,
                             &executed_function_analysis.function_ids,
                             &call_node_ids_by_function,
-                            dayjs_bad_mutable_is_active,
+                            &dayjs_mutability,
                             ctx,
                         )
                         .then_some(call.span),
@@ -819,7 +814,7 @@ fn updater_call_is_side_effect<'a>(
     array_parameter_symbol_ids: &FxHashSet<SymbolId>,
     executed_function_ids: &FxHashSet<NodeId>,
     call_node_ids_by_function: &FxHashMap<NodeId, Vec<NodeId>>,
-    dayjs_bad_mutable_is_active: bool,
+    dayjs_mutability: &OnceCell<DayjsMutability>,
     ctx: &LintContext<'a>,
 ) -> bool {
     if let Expression::Identifier(identifier) = call.callee.get_inner_expression() {
@@ -887,13 +882,11 @@ fn updater_call_is_side_effect<'a>(
         method_name.as_ref(),
         setter_identifier,
         updater_function,
-        dayjs_bad_mutable_is_active,
         ctx,
     ) {
         return false;
     }
     if matches!(method_name.as_ref(), "add" | "set")
-        && dayjs_bad_mutable_is_active
         && (updater_expression_is_dayjs_value(receiver, ctx)
             || updater_state_member_initial_value(
                 receiver,
@@ -903,7 +896,8 @@ fn updater_call_is_side_effect<'a>(
             )
             .is_some_and(|value| updater_expression_is_dayjs_value(value, ctx)))
     {
-        return true;
+        return *dayjs_mutability.get_or_init(|| updater_program_dayjs_mutability(ctx))
+            != DayjsMutability::Inactive;
     }
     if updater_fresh_object_method_is_external_callback(receiver, method_name.as_ref(), ctx) {
         return true;
@@ -1462,7 +1456,6 @@ fn updater_call_is_proven_pure_library_method<'a>(
     method_name: &str,
     setter_identifier: &oxc_ast::ast::IdentifierReference<'a>,
     updater_function: StateUpdaterFunction,
-    dayjs_bad_mutable_is_active: bool,
     ctx: &LintContext<'a>,
 ) -> bool {
     if matches!(
@@ -1477,11 +1470,7 @@ fn updater_call_is_proven_pure_library_method<'a>(
         return updater_expression_is_fresh_container(receiver, ctx)
             || updater_expression_is_internationalized_date(receiver, ctx)
             || state_member_initial_value
-                .is_some_and(|value| updater_expression_is_internationalized_date(value, ctx))
-            || !dayjs_bad_mutable_is_active
-                && (updater_expression_is_dayjs_value(receiver, ctx)
-                    || state_member_initial_value
-                        .is_some_and(|value| updater_expression_is_dayjs_value(value, ctx)));
+                .is_some_and(|value| updater_expression_is_internationalized_date(value, ctx));
     }
     matches!(receiver.get_inner_expression(), Expression::Identifier(identifier)
         if matches!(identifier.name.as_str(), "Math" | "JSON" | "Object" | "Array")

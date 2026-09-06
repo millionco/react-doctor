@@ -253,26 +253,13 @@ impl Rule for NoHydrationBranchOnBrowserGlobal {
         for node in ctx.nodes().iter() {
             let candidate = match node.kind() {
                 AstKind::ConditionalExpression(conditional) => {
-                    hydration_branch_match(&conditional.test, ctx).map(|condition_match| {
-                        (
-                            condition_match,
-                            &conditional.consequent,
-                            Some(&conditional.alternate),
-                            true,
-                        )
-                    })
+                    Some((&conditional.consequent, Some(&conditional.alternate), true))
                 }
                 AstKind::LogicalExpression(logical)
                     if matches!(logical.operator, LogicalOperator::And | LogicalOperator::Or)
                         && hydration_branch_is_potentially_rendered(&logical.right, ctx) =>
                 {
-                    hydration_branch_match_logical(
-                        logical,
-                        ctx,
-                        &mut HydrationBranchSymbols::default(),
-                        &mut FxHashSet::default(),
-                    )
-                    .map(|condition_match| (condition_match, &logical.right, None, true))
+                    Some((&logical.right, None, true))
                 }
                 AstKind::IfStatement(statement) => {
                     if statement.alternate.as_ref().is_some_and(|alternate| {
@@ -298,29 +285,16 @@ impl Rule for NoHydrationBranchOnBrowserGlobal {
                             .then_some((*consequent, *alternate))
                         })
                     });
-                    branch_pair.and_then(|(consequent, alternate)| {
-                        hydration_branch_match(&statement.test, ctx).map(|condition_match| {
-                            (condition_match, consequent, Some(alternate), false)
-                        })
-                    })
+                    branch_pair.map(|(consequent, alternate)| (consequent, Some(alternate), false))
                 }
                 _ => None,
             };
-            let Some((condition_match, left_branch, right_branch, requires_rendered_context)) =
-                candidate
-            else {
+            let Some((left_branch, right_branch, requires_rendered_context)) = candidate else {
                 continue;
             };
-            if condition_match.client_result.is_some()
-                && condition_match.client_result == condition_match.server_result
-                || reported_spans.contains(&(
-                    condition_match.predicate_span.start,
-                    condition_match.predicate_span.end,
-                ))
-                || right_branch.is_some_and(|right_branch| {
-                    hydration_branch_rendered_branches_equivalent(left_branch, right_branch, ctx)
-                })
-            {
+            if right_branch.is_some_and(|right_branch| {
+                hydration_branch_rendered_branches_equivalent(left_branch, right_branch, ctx)
+            }) {
                 continue;
             }
             let Some(render_owner) = hydration_branch_render_owner(node, ctx) else {
@@ -360,6 +334,31 @@ impl Rule for NoHydrationBranchOnBrowserGlobal {
                 || right_branch.is_some_and(|right_branch| {
                     hydration_branch_roots_suppress_same_element(left_branch, right_branch, ctx)
                 })
+            {
+                continue;
+            }
+            let condition_match = match node.kind() {
+                AstKind::ConditionalExpression(conditional) => {
+                    hydration_branch_match(&conditional.test, ctx)
+                }
+                AstKind::LogicalExpression(logical) => hydration_branch_match_logical(
+                    logical,
+                    ctx,
+                    &mut HydrationBranchSymbols::default(),
+                    &mut FxHashSet::default(),
+                ),
+                AstKind::IfStatement(statement) => hydration_branch_match(&statement.test, ctx),
+                _ => None,
+            };
+            let Some(condition_match) = condition_match else {
+                continue;
+            };
+            if condition_match.client_result.is_some()
+                && condition_match.client_result == condition_match.server_result
+                || reported_spans.contains(&(
+                    condition_match.predicate_span.start,
+                    condition_match.predicate_span.end,
+                ))
             {
                 continue;
             }
@@ -984,10 +983,11 @@ fn hydration_branch_match_imported_export(
     visited_imports: &FxHashSet<(PathBuf, String)>,
     visited_barrel_files: &FxHashSet<PathBuf>,
 ) -> Option<HydrationImportedExport> {
+    if visited_barrel_files.len() >= MAX_IMPORTED_BARREL_FILES {
+        return None;
+    }
     let file_path = std::fs::canonicalize(module_path).ok()?;
-    if visited_barrel_files.len() >= MAX_IMPORTED_BARREL_FILES
-        || visited_barrel_files.contains(&file_path)
-    {
+    if visited_barrel_files.contains(&file_path) {
         return None;
     }
     let import_key = (file_path.clone(), imported_name.to_owned());
@@ -1093,6 +1093,9 @@ fn hydration_branch_match_imported_export(
                 condition_match: None,
             });
         }
+        if barrel_files.len() >= MAX_IMPORTED_BARREL_FILES {
+            return None;
+        }
         let mut targets = module_record
             .indirect_export_entries
             .iter()
@@ -1151,6 +1154,9 @@ fn hydration_branch_match_imported_export(
                     ),
                     resolved,
                 );
+                if resolved_exports.len() > 1 {
+                    return None;
+                }
             }
         }
         return (resolved_exports.len() == 1)

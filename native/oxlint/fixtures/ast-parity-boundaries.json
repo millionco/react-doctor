@@ -6891,5 +6891,36 @@
       "pnpm-workspace.yaml": "\u0085packages:\n  - \"packages/*\"\n"
     },
     "expectedCount": 1
+  },
+  {
+    "name": "nextjs-image-ownership-resolves-aliases-from-each-consumer-config",
+    "ruleId": "nextjs-no-img-element",
+    "filename": "lib/Card.tsx",
+    "source": "export const Card = () => <><img src=\"/logo.svg\" /><img src=\"/photo.png\" /></>;\n",
+    "files": {
+      "package.json": "{\"name\":\"image-owner-probe\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\"}}",
+      "tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"@card\":[\"lib/Card.tsx\"]}}}",
+      "app/og.tsx": "import { ImageResponse } from 'next/og'; import { Card } from '@card'; export const GET = () => new ImageResponse(<Card />);\n",
+      "client/tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"@card\":[\"../lib/Other.tsx\"]}}}",
+      "client/page.tsx": "import { Card } from '@card'; export default function Page() { return <Card />; }\n",
+      "lib/Other.tsx": "export const Card = () => <div />;\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "nextjs-image-ownership-shared-consumer-still-reports-optimizable-image",
+    "ruleId": "nextjs-no-img-element",
+    "filename": "lib/Card.tsx",
+    "source": "export const Card = () => <><img src=\"/logo.svg\" /><img src=\"/photo.png\" /></>;\n",
+    "files": {
+      "package.json": "{\"name\":\"image-owner-probe\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\"}}",
+      "tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"@card\":[\"lib/Card.tsx\"]}}}",
+      "app/og.tsx": "import { ImageResponse } from 'next/og'; import { Card } from '@card'; export const GET = () => new ImageResponse(<Card />);\n",
+      "app/page.tsx": "import { Card } from '@card'; export default function Page() { return <Card />; }\n",
+      "client/tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"@card\":[\"../lib/Other.tsx\"]}}}",
+      "client/page.tsx": "import { Card } from '@card'; export default function Page() { return <Card />; }\n",
+      "lib/Other.tsx": "export const Card = () => <div />;\n"
+    },
+    "expectedCount": 1
   }
 ]

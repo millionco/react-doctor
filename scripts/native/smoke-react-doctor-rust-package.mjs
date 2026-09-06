@@ -3,7 +3,8 @@ import crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { validateReport } from "../../.agents/skills/run-parity/scripts/compare-parity.mjs";
 import { resolveBindingPackageName } from "../../native/oxlint/npm/react-doctor-rust/bin/resolve-native-binding.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -165,25 +166,164 @@ try {
   fs.mkdirSync(path.join(fixtureDirectory, "src"), { recursive: true });
   fs.writeFileSync(
     path.join(fixtureDirectory, "package.json"),
-    `${JSON.stringify({ name: "fixture", private: true, dependencies: { react: "19.2.5" } })}\n`,
+    `${JSON.stringify({ name: "fixture", private: true, main: "src/app.jsx", dependencies: { react: "19.2.5" } })}\n`,
+  );
+  fs.writeFileSync(
+    path.join(fixtureDirectory, "doctor.config.json"),
+    JSON.stringify({
+      rules: {
+        "react-doctor/unused-export": "warn",
+        "react-doctor/duplicate-jsx-subtree": "warn",
+      },
+    }),
   );
   fs.writeFileSync(
     path.join(fixtureDirectory, "src", "app.jsx"),
-    'export const App = () => <div id="first" id="second" />;\n',
+    'import { usedSmokeValue } from "./smoke-values.js";\nexport const App = () => <div id={usedSmokeValue} id="second" />;\n',
   );
-  const scanResult = run(
-    process.execPath,
-    [binaryPath, fixtureDirectory, "--no-score", "--no-dead-code", "--blocking", "none", "--json"],
-    { allowedStatuses: [0, 1] },
+  fs.writeFileSync(
+    path.join(fixtureDirectory, "src", "smoke-values.js"),
+    'export const usedSmokeValue = "first";\nexport const unusedSmokeValue = "second";\n',
   );
+  const migrationsDirectory = path.join(fixtureDirectory, "supabase", "migrations");
+  fs.mkdirSync(migrationsDirectory, { recursive: true });
+  fs.writeFileSync(
+    path.join(migrationsDirectory, "001_smoke.sql"),
+    "create table smoke_entries (id uuid primary key);\n",
+  );
+  const scanArguments = [
+    binaryPath,
+    fixtureDirectory,
+    "--no-score",
+    "--no-cache",
+    "--no-parallel",
+    "--diff",
+    "false",
+    "--blocking",
+    "none",
+    "--json",
+  ];
+  const scanResult = run(process.execPath, scanArguments);
   const report = JSON.parse(scanResult.stdout);
-  if (
-    !Array.isArray(report.diagnostics) ||
-    !report.diagnostics.some((diagnostic) => diagnostic.rule === "jsx-no-duplicate-props")
-  ) {
+  const reportError = validateReport(report);
+  if (report.schemaVersion !== 3 || report.mode !== "full" || reportError !== null) {
     throw new Error(
-      `Packed native CLI did not report jsx-no-duplicate-props: ${scanResult.stdout}`,
+      `Packed native CLI returned an invalid or incomplete v3 report: ${reportError}\n${scanResult.stdout}`,
     );
+  }
+  for (const expectedRule of [
+    "jsx-no-duplicate-props",
+    "unused-export",
+    "supabase-table-missing-rls",
+  ]) {
+    if (!report.diagnostics.some((diagnostic) => diagnostic.rule === expectedRule)) {
+      throw new Error(`Packed native CLI did not report ${expectedRule}: ${scanResult.stdout}`);
+    }
+  }
+
+  const assertFailure = (argumentsList, expectedMessage, options = {}) => {
+    const result = run(process.execPath, argumentsList, {
+      allowedStatuses: [1],
+      env: options.env,
+    });
+    if (
+      expectedMessage !== undefined &&
+      !`${result.stdout}\n${result.stderr}`.includes(expectedMessage)
+    ) {
+      throw new Error(
+        `Expected native failure ${JSON.stringify(expectedMessage)}\n${result.stdout}\n${result.stderr}`,
+      );
+    }
+    if (options.expectedSkippedCheck !== undefined) {
+      const failureReport = JSON.parse(result.stdout);
+      const [failedProject] = failureReport.projects ?? [];
+      if (
+        failureReport.schemaVersion !== 3 ||
+        failureReport.mode !== "full" ||
+        failureReport.projects?.length !== 1 ||
+        failedProject?.complete !== false ||
+        !failedProject.skippedChecks?.includes(options.expectedSkippedCheck) ||
+        typeof failedProject.skippedCheckReasons?.[options.expectedSkippedCheck] !== "string" ||
+        failedProject.skippedCheckReasons[options.expectedSkippedCheck].trim() === "" ||
+        validateReport(failureReport) !== "1 project report is incomplete"
+      ) {
+        throw new Error(
+          `Native failure did not report incomplete ${options.expectedSkippedCheck} analysis: ${result.stdout}`,
+        );
+      }
+    }
+  };
+  const bindingDirectory = path.dirname(installedBindingManifest);
+  const missingBindingDirectory = `${bindingDirectory}-missing`;
+  fs.renameSync(bindingDirectory, missingBindingDirectory);
+  try {
+    assertFailure(
+      [binaryPath, "--version"],
+      `The native package ${bindingPackageName} is missing.`,
+    );
+  } finally {
+    fs.renameSync(missingBindingDirectory, bindingDirectory);
+  }
+  const originalBindingManifest = fs.readFileSync(installedBindingManifest, "utf8");
+  fs.writeFileSync(
+    installedBindingManifest,
+    JSON.stringify({
+      ...bindingManifest,
+      version: `${bindingManifest.version}-native-smoke-mismatch`,
+    }),
+  );
+  try {
+    assertFailure([binaryPath, "--version"], "is incompatible with react-doctor-rust@");
+  } finally {
+    fs.writeFileSync(installedBindingManifest, originalBindingManifest);
+  }
+  const preloadPath = path.join(temporaryDirectory, "native-smoke-failure.mjs");
+  const injectedFailures = [
+    {
+      exportName: "scanReactDoctorFile",
+      replacement: "undefined",
+      argumentsList: [binaryPath, "--version"],
+      expectedMessage: "missing scanReactDoctorFile().",
+    },
+    {
+      exportName: "scanReactDoctorFile",
+      replacement: "() => 'not json'",
+      argumentsList: scanArguments,
+      expectedSkippedCheck: "security-scan",
+    },
+    {
+      exportName: "analyzeReactDoctorProjectGraph",
+      replacement: "() => 'not json'",
+      argumentsList: scanArguments,
+      expectedSkippedCheck: "dead-code",
+    },
+    {
+      exportName: "analyzeReactDoctorDuplicateJsx",
+      replacement: "() => '{}'",
+      argumentsList: scanArguments,
+      expectedSkippedCheck: "dead-code",
+    },
+  ];
+  for (const failure of injectedFailures) {
+    fs.writeFileSync(
+      preloadPath,
+      `import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const bindingPath = require.resolve(${JSON.stringify(bindingPackageName)});
+const binding = require(bindingPath);
+require.cache[bindingPath].exports = {
+  ...binding,
+  [${JSON.stringify(failure.exportName)}]: ${failure.replacement},
+};
+`,
+    );
+    assertFailure(failure.argumentsList, failure.expectedMessage, {
+      expectedSkippedCheck: failure.expectedSkippedCheck,
+      env: {
+        NODE_OPTIONS:
+          `${process.env.NODE_OPTIONS ?? ""} --import=${pathToFileURL(preloadPath).href}`.trim(),
+      },
+    });
   }
   process.stdout.write(
     `react-doctor-rust ${registryPackage === null ? "packed" : "registry"} smoke passed on ${process.platform}-${process.arch}\n`,

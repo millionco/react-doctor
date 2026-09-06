@@ -740,19 +740,12 @@ fn resolved_initializer_direct<'a>(
         .get_reference(identifier.reference_id())
         .symbol_id()?;
     let declaration = ctx.symbol_declaration(symbol_id);
-    let (initializer, is_default) = match declaration.kind() {
-        AstKind::VariableDeclarator(declarator) => (
-            binding_pattern_initializer_for_symbol(
-                &declarator.id,
-                symbol_id,
-                declarator.init.as_ref(),
-            )?,
-            binding_pattern_has_assignment_for_symbol(&declarator.id, symbol_id),
-        ),
-        AstKind::FormalParameter(parameter) => (
-            binding_pattern_initializer_for_symbol(&parameter.pattern, symbol_id, None)?,
-            true,
-        ),
+    let initializer = identifier_direct_or_default_initializer(identifier, ctx)?;
+    let is_default = match declaration.kind() {
+        AstKind::VariableDeclarator(declarator) => {
+            binding_pattern_has_assignment_for_symbol(&declarator.id, symbol_id)
+        }
+        AstKind::FormalParameter(_) => true,
         _ => return None,
     };
     Some((initializer, is_default))

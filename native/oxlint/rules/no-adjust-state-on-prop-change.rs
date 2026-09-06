@@ -2127,6 +2127,9 @@ fn no_adjust_control_region_reads_symbol(
     state_symbol_id: SymbolId,
     ctx: &LintContext<'_>,
 ) -> bool {
+    if !no_adjust_symbol_is_state_value(state_symbol_id, ctx) {
+        return false;
+    }
     let control_node = ctx.nodes().get_node(control_node_id);
     let control_function_id = no_adjust_nearest_function_node_id(control_node_id, ctx);
     let condition_span = match ctx.nodes().get_node(control_node_id).kind() {
@@ -2156,6 +2159,199 @@ fn no_adjust_control_region_reads_symbol(
                     )
                 })
         })
+}
+
+fn no_adjust_control_region_reads_written_state(
+    control_node_id: NodeId,
+    state_symbol_id: SymbolId,
+    ctx: &LintContext<'_>,
+) -> bool {
+    if no_adjust_control_region_reads_symbol(control_node_id, state_symbol_id, ctx) {
+        return true;
+    }
+    if !no_adjust_symbol_is_state_value(state_symbol_id, ctx) {
+        return false;
+    }
+    let control_node = ctx.nodes().get_node(control_node_id);
+    let Some(function_id) = no_adjust_nearest_function_node_id(control_node_id, ctx) else {
+        return false;
+    };
+    let component_node_id =
+        no_adjust_nearest_function_node_id(function_id, ctx).unwrap_or(function_id);
+    let condition_span = match control_node.kind() {
+        AstKind::IfStatement(statement) => statement.test.span(),
+        AstKind::ConditionalExpression(expression) => expression.test.span(),
+        AstKind::LogicalExpression(expression) => expression.left.span(),
+        _ => return false,
+    };
+    ctx.nodes().iter().any(|candidate| {
+        let Some(member) = candidate.kind().as_member_expression_kind() else {
+            return false;
+        };
+        if member.static_property_name().as_deref() != Some("current")
+            || !condition_span.contains_inclusive(candidate.span())
+            || no_adjust_is_inside_statically_unreachable_branch(candidate, ctx)
+            || !no_adjust_expression_is_ref_value(member.object(), ctx)
+        {
+            return false;
+        }
+        let reference_function_id = no_adjust_nearest_function_node_id(candidate.id(), ctx);
+        if reference_function_id != Some(function_id)
+            && !reference_function_id.is_some_and(|callback_id| {
+                no_adjust_condition_callback_executes_synchronously(
+                    callback_id,
+                    condition_span,
+                    control_node,
+                    ctx,
+                )
+            })
+        {
+            return false;
+        }
+        if !no_adjust_ref_current_is_render_known(
+            member.object(),
+            component_node_id,
+            ctx,
+            &mut Vec::new(),
+            &FxHashMap::default(),
+            1,
+        ) {
+            return false;
+        }
+        let Some((ref_symbol_id, values)) = no_adjust_ref_current_values(member.object(), ctx) else {
+            return false;
+        };
+        let mut state_sources = FxHashSet::default();
+        values.into_iter().all(|value| {
+            no_adjust_collect_value_state_sources(
+                value,
+                ctx,
+                &mut vec![ref_symbol_id],
+                &FxHashMap::default(),
+                1,
+                &mut state_sources,
+            )
+        }) && state_sources.len() == 1
+            && state_sources.contains(&state_symbol_id)
+    })
+}
+
+fn no_adjust_collect_value_state_sources<'node, 'ast>(
+    expression: &Expression<'ast>,
+    ctx: &LintContext<'ast>,
+    visited_symbol_ids: &mut Vec<SymbolId>,
+    substitutions: &FxHashMap<SymbolId, &'node Expression<'ast>>,
+    remaining_call_frames: usize,
+    state_sources: &mut FxHashSet<SymbolId>,
+) -> bool {
+    let expression_span = expression.span();
+    for candidate in ctx.nodes().iter() {
+        if !expression_span.contains_inclusive(candidate.span())
+            || no_adjust_is_inside_ignored_pure_callback(candidate.id(), expression_span, ctx)
+            || no_adjust_identifier_is_inside_opaque_value_call(candidate, expression_span, ctx)
+        {
+            continue;
+        }
+        if let AstKind::CallExpression(call) = candidate.kind()
+            && !no_adjust_is_pure_call(call, ctx)
+        {
+            if remaining_call_frames == 0 {
+                return false;
+            }
+            let Some(function_id) = no_adjust_state_fact_callback_function_id(&call.callee, ctx)
+            else {
+                return false;
+            };
+            let parameters = match ctx.nodes().get_node(function_id).kind() {
+                AstKind::Function(function) => &function.params,
+                AstKind::ArrowFunctionExpression(function) => &function.params,
+                _ => return false,
+            };
+            let mut helper_substitutions = substitutions.clone();
+            for (parameter, argument) in parameters.items.iter().zip(&call.arguments) {
+                if let (Some(identifier), Some(argument)) = (
+                    parameter.pattern.get_binding_identifier(),
+                    argument.as_expression(),
+                ) {
+                    helper_substitutions.insert(identifier.symbol_id(), argument);
+                }
+            }
+            let mut has_return = false;
+            let mut all_returns_known = true;
+            no_adjust_for_each_returned_expression(function_id, ctx, |returned_expression| {
+                has_return = true;
+                all_returns_known &= no_adjust_collect_value_state_sources(
+                    returned_expression,
+                    ctx,
+                    visited_symbol_ids,
+                    &helper_substitutions,
+                    remaining_call_frames - 1,
+                    state_sources,
+                );
+            });
+            if !has_return || !all_returns_known {
+                return false;
+            }
+            continue;
+        }
+        if let Some(member) = candidate.kind().as_member_expression_kind()
+            && member.static_property_name().as_deref() == Some("current")
+            && no_adjust_expression_is_ref_value(member.object(), ctx)
+        {
+            let Some((symbol_id, values)) = no_adjust_ref_current_values(member.object(), ctx)
+            else {
+                return false;
+            };
+            if visited_symbol_ids.contains(&symbol_id) {
+                return false;
+            }
+            visited_symbol_ids.push(symbol_id);
+            let are_known = values.into_iter().all(|value| {
+                no_adjust_collect_value_state_sources(
+                    value, ctx, visited_symbol_ids, substitutions, remaining_call_frames, state_sources,
+                )
+            });
+            visited_symbol_ids.pop();
+            if !are_known {
+                return false;
+            }
+            continue;
+        }
+        let AstKind::IdentifierReference(identifier) = candidate.kind() else {
+            continue;
+        };
+        let reference = ctx.scoping().get_reference(identifier.reference_id());
+        let Some(symbol_id) = reference.symbol_id() else {
+            continue;
+        };
+        if reference.is_type()
+            || no_adjust_identifier_is_ref_current_object(candidate, symbol_id, ctx)
+        {
+            continue;
+        }
+        if let Some(substitution) = substitutions.get(&symbol_id) {
+            if !no_adjust_collect_value_state_sources(
+                substitution, ctx, visited_symbol_ids, substitutions, remaining_call_frames, state_sources,
+            ) {
+                return false;
+            }
+        } else if no_adjust_symbol_is_state_value(symbol_id, ctx) {
+            state_sources.insert(symbol_id);
+        } else if let Some(value) = no_adjust_symbol_value_expression(symbol_id, ctx) {
+            if visited_symbol_ids.contains(&symbol_id) {
+                return false;
+            }
+            visited_symbol_ids.push(symbol_id);
+            let is_known = no_adjust_collect_value_state_sources(
+                value, ctx, visited_symbol_ids, substitutions, remaining_call_frames, state_sources,
+            );
+            visited_symbol_ids.pop();
+            if !is_known {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn no_adjust_condition_callback_executes_synchronously(
@@ -3084,6 +3280,9 @@ fn no_adjust_state_symbol_for_setter(
     let BindingPattern::ArrayPattern(pattern) = &declarator.id else {
         return None;
     };
+    if pattern.elements.len() != 2 || pattern.rest.is_some() {
+        return None;
+    }
     let Some(BindingPattern::BindingIdentifier(setter_identifier)) =
         pattern.elements.get(1).and_then(Option::as_ref)
     else {
@@ -3092,14 +3291,15 @@ fn no_adjust_state_symbol_for_setter(
     let Some(initializer) = declarator.init.as_ref() else {
         return None;
     };
-    let Some(BindingPattern::BindingIdentifier(state_identifier)) =
-        pattern.elements.first().and_then(Option::as_ref)
-    else {
-        return None;
+    let state_symbol_id = match pattern.elements.first().and_then(Option::as_ref) {
+        Some(BindingPattern::BindingIdentifier(identifier)) => identifier.symbol_id(),
+        // HACK: Destructured state keeps its declaration identity through the setter; state reads still require a plain state binding.
+        _ if matches!(initializer, Expression::CallExpression(_)) => setter_identifier.symbol_id(),
+        _ => return None,
     };
     (setter_identifier.symbol_id() == symbol_id
         && no_adjust_expression_is_use_state_tuple(initializer, ctx, &mut Vec::new()))
-    .then(|| state_identifier.symbol_id())
+    .then_some(state_symbol_id)
 }
 
 fn no_adjust_literal_hook_result_upstream_state_pair(
@@ -3971,7 +4171,7 @@ fn no_adjust_execution_node_is_controlled_by_state(
                         .alternate
                         .as_ref()
                         .is_some_and(|alternate| alternate.span().contains_inclusive(child.span())))
-                    && no_adjust_control_region_reads_symbol(ancestor.id(), state_symbol_id, ctx)
+                    && no_adjust_control_region_reads_written_state(ancestor.id(), state_symbol_id, ctx)
             }
             AstKind::ConditionalExpression(expression) => {
                 (expression
@@ -3979,11 +4179,11 @@ fn no_adjust_execution_node_is_controlled_by_state(
                     .span()
                     .contains_inclusive(child.span())
                     || expression.alternate.span().contains_inclusive(child.span()))
-                    && no_adjust_control_region_reads_symbol(ancestor.id(), state_symbol_id, ctx)
+                    && no_adjust_control_region_reads_written_state(ancestor.id(), state_symbol_id, ctx)
             }
             AstKind::LogicalExpression(expression) => {
                 expression.right.span().contains_inclusive(child.span())
-                    && no_adjust_control_region_reads_symbol(ancestor.id(), state_symbol_id, ctx)
+                    && no_adjust_control_region_reads_written_state(ancestor.id(), state_symbol_id, ctx)
             }
             AstKind::BlockStatement(_) => no_adjust_has_prior_state_early_exit(
                 ancestor.id(),
@@ -4044,7 +4244,7 @@ fn no_adjust_has_prior_state_early_exit(
             return false;
         }
         no_adjust_if_statement_is_early_exit(statement)
-            && no_adjust_control_region_reads_symbol(candidate.id(), state_symbol_id, ctx)
+            && no_adjust_control_region_reads_written_state(candidate.id(), state_symbol_id, ctx)
     })
 }
 
@@ -4462,6 +4662,55 @@ fn no_adjust_symbol_is_component_parameter(
     }
     no_adjust_nearest_function_node_id(declaration.id(), ctx).is_some_and(|function_node_id| {
         component_or_hook_function_name(ctx.nodes().get_node(function_node_id), ctx).is_some()
+            || no_adjust_callback_has_uppercase_call_binding(function_node_id, ctx)
+    })
+}
+
+fn no_adjust_callback_has_uppercase_call_binding(
+    function_node_id: NodeId,
+    ctx: &LintContext<'_>,
+) -> bool {
+    let mut parent = ctx.nodes().parent_node(function_node_id);
+    while matches!(parent.kind(), AstKind::CallExpression(_)) {
+        parent = ctx.nodes().parent_node(parent.id());
+    }
+    let AstKind::VariableDeclarator(declarator) = parent.kind() else {
+        return false;
+    };
+    let Some(identifier) = declarator.id.get_binding_identifier() else {
+        return false;
+    };
+    if !identifier.name.as_bytes().first().is_some_and(u8::is_ascii_uppercase) {
+        return false;
+    }
+    let Some(Expression::CallExpression(initializer)) = &declarator.init else {
+        return false;
+    };
+    if matches!(&initializer.callee, Expression::Identifier(callee)
+        if !matches!(callee.name.as_str(), "memo" | "forwardRef" | "observer"))
+        && initializer.arguments.first().and_then(Argument::as_expression).is_some_and(|argument| {
+            matches!(argument, Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_))
+        })
+    {
+        return false;
+    }
+    !ctx.scoping().get_resolved_references(identifier.symbol_id()).any(|reference| {
+        let reference_node = ctx.nodes().get_node(reference.node_id());
+        let AstKind::CallExpression(call) = ctx.nodes().parent_node(reference_node.id()).kind() else {
+            return false;
+        };
+        if !call.arguments.iter().any(|argument| argument.span() == reference_node.span()) {
+            return false;
+        }
+        let callee_name = match &call.callee {
+            Expression::Identifier(callee) => Some(callee.name.as_str()),
+            Expression::CallExpression(callee) => match &callee.callee {
+                Expression::Identifier(identifier) => Some(identifier.name.as_str()),
+                _ => None,
+            },
+            _ => None,
+        };
+        callee_name.is_some_and(|name| !matches!(name, "memo" | "forwardRef" | "observer"))
     })
 }
 
@@ -4628,7 +4877,9 @@ fn no_adjust_collect_upstream_prop_source_symbols(
             let AstKind::IdentifierReference(identifier) = candidate.kind() else {
                 continue;
             };
-            if !initializer.span().contains_inclusive(identifier.span) {
+            if !initializer.span().contains_inclusive(identifier.span)
+                || no_adjust_initializer_defers_reference(initializer, identifier.span)
+            {
                 continue;
             }
             let Some(upstream_symbol_id) = ctx
@@ -4656,6 +4907,35 @@ fn no_adjust_collect_upstream_prop_source_symbols(
         );
     }
     visited_symbol_ids.pop();
+}
+
+fn no_adjust_initializer_defers_reference(
+    initializer: &Expression<'_>,
+    reference_span: oxc_span::Span,
+) -> bool {
+    let arguments = match initializer {
+        Expression::CallExpression(call) => {
+            if let Expression::Identifier(callee) = &call.callee {
+                let name = callee.name.as_str();
+                if name.starts_with("use")
+                    && name.as_bytes().get(3).is_some_and(|character| {
+                        character.is_ascii_uppercase() || character.is_ascii_digit()
+                    })
+                {
+                    return false;
+                }
+            }
+            &call.arguments
+        }
+        Expression::NewExpression(call) => &call.arguments,
+        _ => return false,
+    };
+    arguments.iter().any(|argument| {
+        argument.as_expression().is_some_and(|expression| {
+            matches!(expression, Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_))
+                && expression.span().contains_inclusive(reference_span)
+        })
+    })
 }
 
 fn no_adjust_collect_type_assertion_property_prop_sources(
@@ -5728,40 +6008,33 @@ fn no_adjust_identifier_is_ref_current_object(
         })
 }
 
-fn no_adjust_ref_current_is_render_known<'node, 'ast>(
-    ref_expression: &Expression<'ast>,
-    component_node_id: NodeId,
-    ctx: &LintContext<'ast>,
-    visited_symbol_ids: &mut Vec<SymbolId>,
-    substitutions: &FxHashMap<SymbolId, &'node Expression<'ast>>,
-    remaining_call_frames: usize,
-) -> bool {
+fn no_adjust_ref_current_values<'a>(
+    ref_expression: &Expression<'a>,
+    ctx: &LintContext<'a>,
+) -> Option<(SymbolId, Vec<&'a Expression<'a>>)> {
     let Expression::Identifier(identifier) = ref_expression.get_inner_expression() else {
-        return false;
+        return None;
     };
     let Some(symbol_id) = ctx
         .scoping()
         .get_reference(identifier.reference_id())
         .symbol_id()
     else {
-        return false;
+        return None;
     };
-    if visited_symbol_ids.contains(&symbol_id) {
-        return false;
-    }
     let declaration = ctx.symbol_declaration(symbol_id);
     let AstKind::VariableDeclarator(declarator) = declaration.kind() else {
-        return false;
+        return None;
     };
     let Some(Expression::CallExpression(ref_call)) = declarator
         .init
         .as_ref()
         .map(Expression::get_inner_expression)
     else {
-        return false;
+        return None;
     };
     if no_adjust_call_callee_name(ref_call) != Some("useRef") {
-        return false;
+        return None;
     }
     let mut values = ref_call
         .arguments
@@ -5773,12 +6046,12 @@ fn no_adjust_ref_current_is_render_known<'node, 'ast>(
         let reference_node = ctx.nodes().get_node(reference.node_id());
         let member_node = ctx.nodes().parent_node(reference_node.id());
         let Some(member) = member_node.kind().as_member_expression_kind() else {
-            return false;
+            return None;
         };
         if member.object().span() != reference_node.span()
             || member.static_property_name().as_deref() != Some("current")
         {
-            return false;
+            return None;
         }
         let member_parent = ctx.nodes().parent_node(member_node.id());
         match member_parent.kind() {
@@ -5786,13 +6059,30 @@ fn no_adjust_ref_current_is_render_known<'node, 'ast>(
                 if assignment.left.span() == member_node.span() =>
             {
                 if assignment.operator != oxc_syntax::operator::AssignmentOperator::Assign {
-                    return false;
+                    return None;
                 }
                 values.push(&assignment.right);
             }
-            AstKind::UpdateExpression(_) => return false,
+            AstKind::UpdateExpression(_) => return None,
             _ => {}
         }
+    }
+    Some((symbol_id, values))
+}
+
+fn no_adjust_ref_current_is_render_known<'node, 'ast>(
+    ref_expression: &Expression<'ast>,
+    component_node_id: NodeId,
+    ctx: &LintContext<'ast>,
+    visited_symbol_ids: &mut Vec<SymbolId>,
+    substitutions: &FxHashMap<SymbolId, &'node Expression<'ast>>,
+    remaining_call_frames: usize,
+) -> bool {
+    let Some((symbol_id, values)) = no_adjust_ref_current_values(ref_expression, ctx) else {
+        return false;
+    };
+    if visited_symbol_ids.contains(&symbol_id) {
+        return false;
     }
     visited_symbol_ids.push(symbol_id);
     let is_render_known = values.into_iter().all(|value| {

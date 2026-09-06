@@ -6012,5 +6012,671 @@
     "ruleId": "effect-needs-cleanup",
     "expectedCount": 1,
     "source": "import {useEffect} from \"react\";export function Notice({client,ready,onMessage,other}){useEffect(()=>{client.addEventListener('event',onMessage);return()=>client.removeEventListener();},[]);return null;}"
+  },
+  {
+    "name": "final-inline-wrapper-inline-direct-parent-callback",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange})=>{const relay=useCallback((value)=>onChange(value),[onChange]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-direct-getter-result",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({getValue})=>{const relay=useCallback((value)=>{const result=getValue(value);return result;},[getValue]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-local-destructured-getter",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=(config)=>{const {getValue}=config;const relay=useCallback((value)=>{const result=getValue(value);return result;},[getValue]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-local-identifier-alias-getter",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({getValue})=>{const readValue=getValue;const relay=useCallback((value)=>{const result=readValue(value);return result;},[readValue]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-prop-collection-mutator",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=(props)=>{const relay=useCallback(()=>{props.records.push({value:1});},[props.records]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-prop-dom-member",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({target})=>{const [position,setPosition]=useState(null);const relay=useCallback(()=>{const bounds=target.element.getBoundingClientRect();setPosition({left:bounds.left});},[target]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-prop-editor-member",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({editor,anchor})=>{const relay=useCallback(()=>{const root=editor.getRootElement();if(editor.isEditable())placeMarker(root,anchor,new Map());},[editor,anchor]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-prop-direct-method",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=(props)=>{const relay=useCallback((value)=>props.onChange(value),[props.onChange]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-local-handler-alias",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange})=>{const notify=onChange;const relay=useCallback((value)=>notify(value),[notify]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-destructured-handler-alias",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=(props)=>{const {onChange}=props;const relay=useCallback((value)=>onChange(value),[onChange]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-handler-parameter-alias",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange:notify})=>{const relay=useCallback((value)=>notify(value),[notify]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-handler-parameter-registration",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange})=>{const relay=useCallback((value)=>deliver(onChange,value),[onChange]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-data-parameter-registration",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({settings})=>{const relay=useCallback((value)=>deliver(settings,value),[settings]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-async-parent-callback",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange})=>{const relay=useCallback(async(value)=>onChange(value),[onChange]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-named-parent-argument",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange})=>{const send=(value)=>onChange(value);const relay=useCallback(send,[onChange]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-named-parent-closure-only",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange})=>{const localValue={value:1};const send=()=>onChange(localValue);const relay=useCallback(send,[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-named-local-alias-argument",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange})=>{const notify=onChange;const send=(value)=>notify(value);const relay=useCallback(send,[notify]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-named-prop-member-argument",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=(props)=>{const send=(value)=>props.onChange(value);const relay=useCallback(send,[props.onChange]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-named-async-parent-argument",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange})=>{const send=async(value)=>onChange(value);const relay=useCallback(send,[onChange]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-aliased-getter-nested-ref",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=(config)=>{const {getValue}=config;const cache=useRef(new Map());const relay=useCallback((values)=>{values.forEach((value)=>{const result=getValue(value);cache.current.has(result);});},[getValue]);useEffect(()=>{relay([1]);},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-direct-getter-nested-ref",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({getValue})=>{const cache=useRef(new Map());const relay=useCallback((values)=>{values.forEach((value)=>{const result=getValue(value);cache.current.has(result);});},[getValue]);useEffect(()=>{relay([1]);},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-direct-getter-direct-ref",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({getValue})=>{const cache=useRef(new Map());const relay=useCallback((value)=>{const result=getValue(value);cache.current.has(result);},[getValue]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-direct-getter-ref-read-only",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({getValue})=>{const cache=useRef(null);const relay=useCallback((value)=>{const result=getValue(value);return cache.current||result;},[getValue]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-direct-getter-unused-nested-ref",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({getValue})=>{const cache=useRef(new Map());const relay=useCallback((value)=>{const result=getValue(value);const unused=()=>cache.current.has(result);return result;},[getValue]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-direct-handler-nested-ref",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange})=>{const cache=useRef(new Map());const relay=useCallback((values)=>{values.forEach((value)=>{onChange(value);cache.current.has(value);});},[onChange]);useEffect(()=>{relay([1]);},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-memo-parent-callback",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange})=>{const relay=useMemo(()=>(value)=>onChange(value),[onChange]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-memo-prop-member",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=(props)=>{const relay=useMemo(()=>(value)=>props.records.push(value),[props.records]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-effect-event-parent-callback",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange})=>{const relay=useEffectEvent((value)=>onChange(value));useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-custom-wrapper-parent-callback",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange})=>{const relay=useStableCallback((value)=>onChange(value));useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-custom-wrapper-prop-member",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({service})=>{const relay=useStableCallback((value)=>service.write(value));useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-prop-echo",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange,value})=>{const relay=useCallback((next)=>onChange(next),[onChange]);useEffect(()=>{relay(value);},[relay]);return null;};"
+  },
+  {
+    "name": "final-inline-wrapper-inline-local-helper-parent-callback",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect,useEffectEvent,useRef,useState} from \"react\";import {useStableCallback,deliver,placeMarker} from \"./helpers\";export const Preview=({onChange})=>{const send=(value)=>onChange(value);const relay=useCallback((value)=>send(value),[send]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-lookup-string-default-parameter",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 0,
+    "source": "export const inspect=(values, candidate='')=>values.map(value=>candidate.indexOf(value)>=0);"
+  },
+  {
+    "name": "final-lookup-array-default-parameter",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 1,
+    "source": "export const inspect=(values, candidate=[])=>values.map(value=>candidate.indexOf(value)>=0);"
+  },
+  {
+    "name": "final-lookup-fixed-array-default-parameter",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 1,
+    "source": "export const inspect=(values, candidate=['first','second'])=>values.map(value=>candidate.includes(value));"
+  },
+  {
+    "name": "final-lookup-unknown-parameter",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 1,
+    "source": "export const inspect=(values, candidate)=>values.map(value=>candidate.includes(value));"
+  },
+  {
+    "name": "final-lookup-string-default-function",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 0,
+    "source": "export function inspect(values,candidate=''){for(const value of values){if(candidate.indexOf(value)>=0)console.log(value);}}"
+  },
+  {
+    "name": "final-lookup-destructured-source-alias",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 0,
+    "source": "export const inspect=(values)=>{const [{source:urlSource}]=useSearch();const selected=urlSource;return values.filter(value=>selected.includes(value));};"
+  },
+  {
+    "name": "final-lookup-destructured-source-direct",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 0,
+    "source": "export const inspect=(values)=>{const [{source:urlSource}]=useSearch();return values.filter(value=>urlSource.includes(value));};"
+  },
+  {
+    "name": "final-lookup-destructured-unknown-alias",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 1,
+    "source": "export const inspect=(values)=>{const [{source:selection}]=useSearch();const selected=selection;return values.filter(value=>selected.includes(value));};"
+  },
+  {
+    "name": "final-lookup-object-string-initializer-is-not-binding-initializer",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 1,
+    "source": "export const inspect=(values)=>{const {selection}=formatData();return values.filter(value=>selection.includes(value));};"
+  },
+  {
+    "name": "final-lookup-array-string-initializer-is-not-binding-initializer",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 1,
+    "source": "export const inspect=(values)=>{const [selection]=formatData();return values.filter(value=>selection.includes(value));};"
+  },
+  {
+    "name": "final-lookup-nested-string-default",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 0,
+    "source": "export const inspect=(values,{inner:{selection=''}})=>values.filter(value=>selection.includes(value));"
+  },
+  {
+    "name": "final-lookup-whole-object-default-is-not-property-default",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 1,
+    "source": "export const inspect=(values,{selection}='')=>values.filter(value=>selection.includes(value));"
+  },
+  {
+    "name": "final-lookup-nested-object-default-is-not-property-default",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 1,
+    "source": "export const inspect=(values,{inner:{selection}=''}={})=>values.filter(value=>selection.includes(value));"
+  },
+  {
+    "name": "final-lookup-literal-array-variable",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 0,
+    "source": "export const inspect=(values)=>{const selected=['first','second'];return values.filter(value=>selected.includes(value));};"
+  },
+  {
+    "name": "final-lookup-alias-string-default",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 0,
+    "source": "export const inspect=(values, source='')=>{const selected=source;return values.filter(value=>selected.includes(value));};"
+  },
+  {
+    "name": "final-lookup-alias-object-string-default",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 0,
+    "source": "export const inspect=(values,{selection=''})=>{const selected=selection;return values.filter(value=>selected.includes(value));};"
+  },
+  {
+    "name": "final-lookup-direct-string-return-call",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 0,
+    "source": "export const inspect=(values)=>{const selected=formatData();return values.filter(value=>selected.includes(value));};"
+  },
+  {
+    "name": "final-lookup-destructured-array-source-alias",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 0,
+    "source": "export const inspect=(values)=>{const [urlSource]=useSearch();const selected=urlSource;return values.filter(value=>selected.includes(value));};"
+  },
+  {
+    "name": "final-lookup-default-string-callback-param",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 0,
+    "source": "export const inspect=(values)=>values.map((candidate='')=>{for(const value of values)if(candidate.includes(value))console.log(value);});"
+  },
+  {
+    "name": "final-lookup-rest-from-string-result",
+    "ruleId": "js-set-map-lookups",
+    "expectedCount": 1,
+    "source": "export const inspect=(values)=>{const {...selection}=formatData();return values.filter(value=>selection.includes(value));};"
+  },
+  {
+    "name": "ref-state-guard",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [value,setValue]=useState(items); const previous=useRef(items); const onApply=()=>{previous.current=[...value];}; const onEdit=next=>setValue(next); useEffect(()=>{if(previous.current!==items){setValue(items);previous.current=items;}},[items]);return <button onClick={onApply} onChange={onEdit}/>;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "ref-state-guard-imported-equality",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; import isEqual from \"lodash/isEqual\"; export function Preview({items}) {const [value,setValue]=useState(items); const previous=useRef(items); const onApply=()=>{previous.current=[...value];}; const onEdit=next=>setValue(next); useEffect(()=>{if(!isEqual(previous.current,items)){setValue(items);previous.current=items;}},[items]);return <button onClick={onApply} onChange={onEdit}/>;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "ref-prop-only-guard",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [value,setValue]=useState(items); const previous=useRef(items); const onEdit=next=>setValue(next); useEffect(()=>{if(previous.current!==items){setValue(items);previous.current=items;}},[items]);return <button onChange={onEdit}>{value}</button>;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "ref-other-state-guard",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [value,setValue]=useState(items); const [other,setOther]=useState([]);const previous=useRef(other);const onApply=()=>{previous.current=other;}; const onEdit=next=>setValue(next);useEffect(()=>{if(previous.current!==items)setValue(items);},[items]);return <button onClick={onApply} onChange={onEdit}>{value}</button>;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "ref-mixed-state-guard",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [value,setValue]=useState(items); const [other,setOther]=useState([]);const previous=useRef(value); const onApply=()=>{previous.current=other;}; const onEdit=next=>setValue(next);useEffect(()=>{if(previous.current!==items)setValue(items);},[items]);return <button onClick={onApply} onChange={onEdit}>{value}</button>;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "ref-external-write-guard",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; import {read} from \"external\"; export function Preview({items}) {const [value,setValue]=useState(items);const previous=useRef(value);const onApply=()=>{previous.current=read();};const onEdit=next=>setValue(next);useEffect(()=>{if(previous.current!==items)setValue(items);},[items]);return <button onClick={onApply} onChange={onEdit}>{value}</button>;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "ref-state-no-independent-writer",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [value,setValue]=useState(items);const previous=useRef(value);useEffect(()=>{if(previous.current!==items)setValue(items);},[items]);return <div>{value}</div>;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "destructured-state-literal",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({id}) {const [{sort},setValue]=useState({sort:[]});useEffect(()=>{setValue({sort:[]});},[id]);return <div>{sort}</div>;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "destructured-state-updater",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({id}) {const [{sort},setValue]=useState({sort:[]});useEffect(()=>{setValue(previous=>({...previous,sort:[]}));},[id]);return <div>{sort}</div>;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "destructured-state-updater-prop-event",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [{sort},setValue]=useState({sort:[]});const onChange=next=>setValue(previous=>({...previous,sort:next}));useEffect(()=>{setValue(previous=>({...previous,sort:items}));},[items]);return <button onChange={onChange}>{sort}</button>;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "destructured-state-updater-prop-no-event",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [{sort},setValue]=useState({sort:[]});useEffect(()=>{setValue(previous=>({...previous,sort:items}));},[items]);return <div>{sort}</div>;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "nested-destructured-state-literal",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({id}) {const [{nested:{sort}},setValue]=useState({nested:{sort:[]}});useEffect(()=>{setValue({nested:{sort:[]}});},[id]);return <div>{sort}</div>;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "array-destructured-state-literal",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({id}) {const [[value],setValue]=useState([]);useEffect(()=>{setValue([]);},[id]);return <div>{value}</div>;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "empty-destructured-state-literal",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({id}) {const [{},setValue]=useState({});useEffect(()=>{setValue({});},[id]);return null;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "omitted-state-literal",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({id}) {const [,setValue]=useState({});useEffect(()=>{setValue({});},[id]);return null;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "shadowed-prop-callback-dependency",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export const usePreview=({filters})=>{const convert=useCallback((input)=>{const filters=[];input.forEach(value=>filters.push(value));return filters;},[]);const [value,setValue]=useState([]);const [ready,setReady]=useState(false);useEffect(()=>{if(!ready){setValue(convert([]));setReady(true);}},[ready,convert]);return value;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "shadowed-prop-typed-callback-dependency",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export const usePreview=({filters})=>{const convert=useCallback((input:Record<string,string|null>):unknown[]=>{const filters:unknown[]=[];Object.entries(input).forEach(([key,value])=>filters.push({key,value}));return filters;},[]);const [value,setValue]=useState([]);const [ready,setReady]=useState(false);useEffect(()=>{if(!ready){setValue(convert({}));setReady(true);}},[ready,convert]);return value;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "unshadowed-typed-callback-dependency",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export const usePreview=({filters})=>{const convert=useCallback((input:Record<string,string|null>):unknown[]=>{const output:unknown[]=[];Object.entries(input).forEach(([key,value])=>output.push({key,value}));return output;},[]);const [value,setValue]=useState([]);const [ready,setReady]=useState(false);useEffect(()=>{if(!ready){setValue(convert({}));setReady(true);}},[ready,convert]);return value;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "shadowed-prop-external-query-hook",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; import {useQueryStates} from \"nuqs\";export const usePreview=({filters})=>{const convert=useCallback(input=>{const filters=[];Object.entries(input).forEach(([key,value])=>filters.push({key,value}));return filters;},[]);const [query,setQuery]=useQueryStates({});const [value,setValue]=useState([]);const [ready,setReady]=useState(false);useEffect(()=>{if(!ready){setValue(convert(query));setReady(true);}},[ready,convert,query]);return value;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "prop-callback-dependency-control",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export const usePreview=({filters})=>{const convert=useCallback(input=>filters,[]);const [value,setValue]=useState([]);const [ready,setReady]=useState(false);useEffect(()=>{if(!ready){setValue(convert({}));setReady(true);}},[ready,convert]);return value;};",
+    "expectedCount": 1
+  },
+  {
+    "name": "uppercase-member-callback-dependency",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export const usePreview=()=>{const TABLE=[[\"a\",1]].map(([key,value])=>[value,key]);const convert=useCallback(()=>TABLE,[]);const [ready,setReady]=useState(false);useEffect(()=>{setReady(true);},[convert]);return ready;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "lowercase-member-callback-dependency",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export const usePreview=()=>{const table=[[\"a\",1]].map(([key,value])=>[value,key]);const convert=useCallback(()=>table,[]);const [ready,setReady]=useState(false);useEffect(()=>{setReady(true);},[convert]);return ready;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "uppercase-nested-member-callback-dependency",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export const usePreview=()=>{const TABLE=Object.fromEntries(Object.entries({a:1}).map(([key,value])=>[value,key]));const convert=useCallback(()=>TABLE,[]);const [ready,setReady]=useState(false);useEffect(()=>{setReady(true);},[convert]);return ready;};",
+    "expectedCount": 1
+  },
+  {
+    "name": "uppercase-direct-wrapper-callback-dependency",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; import {transform} from \"external\";export const usePreview=()=>{const TABLE=transform(value=>value);const convert=useCallback(()=>TABLE,[]);const [ready,setReady]=useState(false);useEffect(()=>{setReady(true);},[convert]);return ready;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "uppercase-direct-wrapper-second-callback-dependency",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; import {transform} from \"external\";export const usePreview=()=>{const TABLE=transform([],value=>value);const convert=useCallback(()=>TABLE,[]);const [ready,setReady]=useState(false);useEffect(()=>{setReady(true);},[convert]);return ready;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "uppercase-collection-escaped-to-wrapper",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; import {decorate} from \"external\";export const usePreview=()=>{const TABLE=[1].map(value=>value);decorate(TABLE);const convert=useCallback(()=>TABLE,[]);const [ready,setReady]=useState(false);useEffect(()=>{setReady(true);},[convert]);return ready;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "uppercase-collection-passed-member",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; import external from \"external\";export const usePreview=()=>{const TABLE=[1].map(value=>value);external.decorate(TABLE);const convert=useCallback(()=>TABLE,[]);const [ready,setReady]=useState(false);useEffect(()=>{setReady(true);},[convert]);return ready;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "uppercase-callback-in-array-boundary",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export const usePreview=()=>{const TABLE=[value=>value];const convert=useCallback(()=>TABLE,[]);const [ready,setReady]=useState(false);useEffect(()=>{setReady(true);},[convert]);return ready;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "uppercase-callback-in-object-boundary",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export const usePreview=()=>{const TABLE={convert:value=>value};const convert=useCallback(()=>TABLE,[]);const [ready,setReady]=useState(false);useEffect(()=>{setReady(true);},[convert]);return ready;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "uppercase-usecallback-quirk",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export const usePreview=()=>{const TABLE=useCallback(value=>value,[]);const convert=useCallback(()=>TABLE,[]);const [ready,setReady]=useState(false);useEffect(()=>{setReady(true);},[convert]);return ready;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "ref-local-helper-state-result",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [value,setValue]=useState(items);const copy=input=>[...input];const previous=useRef(copy(value));const onEdit=next=>setValue(next);useEffect(()=>{if(previous.current!==items)setValue(items);},[items]);return <button onChange={onEdit}>{value}</button>;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "ref-local-helper-ignored-state-argument",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [value,setValue]=useState(items);const copy=input=>[];const previous=useRef(copy(value));const onEdit=next=>setValue(next);useEffect(()=>{if(previous.current!==items)setValue(items);},[items]);return <button onChange={onEdit}>{value}</button>;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "ref-pure-callback-ignored-state",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [value,setValue]=useState(items);const previous=useRef([1].map(()=>value));const onEdit=next=>setValue(next);useEffect(()=>{if(previous.current!==items)setValue(items);},[items]);return <button onChange={onEdit}>{value}</button>;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "ref-aliased-state-source",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [value,setValue]=useState(items);const snapshot=[...value];const previous=useRef(snapshot);const onEdit=next=>setValue(next);useEffect(()=>{if(previous.current!==items)setValue(items);},[items]);return <button onChange={onEdit}>{value}</button>;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "ref-nested-state-source",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [value,setValue]=useState(items);const inner=useRef(value);const previous=useRef(inner.current);const onEdit=next=>setValue(next);useEffect(()=>{if(previous.current!==items)setValue(items);},[items]);return <button onChange={onEdit}>{value}</button>;}",
+    "expectedCount": 1
+  },
+  {
+    "name": "ref-escaped-state-source",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; import {escape} from \"external\";export function Preview({items}) {const [value,setValue]=useState(items);const previous=useRef(value);escape(previous);const onEdit=next=>setValue(next);useEffect(()=>{if(previous.current!==items)setValue(items);},[items]);return <button onChange={onEdit}>{value}</button>;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "destructured-value-not-state-guard",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [{sort},setValue]=useState({sort:[]});const onChange=next=>setValue({sort:next});useEffect(()=>{if(sort!==items)setValue({sort:items});},[items]);return <button onChange={onChange}>{sort}</button>;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "omitted-state-setter-not-state-guard",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({items}) {const [,setValue]=useState({});const onChange=next=>setValue(next);useEffect(()=>{if(setValue)setValue(items);},[items]);return <button onChange={onChange}/>;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "extra-tuple-slot-setter",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({id}) {const [value,setValue,extra]=useState({});useEffect(()=>{setValue({});},[id]);return value;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "destructured-alias-tuple-setter",
+    "ruleId": "no-adjust-state-on-prop-change",
+    "source": "import {useCallback,useEffect,useRef,useState} from \"react\"; export function Preview({id}) {const pair=useState({});const [{},setValue]=pair;useEffect(()=>{setValue({});},[id]);return null;}",
+    "expectedCount": 0
+  },
+  {
+    "name": "final-memo-wrapper-returned-parameter",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>(value)=>onChange(value),[onChange]);useEffect(()=>{relay({value:1});},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-returned-parameter-no-argument",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>(value)=>onChange(value),[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-returned-constant",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>()=>onChange(1),[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-returned-closure-object",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const payload={value:1};const relay=useMemo(()=>()=>onChange(payload),[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-returned-owner-parameter",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>()=>onChange(value),[onChange,value]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-returned-local-new",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>{const payload=new Map();return()=>onChange(payload);},[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-returned-inner-new",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>()=>onChange(new Map()),[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-returned-inner-async-parameter",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>async(next)=>onChange(next),[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-outer-async-parameter",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(async()=>(next)=>onChange(next),[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-unused-inner-parameter",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>{const unused=(next)=>onChange(next);return()=>{};},[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-returned-named-inner-parameter",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>{const send=(next)=>onChange(next);return send;},[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-returned-destructured-parameter",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>({entry})=>onChange(entry),[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-ordinary-memo-derived-iteration",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>()=>onChange(value.map((entry)=>entry.id)),[onChange,value]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-direct-callback-parameter",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useCallback((next)=>onChange(next),[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-returned-prop-echo-argument",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useCallback,useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>(next)=>onChange(next),[onChange]);useEffect(()=>{relay(value);},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-type-only-parameter-query",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>(next)=>{type Snapshot=typeof next;onChange(1);},[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-type-only-parameter-query-runtime-read",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 1,
+    "source": "import {useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>(next)=>{type Snapshot=typeof next;onChange(next);},[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-type-only-owner-query",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>()=>{type Snapshot=typeof value;onChange(1);},[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
+  },
+  {
+    "name": "final-memo-wrapper-type-only-named-inner-parameter-query",
+    "ruleId": "no-pass-data-to-parent",
+    "expectedCount": 0,
+    "source": "import {useMemo,useEffect} from \"react\";export const Preview=({onChange,value})=>{const relay=useMemo(()=>{const send=(next)=>{type Snapshot=typeof next;onChange(1);};return send;},[onChange]);useEffect(()=>{relay();},[relay]);return null;};"
   }
 ]

@@ -461,8 +461,11 @@ mod implementation {
                     return Some(false);
                 }
                 for function_id in live_state_reachable_helper_functions(wrapped_function_id, node_index, ctx) {
-                    for &candidate_id in node_index.node_ids(function_id) {
-                        let AstKind::CallExpression(call) = ctx.nodes().get_node(candidate_id).kind() else {
+                    let function_span = ctx.nodes().get_node(function_id).span();
+                    for candidate in ctx.nodes().iter().filter(|candidate| {
+                        function_span.contains_inclusive(candidate.span())
+                    }) {
+                        let AstKind::CallExpression(call) = candidate.kind() else {
                             continue;
                         };
                         let mut callee_root = call.callee.get_inner_expression();
@@ -485,9 +488,17 @@ mod implementation {
                 }
                 match candidate.kind() {
                     AstKind::CallExpression(call) => {
-                        data_expression_has_immutable_owner_parameter_origin(
-                            &call.callee, owner_bindings, ctx, &mut FxHashSet::default(),
-                        )
+                        if matches!(wrapped_expression.get_inner_expression(),
+                            Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_))
+                        {
+                            matches!(&call.callee, Expression::Identifier(identifier)
+                                if live_state_symbol_id(identifier, ctx)
+                                    .is_some_and(|symbol_id| owner_bindings.is_parameter(symbol_id)))
+                        } else {
+                            data_expression_has_immutable_owner_parameter_origin(
+                                &call.callee, owner_bindings, ctx, &mut FxHashSet::default(),
+                            )
+                        }
                     }
                     AstKind::IdentifierReference(inner_identifier) => {
                         live_state_symbol_id(inner_identifier, ctx).is_some_and(|inner_symbol_id| {
@@ -1112,14 +1123,17 @@ mod implementation {
                 if !function_span.contains_inclusive(candidate.span()) {
                     return false;
                 }
-                if live_state_nearest_function_id(candidate.id(), ctx) != Some(function_id) {
+                let candidate_function_id = live_state_nearest_function_id(candidate.id(), ctx);
+                if candidate_function_id != Some(function_id)
+                    && !(is_memo_callback && include_wrapper_sources)
+                {
                     if !is_memo_callback {
                         return false;
                     }
                     let AstKind::IdentifierReference(identifier) = candidate.kind() else {
                         return false;
                     };
-                    if live_state_nearest_function_id(candidate.id(), ctx).is_some_and(|nested_function_id| {
+                    if candidate_function_id.is_some_and(|nested_function_id| {
                         data_identifier_is_function_parameter(identifier, nested_function_id, ctx)
                     }) {
                         return *has_nested_parameter_state_source.get_or_insert_with(|| {
@@ -1150,7 +1164,18 @@ mod implementation {
                 }
                 match candidate.kind() {
                     AstKind::IdentifierReference(identifier) => {
-                        if data_identifier_is_function_parameter(identifier, function_id, ctx) {
+                        if ctx.scoping().get_reference(identifier.reference_id()).is_type()
+                            || ctx.nodes().ancestors(candidate.id()).any(|ancestor| {
+                                matches!(ancestor.kind(), AstKind::TSTypeQuery(_))
+                            })
+                        {
+                            return false;
+                        }
+                        if candidate_function_id.is_some_and(|parameter_function_id| {
+                            data_identifier_is_function_parameter(
+                                identifier, parameter_function_id, ctx,
+                            )
+                        }) {
                             return include_wrapper_sources;
                         }
                         data_identifier_has_child_source(

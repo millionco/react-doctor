@@ -187,6 +187,7 @@ export const createOxlintConfig = ({
 
   const enabledReactDoctorRules: Record<string, OxlintRuleSeverity> = {};
   let didEnableNativeReactDoctorRule = false;
+  let didEnableJsReactDoctorRule = false;
   for (const registryEntry of REACT_DOCTOR_RULES) {
     const rule = REACT_DOCTOR_RULE_REGISTRY[registryEntry.id];
     if (!rule) continue;
@@ -256,6 +257,7 @@ export const createOxlintConfig = ({
       didEnableNativeReactDoctorRule = true;
     } else {
       enabledReactDoctorRules[registryEntry.key] = severity;
+      didEnableJsReactDoctorRule = true;
     }
   }
 
@@ -275,6 +277,11 @@ export const createOxlintConfig = ({
       jsPlugins.push(userPlugin.entry);
     }
   }
+  const shouldLoadReactDoctorJsPlugin =
+    !didEnableNativeReactDoctorRule ||
+    didEnableJsReactDoctorRule ||
+    extendsPaths.length > 0 ||
+    jsPlugins.length > 0;
 
   return {
     ...(extendsPaths.length > 0 ? { extends: extendsPaths } : {}),
@@ -294,7 +301,7 @@ export const createOxlintConfig = ({
     // plugins (react-hooks-js for the React Compiler frontend etc.)
     // and any user-declared plugins from `config.plugins`.
     plugins: didEnableNativeReactDoctorRule ? [NATIVE_REACT_DOCTOR_PLUGIN_NAME] : [],
-    jsPlugins: [...jsPlugins, pluginPath],
+    jsPlugins: shouldLoadReactDoctorJsPlugin ? [...jsPlugins, pluginPath] : jsPlugins,
     settings: {
       ...adoptedSettings,
       "react-doctor": {

@@ -1,5 +1,310 @@
 [
   {
+    "name": "state-updater-prior-setter-find-last-boundary",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "source": "import {useState} from \"react\"; import dayjs from \"dayjs\"; export const C=()=>{const [value,setValue]=useState({date:dayjs()}); [1].findLast(()=>{setValue({date:dayjs()}); return 1;}); setValue(previous=>({date:previous.date.add(1,\"day\")})); return null;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "state-updater-prior-setter-to-sorted-boundary",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "source": "import {useState} from \"react\"; import dayjs from \"dayjs\"; export const C=()=>{const [value,setValue]=useState({date:dayjs()}); [1].toSorted(()=>{setValue({date:dayjs()}); return 1;}); setValue(previous=>({date:previous.date.add(1,\"day\")})); return null;};",
+    "expectedCount": 0
+  },
+  {
+    "name": "state-updater-prior-setter-map-boundary",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "source": "import {useState} from \"react\"; import dayjs from \"dayjs\"; export const C=()=>{const [value,setValue]=useState({date:dayjs()}); [1].map(()=>{setValue({date:dayjs()}); return 1;}); setValue(previous=>({date:previous.date.add(1,\"day\")})); return null;};",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater-mutation-nested-set",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; export const View = () => { const [state,setState] = useState({items:new Set()}); setState(previous => ({...previous,items:previous.items.add(1)})); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater-mutation-nested-map",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; export const View = () => { const [state,setState] = useState({items:new Map()}); setState(previous => ({...previous,items:previous.items.set(\"key\",1)})); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater-mutation-unknown-factory",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; export const View = () => { const [state,setState] = useState({date:makeDate()}); setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater-mutation-parameter-alias-nested-set",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; export const View = () => { const [state,setState] = useState({items:new Set()}); setState(previous => { const original = previous; return {...previous,items:original.items.add(1)}; }); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater-mutation-top-level-parameter-set",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; export const View = () => { const [state,setState] = useState(new Set()); setState(previous => previous.add(1)); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "updater-mutation-fresh-set",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; export const View = () => { const [state,setState] = useState({items:new Set()}); setState(previous => ({...previous,items:new Set().add(1)})); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "updater-mutation-immutable-first",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "updater-mutation-prior-direct",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); setState({date:dayjs()});setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater-mutation-prior-alias",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); const update = setState; update({date:dayjs()});setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater-mutation-prior-other-setter",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); const [,setOther] = useState(0); setOther(1);setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "updater-mutation-prior-deferred",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); const later = () => setState({date:dayjs()});setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "updater-mutation-prior-iife",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); (() => setState({date:dayjs()}))();setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater-mutation-prior-constructor",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); new (function() { setState({date:dayjs()}); })();setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater-mutation-prior-map-callback",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); source.map(() => setState({date:dayjs()}));setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater-mutation-prior-map-callee-ts-wrapper",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); (source.map as Function)(() => setState({date:dayjs()}));setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "updater-mutation-prior-array-from",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); Array.from([], () => setState({date:dayjs()}));setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater-mutation-prior-array-object-ts-wrapper",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); (Array as typeof Array).from([], () => setState({date:dayjs()}));setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "updater-mutation-prior-false-if",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); if (false) setState({date:dayjs()});setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "updater-mutation-prior-zero-if",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); if (0) setState({date:dayjs()});setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater-mutation-prior-false-logical",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); false && setState({date:dayjs()});setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "updater-mutation-prior-null-logical",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); null && setState({date:dayjs()});setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "updater-mutation-prior-undefined-logical",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); undefined && setState({date:dayjs()});setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "updater-mutation-prior-regexp-logical",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); /known/ || setState({date:dayjs()});setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "updater-mutation-later-direct",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); setState(previous => ({...previous,date:previous.date.set(\"month\",1)}));setState({date:dayjs()}); return null; };",
+    "expectedCount": 0
+  },
+  {
+    "name": "updater-mutation-repeated-immutable-setter",
+    "ruleId": "no-side-effect-in-state-updater-function",
+    "filename": "src/component.tsx",
+    "source": "import { useState } from \"react\"; import dayjs from \"dayjs\"; export const View = () => { const [state,setState] = useState({date:dayjs()}); setState(previous => ({...previous,date:previous.date.set(\"month\",1)}));setState(previous => ({...previous,date:previous.date.set(\"month\",1)})); return null; };",
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-predicate-wrapper-literal-direct",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => typeof document !== \"undefined\" ? <div /> : <section />;\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-predicate-wrapper-literal-parentheses",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => typeof document !== (\"undefined\") ? <div /> : <section />;\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-predicate-wrapper-literal-non-null",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => typeof document !== \"undefined\"! ? <div /> : <section />;\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "hydration-predicate-wrapper-literal-as",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => typeof document !== (\"undefined\" as string) ? <div /> : <section />;\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "hydration-predicate-wrapper-literal-satisfies",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => typeof document !== (\"undefined\" satisfies string) ? <div /> : <section />;\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "hydration-predicate-wrapper-literal-swapped-non-null",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => \"undefined\"! !== typeof document ? <div /> : <section />;\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "hydration-predicate-wrapper-typeof-non-null",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => (typeof document)! !== \"undefined\" ? <div /> : <section />;\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-predicate-wrapper-typeof-as",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => (typeof document as string) !== \"undefined\" ? <div /> : <section />;\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-predicate-wrapper-argument-non-null",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => typeof document! !== \"undefined\" ? <div /> : <section />;\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-predicate-wrapper-predicate-non-null",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => (typeof document !== \"undefined\")! ? <div /> : <section />;\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-predicate-wrapper-globalthis-direct",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => typeof globalThis.document !== \"undefined\" ? <div /> : <section />;\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-predicate-wrapper-globalthis-parentheses",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => typeof (globalThis).document !== \"undefined\" ? <div /> : <section />;\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-predicate-wrapper-globalthis-receiver-non-null",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => typeof globalThis!.document !== \"undefined\" ? <div /> : <section />;\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "hydration-predicate-wrapper-globalthis-receiver-as",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => typeof (globalThis as typeof globalThis).document !== \"undefined\" ? <div /> : <section />;\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "hydration-predicate-wrapper-globalthis-member-non-null",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => typeof globalThis.document! !== \"undefined\" ? <div /> : <section />;\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "hydration-predicate-wrapper-globalthis-computed",
+    "ruleId": "no-hydration-branch-on-browser-global",
+    "filename": "pages/index.tsx",
+    "source": "\"use client\"; import React from \"react\"; export const Preview = () => typeof globalThis[\"document\"] !== \"undefined\" ? <div /> : <section />;\n",
+    "expectedCount": 0
+  },
+  {
     "name": "mapped-timer-arrow-dropped-handle",
     "ruleId": "effect-needs-cleanup",
     "source": "import { useEffect } from 'react'; export function Preview({ delays, refresh, enabled }) { useEffect(() => { const timers = delays.map(delay => setTimeout(refresh, delay)); return () => { timers.pop(); timers.forEach(timer => clearTimeout(timer)); }; }, []); return null; }",
@@ -6920,6 +7225,31 @@
       "client/tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"@card\":[\"../lib/Other.tsx\"]}}}",
       "client/page.tsx": "import { Card } from '@card'; export default function Page() { return <Card />; }\n",
       "lib/Other.tsx": "export const Card = () => <div />;\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "nextjs-image-ownership-root-alias-renderer-only",
+    "ruleId": "nextjs-no-img-element",
+    "filename": "lib/Card.tsx",
+    "source": "export const Card = () => <img src=\"/photo.png\" />;\n",
+    "files": {
+      "package.json": "{\"name\":\"image-root-alias-probe\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\"}}",
+      "tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"@card\":[\"lib/Card.tsx\"]}}}",
+      "app/og.tsx": "import { ImageResponse } from 'next/og'; import { Card } from '@card'; export const GET = () => new ImageResponse(<Card />);\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "nextjs-image-ownership-root-alias-shared-browser-consumer",
+    "ruleId": "nextjs-no-img-element",
+    "filename": "lib/Card.tsx",
+    "source": "export const Card = () => <img src=\"/photo.png\" />;\n",
+    "files": {
+      "package.json": "{\"name\":\"image-root-alias-probe\",\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\"}}",
+      "tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"@card\":[\"lib/Card.tsx\"]}}}",
+      "app/og.tsx": "import { ImageResponse } from 'next/og'; import { Card } from '@card'; export const GET = () => new ImageResponse(<Card />);\n",
+      "app/page.tsx": "import { Card } from '@card'; export default function Page() { return <Card />; }\n"
     },
     "expectedCount": 1
   }

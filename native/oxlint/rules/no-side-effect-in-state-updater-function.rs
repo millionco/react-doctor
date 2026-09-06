@@ -173,6 +173,8 @@ impl Rule for NoSideEffectInStateUpdaterFunction {
             }
         }
         let dayjs_mutability = OnceCell::new();
+        let mut first_setter_call_by_state_and_boundary = FxHashMap::default();
+        call_node_ids.sort_unstable_by_key(|node_id| ctx.nodes().get_node(*node_id).span().start);
 
         let mut reported_spans = FxHashSet::default();
         for call_node_id in call_node_ids {
@@ -193,6 +195,20 @@ impl Rule for NoSideEffectInStateUpdaterFunction {
             ) {
                 continue;
             }
+            let boundary = updater_setter_execution_boundary(call_node, ctx);
+            let can_use_initial_state = updater_state_initial_value(setter_identifier, ctx)
+                .is_none_or(|initial_value| {
+                    let key = (initial_value.span().start, boundary);
+                    let has_prior_call = first_setter_call_by_state_and_boundary
+                        .get(&key)
+                        .is_some_and(|first_start| *first_start < setter_call.span.start);
+                    if !updater_setter_is_statically_unreachable(call_node, boundary, ctx) {
+                        first_setter_call_by_state_and_boundary
+                            .entry(key)
+                            .or_insert(setter_call.span.start);
+                    }
+                    !has_prior_call
+                });
             let Some(updater_argument) = setter_call
                 .arguments
                 .first()
@@ -285,6 +301,7 @@ impl Rule for NoSideEffectInStateUpdaterFunction {
                             setter_identifier,
                             updater_function,
                             updater_state_is_array,
+                            can_use_initial_state,
                             &state_setter_symbol_ids,
                             &executed_function_analysis.array_parameter_symbol_ids,
                             &executed_function_analysis.function_ids,
@@ -315,6 +332,79 @@ fn updater_nearest_function_id(node: &AstNode<'_>, ctx: &LintContext<'_>) -> Opt
         )
         .then_some(ancestor.id())
     })
+}
+
+fn updater_setter_execution_boundary(node: &AstNode<'_>, ctx: &LintContext<'_>) -> Option<NodeId> {
+    ctx.nodes().ancestors(node.id()).find_map(|ancestor| {
+        if !matches!(ancestor.kind(), AstKind::Function(_) | AstKind::ArrowFunctionExpression(_)) {
+            return None;
+        }
+        let root = transparent_expression_root(ancestor, ctx);
+        let is_synchronous = match ctx.nodes().parent_node(root.id()).kind() {
+            AstKind::NewExpression(call) => call.callee.span() == root.span(),
+            AstKind::CallExpression(call) => {
+                call.callee.span() == root.span()
+                    || call.callee.without_parentheses().as_member_expression().is_some_and(|member| {
+                        let method_name = member.static_property_name();
+                        method_name.is_some_and(|name| {
+                            !matches!(name, "findLast" | "toSorted")
+                                && SYNCHRONOUS_CALLBACK_METHOD_NAMES.contains(&name)
+                        }) || method_name == Some("from")
+                            && matches!(member.object().without_parentheses(), Expression::Identifier(identifier)
+                                if identifier.name == "Array" && ctx.is_reference_to_global_variable(identifier))
+                    })
+            }
+            _ => false,
+        };
+        (!is_synchronous).then_some(ancestor.id())
+    })
+}
+
+fn updater_setter_is_statically_unreachable(
+    node: &AstNode<'_>,
+    boundary: Option<NodeId>,
+    ctx: &LintContext<'_>,
+) -> bool {
+    let mut child_span = node.span();
+    for ancestor in ctx.nodes().ancestors(node.id()) {
+        if Some(ancestor.id()) == boundary {
+            break;
+        }
+        let is_unreachable = match ancestor.kind() {
+            AstKind::IfStatement(statement) => {
+                matches!(statement.test.get_inner_expression(), Expression::BooleanLiteral(test)
+                    if statement.consequent.span().contains_inclusive(child_span) && !test.value
+                        || statement.alternate.as_ref().is_some_and(|alternate| alternate.span().contains_inclusive(child_span)) && test.value)
+            }
+            AstKind::ConditionalExpression(conditional) => {
+                matches!(conditional.test.get_inner_expression(), Expression::BooleanLiteral(test)
+                    if conditional.consequent.span().contains_inclusive(child_span) && !test.value
+                        || conditional.alternate.span().contains_inclusive(child_span) && test.value)
+            }
+            AstKind::LogicalExpression(logical)
+                if logical.right.span().contains_inclusive(child_span) =>
+            {
+                let left = logical.left.get_inner_expression();
+                let truthiness = static_literal_truthiness(left);
+                matches!(
+                    left,
+                    Expression::BooleanLiteral(_)
+                        | Expression::NumericLiteral(_)
+                        | Expression::BigIntLiteral(_)
+                        | Expression::StringLiteral(_)
+                        | Expression::NullLiteral(_)
+                        | Expression::RegExpLiteral(_)
+                ) && (logical.operator == LogicalOperator::And && truthiness == Some(false)
+                    || logical.operator == LogicalOperator::Or && truthiness == Some(true))
+            }
+            _ => false,
+        };
+        if is_unreachable {
+            return true;
+        }
+        child_span = ancestor.span();
+    }
+    false
 }
 
 fn updater_identifier_resolves_to_setter(
@@ -810,6 +900,7 @@ fn updater_call_is_side_effect<'a>(
     setter_identifier: &oxc_ast::ast::IdentifierReference<'a>,
     updater_function: StateUpdaterFunction,
     updater_state_is_array: bool,
+    can_use_initial_state: bool,
     state_setter_symbol_ids: &FxHashSet<SymbolId>,
     array_parameter_symbol_ids: &FxHashSet<SymbolId>,
     executed_function_ids: &FxHashSet<NodeId>,
@@ -882,6 +973,7 @@ fn updater_call_is_side_effect<'a>(
         method_name.as_ref(),
         setter_identifier,
         updater_function,
+        can_use_initial_state,
         ctx,
     ) {
         return false;
@@ -892,6 +984,7 @@ fn updater_call_is_side_effect<'a>(
                 receiver,
                 setter_identifier,
                 updater_function,
+                can_use_initial_state,
                 ctx,
             )
             .is_some_and(|value| updater_expression_is_dayjs_value(value, ctx)))
@@ -928,13 +1021,20 @@ fn updater_call_is_side_effect<'a>(
         || updater_name_looks_side_effecting(method_name.as_ref())
         || updater_name_is_callback_prop(method_name.as_ref())
             && is_result_discarded_call(call_node, true, ctx))
-        && updater_receiver_is_external(
-            root_identifier,
-            updater_function,
-            executed_function_ids,
-            call_node_ids_by_function,
-            ctx,
-        )
+        && (receiver.as_member_expression().is_some()
+            && updater_receiver_resolves_to_updater_parameter(
+                root_identifier,
+                updater_function,
+                ctx,
+                &mut FxHashSet::default(),
+            )
+            || updater_receiver_is_external(
+                root_identifier,
+                updater_function,
+                executed_function_ids,
+                call_node_ids_by_function,
+                ctx,
+            ))
 }
 
 fn updater_fresh_object_method_is_external_callback<'a>(
@@ -1456,6 +1556,7 @@ fn updater_call_is_proven_pure_library_method<'a>(
     method_name: &str,
     setter_identifier: &oxc_ast::ast::IdentifierReference<'a>,
     updater_function: StateUpdaterFunction,
+    can_use_initial_state: bool,
     ctx: &LintContext<'a>,
 ) -> bool {
     if matches!(
@@ -1465,8 +1566,13 @@ fn updater_call_is_proven_pure_library_method<'a>(
         return true;
     }
     if matches!(method_name, "add" | "set") {
-        let state_member_initial_value =
-            updater_state_member_initial_value(receiver, setter_identifier, updater_function, ctx);
+        let state_member_initial_value = updater_state_member_initial_value(
+            receiver,
+            setter_identifier,
+            updater_function,
+            can_use_initial_state,
+            ctx,
+        );
         return updater_expression_is_fresh_container(receiver, ctx)
             || updater_expression_is_internationalized_date(receiver, ctx)
             || state_member_initial_value
@@ -1511,8 +1617,12 @@ fn updater_state_member_initial_value<'a>(
     receiver: &Expression<'a>,
     setter_identifier: &oxc_ast::ast::IdentifierReference<'a>,
     updater_function: StateUpdaterFunction,
+    can_use_initial_state: bool,
     ctx: &LintContext<'a>,
 ) -> Option<&'a Expression<'a>> {
+    if !can_use_initial_state {
+        return None;
+    }
     let resolved_receiver =
         updater_resolve_direct_expression(receiver, ctx, &mut FxHashSet::default());
     let mut member = resolved_receiver

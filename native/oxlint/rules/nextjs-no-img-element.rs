@@ -1430,6 +1430,8 @@ fn nextjs_img_resolve_first_party_module_path(
     from_file_path: &std::path::Path,
     module_source: &str,
 ) -> Option<std::path::PathBuf> {
+    #[cfg(windows)]
+    let from_file_path = nextjs_img_resolver_file_path(from_file_path);
     let resolution = resolver.resolve_file(from_file_path, module_source).ok()?;
     let resolved_path = nextjs_img_normalize_file_identity(resolution.path());
     (!resolved_path
@@ -1440,4 +1442,38 @@ fn nextjs_img_resolve_first_party_module_path(
 
 fn nextjs_img_normalize_file_identity(file_path: &std::path::Path) -> std::path::PathBuf {
     std::fs::canonicalize(file_path).unwrap_or_else(|_| file_path.to_path_buf())
+}
+
+#[cfg(windows)]
+fn nextjs_img_resolver_file_path(
+    file_path: &std::path::Path,
+) -> std::borrow::Cow<'_, std::path::Path> {
+    use std::path::{Component, PathBuf, Prefix};
+
+    let mut components = file_path.components();
+    let Some(Component::Prefix(prefix)) = components.next() else {
+        return std::borrow::Cow::Borrowed(file_path);
+    };
+    if components.clone().any(|component| {
+        matches!(
+            component,
+            Component::Normal(file_name)
+                if matches!(file_name.as_encoded_bytes().last(), Some(b'.' | b' '))
+        )
+    }) {
+        return std::borrow::Cow::Borrowed(file_path);
+    }
+    // HACK: The resolver interprets a verbatim Windows prefix's question mark as a query.
+    let mut resolver_path = match prefix.kind() {
+        Prefix::VerbatimDisk(drive) => PathBuf::from(format!("{}:", char::from(drive))),
+        Prefix::VerbatimUNC(server, share) => {
+            let mut network_path = PathBuf::from(r"\\");
+            network_path.push(server);
+            network_path.push(share);
+            network_path
+        }
+        _ => return std::borrow::Cow::Borrowed(file_path),
+    };
+    resolver_path.extend(components.map(|component| component.as_os_str()));
+    std::borrow::Cow::Owned(resolver_path)
 }

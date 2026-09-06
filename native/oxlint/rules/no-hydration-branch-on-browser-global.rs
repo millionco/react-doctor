@@ -1490,7 +1490,7 @@ fn hydration_branch_typeof_global<'a>(
         argument => {
             let member = argument.as_member_expression()?;
             if member.is_computed()
-                || !matches!(member.object().get_inner_expression(), Expression::Identifier(identifier)
+                || !matches!(member.object().without_parentheses(), Expression::Identifier(identifier)
                     if identifier.name == "globalThis"
                         && ctx.is_reference_to_global_variable(identifier))
             {
@@ -1506,7 +1506,7 @@ fn hydration_branch_typeof_global<'a>(
 }
 
 fn hydration_branch_string_literal<'a>(expression: &'a Expression<'a>) -> Option<&'a str> {
-    let Expression::StringLiteral(literal) = expression.get_inner_expression() else {
+    let Expression::StringLiteral(literal) = expression.without_parentheses() else {
         return None;
     };
     Some(literal.value.as_str())
@@ -3263,6 +3263,7 @@ fn hydration_branch_has_client_render_evidence(ctx: &LintContext<'_>) -> bool {
                         .arguments
                         .first()
                         .and_then(oxc_ast::ast::Argument::as_expression)
+                        .map(Expression::get_inner_expression)
                         .and_then(hydration_branch_string_literal)
                         .is_some_and(|source| REACT_RUNTIME_MODULE_SOURCES.contains(&source))
             }

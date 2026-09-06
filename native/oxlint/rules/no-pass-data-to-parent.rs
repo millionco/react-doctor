@@ -170,6 +170,14 @@ mod implementation {
             node_index: &LocalCallbackNearestFunctionNodeIndex,
             ctx: &LintContext<'a>,
         ) -> bool {
+            if owner_bindings.is_custom_hook
+                && call.callee.get_inner_expression().as_member_expression().is_some_and(|member| {
+                    member.static_property_name() == Some("current")
+                        && live_state_member_receiver_is_react_ref(member.object(), ctx)
+                })
+            {
+                return false;
+            }
             let mut callback_names = live_state_resolve_parent_callback_names(
                 &call.callee,
                 owner_function_id,
@@ -241,25 +249,46 @@ mod implementation {
             node_index: &LocalCallbackNearestFunctionNodeIndex,
             ctx: &LintContext<'a>,
         ) -> bool {
+            if data_wrapped_callee_notifies_parent(&call.callee, owner_bindings, node_index, ctx)
+                != Some(true)
+                || data_call_arguments_are_prop_echoes(call, owner_function_id, owner_bindings, ctx)
+            {
+                return false;
+            }
             let Some(helper_function_id) = live_state_local_helper_function_id(&call.callee, ctx)
+                .filter(|function_id| match ctx.nodes().parent_node(*function_id).kind() {
+                    AstKind::CallExpression(wrapper) => data_wrapper_call_is_transparent(wrapper, ctx),
+                    _ => true,
+                })
             else {
-                return false;
+                let Expression::Identifier(identifier) = call.callee.get_inner_expression() else {
+                    return false;
+                };
+                let Some(symbol_id) = live_state_symbol_id(identifier, ctx) else {
+                    return false;
+                };
+                let AstKind::VariableDeclarator(declarator) = ctx.symbol_declaration(symbol_id).kind() else {
+                    return false;
+                };
+                let Some(Expression::CallExpression(wrapper)) = declarator.init.as_ref().map(Expression::get_inner_expression) else {
+                    return false;
+                };
+                let Some(argument) = wrapper.arguments.first().and_then(Argument::as_expression) else {
+                    return false;
+                };
+                return data_call_arguments_have_child_data(call, owner_function_id, owner_bindings, ctx)
+                    || ctx.nodes().iter().any(|candidate| {
+                        argument.span().contains_inclusive(candidate.span())
+                            && matches!(candidate.kind(), AstKind::Function(_) | AstKind::ArrowFunctionExpression(_))
+                            && data_function_id_has_child_source(candidate.id(), owner_function_id, owner_bindings, true, ctx)
+                    });
             };
-            if helper_function_id == effect_function_id
-                || data_wrapped_callee_notifies_parent(&call.callee, owner_bindings, node_index, ctx)
-                    != Some(true)
-            {
+            if helper_function_id == effect_function_id {
                 return false;
             }
-            if matches!(ctx.nodes().get_node(helper_function_id).kind(),
-                AstKind::Function(function) if function.r#async)
-                || matches!(ctx.nodes().get_node(helper_function_id).kind(),
-                    AstKind::ArrowFunctionExpression(function) if function.r#async)
-            {
-                return false;
+            if data_call_arguments_have_child_data(call, owner_function_id, owner_bindings, ctx) {
+                return true;
             }
-            let outer_call_has_data =
-                data_call_arguments_have_child_data(call, owner_function_id, owner_bindings, ctx);
             for function_id in
                 live_state_reachable_helper_functions(helper_function_id, node_index, ctx)
             {
@@ -298,8 +327,7 @@ mod implementation {
                     ) {
                         continue;
                     }
-                    if outer_call_has_data
-                        || data_call_arguments_have_child_data(
+                    if data_call_arguments_have_child_data(
                             inner_call,
                             owner_function_id,
                             owner_bindings,
@@ -399,40 +427,67 @@ mod implementation {
                 return None;
             }
             let wrapped_expression = wrapper_call.arguments.first()?.as_expression()?;
-            let wrapped_function_id =
-                exact_local_callback_function_id(wrapped_expression, ctx, &mut Vec::new())?;
-            if matches!(ctx.nodes().get_node(wrapped_function_id).kind(),
-                AstKind::Function(function) if function.r#async)
-                || matches!(ctx.nodes().get_node(wrapped_function_id).kind(),
-                    AstKind::ArrowFunctionExpression(function) if function.r#async)
+            if let Some(wrapped_function_id) =
+                exact_local_callback_function_id(wrapped_expression, ctx, &mut Vec::new())
             {
-                return Some(false);
-            }
-            for function_id in live_state_reachable_helper_functions(wrapped_function_id, node_index, ctx) {
-                for &candidate_id in node_index.node_ids(function_id) {
-                    let AstKind::CallExpression(call) = ctx.nodes().get_node(candidate_id).kind() else {
-                        continue;
-                    };
-                    let mut callee_root = call.callee.get_inner_expression();
-                    while let Some(member) = callee_root.as_member_expression() {
-                        if member.static_property_name().as_deref() == Some("current") {
+                if matches!(wrapped_expression.get_inner_expression(), Expression::Identifier(_)) {
+                    if !is_react_hook_call(wrapper_call, &["useCallback", "useEffectEvent"], ctx) {
+                        return Some(false);
+                    }
+                    let wrapped_span = ctx.nodes().get_node(wrapped_function_id).span();
+                    return Some(data_expression_references_owner_parameter(
+                        wrapped_expression, owner_bindings, ctx, &mut FxHashSet::default(),
+                    ) || ctx.nodes().iter().any(|candidate| {
+                        wrapped_span.contains_inclusive(candidate.span())
+                            && match candidate.kind() {
+                                AstKind::CallExpression(call) => {
+                                    data_expression_has_immutable_owner_parameter_origin(
+                                        &call.callee, owner_bindings, ctx, &mut FxHashSet::default(),
+                                    )
+                                }
+                                AstKind::IdentifierReference(identifier) => {
+                                    live_state_symbol_id(identifier, ctx)
+                                        .is_some_and(|symbol_id| owner_bindings.is_parameter(symbol_id))
+                                }
+                                _ => false,
+                            }
+                    }));
+                }
+                if matches!(ctx.nodes().get_node(wrapped_function_id).kind(),
+                    AstKind::Function(function) if function.r#async)
+                    || matches!(ctx.nodes().get_node(wrapped_function_id).kind(),
+                        AstKind::ArrowFunctionExpression(function) if function.r#async)
+                {
+                    return Some(false);
+                }
+                for function_id in live_state_reachable_helper_functions(wrapped_function_id, node_index, ctx) {
+                    for &candidate_id in node_index.node_ids(function_id) {
+                        let AstKind::CallExpression(call) = ctx.nodes().get_node(candidate_id).kind() else {
+                            continue;
+                        };
+                        let mut callee_root = call.callee.get_inner_expression();
+                        while let Some(member) = callee_root.as_member_expression() {
+                            if member.static_property_name().as_deref() == Some("current") {
+                                return Some(false);
+                            }
+                            callee_root = member.object().get_inner_expression();
+                        }
+                        if live_state_member_receiver_is_react_ref(callee_root, ctx) {
                             return Some(false);
                         }
-                        callee_root = member.object().get_inner_expression();
-                    }
-                    if live_state_member_receiver_is_react_ref(callee_root, ctx) {
-                        return Some(false);
                     }
                 }
             }
-            let wrapped_span = ctx.nodes().get_node(wrapped_function_id).span();
+            let wrapped_span = wrapped_expression.span();
             Some(ctx.nodes().iter().any(|candidate| {
                 if !wrapped_span.contains_inclusive(candidate.span()) {
                     return false;
                 }
                 match candidate.kind() {
                     AstKind::CallExpression(call) => {
-                        data_call_callee_is_owner_callback(call, owner_bindings, ctx)
+                        data_expression_has_immutable_owner_parameter_origin(
+                            &call.callee, owner_bindings, ctx, &mut FxHashSet::default(),
+                        )
                     }
                     AstKind::IdentifierReference(inner_identifier) => {
                         live_state_symbol_id(inner_identifier, ctx).is_some_and(|inner_symbol_id| {
@@ -923,7 +978,7 @@ mod implementation {
             })
         }
 
-        fn data_call_arguments_have_child_data<'a>(
+        fn data_call_arguments_are_prop_echoes<'a>(
             call: &oxc_ast::ast::CallExpression<'a>,
             owner_function_id: NodeId,
             owner_bindings: &LiveStateOwnerBindings,
@@ -948,7 +1003,16 @@ mod implementation {
                     ctx,
                 )
             });
-            if direct_data_argument_count > 0 && all_direct_data_arguments_are_prop_echoes {
+            direct_data_argument_count > 0 && all_direct_data_arguments_are_prop_echoes
+        }
+
+        fn data_call_arguments_have_child_data<'a>(
+            call: &oxc_ast::ast::CallExpression<'a>,
+            owner_function_id: NodeId,
+            owner_bindings: &LiveStateOwnerBindings,
+            ctx: &LintContext<'a>,
+        ) -> bool {
+            if data_call_arguments_are_prop_echoes(call, owner_function_id, owner_bindings, ctx) {
                 return false;
             }
             call.arguments.iter().any(|argument| {
@@ -969,7 +1033,12 @@ mod implementation {
                     {
                         return false;
                     }
-                    data_expression_has_child_source(
+                    ctx.nodes().iter().any(|candidate| {
+                        expression.span().contains_inclusive(candidate.span())
+                            && matches!(candidate.kind(), AstKind::IdentifierReference(identifier)
+                                if ctx.is_reference_to_global_variable(identifier)
+                                    && matches!(identifier.name.as_str(), "Boolean" | "Number" | "String" | "Array" | "Object" | "Math"))
+                    }) || data_expression_has_child_source(
                         expression,
                         owner_function_id,
                         owner_bindings,
@@ -1029,7 +1098,7 @@ mod implementation {
             function_id: NodeId,
             owner_function_id: NodeId,
             owner_bindings: &LiveStateOwnerBindings,
-            include_parameters: bool,
+            include_wrapper_sources: bool,
             ctx: &LintContext<'a>,
         ) -> bool {
             let function_node = ctx.nodes().get_node(function_id);
@@ -1082,7 +1151,7 @@ mod implementation {
                 match candidate.kind() {
                     AstKind::IdentifierReference(identifier) => {
                         if data_identifier_is_function_parameter(identifier, function_id, ctx) {
-                            return include_parameters;
+                            return include_wrapper_sources;
                         }
                         data_identifier_has_child_source(
                                 identifier,
@@ -1096,10 +1165,14 @@ mod implementation {
                         !data_call_callee_is_owner_callback(call, owner_bindings, ctx)
                             && !live_state_call_is_local_state_setter(call, ctx)
                             && live_state_local_helper_function_id(&call.callee, ctx).is_none()
-                            && !matches!(call.callee.get_inner_expression(), Expression::Identifier(identifier)
+                            && (include_wrapper_sources || !matches!(call.callee.get_inner_expression(), Expression::Identifier(identifier)
                                 if live_state_symbol_id(identifier, ctx)
-                                    .is_some_and(|symbol_id| data_symbol_is_import(symbol_id, ctx)))
-                            && data_unknown_call_produces_data(call, owner_bindings, ctx)
+                                    .is_some_and(|symbol_id| data_symbol_is_import(symbol_id, ctx))))
+                            && (data_unknown_call_produces_data(call, owner_bindings, ctx)
+                                || include_wrapper_sources
+                                    && matches!(call.callee.get_inner_expression(), Expression::Identifier(identifier)
+                                        if ctx.is_reference_to_global_variable(identifier)
+                                            && matches!(identifier.name.as_str(), "Boolean" | "Number" | "String" | "Array" | "Object" | "Math")))
                     }
                     AstKind::NewExpression(_) => true,
                     AstKind::VariableDeclarator(declarator) if is_memo_callback => declarator.init.as_ref().is_some_and(|initializer| {
@@ -1314,12 +1387,23 @@ mod implementation {
             if owner_bindings.is_parameter(symbol_id) || !visited_symbols.insert(symbol_id) {
                 return false;
             }
+            let root_symbol_id = live_state_const_root_symbol(symbol_id, ctx);
+            if matches!(ctx.symbol_declaration(root_symbol_id).kind(), AstKind::VariableDeclarator(declarator)
+                if declarator.init.as_ref().is_some_and(|initializer| {
+                    matches!(initializer.get_inner_expression(), Expression::CallExpression(call)
+                        if is_react_hook_call(call, &["useRef"], ctx))
+                }))
+            {
+                return false;
+            }
+            if data_state_is_reducer_symbol(symbol_id, ctx) {
+                return true;
+            }
             if data_symbol_is_react_state_setter(symbol_id, ctx) {
                 return false;
             }
             if live_state_is_react_state_symbol(symbol_id, ctx) {
-                return data_state_is_reducer_symbol(symbol_id, ctx)
-                    || data_react_state_initializer_has_child_source(
+                return data_react_state_initializer_has_child_source(
                         symbol_id,
                         owner_function_id,
                         owner_bindings,
@@ -1441,6 +1525,20 @@ mod implementation {
                                 )
                             );
                         }
+                        if let Some(member) = call.callee.get_inner_expression().as_member_expression()
+                            && member.static_property_name().is_some_and(|name| matches!(name.as_ref(),
+                                "every" | "filter" | "find" | "findIndex" | "findLast" | "findLastIndex"
+                                    | "flatMap" | "forEach" | "map" | "reduce" | "reduceRight" | "some"))
+                            && call.arguments.iter().any(|argument| matches!(argument.as_expression().map(Expression::get_inner_expression),
+                                Some(Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_))))
+                        {
+                            return data_expression_has_child_source(
+                                member.object(), owner_function_id, owner_bindings, ctx, visited_symbols,
+                            ) || call.arguments.iter().filter_map(Argument::as_expression).any(|argument| {
+                                !matches!(argument.get_inner_expression(), Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_))
+                                    && data_expression_has_child_source(argument, owner_function_id, owner_bindings, ctx, &mut visited_symbols.clone())
+                            });
+                        }
                         if data_unknown_call_produces_data(call, owner_bindings, ctx) {
                             return true;
                         }
@@ -1465,6 +1563,33 @@ mod implementation {
                 });
             if initializer_has_child_source {
                 return true;
+            }
+            let mut original_initializer = declarator.init.as_ref();
+            let mut visited_initializers = FxHashSet::default();
+            while let Some(Expression::Identifier(initializer_identifier)) =
+                original_initializer.map(Expression::get_inner_expression)
+            {
+                let Some(initializer_symbol) = live_state_symbol_id(initializer_identifier, ctx) else {
+                    break;
+                };
+                if !visited_initializers.insert(initializer_symbol) {
+                    break;
+                }
+                let AstKind::VariableDeclarator(initializer_declaration) =
+                    ctx.symbol_declaration(initializer_symbol).kind()
+                else {
+                    break;
+                };
+                original_initializer = initializer_declaration.init.as_ref();
+            }
+            if original_initializer.is_some_and(|initializer| matches!(initializer.get_inner_expression(),
+                Expression::StringLiteral(_) | Expression::NumericLiteral(_)
+                    | Expression::BooleanLiteral(_) | Expression::NullLiteral(_)
+                    | Expression::BigIntLiteral(_) | Expression::RegExpLiteral(_)
+                    | Expression::TemplateLiteral(_) | Expression::ArrayExpression(_)
+                    | Expression::ObjectExpression(_)))
+            {
+                return false;
             }
             if ctx
                 .scoping()

@@ -419,8 +419,12 @@ fn live_state_owner_bindings(
     }
     if matches!(function_node.kind(), AstKind::Function(function)
         if function.r#type == oxc_ast::ast::FunctionType::FunctionExpression)
-        && matches!(ctx.nodes().parent_node(transparent_expression_root(function_node, ctx).id()).kind(),
-            AstKind::ReturnStatement(_))
+        && matches!(
+            ctx.nodes()
+                .parent_node(transparent_expression_root(function_node, ctx).id())
+                .kind(),
+            AstKind::ReturnStatement(_)
+        )
     {
         return LiveStateOwnerBindings::default();
     }
@@ -532,7 +536,7 @@ fn live_state_direct_call_reports<'a>(
     );
     if callback_names.is_empty()
         && let Some(callback_name) =
-            live_state_custom_hook_member_callback_name(&call.callee, owner_bindings, ctx)
+            live_state_prop_member_callback_name(&call.callee, owner_bindings, true, ctx)
     {
         callback_names.insert(callback_name);
     }
@@ -619,9 +623,10 @@ fn live_state_helper_call_reports<'a>(
                 &mut FxHashSet::default(),
             );
             if callback_names.is_empty()
-                && let Some(callback_name) = live_state_custom_hook_member_callback_name(
+                && let Some(callback_name) = live_state_prop_member_callback_name(
                     &inner_call.callee,
                     owner_bindings,
+                    false,
                     ctx,
                 )
             {
@@ -663,39 +668,112 @@ fn live_state_helper_call_reports<'a>(
     false
 }
 
-fn live_state_custom_hook_member_callback_name(
+fn live_state_prop_member_callback_name(
     expression: &Expression<'_>,
     owner_bindings: &LiveStateOwnerBindings,
+    reject_mutable_receiver: bool,
     ctx: &LintContext<'_>,
 ) -> Option<String> {
-    if !owner_bindings.is_custom_hook {
-        return None;
-    }
     let member = expression.get_inner_expression().as_member_expression()?;
     let property_name = member.static_property_name()?;
-    if !["handle", "on", "set"].iter().any(|prefix| {
+    let Expression::Identifier(receiver) = member.object().get_inner_expression() else {
+        return None;
+    };
+    let receiver_symbol_id = live_state_symbol_id(receiver, ctx)?;
+    let is_handler_name = ["handle", "on"].iter().any(|prefix| {
         property_name.strip_prefix(prefix).is_some_and(|suffix| {
             suffix
                 .as_bytes()
                 .first()
                 .is_some_and(u8::is_ascii_uppercase)
         })
-    }) {
+    });
+    if is_handler_name
+        && (!reject_mutable_receiver
+            || !ctx
+                .scoping()
+                .get_resolved_references(receiver_symbol_id)
+                .any(|reference| reference.is_write()))
+        && (owner_bindings.is_parameter(receiver_symbol_id)
+            || live_state_is_whole_props_rest_binding(receiver_symbol_id, owner_bindings, ctx))
+    {
+        return Some(property_name.to_string());
+    }
+    if !owner_bindings.is_custom_hook
+        || !(is_handler_name
+            || property_name.strip_prefix("set").is_some_and(|suffix| {
+                suffix
+                    .as_bytes()
+                    .first()
+                    .is_some_and(u8::is_ascii_uppercase)
+            }))
+    {
         return None;
     }
-    let Expression::Identifier(receiver) = member.object().get_inner_expression() else {
-        return None;
-    };
-    live_state_symbol_id(receiver, ctx)
-        .is_some_and(|symbol_id| {
-            owner_bindings
-                .parameter_name(symbol_id)
-                .is_some_and(|name| {
-                    let lowercase_name = name.to_ascii_lowercase();
-                    lowercase_name.contains("callback") || lowercase_name.contains("handler")
-                })
+    owner_bindings
+        .parameter_name(receiver_symbol_id)
+        .is_some_and(|name| {
+            let lowercase_name = name.to_ascii_lowercase();
+            lowercase_name.contains("callback") || lowercase_name.contains("handler")
         })
         .then(|| property_name.to_string())
+}
+
+fn live_state_is_whole_props_rest_binding(
+    symbol_id: SymbolId,
+    owner_bindings: &LiveStateOwnerBindings,
+    ctx: &LintContext<'_>,
+) -> bool {
+    let AstKind::VariableDeclarator(declarator) = ctx.symbol_declaration(symbol_id).kind() else {
+        return false;
+    };
+    if !matches!(declarator.id, BindingPattern::ObjectPattern(_))
+        || !live_state_pattern_has_object_rest_symbol(&declarator.id, symbol_id)
+    {
+        return false;
+    }
+    let Some(Expression::Identifier(initializer)) = declarator
+        .init
+        .as_ref()
+        .map(Expression::get_inner_expression)
+    else {
+        return false;
+    };
+    let Some(source_symbol_id) = live_state_symbol_id(initializer, ctx) else {
+        return false;
+    };
+    owner_bindings.is_parameter(source_symbol_id)
+        && matches!(ctx.symbol_declaration(source_symbol_id).kind(),
+            AstKind::FormalParameter(parameter)
+                if parameter.initializer.is_none()
+                    && matches!(&parameter.pattern, BindingPattern::BindingIdentifier(binding)
+                    if binding.symbol_id() == source_symbol_id))
+}
+
+fn live_state_pattern_has_object_rest_symbol(
+    pattern: &BindingPattern<'_>,
+    symbol_id: SymbolId,
+) -> bool {
+    match pattern {
+        BindingPattern::ObjectPattern(object) => {
+            object
+                .rest
+                .as_ref()
+                .is_some_and(|rest| binding_pattern_has_symbol(&rest.argument, symbol_id))
+                || object.properties.iter().any(|property| {
+                    live_state_pattern_has_object_rest_symbol(&property.value, symbol_id)
+                })
+        }
+        BindingPattern::AssignmentPattern(assignment) => {
+            live_state_pattern_has_object_rest_symbol(&assignment.left, symbol_id)
+        }
+        BindingPattern::ArrayPattern(array) => array
+            .elements
+            .iter()
+            .flatten()
+            .any(|element| live_state_pattern_has_object_rest_symbol(element, symbol_id)),
+        BindingPattern::BindingIdentifier(_) => false,
+    }
 }
 
 fn live_state_reachable_helper_functions(
@@ -1097,8 +1175,16 @@ fn live_state_is_prop_seeded_custom_hook_state<'a>(
     else {
         return false;
     };
-    let Some(hook_name) = live_state_callee_name(&call.callee) else {
-        return false;
+    let hook_name = match call.callee.get_inner_expression() {
+        Expression::Identifier(identifier) => identifier.name.as_str(),
+        Expression::StaticMemberExpression(member) => member.property.name.as_str(),
+        Expression::ComputedMemberExpression(member) => {
+            let Expression::Identifier(identifier) = &member.expression else {
+                return false;
+            };
+            identifier.name.as_str()
+        }
+        _ => return false,
     };
     if !live_state_is_hook_name(hook_name)
         || LIVE_STATE_BUILTIN_HOOKS.contains(&hook_name)
@@ -1108,9 +1194,16 @@ fn live_state_is_prop_seeded_custom_hook_state<'a>(
         return false;
     }
     call.arguments.iter().any(|argument| {
-        argument.as_expression().is_some_and(|expression| {
-            live_state_expression_has_direct_owner_parameter(expression, owner_bindings, ctx)
-        })
+        let expression = match argument {
+            Argument::SpreadElement(spread) => &spread.argument,
+            argument => {
+                let Some(expression) = argument.as_expression() else {
+                    return false;
+                };
+                expression
+            }
+        };
+        live_state_expression_has_direct_owner_parameter(expression, owner_bindings, ctx)
     })
 }
 
@@ -1151,7 +1244,10 @@ fn live_state_is_local_non_state_comparison_memoizer<'a>(
         return false;
     };
     !ctx.nodes().iter().any(|candidate| {
-        live_state_nearest_function_id(candidate.id(), ctx) == Some(function_id)
+        ctx.nodes()
+            .get_node(function_id)
+            .span()
+            .contains_inclusive(candidate.span())
             && matches!(candidate.kind(), AstKind::CallExpression(inner_call)
                 if is_react_hook_call(inner_call, &["useReducer", "useState"], ctx))
     })

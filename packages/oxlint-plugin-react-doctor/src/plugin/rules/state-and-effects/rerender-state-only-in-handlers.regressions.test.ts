@@ -469,6 +469,118 @@ describe("rerender-state-only-in-handlers — regressions", () => {
   });
 });
 
+describe("rerender-state-only-in-handlers — recursive timer flow", () => {
+  it.each([
+    {
+      name: "recursive-timer-rendered",
+      source:
+        "import {useState,useCallback,useEffect} from 'react'; export function Panel() { const [state,setState]=useState(0); const rotate=useCallback(()=>setState(state+1),[state]); useEffect(()=>{ const schedule=()=>{setTimeout(()=>{rotate();schedule();},1000);}; schedule(); },[rotate]); return <div>{state}</div>; }",
+    },
+    {
+      name: "recursive-timer-hidden",
+      source:
+        "import {useState,useCallback,useEffect} from 'react'; export function Panel() { const [state,setState]=useState(0); const rotate=useCallback(()=>setState(state+1),[state]); useEffect(()=>{ const schedule=()=>{setTimeout(()=>{rotate();schedule();},1000);}; schedule(); },[rotate]); return <div>ready</div>; }",
+    },
+  ])("$name", ({ source }) => {
+    const result = runRule(rerenderStateOnlyInHandlers, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
+describe("rerender-state-only-in-handlers — cyclic render flow", () => {
+  it.each([
+    {
+      name: "rerender-flow-cycle-self-return-unused",
+      source:
+        "import {useState,useMemo} from 'react'; export function Panel() { const [state,setState] = useState(0); function read() { return state ? read() : ''; } return <button onClick={() => setState(state + 1)}>ready</button>; }",
+      expectedCount: 1,
+    },
+    {
+      name: "rerender-flow-cycle-self-return-rendered",
+      source:
+        "import {useState,useMemo} from 'react'; export function Panel() { const [state,setState] = useState(0); function read() { return state ? read() : ''; } return <button onClick={() => setState(state + 1)}>{read()}</button>; }",
+      expectedCount: 0,
+    },
+    {
+      name: "rerender-flow-cycle-mutual-return-unused",
+      source:
+        "import {useState,useMemo} from 'react'; export function Panel() { const [state,setState] = useState(0); function first() { return second(state); } function second(value) { return value ? first() : ''; } return <button onClick={() => setState(state + 1)}>ready</button>; }",
+      expectedCount: 1,
+    },
+    {
+      name: "rerender-flow-cycle-mutual-return-rendered",
+      source:
+        "import {useState,useMemo} from 'react'; export function Panel() { const [state,setState] = useState(0); function first() { return second(state); } function second(value) { return value ? first() : ''; } return <button onClick={() => setState(state + 1)}>{first()}</button>; }",
+      expectedCount: 0,
+    },
+    {
+      name: "rerender-flow-cycle-arrow-return-unused",
+      source:
+        "import {useState,useMemo} from 'react'; export function Panel() { const [state,setState] = useState(0); const read = () => state ? read() : ''; return <button onClick={() => setState(state + 1)}>ready</button>; }",
+      expectedCount: 1,
+    },
+    {
+      name: "rerender-flow-cycle-arrow-return-rendered",
+      source:
+        "import {useState,useMemo} from 'react'; export function Panel() { const [state,setState] = useState(0); const read = () => state ? read() : ''; return <button onClick={() => setState(state + 1)}>{read()}</button>; }",
+      expectedCount: 0,
+    },
+    {
+      name: "rerender-flow-cycle-nested-memo-unused",
+      source:
+        "import {useState,useMemo} from 'react'; export function Panel() { const [state,setState] = useState(0); const outer = () => { const read = useMemo(() => state, [state]); return read; }; return <button onClick={() => setState(state + 1)}>ready</button>; }",
+      expectedCount: 1,
+    },
+    {
+      name: "rerender-flow-cycle-nested-memo-rendered",
+      source:
+        "import {useState,useMemo} from 'react'; export function Panel() { const [state,setState] = useState(0); const outer = () => { const read = useMemo(() => state, [state]); return read; }; return <button onClick={() => setState(state + 1)}>{outer()}</button>; }",
+      expectedCount: 0,
+    },
+    {
+      name: "rerender-flow-cycle-self-return-render-prop",
+      source:
+        "import {useState,useMemo,useEffect} from 'react'; export function Panel() { const [state,setState] = useState(0); function read() { return state ? read() : ''; } return <Widget render={read} onClick={() => setState(state + 1)} />; }",
+      expectedCount: 0,
+    },
+    {
+      name: "rerender-flow-cycle-self-return-event-handler",
+      source:
+        "import {useState,useMemo,useEffect} from 'react'; export function Panel() { const [state,setState] = useState(0); function read() { return state ? read() : ''; } return <button onClick={read} onKeyDown={() => setState(state + 1)}>ready</button>; }",
+      expectedCount: 1,
+    },
+    {
+      name: "rerender-flow-cycle-self-return-effect-dependency",
+      source:
+        "import {useState,useMemo,useEffect} from 'react'; export function Panel() { const [state,setState] = useState(0); function read() { return state ? read() : ''; } useEffect(() => {}, [read]); return <button onClick={() => setState(state + 1)}>ready</button>; }",
+      expectedCount: 0,
+    },
+    {
+      name: "rerender-flow-cycle-named-expression-unused",
+      source:
+        "import {useState,useMemo,useEffect} from 'react'; export function Panel() { const [state,setState] = useState(0); const read = function inner() { return state ? inner() : ''; }; return <button onClick={() => setState(state + 1)}>ready</button>; }",
+      expectedCount: 1,
+    },
+    {
+      name: "rerender-flow-cycle-named-expression-rendered",
+      source:
+        "import {useState,useMemo,useEffect} from 'react'; export function Panel() { const [state,setState] = useState(0); const read = function inner() { return state ? inner() : ''; }; return <button onClick={() => setState(state + 1)}>{read()}</button>; }",
+      expectedCount: 0,
+    },
+    {
+      name: "rerender-flow-cycle-mutual-iterator-rendered",
+      source:
+        "import {useState,useMemo,useEffect} from 'react'; export function Panel() { const [state,setState] = useState(0); function first() { return second(state); } function second(value) { return value ? first() : ''; } return <button onClick={() => setState(state + 1)}>{[1].map(first)}</button>; }",
+      expectedCount: 0,
+    },
+  ])("$name", ({ source, expectedCount }) => {
+    const result = runRule(rerenderStateOnlyInHandlers, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+});
+
 describe("rerender-state-only-in-handlers — consume-then-clear and hook-argument regressions", () => {
   // nexu HomeView pendingPluginUseHandoff / psysonic pendingFocusTitle:
   // the effect consumes the state's PAYLOAD (member reads, call arguments)

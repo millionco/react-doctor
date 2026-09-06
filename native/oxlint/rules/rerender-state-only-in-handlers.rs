@@ -2,7 +2,8 @@ use oxc_ast::{
     AstKind,
     ast::{
         Argument, ArrayExpressionElement, BindingPattern, Expression, FunctionBody, FunctionType,
-        JSXAttributeName, JSXElementName, SimpleAssignmentTarget, Statement, UnaryOperator,
+        JSXAttributeName, JSXAttributeValue, JSXElementName, JSXExpression, SimpleAssignmentTarget,
+        Statement, UnaryOperator,
     },
 };
 use oxc_diagnostics::OxcDiagnostic;
@@ -69,6 +70,12 @@ struct RerenderStateBinding<'a> {
     value_symbol_id: SymbolId,
     setter_symbol_id: SymbolId,
     declarator_span: Span,
+}
+
+#[derive(Clone, Default)]
+struct RerenderRenderFlowVisited {
+    symbol_ids: FxHashSet<SymbolId>,
+    function_node_ids: FxHashSet<NodeId>,
 }
 
 impl Rule for RerenderStateOnlyInHandlers {
@@ -162,7 +169,7 @@ fn rerender_check_component<'a>(
                 component_node_id,
                 component_has_render_phase_call,
                 ctx,
-                &mut FxHashSet::default(),
+                &mut RerenderRenderFlowVisited::default(),
             )
             || (component_renders_location
                 && rerender_setter_invalidates_location(
@@ -258,7 +265,7 @@ fn rerender_controlled_region_updates_rendered_value(
     component_node_id: NodeId,
     component_has_render_phase_call: bool,
     ctx: &LintContext<'_>,
-    visited_symbol_ids: &mut FxHashSet<SymbolId>,
+    visited: &mut RerenderRenderFlowVisited,
 ) -> bool {
     ctx.nodes()
         .iter()
@@ -275,7 +282,7 @@ fn rerender_controlled_region_updates_rendered_value(
                             component_node_id,
                             component_has_render_phase_call,
                             ctx,
-                            &mut visited_symbol_ids.clone(),
+                            &mut visited.clone(),
                         )
                     },
                 ) || rerender_assignment_target_symbol_ids(assignment, ctx)
@@ -286,7 +293,7 @@ fn rerender_controlled_region_updates_rendered_value(
                             component_node_id,
                             component_has_render_phase_call,
                             ctx,
-                            &mut visited_symbol_ids.clone(),
+                            &mut visited.clone(),
                         )
                     })
             }
@@ -307,7 +314,7 @@ fn rerender_controlled_region_updates_rendered_value(
                             component_node_id,
                             component_has_render_phase_call,
                             ctx,
-                            &mut visited_symbol_ids.clone(),
+                            &mut visited.clone(),
                         )
                     },
                 )
@@ -370,9 +377,9 @@ fn rerender_symbol_is_render_reachable(
     component_node_id: NodeId,
     component_has_render_phase_call: bool,
     ctx: &LintContext<'_>,
-    visited_symbol_ids: &mut FxHashSet<SymbolId>,
+    visited: &mut RerenderRenderFlowVisited,
 ) -> bool {
-    if !visited_symbol_ids.insert(symbol_id) {
+    if !visited.symbol_ids.insert(symbol_id) {
         return false;
     }
     let reference_node_ids = ctx
@@ -389,7 +396,7 @@ fn rerender_symbol_is_render_reachable(
             component_node_id,
             component_has_render_phase_call,
             ctx,
-            &mut visited_symbol_ids.clone(),
+            &mut visited.clone(),
         )
     })
 }
@@ -399,7 +406,7 @@ fn rerender_node_flows_to_render(
     component_node_id: NodeId,
     component_has_render_phase_call: bool,
     ctx: &LintContext<'_>,
-    visited_symbol_ids: &mut FxHashSet<SymbolId>,
+    visited: &mut RerenderRenderFlowVisited,
 ) -> bool {
     let source_span = ctx.nodes().get_node(node_id).span();
     let mut current_id = node_id;
@@ -408,6 +415,21 @@ fn rerender_node_flows_to_render(
         let parent = ctx.nodes().parent_node(current_id);
         match parent.kind() {
             AstKind::JSXAttribute(attribute) => {
+                if rerender_is_event_handler_attribute_name(&attribute.name) {
+                    if let Some(JSXAttributeValue::ExpressionContainer(container)) =
+                        &attribute.value
+                        && let JSXExpression::ConditionalExpression(conditional) =
+                            &container.expression
+                    {
+                        if !conditional.test.span().contains_inclusive(source_span) {
+                            return false;
+                        }
+                    } else if rerender_node_is_intrinsic_event_handler(current_id, ctx)
+                        || rerender_node_is_direct_event_handler_value(node_id, parent.id(), ctx)
+                    {
+                        return false;
+                    }
+                }
                 if let Some(function_node_id) = rerender_nearest_function_node_id(node_id, ctx)
                     && function_node_id != component_node_id
                 {
@@ -416,11 +438,10 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     );
                 }
-                return !rerender_is_event_handler_attribute_name(&attribute.name)
-                    || !rerender_node_is_direct_event_handler_value(node_id, parent.id(), ctx);
+                return true;
             }
             AstKind::ObjectProperty(property)
                 if property
@@ -446,7 +467,7 @@ fn rerender_node_flows_to_render(
                     component_node_id,
                     component_has_render_phase_call,
                     ctx,
-                    visited_symbol_ids,
+                    visited,
                 );
             }
             AstKind::VariableDeclarator(declarator) if declarator.init.is_some() => {
@@ -466,7 +487,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     ) {
                         return true;
                     }
@@ -484,7 +505,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     )
                 {
                     return true;
@@ -495,7 +516,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     ) {
                         return true;
                     }
@@ -519,7 +540,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     ) {
                         return true;
                     }
@@ -529,7 +550,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     ) {
                         return true;
                     }
@@ -564,7 +585,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     ))
                     && rerender_nearest_function_node_id(parent.id(), ctx)
                         == Some(component_node_id) =>
@@ -585,7 +606,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     ))
                     && rerender_nearest_function_node_id(parent.id(), ctx)
                         == Some(component_node_id) =>
@@ -606,7 +627,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     )) =>
             {
                 return true;
@@ -622,7 +643,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     )) =>
             {
                 return true;
@@ -638,7 +659,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     )) =>
             {
                 return true;
@@ -665,7 +686,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     )) =>
             {
                 return true;
@@ -681,7 +702,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     )) =>
             {
                 return true;
@@ -697,7 +718,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     )) =>
             {
                 return true;
@@ -719,13 +740,13 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     ) || rerender_controlled_region_updates_rendered_value(
                         expression.alternate.span(),
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     )) =>
             {
                 return true;
@@ -737,7 +758,7 @@ fn rerender_node_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        visited_symbol_ids,
+                        visited,
                     ) =>
             {
                 return true;
@@ -751,7 +772,7 @@ fn rerender_node_flows_to_render(
                     component_node_id,
                     component_has_render_phase_call,
                     ctx,
-                    visited_symbol_ids,
+                    visited,
                 ) {
                     return true;
                 }
@@ -769,7 +790,7 @@ fn rerender_node_flows_to_render(
                     component_node_id,
                     component_has_render_phase_call,
                     ctx,
-                    visited_symbol_ids,
+                    visited,
                 ) {
                     return true;
                 }
@@ -792,8 +813,11 @@ fn rerender_function_result_flows_to_render(
     component_node_id: NodeId,
     component_has_render_phase_call: bool,
     ctx: &LintContext<'_>,
-    visited_symbol_ids: &mut FxHashSet<SymbolId>,
+    visited: &mut RerenderRenderFlowVisited,
 ) -> bool {
+    if !visited.function_node_ids.insert(function_node_id) {
+        return false;
+    }
     let mut is_inside_jsx_expression = false;
     for ancestor in ctx.nodes().ancestors(function_node_id) {
         match ancestor.kind() {
@@ -832,7 +856,7 @@ fn rerender_function_result_flows_to_render(
                 component_node_id,
                 component_has_render_phase_call,
                 ctx,
-                &mut visited_symbol_ids.clone(),
+                &mut visited.clone(),
             ))
     }) {
         return true;
@@ -842,7 +866,7 @@ fn rerender_function_result_flows_to_render(
         component_node_id,
         component_has_render_phase_call,
         ctx,
-        visited_symbol_ids,
+        visited,
     ) {
         return true;
     }
@@ -862,7 +886,7 @@ fn rerender_function_result_flows_to_render(
                         component_node_id,
                         component_has_render_phase_call,
                         ctx,
-                        &mut visited_symbol_ids.clone(),
+                        &mut visited.clone(),
                     ))
             })
         {
@@ -874,7 +898,7 @@ fn rerender_function_result_flows_to_render(
                 component_node_id,
                 component_has_render_phase_call,
                 ctx,
-                visited_symbol_ids,
+                visited,
             );
     }
     let mut enclosing_function_node_id = None;
@@ -898,7 +922,7 @@ fn rerender_function_result_flows_to_render(
             component_node_id,
             component_has_render_phase_call,
             ctx,
-            visited_symbol_ids,
+            visited,
         )
     })
 }
@@ -937,7 +961,7 @@ fn rerender_node_is_custom_hook_argument(
         let AstKind::CallExpression(call_expression) = ancestor.kind() else {
             continue;
         };
-        let callee_name = match call_expression.callee.get_inner_expression() {
+        let callee_name = match call_expression.callee.without_parentheses() {
             Expression::Identifier(callee) => callee.name.as_str(),
             Expression::StaticMemberExpression(member) => member.property.name.as_str(),
             _ => continue,
@@ -945,11 +969,10 @@ fn rerender_node_is_custom_hook_argument(
         if !rerender_is_hook_name(callee_name)
             || RERENDER_BUILTIN_HOOK_NAMES.contains(&callee_name)
             || is_react_hook_call(call_expression, &RERENDER_BUILTIN_HOOK_NAMES, ctx)
-            || !call_expression.arguments.iter().any(|argument| {
-                argument
-                    .as_expression()
-                    .is_some_and(|argument| argument.span().contains_inclusive(node_span))
-            })
+            || !call_expression
+                .arguments
+                .iter()
+                .any(|argument| argument.span().contains_inclusive(node_span))
         {
             continue;
         }
@@ -963,7 +986,7 @@ fn rerender_function_is_render_iterator_callback(
     component_node_id: NodeId,
     component_has_render_phase_call: bool,
     ctx: &LintContext<'_>,
-    visited_symbol_ids: &mut FxHashSet<SymbolId>,
+    visited: &mut RerenderRenderFlowVisited,
 ) -> bool {
     let function_span = ctx.nodes().get_node(function_node_id).span();
     for ancestor in ctx.nodes().ancestors(function_node_id) {
@@ -997,7 +1020,7 @@ fn rerender_function_is_render_iterator_callback(
             component_node_id,
             component_has_render_phase_call,
             ctx,
-            visited_symbol_ids,
+            visited,
         );
     }
     false
@@ -1218,7 +1241,7 @@ fn rerender_iterator_mutates_rendered_collection(
     component_node_id: NodeId,
     component_has_render_phase_call: bool,
     ctx: &LintContext<'_>,
-    visited_symbol_ids: &mut FxHashSet<SymbolId>,
+    visited: &mut RerenderRenderFlowVisited,
 ) -> bool {
     let Some(member) = call_expression
         .callee
@@ -1269,7 +1292,7 @@ fn rerender_iterator_mutates_rendered_collection(
                             component_node_id,
                             component_has_render_phase_call,
                             ctx,
-                            visited_symbol_ids,
+                            visited,
                         )
                     },
                 )
@@ -1283,7 +1306,7 @@ fn rerender_call_argument_mutates_rendered_collection(
     component_node_id: NodeId,
     component_has_render_phase_call: bool,
     ctx: &LintContext<'_>,
-    visited_symbol_ids: &mut FxHashSet<SymbolId>,
+    visited: &mut RerenderRenderFlowVisited,
 ) -> bool {
     if !call_expression.arguments.iter().any(|argument| {
         argument
@@ -1309,7 +1332,7 @@ fn rerender_call_argument_mutates_rendered_collection(
                 component_node_id,
                 component_has_render_phase_call,
                 ctx,
-                visited_symbol_ids,
+                visited,
             )
         })
 }
@@ -1358,7 +1381,7 @@ fn rerender_component_renders_location(
             component_node_id,
             component_has_render_phase_call,
             ctx,
-            &mut FxHashSet::default(),
+            &mut RerenderRenderFlowVisited::default(),
         )
     })
 }
@@ -1991,7 +2014,14 @@ fn rerender_expression_root_symbol(
     ctx: &LintContext<'_>,
 ) -> Option<SymbolId> {
     let mut expression = expression.get_inner_expression();
-    while let Some(member) = expression.as_member_expression() {
+    loop {
+        let member = match expression {
+            Expression::ChainExpression(chain) => chain.expression.as_member_expression(),
+            expression => expression.as_member_expression(),
+        };
+        let Some(member) = member else {
+            break;
+        };
         expression = member.object().get_inner_expression();
     }
     let Expression::Identifier(identifier) = expression else {

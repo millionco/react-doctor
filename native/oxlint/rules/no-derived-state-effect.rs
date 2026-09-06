@@ -2113,6 +2113,13 @@ fn derived_expression_is_render_known<'node, 'ast>(
                 return false;
             }
             AstKind::IdentifierReference(identifier) => {
+                if ctx.scoping().get_reference(identifier.reference_id()).is_type()
+                    || ctx.nodes().ancestors(candidate.id()).any(|ancestor| {
+                        matches!(ancestor.kind(), AstKind::TSTypeQuery(_))
+                    })
+                {
+                    continue;
+                }
                 let Some(symbol_id) = ctx
                     .scoping()
                     .get_reference(identifier.reference_id())
@@ -2515,6 +2522,13 @@ fn derived_state_effect_expression_is_pure_constant<'node, 'ast>(
             }
             AstKind::CallExpression(call) if !derived_is_pure_call(call, ctx) => return false,
             AstKind::IdentifierReference(identifier) => {
+                if ctx.scoping().get_reference(identifier.reference_id()).is_type()
+                    || ctx.nodes().ancestors(candidate.id()).any(|ancestor| {
+                        matches!(ancestor.kind(), AstKind::TSTypeQuery(_))
+                    })
+                {
+                    continue;
+                }
                 if derived_identifier_is_callee(candidate.id(), ctx) {
                     continue;
                 }

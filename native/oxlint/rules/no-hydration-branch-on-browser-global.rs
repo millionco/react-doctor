@@ -8,8 +8,8 @@ use oxc_allocator::Allocator;
 use oxc_ast::{
     AstKind,
     ast::{
-        BindingPattern, Expression, JSXAttributeItem, JSXAttributeName, ObjectPropertyKind,
-        Statement,
+        BindingPattern, Expression, IfStatement, JSXAttributeItem, JSXAttributeName,
+        ObjectPropertyKind, Statement,
     },
 };
 use oxc_diagnostics::OxcDiagnostic;
@@ -20,6 +20,7 @@ use oxc_semantic::{NodeId, SemanticBuilder, SymbolId};
 use oxc_span::{SourceType, Span};
 use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
 use rustc_hash::{FxHashMap, FxHashSet};
+use serde::Deserialize;
 
 use crate::{
     AllowWarnDeny, AstNode,
@@ -36,6 +37,133 @@ const EMAIL_TEMPLATE_MODULES: [&str; 4] =
 const EMAIL_TEMPLATE_MODULE_PREFIXES: [&str; 2] = ["@react-email/", "jsx-email"];
 const MAX_IMPORTED_SOURCE_BYTES: u64 = 2_000_000;
 const MAX_IMPORTED_BARREL_FILES: usize = 4;
+const MAX_HYDRATION_TSCONFIG_DIRECTORY_WALK: usize = 30;
+const MAX_HYDRATION_TSCONFIG_EXTENDS_DEPTH: usize = 8;
+const HYDRATION_MODULE_EXTENSIONS: [&str; 8] =
+    ["ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts"];
+
+#[derive(Default)]
+struct HydrationStatementResult {
+    did_return: bool,
+    value: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum HydrationTsconfigField<T> {
+    Parsed(T),
+    Other(serde_json::Value),
+}
+
+#[derive(Default)]
+struct HydrationTsconfigFields {
+    compiler_options: Option<HydrationTsconfigField<HydrationCompilerOptionsFields>>,
+    extends: Option<serde_json::Value>,
+}
+
+#[derive(Default)]
+struct HydrationCompilerOptionsFields {
+    base_url: Option<serde_json::Value>,
+    paths: Option<HydrationTsconfigField<HydrationOrderedPathEntries>>,
+}
+
+struct HydrationTsconfigFieldsVisitor;
+
+impl<'de> serde::de::Visitor<'de> for HydrationTsconfigFieldsVisitor {
+    type Value = HydrationTsconfigFields;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a config object")
+    }
+
+    fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+        let mut fields = HydrationTsconfigFields::default();
+        while let Some(key) = map.next_key::<String>()? {
+            match key.as_str() {
+                "compilerOptions" => fields.compiler_options = map.next_value()?,
+                "extends" => fields.extends = map.next_value()?,
+                _ => {
+                    map.next_value::<serde::de::IgnoredAny>()?;
+                }
+            }
+        }
+        Ok(fields)
+    }
+}
+
+impl<'de> Deserialize<'de> for HydrationTsconfigFields {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_map(HydrationTsconfigFieldsVisitor)
+    }
+}
+
+struct HydrationCompilerOptionsFieldsVisitor;
+
+impl<'de> serde::de::Visitor<'de> for HydrationCompilerOptionsFieldsVisitor {
+    type Value = HydrationCompilerOptionsFields;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a compiler options object")
+    }
+
+    fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+        let mut fields = HydrationCompilerOptionsFields::default();
+        while let Some(key) = map.next_key::<String>()? {
+            match key.as_str() {
+                "baseUrl" => fields.base_url = map.next_value()?,
+                "paths" => fields.paths = map.next_value()?,
+                _ => {
+                    map.next_value::<serde::de::IgnoredAny>()?;
+                }
+            }
+        }
+        Ok(fields)
+    }
+}
+
+impl<'de> Deserialize<'de> for HydrationCompilerOptionsFields {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_map(HydrationCompilerOptionsFieldsVisitor)
+    }
+}
+
+struct HydrationOrderedPathEntries(Vec<(String, serde_json::Value)>);
+
+struct HydrationPathEntriesVisitor;
+
+impl<'de> serde::de::Visitor<'de> for HydrationPathEntriesVisitor {
+    type Value = HydrationOrderedPathEntries;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("an object containing path mappings")
+    }
+
+    fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+        let mut entries: Vec<(String, serde_json::Value)> = Vec::new();
+        let mut entry_positions: FxHashMap<String, usize> = FxHashMap::default();
+        while let Some((key, value)) = map.next_entry::<String, serde_json::Value>()? {
+            if let Some(&position) = entry_positions.get(&key) {
+                entries[position].1 = value;
+            } else {
+                entry_positions.insert(key.clone(), entries.len());
+                entries.push((key, value));
+            }
+        }
+        Ok(HydrationOrderedPathEntries(entries))
+    }
+}
+
+impl<'de> Deserialize<'de> for HydrationOrderedPathEntries {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_map(HydrationPathEntriesVisitor)
+    }
+}
+
+struct HydrationResolvedTsconfig {
+    base_directory: PathBuf,
+    has_explicit_base_url: bool,
+    paths: Vec<(String, Vec<String>)>,
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct NoHydrationBranchOnBrowserGlobal;
@@ -604,10 +732,8 @@ fn hydration_branch_match_imported_helper<'a>(
         crate::module_record::ImportImportName::Default(_) => "default",
         crate::module_record::ImportImportName::NamespaceObject => return None,
     };
-    let module_path = super::window_open_without_noopener::resolve_window_open_module_path(
-        ctx.file_path(),
-        import_entry.module_request.name(),
-    )?;
+    let module_path =
+        hydration_branch_resolve_module_path(ctx.file_path(), import_entry.module_request.name())?;
     let arguments = call
         .arguments
         .iter()
@@ -633,6 +759,221 @@ fn hydration_branch_match_imported_helper<'a>(
     .condition_match?;
     condition_match.predicate_span = call.span;
     Some(condition_match)
+}
+
+fn hydration_branch_resolve_module_path(from_file: &Path, module_source: &str) -> Option<PathBuf> {
+    if Path::new(module_source).is_absolute() {
+        return None;
+    }
+    let is_runtime_module = |path: &PathBuf| {
+        !path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| {
+                name.ends_with(".d.ts") || name.ends_with(".d.mts") || name.ends_with(".d.cts")
+            })
+    };
+    if module_source.starts_with('.') {
+        return hydration_branch_resolve_module_candidate(&from_file.parent()?.join(module_source))
+            .filter(is_runtime_module);
+    }
+    let config = from_file
+        .parent()?
+        .ancestors()
+        .take(MAX_HYDRATION_TSCONFIG_DIRECTORY_WALK)
+        .find_map(|directory| {
+            ["tsconfig.json", "jsconfig.json"]
+                .into_iter()
+                .find_map(|filename| hydration_branch_read_tsconfig(&directory.join(filename), 0))
+        })?;
+    let base_directory = &config.base_directory;
+    let mut best_mapping = None;
+    for (pattern, targets) in &config.paths {
+        let (prefix, suffix) = pattern.split_once('*').unwrap_or((pattern.as_str(), ""));
+        let capture = if pattern.contains('*') {
+            module_source
+                .strip_prefix(prefix)
+                .and_then(|remaining| remaining.strip_suffix(suffix))
+        } else {
+            (module_source == pattern.as_str()).then_some("")
+        };
+        if let Some(capture) = capture
+            && best_mapping
+                .as_ref()
+                .is_none_or(|(length, _, _)| prefix.len() > *length)
+        {
+            best_mapping = Some((prefix.len(), capture, targets));
+        }
+    }
+    let mut candidates = best_mapping.map_or_else(Vec::new, |(_, capture, targets)| {
+        targets
+            .iter()
+            .map(|target| base_directory.join(target.replace('*', capture)))
+            .collect::<Vec<_>>()
+    });
+    if config.has_explicit_base_url {
+        candidates.push(base_directory.join(module_source));
+    }
+    candidates
+        .into_iter()
+        .find_map(|candidate| hydration_branch_resolve_module_candidate(&candidate))
+        .filter(is_runtime_module)
+}
+
+fn hydration_branch_resolve_file_candidate(candidate: &Path) -> Option<PathBuf> {
+    if candidate.is_file() {
+        return Some(candidate.to_path_buf());
+    }
+    let extension = candidate
+        .extension()
+        .and_then(|extension| extension.to_str());
+    let extension_candidates: &[&str] = match extension {
+        Some("js") => &["ts", "tsx", "jsx"],
+        Some("jsx") => &["tsx"],
+        Some("mjs") => &["mts"],
+        Some("cjs") => &["cts"],
+        Some(extension) if HYDRATION_MODULE_EXTENSIONS.contains(&extension) => &[],
+        _ => &HYDRATION_MODULE_EXTENSIONS,
+    };
+    extension_candidates.iter().find_map(|extension_candidate| {
+        let candidate_path = if extension
+            .is_some_and(|extension| HYDRATION_MODULE_EXTENSIONS.contains(&extension))
+        {
+            candidate.with_extension(extension_candidate)
+        } else {
+            let mut candidate_path = candidate.as_os_str().to_os_string();
+            candidate_path.push(".");
+            candidate_path.push(extension_candidate);
+            PathBuf::from(candidate_path)
+        };
+        candidate_path.is_file().then_some(candidate_path)
+    })
+}
+
+fn hydration_branch_package_export_entry(entry: &serde_json::Value) -> Option<&str> {
+    match entry {
+        serde_json::Value::String(entry) => (!entry.is_empty()).then_some(entry.as_str()),
+        serde_json::Value::Array(entries) => entries
+            .iter()
+            .find_map(hydration_branch_package_export_entry),
+        serde_json::Value::Object(entries) => ["import", "default", "module", "browser", "require"]
+            .into_iter()
+            .find_map(|condition| {
+                entries
+                    .get(condition)
+                    .and_then(hydration_branch_package_export_entry)
+            }),
+        _ => None,
+    }
+}
+
+fn hydration_branch_resolve_module_candidate(candidate: &Path) -> Option<PathBuf> {
+    if let Some(path) = hydration_branch_resolve_file_candidate(candidate) {
+        return Some(path);
+    }
+    if candidate.is_dir()
+        && let Ok(source) = std::fs::read_to_string(candidate.join("package.json"))
+        && let Ok(package) = serde_json::from_str::<serde_json::Value>(&source)
+    {
+        let entry = package
+            .get("exports")
+            .and_then(|exports| {
+                hydration_branch_package_export_entry(exports).or_else(|| {
+                    exports
+                        .get(".")
+                        .and_then(hydration_branch_package_export_entry)
+                })
+            })
+            .or_else(|| {
+                ["module", "main", "browser"]
+                    .into_iter()
+                    .find_map(|field| package.get(field).and_then(serde_json::Value::as_str))
+            });
+        if let Some(entry) = entry {
+            let entry_path = candidate.join(entry);
+            if let Some(path) = hydration_branch_resolve_file_candidate(&entry_path)
+                .or_else(|| hydration_branch_resolve_file_candidate(&entry_path.join("index")))
+            {
+                return Some(path);
+            }
+        }
+    }
+    hydration_branch_resolve_file_candidate(&candidate.join("index"))
+}
+
+fn hydration_branch_read_tsconfig(
+    config_path: &Path,
+    extends_depth: usize,
+) -> Option<HydrationResolvedTsconfig> {
+    let source = std::fs::read_to_string(config_path).ok()?;
+    let fields = serde_json::from_str::<HydrationTsconfigFields>(
+        &super::window_open_without_noopener::window_open_strip_json_comments_and_trailing_commas(
+            &source,
+        ),
+    )
+    .ok()?;
+    let options = match fields.compiler_options {
+        Some(HydrationTsconfigField::Parsed(options)) => Some(options),
+        _ => None,
+    };
+    let base_url = options
+        .as_ref()
+        .and_then(|options| options.base_url.as_ref())
+        .and_then(serde_json::Value::as_str);
+    let base_directory = config_path.parent()?.join(base_url.unwrap_or("."));
+    let has_explicit_base_url = base_url.is_some();
+    let path_entries = options.and_then(|options| match options.paths {
+        Some(HydrationTsconfigField::Parsed(HydrationOrderedPathEntries(entries))) => Some(entries),
+        Some(HydrationTsconfigField::Other(serde_json::Value::Array(entries))) => Some(
+            entries
+                .into_iter()
+                .enumerate()
+                .map(|(index, value)| (index.to_string(), value))
+                .collect(),
+        ),
+        _ => None,
+    });
+    if let Some(entries) = path_entries {
+        let paths = entries
+            .into_iter()
+            .filter_map(|(pattern, value)| {
+                let targets = value
+                    .as_array()?
+                    .iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(String::from)
+                    .collect::<Vec<_>>();
+                (!targets.is_empty()).then_some((pattern, targets))
+            })
+            .collect();
+        return Some(HydrationResolvedTsconfig {
+            base_directory,
+            has_explicit_base_url,
+            paths,
+        });
+    }
+    if extends_depth < MAX_HYDRATION_TSCONFIG_EXTENDS_DEPTH
+        && let Some(extends) = fields.extends.as_ref().and_then(serde_json::Value::as_str)
+    {
+        let mut extends_path = config_path.parent()?.join(
+            if extends.starts_with("./") || extends.starts_with("../") {
+                PathBuf::from(extends)
+            } else {
+                Path::new("node_modules").join(extends)
+            },
+        );
+        if !extends.ends_with(".json") {
+            extends_path = PathBuf::from(format!("{}.json", extends_path.display()));
+        }
+        if let Some(inherited) = hydration_branch_read_tsconfig(&extends_path, extends_depth + 1) {
+            return Some(inherited);
+        }
+    }
+    has_explicit_base_url.then_some(HydrationResolvedTsconfig {
+        base_directory,
+        has_explicit_base_url,
+        paths: Vec::new(),
+    })
 }
 
 fn hydration_branch_match_imported_export(
@@ -790,10 +1131,7 @@ fn hydration_branch_match_imported_export(
         let mut resolved_exports = FxHashMap::default();
         for (target_source, target_name) in targets {
             let Some(target_path) =
-                super::window_open_without_noopener::resolve_window_open_module_path(
-                    module_path,
-                    target_source,
-                )
+                hydration_branch_resolve_module_path(module_path, target_source)
             else {
                 continue;
             };
@@ -900,9 +1238,12 @@ fn hydration_branch_match_mutable_symbol<'a>(
         let Some((guard_span, guard_test)) = guard else {
             continue;
         };
-        if write_nodes.iter().any(|later_write| {
-            later_write.span().start > guard_span.end && later_write.span().start < read_span.start
-        }) {
+        if hydration_branch_guard_preserves_symbol(symbol_id, guard_span, ctx)
+            || write_nodes.iter().any(|later_write| {
+                later_write.span().start > guard_span.end
+                    && later_write.span().start < read_span.start
+            })
+        {
             continue;
         }
         if let Some(condition_match) =
@@ -912,6 +1253,82 @@ fn hydration_branch_match_mutable_symbol<'a>(
         }
     }
     None
+}
+
+fn hydration_branch_guard_preserves_symbol(
+    symbol_id: SymbolId,
+    guard_span: Span,
+    ctx: &LintContext<'_>,
+) -> bool {
+    let AstKind::VariableDeclarator(declarator) = ctx.symbol_declaration(symbol_id).kind() else {
+        return false;
+    };
+    let Some(initializer) = &declarator.init else {
+        return false;
+    };
+    let mut has_guarded_write = false;
+    for reference in ctx.scoping().get_resolved_references(symbol_id) {
+        if !reference.is_write() {
+            continue;
+        }
+        let write_node = ctx.nodes().get_node(reference.node_id());
+        if !guard_span.contains_inclusive(write_node.span()) {
+            continue;
+        }
+        has_guarded_write = true;
+        let AstKind::AssignmentExpression(assignment) = ctx.nodes().parent_kind(write_node.id())
+        else {
+            return false;
+        };
+        if assignment.operator != oxc_syntax::operator::AssignmentOperator::Assign
+            || assignment.left.span() != write_node.span()
+            || !hydration_branch_spans_binding_equivalent(
+                initializer.span(),
+                assignment.right.span(),
+                ctx,
+            )
+        {
+            return false;
+        }
+    }
+    has_guarded_write
+}
+
+fn hydration_branch_guard_changes_returned_value(
+    statement: &IfStatement<'_>,
+    ctx: &LintContext<'_>,
+) -> bool {
+    let guard_node = ctx.nodes().get_node(statement.node_id.get());
+    let returned_values = hydration_branch_following_returns(guard_node, ctx);
+    let guard_function = crate::ast_util::get_enclosing_function(guard_node, ctx).map(AstNode::id);
+    ctx.scoping().symbol_ids().any(|symbol_id| {
+        let has_guarded_write = ctx
+            .scoping()
+            .get_resolved_references(symbol_id)
+            .any(|reference| {
+                let node = ctx.nodes().get_node(reference.node_id());
+                reference.is_write()
+                    && (statement.consequent.span().contains_inclusive(node.span())
+                        || statement.alternate.as_ref().is_some_and(|alternate| {
+                            alternate.span().contains_inclusive(node.span())
+                        }))
+                    && crate::ast_util::get_enclosing_function(node, ctx).map(AstNode::id)
+                        == guard_function
+            });
+        has_guarded_write
+            && !hydration_branch_guard_preserves_symbol(symbol_id, statement.span, ctx)
+            && ctx
+                .scoping()
+                .get_resolved_references(symbol_id)
+                .any(|reference| {
+                    reference.is_read()
+                        && returned_values.iter().any(|value| {
+                            value.span().contains_inclusive(
+                                ctx.nodes().get_node(reference.node_id()).span(),
+                            )
+                        })
+                })
+    })
 }
 
 fn hydration_branch_match_function_property<'a>(
@@ -1654,8 +2071,8 @@ fn hydration_branch_match_function<'a>(
     if client_result.is_some() && client_result == server_result {
         return None;
     }
-    condition_match.client_result = client_result.or(condition_match.client_result);
-    condition_match.server_result = server_result.or(condition_match.server_result);
+    condition_match.client_result = client_result;
+    condition_match.server_result = server_result;
     Some(condition_match)
 }
 
@@ -1823,6 +2240,33 @@ fn hydration_branch_match_statements<'a>(
                 visited_symbols,
                 visited_functions,
             )
+            .filter(|_| {
+                let consequent_values = hydration_branch_returned_values(&if_statement.consequent);
+                let alternate_values = if_statement.alternate.as_ref().map_or_else(
+                    || {
+                        hydration_branch_following_returns(
+                            ctx.nodes().get_node(if_statement.node_id.get()),
+                            ctx,
+                        )
+                    },
+                    |alternate| hydration_branch_returned_values(alternate),
+                );
+                !consequent_values.is_empty()
+                    && !alternate_values.is_empty()
+                    && [&consequent_values, &alternate_values]
+                        .into_iter()
+                        .zip([&alternate_values, &consequent_values])
+                        .any(|(values, candidates)| {
+                            values.iter().any(|value| {
+                                !candidates.iter().any(|candidate| {
+                                    hydration_branch_rendered_branches_equivalent(
+                                        value, candidate, ctx,
+                                    )
+                                })
+                            })
+                        })
+                    || hydration_branch_guard_changes_returned_value(if_statement, ctx)
+            })
             .or_else(|| {
                 hydration_branch_match_statement(
                     &if_statement.consequent,
@@ -1910,6 +2354,7 @@ fn hydration_branch_read_function_result<'a>(
                         visited_symbols,
                         visited_functions,
                     )
+                    .value
                 })
             }),
         AstKind::Function(function) if !function.r#async && !function.generator => {
@@ -1921,6 +2366,7 @@ fn hydration_branch_read_function_result<'a>(
                     visited_symbols,
                     visited_functions,
                 )
+                .value
             })
         }
         _ => None,
@@ -1935,52 +2381,23 @@ fn hydration_branch_read_returning_statements<'a>(
     ctx: &LintContext<'a>,
     visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
-) -> Option<bool> {
+) -> HydrationStatementResult {
     for statement in statements {
-        match statement {
-            Statement::ReturnStatement(return_statement) => {
-                return hydration_branch_read_condition(
-                    return_statement.argument.as_ref()?,
-                    client_runtime,
-                    ctx,
-                    visited_symbols,
-                    visited_functions,
-                );
-            }
-            Statement::IfStatement(if_statement) => {
-                let condition = hydration_branch_read_condition(
-                    &if_statement.test,
-                    client_runtime,
-                    ctx,
-                    visited_symbols,
-                    visited_functions,
-                );
-                if let Some(condition) = condition {
-                    let selected = if condition {
-                        Some(&if_statement.consequent)
-                    } else {
-                        if_statement.alternate.as_ref()
-                    };
-                    if let Some(result) = selected.and_then(|selected| {
-                        hydration_branch_read_returning_statement(
-                            selected,
-                            client_runtime,
-                            ctx,
-                            visited_symbols,
-                            visited_functions,
-                        )
-                    }) {
-                        return Some(result);
-                    }
-                }
-            }
-            _ => {}
+        let result = hydration_branch_read_returning_statement(
+            statement,
+            client_runtime,
+            ctx,
+            visited_symbols,
+            visited_functions,
+        );
+        if result.did_return {
+            return result;
         }
         if statement_always_exits(statement) {
             break;
         }
     }
-    None
+    HydrationStatementResult::default()
 }
 
 fn hydration_branch_read_returning_statement<'a>(
@@ -1989,15 +2406,20 @@ fn hydration_branch_read_returning_statement<'a>(
     ctx: &LintContext<'a>,
     visited_symbols: &mut HydrationBranchSymbols,
     visited_functions: &mut FxHashSet<NodeId>,
-) -> Option<bool> {
+) -> HydrationStatementResult {
     match statement {
-        Statement::ReturnStatement(return_statement) => hydration_branch_read_condition(
-            return_statement.argument.as_ref()?,
-            client_runtime,
-            ctx,
-            visited_symbols,
-            visited_functions,
-        ),
+        Statement::ReturnStatement(return_statement) => HydrationStatementResult {
+            did_return: true,
+            value: return_statement.argument.as_ref().and_then(|argument| {
+                hydration_branch_read_condition(
+                    argument,
+                    client_runtime,
+                    ctx,
+                    visited_symbols,
+                    visited_functions,
+                )
+            }),
+        },
         Statement::BlockStatement(block) => hydration_branch_read_returning_statements(
             &block.body,
             client_runtime,
@@ -2005,7 +2427,61 @@ fn hydration_branch_read_returning_statement<'a>(
             visited_symbols,
             visited_functions,
         ),
-        _ => None,
+        Statement::IfStatement(if_statement) => {
+            if let Some(condition) = hydration_branch_read_condition(
+                &if_statement.test,
+                client_runtime,
+                ctx,
+                visited_symbols,
+                visited_functions,
+            ) {
+                let selected = if condition {
+                    Some(&if_statement.consequent)
+                } else {
+                    if_statement.alternate.as_ref()
+                };
+                return selected.map_or_else(HydrationStatementResult::default, |selected| {
+                    hydration_branch_read_returning_statement(
+                        selected,
+                        client_runtime,
+                        ctx,
+                        visited_symbols,
+                        visited_functions,
+                    )
+                });
+            }
+            let consequent = hydration_branch_read_returning_statement(
+                &if_statement.consequent,
+                client_runtime,
+                ctx,
+                visited_symbols,
+                visited_functions,
+            );
+            let alternate = if_statement.alternate.as_ref().map_or_else(
+                HydrationStatementResult::default,
+                |alternate| {
+                    hydration_branch_read_returning_statement(
+                        alternate,
+                        client_runtime,
+                        ctx,
+                        visited_symbols,
+                        visited_functions,
+                    )
+                },
+            );
+            HydrationStatementResult {
+                did_return: consequent.did_return || alternate.did_return,
+                value: if consequent.did_return
+                    && alternate.did_return
+                    && consequent.value == alternate.value
+                {
+                    consequent.value
+                } else {
+                    None
+                },
+            }
+        }
+        _ => HydrationStatementResult::default(),
     }
 }
 

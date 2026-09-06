@@ -1070,6 +1070,9 @@ impl Rule for ExhaustiveDeps {
                 {
                     return false;
                 }
+                if is_use_callback_result_dependency(dependency, ctx) {
+                    return true;
+                }
                 if !is_effect {
                     return !is_extra_dependency_allowed_for_hook(
                         hook_name,
@@ -1206,6 +1209,31 @@ fn symbol_is_parameter(symbol_id: SymbolId, ctx: &LintContext<'_>) -> bool {
                     .any(|identifier| identifier.symbol_id() == symbol_id)
             })
         })
+}
+
+fn is_use_callback_result_dependency(dependency: &Dependency<'_>, ctx: &LintContext<'_>) -> bool {
+    dependency.symbol_id.is_some_and(|symbol_id| {
+        matches!(ctx.symbol_declaration(symbol_id).kind(), AstKind::VariableDeclarator(declarator)
+        if declarator.init.as_ref().is_some_and(|initializer| {
+            let Expression::CallExpression(call) = initializer.get_inner_expression() else {
+                return false;
+            };
+            match call.callee.get_inner_expression() {
+                Expression::Identifier(identifier) => {
+                    if let Some(entry) = resolve_identifier_import(identifier, ctx)
+                        && entry.module_request.name() == "react"
+                        && let crate::module_record::ImportImportName::Name(imported_name) =
+                            &entry.import_name
+                    {
+                        return imported_name.name() == "useCallback";
+                    }
+                    identifier.name == "useCallback"
+                }
+                Expression::StaticMemberExpression(member) => member.property.name == "useCallback",
+                _ => false,
+            }
+        }))
+    })
 }
 
 fn is_extra_dependency_allowed_for_hook<'a>(

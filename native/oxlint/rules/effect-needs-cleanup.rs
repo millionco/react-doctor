@@ -200,12 +200,6 @@ fn effect_cleanup_check_effect<'a>(effect_call: &'a CallExpression<'a>, ctx: &Li
                     .external_listener_function_ids
                     .contains(&function_id)
             });
-        if is_external_listener_timer
-            && !effect_cleanup_resource_is_stored_in_react_ref(usage.node_id, ctx)
-            && !effect_cleanup_deferred_timer_has_lifecycle_guard(usage, callback_id, ctx)
-        {
-            return true;
-        }
         if effect_cleanup_has_split_lifecycle_release(usage, callback_id, ctx)
             && effect_cleanup_releases_previous_handle(usage, ctx)
         {
@@ -254,6 +248,12 @@ fn effect_cleanup_check_effect<'a>(effect_call: &'a CallExpression<'a>, ctx: &Li
             )
         {
             return false;
+        }
+        if is_external_listener_timer
+            && !effect_cleanup_resource_is_stored_in_react_ref(usage.node_id, ctx)
+            && !effect_cleanup_deferred_timer_has_lifecycle_guard(usage, callback_id, ctx)
+        {
+            return true;
         }
         effect_cleanup_has_competing_deferred_allocations(usage, &usages, callback_id, ctx)
             || !has_returned_release
@@ -1755,6 +1755,95 @@ fn effect_cleanup_releases_previous_handle(usage: &ResourceUsage, ctx: &LintCont
     })
 }
 
+fn effect_cleanup_call_or_helper_releases_usage<'a>(
+    node_id: NodeId,
+    call: &'a CallExpression<'a>,
+    usage: &ResourceUsage,
+    ctx: &LintContext<'a>,
+) -> bool {
+    effect_cleanup_release_call_matches(node_id, call, usage, ctx, &FxHashMap::default())
+        || effect_cleanup_exact_local_function_id(&call.callee, ctx, &mut FxHashSet::default())
+            .is_some_and(|helper_id| {
+                !effect_cleanup_function_is_async(helper_id, ctx)
+                    && !effect_cleanup_function_is_generator(helper_id, ctx)
+                    && effect_cleanup_helper_parameter_keys(
+                        helper_id,
+                        call,
+                        &FxHashMap::default(),
+                        ctx,
+                    )
+                    .is_some_and(|parameter_keys| {
+                        effect_cleanup_function_releases_usage_with_parameter_keys(
+                            helper_id,
+                            usage,
+                            ctx,
+                            &mut FxHashSet::default(),
+                            &parameter_keys,
+                        )
+                    })
+            })
+}
+
+fn effect_cleanup_has_live_handle_overwrite_protection(
+    usage: &ResourceUsage,
+    ctx: &LintContext<'_>,
+) -> bool {
+    let Some(owner_id) = effect_cleanup_nearest_function_id(usage.node_id, ctx) else {
+        return false;
+    };
+    let release_nodes = ctx
+        .nodes()
+        .iter()
+        .filter_map(|candidate| {
+            if candidate.span().start >= usage.span.start
+                || effect_cleanup_nearest_function_id(candidate.id(), ctx) != Some(owner_id)
+            {
+                return None;
+            }
+            if let AstKind::IfStatement(statement) = candidate.kind()
+                && statement.alternate.is_none()
+                && usage.handle_key.as_ref().is_some_and(|handle_key| {
+                    effect_cleanup_test_requires_live_handle(
+                        &statement.test,
+                        handle_key,
+                        &FxHashMap::default(),
+                        ctx,
+                    )
+                })
+                && !can_node_reach_later_node_within_function(
+                    ctx.nodes().get_node(statement.consequent.node_id()),
+                    ctx.nodes().get_node(usage.node_id),
+                    ctx.nodes().get_node(owner_id),
+                    ctx,
+                )
+            {
+                return Some(candidate);
+            }
+            let AstKind::CallExpression(call) = candidate.kind() else {
+                return None;
+            };
+            let releases_usage =
+                effect_cleanup_call_or_helper_releases_usage(candidate.id(), call, usage, ctx);
+            releases_usage.then(|| {
+                effect_cleanup_live_handle_guard(
+                    candidate,
+                    owner_id,
+                    usage,
+                    &FxHashMap::default(),
+                    ctx,
+                )
+                .unwrap_or(candidate)
+            })
+        })
+        .collect::<Vec<_>>();
+    effect_cleanup_nodes_cover_every_path_before_node(
+        ctx.nodes().get_node(usage.node_id),
+        &release_nodes,
+        ctx.nodes().get_node(owner_id),
+        ctx,
+    )
+}
+
 fn effect_cleanup_resource_is_stored_in_react_ref(
     resource_node_id: NodeId,
     ctx: &LintContext<'_>,
@@ -2938,9 +3027,7 @@ fn effect_cleanup_has_safe_timer_handle_writes(
             let AstKind::CallExpression(call) = candidate.kind() else {
                 return false;
             };
-            effect_cleanup_release_call_matches(candidate.id(), call, usage, ctx, &FxHashMap::default())
-                || effect_cleanup_exact_local_function_id(&call.callee, ctx, &mut FxHashSet::default())
-                    .is_some_and(|helper| effect_cleanup_function_releases_usage(helper, usage, ctx, &mut FxHashSet::default()))
+            effect_cleanup_call_or_helper_releases_usage(candidate.id(), call, usage, ctx)
         }).collect::<Vec<_>>();
         effect_cleanup_nodes_cover_every_path_before_node(
             assignment_node, &release_nodes, ctx.nodes().get_node(owner_id), ctx,
@@ -3340,18 +3427,82 @@ fn effect_cleanup_has_owned_nested_timer_cleanup(
     else {
         return false;
     };
-    let invocations = ctx
-        .scoping()
-        .get_resolved_references(owner_symbol)
-        .map(|reference| effect_cleanup_direct_call_for_reference(reference.node_id(), ctx))
-        .collect::<Option<Vec<_>>>();
-    let Some(invocations) = invocations.filter(|invocations| !invocations.is_empty()) else {
-        return false;
+    let has_owned_callback = |function_id| {
+        usages.iter().any(|candidate| {
+            if candidate.node_id == usage.node_id || candidate.kind == ResourceKind::Socket {
+                return false;
+            }
+            let AstKind::CallExpression(call) = ctx.nodes().get_node(candidate.node_id).kind()
+            else {
+                return false;
+            };
+            if call
+                .arguments
+                .get(usize::from(
+                    candidate.kind == ResourceKind::Subscribe && call.arguments.len() != 1,
+                ))
+                .and_then(Argument::as_expression)
+                .and_then(|callback| {
+                    effect_cleanup_exact_local_function_id(callback, ctx, &mut FxHashSet::default())
+                })
+                != Some(function_id)
+            {
+                return false;
+            }
+            let matching_returns = ctx
+                .nodes()
+                .iter()
+                .filter(|node| {
+                    effect_cleanup_nearest_function_id(node.id(), ctx) == Some(callback_id)
+                        && matches!(node.kind(), AstKind::ReturnStatement(statement)
+                        if statement.argument.as_ref().is_some_and(|argument| {
+                            returns.iter().any(|expression| expression.span() == argument.span())
+                                && effect_cleanup_return_expression_releases_usage(
+                                    argument, candidate, execution_function_ids, ctx,
+                                )
+                        }))
+                })
+                .collect::<Vec<_>>();
+            let mut registration_node = ctx.nodes().get_node(candidate.node_id);
+            if let Some(registration_owner) =
+                effect_cleanup_nearest_function_id(candidate.node_id, ctx)
+                && registration_owner != callback_id
+            {
+                let Some(invocation_id) =
+                    effect_cleanup_single_direct_invocation(registration_owner, callback_id, ctx)
+                else {
+                    return false;
+                };
+                registration_node = ctx.nodes().get_node(invocation_id);
+            }
+            do_nodes_cover_every_path_after_node(
+                registration_node,
+                &matching_returns,
+                ctx.nodes().get_node(callback_id),
+                ctx,
+            )
+        })
     };
-    if handle_symbol.is_some()
-        && invocations.len() > 1
-        && !effect_cleanup_releases_previous_handle(usage, ctx)
-    {
+    let mut invocations = Vec::new();
+    let mut has_callback_reference = false;
+    for reference in ctx.scoping().get_resolved_references(owner_symbol) {
+        if let Some(invocation) = effect_cleanup_direct_call_for_reference(reference.node_id(), ctx)
+        {
+            invocations.push(invocation);
+        } else if has_owned_callback(owner_id) {
+            has_callback_reference = true;
+        } else {
+            return false;
+        }
+    }
+    if invocations.is_empty() && !has_callback_reference {
+        return false;
+    }
+    let has_overwrite_protection = effect_cleanup_has_live_handle_overwrite_protection(usage, ctx);
+    if handle_symbol.is_some() && has_callback_reference && !has_overwrite_protection {
+        return false;
+    }
+    if handle_symbol.is_some() && invocations.len() > 1 && !has_overwrite_protection {
         let mut direct_invocations = 0;
         for (index, invocation) in invocations.iter().enumerate() {
             let Some(invocation_owner) = effect_cleanup_nearest_function_id(invocation.id(), ctx)
@@ -3411,6 +3562,7 @@ fn effect_cleanup_has_owned_nested_timer_cleanup(
             );
         }
         effect_cleanup_is_timer_callback_for_same_handle(invocation_owner, usage, usages, ctx)
+            || has_owned_callback(invocation_owner)
             || invocation_owner == callback_id
                 && !effect_cleanup_usage_is_inside_loop(invocation.id(), callback_id, ctx)
     })
@@ -6541,6 +6693,34 @@ fn effect_cleanup_release_call_matches<'a>(
     };
     if receiver_key.as_ref() != Some(registration_receiver_key) {
         return false;
+    }
+    if registration_method != "observe"
+        && !matches!(
+            release_method.as_str(),
+            "removeEventListener" | "removeListener" | "off" | "on"
+        )
+    {
+        if !matches!(member, MemberExpression::StaticMemberExpression(_))
+            || effect_cleanup_resource_identity_key(member.object(), ctx).as_ref()
+                != Some(registration_receiver_key)
+        {
+            return false;
+        }
+        let release_event_key = call
+            .arguments
+            .first()
+            .and_then(Argument::as_expression)
+            .and_then(|argument| effect_cleanup_resource_identity_key(argument, ctx));
+        if registration_method == "subscribe"
+            && matches!(release_method.as_str(), "unsubscribe" | "unsub")
+            && usage.handle_key.is_some()
+            && usage.handle_key == effect_cleanup_call_argument_key(call, 0, ctx)
+        {
+            return true;
+        }
+        return usage.event_key.is_none()
+            || release_event_key.is_none()
+            || usage.event_key == release_event_key;
     }
     if matches!(registration_method, "observe") {
         if release_method == "disconnect"

@@ -3666,7 +3666,7 @@ fn window_open_tsconfig_pattern_matches(module_source: &str, pattern: &str) -> b
         && module_source.ends_with(suffix)
 }
 
-fn window_open_strip_json_comments_and_trailing_commas(source: &str) -> String {
+pub(super) fn window_open_strip_json_comments_and_trailing_commas(source: &str) -> String {
     let characters: Vec<char> = source.chars().collect();
     let mut without_comments = String::with_capacity(source.len());
     let mut index = 0;

@@ -9,7 +9,9 @@ import { reactRouterNoInvalidSplatPath } from "./correctness/react-router-no-inv
 import { reactRouterNoMiddlewareResponseBodyConsumption } from "./correctness/react-router-no-middleware-response-body-consumption.js";
 import { reactRouterNoMultipleBlockers } from "./correctness/react-router-no-multiple-blockers.js";
 import { reactRouterNoNestedRouter } from "./correctness/react-router-no-nested-router.js";
+import { reactRouterNoRouteModuleEnvironmentSuffix } from "./correctness/react-router-no-route-module-environment-suffix.js";
 import { reactRouterNoStaticCookieExpires } from "./correctness/react-router-no-static-cookie-expires.js";
+import { reactRouterNoUseLoaderDataInErrorUi } from "./correctness/react-router-no-use-loader-data-in-error-ui.js";
 import { reactRouterResourceLinkRequiresReload } from "./correctness/react-router-resource-link-requires-reload.js";
 import { reactRouterReturnNavigationPromiseInTransition } from "./correctness/react-router-return-navigation-promise-in-transition.js";
 import { reactRouterSessionMutationRequiresCommit } from "./correctness/react-router-session-mutation-requires-commit.js";
@@ -169,6 +171,64 @@ describe("React Router adversarial rule contracts", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("recognizes a React Router config filename with Windows separators", () => {
+    const result = runRule(
+      reactRouterV8NoRemovedFutureFlags,
+      "export default { future: { v8_middleware: true } };",
+      {
+        ...V8_FRAMEWORK_CONFIG_OPTIONS,
+        filename: "C:\\project\\react-router.config.ts",
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes a route module suffix with Windows separators", () => {
+    const result = runRule(
+      reactRouterNoRouteModuleEnvironmentSuffix,
+      "export default function DashboardRoute() { return null; }",
+      {
+        filename: "C:\\project\\app\\routes\\dashboard.server.tsx",
+        settings: {
+          "react-doctor": { capabilities: ["react-router:7", "react-router-framework"] },
+        },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes a server entry with Windows separators", () => {
+    const result = runRule(
+      reactRouterGuardAbortedHandleError,
+      "export function handleError(error, { request }) { console.error(error); }",
+      {
+        filename: "C:\\project\\app\\entry.server.tsx",
+        settings: {
+          "react-doctor": { capabilities: ["react-router:7", "react-router-framework"] },
+        },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes a framework root layout with Windows separators", () => {
+    const result = runRule(
+      reactRouterNoUseLoaderDataInErrorUi,
+      'import { useLoaderData } from "react-router"; export function Layout() { useLoaderData(); return null; }',
+      {
+        filename: "C:\\project\\app\\root.tsx",
+        settings: {
+          "react-doctor": { capabilities: ["react-router:7", "react-router-framework"] },
+        },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("accepts explicitly undefined route properties", () => {

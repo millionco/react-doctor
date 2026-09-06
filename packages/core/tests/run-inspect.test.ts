@@ -39,7 +39,21 @@ import { Project } from "../src/services/project.js";
 import { Reporter, ReporterCapture } from "../src/services/reporter.js";
 import { Score } from "../src/services/score.js";
 import { SupplyChain } from "../src/services/supply-chain.js";
-import { PROJECT_ANALYSIS_WORKER_TIMEOUT_MS } from "../src/constants.js";
+import {
+  PROJECT_ANALYSIS_WORKER_TIMEOUT_MS,
+  REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV,
+} from "../src/constants.js";
+
+const RETAINED_NATIVE_SCAN_RULE_IDS = [
+  "active-static-asset",
+  "dangerous-html-sink",
+  "nosql-injection-risk",
+  "raw-sql-injection-risk",
+  "supabase-client-owned-authz-field",
+  "supabase-rls-policy-risk",
+  "supabase-table-missing-rls",
+  "unsafe-json-in-html",
+];
 
 const temporaryDirectories: string[] = [];
 afterAll(() => {
@@ -1745,6 +1759,63 @@ describe("runInspect — security scan rules in the environment-checks phase", (
       Reporter.layerNoop,
     );
 
+  const nativeScanRuleLayersOf = (rootDirectory: string, config: ReactDoctorConfig | null = null) =>
+    Layer.mergeAll(
+      Project.layerOf({ ...sampleProject, rootDirectory }),
+      Config.layerOf({ config, resolvedDirectory: rootDirectory, configSourceDirectory: null }),
+      Files.layerNode,
+      Linter.layerOf([]),
+      LintPartialFailures.layerLive,
+      DeadCode.layerOf([]),
+      Git.layerOf({}),
+      Score.layerOf(null),
+      SupplyChain.layerOf([]),
+      Progress.layerNoop,
+      Reporter.layerNoop,
+    );
+
+  const makeNativeScanRuleProject = (sourceContent: string) => {
+    const rootDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "react-doctor-native-security-scan-"),
+    );
+    const bindingDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "react-doctor-native-security-binding-"),
+    );
+    temporaryDirectories.push(rootDirectory, bindingDirectory);
+
+    const sourcePath = path.join(rootDirectory, "src", "native.tsx");
+    const bindingPath = path.join(bindingDirectory, "native-scan-binding.cjs");
+    const capturePath = path.join(bindingDirectory, "native-scan-inputs.jsonl");
+    fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+    fs.writeFileSync(sourcePath, sourceContent);
+    fs.writeFileSync(
+      bindingPath,
+      `const fs = require("node:fs");
+const capturePath = ${JSON.stringify(capturePath)};
+const ruleIds = ${JSON.stringify(RETAINED_NATIVE_SCAN_RULE_IDS)};
+module.exports = {
+  reactDoctorNativeScanRuleIds: () => ruleIds,
+  scanReactDoctorFile: (inputJson) => {
+    const input = JSON.parse(inputJson);
+    fs.appendFileSync(capturePath, JSON.stringify(input) + "\\n");
+    const findings = Object.fromEntries(input.ruleIds.map((ruleId) => [ruleId, []]));
+    if (input.ruleIds.includes("dangerous-html-sink")) {
+      findings["dangerous-html-sink"].push({
+        message: "native retained scan marker",
+        line: input.content.includes("react-doctor-disable-next-line") ? 2 : 1,
+        column: 7,
+      });
+    }
+    return JSON.stringify(findings);
+  },
+};
+`,
+    );
+    process.env[REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV] = bindingPath;
+
+    return { rootDirectory, sourcePath, capturePath };
+  };
+
   it("emits scan-rule diagnostics in a full scan", async () => {
     const rootDirectory = makeScanRuleProject();
     const output = await Effect.runPromise(
@@ -1784,5 +1855,117 @@ describe("runInspect — security scan rules in the environment-checks phase", (
     const scanDiagnostics = output.diagnostics.filter((d) => d.rule === "public-debug-artifact");
     expect(scanDiagnostics).toHaveLength(1);
     expect(scanDiagnostics[0]?.severity).toBe("error");
+  });
+
+  it("routes retained native scans through final config and suppression behavior", async () => {
+    const originalNativeBindingPath = process.env[REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV];
+    const sourceContent = 'export const value = "safe";\n';
+    const { rootDirectory, sourcePath, capturePath } = makeNativeScanRuleProject(sourceContent);
+    const runNativeScan = (
+      config: ReactDoctorConfig | null = null,
+      input: Partial<InspectInput> = {},
+    ) =>
+      Effect.runPromise(
+        runInspect({ ...baseInput, directory: rootDirectory, ...input }).pipe(
+          Effect.provide(nativeScanRuleLayersOf(rootDirectory, config)),
+        ),
+      );
+    const nativeDiagnosticsOf = (diagnostics: ReadonlyArray<Diagnostic>) =>
+      diagnostics.filter((diagnostic) => diagnostic.rule === "dangerous-html-sink");
+
+    try {
+      const baselineOutput = await runNativeScan();
+      expect(nativeDiagnosticsOf(baselineOutput.diagnostics)).toEqual([
+        {
+          filePath: "src/native.tsx",
+          plugin: "react-doctor",
+          rule: "dangerous-html-sink",
+          severity: "warning",
+          title: "HTML injection sink with dynamic content",
+          message: "native retained scan marker",
+          help: "Prefer rendering structured React nodes. If HTML is required, sanitize with a well-reviewed sanitizer and keep the trust boundary close to the sink.",
+          line: 1,
+          column: 7,
+          category: "Security",
+        },
+      ]);
+      expect(
+        fs
+          .readFileSync(capturePath, "utf8")
+          .trimEnd()
+          .split("\n")
+          .map((line) => JSON.parse(line)),
+      ).toEqual([
+        {
+          absolutePath: sourcePath,
+          relativePath: "src/native.tsx",
+          content: sourceContent,
+          isGeneratedBundle: false,
+          ruleIds: RETAINED_NATIVE_SCAN_RULE_IDS,
+        },
+      ]);
+
+      const ignoredTagOutput = await runNativeScan(null, {
+        ignoredTags: new Set(["security-scan"]),
+      });
+      expect(nativeDiagnosticsOf(ignoredTagOutput.diagnostics)).toEqual([]);
+      expect(fs.readFileSync(capturePath, "utf8").trimEnd().split("\n")).toHaveLength(1);
+
+      const severityOutput = await runNativeScan({
+        rules: { "react-doctor/dangerous-html-sink": "error" },
+      });
+      expect(nativeDiagnosticsOf(severityOutput.diagnostics)[0]?.severity).toBe("error");
+
+      const offOutput = await runNativeScan({
+        rules: { "react-doctor/dangerous-html-sink": "off" },
+      });
+      expect(nativeDiagnosticsOf(offOutput.diagnostics)).toEqual([]);
+      expect(offOutput.suppressedRuleCounts).toEqual([
+        { rule: "react-doctor/dangerous-html-sink", source: "config", count: 1 },
+      ]);
+
+      const ignoredRuleOutput = await runNativeScan({
+        ignore: { rules: ["react-doctor/dangerous-html-sink"] },
+      });
+      expect(nativeDiagnosticsOf(ignoredRuleOutput.diagnostics)).toEqual([]);
+      expect(ignoredRuleOutput.suppressedRuleCounts).toEqual([
+        { rule: "react-doctor/dangerous-html-sink", source: "config", count: 1 },
+      ]);
+
+      const overrideOutput = await runNativeScan({
+        ignore: {
+          overrides: [{ files: ["src/native.tsx"], rules: ["react-doctor/dangerous-html-sink"] }],
+        },
+      });
+      expect(nativeDiagnosticsOf(overrideOutput.diagnostics)).toEqual([]);
+      expect(overrideOutput.suppressedRuleCounts).toEqual([
+        { rule: "react-doctor/dangerous-html-sink", source: "override", count: 1 },
+      ]);
+
+      fs.writeFileSync(
+        sourcePath,
+        `// react-doctor-disable-next-line react-doctor/dangerous-html-sink\n${sourceContent}`,
+      );
+      const inlineOutput = await runNativeScan();
+      expect(nativeDiagnosticsOf(inlineOutput.diagnostics)).toEqual([]);
+      expect(inlineOutput.suppressedRuleCounts).toEqual([
+        { rule: "react-doctor/dangerous-html-sink", source: "inline", count: 1 },
+      ]);
+
+      const inlineDisabledOutput = await runNativeScan(null, {
+        respectInlineDisables: false,
+      });
+      expect(nativeDiagnosticsOf(inlineDisabledOutput.diagnostics)[0]).toMatchObject({
+        message: "native retained scan marker",
+        line: 2,
+        column: 7,
+      });
+    } finally {
+      if (originalNativeBindingPath === undefined) {
+        delete process.env[REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV];
+      } else {
+        process.env[REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV] = originalNativeBindingPath;
+      }
+    }
   });
 });

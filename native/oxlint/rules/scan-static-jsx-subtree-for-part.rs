@@ -1,0 +1,73 @@
+struct StaticJsxPartScan {
+    found_part: bool,
+    saw_opaque_content: bool,
+}
+
+fn scan_static_jsx_subtree_for_part<'a, IsPartElement, IsOpaqueElement>(
+    children: &'a [oxc_ast::ast::JSXChild<'a>],
+    ctx: &crate::context::LintContext<'a>,
+    mut is_part_element: IsPartElement,
+    mut is_opaque_element: IsOpaqueElement,
+) -> StaticJsxPartScan
+where
+    IsPartElement: FnMut(&oxc_ast::ast::JSXElement<'a>) -> bool,
+    IsOpaqueElement: FnMut(&oxc_ast::ast::JSXElement<'a>) -> bool,
+{
+    use std::cell::Cell;
+
+    let found_part = Cell::new(false);
+    let saw_opaque_content = Cell::new(false);
+    visit_static_jsx_children(
+        children,
+        &mut |element| {
+            if is_part_element(element) {
+                found_part.set(true);
+                return false;
+            }
+            if find_jsx_attribute(&element.opening_element, "render").is_some_and(|attribute| {
+                jsx_attribute_contains_part(attribute, ctx, &mut is_part_element)
+            }) {
+                found_part.set(true);
+            }
+            if is_opaque_element(element) {
+                saw_opaque_content.set(true);
+            }
+            true
+        },
+        &mut || saw_opaque_content.set(true),
+        &mut || {},
+    );
+    StaticJsxPartScan {
+        found_part: found_part.get(),
+        saw_opaque_content: saw_opaque_content.get(),
+    }
+}
+
+fn jsx_attribute_contains_part<'a, IsPartElement>(
+    attribute: &oxc_ast::ast::JSXAttribute<'a>,
+    ctx: &crate::context::LintContext<'a>,
+    is_part_element: &mut IsPartElement,
+) -> bool
+where
+    IsPartElement: FnMut(&oxc_ast::ast::JSXElement<'a>) -> bool,
+{
+    use oxc_ast::AstKind;
+    use oxc_span::GetSpan;
+
+    let Some(value) = &attribute.value else {
+        return false;
+    };
+    let value_span = value.span();
+    ctx.nodes().iter().any(|candidate| {
+        let AstKind::JSXOpeningElement(opening_element) = candidate.kind() else {
+            return false;
+        };
+        let candidate_span = opening_element.span;
+        candidate_span.start >= value_span.start
+            && candidate_span.end <= value_span.end
+            && matches!(
+                ctx.nodes().parent_node(candidate.id()).kind(),
+                AstKind::JSXElement(element) if is_part_element(element)
+            )
+    })
+}

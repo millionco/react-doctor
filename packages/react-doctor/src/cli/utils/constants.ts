@@ -19,6 +19,8 @@ export const NODE_ARGUMENT_COUNT = 2;
 // once-per-repo prompt decisions (CI pitch, action upgrade).
 export const REACT_DOCTOR_CONFIG_PROJECT_NAME = "react-doctor";
 
+export const REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV = "REACT_DOCTOR_NATIVE_OXLINT_BINDING_PATH";
+
 export const STAGED_FILES_TEMP_DIR_PREFIX = "react-doctor-staged-";
 export const STAGED_SNAPSHOT_ADDITIONAL_CONFIG_FILENAMES = [
   ".babelrc",

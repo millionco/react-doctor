@@ -118,15 +118,34 @@ interface StalePackageReport {
   skippedDependencies: SkippedDependency[];
 }
 
+export interface DeclaredDependencyAnalysisInput {
+  name: string;
+  isDevDependency: boolean;
+  isAlwaysConsideredUsed: boolean;
+}
+
+export interface StalePackageAnalysisInput {
+  declaredDependencies: DeclaredDependencyAnalysisInput[];
+  sortedDeclaredDependencyNames: string[];
+  observedPackageNames: string[];
+  usedPackageNames: string[];
+  peerSatisfiedPackageNames: string[];
+  ambiguousBinaryPackageNames: string[];
+  sourceFileRescuedPackageNames: string[];
+  overrideMappings: OverrideMapping[];
+  finalPeerSatisfiedPackageNames: string[];
+  isPeerMetadataComplete: boolean;
+}
+
 interface PackageReferenceCollection {
   referencedPackageNames: Set<string>;
   ambiguousPackageNames: Set<string>;
 }
 
-export const detectStalePackages = (
+export const collectStalePackageAnalysisInput = (
   graph: DependencyGraph,
   config: ProjectAnalysisConfig,
-): StalePackageReport => {
+): StalePackageAnalysisInput | null => {
   const packageJsonPath = resolve(config.rootDir, "package.json");
   let packageJson: PackageJsonDependencies;
 
@@ -134,7 +153,7 @@ export const detectStalePackages = (
     const content = readFileSync(packageJsonPath, "utf-8");
     packageJson = JSON.parse(content);
   } catch {
-    return { unusedDependencies: [], skippedDependencies: [] };
+    return null;
   }
 
   const dependencies = packageJson.dependencies ?? {};
@@ -406,45 +425,29 @@ export const detectStalePackages = (
   let isPeerMetadataComplete = initialPeerCollection.isPeerMetadataComplete;
   for (const packageName of peerSatisfiedPackageNames) usedPackageNames.add(packageName);
 
+  const observedPackageNamesBeforeCandidateResolution = [...observedPackageNames];
+  const usedPackageNamesBeforeCandidateResolution = [...usedPackageNames];
+
   const overrideMappings = collectOverrideMappings(
     configSearchRoots,
     allPackageJsonPaths,
     monorepoRoot,
   );
 
-  const candidateUnused = new Set<string>();
-  const skippedDependenciesByName = new Map<string, Set<SkippedDependencyReason>>();
-  const recordSkippedDependency = (
-    dependencyName: string,
-    reason: SkippedDependencyReason,
-  ): void => {
-    const reasons = skippedDependenciesByName.get(dependencyName) ?? new Set();
-    reasons.add(reason);
-    skippedDependenciesByName.set(dependencyName, reasons);
-  };
+  const candidateUnused = new Set(
+    [...declaredDependencies.keys()].filter(
+      (dependencyName) =>
+        !isAlwaysConsideredUsed(dependencyName) &&
+        !usedPackageNames.has(dependencyName) &&
+        !ambiguousBinaryPackageNames.has(dependencyName),
+    ),
+  );
 
-  for (const [dependencyName] of declaredDependencies) {
-    if (observedPackageNames.has(dependencyName) || peerSatisfiedPackageNames.has(dependencyName)) {
-      continue;
-    }
-    if (isAlwaysConsideredUsed(dependencyName)) {
-      recordSkippedDependency(dependencyName, "allowlisted-name");
-    }
-    if (ambiguousBinaryPackageNames.has(dependencyName)) {
-      recordSkippedDependency(dependencyName, "ambiguous-binary");
-    }
-  }
-
-  for (const [dependencyName] of declaredDependencies) {
-    if (isAlwaysConsideredUsed(dependencyName)) continue;
-    if (usedPackageNames.has(dependencyName)) continue;
-    if (ambiguousBinaryPackageNames.has(dependencyName)) continue;
-    candidateUnused.add(dependencyName);
-  }
-
+  const sourceFileRescuedPackageNames: string[] = [];
   if (candidateUnused.size > 0) {
     const sourceFileRescued = scanSourceFilesForPackageImports(config.rootDir, candidateUnused);
     for (const packageName of sourceFileRescued) {
+      sourceFileRescuedPackageNames.push(packageName);
       markPackageUsed(packageName);
       candidateUnused.delete(packageName);
     }
@@ -471,34 +474,128 @@ export const detectStalePackages = (
     candidateUnused.delete(packageName);
   }
 
-  if (!isPeerMetadataComplete) {
+  return {
+    declaredDependencies: [...declaredDependencies].map(([name, isDevDependency]) => ({
+      name,
+      isDevDependency,
+      isAlwaysConsideredUsed: isAlwaysConsideredUsed(name),
+    })),
+    sortedDeclaredDependencyNames: [...declaredNames].sort((leftName, rightName) =>
+      leftName.localeCompare(rightName),
+    ),
+    observedPackageNames: observedPackageNamesBeforeCandidateResolution,
+    usedPackageNames: usedPackageNamesBeforeCandidateResolution,
+    peerSatisfiedPackageNames: [...peerSatisfiedPackageNames],
+    ambiguousBinaryPackageNames: [...ambiguousBinaryPackageNames],
+    sourceFileRescuedPackageNames,
+    overrideMappings,
+    finalPeerSatisfiedPackageNames: [...finalPeerCollection.peerSatisfiedPackageNames],
+    isPeerMetadataComplete,
+  };
+};
+
+export const analyzeStalePackageInput = (input: StalePackageAnalysisInput): StalePackageReport => {
+  const declaredNames = new Set(input.declaredDependencies.map((dependency) => dependency.name));
+  const observedPackageNames = new Set(input.observedPackageNames);
+  const usedPackageNames = new Set(input.usedPackageNames);
+  const peerSatisfiedPackageNames = new Set(input.peerSatisfiedPackageNames);
+  const ambiguousBinaryPackageNames = new Set(input.ambiguousBinaryPackageNames);
+  const skippedDependenciesByName = new Map<string, Set<SkippedDependencyReason>>();
+  const recordSkippedDependency = (
+    dependencyName: string,
+    reason: SkippedDependencyReason,
+  ): void => {
+    const reasons = skippedDependenciesByName.get(dependencyName) ?? new Set();
+    reasons.add(reason);
+    skippedDependenciesByName.set(dependencyName, reasons);
+  };
+
+  for (const dependency of input.declaredDependencies) {
+    if (
+      observedPackageNames.has(dependency.name) ||
+      peerSatisfiedPackageNames.has(dependency.name)
+    ) {
+      continue;
+    }
+    if (dependency.isAlwaysConsideredUsed) {
+      recordSkippedDependency(dependency.name, "allowlisted-name");
+    }
+    if (ambiguousBinaryPackageNames.has(dependency.name)) {
+      recordSkippedDependency(dependency.name, "ambiguous-binary");
+    }
+  }
+
+  const candidateUnused = new Set(
+    input.declaredDependencies
+      .filter(
+        (dependency) =>
+          !dependency.isAlwaysConsideredUsed &&
+          !usedPackageNames.has(dependency.name) &&
+          !ambiguousBinaryPackageNames.has(dependency.name),
+      )
+      .map((dependency) => dependency.name),
+  );
+
+  for (const packageName of input.sourceFileRescuedPackageNames) {
+    usedPackageNames.add(packageName);
+    candidateUnused.delete(packageName);
+  }
+
+  for (const { fromPackage, toPackage } of input.overrideMappings) {
+    if (usedPackageNames.has(fromPackage) && declaredNames.has(toPackage)) {
+      usedPackageNames.add(toPackage);
+      candidateUnused.delete(toPackage);
+    }
+  }
+
+  for (const packageName of input.finalPeerSatisfiedPackageNames) {
+    usedPackageNames.add(packageName);
+    candidateUnused.delete(packageName);
+  }
+
+  if (!input.isPeerMetadataComplete) {
     for (const dependencyName of candidateUnused) {
       recordSkippedDependency(dependencyName, "incomplete-peer-metadata");
     }
     candidateUnused.clear();
   }
 
-  const unusedDependencies: UnusedDependency[] = [];
-
-  for (const dependencyName of candidateUnused) {
-    const isDevDependency = declaredDependencies.get(dependencyName) ?? false;
+  const declaredDependencyByName = new Map(
+    input.declaredDependencies.map((dependency) => [dependency.name, dependency]),
+  );
+  const unusedDependencies = [...candidateUnused].map((name) => {
+    const isDevDependency = declaredDependencyByName.get(name)?.isDevDependency ?? false;
     const dependencySection = isDevDependency ? "devDependencies" : "dependencies";
-    unusedDependencies.push({
-      name: dependencyName,
-      isDevDependency,
-      reason: `"${dependencyName}" is declared in ${dependencySection} but is never imported or referenced by any source file, script, or config — remove it from package.json if it is genuinely unused`,
-    });
-  }
-
-  const skippedDependencies = [...skippedDependenciesByName.entries()]
-    .sort(([leftName], [rightName]) => leftName.localeCompare(rightName))
-    .map(([name, reasons]) => ({
+    return {
       name,
-      isDevDependency: declaredDependencies.get(name) ?? false,
-      reasons: [...reasons].sort(),
-    }));
+      isDevDependency,
+      reason: `"${name}" is declared in ${dependencySection} but is never imported or referenced by any source file, script, or config — remove it from package.json if it is genuinely unused`,
+    };
+  });
+  const skippedDependencies = input.sortedDeclaredDependencyNames.flatMap((name) => {
+    const reasons = skippedDependenciesByName.get(name);
+    return reasons === undefined
+      ? []
+      : [
+          {
+            name,
+            isDevDependency: declaredDependencyByName.get(name)?.isDevDependency ?? false,
+            reasons: [...reasons].sort(),
+          },
+        ];
+  });
 
   return { unusedDependencies, skippedDependencies };
+};
+
+export const detectStalePackages = (
+  graph: DependencyGraph,
+  config: ProjectAnalysisConfig,
+): StalePackageReport => {
+  const input = collectStalePackageAnalysisInput(graph, config);
+  return input === null
+    ? { unusedDependencies: [], skippedDependencies: [] }
+    : analyzeStalePackageInput(input);
 };
 
 const collectUsedPackages = (

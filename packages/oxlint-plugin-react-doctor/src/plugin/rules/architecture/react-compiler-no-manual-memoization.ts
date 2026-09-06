@@ -166,7 +166,8 @@ export const reactCompilerNoManualMemoization = defineRule({
         if (apiName === "memo") {
           const comparatorArgument = node.arguments?.[1];
           if (comparatorArgument && !isNullishComparatorArgument(comparatorArgument)) return;
-          let wrappedComponent = stripParenExpression(node.arguments?.[0]);
+          const componentArgument = node.arguments?.[0];
+          let wrappedComponent = componentArgument ? stripParenExpression(componentArgument) : null;
           if (wrappedComponent && isNodeOfType(wrappedComponent, "Identifier")) {
             const componentBinding = findVariableInitializer(
               wrappedComponent,

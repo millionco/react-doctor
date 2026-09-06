@@ -15,6 +15,7 @@ import type {
   SuppressedRuleCount,
 } from "@react-doctor/core";
 import { buildRuleBlastRadii } from "./diagnostic-grouping.js";
+import { REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV } from "./constants.js";
 import { hasLintHardFailure } from "./has-lint-hard-failure.js";
 import { isInspectResultComplete } from "./is-inspect-result-complete.js";
 import { ACTION_INPUT_ENVIRONMENT_VARIABLES, detectRunnerOs } from "./is-ci-environment.js";
@@ -527,6 +528,11 @@ export const buildRunEventAttributes = (
   toSpanAttributes({
     ...buildScanAttributes(input),
     ...buildActionAttributes(),
+    ...withNamespace("lint", {
+      engine: process.env[REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV]?.trim()
+        ? "native-patch"
+        : "stock",
+    }),
     ...buildOutcomeAttributes(input),
     ...buildCacheAttributes(input),
   });

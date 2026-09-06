@@ -506,6 +506,7 @@ const coreRuleEntries = ruleEntries.map((entry) => {
           ? false
           : undefined,
       matchByOccurrence: sourceRule.matchByOccurrence,
+      lifecycle: sourceRule.lifecycle,
       isScanRule: typeof sourceRule.scan === "function",
       isProjectRule: sourceRule.execution === "project" ? true : undefined,
     },

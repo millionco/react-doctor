@@ -68,6 +68,7 @@ const resolvePluginFingerprint = (): string => {
 // marker rather than throwing, so the hash stays deterministic.
 export const resolveOxlintToolchainVersions = (
   nodeBinaryPath: string = process.execPath,
+  nativeBindingPath?: string,
 ): ReadonlyArray<string> => {
   const versions: string[] = [`node=${resolveChildNodeVersion(nodeBinaryPath)}`];
   for (const specifier of TOOLCHAIN_PACKAGE_SPECIFIERS) {
@@ -80,5 +81,17 @@ export const resolveOxlintToolchainVersions = (
     }
   }
   versions.push(`oxlint-plugin-react-doctor#fingerprint=${resolvePluginFingerprint()}`);
+  let nativeBindingFingerprint = "stock";
+  if (nativeBindingPath !== undefined) {
+    try {
+      nativeBindingFingerprint = fingerprintFileContents(
+        nativeBindingPath,
+        PLUGIN_FINGERPRINT_LENGTH_CHARS,
+      );
+    } catch {
+      nativeBindingFingerprint = "unresolved";
+    }
+  }
+  versions.push(`oxlint-native-binding#fingerprint=${nativeBindingFingerprint}`);
   return versions;
 };

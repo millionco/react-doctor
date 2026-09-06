@@ -9,7 +9,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
-const REACT_ROUTER_CONFIG_PATTERN = /(?:^|\/)react-router\.config\.[cm]?[jt]s$/;
+const REACT_ROUTER_CONFIG_PATTERN = /(?:^|[\\/])react-router\.config\.[cm]?[jt]s$/;
 
 export const reactRouterV8NoRemovedFutureFlags = wrapReactRouterRule(
   defineRule({

@@ -66,6 +66,38 @@ describe("security/no-secrets-in-client-code — regressions", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("stays silent inside a namespace-qualified TanStack server function handler", () => {
+    expect(
+      runClient(
+        `TanStack.createServerFn().handler(() => { const clientAuthToken = "9f8e7d6c5b4a39281706f5e4d3c2b1a0"; return clientAuthToken; });`,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("stays silent inside a computed TanStack server function handler", () => {
+    expect(
+      runClient(
+        `createServerFn()[handler](() => { const clientAuthToken = "9f8e7d6c5b4a39281706f5e4d3c2b1a0"; return clientAuthToken; });`,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("does not treat a wrapped callback as a direct TanStack server function handler", () => {
+    expect(
+      runClient(
+        `createServerFn().handler((() => { const clientAuthToken = "9f8e7d6c5b4a39281706f5e4d3c2b1a0"; return clientAuthToken; }) as () => string);`,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("does not treat a wrapped TanStack call chain as a server function handler", () => {
+    expect(
+      runClient(
+        `(createServerFn() as any).validator(validate).handler(() => { const clientAuthToken = "9f8e7d6c5b4a39281706f5e4d3c2b1a0"; return clientAuthToken; });`,
+      ),
+    ).toHaveLength(1);
+  });
+
   // Docs-validation FP wave: sentinel values that embed the variable's own
   // name are markers, never credentials (antd's SECRET_COMBOBOX_MODE_DO_NOT_USE,
   // redux action-type strings).

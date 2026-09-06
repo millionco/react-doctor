@@ -48,4 +48,16 @@ describe("preact-prefer-ondblclick", () => {
 
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags `onDoubleClick` on a constant host-element alias", () => {
+    const result = runRule(
+      preactPreferOndblclick,
+      `
+      const Button = "button" as const;
+      const Page = () => <Button onDoubleClick={openInline}>Open</Button>;
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

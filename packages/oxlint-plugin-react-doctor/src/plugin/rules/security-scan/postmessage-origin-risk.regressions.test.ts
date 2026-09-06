@@ -3,6 +3,16 @@ import { runScanRule } from "../../../test-utils/run-scan-rule.js";
 import { postmessageOriginRisk } from "./postmessage-origin-risk.js";
 
 describe("security-scan/postmessage-origin-risk — regressions", () => {
+  it.each([
+    "const es = new\uFEFFEventSource(url); es.onmessage = event => use(event.data);",
+    "const connect = (w:\uFEFFWorker) => { w.onmessage = event => use(event.data); };",
+    "window.onmessage = event => { const\uFEFFdata = event.data; if(event.origin) use(data); };",
+  ])("preserves channel and origin guards separated by BOM whitespace: %s", (content) => {
+    expect(
+      runScanRule(postmessageOriginRisk, { relativePath: "src/widget.ts", content }),
+    ).toHaveLength(0);
+  });
+
   it("flags a message listener that reads event.data without an origin check", () => {
     const findings = runScanRule(postmessageOriginRisk, {
       relativePath: "src/widget.ts",

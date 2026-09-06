@@ -8,7 +8,7 @@ import { isReactRouterRouteFunction } from "../../utils/is-react-router-route-fu
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
-const ROOT_ROUTE_PATTERN = /(?:^|\/)root\.[cm]?[jt]sx?$/;
+const ROOT_ROUTE_PATTERN = /(?:^|[\\/])root\.[cm]?[jt]sx?$/;
 
 export const reactRouterNoUseLoaderDataInErrorUi = wrapReactRouterRule(
   defineRule({

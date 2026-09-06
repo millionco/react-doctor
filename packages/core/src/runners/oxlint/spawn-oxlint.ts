@@ -3,6 +3,8 @@ import {
   ABORT_EXIT_CODES,
   MILLISECONDS_PER_SECOND,
   OXLINT_OUTPUT_MAX_BYTES,
+  OXLINT_NATIVE_LIBRARY_PATH_ENV,
+  OXLINT_DIAGNOSTIC_EXIT_CODES,
   OXLINT_SPAWN_TIMEOUT_MS as DEFAULT_OXLINT_SPAWN_TIMEOUT_MS,
 } from "../../constants.js";
 import { OxlintBatchExceeded, OxlintSpawnFailed, ReactDoctorError } from "../../errors.js";
@@ -10,6 +12,7 @@ import { buildOxlintChildEnv } from "../../utils/build-oxlint-child-env.js";
 import { buildProfiledNodeArguments } from "../../utils/build-profiled-node-arguments.js";
 import { captureOxlintRuleTimings } from "../../utils/capture-oxlint-rule-timings.js";
 import { lowerChildProcessPriority } from "../../utils/lower-child-process-priority.js";
+import { isNativeOxlintRequired } from "./is-native-oxlint-required.js";
 
 const SANITIZED_ENV: NodeJS.ProcessEnv = buildOxlintChildEnv(process.env);
 
@@ -47,6 +50,7 @@ export const spawnOxlint = (
   // running until their own per-batch spawn timeout.
   abortSignal?: AbortSignal,
   onSpawn?: () => void,
+  nativeBindingPath?: string,
 ): Promise<string> =>
   new Promise<string>((resolve, reject) => {
     if (abortSignal?.aborted) {
@@ -56,6 +60,9 @@ export const spawnOxlint = (
       return;
     }
     onSpawn?.();
+    const childEnvironment = nativeBindingPath
+      ? { ...SANITIZED_ENV, [OXLINT_NATIVE_LIBRARY_PATH_ENV]: nativeBindingPath }
+      : SANITIZED_ENV;
     const child = spawn(
       nodeBinaryPath,
       buildProfiledNodeArguments({
@@ -65,7 +72,7 @@ export const spawnOxlint = (
       }),
       {
         cwd: rootDirectory,
-        env: SANITIZED_ENV,
+        env: childEnvironment,
         // HACK: oxlint's cli.js sets process.stdin._handle.setBlocking(true)
         // when stdout is not a TTY. This initializes and refs the child's stdin
         // handle, and since the parent never closes the pipe the child's event
@@ -177,21 +184,38 @@ export const spawnOxlint = (
         return;
       }
       const output = Buffer.concat(stdoutBuffers).toString("utf-8").trim();
+      if (isNativeOxlintRequired() && (code === null || !OXLINT_DIAGNOSTIC_EXIT_CODES.has(code))) {
+        const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
+        reject(
+          new ReactDoctorError({
+            reason: new OxlintSpawnFailed({
+              cause: `Required native Oxlint exited with code ${code}${stderrOutput ? `: ${stderrOutput}` : ""}`,
+            }),
+          }),
+        );
+        return;
+      }
       if (!output) {
         const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
-        if (stderrOutput) {
-          reject(new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: stderrOutput }) }));
+        if (stderrOutput || isNativeOxlintRequired()) {
+          reject(
+            new ReactDoctorError({
+              reason: new OxlintSpawnFailed({
+                cause: stderrOutput || "Required native Oxlint returned empty output.",
+              }),
+            }),
+          );
           return;
         }
       }
-      const timingDirectory = SANITIZED_ENV.REACT_DOCTOR_OXLINT_TIMINGS_DIR;
+      const timingDirectory = childEnvironment.REACT_DOCTOR_OXLINT_TIMINGS_DIR;
       if (timingDirectory === undefined) {
         resolve(output);
         return;
       }
       captureOxlintRuleTimings({
         argumentsList: args,
-        environment: SANITIZED_ENV,
+        environment: childEnvironment,
         nodeBinaryPath,
         rootDirectory,
         timingDirectory,

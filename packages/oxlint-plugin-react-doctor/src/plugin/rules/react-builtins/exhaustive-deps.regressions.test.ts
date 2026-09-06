@@ -6,6 +6,57 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { exhaustiveDeps } from "./exhaustive-deps.js";
 import { clearExhaustiveDepsSuppressionCache } from "./exhaustive-deps-suppression.js";
 
+describe("exhaustive-deps capture boundaries", () => {
+  it("reports missing captures before redundant narrower dependencies", () => {
+    const result = runRule(
+      exhaustiveDeps,
+      `
+      import { useCallback, useState } from "react";
+      export function Component(props) {
+        const [count] = useState(0);
+        return useCallback(() => props.value + count, [props, props.value]);
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("stale `count`");
+  });
+
+  it("reports a module array as an outer dependency without claiming it is rebuilt", () => {
+    const result = runRule(
+      exhaustiveDeps,
+      `
+      import { useMemo } from "react";
+      const elements = [{ value: 1 }];
+      export function Component() {
+        return useMemo(() => elements.map(element => element.value), [elements]);
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("defined outside the component");
+  });
+
+  it("keeps a default callback reactive when it captures an enclosing factory parameter", () => {
+    const result = runRule(
+      exhaustiveDeps,
+      `
+      import { useCallback } from "react";
+      export function makeHook(outer) {
+        return function useThing({ serialize = value => String(value) + outer }) {
+          return useCallback(value => serialize(value), []);
+        };
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("stale `serialize`");
+  });
+});
+
 describe("react-builtins/exhaustive-deps — regressions", () => {
   it("accepts a member dependency when the bare object read is only its null guard", () => {
     const result = runRule(

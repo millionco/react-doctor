@@ -45,6 +45,8 @@ import { extractBuildScriptConsumedFiles } from "./collect/build-script-consumed
 import { buildPlatformSiblingIndex } from "./utils/build-platform-sibling-index.js";
 import { collectUnpluginAutoImportReferences } from "./collect/unplugin-auto-import-entries.js";
 import { markCompletePackageGraphs } from "./utils/mark-complete-package-graphs.js";
+import { runNativeProjectAnalysis } from "./run-native-project-analysis.js";
+import { isNativeOxlintRequired } from "../runners/oxlint/is-native-oxlint-required.js";
 
 export interface AnalyzeProjectInput {
   readonly rootDirectory: string;
@@ -443,31 +445,46 @@ const analyzeProjectConfig = async (
       module: "report",
       contextDescription: "while building project findings",
     });
-  const unusedFiles = runReportDetector(
-    "detectOrphanFiles",
-    () => detectOrphanFiles(moduleGraph),
-    [],
-  );
-  const verifiedUnusedFiles = runReportDetector(
-    "detectVerifiedOrphanFiles",
-    () => detectOrphanFiles(moduleGraph, { requireCompletePackageGraph: true }),
-    [],
-  );
-  const unusedExports = runReportDetector(
-    "detectDeadExports",
-    () => detectDeadExports(moduleGraph, config, platformSiblingIndex),
-    [],
-  );
-  const stalePackageReport = runReportDetector(
-    "detectStalePackages",
-    () => detectStalePackages(moduleGraph, config),
-    { unusedDependencies: [], skippedDependencies: [] },
-  );
-  const circularDependencies = runReportDetector(
-    "detectCycles",
-    () => detectCycles(moduleGraph),
-    [],
-  );
+  const analyzeNativeProject = () =>
+    runNativeProjectAnalysis({
+      graph: moduleGraph,
+      config,
+      platformSiblingIndex,
+    });
+  const nativeProjectAnalysis = isNativeOxlintRequired()
+    ? analyzeNativeProject()
+    : runReportDetector("runNativeProjectAnalysis", analyzeNativeProject, null);
+  const unusedFiles =
+    nativeProjectAnalysis?.unusedFiles ??
+    runReportDetector("detectOrphanFiles", () => detectOrphanFiles(moduleGraph), []);
+  const verifiedUnusedFiles =
+    nativeProjectAnalysis?.verifiedUnusedFiles ??
+    runReportDetector(
+      "detectVerifiedOrphanFiles",
+      () => detectOrphanFiles(moduleGraph, { requireCompletePackageGraph: true }),
+      [],
+    );
+  const unusedExports =
+    nativeProjectAnalysis?.unusedExports ??
+    runReportDetector(
+      "detectDeadExports",
+      () => detectDeadExports(moduleGraph, config, platformSiblingIndex),
+      [],
+    );
+  const stalePackageReport =
+    nativeProjectAnalysis?.unusedDependencies !== undefined &&
+    nativeProjectAnalysis.skippedDependencies !== undefined
+      ? {
+          unusedDependencies: nativeProjectAnalysis.unusedDependencies,
+          skippedDependencies: nativeProjectAnalysis.skippedDependencies,
+        }
+      : runReportDetector("detectStalePackages", () => detectStalePackages(moduleGraph, config), {
+          unusedDependencies: [],
+          skippedDependencies: [],
+        });
+  const circularDependencies =
+    nativeProjectAnalysis?.circularDependencies ??
+    runReportDetector("detectCycles", () => detectCycles(moduleGraph), []);
   const analysisResult: ProjectAnalysisInternalResult = {
     unusedFiles,
     verifiedUnusedFiles,

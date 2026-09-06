@@ -1470,6 +1470,7 @@
       "framework": "global",
       "tags": ["ink"],
       "defaultEnabled": false,
+      "lifecycle": "retired",
       "isScanRule": false
     }
   },
@@ -1728,6 +1729,7 @@
       "framework": "global",
       "tags": ["ink"],
       "defaultEnabled": false,
+      "lifecycle": "retired",
       "isScanRule": false
     }
   },
@@ -3702,6 +3704,7 @@
       "requires": ["react"],
       "tags": ["test-noise"],
       "defaultEnabled": false,
+      "lifecycle": "retired",
       "isScanRule": false
     }
   },
@@ -11417,6 +11420,7 @@
       "requires": ["react-native"],
       "tags": ["react-native", "test-noise"],
       "defaultEnabled": false,
+      "lifecycle": "retired",
       "isScanRule": false
     }
   },
@@ -11915,6 +11919,7 @@
       "requires": ["react-native"],
       "tags": ["react-native", "test-noise"],
       "defaultEnabled": false,
+      "lifecycle": "retired",
       "isScanRule": false
     }
   },

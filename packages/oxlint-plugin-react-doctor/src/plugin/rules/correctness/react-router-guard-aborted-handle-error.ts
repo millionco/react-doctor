@@ -21,7 +21,7 @@ const ERROR_REPORTING_EXPORT_NAMES = new Set([
   "reportError",
 ]);
 const ERROR_REPORTING_MODULE_PATTERN = /^(?:@sentry\/|sentry$)/;
-const SERVER_ENTRY_PATTERN = /(?:^|\/)entry\.server\.[cm]?[jt]sx?$/;
+const SERVER_ENTRY_PATTERN = /(?:^|[\\/])entry\.server\.[cm]?[jt]sx?$/;
 
 const isAbortCheck = (
   context: RuleContext,

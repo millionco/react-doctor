@@ -16,6 +16,7 @@ import { mapWithConcurrency } from "../../utils/map-with-concurrency.js";
 import { remainingDeadlineBudgetMs } from "../../utils/remaining-deadline-budget-ms.js";
 import { resolveScanConcurrency } from "../../utils/resolve-scan-concurrency.js";
 import type { WorkerSlots } from "../../utils/create-worker-slots.js";
+import { handleNativeOxlintFailure } from "./handle-native-oxlint-failure.js";
 import { parseOxlintOutput } from "./parse-output.js";
 import { spawnOxlint } from "./spawn-oxlint.js";
 
@@ -47,6 +48,7 @@ export interface SpawnLintBatchesInput {
   readonly fileBatches: ReadonlyArray<string[]>;
   readonly rootDirectory: string;
   readonly nodeBinaryPath: string;
+  readonly nativeBindingPath?: string;
   readonly project: ProjectInfo;
   readonly sourcePathByLintPath?: ReadonlyMap<string, string>;
   readonly sourceMapByLintPath?: ReadonlyMap<string, PreparedSourceMap>;
@@ -268,6 +270,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
               batchState.didStart = true;
               startedFileCount += batchState.initialFileCount;
             },
+            input.nativeBindingPath,
           );
         };
         const stdout =
@@ -295,6 +298,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
         const isBudgetElapsed = Date.now() >= batchState.deadlineMs;
         const isDepthCapReached = depth >= splitMaxDepth;
         if (batch.length <= 1 || isBudgetElapsed || isDepthCapReached) {
+          handleNativeOxlintFailure("The required native Oxlint batch failed.", error);
           // Either the smallest splittable batch (a single file) still failed,
           // or the cumulative split budget / depth cap is exhausted — drop the
           // remaining files, record why, and let the scan continue.

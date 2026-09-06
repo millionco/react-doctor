@@ -1,6 +1,8 @@
+import * as fs from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import type { ProjectInfo } from "../src/index.js";
-import { createOxlintConfig } from "../src/runners/oxlint/config.js";
+import { NATIVE_REACT_DOCTOR_RULE_IDS } from "../src/constants.js";
+import { createOxlintConfig, type OxlintConfigOptions } from "../src/runners/oxlint/config.js";
 
 const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   rootDirectory: "/tmp/project",
@@ -50,6 +52,33 @@ const tailwindViteWebProject = buildProject({
 });
 
 describe("createOxlintConfig settings", () => {
+  it("keeps the application allowlist synchronized with the native build manifest", () => {
+    const upstreamManifest = JSON.parse(
+      fs.readFileSync(new URL("../../../native/oxlint/upstream.json", import.meta.url), "utf8"),
+    );
+
+    expect([...NATIVE_REACT_DOCTOR_RULE_IDS]).toEqual(upstreamManifest.nativeRules);
+  });
+
+  it("moves selected React Doctor rules into the native plugin", () => {
+    const stockConfig = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+    });
+    const nativeConfig = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      nativeRuleIds: new Set(["no-document-write"]),
+    });
+
+    expect(stockConfig.rules["react-doctor/no-document-write"]).toBe("warn");
+    expect(stockConfig.plugins).toEqual([]);
+    expect(nativeConfig.rules).not.toHaveProperty("react-doctor/no-document-write");
+    expect(nativeConfig.rules["react-doctor-native/no-document-write"]).toBe("warn");
+    expect(nativeConfig.plugins).toEqual(["react-doctor-native"]);
+    expect(nativeConfig.jsPlugins).toContain("/tmp/plugin.js");
+  });
+
   it("uses curated behavior for faithfully ported rules", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
@@ -59,6 +88,68 @@ describe("createOxlintConfig settings", () => {
     expect(config.settings).toMatchObject({
       "react-doctor": { portedRuleMode: "curated" },
     });
+  });
+
+  it.each<OxlintConfigOptions["ruleSelection"]>([undefined, "cacheable", "sidecar"])(
+    "omits the unused JavaScript plugin for native %s rules",
+    (ruleSelection) => {
+      const config = createOxlintConfig({
+        pluginPath: "/tmp/plugin.js",
+        project: viteWebProject,
+        nativeRuleIds: NATIVE_REACT_DOCTOR_RULE_IDS,
+        ruleSelection,
+      });
+
+      expect(Object.keys(config.rules).length).toBeGreaterThan(0);
+      expect(config.plugins).toEqual(["react-doctor-native"]);
+      expect(config.jsPlugins).toEqual([]);
+      expect(config.settings["react-doctor"].portedRuleMode).toBe("curated");
+    },
+  );
+
+  it("retains the JavaScript plugin for inherited native configurations", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      nativeRuleIds: NATIVE_REACT_DOCTOR_RULE_IDS,
+      extendsPaths: ["/tmp/inherited.json"],
+    });
+
+    expect(config.extends).toEqual(["/tmp/inherited.json"]);
+    expect(config.jsPlugins).toEqual(["/tmp/plugin.js"]);
+  });
+
+  it("retains the JavaScript plugin when the native sidecar has no selected rules", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      nativeRuleIds: NATIVE_REACT_DOCTOR_RULE_IDS,
+      ruleSelection: "sidecar",
+      sidecarRuleIdFilter: new Set(),
+    });
+
+    expect(config.rules).toEqual({});
+    expect(config.jsPlugins).toEqual(["/tmp/plugin.js"]);
+  });
+
+  it("retains plugin ordering for native rules with user plugins", () => {
+    const userPlugin = { name: "custom", specifier: "/tmp/custom-plugin.js" };
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      nativeRuleIds: NATIVE_REACT_DOCTOR_RULE_IDS,
+      userPlugins: [
+        {
+          entry: userPlugin,
+          availableRuleNames: new Set(["example"]),
+          originalSpec: "/tmp/custom-plugin.js",
+        },
+      ],
+      severityControls: { rules: { "custom/example": "warn" } },
+    });
+
+    expect(config.rules["custom/example"]).toBe("warn");
+    expect(config.jsPlugins).toEqual([userPlugin, "/tmp/plugin.js"]);
   });
 
   it("enables the Valtio rule only when the project declares Valtio", () => {
@@ -359,6 +450,18 @@ describe("createOxlintConfig settings", () => {
     expect(Object.keys(config.rules).some((ruleKey) => ruleKey.startsWith("react-hooks-js/"))).toBe(
       true,
     );
+  });
+
+  it("retains plugin ordering for native rules with the React Compiler frontend", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({ hasReactCompiler: true }),
+      nativeRuleIds: NATIVE_REACT_DOCTOR_RULE_IDS,
+    });
+
+    expect(hasReactHooksJsEntry(config)).toBe(true);
+    expect(config.jsPlugins.at(-1)).toBe("/tmp/plugin.js");
+    expect(config.rules["react-doctor-native/no-document-write"]).toBe("warn");
   });
 
   it("keeps compatibility lint rules without enabling transform-only rules", () => {

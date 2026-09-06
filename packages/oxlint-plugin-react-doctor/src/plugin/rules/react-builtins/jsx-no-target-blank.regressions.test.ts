@@ -226,6 +226,14 @@ describe("react-builtins/jsx-no-target-blank — target-aware regressions", () =
     expect(targetOverriddenBySpread.diagnostics).toHaveLength(0);
   });
 
+  it("treats an empty static spread key as unknown", () => {
+    const result = runNoreferrerRequiredRule(
+      'const Link = () => <a href="https://example.com" target="_blank" {...{ [""]: true }}>Example</a>;',
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("resolves const spread aliases with lexical shadowing", () => {
     const aliased = runNoreferrerRequiredRule(`
       const unsafeProps = { href: "https://example.com", target: "_blank" };

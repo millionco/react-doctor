@@ -9,7 +9,7 @@ import {
 } from "oxlint-plugin-react-doctor/core";
 import type { Diagnostic } from "./types/index.js";
 import { batchIncludePaths } from "./batch-include-paths.js";
-import { COOPERATIVE_YIELD_BUDGET_MS } from "./constants.js";
+import { COOPERATIVE_YIELD_BUDGET_MS, NATIVE_REACT_DOCTOR_RULE_IDS } from "./constants.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
@@ -33,6 +33,7 @@ import { resolveUserPlugins } from "./runners/oxlint/plugin-resolution.js";
 import { resolveOxlintToolchainVersions } from "./runners/oxlint/resolve-toolchain-versions.js";
 import {
   resolveOxlintBinary,
+  resolveNativeOxlintBindingPath,
   resolvePluginPath,
   resolveTsConfigRelativePath,
 } from "./runners/oxlint/resolve-paths.js";
@@ -352,6 +353,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
 
   try {
     const oxlintBinary = resolveOxlintBinary();
+    const nativeBindingPath = resolveNativeOxlintBindingPath();
     // Args shared by every batch regardless of which oxlintrc is active, so
     // the cache path can point separate `-c` configs at the same tsconfig +
     // ignore inputs.
@@ -460,6 +462,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
         ruleSelection: overrides.ruleSelection,
         sidecarRuleIdFilter: overrides.sidecarRuleIdFilter,
+        nativeRuleIds: nativeBindingPath ? NATIVE_REACT_DOCTOR_RULE_IDS : undefined,
       });
 
     // `"cost"` (the default) plans size-balanced LPT batches — the size is
@@ -524,6 +527,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           fileBatches: passFileBatches,
           rootDirectory,
           nodeBinaryPath,
+          nativeBindingPath: nativeBindingPath ?? undefined,
           project: lintProject,
           sourcePathByLintPath: preparedLintSources.sourcePathByLintPath,
           sourceMapByLintPath: preparedLintSources.sourceMapByLintPath,
@@ -591,7 +595,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     if (useFileLintCache) {
       const rulesetHash = computeRulesetHash({
         config: buildConfig({ extendsPaths: [], ruleSelection: "cacheable" }),
-        toolchainVersions: resolveOxlintToolchainVersions(nodeBinaryPath),
+        toolchainVersions: resolveOxlintToolchainVersions(
+          nodeBinaryPath,
+          nativeBindingPath ?? undefined,
+        ),
         ignorePatterns: combinedPatterns,
         tsconfigContent,
         respectInlineDisables,
@@ -672,7 +679,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
                 ruleSelection: "sidecar",
                 sidecarRuleIdFilter: boundedSidecarRuleIdSet,
               }),
-              toolchainVersions: resolveOxlintToolchainVersions(nodeBinaryPath),
+              toolchainVersions: resolveOxlintToolchainVersions(
+                nodeBinaryPath,
+                nativeBindingPath ?? undefined,
+              ),
               ignorePatterns: combinedPatterns,
               tsconfigContent,
               respectInlineDisables,
@@ -908,6 +918,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         fileBatches,
         rootDirectory,
         nodeBinaryPath,
+        nativeBindingPath: nativeBindingPath ?? undefined,
         project: lintProject,
         sourcePathByLintPath: preparedLintSources.sourcePathByLintPath,
         sourceMapByLintPath: preparedLintSources.sourceMapByLintPath,

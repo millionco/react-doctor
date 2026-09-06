@@ -26,4 +26,22 @@ describe("tanstack-start/tanstack-start-no-dynamic-server-fn-import — regressi
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("flags a static template import of a typed server-functions module", () => {
+    const result = runRule(
+      tanstackStartNoDynamicServerFnImport,
+      "const functions = import(`~/utils/users.functions.ts`);",
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a dynamic template import path", () => {
+    const result = runRule(
+      tanstackStartNoDynamicServerFnImport,
+      "const functions = import(`~/utils/${name}.functions`);",
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

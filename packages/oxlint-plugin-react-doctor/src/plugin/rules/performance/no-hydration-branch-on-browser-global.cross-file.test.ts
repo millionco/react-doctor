@@ -33,6 +33,53 @@ const runConsumer = (source: string): ReturnType<typeof runRule> => {
 
 describe("no-hydration-branch-on-browser-global — imported helper provenance", () => {
   it.each([
+    ["a parameter cycle", "isReady(value)", 0],
+    [
+      "a parameter cycle with a browser predicate",
+      'isReady(value) || typeof document !== "undefined"',
+      1,
+    ],
+  ])("terminates %s across imported contexts", (_, returnedExpression, expectedCount) => {
+    writeFile(
+      "src/runtime.ts",
+      `export const checkValue = (value) => ${returnedExpression}; const isReady = (value) => value === "ready";`,
+    );
+    const result = runConsumer(
+      'import React from "react"; import { checkValue } from "./runtime"; export const Preview = ({ value }) => checkValue(value) ? <div /> : <section />;',
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+
+  it("resolves an aliased helper used in an unknown equality comparison", () => {
+    writeFile("tsconfig.json", '{"compilerOptions":{"baseUrl":".","paths":{"@/*":["src/*"]}}}');
+    writeFile(
+      "src/runtime.ts",
+      'export function getMode() { return validateMode(typeof document === "undefined" ? "system" : localStorage.getItem("mode")); } function validateMode(mode) { return mode === "dark" || mode === "light" ? mode : "system"; }',
+    );
+    const result = runConsumer(
+      'import React from "react"; import { getMode } from "@/runtime"; export const Preview = () => { const mode = getMode(); return mode === "dark" ? <div /> : <section />; };',
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not attribute an unrelated exported browser predicate to a memoized helper", () => {
+    writeFile(
+      "src/runtime.ts",
+      'export const readValue = ({ enabled }) => enabled; export function isBrowser() { return typeof document !== "undefined"; }',
+    );
+    const result = runConsumer(
+      'import { useMemo } from "react"; import { readValue } from "./runtime"; export const Preview = ({ enabled }) => { const value = useMemo(() => { if (!enabled) return false; return readValue({ enabled }); }, [enabled]); return value && <div />; };',
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
     ["image on the server", "false"],
     ["video on the server", "true"],
   ])("reports a media capability branch with %s", (_, serverFallback) => {
@@ -121,5 +168,137 @@ describe("no-hydration-branch-on-browser-global — imported helper provenance",
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("no-hydration-branch-on-browser-global import resolution boundaries", () => {
+  it.each([
+    {
+      name: "hydration-imported-helper-const-alias",
+      source:
+        "import React from 'react'; import { isBrowser } from './entry'; const alias = isBrowser; export const View = () => alias() ? <div /> : <span />;",
+      files: {
+        "src/entry.ts": "export const isBrowser = () => typeof window !== 'undefined';",
+      },
+      expectedCount: 0,
+    },
+    {
+      name: "hydration-imported-helper-direct-control",
+      source:
+        "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+      files: {
+        "src/entry.ts": "export const isBrowser = () => typeof window !== 'undefined';",
+      },
+      expectedCount: 1,
+    },
+    {
+      name: "hydration-imported-helper-star-barrel",
+      source:
+        "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+      files: {
+        "src/entry.ts": "export * from './helper';",
+        "src/helper.ts": "export const isBrowser = () => typeof window !== 'undefined';",
+      },
+      expectedCount: 1,
+    },
+    {
+      name: "hydration-imported-helper-named-barrel-control",
+      source:
+        "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+      files: {
+        "src/entry.ts": "export { isBrowser } from './helper';",
+        "src/helper.ts": "export const isBrowser = () => typeof window !== 'undefined';",
+      },
+      expectedCount: 1,
+    },
+    {
+      name: "hydration-imported-helper-named-chain-3-files",
+      source:
+        "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+      files: {
+        "src/entry.ts": "export { isBrowser } from './level-2';",
+        "src/level-2.ts": "export { isBrowser } from './level-3';",
+        "src/level-3.ts": "export const isBrowser = () => typeof window !== 'undefined';",
+      },
+      expectedCount: 1,
+    },
+    {
+      name: "hydration-imported-helper-named-chain-4-files",
+      source:
+        "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+      files: {
+        "src/entry.ts": "export { isBrowser } from './level-2';",
+        "src/level-2.ts": "export { isBrowser } from './level-3';",
+        "src/level-3.ts": "export { isBrowser } from './level-4';",
+        "src/level-4.ts": "export const isBrowser = () => typeof window !== 'undefined';",
+      },
+      expectedCount: 1,
+    },
+    {
+      name: "hydration-imported-helper-named-chain-5-files",
+      source:
+        "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+      files: {
+        "src/entry.ts": "export { isBrowser } from './level-2';",
+        "src/level-2.ts": "export { isBrowser } from './level-3';",
+        "src/level-3.ts": "export { isBrowser } from './level-4';",
+        "src/level-4.ts": "export { isBrowser } from './level-5';",
+        "src/level-5.ts": "export const isBrowser = () => typeof window !== 'undefined';",
+      },
+      expectedCount: 0,
+    },
+  ])("$name", ({ source, files, expectedCount }) => {
+    for (const [filename, contents] of Object.entries(files)) {
+      writeFile(filename, contents);
+    }
+    const result = runConsumer(source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+});
+
+describe("no-hydration-branch-on-browser-global star export resolution", () => {
+  it.each([
+    {
+      name: "hydration-ambiguous-star-exports",
+      source:
+        "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+      files: {
+        "src/entry.ts": "export * from './browser'; export * from './constant';",
+        "src/browser.ts": "export const isBrowser = () => typeof window !== 'undefined';",
+        "src/constant.ts": "export const isBrowser = () => false;",
+      },
+      expectedCount: 0,
+    },
+    {
+      name: "hydration-same-origin-star-exports",
+      source:
+        "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+      files: {
+        "src/entry.ts": "export * from './first'; export * from './second';",
+        "src/first.ts": "export { isBrowser } from './browser';",
+        "src/second.ts": "export { isBrowser } from './browser';",
+        "src/browser.ts": "export const isBrowser = () => typeof window !== 'undefined';",
+      },
+      expectedCount: 1,
+    },
+    {
+      name: "hydration-named-export-precedes-star",
+      source:
+        "import React from 'react'; import { isBrowser } from './entry'; export const View = () => isBrowser() ? <div /> : <span />;",
+      files: {
+        "src/entry.ts": "export * from './browser'; export { isBrowser } from './constant';",
+        "src/browser.ts": "export const isBrowser = () => typeof window !== 'undefined';",
+        "src/constant.ts": "export const isBrowser = () => false;",
+      },
+      expectedCount: 0,
+    },
+  ])("$name", ({ source, files, expectedCount }) => {
+    for (const [filename, contents] of Object.entries(files)) {
+      writeFile(filename, contents);
+    }
+    const result = runConsumer(source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
   });
 });

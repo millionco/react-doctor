@@ -1048,3 +1048,273 @@ describe("no-pass-live-state-to-parent — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 });
+
+describe("no-pass-live-state-to-parent — native parity boundaries", () => {
+  it.each([
+    {
+      name: "live-state-void-transparent-async-data-prop-reader",
+      source:
+        "import { useCallback, useEffect, useState } from 'react'; export function Child({ accountId }) { const [count] = useState(0); const read = useCallback(async value => { console.log(accountId, value); }, [accountId]); useEffect(() => { void read(count); }, [read, count]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-transparent-async-data-prop-reader",
+      source:
+        "import { useCallback, useEffect, useState } from 'react'; export function Child({ accountId }) { const [count] = useState(0); const read = useCallback(async value => { console.log(accountId, value); }, [accountId]); useEffect(() => { read(count); }, [read, count]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-void-direct-parent-callback",
+      source:
+        "import { useEffect, useState } from 'react'; export function Child({ onChange }) { const [count] = useState(0); useEffect(() => { void onChange(count); }, [onChange, count]); return null; }",
+      expectedCount: 0,
+    },
+  ])("$name", ({ source, expectedCount }) => {
+    const result = runRule(noPassLiveStateToParent, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+});
+
+describe("no-pass-live-state-to-parent — prop object native parity", () => {
+  it.each([
+    {
+      name: "live-state-prop-object-object-rest-direct",
+      source:
+        "import { useState, useEffect } from 'react'; export default function Panel({ value = 0, ...props }) { const [state, setState] = useState(0);  useEffect(() => { props.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-object-rest-search",
+      source:
+        "import { useState, useEffect } from 'react'; export default function Panel({ value = 0, ...props }) { const [state, setState] = useState(0);  useEffect(() => { props.search(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-object-rest-notify",
+      source:
+        "import { useState, useEffect } from 'react'; export default function Panel({ value = 0, ...props }) { const [state, setState] = useState(0);  useEffect(() => { props.notify(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-object-rest-fetch",
+      source:
+        "import { useState, useEffect } from 'react'; export default function Panel({ value = 0, ...props }) { const [state, setState] = useState(0);  useEffect(() => { props.fetchValue(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-object-rest-other",
+      source:
+        "import { useState, useEffect } from 'react'; export default function Panel({ value = 0, ...props }) { const [state, setState] = useState(0);  useEffect(() => { props.whatever(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-object-rest-excluded",
+      source:
+        "import { useState, useEffect } from 'react'; export default function Panel({ onChange, ...props }) { const [state, setState] = useState(0);  useEffect(() => { props.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-nested-object-rest",
+      source:
+        "import { useState, useEffect } from 'react'; export default function Panel({ nested: { value, ...props } }) { const [state, setState] = useState(0);  useEffect(() => { props.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-destructured-object",
+      source:
+        "import { useState, useEffect } from 'react'; export default function Panel({ props }) { const [state, setState] = useState(0);  useEffect(() => { props.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-object-rest-default",
+      source:
+        "import { useState, useEffect } from 'react'; export default function Panel({ value, ...props } = {}) { const [state, setState] = useState(0);  useEffect(() => { props.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-object-rest-assigned",
+      source:
+        "import { useState, useEffect } from 'react'; export default function Panel({ value, ...props }) { const [state, setState] = useState(0); props = other; useEffect(() => { props.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-object-rest-member-write",
+      source:
+        "import { useState, useEffect } from 'react'; export default function Panel({ value, ...props }) { const [state, setState] = useState(0); props.onChange = other; useEffect(() => { props.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-whole-props",
+      source:
+        "import { useState, useEffect } from 'react'; export default function Panel(props) { const [state, setState] = useState(0);  useEffect(() => { props.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-local-object-rest",
+      source:
+        "import { useState, useEffect } from 'react'; export default function Panel(props) { const [state, setState] = useState(0); const { value, ...rest } = props; useEffect(() => { rest.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-object-rest-set",
+      source:
+        "import { useState, useEffect } from 'react'; function Panel({value,...props}) { const [state, setState] = useState(0);  useEffect(() => { props.setValue(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-object-rest-handle",
+      source:
+        "import { useState, useEffect } from 'react'; function Panel({value,...props}) { const [state, setState] = useState(0);  useEffect(() => { props.handleChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-object-rest-computed",
+      source:
+        "import { useState, useEffect } from 'react'; function Panel({value,...props}) { const [state, setState] = useState(0);  useEffect(() => { props['onChange'](state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-object-rest-optional",
+      source:
+        "import { useState, useEffect } from 'react'; function Panel({value,...props}) { const [state, setState] = useState(0);  useEffect(() => { props.onChange?.(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-object-rest-captured",
+      source:
+        "import { useState, useEffect } from 'react'; function Panel({value,...props}) { const [state, setState] = useState(0);  useEffect(() => { const result = props.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-object-rest-no-state",
+      source:
+        "import { useState, useEffect } from 'react'; function Panel({value,...props}) { const [state, setState] = useState(0);  useEffect(() => { props.onChange(value); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-object-rest-helper",
+      source:
+        "import { useState, useEffect } from 'react'; function Panel({value,...props}) { const [state, setState] = useState(0); const push = () => props.onChange(state); useEffect(() => { push(); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-destructured-object-alias",
+      source:
+        "import { useState, useEffect } from 'react'; function Panel({callbacks}) { const [state, setState] = useState(0); const bag=callbacks; useEffect(() => { bag.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-local-object-rest-set",
+      source:
+        "import { useState, useEffect } from 'react'; function Panel(props) { const [state, setState] = useState(0); const {value,...rest}=props; useEffect(() => { rest.setValue(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-custom-hook-any",
+      source:
+        "import { useState, useEffect } from 'react'; function usePanel({props}) { const [state, setState] = useState(0);  useEffect(() => { props.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-custom-hook-callback",
+      source:
+        "import { useState, useEffect } from 'react'; function usePanel({callbacks}) { const [state, setState] = useState(0);  useEffect(() => { callbacks.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-parameter-mutated-later",
+      source:
+        "import { useState, useEffect } from 'react'; function Panel({props}) { const [state, setState] = useState(0); const mutate = () => { props = other; }; useEffect(() => { props.onChange(state); }, [state]); return <button onClick={() => setState(state + 1)} />; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-local-rest-excluded",
+      source:
+        "import {useState,useEffect} from 'react'; function Panel(props) { const [state,setState]=useState(0); const {onChange,...rest}=props; useEffect(()=>{rest.onChange(state);},[state]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-local-rest-binding-write",
+      source:
+        "import {useState,useEffect} from 'react'; function Panel(props) { const [state,setState]=useState(0); let {value,...rest}=props; rest=other; useEffect(()=>{rest.onChange(state);},[state]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-local-rest-member-write",
+      source:
+        "import {useState,useEffect} from 'react'; function Panel(props) { const [state,setState]=useState(0); const {value,...rest}=props; rest.onChange=other; useEffect(()=>{rest.onChange(state);},[state]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-local-rest-source-write",
+      source:
+        "import {useState,useEffect} from 'react'; function Panel(props) { const [state,setState]=useState(0); const {value,...rest}=props; props=other; useEffect(()=>{rest.onChange(state);},[state]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-local-rest-from-destructured",
+      source:
+        "import {useState,useEffect} from 'react'; function Panel({props}) { const [state,setState]=useState(0); const {value,...rest}=props; useEffect(()=>{rest.onChange(state);},[state]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-local-property-from-whole",
+      source:
+        "import {useState,useEffect} from 'react'; function Panel(props) { const [state,setState]=useState(0); const {handlers}=props; useEffect(()=>{handlers.onChange(state);},[state]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-local-alias-from-whole",
+      source:
+        "import {useState,useEffect} from 'react'; function Panel(props) { const [state,setState]=useState(0); const bag=props; useEffect(()=>{bag.onChange(state);},[state]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-local-rest-from-whole-alias",
+      source:
+        "import {useState,useEffect} from 'react'; function Panel(props) { const [state,setState]=useState(0); const bag=props; const {value,...rest}=bag; useEffect(()=>{rest.onChange(state);},[state]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-local-nested-rest-from-whole",
+      source:
+        "import {useState,useEffect} from 'react'; function Panel(props) { const [state,setState]=useState(0); const {nested:{value,...rest}}=props; useEffect(()=>{rest.onChange(state);},[state]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-local-rest-hook",
+      source:
+        "import {useState,useEffect} from 'react'; function usePanel(props) { const [state,setState]=useState(0); const {value,...rest}=props; useEffect(()=>{rest.onChange(state);},[state]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-local-rest-default-whole",
+      source:
+        "import {useState,useEffect} from 'react'; function Panel(props={}) { const [state,setState]=useState(0); const {value,...rest}=props; useEffect(()=>{rest.onChange(state);},[state]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-rest-helper-binding-write",
+      source:
+        "import {useState,useEffect} from 'react'; function Panel({value,...props}) { const [state,setState]=useState(0); props=other; const push=()=>props.onChange(state); useEffect(()=>{push();},[state]); return null; }",
+      expectedCount: 1,
+    },
+    {
+      name: "live-state-prop-object-rest-api-namespace",
+      source:
+        "import {useState,useEffect} from 'react'; function Panel({value,...api}) { const [state,setState]=useState(0);  useEffect(()=>{api.onChange(state);},[state]); return null; }",
+      expectedCount: 0,
+    },
+    {
+      name: "live-state-prop-object-rest-object-param-default",
+      source:
+        "import {useState,useEffect} from 'react'; function Panel({value,...props}={}) { const [state,setState]=useState(0);  useEffect(()=>{props.onChange(state);},[state]); return null; }",
+      expectedCount: 1,
+    },
+  ])("$name", ({ source, expectedCount }) => {
+    const result = runRule(noPassLiveStateToParent, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+});

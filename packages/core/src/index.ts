@@ -84,6 +84,7 @@ export * from "./rule-metadata.js";
 export * from "./resolve-lint-include-paths.js";
 export * from "./rule-key-aliases.js";
 export * from "./run-oxlint.js";
+export * from "./runners/oxlint/is-native-oxlint-required.js";
 export * from "./summarize-diagnostics.js";
 export * from "./validate-config-types.js";
 export * from "./utils/anonymize-text.js";

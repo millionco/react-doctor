@@ -2,7 +2,12 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { InspectResult, JsonReport, ReactDoctorConfig } from "@react-doctor/core";
+import {
+  REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV,
+  type InspectResult,
+  type JsonReport,
+  type ReactDoctorConfig,
+} from "@react-doctor/core";
 import { inspectAction } from "../src/cli/commands/inspect.js";
 import type { InspectFlags } from "../src/cli/utils/inspect-flags.js";
 import { buildDiagnostic, buildTestProject } from "./regressions/_helpers.js";
@@ -51,6 +56,7 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
       didRedirectViaRootDir: false,
     })),
     filterDiagnosticsForSurface: actual.filterDiagnosticsForSurface,
+    isNativeOxlintRequired: () => process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV] === "1",
     remainingDeadlineBudgetMs: (deadlineEpochMs: number) =>
       mockState.shouldExpireDeadline ? 0 : actual.remainingDeadlineBudgetMs(deadlineEpochMs),
   };
@@ -130,16 +136,24 @@ const HARD_LINT_FAILURE: Partial<InspectResult> = {
 describe("inspectAction exit-code gate", () => {
   let projectDirectory: string;
   let savedExitCode: typeof process.exitCode;
+  let savedNativeOxlintRequired: string | undefined;
 
   beforeEach(() => {
     savedExitCode = process.exitCode;
+    savedNativeOxlintRequired = process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV];
     process.exitCode = undefined;
+    delete process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV];
     projectDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-exit-code-"));
     mockState.projectDirectories = [projectDirectory];
   });
 
   afterEach(() => {
     process.exitCode = savedExitCode;
+    if (savedNativeOxlintRequired === undefined) {
+      delete process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV];
+    } else {
+      process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV] = savedNativeOxlintRequired;
+    }
     mockState.result = undefined;
     mockState.projectDirectories = [];
     mockState.inspectInvocations = [];
@@ -173,6 +187,17 @@ describe("inspectAction exit-code gate", () => {
     await runInspectAction(HARD_LINT_FAILURE, { blocking: "none" });
     expect(process.exitCode).toBeUndefined();
   });
+
+  it.each(["lint", "dead-code", "security-scan"] as const)(
+    "exits 1 when required native %s analysis failed under `--blocking none`",
+    async (skippedCheck) => {
+      process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV] = "1";
+
+      await runInspectAction({ skippedChecks: [skippedCheck] }, { blocking: "none" });
+
+      expect(process.exitCode).toBe(1);
+    },
+  );
 
   it("exits 0 on a healthy `--no-lint` run (no lint coverage, nothing skipped)", async () => {
     await runInspectAction({ analyzedFiles: [] }, { lint: false });

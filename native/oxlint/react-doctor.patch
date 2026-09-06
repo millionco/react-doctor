@@ -1,0 +1,343 @@
+diff --git a/crates/oxc_linter/src/config/plugins.rs b/crates/oxc_linter/src/config/plugins.rs
+index e4e346c..6ecbfc1 100644
+--- a/crates/oxc_linter/src/config/plugins.rs
++++ b/crates/oxc_linter/src/config/plugins.rs
+@@ -68,6 +68,7 @@ pub fn plugin_display_name(plugin_name: &str) -> &str {
+     match plugin_name {
+         "jsx_a11y" => "jsx-a11y",
+         "react_perf" => "react-perf",
++        "react_doctor_native" => "react-doctor-native",
+         "nextjs" => "next",
+         _ => plugin_name,
+     }
+@@ -121,6 +122,8 @@ bitflags! {
+         const NODE = 1 << 12;
+         /// `eslint-plugin-vue`
+         const VUE = 1 << 13;
++        /// Native React Doctor rules
++        const REACT_DOCTOR_NATIVE = 1 << 14;
+     }
+ }
+ 
+@@ -186,6 +189,7 @@ impl TryFrom<&str> for LintPlugins {
+             "promise" => Ok(LintPlugins::PROMISE),
+             "node" => Ok(LintPlugins::NODE),
+             "vue" => Ok(LintPlugins::VUE),
++            "react-doctor-native" | "react_doctor_native" => Ok(LintPlugins::REACT_DOCTOR_NATIVE),
+             // "eslint" is not really a plugin, so it's 'empty'. This has the added benefit of
+             // making it the default value.
+             "eslint" => Ok(LintPlugins::ESLINT),
+@@ -211,6 +215,7 @@ impl From<LintPlugins> for &'static str {
+             LintPlugins::PROMISE => "promise",
+             LintPlugins::NODE => "node",
+             LintPlugins::VUE => "vue",
++            LintPlugins::REACT_DOCTOR_NATIVE => "react-doctor-native",
+             _ => "",
+         }
+     }
+@@ -282,6 +287,7 @@ impl JsonSchema for LintPlugins {
+             Promise,
+             Node,
+             Vue,
++            ReactDoctorNative,
+         }
+ 
+         let enum_schema = r#gen.subschema_for::<LintPluginOptionsSchema>();
+diff --git a/crates/oxc_linter/src/context/mod.rs b/crates/oxc_linter/src/context/mod.rs
+index 152f919..7e451af 100644
+--- a/crates/oxc_linter/src/context/mod.rs
++++ b/crates/oxc_linter/src/context/mod.rs
+@@ -1,15 +1,23 @@
+ #![expect(rustdoc::private_intra_doc_links)] // useful for intellisense
+ 
+-use std::{ffi::OsStr, ops::Deref, path::Path, rc::Rc};
++use std::{
++    borrow::Cow,
++    cell::OnceCell,
++    collections::HashMap,
++    ffi::OsStr,
++    ops::Deref,
++    path::Path,
++    rc::Rc,
++};
+ 
+ use javascript_globals::{GLOBALS, GLOBALS_BUILTIN, GLOBALS_ES2026};
+ 
+ use oxc_allocator::Allocator;
+-use oxc_ast::ast::IdentifierReference;
++use oxc_ast::{AstKind, ast::IdentifierReference};
+ use oxc_cfg::ControlFlowGraph;
+ use oxc_diagnostics::{OxcDiagnostic, Severity};
+ use oxc_semantic::{IsGlobalReference, Semantic};
+-use oxc_span::Span;
++use oxc_span::{GetSpan, LabeledSpan, Span};
+ 
+ #[cfg(debug_assertions)]
+ use crate::rule::RuleFixMeta;
+@@ -25,6 +33,74 @@ use crate::{
+ mod host;
+ pub use host::{ContextHost, ContextSubHost, ContextSubHostOptions};
+ 
++fn apply_react_doctor_diagnostic_override(
++    context: &LintContext,
++    rule_name: &str,
++    message: &mut Message,
++) {
++    let upstream_message = message.error.message.as_ref();
++    let diagnostic_message: Cow<'static, str> = match rule_name {
++        "html-has-lang" => {
++            Cow::Borrowed("Screen readers may mispronounce this page because it doesn't declare a language, so add a `lang` attribute like `en`.")
++        }
++        "no-access-key" => {
++            Cow::Borrowed("Screen reader users can lose their shortcuts because `accessKey` clashes with them, so remove it.")
++        }
++        "no-clone-element" => {
++            Cow::Borrowed("`React.cloneElement` couples the parent to the child's prop shape, so child prop changes can silently break injected behavior.")
++        }
++        "no-is-mounted" => {
++            Cow::Borrowed("`isMounted` is unreliable in modern React, so async callbacks can update state after unmount.")
++        }
++        "no-render-return-value" => {
++            Cow::Borrowed("Your app breaks in React 19 because `ReactDOM.render` returns nothing there.")
++        }
++        "no-will-update-set-state" => {
++            Cow::Borrowed("Calling setState in componentWillUpdate can trigger another update immediately, loop forever, and freeze the component.")
++        }
++        "self-closing-comp" => {
++            Cow::Borrowed("This tag has no children, so the closing tag adds noise without changing output.")
++        }
++        "no-distracting-elements" => {
++            let element = upstream_message
++                .split("`<")
++                .nth(1)
++                .and_then(|message| message.split_once('>'))
++                .map_or("element", |(element, _)| element);
++            Cow::Owned(format!("Users with attention or motion sensitivity struggle because `<{element}>` animates on its own, so use normal, accessible markup instead."))
++        }
++        "require-render-return" => Cow::Borrowed(
++            "Your users see nothing because this `render` method returns nothing.",
++        ),
++        _ => return,
++    };
++    if rule_name == "self-closing-comp" {
++        let diagnostic_spans = context.react_doctor_diagnostic_spans.get_or_init(|| {
++            context
++                .nodes()
++                .iter()
++                .filter_map(|node| match (rule_name, node.kind()) {
++                    ("self-closing-comp", AstKind::JSXElement(element)) => element
++                        .closing_element
++                        .as_ref()
++                        .map(|closing_element| {
++                            (closing_element.span().start, element.opening_element.span())
++                        }),
++                    _ => None,
++                })
++                .collect()
++        });
++        if let Some(diagnostic_span) = diagnostic_spans.get(&message.span.start) {
++            message.span = *diagnostic_span;
++        }
++    }
++    message.error.message = diagnostic_message;
++    message.error.help = None;
++    message.error.note = None;
++    message.error.labels.clear();
++    message.error.labels.push(LabeledSpan::underline(message.span));
++}
++
+ /// Contains all of the state and context specific to this lint rule.
+ ///
+ /// Includes information like the rule name, plugin name, and severity of the rule.
+@@ -59,5 +127,6 @@ pub struct LintContext<'a> {
+     /// }
+     /// ```
+     severity: Severity,
++    react_doctor_diagnostic_spans: OnceCell<HashMap<u32, Span>>,
+ }
+ 
+@@ -73,6 +150,10 @@ impl<'a> Deref for LintContext<'a> {
+ 
+ impl<'a> LintContext<'a> {
++    pub(crate) fn react_doctor_next_file_active(&self) -> &OnceCell<bool> {
++        &self.parent.react_doctor_next_file_active
++    }
++
+     /// Get information such as the control flow graph, bound symbols, AST, etc.
+     /// for the file being linted.
+     ///
+     /// Refer to [`Semantic`]'s documentation for more information.
+@@ -264,7 +345,18 @@ impl<'a> LintContext<'a> {
+     /// Add a diagnostic message to the list of diagnostics. Outputs a diagnostic with the current rule
+     /// name, severity, and a link to the rule's documentation URL.
+     fn add_diagnostic(&self, mut message: Message) {
+-        if self.parent.disable_directives().contains(self.current_rule_name, message.span) {
++        if self.current_plugin_name == "react_doctor_native" {
++            apply_react_doctor_diagnostic_override(self, self.current_rule_name, &mut message);
++        }
++        let is_disabled = if self.current_plugin_name == "react_doctor_native" {
++            self.parent.disable_directives().contains(
++                &format!("react-doctor/{}", self.current_rule_name),
++                message.span,
++            )
++        } else {
++            self.parent.disable_directives().contains(self.current_rule_name, message.span)
++        };
++        if is_disabled {
+             return;
+         }
+         message.error = message
+diff --git a/crates/oxc_linter/src/context/host.rs b/crates/oxc_linter/src/context/host.rs
+--- a/crates/oxc_linter/src/context/host.rs
++++ b/crates/oxc_linter/src/context/host.rs
+@@ -190,6 +190,7 @@ pub struct ContextHost<'a> {
+     /// every rule in the React Compiler family (`react/hooks`, `react/refs`, …).
+     /// Stays empty until the first such rule runs on this file.
+     pub(super) react_compiler_results: OnceCell<ReactCompilerResults>,
++    pub(crate) react_doctor_next_file_active: OnceCell<bool>,
+ }
+ 
+ impl std::fmt::Debug for ContextHost<'_> {
+@@ -230,6 +231,7 @@ impl<'a> ContextHost<'a> {
+             frameworks: options.framework_hints,
+             with_ignore_fixes: options.with_ignore_fixes,
+             react_compiler_results: OnceCell::new(),
++            react_doctor_next_file_active: OnceCell::new(),
+         }
+         .sniff_for_frameworks()
+     }
+@@ -493,24 +493,26 @@ impl<'a> ContextHost<'a> {
+         LintContext {
+             parent: self,
++            react_doctor_diagnostic_spans: OnceCell::new(),
+             current_rule_name: rule_name,
+             current_plugin_name: plugin_name,
+             current_plugin_display_name: plugin_display_name(plugin_name),
+             #[cfg(debug_assertions)]
+             current_rule_fix_capabilities: rule.fix(),
+             severity: severity.into(),
+         }
+     }
+ 
+     /// Creates a new [`LintContext`] for testing purposes only.
+     #[cfg(test)]
+     pub(crate) fn spawn_for_test(self: Rc<Self>) -> LintContext<'a> {
+         LintContext {
+             parent: Rc::clone(&self),
++            react_doctor_diagnostic_spans: OnceCell::new(),
+             current_rule_name: "",
+             current_plugin_name: "eslint",
+             current_plugin_display_name: "eslint",
+             #[cfg(debug_assertions)]
+             current_rule_fix_capabilities: crate::rule::RuleFixMeta::None,
+             severity: oxc_diagnostics::Severity::Warning,
+         }
+     }
+diff --git a/crates/oxc_linter/src/rules.rs b/crates/oxc_linter/src/rules.rs
+index baa13c5..7c21b9d 100644
+--- a/crates/oxc_linter/src/rules.rs
++++ b/crates/oxc_linter/src/rules.rs
+@@ -3,6 +3,8 @@
+ //! New rules need to be added to these `mod` statements.
+ //! Then run `cargo lintgen` to regenerate the RuleEnum and RuleRunnerImpls.
+ 
++pub(crate) mod react_doctor_native;
++
+ /// <https://github.com/import-js/eslint-plugin-import>
+ pub(crate) mod import {
+     pub mod consistent_type_specifier_style;
+diff --git a/crates/oxc_linter/src/lib.rs b/crates/oxc_linter/src/lib.rs
+--- a/crates/oxc_linter/src/lib.rs
++++ b/crates/oxc_linter/src/lib.rs
+@@ -47,6 +47,8 @@ mod tsgolint;
+ mod utils;
+ 
+ pub mod loader;
++pub mod react_doctor_scan;
++pub mod react_doctor_project_analysis;
+ pub mod rules;
+ pub mod table;
+ 
+diff --git a/apps/oxlint/src/run.rs b/apps/oxlint/src/run.rs
+--- a/apps/oxlint/src/run.rs
++++ b/apps/oxlint/src/run.rs
+@@ -239,6 +239,79 @@ async fn lint_impl(
+     cli_runner.run(&mut stdout)
+ }
+ 
++#[napi]
++pub fn analyze_react_doctor_duplicate_jsx(input_json: String) -> napi::Result<String> {
++    let input = serde_json::from_str::<
++        oxc_linter::react_doctor_project_analysis::DuplicateJsxAnalysisInput,
++    >(&input_json)
++    .map_err(|error| {
++        napi::Error::from_reason(format!("Invalid React Doctor duplicate JSX input: {error}"))
++    })?;
++    let findings = oxc_linter::react_doctor_project_analysis::analyze_duplicate_jsx(&input);
++    serde_json::to_string(&findings).map_err(|error| {
++        napi::Error::from_reason(format!("Failed to serialize React Doctor duplicate JSX findings: {error}"))
++    })
++}
++
++#[napi]
++pub fn react_doctor_native_project_rule_ids() -> Vec<String> {
++    oxc_linter::react_doctor_project_analysis::native_project_rule_ids()
++}
++
++#[napi]
++pub fn analyze_react_doctor_project_graph(input_json: String) -> napi::Result<String> {
++    let input = serde_json::from_str::<
++        oxc_linter::react_doctor_project_analysis::ProjectAnalysisGraphInput,
++    >(&input_json)
++    .map_err(|error| {
++        napi::Error::from_reason(format!("Invalid React Doctor project graph input: {error}"))
++    })?;
++    let findings = oxc_linter::react_doctor_project_analysis::analyze_project_graph(&input);
++    serde_json::to_string(&findings).map_err(|error| {
++        napi::Error::from_reason(format!("Failed to serialize React Doctor project findings: {error}"))
++    })
++}
++
++#[napi]
++pub fn react_doctor_native_scan_rule_ids() -> Vec<String> {
++    oxc_linter::react_doctor_scan::native_scan_rule_ids()
++}
++
++#[napi]
++pub fn scan_react_doctor_file(input_json: String) -> napi::Result<String> {
++    let input = serde_json::from_str::<oxc_linter::react_doctor_scan::ScanFileInput>(&input_json)
++        .map_err(|error| {
++        napi::Error::from_reason(format!("Invalid React Doctor scan input: {error}"))
++    })?;
++    scan_react_doctor_file_input(input)
++}
++
++#[napi]
++pub fn scan_react_doctor_file_source(
++    absolute_path: String,
++    relative_path: String,
++    content: String,
++    is_generated_bundle: bool,
++    rule_ids: Vec<String>,
++) -> napi::Result<String> {
++    scan_react_doctor_file_input(oxc_linter::react_doctor_scan::ScanFileInput {
++        absolute_path,
++        relative_path,
++        content,
++        is_generated_bundle,
++        rule_ids,
++    })
++}
++
++fn scan_react_doctor_file_input(
++    input: oxc_linter::react_doctor_scan::ScanFileInput,
++) -> napi::Result<String> {
++    let findings = oxc_linter::react_doctor_scan::scan_file(&input);
++    serde_json::to_string(&findings).map_err(|error| {
++        napi::Error::from_reason(format!("Failed to serialize React Doctor scan findings: {error}"))
++    })
++}
++
+ #[cfg(all(target_pointer_width = "64", target_endian = "little"))]
+ pub use crate::js_plugins::parse::{get_buffer_offset, parse_raw_sync};
+ 

@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { validateReport } from "../../.agents/skills/run-parity/scripts/compare-parity.mjs";
 import { resolveBindingPackageName } from "../../native/oxlint/npm/react-doctor-rust/bin/resolve-native-binding.js";
@@ -68,12 +69,7 @@ const selectInstallPackages = () => {
     }
     return path.join(tarballsDirectory, matches[0]);
   };
-  return [
-    findTarball("react-doctor-rust"),
-    findTarball(bindingPackageName),
-    findTarball("react-doctor"),
-    findTarball("oxlint-plugin-react-doctor"),
-  ];
+  return [findTarball("react-doctor-rust"), findTarball(bindingPackageName)];
 };
 const selectedInstallPackages = selectInstallPackages();
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-rust-smoke-"));
@@ -121,11 +117,11 @@ try {
     ),
   );
   const bindingManifest = JSON.parse(fs.readFileSync(installedBindingManifest, "utf8"));
-  if (
-    registryPackage === null &&
-    (launcherManifest.private !== true || bindingManifest.private !== true)
-  ) {
-    throw new Error("Packed native packages must remain private in CI");
+  if (launcherManifest.private !== bindingManifest.private) {
+    throw new Error("Native launcher and binding disagree on release mode");
+  }
+  if (launcherManifest.version === "0.0.0" && launcherManifest.private !== true) {
+    throw new Error("Placeholder native packages must remain private");
   }
   if (
     registryPackage !== null &&
@@ -148,6 +144,49 @@ try {
       `Packed ${bindingPackageName}@${bindingManifest.version} does not match react-doctor-rust@${launcherManifest.version}`,
     );
   }
+  for (const packageName of ["react-doctor", "oxlint-plugin-react-doctor"]) {
+    const bundledPackagePath = path.join(
+      temporaryDirectory,
+      "node_modules",
+      "react-doctor-rust",
+      "node_modules",
+      packageName,
+    );
+    if (
+      !launcherManifest.bundledDependencies?.includes(packageName) ||
+      !fs.existsSync(path.join(bundledPackagePath, "package.json")) ||
+      fs.existsSync(path.join(temporaryDirectory, "node_modules", packageName))
+    ) {
+      throw new Error(`Expected ${packageName} to be supplied only by the native launcher bundle`);
+    }
+  }
+  const installedLauncherDirectory = path.join(
+    temporaryDirectory,
+    "node_modules",
+    "react-doctor-rust",
+  );
+  const runtimeManifest = JSON.parse(
+    fs.readFileSync(path.join(installedLauncherDirectory, "runtime-manifest.json"), "utf8"),
+  );
+  for (const bundledPackage of runtimeManifest.bundledPackages) {
+    for (const file of bundledPackage.files) {
+      const actualHash = crypto
+        .createHash("sha256")
+        .update(fs.readFileSync(path.join(installedLauncherDirectory, file.path)))
+        .digest("hex");
+      if (actualHash !== file.sha256) throw new Error(`Bundled runtime file changed: ${file.path}`);
+    }
+  }
+  const requireFromBundledCli = createRequire(
+    path.join(installedLauncherDirectory, "node_modules/react-doctor/dist/cli.js"),
+  );
+  const pluginPath = requireFromBundledCli.resolve("oxlint-plugin-react-doctor");
+  const bundledPluginDirectory = fs.realpathSync(
+    path.join(installedLauncherDirectory, "node_modules", "oxlint-plugin-react-doctor"),
+  );
+  if (!pluginPath.startsWith(bundledPluginDirectory + path.sep)) {
+    throw new Error(`Bundled CLI resolved a different rule plugin: ${pluginPath}`);
+  }
   const binaryPath = path.join(
     temporaryDirectory,
     "node_modules",
@@ -160,6 +199,9 @@ try {
     throw new Error(
       `Installed react-doctor-rust reported invalid version ${JSON.stringify(version)}`,
     );
+  }
+  if (launcherManifest.private !== true && version !== launcherManifest.version) {
+    throw new Error(`Released CLI version ${version} does not match ${launcherManifest.version}`);
   }
 
   const fixtureDirectory = path.join(temporaryDirectory, "fixture");

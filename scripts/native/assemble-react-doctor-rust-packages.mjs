@@ -42,6 +42,7 @@ const outputDirectory = path.resolve(
 );
 const configuredPackageVersion = readOption("--version");
 const configuredReactDoctorVersion = readOption("--react-doctor-version");
+const isRelease = process.argv.includes("--release");
 const packageVersion = configuredPackageVersion ?? "0.0.0";
 const reactDoctorManifest = JSON.parse(
   fs.readFileSync(path.join(repositoryRoot, "packages", "react-doctor", "package.json"), "utf8"),
@@ -57,10 +58,19 @@ if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(packageVersion)) {
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(reactDoctorVersion)) {
   throw new Error(`Invalid react-doctor version: ${reactDoctorVersion}`);
 }
-if (packageVersion !== "0.0.0" && configuredReactDoctorVersion === null) {
+if (isRelease && (configuredPackageVersion === null || packageVersion === "0.0.0")) {
   throw new Error(
-    "Release assemblies require --react-doctor-version for a published react-doctor build with native-required support.",
+    "Release assemblies require --version with a non-placeholder experimental version.",
   );
+}
+if (
+  isRelease &&
+  !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-experimental\.(0|[1-9]\d*)$/.test(packageVersion)
+) {
+  throw new Error("Release versions must use <major>.<minor>.<patch>-experimental.<number>.");
+}
+if (reactDoctorVersion !== reactDoctorManifest.version) {
+  throw new Error("--react-doctor-version must match the bundled workspace package version.");
 }
 if (!fs.existsSync(artifactsDirectory)) {
   throw new Error(`Native artifacts directory does not exist: ${artifactsDirectory}`);
@@ -163,6 +173,26 @@ for (const targetArtifact of targetArtifacts.slice(1)) {
 const requireFromScript = createRequire(import.meta.url);
 const napiCliPath = path.join(path.dirname(requireFromScript.resolve("@napi-rs/cli")), "cli.js");
 
+if (isRelease) {
+  execFileSync("nr", ["build", "--filter=react-doctor", "--concurrency=1"], {
+    cwd: repositoryRoot,
+    stdio: "inherit",
+  });
+  execFileSync("nr", ["build"], {
+    cwd: path.join(repositoryRoot, "packages", "react-doctor"),
+    env: { ...process.env, VERSION: packageVersion },
+    stdio: "inherit",
+  });
+  const builtVersion = execFileSync(
+    process.execPath,
+    [path.join(repositoryRoot, "packages/react-doctor/bin/react-doctor.js"), "--version"],
+    { encoding: "utf8", env: { ...process.env, REACT_DOCTOR_NO_TELEMETRY: "1" } },
+  ).trim();
+  if (builtVersion !== packageVersion) {
+    throw new Error(`Built CLI version ${builtVersion} does not match ${packageVersion}.`);
+  }
+}
+
 fs.rmSync(outputDirectory, { recursive: true, force: true });
 fs.mkdirSync(outputDirectory, { recursive: true });
 const flattenedArtifactsDirectory = path.join(outputDirectory, "artifacts");
@@ -183,7 +213,66 @@ fs.copyFileSync(
 fs.copyFileSync(reactDoctorLicensePath, path.join(launcherPackageDirectory, "LICENSE"));
 const launcherManifest = JSON.parse(fs.readFileSync(packageTemplatePath, "utf8"));
 launcherManifest.version = packageVersion;
-launcherManifest.dependencies["react-doctor"] = reactDoctorVersion;
+launcherManifest.private = !isRelease;
+launcherManifest.publishConfig = {
+  access: "public",
+  registry: "https://registry.npmjs.org/",
+  tag: "experimental",
+};
+launcherManifest.dependencies = {};
+launcherManifest.bundledDependencies = ["react-doctor", "oxlint-plugin-react-doctor"];
+const runtimeTarballsDirectory = path.join(outputDirectory, "runtime-tarballs");
+fs.mkdirSync(runtimeTarballsDirectory);
+const bundledPackages = [];
+for (const packageName of launcherManifest.bundledDependencies) {
+  const workspacePackageDirectory = path.join(repositoryRoot, "packages", packageName);
+  execFileSync("pnpm", ["pack", "--pack-destination", runtimeTarballsDirectory], {
+    cwd: workspacePackageDirectory,
+    stdio: "inherit",
+  });
+  const workspaceManifest = JSON.parse(
+    fs.readFileSync(path.join(workspacePackageDirectory, "package.json"), "utf8"),
+  );
+  const tarballPath = path.join(
+    runtimeTarballsDirectory,
+    `${packageName}-${workspaceManifest.version}.tgz`,
+  );
+  const bundledDirectory = path.join(launcherPackageDirectory, "node_modules", packageName);
+  fs.mkdirSync(bundledDirectory, { recursive: true });
+  execFileSync("tar", ["-xzf", tarballPath, "--strip-components=1", "-C", bundledDirectory]);
+  const bundledManifest = JSON.parse(
+    fs.readFileSync(path.join(bundledDirectory, "package.json"), "utf8"),
+  );
+  for (const [dependencyName, dependencyVersion] of Object.entries(
+    bundledManifest.dependencies ?? {},
+  )) {
+    const existingVersion = launcherManifest.dependencies[dependencyName];
+    if (existingVersion !== undefined && existingVersion !== dependencyVersion) {
+      throw new Error(`Bundled runtime dependencies disagree on ${dependencyName}.`);
+    }
+    if (/^(?:workspace|file|link):/.test(dependencyVersion)) {
+      throw new Error(`Bundled runtime has an unresolved local dependency: ${dependencyName}.`);
+    }
+    launcherManifest.dependencies[dependencyName] = dependencyVersion;
+  }
+  launcherManifest.dependencies[packageName] = bundledManifest.version;
+  bundledPackages.push({
+    name: packageName,
+    version: bundledManifest.version,
+    tarballSha256: sha256(tarballPath),
+    files: collectFiles(bundledDirectory)
+      .sort()
+      .map((filePath) => ({
+        path: path.relative(launcherPackageDirectory, filePath).split(path.sep).join("/"),
+        sha256: sha256(filePath),
+      })),
+  });
+}
+fs.rmSync(runtimeTarballsDirectory, { recursive: true });
+fs.writeFileSync(
+  path.join(launcherPackageDirectory, "runtime-manifest.json"),
+  `${JSON.stringify({ bundledPackages }, null, 2)}\n`,
+);
 fs.writeFileSync(
   path.join(launcherPackageDirectory, "package.json"),
   `${JSON.stringify(launcherManifest, null, 2)}\n`,
@@ -222,7 +311,8 @@ for (const targetArtifact of targetArtifacts) {
   const platformPackageDirectory = path.join(platformPackagesDirectory, targetArtifact.directory);
   const platformManifestPath = path.join(platformPackageDirectory, "package.json");
   const platformManifest = JSON.parse(fs.readFileSync(platformManifestPath, "utf8"));
-  platformManifest.private = true;
+  platformManifest.private = !isRelease;
+  platformManifest.publishConfig = launcherManifest.publishConfig;
   platformManifest.version = packageVersion;
   platformManifest.files.push(targetArtifact.metadataFileName, "LICENSE", "OXC-LICENSE");
   fs.writeFileSync(platformManifestPath, `${JSON.stringify(platformManifest, null, 2)}\n`);
@@ -245,6 +335,8 @@ fs.writeFileSync(
 const packageManifest = {
   packageVersion,
   reactDoctorVersion,
+  isRelease,
+  bundledPackages,
   upstreamRepository: firstMetadata.upstreamRepository,
   upstreamTag: firstMetadata.upstreamTag,
   upstreamCommit: firstMetadata.upstreamCommit,

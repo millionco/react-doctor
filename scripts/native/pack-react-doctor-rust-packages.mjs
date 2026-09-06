@@ -43,16 +43,6 @@ for (const nativePackageDirectory of nativePackageDirectories) {
     stdio: "inherit",
   });
 }
-for (const workspacePackageDirectory of [
-  path.join(repositoryRoot, "packages", "oxlint-plugin-react-doctor"),
-  path.join(repositoryRoot, "packages", "react-doctor"),
-]) {
-  execFileSync("pnpm", ["pack", "--pack-destination", tarballsDirectory], {
-    cwd: workspacePackageDirectory,
-    stdio: "inherit",
-  });
-}
-
 const tarballNames = fs
   .readdirSync(tarballsDirectory)
   .filter((fileName) => fileName.endsWith(".tgz"))
@@ -65,4 +55,56 @@ const checksumLines = tarballNames.map((tarballName) => {
   return `${checksum}  ${tarballName}`;
 });
 fs.writeFileSync(path.join(tarballsDirectory, "SHA256SUMS"), `${checksumLines.join("\n")}\n`);
+const packageManifest = JSON.parse(
+  fs.readFileSync(path.join(packageDirectory, "package-manifest.json"), "utf8"),
+);
+if (packageManifest.isRelease) {
+  const publishOrder = [...nativePackageDirectories.slice(1), nativePackageDirectories[0]].map(
+    (directory) => {
+      const manifest = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8"));
+      if (
+        manifest.private === true ||
+        manifest.version !== packageManifest.packageVersion ||
+        manifest.publishConfig?.tag !== "experimental" ||
+        manifest.publishConfig?.access !== "public" ||
+        manifest.publishConfig?.registry !== "https://registry.npmjs.org/"
+      ) {
+        throw new Error(`Invalid release manifest: ${manifest.name}`);
+      }
+      const tarball = `${manifest.name}-${manifest.version}.tgz`;
+      if (!tarballNames.includes(tarball)) throw new Error(`Missing release tarball: ${tarball}`);
+      return {
+        name: manifest.name,
+        version: manifest.version,
+        tarball,
+        sha256: crypto
+          .createHash("sha256")
+          .update(fs.readFileSync(path.join(tarballsDirectory, tarball)))
+          .digest("hex"),
+        publishArguments: [
+          "publish",
+          tarball,
+          "--access",
+          "public",
+          "--tag",
+          "experimental",
+          "--registry",
+          "https://registry.npmjs.org/",
+          "--ignore-scripts",
+        ],
+      };
+    },
+  );
+  fs.writeFileSync(
+    path.join(tarballsDirectory, "release-plan.json"),
+    `${JSON.stringify(
+      {
+        requiresExplicitPublicationApproval: true,
+        publishOrder,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
 process.stdout.write(`Packed ${tarballNames.length} packages into ${tarballsDirectory}\n`);

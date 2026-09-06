@@ -27,6 +27,7 @@
   },
   "files": [
     "bin/**",
+    "runtime-manifest.json",
     "LICENSE",
     "README.md"
   ],

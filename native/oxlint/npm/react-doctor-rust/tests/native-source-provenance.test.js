@@ -20,6 +20,31 @@ const sourcePaths = [
   "scripts/native/utils/compute-native-source-sha256.mjs",
 ];
 
+test("release assembly rejects placeholder, stable, malformed, and mismatched runtime versions", () => {
+  for (const argumentsList of [
+    ["--release"],
+    ["--release", "--version", "0.0.0"],
+    ["--release", "--version", "1.0.0"],
+    ["--release", "--version", "01.0.0-experimental.0"],
+    ["--release", "--version", "1.0.0-experimental.01"],
+    ["--react-doctor-version", "999.0.0"],
+  ]) {
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.join(repositoryRoot, "scripts/native/assemble-react-doctor-rust-packages.mjs"),
+        ...argumentsList,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 1);
+    assert.match(
+      result.stderr,
+      /Release assemblies require|Release versions must use|must match the bundled workspace/,
+    );
+  }
+});
+
 test("fingerprints every build input and tolerates checkout line endings", (context) => {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "native-source-provenance-"));
   context.after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));

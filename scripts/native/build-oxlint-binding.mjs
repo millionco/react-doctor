@@ -1587,6 +1587,11 @@ impl Rule for ${delegatedRule.struct} {
       if (typeof nativeBinding.scanReactDoctorFile !== "function") {
         throw new Error(`built binding does not export scanReactDoctorFile: ${outputBindingPath}`);
       }
+      if (typeof nativeBinding.scanReactDoctorFileSource !== "function") {
+        throw new Error(
+          `built binding does not export scanReactDoctorFileSource: ${outputBindingPath}`,
+        );
+      }
       if (typeof nativeBinding.reactDoctorNativeScanRuleIds !== "function") {
         throw new Error(
           `built binding does not export reactDoctorNativeScanRuleIds: ${outputBindingPath}`,

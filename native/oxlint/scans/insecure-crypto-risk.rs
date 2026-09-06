@@ -1,4 +1,4 @@
-use lazy_regex::{Lazy, Regex, lazy_regex};
+use lazy_regex::{Lazy, Regex, RegexBuilder, lazy_regex};
 
 use super::{
     ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
@@ -6,6 +6,7 @@ use super::{
 
 const MESSAGE: &str = "Code uses weak hashes, deprecated ciphers, timing-unsafe comparisons, or Math.random in a security-shaped context.";
 const SECURITY_CONTEXT_WINDOW_CHARS: usize = 250;
+const SIGNATURE_COMPARISON_DFA_CACHE_BYTES: usize = 32 * 1024 * 1024;
 
 static DEMO_CONTEXT_PATTERN: Lazy<Regex> =
     lazy_regex!(r"(?i)(?:^|/)(?:examples?|tutorials?|demos?|samples?|playgrounds?)(?:/|$)");
@@ -27,9 +28,14 @@ static DEPRECATED_CIPHER_API_PATTERN: Lazy<Regex> =
 static WEAK_CIPHER_NAME_PATTERN: Lazy<Regex> = lazy_regex!(r"(?-u:\b)(?:DES|RC4|Blowfish)(?-u:\b)");
 static CIPHER_CONTEXT_PATTERN: Lazy<Regex> =
     lazy_regex!(r"(?i)(?-u:\b)(?:cipher|decipher|encrypt|decrypt|crypto)(?-u:\b)");
-static UNSAFE_SIGNATURE_COMPARISON_PATTERN: Lazy<Regex> = lazy_regex!(
-    r"(?i)[A-Za-z_$][A-Za-z0-9_$.]{0,100}signature[A-Za-z0-9_$]*(?:\([^)]*\))?\s*(?:===?|!==?)\s*[A-Za-z_$][A-Za-z0-9_$.]*(?:\([^)]*\))?|[A-Za-z_$][A-Za-z0-9_$.]{0,100}(?:\([^)]*\))?\s*(?:===?|!==?)\s*[A-Za-z_$][A-Za-z0-9_$.]{0,100}signature[A-Za-z0-9_$]*(?:\([^)]*\))?"
-);
+static UNSAFE_SIGNATURE_COMPARISON_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    RegexBuilder::new(
+        r"(?i)[A-Za-z_$][A-Za-z0-9_$.]{0,100}signature[A-Za-z0-9_$]*(?:\([^)]*\))?\s*(?:===?|!==?)\s*[A-Za-z_$][A-Za-z0-9_$.]*(?:\([^)]*\))?|[A-Za-z_$][A-Za-z0-9_$.]{0,100}(?:\([^)]*\))?\s*(?:===?|!==?)\s*[A-Za-z_$][A-Za-z0-9_$.]{0,100}signature[A-Za-z0-9_$]*(?:\([^)]*\))?",
+    )
+    .dfa_size_limit(SIGNATURE_COMPARISON_DFA_CACHE_BYTES)
+    .build()
+    .expect("valid signature comparison regex")
+});
 static SIGNATURE_METADATA_PATTERN: Lazy<Regex> =
     lazy_regex!(r"(?i)signature(?:Method|Type|Status|Algorithm|Kind|Mode|Version)(?-u:\b)");
 static BOOLEAN_COMPARAND_PATTERN: Lazy<Regex> =

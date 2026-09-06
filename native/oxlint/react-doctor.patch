@@ -261,7 +261,7 @@ diff --git a/crates/oxc_linter/src/lib.rs b/crates/oxc_linter/src/lib.rs
 diff --git a/apps/oxlint/src/run.rs b/apps/oxlint/src/run.rs
 --- a/apps/oxlint/src/run.rs
 +++ b/apps/oxlint/src/run.rs
-@@ -239,6 +239,56 @@ async fn lint_impl(
+@@ -239,6 +239,79 @@ async fn lint_impl(
      cli_runner.run(&mut stdout)
  }
  
@@ -309,6 +309,29 @@ diff --git a/apps/oxlint/src/run.rs b/apps/oxlint/src/run.rs
 +        .map_err(|error| {
 +        napi::Error::from_reason(format!("Invalid React Doctor scan input: {error}"))
 +    })?;
++    scan_react_doctor_file_input(input)
++}
++
++#[napi]
++pub fn scan_react_doctor_file_source(
++    absolute_path: String,
++    relative_path: String,
++    content: String,
++    is_generated_bundle: bool,
++    rule_ids: Vec<String>,
++) -> napi::Result<String> {
++    scan_react_doctor_file_input(oxc_linter::react_doctor_scan::ScanFileInput {
++        absolute_path,
++        relative_path,
++        content,
++        is_generated_bundle,
++        rule_ids,
++    })
++}
++
++fn scan_react_doctor_file_input(
++    input: oxc_linter::react_doctor_scan::ScanFileInput,
++) -> napi::Result<String> {
 +    let findings = oxc_linter::react_doctor_scan::scan_file(&input);
 +    serde_json::to_string(&findings).map_err(|error| {
 +        napi::Error::from_reason(format!("Failed to serialize React Doctor scan findings: {error}"))

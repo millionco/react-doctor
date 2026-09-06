@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import * as fs from "node:fs";
@@ -320,6 +321,24 @@ try {
     fs.writeFileSync(installedBindingManifest, originalBindingManifest);
   }
   const preloadPath = path.join(temporaryDirectory, "native-smoke-failure.mjs");
+  fs.writeFileSync(
+    preloadPath,
+    `import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const bindingPath = require.resolve(${JSON.stringify(bindingPackageName)});
+const binding = require(bindingPath);
+require.cache[bindingPath].exports = { ...binding, scanReactDoctorFileSource: undefined };
+`,
+  );
+  const legacyScanResult = run(process.execPath, scanArguments, {
+    env: {
+      NODE_OPTIONS:
+        `${process.env.NODE_OPTIONS ?? ""} --import=${pathToFileURL(preloadPath).href}`.trim(),
+    },
+  });
+  const legacyReport = JSON.parse(legacyScanResult.stdout);
+  assert.equal(validateReport(legacyReport), null);
+  assert.deepEqual(legacyReport.diagnostics, report.diagnostics);
   const injectedFailures = [
     {
       exportName: "scanReactDoctorFile",
@@ -330,6 +349,19 @@ try {
     {
       exportName: "scanReactDoctorFile",
       replacement: "() => 'not json'",
+      disableSourceScan: true,
+      argumentsList: scanArguments,
+      expectedSkippedCheck: "security-scan",
+    },
+    {
+      exportName: "scanReactDoctorFileSource",
+      replacement: "() => 'not json'",
+      argumentsList: scanArguments,
+      expectedSkippedCheck: "security-scan",
+    },
+    {
+      exportName: "scanReactDoctorFileSource",
+      replacement: "() => { throw new Error('native smoke injected failure'); }",
       argumentsList: scanArguments,
       expectedSkippedCheck: "security-scan",
     },
@@ -356,6 +388,7 @@ const binding = require(bindingPath);
 require.cache[bindingPath].exports = {
   ...binding,
   [${JSON.stringify(failure.exportName)}]: ${failure.replacement},
+  ${failure.disableSourceScan ? "scanReactDoctorFileSource: undefined," : ""}
 };
 `,
     );

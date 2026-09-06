@@ -13,6 +13,13 @@ import { livenessFixtures } from "../../packages/oxlint-plugin-react-doctor/src/
 interface NativeScanBinding {
   readonly reactDoctorNativeScanRuleIds: () => unknown;
   readonly scanReactDoctorFile: (inputJson: string) => unknown;
+  readonly scanReactDoctorFileSource: (
+    absolutePath: string,
+    relativePath: string,
+    content: string,
+    isGeneratedBundle: boolean,
+    ruleIds: ReadonlyArray<string>,
+  ) => unknown;
 }
 
 interface NativeModuleContainer {
@@ -327,6 +334,45 @@ const REGRESSION_FIXTURE_INPUTS: ReadonlyArray<ScanParityFixtureInput> = [
     name: "insecure-crypto-risk-negative-fingerprint",
     relativePath: "src/files.ts",
     content: 'export const fingerprint = createHash("md5").update(file);\n',
+  },
+  ...[
+    "requestSignature === expected",
+    "expected !== requestSignature",
+    "requestSIGNATURE === expectedSignature",
+    "expectedSignature === requestSIGNATURE",
+    "requestSignature() === expected()",
+    "expected() !== requestSignature()",
+    `requestSignature(${"input,".repeat(300)}\nvalue) === expected`,
+    `expected(${"input,".repeat(300)}\nvalue) !== requestSignature`,
+    "requestSignature\uFEFF===\u00A0expected",
+    "KrequestSignature === expected",
+    "ſrequestSignature === expected",
+    "requestSignature.length === input; requestSignature === expected",
+    ...[100, 101, 102].map((length) => `${"a".repeat(length)}Signature === expected`),
+  ].map((comparison, index) => ({
+    name: `insecure-crypto-risk-signature-comparison-${index}`,
+    relativePath: "src/server/signature.ts",
+    content: `const crypto = require("crypto");\nconst valid = ${comparison};\n`,
+    expectedRuleCounts: { "insecure-crypto-risk": 1 },
+  })),
+  ...[
+    "signature === expected",
+    "expected === signature",
+    "requestSignatureType === input; requestSignature === expected",
+    "requestSignature === true; requestSignature === expected",
+    "requestSignature === expected.length; requestSignature === expected",
+    "requestſignature === expected",
+  ].map((comparison, index) => ({
+    name: `insecure-crypto-risk-first-signature-suppression-${index}`,
+    relativePath: "src/server/signature.ts",
+    content: `const crypto = require("crypto");\nconst valid = ${comparison};\n`,
+    expectedRuleCounts: { "insecure-crypto-risk": 0 },
+  })),
+  {
+    name: "source-input-escaped-unicode-and-nul",
+    relativePath: "src/server/máth-🙂.ts",
+    content: '/* 🙂e\u0301\uFEFF\0 */\r\nconst token = createHash("md5").update(password);\r\n',
+    expectedRuleCounts: { "insecure-crypto-risk": 1 },
   },
   ...["é", "中", "\u0301", "🙂"].flatMap((boundary) => [
     {
@@ -1332,7 +1378,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isNativeScanBinding = (value: unknown): value is NativeScanBinding =>
   isRecord(value) &&
   typeof value.reactDoctorNativeScanRuleIds === "function" &&
-  typeof value.scanReactDoctorFile === "function";
+  typeof value.scanReactDoctorFile === "function" &&
+  typeof value.scanReactDoctorFileSource === "function";
 
 const readOption = (name: string): string | undefined => {
   const optionIndex = process.argv.indexOf(name);
@@ -1517,6 +1564,39 @@ const run = (): void => {
   assert.equal(new Set(advertisedRuleIds).size, advertisedRuleIds.length, "Duplicate scan rule ID");
   assert.deepEqual([...advertisedRuleIds].sort(), RETAINED_SCAN_RULE_IDS);
 
+  const emptySelection = {
+    absolutePath: "C:\\project\\máth\\🙂.ts",
+    relativePath: "máth\\🙂.ts",
+    content: 'const value = "\0🙂e\u0301\uFEFF";\r\n',
+    isGeneratedBundle: true,
+    ruleIds: [],
+  };
+  assert.equal(binding.scanReactDoctorFile(JSON.stringify(emptySelection)), "{}");
+  assert.equal(
+    binding.scanReactDoctorFileSource(
+      emptySelection.absolutePath,
+      emptySelection.relativePath,
+      emptySelection.content,
+      emptySelection.isGeneratedBundle,
+      emptySelection.ruleIds,
+    ),
+    "{}",
+  );
+  for (const field of ["absolutePath", "relativePath", "content", "ruleIds"]) {
+    for (const surrogate of ["\uD800", "\uDC00"]) {
+      assert.throws(
+        () =>
+          binding.scanReactDoctorFile(
+            JSON.stringify({
+              ...emptySelection,
+              [field]: field === "ruleIds" ? [surrogate] : surrogate,
+            }),
+          ),
+        /Invalid React Doctor scan input/,
+      );
+    }
+  }
+
   const canonicalEntryById = new Map(
     REACT_DOCTOR_SCAN_RULES.filter((entry) => RETAINED_SCAN_RULE_IDS.includes(entry.id)).map(
       (entry) => [entry.id, entry],
@@ -1563,23 +1643,34 @@ const run = (): void => {
         }),
       );
       for (const ruleIds of [RETAINED_SCAN_RULE_IDS, [...RETAINED_SCAN_RULE_IDS].reverse()]) {
-        const nativeOutputJson = binding.scanReactDoctorFile(
-          JSON.stringify({ ...scannedFile, ruleIds }),
-        );
-        assert.equal(
-          typeof nativeOutputJson,
-          "string",
-          `${fixture.name}: native scan output must be JSON text`,
-        );
-        const nativeFindingsByRule: unknown = JSON.parse(nativeOutputJson);
-        try {
-          assert.deepEqual(
-            nativeFindingsByRule,
-            canonicalFindingsByRule,
-            `${fixture.name} (${fixture.relativePath}, first rule: ${ruleIds[0]})`,
+        for (const [api, nativeOutputJson] of [
+          ["json", binding.scanReactDoctorFile(JSON.stringify({ ...scannedFile, ruleIds }))],
+          [
+            "source",
+            binding.scanReactDoctorFileSource(
+              scannedFile.absolutePath,
+              scannedFile.relativePath,
+              scannedFile.content,
+              scannedFile.isGeneratedBundle,
+              ruleIds,
+            ),
+          ],
+        ]) {
+          assert.equal(
+            typeof nativeOutputJson,
+            "string",
+            `${fixture.name} (${api}): native scan output must be JSON text`,
           );
-        } catch (error) {
-          parityDifferences.push(error instanceof Error ? error.message : String(error));
+          const nativeFindingsByRule: unknown = JSON.parse(nativeOutputJson);
+          try {
+            assert.deepEqual(
+              nativeFindingsByRule,
+              canonicalFindingsByRule,
+              `${fixture.name} (${api}, ${fixture.relativePath}, first rule: ${ruleIds[0]})`,
+            );
+          } catch (error) {
+            parityDifferences.push(error instanceof Error ? error.message : String(error));
+          }
         }
       }
     }
@@ -1593,7 +1684,7 @@ const run = (): void => {
       );
     }
     process.stdout.write(
-      `Native scan parity passed: ${RETAINED_SCAN_RULE_IDS.length} rules, ${fixtures.length} fixtures, forward and reverse rule order.\n`,
+      `Native scan parity passed: ${RETAINED_SCAN_RULE_IDS.length} rules, ${fixtures.length} fixtures, JSON and source APIs, forward and reverse rule order.\n`,
     );
   } finally {
     fs.rmSync(temporaryRoot, { recursive: true, force: true });

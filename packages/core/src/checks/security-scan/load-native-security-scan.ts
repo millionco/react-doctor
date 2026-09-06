@@ -74,20 +74,40 @@ export const loadNativeSecurityScan = (): NativeSecurityScan | null => {
     );
   }
   const scanReactDoctorFile = binding.scanReactDoctorFile;
+  const scanReactDoctorFileSource =
+    typeof binding.scanReactDoctorFileSource === "function"
+      ? binding.scanReactDoctorFileSource
+      : null;
   return {
     ruleIds: nativeRuleIdSet,
     scanFile: (file, ruleIds) => {
       let outputJson: unknown;
       try {
-        outputJson = scanReactDoctorFile(
-          JSON.stringify({
-            absolutePath: file.absolutePath,
-            relativePath: file.relativePath,
-            content: file.content,
-            isGeneratedBundle: file.isGeneratedBundle,
+        const canUseSourceArguments =
+          scanReactDoctorFileSource !== null &&
+          file.content.isWellFormed() &&
+          file.absolutePath.isWellFormed() &&
+          file.relativePath.isWellFormed() &&
+          ruleIds.every((ruleId) => ruleId.isWellFormed());
+        if (canUseSourceArguments) {
+          outputJson = scanReactDoctorFileSource(
+            file.absolutePath,
+            file.relativePath,
+            file.content,
+            file.isGeneratedBundle,
             ruleIds,
-          }),
-        );
+          );
+        } else {
+          outputJson = scanReactDoctorFile(
+            JSON.stringify({
+              absolutePath: file.absolutePath,
+              relativePath: file.relativePath,
+              content: file.content,
+              isGeneratedBundle: file.isGeneratedBundle,
+              ruleIds,
+            }),
+          );
+        }
       } catch (error) {
         handleNativeOxlintFailure("The required native security scan failed.", error);
         return null;

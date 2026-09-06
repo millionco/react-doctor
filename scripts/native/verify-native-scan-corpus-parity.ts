@@ -7,6 +7,13 @@ import { REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV } from "../../packages/core/src/
 
 interface MutableNativeScanBinding {
   scanReactDoctorFile: (inputJson: string) => unknown;
+  scanReactDoctorFileSource: (
+    absolutePath: string,
+    relativePath: string,
+    content: string,
+    isGeneratedBundle: boolean,
+    ruleIds: ReadonlyArray<string>,
+  ) => unknown;
 }
 
 const bundledRequire = createRequire(
@@ -17,7 +24,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 const isMutableNativeScanBinding = (value: unknown): value is MutableNativeScanBinding =>
-  isRecord(value) && typeof value.scanReactDoctorFile === "function";
+  isRecord(value) &&
+  typeof value.scanReactDoctorFile === "function" &&
+  typeof value.scanReactDoctorFileSource === "function";
 
 const isScanFinding = (value: unknown): boolean =>
   isRecord(value) &&
@@ -62,8 +71,26 @@ const run = (): void => {
     `Native binding does not export scan API at ${bindingPath} resolved as ${bundledRequire.resolve(bindingPath)} (${isRecord(loadedBinding) ? Object.keys(loadedBinding).join(", ") : typeof loadedBinding})`,
   );
   const originalScanReactDoctorFile = loadedBinding.scanReactDoctorFile;
+  const originalScanReactDoctorFileSource = loadedBinding.scanReactDoctorFileSource;
   const nativeExecutionFailures: string[] = [];
   let nativeInvocationCount = 0;
+  let nativeSourceInvocationCount = 0;
+  loadedBinding.scanReactDoctorFileSource = (...argumentsList) => {
+    nativeSourceInvocationCount += 1;
+    try {
+      const outputJson = originalScanReactDoctorFileSource(...argumentsList);
+      if (
+        typeof outputJson !== "string" ||
+        !isNativeFindingMap(JSON.parse(outputJson), argumentsList[4])
+      ) {
+        throw new Error("invalid native source scan finding map");
+      }
+      return outputJson;
+    } catch (error) {
+      nativeExecutionFailures.push(error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  };
   loadedBinding.scanReactDoctorFile = (inputJson) => {
     nativeInvocationCount += 1;
     try {
@@ -116,6 +143,7 @@ const run = (): void => {
     }
   } finally {
     loadedBinding.scanReactDoctorFile = originalScanReactDoctorFile;
+    loadedBinding.scanReactDoctorFileSource = originalScanReactDoctorFileSource;
     if (originalBindingPath === undefined) {
       delete process.env[REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV];
     } else {
@@ -123,7 +151,7 @@ const run = (): void => {
     }
   }
 
-  assert.ok(nativeInvocationCount > 0, "Native scan binding was never invoked");
+  assert.ok(nativeSourceInvocationCount > 0, "Native source scan binding was never invoked");
   assert.deepEqual(nativeExecutionFailures, [], "Native scan execution fell back to TypeScript");
   if (parityDifferences.length > 0) {
     throw new Error(
@@ -131,7 +159,7 @@ const run = (): void => {
     );
   }
   process.stdout.write(
-    `Native scan corpus parity passed: ${repositoryDirectories.length} repositories, ${diagnosticCount} diagnostics, 0 differences.\n`,
+    `Native scan corpus parity passed: ${repositoryDirectories.length} repositories, ${diagnosticCount} diagnostics, 0 differences; ${nativeSourceInvocationCount} source calls, ${nativeInvocationCount} JSON calls.\n`,
   );
 };
 

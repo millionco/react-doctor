@@ -35,6 +35,10 @@ export const runGitRaw = (projectRoot: string, args: ReadonlyArray<string>): str
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       maxBuffer: RUN_GIT_MAX_BUFFER_BYTES,
+      env: {
+        ...process.env,
+        GIT_DIR: undefined,
+      },
     });
   } catch {
     return null;

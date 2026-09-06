@@ -10,34 +10,34 @@ const SECURITY_CONTEXT_WINDOW_CHARS: usize = 250;
 static DEMO_CONTEXT_PATTERN: Lazy<Regex> =
     lazy_regex!(r"(?i)(?:^|/)(?:examples?|tutorials?|demos?|samples?|playgrounds?)(?:/|$)");
 static PROTOCOL_CONTEXT_PATTERN: Lazy<Regex> = lazy_regex!(
-    r"(?i)gravatar|digest[-_ ]?auth|oauth[-_ ]?1|pkcs#?12|smime|\b_id\b|\betag\b|checksum|cache[-_ ]?key|fingerprint"
+    r"(?i)gravatar|digest[-_ ]?auth|oauth[-_ ]?1|pkcs#?12|smime|(?-u:\b)_id(?-u:\b)|(?-u:\b)etag(?-u:\b)|checksum|cache[-_ ]?key|fingerprint"
 );
 static CRYPTO_TRIGGER_PATTERN: Lazy<Regex> =
     lazy_regex!(r"(?i)createHash|md5|cipher|encrypt|decrypt|crypto|signature|Math\.random");
 static WEAK_HASH_PATTERN: Lazy<Regex> =
-    lazy_regex!(r#"(?i)createHash\s*\(\s*["'](?:md5|sha1)["']|\bmd5\s*\("#);
+    lazy_regex!(r#"(?i)createHash\s*\(\s*["'](?:md5|sha1)["']|(?-u:\b)md5\s*\("#);
 static SECURITY_CONTEXT_PATTERN: Lazy<Regex> = lazy_regex!(
-    r"(?i)\b(?:password|token|secret|signature|signing|auth|credential|session|cookie|csrf|api.?key)\b"
+    r"(?i)(?-u:\b)(?:password|token|secret|signature|signing|auth|credential|session|cookie|csrf|api.?key)(?-u:\b)"
 );
 static WEAK_CIPHER_ALGORITHM_PATTERN: Lazy<Regex> = lazy_regex!(
-    r#"(?i)\bcreate(?:Cipher|Decipher)iv\s*\(\s*["'](?:des|des3|des-?ede3?|rc4|rc2|bf|blowfish)\b"#
+    r#"(?i)(?-u:\b)create(?:Cipher|Decipher)iv\s*\(\s*["'](?:des|des3|des-?ede3?|rc4|rc2|bf|blowfish)(?-u:\b)"#
 );
 static DEPRECATED_CIPHER_API_PATTERN: Lazy<Regex> =
-    lazy_regex!(r"\bcreate(?:Cipher|Decipher)\s*\(");
-static WEAK_CIPHER_NAME_PATTERN: Lazy<Regex> = lazy_regex!(r"\b(?:DES|RC4|Blowfish)\b");
+    lazy_regex!(r"(?-u:\b)create(?:Cipher|Decipher)\s*\(");
+static WEAK_CIPHER_NAME_PATTERN: Lazy<Regex> = lazy_regex!(r"(?-u:\b)(?:DES|RC4|Blowfish)(?-u:\b)");
 static CIPHER_CONTEXT_PATTERN: Lazy<Regex> =
-    lazy_regex!(r"(?i)\b(?:cipher|decipher|encrypt|decrypt|crypto)\b");
+    lazy_regex!(r"(?i)(?-u:\b)(?:cipher|decipher|encrypt|decrypt|crypto)(?-u:\b)");
 static UNSAFE_SIGNATURE_COMPARISON_PATTERN: Lazy<Regex> = lazy_regex!(
     r"(?i)[A-Za-z_$][A-Za-z0-9_$.]{0,100}signature[A-Za-z0-9_$]*(?:\([^)]*\))?\s*(?:===?|!==?)\s*[A-Za-z_$][A-Za-z0-9_$.]*(?:\([^)]*\))?|[A-Za-z_$][A-Za-z0-9_$.]{0,100}(?:\([^)]*\))?\s*(?:===?|!==?)\s*[A-Za-z_$][A-Za-z0-9_$.]{0,100}signature[A-Za-z0-9_$]*(?:\([^)]*\))?"
 );
 static SIGNATURE_METADATA_PATTERN: Lazy<Regex> =
-    lazy_regex!(r"(?i)signature(?:Method|Type|Status|Algorithm|Kind|Mode|Version)\b");
+    lazy_regex!(r"(?i)signature(?:Method|Type|Status|Algorithm|Kind|Mode|Version)(?-u:\b)");
 static BOOLEAN_COMPARAND_PATTERN: Lazy<Regex> =
-    lazy_regex!(r"(?:===?|!==?)\s*(?:true|false|null|undefined)\b");
+    lazy_regex!(r"(?:===?|!==?)\s*(?:true|false|null|undefined)(?-u:\b)");
 static LENGTH_COMPARAND_PATTERN: Lazy<Regex> =
     lazy_regex!(r"\.(?:length|size|byteLength)\s*(?:===?|!==?)|\.(?:length|size|byteLength)\s*$");
 static CRYPTO_PROVENANCE_PATTERN: Lazy<Regex> = lazy_regex!(
-    r"(?i)\bcrypto\b|createH(?:mac|ash)|createSign|createVerify|\bsubtle\b|\bhmac\b|\bdigest\b|\bsha-?(?:1|256|384|512)\b|\bmd5\b|\bwebhook|x-(?:hub-)?signature"
+    r"(?i)(?-u:\b)crypto(?-u:\b)|createH(?:mac|ash)|createSign|createVerify|(?-u:\b)subtle(?-u:\b)|(?-u:\b)hmac(?-u:\b)|(?-u:\b)digest(?-u:\b)|(?-u:\b)sha-?(?:1|256|384|512)(?-u:\b)|(?-u:\b)md5(?-u:\b)|(?-u:\b)webhook|x-(?:hub-)?signature"
 );
 static TIMING_SAFE_PATTERN: Lazy<Regex> = lazy_regex!(r"(?i)timingSafeEqual|timing.?safe");
 static CLIENT_COMPONENT_PATH_PATTERN: Lazy<Regex> = lazy_regex!(r"(?i)\.[cm]?[jt]sx$");

@@ -328,6 +328,56 @@ const REGRESSION_FIXTURE_INPUTS: ReadonlyArray<ScanParityFixtureInput> = [
     relativePath: "src/files.ts",
     content: 'export const fingerprint = createHash("md5").update(file);\n',
   },
+  ...["é", "中", "\u0301", "🙂"].flatMap((boundary) => [
+    {
+      name: `insecure-crypto-risk-unicode-word-boundary-${boundary}`,
+      relativePath: "src/server/auth.ts",
+      content: `const ${boundary}token${boundary} = ${boundary}md5(password);\n`,
+      expectedRuleCounts: { "insecure-crypto-risk": 1 },
+    },
+    {
+      name: `insecure-crypto-risk-unicode-protocol-path-${boundary}`,
+      relativePath: `src/${boundary}_id${boundary}/auth.ts`,
+      content: 'const token = createHash("md5").update(password);\n',
+      expectedRuleCounts: { "insecure-crypto-risk": 0 },
+    },
+    {
+      name: `insecure-crypto-risk-unicode-protocol-context-${boundary}`,
+      relativePath: "src/server/auth.ts",
+      content: `const token = md5(password); const ${boundary}etag${boundary} = value;\n`,
+      expectedRuleCounts: { "insecure-crypto-risk": 0 },
+    },
+  ]),
+  ...["\uFEFF", "\u00A0", "\u0085"].map((whitespace) => ({
+    name: `insecure-crypto-risk-cipher-whitespace-${whitespace.codePointAt(0)}`,
+    relativePath: "src/server/auth.ts",
+    content: `const value = createCipheriv${whitespace}("des", key, iv);\n`,
+    expectedRuleCounts: { "insecure-crypto-risk": whitespace === "\u0085" ? 0 : 1 },
+  })),
+  {
+    name: "insecure-crypto-risk-ascii-word-adjacency",
+    relativePath: "src/server/auth.ts",
+    content: "const token = _md5(password); const secret = amd5(password);\n",
+    expectedRuleCounts: { "insecure-crypto-risk": 0 },
+  },
+  {
+    name: "insecure-crypto-risk-unicode-cipher-name",
+    relativePath: "src/server/auth.ts",
+    content: 'const crypto = "🙂DES中";\n',
+    expectedRuleCounts: { "insecure-crypto-risk": 1 },
+  },
+  {
+    name: "insecure-crypto-risk-unicode-boolean-comparand",
+    relativePath: "src/server/auth.ts",
+    content: "const crypto = require('crypto'); const valid = requestSignature === true中;\n",
+    expectedRuleCounts: { "insecure-crypto-risk": 0 },
+  },
+  {
+    name: "insecure-crypto-risk-unicode-signature-metadata",
+    relativePath: "src/server/auth.ts",
+    content: "const crypto = require('crypto'); const valid = requestSignatureType中 === input;\n",
+    expectedRuleCounts: { "insecure-crypto-risk": 0 },
+  },
   {
     name: "insecure-session-cookie-positive",
     relativePath: "src/server/session.ts",
@@ -685,6 +735,61 @@ const REGRESSION_FIXTURE_INPUTS: ReadonlyArray<ScanParityFixtureInput> = [
     relativePath: "src/widget.ts",
     content:
       'window.addEventListener("message", (event) => {\n  if (event.ſource === window.parent) return;\n  handleCommand(event.data);\n});\n',
+  },
+  {
+    name: "postmessage-origin-risk-mixed-nested-handler-order",
+    relativePath: "src/widget.ts",
+    content:
+      'window.onmessage = event => { use(event.data); window.addEventListener("message", e => use(e.data)); };\nwindow.addEventListener("message", msg => use(msg.data));\n',
+    expectedRuleCounts: { "postmessage-origin-risk": 3 },
+  },
+  {
+    name: "postmessage-origin-risk-decorator-computed-key-and-wrapper",
+    relativePath: "src/widget.ts",
+    content:
+      '@decorate(window.onmessage = event => use(event.data))\nclass Widget { [window.addEventListener("message", e => use(e.data))]() {} }\nconst setup = () => (window.onmessage = msg => use(msg.data)) satisfies unknown;\n',
+    expectedRuleCounts: { "postmessage-origin-risk": 3 },
+  },
+  {
+    name: "postmessage-origin-risk-invalid-source",
+    relativePath: "src/widget.ts",
+    content: "window.onmessage = event => { use(event.data);\n",
+    expectedRuleCounts: { "postmessage-origin-risk": 0 },
+  },
+  ...["WebSocket", "SharedWorker", "Worker", "EventSource", "BroadcastChannel"].map(
+    (constructorName) => ({
+      name: `postmessage-origin-risk-short-receiver-${constructorName}`,
+      relativePath: "src/widget.ts",
+      content: `const c = new ${constructorName}(url); c.onmessage = event => use(event.data);\n`,
+      expectedRuleCounts: { "postmessage-origin-risk": 0 },
+    }),
+  ),
+  {
+    name: "postmessage-origin-risk-short-typed-port",
+    relativePath: "src/widget.ts",
+    content:
+      'const setup = (c: MessagePort) => c.addEventListener("message", event => use(event.data));\n',
+    expectedRuleCounts: { "postmessage-origin-risk": 0 },
+  },
+  {
+    name: "postmessage-origin-risk-original-is-not-origin",
+    relativePath: "src/widget.ts",
+    content:
+      "window.onmessage = event => { check(original, ORIGINAL, originalValue); use(event.data); };\n",
+    expectedRuleCounts: { "postmessage-origin-risk": 1 },
+  },
+  {
+    name: "postmessage-origin-risk-original-before-origin-helper",
+    relativePath: "src/widget.ts",
+    content:
+      "window.onmessage = event => { check(original); if (trustedOrigin(event)) use(event.data); };\n",
+    expectedRuleCounts: { "postmessage-origin-risk": 0 },
+  },
+  {
+    name: "postmessage-origin-risk-origin-after-use",
+    relativePath: "src/widget.ts",
+    content: "window.onmessage = event => { use(event.data); check(event.origin); };\n",
+    expectedRuleCounts: { "postmessage-origin-risk": 1 },
   },
   {
     name: "public-debug-artifact-positive-secret-escalation",

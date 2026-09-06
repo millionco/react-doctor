@@ -3,8 +3,8 @@ use std::path::Path;
 use lazy_regex::{Lazy, Regex, lazy_regex};
 use oxc_allocator::Allocator;
 use oxc_ast::{AstKind, ast::Argument};
+use oxc_ast_visit::Visit;
 use oxc_parser::Parser;
-use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType, Span};
 
 use super::{ScanFinding, get_location_at_index::get_location_at_index};
@@ -22,6 +22,38 @@ static SAME_APPLICATION_CHANNEL_TARGET_PATTERN: Lazy<Regex> = lazy_regex!(
 );
 static RECEIVER_ROOT_PATTERN: Lazy<Regex> = lazy_regex!(r"^[A-Za-z0-9_$]+");
 static WORKER_FILE_PATH_PATTERN: Lazy<Regex> = lazy_regex!(r"(?i)worker");
+
+struct MessageHandlerCollector<'a> {
+    source: &'a str,
+    handlers: Vec<(Span, Span)>,
+}
+
+impl<'a> Visit<'a> for MessageHandlerCollector<'_> {
+    fn enter_node(&mut self, kind: AstKind<'a>) {
+        let handler = match kind {
+            AstKind::CallExpression(call) => {
+                let callee_span = call.callee.span();
+                let callee_text = source_text(self.source, callee_span);
+                let is_message_event = matches!(
+                    call.arguments.first(),
+                    Some(Argument::StringLiteral(event)) if event.value == "message"
+                );
+                (callee_text.ends_with("addEventListener") && is_message_event)
+                    .then_some((callee_span, call.span))
+            }
+            AstKind::AssignmentExpression(assignment) => {
+                let left_span = assignment.left.span();
+                source_text(self.source, left_span)
+                    .ends_with(".onmessage")
+                    .then_some((left_span, assignment.span))
+            }
+            _ => None,
+        };
+        if let Some(handler) = handler {
+            self.handlers.push(handler);
+        }
+    }
+}
 
 pub fn scan(absolute_path: &str, relative_path: &str, source: &str) -> Vec<ScanFinding> {
     let normalized_path =
@@ -43,33 +75,9 @@ pub fn scan(absolute_path: &str, relative_path: &str, source: &str) -> Vec<ScanF
     if parser_return.panicked || !parser_return.diagnostics.is_empty() {
         return Vec::new();
     }
-    let semantic_return =
-        SemanticBuilder::new_linter().build(allocator.alloc(parser_return.program));
-    let mut handlers = Vec::new();
-    for node in semantic_return.semantic.nodes().iter() {
-        let Some((target_span, handler_span)) = (match node.kind() {
-            AstKind::CallExpression(call) => {
-                let callee_span = call.callee.span();
-                let callee_text = source_text(source, callee_span);
-                let is_message_event = matches!(
-                    call.arguments.first(),
-                    Some(Argument::StringLiteral(event)) if event.value == "message"
-                );
-                (callee_text.ends_with("addEventListener") && is_message_event)
-                    .then_some((callee_span, call.span))
-            }
-            AstKind::AssignmentExpression(assignment) => {
-                let left_span = assignment.left.span();
-                source_text(source, left_span)
-                    .ends_with(".onmessage")
-                    .then_some((left_span, assignment.span))
-            }
-            _ => None,
-        }) else {
-            continue;
-        };
-        handlers.push((target_span, handler_span));
-    }
+    let mut collector = MessageHandlerCollector { source, handlers: Vec::new() };
+    collector.visit_program(&parser_return.program);
+    let mut handlers = collector.handlers;
     handlers.sort_unstable_by_key(|(_, handler_span)| handler_span.start);
 
     let mut findings = Vec::new();
@@ -107,16 +115,12 @@ fn source_text(source: &str, span: Span) -> &str {
 }
 
 fn first_origin_check_index(source: &str) -> Option<usize> {
-    let origin_index = source
-        .to_ascii_lowercase()
+    let lowercase_source = source.to_ascii_lowercase();
+    let origin_index = lowercase_source
         .match_indices("origin")
         .find_map(|(index, _)| {
-            (!source[index + "origin".len()..]
-                .to_ascii_lowercase()
-                .starts_with("al"))
-            .then_some(index)
+            (!lowercase_source[index + "origin".len()..].starts_with("al")).then_some(index)
         });
-    let lowercase_source = source.to_ascii_lowercase();
     match (
         origin_index,
         SOURCE_CHECK_PATTERN.find(&lowercase_source),

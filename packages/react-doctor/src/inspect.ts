@@ -358,6 +358,7 @@ const runInspectWithRuntime = async (
   // blaming the PR for pre-existing ones.
   let inspectDiagnostics: ReadonlyArray<Diagnostic> = output.diagnostics;
   let baselineDelta: InspectResult["baselineDelta"];
+  let baselineDegradationReason: InspectResult["baselineDegradationReason"];
   // A head lint that dropped or deadline-skipped files is incomplete, so the
   // delta would silently miss findings in the unlinted files — degrade to a
   // plain diff exactly like a failed head lint.
@@ -368,7 +369,7 @@ const runInspectWithRuntime = async (
     !output.didDeadCodeFail &&
     countIncompleteLintFiles(output.lintPartialFailures) === 0
   ) {
-    const comparison = await runBaselineComparison({
+    const comparisonResult = await runBaselineComparison({
       directory,
       options,
       userConfig,
@@ -383,9 +384,11 @@ const runInspectWithRuntime = async (
       deadlineEpochMs,
       oxlintRuntime,
     });
-    if (comparison) {
-      inspectDiagnostics = comparison.displayDiagnostics;
-      baselineDelta = comparison.baselineDelta;
+    if (comparisonResult.success) {
+      inspectDiagnostics = comparisonResult.comparison.displayDiagnostics;
+      baselineDelta = comparisonResult.comparison.baselineDelta;
+    } else {
+      baselineDegradationReason = comparisonResult.reason.code;
     }
   } else if (options.changedLineRanges !== null && isDiffMode) {
     // `--scope lines`: keep diagnostics whose source spans touch the change.
@@ -438,6 +441,7 @@ const runInspectWithRuntime = async (
     payload,
     scanMode: baselineDelta ? "baseline" : isDiffMode ? "diff" : "full",
     baselineDegraded,
+    baselineDegradationReason,
     cacheStats: {
       lintCacheHitFileCount: output.lintCacheHitFileCount,
       lintCacheTotalFileCount: output.lintCacheTotalFileCount,

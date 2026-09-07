@@ -23,6 +23,7 @@ export interface RenderAndRecordScanInput {
   readonly rootSpan: RunRootSpan;
   readonly scanMode: "full" | "diff" | "baseline";
   readonly baselineDegraded: boolean;
+  readonly baselineDegradationReason?: InspectResult["baselineDegradationReason"];
   readonly wholeRepoCacheHit: boolean;
   readonly cacheStats?: Partial<InspectExecutionCacheStats>;
 }
@@ -80,6 +81,7 @@ export const renderAndRecordScan = async (
     elapsedMilliseconds: performance.now() - input.startTime,
     payload: input.payload,
     cacheStats,
+    baselineDegradationReason: input.baselineDegradationReason,
   });
   const result = await Effect.runPromise(
     input.options.silent

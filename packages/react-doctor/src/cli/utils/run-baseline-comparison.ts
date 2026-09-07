@@ -41,6 +41,22 @@ export interface BaselineComparison {
   readonly baselineDelta: NonNullable<InspectResult["baselineDelta"]>;
 }
 
+export interface BaselineDegradationReason {
+  readonly code:
+    | "deadline-budget-exhausted"
+    | "deadline-listing-aborted"
+    | "materialization-failed"
+    | "snapshot-incomplete"
+    | "dead-code-copy-failed"
+    | "expected-head-files-missing"
+    | "base-lint-failed";
+  readonly detail?: string;
+}
+
+export type BaselineComparisonResult =
+  | { success: true; comparison: BaselineComparison }
+  | { success: false; reason: BaselineDegradationReason };
+
 export interface RunBaselineComparisonInput {
   readonly directory: string;
   readonly options: ResolvedInspectOptions;
@@ -64,7 +80,17 @@ export const countIncompleteLintFiles = (lintPartialFailures: ReadonlyArray<stri
 
 export const runBaselineComparison = async (
   input: RunBaselineComparisonInput,
-): Promise<BaselineComparison | null> => {
+): Promise<BaselineComparisonResult> => {
+  const verbose = input.options.verbose;
+  const logDegradation = (reason: BaselineDegradationReason): void => {
+    if (verbose) {
+      const message = reason.detail
+        ? `Baseline degraded: ${reason.code} (${reason.detail})`
+        : `Baseline degraded: ${reason.code}`;
+      console.error(message);
+    }
+  };
+
   const baselineIncludePaths = filterPathsOutsideDirectories({
     rootDirectory: input.directory,
     relativePaths: input.options.includePaths,
@@ -86,7 +112,11 @@ export const runBaselineComparison = async (
     : undefined;
   const remainingBaselineBudgetMs =
     input.deadlineEpochMs === null ? null : remainingDeadlineBudgetMs(input.deadlineEpochMs);
-  if (remainingBaselineBudgetMs === 0) return null;
+  if (remainingBaselineBudgetMs === 0) {
+    const reason = { code: "deadline-budget-exhausted" as const };
+    logDegradation(reason);
+    return { success: false, reason };
+  }
   const baselineDeadlineSignal =
     remainingBaselineBudgetMs === null ? undefined : AbortSignal.timeout(remainingBaselineBudgetMs);
   const baselineListingSignal =
@@ -106,7 +136,11 @@ export const runBaselineComparison = async (
           classifyFileContext(filePath) === "production",
       );
     } catch (error) {
-      if (baselineDeadlineSignal?.aborted) return null;
+      if (baselineDeadlineSignal?.aborted) {
+        const reason = { code: "deadline-listing-aborted" as const };
+        logDegradation(reason);
+        return { success: false, reason };
+      }
       throw error;
     }
   }
@@ -124,11 +158,25 @@ export const runBaselineComparison = async (
   });
   if (snapshot === null) {
     rmSync(temporaryDirectory, { recursive: true, force: true });
-    return null;
+    const reason = { code: "materialization-failed" as const };
+    logDegradation(reason);
+    return { success: false, reason };
   }
 
   try {
-    if (!snapshot.isComplete) return null;
+    if (!snapshot.isComplete) {
+      const unmaterializedCount = snapshot.unmaterializedFiles.length;
+      const materializedBaseFiles = new Set(snapshot.materializedFiles);
+      const missingBaseFiles = snapshot.baseFiles.filter(
+        (filePath) => !materializedBaseFiles.has(filePath),
+      );
+      const reason = {
+        code: "snapshot-incomplete" as const,
+        detail: `${missingBaseFiles.length} base file(s) could not be materialized: ${missingBaseFiles.slice(0, 3).join(", ")}${missingBaseFiles.length > 3 ? `, and ${missingBaseFiles.length - 3} more` : ""}`,
+      };
+      logDegradation(reason);
+      return { success: false, reason };
+    }
     if (
       input.options.deadCode &&
       !(await copyUnchangedBaselineSources({
@@ -142,7 +190,9 @@ export const runBaselineComparison = async (
         signal: input.oxlintRuntime.abortSignal,
       }))
     ) {
-      return null;
+      const reason = { code: "dead-code-copy-failed" as const };
+      logDegradation(reason);
+      return { success: false, reason };
     }
     const filteredSnapshotBaseFiles = filterPathsOutsideDirectories({
       rootDirectory: input.directory,
@@ -169,7 +219,15 @@ export const runBaselineComparison = async (
       input.options.lint &&
       filterSourceFiles([...expectedHeadFiles]).some((filePath) => !analyzedHeadFiles.has(filePath))
     ) {
-      return null;
+      const missingFiles = filterSourceFiles([...expectedHeadFiles]).filter(
+        (filePath) => !analyzedHeadFiles.has(filePath),
+      );
+      const reason = {
+        code: "expected-head-files-missing" as const,
+        detail: `${missingFiles.length} expected head file(s) were not analyzed: ${missingFiles.slice(0, 3).join(", ")}${missingFiles.length > 3 ? `, and ${missingFiles.length - 3} more` : ""}`,
+      };
+      logDegradation(reason);
+      return { success: false, reason };
     }
 
     const baselineLintPaths = new Set(
@@ -248,7 +306,17 @@ export const runBaselineComparison = async (
       baseOutput.didDeadCodeFail ||
       countIncompleteLintFiles(baseOutput.lintPartialFailures) > 0
     ) {
-      return null;
+      const reasons: string[] = [];
+      if (baseOutput.didLintFail) reasons.push("lint failed");
+      if (baseOutput.didDeadCodeFail) reasons.push("dead code analysis failed");
+      const incompleteCount = countIncompleteLintFiles(baseOutput.lintPartialFailures);
+      if (incompleteCount > 0) reasons.push(`${incompleteCount} file(s) had incomplete lint`);
+      const reason = {
+        code: "base-lint-failed" as const,
+        detail: reasons.join(", "),
+      };
+      logDegradation(reason);
+      return { success: false, reason };
     }
 
     const hasUnscannedUntrackedSourceFiles = filterSourceFiles(
@@ -269,12 +337,15 @@ export const runBaselineComparison = async (
       readBaseEvidence: createDiagnosticEvidenceReader(snapshot.tempDirectory),
     });
     return {
-      displayDiagnostics: diagnosticDelta.newDiagnostics,
-      baselineDelta: {
-        baseRef: input.baselineRef,
-        fixedCount: hasUnscannedUntrackedSourceFiles ? 0 : diagnosticDelta.fixedCount,
-        baseTotalCount: baseOutput.diagnostics.length,
-        crossFileMatchCount: diagnosticDelta.crossFileMatchCount,
+      success: true,
+      comparison: {
+        displayDiagnostics: diagnosticDelta.newDiagnostics,
+        baselineDelta: {
+          baseRef: input.baselineRef,
+          fixedCount: hasUnscannedUntrackedSourceFiles ? 0 : diagnosticDelta.fixedCount,
+          baseTotalCount: baseOutput.diagnostics.length,
+          crossFileMatchCount: diagnosticDelta.crossFileMatchCount,
+        },
       },
     };
   } finally {

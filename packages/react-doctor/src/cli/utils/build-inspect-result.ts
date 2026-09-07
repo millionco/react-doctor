@@ -15,6 +15,7 @@ interface BuildInspectResultInput {
   readonly payload: CachedScanPayload;
   readonly cacheStats: InspectExecutionCacheStats;
   readonly elapsedMilliseconds: number;
+  readonly baselineDegradationReason?: InspectResult["baselineDegradationReason"];
 }
 
 export const buildInspectResult = (input: BuildInspectResultInput): InspectResult => {
@@ -64,5 +65,6 @@ export const buildInspectResult = (input: BuildInspectResultInput): InspectResul
           deadCodeSummaryCacheMisses: cacheStats.deadCodeSummaryCacheMisses,
         }),
     ...(payload.baselineDelta ? { baselineDelta: payload.baselineDelta } : {}),
+    ...(input.baselineDegradationReason ? { baselineDegradationReason: input.baselineDegradationReason } : {}),
   };
 };

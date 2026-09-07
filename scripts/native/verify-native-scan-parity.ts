@@ -326,6 +326,42 @@ const REGRESSION_FIXTURE_INPUTS: ReadonlyArray<ScanParityFixtureInput> = [
     content: 'import { exec } from "node:child_process";\nexec("unzip fixture.zip");\n',
   },
   {
+    name: "import-metadata-execution-risk-positive-lookahead-boundary",
+    relativePath: "src/server/import.ts",
+    content: `eval(${" ".repeat(200)}metadata);`,
+    expectedRuleCounts: { "import-metadata-execution-risk": 1 },
+  },
+  {
+    name: "import-metadata-execution-risk-negative-beyond-lookahead",
+    relativePath: "src/server/import.ts",
+    content: `eval(${" ".repeat(201)}metadata);`,
+    expectedRuleCounts: { "import-metadata-execution-risk": 0 },
+  },
+  {
+    name: "import-metadata-execution-risk-positive-utf16-lookahead-boundary",
+    relativePath: "src/server/import.ts",
+    content: `eval(${"🙂".repeat(100)}metadata);`,
+    expectedRuleCounts: { "import-metadata-execution-risk": 1 },
+  },
+  {
+    name: "import-metadata-execution-risk-negative-beyond-utf16-lookahead",
+    relativePath: "src/server/import.ts",
+    content: `eval(${"🙂".repeat(100)} metadata);`,
+    expectedRuleCounts: { "import-metadata-execution-risk": 0 },
+  },
+  {
+    name: "import-metadata-execution-risk-negative-many-distant-taint-words",
+    relativePath: "src/server/import.ts",
+    content: `eval(${" ".repeat(201)}${"metadata + ".repeat(512)}value);`,
+    expectedRuleCounts: { "import-metadata-execution-risk": 0 },
+  },
+  {
+    name: "import-metadata-execution-risk-positive-later-call-after-distant-taint",
+    relativePath: "src/server/import.ts",
+    content: `eval(${" ".repeat(201)}${"metadata + ".repeat(512)}value);\neval(metadata);`,
+    expectedRuleCounts: { "import-metadata-execution-risk": 1 },
+  },
+  {
     name: "insecure-crypto-risk-positive",
     relativePath: "src/server/auth.ts",
     content: 'export const digest = createHash("md5").update(password);\n',

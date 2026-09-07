@@ -49,10 +49,11 @@ pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
             .find(';')
             .map_or(content.len(), |offset| arguments_start + offset);
         let argument_window = &content[arguments_start..statement_end];
-        if TAINT_PATTERN.find_iter(argument_window).any(|found| {
-            argument_window[..found.start()].chars().count() <= 200
-                && is_unquoted_taint(argument_window, found.start(), found.end())
-        }) {
+        if TAINT_PATTERN
+            .find_iter(argument_window)
+            .take_while(|found| argument_window[..found.start()].chars().count() <= 200)
+            .any(|found| is_unquoted_taint(argument_window, found.start(), found.end()))
+        {
             let (line, column) = get_location_at_index(source, &content, start);
             return vec![ScanFinding::inherited(MESSAGE, line, column)];
         }

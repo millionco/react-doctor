@@ -1,7 +1,9 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 use rustc_hash::FxHashSet;
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str = "JSON.stringify is embedded in HTML/script markup without HTML-escaping; data containing `</script>` or `<` breaks out and becomes XSS.";
 const RETURN_LOOKAHEAD_CHARS: usize = 160;
@@ -20,20 +22,17 @@ static UNSAFE_JSON_KEYWORD_OR_NUMBER_PATTERN: Lazy<Regex> =
 static UNSAFE_JSON_ESCAPE_WRAPPER_PATTERN: Lazy<Regex> = lazy_regex!(
     r"(?i)(?:(?-u:\b)(?:escapeHtml|escapeJSON|escapeJson|htmlEscape|jsesc)|(?:^|[^.A-Za-z0-9_])(?:serialize|serializeJavascript|devalue|uneval|superjson))\s*\(\s*$"
 );
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !super::is_production_file_path::is_production_source_path(relative_path)
         || !source.contains("JSON.stringify")
     {
         return Vec::new();
     }
-    let comment_stripped =
-        super::strip_comments_preserving_positions::strip_comments_preserving_positions(source);
-    let scannable =
-        super::normalize_js_regex_content::normalize_js_regex_content(&comment_stripped);
+    let scannable = source.normalized_comment_stripped();
     let mut seen_sink_indices = FxHashSet::default();
     let mut finding_indices = Vec::new();
 
-    for sink_match in UNSAFE_JSON_DANGEROUS_SINK_PATTERN.find_iter(&scannable) {
+    for sink_match in UNSAFE_JSON_DANGEROUS_SINK_PATTERN.find_iter(scannable) {
         let sink_text = &scannable[sink_match.start()..sink_match.end()];
         let Some(stringify_match) = UNSAFE_JSON_STRINGIFY_TOKEN_PATTERN
             .find_iter(sink_text)
@@ -42,7 +41,7 @@ pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
             continue;
         };
         let stringify_index = sink_match.start() + stringify_match.start();
-        if !unsafe_json_sink_is_safe(&scannable, stringify_index, sink_match.start())
+        if !unsafe_json_sink_is_safe(scannable, stringify_index, sink_match.start())
             && seen_sink_indices.insert(sink_match.start())
         {
             finding_indices.push(sink_match.start());
@@ -78,7 +77,7 @@ pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
         search_start = stringify_index + stringify_match.end() - stringify_match.start();
         if !unsafe_json_has_markup_junction(between_tag_and_stringify)
             || unsafe_json_is_jsx_expression_child(between_tag_and_stringify)
-            || unsafe_json_sink_is_safe(&scannable, stringify_index, open_script_index)
+            || unsafe_json_sink_is_safe(scannable, stringify_index, open_script_index)
         {
             continue;
         }
@@ -90,7 +89,7 @@ pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
     finding_indices
         .into_iter()
         .map(|sink_index| {
-            let (line, column) = get_location_at_index(source, &scannable, sink_index);
+            let (line, column) = get_location_at_index(source, scannable, sink_index);
             ScanFinding::inherited(MESSAGE, line, column)
         })
         .collect()

@@ -3,6 +3,7 @@ use std::{borrow::Cow, cell::OnceCell, ops::Deref};
 use super::{
     get_scannable_content::get_scannable_content,
     normalize_js_regex_content::normalize_js_regex_content,
+    strip_comments_preserving_positions::strip_comments_preserving_positions,
 };
 
 pub struct ScanContent<'a> {
@@ -11,6 +12,7 @@ pub struct ScanContent<'a> {
     scannable: [OnceCell<Cow<'a, str>>; 2],
     normalized_scannable: [OnceCell<Option<String>>; 2],
     normalized_source: OnceCell<Cow<'a, str>>,
+    normalized_comment_stripped: OnceCell<String>,
 }
 
 impl<'a> ScanContent<'a> {
@@ -21,6 +23,7 @@ impl<'a> ScanContent<'a> {
             scannable: [OnceCell::new(), OnceCell::new()],
             normalized_scannable: [OnceCell::new(), OnceCell::new()],
             normalized_source: OnceCell::new(),
+            normalized_comment_stripped: OnceCell::new(),
         }
     }
 
@@ -47,6 +50,16 @@ impl<'a> ScanContent<'a> {
         self.normalized_source
             .get_or_init(|| normalize_js_regex_content(self.source))
             .as_ref()
+    }
+
+    pub fn normalized_comment_stripped(&self) -> &str {
+        self.normalized_comment_stripped.get_or_init(|| {
+            let stripped = strip_comments_preserving_positions(self.source);
+            match normalize_js_regex_content(&stripped) {
+                Cow::Borrowed(_) => stripped,
+                Cow::Owned(normalized) => normalized,
+            }
+        })
     }
 }
 

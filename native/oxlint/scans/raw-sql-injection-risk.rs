@@ -1,6 +1,8 @@
 use lazy_regex::{Lazy, Regex, lazy_regex};
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str = "Code uses a raw SQL escape hatch or string-built query shape that can bypass parameter binding.";
 
@@ -26,18 +28,15 @@ static MYSQLI_QUERY_BUILD_PATTERN: Lazy<Regex> =
 static SQL_ESCAPER_CALLEE_PATTERN: Lazy<Regex> = lazy_regex!(
     r"(?i-u)^(?:[A-Za-z0-9_$]+(?:\.[A-Za-z0-9_$]+)*\.escape(?:Id|Literal|Identifier)|(?:[A-Za-z0-9_$]+\.)*(?:connection|conn|client|pool|db|mysql|sqlstring|knex)\.escape)"
 );
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !super::is_production_file_path::is_production_script_source_path(relative_path) {
         return Vec::new();
     }
-    let comment_stripped =
-        super::strip_comments_preserving_positions::strip_comments_preserving_positions(source);
-    let scannable =
-        super::normalize_js_regex_content::normalize_js_regex_content(&comment_stripped);
-    let Some((start, _)) = raw_sql_first_match(&scannable) else {
+    let scannable = source.normalized_comment_stripped();
+    let Some((start, _)) = raw_sql_first_match(scannable) else {
         return Vec::new();
     };
-    let (line, column) = get_location_at_index(source, &scannable, start);
+    let (line, column) = get_location_at_index(source, scannable, start);
     vec![ScanFinding::inherited(MESSAGE, line, column)]
 }
 

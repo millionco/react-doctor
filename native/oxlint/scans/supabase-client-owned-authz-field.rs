@@ -3,7 +3,9 @@ use oxc_allocator::Allocator;
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 
-use super::{ScanFinding, get_location_at_index::get_location_at_index};
+use super::{
+    ScanFinding, get_location_at_index::get_location_at_index, scan_content::ScanContent,
+};
 
 const MESSAGE: &str = "Client Supabase code appears to write user, tenant, owner, or role fields that should be enforced by RLS.";
 
@@ -20,7 +22,7 @@ static BUILD_CONFIG_PATTERN: Lazy<Regex> = lazy_regex!(
     r"(?i)(?:^|/)(?:vite|next|nuxt|astro|remix|webpack|rollup|rspack|rsbuild|esbuild|tsup|metro|expo|babel|tailwind|postcss|svelte|farm|parcel|snowpack)[^/]*\.config\.[cm]?[jt]sx?$"
 );
 
-pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
+pub fn scan(relative_path: &str, source: &ScanContent<'_>) -> Vec<ScanFinding> {
     if !is_client_source_path(relative_path) {
         return Vec::new();
     }
@@ -29,14 +31,11 @@ pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
     let Ok(source_type) = SourceType::from_path(&lowercase_path) else {
         return Vec::new();
     };
-    let comment_stripped =
-        super::strip_comments_preserving_positions::strip_comments_preserving_positions(source);
-    let scannable =
-        super::normalize_js_regex_content::normalize_js_regex_content(&comment_stripped);
-    if !AUTH_WRITE_PATTERN.is_match(&scannable) {
+    let scannable = source.normalized_comment_stripped();
+    if !AUTH_WRITE_PATTERN.is_match(scannable) {
         return Vec::new();
     }
-    let Some(auth_field) = AUTH_FIELD_PATTERN.find(&scannable) else {
+    let Some(auth_field) = AUTH_FIELD_PATTERN.find(scannable) else {
         return Vec::new();
     };
     let allocator = Allocator::default();
@@ -52,7 +51,7 @@ pub fn scan(relative_path: &str, source: &str) -> Vec<ScanFinding> {
         return Vec::new();
     }
 
-    let (line, column) = get_location_at_index(source, &scannable, auth_field.start());
+    let (line, column) = get_location_at_index(source, scannable, auth_field.start());
     vec![ScanFinding::inherited(MESSAGE, line, column)]
 }
 
@@ -66,15 +65,21 @@ fn is_client_source_path(relative_path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::scan;
+    use super::{ScanContent, scan};
 
     #[test]
     fn matches_ecmascript_whitespace_but_not_unicode_only_whitespace() {
-        let with_byte_order_mark = "supabase.insert\u{FEFF}({ ownerId: currentUser.id })";
-        let with_next_line = "supabase.insert\u{0085}({ ownerId: currentUser.id })";
+        let with_byte_order_mark = ScanContent::new(
+            "src/client.ts",
+            "supabase.insert\u{FEFF}({ ownerId: currentUser.id })",
+        );
+        let with_next_line = ScanContent::new(
+            "src/client.ts",
+            "supabase.insert\u{0085}({ ownerId: currentUser.id })",
+        );
 
-        assert_eq!(scan("src/client.ts", with_byte_order_mark).len(), 1);
-        assert!(scan("src/client.ts", with_next_line).is_empty());
+        assert_eq!(scan("src/client.ts", &with_byte_order_mark).len(), 1);
+        assert!(scan("src/client.ts", &with_next_line).is_empty());
     }
 
     #[test]
@@ -84,13 +89,15 @@ mod tests {
             "\u{1F642}".repeat(350)
         );
 
-        assert_eq!(scan("src/client.ts", &source).len(), 1);
+        let content = ScanContent::new("src/client.ts", &source);
+        assert_eq!(scan("src/client.ts", &content).len(), 1);
     }
 
     #[test]
     fn accepts_uppercase_source_extensions() {
         let source = "supabase.from(\"teams\").insert({ ownerId })";
 
-        assert_eq!(scan("src/client.TS", source).len(), 1);
+        let content = ScanContent::new("src/client.TS", source);
+        assert_eq!(scan("src/client.TS", &content).len(), 1);
     }
 }

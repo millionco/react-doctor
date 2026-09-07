@@ -19,6 +19,16 @@
       "origin": "handwritten-guard",
       "inputSha256": "919cb4c85e0e50b8fc11da29a6763d44bc16c2ba7b86703cb602975e56723946",
       "cases": 84
+    },
+    {
+      "origin": "handwritten-require-symbol",
+      "inputSha256": "ae7c3c81d6dfa62c1884faab9f32748562b17d3cc2f39d82d94f49024197f7c3",
+      "cases": 38
+    },
+    {
+      "origin": "handwritten-require-scope",
+      "inputSha256": "7965cfc602b5490e08ea0f2f3bbd8b3119c610913de065b9184a9dc6964b28bd",
+      "cases": 12
     }
   ],
   "description": "Handwritten and canonical test-generated inputs only. Original temporary roots replaced by a per-case test root; source text preserved. No benchmark repository inputs.",
@@ -19545,6 +19555,620 @@
       ],
       "preserveFileNames": true,
       "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-js-direct",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "const namespace = require('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-js-optional",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "const namespace = require?.('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-js-parenthesized-result",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "const namespace = (require('motion')); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-js-motion-only",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "const { animate } = require('motion'); animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-js-handling-only-cross-file",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "const { useReducedMotion } = require('motion'); const reduced = useReducedMotion();"
+        },
+        {
+          "fileName": "motion.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-js-imported-require",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "import { animate as require } from 'motion'; require('motion');"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-js-local-require",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "const require = () => ({}); const namespace = require('motion'); namespace.animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-jsx-direct",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.jsx",
+          "sourceText": "const namespace = require('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-jsx-optional",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.jsx",
+          "sourceText": "const namespace = require?.('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-jsx-parenthesized-result",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.jsx",
+          "sourceText": "const namespace = (require('motion')); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-jsx-motion-only",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.jsx",
+          "sourceText": "const { animate } = require('motion'); animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-jsx-handling-only-cross-file",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.jsx",
+          "sourceText": "const { useReducedMotion } = require('motion'); const reduced = useReducedMotion();"
+        },
+        {
+          "fileName": "motion.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-jsx-imported-require",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.jsx",
+          "sourceText": "import { animate as require } from 'motion'; require('motion');"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-jsx-local-require",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.jsx",
+          "sourceText": "const require = () => ({}); const namespace = require('motion'); namespace.animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-ts-direct",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "const namespace = require('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-ts-optional",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "const namespace = require?.('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-ts-parenthesized-result",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "const namespace = (require('motion')); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-ts-motion-only",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "const { animate } = require('motion'); animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-ts-handling-only-cross-file",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "const { useReducedMotion } = require('motion'); const reduced = useReducedMotion();"
+        },
+        {
+          "fileName": "motion.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-ts-imported-require",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate as require } from 'motion'; require('motion');"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-ts-local-require",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "const require = () => ({}); const namespace = require('motion'); namespace.animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-tsx-direct",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "const namespace = require('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-tsx-optional",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "const namespace = require?.('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-tsx-parenthesized-result",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "const namespace = (require('motion')); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-tsx-motion-only",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "const { animate } = require('motion'); animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-tsx-handling-only-cross-file",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "const { useReducedMotion } = require('motion'); const reduced = useReducedMotion();"
+        },
+        {
+          "fileName": "motion.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-tsx-imported-require",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { animate as require } from 'motion'; require('motion');"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-tsx-local-require",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "const require = () => ({}); const namespace = require('motion'); namespace.animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-extension-mjs",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.mjs",
+          "sourceText": "const namespace = require('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-symbol-extension-cjs",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.cjs",
+          "sourceText": "const namespace = require('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-symbol-extension-mts",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.mts",
+          "sourceText": "const namespace = require('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-symbol-extension-cts",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.cts",
+          "sourceText": "const namespace = require('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-symbol-extension-JS",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.JS",
+          "sourceText": "const namespace = require('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-symbol-extension-TS",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.TS",
+          "sourceText": "const namespace = require('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-symbol-extension-TSX",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.TSX",
+          "sourceText": "const namespace = require('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-symbol-extension-unknown",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.unknown",
+          "sourceText": "const namespace = require('motion'); namespace.animate(); const reduced = namespace.useReducedMotion();"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-symbol-jsx-jsx-config",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.jsx",
+          "sourceText": "const { motion, MotionConfig } = require('motion'); module.exports = () => <MotionConfig reducedMotion='user'><motion.div /></MotionConfig>;"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-symbol-tsx-jsx-config",
+      "origin": "handwritten-require-symbol",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "const { motion, MotionConfig } = require('motion'); module.exports = () => <MotionConfig reducedMotion='user'><motion.div /></MotionConfig>;"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-scope-js-global-require-null",
+      "origin": "handwritten-require-scope",
+      "sources": [
+        {
+          "fileName": "provider.js",
+          "sourceText": "var require = null;"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "const {motion}=require('motion'); const App=()=> <motion.div/>;"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-scope-js-global-require-null-explicit-esm",
+      "origin": "handwritten-require-scope",
+      "sources": [
+        {
+          "fileName": "provider.js",
+          "sourceText": "var require = null; export {};"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "const {motion}=require('motion'); const App=()=> <motion.div/>;"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-scope-js-require-animation-provider",
+      "origin": "handwritten-require-scope",
+      "sources": [
+        {
+          "fileName": "provider.js",
+          "sourceText": "var animate=require('motion').animate;"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-scope-js-import-animation-provider",
+      "origin": "handwritten-require-scope",
+      "sources": [
+        {
+          "fileName": "provider.js",
+          "sourceText": "import {animate as sourceAnimate} from 'motion'; var animate=sourceAnimate;"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "animate();"
+        }
+      ],
+      "expectedNativeStatus": "exact"
+    },
+    {
+      "name": "require-scope-mjs-global-require-null",
+      "origin": "handwritten-require-scope",
+      "sources": [
+        {
+          "fileName": "provider.mjs",
+          "sourceText": "var require = null;"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "const {motion}=require('motion'); const App=()=> <motion.div/>;"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-scope-mjs-global-require-null-explicit-esm",
+      "origin": "handwritten-require-scope",
+      "sources": [
+        {
+          "fileName": "provider.mjs",
+          "sourceText": "var require = null; export {};"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "const {motion}=require('motion'); const App=()=> <motion.div/>;"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-scope-mjs-require-animation-provider",
+      "origin": "handwritten-require-scope",
+      "sources": [
+        {
+          "fileName": "provider.mjs",
+          "sourceText": "var animate=require('motion').animate;"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "animate();"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-scope-mjs-import-animation-provider",
+      "origin": "handwritten-require-scope",
+      "sources": [
+        {
+          "fileName": "provider.mjs",
+          "sourceText": "import {animate as sourceAnimate} from 'motion'; var animate=sourceAnimate;"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "animate();"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-scope-cjs-global-require-null",
+      "origin": "handwritten-require-scope",
+      "sources": [
+        {
+          "fileName": "provider.cjs",
+          "sourceText": "var require = null;"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "const {motion}=require('motion'); const App=()=> <motion.div/>;"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-scope-cjs-global-require-null-explicit-esm",
+      "origin": "handwritten-require-scope",
+      "sources": [
+        {
+          "fileName": "provider.cjs",
+          "sourceText": "var require = null; export {};"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "const {motion}=require('motion'); const App=()=> <motion.div/>;"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-scope-cjs-require-animation-provider",
+      "origin": "handwritten-require-scope",
+      "sources": [
+        {
+          "fileName": "provider.cjs",
+          "sourceText": "var animate=require('motion').animate;"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "animate();"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "require-scope-cjs-import-animation-provider",
+      "origin": "handwritten-require-scope",
+      "sources": [
+        {
+          "fileName": "provider.cjs",
+          "sourceText": "import {animate as sourceAnimate} from 'motion'; var animate=sourceAnimate;"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "animate();"
+        }
+      ],
+      "expectedNativeStatus": "unsupported"
     }
   ]
 }

@@ -237,6 +237,7 @@ fn lower_computed(
 
 fn lower_call(call: &CallExpression<'_>, semantic: &Semantic<'_>) -> ExpressionEvidence {
     if let Expression::Identifier(reference) = &call.callee
+        && semantic.source_type().is_typescript()
         && reference.name == "require"
         && matches!(
             identifier(reference, semantic),
@@ -669,6 +670,14 @@ fn lower_file(input: &ReducedMotionSourceInput) -> Result<File, String> {
     }
     let source_type =
         SourceType::from_path(&input.file_name).map_err(|_| "unsupported file extension")?;
+    let has_typescript_script_kind =
+        input.file_name.ends_with(".ts") || input.file_name.ends_with(".tsx");
+    if source_type.is_typescript() != has_typescript_script_kind {
+        return Err("TypeScript script-kind filename parity required".into());
+    }
+    if input.file_name.ends_with(".mjs") || input.file_name.ends_with(".cjs") {
+        return Err("TypeScript forced module scope parity required".into());
+    }
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, &input.source_text, source_type).parse();
     if !parsed.diagnostics.is_empty() {

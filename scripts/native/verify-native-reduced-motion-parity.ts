@@ -40,7 +40,7 @@ interface MotionOracle {
 }
 
 const COMPILER_VERSIONS = { "react-doctor": "5.9.3", core: "6.0.3" };
-const CANONICAL_MOTION_CASE_COUNT = 381;
+const CANONICAL_MOTION_CASE_COUNT = 431;
 const PRIVATE_MOTION_DECLARATION = "const analyzeReducedMotionSources =";
 const NATIVE_MOTION_IMPORT =
   'import { runNativeReducedMotionAnalysis } from "./utils/run-native-reduced-motion-analysis.js";';

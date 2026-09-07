@@ -30,6 +30,7 @@ interface CompleteScanResultCacheInput {
   readonly payload: CachedScanPayload;
   readonly scanMode: RenderAndRecordScanInput["scanMode"];
   readonly baselineDegraded: boolean;
+  readonly baselineDegradationReason?: InspectResult["baselineDegradationReason"];
   readonly cacheStats: Partial<InspectExecutionCacheStats>;
 }
 
@@ -92,6 +93,7 @@ export const createScanResultCacheLifecycle = (
         rootSpan: input.rootSpan,
         scanMode: completion.scanMode,
         baselineDegraded: completion.baselineDegraded,
+        baselineDegradationReason: completion.baselineDegradationReason,
         wholeRepoCacheHit: false,
         cacheStats: completion.cacheStats,
       });

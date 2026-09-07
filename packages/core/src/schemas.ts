@@ -5,6 +5,19 @@ import * as Schema from "effect/Schema";
 export const Severity = Schema.Literals(["error", "warning"]);
 export type Severity = Schema.Schema.Type<typeof Severity>;
 
+export const BaselineDegradationReasonCode = Schema.Literals([
+  "deadline-budget-exhausted",
+  "deadline-listing-aborted",
+  "materialization-failed",
+  "snapshot-incomplete",
+  "dead-code-copy-failed",
+  "expected-head-files-missing",
+  "base-lint-failed",
+]);
+export type BaselineDegradationReasonCode = Schema.Schema.Type<
+  typeof BaselineDegradationReasonCode
+>;
+
 export class DiagnosticRelatedLocation extends Schema.Class<DiagnosticRelatedLocation>(
   "DiagnosticRelatedLocation",
 )({
@@ -178,6 +191,13 @@ export class JsonReportV1 extends Schema.Class<JsonReportV1>("JsonReportV1")({
    */
   baselineDegraded: Schema.optional(Schema.Boolean),
   /**
+   * When `baselineDegraded` is true, explains why the baseline comparison
+   * failed. Helps diagnose whether it's a shallow checkout, materialization
+   * issue, lint failure, or another cause. Absent when baseline succeeded
+   * or was not attempted.
+   */
+  baselineDegradationReason: Schema.optional(BaselineDegradationReasonCode),
+  /**
    * Whether any scanned project resolved a React-compatible runtime directly
    * or through a React-backed framework. `false` means every React-runtime
    * rule family was gated off, not that the scan target was unsupported:
@@ -234,6 +254,7 @@ export class JsonReportV3 extends Schema.Class<JsonReportV3>("JsonReportV3")({
   directory: Schema.String,
   mode: JsonReportMode,
   baselineDegraded: Schema.optional(Schema.Boolean),
+  baselineDegradationReason: Schema.optional(BaselineDegradationReasonCode),
   reactDetected: Schema.optional(Schema.Boolean),
   diff: Schema.NullOr(JsonReportDiffInfo),
   baseline: Schema.optional(JsonReportBaseline),

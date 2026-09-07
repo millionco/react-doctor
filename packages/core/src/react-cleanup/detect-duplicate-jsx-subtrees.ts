@@ -10,6 +10,7 @@ import {
   JSX_DUPLICATION_DEFAULT_MINIMUM_NODE_COUNT,
   JSX_DUPLICATION_DEFAULT_MINIMUM_OCCURRENCES,
   JSX_DUPLICATION_FAMILY_PROCESSING_MULTIPLIER,
+  JSX_DUPLICATION_HASH_BUFFER_MAX_LENGTH_CHARS,
   JSX_DUPLICATION_MAX_COMPOSITION_PATH_DEPTH,
 } from "../constants.js";
 import { getTypescriptScriptKind } from "../utils/get-typescript-script-kind.js";
@@ -172,12 +173,23 @@ const resolveOptions = (
 
 const hashParts = (parts: string[]): string => {
   const hash = crypto.createHash("sha256");
+  let framedInput = "";
   for (const part of parts) {
-    hash.update(String(part.length));
-    hash.update(":");
-    hash.update(part);
+    const partLengthText = String(part.length);
+    if (
+      framedInput.length + partLengthText.length + 1 + part.length >
+      JSX_DUPLICATION_HASH_BUFFER_MAX_LENGTH_CHARS
+    ) {
+      hash.update(framedInput);
+      framedInput = "";
+      hash.update(partLengthText);
+      hash.update(":");
+      hash.update(part);
+    } else {
+      framedInput += `${partLengthText}:${part}`;
+    }
   }
-  return hash.digest("hex");
+  return hash.update(framedInput).digest("hex");
 };
 
 const collectDirectJsxDescendants = (node: ts.Node): JsxSubtreeNode[] => {

@@ -16,6 +16,48 @@ export const ${componentName} = () => (
 
 describe("detectDuplicateJsxSubtrees", () => {
   it.each([
+    {
+      name: "Unicode and lone surrogates",
+      className: "🙂\ud800:\udc00",
+      fingerprint: "jsx:a4e073afef1245b6322eb07c90bd0bf3be96cdf7ae65f0663e5fd422ac2394b3",
+    },
+    {
+      name: "a full hash buffer",
+      className: "a".repeat(65_501),
+      fingerprint: "jsx:f62053eb7de604cd5e86666418613899b1f56ae46e0971b060bcf60fd1b1e243",
+    },
+    {
+      name: "hash buffer overflow",
+      className: "a".repeat(65_502),
+      fingerprint: "jsx:173d677b5aaa512f471cbf93f2029b9a580e5d7e89f207b6609519b5b31cdc20",
+    },
+    {
+      name: "a large static attribute",
+      className: "a".repeat(262_144),
+      fingerprint: "jsx:9f11ef18d3b6d4807f676f2f46d206298998f646347676c89d82f1fd5d4756d5",
+    },
+  ])("preserves fingerprints with $name", async ({ className, fingerprint }) => {
+    const sources = ["First", "Second"].map((componentName, index) => ({
+      path: `src/${index}.tsx`,
+      sourceText: componentSource(componentName, "Title", "item").replace(
+        'className="card"',
+        `className="${className}"`,
+      ),
+    }));
+    const result = detectDuplicateJsxSubtrees(sources);
+    const cooperativeResult = await detectDuplicateJsxSubtreesCooperative({
+      paths: sources.map((source) => source.path),
+      read: async (filePath) =>
+        sources.find((source) => source.path === filePath)?.sourceText ?? null,
+    });
+
+    expect(result.incomplete).toBe(false);
+    expect(result.families).toHaveLength(1);
+    expect(result.families[0].fingerprint).toBe(fingerprint);
+    expect(cooperativeResult).toEqual(result);
+  });
+
+  it.each([
     "export const label = 'ready';",
     "export const isEarlier = (left: number, right: number) => left < right;",
     "export const Fragment = () => <>text</>;",

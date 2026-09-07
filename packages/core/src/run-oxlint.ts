@@ -46,6 +46,7 @@ import { listSourceFilesWithSize } from "./utils/list-source-files.js";
 import { planLintBatches } from "./utils/plan-lint-batches.js";
 import { prepareLintSources } from "./utils/prepare-lint-sources.js";
 import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
+import { resolveNativeOxlintThreadCount } from "./utils/resolve-native-oxlint-thread-count.js";
 import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
 
 export type { LintFileCoverage as RunOxlintFileCoverage } from "./types/run-oxlint.js";
@@ -392,14 +393,31 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       sharedArgs.push("--ignore-path", combinedIgnorePath);
     }
 
-    const makeBaseArgs = (oxlintConfigPath: string): string[] => [
-      oxlintBinary,
-      "-c",
-      oxlintConfigPath,
-      "--format",
-      "json",
-      ...sharedArgs,
-    ];
+    const makeBaseArgs = (
+      oxlintConfigPath: string,
+      config: ReturnType<typeof createOxlintConfig>,
+      fileCount: number,
+    ): string[] => {
+      const nativeThreadCount = nativeBindingPath
+        ? resolveNativeOxlintThreadCount({
+            config,
+            nativeBindingPath,
+            concurrency: options.concurrency,
+            spawnSlots: options.spawnSlots,
+            fileCount,
+            availableThreads: os.availableParallelism(),
+          })
+        : undefined;
+      return [
+        oxlintBinary,
+        "-c",
+        oxlintConfigPath,
+        "--format",
+        "json",
+        ...(nativeThreadCount === undefined ? [] : ["--threads", String(nativeThreadCount)]),
+        ...sharedArgs,
+      ];
+    };
 
     // HACK: when `includePaths` is undefined we used to pass `["."]`
     // and let oxlint walk the tree itself. That defeated batching
@@ -517,7 +535,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         onPartialFailure?.(reason);
       };
       const passConfigPath = path.join(configDirectory, configFileName);
-      const passBaseArgs = makeBaseArgs(passConfigPath);
+      const initialPassConfig = buildConfigForPass({});
+      const passBaseArgs = makeBaseArgs(passConfigPath, initialPassConfig, files.length);
       const passFileBatches = buildFileBatches(passBaseArgs, files);
       let analyzedFiles: ReadonlyArray<string> = [];
       const spawnPass = () => {
@@ -544,7 +563,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           deadlineEpochMs: options.deadlineEpochMs,
         });
       };
-      writeOxlintConfig(passConfigPath, buildConfigForPass({}));
+      writeOxlintConfig(passConfigPath, initialPassConfig);
       try {
         const diagnostics = await spawnPass();
         return {
@@ -908,7 +927,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       ]);
     }
 
-    const baseArgs = makeBaseArgs(configPath);
+    const initialConfig = buildConfig({ extendsPaths });
+    const baseArgs = makeBaseArgs(configPath, initialConfig, lintFiles.length);
     const fileBatches = buildFileBatches(baseArgs, lintFiles);
     let analyzedFiles: ReadonlyArray<string> = [];
 
@@ -935,7 +955,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         deadlineEpochMs: options.deadlineEpochMs,
       });
 
-    writeOxlintConfig(configPath, buildConfig({ extendsPaths }));
+    writeOxlintConfig(configPath, initialConfig);
     try {
       const diagnostics = await runBatches();
       onFileCoverage?.({ candidateFiles, analyzedFiles });

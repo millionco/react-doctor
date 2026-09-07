@@ -51,10 +51,12 @@ describe("createWorkerSlots", () => {
     ]);
     await flushTasks();
     expect(startedTasks).toEqual(["first", "second"]);
+    expect(workerSlots.slotCount).toBe(2);
 
     secondRelease.resolve();
     await flushTasks();
     expect(startedTasks).toEqual(["first", "second", "third"]);
+    expect(workerSlots.slotCount).toBe(2);
 
     firstRelease.resolve();
     await flushTasks();
@@ -64,6 +66,7 @@ describe("createWorkerSlots", () => {
     fourthRelease.resolve();
     expect(await results).toEqual(["first", "second", "third", "fourth"]);
     expect(peakRunningTaskCount).toBe(2);
+    expect(workerSlots.slotCount).toBe(2);
   });
 
   it("releases slots after rejection", async () => {

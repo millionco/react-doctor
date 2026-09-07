@@ -276,6 +276,7 @@ export const OXLINT_MAX_FILES_PER_BATCH = 200;
 // knee (~10 workers). `resolveAutoScanConcurrency` chooses N for the auto path;
 // every requested count is clamped to [MIN, HARD_MAX].
 export const MIN_SCAN_CONCURRENCY = 1;
+export const NATIVE_OXLINT_THREADS_PER_WORKER = 1;
 
 // Automatic scans stop at the measured parallel-efficiency knee so CPU
 // contention cannot push healthy JS-plugin batches into timeout retries.

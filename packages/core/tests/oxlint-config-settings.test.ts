@@ -3,6 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ProjectInfo } from "../src/index.js";
 import { NATIVE_REACT_DOCTOR_RULE_IDS } from "../src/constants.js";
 import { createOxlintConfig, type OxlintConfigOptions } from "../src/runners/oxlint/config.js";
+import type { WorkerSlots } from "../src/utils/create-worker-slots.js";
+import {
+  resolveNativeOxlintThreadCount,
+  type ResolveNativeOxlintThreadCountOptions,
+} from "../src/utils/resolve-native-oxlint-thread-count.js";
 
 const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   rootDirectory: "/tmp/project",
@@ -49,6 +54,96 @@ const tailwindViteWebProject = buildProject({
   framework: "vite",
   hasReactNativeWorkspace: false,
   tailwindVersion: "^4.0.0",
+});
+
+const resolveConfiguredNativeThreads = (
+  overrides: Partial<ResolveNativeOxlintThreadCountOptions> = {},
+): number | undefined =>
+  resolveNativeOxlintThreadCount({
+    config: createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      nativeRuleIds: NATIVE_REACT_DOCTOR_RULE_IDS,
+    }),
+    nativeBindingPath: "/tmp/native.node",
+    concurrency: 10,
+    spawnSlots: undefined,
+    fileCount: 2000,
+    availableThreads: 12,
+    ...overrides,
+  });
+
+const opaqueWorkerSlots: WorkerSlots = { run: (task) => task() };
+
+describe("native lint thread budgets", () => {
+  it("uses one native thread when outer workers already cover the CPU budget", () => {
+    expect(resolveConfiguredNativeThreads()).toBe(1);
+    expect(resolveConfiguredNativeThreads({ fileCount: 1999 })).toBeUndefined();
+    expect(resolveConfiguredNativeThreads({ concurrency: 2 })).toBeUndefined();
+    expect(resolveConfiguredNativeThreads({ availableThreads: 20 })).toBeUndefined();
+  });
+
+  it.each([undefined, 0, 1, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "preserves native parallelism for serial or invalid outer concurrency %s",
+    (concurrency) => {
+      expect(resolveConfiguredNativeThreads({ concurrency })).toBeUndefined();
+    },
+  );
+
+  it("uses the same fractional and upper-bound concurrency clamp as the spawn scheduler", () => {
+    expect(resolveConfiguredNativeThreads({ concurrency: 10.9 })).toBe(1);
+    expect(resolveConfiguredNativeThreads({ concurrency: 100, fileCount: 6400 })).toBe(1);
+    expect(resolveConfiguredNativeThreads({ concurrency: 100, fileCount: 6399 })).toBeUndefined();
+  });
+
+  it.each([undefined, 0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "keeps the default for an unknown or invalid shared pool capacity %s",
+    (slotCount) => {
+      expect(
+        resolveConfiguredNativeThreads({ spawnSlots: { ...opaqueWorkerSlots, slotCount } }),
+      ).toBeUndefined();
+    },
+  );
+
+  it("respects a shared pool smaller than the requested process count", () => {
+    for (const slotCount of [1, 2, 6]) {
+      expect(
+        resolveConfiguredNativeThreads({ spawnSlots: { ...opaqueWorkerSlots, slotCount } }),
+      ).toBeUndefined();
+    }
+    const spawnSlots = { ...opaqueWorkerSlots, slotCount: 7 };
+    expect(resolveConfiguredNativeThreads({ spawnSlots, fileCount: 1400 })).toBe(1);
+    expect(resolveConfiguredNativeThreads({ spawnSlots, fileCount: 1399 })).toBeUndefined();
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "does not infer a budget from an invalid CPU count %s",
+    (availableThreads) => {
+      expect(resolveConfiguredNativeThreads({ availableThreads })).toBeUndefined();
+    },
+  );
+
+  it.each<Partial<ReturnType<typeof createOxlintConfig>>>([
+    { plugins: [] },
+    { plugins: ["react-doctor-native", "react"] },
+    { jsPlugins: ["/tmp/custom-plugin.js"] },
+    { jsPlugins: [{ name: "react-hooks-js", specifier: "/tmp/compiler-plugin.js" }] },
+    { extends: ["/tmp/inherited.json"] },
+    { extends: [] },
+    { rules: {} },
+    { rules: { "react-doctor/no-document-write": "warn" } },
+  ])("retains default threading for non-native or inherited configuration %j", (overrides) => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      nativeRuleIds: NATIVE_REACT_DOCTOR_RULE_IDS,
+    });
+    expect(resolveConfiguredNativeThreads({ config: { ...config, ...overrides } })).toBeUndefined();
+  });
+
+  it("requires a native binding even when every configured rule has the native namespace", () => {
+    expect(resolveConfiguredNativeThreads({ nativeBindingPath: "" })).toBeUndefined();
+  });
 });
 
 describe("createOxlintConfig settings", () => {

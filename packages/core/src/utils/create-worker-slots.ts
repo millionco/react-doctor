@@ -1,4 +1,5 @@
 export interface WorkerSlots {
+  readonly slotCount?: number;
   readonly run: <Result>(task: () => Promise<Result>, abortSignal?: AbortSignal) => Promise<Result>;
 }
 
@@ -50,6 +51,7 @@ export const createWorkerSlots = (input: CreateWorkerSlotsInput): WorkerSlots =>
   };
 
   return {
+    slotCount: input.slotCount,
     run: async <Result>(
       task: () => Promise<Result>,
       abortSignal?: AbortSignal,

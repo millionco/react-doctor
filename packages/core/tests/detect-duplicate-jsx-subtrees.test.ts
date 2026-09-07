@@ -256,15 +256,80 @@ const Toolbar = () => <div><Button /><Button /><Button /></div>;
     expect(result.families).toEqual([]);
   });
 
-  it("parses JSX in JavaScript source files", () => {
+  it.each(["js", "jsx", "mjs", "cjs", "tsx"])("parses JSX in .%s source files", (extension) => {
     const sourceText = componentSource("Card", "Card", "value");
     const result = detectDuplicateJsxSubtrees([
-      { path: "src/first.js", sourceText },
-      { path: "src/second.js", sourceText },
+      { path: `src/first.${extension}`, sourceText },
+      { path: `src/second.${extension}`, sourceText },
     ]);
 
     expect(result.families).toHaveLength(1);
   });
+
+  it.each(["ts", "mts", "cts", "d.ts", "d.mts", "d.cts"])(
+    "ignores .%s files before applying source budgets in both detectors",
+    async (extension) => {
+      const sourceText = componentSource("Card", "Card", "value");
+      const sources = [
+        { path: `src/aaa-types.${extension}`, sourceText: "export interface Icons {}".repeat(100) },
+        { path: "src/first.tsx", sourceText },
+        { path: "src/second.tsx", sourceText },
+      ];
+      const options = { budget: { maxSourceFiles: 2, maxSourceLengthChars: sourceText.length } };
+      const readPaths: string[] = [];
+      const cooperativeResult = await detectDuplicateJsxSubtreesCooperative(
+        {
+          paths: sources.map((source) => source.path),
+          read: async (sourcePath) => {
+            readPaths.push(sourcePath);
+            return sources.find((source) => source.path === sourcePath)?.sourceText ?? null;
+          },
+        },
+        options,
+      );
+      const result = detectDuplicateJsxSubtrees(sources, options);
+
+      expect(result).toMatchObject({
+        incomplete: false,
+        incompleteReasons: [],
+        scannedSourceFileCount: 2,
+      });
+      expect(result.families).toHaveLength(1);
+      expect(cooperativeResult).toEqual(result);
+      expect(readPaths).toEqual(["src/first.tsx", "src/second.tsx"]);
+    },
+  );
+
+  it.each(["js", "jsx", "mjs", "cjs", "tsx"])(
+    "preserves the source length limit for .%s files in both detectors",
+    async (extension) => {
+      const source = {
+        path: `src/card.${extension}`,
+        sourceText: componentSource("Card", "Card", "value"),
+      };
+      const maximumLengthChars = source.sourceText.length - 1;
+      const options = { budget: { maxSourceLengthChars: maximumLengthChars } };
+      const result = detectDuplicateJsxSubtrees([source], options);
+      const cooperativeResult = await detectDuplicateJsxSubtreesCooperative(
+        { paths: [source.path], read: async () => source.sourceText },
+        options,
+      );
+
+      expect(result).toMatchObject({
+        incomplete: true,
+        scannedSourceFileCount: 0,
+        incompleteReasons: [
+          {
+            kind: "source-length-limit",
+            limit: maximumLengthChars,
+            observed: source.sourceText.length,
+            path: source.path,
+          },
+        ],
+      });
+      expect(cooperativeResult).toEqual(result);
+    },
+  );
 
   it("ignores JSX formatting whitespace and comment-only expressions", () => {
     const compactSource =

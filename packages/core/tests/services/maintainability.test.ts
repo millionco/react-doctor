@@ -3,10 +3,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { JSX_DUPLICATION_DEFAULT_MAX_SOURCE_LENGTH_CHARS } from "../../src/constants.js";
 import type { ChangedFileLineRanges } from "../../src/types/index.js";
 import { DeadCode } from "../../src/services/dead-code.js";
-import { Maintainability } from "../../src/services/maintainability.js";
+import { Maintainability, type MaintainabilityInput } from "../../src/services/maintainability.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -62,17 +63,46 @@ const runService = (
   focusPaths?: ReadonlyArray<string>,
   changedLineRanges?: ReadonlyArray<ChangedFileLineRanges>,
   ignorePatterns?: ReadonlyArray<string>,
+  onIncomplete?: MaintainabilityInput["onIncomplete"],
 ) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const maintainability = yield* Maintainability;
       return yield* Stream.runCollect(
-        maintainability.run({ rootDirectory, focusPaths, changedLineRanges, ignorePatterns }),
+        maintainability.run({
+          rootDirectory,
+          focusPaths,
+          changedLineRanges,
+          ignorePatterns,
+          onIncomplete,
+        }),
       );
     }).pipe(Effect.provide(Maintainability.layerNode)),
   );
 
 describe("Maintainability.layerNode", () => {
+  it.each(["ts", "mts", "cts", "d.ts", "d.mts", "d.cts"])(
+    "completes JSX analysis with an oversized .%s type file",
+    async (extension) => {
+      const rootDirectory = createProject();
+      fs.writeFileSync(
+        path.join(rootDirectory, "src", `types.${extension}`),
+        "export interface IconMap { icon: string }".padEnd(
+          JSX_DUPLICATION_DEFAULT_MAX_SOURCE_LENGTH_CHARS + 1,
+          " \n",
+        ),
+      );
+      const onIncomplete = vi.fn();
+      const diagnostics = Array.from(
+        await runService(rootDirectory, undefined, undefined, undefined, onIncomplete),
+      );
+
+      expect(onIncomplete).not.toHaveBeenCalled();
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0].rule).toBe("duplicate-jsx-subtree");
+    },
+  );
+
   it("reports maximal cross-file JSX families with related composition paths", async () => {
     const diagnostics = Array.from(await runService(createProject()));
 

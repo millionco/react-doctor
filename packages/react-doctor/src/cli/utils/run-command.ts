@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { isRecord } from "./git-hook-shared.js";
 
 export interface RunCommandResult {
   readonly success: boolean;
@@ -39,11 +40,12 @@ export const runCommand: CommandRunner = async (command, args, cwd, timeoutMs) =
     });
     return { success: true, stdout: stdout.trim(), stderr: stderr.trim() };
   } catch (error) {
-    const failure = error as { stdout?: string; stderr?: string };
+    const stdout = isRecord(error) && typeof error.stdout === "string" ? error.stdout : "";
+    const stderr = isRecord(error) && typeof error.stderr === "string" ? error.stderr : "";
     return {
       success: false,
-      stdout: (failure.stdout ?? "").trim(),
-      stderr: (failure.stderr ?? "").trim(),
+      stdout: stdout.trim(),
+      stderr: stderr.trim(),
     };
   }
 };

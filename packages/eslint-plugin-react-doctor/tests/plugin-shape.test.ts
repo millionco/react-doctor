@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import oxlintPlugin, {
+  ALL_REACT_DOCTOR_RULES,
   NEXTJS_RULES,
   PREACT_RULES,
   REACT_NATIVE_RULES,
@@ -24,6 +25,10 @@ describe("eslint-plugin-react-doctor", () => {
     ]);
   });
 
+  it("wraps every oxlint rule", () => {
+    expect(Object.keys(eslintPlugin.rules).sort()).toEqual(Object.keys(oxlintPlugin.rules).sort());
+  });
+
   it("self-registers each flat config under the react-doctor namespace", () => {
     for (const flatConfig of Object.values(eslintPlugin.configs)) {
       expect(flatConfig.plugins["react-doctor"]).toBe(eslintPlugin);
@@ -45,14 +50,24 @@ describe("eslint-plugin-react-doctor", () => {
     expect(eslintPlugin.configs["tanstack-start"].rules).toEqual(TANSTACK_START_RULES);
     expect(eslintPlugin.configs["tanstack-query"].rules).toEqual(TANSTACK_QUERY_RULES);
     expect(eslintPlugin.configs.preact.rules).toEqual(PREACT_RULES);
+    expect(eslintPlugin.configs.all.rules).toEqual(ALL_REACT_DOCTOR_RULES);
   });
 
   it("only references wrapped rule ids from presets", () => {
     for (const flatConfig of Object.values(eslintPlugin.configs)) {
       for (const ruleKey of Object.keys(flatConfig.rules)) {
+        expect(ruleKey.startsWith("react-doctor/")).toBe(true);
         const ruleName = ruleKey.replace(/^react-doctor\//, "");
         expect(eslintPlugin.rules[ruleName]).toBeDefined();
       }
+    }
+  });
+
+  it("marks recommended rules in eslint metadata", () => {
+    const recommendedRuleKeys = new Set(Object.keys(RECOMMENDED_RULES));
+
+    for (const [ruleName, rule] of Object.entries(eslintPlugin.rules)) {
+      expect(rule.meta.docs.recommended).toBe(recommendedRuleKeys.has(`react-doctor/${ruleName}`));
     }
   });
 

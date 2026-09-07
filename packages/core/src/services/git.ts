@@ -502,10 +502,12 @@ export class Git extends Context.Service<
       ): Effect.Effect<boolean, ReactDoctorError> =>
         runGit(directory, ["rev-parse", "--verify", branch]).pipe(
           Effect.map((result) => result.status === 0),
-          Effect.catch((error) =>
-            error.reason._tag === "GitInvocationFailed"
-              ? Effect.succeed(false)
-              : Effect.fail(error),
+          Effect.catchReasons(
+            "ReactDoctorError",
+            {
+              GitInvocationFailed: () => Effect.succeed(false),
+            },
+            (_reason, error) => Effect.fail(error),
           ),
         );
 
@@ -936,10 +938,12 @@ export class Git extends Context.Service<
             // throw such as ENAMETOOLONG on a 1k-file `--scope lines` diff) means
             // "couldn't compute" — degrade to file-level scope per this method's
             // documented null contract instead of crashing the scan.
-            Effect.catch((error) =>
-              error.reason._tag === "GitInvocationFailed"
-                ? Effect.succeed(null)
-                : Effect.fail(error),
+            Effect.catchReasons(
+              "ReactDoctorError",
+              {
+                GitInvocationFailed: () => Effect.succeed(null),
+              },
+              (_reason, error) => Effect.fail(error),
             ),
             Effect.withSpan("Git.changedLineRanges"),
           ),

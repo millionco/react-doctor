@@ -54,6 +54,16 @@ export class Files extends Context.Service<
     const resolveAbsolute = (filePath: string, rootDirectory: string): string =>
       path.isAbsolute(filePath) ? filePath : `${rootDirectory}/${filePath}`;
 
+    const listRelativeSourceFiles = (rootDirectory: string): ReadonlyArray<string> => {
+      const prefix = rootDirectory.endsWith("/") ? rootDirectory : `${rootDirectory}/`;
+      const files: string[] = [];
+      for (const absolute of tree.keys()) {
+        if (!absolute.startsWith(prefix)) continue;
+        files.push(absolute.slice(prefix.length));
+      }
+      return files;
+    };
+
     return Layer.succeed(
       Files,
       Files.of({
@@ -64,26 +74,9 @@ export class Files extends Context.Service<
             return content === undefined ? null : content.split("\n");
           }),
         listSourceFiles: (rootDirectory) =>
-          Effect.sync(() => {
-            const prefix = rootDirectory.endsWith("/") ? rootDirectory : `${rootDirectory}/`;
-            const files: string[] = [];
-            for (const absolute of tree.keys()) {
-              if (!absolute.startsWith(prefix)) continue;
-              files.push(absolute.slice(prefix.length));
-            }
-            return files;
-          }),
+          Effect.sync(() => listRelativeSourceFiles(rootDirectory)),
         listSourceFilesCooperative: (input) =>
-          Effect.sync(() => {
-            const rootDirectory = input.rootDirectory;
-            const prefix = rootDirectory.endsWith("/") ? rootDirectory : `${rootDirectory}/`;
-            const files: string[] = [];
-            for (const absolute of tree.keys()) {
-              if (!absolute.startsWith(prefix)) continue;
-              files.push(absolute.slice(prefix.length));
-            }
-            return files;
-          }),
+          Effect.sync(() => listRelativeSourceFiles(input.rootDirectory)),
         isFile: (filePath) => Effect.sync(() => tree.has(filePath)),
         isDirectory: (filePath) =>
           Effect.sync(() => {

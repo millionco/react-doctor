@@ -11,7 +11,7 @@ import type {
 } from "../types/index.js";
 export type { LintFileCoverage } from "../types/run-oxlint.js";
 import type { LintFileCoverage } from "../types/run-oxlint.js";
-import { OxlintSpawnFailed, ReactDoctorError } from "../errors.js";
+import { isReactDoctorError, OxlintSpawnFailed, ReactDoctorError } from "../errors.js";
 import {
   LintBatchOrdering,
   OxlintConcurrency,
@@ -76,7 +76,7 @@ export interface LintInput {
  * failure channel stays uniform.
  */
 const ensureReactDoctorError = (cause: unknown): ReactDoctorError =>
-  cause instanceof ReactDoctorError
+  isReactDoctorError(cause)
     ? cause
     : new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause }) });
 

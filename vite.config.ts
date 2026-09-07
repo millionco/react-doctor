@@ -26,6 +26,7 @@ export default defineConfig({
       "node_modules",
       "dist",
       "build",
+      "**/CHANGELOG.md",
       "pnpm-lock.yaml",
       "packages/fuzz/corpus/react-bench-0.9.7-audit*",
     ],

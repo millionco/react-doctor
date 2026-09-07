@@ -646,14 +646,13 @@ export const runInspect = <HooksR = never>(
           ),
         ),
       );
-    const rawLintStream = baseLintStream;
 
     // Lint phase cap (Effect-side, runtime-independent of the per-batch
     // spawn timeout and the bounded split cascade): on timeout, fold into
     // the existing lint-failure contract (score becomes null) with an
     // `OxlintBatchExceeded`-tagged reason so renderers dispatch on it, and
     // yield an empty chunk so the rest of the scan still completes.
-    const collectLintDiagnostics = Stream.runCollect(filterPerElementPipeline(rawLintStream));
+    const collectLintDiagnostics = Stream.runCollect(filterPerElementPipeline(baseLintStream));
     const filteredLintDiagnostics = yield* lintPhaseTimeoutMs === null
       ? collectLintDiagnostics
       : collectLintDiagnostics.pipe(

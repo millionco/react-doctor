@@ -51,6 +51,14 @@ export const isDiagnosticOnSurface = (
   config: ReactDoctorConfig | null,
 ): boolean => {
   const resolved = buildResolvedControls(surface, config?.surfaces?.[surface]);
+  return isDiagnosticOnResolvedSurface(diagnostic, surface, resolved);
+};
+
+const isDiagnosticOnResolvedSurface = (
+  diagnostic: Diagnostic,
+  surface: DiagnosticSurface,
+  resolved: ResolvedSurfaceControls,
+): boolean => {
   const { ruleKey, category, tags } = getDiagnosticRuleIdentity(diagnostic);
 
   // Include wins over exclude — checked first so a single rule can be
@@ -78,5 +86,9 @@ export const filterDiagnosticsForSurface = (
   diagnostics: Diagnostic[],
   surface: DiagnosticSurface,
   config: ReactDoctorConfig | null,
-): Diagnostic[] =>
-  diagnostics.filter((diagnostic) => isDiagnosticOnSurface(diagnostic, surface, config));
+): Diagnostic[] => {
+  const resolved = buildResolvedControls(surface, config?.surfaces?.[surface]);
+  return diagnostics.filter((diagnostic) =>
+    isDiagnosticOnResolvedSurface(diagnostic, surface, resolved),
+  );
+};

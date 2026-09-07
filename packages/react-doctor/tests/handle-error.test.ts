@@ -1,3 +1,4 @@
+import * as os from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../src/cli/utils/record-metric.js", () => ({
@@ -56,6 +57,31 @@ describe("handleError", () => {
     expect(body).toContain("OTLP exporter enabled: yes");
     expect(body).toContain("trace/span link, if exported:");
     expect(body).not.toContain("secret-token");
+  });
+
+  it("scrubs cwd and command arguments from the prefilled issue body", () => {
+    const homeDirectory = os.homedir();
+    const originalArguments = [...process.argv];
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(`${homeDirectory}/secret-app`);
+    process.argv.splice(
+      0,
+      process.argv.length,
+      `${homeDirectory}/.local/bin/node`,
+      `${homeDirectory}/.npm/_npx/react-doctor/bin/react-doctor.js`,
+      "--config=https://example.test/token",
+    );
+
+    try {
+      const body = new URL(buildErrorIssueUrl(new Error("boom"))).searchParams.get("body") ?? "";
+
+      expect(body).toContain("cwd: ~/secret-app");
+      expect(body).toContain("--config=<url>");
+      expect(body).not.toContain(homeDirectory);
+      expect(body).not.toContain("https://example.test/token");
+    } finally {
+      process.argv.splice(0, process.argv.length, ...originalArguments);
+      cwdSpy.mockRestore();
+    }
   });
 
   it("adds the Sentry reference to the issue body when an event id is provided", () => {

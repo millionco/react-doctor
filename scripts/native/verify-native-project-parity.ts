@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { verifyNativeReducedMotionParity } from "./verify-native-reduced-motion-parity.js";
+import { verifyNativeJsxCandidateParity } from "./verify-native-jsx-candidate-parity.js";
 import {
   NATIVE_REACT_DOCTOR_PROJECT_GRAPH_RULE_IDS,
   REACT_DOCTOR_NATIVE_OXLINT_BINDING_ENV,
@@ -426,6 +427,7 @@ const run = async (): Promise<void> => {
     verifyProjectAnalysisParity(bindingPath, temporaryRoot);
     const duplicateJsxCaseCount = verifyDuplicateJsxParity(binding, bindingPath, temporaryRoot);
     await verifyNativeReducedMotionParity(bindingPath, temporaryRoot, repositoryRoot);
+    await verifyNativeJsxCandidateParity(bindingPath, temporaryRoot, repositoryRoot);
     process.stdout.write(
       `Native project parity passed: ${NATIVE_PROJECT_GRAPH_RULE_IDS.length} graph rules and duplicate JSX across ${duplicateJsxCaseCount} cases.\n`,
     );

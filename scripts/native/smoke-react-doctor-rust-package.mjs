@@ -460,6 +460,24 @@ require.cache[bindingPath].exports = {
       argumentsList: scanArguments,
       expectedSkippedCheck: "dead-code",
     },
+    {
+      exportName: "extractReactDoctorJsxSubtreeCandidates",
+      replacement: "undefined",
+      argumentsList: [binaryPath, "--version"],
+      expectedMessage: "missing extractReactDoctorJsxSubtreeCandidates().",
+    },
+    {
+      exportName: "extractReactDoctorJsxSubtreeCandidates",
+      replacement: "() => '{}'",
+      argumentsList: scanArguments,
+      expectedSkippedCheck: "dead-code",
+    },
+    {
+      exportName: "extractReactDoctorJsxSubtreeCandidates",
+      replacement: "() => { throw new Error('native JSX smoke injected failure'); }",
+      argumentsList: scanArguments,
+      expectedSkippedCheck: "dead-code",
+    },
   ];
   for (const failure of injectedFailures) {
     fs.writeFileSync(

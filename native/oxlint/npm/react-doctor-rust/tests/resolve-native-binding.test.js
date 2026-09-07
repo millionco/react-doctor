@@ -41,6 +41,7 @@ test("loads a complete binding", () => {
     analyzeReactDoctorProjectGraph: () => undefined,
     reactDoctorNativeProjectRuleIds: () => [],
     analyzeReactDoctorDuplicateJsx: () => undefined,
+    extractReactDoctorJsxSubtreeCandidates: () => undefined,
     analyzeReactDoctorReducedMotion: () => undefined,
   };
   assert.equal(

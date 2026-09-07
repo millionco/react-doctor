@@ -26,6 +26,7 @@
     "native:oxlint:scan-parity": "tsx scripts/native/verify-native-scan-parity.ts",
     "native:oxlint:scan-corpus-parity": "tsx scripts/native/verify-native-scan-corpus-parity.ts",
     "native:oxlint:project-parity": "tsx scripts/native/verify-native-project-parity.ts",
+    "native:oxlint:jsx-candidate-parity": "tsx scripts/native/verify-native-jsx-candidate-parity.ts",
     "native:rust:test": "node --test native/oxlint/npm/react-doctor-rust/tests/*.test.js",
     "native:rust:assemble": "node scripts/native/assemble-react-doctor-rust-packages.mjs",
     "native:rust:pack": "node scripts/native/pack-react-doctor-rust-packages.mjs",

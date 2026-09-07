@@ -9,6 +9,7 @@ const requiredBindingExports = [
   "analyzeReactDoctorProjectGraph",
   "reactDoctorNativeProjectRuleIds",
   "analyzeReactDoctorDuplicateJsx",
+  "extractReactDoctorJsxSubtreeCandidates",
   "analyzeReactDoctorReducedMotion",
 ];
 

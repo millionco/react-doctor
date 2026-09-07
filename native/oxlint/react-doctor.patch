@@ -261,7 +261,7 @@ diff --git a/crates/oxc_linter/src/lib.rs b/crates/oxc_linter/src/lib.rs
 diff --git a/apps/oxlint/src/run.rs b/apps/oxlint/src/run.rs
 --- a/apps/oxlint/src/run.rs
 +++ b/apps/oxlint/src/run.rs
-@@ -239,6 +239,93 @@ async fn lint_impl(
+@@ -239,6 +239,108 @@ async fn lint_impl(
      cli_runner.run(&mut stdout)
  }
  
@@ -276,6 +276,21 @@ diff --git a/apps/oxlint/src/run.rs b/apps/oxlint/src/run.rs
 +    let evidence = oxc_linter::react_doctor_project_analysis::analyze_reduced_motion(sources);
 +    serde_json::to_string(&evidence).map_err(|error| {
 +        napi::Error::from_reason(format!("Failed to serialize React Doctor reduced motion evidence: {error}"))
++    })
++}
++
++#[napi]
++pub fn extract_react_doctor_jsx_subtree_candidates(
++    file_name: String,
++    source_text: String,
++    maximum_candidate_count: f64,
++) -> napi::Result<String> {
++    let result =
++        oxc_linter::react_doctor_project_analysis::extract_jsx_subtree_candidates(
++            &file_name, &source_text, maximum_candidate_count,
++        );
++    serde_json::to_string(&result).map_err(|error| {
++        napi::Error::from_reason(format!("Failed to serialize React Doctor JSX candidates: {error}"))
 +    })
 +}
 +
@@ -355,3 +370,25 @@ diff --git a/apps/oxlint/src/run.rs b/apps/oxlint/src/run.rs
  #[cfg(all(target_pointer_width = "64", target_endian = "little"))]
  pub use crate::js_plugins::parse::{get_buffer_offset, parse_raw_sync};
  
+diff --git a/crates/oxc_linter/Cargo.toml b/crates/oxc_linter/Cargo.toml
+--- a/crates/oxc_linter/Cargo.toml
++++ b/crates/oxc_linter/Cargo.toml
+@@ -74,6 +74,7 @@ serde_json = { workspace = true, features = [
+   "preserve_order",
+ ] } # preserve_order: print config with ordered keys.
++sha2 = "=0.10.9"
+ simdutf8 = { workspace = true }
+ smallvec = { workspace = true }
+ unicode-segmentation = { workspace = true }
+ url = { workspace = true }
+diff --git a/Cargo.lock b/Cargo.lock
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2298,6 +2298,7 @@ name = "oxc_linter"
+  "self_cell",
+  "serde",
+  "serde_json",
++ "sha2",
+  "simdutf8",
+  "smallvec",
+  "unicode-segmentation",

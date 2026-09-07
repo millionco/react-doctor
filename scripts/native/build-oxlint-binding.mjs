@@ -1612,6 +1612,11 @@ impl Rule for ${delegatedRule.struct} {
           `built binding does not export analyzeReactDoctorDuplicateJsx: ${outputBindingPath}`,
         );
       }
+      if (typeof nativeBinding.extractReactDoctorJsxSubtreeCandidates !== "function") {
+        throw new Error(
+          `built binding does not export extractReactDoctorJsxSubtreeCandidates: ${outputBindingPath}`,
+        );
+      }
       if (typeof nativeBinding.analyzeReactDoctorReducedMotion !== "function") {
         throw new Error(
           `built binding does not export analyzeReactDoctorReducedMotion: ${outputBindingPath}`,

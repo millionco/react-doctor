@@ -203,6 +203,7 @@ export const runBaselineComparison = async (
       shouldShowProgressSpinners: false,
       oxlintConcurrency: input.oxlintRuntime.concurrency,
       oxlintSpawnSlots: input.oxlintRuntime.spawnSlots,
+      securityScanRunner: input.oxlintRuntime.securityScanRunner,
     });
     const baseProgram = runInspectEffect(
       {

@@ -47,6 +47,8 @@ export * from "./check-react-native-project.js";
 export * from "./check-react-server-components-advisory.js";
 export * from "./check-reduced-motion.js";
 export * from "./check-security-scan.js";
+export * from "./checks/security-scan/security-scan-runner.js";
+export * from "./checks/security-scan/security-scan-worker.js";
 export * from "./check-supply-chain.js";
 export * from "./classify-file-context.js";
 export * from "./collect-ignore-patterns.js";

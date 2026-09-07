@@ -22,7 +22,8 @@ import type {
   ScoreResult,
   WorkspacePackage,
 } from "@react-doctor/core";
-import { createInvocationInspect } from "../../inspect.js";
+import type { createInvocationInspect } from "../../inspect.js";
+import { createCliInvocationInspect } from "../utils/create-cli-invocation-inspect.js";
 import type { ReactDoctorInspectOptions } from "../../inspect-options.js";
 import { buildNoScoreMessage } from "../utils/build-no-score-message.js";
 import { hasIncompleteScoreAnalysis } from "../utils/has-incomplete-score-analysis.js";
@@ -838,31 +839,35 @@ export const runScanApp = async (input: RunScanAppInput): Promise<RunScanAppResu
     share: input.share ?? scanTarget.userConfig?.share ?? true,
   };
   const selectedDirectories = await resolveSelectedDirectories(rootDirectory, resolvedInput);
-  const inspectProject = createInvocationInspect(input.options?.concurrency);
   const blockingLevel = resolveBlockingLevel(
     { blocking: resolvedInput.blocking },
     scanTarget.userConfig,
   );
 
-  if (selectedDirectories.length === 0) {
-    return { shouldFail: false };
-  }
-  if (selectedDirectories.length === 1) {
-    return runSingleProjectScan(
+  const invocation = createCliInvocationInspect(input.options?.concurrency);
+  try {
+    if (selectedDirectories.length === 0) {
+      return { shouldFail: false };
+    }
+    if (selectedDirectories.length === 1) {
+      return await runSingleProjectScan(
+        scanTarget,
+        selectedDirectories[0],
+        resolvedInput,
+        scopePlan,
+        blockingLevel,
+        invocation.inspectProject,
+      );
+    }
+    return await runMultiProjectScan(
       scanTarget,
-      selectedDirectories[0],
+      selectedDirectories,
       resolvedInput,
       scopePlan,
       blockingLevel,
-      inspectProject,
+      invocation.inspectProject,
     );
+  } finally {
+    await invocation.dispose();
   }
-  return runMultiProjectScan(
-    scanTarget,
-    selectedDirectories,
-    resolvedInput,
-    scopePlan,
-    blockingLevel,
-    inspectProject,
-  );
 };

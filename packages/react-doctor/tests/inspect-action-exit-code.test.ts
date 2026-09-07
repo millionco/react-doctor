@@ -10,6 +10,9 @@ import {
 } from "@react-doctor/core";
 import { inspectAction } from "../src/cli/commands/inspect.js";
 import type { InspectFlags } from "../src/cli/utils/inspect-flags.js";
+import { handleError } from "../src/cli/utils/handle-error.js";
+import { runStagedInspect } from "../src/cli/utils/run-staged-inspect.js";
+import { inspect } from "../src/inspect.js";
 import { buildDiagnostic, buildTestProject } from "./regressions/_helpers.js";
 
 interface InspectInvocation {
@@ -27,6 +30,36 @@ const mockState = vi.hoisted(() => ({
   userConfig: undefined as ReactDoctorConfig | null | undefined,
   jsonReports: new Array<JsonReport>(),
   shouldExpireDeadline: false,
+  lifecycleEvents: new Array<string>(),
+}));
+
+const mockDisposeInvocation = vi.hoisted(() => vi.fn(async () => {}));
+
+vi.mock("../src/cli/utils/create-cli-invocation-inspect.js", async () => {
+  const { inspect } = await import("../src/inspect.js");
+  return {
+    createCliInvocationInspect: vi.fn(() => ({
+      inspectProject: inspect,
+      dispose: mockDisposeInvocation,
+    })),
+  };
+});
+
+vi.mock("../src/cli/utils/handle-error.js", () => ({
+  handleError: vi.fn(),
+  handleUserError: vi.fn(),
+}));
+
+vi.mock("../src/cli/utils/report-error.js", () => ({
+  reportErrorToSentry: vi.fn(async () => undefined),
+}));
+
+vi.mock("../src/cli/utils/find-staged-snapshot-divergences.js", () => ({
+  findStagedSnapshotDivergences: vi.fn(() => []),
+}));
+
+vi.mock("../src/cli/utils/run-staged-inspect.js", () => ({
+  runStagedInspect: vi.fn(async () => {}),
 }));
 
 vi.mock("ora", () => ({
@@ -161,6 +194,8 @@ describe("inspectAction exit-code gate", () => {
     mockState.userConfig = undefined;
     mockState.jsonReports.length = 0;
     mockState.shouldExpireDeadline = false;
+    mockState.lifecycleEvents.length = 0;
+    mockDisposeInvocation.mockReset();
     fs.rmSync(projectDirectory, { recursive: true, force: true });
     vi.clearAllMocks();
   });
@@ -172,6 +207,106 @@ describe("inspectAction exit-code gate", () => {
     mockState.result = buildResult(projectDirectory, resultOverrides);
     await inspectAction(projectDirectory, flags);
   };
+
+  it.each([1, 2])("awaits all %i project scans before disposing the invocation", async (count) => {
+    const directories = [projectDirectory, path.join(projectDirectory, "apps", "admin")].slice(
+      0,
+      count,
+    );
+    for (const directory of directories) fs.mkdirSync(directory, { recursive: true });
+    mockState.projectDirectories = directories;
+    const pendingScans = directories.map((directory) => ({
+      directory,
+      ...Promise.withResolvers<InspectResult>(),
+    }));
+    for (const pending of pendingScans) {
+      vi.mocked(inspect).mockImplementationOnce(async () => {
+        const result = await pending.promise;
+        mockState.lifecycleEvents.push(`settled:${pending.directory}`);
+        return result;
+      });
+    }
+    const disposal = Promise.withResolvers<void>();
+    mockDisposeInvocation.mockReturnValueOnce(disposal.promise);
+    let didFinish = false;
+    const action = inspectAction(projectDirectory, { json: true }).then(() => {
+      didFinish = true;
+    });
+
+    await vi.waitFor(() => expect(inspect).toHaveBeenCalledTimes(count));
+    expect(mockDisposeInvocation).not.toHaveBeenCalled();
+    for (const [index, pending] of pendingScans.entries()) {
+      pending.resolve(buildResult(pending.directory));
+      await vi.waitFor(() =>
+        expect(mockState.lifecycleEvents).toContain(`settled:${pending.directory}`),
+      );
+      if (index < pendingScans.length - 1) {
+        expect(mockDisposeInvocation).not.toHaveBeenCalled();
+      }
+    }
+    await vi.waitFor(() => expect(mockDisposeInvocation).toHaveBeenCalledOnce());
+    expect(didFinish).toBe(false);
+    disposal.resolve();
+    await action;
+    expect(didFinish).toBe(true);
+    expect(mockState.jsonReports).toHaveLength(1);
+  });
+
+  it("disposes an invocation without selected projects", async () => {
+    mockState.projectDirectories = [];
+
+    await inspectAction(projectDirectory, { json: true });
+
+    expect(inspect).not.toHaveBeenCalled();
+    expect(mockDisposeInvocation).toHaveBeenCalledOnce();
+    expect(handleError).not.toHaveBeenCalled();
+  });
+
+  it("keeps the staged invocation alive until staged work completes", async () => {
+    const pending = Promise.withResolvers<InspectResult>();
+    vi.mocked(inspect).mockReturnValueOnce(pending.promise);
+    vi.mocked(runStagedInspect).mockImplementationOnce(async (context) => {
+      await context.inspectProject(context.scanTarget.resolvedDirectory, {});
+    });
+    const action = inspectAction(projectDirectory, { staged: true });
+
+    await vi.waitFor(() => expect(inspect).toHaveBeenCalledOnce());
+    expect(mockDisposeInvocation).not.toHaveBeenCalled();
+    pending.resolve(buildResult(projectDirectory));
+    await action;
+
+    expect(runStagedInspect).toHaveBeenCalledOnce();
+    expect(mockDisposeInvocation).toHaveBeenCalledOnce();
+  });
+
+  it("finishes disposal before an error handler can exit the process", async () => {
+    const scanFailure = new Error("scan failed");
+    const processExit = new Error("process exit boundary");
+    const disposal = Promise.withResolvers<void>();
+    vi.mocked(inspect).mockRejectedValueOnce(scanFailure);
+    mockDisposeInvocation.mockImplementationOnce(async () => {
+      await disposal.promise;
+      mockState.lifecycleEvents.push("disposed");
+    });
+    vi.mocked(handleError).mockImplementationOnce(() => {
+      mockState.lifecycleEvents.push("handle-error");
+      throw processExit;
+    });
+    let observedFailure: unknown;
+    const action = inspectAction(projectDirectory, {}).catch((error) => {
+      observedFailure = error;
+    });
+
+    await vi.waitFor(() => expect(mockDisposeInvocation).toHaveBeenCalled());
+    expect(handleError).not.toHaveBeenCalled();
+    expect(observedFailure).toBeUndefined();
+    disposal.resolve();
+    await action;
+
+    expect(handleError).toHaveBeenCalledWith(scanFailure, expect.anything());
+    expect(mockState.lifecycleEvents).toEqual(["disposed", "handle-error"]);
+    expect(observedFailure).toBe(processExit);
+  });
 
   it("exits 1 when the lint pass hard-failed under default blocking", async () => {
     await runInspectAction(HARD_LINT_FAILURE);

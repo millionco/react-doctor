@@ -19,7 +19,7 @@ import { checkPnpmHardening } from "./check-pnpm-hardening.js";
 import { checkReactNativeProject } from "./check-react-native-project.js";
 import { checkReactServerComponentsAdvisory } from "./check-react-server-components-advisory.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
-import { checkSecurityScanCooperative } from "./check-security-scan.js";
+import { SecurityScanRunner } from "./checks/security-scan/security-scan-runner.js";
 import {
   DEFAULT_SHOW_WARNINGS,
   MAINTAINABILITY_DUPLICATE_JSX_RULE,
@@ -352,17 +352,13 @@ export const runInspect = <HooksR = never>(
     );
 
     // ── Phase: security scan (content-regex over the whole tree) ───
-    // Registry rules carrying a `scan` run here, not via oxlint — over shipped
-    // artifacts / dotenv / SQL that lint never parses. It's the heaviest CPU
-    // phase on real repos (~O(rules × files × content)) and previously ran
-    // SYNCHRONOUSLY before lint, blocking the event loop the whole time. Fork it
-    // here (before lint) and join it just before the concat so its main-thread
-    // CPU overlaps the subprocess-bound lint pass; `checkSecurityScanCooperative`
-    // hands the event loop back on a per-slice time budget so it can't starve
-    // lint's subprocess spawning/draining or sibling projects. Skipped in
-    // diff/staged mode like the env checks. The final stable sort makes the
-    // concat order irrelevant, so output stays byte-identical to the serial path.
+    // Registry scans cover artifacts / dotenv / SQL that lint never parses.
+    // Start before lint and join before the final concat. The default runner
+    // yields cooperatively; the native CLI can supply an invocation-owned
+    // worker. Filtering and reporting stay in this parent fiber in both modes.
+    // Diff/staged scans skip the pass, and the final sort preserves output order.
     const securityScanFailedRef = yield* Ref.make(false);
+    const runSecurityScan = yield* SecurityScanRunner;
     let didSecurityScanReachDeadline = false;
     const securityScanFiber = yield* Effect.forkChild(
       Stream.runCollect(
@@ -378,7 +374,7 @@ export const runInspect = <HooksR = never>(
                 // `securityScanFailed` so telemetry can tell a failed pass
                 // from a clean one — mirroring `supplyChainOverlapTimedOut`.
                 Effect.tryPromise((signal) =>
-                  checkSecurityScanCooperative(scanDirectory, {
+                  runSecurityScan(scanDirectory, {
                     project,
                     ignoredTags: input.ignoredTags,
                     includedTags: input.includedTags,

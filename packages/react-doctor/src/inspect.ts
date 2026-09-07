@@ -3,6 +3,7 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
   createOxlintSpawnSlots,
+  type checkSecurityScanCooperative,
   type Diagnostic,
   highlighter,
   type InspectResult,
@@ -163,6 +164,7 @@ const inspectWithOxlintRuntime = async (
 
 export const createInvocationInspect = (
   requestedOxlintConcurrency?: number,
+  securityScanRunner?: typeof checkSecurityScanCooperative,
 ): ((directory: string, inputOptions?: ReactDoctorInspectOptions) => Promise<InspectResult>) => {
   const concurrency = resolveScanConcurrency(
     requestedOxlintConcurrency ?? Effect.runSync(OxlintConcurrency),
@@ -178,6 +180,7 @@ export const createInvocationInspect = (
         spawnSlots,
         abortSignal: abortController.signal,
         scanResultCacheInvocationState,
+        securityScanRunner,
       };
       return await inspectWithOxlintRuntime(directory, inputOptions, oxlintRuntime);
     } finally {
@@ -255,6 +258,7 @@ const runInspectWithRuntime = async (
     shouldShowProgressSpinners,
     oxlintConcurrency: oxlintRuntime.concurrency,
     oxlintSpawnSlots: oxlintRuntime.spawnSlots,
+    securityScanRunner: oxlintRuntime.securityScanRunner,
     reporterLayer: options.uiLayers?.reporter,
     progressLayer: options.uiLayers?.progress,
   });

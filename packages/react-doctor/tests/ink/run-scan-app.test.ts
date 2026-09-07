@@ -51,6 +51,17 @@ const mockState = vi.hoisted(() => ({
 }));
 
 const mockRecordCount = vi.hoisted(() => vi.fn());
+const mockDisposeInvocation = vi.hoisted(() => vi.fn(async () => {}));
+
+vi.mock("../../src/cli/utils/create-cli-invocation-inspect.js", async () => {
+  const { inspect } = await import("../../src/inspect.js");
+  return {
+    createCliInvocationInspect: vi.fn(() => ({
+      inspectProject: inspect,
+      dispose: mockDisposeInvocation,
+    })),
+  };
+});
 
 vi.mock("../../src/cli/utils/record-metric.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/cli/utils/record-metric.js")>();
@@ -229,8 +240,98 @@ describe("runScanApp", () => {
     mockState.scanStores.length = 0;
     mockState.initialProgressStates.length = 0;
     mockState.ciRecommendationStates.length = 0;
+    mockDisposeInvocation.mockReset();
     vi.restoreAllMocks();
     vi.clearAllMocks();
+  });
+
+  it.each([
+    { label: "single-project", directories: ["/repo"] },
+    { label: "workspace", directories: ["/repo/apps/web", "/repo/apps/admin"] },
+  ])("keeps $label scans alive until they settle and awaits disposal", async ({ directories }) => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(...directories);
+    for (const directory of [rootDirectory, ...directories]) {
+      mockState.scanTargets.set(directory, buildScanTarget(directory, directory, null, directory));
+    }
+    const pendingScans = directories.map((directory) => ({
+      directory,
+      ...Promise.withResolvers<InspectResult>(),
+    }));
+    for (const pending of pendingScans) {
+      vi.mocked(inspect).mockImplementationOnce(async () => {
+        const result = await pending.promise;
+        mockState.lifecycleEvents.push(`settled:${pending.directory}`);
+        return result;
+      });
+    }
+    const disposal = Promise.withResolvers<void>();
+    mockDisposeInvocation.mockReturnValueOnce(disposal.promise);
+    let didFinish = false;
+    const scan = runScanApp({ directory: rootDirectory, skipPrompts: true }).then(() => {
+      didFinish = true;
+    });
+
+    await vi.waitFor(() => expect(inspect).toHaveBeenCalledTimes(directories.length));
+    expect(mockDisposeInvocation).not.toHaveBeenCalled();
+    for (const [index, pending] of pendingScans.entries()) {
+      pending.resolve(buildInspectResult(pending.directory));
+      await vi.waitFor(() =>
+        expect(mockState.lifecycleEvents).toContain(`settled:${pending.directory}`),
+      );
+      if (index < pendingScans.length - 1) {
+        expect(mockDisposeInvocation).not.toHaveBeenCalled();
+      }
+    }
+    await vi.waitFor(() => expect(mockDisposeInvocation).toHaveBeenCalledOnce());
+    expect(didFinish).toBe(false);
+    disposal.resolve();
+    await scan;
+    expect(didFinish).toBe(true);
+  });
+
+  it("awaits disposal before propagating a rejected scan", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    const pending = Promise.withResolvers<InspectResult>();
+    const disposal = Promise.withResolvers<void>();
+    const failure = new Error("scan rejected");
+    vi.mocked(inspect).mockReturnValueOnce(pending.promise);
+    mockDisposeInvocation.mockReturnValueOnce(disposal.promise);
+    let observedFailure: unknown;
+    const scan = runScanApp({ directory: rootDirectory, skipPrompts: true }).catch((error) => {
+      observedFailure = error;
+    });
+
+    await vi.waitFor(() => expect(inspect).toHaveBeenCalledOnce());
+    expect(mockDisposeInvocation).not.toHaveBeenCalled();
+    pending.reject(failure);
+    await vi.waitFor(() => expect(mockDisposeInvocation).toHaveBeenCalledOnce());
+    expect(observedFailure).toBeUndefined();
+    disposal.resolve();
+    await scan;
+    expect(observedFailure).toBe(failure);
+  });
+
+  it("disposes an invocation when project selection is empty", async () => {
+    const rootDirectory = "/repo";
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+
+    await expect(runScanApp({ directory: rootDirectory, skipPrompts: true })).resolves.toEqual({
+      shouldFail: false,
+    });
+
+    expect(inspect).not.toHaveBeenCalled();
+    expect(mockDisposeInvocation).toHaveBeenCalledOnce();
   });
 
   it("uses a disposable screen for project selection", async () => {

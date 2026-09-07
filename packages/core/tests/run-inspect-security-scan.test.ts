@@ -31,6 +31,7 @@ import { Project } from "../src/services/project.js";
 import { Reporter } from "../src/services/reporter.js";
 import { Score } from "../src/services/score.js";
 import { SupplyChain } from "../src/services/supply-chain.js";
+import { SecurityScanRunner } from "../src/checks/security-scan/security-scan-runner.js";
 
 const sampleProject: ProjectInfo = {
   rootDirectory: "/repo",
@@ -114,6 +115,54 @@ const layers = Layer.mergeAll(
 describe("runInspect — security-scan fail-open", () => {
   afterEach(() => {
     securityScanMockState.shouldReachDeadline = false;
+  });
+
+  it("retains findings and deadline failure reporting for an injected runner", async () => {
+    const runner = vi.fn(async (_directory: string, options: CheckSecurityScanOptions = {}) => {
+      options.onDeadlineExceeded?.();
+      return [securityDiagnostic];
+    });
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(layers),
+        Effect.provideService(SecurityScanRunner, runner),
+      ),
+    );
+    expect(runner).toHaveBeenCalledOnce();
+    expect(runner.mock.calls[0][0]).toBe("/repo");
+    expect(runner.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+    expect(output.securityScanFailed).toBe(true);
+    expect(output.securityScanFailureReason).toContain("findings collected before the deadline");
+    expect(output.diagnostics.map(({ rule }) => rule)).toEqual([
+      "artifact-secret-leak",
+      "no-derived-state",
+    ]);
+  });
+
+  it("does not invoke the injected runner in diff mode", async () => {
+    const runner = vi.fn(async () => [securityDiagnostic]);
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, includePaths: ["src/App.tsx"] }).pipe(
+        Effect.provide(layers),
+        Effect.provideService(SecurityScanRunner, runner),
+      ),
+    );
+    expect(runner).not.toHaveBeenCalled();
+    expect(output.securityScanFailed).toBe(false);
+  });
+
+  it("marks an injected transport failure as incomplete", async () => {
+    const runner = vi.fn(async () => {
+      throw new Error("Security worker disconnected");
+    });
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(layers),
+        Effect.provideService(SecurityScanRunner, runner),
+      ),
+    );
+    expect(output.securityScanFailed).toBe(true);
+    expect(output.diagnostics.map(({ rule }) => rule)).toEqual(["no-derived-state"]);
   });
 
   it("skips a failing security scan instead of sinking the scan, and records it on securityScanFailed", async () => {

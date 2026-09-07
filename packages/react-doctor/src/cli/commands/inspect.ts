@@ -14,7 +14,11 @@ import {
   resolveScanTarget,
   toRelativePath,
 } from "@react-doctor/core";
-import { createInvocationInspect } from "../../inspect.js";
+import type { createInvocationInspect } from "../../inspect.js";
+import {
+  createCliInvocationInspect,
+  type CliInvocationInspect,
+} from "../utils/create-cli-invocation-inspect.js";
 import type { ReactDoctorInspectOptions } from "../../inspect-options.js";
 import { flushSentry } from "../../instrument.js";
 import { shutdownTelemetry } from "../utils/telemetry-runtime.js";
@@ -269,6 +273,7 @@ export const inspectAction = async (
   const requestedDirectory = path.resolve(directory);
   const startTime = performance.now();
   let scanStartupSpinner: ReturnType<ReturnType<typeof spinner>["start"]> | null = null;
+  let invocation: CliInvocationInspect | null = null;
 
   try {
     if (isJsonMode) {
@@ -343,7 +348,8 @@ export const inspectAction = async (
     }
 
     const scanOptions: CliInspectOptions = resolveCliInspectOptions(flags, userConfig);
-    const inspectProject = createInvocationInspect(scanOptions.concurrency);
+    invocation = createCliInvocationInspect(scanOptions.concurrency);
+    const { inspectProject } = invocation;
     // One `--max-duration` budget per invocation, shared by every project of a
     // workspace scan: fix the absolute deadline once here and hand it to each
     // project's `inspect()` (rather than restarting the budget per project).
@@ -680,6 +686,7 @@ export const inspectAction = async (
       }
     }
   } catch (error) {
+    await invocation?.dispose();
     scanStartupSpinner?.stop();
     // Expected, user-actionable failures — a directory without React, a missing
     // package.json, or a bad `--diff` base branch — are the user's project or
@@ -702,5 +709,7 @@ export const inspectAction = async (
       return;
     }
     handleError(error, { sentryEventId });
+  } finally {
+    await invocation?.dispose();
   }
 };

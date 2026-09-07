@@ -64,6 +64,7 @@ export default defineConfig({
       entry: {
         cli: "./src/cli/index.ts",
         "project-analysis-worker": "./src/project-analysis-worker.ts",
+        "security-scan-worker": "./src/security-scan-worker.ts",
       },
       deps: {
         // Inline pure-JS CLI deps and the Ink/React renderer so the inspected

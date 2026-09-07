@@ -265,6 +265,24 @@ try {
     }
   }
 
+  const parallelScanArguments = scanArguments.filter((argument) => argument !== "--no-parallel");
+  const parallelScanEnvironment = { REACT_DOCTOR_PARALLEL: "2" };
+  const parallelReport = JSON.parse(
+    run(process.execPath, parallelScanArguments, { env: parallelScanEnvironment }).stdout,
+  );
+  assert.equal(validateReport(parallelReport), null);
+  assert.deepEqual(
+    {
+      ...parallelReport,
+      elapsedMilliseconds: report.elapsedMilliseconds,
+      projects: parallelReport.projects.map((project, index) => ({
+        ...project,
+        elapsedMilliseconds: report.projects[index]?.elapsedMilliseconds,
+      })),
+    },
+    report,
+  );
+
   const assertFailure = (argumentsList, expectedMessage, options = {}) => {
     const result = run(process.execPath, argumentsList, {
       allowedStatuses: [1],
@@ -297,6 +315,24 @@ try {
       }
     }
   };
+  const securityWorkerPath = path.join(
+    installedLauncherDirectory,
+    "node_modules",
+    "react-doctor",
+    "dist",
+    "security-scan-worker.js",
+  );
+  const missingSecurityWorkerPath = `${securityWorkerPath}-missing`;
+  fs.renameSync(securityWorkerPath, missingSecurityWorkerPath);
+  try {
+    assertFailure(parallelScanArguments, undefined, {
+      env: parallelScanEnvironment,
+      expectedSkippedCheck: "security-scan",
+    });
+  } finally {
+    fs.renameSync(missingSecurityWorkerPath, securityWorkerPath);
+  }
+
   const bindingDirectory = path.dirname(installedBindingManifest);
   const missingBindingDirectory = `${bindingDirectory}-missing`;
   fs.renameSync(bindingDirectory, missingBindingDirectory);
@@ -406,6 +442,13 @@ require.cache[bindingPath].exports = {
       expectedSkippedCheck: "security-scan",
     },
     {
+      exportName: "scanReactDoctorFileSource",
+      replacement: "() => { throw new Error('native smoke injected worker failure'); }",
+      argumentsList: parallelScanArguments,
+      env: parallelScanEnvironment,
+      expectedSkippedCheck: "security-scan",
+    },
+    {
       exportName: "analyzeReactDoctorProjectGraph",
       replacement: "() => 'not json'",
       argumentsList: scanArguments,
@@ -435,6 +478,7 @@ require.cache[bindingPath].exports = {
     assertFailure(failure.argumentsList, failure.expectedMessage, {
       expectedSkippedCheck: failure.expectedSkippedCheck,
       env: {
+        ...failure.env,
         NODE_OPTIONS:
           `${process.env.NODE_OPTIONS ?? ""} --import=${pathToFileURL(preloadPath).href}`.trim(),
       },

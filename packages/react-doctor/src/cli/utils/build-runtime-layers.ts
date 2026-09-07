@@ -13,10 +13,12 @@ import {
   Project,
   Reporter,
   Score,
+  SecurityScanRunner,
   shouldUseMaintainabilityLayer,
   SupplyChain,
 } from "@react-doctor/core";
 import type {
+  checkSecurityScanCooperative,
   ProgressHandle,
   ProjectInfo,
   ReactDoctorConfig,
@@ -74,6 +76,7 @@ export interface BuildRuntimeLayersInput {
    */
   readonly oxlintConcurrency?: number;
   readonly oxlintSpawnSlots?: WorkerSlots;
+  readonly securityScanRunner?: typeof checkSecurityScanCooperative;
   readonly reporterLayer?: Layer.Layer<Reporter>;
   readonly progressLayer?: Layer.Layer<Progress>;
 }
@@ -168,6 +171,9 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
     reporterLayer,
     scoreLayer,
     supplyChainLayer,
+    input.securityScanRunner === undefined
+      ? Layer.empty
+      : Layer.succeed(SecurityScanRunner, input.securityScanRunner),
   );
 
   // Only override the ambient `OxlintConcurrency` Reference when the CLI

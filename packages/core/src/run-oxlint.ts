@@ -9,7 +9,11 @@ import {
 } from "oxlint-plugin-react-doctor/core";
 import type { Diagnostic } from "./types/index.js";
 import { batchIncludePaths } from "./batch-include-paths.js";
-import { COOPERATIVE_YIELD_BUDGET_MS, NATIVE_REACT_DOCTOR_RULE_IDS } from "./constants.js";
+import {
+  COOPERATIVE_YIELD_BUDGET_MS,
+  NATIVE_REACT_DOCTOR_RULE_IDS,
+  OXLINT_MAX_FILES_PER_BATCH,
+} from "./constants.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
@@ -46,7 +50,7 @@ import { listSourceFilesWithSize } from "./utils/list-source-files.js";
 import { planLintBatches } from "./utils/plan-lint-batches.js";
 import { prepareLintSources } from "./utils/prepare-lint-sources.js";
 import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
-import { resolveNativeOxlintThreadCount } from "./utils/resolve-native-oxlint-thread-count.js";
+import { resolveNativeOxlintBatchOptions } from "./utils/resolve-native-oxlint-batch-options.js";
 import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
 
 export type { LintFileCoverage as RunOxlintFileCoverage } from "./types/run-oxlint.js";
@@ -393,13 +397,13 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       sharedArgs.push("--ignore-path", combinedIgnorePath);
     }
 
-    const makeBaseArgs = (
+    const makeBatchOptions = (
       oxlintConfigPath: string,
       config: ReturnType<typeof createOxlintConfig>,
       fileCount: number,
-    ): string[] => {
-      const nativeThreadCount = nativeBindingPath
-        ? resolveNativeOxlintThreadCount({
+    ) => {
+      const nativeBatchOptions = nativeBindingPath
+        ? resolveNativeOxlintBatchOptions({
             config,
             nativeBindingPath,
             concurrency: options.concurrency,
@@ -408,15 +412,21 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
             availableThreads: os.availableParallelism(),
           })
         : undefined;
-      return [
+      const baseArgs = [
         oxlintBinary,
         "-c",
         oxlintConfigPath,
         "--format",
         "json",
-        ...(nativeThreadCount === undefined ? [] : ["--threads", String(nativeThreadCount)]),
+        ...(nativeBatchOptions === undefined
+          ? []
+          : ["--threads", String(nativeBatchOptions.threadCount)]),
         ...sharedArgs,
       ];
+      return {
+        baseArgs,
+        maxFilesPerBatch: nativeBatchOptions?.maxFilesPerBatch ?? OXLINT_MAX_FILES_PER_BATCH,
+      };
     };
 
     // HACK: when `includePaths` is undefined we used to pass `["."]`
@@ -496,10 +506,14 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         sizeByFile.set(lintPath, sizeBytes);
       }
     }
-    const buildFileBatches = (passBaseArgs: string[], passFiles: string[]): string[][] =>
+    const buildFileBatches = (
+      passBaseArgs: string[],
+      passFiles: string[],
+      fileCountLimit: number,
+    ): string[][] =>
       sizeByFile !== null
-        ? planLintBatches({ baseArgs: passBaseArgs, files: passFiles, sizeByFile })
-        : batchIncludePaths(passBaseArgs, passFiles);
+        ? planLintBatches({ baseArgs: passBaseArgs, files: passFiles, sizeByFile, fileCountLimit })
+        : batchIncludePaths(passBaseArgs, passFiles, fileCountLimit);
 
     // Runs one oxlintrc over a file list, retrying once with the optional
     // react-hooks-js plugin stripped if it fails to import (issue #833).
@@ -536,8 +550,12 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       };
       const passConfigPath = path.join(configDirectory, configFileName);
       const initialPassConfig = buildConfigForPass({});
-      const passBaseArgs = makeBaseArgs(passConfigPath, initialPassConfig, files.length);
-      const passFileBatches = buildFileBatches(passBaseArgs, files);
+      const { baseArgs: passBaseArgs, maxFilesPerBatch } = makeBatchOptions(
+        passConfigPath,
+        initialPassConfig,
+        files.length,
+      );
+      const passFileBatches = buildFileBatches(passBaseArgs, files, maxFilesPerBatch);
       let analyzedFiles: ReadonlyArray<string> = [];
       const spawnPass = () => {
         analyzedFiles = [];
@@ -928,8 +946,12 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     }
 
     const initialConfig = buildConfig({ extendsPaths });
-    const baseArgs = makeBaseArgs(configPath, initialConfig, lintFiles.length);
-    const fileBatches = buildFileBatches(baseArgs, lintFiles);
+    const { baseArgs, maxFilesPerBatch } = makeBatchOptions(
+      configPath,
+      initialConfig,
+      lintFiles.length,
+    );
+    const fileBatches = buildFileBatches(baseArgs, lintFiles, maxFilesPerBatch);
     let analyzedFiles: ReadonlyArray<string> = [];
 
     const runBatches = () =>

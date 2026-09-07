@@ -1,5 +1,6 @@
 import {
   MIN_SCAN_CONCURRENCY,
+  NATIVE_OXLINT_MAX_FILES_PER_BATCH,
   NATIVE_OXLINT_THREADS_PER_WORKER,
   NATIVE_REACT_DOCTOR_PLUGIN_NAME,
   OXLINT_MAX_FILES_PER_BATCH,
@@ -8,7 +9,7 @@ import type { createOxlintConfig } from "../runners/oxlint/config.js";
 import type { WorkerSlots } from "./create-worker-slots.js";
 import { resolveScanConcurrency } from "./resolve-scan-concurrency.js";
 
-export interface ResolveNativeOxlintThreadCountOptions {
+export interface ResolveNativeOxlintBatchOptionsInput {
   readonly config: ReturnType<typeof createOxlintConfig>;
   readonly nativeBindingPath: string;
   readonly concurrency: number | undefined;
@@ -17,14 +18,19 @@ export interface ResolveNativeOxlintThreadCountOptions {
   readonly availableThreads: number;
 }
 
-export const resolveNativeOxlintThreadCount = ({
+export interface NativeOxlintBatchOptions {
+  readonly threadCount: number;
+  readonly maxFilesPerBatch: number;
+}
+
+export const resolveNativeOxlintBatchOptions = ({
   config,
   nativeBindingPath,
   concurrency,
   spawnSlots,
   fileCount,
   availableThreads,
-}: ResolveNativeOxlintThreadCountOptions): number | undefined => {
+}: ResolveNativeOxlintBatchOptionsInput): NativeOxlintBatchOptions | undefined => {
   if (
     !nativeBindingPath ||
     config.plugins.length !== 1 ||
@@ -50,8 +56,18 @@ export const resolveNativeOxlintThreadCount = ({
     return undefined;
   }
   const ruleKeys = Object.keys(config.rules);
-  return ruleKeys.length > 0 &&
-    ruleKeys.every((rule) => rule.startsWith(`${NATIVE_REACT_DOCTOR_PLUGIN_NAME}/`))
-    ? NATIVE_OXLINT_THREADS_PER_WORKER
-    : undefined;
+  if (
+    ruleKeys.length === 0 ||
+    !ruleKeys.every((rule) => rule.startsWith(`${NATIVE_REACT_DOCTOR_PLUGIN_NAME}/`))
+  ) {
+    return undefined;
+  }
+  const largerBatchCount = Math.ceil(fileCount / NATIVE_OXLINT_MAX_FILES_PER_BATCH);
+  return {
+    threadCount: NATIVE_OXLINT_THREADS_PER_WORKER,
+    maxFilesPerBatch:
+      Math.floor(availableThreads / largerBatchCount) <= NATIVE_OXLINT_THREADS_PER_WORKER
+        ? NATIVE_OXLINT_MAX_FILES_PER_BATCH
+        : OXLINT_MAX_FILES_PER_BATCH,
+  };
 };

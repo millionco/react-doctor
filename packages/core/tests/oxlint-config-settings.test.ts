@@ -5,9 +5,9 @@ import { NATIVE_REACT_DOCTOR_RULE_IDS } from "../src/constants.js";
 import { createOxlintConfig, type OxlintConfigOptions } from "../src/runners/oxlint/config.js";
 import type { WorkerSlots } from "../src/utils/create-worker-slots.js";
 import {
-  resolveNativeOxlintThreadCount,
-  type ResolveNativeOxlintThreadCountOptions,
-} from "../src/utils/resolve-native-oxlint-thread-count.js";
+  resolveNativeOxlintBatchOptions,
+  type ResolveNativeOxlintBatchOptionsInput,
+} from "../src/utils/resolve-native-oxlint-batch-options.js";
 
 const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   rootDirectory: "/tmp/project",
@@ -56,10 +56,10 @@ const tailwindViteWebProject = buildProject({
   tailwindVersion: "^4.0.0",
 });
 
-const resolveConfiguredNativeThreads = (
-  overrides: Partial<ResolveNativeOxlintThreadCountOptions> = {},
-): number | undefined =>
-  resolveNativeOxlintThreadCount({
+const resolveConfiguredNativeBatchOptions = (
+  overrides: Partial<ResolveNativeOxlintBatchOptionsInput> = {},
+): ReturnType<typeof resolveNativeOxlintBatchOptions> =>
+  resolveNativeOxlintBatchOptions({
     config: createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
       project: viteWebProject,
@@ -75,32 +75,36 @@ const resolveConfiguredNativeThreads = (
 
 const opaqueWorkerSlots: WorkerSlots = { run: (task) => task() };
 
-describe("native lint thread budgets", () => {
+describe("native lint batch and thread budgets", () => {
   it("uses one native thread when outer workers already cover the CPU budget", () => {
-    expect(resolveConfiguredNativeThreads()).toBe(1);
-    expect(resolveConfiguredNativeThreads({ fileCount: 1999 })).toBeUndefined();
-    expect(resolveConfiguredNativeThreads({ concurrency: 2 })).toBeUndefined();
-    expect(resolveConfiguredNativeThreads({ availableThreads: 20 })).toBeUndefined();
+    expect(resolveConfiguredNativeBatchOptions()?.threadCount).toBe(1);
+    expect(resolveConfiguredNativeBatchOptions({ fileCount: 1999 })).toBeUndefined();
+    expect(resolveConfiguredNativeBatchOptions({ concurrency: 2 })).toBeUndefined();
+    expect(resolveConfiguredNativeBatchOptions({ availableThreads: 20 })).toBeUndefined();
   });
 
   it.each([undefined, 0, 1, -1, Number.NaN, Number.POSITIVE_INFINITY])(
     "preserves native parallelism for serial or invalid outer concurrency %s",
     (concurrency) => {
-      expect(resolveConfiguredNativeThreads({ concurrency })).toBeUndefined();
+      expect(resolveConfiguredNativeBatchOptions({ concurrency })).toBeUndefined();
     },
   );
 
   it("uses the same fractional and upper-bound concurrency clamp as the spawn scheduler", () => {
-    expect(resolveConfiguredNativeThreads({ concurrency: 10.9 })).toBe(1);
-    expect(resolveConfiguredNativeThreads({ concurrency: 100, fileCount: 6400 })).toBe(1);
-    expect(resolveConfiguredNativeThreads({ concurrency: 100, fileCount: 6399 })).toBeUndefined();
+    expect(resolveConfiguredNativeBatchOptions({ concurrency: 10.9 })?.threadCount).toBe(1);
+    expect(
+      resolveConfiguredNativeBatchOptions({ concurrency: 100, fileCount: 6400 })?.threadCount,
+    ).toBe(1);
+    expect(
+      resolveConfiguredNativeBatchOptions({ concurrency: 100, fileCount: 6399 }),
+    ).toBeUndefined();
   });
 
   it.each([undefined, 0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
     "keeps the default for an unknown or invalid shared pool capacity %s",
     (slotCount) => {
       expect(
-        resolveConfiguredNativeThreads({ spawnSlots: { ...opaqueWorkerSlots, slotCount } }),
+        resolveConfiguredNativeBatchOptions({ spawnSlots: { ...opaqueWorkerSlots, slotCount } }),
       ).toBeUndefined();
     },
   );
@@ -108,18 +112,20 @@ describe("native lint thread budgets", () => {
   it("respects a shared pool smaller than the requested process count", () => {
     for (const slotCount of [1, 2, 6]) {
       expect(
-        resolveConfiguredNativeThreads({ spawnSlots: { ...opaqueWorkerSlots, slotCount } }),
+        resolveConfiguredNativeBatchOptions({ spawnSlots: { ...opaqueWorkerSlots, slotCount } }),
       ).toBeUndefined();
     }
     const spawnSlots = { ...opaqueWorkerSlots, slotCount: 7 };
-    expect(resolveConfiguredNativeThreads({ spawnSlots, fileCount: 1400 })).toBe(1);
-    expect(resolveConfiguredNativeThreads({ spawnSlots, fileCount: 1399 })).toBeUndefined();
+    expect(resolveConfiguredNativeBatchOptions({ spawnSlots, fileCount: 1400 })?.threadCount).toBe(
+      1,
+    );
+    expect(resolveConfiguredNativeBatchOptions({ spawnSlots, fileCount: 1399 })).toBeUndefined();
   });
 
   it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
     "does not infer a budget from an invalid CPU count %s",
     (availableThreads) => {
-      expect(resolveConfiguredNativeThreads({ availableThreads })).toBeUndefined();
+      expect(resolveConfiguredNativeBatchOptions({ availableThreads })).toBeUndefined();
     },
   );
 
@@ -138,11 +144,75 @@ describe("native lint thread budgets", () => {
       project: viteWebProject,
       nativeRuleIds: NATIVE_REACT_DOCTOR_RULE_IDS,
     });
-    expect(resolveConfiguredNativeThreads({ config: { ...config, ...overrides } })).toBeUndefined();
+    expect(
+      resolveConfiguredNativeBatchOptions({ config: { ...config, ...overrides } }),
+    ).toBeUndefined();
   });
 
   it("requires a native binding even when every configured rule has the native namespace", () => {
-    expect(resolveConfiguredNativeThreads({ nativeBindingPath: "" })).toBeUndefined();
+    expect(resolveConfiguredNativeBatchOptions({ nativeBindingPath: "" })).toBeUndefined();
+  });
+
+  it.each([
+    [2000, 200],
+    [3000, 200],
+    [3001, 500],
+    [3565, 500],
+  ])("keeps enough outer batches for %i files on twelve CPUs", (fileCount, maxFilesPerBatch) => {
+    expect(resolveConfiguredNativeBatchOptions({ fileCount })).toEqual({
+      threadCount: 1,
+      maxFilesPerBatch,
+    });
+  });
+
+  it.each([
+    [11, 2500, 200],
+    [11, 2501, 500],
+    [13, 3000, 200],
+    [13, 3001, 500],
+  ])(
+    "uses the same strict-majority batch guard on %i CPUs with %i files",
+    (availableThreads, fileCount, maxFilesPerBatch) => {
+      expect(resolveConfiguredNativeBatchOptions({ availableThreads, fileCount })).toEqual({
+        threadCount: 1,
+        maxFilesPerBatch,
+      });
+    },
+  );
+
+  it("requires both shared capacity and enough larger batches before increasing the cap", () => {
+    expect(
+      resolveConfiguredNativeBatchOptions({
+        fileCount: 3565,
+        spawnSlots: { ...opaqueWorkerSlots, slotCount: 6 },
+      }),
+    ).toBeUndefined();
+    const spawnSlots = { ...opaqueWorkerSlots, slotCount: 7 };
+    expect(resolveConfiguredNativeBatchOptions({ spawnSlots, fileCount: 3000 })).toEqual({
+      threadCount: 1,
+      maxFilesPerBatch: 200,
+    });
+    expect(resolveConfiguredNativeBatchOptions({ spawnSlots, fileCount: 3001 })).toEqual({
+      threadCount: 1,
+      maxFilesPerBatch: 500,
+    });
+    expect(
+      resolveConfiguredNativeBatchOptions({
+        concurrency: 6,
+        fileCount: 3565,
+        spawnSlots: { ...opaqueWorkerSlots, slotCount: 10 },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("does not admit inherited configurations even when a larger batch fills the CPU budget", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      nativeRuleIds: NATIVE_REACT_DOCTOR_RULE_IDS,
+      extendsPaths: ["/tmp/inherited.json"],
+    });
+    expect(resolveConfiguredNativeBatchOptions({ config, fileCount: 3565 })).toBeUndefined();
   });
 });
 

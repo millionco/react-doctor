@@ -21,6 +21,12 @@ interface SpawnMockState {
   // When false, the fake child stays in-flight (no auto-close) so an abort
   // test can observe the teardown rather than a self-resolving exit.
   autoClose: boolean;
+  completeSpawn?: (child: SpawnMockChild, argumentsList: ReadonlyArray<string>) => void;
+}
+
+interface SpawnMockChild extends EventEmitter {
+  stdout: EventEmitter;
+  stderr: EventEmitter;
 }
 
 const spawnState = vi.hoisted(
@@ -36,7 +42,7 @@ vi.mock("node:child_process", async (importOriginal) => {
   // By default every spawn exits on a kill signal, which `spawnOxlint` maps to
   // a splittable `OxlintBatchExceeded { kind: "killed" }` — deterministic and
   // timer-free, so the cascade bound is exercised without real waits.
-  const spawn = () => {
+  const spawn = (_command: string, argumentsList: ReadonlyArray<string>) => {
     spawnState.callCount += 1;
     const child = Object.assign(new EventEmitter(), {
       stdout: new EventEmitter(),
@@ -47,6 +53,10 @@ vi.mock("node:child_process", async (importOriginal) => {
     });
     // Defer past the synchronous listener attachment in `spawnOxlint`.
     queueMicrotask(() => {
+      if (spawnState.completeSpawn) {
+        spawnState.completeSpawn(child, argumentsList);
+        return;
+      }
       if (spawnState.autoClose) child.emit("close", null, "SIGKILL");
     });
     return child;
@@ -87,13 +97,168 @@ const singleLargeBatch = (): string[][] => [
   Array.from({ length: FILE_COUNT }, (_unused, index) => `src/file-${index}.tsx`),
 ];
 
+const NATIVE_BATCH_FILE_COUNT = 500;
+const RECOVERY_TEST_OUTPUT_MAX_BYTES = 100_000;
+
+const mockLargeBatchWithOffender = (
+  failureKind: "output-too-large" | "oom",
+  shouldRecoverOnRescue = false,
+) => {
+  const files = Array.from(
+    { length: NATIVE_BATCH_FILE_COUNT },
+    (_unused, index) => `src/native-file-${index}.tsx`,
+  );
+  const offenderFile = files[0];
+  const attemptedBatches: string[][] = [];
+  let offenderSingleFileAttempts = 0;
+  spawnState.completeSpawn = (child, argumentsList) => {
+    const batch = argumentsList.filter((argument) => argument.endsWith(".tsx"));
+    attemptedBatches.push(batch);
+    if (batch.includes(offenderFile)) {
+      if (batch.length === 1) offenderSingleFileAttempts += 1;
+      if (!shouldRecoverOnRescue || batch.length > 1 || offenderSingleFileAttempts === 1) {
+        if (failureKind === "output-too-large") {
+          child.stdout.emit("data", Buffer.alloc(RECOVERY_TEST_OUTPUT_MAX_BYTES + 1));
+          child.emit("close", null, "SIGKILL");
+        } else {
+          child.emit("close", null, "SIGABRT");
+        }
+        return;
+      }
+    }
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        JSON.stringify({
+          diagnostics: batch.map((filename) => ({
+            filename,
+            message: "Array index used as a key",
+            code: "react-doctor-native(no-array-index-as-key)",
+            severity: "warning",
+            labels: [{ span: { offset: 0, length: 1, line: 1, column: 1 } }],
+          })),
+          number_of_files: batch.length,
+          number_of_rules: 1,
+        }),
+      ),
+    );
+    child.emit("close", 0, null);
+  };
+  return { files, offenderFile, attemptedBatches };
+};
+
 beforeEach(() => {
   spawnState.callCount = 0;
   spawnState.killCount = 0;
   spawnState.autoClose = true;
+  spawnState.completeSpawn = undefined;
 });
 
 describe("spawnLintBatches binary-split cascade bound", () => {
+  it.each<"output-too-large" | "oom">(["output-too-large", "oom"])(
+    "preserves all 499 healthy files when a 500-file batch contains one persistent %s offender",
+    async (failureKind) => {
+      const { files, offenderFile, attemptedBatches } = mockLargeBatchWithOffender(failureKind);
+      const partialFailures: string[] = [];
+      const onAnalyzedFiles = vi.fn();
+      const diagnostics = await spawnLintBatches({
+        baseArgs: ["--stub", "--threads", "1"],
+        fileBatches: [files],
+        rootDirectory: process.cwd(),
+        nodeBinaryPath: process.execPath,
+        project,
+        concurrency: 2,
+        outputMaxBytes: RECOVERY_TEST_OUTPUT_MAX_BYTES,
+        onPartialFailure: (reason) => partialFailures.push(reason),
+        onAnalyzedFiles,
+      });
+
+      expect(diagnostics.map((diagnostic) => diagnostic.filePath).sort()).toEqual(
+        files.slice(1).sort(),
+      );
+      expect(onAnalyzedFiles).toHaveBeenCalledExactlyOnceWith(files.slice(1).sort());
+      expect(partialFailures).toHaveLength(1);
+      expect(partialFailures[0]).toContain(
+        `1 file(s) failed to lint and were skipped (${offenderFile})`,
+      );
+      expect(partialFailures[0]).toContain(
+        failureKind === "oom" ? "ran out of memory" : "output exceeded limit",
+      );
+      expect(attemptedBatches[0]).toEqual(files);
+      expect(attemptedBatches).toContainEqual(files.slice(0, 2));
+      expect(
+        attemptedBatches.filter((batch) => batch.length === 1 && batch[0] === offenderFile),
+      ).toHaveLength(failureKind === "oom" ? 2 : 1);
+      if (failureKind === "output-too-large") expect(spawnState.killCount).toBeGreaterThan(0);
+    },
+  );
+
+  it("restores complete coverage when the isolated offender succeeds during serial OOM rescue", async () => {
+    const { files, offenderFile, attemptedBatches } = mockLargeBatchWithOffender("oom", true);
+    const onPartialFailure = vi.fn();
+    const onAnalyzedFiles = vi.fn();
+    const diagnostics = await spawnLintBatches({
+      baseArgs: ["--stub", "--threads", "1"],
+      fileBatches: [files],
+      rootDirectory: process.cwd(),
+      nodeBinaryPath: process.execPath,
+      project,
+      concurrency: 2,
+      onPartialFailure,
+      onAnalyzedFiles,
+    });
+
+    expect(diagnostics.map((diagnostic) => diagnostic.filePath).sort()).toEqual([...files].sort());
+    expect(onAnalyzedFiles).toHaveBeenCalledExactlyOnceWith([...files].sort());
+    expect(onPartialFailure).not.toHaveBeenCalled();
+    expect(attemptedBatches.at(-1)).toEqual([offenderFile]);
+    expect(
+      attemptedBatches.filter((batch) => batch.length === 1 && batch[0] === offenderFile),
+    ).toHaveLength(2);
+  });
+
+  it.each<"output-too-large" | "oom">(["output-too-large", "oom"])(
+    "rejects an isolated %s offender in a 500-file batch when native Oxlint is required",
+    async (failureKind) => {
+      const { files, offenderFile, attemptedBatches } = mockLargeBatchWithOffender(failureKind);
+      const previousRequiredValue = process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV];
+      const onPartialFailure = vi.fn();
+      const onAnalyzedFiles = vi.fn();
+      process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV] = "1";
+      try {
+        await expect(
+          spawnLintBatches({
+            baseArgs: ["--stub", "--threads", "1"],
+            fileBatches: [files],
+            rootDirectory: process.cwd(),
+            nodeBinaryPath: process.execPath,
+            project,
+            concurrency: 2,
+            outputMaxBytes: RECOVERY_TEST_OUTPUT_MAX_BYTES,
+            onPartialFailure,
+            onAnalyzedFiles,
+          }),
+        ).rejects.toMatchObject({
+          message: "The required native Oxlint batch failed.",
+          cause: { reason: { kind: failureKind } },
+        });
+      } finally {
+        if (previousRequiredValue === undefined) {
+          delete process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV];
+        } else {
+          process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV] = previousRequiredValue;
+        }
+      }
+      expect(attemptedBatches).toContainEqual(files.slice(0, 2));
+      expect(attemptedBatches.at(-1)).toEqual([offenderFile]);
+      expect(
+        attemptedBatches.filter((batch) => batch.length === 1 && batch[0] === offenderFile),
+      ).toHaveLength(1);
+      expect(onPartialFailure).not.toHaveBeenCalled();
+      expect(onAnalyzedFiles).not.toHaveBeenCalled();
+    },
+  );
+
   it("propagates a terminal single-file failure when native Oxlint is required", async () => {
     const previousRequiredValue = process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV];
     process.env[REACT_DOCTOR_NATIVE_OXLINT_REQUIRED_ENV] = "1";

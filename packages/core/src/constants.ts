@@ -277,6 +277,9 @@ export const OXLINT_MAX_FILES_PER_BATCH = 200;
 // every requested count is clamped to [MIN, HARD_MAX].
 export const MIN_SCAN_CONCURRENCY = 1;
 export const NATIVE_OXLINT_THREADS_PER_WORKER = 1;
+// HACK: larger batches only apply to one-thread native-only passes with enough
+// batches to retain parallel work. Keep this within the split-depth recovery cap.
+export const NATIVE_OXLINT_MAX_FILES_PER_BATCH = 500;
 
 // Automatic scans stop at the measured parallel-efficiency knee so CPU
 // contention cannot push healthy JS-plugin batches into timeout retries.
@@ -1494,7 +1497,7 @@ export const NATIVE_REACT_DOCTOR_RULE_IDS: ReadonlySet<string> = new Set([
 ]);
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch
-// is at most OXLINT_MAX_FILES_PER_BATCH (= 200) files and a healthy
+// is at most NATIVE_OXLINT_MAX_FILES_PER_BATCH (= 500) files and a healthy
 // batch finishes in well under a second; 60 s leaves a large safety
 // margin while still firing fast enough that the binary-split
 // recovery in spawnLintBatches narrows a pathological batch to the
@@ -1518,7 +1521,7 @@ export const COOPERATIVE_YIELD_BUDGET_MS = 12;
 export const NODE_COMPILE_CACHE_DIR_NAME = "node-compile-cache";
 
 // Cumulative wall-clock budget across ALL binary-split retries of one
-// batch pass. A pathological file recurses through ~log2(200)≈8
+// batch pass. A pathological file recurses through at most nine
 // split levels, and each level re-waits a full OXLINT_SPAWN_TIMEOUT_MS;
 // without a cumulative cap that cascade can stall the scan for minutes.
 // 180 s bounds the whole cascade while leaving room for a few healthy
@@ -1526,9 +1529,9 @@ export const NODE_COMPILE_CACHE_DIR_NAME = "node-compile-cache";
 export const OXLINT_SPLIT_TOTAL_BUDGET_MS = 180_000;
 
 // Recursion-depth cap on the binary-split recovery — a belt to the
-// OXLINT_SPLIT_TOTAL_BUDGET_MS suspenders. A 200-file batch needs at
-// most ceil(log2(200))=8 levels to isolate a single offender; 9 leaves
-// one level of slack and still terminates the recursion deterministically
+// OXLINT_SPLIT_TOTAL_BUDGET_MS suspenders. A 500-file native batch needs at
+// most ceil(log2(500))=9 levels to isolate a single offender. This also
+// terminates the recursion deterministically
 // even if the budget clock is somehow not advancing.
 export const OXLINT_SPLIT_MAX_DEPTH = 9;
 

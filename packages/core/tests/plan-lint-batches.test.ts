@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { OXLINT_MAX_FILES_PER_BATCH, SPAWN_ARGS_MAX_LENGTH_CHARS } from "../src/constants.js";
+import { batchIncludePaths } from "../src/batch-include-paths.js";
+import { estimateArgsLength } from "../src/utils/estimate-args-length.js";
 import { planLintBatches } from "../src/utils/plan-lint-batches.js";
 
 const BASE_ARGS = ["/usr/bin/node", "oxlint", "-c", "oxlintrc.json", "--format", "json"];
@@ -124,4 +126,53 @@ describe("planLintBatches", () => {
     expect(batches).toHaveLength(Math.ceil(files.length / OXLINT_MAX_FILES_PER_BATCH));
     expect(batches.flat().sort()).toEqual([...files].sort());
   });
+
+  it.each(["cost", "arrival"])(
+    "preserves coverage and input order within optional 500-file %s batches",
+    (ordering) => {
+      const files = makeFiles(1001);
+      const batches =
+        ordering === "cost"
+          ? planLintBatches({
+              baseArgs: BASE_ARGS,
+              files,
+              sizeByFile: new Map(files.map((file, index) => [file, (index * 37) % 5000])),
+              fileCountLimit: 500,
+            })
+          : batchIncludePaths(BASE_ARGS, files, 500);
+      expect(batches).toHaveLength(3);
+      expect(batches.flat().sort()).toEqual([...files].sort());
+      for (const batch of batches) {
+        expect(batch.length).toBeGreaterThan(0);
+        expect(batch.length).toBeLessThanOrEqual(500);
+        const indexes = batch.map((file) => files.indexOf(file));
+        expect(indexes).toEqual([...indexes].sort((left, right) => left - right));
+      }
+      if (ordering === "arrival") expect(batches.flat()).toEqual(files);
+    },
+  );
+
+  it.each(["cost", "arrival"])(
+    "still respects the argument budget when %s batching permits 500 files",
+    (ordering) => {
+      const files = makeFiles(501).map((file) => `${"directory/".repeat(20)}${file}`);
+      const batches =
+        ordering === "cost"
+          ? planLintBatches({
+              baseArgs: BASE_ARGS,
+              files,
+              sizeByFile: uniformSizes(files, 1000),
+              fileCountLimit: 500,
+            })
+          : batchIncludePaths(BASE_ARGS, files, 500);
+      expect(batches.length).toBeGreaterThan(2);
+      expect(batches.flat().sort()).toEqual([...files].sort());
+      for (const batch of batches) {
+        expect(batch.length).toBeLessThanOrEqual(500);
+        expect(estimateArgsLength([...BASE_ARGS, ...batch])).toBeLessThanOrEqual(
+          SPAWN_ARGS_MAX_LENGTH_CHARS,
+        );
+      }
+    },
+  );
 });

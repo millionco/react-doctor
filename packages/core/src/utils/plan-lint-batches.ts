@@ -4,6 +4,7 @@ import { estimateArgsLength } from "./estimate-args-length.js";
 export interface PlanLintBatchesInput {
   readonly baseArgs: ReadonlyArray<string>;
   readonly files: ReadonlyArray<string>;
+  readonly fileCountLimit?: number;
   /**
    * Byte size per file (the discovery walk's existing stat). Drives the LPT
    * assignment; a file missing from the map weighs zero, matching
@@ -24,7 +25,7 @@ interface MutableLintBatch {
  * remainder batch, so the parallel pool's wall clock is set by whichever
  * full chunk happened to collect the most work while
  * the remainder's worker idles), this planner keeps the SAME mandatory batch
- * count — `ceil(files / OXLINT_MAX_FILES_PER_BATCH)`, the JS-plugin
+ * count — `ceil(files / fileCountLimit)`, the JS-plugin
  * perf-cliff / native-binding SIGABRT guard — and assigns files largest-first,
  * each to the least-loaded batch by cumulative byte size. Every batch ends up
  * with an even share of files AND bytes, so no batch is a straggler; heavy
@@ -53,9 +54,10 @@ export const planLintBatches = ({
   baseArgs,
   files,
   sizeByFile,
+  fileCountLimit = OXLINT_MAX_FILES_PER_BATCH,
 }: PlanLintBatchesInput): string[][] => {
   if (files.length === 0) return [];
-  const batchCount = Math.ceil(files.length / OXLINT_MAX_FILES_PER_BATCH);
+  const batchCount = Math.ceil(files.length / fileCountLimit);
   const maxFilesPerBatch = Math.ceil(files.length / batchCount);
   const baseArgsLengthChars = estimateArgsLength(baseArgs);
 

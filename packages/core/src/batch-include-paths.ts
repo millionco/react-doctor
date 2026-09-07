@@ -6,7 +6,11 @@ import { estimateArgsLength } from "./utils/estimate-args-length.js";
 // at 32_767 chars; we use SPAWN_ARGS_MAX_LENGTH_CHARS as conservative
 // headroom) AND the per-batch file-count budget (oxlint's native binding
 // can SIGABRT under memory pressure on very large file sets — see #84).
-export const batchIncludePaths = (baseArgs: string[], includePaths: string[]): string[][] => {
+export const batchIncludePaths = (
+  baseArgs: string[],
+  includePaths: string[],
+  maxFilesPerBatch = OXLINT_MAX_FILES_PER_BATCH,
+): string[][] => {
   const baseArgsLength = estimateArgsLength(baseArgs);
   const batches: string[][] = [];
   let currentBatch: string[] = [];
@@ -16,7 +20,7 @@ export const batchIncludePaths = (baseArgs: string[], includePaths: string[]): s
     const entryLength = filePath.length + 1;
     const exceedsArgLength =
       currentBatch.length > 0 && currentBatchLength + entryLength > SPAWN_ARGS_MAX_LENGTH_CHARS;
-    const exceedsFileCount = currentBatch.length >= OXLINT_MAX_FILES_PER_BATCH;
+    const exceedsFileCount = currentBatch.length >= maxFilesPerBatch;
 
     if (exceedsArgLength || exceedsFileCount) {
       batches.push(currentBatch);

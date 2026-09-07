@@ -28,8 +28,7 @@ export const statSourceFileSize = (absolutePath: string): number | null => {
 // small source file just to check. Memoized by absolute path because a full
 // scan walks the tree more than once; returns (and caches) false on any stat
 // error so an unreadable file is kept / counted as usual. A caller that
-// already stat'd the file (the sized-discovery walk) passes `knownSizeBytes`
-// to skip the second stat; bare callers (the security scan) stat here.
+// already stat'd the file passes `knownSizeBytes` to skip the second stat.
 export const isLargeMinifiedFile = (
   absolutePath: string,
   knownSizeBytes?: number | null,

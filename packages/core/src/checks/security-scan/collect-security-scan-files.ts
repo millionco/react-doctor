@@ -36,7 +36,7 @@ const readScannedFile = (candidate: SecurityScanCandidate): ScannedFile | null =
   if (!stat.isFile()) return null;
 
   const isGeneratedBundle =
-    candidate.isGeneratedBundleByName || isLargeMinifiedFile(candidate.absolutePath);
+    candidate.isGeneratedBundleByName || isLargeMinifiedFile(candidate.absolutePath, stat.size);
   const maxSizeBytes = isGeneratedBundle
     ? SECURITY_SCAN_MAX_BUNDLE_FILE_SIZE_BYTES
     : SECURITY_SCAN_MAX_FILE_SIZE_BYTES;

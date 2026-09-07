@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 mod circular_dependency;
 #[path = "duplicate-jsx-subtree.rs"]
 mod duplicate_jsx_subtree;
+#[path = "reduced-motion.rs"]
+mod reduced_motion;
 #[path = "unused-dependency.rs"]
 mod unused_dependency;
 #[path = "unused-export.rs"]
@@ -15,6 +17,7 @@ pub use duplicate_jsx_subtree::{
     analyze_duplicate_jsx, DuplicateJsxAnalysisInput, DuplicateJsxCandidateInput,
     DuplicateJsxFamily, DuplicateJsxOccurrence,
 };
+pub use reduced_motion::{analyze_reduced_motion, ReducedMotionSourceInput};
 
 const NATIVE_PROJECT_RULE_IDS: &[&str] = &[
     "circular-dependency",

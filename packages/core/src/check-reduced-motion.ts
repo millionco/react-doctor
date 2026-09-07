@@ -5,6 +5,7 @@ import ts from "typescript";
 import type { Diagnostic } from "./types/index.js";
 import { getImportModuleSource } from "./utils/get-import-module-source.js";
 import { getTypescriptScriptKind } from "./utils/get-typescript-script-kind.js";
+import { runNativeReducedMotionAnalysis } from "./utils/run-native-reduced-motion-analysis.js";
 import { unwrapTypescriptExpression } from "./utils/unwrap-typescript-expression.js";
 import { walkSourceTreeFiles } from "./utils/walk-source-tree-files.js";
 import { isFile, readPackageJson } from "./project-info/index.js";
@@ -25,11 +26,6 @@ export interface ProjectMotionEvidence {
 }
 
 export interface AnalyzeReducedMotionSourceInput {
-  fileName: string;
-  sourceText: string;
-}
-
-interface ScriptMotionSource {
   fileName: string;
   sourceText: string;
 }
@@ -588,10 +584,15 @@ export const analyzeReducedMotionSource = ({
   return analyzeReducedMotionSources(sources);
 };
 
-const analyzeReducedMotionSources = (sources: ScriptMotionSource[]): ProjectMotionEvidence => {
+const analyzeReducedMotionSources = (
+  sources: AnalyzeReducedMotionSourceInput[],
+): ProjectMotionEvidence => {
   if (!sources.some(({ sourceText }) => MOTION_SOURCE_PREFILTER.test(sourceText))) {
     return { hasMotionUse: false, hasReducedMotionHandling: false };
   }
+
+  const nativeEvidence = runNativeReducedMotionAnalysis(sources);
+  if (nativeEvidence !== null) return nativeEvidence;
 
   const compilerOptions: ts.CompilerOptions = {
     allowJs: true,
@@ -747,7 +748,7 @@ const hasReducedMotionMediaQuery = (content: string): boolean => {
 };
 
 const hasUnhandledProjectMotion = (rootDirectory: string): boolean => {
-  const scriptSources: ScriptMotionSource[] = [];
+  const scriptSources: AnalyzeReducedMotionSourceInput[] = [];
   let hasReducedMotionHandling = false;
 
   for (const { absolutePath, name } of walkSourceTreeFiles(rootDirectory)) {

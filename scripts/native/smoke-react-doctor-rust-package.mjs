@@ -209,7 +209,7 @@ try {
   fs.mkdirSync(path.join(fixtureDirectory, "src"), { recursive: true });
   fs.writeFileSync(
     path.join(fixtureDirectory, "package.json"),
-    `${JSON.stringify({ name: "fixture", private: true, main: "src/app.jsx", dependencies: { react: "19.2.5" } })}\n`,
+    `${JSON.stringify({ name: "fixture", private: true, main: "src/app.jsx", dependencies: { react: "19.2.5", motion: "12.0.0" } })}\n`,
   );
   fs.writeFileSync(
     path.join(fixtureDirectory, "doctor.config.json"),
@@ -222,7 +222,7 @@ try {
   );
   fs.writeFileSync(
     path.join(fixtureDirectory, "src", "app.jsx"),
-    'import { usedSmokeValue } from "./smoke-values.js";\nexport const App = () => <div id={usedSmokeValue} id="second" />;\n',
+    'import { motion } from "motion/react";\nimport { usedSmokeValue } from "./smoke-values.js";\nexport const App = () => <motion.div id={usedSmokeValue} id="second" />;\n',
   );
   fs.writeFileSync(
     path.join(fixtureDirectory, "src", "smoke-values.js"),
@@ -258,6 +258,7 @@ try {
     "jsx-no-duplicate-props",
     "unused-export",
     "supabase-table-missing-rls",
+    "require-reduced-motion",
   ]) {
     if (!report.diagnostics.some((diagnostic) => diagnostic.rule === expectedRule)) {
       throw new Error(`Packed native CLI did not report ${expectedRule}: ${scanResult.stdout}`);
@@ -339,7 +340,46 @@ require.cache[bindingPath].exports = { ...binding, scanReactDoctorFileSource: un
   const legacyReport = JSON.parse(legacyScanResult.stdout);
   assert.equal(validateReport(legacyReport), null);
   assert.deepEqual(legacyReport.diagnostics, report.diagnostics);
+  fs.writeFileSync(
+    preloadPath,
+    `import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const bindingPath = require.resolve(${JSON.stringify(bindingPackageName)});
+const binding = require(bindingPath);
+require.cache[bindingPath].exports = {
+  ...binding,
+  analyzeReactDoctorReducedMotion: () => JSON.stringify({ unsupported: ["native smoke semantic fallback"] }),
+};
+`,
+  );
+  const motionFallbackResult = run(process.execPath, scanArguments, {
+    env: {
+      NODE_OPTIONS:
+        `${process.env.NODE_OPTIONS ?? ""} --import=${pathToFileURL(preloadPath).href}`.trim(),
+    },
+  });
+  const motionFallbackReport = JSON.parse(motionFallbackResult.stdout);
+  assert.equal(validateReport(motionFallbackReport), null);
+  assert.deepEqual(motionFallbackReport.diagnostics, report.diagnostics);
   const injectedFailures = [
+    {
+      exportName: "analyzeReactDoctorReducedMotion",
+      replacement: "undefined",
+      argumentsList: [binaryPath, "--version"],
+      expectedMessage: "missing analyzeReactDoctorReducedMotion().",
+    },
+    {
+      exportName: "analyzeReactDoctorReducedMotion",
+      replacement: "() => '{}'",
+      argumentsList: scanArguments,
+      expectedMessage: "The required native reduced motion analysis returned an invalid result.",
+    },
+    {
+      exportName: "analyzeReactDoctorReducedMotion",
+      replacement: "() => { throw new Error('native smoke injected failure'); }",
+      argumentsList: scanArguments,
+      expectedMessage: "The required native reduced motion analysis failed.",
+    },
     {
       exportName: "scanReactDoctorFile",
       replacement: "undefined",

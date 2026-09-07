@@ -9,6 +9,7 @@ const requiredBindingExports = [
   "analyzeReactDoctorProjectGraph",
   "reactDoctorNativeProjectRuleIds",
   "analyzeReactDoctorDuplicateJsx",
+  "analyzeReactDoctorReducedMotion",
 ];
 
 export const resolveBindingPackageName = (

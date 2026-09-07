@@ -261,10 +261,24 @@ diff --git a/crates/oxc_linter/src/lib.rs b/crates/oxc_linter/src/lib.rs
 diff --git a/apps/oxlint/src/run.rs b/apps/oxlint/src/run.rs
 --- a/apps/oxlint/src/run.rs
 +++ b/apps/oxlint/src/run.rs
-@@ -239,6 +239,79 @@ async fn lint_impl(
+@@ -239,6 +239,93 @@ async fn lint_impl(
      cli_runner.run(&mut stdout)
  }
  
++#[napi]
++pub fn analyze_react_doctor_reduced_motion(input_json: String) -> napi::Result<String> {
++    let sources = serde_json::from_str::<
++        Vec<oxc_linter::react_doctor_project_analysis::ReducedMotionSourceInput>,
++    >(&input_json)
++    .map_err(|error| {
++        napi::Error::from_reason(format!("Invalid React Doctor reduced motion input: {error}"))
++    })?;
++    let evidence = oxc_linter::react_doctor_project_analysis::analyze_reduced_motion(sources);
++    serde_json::to_string(&evidence).map_err(|error| {
++        napi::Error::from_reason(format!("Failed to serialize React Doctor reduced motion evidence: {error}"))
++    })
++}
++
 +#[napi]
 +pub fn analyze_react_doctor_duplicate_jsx(input_json: String) -> napi::Result<String> {
 +    let input = serde_json::from_str::<

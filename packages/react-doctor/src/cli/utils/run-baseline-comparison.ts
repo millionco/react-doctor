@@ -12,6 +12,7 @@ import {
   JSX_DUPLICATION_SOURCE_FILE_PATTERN,
   listSourceFilesCooperative,
   remainingDeadlineBudgetMs,
+  type BaselineDegradationReasonCode,
   type Diagnostic,
   type InspectResult,
   PerFileLintCacheEnabled,
@@ -42,14 +43,7 @@ export interface BaselineComparison {
 }
 
 export interface BaselineDegradationReason {
-  readonly code:
-    | "deadline-budget-exhausted"
-    | "deadline-listing-aborted"
-    | "materialization-failed"
-    | "snapshot-incomplete"
-    | "dead-code-copy-failed"
-    | "expected-head-files-missing"
-    | "base-lint-failed";
+  readonly code: BaselineDegradationReasonCode;
   readonly detail?: string;
 }
 
@@ -165,7 +159,6 @@ export const runBaselineComparison = async (
 
   try {
     if (!snapshot.isComplete) {
-      const unmaterializedCount = snapshot.unmaterializedFiles.length;
       const materializedBaseFiles = new Set(snapshot.materializedFiles);
       const missingBaseFiles = snapshot.baseFiles.filter(
         (filePath) => !materializedBaseFiles.has(filePath),
@@ -215,13 +208,12 @@ export const runBaselineComparison = async (
       const normalizedFilePath = toForwardSlashes(filePath);
       if (!baseFiles.has(normalizedFilePath)) expectedHeadFiles.add(normalizedFilePath);
     }
-    if (
-      input.options.lint &&
-      filterSourceFiles([...expectedHeadFiles]).some((filePath) => !analyzedHeadFiles.has(filePath))
-    ) {
-      const missingFiles = filterSourceFiles([...expectedHeadFiles]).filter(
-        (filePath) => !analyzedHeadFiles.has(filePath),
-      );
+    const missingFiles = input.options.lint
+      ? filterSourceFiles([...expectedHeadFiles]).filter(
+          (filePath) => !analyzedHeadFiles.has(filePath),
+        )
+      : [];
+    if (missingFiles.length > 0) {
       const reason = {
         code: "expected-head-files-missing" as const,
         detail: `${missingFiles.length} expected head file(s) were not analyzed: ${missingFiles.slice(0, 3).join(", ")}${missingFiles.length > 3 ? `, and ${missingFiles.length - 3} more` : ""}`,

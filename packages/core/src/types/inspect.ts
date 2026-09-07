@@ -2,6 +2,7 @@ import type { DiagnosticSurface, ReactDoctorConfig } from "./config.js";
 import type { Diagnostic } from "./diagnostic.js";
 import type { ProjectInfo } from "./project-info.js";
 import type { ScoreResult } from "./score.js";
+import type { BaselineDegradationReasonCode } from "../schemas.js";
 
 export interface InspectResult {
   diagnostics: Diagnostic[];
@@ -382,14 +383,7 @@ export interface JsonReportV1 {
    * issue, lint failure, or another cause. Absent when baseline succeeded
    * or was not attempted.
    */
-  baselineDegradationReason?:
-    | "deadline-budget-exhausted"
-    | "deadline-listing-aborted"
-    | "materialization-failed"
-    | "snapshot-incomplete"
-    | "dead-code-copy-failed"
-    | "expected-head-files-missing"
-    | "base-lint-failed";
+  baselineDegradationReason?: BaselineDegradationReasonCode;
   /**
    * Whether any scanned project resolved a React-compatible runtime directly
    * or through a React-backed framework. `false` means every React-runtime

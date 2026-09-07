@@ -281,7 +281,7 @@ export const createOxlintConfig = ({
     !didEnableNativeReactDoctorRule ||
     didEnableJsReactDoctorRule ||
     extendsPaths.length > 0 ||
-    jsPlugins.length > 0;
+    jsPlugins.some((plugin) => plugin !== reactHooksJsPlugin?.entry);
 
   return {
     ...(extendsPaths.length > 0 ? { extends: extendsPaths } : {}),

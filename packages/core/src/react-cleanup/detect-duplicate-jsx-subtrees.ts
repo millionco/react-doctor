@@ -530,6 +530,14 @@ const scanSource = (input: ScanJsxDuplicationSourceInput): ScannedJsxDuplication
       didScan: false,
     };
   }
+  if (!input.source.sourceText.includes("<") && !input.signal?.aborted) {
+    return {
+      candidates: [],
+      incompleteReason: null,
+      didAbort: false,
+      didScan: true,
+    };
+  }
   const sourceFile = ts.createSourceFile(
     input.source.path,
     input.source.sourceText,

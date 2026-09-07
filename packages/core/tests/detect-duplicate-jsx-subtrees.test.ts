@@ -15,6 +15,72 @@ export const ${componentName} = () => (
 `;
 
 describe("detectDuplicateJsxSubtrees", () => {
+  it.each([
+    "export const label = 'ready';",
+    "export const isEarlier = (left: number, right: number) => left < right;",
+    "export const Fragment = () => <>text</>;",
+  ])(
+    "keeps complete coverage for a source without duplicate candidates: %s",
+    async (sourceText) => {
+      const sources = [{ path: "src/plain.tsx", sourceText }];
+      const result = detectDuplicateJsxSubtrees(sources);
+      const cooperativeResult = await detectDuplicateJsxSubtreesCooperative({
+        paths: sources.map((source) => source.path),
+        read: async () => sourceText,
+      });
+
+      expect(result).toMatchObject({
+        families: [],
+        scannedSourceFileCount: 1,
+        incomplete: false,
+        incompleteReasons: [],
+      });
+      expect(cooperativeResult).toEqual(result);
+    },
+  );
+
+  it("preserves source-length limits when a file cannot contain JSX", () => {
+    const sourceText = "export const label = 'ready';";
+    const result = detectDuplicateJsxSubtrees([{ path: "src/plain.ts", sourceText }], {
+      budget: { maxSourceLengthChars: 10 },
+    });
+
+    expect(result).toMatchObject({
+      families: [],
+      scannedSourceFileCount: 0,
+      incomplete: true,
+      incompleteReasons: [
+        {
+          kind: "source-length-limit",
+          limit: 10,
+          observed: sourceText.length,
+          path: "src/plain.ts",
+        },
+      ],
+    });
+  });
+
+  it("preserves cancellation during a no-JSX source read", async () => {
+    const abortController = new AbortController();
+    const result = await detectDuplicateJsxSubtreesCooperative(
+      {
+        paths: ["src/plain.ts"],
+        read: async () => {
+          abortController.abort();
+          return "export const label = 'ready';";
+        },
+      },
+      { signal: abortController.signal },
+    );
+
+    expect(result).toMatchObject({
+      families: [],
+      scannedSourceFileCount: 0,
+      incomplete: true,
+      incompleteReasons: [{ kind: "aborted", observed: 0 }],
+    });
+  });
+
   it("groups structurally equivalent JSX while normalizing data leaves", () => {
     const result = detectDuplicateJsxSubtrees([
       {

@@ -452,17 +452,65 @@ describe("createOxlintConfig settings", () => {
     );
   });
 
-  it("retains plugin ordering for native rules with the React Compiler frontend", () => {
+  it.each([{ hasReactCompiler: true }, { hasReactCompilerLintPlugin: true }])(
+    "omits the unused canonical plugin with native rules and compiler settings %j",
+    (compilerSettings) => {
+      const config = createOxlintConfig({
+        pluginPath: "/tmp/plugin.js",
+        project: buildProject(compilerSettings),
+        nativeRuleIds: NATIVE_REACT_DOCTOR_RULE_IDS,
+      });
+
+      expect(hasReactHooksJsEntry(config)).toBe(true);
+      expect(config.jsPlugins).toHaveLength(1);
+      expect(config.jsPlugins).not.toContain("/tmp/plugin.js");
+      expect(config.rules["react-doctor-native/no-document-write"]).toBe("warn");
+      expect(
+        Object.keys(config.rules).some((ruleKey) => ruleKey.startsWith("react-hooks-js/")),
+      ).toBe(true);
+    },
+  );
+
+  it.each<Partial<OxlintConfigOptions>>([
+    { extendsPaths: ["/tmp/inherited.json"] },
+    { nativeRuleIds: new Set(["no-document-write"]) },
+    { nativeRuleIds: new Set() },
+  ])("retains the canonical plugin with compiler settings and overrides %j", (overrides) => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
       project: buildProject({ hasReactCompiler: true }),
       nativeRuleIds: NATIVE_REACT_DOCTOR_RULE_IDS,
+      ...overrides,
     });
 
     expect(hasReactHooksJsEntry(config)).toBe(true);
     expect(config.jsPlugins.at(-1)).toBe("/tmp/plugin.js");
-    expect(config.rules["react-doctor-native/no-document-write"]).toBe("warn");
   });
+
+  it.each(["custom", "react-hooks-js"])(
+    "retains user plugin %s alongside the compiler and canonical plugins",
+    (name) => {
+      const userPlugin = { name, specifier: "/tmp/user-plugin.js" };
+      const config = createOxlintConfig({
+        pluginPath: "/tmp/plugin.js",
+        project: buildProject({ hasReactCompiler: true }),
+        nativeRuleIds: NATIVE_REACT_DOCTOR_RULE_IDS,
+        userPlugins: [
+          {
+            entry: userPlugin,
+            availableRuleNames: new Set(["example"]),
+            originalSpec: userPlugin.specifier,
+          },
+        ],
+        severityControls: { rules: { [`${name}/example`]: "warn" } },
+      });
+
+      expect(hasReactHooksJsEntry(config)).toBe(true);
+      expect(config.jsPlugins).toHaveLength(3);
+      expect(config.jsPlugins.slice(1)).toEqual([userPlugin, "/tmp/plugin.js"]);
+      expect(config.rules[`${name}/example`]).toBe("warn");
+    },
+  );
 
   it("keeps compatibility lint rules without enabling transform-only rules", () => {
     const config = createOxlintConfig({

@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import * as fs from "node:fs";
+import fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { checkReducedMotion } from "../src/check-reduced-motion.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { analyzeReducedMotionSource, checkReducedMotion } from "../src/check-reduced-motion.js";
 
 describe("checkReducedMotion", () => {
   let temporaryDirectory: string;
@@ -13,6 +13,7 @@ describe("checkReducedMotion", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   });
 
@@ -827,6 +828,78 @@ export const App = () => (
 
     expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
   });
+
+  it("preserves directory failures after finding reduced-motion CSS", () => {
+    writePackageJson();
+    writeDirectMotionUse();
+    writeNestedFile(
+      "styles.css",
+      "@media (prefers-reduced-motion: reduce) { * { animation: none; } }",
+    );
+    const failedDirectory = path.join(temporaryDirectory, "src");
+    const directoryError = Object.assign(new Error("Simulated directory read failure"), {
+      code: "EIO",
+    });
+    const readDirectory = fs.readdirSync;
+    vi.spyOn(fs, "readdirSync").mockImplementation((...argumentsList) => {
+      if (argumentsList[0] === failedDirectory) throw directoryError;
+      return Reflect.apply(readDirectory, fs, argumentsList);
+    });
+
+    expect(() => checkReducedMotion(temporaryDirectory)).toThrow(directoryError);
+  });
+
+  it.each([
+    {
+      name: "handling before motion",
+      body: "const reduced = useReducedMotion(); export const View = () => <motion.div />;",
+      hasMotionUse: true,
+      hasReducedMotionHandling: true,
+    },
+    {
+      name: "motion before handling",
+      body: "export const View = () => <motion.div />; const reduced = useReducedMotion();",
+      hasMotionUse: true,
+      hasReducedMotionHandling: true,
+    },
+    {
+      name: "handling without motion",
+      body: "const reduced = useReducedMotion();",
+      hasMotionUse: false,
+      hasReducedMotionHandling: true,
+    },
+    {
+      name: "motion without handling",
+      body: "export const View = () => <motion.div />;",
+      hasMotionUse: true,
+      hasReducedMotionHandling: false,
+    },
+  ])("preserves both evidence fields with $name", (scenario) => {
+    expect(
+      analyzeReducedMotionSource({
+        fileName: path.join(temporaryDirectory, "evidence.tsx"),
+        sourceText: `import { motion, useReducedMotion } from "framer-motion"; ${scenario.body}`,
+      }),
+    ).toEqual({
+      hasMotionUse: scenario.hasMotionUse,
+      hasReducedMotionHandling: scenario.hasReducedMotionHandling,
+    });
+  });
+
+  it.each([true, false])(
+    "combines motion and handling from separate files with handling first: %s",
+    (isHandlingFirst) => {
+      writePackageJson();
+      const motionSource =
+        'import { motion } from "framer-motion"; export const View = () => <motion.div />;';
+      const handlingSource =
+        'import { useReducedMotion } from "framer-motion"; export const reduced = useReducedMotion();';
+      writeNestedFile("src/first.tsx", isHandlingFirst ? handlingSource : motionSource);
+      writeNestedFile("src/second.tsx", isHandlingFirst ? motionSource : handlingSource);
+
+      expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+    },
+  );
 
   it("does not accept a reduced-motion token in a CSS comment", () => {
     writePackageJson();

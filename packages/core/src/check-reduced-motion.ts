@@ -530,6 +530,8 @@ const collectScriptMotionEvidence = (
   };
 
   const visitNode = (node: ts.Node): void => {
+    if (evidence.hasMotionUse && evidence.hasReducedMotionHandling) return;
+
     if (ts.isCallExpression(node)) {
       const calleeEvidence = resolveMotionExpressionEvidence(node.expression, typeChecker, program);
       const isAnimationFunctionCallViaCallOrApply =
@@ -643,6 +645,7 @@ const analyzeReducedMotionSources = (sources: ScriptMotionSource[]): ProjectMoti
     const fileEvidence = collectScriptMotionEvidence(sourceFile, typeChecker, program);
     evidence.hasMotionUse ||= fileEvidence.hasMotionUse;
     evidence.hasReducedMotionHandling ||= fileEvidence.hasReducedMotionHandling;
+    if (evidence.hasMotionUse && evidence.hasReducedMotionHandling) break;
   }
   return evidence;
 };
@@ -743,7 +746,7 @@ const hasReducedMotionMediaQuery = (content: string): boolean => {
   return false;
 };
 
-const collectProjectMotionEvidence = (rootDirectory: string): ProjectMotionEvidence => {
+const hasUnhandledProjectMotion = (rootDirectory: string): boolean => {
   const scriptSources: ScriptMotionSource[] = [];
   let hasReducedMotionHandling = false;
 
@@ -765,15 +768,10 @@ const collectProjectMotionEvidence = (rootDirectory: string): ProjectMotionEvide
     scriptSources.push({ fileName: absolutePath, sourceText: content });
   }
 
-  if (scriptSources.length === 0) {
-    return { hasMotionUse: false, hasReducedMotionHandling };
-  }
+  if (scriptSources.length === 0 || hasReducedMotionHandling) return false;
 
   const scriptEvidence = analyzeReducedMotionSources(scriptSources);
-  const hasMotionUse = scriptEvidence.hasMotionUse;
-  hasReducedMotionHandling ||= scriptEvidence.hasReducedMotionHandling;
-
-  return { hasMotionUse, hasReducedMotionHandling };
+  return scriptEvidence.hasMotionUse && !scriptEvidence.hasReducedMotionHandling;
 };
 
 export const checkReducedMotion = (rootDirectory: string): Diagnostic[] => {
@@ -792,8 +790,5 @@ export const checkReducedMotion = (rootDirectory: string): Diagnostic[] => {
     return [];
   }
 
-  const evidence = collectProjectMotionEvidence(rootDirectory);
-  return evidence.hasMotionUse && !evidence.hasReducedMotionHandling
-    ? [MISSING_REDUCED_MOTION_DIAGNOSTIC]
-    : [];
+  return hasUnhandledProjectMotion(rootDirectory) ? [MISSING_REDUCED_MOTION_DIAGNOSTIC] : [];
 };

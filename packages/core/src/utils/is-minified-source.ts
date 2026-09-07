@@ -20,6 +20,17 @@ export const isMinifiedSource = (absolutePath: string): boolean => {
     fileDescriptor = fs.openSync(absolutePath, "r");
     const buffer = Buffer.alloc(MINIFIED_SNIFF_BYTES);
     const bytesRead = fs.readSync(fileDescriptor, buffer, 0, MINIFIED_SNIFF_BYTES, 0);
+    if (bytesRead <= MINIFIED_AVG_LINE_LENGTH_CHARS) return false;
+    const prefixBuffer = buffer.subarray(0, bytesRead);
+    let lineCount = 1;
+    for (
+      let newlineIndex = prefixBuffer.indexOf("\n");
+      newlineIndex !== -1;
+      newlineIndex = prefixBuffer.indexOf("\n", newlineIndex + 1)
+    ) {
+      lineCount += 1;
+      if (bytesRead / lineCount <= MINIFIED_AVG_LINE_LENGTH_CHARS) return false;
+    }
     const prefix = buffer.toString("utf8", 0, bytesRead);
     const lines = prefix.split("\n");
     const longestLineLength = lines.reduce((longest, line) => Math.max(longest, line.length), 0);

@@ -1502,6 +1502,21 @@ const hasReactCompilerConfigInSentryWrapperArgument = (
   return Boolean(configArgument && analyzeConfigNode(configArgument, analysis, false));
 };
 
+const hasEnabledCompilerOptionInVitePluginArgument = (
+  callExpression: ts.CallExpression,
+  analysis: ConfigExpressionAnalysis,
+  moduleSpecifier: string,
+  exportName: string,
+): boolean => {
+  if (moduleSpecifier !== "@vitejs/plugin-react" || exportName !== "default") return false;
+  const [optionsArgument] = callExpression.arguments;
+  if (!optionsArgument) return false;
+  const compilerProperty = getSelectedObjectProperty(optionsArgument, "compiler", analysis);
+  if (!compilerProperty) return false;
+  if (ts.isMethodDeclaration(compilerProperty.node)) return true;
+  return !isStaticallyDisabledConfigExpression(compilerProperty.node, compilerProperty.analysis);
+};
+
 const analyzeConfigCallTarget = (
   callExpression: ts.CallExpression,
   analysis: ConfigExpressionAnalysis,
@@ -1520,6 +1535,16 @@ const analyzeConfigCallTarget = (
     if (
       allowCompilerTransform &&
       isCompilerTransformModule(callableRequiredModuleSpecifier, "default")
+    ) {
+      return true;
+    }
+    if (
+      hasEnabledCompilerOptionInVitePluginArgument(
+        callExpression,
+        analysis,
+        callableRequiredModuleSpecifier,
+        "default",
+      )
     ) {
       return true;
     }
@@ -1564,6 +1589,16 @@ const analyzeConfigCallTarget = (
     ) {
       return true;
     }
+    if (
+      hasEnabledCompilerOptionInVitePluginArgument(
+        callExpression,
+        analysis,
+        requiredModuleSpecifier,
+        propertyName,
+      )
+    ) {
+      return true;
+    }
     const hasCompilerTransform = analyzeImportedConfig({
       analysis,
       moduleSpecifier: requiredModuleSpecifier,
@@ -1593,6 +1628,16 @@ const analyzeConfigCallTarget = (
     }
     if (
       hasReactCompilerConfigInSentryWrapperArgument(
+        callExpression,
+        analysis,
+        importBinding.moduleSpecifier,
+        propertyName,
+      )
+    ) {
+      return true;
+    }
+    if (
+      hasEnabledCompilerOptionInVitePluginArgument(
         callExpression,
         analysis,
         importBinding.moduleSpecifier,
@@ -1897,6 +1942,16 @@ const analyzeConfigNode = (
           }
           if (
             hasReactCompilerConfigInSentryWrapperArgument(
+              node,
+              analysis,
+              importBinding.moduleSpecifier,
+              importBinding.exportName,
+            )
+          ) {
+            return true;
+          }
+          if (
+            hasEnabledCompilerOptionInVitePluginArgument(
               node,
               analysis,
               importBinding.moduleSpecifier,

@@ -40,21 +40,32 @@ export interface PackageManifest {
 // location up to the filesystem root, look for the nearest `package.json`,
 // and cache by package directory. Memoizing the manifest by directory (NOT
 // filename) is essential — every file inside a package shares the same
-// answer, and oxlint visits many files per package per run.
+// answer, and oxlint visits many files per package per run. The walk itself
+// is memoized by the file's containing directory for the same reason: sibling
+// files share every ancestor probe.
 //
 // Both memos are sound only within one scan because the filesystem is treated
 // as frozen while a scan runs. Reset them at each scan start so a closer or
 // edited package manifest is picked up by the next scan.
-const cachedPackageDirectoryByFilename = new Map<string, string | null>();
+const cachedPackageDirectoryByContainingDirectory = new Map<string, string | null>();
 const cachedManifestByPackageDirectory = new Map<string, PackageManifest | null>();
+let manifestCacheGeneration = 0;
 
 export const resetManifestCaches = (): void => {
-  cachedPackageDirectoryByFilename.clear();
+  cachedPackageDirectoryByContainingDirectory.clear();
   cachedManifestByPackageDirectory.clear();
+  manifestCacheGeneration += 1;
 };
+
+// Memos derived from manifests (but keyed by directory rather than by a
+// manifest object) compare this to notice a reset without importing this
+// module's reset into their own.
+export const getManifestCacheGeneration = (): number => manifestCacheGeneration;
 
 export const findNearestPackageDirectory = (filename: string): string | null => {
   if (!filename) return null;
+
+  const containingDirectory = path.dirname(filename);
 
   // The walk's outcome depends on EVERY ancestor probe (a package.json
   // appearing closer to the file re-anchors the classification), so a memo
@@ -62,10 +73,10 @@ export const findNearestPackageDirectory = (filename: string): string | null => 
   // candidate list is derivable from the filename and the memoized stop
   // directory without touching the filesystem
   // (see cross-file-probe-recorder.ts).
-  const fromCache = cachedPackageDirectoryByFilename.get(filename);
+  const fromCache = cachedPackageDirectoryByContainingDirectory.get(containingDirectory);
   if (fromCache !== undefined) {
     if (isProbeRecorderActive()) {
-      let probedDirectory = path.dirname(filename);
+      let probedDirectory = containingDirectory;
       while (true) {
         recordExistenceProbe(path.join(probedDirectory, "package.json"));
         if (probedDirectory === fromCache) break;
@@ -77,7 +88,7 @@ export const findNearestPackageDirectory = (filename: string): string | null => 
     return fromCache;
   }
 
-  let currentDirectory = path.dirname(filename);
+  let currentDirectory = containingDirectory;
   while (true) {
     const candidatePackageJsonPath = path.join(currentDirectory, "package.json");
     recordExistenceProbe(candidatePackageJsonPath);
@@ -88,12 +99,12 @@ export const findNearestPackageDirectory = (filename: string): string | null => 
       hasPackageJson = false;
     }
     if (hasPackageJson) {
-      cachedPackageDirectoryByFilename.set(filename, currentDirectory);
+      cachedPackageDirectoryByContainingDirectory.set(containingDirectory, currentDirectory);
       return currentDirectory;
     }
     const parentDirectory = path.dirname(currentDirectory);
     if (parentDirectory === currentDirectory) {
-      cachedPackageDirectoryByFilename.set(filename, null);
+      cachedPackageDirectoryByContainingDirectory.set(containingDirectory, null);
       return null;
     }
     currentDirectory = parentDirectory;

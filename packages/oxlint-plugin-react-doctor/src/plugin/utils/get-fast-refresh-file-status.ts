@@ -117,6 +117,13 @@ const REGISTERED_INTEGRATION_RUNTIME_PRECEDENCE: ReadonlyArray<IntegrationImport
 
 const cachedLocalStatusByManifest = new WeakMap<PackageManifest, FastRefreshFileStatus>();
 const cachedWorkspaceIndexByManifest = new WeakMap<PackageManifest, WorkspaceFastRefreshIndex>();
+// Workspace ownership is decided by directory containment, so every file in a
+// directory shares the answer. Keyed by the owning manifest object so the memo
+// dies with the manifest cache on `resetManifestCaches()`.
+const cachedWorkspaceOwnedStatusByManifest = new WeakMap<
+  PackageManifest,
+  Map<string, FastRefreshFileStatus | null>
+>();
 
 const INACTIVE_STATUS: FastRefreshFileStatus = { isActive: false, runtime: "generic" };
 const WORKSPACE_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
@@ -884,8 +891,8 @@ const buildWorkspaceFastRefreshIndex = (
   return index;
 };
 
-const getWorkspaceOwnedStatus = (
-  filename: string,
+const resolveWorkspaceOwnedStatus = (
+  containingDirectory: string,
   packageDirectory: string,
 ): FastRefreshFileStatus | null => {
   const workspaceRoot = findWorkspaceRoot(packageDirectory);
@@ -893,12 +900,32 @@ const getWorkspaceOwnedStatus = (
   const rootManifest = readPackageManifest(workspaceRoot);
   if (!rootManifest) return null;
   const index = buildWorkspaceFastRefreshIndex(workspaceRoot, rootManifest);
-  const aliasOwner = index.aliasOwners.find((owner) => isPathInside(filename, owner.rootDirectory));
+  const aliasOwner = index.aliasOwners.find((owner) =>
+    isPathInside(containingDirectory, owner.rootDirectory),
+  );
   if (aliasOwner) return aliasOwner.status;
   for (const [producerDirectory, status] of index.sourceEntryOwners) {
-    if (isPathInside(filename, producerDirectory)) return status;
+    if (isPathInside(containingDirectory, producerDirectory)) return status;
   }
   return null;
+};
+
+const getWorkspaceOwnedStatus = (
+  filename: string,
+  packageDirectory: string,
+  manifest: PackageManifest,
+): FastRefreshFileStatus | null => {
+  const containingDirectory = path.dirname(filename);
+  let statusByDirectory = cachedWorkspaceOwnedStatusByManifest.get(manifest);
+  if (!statusByDirectory) {
+    statusByDirectory = new Map();
+    cachedWorkspaceOwnedStatusByManifest.set(manifest, statusByDirectory);
+  }
+  const cached = statusByDirectory.get(containingDirectory);
+  if (cached !== undefined) return cached;
+  const status = resolveWorkspaceOwnedStatus(containingDirectory, packageDirectory);
+  statusByDirectory.set(containingDirectory, status);
+  return status;
 };
 
 const resolveFastRefreshFileStatus = (filename: string): FastRefreshFileStatus => {
@@ -908,7 +935,7 @@ const resolveFastRefreshFileStatus = (filename: string): FastRefreshFileStatus =
   if (!packageDirectory) return INACTIVE_STATUS;
   const localStatus = getLocalFastRefreshStatus(packageDirectory, manifest);
   if (localStatus.isActive) return localStatus;
-  return getWorkspaceOwnedStatus(filename, packageDirectory) ?? INACTIVE_STATUS;
+  return getWorkspaceOwnedStatus(filename, packageDirectory, manifest) ?? INACTIVE_STATUS;
 };
 
 export const probeFastRefreshFileStatus = (filename: string): FastRefreshFileStatus =>

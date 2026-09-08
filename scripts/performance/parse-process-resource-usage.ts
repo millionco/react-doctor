@@ -7,8 +7,11 @@ export const parseProcessResourceUsage = (stderr: string): ProcessResourceUsage 
   const linuxUserMatch = stderr.match(/User time \(seconds\):\s*([\d.]+)/);
   const linuxSystemMatch = stderr.match(/System time \(seconds\):\s*([\d.]+)/);
   const linuxResidentSetMatch = stderr.match(/Maximum resident set size \(kbytes\):\s*(\d+)/);
-  const userSecondsText = darwinTimingMatch?.[2] ?? linuxUserMatch?.[1];
-  const systemSecondsText = darwinTimingMatch?.[3] ?? linuxSystemMatch?.[1];
+  const posixUserMatch = stderr.match(/^user\s+([\d.]+)/m);
+  const posixSystemMatch = stderr.match(/^sys\s+([\d.]+)/m);
+  const userSecondsText = darwinTimingMatch?.[2] ?? linuxUserMatch?.[1] ?? posixUserMatch?.[1];
+  const systemSecondsText =
+    darwinTimingMatch?.[3] ?? linuxSystemMatch?.[1] ?? posixSystemMatch?.[1];
   let maximumResidentSetBytes: number | null = null;
   if (darwinResidentSetMatch) {
     maximumResidentSetBytes = Number(darwinResidentSetMatch[1]);

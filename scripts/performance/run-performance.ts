@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { aggregateRuleTimings } from "./aggregate-rule-timings.ts";
 import { buildBenchmarkComparisons } from "./build-benchmark-comparisons.ts";
 import { clearBenchmarkRunArtifacts } from "./clear-benchmark-run-artifacts.ts";
 import {
@@ -16,9 +17,15 @@ import {
 import { isPathWithin } from "./is-path-within.ts";
 import { isRecordWithFields } from "./is-record-with-fields.ts";
 import { parsePerformanceArguments } from "./parse-performance-arguments.ts";
+import {
+  corpusTargetDirectory,
+  readCorpusManifest,
+  selectCorpusTargets,
+} from "./read-corpus-manifest.ts";
 import { renderPerformanceMarkdown } from "./render-performance-markdown.ts";
 import { runBenchmarkSample } from "./run-benchmark-sample.ts";
 import { runCommanderMain } from "./run-commander-main.ts";
+import { summarizeChildCpuProfiles } from "./summarize-cpu-profiles.ts";
 import { summarizeDistribution } from "./summarize-distribution.ts";
 import type {
   BenchmarkCacheCohort,
@@ -27,7 +34,9 @@ import type {
   BenchmarkMode,
   BenchmarkSample,
   BenchmarkSeries,
+  BenchmarkTargetInput,
   BenchmarkTargetMetadata,
+  DistributionSummary,
   HostMetadata,
   PerformanceResult,
 } from "./types.ts";
@@ -64,7 +73,35 @@ const collectFallbackSourceFiles = (directory: string): string[] => {
   return sourceFiles;
 };
 
-const collectTargetMetadata = (directory: string, targetId: string): BenchmarkTargetMetadata => {
+const resolveTargetInputs = (options: BenchmarkCliOptions): BenchmarkTargetInput[] => {
+  const corpusNames = options.corpus ?? [];
+  const corpusTargets =
+    corpusNames.length === 0 ? [] : selectCorpusTargets(readCorpusManifest(), corpusNames);
+  const targetInputs = [
+    ...options.directories.map((directory) => ({ directory, label: path.basename(directory) })),
+    ...corpusTargets.map((target) => {
+      const directory = corpusTargetDirectory(target);
+      if (!fs.existsSync(directory)) {
+        throw new Error(
+          `Corpus target "${target.name}" is not fetched; run \`pnpm performance:corpus ${target.name}\` first`,
+        );
+      }
+      return { directory, label: target.name };
+    }),
+  ];
+  const seenDirectories = new Set<string>();
+  return targetInputs.filter((targetInput) => {
+    if (seenDirectories.has(targetInput.directory)) return false;
+    seenDirectories.add(targetInput.directory);
+    return true;
+  });
+};
+
+const collectTargetMetadata = (
+  targetInput: BenchmarkTargetInput,
+  targetId: string,
+): BenchmarkTargetMetadata => {
+  const { directory } = targetInput;
   const directoryStats = fs.statSync(directory);
   if (!directoryStats.isDirectory())
     throw new Error(`Benchmark target is not a directory: ${directory}`);
@@ -94,7 +131,7 @@ const collectTargetMetadata = (directory: string, targetId: string): BenchmarkTa
   return {
     targetId,
     directory,
-    label: path.basename(directory),
+    label: targetInput.label,
     gitSha,
     isGitDirty: gitStatus === null ? null : gitStatus.trim().length > 0,
     sourceFileCount: sourceFiles.length,
@@ -185,6 +222,18 @@ const cacheDirectoryForSample = (
     ? path.join(seriesDirectory, "cache", "shared")
     : path.join(seriesDirectory, "cache", sampleName);
 
+const summarizeNullableSeconds = (values: Array<number | null>): DistributionSummary | null => {
+  const definedValues = values.flatMap((value) => (value === null ? [] : [value]));
+  return definedValues.length === 0 ? null : summarizeDistribution(definedValues);
+};
+
+const pickMedianSample = (samples: readonly BenchmarkSample[], median: number): BenchmarkSample =>
+  samples.reduce((closestSample, sample) =>
+    Math.abs(sample.wallMilliseconds - median) < Math.abs(closestSample.wallMilliseconds - median)
+      ? sample
+      : closestSample,
+  );
+
 const runSeries = (
   options: BenchmarkCliOptions,
   target: BenchmarkTargetMetadata,
@@ -231,14 +280,28 @@ const runSeries = (
       `[${target.label}] sample ${sampleIndex}/${options.samples}: ${sample.wallMilliseconds.toFixed(1)} ms\n`,
     );
   }
-  if (options.profile || options.heapProfile || options.ruleTimings) {
-    runSample("profile", 0, options.profile, options.heapProfile, options.ruleTimings);
+  let ruleTimings: BenchmarkSeries["ruleTimings"] = null;
+  let cpuProfile: BenchmarkSeries["cpuProfile"] = null;
+  if (options.profile || options.heapProfile) {
+    runSample("profile", 0, options.profile, options.heapProfile, false);
+    if (options.profile) {
+      cpuProfile = summarizeChildCpuProfiles(
+        path.join(seriesDirectory, "profile", "sample-0-profiles"),
+      );
+    }
+  }
+  if (options.ruleTimings) {
+    runSample("rule-timings", 0, false, false, true);
+    ruleTimings = aggregateRuleTimings(
+      path.join(seriesDirectory, "rule-timings", "sample-0-profiles"),
+    );
   }
   const diagnosticHashes = new Set(samples.map((sample) => sample.diagnosticHash));
   if (diagnosticHashes.size !== 1) {
     throw new Error(`Diagnostic output changed between samples for ${slug}`);
   }
   const wallMilliseconds = summarizeDistribution(samples.map((sample) => sample.wallMilliseconds));
+  const medianSample = pickMedianSample(samples, wallMilliseconds.median);
   const elapsedSeconds = wallMilliseconds.median / MILLISECONDS_PER_SECOND;
   const maximumResidentSetValues = samples.flatMap((sample) =>
     sample.maximumResidentSetBytes === null ? [] : [sample.maximumResidentSetBytes],
@@ -260,6 +323,11 @@ const runSeries = (
     filesPerSecond: (samples[0]?.scannedFileCount ?? target.sourceFileCount) / elapsedSeconds,
     mebibytesPerSecond: target.sourceByteCount / BYTES_PER_MEBIBYTE / elapsedSeconds,
     diagnosticHash: samples[0]?.diagnosticHash ?? "",
+    userSeconds: summarizeNullableSeconds(samples.map((sample) => sample.userSeconds)),
+    systemSeconds: summarizeNullableSeconds(samples.map((sample) => sample.systemSeconds)),
+    timeline: medianSample.timeline ?? null,
+    ruleTimings,
+    cpuProfile,
   };
 };
 
@@ -293,9 +361,10 @@ export const runPerformance = (options: BenchmarkCliOptions): PerformanceResult 
     hostname: os.hostname(),
   };
   const baseline = readBaseline(options.comparePath, host);
-  const targets = options.directories.map((directory, directoryIndex) =>
-    collectTargetMetadata(directory, String(directoryIndex)),
+  const targets = resolveTargetInputs(options).map((targetInput, targetIndex) =>
+    collectTargetMetadata(targetInput, String(targetIndex)),
   );
+  if (targets.length === 0) throw new Error("No benchmark targets resolved");
   for (const target of targets) {
     if (isPathWithin(runsDirectory, target.directory)) {
       throw new Error(`Benchmark target cannot be inside the runs directory: ${target.directory}`);
@@ -335,10 +404,18 @@ export const runPerformance = (options: BenchmarkCliOptions): PerformanceResult 
       profile: options.profile,
       heapProfile: options.heapProfile,
       ruleTimings: options.ruleTimings,
+      corpus: options.corpus ?? [],
+      strict: Boolean(options.strict),
     },
     series,
-    comparisons: buildBenchmarkComparisons(series, baseline),
+    comparisons: buildBenchmarkComparisons(series, baseline, { allowDiagnosticMismatch: true }),
   };
+  for (const comparison of result.comparisons) {
+    if (comparison.diagnosticsMatch) continue;
+    process.stderr.write(
+      `\n!!! DIAGNOSTICS MISMATCH vs baseline for ${comparison.key}: the scan no longer produces the same diagnostics.\n\n`,
+    );
+  }
   fs.writeFileSync(
     path.join(options.outputDirectory, "results.json"),
     `${JSON.stringify(result, null, 2)}\n`,
@@ -354,9 +431,11 @@ const main = (): void => {
   const options = parsePerformanceArguments(process.argv.slice(2));
   const result = runPerformance(options);
   process.stdout.write(`${path.join(options.outputDirectory, "results.md")}\n`);
-  if (result.comparisons.some((comparison) => comparison.classification === "regressed")) {
-    process.exitCode = 1;
-  }
+  const hasRegression = result.comparisons.some(
+    (comparison) => comparison.classification === "regressed",
+  );
+  const hasMismatch = result.comparisons.some((comparison) => !comparison.diagnosticsMatch);
+  if (hasRegression || (hasMismatch && Boolean(options.strict))) process.exitCode = 1;
 };
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) runCommanderMain(main);

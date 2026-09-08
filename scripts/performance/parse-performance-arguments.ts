@@ -56,6 +56,15 @@ const parseWorkerCounts = (value: string): Array<number | "auto"> => {
   return [...new Set(workerCounts)];
 };
 
+const parseCorpusNames = (value: string): string[] => {
+  const names = value
+    .split(",")
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+  if (names.length === 0) throw new Error("--corpus requires at least one target name");
+  return [...new Set(names)];
+};
+
 export interface SharedBenchmarkCommandInput {
   readonly name: string;
   readonly description: string;
@@ -102,6 +111,7 @@ export const buildSharedBenchmarkCommand = (input: SharedBenchmarkCommandInput):
     .option("--profile", "capture V8 CPU profiles in a dedicated sample", false)
     .option("--heap-profile", "capture V8 heap profiles in a dedicated sample", false)
     .option("--rule-timings", "capture Oxlint per-rule timings in a dedicated sample", false)
+    .option("--strict", "exit non-zero when diagnostics differ from the --compare baseline", false)
     .showHelpAfterError()
     .allowExcessArguments(false)
     .exitOverride();
@@ -127,6 +137,8 @@ export const toBenchmarkCliOptions = (
   profile: commandOptions.profile,
   heapProfile: commandOptions.heapProfile,
   ruleTimings: commandOptions.ruleTimings,
+  corpus: commandOptions.corpus === undefined ? [] : parseCorpusNames(commandOptions.corpus),
+  strict: Boolean(commandOptions.strict),
 });
 
 export const parsePerformanceArguments = (argumentsList: string[]): BenchmarkCliOptions => {
@@ -135,11 +147,20 @@ export const parsePerformanceArguments = (argumentsList: string[]): BenchmarkCli
     description: "Benchmark the built React Doctor CLI against arbitrary directories",
     outputDirectoryDefault: DEFAULT_OUTPUT_DIRECTORY,
     cacheCohortsDefault: DEFAULT_CACHE_COHORTS,
-  }).argument("<directories...>", "directories to benchmark");
+  })
+    .argument("[directories...]", "directories to benchmark")
+    .option(
+      "--corpus <names>",
+      "comma-separated corpus.json target names fetched by performance:corpus",
+    );
   parseUserArguments(command, argumentsList);
   const directoriesArgument: unknown = command.processedArgs[0];
   const directories = Array.isArray(directoriesArgument)
     ? directoriesArgument.filter((entry): entry is string => typeof entry === "string")
     : [];
-  return toBenchmarkCliOptions(command.opts<PerformanceCommandOptions>(), directories);
+  const options = toBenchmarkCliOptions(command.opts<PerformanceCommandOptions>(), directories);
+  if (options.directories.length === 0 && (options.corpus?.length ?? 0) === 0) {
+    throw new Error("Pass at least one directory or --corpus <names>");
+  }
+  return options;
 };

@@ -221,8 +221,8 @@ struct Extractor<'semantic, 'ast> {
     source: &'ast str,
     semantic: &'semantic Semantic<'ast>,
     comments: &'semantic [Comment],
-    children: HashMap<NodeId, Vec<NodeId>>,
-    jsx_metrics: HashMap<NodeId, (usize, usize)>,
+    children: Vec<Vec<NodeId>>,
+    jsx_metrics: Vec<(usize, usize)>,
     hashes: HashMap<NodeId, StructuralHash>,
     positions: SourcePositions,
 }
@@ -269,13 +269,13 @@ impl<'semantic, 'ast> Extractor<'semantic, 'ast> {
 
     fn flattened_children(&self, node: NodeId) -> Vec<NodeId> {
         let mut children = Vec::new();
-        for child in self.children.get(&node).into_iter().flatten() {
+        for child in &self.children[node.index()] {
             match self.semantic.nodes().kind(*child) {
                 AstKind::FormalParameters(_)
                 | AstKind::TSTypeAnnotation(_)
                 | AstKind::TSTypeParameterInstantiation(_)
                 | AstKind::TSTypeParameterDeclaration(_) => {
-                    children.extend(self.children.get(child).into_iter().flatten().copied());
+                    children.extend(self.children[child.index()].iter().copied());
                 }
                 _ => children.push(*child),
             }
@@ -366,7 +366,7 @@ impl<'semantic, 'ast> Extractor<'semantic, 'ast> {
         };
         let mut result = StructuralHash::node(kind, children);
         result.value.insert_str(0, "jsx:");
-        let (jsx_count, jsx_depth) = self.jsx_metrics.get(&node).copied().unwrap_or((1, 1));
+        let (jsx_count, jsx_depth) = self.jsx_metrics[node.index()];
         result.jsx_count = jsx_count;
         result.jsx_depth = jsx_depth;
         Ok(result)
@@ -1145,14 +1145,14 @@ pub fn extract_jsx_subtree_candidates(
     {
         return empty(true);
     }
-    let mut children = HashMap::<NodeId, Vec<NodeId>>::new();
-    for node in semantic.nodes().iter().skip(1) {
-        children
-            .entry(semantic.nodes().parent_id(node.id()))
-            .or_default()
-            .push(node.id());
+    if candidates.is_empty() {
+        return empty(false);
     }
-    let mut jsx_metrics = HashMap::<NodeId, (usize, usize)>::new();
+    let mut children = vec![Vec::new(); semantic.nodes().len()];
+    for node in semantic.nodes().iter().skip(1) {
+        children[semantic.nodes().parent_id(node.id()).index()].push(node.id());
+    }
+    let mut jsx_metrics = vec![(0_usize, 0_usize); semantic.nodes().len()];
     let node_ids = semantic
         .nodes()
         .iter()
@@ -1161,11 +1161,10 @@ pub fn extract_jsx_subtree_candidates(
     for node in node_ids.into_iter().rev() {
         let mut count = 0;
         let mut depth = 0;
-        for child in children.get(&node).into_iter().flatten() {
-            if let Some((child_count, child_depth)) = jsx_metrics.get(child) {
-                count += child_count;
-                depth = depth.max(*child_depth);
-            }
+        for child in &children[node.index()] {
+            let (child_count, child_depth) = jsx_metrics[child.index()];
+            count += child_count;
+            depth = depth.max(child_depth);
         }
         if matches!(
             semantic.nodes().kind(node),
@@ -1174,7 +1173,7 @@ pub fn extract_jsx_subtree_candidates(
             count += 1;
             depth += 1;
         }
-        jsx_metrics.insert(node, (count, depth));
+        jsx_metrics[node.index()] = (count, depth);
     }
     let mut extractor = Extractor {
         source: source_text,

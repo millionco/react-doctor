@@ -15,6 +15,38 @@ export const ${componentName} = () => (
 `;
 
 describe("detectDuplicateJsxSubtrees", () => {
+  it("counts small subtrees toward coverage and budgets even when grouping excludes them", () => {
+    const sources = ["first.tsx", "second.tsx"].map((path) => ({
+      path,
+      sourceText: "export const Card = () => <><A /><B /></>;",
+    }));
+    expect(detectDuplicateJsxSubtrees(sources)).toMatchObject({
+      families: [],
+      scannedSourceFileCount: 2,
+      scannedJsxNodeCount: 6,
+      incomplete: false,
+    });
+    expect(detectDuplicateJsxSubtrees(sources, { budget: { maxJsxNodes: 5 } })).toMatchObject({
+      families: [],
+      scannedSourceFileCount: 1,
+      scannedJsxNodeCount: 3,
+      incompleteReasons: [{ kind: "jsx-node-limit", limit: 5, observed: 6, path: "second.tsx" }],
+    });
+  });
+
+  it("preserves non-ordering minimum thresholds", () => {
+    const result = detectDuplicateJsxSubtrees(
+      ["first.tsx", "second.tsx"].map((path) => ({
+        path,
+        sourceText: "export const Card = () => <><A /><B /></>;",
+      })),
+      { minimumNodeCount: Number.NaN, minimumDepth: Number.NaN },
+    );
+    expect(result.families).toHaveLength(1);
+    expect(result.families[0]).toMatchObject({ nodeCount: 3, depth: 2, occurrenceCount: 2 });
+    expect(result.scannedJsxNodeCount).toBe(6);
+  });
+
   it.each([
     {
       name: "Unicode and lone surrogates",

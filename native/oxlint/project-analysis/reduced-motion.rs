@@ -701,15 +701,13 @@ fn lower_file(input: &ReducedMotionSourceInput) -> Result<File, String> {
         return Err("TypeScript semantic recovery parity required".into());
     }
     let semantic = &built.semantic;
-    if semantic.nodes().iter().any(|node| {
-        semantic
-            .nodes()
-            .ancestor_kinds(node.id())
-            .take(MAX_LOWERED_AST_DEPTH + 1)
-            .count()
-            > MAX_LOWERED_AST_DEPTH
-    }) {
-        return Err("AST depth requires canonical analysis".into());
+    let mut node_depths = vec![0usize; semantic.nodes().len()];
+    for node in semantic.nodes().iter().skip(1) {
+        let depth = node_depths[semantic.nodes().parent_id(node.id()).index()] + 1;
+        if depth > MAX_LOWERED_AST_DEPTH {
+            return Err("AST depth requires canonical analysis".into());
+        }
+        node_depths[node.id().index()] = depth;
     }
     let is_js = matches!(
         Path::new(&input.file_name)
@@ -1511,24 +1509,26 @@ pub fn analyze_reduced_motion(
     let mut files = Vec::new();
     let mut indexes = HashMap::new();
     let mut folded_indexes = HashSet::new();
-    let mut unsupported = Vec::new();
     for source in &sources {
         match lower_file(source) {
             Ok(file) => {
                 if !folded_indexes.insert(file.name.to_string_lossy().to_ascii_lowercase()) {
-                    unsupported.push(format!(
-                        "{}: colliding normalized/case-folded source names",
-                        source.file_name
-                    ));
+                    return ReducedMotionAnalysisResult::Unsupported {
+                        unsupported: vec![format!(
+                            "{}: colliding normalized/case-folded source names",
+                            source.file_name
+                        )],
+                    };
                 }
                 indexes.insert(file.name.clone(), files.len());
                 files.push(file);
             }
-            Err(reason) => unsupported.push(format!("{}: {reason}", source.file_name)),
+            Err(reason) => {
+                return ReducedMotionAnalysisResult::Unsupported {
+                    unsupported: vec![format!("{}: {reason}", source.file_name)],
+                };
+            }
         }
-    }
-    if !unsupported.is_empty() {
-        return ReducedMotionAnalysisResult::Unsupported { unsupported };
     }
     let mut globals: HashMap<String, Vec<(usize, SymbolId)>> = HashMap::new();
     let mut namespace_globals = HashSet::new();

@@ -671,8 +671,6 @@ const buildFamilies = (
 ): BuiltDuplicateJsxFamilies => {
   const bucketsByFingerprint = new Map<string, JsxSubtreeBucket>();
   for (const candidate of candidates) {
-    if (candidate.metadata.nodeCount < options.minimumNodeCount) continue;
-    if (candidate.metadata.depth < options.minimumDepth) continue;
     const existingBucket = bucketsByFingerprint.get(candidate.metadata.fingerprint);
     if (existingBucket) {
       existingBucket.occurrences.push(candidate.occurrence);
@@ -731,8 +729,13 @@ const buildFamilies = (
 };
 
 const buildResult = (input: BuildDuplicateJsxResultInput): DuplicateJsxSubtreesResult => {
-  const nativeFamilies = runNativeDuplicateJsxAnalysis(input.candidates, input.options);
-  const families = nativeFamilies ?? buildFamilies(input.candidates, input.options).families;
+  const eligibleCandidates = input.candidates.filter(
+    (candidate) =>
+      !(candidate.metadata.nodeCount < input.options.minimumNodeCount) &&
+      !(candidate.metadata.depth < input.options.minimumDepth),
+  );
+  const nativeFamilies = runNativeDuplicateJsxAnalysis(eligibleCandidates, input.options);
+  const families = nativeFamilies ?? buildFamilies(eligibleCandidates, input.options).families;
   return {
     families: families.slice(0, input.options.maxFamilies),
     scannedSourceFileCount: input.scannedSourceFileCount,

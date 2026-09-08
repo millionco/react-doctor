@@ -346,6 +346,29 @@ const isPreservedThroughConciseArrow = (
   return false;
 };
 
+const isPropAliasCapableSymbol = (symbol: SymbolDescriptor): boolean => {
+  if (symbol.kind === "parameter" || symbol.kind === "var" || symbol.kind === "let") return true;
+  if (symbol.kind !== "const" && symbol.kind !== "using") return false;
+  const declaration = symbol.declarationNode;
+  if (!isNodeOfType(declaration, "VariableDeclarator") || !declaration.init) return false;
+  return (
+    isNodeOfType(declaration.id, "ObjectPattern") ||
+    isNodeOfType(declaration.init, "Identifier") ||
+    isNodeOfType(declaration.init, "MemberExpression")
+  );
+};
+
+const calleeMayReferenceProp = (callee: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  let mayReferenceProp = false;
+  walkAst(callee, (node) => {
+    if (mayReferenceProp) return false;
+    if (!isNodeOfType(node, "Identifier")) return;
+    const symbol = scopes.referenceFor(node)?.resolvedSymbol;
+    if (symbol && isPropAliasCapableSymbol(symbol)) mayReferenceProp = true;
+  });
+  return mayReferenceProp;
+};
+
 export const noPropCallbackInRender = defineRule({
   id: "no-prop-callback-in-render",
   title: "Prop callback invoked during render",
@@ -367,10 +390,11 @@ export const noPropCallbackInRender = defineRule({
       ) {
         return;
       }
-      const analysis = getProgramAnalysis(node);
-      if (!analysis) return;
       const callee = stripParenExpression(node.callee);
       if (isFunctionLike(callee)) return;
+      if (!calleeMayReferenceProp(callee, context.scopes)) return;
+      const analysis = getProgramAnalysis(node);
+      if (!analysis) return;
       if (
         !getDownstreamRefs(analysis, callee).some(
           (reference) =>

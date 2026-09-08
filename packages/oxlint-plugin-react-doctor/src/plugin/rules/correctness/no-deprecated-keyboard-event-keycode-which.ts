@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
@@ -14,6 +15,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 // oxc-parser surfaces `(...)` as a node kind outside the TSESTree union,
 // so it is matched via a `string`-typed constant to avoid a literal
@@ -561,125 +563,127 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
   category: "Correctness",
   recommendation:
     "`KeyboardEvent.keyCode`/`which`/`charCode` are deprecated and layout/engine dependent for character keys. Branch on `event.key` (logical key like `'/'`) or `event.code` (physical position) so the handler works across keyboard layouts and browsers.",
-  create: (context: RuleContext) => ({
-    MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
-      if (isNonSourceFilename(context.filename)) return;
-      const propertyName = getStaticPropertyName(node);
-      if (!propertyName) return;
-      if (!DEPRECATED_NUMERIC_MEMBERS.has(propertyName)) return;
-      const receiver = node.object;
-      if (!isNodeOfType(receiver, "Identifier")) return;
-      const receiverName = receiver.name;
+  create: (context: RuleContext): RuleVisitors => {
+    if (isNonSourceFilename(context.filename)) return EMPTY_RULE_VISITORS;
+    return {
+      MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
+        const propertyName = getStaticPropertyName(node);
+        if (!propertyName) return;
+        if (!DEPRECATED_NUMERIC_MEMBERS.has(propertyName)) return;
+        const receiver = node.object;
+        if (!isNodeOfType(receiver, "Identifier")) return;
+        const receiverName = receiver.name;
 
-      const { conditionRoot, branching } = resolveBranchingContext(node as EsTreeNode);
-      if (!branching) return;
+        const { conditionRoot, branching } = resolveBranchingContext(node as EsTreeNode);
+        if (!branching) return;
 
-      const enclosingFunction = findEnclosingFunction(node as EsTreeNode);
-      if (!enclosingFunction || !isFunctionLike(enclosingFunction)) return;
-      const firstParam = enclosingFunction.params?.[0];
-      if (!firstParam || !isNodeOfType(firstParam as EsTreeNode, "Identifier")) return;
-      const firstParamIdentifier = firstParam as EsTreeNodeOfType<"Identifier">;
-      if (firstParamIdentifier.name !== receiverName) return;
+        const enclosingFunction = findEnclosingFunction(node as EsTreeNode);
+        if (!enclosingFunction || !isFunctionLike(enclosingFunction)) return;
+        const firstParam = enclosingFunction.params?.[0];
+        if (!firstParam || !isNodeOfType(firstParam as EsTreeNode, "Identifier")) return;
+        const firstParamIdentifier = firstParam as EsTreeNodeOfType<"Identifier">;
+        if (firstParamIdentifier.name !== receiverName) return;
 
-      const signalTypedKeyboardEvent = typeReferenceIsKeyboardEvent(
-        (firstParamIdentifier.typeAnnotation as EsTreeNode) ?? null,
-      );
-      if (
-        !signalTypedKeyboardEvent &&
-        typeReferenceNamesOtherType((firstParamIdentifier.typeAnnotation as EsTreeNode) ?? null)
-      ) {
-        return;
-      }
-      const signalHandlerContext = functionIsKeyboardHandler(enclosingFunction);
-      if (!signalTypedKeyboardEvent && !signalHandlerContext) return;
-
-      // A same-file binding could shadow an outer param name, but the
-      // first-param match above already anchors the receiver to this
-      // handler's event parameter. Guard against a stray outer binding
-      // that resolves to a non-parameter declaration.
-      if (
-        context.scopes.symbolFor(receiver)?.id !==
-        context.scopes.symbolFor(firstParamIdentifier)?.id
-      ) {
-        return;
-      }
-
-      const comparison = getComparison(node as EsTreeNode, context);
-      const comparedValue = comparison ? comparison.comparedValue : null;
-      if (comparedValue !== null && LEGACY_IME_KEYCODES.has(comparedValue)) return;
-      if (
-        propertyName === "which" &&
-        comparedValue !== null &&
-        MOUSE_BUTTON_LITERALS.has(comparedValue)
-      ) {
-        return;
-      }
-      if (
-        propertyName === "which" &&
-        receiverReadsAnyProperty(
-          enclosingFunction,
-          firstParamIdentifier,
-          MOUSE_BUTTON_MEMBERS,
-          context,
-          undefined,
-        )
-      ) {
-        return;
-      }
-      if (
-        receiverReadsAnyProperty(
-          enclosingFunction,
-          firstParamIdentifier,
-          STANDARD_KEY_MEMBERS,
-          context,
-          conditionRoot,
-          readFeedsLogic,
-        ) ||
-        receiverDestructuresAnyProperty(
-          enclosingFunction,
-          firstParamIdentifier,
-          STANDARD_KEY_MEMBERS,
-          context,
-          conditionRoot,
-        ) ||
-        receiverFeatureDetectedWithIn(
-          enclosingFunction,
-          firstParamIdentifier,
-          STANDARD_KEY_MEMBERS,
-          context,
-          conditionRoot,
-        )
-      ) {
-        return;
-      }
-
-      if (propertyName !== "charCode") {
-        const isRelationalRangeCheck = Boolean(
-          comparison &&
-          RELATIONAL_OPERATORS.has(comparison.operator) &&
-          !relationalRangeIsLayoutInvariant(
-            node as EsTreeNode,
-            firstParamIdentifier,
-            propertyName,
-            context,
-          ),
-        );
-        const comparesLayoutSensitiveCode =
-          comparedValue !== null && isLayoutSensitiveCode(comparedValue);
-        const switchesOnLayoutSensitiveCode = switchTargetsLayoutSensitiveCode(
-          conditionRoot,
-          context,
+        const signalTypedKeyboardEvent = typeReferenceIsKeyboardEvent(
+          (firstParamIdentifier.typeAnnotation as EsTreeNode) ?? null,
         );
         if (
-          !isRelationalRangeCheck &&
-          !comparesLayoutSensitiveCode &&
-          !switchesOnLayoutSensitiveCode
+          !signalTypedKeyboardEvent &&
+          typeReferenceNamesOtherType((firstParamIdentifier.typeAnnotation as EsTreeNode) ?? null)
         ) {
           return;
         }
-      }
+        const signalHandlerContext = functionIsKeyboardHandler(enclosingFunction);
+        if (!signalTypedKeyboardEvent && !signalHandlerContext) return;
 
-      context.report({ node, message: MESSAGE });
-    },
-  }),
+        // A same-file binding could shadow an outer param name, but the
+        // first-param match above already anchors the receiver to this
+        // handler's event parameter. Guard against a stray outer binding
+        // that resolves to a non-parameter declaration.
+        if (
+          context.scopes.symbolFor(receiver)?.id !==
+          context.scopes.symbolFor(firstParamIdentifier)?.id
+        ) {
+          return;
+        }
+
+        const comparison = getComparison(node as EsTreeNode, context);
+        const comparedValue = comparison ? comparison.comparedValue : null;
+        if (comparedValue !== null && LEGACY_IME_KEYCODES.has(comparedValue)) return;
+        if (
+          propertyName === "which" &&
+          comparedValue !== null &&
+          MOUSE_BUTTON_LITERALS.has(comparedValue)
+        ) {
+          return;
+        }
+        if (
+          propertyName === "which" &&
+          receiverReadsAnyProperty(
+            enclosingFunction,
+            firstParamIdentifier,
+            MOUSE_BUTTON_MEMBERS,
+            context,
+            undefined,
+          )
+        ) {
+          return;
+        }
+        if (
+          receiverReadsAnyProperty(
+            enclosingFunction,
+            firstParamIdentifier,
+            STANDARD_KEY_MEMBERS,
+            context,
+            conditionRoot,
+            readFeedsLogic,
+          ) ||
+          receiverDestructuresAnyProperty(
+            enclosingFunction,
+            firstParamIdentifier,
+            STANDARD_KEY_MEMBERS,
+            context,
+            conditionRoot,
+          ) ||
+          receiverFeatureDetectedWithIn(
+            enclosingFunction,
+            firstParamIdentifier,
+            STANDARD_KEY_MEMBERS,
+            context,
+            conditionRoot,
+          )
+        ) {
+          return;
+        }
+
+        if (propertyName !== "charCode") {
+          const isRelationalRangeCheck = Boolean(
+            comparison &&
+            RELATIONAL_OPERATORS.has(comparison.operator) &&
+            !relationalRangeIsLayoutInvariant(
+              node as EsTreeNode,
+              firstParamIdentifier,
+              propertyName,
+              context,
+            ),
+          );
+          const comparesLayoutSensitiveCode =
+            comparedValue !== null && isLayoutSensitiveCode(comparedValue);
+          const switchesOnLayoutSensitiveCode = switchTargetsLayoutSensitiveCode(
+            conditionRoot,
+            context,
+          );
+          if (
+            !isRelationalRangeCheck &&
+            !comparesLayoutSensitiveCode &&
+            !switchesOnLayoutSensitiveCode
+          ) {
+            return;
+          }
+        }
+
+        context.report({ node, message: MESSAGE });
+      },
+    };
+  },
 });

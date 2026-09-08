@@ -1328,6 +1328,7 @@ export const asyncAwaitInLoop = defineRule({
       if (hasTestLibraryImport) return;
       const loopBody = loopNode.body;
       if (!loopBody) return;
+      if (!findFirstAwaitOutsideNestedFunctions(loopBody, true)) return;
       if (loopBodyHasIntentionallySequentialAwait(loopBody, context)) return;
       if (
         (isNodeOfType(loopNode, "WhileStatement") || isNodeOfType(loopNode, "DoWhileStatement")) &&

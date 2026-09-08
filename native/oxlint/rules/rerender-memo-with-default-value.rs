@@ -236,13 +236,11 @@ fn rerender_default_check_function<'a>(
     ctx: &LintContext<'a>,
 ) {
     let mut bindings = Vec::new();
-    for (parameter_index, parameter) in parameters.items.iter().enumerate() {
-        let pattern = if parameter_index == 0 {
-            rerender_default_unwrap_assignment_pattern(&parameter.pattern)
-        } else {
-            &parameter.pattern
-        };
-        rerender_default_collect_object_defaults(pattern, &mut bindings);
+    for parameter in &parameters.items {
+        if parameter.initializer.is_some() {
+            continue;
+        }
+        rerender_default_collect_object_defaults(&parameter.pattern, &mut bindings);
     }
     if parameters.items.is_empty()
         && let Some(rest) = &parameters.rest
@@ -255,6 +253,7 @@ fn rerender_default_check_function<'a>(
     let props_symbol = parameters
         .items
         .first()
+        .filter(|parameter| parameter.initializer.is_none())
         .and_then(|parameter| rerender_default_direct_binding_symbol(&parameter.pattern));
     if let Some(props_symbol) = props_symbol {
         for node in ctx.nodes().iter() {
@@ -287,7 +286,11 @@ fn rerender_default_check_function<'a>(
     }
     let mut uses = FxHashMap::default();
     for node in ctx.nodes().iter() {
-        if !rerender_default_is_function_descendant(node.id(), function_id, ctx) {
+        if !matches!(
+            node.kind(),
+            AstKind::CallExpression(_) | AstKind::JSXAttribute(_)
+        ) || !rerender_default_is_function_descendant(node.id(), function_id, ctx)
+        {
             continue;
         }
         match node.kind() {
@@ -361,15 +364,6 @@ fn rerender_default_check_function<'a>(
     }
 }
 
-fn rerender_default_unwrap_assignment_pattern<'a>(
-    pattern: &'a BindingPattern<'a>,
-) -> &'a BindingPattern<'a> {
-    match pattern {
-        BindingPattern::AssignmentPattern(assignment) => &assignment.left,
-        _ => pattern,
-    }
-}
-
 fn rerender_default_is_top_level_function_declarator(
     node_id: NodeId,
     function_id: NodeId,
@@ -427,9 +421,6 @@ fn rerender_default_collect_object_defaults(
 fn rerender_default_direct_binding_symbol(pattern: &BindingPattern<'_>) -> Option<SymbolId> {
     match pattern {
         BindingPattern::BindingIdentifier(identifier) => Some(identifier.symbol_id()),
-        BindingPattern::AssignmentPattern(assignment) => {
-            rerender_default_direct_binding_symbol(&assignment.left)
-        }
         _ => None,
     }
 }
@@ -661,7 +652,14 @@ fn rerender_default_comparator_proves_empty_equal<'a>(
     else {
         return false;
     };
-    if is_async_or_generator || parameters.rest.is_some() || parameters.items.len() != 2 {
+    if is_async_or_generator
+        || parameters.rest.is_some()
+        || parameters.items.len() != 2
+        || parameters
+            .items
+            .iter()
+            .any(|parameter| parameter.initializer.is_some())
+    {
         return false;
     }
     let Some(previous_symbol_id) = parameters.items[0]
@@ -1201,6 +1199,9 @@ fn rerender_default_comparator_evaluate_local_call<'a>(
     }
     let mut bindings = state.bindings.clone();
     for (parameter, argument) in parameters.items.iter().zip(call.arguments.iter()) {
+        if parameter.initializer.is_some() {
+            return ComparatorValue::Unknown;
+        }
         let Some(identifier) = parameter.pattern.get_binding_identifier() else {
             return ComparatorValue::Unknown;
         };
@@ -1408,23 +1409,29 @@ fn rerender_default_check_forwarded_custom_hook_defaults(ctx: &LintContext<'_>) 
                 else {
                     return Vec::new();
                 };
-                rerender_default_collect_hook_parameters(parameters)
-                    .into_iter()
-                    .filter(|binding| binding.default_kind.is_some())
-                    .filter(|binding| !rerender_default_symbol_is_mutated(binding.symbol_id, ctx))
-                    .filter(|binding| {
-                        rerender_default_local_taint_reaches_dependency(
-                            function_id,
-                            &HookTaint {
-                                list_symbol_ids: FxHashSet::default(),
-                                value_symbol_ids: FxHashSet::from_iter([binding.symbol_id]),
-                            },
-                            CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
-                            ctx,
-                            &mut FxHashSet::default(),
-                        )
-                    })
-                    .collect()
+                rerender_default_collect_hook_parameters(parameters, |expression| {
+                    rerender_default_fresh_default_kind(
+                        expression,
+                        ctx.semantic(),
+                        &mut FxHashSet::default(),
+                    )
+                })
+                .into_iter()
+                .filter(|binding| binding.default_kind.is_some())
+                .filter(|binding| !rerender_default_symbol_is_mutated(binding.symbol_id, ctx))
+                .filter(|binding| {
+                    rerender_default_local_taint_reaches_dependency(
+                        function_id,
+                        &HookTaint {
+                            list_symbol_ids: FxHashSet::default(),
+                            value_symbol_ids: FxHashSet::from_iter([binding.symbol_id]),
+                        },
+                        CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
+                        ctx,
+                        &mut FxHashSet::default(),
+                    )
+                })
+                .collect()
             });
             for binding in defaults {
                 if !rerender_default_call_uses_hook_default(call, binding, ctx) {
@@ -1467,14 +1474,14 @@ fn rerender_default_local_taint_reaches_dependency(
     }
     let function_node = ctx.nodes().get_node(function_id);
     for candidate in ctx.nodes().iter() {
+        let AstKind::CallExpression(call) = candidate.kind() else {
+            continue;
+        };
         if !rerender_default_is_direct_function_descendant(candidate.id(), function_id, ctx)
             || !is_node_reachable_within_function(candidate, function_node, ctx)
         {
             continue;
         }
-        let AstKind::CallExpression(call) = candidate.kind() else {
-            continue;
-        };
         if let Some(dependency_index) = rerender_default_dependency_index(call, ctx) {
             if call
                 .arguments
@@ -1756,6 +1763,12 @@ fn rerender_default_expression_has_taint_inner(
     if tainted_symbol_ids.contains(&symbol_id) {
         return true;
     }
+    let AstKind::VariableDeclarator(declarator) = ctx.symbol_declaration(symbol_id).kind() else {
+        return false;
+    };
+    if rerender_default_direct_binding_symbol(&declarator.id) != Some(symbol_id) {
+        return false;
+    }
     rerender_default_unreassigned_const_initializer(symbol_id, ctx).is_some_and(|initializer| {
         rerender_default_expression_has_taint_inner(
             initializer,
@@ -1773,7 +1786,9 @@ fn rerender_default_forward_taint<'a>(
     ctx: &LintContext<'a>,
 ) -> HookTaint {
     let mut forwarded = HookTaint::default();
-    for parameter in rerender_default_collect_hook_parameters(parameters) {
+    for parameter in
+        rerender_default_collect_hook_parameters(parameters, rerender_default_fresh_literal_kind)
+    {
         if rerender_default_symbol_is_mutated(parameter.symbol_id, ctx) {
             continue;
         }
@@ -1940,8 +1955,9 @@ fn rerender_default_unreassigned_const_initializer<'a>(
     declarator.init.as_ref()
 }
 
-fn rerender_default_collect_hook_parameters(
-    parameters: &FormalParameters<'_>,
+fn rerender_default_collect_hook_parameters<'a>(
+    parameters: &FormalParameters<'a>,
+    classify_default: impl Fn(&Expression<'a>) -> Option<EmptyDefaultKind>,
 ) -> Vec<HookParameterBinding> {
     let mut bindings = Vec::new();
     for (parameter_index, parameter) in parameters.items.iter().enumerate() {
@@ -1949,25 +1965,12 @@ fn rerender_default_collect_hook_parameters(
             BindingPattern::BindingIdentifier(identifier) => {
                 bindings.push(HookParameterBinding {
                     symbol_id: identifier.symbol_id(),
-                    default_kind: None,
+                    default_kind: parameter.initializer.as_deref().and_then(&classify_default),
                     parameter_index,
                     property_name: None,
                 });
             }
-            BindingPattern::AssignmentPattern(assignment) => {
-                let BindingPattern::BindingIdentifier(identifier) = &assignment.left else {
-                    continue;
-                };
-                bindings.push(HookParameterBinding {
-                    symbol_id: identifier.symbol_id(),
-                    default_kind: rerender_default_fresh_literal_kind(
-                        assignment.right.get_inner_expression(),
-                    ),
-                    parameter_index,
-                    property_name: None,
-                });
-            }
-            BindingPattern::ObjectPattern(object) => {
+            BindingPattern::ObjectPattern(object) if parameter.initializer.is_none() => {
                 for property in &object.properties {
                     let Some(property_name) = property.key.static_name() else {
                         continue;
@@ -1979,12 +1982,7 @@ fn rerender_default_collect_hook_parameters(
                             else {
                                 continue;
                             };
-                            (
-                                identifier,
-                                rerender_default_fresh_literal_kind(
-                                    assignment.right.get_inner_expression(),
-                                ),
-                            )
+                            (identifier, classify_default(&assignment.right))
                         }
                         _ => continue,
                     };
@@ -2008,6 +2006,43 @@ fn rerender_default_fresh_literal_kind(expression: &Expression<'_>) -> Option<Em
         Expression::ObjectExpression(_) => Some(EmptyDefaultKind::Object),
         _ => None,
     }
+}
+
+fn rerender_default_fresh_default_kind(
+    expression: &Expression<'_>,
+    semantic: &Semantic<'_>,
+    visited_symbol_ids: &mut FxHashSet<SymbolId>,
+) -> Option<EmptyDefaultKind> {
+    if let Some(kind) = rerender_default_fresh_literal_kind(expression) {
+        return Some(kind);
+    }
+    let Expression::Identifier(identifier) = expression.get_inner_expression() else {
+        return None;
+    };
+    let symbol_id = semantic
+        .scoping()
+        .get_reference(identifier.reference_id())
+        .symbol_id()?;
+    if semantic
+        .scoping()
+        .scope_flags(semantic.scoping().symbol_scope_id(symbol_id))
+        .is_top()
+        || !visited_symbol_ids.insert(symbol_id)
+    {
+        return None;
+    }
+    let AstKind::VariableDeclarator(declarator) = semantic.symbol_declaration(symbol_id).kind()
+    else {
+        return None;
+    };
+    if rerender_default_direct_binding_symbol(&declarator.id) != Some(symbol_id) {
+        return None;
+    }
+    rerender_default_fresh_default_kind(
+        rerender_default_imported_const_initializer(symbol_id, semantic)?,
+        semantic,
+        visited_symbol_ids,
+    )
 }
 
 fn rerender_default_call_uses_hook_default<'a>(
@@ -2093,8 +2128,9 @@ fn rerender_default_imported_hook_defaults<'a>(
     else {
         return Vec::new();
     };
-    if !rerender_default_is_hook_name(callee.name.as_str())
-        && !rerender_default_is_hook_name(exported_name)
+    if module_source == "react"
+        || (!rerender_default_is_hook_name(callee.name.as_str())
+            && !rerender_default_is_hook_name(exported_name))
     {
         return Vec::new();
     }
@@ -2143,7 +2179,13 @@ fn rerender_default_resolve_import_file(
     from_file_path: &Path,
     module_source: &str,
 ) -> Option<PathBuf> {
-    if Path::new(module_source).is_absolute() {
+    if Path::new(module_source).is_absolute()
+        || (!module_source.starts_with('.')
+            && !super::window_open_without_noopener::window_open_tsconfig_allows_bare_import(
+                from_file_path,
+                module_source,
+            ))
+    {
         return None;
     }
     let resolver = Resolver::new(ResolveOptions {
@@ -2215,30 +2257,32 @@ fn rerender_default_imported_hook_defaults_in_file(
     else {
         return Vec::new();
     };
-    rerender_default_collect_hook_parameters(parameters)
-        .into_iter()
-        .filter_map(|binding| binding.default_kind.map(|kind| (binding, kind)))
-        .filter(|binding| {
-            !rerender_default_foreign_symbol_is_mutated(binding.0.symbol_id, &semantic)
-                && rerender_default_foreign_taint_reaches_dependency(
-                    function_id,
-                    &HookTaint {
-                        list_symbol_ids: FxHashSet::default(),
-                        value_symbol_ids: FxHashSet::from_iter([binding.0.symbol_id]),
-                    },
-                    CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
-                    file_path,
-                    &semantic,
-                    &module_record,
-                    &mut FxHashSet::default(),
-                )
-        })
-        .map(|(binding, kind)| ImportedHookDefault {
-            kind,
-            parameter_index: binding.parameter_index,
-            property_name: binding.property_name,
-        })
-        .collect()
+    rerender_default_collect_hook_parameters(parameters, |expression| {
+        rerender_default_fresh_default_kind(expression, &semantic, &mut FxHashSet::default())
+    })
+    .into_iter()
+    .filter_map(|binding| binding.default_kind.map(|kind| (binding, kind)))
+    .filter(|binding| {
+        !rerender_default_foreign_symbol_is_mutated(binding.0.symbol_id, &semantic)
+            && rerender_default_foreign_taint_reaches_dependency(
+                function_id,
+                &HookTaint {
+                    list_symbol_ids: FxHashSet::default(),
+                    value_symbol_ids: FxHashSet::from_iter([binding.0.symbol_id]),
+                },
+                CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
+                file_path,
+                &semantic,
+                &module_record,
+                &mut FxHashSet::default(),
+            )
+    })
+    .map(|(binding, kind)| ImportedHookDefault {
+        kind,
+        parameter_index: binding.parameter_index,
+        property_name: binding.property_name,
+    })
+    .collect()
 }
 
 fn rerender_default_find_imported_hook_function<'a, 'semantic>(
@@ -2431,8 +2475,9 @@ fn rerender_default_imported_call_taint_reaches_from_context<'a>(
     else {
         return false;
     };
-    if !rerender_default_is_hook_name(callee.name.as_str())
-        && !rerender_default_is_hook_name(exported_name)
+    if module_source == "react"
+        || (!rerender_default_is_hook_name(callee.name.as_str())
+            && !rerender_default_is_hook_name(exported_name))
     {
         return false;
     }
@@ -2495,7 +2540,9 @@ fn rerender_default_foreign_forward_taint_from_context<'a>(
     ctx: &LintContext<'a>,
 ) -> HookTaint {
     let mut forwarded = HookTaint::default();
-    for parameter in rerender_default_collect_hook_parameters(parameters) {
+    for parameter in
+        rerender_default_collect_hook_parameters(parameters, rerender_default_fresh_literal_kind)
+    {
         let Some(argument) = rerender_default_argument_for_parameter(call, &parameter, ctx) else {
             continue;
         };
@@ -2530,15 +2577,15 @@ fn rerender_default_foreign_taint_reaches_dependency(
         return false;
     }
     for candidate in semantic.nodes().iter() {
+        let AstKind::CallExpression(call) = candidate.kind() else {
+            continue;
+        };
         if rerender_default_imported_nearest_function_id(candidate.id(), semantic)
             != Some(function_id)
             || !rerender_default_foreign_node_is_reachable(candidate.id(), function_id, semantic)
         {
             continue;
         }
-        let AstKind::CallExpression(call) = candidate.kind() else {
-            continue;
-        };
         if let Some(dependency_index) =
             rerender_default_foreign_dependency_index(call, file_path, semantic, module_record)
         {
@@ -2620,8 +2667,9 @@ fn rerender_default_imported_call_taint_reaches_from_semantic<'a>(
     else {
         return false;
     };
-    if !rerender_default_is_hook_name(callee.name.as_str())
-        && !rerender_default_is_hook_name(exported_name)
+    if module_source == "react"
+        || (!rerender_default_is_hook_name(callee.name.as_str())
+            && !rerender_default_is_hook_name(exported_name))
     {
         return false;
     }
@@ -2688,7 +2736,9 @@ fn rerender_default_foreign_forward_taint_from_semantic<'a>(
     caller_semantic: &Semantic<'a>,
 ) -> HookTaint {
     let mut forwarded = HookTaint::default();
-    for parameter in rerender_default_collect_hook_parameters(parameters) {
+    for parameter in
+        rerender_default_collect_hook_parameters(parameters, rerender_default_fresh_literal_kind)
+    {
         let Some(argument) =
             rerender_default_foreign_argument_for_parameter(call, &parameter, caller_semantic)
         else {
@@ -2858,6 +2908,13 @@ fn rerender_default_foreign_expression_has_taint_inner(
     }
     if tainted_symbol_ids.contains(&symbol_id) {
         return true;
+    }
+    let AstKind::VariableDeclarator(declarator) = semantic.symbol_declaration(symbol_id).kind()
+    else {
+        return false;
+    };
+    if rerender_default_direct_binding_symbol(&declarator.id) != Some(symbol_id) {
+        return false;
     }
     rerender_default_imported_const_initializer(symbol_id, semantic).is_some_and(|initializer| {
         rerender_default_foreign_expression_has_taint_inner(

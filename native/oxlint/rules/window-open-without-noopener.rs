@@ -3501,7 +3501,10 @@ fn is_ecmascript_whitespace(character: char) -> bool {
     )
 }
 
-pub(super) fn resolve_window_open_module_path(from_file: &Path, module_source: &str) -> Option<PathBuf> {
+pub(super) fn resolve_window_open_module_path(
+    from_file: &Path,
+    module_source: &str,
+) -> Option<PathBuf> {
     if Path::new(module_source).is_absolute()
         || (!module_source.starts_with('.')
             && !window_open_tsconfig_allows_bare_import(from_file, module_source))
@@ -3558,7 +3561,10 @@ struct WindowOpenResolvedTsconfig {
     path_patterns: Vec<String>,
 }
 
-fn window_open_tsconfig_allows_bare_import(from_file: &Path, module_source: &str) -> bool {
+pub(super) fn window_open_tsconfig_allows_bare_import(
+    from_file: &Path,
+    module_source: &str,
+) -> bool {
     let Some(mut directory) = from_file.parent() else {
         return false;
     };

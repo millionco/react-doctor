@@ -8,7 +8,6 @@ use oxc_macros::declare_oxc_lint;
 use crate::{
     context::{ContextHost, LintContext},
     rule::Rule,
-    AstNode,
 };
 
 const MESSAGE: &str = "Default exports in route.ts are silently ignored. Next.js only recognizes named HTTP method exports (GET, POST, etc.).";
@@ -31,7 +30,7 @@ impl Rule for NextjsNoDefaultExportInRouteHandler {
         !is_test_noise_file(ctx)
     }
 
-    fn run<'a>(&self, node: &AstNode<'a>, ctx: &LintContext<'a>) {
+    fn run_once<'a>(&self, ctx: &LintContext<'a>) {
         let filename = ctx.file_path().to_string_lossy().replace('\\', "/");
         if !is_in_project_directory(ctx, "app")
             || !is_route_handler_filename(&filename)
@@ -40,28 +39,29 @@ impl Rule for NextjsNoDefaultExportInRouteHandler {
         {
             return;
         }
-        let report_span = match node.kind() {
-            AstKind::ExportDefaultDeclaration(declaration) => Some(declaration.span),
-            AstKind::ExportNamedDeclaration(declaration)
-                if declaration
-                    .specifiers
-                    .iter()
-                    .any(|specifier| match &specifier.exported {
-                        ModuleExportName::IdentifierName(identifier) => {
-                            identifier.name == "default"
+        for node in ctx.nodes().iter() {
+            let report_span = match node.kind() {
+                AstKind::ExportDefaultDeclaration(declaration) => Some(declaration.span),
+                AstKind::ExportNamedDeclaration(declaration)
+                    if declaration.specifiers.iter().any(|specifier| {
+                        match &specifier.exported {
+                            ModuleExportName::IdentifierName(identifier) => {
+                                identifier.name == "default"
+                            }
+                            ModuleExportName::IdentifierReference(identifier) => {
+                                identifier.name == "default"
+                            }
+                            ModuleExportName::StringLiteral(_) => false,
                         }
-                        ModuleExportName::IdentifierReference(identifier) => {
-                            identifier.name == "default"
-                        }
-                        ModuleExportName::StringLiteral(_) => false,
                     }) =>
-            {
-                Some(declaration.span)
+                {
+                    Some(declaration.span)
+                }
+                _ => None,
+            };
+            if let Some(span) = report_span {
+                ctx.diagnostic(OxcDiagnostic::warn(MESSAGE).with_label(span));
             }
-            _ => None,
-        };
-        if let Some(span) = report_span {
-            ctx.diagnostic(OxcDiagnostic::warn(MESSAGE).with_label(span));
         }
     }
 }

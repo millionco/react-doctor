@@ -44,9 +44,9 @@ impl Rule for PreferDynamicImport {
         let AstKind::ImportDeclaration(declaration) = node.kind() else {
             return;
         };
-        if is_published_library_package(ctx.file_path())
-            || declaration.import_kind.is_type()
+        if declaration.import_kind.is_type()
             || !HEAVY_LIBRARY_NAMES.contains(&declaration.source.value.as_str())
+            || is_published_library_package(ctx.file_path())
             || is_import_absent_from_client_bundle(declaration, ctx)
         {
             return;

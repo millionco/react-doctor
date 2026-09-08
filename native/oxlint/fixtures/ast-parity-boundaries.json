@@ -1,5 +1,415 @@
 [
   {
+    "name": "memo-default-taint-local-object-field",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function useChoices(options = {}) { const { enabled = false } = options; useEffect(() => {}, [enabled]); }\nexport function Card() { useChoices(); return <div />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-taint-local-array-field",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function useChoices(options = []) { const [first] = options; useEffect(() => {}, [first]); }\nexport function Card() { useChoices(); return <div />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-taint-local-direct-alias",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function useChoices(options = []) { const selected = options; useEffect(() => {}, [selected]); }\nexport function Card() { useChoices(); return <div />; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-taint-imported-object-field",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useChoices } from './hooks';\nexport function Card() { useChoices(); return <div />; }\n",
+    "files": {
+      "src/hooks.ts": "import { useEffect } from 'react'; export function useChoices(options = {}) { const { enabled = false } = options; useEffect(() => {}, [enabled]); }\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-taint-imported-array-field",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useChoices } from './hooks';\nexport function Card() { useChoices(); return <div />; }\n",
+    "files": {
+      "src/hooks.ts": "import { useEffect } from 'react'; export function useChoices(options = []) { const [first] = options; useEffect(() => {}, [first]); }\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-taint-imported-direct-alias",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useChoices } from './hooks';\nexport function Card() { useChoices(); return <div />; }\n",
+    "files": {
+      "src/hooks.ts": "import { useEffect } from 'react'; export function useChoices(options = []) { const selected = options; useEffect(() => {}, [selected]); }\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-resolution-inherited-base-url",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useChoices } from 'hooks/useChoices'; export function Card() { useChoices(); return <div />; }\n",
+    "files": {
+      "tsconfig.json": "{\"extends\":\"./tsconfig.base.json\",\"compilerOptions\":{\"baseUrl\":\"./src\"}}",
+      "tsconfig.base.json": "{\"compilerOptions\":{\"paths\":{\"other/*\":[\"other/*\"]}}}",
+      "src/hooks/useChoices.ts": "import { useEffect } from 'react'; export function useChoices(options = []) { useEffect(() => {}, [options]); }\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-resolution-own-paths-base-url",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useChoices } from 'hooks/useChoices'; export function Card() { useChoices(); return <div />; }\n",
+    "files": {
+      "tsconfig.json": "{\"extends\":\"./tsconfig.base.json\",\"compilerOptions\":{\"baseUrl\":\"./src\",\"paths\":{}}}",
+      "tsconfig.base.json": "{\"compilerOptions\":{\"paths\":{\"other/*\":[\"other/*\"]}}}",
+      "src/hooks/useChoices.ts": "import { useEffect } from 'react'; export function useChoices(options = []) { useEffect(() => {}, [options]); }\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-resolution-relative-inherited-base-url",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useChoices } from './hooks/useChoices'; export function Card() { useChoices(); return <div />; }\n",
+    "files": {
+      "tsconfig.json": "{\"extends\":\"./tsconfig.base.json\",\"compilerOptions\":{\"baseUrl\":\"./src\"}}",
+      "tsconfig.base.json": "{\"compilerOptions\":{\"paths\":{\"other/*\":[\"other/*\"]}}}",
+      "src/hooks/useChoices.ts": "import { useEffect } from 'react'; export function useChoices(options = []) { useEffect(() => {}, [options]); }\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-alias-local",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';  export function Card() { const EMPTY = []; function useData(value = EMPTY) { useEffect(() => {}, [value]); } useData(); return <div />; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-alias-local-chain",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';  export function Card() { const EMPTY = {}; const ALIAS = EMPTY; function useData(value = ALIAS) { useEffect(() => {}, [value]); } useData(); return <div />; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-alias-member-mutation",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';  export function Card() { const EMPTY = []; EMPTY.push(1); function useData(value = EMPTY) { useEffect(() => {}, [value]); } useData(); return <div />; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-alias-let",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';  export function Card() { let EMPTY = []; function useData(value = EMPTY) { useEffect(() => {}, [value]); } useData(); return <div />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-alias-reassigned",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';  export function Card() { const EMPTY = []; EMPTY = []; function useData(value = EMPTY) { useEffect(() => {}, [value]); } useData(); return <div />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-alias-destructured",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';  export function Card() { const { EMPTY } = { EMPTY: [] }; function useData(value = EMPTY) { useEffect(() => {}, [value]); } useData(); return <div />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-alias-module",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; const EMPTY = []; export function Card() {  function useData(value = EMPTY) { useEffect(() => {}, [value]); } useData(); return <div />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-alias-cycle",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';  export function Card() { const FIRST = SECOND; const SECOND = FIRST; function useData(value = FIRST) { useEffect(() => {}, [value]); } useData(); return <div />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-alias-nonempty",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';  export function Card() { const EMPTY = [1]; function useData(value = EMPTY) { useEffect(() => {}, [value]); } useData(); return <div />; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-alias-object-property",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { const EMPTY = {}; function useData({ value = EMPTY }) { useEffect(() => {}, [value]); } useData({}); return <div />; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-alias-imported-module",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useData } from './hooks'; export function Card() { useData(); return <div />; }\n",
+    "files": {
+      "src/hooks.ts": "import { useEffect } from 'react'; const EMPTY = []; export function useData(value = EMPTY) { useEffect(() => {}, [value]); }\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-component-bare-first",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ items = [] }) { useEffect(() => {}, [items]); return <div />; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-component-default-props-body",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card(props = {}) { const { items = [] } = props; useEffect(() => {}, [items]); return <div />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-component-bare-props-body",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card(props) { const { items = [] } = props; useEffect(() => {}, [items]); return <div />; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-comparator-default-previous",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { memo } from 'react';  const Child = memo(function Child({ items }) { return <div>{items.length}</div>; }, (previous = {}, next) => true); export function Card({ items = [] }) { return <Child items={items} />; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-comparator-default-next",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { memo } from 'react';  const Child = memo(function Child({ items }) { return <div>{items.length}</div>; }, (previous, next = {}) => true); export function Card({ items = [] }) { return <Child items={items} />; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-comparator-bare",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { memo } from 'react';  const Child = memo(function Child({ items }) { return <div>{items.length}</div>; }, (previous, next) => true); export function Card({ items = [] }) { return <Child items={items} />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-comparator-helper-default",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { memo } from 'react'; function equal(previous = {}, next) { return true; } const Child = memo(function Child({ items }) { return <div>{items.length}</div>; }, (previous, next) => equal(previous, next)); export function Card({ items = [] }) { return <Child items={items} />; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-comparator-helper-bare",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { memo } from 'react'; function equal(previous, next) { return true; } const Child = memo(function Child({ items }) { return <div>{items.length}</div>; }, (previous, next) => equal(previous, next)); export function Card({ items = [] }) { return <Child items={items} />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-form-local-function",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function useData(value = []) { useEffect(() => {}, [value]); }\nexport function Card() { useData(); return <div />; }\n",
+    "files": {
+      "package.json": "{\"private\":true}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-form-local-arrow",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport const useData = (value = []) => { useEffect(() => {}, [value]); };\nexport function Card() { useData(); return <div />; }\n",
+    "files": {
+      "package.json": "{\"private\":true}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-form-relative-ts-function",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useData } from './react-shim';\nexport function Card() { useData(); return <div />; }\n",
+    "files": {
+      "src/react-shim.ts": "import { useEffect } from 'react';\nexport function useData(value = []) { useEffect(() => {}, [value]); }\n",
+      "package.json": "{\"private\":true}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-form-relative-js-function",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useData } from './react-shim';\nexport function Card() { useData(); return <div />; }\n",
+    "files": {
+      "src/react-shim.js": "import { useEffect } from 'react';\nexport function useData(value = []) { useEffect(() => {}, [value]); }\n",
+      "package.json": "{\"private\":true}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-form-relative-ts-arrow",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useData } from './react-shim';\nexport function Card() { useData(); return <div />; }\n",
+    "files": {
+      "src/react-shim.ts": "import { useEffect } from 'react';\nexport const useData = (value = []) => { useEffect(() => {}, [value]); };\n",
+      "package.json": "{\"private\":true}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-form-relative-ts-alias-function",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useData } from './react-shim';\nexport function Card() { useData(); return <div />; }\n",
+    "files": {
+      "src/react-shim.ts": "import { useEffect } from 'react';\nexport function useData(value = []) { useEffect(() => {}, [value]); }\n",
+      "package.json": "{\"private\":true}",
+      "tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"react\":[\"./src/react-shim.ts\"]}}}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-form-relative-ts-alias-arrow",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useData } from './react-shim';\nexport function Card() { useData(); return <div />; }\n",
+    "files": {
+      "src/react-shim.ts": "import { useEffect } from 'react';\nexport const useData = (value = []) => { useEffect(() => {}, [value]); };\n",
+      "package.json": "{\"private\":true}",
+      "tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"react\":[\"./src/react-shim.ts\"]}}}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-form-relative-ts-object-default",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useData } from './react-shim';\nexport function Card() { useData(); return <div />; }\n",
+    "files": {
+      "src/react-shim.ts": "import { useEffect } from 'react';\nexport function useData({ value = [] } = {}) { useEffect(() => {}, [value]); }\n",
+      "package.json": "{\"private\":true}"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-object-parameter",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; function useData(value = {}) { useEffect(() => {}, [value]); } export function Card() { useData(); return <div />; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-stable-parameter",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; const EMPTY = []; function useData(value = EMPTY) { useEffect(() => {}, [value]); } export function Card() { useData(); return <div />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-explicit-hook-argument",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; function useData(value = []) { useEffect(() => {}, [value]); } export function Card() { useData([]); return <div />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-unreachable-hook-dependency",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; function useData(value = []) { return; useEffect(() => {}, [value]); } export function Card() { useData(); return <div />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-second-component-parameter",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card(props, { items = [] } = {}) { useEffect(() => {}, [items]); return <div />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-first-component-parameter",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ items = [] } = {}) { useEffect(() => {}, [items]); return <div />; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-bare-object-hook-pattern",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; function useData({ value = [] }) { useEffect(() => {}, [value]); } export function Card() { useData({}); return <div />; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-forwarding-react",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useOuter } from './hooks'; export function Card() { useOuter(); return <div />; }\n",
+    "files": {
+      "package.json": "{\"private\":true}",
+      "tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"react\":[\"./src/react-shim.ts\"]}}}",
+      "src/hooks.ts": "import { useData } from 'react'; export function useOuter(value = []) { useData(value); }\n",
+      "src/react-shim.ts": "import { useEffect } from 'react'; export function useData(value) { useEffect(() => {}, [value]); }\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-forwarding-relative",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useOuter } from './hooks'; export function Card() { useOuter(); return <div />; }\n",
+    "files": {
+      "package.json": "{\"private\":true}",
+      "tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"react\":[\"./src/react-shim.ts\"]}}}",
+      "src/hooks.ts": "import { useData } from './react-shim'; export function useOuter(value = []) { useData(value); }\n",
+      "src/react-shim.ts": "import { useEffect } from 'react'; export function useData(value) { useEffect(() => {}, [value]); }\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "memo-default-react-alias-is-not-a-custom-hook",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useData } from 'react';\nexport function Card() { useData(); return <div />; }\n",
+    "files": {
+      "package.json": "{\"private\":true}",
+      "tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"react\":[\"./src/react-shim.ts\"]}}}",
+      "src/react-shim.ts": "import { useEffect } from 'react';\nexport function useData(value = []) { useEffect(() => {}, [value]); }\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "memo-default-relative-react-shim-is-a-custom-hook",
+    "ruleId": "rerender-memo-with-default-value",
+    "filename": "src/card.tsx",
+    "source": "import { useData } from './react-shim';\nexport function Card() { useData(); return <div />; }\n",
+    "files": {
+      "package.json": "{\"private\":true}",
+      "tsconfig.json": "{\"compilerOptions\":{\"baseUrl\":\".\",\"paths\":{\"react\":[\"./src/react-shim.ts\"]}}}",
+      "src/react-shim.ts": "import { useEffect } from 'react';\nexport function useData(value = []) { useEffect(() => {}, [value]); }\n"
+    },
+    "expectedCount": 1
+  },
+  {
     "name": "only-export-manifest-null",
     "ruleId": "only-export-components",
     "filename": "packages/ui/src/Card.tsx",

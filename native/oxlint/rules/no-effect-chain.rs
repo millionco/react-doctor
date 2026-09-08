@@ -1522,15 +1522,8 @@ fn effect_chain_invoked_parameter_values(
         ) {
             break;
         }
-        let (binding, default_value) = match &parameter.pattern {
-            BindingPattern::BindingIdentifier(binding) => (binding.as_ref(), None),
-            BindingPattern::AssignmentPattern(assignment) => {
-                let Some(binding) = assignment.left.get_binding_identifier() else {
-                    continue;
-                };
-                (binding, Some(&assignment.right))
-            }
-            _ => continue,
+        let BindingPattern::BindingIdentifier(binding) = &parameter.pattern else {
+            continue;
         };
         let direct_argument_value = call
             .arguments
@@ -1546,29 +1539,22 @@ fn effect_chain_invoked_parameter_values(
                     ctx,
                 )
             });
-        let argument_value = if direct_argument_value
-            .as_ref()
-            .is_some_and(|value| *value == EffectChainStaticValue::Undefined)
-            || direct_argument_value.is_none() && call.arguments.get(parameter_index).is_none()
+        let argument_value = if let Some(default_value) = &parameter.initializer
+            && (direct_argument_value
+                .as_ref()
+                .is_some_and(|value| *value == EffectChainStaticValue::Undefined)
+                || call.arguments.get(parameter_index).is_none())
         {
-            default_value
-                .and_then(|default_value| {
-                    let mut known_values = caller_values.clone();
-                    known_values.extend(parameter_values.clone());
-                    effect_chain_read_static_value(
-                        default_value,
-                        Some(state_symbol_id),
-                        Some(state_value),
-                        &known_values,
-                        &mut FxHashSet::default(),
-                        ctx,
-                    )
-                })
-                .or(direct_argument_value)
-                .or_else(|| {
-                    (call.arguments.get(parameter_index).is_none())
-                        .then_some(EffectChainStaticValue::Undefined)
-                })
+            let mut known_values = caller_values.clone();
+            known_values.extend(parameter_values.clone());
+            effect_chain_read_static_value(
+                default_value,
+                Some(state_symbol_id),
+                Some(state_value),
+                &known_values,
+                &mut FxHashSet::default(),
+                ctx,
+            )
         } else {
             direct_argument_value.or_else(|| {
                 (call.arguments.get(parameter_index).is_none())

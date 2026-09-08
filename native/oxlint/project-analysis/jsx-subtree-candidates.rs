@@ -1119,7 +1119,7 @@ pub fn extract_jsx_subtree_candidates(
     if !parsed.diagnostics.is_empty() {
         return unsupported("TypeScript parser recovery requires canonical extraction");
     }
-    let built = SemanticBuilder::new_compiler()
+    let built = SemanticBuilder::new()
         .with_build_nodes(true)
         .build(&parsed.program);
     let semantic = &built.semantic;

@@ -10205,6 +10205,7 @@ export const App = () => <>
         reactMajorVersion: 19,
         portedRuleMode: "curated",
         capabilities: boundaryFixture.capabilities,
+        exhaustiveDeps: boundaryFixture.exhaustiveDeps,
       },
     };
     const results = [];

@@ -8401,5 +8401,2361 @@
       "app/page.tsx": "import { Card } from '@card'; export default function Page() { return <Card />; }\n"
     },
     "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invoke-omitted-true",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const start = (enabled = true) => { if (enabled) setInterval(() => {}, 1000); }; start(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invoke-undefined-true",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const start = (enabled = true) => { if (enabled) setInterval(() => {}, 1000); }; start(undefined); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invoke-void-true",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const start = (enabled = true) => { if (enabled) setInterval(() => {}, 1000); }; start(void 0); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invoke-omitted-false",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const start = (enabled = false) => { if (enabled) setInterval(() => {}, 1000); }; start(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invoke-undefined-false",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const start = (enabled = false) => { if (enabled) setInterval(() => {}, 1000); }; start(undefined); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invoke-supplied-false",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const start = (enabled = true) => { if (enabled) setInterval(() => {}, 1000); }; start(false); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invoke-supplied-true",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const start = (enabled = false) => { if (enabled) setInterval(() => {}, 1000); }; start(true); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invoke-prior-default-true",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const start = (first = true, enabled = first) => { if (enabled) setInterval(() => {}, 1000); }; start(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invoke-prior-default-false",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const start = (first = false, enabled = first) => { if (enabled) setInterval(() => {}, 1000); }; start(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invoke-function-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { function start(enabled = true) { if (enabled) setInterval(() => {}, 1000); } start(); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-default-omitted",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = timer) => clearInterval(handle); return () => stop(); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-default-undefined",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = timer) => clearInterval(handle); return () => stop(undefined); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-default-void",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = timer) => clearInterval(handle); return () => stop(void 0); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-default-supplied",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = timer) => clearInterval(handle); return () => stop(timer); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-default-wrong-supplied",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = timer) => clearInterval(handle); return () => stop(123); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-function-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const timer = setInterval(() => {}, 1000); function stop(handle = timer) { clearInterval(handle); } return () => stop(); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-prior-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (first = timer, handle = first) => clearInterval(handle); return () => stop(); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-prior-supplied",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (first, handle = first) => clearInterval(handle); return () => stop(timer); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-nested-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const release = (handle = timer) => clearInterval(handle); const stop = () => release(); return () => stop(); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-direct-control",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const timer = setInterval(() => {}, 1000); return () => clearInterval(timer); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-missing-call",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = timer) => clearInterval(handle); return () => {}; }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-after-await",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = timer) => clearInterval(handle); return async () => { await Promise.resolve(); stop(); }; }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-release-before-acquisition",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { let timer; const stop = (handle = timer) => clearInterval(handle); stop(); timer = setInterval(() => {}, 1000); return () => {}; }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-default-spread",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ handles = [] }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = timer) => clearInterval(handle); return () => stop(...handles); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-omitted-true-default",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = true) => { if (flag) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-undefined-true-default",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = true) => { if (flag) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(undefined); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-void-true-default",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = true) => { if (flag) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(void 0); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-alias-undefined-true-default",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = true) => { if (flag) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { const missing = undefined; work(missing); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-wrapped-undefined-true-default",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = true) => { if (flag) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work((undefined as undefined)); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-omitted-false-default",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = false) => { if (flag) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "chain-parameter-undefined-false-default",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = false) => { if (flag) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(undefined); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "chain-parameter-supplied-true-overrides-false",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = false) => { if (flag) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(true); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-supplied-false-overrides-true",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = true) => { if (flag) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(false); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "chain-parameter-supplied-null-overrides-true",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = true) => { if (flag) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(null); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "chain-parameter-supplied-zero-overrides-true",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = true) => { if (flag) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(0); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "chain-parameter-supplied-nan-overrides-true",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = true) => { if (flag) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(NaN); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "chain-parameter-supplied-unknown-not-false-default",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = false) => { if (flag) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(enabled); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-ordinary-omitted-undefined",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag) => { if (flag === undefined) return; setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "chain-parameter-ordinary-explicit-undefined",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag) => { if (flag === undefined) return; setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(undefined); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "chain-parameter-earlier-true-default",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (first, second = first) => { if (second) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(true); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-earlier-false-default",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (first, second = first) => { if (second) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(false); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "chain-parameter-earlier-true-explicit-undefined",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (first, second = first) => { if (second) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(true, undefined); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-earlier-false-supplied-override",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (first, second = first) => { if (second) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(false, true); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-earlier-default-chain-true",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (first = true, second = first) => { if (second) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-earlier-default-chain-false",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (first = false, second = first) => { if (second) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "chain-parameter-unknown-default-omitted",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = enabled) => { if (flag === undefined) return; setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-unknown-default-explicit-undefined",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (flag = enabled) => { if (flag === undefined) return; setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(undefined); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-spread-stops-later-mapping",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (first, second = false) => { void first; if (second) return; setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(...flags, true); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-destructured-before-spread",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = ({ value }, second = false) => { void value; if (second) return; setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(...flags, true); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-known-first-before-spread-quiet",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (first, second = true) => { void second; if (!first) return; setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(false, ...flags); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "chain-parameter-destructured-first-supplied-stop-quiet",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = ({ value }, stop = false) => { void value; if (stop) return; setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work({ value: middle }, true); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "chain-parameter-destructured-first-defaulted-stop-quiet",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = ({ value }, stop = true) => { void value; if (stop) return; setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work({ value: middle }); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "chain-parameter-function-declaration-default",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  function work(flag = true) { if (flag) setTarget(middle); }\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { work(); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "chain-parameter-forwarded-earlier-default",
+    "ruleId": "no-effect-chain",
+    "filename": "src/widget.tsx",
+    "source": "import { useEffect, useState } from 'react';\nfunction Widget({ source, enabled, flags }) {\n  const [middle, setMiddle] = useState(false);\n  const [target, setTarget] = useState(false);\n  const work = (first, second = first) => { if (second) setTarget(middle); };\n  useEffect(() => setMiddle(true), [source]);\n  useEffect(() => { const forward = (value) => work(value); forward(true); }, [middle, enabled, flags]);\n  return target;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-parameter-omitted-array-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (triggerRefs = []) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker();\n  return null;\n};\n",
+    "expectedCount": 2
+  },
+  {
+    "name": "exhaustive-parameter-omitted-object-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (triggerRefs = {}) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker();\n  return null;\n};\n",
+    "expectedCount": 2
+  },
+  {
+    "name": "exhaustive-parameter-omitted-function-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (triggerRefs = () => {}) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker();\n  return null;\n};\n",
+    "expectedCount": 3
+  },
+  {
+    "name": "exhaustive-parameter-explicit-undefined-not-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (triggerRefs = []) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker(undefined);\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-explicit-void-not-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (triggerRefs = []) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker(void 0);\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-aliased-undefined-not-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (triggerRefs = []) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  const missing = undefined; usePicker(missing);\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-wrapped-undefined-not-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (triggerRefs = []) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker((undefined as undefined));\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-supplied-null-not-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (triggerRefs = []) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker(null);\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-supplied-stable-overrides-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (triggerRefs = []) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker(STABLE_REFS);\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-supplied-fresh-overrides-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (triggerRefs = STABLE_REFS) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker([inputRef]);\n  return null;\n};\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-parameter-supplied-unknown-not-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (triggerRefs = []) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker(incoming);\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-stable-default-omitted",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (triggerRefs = STABLE_REFS) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker();\n  return null;\n};\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-parameter-property-default-omitted",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ triggerRefs = [] }) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker({});\n  return null;\n};\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-parameter-property-default-argument-omitted",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ triggerRefs = [] }) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker();\n  return null;\n};\n",
+    "expectedCount": 2
+  },
+  {
+    "name": "exhaustive-parameter-property-explicit-undefined-not-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ triggerRefs = [] }) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker({ triggerRefs: undefined });\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-property-explicit-fresh",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ triggerRefs = [] }) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker({ triggerRefs: [inputRef] });\n  return null;\n};\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-parameter-property-explicit-stable",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ triggerRefs = [] }) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker({ triggerRefs: STABLE_REFS });\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-renamed-property-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ refs: triggerRefs = [] }) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker({});\n  return null;\n};\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-parameter-quoted-property-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ ['refs']: triggerRefs = [] }) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker({});\n  return null;\n};\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-parameter-outer-object-default-omitted-skipped",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ triggerRefs = [] } = {}) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker();\n  return null;\n};\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-parameter-outer-object-default-empty-supplied-skipped",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ triggerRefs = [] } = {}) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker({});\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-outer-object-default-fresh-supplied-skipped",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ triggerRefs } = {}) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker({ triggerRefs: [inputRef] });\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-outer-object-default-undefined-skipped",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ triggerRefs = [] } = {}) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker(undefined);\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-array-pattern-fresh-supplied-skipped",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ([triggerRefs]) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker([[inputRef]]);\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-outer-array-default-fresh-supplied-skipped",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ([triggerRefs] = []) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker([[inputRef]]);\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-positional-spread-at-parameter",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (triggerRefs = []) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker(...incoming);\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-positional-spread-before-fresh-parameter",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (ignored, triggerRefs = []) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker(...incoming, [inputRef]);\n  return null;\n};\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-parameter-positional-spread-before-omitted-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (ignored, triggerRefs = []) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker(...incoming);\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-object-spread-unknown-property",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ triggerRefs = [] }) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker({ ...incoming });\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-object-spread-after-fresh-property",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ triggerRefs = [] }) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker({ triggerRefs: [inputRef], ...incoming });\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-object-spread-before-explicit-fresh",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = ({ triggerRefs = [] }) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker({ ...incoming, triggerRefs: [inputRef] });\n  return null;\n};\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-parameter-earlier-parameter-default-is-not-resolved",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (first, triggerRefs = first) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker(STABLE_REFS);\n  return null;\n};\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-parameter-later-fresh-default-omitted",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nconst usePicker = (first, triggerRefs = []) => {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n};\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker(STABLE_REFS);\n  return null;\n};\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-parameter-function-declaration-omitted-default",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/picker.tsx",
+    "exhaustiveDeps": {
+      "additionalHooks": "^use"
+    },
+    "source": "import { useEffect } from 'react';\nconst STABLE_REFS = [];\nfunction usePicker(triggerRefs = []) {\n  useEffect(() => { void triggerRefs; }, [triggerRefs]);\n}\nexport const Picker = ({ inputRef, incoming }) => {\n  usePicker();\n  return null;\n};\n",
+    "expectedCount": 2
+  },
+  {
+    "name": "cleanup-retained-parameter-omitted-true",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { const start = (enabled = true) => { if (enabled) setTimeout(() => {}, 10); }; useEffect(() => { start(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-retained-parameter-undefined-true",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { const start = (enabled = true) => { if (enabled) setTimeout(() => {}, 10); }; useEffect(() => { start(undefined); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-retained-parameter-void-true",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { const start = (enabled = true) => { if (enabled) setTimeout(() => {}, 10); }; useEffect(() => { start(void 0); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-retained-parameter-omitted-false",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { const start = (enabled = false) => { if (enabled) setTimeout(() => {}, 10); }; useEffect(() => { start(); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-retained-parameter-undefined-false",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { const start = (enabled = false) => { if (enabled) setTimeout(() => {}, 10); }; useEffect(() => { start(undefined); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-retained-parameter-supplied-false",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { const start = (enabled = true) => { if (enabled) setTimeout(() => {}, 10); }; useEffect(() => { start(false); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-retained-parameter-supplied-true",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { const start = (enabled = false) => { if (enabled) setTimeout(() => {}, 10); }; useEffect(() => { start(true); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-retained-parameter-prior-true",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { const start = (first = true, enabled = first) => { if (enabled) setTimeout(() => {}, 10); }; useEffect(() => { start(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-retained-parameter-prior-false",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { const start = (first = false, enabled = first) => { if (enabled) setTimeout(() => {}, 10); }; useEffect(() => { start(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-later-supplied",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = later, later) => clearInterval(handle); return () => stop(undefined, timer); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-later-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = later, later = timer) => clearInterval(handle); return () => stop(); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-cycle",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = later, later = handle) => clearInterval(handle); return () => stop(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-self",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = handle) => clearInterval(handle); return () => stop(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-wrong-unkeyable",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = timer) => clearInterval(handle); return () => stop(getHandle()); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-alias-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ other }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const holder = { timer }; const stop = (handle = timer) => { const alias = handle; clearInterval(alias); }; return () => stop(); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-alias-supplied",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ other }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const holder = { timer }; const stop = (handle = timer) => { const alias = handle; clearInterval(alias); }; return () => stop(timer); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-alias-wrong",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ other }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const holder = { timer }; const stop = (handle = timer) => { const alias = handle; clearInterval(alias); }; return () => stop(123); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-alias-undefined",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ other }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const holder = { timer }; const stop = (handle = timer) => { const alias = handle; clearInterval(alias); }; return () => stop(undefined); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-member-alias-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ other }) { useEffect(() => { const holder = { timer: null }; holder.timer = setInterval(() => {}, 1000); const stop = (resource = holder) => { const alias = resource; clearInterval(alias.timer); }; return () => stop(); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-member-alias-supplied",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ other }) { useEffect(() => { const holder = { timer: null }; holder.timer = setInterval(() => {}, 1000); const stop = (resource = holder) => { const alias = resource; clearInterval(alias.timer); }; return () => stop(holder); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-member-alias-wrong",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ other }) { useEffect(() => { const holder = { timer: null }; holder.timer = setInterval(() => {}, 1000); const stop = (resource = holder) => { const alias = resource; clearInterval(alias.timer); }; return () => stop(other); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-member-alias-undefined",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ other }) { useEffect(() => { const holder = { timer: null }; holder.timer = setInterval(() => {}, 1000); const stop = (resource = holder) => { const alias = resource; clearInterval(alias.timer); }; return () => stop(undefined); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-supplied-after-await",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ enabled }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle) => clearInterval(handle); return async () => { await Promise.resolve(); stop(timer); }; }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-before-await",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ enabled }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = timer) => clearInterval(handle); return async () => { stop(); await Promise.resolve(); }; }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-conditional-after-await",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ enabled }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = timer) => clearInterval(handle); return async () => { await Promise.resolve(); if (enabled) stop(); }; }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-early-return-after-await",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ enabled }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle = timer) => clearInterval(handle); return async () => { await Promise.resolve(); if (enabled) return; stop(); }; }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-async-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ enabled }) { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = async (handle = timer) => clearInterval(handle); return async () => { stop(); }; }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-generator-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card({ enabled }) { useEffect(() => { const timer = setInterval(() => {}, 1000); function* stop(handle = timer) { clearInterval(handle); } return async () => { stop(); }; }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-long-forward-chain",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle0 = handle1, handle1 = handle2, handle2 = handle3, handle3 = handle4, handle4 = handle5, handle5 = handle6, handle6 = handle7, handle7 = handle8, handle8 = handle9, handle9 = handle10, handle10 = handle11, handle11 = handle12, handle12 = handle13, handle13 = handle14, handle14 = handle15, handle15 = handle16, handle16 = handle17, handle17 = handle18, handle18 = handle19, handle19 = handle20, handle20 = handle21, handle21 = handle22, handle22 = handle23, handle23 = handle24, handle24 = handle25, handle25 = handle26, handle26 = handle27, handle27 = handle28, handle28 = handle29, handle29 = handle30, handle30 = handle31, handle31 = handle32, handle32 = handle33, handle33 = handle34, handle34 = handle35, handle35 = handle36, handle36 = handle37, handle37 = handle38, handle38 = handle39, handle39 = handle40, handle40 = handle41, handle41 = handle42, handle42 = handle43, handle43 = handle44, handle44 = handle45, handle45 = handle46, handle46 = handle47, handle47 = handle48, handle48 = handle49, handle49 = handle50, handle50 = handle51, handle51 = handle52, handle52 = handle53, handle53 = handle54, handle54 = handle55, handle55 = handle56, handle56 = handle57, handle57 = handle58, handle58 = handle59, handle59 = handle60, handle60 = handle61, handle61 = handle62, handle62 = handle63, handle63 = handle64, handle64 = handle65, handle65 = handle66, handle66 = handle67, handle67 = handle68, handle68 = handle69, handle69 = handle70, handle70 = handle71, handle71 = handle72, handle72 = handle73, handle73 = handle74, handle74 = handle75, handle75 = handle76, handle76 = handle77, handle77 = handle78, handle78 = handle79, handle79 = handle80, handle80 = handle81, handle81 = handle82, handle82 = handle83, handle83 = handle84, handle84 = handle85, handle85 = handle86, handle86 = handle87, handle87 = handle88, handle88 = handle89, handle89 = handle90, handle90 = handle91, handle91 = handle92, handle92 = handle93, handle93 = handle94, handle94 = handle95, handle95 = handle96, handle96 = handle97, handle97 = handle98, handle98 = handle99, handle99 = handle100, handle100 = handle101, handle101 = handle102, handle102 = handle103, handle103 = handle104, handle104 = handle105, handle105 = handle106, handle106 = handle107, handle107 = handle108, handle108 = handle109, handle109 = handle110, handle110 = handle111, handle111 = handle112, handle112 = handle113, handle113 = handle114, handle114 = handle115, handle115 = handle116, handle116 = handle117, handle117 = handle118, handle118 = handle119, handle119 = handle120, handle120 = handle121, handle121 = handle122, handle122 = handle123, handle123 = handle124, handle124 = handle125, handle125 = handle126, handle126 = handle127, handle127 = handle128, handle128 = handle129, handle129 = handle130, handle130 = handle131, handle131 = handle132, handle132 = handle133, handle133 = handle134, handle134 = handle135, handle135 = handle136, handle136 = handle137, handle137 = handle138, handle138 = handle139, handle139 = handle140, handle140 = handle141, handle141 = handle142, handle142 = handle143, handle143 = handle144, handle144 = handle145, handle145 = handle146, handle146 = handle147, handle147 = handle148, handle148 = handle149, handle149 = handle150, handle150 = handle151, handle151 = handle152, handle152 = handle153, handle153 = handle154, handle154 = handle155, handle155 = handle156, handle156 = handle157, handle157 = handle158, handle158 = handle159, handle159 = handle160, handle160 = handle161, handle161 = handle162, handle162 = handle163, handle163 = handle164, handle164 = handle165, handle165 = handle166, handle166 = handle167, handle167 = handle168, handle168 = handle169, handle169 = handle170, handle170 = handle171, handle171 = handle172, handle172 = handle173, handle173 = handle174, handle174 = handle175, handle175 = handle176, handle176 = handle177, handle177 = handle178, handle178 = handle179, handle179 = handle180, handle180 = handle181, handle181 = handle182, handle182 = handle183, handle183 = handle184, handle184 = handle185, handle185 = handle186, handle186 = handle187, handle187 = handle188, handle188 = handle189, handle189 = handle190, handle190 = handle191, handle191 = handle192, handle192 = handle193, handle193 = handle194, handle194 = handle195, handle195 = handle196, handle196 = handle197, handle197 = handle198, handle198 = handle199, handle199 = handle200, handle200 = handle201, handle201 = handle202, handle202 = handle203, handle203 = handle204, handle204 = handle205, handle205 = handle206, handle206 = handle207, handle207 = handle208, handle208 = handle209, handle209 = handle210, handle210 = handle211, handle211 = handle212, handle212 = handle213, handle213 = handle214, handle214 = handle215, handle215 = handle216, handle216 = handle217, handle217 = handle218, handle218 = handle219, handle219 = handle220, handle220 = handle221, handle221 = handle222, handle222 = handle223, handle223 = handle224, handle224 = handle225, handle225 = handle226, handle226 = handle227, handle227 = handle228, handle228 = handle229, handle229 = handle230, handle230 = handle231, handle231 = handle232, handle232 = handle233, handle233 = handle234, handle234 = handle235, handle235 = handle236, handle236 = handle237, handle237 = handle238, handle238 = handle239, handle239 = handle240, handle240 = handle241, handle241 = handle242, handle242 = handle243, handle243 = handle244, handle244 = handle245, handle245 = handle246, handle246 = handle247, handle247 = handle248, handle248 = handle249, handle249 = handle250, handle250 = handle251, handle251 = handle252, handle252 = handle253, handle253 = handle254, handle254 = handle255, handle255 = timer) => { clearInterval(handle0); }; return () => stop(); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-long-wrong-chain",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle0 = handle1, handle1 = handle2, handle2 = handle3, handle3 = handle4, handle4 = handle5, handle5 = handle6, handle6 = handle7, handle7 = handle8, handle8 = handle9, handle9 = handle10, handle10 = handle11, handle11 = handle12, handle12 = handle13, handle13 = handle14, handle14 = handle15, handle15 = handle16, handle16 = handle17, handle17 = handle18, handle18 = handle19, handle19 = handle20, handle20 = handle21, handle21 = handle22, handle22 = handle23, handle23 = handle24, handle24 = handle25, handle25 = handle26, handle26 = handle27, handle27 = handle28, handle28 = handle29, handle29 = handle30, handle30 = handle31, handle31 = handle32, handle32 = handle33, handle33 = handle34, handle34 = handle35, handle35 = handle36, handle36 = handle37, handle37 = handle38, handle38 = handle39, handle39 = handle40, handle40 = handle41, handle41 = handle42, handle42 = handle43, handle43 = handle44, handle44 = handle45, handle45 = handle46, handle46 = handle47, handle47 = handle48, handle48 = handle49, handle49 = handle50, handle50 = handle51, handle51 = handle52, handle52 = handle53, handle53 = handle54, handle54 = handle55, handle55 = handle56, handle56 = handle57, handle57 = handle58, handle58 = handle59, handle59 = handle60, handle60 = handle61, handle61 = handle62, handle62 = handle63, handle63 = handle64, handle64 = handle65, handle65 = handle66, handle66 = handle67, handle67 = handle68, handle68 = handle69, handle69 = handle70, handle70 = handle71, handle71 = handle72, handle72 = handle73, handle73 = handle74, handle74 = handle75, handle75 = handle76, handle76 = handle77, handle77 = handle78, handle78 = handle79, handle79 = handle80, handle80 = handle81, handle81 = handle82, handle82 = handle83, handle83 = handle84, handle84 = handle85, handle85 = handle86, handle86 = handle87, handle87 = handle88, handle88 = handle89, handle89 = handle90, handle90 = handle91, handle91 = handle92, handle92 = handle93, handle93 = handle94, handle94 = handle95, handle95 = handle96, handle96 = handle97, handle97 = handle98, handle98 = handle99, handle99 = handle100, handle100 = handle101, handle101 = handle102, handle102 = handle103, handle103 = handle104, handle104 = handle105, handle105 = handle106, handle106 = handle107, handle107 = handle108, handle108 = handle109, handle109 = handle110, handle110 = handle111, handle111 = handle112, handle112 = handle113, handle113 = handle114, handle114 = handle115, handle115 = handle116, handle116 = handle117, handle117 = handle118, handle118 = handle119, handle119 = handle120, handle120 = handle121, handle121 = handle122, handle122 = handle123, handle123 = handle124, handle124 = handle125, handle125 = handle126, handle126 = handle127, handle127 = handle128, handle128 = handle129, handle129 = handle130, handle130 = handle131, handle131 = handle132, handle132 = handle133, handle133 = handle134, handle134 = handle135, handle135 = handle136, handle136 = handle137, handle137 = handle138, handle138 = handle139, handle139 = handle140, handle140 = handle141, handle141 = handle142, handle142 = handle143, handle143 = handle144, handle144 = handle145, handle145 = handle146, handle146 = handle147, handle147 = handle148, handle148 = handle149, handle149 = handle150, handle150 = handle151, handle151 = handle152, handle152 = handle153, handle153 = handle154, handle154 = handle155, handle155 = handle156, handle156 = handle157, handle157 = handle158, handle158 = handle159, handle159 = handle160, handle160 = handle161, handle161 = handle162, handle162 = handle163, handle163 = handle164, handle164 = handle165, handle165 = handle166, handle166 = handle167, handle167 = handle168, handle168 = handle169, handle169 = handle170, handle170 = handle171, handle171 = handle172, handle172 = handle173, handle173 = handle174, handle174 = handle175, handle175 = handle176, handle176 = handle177, handle177 = handle178, handle178 = handle179, handle179 = handle180, handle180 = handle181, handle181 = handle182, handle182 = handle183, handle183 = handle184, handle184 = handle185, handle185 = handle186, handle186 = handle187, handle187 = handle188, handle188 = handle189, handle189 = handle190, handle190 = handle191, handle191 = handle192, handle192 = handle193, handle193 = handle194, handle194 = handle195, handle195 = handle196, handle196 = handle197, handle197 = handle198, handle198 = handle199, handle199 = handle200, handle200 = handle201, handle201 = handle202, handle202 = handle203, handle203 = handle204, handle204 = handle205, handle205 = handle206, handle206 = handle207, handle207 = handle208, handle208 = handle209, handle209 = handle210, handle210 = handle211, handle211 = handle212, handle212 = handle213, handle213 = handle214, handle214 = handle215, handle215 = handle216, handle216 = handle217, handle217 = handle218, handle218 = handle219, handle219 = handle220, handle220 = handle221, handle221 = handle222, handle222 = handle223, handle223 = handle224, handle224 = handle225, handle225 = handle226, handle226 = handle227, handle227 = handle228, handle228 = handle229, handle229 = handle230, handle230 = handle231, handle231 = handle232, handle232 = handle233, handle233 = handle234, handle234 = handle235, handle235 = handle236, handle236 = handle237, handle237 = handle238, handle238 = handle239, handle239 = handle240, handle240 = handle241, handle241 = handle242, handle242 = handle243, handle243 = handle244, handle244 = handle245, handle245 = handle246, handle246 = handle247, handle247 = handle248, handle248 = handle249, handle249 = handle250, handle250 = handle251, handle251 = handle252, handle252 = handle253, handle253 = handle254, handle254 = handle255, handle255 = 123) => { clearInterval(handle0); }; return () => stop(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-long-opaque-chain",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle0 = handle1, handle1 = handle2, handle2 = handle3, handle3 = handle4, handle4 = handle5, handle5 = handle6, handle6 = handle7, handle7 = handle8, handle8 = handle9, handle9 = handle10, handle10 = handle11, handle11 = handle12, handle12 = handle13, handle13 = handle14, handle14 = handle15, handle15 = handle16, handle16 = handle17, handle17 = handle18, handle18 = handle19, handle19 = handle20, handle20 = handle21, handle21 = handle22, handle22 = handle23, handle23 = handle24, handle24 = handle25, handle25 = handle26, handle26 = handle27, handle27 = handle28, handle28 = handle29, handle29 = handle30, handle30 = handle31, handle31 = handle32, handle32 = handle33, handle33 = handle34, handle34 = handle35, handle35 = handle36, handle36 = handle37, handle37 = handle38, handle38 = handle39, handle39 = handle40, handle40 = handle41, handle41 = handle42, handle42 = handle43, handle43 = handle44, handle44 = handle45, handle45 = handle46, handle46 = handle47, handle47 = handle48, handle48 = handle49, handle49 = handle50, handle50 = handle51, handle51 = handle52, handle52 = handle53, handle53 = handle54, handle54 = handle55, handle55 = handle56, handle56 = handle57, handle57 = handle58, handle58 = handle59, handle59 = handle60, handle60 = handle61, handle61 = handle62, handle62 = handle63, handle63 = handle64, handle64 = handle65, handle65 = handle66, handle66 = handle67, handle67 = handle68, handle68 = handle69, handle69 = handle70, handle70 = handle71, handle71 = handle72, handle72 = handle73, handle73 = handle74, handle74 = handle75, handle75 = handle76, handle76 = handle77, handle77 = handle78, handle78 = handle79, handle79 = handle80, handle80 = handle81, handle81 = handle82, handle82 = handle83, handle83 = handle84, handle84 = handle85, handle85 = handle86, handle86 = handle87, handle87 = handle88, handle88 = handle89, handle89 = handle90, handle90 = handle91, handle91 = handle92, handle92 = handle93, handle93 = handle94, handle94 = handle95, handle95 = handle96, handle96 = handle97, handle97 = handle98, handle98 = handle99, handle99 = handle100, handle100 = handle101, handle101 = handle102, handle102 = handle103, handle103 = handle104, handle104 = handle105, handle105 = handle106, handle106 = handle107, handle107 = handle108, handle108 = handle109, handle109 = handle110, handle110 = handle111, handle111 = handle112, handle112 = handle113, handle113 = handle114, handle114 = handle115, handle115 = handle116, handle116 = handle117, handle117 = handle118, handle118 = handle119, handle119 = handle120, handle120 = handle121, handle121 = handle122, handle122 = handle123, handle123 = handle124, handle124 = handle125, handle125 = handle126, handle126 = handle127, handle127 = handle128, handle128 = handle129, handle129 = handle130, handle130 = handle131, handle131 = handle132, handle132 = handle133, handle133 = handle134, handle134 = handle135, handle135 = handle136, handle136 = handle137, handle137 = handle138, handle138 = handle139, handle139 = handle140, handle140 = handle141, handle141 = handle142, handle142 = handle143, handle143 = handle144, handle144 = handle145, handle145 = handle146, handle146 = handle147, handle147 = handle148, handle148 = handle149, handle149 = handle150, handle150 = handle151, handle151 = handle152, handle152 = handle153, handle153 = handle154, handle154 = handle155, handle155 = handle156, handle156 = handle157, handle157 = handle158, handle158 = handle159, handle159 = handle160, handle160 = handle161, handle161 = handle162, handle162 = handle163, handle163 = handle164, handle164 = handle165, handle165 = handle166, handle166 = handle167, handle167 = handle168, handle168 = handle169, handle169 = handle170, handle170 = handle171, handle171 = handle172, handle172 = handle173, handle173 = handle174, handle174 = handle175, handle175 = handle176, handle176 = handle177, handle177 = handle178, handle178 = handle179, handle179 = handle180, handle180 = handle181, handle181 = handle182, handle182 = handle183, handle183 = handle184, handle184 = handle185, handle185 = handle186, handle186 = handle187, handle187 = handle188, handle188 = handle189, handle189 = handle190, handle190 = handle191, handle191 = handle192, handle192 = handle193, handle193 = handle194, handle194 = handle195, handle195 = handle196, handle196 = handle197, handle197 = handle198, handle198 = handle199, handle199 = handle200, handle200 = handle201, handle201 = handle202, handle202 = handle203, handle203 = handle204, handle204 = handle205, handle205 = handle206, handle206 = handle207, handle207 = handle208, handle208 = handle209, handle209 = handle210, handle210 = handle211, handle211 = handle212, handle212 = handle213, handle213 = handle214, handle214 = handle215, handle215 = handle216, handle216 = handle217, handle217 = handle218, handle218 = handle219, handle219 = handle220, handle220 = handle221, handle221 = handle222, handle222 = handle223, handle223 = handle224, handle224 = handle225, handle225 = handle226, handle226 = handle227, handle227 = handle228, handle228 = handle229, handle229 = handle230, handle230 = handle231, handle231 = handle232, handle232 = handle233, handle233 = handle234, handle234 = handle235, handle235 = handle236, handle236 = handle237, handle237 = handle238, handle238 = handle239, handle239 = handle240, handle240 = handle241, handle241 = handle242, handle242 = handle243, handle243 = handle244, handle244 = handle245, handle245 = handle246, handle246 = handle247, handle247 = handle248, handle248 = handle249, handle249 = handle250, handle250 = handle251, handle251 = handle252, handle252 = handle253, handle253 = handle254, handle254 = handle255, handle255 = getHandle()) => { clearInterval(handle0); }; return () => stop(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-long-undefined-override",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle0 = handle1, handle1 = handle2, handle2 = handle3, handle3 = handle4, handle4 = handle5, handle5 = handle6, handle6 = handle7, handle7 = handle8, handle8 = handle9, handle9 = handle10, handle10 = handle11, handle11 = handle12, handle12 = handle13, handle13 = handle14, handle14 = handle15, handle15 = handle16, handle16 = handle17, handle17 = handle18, handle18 = handle19, handle19 = handle20, handle20 = handle21, handle21 = handle22, handle22 = handle23, handle23 = handle24, handle24 = handle25, handle25 = handle26, handle26 = handle27, handle27 = handle28, handle28 = handle29, handle29 = handle30, handle30 = handle31, handle31 = handle32, handle32 = handle33, handle33 = handle34, handle34 = handle35, handle35 = handle36, handle36 = handle37, handle37 = handle38, handle38 = handle39, handle39 = handle40, handle40 = handle41, handle41 = handle42, handle42 = handle43, handle43 = handle44, handle44 = handle45, handle45 = handle46, handle46 = handle47, handle47 = handle48, handle48 = handle49, handle49 = handle50, handle50 = handle51, handle51 = handle52, handle52 = handle53, handle53 = handle54, handle54 = handle55, handle55 = handle56, handle56 = handle57, handle57 = handle58, handle58 = handle59, handle59 = handle60, handle60 = handle61, handle61 = handle62, handle62 = handle63, handle63 = handle64, handle64 = handle65, handle65 = handle66, handle66 = handle67, handle67 = handle68, handle68 = handle69, handle69 = handle70, handle70 = handle71, handle71 = handle72, handle72 = handle73, handle73 = handle74, handle74 = handle75, handle75 = handle76, handle76 = handle77, handle77 = handle78, handle78 = handle79, handle79 = handle80, handle80 = handle81, handle81 = handle82, handle82 = handle83, handle83 = handle84, handle84 = handle85, handle85 = handle86, handle86 = handle87, handle87 = handle88, handle88 = handle89, handle89 = handle90, handle90 = handle91, handle91 = handle92, handle92 = handle93, handle93 = handle94, handle94 = handle95, handle95 = handle96, handle96 = handle97, handle97 = handle98, handle98 = handle99, handle99 = handle100, handle100 = handle101, handle101 = handle102, handle102 = handle103, handle103 = handle104, handle104 = handle105, handle105 = handle106, handle106 = handle107, handle107 = handle108, handle108 = handle109, handle109 = handle110, handle110 = handle111, handle111 = handle112, handle112 = handle113, handle113 = handle114, handle114 = handle115, handle115 = handle116, handle116 = handle117, handle117 = handle118, handle118 = handle119, handle119 = handle120, handle120 = handle121, handle121 = handle122, handle122 = handle123, handle123 = handle124, handle124 = handle125, handle125 = handle126, handle126 = handle127, handle127 = handle128, handle128 = handle129, handle129 = handle130, handle130 = handle131, handle131 = handle132, handle132 = handle133, handle133 = handle134, handle134 = handle135, handle135 = handle136, handle136 = handle137, handle137 = handle138, handle138 = handle139, handle139 = handle140, handle140 = handle141, handle141 = handle142, handle142 = handle143, handle143 = handle144, handle144 = handle145, handle145 = handle146, handle146 = handle147, handle147 = handle148, handle148 = handle149, handle149 = handle150, handle150 = handle151, handle151 = handle152, handle152 = handle153, handle153 = handle154, handle154 = handle155, handle155 = handle156, handle156 = handle157, handle157 = handle158, handle158 = handle159, handle159 = handle160, handle160 = handle161, handle161 = handle162, handle162 = handle163, handle163 = handle164, handle164 = handle165, handle165 = handle166, handle166 = handle167, handle167 = handle168, handle168 = handle169, handle169 = handle170, handle170 = handle171, handle171 = handle172, handle172 = handle173, handle173 = handle174, handle174 = handle175, handle175 = handle176, handle176 = handle177, handle177 = handle178, handle178 = handle179, handle179 = handle180, handle180 = handle181, handle181 = handle182, handle182 = handle183, handle183 = handle184, handle184 = handle185, handle185 = handle186, handle186 = handle187, handle187 = handle188, handle188 = handle189, handle189 = handle190, handle190 = handle191, handle191 = handle192, handle192 = handle193, handle193 = handle194, handle194 = handle195, handle195 = handle196, handle196 = handle197, handle197 = handle198, handle198 = handle199, handle199 = handle200, handle200 = handle201, handle201 = handle202, handle202 = handle203, handle203 = handle204, handle204 = handle205, handle205 = handle206, handle206 = handle207, handle207 = handle208, handle208 = handle209, handle209 = handle210, handle210 = handle211, handle211 = handle212, handle212 = handle213, handle213 = handle214, handle214 = handle215, handle215 = handle216, handle216 = handle217, handle217 = handle218, handle218 = handle219, handle219 = handle220, handle220 = handle221, handle221 = handle222, handle222 = handle223, handle223 = handle224, handle224 = handle225, handle225 = handle226, handle226 = handle227, handle227 = handle228, handle228 = handle229, handle229 = handle230, handle230 = handle231, handle231 = handle232, handle232 = handle233, handle233 = handle234, handle234 = handle235, handle235 = handle236, handle236 = handle237, handle237 = handle238, handle238 = handle239, handle239 = handle240, handle240 = handle241, handle241 = handle242, handle242 = handle243, handle243 = handle244, handle244 = handle245, handle245 = handle246, handle246 = handle247, handle247 = handle248, handle248 = handle249, handle249 = handle250, handle250 = handle251, handle251 = handle252, handle252 = handle253, handle253 = handle254, handle254 = handle255, handle255 = timer) => { clearInterval(handle0); }; return () => stop(undefined); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-long-prior-chain",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (handle0 = timer, handle1 = handle0, handle2 = handle1, handle3 = handle2, handle4 = handle3, handle5 = handle4, handle6 = handle5, handle7 = handle6, handle8 = handle7, handle9 = handle8, handle10 = handle9, handle11 = handle10, handle12 = handle11, handle13 = handle12, handle14 = handle13, handle15 = handle14, handle16 = handle15, handle17 = handle16, handle18 = handle17, handle19 = handle18, handle20 = handle19, handle21 = handle20, handle22 = handle21, handle23 = handle22, handle24 = handle23, handle25 = handle24, handle26 = handle25, handle27 = handle26, handle28 = handle27, handle29 = handle28, handle30 = handle29, handle31 = handle30, handle32 = handle31, handle33 = handle32, handle34 = handle33, handle35 = handle34, handle36 = handle35, handle37 = handle36, handle38 = handle37, handle39 = handle38, handle40 = handle39, handle41 = handle40, handle42 = handle41, handle43 = handle42, handle44 = handle43, handle45 = handle44, handle46 = handle45, handle47 = handle46, handle48 = handle47, handle49 = handle48, handle50 = handle49, handle51 = handle50, handle52 = handle51, handle53 = handle52, handle54 = handle53, handle55 = handle54, handle56 = handle55, handle57 = handle56, handle58 = handle57, handle59 = handle58, handle60 = handle59, handle61 = handle60, handle62 = handle61, handle63 = handle62, handle64 = handle63, handle65 = handle64, handle66 = handle65, handle67 = handle66, handle68 = handle67, handle69 = handle68, handle70 = handle69, handle71 = handle70, handle72 = handle71, handle73 = handle72, handle74 = handle73, handle75 = handle74, handle76 = handle75, handle77 = handle76, handle78 = handle77, handle79 = handle78, handle80 = handle79, handle81 = handle80, handle82 = handle81, handle83 = handle82, handle84 = handle83, handle85 = handle84, handle86 = handle85, handle87 = handle86, handle88 = handle87, handle89 = handle88, handle90 = handle89, handle91 = handle90, handle92 = handle91, handle93 = handle92, handle94 = handle93, handle95 = handle94, handle96 = handle95, handle97 = handle96, handle98 = handle97, handle99 = handle98, handle100 = handle99, handle101 = handle100, handle102 = handle101, handle103 = handle102, handle104 = handle103, handle105 = handle104, handle106 = handle105, handle107 = handle106, handle108 = handle107, handle109 = handle108, handle110 = handle109, handle111 = handle110, handle112 = handle111, handle113 = handle112, handle114 = handle113, handle115 = handle114, handle116 = handle115, handle117 = handle116, handle118 = handle117, handle119 = handle118, handle120 = handle119, handle121 = handle120, handle122 = handle121, handle123 = handle122, handle124 = handle123, handle125 = handle124, handle126 = handle125, handle127 = handle126, handle128 = handle127, handle129 = handle128, handle130 = handle129, handle131 = handle130, handle132 = handle131, handle133 = handle132, handle134 = handle133, handle135 = handle134, handle136 = handle135, handle137 = handle136, handle138 = handle137, handle139 = handle138, handle140 = handle139, handle141 = handle140, handle142 = handle141, handle143 = handle142, handle144 = handle143, handle145 = handle144, handle146 = handle145, handle147 = handle146, handle148 = handle147, handle149 = handle148, handle150 = handle149, handle151 = handle150, handle152 = handle151, handle153 = handle152, handle154 = handle153, handle155 = handle154, handle156 = handle155, handle157 = handle156, handle158 = handle157, handle159 = handle158, handle160 = handle159, handle161 = handle160, handle162 = handle161, handle163 = handle162, handle164 = handle163, handle165 = handle164, handle166 = handle165, handle167 = handle166, handle168 = handle167, handle169 = handle168, handle170 = handle169, handle171 = handle170, handle172 = handle171, handle173 = handle172, handle174 = handle173, handle175 = handle174, handle176 = handle175, handle177 = handle176, handle178 = handle177, handle179 = handle178, handle180 = handle179, handle181 = handle180, handle182 = handle181, handle183 = handle182, handle184 = handle183, handle185 = handle184, handle186 = handle185, handle187 = handle186, handle188 = handle187, handle189 = handle188, handle190 = handle189, handle191 = handle190, handle192 = handle191, handle193 = handle192, handle194 = handle193, handle195 = handle194, handle196 = handle195, handle197 = handle196, handle198 = handle197, handle199 = handle198, handle200 = handle199, handle201 = handle200, handle202 = handle201, handle203 = handle202, handle204 = handle203, handle205 = handle204, handle206 = handle205, handle207 = handle206, handle208 = handle207, handle209 = handle208, handle210 = handle209, handle211 = handle210, handle212 = handle211, handle213 = handle212, handle214 = handle213, handle215 = handle214, handle216 = handle215, handle217 = handle216, handle218 = handle217, handle219 = handle218, handle220 = handle219, handle221 = handle220, handle222 = handle221, handle223 = handle222, handle224 = handle223, handle225 = handle224, handle226 = handle225, handle227 = handle226, handle228 = handle227, handle229 = handle228, handle230 = handle229, handle231 = handle230, handle232 = handle231, handle233 = handle232, handle234 = handle233, handle235 = handle234, handle236 = handle235, handle237 = handle236, handle238 = handle237, handle239 = handle238, handle240 = handle239, handle241 = handle240, handle242 = handle241, handle243 = handle242, handle244 = handle243, handle245 = handle244, handle246 = handle245, handle247 = handle246, handle248 = handle247, handle249 = handle248, handle250 = handle249, handle251 = handle250, handle252 = handle251, handle253 = handle252, handle254 = handle253, handle255 = handle254) => { clearInterval(handle255); }; return () => stop(); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-shared-tail",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (first = tail, second = tail, tail = timer) => { clearInterval(first); clearInterval(second); }; return () => stop(); }, []); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-member-cycle",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (first = second.timer, second = first) => { clearInterval(first); }; return () => stop(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-two-root-cycle",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react'; export function Card() { useEffect(() => { const timer = setInterval(() => {}, 1000); const stop = (first = second, second = first) => { clearInterval(first); clearInterval(second); }; return () => stop(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-unconditional",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-path-early-return",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (enabled) return; stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-early-return-after-await",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return async () => { await Promise.resolve(); if (enabled) return; stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-early-return-before-await",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return async () => { if (enabled) return; await Promise.resolve(); stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-false-return",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (false) return; stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-true-return",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (true) return; stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-false-return-after-await",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return async () => { await Promise.resolve(); if (false) return; stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-true-return-after-await",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return async () => { await Promise.resolve(); if (true) return; stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-true-branch",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (true) stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-false-branch",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (false) stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-if-else-both",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (enabled) stop(); else stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-path-if-else-both-after-await",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return async () => { await Promise.resolve(); if (enabled) stop(); else stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-path-if-else-return",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (enabled) stop(); else return; };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-ternary-both",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { enabled ? stop() : stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-path-conditional-throw",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (enabled) throw new Error('stop'); stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-false-throw",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (false) throw new Error('stop'); stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-true-throw",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { throw new Error('stop'); stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-finally-release",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { try { if (enabled) throw new Error('stop'); } finally { stop(); } };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-path-catch-then-release",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { try { if (enabled) throw new Error('stop'); } catch {} stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-path-finally-early-return",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { try { void enabled; } finally { if (enabled) return; stop(); } };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-release-before-return",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { stop(); if (enabled) return; };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-path-short-circuit-conditional",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { enabled || stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-helper-path-static-short-circuit",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { false || stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-helper-path-unreachable-short-circuit",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { true || stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-extra-path-direct-unconditional",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { clearInterval(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-direct-early-return",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (enabled) return; clearInterval(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-direct-after-await",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return async () => { await Promise.resolve(); clearInterval(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-direct-early-return-after-await",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return async () => { await Promise.resolve(); if (enabled) return; clearInterval(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-direct-static-true-if",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (true) clearInterval(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-direct-static-false-if",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (false) clearInterval(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-direct-static-false-return",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (false) return; clearInterval(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-direct-ternary-both",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { enabled ? clearInterval(timer) : clearInterval(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-direct-ternary-one",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { enabled ? clearInterval(timer) : void 0; };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-direct-static-logical",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { true && clearInterval(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-mixed-if-else",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (enabled) stop(); else clearInterval(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-mixed-if-else-reversed",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (enabled) clearInterval(timer); else stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-mixed-if-else-after-return",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (enabled) return; if (other) stop(); else clearInterval(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-mixed-ternary-both",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { enabled ? stop() : clearInterval(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-helper-sequence",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { void enabled, stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-helper-sequence-static-false-or",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { (void enabled, false) || stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-helper-sequence-static-true-and",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { (void enabled, true) && stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-helper-sequence-unknown-and",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { (void enabled, enabled) && stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-extra-path-cleanup-parameter-direct-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return (unused = clearInterval(timer)) => {  };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-extra-path-cleanup-parameter-helper-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return (unused = stop()) => {  };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-extra-path-body-destructuring-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { let unused; [unused = stop()] = []; };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-extra-path-direct-conditional-throw",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { if (enabled) throw new Error('stop'); clearInterval(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-direct-finally",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { try { if (enabled) throw new Error('stop'); } finally { clearInterval(timer); } };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-subscription-direct",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const handler = () => {};\n    window.addEventListener('resize', handler);\n    return () => { window.removeEventListener('resize', handler); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-subscription-conditional",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const handler = () => {};\n    window.addEventListener('resize', handler);\n    return () => { if (enabled) window.removeEventListener('resize', handler); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-subscription-early-return",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const handler = () => {};\n    window.addEventListener('resize', handler);\n    return () => { if (enabled) return; window.removeEventListener('resize', handler); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-collection-direct",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timers = [1, 2].map(() => setInterval(() => {}, 1000));\n    return () => { timers.forEach((timer) => clearInterval(timer)); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-collection-conditional",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timers = [1, 2].map(() => setInterval(() => {}, 1000));\n    return () => { if (enabled) timers.forEach((timer) => clearInterval(timer)); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-extra-path-collection-early-return",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const timers = [1, 2].map(() => setInterval(() => {}, 1000));\n    return () => { if (enabled) return; timers.forEach((timer) => clearInterval(timer)); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-strict-mode-let-direct-complete",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, element, store, options }) {\n  useEffect(() => {\n    let timer; const start = () => { timer = setTimeout(() => {}, 1000); }; start(); return () => { clearTimeout(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-strict-mode-let-direct-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, element, store, options }) {\n  useEffect(() => {\n    let timer; const start = () => { timer = setTimeout(() => {}, 1000); }; start(); return () => { if (enabled) clearTimeout(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-strict-mode-ref-direct-complete",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef } from 'react';\nexport function Card({ enabled, element, store, options }) {\n  const timer = useRef(null);\n  useEffect(() => {\n    const start = () => { timer.current = setTimeout(() => {}, 1000); }; start(); return () => { clearTimeout(timer.current); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-strict-mode-ref-direct-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef } from 'react';\nexport function Card({ enabled, element, store, options }) {\n  const timer = useRef(null);\n  useEffect(() => {\n    const start = () => { timer.current = setTimeout(() => {}, 1000); }; start(); return () => { if (enabled) clearTimeout(timer.current); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-strict-mode-member-direct-complete",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, element, store, options }) {\n  useEffect(() => {\n    const state = { timer: null }; const start = () => { state.timer = setTimeout(() => {}, 1000); }; start(); return () => { clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-strict-mode-member-direct-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, element, store, options }) {\n  useEffect(() => {\n    const state = { timer: null }; const start = () => { state.timer = setTimeout(() => {}, 1000); }; start(); return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-strict-mode-owned-two-returns-partial-owner",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, element, store, options }) {\n  useEffect(() => {\n    let timer = null; const stop = () => { if (timer == null) return; clearTimeout(timer); timer = null; }; const start = () => { stop(); timer = setTimeout(() => {}, 1000); }; const unsubscribe = store.subscribe(start); if (enabled) return () => { stop(); unsubscribe(); }; return () => { stop(); if (enabled) unsubscribe(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-strict-mode-owned-two-returns-bound-owner",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, element, store, options }) {\n  useEffect(() => {\n    let timer = null; const stop = () => { if (timer == null) return; clearTimeout(timer); timer = null; }; const start = () => { stop(); timer = setTimeout(() => {}, 1000); }; const unsubscribe = store.subscribe(start); if (enabled) return () => { stop(); unsubscribe(); }; return clearTimeout.bind(null, timer);\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-strict-mode-overwrite-helper-complete",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, element, store, options }) {\n  useEffect(() => {\n    let timer = null; const stop = (handle = timer) => { clearTimeout(handle); }; const start = () => { stop(); timer = setTimeout(() => {}, 1000); }; element.addEventListener('blur', start); return () => { clearTimeout(timer); element.removeEventListener('blur', start); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-strict-mode-overwrite-helper-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, element, store, options }) {\n  useEffect(() => {\n    let timer = null; const stop = (handle = timer) => { if (enabled) clearTimeout(handle); }; const start = () => { stop(); timer = setTimeout(() => {}, 1000); }; element.addEventListener('blur', start); return () => { clearTimeout(timer); element.removeEventListener('blur', start); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-strict-mode-let-helper-joint-ternary",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, element, store, options }) {\n  useEffect(() => {\n    let timer; const start = () => { timer = setTimeout(() => {}, 1000); }; start(); const stop = (handle = timer) => clearTimeout(handle); return () => { enabled ? stop() : stop(); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-strict-mode-let-helper-default-rhs",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, element, store, options }) {\n  useEffect(() => {\n    let timer; const start = () => { timer = setTimeout(() => {}, 1000); }; start(); const stop = (handle = timer) => clearTimeout(handle); return () => { const { value = stop() } = options; };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-strict-mode-nonstrict-partial-for-of",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ targets, enabled }) {\n  useEffect(() => {\n    const listener = () => {};\n    for (const target of targets) target.addEventListener('x', listener);\n    return () => { for (const target of targets) { if (enabled) target.removeEventListener('x', listener); } };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-single-call-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    const state = { timer: null };\n    const start = () => { state.timer = setTimeout(() => {}, 1000); };\n    start();\n    return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-single-call-complete",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    const state = { timer: null };\n    const start = () => { state.timer = setTimeout(() => {}, 1000); };\n    start();\n    return () => { clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-two-calls-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    const state = { timer: null };\n    const start = () => { state.timer = setTimeout(() => {}, 1000); };\n    start(); start();\n    return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-looped-call-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    const state = { timer: null };\n    const start = () => { state.timer = setTimeout(() => {}, 1000); };\n    for (const item of items) start();\n    return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-looped-allocation-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    const state = { timer: null };\n    const start = () => { for (const item of items) state.timer = setTimeout(() => {}, 1000); };\n    start();\n    return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-registered-call-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    const state = { timer: null };\n    const start = () => { clearTimeout(state.timer); state.timer = setTimeout(() => {}, 1000); };\n    element.addEventListener('blur', start);\n    return () => { if (enabled) clearTimeout(state.timer); element.removeEventListener('blur', start); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-async-call-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    const state = { timer: null };\n    const start = async () => { await Promise.resolve(); state.timer = setTimeout(() => {}, 1000); };\n    start();\n    return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-single-call-conditional-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    const state = { timer: null };\n    const start = () => { state.timer = setTimeout(() => {}, 1000); };\n    if (enabled) start();\n    return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-alias-call-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    const state = { timer: null }; const start = () => { state.timer = setTimeout(() => {}, 1000); }; const alias = start; alias(); return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-extra-value-reference-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    const state = { timer: null }; const start = () => { state.timer = setTimeout(() => {}, 1000); }; const retained = start; start(); return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-generator-call-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    const state = { timer: null }; function* start() { state.timer = setTimeout(() => {}, 1000); yield null; } start().next(); return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-recursive-call-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    const state = { timer: null }; const start = () => { state.timer = setTimeout(() => {}, 1000); if (enabled) start(); }; start(); return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-strict-let-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    let timer; const start = () => { timer = setTimeout(() => {}, 1000); }; start(); return () => { if (enabled) clearTimeout(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-strict-let-complete",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    let timer; const start = () => { timer = setTimeout(() => {}, 1000); }; start(); return () => { clearTimeout(timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-react-ref-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef } from 'react';\nexport function Card({ enabled, items, element }) {\n  const timer = useRef(null);\n  useEffect(() => {\n    const start = () => { timer.current = setTimeout(() => {}, 1000); }; start(); return () => { if (enabled) clearTimeout(timer.current); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-react-ref-complete",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef } from 'react';\nexport function Card({ enabled, items, element }) {\n  const timer = useRef(null);\n  useEffect(() => {\n    const start = () => { timer.current = setTimeout(() => {}, 1000); }; start(); return () => { clearTimeout(timer.current); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-invocation-path-nested-direct-helper-partial",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef } from 'react';\nexport function Card({ enabled, items, element }) {\n  useEffect(() => {\n    const state = { timer: null }; const start = () => { state.timer = setTimeout(() => {}, 1000); }; const invoke = () => start(); invoke(); return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-extra-default-object-shorthand",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { let unused; ({ unused = stop() } = other); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-extra-default-object-property",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { let unused; ({ value: unused = stop() } = other); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-extra-default-variable-binding",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled, other }) {\n  useEffect(() => {\n    const timer = setInterval(() => {}, 1000);\n    const stop = (handle = timer) => clearInterval(handle);\n    return () => { const [unused = stop()] = []; };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-named-invocation-named-unreleased",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const start = function namedStart() { setInterval(() => {}, 1000); }; start();\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-named-invocation-anonymous-unreleased",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const start = function () { setInterval(() => {}, 1000); }; start();\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-parameter-named-invocation-alias-named-unreleased",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const start = function namedStart() { setInterval(() => {}, 1000); }; const alias = start; alias();\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-named-invocation-named-partial-member",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const state = { timer: null }; const start = function namedStart() { state.timer = setTimeout(() => {}, 1000); }; start(); return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-named-invocation-anonymous-partial-member",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const state = { timer: null }; const start = function () { state.timer = setTimeout(() => {}, 1000); }; start(); return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-parameter-named-invocation-alias-named-partial-member",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\nexport function Card({ enabled }) {\n  useEffect(() => {\n    const state = { timer: null }; const start = function namedStart() { state.timer = setTimeout(() => {}, 1000); }; const alias = start; alias(); return () => { if (enabled) clearTimeout(state.timer); };\n  }, []);\n  return null;\n}\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-null",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-strict-null",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer === null) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-undefined",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer === undefined) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-reverse-null",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (null == timer) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-void-zero",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == void 0) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-prior-handle-guard-negated",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (!timer) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-negated-boolean",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (!Boolean(timer)) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-prior-handle-guard-null-or-other",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null || element.disabled) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-null-and-other",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null && element.disabled) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-prior-handle-guard-two-null-ands",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null && !timer) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-unrelated",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (element.disabled) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-prior-handle-guard-null-throw",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) throw new Error(); clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-null-block-log",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) { notify(); return; } clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-null-else",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) return; else notify(); clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-prior-handle-guard-conditional-release",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) return; if (element.disabled) clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-prior-handle-guard-false-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = (skip = false) => { if (skip) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-true-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = (enabled = true) => { if (!enabled) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-false-alias-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = (skip = other, other = false) => { if (skip) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-prior-handle-guard-true-alias-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = (enabled = other, other = true) => { if (!enabled) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-prior-handle-guard-omitted-optional",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = (skip?: boolean) => { if (skip) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-omitted-required",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = (skip: boolean) => { if (skip) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-prior-handle-guard-optional-and-other",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = (skip?: boolean) => { if (skip && element.disabled) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-optional-or-other",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = (skip?: boolean) => { if (skip || element.disabled) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-null-after-unrelated",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (element.disabled) return; if (timer == null) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-prior-handle-guard-null-before-unrelated",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) return; if (element.disabled) return; clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-nested-logical",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) return; if (element.disabled) timer && clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-prior-handle-guard-nested-true-logical",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) return; if (element.disabled) true && clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-prior-handle-guard-nested-ternary",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) return; if (element.disabled) element.focused ? clearTimeout(timer) : clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 1
+  },
+  {
+    "name": "cleanup-prior-handle-guard-direct-logical",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) return; timer && clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-direct-true-logical",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) return; true && clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-reset-false-and",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) return; false && clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-reset-true-or",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) return; true || clearTimeout(timer); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-reset-conditional",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) return; element.disabled ? clearTimeout(timer) : notify(); timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "cleanup-prior-handle-guard-reset-destructuring-default",
+    "ruleId": "effect-needs-cleanup",
+    "filename": "src/component.tsx",
+    "source": "import { useLayoutEffect } from \"react\";\nexport const Component = ({ element }) => {\n useLayoutEffect(() => {\n  let timer = null;\n  const clearTimer = () => { if (timer == null) return; const { value = clearTimeout(timer) } = element; timer = null; };\n  const handleEvent = () => { clearTimer(); timer = setTimeout(() => { timer = null; }, 0); };\n  element.addEventListener(\"blur\", handleEvent);\n  return () => { clearTimer(); element.removeEventListener(\"blur\", handleEvent); };\n }, []);\n return null;\n};",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-mutable-two-guard-sources",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function useFirst(): boolean;\ndeclare function readSecond(): boolean;\ndeclare function consume(value?: unknown): void;\nexport function Card({ input }: { input: any }) { const first = useFirst(); const second = readSecond(); let ready = false; if (first) { ready = true; } if (!second) { ready = true; } useEffect(() => { if (ready) consume(); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-unguarded-assignment",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function useFirst(): boolean;\ndeclare function readSecond(): boolean;\ndeclare function consume(value?: unknown): void;\nexport function Card({ input }: { input: any }) { let ready = false; ready = input; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-loop-write-retained",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function useFirst(): boolean;\ndeclare function readSecond(): boolean;\ndeclare function consume(value?: unknown): void;\nexport function Card({ input }: { input: any }) { let ready = false; for (const entry of input) { ready = entry; } useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-nested-only-callback-source",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function useFirst(): boolean;\ndeclare function readSecond(): boolean;\ndeclare function consume(value?: unknown): void;\nexport function Card({ input }: { input: any }) { let ready = false; if (input) ready = true; useEffect(() => { const later = () => consume(ready); consume(later); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-outside-callback-read-retained",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function useFirst(): boolean;\ndeclare function readSecond(): boolean;\ndeclare function consume(value?: unknown): void;\nexport function Card({ input }: { input: any }) { let ready = false; if (input) ready = true; consume(ready); useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-call-guard-retained",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function useFirst(): boolean;\ndeclare function readSecond(): boolean;\ndeclare function consume(value?: unknown): void;\nexport function Card({ input }: { input: any }) { let ready = false; if (readSecond()) ready = true; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-declared-binding-retained",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function useFirst(): boolean;\ndeclare function readSecond(): boolean;\ndeclare function consume(value?: unknown): void;\nexport function Card({ input }: { input: any }) { let ready = false; if (input) ready = true; useEffect(() => { consume(ready); }, [ready]); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-mutable-branch-source",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function useFirst(): boolean;\ndeclare function readSecond(): boolean;\ndeclare function consume(value?: unknown): void;\nexport function Card({ input }: { input: any }) { let ready = false; if (input) { ready = true; } else { ready = false; } useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-mixed-nested-read-retained",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input }: { input: boolean }) { let ready = false; if (input) ready = true; useEffect(() => { consume(ready); const later = () => consume(ready); consume(later); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-unary",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = !input; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-binary",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = input + other; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-template",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = `${input}:${other}`; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-logical",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = input && other; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-conditional",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = input ? other : third; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-computed-rejected",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = input['value']; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-nested-computed-rejected",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = input['value'].active; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-delete-rejected",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = delete input.value; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-error-arguments",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = new Error(`${input}:${other}`); useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-shadowed-error-rejected",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const Error = Factory; let ready: any = false; ready = new Error(input); useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-error-spread-rejected",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = new Error(...input); useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-global-only",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = window; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-global-member-rejected",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = window.location; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-module-only",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = outside; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-local-literal-only",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const fixed = true; let ready: any = false; ready = fixed; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-local-ref-only",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const reference = useRef(null); let ready: any = false; ready = reference; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-local-ref-and-input",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const reference = useRef(null); let ready: any = false; ready = reference.current && input; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-const-unary-alias",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const alias = !input; let ready: any = false; ready = alias; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-const-binary-alias",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const alias = input + other; let ready: any = false; ready = alias; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-const-call-alias",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const alias = unknownCall(input); let ready: any = false; ready = alias; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-const-cycle",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const firstAlias = secondAlias; const secondAlias = firstAlias; let ready: any = false; ready = firstAlias; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-const-write-retained",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const alias = !input; alias = other; let ready: any = false; ready = alias; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-destructured-alias-retained",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const { alias } = input; let ready: any = false; ready = alias; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-static-member",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = input.value.active; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-optional-member",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = input?.value.active; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-member-nonnull",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = input!.value; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-regexp-only",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = /x/; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-bigint-only",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready = 1n; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-stable-function-only",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const helper = () => 1; let ready: any = false; ready = helper; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-reactive-function",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const helper = () => input; let ready: any = false; ready = helper; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-memo-only",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const memo = useMemo(() => 1, []); let ready: any = false; ready = memo; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-import-alias-only",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const firstAlias = outside; const local = firstAlias; let ready: any = false; ready = local; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-lazy-ref-only",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const reference = useRef(null); const cached = reference.current ??= {}; let ready: any = false; ready = cached; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-written-ref-retained",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { let reference = useRef(null); reference = input; let ready: any = false; ready = reference; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-empty-initializer-stable-guard",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const fixed = true; let ready: any = false; if (fixed) ready = true; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-compound-write-retained",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) {  let ready: any = false; ready += input; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-expression-mixed-stable-and-reactive",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useMemo } from 'react';\nimport { outside, Factory, unknownCall } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other, third }: any) { const fixed = true; let ready: any = false; ready = fixed && input; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-bridge-lazy-template",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useRef as makeReference } from 'react';\nimport { factory } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other }: any) { const reference = useRef(null); const cached = reference[`current`] ??= {}; let ready: any = false; ready = cached; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-bridge-lazy-wrapped-key",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useRef as makeReference } from 'react';\nimport { factory } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other }: any) { const reference = useRef(null); const cached = reference[('current' as string)] ??= {}; let ready: any = false; ready = cached; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-bridge-lazy-default-read",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useRef as makeReference } from 'react';\nimport { factory } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other }: any) { const reference = useRef(null); const cached = reference.current ??= {}; let value; [value = reference.current] = input; let ready: any = false; ready = cached; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-bridge-lazy-default-write",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useRef as makeReference } from 'react';\nimport { factory } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other }: any) { const reference = useRef(null); const cached = reference.current ??= {}; [reference.current = {}] = input; let ready: any = false; ready = cached; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-bridge-lazy-computed-key-read",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useRef as makeReference } from 'react';\nimport { factory } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other }: any) { const reference = useRef(null); const cached = reference.current ??= {}; let value; ({ [reference.current]: value } = input); let ready: any = false; ready = cached; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-bridge-lazy-pattern-receiver",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useRef as makeReference } from 'react';\nimport { factory } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other }: any) { const { slot: reference } = useRef(null); const cached = reference.current ??= {}; let ready: any = false; ready = cached; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-bridge-nonnull-optional-chain",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useRef as makeReference } from 'react';\nimport { factory } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other }: any) {  let ready: any = false; ready = input?.flag!; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-bridge-alias-reversed-order",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useRef as makeReference } from 'react';\nimport { factory } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other }: any) { const earlier = input; const later = other; let ready: any = false; ready = later + earlier; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-bridge-self-guard",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useRef as makeReference } from 'react';\nimport { factory } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other }: any) {  let ready: any = false; if (ready || input) ready = true; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-bridge-named-hook-alias",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useRef as makeReference } from 'react';\nimport { factory } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other }: any) { const reference = makeReference(null); let ready: any = false; ready = reference && input; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-bridge-local-hook-spelling",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useRef as makeReference } from 'react';\nimport { factory } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other }: any) { const useRef = factory; const reference = useRef(null); let ready: any = false; ready = reference && input; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-bridge-lazy-named-callee-alias",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useRef as makeReference } from 'react';\nimport { factory } from 'some-module';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input, other }: any) { const alias = useRef; const reference = alias(null); const cached = reference.current ??= {}; let ready: any = false; ready = cached; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-terminal-written-ref-declared",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useState } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function Card({input}: any) { let reference = useRef(null); reference = input; let ready: any = false; ready = reference; useEffect(() => { consume(ready); }, [reference]); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-mutable-terminal-written-ref-member-missing",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useState } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function Card({input}: any) { let reference = useRef(null); reference = input; let ready: any = false; ready = reference.value; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-terminal-written-ref-member-prefix",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useState } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function Card({input}: any) { let reference = useRef(null); reference = input; let ready: any = false; ready = reference.value; useEffect(() => { consume(ready); }, [reference]); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-mutable-terminal-current-with-base",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useState } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function Card({input}: any) { let ready: any = false; ready = input.current; useEffect(() => { consume(input); consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-terminal-current-declared-prefix",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useState } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function Card({input}: any) { let ready: any = false; ready = input.current; useEffect(() => { consume(ready); }, [input]); return null; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-mutable-terminal-recursive-alias-terminal",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useState } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function Card({input}: any) { const first = second; const second = first; let ready: any = false; ready = first; useEffect(() => { consume(ready); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-terminal-sole-writer-derived-state",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useState } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function Card({input}: any) { const [state, setState] = useState(false); let ready: any = false; ready = state; useEffect(() => { if (ready) setState(false); }, [setState]); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-terminal-outer-factory-capture",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect, useRef, useState } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function factory(input: any) { let ready: any = false; ready = input; return function Card() { useEffect(() => { consume(ready); }, []); return null; }; }\n",
+    "expectedCount": 0
+  },
+  {
+    "name": "exhaustive-mutable-terminal-outer-source-accepted",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function factory(input: any) { return function Card() { let ready: any = false; ready = input; useEffect(() => { consume(ready); }, []); return null; }; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-terminal-same-name-sources",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function factory(input: any) { const outer = input; return function Card(input: any) { let ready: any = false; ready = outer || input; useEffect(() => { consume(ready); }, []); return null; }; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-terminal-same-name-captures",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function factory(input: any) { const outer = input; return function Card(input: any) { let ready: any = false; ready = outer; useEffect(() => { consume(input); consume(ready); }, []); return null; }; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-original-capture-const-alias",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input }: any) { let ready: any = false; if (input) ready = true; const alias = ready; useEffect(() => { consume(alias); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-original-capture-pure-function",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input }: any) { let ready: any = false; if (input) ready = true; function readValue() { return ready; } useEffect(() => { consume(readValue()); }, []); return null; }\n",
+    "expectedCount": 1
+  },
+  {
+    "name": "exhaustive-mutable-original-capture-nested-const-alias",
+    "ruleId": "exhaustive-deps",
+    "filename": "src/card.tsx",
+    "source": "import { useEffect } from 'react';\ndeclare function consume(value?: unknown): void;\nexport function Card({ input }: any) { let ready: any = false; if (input) ready = true; const firstAlias = ready; const alias = firstAlias; useEffect(() => { consume(alias); }, []); return null; }\n",
+    "expectedCount": 1
   }
 ]

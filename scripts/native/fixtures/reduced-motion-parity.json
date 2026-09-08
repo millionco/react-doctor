@@ -29,6 +29,26 @@
       "origin": "handwritten-require-scope",
       "inputSha256": "7965cfc602b5490e08ea0f2f3bbd8b3119c610913de065b9184a9dc6964b28bd",
       "cases": 12
+    },
+    {
+      "origin": "handwritten-module-augmentation",
+      "inputSha256": "830f2ab55b92f31f46c8046851bbb0842c3bb38fa7296b826d295e97ec1199b4",
+      "cases": 24
+    },
+    {
+      "origin": "handwritten-javascript-jsx",
+      "inputSha256": "bc1e071adc68ab99aef004e569c2248b79a58430d0688e86aace3482d63230c5",
+      "cases": 18
+    },
+    {
+      "origin": "handwritten-global-type-namespace",
+      "inputSha256": "e20642338a026afba657df84a37552b9abc5919f39aaee33f0ada371911a343c",
+      "cases": 22
+    },
+    {
+      "origin": "handwritten-import-merge",
+      "inputSha256": "0dd84f2166c5704ec50a4f7b4da9ced9b4c1884e7b5769fd1ddaa40f041546d3",
+      "cases": 26
     }
   ],
   "description": "Handwritten and canonical test-generated inputs only. Original temporary roots replaced by a per-case test root; source text preserved. No benchmark repository inputs.",
@@ -20169,6 +20189,1112 @@
         }
       ],
       "expectedNativeStatus": "unsupported"
+    },
+    {
+      "name": "augmentation-flat-interface",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { interface Options { duration?: number } } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-exported-interface",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { export interface Options { duration?: number } } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-exported-type-query",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { export type Animator = typeof animate; export type Arguments = Parameters<Animator>; } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-interface-merge",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { interface Options { duration?: number } } declare module 'widget-contract' { interface Options { delay?: number } } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-value-type-name-collision",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { interface animate { duration?: number } type useReducedMotion = boolean; } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-relative-reexport",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "bridge.ts",
+          "sourceText": "export { animate as play } from 'motion'; declare module 'widget-contract' { export interface play { duration?: number } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { play } from './bridge'; play();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-positive-and-handled",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { motion, useReducedMotion } from 'motion'; declare module 'widget-contract' { interface Options { enabled: boolean } } const reduced = useReducedMotion(); export const Card = () => <motion.div />;"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-no-motion-use",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { type Animator = typeof animate; } export const value = 1;"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-handling-only",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { useReducedMotion } from 'motion'; declare module 'widget-contract' { interface Options { enabled: boolean } } const reduced = useReducedMotion();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-relative-target",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "bridge.ts",
+          "sourceText": "export { animate } from 'motion';"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from './bridge'; declare module './bridge' { interface animate { duration: number } } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-motion-target",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'motion' { interface animate { duration: number } } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-computed-call",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { interface Options { [animate()]: boolean } }"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-computed-handling-call",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate, useReducedMotion } from 'motion'; declare module 'widget-contract' { interface Options { [useReducedMotion()]: boolean } } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-computed-jsx",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { motion } from 'motion'; declare module 'widget-contract' { interface Options { [<motion.div />]: boolean } }"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-variable",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { export const play: typeof animate; } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-function",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { export function play(): void; } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-class",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { export class Player {} } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-enum",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { export enum Mode { Automatic } } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-type-only-namespace",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { namespace Nested { interface Options {} } } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-global",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { global { interface Options {} } } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-import-equals",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { import Player = require('motion'); export type Options = typeof Player; } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-export-equals",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { interface Options {} export = Options; } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-type-reexport",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; declare module 'widget-contract' { export type { Options } from 'other-contract'; } animate();"
+        }
+      ]
+    },
+    {
+      "name": "augmentation-cross-file-value-merge",
+      "origin": "handwritten-module-augmentation",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "ambient.d.ts",
+          "sourceText": "declare module 'widget-contract' { export const animate: () => void; }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate as play } from 'widget-contract'; import { animate } from 'motion'; declare module 'widget-contract' { interface animate { duration: number } } play(); animate();"
+        }
+      ]
+    },
+    {
+      "name": "js-jsx-direct-motion",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "import { motion } from 'motion'; export const Card = () => <motion.div />;"
+        }
+      ]
+    },
+    {
+      "name": "jsx-direct-motion",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.jsx",
+          "sourceText": "import { motion } from 'motion'; export const Card = () => <motion.div />;"
+        }
+      ]
+    },
+    {
+      "name": "tsx-direct-motion",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { motion } from 'motion'; export const Card = () => <motion.div />;"
+        }
+      ]
+    },
+    {
+      "name": "ts-non-jsx-animation",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "ts-angle-assertion",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; const play = <typeof animate>animate; play();"
+        }
+      ]
+    },
+    {
+      "name": "js-angle-assertion-remains-unsupported",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "import { animate } from 'motion'; const play = <typeof animate>animate; play();"
+        }
+      ]
+    },
+    {
+      "name": "tsx-angle-assertion-remains-unsupported",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { animate } from 'motion'; const play = <typeof animate>animate; play();"
+        }
+      ]
+    },
+    {
+      "name": "ts-jsx-remains-unsupported",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { motion } from 'motion'; export const Card = () => <motion.div />;"
+        }
+      ]
+    },
+    {
+      "name": "js-malformed-jsx-remains-unsupported",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "import { motion } from 'motion'; export const Card = () => <motion.div>;"
+        }
+      ]
+    },
+    {
+      "name": "js-jsx-unused-motion-import",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "import { motion } from 'motion'; export const Card = () => <div>Static</div>;"
+        }
+      ]
+    },
+    {
+      "name": "js-jsx-handling-hook",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "import { motion, useReducedMotion } from 'motion'; const reduced = useReducedMotion(); export const Card = () => <motion.div />;"
+        }
+      ]
+    },
+    {
+      "name": "js-jsx-reduced-motion-config",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "import { motion, MotionConfig } from 'motion'; export const Card = () => <MotionConfig reducedMotion='user'><motion.div /></MotionConfig>;"
+        }
+      ]
+    },
+    {
+      "name": "js-jsx-relative-reexport",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "bridge.js",
+          "sourceText": "export { motion as widgets } from 'motion';"
+        },
+        {
+          "fileName": "app.js",
+          "sourceText": "import { widgets } from './bridge'; export const Card = () => <widgets.div />;"
+        }
+      ]
+    },
+    {
+      "name": "js-jsx-commonjs",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "const { motion, useReducedMotion } = require('motion'); const reduced = useReducedMotion(); exports.Card = () => <motion.div />;"
+        }
+      ]
+    },
+    {
+      "name": "jsx-commonjs",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.jsx",
+          "sourceText": "const { motion } = require('motion'); module.exports = () => <motion.div />;"
+        }
+      ]
+    },
+    {
+      "name": "js-less-than-comparison",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.js",
+          "sourceText": "import { animate } from 'motion'; const smaller = 1 < 2; animate();"
+        }
+      ]
+    },
+    {
+      "name": "mjs-forced-scope-stays-unsupported",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.mjs",
+          "sourceText": "import { motion } from 'motion'; export const Card = () => <motion.div />;"
+        }
+      ]
+    },
+    {
+      "name": "cjs-forced-scope-stays-unsupported",
+      "origin": "handwritten-javascript-jsx",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.cjs",
+          "sourceText": "const { motion } = require('motion'); module.exports = () => <motion.div />;"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-dts",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { interface Flags { enabled: boolean } } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-ts",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "types.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { interface Flags { enabled: boolean } } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-alias",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { export type Mode = 'user' | 'always'; } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-nested",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { namespace Nested { interface Flags { enabled: boolean } } } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-dotted",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "types.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings.Nested { interface Flags { enabled: boolean } } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-handled",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { interface Flags {} } }"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { motion, useReducedMotion } from 'motion'; const reduced = useReducedMotion(); export const Card = () => <motion.div />;"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-no-motion-use",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { interface Flags {} } }"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { motion } from 'motion'; export const Card = () => <div />;"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-cross-file-type-merge",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "first.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { interface Flags { enabled: boolean } } }"
+        },
+        {
+          "fileName": "second.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { interface Flags { mode: string } } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-computed-call",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "types.ts",
+          "sourceText": "import { animate } from 'motion'; declare global { namespace RuntimeSettings { interface Flags { [animate()]: boolean } } }"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-computed-jsx",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "types.tsx",
+          "sourceText": "import { motion } from 'motion'; declare global { namespace RuntimeSettings { interface Flags { [<motion.div />]: boolean } } }"
+        }
+      ]
+    },
+    {
+      "name": "global-namespace-variable",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { const enabled: boolean; } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-namespace-function",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { function enabled(): boolean; } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-namespace-class",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { class Flags {} } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-namespace-enum",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { enum Mode { User } } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-script-stays-unsupported",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "declare global { namespace RuntimeSettings { interface Flags {} } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-namespace-import-equals",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { import Tools = require('other-package'); } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-namespace-direct-import",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { import { Flags } from 'other-package'; } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-namespace-nested-import",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { namespace Nested { import type { Flags } from 'other-package'; } } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-reachable-policy-merge",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace policy { interface Flags {} } }"
+        },
+        {
+          "fileName": "global.ts",
+          "sourceText": "const policy = 'user';"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { motion, MotionConfig } from 'motion'; export const Card = () => <MotionConfig reducedMotion={policy}><motion.div /></MotionConfig>;"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-unused-policy-merge",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace policy { interface Flags {} } }"
+        },
+        {
+          "fileName": "global.ts",
+          "sourceText": "const policy = 'user';"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "global-type-namespace-local-motion-import",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace motion { interface Flags {} } }"
+        },
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { motion } from 'motion'; export const Card = () => <motion.div />;"
+        }
+      ]
+    },
+    {
+      "name": "global-namespace-nested-value",
+      "origin": "handwritten-global-type-namespace",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "types.d.ts",
+          "sourceText": "export {}; declare global { namespace RuntimeSettings { namespace Nested { const mode: string; } } }"
+        },
+        {
+          "fileName": "app.ts",
+          "sourceText": "import { animate } from 'motion'; animate();"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-named-interface",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { Item } from 'widgets'; interface Item { value: string } import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-interface-named",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "interface Item { value: string } import { Item } from 'widgets'; import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-aliased-type-alias",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { Widget as Item } from 'widgets'; type Item = { value: string }; import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-type-alias-aliased",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "type Item = { value: string }; import { Widget as Item } from 'widgets'; import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-parent-type-function",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import type { Item } from 'widgets'; function Item() { return <div />; } import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-function-parent-type",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "function Item() { return <div />; } import type { Item } from 'widgets'; import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-aliased-parent-type-function",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import type { Widget as Item } from 'widgets'; function Item() { return <div />; } import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-named-function",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { Item } from 'widgets'; function Item() { return <div />; } import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-specifier-type-function",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { type Item } from 'widgets'; function Item() { return <div />; } import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-named-interface-positive",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { Item } from 'widgets'; interface Item {} import { motion } from 'motion'; export const Card = () => <><Item /><motion.div /></>;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-named-interface-handled",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { Item } from 'widgets'; interface Item {} import { motion, useReducedMotion } from 'motion'; const reduced = useReducedMotion(); export const Card = () => <><Item /><motion.div /></>;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-parent-type-function-positive",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import type { Item } from 'widgets'; function Item() { return <div />; } import { motion } from 'motion'; export const Card = () => <><Item /><motion.div /></>;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-multiple-types",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { Item } from 'widgets'; interface Item { first: string } interface Item { second: number } import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-default-interface",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import Item from 'widgets'; interface Item {} import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-default-type-function",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import type Item from 'widgets'; function Item() { return <div />; } import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-namespace-interface",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import * as Item from 'widgets'; interface Item {} import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-relative-interface",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { Item } from './helpers'; interface Item {} import { motion } from 'motion'; export const Card = () => <Item />;"
+        },
+        {
+          "fileName": "helpers.ts",
+          "sourceText": "export { motion as Item } from 'motion';"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-relative-function",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { Item } from './helpers'; function Item() { return <div />; } import { motion } from 'motion'; export const Card = () => <Item />;"
+        },
+        {
+          "fileName": "helpers.ts",
+          "sourceText": "import { motion } from 'motion'; export const Item = motion.div;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-motion-interface",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { motion as Item } from 'motion'; interface Item {} export const Card = () => <Item.div />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-motion-function",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { motion as Item } from 'motion'; function Item() { return <div />; } export const Card = () => <Item.div />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-bare-variable",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { Item } from 'widgets'; import { motion } from 'motion'; const Item = motion.div; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-bare-class",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { Item } from 'widgets'; class Item {} import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-bare-namespace",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { Item } from 'widgets'; namespace Item { export const value = 'user'; } import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-bare-duplicate-import",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "unsupported",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import { Item } from 'widgets'; import { Other as Item } from 'other-widgets'; import { motion } from 'motion'; export const Card = () => <Item />;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-type-import-module-name-motion-prefix",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import type { Item } from 'motion-extra'; function Item() { return <div />; } import { motion } from 'motion'; export const Card = () => <><Item /><motion.div /></>;"
+        }
+      ]
+    },
+    {
+      "name": "empty-bare-import-merge-function-body-motion",
+      "origin": "handwritten-import-merge",
+      "expectedNativeStatus": "exact",
+      "sources": [
+        {
+          "fileName": "app.tsx",
+          "sourceText": "import type { Item } from 'widgets'; import { motion } from 'motion'; function Item() { return <motion.div />; } export const Card = () => <Item />;"
+        }
+      ]
     }
   ]
 }

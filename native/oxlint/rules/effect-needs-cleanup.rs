@@ -209,6 +209,9 @@ fn effect_cleanup_check_effect<'a>(effect_call: &'a CallExpression<'a>, ctx: &Li
             effect_cleanup_has_returned_release(usage, callback_id, execution_function_ids, ctx);
         let is_deferred_timer = usage.kind == ResourceKind::Timer
             && effect_cleanup_nearest_function_id(usage.node_id, ctx) != Some(callback_id)
+            && !effect_cleanup_nearest_function_id(usage.node_id, ctx).is_some_and(|owner_id| {
+                effect_cleanup_single_direct_invocation(owner_id, callback_id, ctx).is_some()
+            })
             && !effect_cleanup_mapped_resource_collection_symbol(
                 ctx.nodes().get_node(usage.node_id),
                 ctx,
@@ -414,14 +417,14 @@ fn effect_cleanup_effect_invocations(
             continue;
         };
         for effect_child in ctx.nodes().iter() {
+            let AstKind::CallExpression(call) = effect_child.kind() else {
+                continue;
+            };
             if effect_cleanup_nearest_function_id(effect_child.id(), ctx) != Some(callback_id)
                 || !effect_cleanup_node_is_reachable(effect_child, callback_id, ctx)
             {
                 continue;
             }
-            let AstKind::CallExpression(call) = effect_child.kind() else {
-                continue;
-            };
             if effect_cleanup_retained_function_id(&call.callee, ctx, &mut FxHashSet::default())
                 == Some(function_id)
             {
@@ -590,15 +593,8 @@ fn effect_cleanup_invocation_parameter_values(
     let leak_start = ctx.nodes().get_node(leak_node_id).span().start;
     let mut parameter_values = FxHashMap::default();
     for (parameter_index, parameter) in parameters.items.iter().enumerate() {
-        let (binding, default_value) = match &parameter.pattern {
-            BindingPattern::BindingIdentifier(binding) => (binding, None),
-            BindingPattern::AssignmentPattern(assignment) => {
-                let BindingPattern::BindingIdentifier(binding) = &assignment.left else {
-                    continue;
-                };
-                (binding, Some(&assignment.right))
-            }
-            _ => continue,
+        let BindingPattern::BindingIdentifier(binding) = &parameter.pattern else {
+            continue;
         };
         let mut parameter_value = match call.arguments.get(parameter_index) {
             None => EffectCleanupInvocationValue {
@@ -614,7 +610,7 @@ fn effect_cleanup_invocation_parameter_values(
             ),
         };
         if parameter_value.is_definitely_undefined
-            && let Some(default_value) = default_value
+            && let Some(default_value) = &parameter.initializer
         {
             parameter_value = effect_cleanup_invocation_value(default_value, ctx);
         }
@@ -1169,6 +1165,7 @@ fn effect_cleanup_retained_function_binding_symbol_id(
 ) -> Option<SymbolId> {
     let node = ctx.nodes().get_node(function_id);
     if let AstKind::Function(function) = node.kind()
+        && function.r#type == FunctionType::FunctionDeclaration
         && let Some(identifier) = &function.id
     {
         return Some(identifier.symbol_id());
@@ -1746,7 +1743,7 @@ fn effect_cleanup_releases_previous_handle(usage: &ResourceUsage, ctx: &LintCont
             candidate,
             owner_id,
             usage,
-            &FxHashMap::default(),
+            &EffectCleanupParameterContext::default(),
             ctx,
         )
         .unwrap_or(candidate);
@@ -1766,19 +1763,20 @@ fn effect_cleanup_call_or_helper_releases_usage<'a>(
             .is_some_and(|helper_id| {
                 !effect_cleanup_function_is_async(helper_id, ctx)
                     && !effect_cleanup_function_is_generator(helper_id, ctx)
-                    && effect_cleanup_helper_parameter_keys(
+                    && effect_cleanup_helper_parameter_context(
                         helper_id,
                         call,
-                        &FxHashMap::default(),
+                        &EffectCleanupParameterContext::default(),
                         ctx,
                     )
-                    .is_some_and(|parameter_keys| {
-                        effect_cleanup_function_releases_usage_with_parameter_keys(
+                    .is_some_and(|parameter_context| {
+                        effect_cleanup_function_releases_usage_with_parameter_context(
                             helper_id,
                             usage,
                             ctx,
                             &mut FxHashSet::default(),
-                            &parameter_keys,
+                            &parameter_context,
+                            true,
                         )
                     })
             })
@@ -1829,7 +1827,7 @@ fn effect_cleanup_has_live_handle_overwrite_protection(
                     candidate,
                     owner_id,
                     usage,
-                    &FxHashMap::default(),
+                    &EffectCleanupParameterContext::default(),
                     ctx,
                 )
                 .unwrap_or(candidate)
@@ -2143,18 +2141,35 @@ fn effect_cleanup_execution_function_ids(
     let mut pending = vec![(root_function_id, true)];
     while let Some((function_id, follows_direct_calls)) = pending.pop() {
         for candidate in ctx.nodes().iter() {
-            if effect_cleanup_nearest_function_id(candidate.id(), ctx) != Some(function_id) {
-                continue;
-            }
             let AstKind::CallExpression(call) = candidate.kind() else {
                 continue;
             };
+            if effect_cleanup_nearest_function_id(candidate.id(), ctx) != Some(function_id) {
+                continue;
+            }
             if follows_direct_calls {
                 if let Some(called_function_id) = effect_cleanup_exact_local_function_id(
                     &call.callee,
                     ctx,
                     &mut FxHashSet::default(),
                 ) && Some(called_function_id) != excluded_function_id
+                    && match call.callee.get_inner_expression() {
+                        Expression::Identifier(identifier) => ctx
+                            .scoping()
+                            .get_reference(identifier.reference_id())
+                            .symbol_id()
+                            .is_some_and(|symbol_id| {
+                                matches!(ctx.symbol_declaration(symbol_id).kind(),
+                                AstKind::VariableDeclarator(declaration)
+                                    if declaration.init.as_ref().is_some_and(|initializer| {
+                                        initializer.get_inner_expression().span()
+                                            == ctx.nodes().get_node(called_function_id).span()
+                                    }))
+                            }),
+                        Expression::FunctionExpression(_)
+                        | Expression::ArrowFunctionExpression(_) => true,
+                        _ => false,
+                    }
                     && !matches!(
                         ctx.nodes().get_node(called_function_id).kind(),
                         AstKind::Function(function) if function.r#type == FunctionType::FunctionDeclaration
@@ -2506,6 +2521,12 @@ fn effect_cleanup_collect_usages(
     let cleanup_function_ids = effect_cleanup_returned_cleanup_function_ids(callback_id, ctx);
     let mut usages = Vec::new();
     for candidate in ctx.nodes().iter() {
+        if !matches!(
+            candidate.kind(),
+            AstKind::CallExpression(_) | AstKind::NewExpression(_)
+        ) {
+            continue;
+        }
         let Some(owner_id) = effect_cleanup_nearest_function_id(candidate.id(), ctx) else {
             continue;
         };
@@ -3028,11 +3049,39 @@ fn effect_cleanup_has_safe_timer_handle_writes(
                 return false;
             };
             effect_cleanup_call_or_helper_releases_usage(candidate.id(), call, usage, ctx)
-        }).collect::<Vec<_>>();
+        }).map(|candidate| ctx.nodes().get_node(effect_cleanup_safe_reset_expression_anchor(candidate.id(), ctx))).collect::<Vec<_>>();
         effect_cleanup_nodes_cover_every_path_before_node(
             assignment_node, &release_nodes, ctx.nodes().get_node(owner_id), ctx,
         )
     })
+}
+
+fn effect_cleanup_safe_reset_expression_anchor(
+    release_node_id: NodeId,
+    ctx: &LintContext<'_>,
+) -> NodeId {
+    let mut anchor_id = release_node_id;
+    loop {
+        let parent = ctx.nodes().parent_node(anchor_id);
+        let kind = parent.kind();
+        if kind.is_statement()
+            || kind.is_declaration()
+            || kind.is_function_like()
+            || matches!(
+                kind,
+                AstKind::Program(_)
+                    | AstKind::FunctionBody(_)
+                    | AstKind::FormalParameters(_)
+                    | AstKind::FormalParameter(_)
+                    | AstKind::CatchClause(_)
+                    | AstKind::SwitchCase(_)
+                    | AstKind::StaticBlock(_)
+            )
+        {
+            return anchor_id;
+        }
+        anchor_id = parent.id();
+    }
 }
 
 fn effect_cleanup_mapped_resource_collection_symbol<'a>(
@@ -3405,6 +3454,10 @@ fn effect_cleanup_has_owned_nested_timer_cleanup(
     {
         return false;
     }
+    let usage_root_id = effect_cleanup_transparent_root_node_id(usage.node_id, ctx);
+    let require_exhaustive_paths = matches!(ctx.nodes().parent_node(usage_root_id).kind(),
+        AstKind::AssignmentExpression(assignment)
+            if matches!(assignment.left, oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(_)));
     let returns = effect_cleanup_return_expressions(callback_id, ctx)
         .into_iter()
         .filter(|expression| {
@@ -3414,10 +3467,28 @@ fn effect_cleanup_has_owned_nested_timer_cleanup(
                     usage,
                     execution_function_ids,
                     ctx,
+                    require_exhaustive_paths,
                 )
         })
         .collect::<Vec<_>>();
-    if returns.is_empty() {
+    let cleanup_exhaustively_releases_usage = |expression, candidate_usage| {
+        effect_cleanup_exact_local_function_id(expression, ctx, &mut FxHashSet::default())
+            .is_some_and(|cleanup_function_id| {
+                effect_cleanup_function_releases_usage_with_parameter_context(
+                    cleanup_function_id,
+                    candidate_usage,
+                    ctx,
+                    &mut FxHashSet::default(),
+                    &EffectCleanupParameterContext::default(),
+                    true,
+                )
+            })
+    };
+    if returns.is_empty()
+        || !returns
+            .iter()
+            .all(|expression| cleanup_exhaustively_releases_usage(expression, usage))
+    {
         return false;
     }
     if effect_cleanup_is_timer_callback_for_same_handle(owner_id, usage, usages, ctx) {
@@ -3449,6 +3520,12 @@ fn effect_cleanup_has_owned_nested_timer_cleanup(
             {
                 return false;
             }
+            if !returns
+                .iter()
+                .all(|expression| cleanup_exhaustively_releases_usage(expression, candidate))
+            {
+                return false;
+            }
             let matching_returns = ctx
                 .nodes()
                 .iter()
@@ -3457,9 +3534,6 @@ fn effect_cleanup_has_owned_nested_timer_cleanup(
                         && matches!(node.kind(), AstKind::ReturnStatement(statement)
                         if statement.argument.as_ref().is_some_and(|argument| {
                             returns.iter().any(|expression| expression.span() == argument.span())
-                                && effect_cleanup_return_expression_releases_usage(
-                                    argument, candidate, execution_function_ids, ctx,
-                                )
                         }))
                 })
                 .collect::<Vec<_>>();
@@ -4885,10 +4959,46 @@ fn effect_cleanup_assignment_target_key(
     }
 }
 
+#[derive(Default)]
+struct EffectCleanupSubstitutionCache {
+    resolved_keys: FxHashMap<SymbolId, Option<String>>,
+    cycle_count: usize,
+}
+
+#[derive(Clone, Copy)]
+enum EffectCleanupImmediateParameterValue {
+    Boolean(bool),
+    OmittedOptional,
+}
+
+#[derive(Clone, Default)]
+struct EffectCleanupParameterContext {
+    keys: FxHashMap<SymbolId, String>,
+    immediate_values: FxHashMap<SymbolId, EffectCleanupImmediateParameterValue>,
+}
+
 fn effect_cleanup_expression_key(
     expression: &Expression<'_>,
     ctx: &LintContext<'_>,
     visited_symbol_ids: &mut FxHashSet<SymbolId>,
+) -> Option<String> {
+    effect_cleanup_substituted_expression_key(
+        expression,
+        ctx,
+        visited_symbol_ids,
+        &FxHashMap::default(),
+        &FxHashMap::default(),
+        &mut EffectCleanupSubstitutionCache::default(),
+    )
+}
+
+fn effect_cleanup_substituted_expression_key(
+    expression: &Expression<'_>,
+    ctx: &LintContext<'_>,
+    visited_symbol_ids: &mut FxHashSet<SymbolId>,
+    parameter_keys: &FxHashMap<SymbolId, String>,
+    parameter_substitutions: &FxHashMap<SymbolId, &Expression<'_>>,
+    substitution_cache: &mut EffectCleanupSubstitutionCache,
 ) -> Option<String> {
     match expression.get_inner_expression() {
         Expression::Identifier(identifier) => {
@@ -4900,14 +5010,45 @@ fn effect_cleanup_expression_key(
                 return Some(format!("global:{}", identifier.name));
             };
             if !visited_symbol_ids.insert(symbol_id) {
+                substitution_cache.cycle_count += 1;
                 return Some(format!("symbol:{symbol_id:?}"));
+            }
+            if let Some(substitution) = parameter_substitutions.get(&symbol_id) {
+                if let Some(key) = substitution_cache.resolved_keys.get(&symbol_id) {
+                    return key.clone();
+                }
+                let cycle_count = substitution_cache.cycle_count;
+                let key = effect_cleanup_substituted_expression_key(
+                    substitution,
+                    ctx,
+                    visited_symbol_ids,
+                    parameter_keys,
+                    parameter_substitutions,
+                    substitution_cache,
+                );
+                if substitution_cache.cycle_count == cycle_count {
+                    substitution_cache
+                        .resolved_keys
+                        .insert(symbol_id, key.clone());
+                }
+                return key;
+            }
+            if let Some(parameter_key) = parameter_keys.get(&symbol_id) {
+                return Some(parameter_key.clone());
             }
             if let AstKind::VariableDeclarator(declarator) =
                 ctx.symbol_declaration(symbol_id).kind()
                 && let Some(property_name) =
                     binding_property_name_for_symbol(&declarator.id, symbol_id)
                 && let Some(object_key) = declarator.init.as_ref().and_then(|initializer| {
-                    effect_cleanup_expression_key(initializer, ctx, visited_symbol_ids)
+                    effect_cleanup_substituted_expression_key(
+                        initializer,
+                        ctx,
+                        visited_symbol_ids,
+                        parameter_keys,
+                        parameter_substitutions,
+                        substitution_cache,
+                    )
                 })
             {
                 return Some(format!("{object_key}.{property_name}"));
@@ -4920,8 +5061,14 @@ fn effect_cleanup_expression_key(
                         | Expression::StaticMemberExpression(_)
                         | Expression::ComputedMemberExpression(_)
                 )
-                && let Some(key) =
-                    effect_cleanup_expression_key(initializer, ctx, visited_symbol_ids)
+                && let Some(key) = effect_cleanup_substituted_expression_key(
+                    initializer,
+                    ctx,
+                    visited_symbol_ids,
+                    parameter_keys,
+                    parameter_substitutions,
+                    substitution_cache,
+                )
             {
                 return Some(key);
             }
@@ -4931,8 +5078,14 @@ fn effect_cleanup_expression_key(
         expression if expression.as_member_expression().is_some() => {
             let member = expression.as_member_expression()?;
             let property_name = effect_cleanup_resolved_member_name(member, ctx)?;
-            let object_key =
-                effect_cleanup_expression_key(member.object(), ctx, visited_symbol_ids)?;
+            let object_key = effect_cleanup_substituted_expression_key(
+                member.object(),
+                ctx,
+                visited_symbol_ids,
+                parameter_keys,
+                parameter_substitutions,
+                substitution_cache,
+            )?;
             Some(format!("{object_key}.{property_name}"))
         }
         Expression::StringLiteral(literal) => Some(format!("string:{}", literal.value)),
@@ -5056,13 +5209,10 @@ fn effect_cleanup_replayable_for_of_collection_key(
     has_only_append_and_replay_references.then(|| format!("symbol:{symbol_id:?}"))
 }
 
-fn effect_cleanup_direct_exhaustive_for_of_release_anchor(
-    release_node: &AstNode<'_>,
+fn effect_cleanup_release_for_of_statement_id(
+    call: &CallExpression<'_>,
     ctx: &LintContext<'_>,
 ) -> Option<NodeId> {
-    let AstKind::CallExpression(call) = release_node.kind() else {
-        return None;
-    };
     let receiver = call
         .callee
         .get_inner_expression()
@@ -5075,7 +5225,17 @@ fn effect_cleanup_direct_exhaustive_for_of_release_anchor(
         .scoping()
         .get_reference(identifier.reference_id())
         .symbol_id()?;
-    let for_of_id = effect_cleanup_for_of_iterator_statement_id(symbol_id, ctx)?;
+    effect_cleanup_for_of_iterator_statement_id(symbol_id, ctx)
+}
+
+fn effect_cleanup_direct_exhaustive_for_of_release_anchor(
+    release_node: &AstNode<'_>,
+    ctx: &LintContext<'_>,
+) -> Option<NodeId> {
+    let AstKind::CallExpression(call) = release_node.kind() else {
+        return None;
+    };
+    let for_of_id = effect_cleanup_release_for_of_statement_id(call, ctx)?;
     let for_of_node = ctx.nodes().get_node(for_of_id);
     let AstKind::ForOfStatement(for_of_statement) = for_of_node.kind() else {
         return None;
@@ -5618,22 +5778,30 @@ fn effect_cleanup_has_returned_release(
         return true;
     }
     let mut path_anchor = ctx.nodes().get_node(usage.node_id);
-    if usage.kind == ResourceKind::Socket
-        && let Some(owner_id) = effect_cleanup_nearest_function_id(usage.node_id, ctx)
+    if let Some(owner_id) = effect_cleanup_nearest_function_id(usage.node_id, ctx)
         && owner_id != callback_id
-        && effect_cleanup_retained_function_binding_symbol_id(owner_id, ctx).is_some()
     {
-        let Some(invocation_id) =
+        if let Some(invocation_id) =
             effect_cleanup_single_direct_invocation(owner_id, callback_id, ctx)
-        else {
+        {
+            path_anchor = ctx.nodes().get_node(invocation_id);
+        } else if usage.kind == ResourceKind::Socket
+            && effect_cleanup_retained_function_binding_symbol_id(owner_id, ctx).is_some()
+        {
             return false;
-        };
-        path_anchor = ctx.nodes().get_node(invocation_id);
+        }
     }
     let returned_expressions = effect_cleanup_return_expressions(callback_id, ctx);
     if returned_expressions.is_empty() {
         return false;
     }
+    let usage_root_id = effect_cleanup_transparent_root_node_id(usage.node_id, ctx);
+    let require_exhaustive_paths = usage.kind == ResourceKind::Timer
+        && effect_cleanup_nearest_function_id(usage.node_id, ctx) != Some(callback_id)
+        && matches!(ctx.nodes().parent_node(usage_root_id).kind(),
+            AstKind::AssignmentExpression(assignment)
+                if matches!(assignment.left, oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(_)))
+        && effect_cleanup_nested_timer_storage_symbol(usage, callback_id, ctx).is_some();
     let mut matching_return_spans = Vec::new();
     for expression in returned_expressions {
         if expression.span().start < usage.span.start {
@@ -5644,6 +5812,7 @@ fn effect_cleanup_has_returned_release(
             usage,
             execution_function_ids,
             ctx,
+            require_exhaustive_paths,
         ) {
             matching_return_spans.push(expression.span());
         }
@@ -5827,6 +5996,7 @@ fn effect_cleanup_returned_release_covers_function_entry(
                 usage,
                 execution_function_ids,
                 ctx,
+                false,
             )
         })
         .map(Expression::span)
@@ -5854,6 +6024,7 @@ fn effect_cleanup_return_expression_releases_usage<'a>(
     usage: &ResourceUsage,
     execution_function_ids: &FxHashSet<NodeId>,
     ctx: &LintContext<'a>,
+    require_exhaustive_paths: bool,
 ) -> bool {
     if effect_cleanup_bound_release_matches(expression, usage, ctx) {
         return true;
@@ -5894,11 +6065,13 @@ fn effect_cleanup_return_expression_releases_usage<'a>(
     if execution_function_ids.contains(&cleanup_function_id) {
         return false;
     }
-    effect_cleanup_function_releases_usage(
+    effect_cleanup_function_releases_usage_with_parameter_context(
         cleanup_function_id,
         usage,
         ctx,
         &mut FxHashSet::default(),
+        &EffectCleanupParameterContext::default(),
+        require_exhaustive_paths,
     )
 }
 
@@ -6100,59 +6273,74 @@ fn effect_cleanup_function_releases_usage(
     ctx: &LintContext<'_>,
     visited_function_ids: &mut FxHashSet<NodeId>,
 ) -> bool {
-    effect_cleanup_function_releases_usage_with_parameter_keys(
+    effect_cleanup_function_releases_usage_with_parameter_context(
         cleanup_function_id,
         usage,
         ctx,
         visited_function_ids,
-        &FxHashMap::default(),
+        &EffectCleanupParameterContext::default(),
+        false,
     )
 }
 
-fn effect_cleanup_function_releases_usage_with_parameter_keys(
+fn effect_cleanup_function_releases_usage_with_parameter_context(
     cleanup_function_id: NodeId,
     usage: &ResourceUsage,
     ctx: &LintContext<'_>,
     visited_function_ids: &mut FxHashSet<NodeId>,
-    parameter_keys: &FxHashMap<SymbolId, String>,
+    parameter_context: &EffectCleanupParameterContext,
+    require_exhaustive_paths: bool,
 ) -> bool {
     if !visited_function_ids.insert(cleanup_function_id) {
         return false;
     }
+    let parameter_keys = &parameter_context.keys;
+    let cleanup_function = ctx.nodes().get_node(cleanup_function_id);
+    let body_span = match cleanup_function.kind() {
+        AstKind::Function(function) => function.body.as_ref().map(|body| body.span),
+        AstKind::ArrowFunctionExpression(function) => Some(function.body.span()),
+        _ => None,
+    };
+    let Some(body_span) = body_span else {
+        return false;
+    };
     let mut matching_release_nodes = Vec::new();
+    let mut matching_helper_nodes = Vec::new();
     for candidate in ctx.nodes().iter() {
-        if effect_cleanup_nearest_function_id(candidate.id(), ctx) != Some(cleanup_function_id) {
-            continue;
-        }
         let AstKind::CallExpression(call) = candidate.kind() else {
             continue;
         };
+        if candidate.span().start < body_span.start
+            || candidate.span().end > body_span.end
+            || effect_cleanup_nearest_function_id(candidate.id(), ctx) != Some(cleanup_function_id)
+        {
+            continue;
+        }
         let is_collection_cleanup =
             effect_cleanup_is_direct_timer_collection_cleanup(candidate, usage, ctx);
         if is_collection_cleanup
             || effect_cleanup_release_call_matches(candidate.id(), call, usage, ctx, parameter_keys)
         {
-            if is_collection_cleanup
-                && effect_cleanup_mapped_resource_collection_symbol(
-                    ctx.nodes().get_node(usage.node_id),
-                    ctx,
-                )
-                .is_some()
-            {
+            if is_collection_cleanup && !require_exhaustive_paths {
                 return true;
             }
-            if let Some(for_of_anchor_id) =
-                effect_cleanup_direct_exhaustive_for_of_release_anchor(candidate, ctx)
-            {
-                matching_release_nodes.push(ctx.nodes().get_node(for_of_anchor_id));
+            if effect_cleanup_release_for_of_statement_id(call, ctx).is_some() {
+                if let Some(for_of_anchor_id) =
+                    effect_cleanup_direct_exhaustive_for_of_release_anchor(candidate, ctx)
+                {
+                    matching_helper_nodes.push(ctx.nodes().get_node(for_of_anchor_id));
+                }
                 continue;
+            }
+            if !require_exhaustive_paths {
+                return true;
             }
             matching_release_nodes.push(
                 effect_cleanup_live_handle_guard(
                     candidate,
                     cleanup_function_id,
                     usage,
-                    parameter_keys,
+                    parameter_context,
                     ctx,
                 )
                 .or_else(|| {
@@ -6183,110 +6371,237 @@ fn effect_cleanup_function_releases_usage_with_parameter_keys(
                     .is_some_and(|callback_id| {
                         !effect_cleanup_function_is_async(callback_id, ctx)
                             && !effect_cleanup_function_is_generator(callback_id, ctx)
-                            && effect_cleanup_function_releases_usage_with_parameter_keys(
+                            && effect_cleanup_function_releases_usage_with_parameter_context(
                                 callback_id,
                                 usage,
                                 ctx,
                                 &mut visited_function_ids.clone(),
-                                parameter_keys,
+                                parameter_context,
+                                require_exhaustive_paths,
                             )
                     })
             })
         {
-            return true;
+            matching_helper_nodes.push(candidate);
+            continue;
         }
         let Some(helper_function_id) =
             effect_cleanup_exact_local_function_id(&call.callee, ctx, &mut FxHashSet::default())
         else {
             continue;
         };
-        if effect_cleanup_node_is_unconditional_from(candidate, cleanup_function_id, ctx)
-            && !effect_cleanup_has_earlier_await(cleanup_function_id, candidate.span().start, ctx)
-            && effect_cleanup_helper_parameter_keys(helper_function_id, call, parameter_keys, ctx)
-                .is_some_and(|helper_parameter_keys| {
-                    !effect_cleanup_function_is_async(helper_function_id, ctx)
-                        && !effect_cleanup_function_is_generator(helper_function_id, ctx)
-                        && effect_cleanup_function_releases_usage_with_parameter_keys(
-                            helper_function_id,
-                            usage,
-                            ctx,
-                            &mut visited_function_ids.clone(),
-                            &helper_parameter_keys,
-                        )
-                })
+        if effect_cleanup_helper_parameter_context(helper_function_id, call, parameter_context, ctx)
+            .is_some_and(|helper_parameter_context| {
+                !effect_cleanup_function_is_async(helper_function_id, ctx)
+                    && !effect_cleanup_function_is_generator(helper_function_id, ctx)
+                    && effect_cleanup_function_releases_usage_with_parameter_context(
+                        helper_function_id,
+                        usage,
+                        ctx,
+                        &mut visited_function_ids.clone(),
+                        &helper_parameter_context,
+                        require_exhaustive_paths,
+                    )
+            })
         {
-            return true;
+            matching_helper_nodes.push(
+                effect_cleanup_live_handle_guard(
+                    candidate,
+                    cleanup_function_id,
+                    usage,
+                    parameter_context,
+                    ctx,
+                )
+                .or_else(|| {
+                    effect_cleanup_correlated_usage_guard(
+                        candidate,
+                        cleanup_function_id,
+                        usage,
+                        ctx,
+                    )
+                })
+                .unwrap_or(candidate),
+            );
         }
     }
-    if usage.kind == ResourceKind::Subscribe && !matching_release_nodes.is_empty() {
-        return true;
-    }
-    matching_release_nodes.iter().any(|node| {
-        effect_cleanup_node_is_unconditional_from(node, cleanup_function_id, ctx)
-            && !effect_cleanup_has_earlier_await(cleanup_function_id, node.span().start, ctx)
-    }) || effect_cleanup_nodes_cover_if_branches(cleanup_function_id, &matching_release_nodes, ctx)
+    matching_release_nodes.extend(matching_helper_nodes);
+    let coverage_nodes =
+        effect_cleanup_expression_coverage_nodes(cleanup_function_id, &matching_release_nodes, ctx);
+    do_nodes_cover_every_path_after_node(cleanup_function, &coverage_nodes, cleanup_function, ctx)
 }
 
-fn effect_cleanup_helper_parameter_keys(
+fn effect_cleanup_expression_coverage_nodes<'a, 'ctx>(
+    function_id: NodeId,
+    matching_nodes: &[&'ctx AstNode<'a>],
+    ctx: &'ctx LintContext<'a>,
+) -> Vec<&'ctx AstNode<'a>> {
+    let mut pending_nodes = matching_nodes.to_vec();
+    let mut visited_nodes = matching_nodes
+        .iter()
+        .map(|node| node.id())
+        .collect::<FxHashSet<_>>();
+    let mut covered_conditional_branches = FxHashMap::<NodeId, (bool, bool)>::default();
+    let mut coverage_nodes = Vec::new();
+    while let Some(candidate) = pending_nodes.pop() {
+        let mut coverage_node = candidate;
+        let mut child_span = candidate.span();
+        let mut is_blocked = false;
+        for ancestor in ctx.nodes().ancestors(candidate.id()) {
+            if ancestor.id() == function_id {
+                break;
+            }
+            match ancestor.kind() {
+                AstKind::AssignmentPattern(assignment) if assignment.right.span() == child_span => {
+                    is_blocked = true;
+                    break;
+                }
+                AstKind::AssignmentTargetWithDefault(assignment)
+                    if assignment.init.span() == child_span =>
+                {
+                    is_blocked = true;
+                    break;
+                }
+                AstKind::AssignmentTargetPropertyIdentifier(property)
+                    if property
+                        .init
+                        .as_ref()
+                        .is_some_and(|initializer| initializer.span() == child_span) =>
+                {
+                    is_blocked = true;
+                    break;
+                }
+                AstKind::LogicalExpression(logical) if logical.right.span() == child_span => {
+                    let static_left =
+                        read_static_boolean_expression(final_sequence_expression(&logical.left));
+                    if !matches!(
+                        (logical.operator.as_str(), static_left),
+                        ("&&", Some(true)) | ("||", Some(false))
+                    ) {
+                        is_blocked = true;
+                        break;
+                    }
+                    coverage_node = ancestor;
+                }
+                AstKind::ConditionalExpression(conditional)
+                    if conditional.consequent.span() == child_span
+                        || conditional.alternate.span() == child_span =>
+                {
+                    let is_consequent = conditional.consequent.span() == child_span;
+                    if let Some(static_test) =
+                        read_static_boolean_expression(final_sequence_expression(&conditional.test))
+                    {
+                        if static_test != is_consequent {
+                            is_blocked = true;
+                            break;
+                        }
+                        coverage_node = ancestor;
+                    } else {
+                        let branches = covered_conditional_branches
+                            .entry(ancestor.id())
+                            .or_default();
+                        branches.0 |= is_consequent;
+                        branches.1 |= !is_consequent;
+                        if branches.0 && branches.1 && visited_nodes.insert(ancestor.id()) {
+                            pending_nodes.push(ancestor);
+                        }
+                        is_blocked = true;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            child_span = ancestor.span();
+        }
+        if !is_blocked {
+            coverage_nodes.push(coverage_node);
+        }
+    }
+    coverage_nodes
+}
+
+fn effect_cleanup_helper_parameter_context(
     function_id: NodeId,
     call: &CallExpression<'_>,
-    inherited_parameter_keys: &FxHashMap<SymbolId, String>,
+    inherited_parameter_context: &EffectCleanupParameterContext,
     ctx: &LintContext<'_>,
-) -> Option<FxHashMap<SymbolId, String>> {
+) -> Option<EffectCleanupParameterContext> {
     let parameters = match ctx.nodes().get_node(function_id).kind() {
         AstKind::Function(function) => &function.params,
         AstKind::ArrowFunctionExpression(function) => &function.params,
         _ => return None,
     };
-    let mut parameter_keys = inherited_parameter_keys.clone();
+    let mut parameter_context = inherited_parameter_context.clone();
+    let mut parameter_substitutions = FxHashMap::default();
     for (parameter_index, parameter) in parameters.items.iter().enumerate() {
-        let (binding, default_value) = match &parameter.pattern {
-            BindingPattern::BindingIdentifier(binding) => (binding, None),
-            BindingPattern::AssignmentPattern(assignment) => {
-                let BindingPattern::BindingIdentifier(binding) = &assignment.left else {
-                    continue;
-                };
-                (binding, Some(&assignment.right))
-            }
-            _ => continue,
+        let BindingPattern::BindingIdentifier(binding) = &parameter.pattern else {
+            continue;
         };
         if effect_cleanup_symbol_has_write(binding.symbol_id(), ctx) {
             return None;
         }
-        let argument_key = call
-            .arguments
-            .get(parameter_index)
-            .and_then(Argument::as_expression)
-            .and_then(|argument| {
-                effect_cleanup_expression_key_with_parameter_keys(
-                    argument,
-                    ctx,
-                    inherited_parameter_keys,
-                )
-            })
-            .or_else(|| {
-                default_value.and_then(|default_value| {
-                    effect_cleanup_expression_key_with_parameter_keys(
-                        default_value,
-                        ctx,
-                        inherited_parameter_keys,
-                    )
-                })
-            });
-        if let Some(argument_key) = argument_key {
-            parameter_keys.insert(binding.symbol_id(), argument_key);
+        let argument = match call.arguments.get(parameter_index) {
+            Some(argument) => argument.as_expression(),
+            None => parameter.initializer.as_deref(),
+        };
+        if let Some(argument) = argument {
+            parameter_substitutions.insert(binding.symbol_id(), argument);
+            if let Expression::BooleanLiteral(literal) = argument.get_inner_expression() {
+                parameter_context.immediate_values.insert(
+                    binding.symbol_id(),
+                    EffectCleanupImmediateParameterValue::Boolean(literal.value),
+                );
+            } else {
+                parameter_context
+                    .immediate_values
+                    .remove(&binding.symbol_id());
+            }
+        } else if call.arguments.get(parameter_index).is_none() && parameter.optional {
+            parameter_context.immediate_values.insert(
+                binding.symbol_id(),
+                EffectCleanupImmediateParameterValue::OmittedOptional,
+            );
         }
     }
-    Some(parameter_keys)
+    let mut substitution_cache = EffectCleanupSubstitutionCache::default();
+    for (&symbol_id, &argument) in &parameter_substitutions {
+        let argument_key = if let Some(key) = substitution_cache.resolved_keys.get(&symbol_id) {
+            key.clone()
+        } else {
+            let mut visited_symbol_ids = FxHashSet::default();
+            visited_symbol_ids.insert(symbol_id);
+            let cycle_count = substitution_cache.cycle_count;
+            let key = effect_cleanup_substituted_expression_key(
+                argument,
+                ctx,
+                &mut visited_symbol_ids,
+                &inherited_parameter_context.keys,
+                &parameter_substitutions,
+                &mut substitution_cache,
+            );
+            if substitution_cache.cycle_count == cycle_count {
+                substitution_cache
+                    .resolved_keys
+                    .insert(symbol_id, key.clone());
+            }
+            key
+        };
+        if let Some(argument_key) = argument_key {
+            parameter_context.keys.insert(symbol_id, argument_key);
+        } else {
+            parameter_context.keys.remove(&symbol_id);
+        }
+    }
+    Some(parameter_context)
 }
 
 fn effect_cleanup_live_handle_guard<'a, 'ctx>(
     release_node: &'ctx AstNode<'a>,
     owner_function_id: NodeId,
     usage: &ResourceUsage,
-    parameter_keys: &FxHashMap<SymbolId, String>,
+    parameter_context: &EffectCleanupParameterContext,
     ctx: &'ctx LintContext<'a>,
 ) -> Option<&'ctx AstNode<'a>> {
+    let parameter_keys = &parameter_context.keys;
     let mut guarded_resource_keys = usage
         .handle_key
         .iter()
@@ -6299,10 +6614,11 @@ fn effect_cleanup_live_handle_guard<'a, 'ctx>(
     if guarded_resource_keys.is_empty() {
         return None;
     }
+    let mut live_guard = None;
     let mut descendant_span = release_node.span();
     for ancestor in ctx.nodes().ancestors(release_node.id()) {
         if ancestor.id() == owner_function_id {
-            return None;
+            break;
         }
         match ancestor.kind() {
             AstKind::IfStatement(statement)
@@ -6319,7 +6635,8 @@ fn effect_cleanup_live_handle_guard<'a, 'ctx>(
                         )
                     }) =>
             {
-                return Some(ancestor);
+                live_guard = Some(ancestor);
+                break;
             }
             AstKind::LogicalExpression(expression)
                 if expression.operator == oxc_syntax::operator::LogicalOperator::And
@@ -6333,13 +6650,255 @@ fn effect_cleanup_live_handle_guard<'a, 'ctx>(
                         )
                     }) =>
             {
-                return Some(ancestor);
+                live_guard = Some(ancestor);
+                break;
             }
             _ => {}
         }
         descendant_span = ancestor.span();
     }
-    None
+    let Some(handle_key) = usage.handle_key.as_deref() else {
+        return live_guard;
+    };
+    let body = match ctx.nodes().kind(owner_function_id) {
+        AstKind::Function(function) => function.body.as_ref().map(|body| &body.statements),
+        AstKind::ArrowFunctionExpression(function) => match &function.body {
+            oxc_ast::ast::ArrowFunctionBody::FunctionBody(body) => Some(&body.statements),
+            _ => None,
+        },
+        _ => None,
+    };
+    let Some(body) = body else {
+        return live_guard;
+    };
+    let release_span = live_guard.unwrap_or(release_node).span();
+    let Some(release_index) = body
+        .iter()
+        .position(|statement| statement.span().contains_inclusive(release_span))
+    else {
+        return live_guard;
+    };
+    let preceding_guard = body[..release_index].iter().rev().find_map(|statement| {
+        if let oxc_ast::ast::Statement::IfStatement(statement) = statement
+            && statement.alternate.is_none()
+            && effect_cleanup_guard_statement_is_early_exit(&statement.consequent)
+            && effect_cleanup_test_rejects_live_handle(
+                &statement.test,
+                handle_key,
+                parameter_context,
+                ctx,
+            )
+        {
+            Some(ctx.nodes().get_node(statement.node_id()))
+        } else {
+            None
+        }
+    });
+    let Some(preceding_guard) = preceding_guard else {
+        return live_guard;
+    };
+    if let Some(enclosing_if) = ctx
+        .nodes()
+        .ancestors(release_node.id())
+        .take_while(|ancestor| ancestor.id() != owner_function_id)
+        .find(|ancestor| matches!(ancestor.kind(), AstKind::IfStatement(_)))
+        && let AstKind::IfStatement(statement) = enclosing_if.kind()
+    {
+        if !effect_cleanup_guard_test_requires_live_handle(
+            &statement.test,
+            handle_key,
+            parameter_keys,
+            ctx,
+        ) || !statement
+            .consequent
+            .span()
+            .contains_inclusive(release_node.span())
+        {
+            return live_guard;
+        }
+        let coverage_nodes =
+            effect_cleanup_expression_coverage_nodes(owner_function_id, &[release_node], ctx);
+        if !do_nodes_cover_every_path_after_node(
+            ctx.nodes().get_node(statement.consequent.node_id()),
+            &coverage_nodes,
+            ctx.nodes().get_node(owner_function_id),
+            ctx,
+        ) {
+            return live_guard;
+        }
+    }
+    Some(preceding_guard)
+}
+
+fn effect_cleanup_guard_statement_is_early_exit(statement: &oxc_ast::ast::Statement<'_>) -> bool {
+    if statement_always_exits(statement) {
+        return true;
+    }
+    match statement {
+        oxc_ast::ast::Statement::BlockStatement(block) => block
+            .body
+            .last()
+            .is_some_and(effect_cleanup_guard_statement_is_early_exit),
+        oxc_ast::ast::Statement::ContinueStatement(_)
+        | oxc_ast::ast::Statement::BreakStatement(_) => true,
+        _ => false,
+    }
+}
+
+fn effect_cleanup_test_rejects_live_handle(
+    expression: &Expression<'_>,
+    handle_key: &str,
+    parameter_context: &EffectCleanupParameterContext,
+    ctx: &LintContext<'_>,
+) -> bool {
+    if effect_cleanup_test_is_false_from_omitted_parameter(expression, parameter_context, ctx) {
+        return true;
+    }
+    let parameter_keys = &parameter_context.keys;
+    let matches_handle_or_parent = |key: &str| {
+        key == handle_key
+            || handle_key
+                .strip_prefix(key)
+                .is_some_and(|suffix| suffix.starts_with('.'))
+    };
+    match expression.get_inner_expression() {
+        Expression::Identifier(identifier) => ctx
+            .scoping()
+            .get_reference(identifier.reference_id())
+            .symbol_id()
+            .and_then(|symbol_id| parameter_context.immediate_values.get(&symbol_id))
+            .is_some_and(|value| {
+                matches!(value, EffectCleanupImmediateParameterValue::Boolean(false))
+            }),
+        Expression::UnaryExpression(unary)
+            if unary.operator == oxc_syntax::operator::UnaryOperator::LogicalNot =>
+        {
+            if let Expression::Identifier(identifier) = unary.argument.get_inner_expression()
+                && ctx
+                    .scoping()
+                    .get_reference(identifier.reference_id())
+                    .symbol_id()
+                    .and_then(|symbol_id| parameter_context.immediate_values.get(&symbol_id))
+                    .is_some_and(|value| {
+                        matches!(value, EffectCleanupImmediateParameterValue::Boolean(true))
+                    })
+            {
+                return true;
+            }
+            effect_cleanup_guard_test_requires_live_handle(
+                &unary.argument,
+                handle_key,
+                parameter_keys,
+                ctx,
+            )
+        }
+        Expression::LogicalExpression(logical) => {
+            let left_rejects = effect_cleanup_test_rejects_live_handle(
+                &logical.left,
+                handle_key,
+                parameter_context,
+                ctx,
+            );
+            let right_rejects = effect_cleanup_test_rejects_live_handle(
+                &logical.right,
+                handle_key,
+                parameter_context,
+                ctx,
+            );
+            match logical.operator.as_str() {
+                "||" => left_rejects || right_rejects,
+                "&&" => left_rejects && right_rejects,
+                _ => false,
+            }
+        }
+        Expression::BinaryExpression(binary)
+            if matches!(binary.operator.as_str(), "==" | "===") =>
+        {
+            effect_cleanup_guard_nullish_comparison_key(binary, parameter_keys, ctx)
+                .as_deref()
+                .is_some_and(matches_handle_or_parent)
+        }
+        _ => false,
+    }
+}
+
+fn effect_cleanup_guard_test_requires_live_handle(
+    expression: &Expression<'_>,
+    handle_key: &str,
+    parameter_keys: &FxHashMap<SymbolId, String>,
+    ctx: &LintContext<'_>,
+) -> bool {
+    if effect_cleanup_expression_key_with_parameter_keys(expression, ctx, parameter_keys)
+        .as_deref()
+        .is_some_and(|key| {
+            key == handle_key
+                || handle_key
+                    .strip_prefix(key)
+                    .is_some_and(|suffix| suffix.starts_with('.'))
+        })
+    {
+        return true;
+    }
+    matches!(expression.get_inner_expression(), Expression::BinaryExpression(binary)
+        if matches!(binary.operator.as_str(), "!=" | "!==")
+            && effect_cleanup_guard_nullish_comparison_key(binary, parameter_keys, ctx).as_deref()
+                == Some(handle_key))
+}
+
+fn effect_cleanup_guard_nullish_comparison_key(
+    binary: &oxc_ast::ast::BinaryExpression<'_>,
+    parameter_keys: &FxHashMap<SymbolId, String>,
+    ctx: &LintContext<'_>,
+) -> Option<String> {
+    let is_nullish_operand = |operand: &Expression<'_>| {
+        matches!(
+            operand.get_inner_expression(),
+            Expression::NullLiteral(_) | Expression::Identifier(_)
+        ) && effect_cleanup_is_nullish_expression(operand, ctx)
+    };
+    let compared = if is_nullish_operand(&binary.left) {
+        &binary.right
+    } else if is_nullish_operand(&binary.right) {
+        &binary.left
+    } else {
+        return None;
+    };
+    effect_cleanup_expression_key_with_parameter_keys(compared, ctx, parameter_keys)
+}
+
+fn effect_cleanup_test_is_false_from_omitted_parameter(
+    expression: &Expression<'_>,
+    parameter_context: &EffectCleanupParameterContext,
+    ctx: &LintContext<'_>,
+) -> bool {
+    match expression.get_inner_expression() {
+        Expression::Identifier(identifier) => ctx
+            .scoping()
+            .get_reference(identifier.reference_id())
+            .symbol_id()
+            .and_then(|symbol_id| parameter_context.immediate_values.get(&symbol_id))
+            .is_some_and(|value| {
+                matches!(value, EffectCleanupImmediateParameterValue::OmittedOptional)
+            }),
+        Expression::LogicalExpression(logical) => {
+            let left_is_false = effect_cleanup_test_is_false_from_omitted_parameter(
+                &logical.left,
+                parameter_context,
+                ctx,
+            );
+            let right_is_false = effect_cleanup_test_is_false_from_omitted_parameter(
+                &logical.right,
+                parameter_context,
+                ctx,
+            );
+            if logical.operator == oxc_syntax::operator::LogicalOperator::And {
+                left_is_false || right_is_false
+            } else {
+                left_is_false && right_is_false
+            }
+        }
+        _ => false,
+    }
 }
 
 fn effect_cleanup_correlated_usage_guard<'a, 'ctx>(
@@ -7166,31 +7725,14 @@ fn effect_cleanup_expression_key_with_parameter_keys(
     ctx: &LintContext<'_>,
     parameter_keys: &FxHashMap<SymbolId, String>,
 ) -> Option<String> {
-    match expression.get_inner_expression() {
-        Expression::Identifier(identifier) => {
-            let symbol_id = ctx
-                .scoping()
-                .get_reference(identifier.reference_id())
-                .symbol_id();
-            if let Some(parameter_key) =
-                symbol_id.and_then(|symbol_id| parameter_keys.get(&symbol_id))
-            {
-                return Some(parameter_key.clone());
-            }
-            effect_cleanup_expression_key(expression, ctx, &mut FxHashSet::default())
-        }
-        expression if expression.as_member_expression().is_some() => {
-            let member = expression.as_member_expression()?;
-            let receiver_key = effect_cleanup_expression_key_with_parameter_keys(
-                member.object(),
-                ctx,
-                parameter_keys,
-            )?;
-            let property_name = effect_cleanup_resolved_member_name(member, ctx)?;
-            Some(format!("{receiver_key}.{property_name}"))
-        }
-        _ => effect_cleanup_expression_key(expression, ctx, &mut FxHashSet::default()),
-    }
+    effect_cleanup_substituted_expression_key(
+        expression,
+        ctx,
+        &mut FxHashSet::default(),
+        parameter_keys,
+        &FxHashMap::default(),
+        &mut EffectCleanupSubstitutionCache::default(),
+    )
 }
 
 fn effect_cleanup_return_expressions<'a>(

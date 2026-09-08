@@ -1457,6 +1457,7 @@ impl Rule for ${delegatedRule.struct} {
           "binding_property_name_for_symbol",
           "can_node_reach_later_node_within_function",
           "do_nodes_cover_every_path_after_node",
+          "get_static_jsx_descendant_opening_elements",
           "is_node_reachable_within_function",
           "statement_always_exits",
           "static_literal_truthiness",

@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
-import * as fs from "node:fs";
+import fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { MINIFIED_MIN_SIZE_BYTES } from "../src/project-info/constants.js";
 import {
   listSourceFiles,
@@ -19,6 +19,7 @@ describe("listSourceFilesWithSize", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   });
 
@@ -91,6 +92,21 @@ describe("listSourceFilesWithSize", () => {
     await expect(
       listSourceFilesCooperative(temporaryDirectory, abortController.signal),
     ).rejects.toBeDefined();
+  });
+
+  it("preserves a null cancellation reason during Git discovery without a filesystem fallback", async () => {
+    writeFile("App.tsx", "export const App = () => null;\n");
+    const filesystemWalk = vi.spyOn(fs, "readdirSync");
+    const abortController = new AbortController();
+    const discovery = listSourceFilesWithSizeCooperative(
+      temporaryDirectory,
+      abortController.signal,
+    );
+
+    abortController.abort(null);
+
+    await expect(discovery).rejects.toBeNull();
+    expect(filesystemWalk).not.toHaveBeenCalled();
   });
 
   const writeNestedFile = (relativePath: string, contents: string): void => {
@@ -220,6 +236,9 @@ describe("listSourceFilesWithSize", () => {
     expect(filePaths).not.toContain("packages/vendor/src/library.ts");
     expect(filePaths).toContain("packages/source/src/app.tsx");
     await expect(listSourceFilesCooperative(temporaryDirectory)).resolves.toEqual(filePaths);
+    await expect(listSourceFilesWithSizeCooperative(temporaryDirectory)).resolves.toEqual(
+      listSourceFilesWithSize(temporaryDirectory),
+    );
   });
 
   it("git discovery lists a file with unresolved conflicts once", () => {

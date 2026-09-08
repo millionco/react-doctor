@@ -907,7 +907,7 @@ impl Rule for ExhaustiveDeps {
                 || !is_boolean_guard_dependency(dependency, ctx)
         });
 
-        replace_derived_dependencies(
+        let terminal_mutable_dependencies = replace_derived_dependencies(
             &mut found_dependencies,
             &declared_dependencies,
             ctx,
@@ -919,6 +919,7 @@ impl Rule for ExhaustiveDeps {
         }
         add_aggregate_props_dependency(
             &mut found_dependencies,
+            &terminal_mutable_dependencies,
             &declared_dependencies,
             &callback_node,
             should_use_curated_port_behavior(ctx),
@@ -931,7 +932,7 @@ impl Rule for ExhaustiveDeps {
             found_dependencies.insert(forced_callback_dependency);
         }
 
-        let mut undeclared_deps = found_dependencies
+        let mut missing_candidates = found_dependencies
             .difference(&declared_dependencies)
             .filter(|dep| {
                 // `foo.current` reads should be attributed to `foo` when `foo` is also tracked.
@@ -972,9 +973,26 @@ impl Rule for ExhaustiveDeps {
                 }
                 true
             })
+            .cloned()
             .collect::<Vec<_>>();
-        undeclared_deps
+        missing_candidates.extend(
+            terminal_mutable_dependencies
+                .iter()
+                .filter(|dependency| {
+                    !declared_dependencies
+                        .iter()
+                        .any(|declared| dependency.contains(declared))
+                })
+                .cloned(),
+        );
+        missing_candidates
             .sort_unstable_by_key(|dependency| (dependency.span.start, dependency.span.end));
+        if !terminal_mutable_dependencies.is_empty() {
+            let mut missing_keys = FxHashSet::default();
+            missing_candidates.retain(|dependency| missing_keys.insert(dependency.to_string()));
+        }
+        found_dependencies.extend(terminal_mutable_dependencies);
+        let undeclared_deps = missing_candidates.iter().collect::<Vec<_>>();
 
         if undeclared_deps.is_empty() {
             for dependency in &declared_dependencies {
@@ -2509,22 +2527,12 @@ fn forwarded_parameter_bindings<'a, 'b>(
             BindingPattern::BindingIdentifier(binding) => {
                 bindings.push(ForwardedParameterBinding {
                     binding,
-                    default_value: None,
+                    default_value: parameter.initializer.as_deref(),
                     parameter_index,
                     property_name: None,
                 })
             }
-            BindingPattern::AssignmentPattern(assignment) => {
-                if let BindingPattern::BindingIdentifier(binding) = &assignment.left {
-                    bindings.push(ForwardedParameterBinding {
-                        binding,
-                        default_value: Some(&assignment.right),
-                        parameter_index,
-                        property_name: None,
-                    });
-                }
-            }
-            BindingPattern::ObjectPattern(object) => {
+            BindingPattern::ObjectPattern(object) if parameter.initializer.is_none() => {
                 for property in &object.properties {
                     let Some(property_name) = property.key.static_name() else {
                         continue;
@@ -2559,8 +2567,15 @@ fn forwarded_parameter_source<'a, 'b>(
     parameter: &ForwardedParameterBinding<'a, 'b>,
     ctx: &'b LintContext<'a>,
 ) -> Option<(&'b Expression<'a>, Span)> {
+    if call
+        .arguments
+        .iter()
+        .take(parameter.parameter_index + 1)
+        .any(|argument| matches!(argument, Argument::SpreadElement(_)))
+    {
+        return None;
+    }
     let argument = match call.arguments.get(parameter.parameter_index) {
-        Some(Argument::SpreadElement(_)) => return None,
         Some(argument) => argument.as_expression(),
         None => None,
     };
@@ -2916,7 +2931,7 @@ impl<'a> From<&IdentifierReference<'a>> for Name<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Dependency<'a> {
     span: Span,
     name: Str<'a>,
@@ -3015,10 +3030,12 @@ fn replace_derived_dependencies<'a>(
     declared_dependencies: &FxHashSet<Dependency<'a>>,
     ctx: &LintContext<'a>,
     component_scope_id: ScopeId,
-) {
+) -> FxHashSet<Dependency<'a>> {
     let mut pending = std::mem::take(found_dependencies);
     let mut rewritten = FxHashSet::default();
+    let mut terminal_mutable_dependencies = FxHashSet::default();
     let mut remaining_passes = pending.len().saturating_add(1);
+    let mut is_original_capture_pass = true;
     while remaining_passes > 0 {
         remaining_passes -= 1;
         let mut did_rewrite = false;
@@ -3028,9 +3045,16 @@ fn replace_derived_dependencies<'a>(
         for dependency in ordered_pending {
             let source_dependencies = (!declared_dependencies.contains(&dependency)
                 && dependency.chain.is_empty())
-            .then(|| derived_source_dependencies(&dependency, ctx, component_scope_id))
+            .then(|| {
+                derived_source_dependencies(
+                    &dependency,
+                    ctx,
+                    component_scope_id,
+                    is_original_capture_pass,
+                )
+            })
             .flatten();
-            if let Some(source_dependencies) = source_dependencies {
+            if let Some((source_dependencies, is_terminal_mutable)) = source_dependencies {
                 let mut source_dependencies = source_dependencies.into_iter().collect::<Vec<_>>();
                 source_dependencies.sort_unstable_by_key(|source| source.span.start);
                 for (source_index, mut source_dependency) in
@@ -3040,9 +3064,13 @@ fn replace_derived_dependencies<'a>(
                         dependency.span.start,
                         dependency.span.start.saturating_add(source_index as u32),
                     );
-                    rewritten.insert(source_dependency);
+                    if is_terminal_mutable {
+                        terminal_mutable_dependencies.insert(source_dependency);
+                    } else {
+                        rewritten.insert(source_dependency);
+                    }
                 }
-                did_rewrite = true;
+                did_rewrite |= !is_terminal_mutable;
             } else {
                 rewritten.insert(dependency);
             }
@@ -3050,23 +3078,33 @@ fn replace_derived_dependencies<'a>(
         if !did_rewrite {
             break;
         }
+        is_original_capture_pass = false;
         pending = std::mem::take(&mut rewritten);
     }
     rewritten.extend(pending);
     *found_dependencies = rewritten;
+    terminal_mutable_dependencies
 }
 
 fn derived_source_dependencies<'a>(
     dependency: &Dependency<'a>,
     ctx: &LintContext<'a>,
     component_scope_id: ScopeId,
-) -> Option<FxHashSet<Dependency<'a>>> {
+    is_original_capture: bool,
+) -> Option<(FxHashSet<Dependency<'a>>, bool)> {
     let symbol_id = dependency.symbol_id?;
     if let Some(dependencies) = pure_called_function_dependencies(dependency, symbol_id, ctx) {
-        return Some(dependencies);
+        return Some((dependencies, false));
     }
-    if let Some(dependencies) = render_derived_mutable_dependencies(dependency, symbol_id, ctx) {
-        return Some(dependencies);
+    let symbol_scope = ctx.scoping().symbol_scope_id(symbol_id);
+    if is_original_capture
+        && (symbol_scope == component_scope_id
+            || ctx
+                .scoping()
+                .scope_is_descendant_of(symbol_scope, component_scope_id))
+        && let Some(dependencies) = render_derived_mutable_dependencies(dependency, symbol_id, ctx)
+    {
+        return Some((dependencies, true));
     }
     if ctx.scoping().symbol_scope_id(symbol_id) != component_scope_id
         || ctx
@@ -3117,7 +3155,7 @@ fn derived_source_dependencies<'a>(
     visitor
         .found_dependencies
         .retain(|source| source.symbol_id != Some(symbol_id));
-    Some(visitor.found_dependencies)
+    Some((visitor.found_dependencies, false))
 }
 
 fn render_derived_mutable_dependencies<'a>(
@@ -3150,6 +3188,9 @@ fn render_derived_mutable_dependencies<'a>(
     {
         return None;
     }
+    if mutable_source_symbol_is_stable(symbol_id, ctx) {
+        return None;
+    }
     let boundary_function = get_enclosing_function(declarator_node, ctx)?;
     let captured_reference = ctx.nodes().get_node(
         ctx.scoping()
@@ -3160,20 +3201,20 @@ fn render_derived_mutable_dependencies<'a>(
     if capturing_function.id() == boundary_function.id() {
         return None;
     }
-    let mut dependencies = FxHashSet::default();
+    let mut dependencies = Vec::new();
     if let Some(initializer) = &declarator.init {
-        if !is_mutable_derived_expression(initializer, ctx) {
-            return None;
-        }
-        collect_expression_dependencies(initializer, symbol_id, ctx, &mut dependencies);
+        dependencies.extend(mutable_derived_expression_dependencies(
+            initializer,
+            ctx,
+            &mut FxHashSet::from_iter([symbol_id]),
+        )?);
     }
     let mut write_count = 0;
     for reference in ctx.semantic().symbol_references(symbol_id) {
         let reference_node = ctx.nodes().get_node(reference.node_id());
         if !reference.is_write() {
-            if capturing_function
-                .span()
-                .contains_inclusive(reference_node.span())
+            if get_enclosing_function(reference_node, ctx).map(AstNode::id)
+                == Some(capturing_function.id())
                 || is_read_only_initial_state_argument(reference_node, ctx)
             {
                 continue;
@@ -3189,15 +3230,17 @@ fn render_derived_mutable_dependencies<'a>(
             || assignment.left.span() != reference_root.span()
             || get_enclosing_function(assignment_node, ctx).map(AstNode::id)
                 != Some(boundary_function.id())
-            || !is_mutable_derived_expression(&assignment.right, ctx)
         {
             return None;
         }
-        collect_expression_dependencies(&assignment.right, symbol_id, ctx, &mut dependencies);
+        dependencies.extend(mutable_derived_expression_dependencies(
+            &assignment.right,
+            ctx,
+            &mut FxHashSet::from_iter([symbol_id]),
+        )?);
         if !collect_assignment_control_dependencies(
             assignment_node,
             boundary_function,
-            symbol_id,
             ctx,
             &mut dependencies,
         ) {
@@ -3205,7 +3248,19 @@ fn render_derived_mutable_dependencies<'a>(
         }
         write_count += 1;
     }
-    (write_count > 0 && !dependencies.is_empty()).then_some(dependencies)
+    if write_count == 0 || dependencies.is_empty() {
+        return None;
+    }
+    let mut sources = FxHashSet::default();
+    let mut source_keys = FxHashSet::default();
+    for (index, mut dependency) in dependencies.into_iter().enumerate() {
+        if !source_keys.insert(dependency.to_string()) {
+            continue;
+        }
+        dependency.span = Span::new(index as u32, index as u32);
+        sources.insert(dependency);
+    }
+    Some(sources)
 }
 
 fn is_read_only_initial_state_argument<'a>(reference: &AstNode<'a>, ctx: &LintContext<'a>) -> bool {
@@ -3220,45 +3275,575 @@ fn is_read_only_initial_state_argument<'a>(reference: &AstNode<'a>, ctx: &LintCo
         && exhaustive_deps_is_react_api_call(call, "useState", ctx)
 }
 
-fn is_mutable_derived_expression(expression: &Expression<'_>, ctx: &LintContext<'_>) -> bool {
-    if is_identity_derived_expression(expression) {
-        return true;
+fn mutable_source_symbol_is_stable(symbol_id: SymbolId, ctx: &LintContext<'_>) -> bool {
+    mutable_source_symbol_is_stable_impl(symbol_id, ctx, &mut FxHashSet::default())
+}
+
+fn mutable_source_hook_name<'a, 'b>(
+    call: &'b CallExpression<'a>,
+    ctx: &LintContext<'a>,
+) -> Option<Cow<'b, str>> {
+    if let Expression::Identifier(identifier) = call.callee.get_inner_expression()
+        && let Some(entry) = resolve_identifier_import(identifier, ctx)
+        && entry.module_request.name() == "react"
+        && let crate::module_record::ImportImportName::Name(imported_name) = &entry.import_name
+    {
+        return Some(Cow::Owned(imported_name.name().to_string()));
     }
-    let Expression::NewExpression(new_expression) = expression.get_inner_expression() else {
+    call_name(call).map(Cow::Borrowed)
+}
+
+fn mutable_source_property_is_current(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::StringLiteral(property) => property.value == "current",
+        Expression::TemplateLiteral(template) if template.expressions.is_empty() => {
+            template.quasis.first().is_some_and(|quasi| {
+                quasi
+                    .value
+                    .cooked
+                    .as_ref()
+                    .map_or(quasi.value.raw.as_str(), |value| value.as_str())
+                    == "current"
+            })
+        }
+        _ => false,
+    }
+}
+
+fn mutable_source_is_lazy_ref(initializer: &Expression<'_>, ctx: &LintContext<'_>) -> bool {
+    let Expression::AssignmentExpression(initialization) = initializer else {
         return false;
     };
-    let Expression::Identifier(callee) = new_expression.callee.get_inner_expression() else {
+    if initialization.operator.as_str() != "??=" {
+        return false;
+    }
+    let receiver = match &initialization.left {
+        oxc_ast::ast::AssignmentTarget::StaticMemberExpression(member)
+            if member.property.name == "current" =>
+        {
+            &member.object
+        }
+        oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(member)
+            if mutable_source_property_is_current(&member.expression) =>
+        {
+            &member.object
+        }
+        _ => return false,
+    };
+    let Expression::Identifier(identifier) = receiver.get_inner_expression() else {
         return false;
     };
-    callee.name == "Error"
-        && ctx.is_reference_to_global_variable(callee)
-        && new_expression.arguments.iter().all(|argument| {
-            argument
-                .as_expression()
-                .is_some_and(is_pure_derived_expression)
+    let Some(symbol_id) = ctx
+        .scoping()
+        .get_reference(identifier.reference_id())
+        .symbol_id()
+    else {
+        return false;
+    };
+    let symbol_id = resolve_stable_symbol_id(symbol_id, ctx, &mut FxHashSet::default());
+    let AstKind::VariableDeclarator(declarator) = ctx.symbol_declaration(symbol_id).kind() else {
+        return false;
+    };
+    if variable_declaration_kind(declarator, ctx).is_const()
+        && !matches!(&declarator.id, BindingPattern::BindingIdentifier(binding) if binding.symbol_id() == symbol_id)
+    {
+        return false;
+    }
+    let Some(Expression::CallExpression(call)) = declarator
+        .init
+        .as_ref()
+        .map(Expression::get_inner_expression)
+    else {
+        return false;
+    };
+    if !exhaustive_deps_is_react_api_call(call, "useRef", ctx) {
+        return false;
+    }
+    if let Expression::Identifier(callee) = call.callee.get_inner_expression()
+        && !ctx
+            .scoping()
+            .get_reference(callee.reference_id())
+            .symbol_id()
+            .is_some_and(|symbol| {
+                matches!(
+                    ctx.symbol_declaration(symbol).kind(),
+                    AstKind::ImportSpecifier(_)
+                )
+            })
+    {
+        return false;
+    }
+    ctx.semantic()
+        .symbol_references(symbol_id)
+        .all(|reference| {
+            let identifier = ctx.nodes().get_node(reference.node_id());
+            let identifier_root = transparent_expression_root(identifier, ctx);
+            let member = ctx.nodes().parent_node(identifier_root.id());
+            let is_current = match member.kind() {
+                AstKind::StaticMemberExpression(member) => {
+                    member.property.name == "current"
+                        && member.object.get_inner_expression().span() == identifier.span()
+                }
+                AstKind::ComputedMemberExpression(member) => {
+                    mutable_source_property_is_current(&member.expression)
+                        && member.object.get_inner_expression().span() == identifier.span()
+                }
+                _ => false,
+            };
+            if !is_current {
+                return false;
+            }
+            let mut current = transparent_expression_root(member, ctx);
+            loop {
+                let parent = ctx.nodes().parent_node(current.id());
+                return match parent.kind() {
+                    AstKind::AssignmentExpression(assignment)
+                        if assignment.left.span() == current.span() =>
+                    {
+                        assignment.span == initialization.span
+                    }
+                    AstKind::UpdateExpression(update)
+                        if update.argument.span() == current.span() =>
+                    {
+                        false
+                    }
+                    AstKind::UnaryExpression(unary)
+                        if unary.operator.as_str() == "delete"
+                            && unary.argument.span() == current.span() =>
+                    {
+                        false
+                    }
+                    AstKind::ForInStatement(statement)
+                        if statement.left.span() == current.span() =>
+                    {
+                        false
+                    }
+                    AstKind::ForOfStatement(statement)
+                        if statement.left.span() == current.span() =>
+                    {
+                        false
+                    }
+                    AstKind::ArrayAssignmentTarget(_) | AstKind::ObjectAssignmentTarget(_) => {
+                        current = parent;
+                        continue;
+                    }
+                    AstKind::AssignmentTargetRest(rest) if rest.target.span() == current.span() => {
+                        current = parent;
+                        continue;
+                    }
+                    AstKind::AssignmentTargetWithDefault(default)
+                        if default.binding.span() == current.span() =>
+                    {
+                        current = parent;
+                        continue;
+                    }
+                    AstKind::AssignmentTargetPropertyProperty(property)
+                        if property.binding.span() == current.span() =>
+                    {
+                        current = parent;
+                        continue;
+                    }
+                    _ => true,
+                };
+            }
         })
 }
 
-fn collect_expression_dependencies<'a>(
-    expression: &Expression<'a>,
-    excluded_symbol_id: SymbolId,
+fn mutable_source_symbol_is_stable_impl<'a>(
+    symbol_id: SymbolId,
     ctx: &LintContext<'a>,
-    dependencies: &mut FxHashSet<Dependency<'a>>,
-) {
-    let mut visitor = ExhaustiveDepsVisitor::new(ctx.semantic());
-    visitor.visit_expression(expression);
-    visitor
-        .found_dependencies
-        .retain(|dependency| dependency.symbol_id != Some(excluded_symbol_id));
-    dependencies.extend(visitor.found_dependencies);
+    visited: &mut FxHashSet<SymbolId>,
+) -> bool {
+    let symbol_scope = ctx.scoping().symbol_scope_id(symbol_id);
+    if !ctx
+        .scoping()
+        .scope_ancestors(symbol_scope)
+        .any(|scope| ctx.scoping().scope_flags(scope).is_function())
+    {
+        return true;
+    }
+    let declaration = ctx.symbol_declaration(symbol_id);
+    let declarator = std::iter::once(declaration)
+        .chain(ctx.nodes().ancestors(declaration.id()))
+        .take_while(|owner| {
+            !matches!(
+                owner.kind(),
+                AstKind::Function(_) | AstKind::ArrowFunctionExpression(_)
+            )
+        })
+        .find_map(|owner| match owner.kind() {
+            AstKind::VariableDeclarator(declarator) => Some(declarator),
+            _ => None,
+        });
+    let all_reads = ctx
+        .semantic()
+        .symbol_references(symbol_id)
+        .all(|reference| reference.is_read() && !reference.is_write());
+    let origin_declarator = std::iter::once(declaration)
+        .chain(ctx.nodes().ancestors(declaration.id()))
+        .find_map(|owner| match owner.kind() {
+            AstKind::VariableDeclarator(declarator) => Some(declarator),
+            _ => None,
+        });
+    let is_const = ctx.scoping().symbol_flags(symbol_id).is_const_variable();
+    let initializer = declarator
+        .and_then(|declarator| declarator.init.as_ref())
+        .or_else(|| parameter_default_initializer_for_symbol(symbol_id, ctx))
+        .map(Expression::get_inner_expression);
+    if all_reads
+        && let Some(declarator) = origin_declarator
+        && let Some(initializer) = declarator
+            .init
+            .as_ref()
+            .map(Expression::get_inner_expression)
+    {
+        if is_const
+            && (matches!(
+                initializer,
+                Expression::BooleanLiteral(_)
+                    | Expression::NullLiteral(_)
+                    | Expression::NumericLiteral(_)
+                    | Expression::StringLiteral(_)
+            ) || matches!(initializer, Expression::TemplateLiteral(template) if template.expressions.is_empty()))
+        {
+            return true;
+        }
+        if let Expression::CallExpression(call) = initializer
+            && let Some(hook_name) = mutable_source_hook_name(call, ctx)
+        {
+            if matches!(
+                hook_name.as_ref(),
+                "useRef"
+                    | "useEffectEvent"
+                    | "useEventCallback"
+                    | "useStableCallback"
+                    | "useMemoizedFn"
+                    | "usePersistFn"
+                    | "useLatestCallback"
+                    | "useCallbackRef"
+                    | "useEvent"
+            ) {
+                return true;
+            }
+            if matches!(
+                hook_name.as_ref(),
+                "useState" | "useReducer" | "useActionState" | "useTransition"
+            ) && let BindingPattern::ArrayPattern(array) = &declarator.id
+                && array
+                    .elements
+                    .get(1)
+                    .and_then(Option::as_ref)
+                    .and_then(BindingPattern::get_binding_identifier)
+                    .is_some_and(|binding| binding.symbol_id() == symbol_id)
+            {
+                return true;
+            }
+        }
+    }
+    if all_reads
+        && let Some(declarator) = declarator
+        && let Some(initializer) = initializer
+    {
+        if is_const
+            && declarator
+                .id
+                .get_binding_identifier()
+                .is_some_and(|binding| binding.symbol_id() == symbol_id)
+        {
+            if let Expression::Identifier(identifier) = initializer
+                && resolve_identifier_import(identifier, ctx).is_some()
+            {
+                return true;
+            }
+        }
+        if is_const && mutable_source_is_lazy_ref(initializer, ctx) {
+            return true;
+        }
+    }
+    if visited.contains(&symbol_id) {
+        return true;
+    }
+    let function_scope = match declaration.kind() {
+        AstKind::Function(function) => Some(function.scope_id()),
+        _ => match initializer {
+            Some(Expression::FunctionExpression(function)) => Some(function.scope_id()),
+            Some(Expression::ArrowFunctionExpression(function)) => Some(function.scope_id()),
+            _ => None,
+        },
+    };
+    if let Some(function_scope) = function_scope {
+        visited.insert(symbol_id);
+        let mut captures = MutableSourceCaptureVisitor {
+            semantic: ctx.semantic(),
+            function_scope,
+            symbols: Vec::new(),
+        };
+        match (declaration.kind(), initializer) {
+            (AstKind::Function(function), _) => {
+                captures.visit_function(function, ctx.scoping().scope_flags(function_scope))
+            }
+            (_, Some(Expression::FunctionExpression(function))) => {
+                captures.visit_function(function, ctx.scoping().scope_flags(function_scope))
+            }
+            (_, Some(Expression::ArrowFunctionExpression(function))) => {
+                captures.visit_arrow_function_expression(function)
+            }
+            _ => unreachable!(),
+        }
+        if captures.symbols.into_iter().all(|captured| {
+            captured == symbol_id || mutable_source_symbol_is_stable_impl(captured, ctx, visited)
+        }) {
+            return true;
+        }
+        visited.remove(&symbol_id);
+    }
+    if all_reads
+        && let Some(declarator) = declarator
+        && declarator
+            .id
+            .get_binding_identifier()
+            .is_some_and(|binding| binding.symbol_id() == symbol_id)
+        && let Some(Expression::CallExpression(call)) = initializer
+        && mutable_source_hook_name(call, ctx)
+            .is_some_and(|name| matches!(name.as_ref(), "useMemo" | "useCallback"))
+        && let Some(Expression::ArrayExpression(array)) = call
+            .arguments
+            .get(1)
+            .and_then(Argument::as_expression)
+            .map(Expression::get_inner_expression)
+    {
+        visited.insert(symbol_id);
+        let stable = array.elements.iter().all(|element| {
+            let Some(expression) = element
+                .as_expression()
+                .map(Expression::get_inner_expression)
+            else {
+                return false;
+            };
+            if expression.is_literal() {
+                return true;
+            }
+            let Expression::Identifier(identifier) = expression else {
+                return false;
+            };
+            ctx.scoping()
+                .get_reference(identifier.reference_id())
+                .symbol_id()
+                .is_some_and(|dependency| {
+                    mutable_source_symbol_is_stable_impl(dependency, ctx, visited)
+                })
+        });
+        if stable {
+            return true;
+        }
+        visited.remove(&symbol_id);
+    }
+    false
 }
 
+struct MutableSourceCaptureVisitor<'a, 'b> {
+    semantic: &'b Semantic<'a>,
+    function_scope: ScopeId,
+    symbols: Vec<SymbolId>,
+}
+
+impl<'a> VisitJs<'a> for MutableSourceCaptureVisitor<'a, '_> {
+    fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
+        if let Some(symbol_id) = self
+            .semantic
+            .scoping()
+            .get_reference(identifier.reference_id())
+            .symbol_id()
+        {
+            let scope = self.semantic.scoping().symbol_scope_id(symbol_id);
+            if scope != self.function_scope
+                && !self
+                    .semantic
+                    .scoping()
+                    .scope_is_descendant_of(scope, self.function_scope)
+            {
+                self.symbols.push(symbol_id);
+            }
+        }
+    }
+}
+
+fn mutable_derived_expression_dependencies<'a>(
+    expression: &Expression<'a>,
+    ctx: &LintContext<'a>,
+    visited: &mut FxHashSet<SymbolId>,
+) -> Option<Vec<Dependency<'a>>> {
+    let mut dependencies = Vec::new();
+    collect_mutable_derived_expression_dependencies(expression, ctx, visited, &mut dependencies)?;
+    Some(dependencies)
+}
+
+fn collect_mutable_derived_expression_dependencies<'a>(
+    expression: &Expression<'a>,
+    ctx: &LintContext<'a>,
+    visited: &mut FxHashSet<SymbolId>,
+    dependencies: &mut Vec<Dependency<'a>>,
+) -> Option<()> {
+    let expression = expression.get_inner_expression();
+    if expression.is_literal() {
+        return Some(());
+    }
+    match expression {
+        Expression::Identifier(identifier) => {
+            let Some(symbol_id) = ctx
+                .scoping()
+                .get_reference(identifier.reference_id())
+                .symbol_id()
+            else {
+                return Some(());
+            };
+            if mutable_source_symbol_is_stable(symbol_id, ctx) {
+                return Some(());
+            }
+            let declaration = ctx.symbol_declaration(symbol_id);
+            if let AstKind::VariableDeclarator(declarator) = declaration.kind()
+                && variable_declaration_kind(declarator, ctx).is_const()
+                && declarator
+                    .id
+                    .get_binding_identifier()
+                    .is_some_and(|binding| binding.symbol_id() == symbol_id)
+                && ctx
+                    .semantic()
+                    .symbol_references(symbol_id)
+                    .all(|reference| reference.is_read() && !reference.is_write())
+                && let Some(initializer) = &declarator.init
+                && visited.insert(symbol_id)
+            {
+                let sources = mutable_derived_expression_dependencies(initializer, ctx, visited);
+                visited.remove(&symbol_id);
+                if let Some(sources) = sources {
+                    dependencies.extend(sources);
+                    return Some(());
+                }
+            }
+            dependencies.push(analyze_property_chain(expression, ctx.semantic()).ok()??);
+        }
+        Expression::StaticMemberExpression(_) | Expression::ChainExpression(_) => {
+            let mut current = expression;
+            let mut chain = Vec::new();
+            loop {
+                current = current.get_inner_expression();
+                current = match current {
+                    Expression::StaticMemberExpression(member) => {
+                        chain.push(Str::from(member.property.name));
+                        &member.object
+                    }
+                    Expression::ChainExpression(optional) => match &optional.expression {
+                        ChainElement::StaticMemberExpression(member) => {
+                            chain.push(Str::from(member.property.name));
+                            &member.object
+                        }
+                        ChainElement::TSNonNullExpression(assertion) => &assertion.expression,
+                        _ => return None,
+                    },
+                    Expression::Identifier(_) => break,
+                    _ => return None,
+                };
+            }
+            chain.reverse();
+            let mut dependency = analyze_property_chain(current, ctx.semantic()).ok()??;
+            dependency.chain.extend(chain);
+            let symbol_id = dependency.symbol_id?;
+            if !mutable_source_symbol_is_stable(symbol_id, ctx) {
+                dependencies.push(dependency);
+            }
+        }
+        Expression::BinaryExpression(binary) => {
+            collect_mutable_derived_expression_dependencies(
+                &binary.left,
+                ctx,
+                visited,
+                dependencies,
+            )?;
+            collect_mutable_derived_expression_dependencies(
+                &binary.right,
+                ctx,
+                visited,
+                dependencies,
+            )?;
+        }
+        Expression::LogicalExpression(logical) => {
+            collect_mutable_derived_expression_dependencies(
+                &logical.left,
+                ctx,
+                visited,
+                dependencies,
+            )?;
+            collect_mutable_derived_expression_dependencies(
+                &logical.right,
+                ctx,
+                visited,
+                dependencies,
+            )?;
+        }
+        Expression::UnaryExpression(unary) if unary.operator.as_str() != "delete" => {
+            return collect_mutable_derived_expression_dependencies(
+                &unary.argument,
+                ctx,
+                visited,
+                dependencies,
+            );
+        }
+        Expression::ConditionalExpression(conditional) => {
+            collect_mutable_derived_expression_dependencies(
+                &conditional.test,
+                ctx,
+                visited,
+                dependencies,
+            )?;
+            collect_mutable_derived_expression_dependencies(
+                &conditional.consequent,
+                ctx,
+                visited,
+                dependencies,
+            )?;
+            collect_mutable_derived_expression_dependencies(
+                &conditional.alternate,
+                ctx,
+                visited,
+                dependencies,
+            )?;
+        }
+        Expression::TemplateLiteral(template) => {
+            for interpolation in &template.expressions {
+                collect_mutable_derived_expression_dependencies(
+                    interpolation,
+                    ctx,
+                    visited,
+                    dependencies,
+                )?;
+            }
+        }
+        Expression::NewExpression(constructor) => {
+            let Expression::Identifier(callee) = constructor.callee.get_inner_expression() else {
+                return None;
+            };
+            if callee.name != "Error" || !ctx.is_reference_to_global_variable(callee) {
+                return None;
+            }
+            for argument in &constructor.arguments {
+                collect_mutable_derived_expression_dependencies(
+                    argument.as_expression()?,
+                    ctx,
+                    visited,
+                    dependencies,
+                )?;
+            }
+        }
+        _ => return None,
+    }
+    Some(())
+}
 fn collect_assignment_control_dependencies<'a>(
     assignment: &AstNode<'a>,
     boundary_function: &AstNode<'a>,
-    excluded_symbol_id: SymbolId,
     ctx: &LintContext<'a>,
-    dependencies: &mut FxHashSet<Dependency<'a>>,
+    dependencies: &mut Vec<Dependency<'a>>,
 ) -> bool {
     let mut current = assignment;
     loop {
@@ -3267,20 +3852,21 @@ fn collect_assignment_control_dependencies<'a>(
             return true;
         }
         match parent.kind() {
-            AstKind::ExpressionStatement(_) | AstKind::BlockStatement(_) => {}
+            AstKind::ExpressionStatement(_)
+            | AstKind::BlockStatement(_)
+            | AstKind::FunctionBody(_) => {}
             AstKind::IfStatement(statement) => {
                 if statement.test.span() == current.span() {
                     return false;
                 }
-                if !is_mutable_derived_expression(&statement.test, ctx) {
-                    return false;
-                }
-                collect_expression_dependencies(
+                let Some(sources) = mutable_derived_expression_dependencies(
                     &statement.test,
-                    excluded_symbol_id,
                     ctx,
-                    dependencies,
-                );
+                    &mut FxHashSet::default(),
+                ) else {
+                    return false;
+                };
+                dependencies.extend(sources);
             }
             _ => return false,
         }
@@ -3536,15 +4122,21 @@ fn contains_computed_member(expression: &Expression<'_>) -> bool {
 
 fn add_aggregate_props_dependency<'a>(
     found_dependencies: &mut FxHashSet<Dependency<'a>>,
+    terminal_mutable_dependencies: &FxHashSet<Dependency<'a>>,
     declared_dependencies: &FxHashSet<Dependency<'a>>,
     callback: &CallbackNode<'a>,
     curated_behavior: bool,
     ctx: &LintContext<'a>,
 ) {
-    let props_dependencies = found_dependencies
+    let mut props_dependencies = found_dependencies
         .iter()
+        .chain(terminal_mutable_dependencies.iter())
         .filter(|dependency| dependency.name == "props" && !dependency.chain.is_empty())
         .collect::<Vec<_>>();
+    if !terminal_mutable_dependencies.is_empty() {
+        let mut property_keys = FxHashSet::default();
+        props_dependencies.retain(|dependency| property_keys.insert(dependency.to_string()));
+    }
     if props_dependencies.len() < 2
         || declared_dependencies
             .iter()

@@ -215,6 +215,23 @@ const jsxCandidateCases = (): JsxCandidateParityCase[] => [
   { name: "empty", source: "", expectedCandidateCount: 0 },
   { name: "plain source", source: "export const count = 3;", expectedCandidateCount: 0 },
   { name: "self closing", source: "export const View = () => <div />;", expectedCandidateCount: 1 },
+  ...[
+    [
+      "duplicate constructors",
+      "class Container { constructor() {} constructor(value: number) {} }",
+    ],
+    ["duplicate private fields", "class Container { #entry = 1; #entry = 2; }"],
+    ["unbound private name", "class Container { value() { return this.#missing; } }"],
+    ["invalid super context", "function helper() { return super.value; }"],
+    ["duplicate lexical bindings", "const shared = 1; const shared = 2;"],
+    ["duplicate import bindings", "import { first as shared, second as shared } from 'other';"],
+    ["unresolved label", "function helper() { break missing; }"],
+    ["semantic error Unicode position", "const repeated = '😀'; const repeated = 2;\r\n"],
+  ].map(([name, source]) => ({
+    name,
+    source: `${source} export const View = () => <section><span /></section>;`,
+    expectedCandidateCount: 2,
+  })),
   {
     name: "nested fragment preorder",
     source: "const View = () => <><A /><B /></>;",

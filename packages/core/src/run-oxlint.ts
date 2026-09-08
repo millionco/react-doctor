@@ -46,7 +46,7 @@ import { validateRuleRegistration } from "./runners/oxlint/validate-rule-registr
 import { dedupeDiagnostics } from "./utils/dedupe-diagnostics.js";
 import { collectProjectIndexModuleSources } from "./utils/collect-project-index-module-sources.js";
 import { hashFileContents } from "./utils/hash-file-contents.js";
-import { listSourceFilesWithSize } from "./utils/list-source-files.js";
+import { listSourceFilesWithSizeCooperative } from "./utils/list-source-files.js";
 import { planLintBatches } from "./utils/plan-lint-batches.js";
 import { prepareLintSources } from "./utils/prepare-lint-sources.js";
 import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
@@ -437,8 +437,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     // diagnostics. Materializing the file list ahead of time and
     // feeding it through the batch planner keeps each spawn under
     // the timeout and recovers the diagnostics we were dropping.
-    // Hand the event loop back once before the synchronous discovery walk +
-    // cache-hash burst below. The orchestrator forked the security-scan and
+    // Hand the event loop back once before discovery and cache hashing below.
+    // The orchestrator forked the security-scan and
     // supply-chain fibers just before lint, but a forked fiber only runs when
     // the current one suspends — this is their first chance to start (fire the
     // Socket.dev requests, begin the scan walk) instead of stalling until the
@@ -448,7 +448,9 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     // explicit paths.
     const sizedScanFiles =
       options.precomputedSourceFiles ??
-      (includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null);
+      (includePaths === undefined
+        ? await listSourceFilesWithSizeCooperative(rootDirectory, options.signal)
+        : null);
     const candidateFiles =
       sizedScanFiles === null ? (includePaths ?? []) : sizedScanFiles.map((entry) => entry.path);
     const projectIndexModuleSources =

@@ -678,6 +678,11 @@ fn lower_file(input: &ReducedMotionSourceInput) -> Result<File, String> {
     if input.file_name.ends_with(".mjs") || input.file_name.ends_with(".cjs") {
         return Err("TypeScript forced module scope parity required".into());
     }
+    let source_type = if input.file_name.ends_with(".js") {
+        source_type.with_jsx(true)
+    } else {
+        source_type
+    };
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, &input.source_text, source_type).parse();
     if !parsed.diagnostics.is_empty() {
@@ -737,6 +742,18 @@ fn lower_file(input: &ReducedMotionSourceInput) -> Result<File, String> {
     for node in semantic.nodes().iter() {
         if let AstKind::TSExternalModuleDeclaration(module) = node.kind() {
             if is_esm || is_commonjs {
+                if is_esm
+                    && !is_motion_source(module.id.value.as_str())
+                    && module.body.as_ref().is_some_and(|body| {
+                        declaration_body_is_type_only(&body.body)
+                            && !body.body.iter().any(|statement| {
+                                matches!(statement, Statement::TSNamespaceDeclaration(_))
+                            })
+                    })
+                    && ambient_module_is_inert(module, semantic)
+                {
+                    continue;
+                }
                 return Err("source-file module augmentation semantics".into());
             }
             if module
@@ -772,6 +789,13 @@ fn lower_file(input: &ReducedMotionSourceInput) -> Result<File, String> {
                     .nodes()
                     .ancestor_kinds(node.id())
                     .any(|ancestor| matches!(ancestor, AstKind::TSGlobalDeclaration(_)))
+                    && (has_value
+                        || !match &namespace.body {
+                            TSNamespaceDeclarationBody::TSModuleBlock(body) => {
+                                declaration_body_is_type_only(&body.body)
+                            }
+                            TSNamespaceDeclarationBody::TSNamespaceDeclaration(_) => true,
+                        })
                 {
                     return Err("namespace inside global augmentation semantics".into());
                 }
@@ -1035,6 +1059,22 @@ fn lower_file(input: &ReducedMotionSourceInput) -> Result<File, String> {
         if (!redeclarations.is_empty() || flags.is_function())
             && file.bindings.contains_key(&symbol)
         {
+            let is_supported_import_merge = matches!(
+                &file.bindings[&symbol].initializer,
+                ExpressionEvidence::Import(source, _)
+                    if !source.starts_with('.') && !is_motion_source(source)
+            ) && semantic
+                .scoping()
+                .symbol_declarations(symbol)
+                .all(|declaration| match semantic.nodes().kind(declaration) {
+                    AstKind::ImportSpecifier(_)
+                    | AstKind::TSInterfaceDeclaration(_)
+                    | AstKind::TSTypeAliasDeclaration(_) => true,
+                    AstKind::Function(function) => {
+                        function.r#type == FunctionType::FunctionDeclaration
+                    }
+                    _ => false,
+                });
             let mut variable_declarations = 0;
             let mut all_variables_are_var = true;
             let is_supported_merge = !flags.is_function() && semantic.scoping().symbol_declarations(symbol).all(|declaration| match semantic.nodes().kind(declaration) {
@@ -1046,7 +1086,7 @@ fn lower_file(input: &ReducedMotionSourceInput) -> Result<File, String> {
                 AstKind::TSInterfaceDeclaration(_) | AstKind::TSTypeAliasDeclaration(_) => true,
                 _ => false,
             }) && variable_declarations > 0 && (variable_declarations == 1 || all_variables_are_var);
-            if !is_supported_merge {
+            if !is_supported_merge && !is_supported_import_merge {
                 file.bindings
                     .get_mut(&symbol)
                     .expect("existing binding")

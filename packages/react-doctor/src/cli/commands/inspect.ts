@@ -13,6 +13,7 @@ import {
   remainingDeadlineBudgetMs,
   resolveScanTarget,
   toRelativePath,
+  discoverSupportedSubprojects,
 } from "@react-doctor/core";
 import { createInvocationInspect } from "../../inspect.js";
 import type { ReactDoctorInspectOptions } from "../../inspect-options.js";
@@ -139,6 +140,23 @@ const isProjectSupplyChainEnabled = ({
 }: IsProjectSupplyChainEnabledInput): boolean =>
   flags.supplyChain ?? projectConfig?.supplyChain?.enabled !== false;
 
+const computeExcludedProjectDirectories = (
+  scanDirectory: string,
+): string[] => {
+  const allSupportedSubprojects = discoverSupportedSubprojects(scanDirectory);
+  const resolvedScanDirectory = path.resolve(scanDirectory);
+  
+  return allSupportedSubprojects
+    .filter((subproject) => {
+      const subprojectDirectory = path.resolve(subproject.directory);
+      return (
+        isPathInsideDirectory(subprojectDirectory, scanDirectory) &&
+        subprojectDirectory !== resolvedScanDirectory
+      );
+    })
+    .map((subproject) => subproject.directory);
+};
+
 const buildProjectInspectOptions = ({
   context,
   projectScan,
@@ -146,6 +164,8 @@ const buildProjectInspectOptions = ({
   ownsWorkspaceDeadCode,
 }: BuildProjectInspectOptionsInput): ReactDoctorInspectOptions => {
   const scanDirectory = projectScan.directory;
+  const excludedProjectDirectories = computeExcludedProjectDirectories(scanDirectory);
+  
   return {
     ...context.scanOptions,
     deadCode:
@@ -159,11 +179,7 @@ const buildProjectInspectOptions = ({
     configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
     suppressRendering: context.isMultiProject,
     concurrentScan: context.isMultiProject,
-    excludedProjectDirectories: context.projectScans
-      .filter((candidateProjectScan) =>
-        isPathInsideDirectory(candidateProjectScan.directory, scanDirectory),
-      )
-      .map((candidateProjectScan) => candidateProjectScan.directory),
+    excludedProjectDirectories,
     retainExcludedProjectDeadCodeDiagnostics: ownsWorkspaceDeadCode,
     baseline:
       context.baselineRef !== null &&

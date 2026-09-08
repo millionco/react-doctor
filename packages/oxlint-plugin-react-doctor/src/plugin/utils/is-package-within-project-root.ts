@@ -3,6 +3,10 @@ import { normalizeFilename } from "./normalize-filename.js";
 
 const cachedRealDirectoryByDirectory = new Map<string, string>();
 
+export const resetRealDirectoryCache = (): void => {
+  cachedRealDirectoryByDirectory.clear();
+};
+
 const resolveRealDirectory = (directory: string): string => {
   const cached = cachedRealDirectoryByDirectory.get(directory);
   if (cached !== undefined) return cached;

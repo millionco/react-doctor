@@ -1,6 +1,9 @@
-import { MIN_OXLINT_WORKER_THREADS } from "../../constants.js";
 import { buildOxlintChildEnv } from "../../utils/build-oxlint-child-env.js";
-import { readSystemConcurrencyFacts } from "../../utils/read-system-concurrency-facts.js";
+import {
+  isOxlintJobTimelineEnabled,
+  previewOxlintStdout,
+  recordOxlintJobTimeline,
+} from "../../utils/record-oxlint-job-timeline.js";
 import { createOxlintWorkerPool, OxlintWorkerUnavailableError } from "./oxlint-worker-pool.js";
 import type { OxlintWorkerPool } from "./oxlint-worker-pool.js";
 import { resolveOxlintWorkerRuntime } from "./resolve-oxlint-worker-runtime.js";
@@ -21,15 +24,6 @@ export interface RunOxlintJobInput {
 
 let cachedRuntime: OxlintWorkerRuntime | null | undefined;
 const poolsByKey = new Map<string, OxlintWorkerPool>();
-
-// Every warm worker keeps its own Rust thread pool alive, so N workers at
-// oxlint's default (one thread per core) oversubscribe the box N-fold; split
-// the cores across the pool instead.
-const resolveThreadsPerWorker = (maxWorkers: number): number =>
-  Math.max(
-    MIN_OXLINT_WORKER_THREADS,
-    Math.floor(readSystemConcurrencyFacts().availableCores / maxWorkers),
-  );
 
 // One pool per process (per node binary + size) so every project of a
 // monorepo scan shares the same warm workers.
@@ -66,19 +60,33 @@ export const runOxlintJob = async (input: RunOxlintJobInput): Promise<string> =>
     );
   const pool = resolveSharedPool(input.nodeBinaryPath, input.maxWorkers);
   if (pool === null || !pool.isAvailable()) return runLegacySpawn();
+  let startedAt = Date.now();
   try {
-    return await pool.run({
-      argumentsList: [
-        "--threads",
-        String(resolveThreadsPerWorker(input.maxWorkers)),
-        ...input.argumentsList.slice(1),
-      ],
+    const stdout = await pool.run({
+      argumentsList: input.argumentsList.slice(1),
       cwd: input.rootDirectory,
       timeoutMs: input.spawnTimeoutMs,
       outputMaxBytes: input.outputMaxBytes,
       abortSignal: input.abortSignal,
-      onStart: input.onStart,
+      onStart: () => {
+        startedAt = Date.now();
+        input.onStart?.();
+      },
     });
+    if (isOxlintJobTimelineEnabled) {
+      recordOxlintJobTimeline({
+        pid: null,
+        startedAt,
+        endedAt: Date.now(),
+        args: input.argumentsList,
+        exitCode: null,
+        signal: null,
+        stdoutBytes: Buffer.byteLength(stdout),
+        stderrBytes: 0,
+        stdoutPreview: previewOxlintStdout(stdout),
+      });
+    }
+    return stdout;
   } catch (error) {
     if (error instanceof OxlintWorkerUnavailableError) return runLegacySpawn();
     throw error;

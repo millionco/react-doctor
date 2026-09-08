@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -6,6 +5,10 @@ import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-l
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isOutsideBrowserBundle } from "../../utils/is-outside-browser-bundle.js";
+import {
+  BUNDLER_IGNORE_ANNOTATION_PATTERN,
+  readBundlerIgnoreAnnotatedFileText,
+} from "../../utils/read-bundler-ignore-annotated-file-text.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -54,35 +57,8 @@ const targetsPackageManifest = (template: EsTreeNodeOfType<"TemplateLiteral">): 
   return typeof text === "string" && text.endsWith("package.json");
 };
 
-// `import(/* webpackIgnore: true */ /* @vite-ignore */ path)` explicitly
-// opts the import out of bundling — the module is resolved at runtime (a
-// user-configured plugin script), so there is nothing the bundler could ever
-// split and the "stays in the main bundle" premise is void. Comments aren't
-// in the AST, so the annotation is read from the file text inside the
-// expression's span (same disk-read precedent as exhaustive-deps
-// suppression). Only files that actually carry an annotation cache their
-// text; the common no-annotation file caches a flat `false`.
-const BUNDLER_IGNORE_ANNOTATION_PATTERN = /webpackIgnore\s*:\s*true|@vite-ignore/;
-
-const annotatedFileTextCache = new Map<string, string | false>();
-
-const readAnnotatedFileText = (filename: string | undefined): string | null => {
-  if (!filename) return null;
-  const cached = annotatedFileTextCache.get(filename);
-  if (cached !== undefined) return cached === false ? null : cached;
-  let annotatedText: string | false = false;
-  try {
-    const text = readFileSync(filename, "utf8");
-    if (BUNDLER_IGNORE_ANNOTATION_PATTERN.test(text)) annotatedText = text;
-  } catch {
-    annotatedText = false;
-  }
-  annotatedFileTextCache.set(filename, annotatedText);
-  return annotatedText === false ? null : annotatedText;
-};
-
 const hasBundlerIgnoreAnnotation = (node: EsTreeNode, filename: string | undefined): boolean => {
-  const fileText = readAnnotatedFileText(filename);
+  const fileText = readBundlerIgnoreAnnotatedFileText(filename);
   if (fileText === null) return false;
   const range = node.range;
   if (!range) return false;

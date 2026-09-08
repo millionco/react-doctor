@@ -1,3 +1,4 @@
+import { REACT_DOCTOR_PLUGIN_RESET_HOOK_KEY } from "./constants/host.js";
 import { ruleRegistry } from "./rule-registry.js";
 import { RULE_REQUIRED_IMPORTS } from "./rule-required-imports.js";
 import { EMPTY_RULE_VISITORS } from "./utils/empty-rule-visitors.js";
@@ -7,6 +8,7 @@ import type { Rule } from "./utils/rule.js";
 import type { BaseRuleContext } from "./utils/rule-context.js";
 import type { HostRule, RulePlugin } from "./utils/rule-plugin.js";
 import type { RuleVisitors } from "./utils/rule-visitors.js";
+import { resetFilesystemCaches } from "./utils/reset-filesystem-caches.js";
 import { walkAst } from "./utils/walk-ast.js";
 import { wrapInkRule } from "./utils/wrap-ink-rule.js";
 import { wrapNextjsRule } from "./utils/wrap-nextjs-rule.js";
@@ -148,5 +150,13 @@ const plugin: RulePlugin = {
   meta: { name: "react-doctor" },
   rules: applyFrameworkRuleWrappers(ruleRegistry),
 };
+
+// HACK: oxlint owns the plugin's module instance, so a host that reuses one
+// oxlint process for many jobs (`@react-doctor/core`'s worker) has no import
+// path to our caches; the reset is published on a well-known global instead.
+Object.defineProperty(globalThis, REACT_DOCTOR_PLUGIN_RESET_HOOK_KEY, {
+  value: resetFilesystemCaches,
+  configurable: true,
+});
 
 export default plugin;

@@ -636,7 +636,18 @@ export const OXLINT_WORKER_READY_TIMEOUT_MS = 30_000;
 // held open by idle workers — their handles are unref'd — so this only
 // matters between scans in one process.
 export const OXLINT_WORKER_IDLE_TIMEOUT_MS = 30_000;
-export const MIN_OXLINT_WORKER_THREADS = 1;
+
+// Global registry key under which the react-doctor oxlint plugin publishes its
+// filesystem-cache reset. A warm worker calls it before every job so each job
+// observes the disk like the fresh process it replaces. Mirrored in
+// `oxlint-plugin-react-doctor/src/plugin/constants/host.ts`.
+export const REACT_DOCTOR_PLUGIN_RESET_HOOK_KEY = Symbol.for(
+  "react-doctor.reset-filesystem-caches",
+);
+
+// Bytes of each oxlint job's stdout kept in the performance-harness timeline
+// (`REACT_DOCTOR_OXLINT_SPAWN_LOG`), enough to tell JSON output from a crash.
+export const OXLINT_JOB_TIMELINE_STDOUT_PREVIEW_BYTES = 160;
 
 // Wall-clock cap on the serial OOM rescue pass (replaying OOM-dropped
 // files one at a time after the parallel pass). The rescue is unbounded

@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
-import { OXLINT_WORKER_JOB_END_MARKER } from "./constants.js";
+import { OXLINT_WORKER_JOB_END_MARKER, REACT_DOCTOR_PLUGIN_RESET_HOOK_KEY } from "./constants.js";
 
 export interface OxlintWorkerJobMessage {
   readonly type: "job";
@@ -121,12 +121,20 @@ const sendToParent = (message: OxlintWorkerBootMessage): void => {
   process.send?.(message);
 };
 
+// The plugin module stays loaded between jobs, so its filesystem caches must
+// be dropped for each job to see the disk like a fresh process would.
+const resetPluginFilesystemCaches = (): void => {
+  const resetHook: unknown = Reflect.get(globalThis, REACT_DOCTOR_PLUGIN_RESET_HOOK_KEY);
+  if (typeof resetHook === "function") resetHook();
+};
+
 const runJob = async (internals: OxlintInternals, job: OxlintWorkerJobMessage): Promise<void> => {
   const workspaceUri = `file:///react-doctor-oxlint-job-${job.id}`;
   let status: OxlintWorkerJobStatus = "error";
   let errorMessage: string | null = null;
   try {
     process.chdir(job.cwd);
+    resetPluginFilesystemCaches();
     internals.createWorkspace(workspaceUri);
     const didPass = await internals.lint(
       job.argumentsList,

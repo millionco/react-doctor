@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import * as fs from "node:fs";
 import {
   MILLISECONDS_PER_SECOND,
   OXLINT_OUTPUT_MAX_BYTES,
@@ -11,43 +10,13 @@ import { buildOxlintExitError } from "../../utils/build-oxlint-exit-error.js";
 import { buildProfiledNodeArguments } from "../../utils/build-profiled-node-arguments.js";
 import { captureOxlintRuleTimings } from "../../utils/capture-oxlint-rule-timings.js";
 import { lowerChildProcessPriority } from "../../utils/lower-child-process-priority.js";
+import {
+  isOxlintJobTimelineEnabled,
+  previewOxlintStdout,
+  recordOxlintJobTimeline,
+} from "../../utils/record-oxlint-job-timeline.js";
 
 const SANITIZED_ENV: NodeJS.ProcessEnv = buildOxlintChildEnv(process.env);
-
-// Performance-harness timeline hook (scripts/performance): one JSON line per
-// oxlint child plus the parent's CPU usage at exit. Off unless the env is set.
-const SPAWN_LOG_PATH = SANITIZED_ENV.REACT_DOCTOR_OXLINT_SPAWN_LOG;
-const SPAWN_LOG_STDOUT_PREVIEW_BYTES = 160;
-
-const appendSpawnLog = (entry: Record<string, unknown>): void => {
-  if (SPAWN_LOG_PATH === undefined) return;
-  fs.appendFileSync(SPAWN_LOG_PATH, `${JSON.stringify(entry)}\n`);
-};
-
-if (SPAWN_LOG_PATH !== undefined) {
-  process.once("exit", () => {
-    const cpuUsage = process.cpuUsage();
-    appendSpawnLog({
-      kind: "parent",
-      pid: process.pid,
-      exitedAt: Date.now(),
-      userMicroseconds: cpuUsage.user,
-      systemMicroseconds: cpuUsage.system,
-    });
-  });
-}
-
-const countOxlintFileArguments = (args: readonly string[]): number => {
-  let fileCount = 0;
-  for (let argumentIndex = 1; argumentIndex < args.length; argumentIndex += 1) {
-    if (args[argumentIndex]?.startsWith("-")) {
-      argumentIndex += 1;
-      continue;
-    }
-    fileCount += 1;
-  }
-  return fileCount;
-};
 
 /**
  * Spawn one oxlint subprocess with hard ceilings on wall time and
@@ -179,22 +148,17 @@ export const spawnOxlint = (
     child.on("close", (code, signal) => {
       clearTimeout(timeoutHandle);
       clearAbortListener();
-      if (SPAWN_LOG_PATH !== undefined) {
-        const configFlagIndex = args.indexOf("-c");
-        appendSpawnLog({
-          kind: "child",
+      if (isOxlintJobTimelineEnabled) {
+        recordOxlintJobTimeline({
           pid: child.pid ?? null,
           startedAt: spawnedAt,
           endedAt: Date.now(),
-          fileCount: countOxlintFileArguments(args),
-          configPath: configFlagIndex === -1 ? null : (args[configFlagIndex + 1] ?? null),
+          args,
           exitCode: code,
           signal,
           stdoutBytes: stdoutByteCount,
           stderrBytes: stderrByteCount,
-          stdoutPreview: Buffer.concat(stdoutBuffers)
-            .subarray(0, SPAWN_LOG_STDOUT_PREVIEW_BYTES)
-            .toString("utf8"),
+          stdoutPreview: previewOxlintStdout(Buffer.concat(stdoutBuffers)),
         });
       }
       if (didKillForSize) {

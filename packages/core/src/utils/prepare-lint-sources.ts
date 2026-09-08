@@ -46,6 +46,9 @@ export const prepareLintSources = (
     const absoluteSourcePath = path.isAbsolute(candidateFile)
       ? candidateFile
       : path.resolve(rootDirectory, candidateFile);
+    if (!fs.existsSync(absoluteSourcePath)) {
+      continue;
+    }
     const sourceBuffer = fs.readFileSync(absoluteSourcePath);
     if (ASTRO_FILE_PATTERN.test(candidateFile)) {
       const compilerSourcePath = absoluteSourcePath.replaceAll("\\", "/");

@@ -5,11 +5,13 @@ import { TSCONFIG_FILENAMES } from "../../constants.js";
 
 const esmRequire = createRequire(import.meta.url);
 
-export const resolveOxlintBinary = (): string => {
+export const resolveOxlintPackageDirectory = (): string => {
   const oxlintMainPath = esmRequire.resolve("oxlint");
-  const oxlintPackageDirectory = path.resolve(path.dirname(oxlintMainPath), "..");
-  return path.join(oxlintPackageDirectory, "bin", "oxlint");
+  return path.resolve(path.dirname(oxlintMainPath), "..");
 };
+
+export const resolveOxlintBinary = (): string =>
+  path.join(resolveOxlintPackageDirectory(), "bin", "oxlint");
 
 // Oxlint loads JS plugins by file path (`await import(specifier)`). We
 // resolve the installed `oxlint-plugin-react-doctor` package's main

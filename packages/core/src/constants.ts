@@ -612,6 +612,25 @@ export const OXLINT_SPLIT_MAX_DEPTH = 9;
 // rescue pass work on Windows too.
 export const ABORT_EXIT_CODES: ReadonlySet<number> = new Set([134, 0xc0000409]);
 
+// Line the oxlint worker writes to fd 1 / fd 2 after each `lint()` job so the
+// parent can split one worker's stream into per-job outputs. oxlint's JSON
+// formatter escapes newlines inside strings, so a whole line equal to this
+// marker cannot occur inside the payload.
+export const OXLINT_WORKER_JOB_END_MARKER = "__REACT_DOCTOR_OXLINT_JOB_END__";
+
+// Boot budget for an oxlint worker (Node start + importing oxlint's native
+// binding and the plugin runtime). A worker that has not reported ready by
+// then is treated as unavailable and the batch falls back to the per-batch
+// spawn path.
+export const OXLINT_WORKER_READY_TIMEOUT_MS = 30_000;
+
+// An idle worker keeps ~150 MB of warmed plugin heap alive; long-lived hosts
+// (`@react-doctor/api`) reclaim it after this quiet period. The CLI is not
+// held open by idle workers — their handles are unref'd — so this only
+// matters between scans in one process.
+export const OXLINT_WORKER_IDLE_TIMEOUT_MS = 30_000;
+export const MIN_OXLINT_WORKER_THREADS = 1;
+
 // Wall-clock cap on the serial OOM rescue pass (replaying OOM-dropped
 // files one at a time after the parallel pass). The rescue is unbounded
 // by batch count — each file that STILL fails re-waits a spawn timeout —

@@ -88,9 +88,9 @@ const wrapCreateForReactJsxOnly = <
         };
         continue;
       }
-      wrappedVisitors[key] = (...args: unknown[]) => {
+      wrappedVisitors[key] = (node: unknown) => {
         if (fileIsNonReactJsx) return;
-        (visitor as (...a: unknown[]) => unknown)(...args);
+        (visitor as (visitedNode: unknown) => unknown)(node);
       };
     }
     if (!("Program" in wrappedVisitors)) {

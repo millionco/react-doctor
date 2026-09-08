@@ -1,10 +1,9 @@
 import type { EsTreeNode } from "../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../utils/es-tree-node-of-type.js";
-import { TYPE_POSITION_CHILD_KEYS } from "../constants/ts-type-position-keys.js";
+import { getValuePositionChildKeys } from "../utils/get-value-position-child-keys.js";
 import { isAstNode } from "../utils/is-ast-node.js";
 import { isFunctionLike } from "../utils/is-function-like.js";
 import { isNodeOfType } from "../utils/is-node-of-type.js";
-import { RUNTIME_VISITOR_KEYS } from "../utils/runtime-visitor-keys.js";
 
 // Scope analyzer — per-file walker building a scope tree, symbol
 // table, and identifier reference resolution. Mirrors the subset of
@@ -560,6 +559,13 @@ const setNodeScope = (node: EsTreeNode, state: BuilderState): void => {
   state.nodeScope.set(node, state.currentScope);
 };
 
+// Pushes a scope for `node` and tags the node with that new scope.
+const openScope = (kind: ScopeKind, node: EsTreeNode, state: BuilderState): ScopeDescriptor => {
+  const scope = pushScope(kind, node, state);
+  setNodeScope(node, state);
+  return scope;
+};
+
 // Records references that live in the reference-bearing sub-parts of a
 // function parameter pattern: default-value expressions (`(a = expr) =>`)
 // and computed destructuring keys (`({ [k]: v }) =>`). The function-like
@@ -568,18 +574,26 @@ const setNodeScope = (node: EsTreeNode, state: BuilderState): void => {
 // recorded as references — leaving closure-capture and exhaustive-deps
 // analysis blind to them (e.g. misclassifying a module constant used as
 // a default). References are parked on the current (function) scope.
-const walkParameterReferences = (pattern: EsTreeNode, state: BuilderState): void => {
+const walkParameterReferences = (
+  pattern: EsTreeNode,
+  state: BuilderState,
+  inheritedScope: ScopeDescriptor,
+): void => {
   if (pattern.type === "AssignmentPattern") {
-    walkParameterReferences(pattern.left as EsTreeNode, state);
+    walkParameterReferences(pattern.left as EsTreeNode, state, inheritedScope);
     const defaultValue = (pattern.right as EsTreeNode | null) ?? null;
-    if (defaultValue) walk(defaultValue, state);
+    if (defaultValue) walk(defaultValue, state, inheritedScope);
     return;
   }
   if (pattern.type === "ObjectPattern") {
     for (const property of pattern.properties) {
       const propertyNode = property as EsTreeNode;
       if (propertyNode.type === "RestElement") {
-        walkParameterReferences((propertyNode as { argument: EsTreeNode }).argument, state);
+        walkParameterReferences(
+          (propertyNode as { argument: EsTreeNode }).argument,
+          state,
+          inheritedScope,
+        );
         continue;
       }
       if (propertyNode.type !== "Property") continue;
@@ -588,30 +602,37 @@ const walkParameterReferences = (pattern: EsTreeNode, state: BuilderState): void
         key: EsTreeNode;
         value: EsTreeNode;
       };
-      if (propertyDetail.computed) walk(propertyDetail.key, state);
-      walkParameterReferences(propertyDetail.value, state);
+      if (propertyDetail.computed) walk(propertyDetail.key, state, inheritedScope);
+      walkParameterReferences(propertyDetail.value, state, inheritedScope);
     }
     return;
   }
   if (pattern.type === "ArrayPattern") {
     for (const element of pattern.elements) {
-      if (element) walkParameterReferences(element as EsTreeNode, state);
+      if (element) walkParameterReferences(element as EsTreeNode, state, inheritedScope);
     }
     return;
   }
   if (pattern.type === "RestElement") {
-    walkParameterReferences(pattern.argument as EsTreeNode, state);
+    walkParameterReferences(pattern.argument as EsTreeNode, state, inheritedScope);
   }
 };
 
 // Single-pass walker. For each node we:
 //   1) Open a scope if appropriate.
 //   2) Bind any declarations to the active scope (with hoisting).
-//   3) Recurse into children, each tagged with `state.currentScope`
-//      via the WeakMap.
+//   3) Recurse into children. Scope-opening nodes are always tagged in
+//      the WeakMap; other nodes are tagged only when their scope differs
+//      from `inheritedScope` — the scope `scopeFor` would resolve for
+//      them by walking `parent` links (null when unknown) — so the
+//      common case costs no WeakMap write.
 //   4) Record references for non-binding-position Identifiers.
 //   5) Close the scope.
-const walk = (node: EsTreeNode, state: BuilderState): void => {
+const walk = (
+  node: EsTreeNode,
+  state: BuilderState,
+  inheritedScope: ScopeDescriptor | null,
+): void => {
   // Special-case structural nodes that open scopes BEFORE they bind
   // their own children. Keep these in source order to match JS scope
   // semantics.
@@ -631,10 +652,11 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
     // The function NODE belongs to the parent scope; its body belongs
     // to the function's own scope. Map the node before pushing.
     const functionParams = (node as { params: ReadonlyArray<EsTreeNode> }).params ?? [];
+    const enclosingScope = state.currentScope;
     for (const param of functionParams) {
       if (!("decorators" in param) || !Array.isArray(param.decorators)) continue;
       for (const decorator of param.decorators) {
-        if (isAstNode(decorator)) walk(decorator, state);
+        if (isAstNode(decorator)) walk(decorator, state, enclosingScope);
       }
     }
     setNodeScope(node, state);
@@ -656,11 +678,11 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
     // Record references inside parameter default values and computed
     // destructuring keys (the handler above binds names but doesn't walk
     // these reference-bearing sub-expressions).
-    for (const param of functionParams) walkParameterReferences(param, state);
+    for (const param of functionParams) walkParameterReferences(param, state, enclosingScope);
     // Walk the body inline; if it's a BlockStatement, we mark it so the
     // BlockStatement handler doesn't push a duplicate scope.
     const body = (node as { body: EsTreeNode }).body;
-    if (body) walk(body, state);
+    if (body) walk(body, state, enclosingScope);
     popScope(state);
     return;
   }
@@ -671,15 +693,16 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
     if (node.type === "ClassDeclaration" && node.id) {
       handleClassDeclaration(node, state);
     }
+    // Decorators live in the enclosing scope but hang off the class node,
+    // which is tagged with the class scope below — so tag them explicitly.
     if (Array.isArray(node.decorators)) {
       for (const decorator of node.decorators) {
-        if (isAstNode(decorator)) walk(decorator, state);
+        if (isAstNode(decorator)) walk(decorator, state, null);
       }
     }
     // Class scope is its own — class methods see the class name
     // (FunctionExpression-like for ClassExpression).
-    const classScope = pushScope("class", node, state);
-    setNodeScope(node, state);
+    const classScope = openScope("class", node, state);
     if (node.type === "ClassExpression" && node.id) {
       // ClassExpression name visible only inside the class body.
       recordSymbol(classScope, state, {
@@ -690,15 +713,14 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
         initializer: node,
       });
     }
-    if (node.superClass) walk(node.superClass as EsTreeNode, state);
-    if (node.body) walk(node.body as EsTreeNode, state);
+    if (node.superClass) walk(node.superClass as EsTreeNode, state, classScope);
+    if (node.body) walk(node.body as EsTreeNode, state, classScope);
     popScope(state);
     return;
   }
 
   if (node.type === "CatchClause") {
-    const catchScope = pushScope("catch", node, state);
-    setNodeScope(node, state);
+    const catchScope = openScope("catch", node, state);
     if (node.param) {
       visitDestructuringDeclarations(
         node.param as EsTreeNode,
@@ -709,7 +731,7 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
         node as EsTreeNode,
       );
     }
-    if (node.body) walk(node.body as EsTreeNode, state);
+    if (node.body) walk(node.body as EsTreeNode, state, catchScope);
     popScope(state);
     return;
   }
@@ -721,36 +743,22 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
   ) {
     // For-statement gets its own scope; `for(let i …)` puts i in this
     // scope, NOT in the body block.
-    pushScope("for", node, state);
-    setNodeScope(node, state);
-    const nodeRecord = node as unknown as Record<string, unknown>;
-    const childKeys = RUNTIME_VISITOR_KEYS[node.type] ?? Object.keys(nodeRecord);
-    for (const key of childKeys) {
-      if (key === "parent") continue;
-      if (TYPE_POSITION_CHILD_KEYS.has(key)) continue;
-      const child = nodeRecord[key];
-      if (Array.isArray(child)) {
-        for (const item of child) if (isAstNode(item)) walk(item, state);
-      } else if (isAstNode(child)) {
-        walk(child, state);
-      }
-    }
+    openScope("for", node, state);
+    walkValuePositionChildren(node, state);
     popScope(state);
     return;
   }
 
   if (node.type === "SwitchStatement") {
-    pushScope("switch", node, state);
-    setNodeScope(node, state);
-    if (node.discriminant) walk(node.discriminant as EsTreeNode, state);
-    for (const switchCase of node.cases) walk(switchCase as EsTreeNode, state);
+    const switchScope = openScope("switch", node, state);
+    if (node.discriminant) walk(node.discriminant as EsTreeNode, state, switchScope);
+    for (const switchCase of node.cases) walk(switchCase as EsTreeNode, state, switchScope);
     popScope(state);
     return;
   }
 
   if (node.type === "TSModuleDeclaration") {
-    const moduleScope = pushScope("ts-module", node, state);
-    setNodeScope(node, state);
+    const moduleScope = openScope("ts-module", node, state);
     if (node.id && isNodeOfType(node.id as EsTreeNode, "Identifier")) {
       const identifier = node.id as { name: string } & EsTreeNode;
       // Bind the module name in BOTH the parent (so external uses
@@ -764,28 +772,26 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
         initializer: null,
       });
     }
-    if (node.body) walk(node.body as EsTreeNode, state);
+    if (node.body) walk(node.body as EsTreeNode, state, moduleScope);
     popScope(state);
     return;
   }
 
   if (node.type === "TSEnumDeclaration") {
     handleTsDeclarations(node, state);
-    pushScope("ts-enum", node, state);
-    setNodeScope(node, state);
+    const enumScope = openScope("ts-enum", node, state);
     // Enum body members can reference siblings; record them in the enum
     // scope, but don't process member references — TS enums are largely
     // opaque to our rules.
     const members = (node as { members?: ReadonlyArray<EsTreeNode> }).members ?? [];
-    for (const member of members) walk(member, state);
+    for (const member of members) walk(member, state, enumScope);
     popScope(state);
     return;
   }
 
   if (node.type === "BlockStatement" && shouldPushBlockScope(node)) {
-    pushScope("block", node, state);
-    setNodeScope(node, state);
-    for (const statement of node.body) walk(statement as EsTreeNode, state);
+    const blockScope = openScope("block", node, state);
+    for (const statement of node.body) walk(statement as EsTreeNode, state, blockScope);
     popScope(state);
     return;
   }
@@ -793,7 +799,7 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
   // Below this point, `node` doesn't open a scope of its own; just
   // process its declarations and recurse.
 
-  setNodeScope(node, state);
+  if (state.currentScope !== inheritedScope) setNodeScope(node, state);
 
   switch (node.type) {
     case "VariableDeclaration":
@@ -832,17 +838,20 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
     }
   }
 
-  // Recurse into children.
+  walkValuePositionChildren(node, state);
+};
+
+// Children of `node` resolve to `state.currentScope` through `scopeFor`'s
+// parent walk, because `node` is either tagged with it or inherits it.
+const walkValuePositionChildren = (node: EsTreeNode, state: BuilderState): void => {
   const nodeRecord = node as unknown as Record<string, unknown>;
-  const childKeys = RUNTIME_VISITOR_KEYS[node.type] ?? Object.keys(nodeRecord);
-  for (const key of childKeys) {
-    if (key === "parent") continue;
-    if (TYPE_POSITION_CHILD_KEYS.has(key)) continue;
+  const childScope = state.currentScope;
+  for (const key of getValuePositionChildKeys(node)) {
     const child = nodeRecord[key];
     if (Array.isArray(child)) {
-      for (const item of child) if (isAstNode(item)) walk(item, state);
+      for (const item of child) if (isAstNode(item)) walk(item, state, childScope);
     } else if (isAstNode(child)) {
-      walk(child, state);
+      walk(child, state, childScope);
     }
   }
 };
@@ -901,9 +910,9 @@ export const analyzeScopes = (program: EsTreeNode): ScopeAnalysis => {
   // Walk the program's statements directly (skip the `walk(program)`
   // entry which would treat program as a generic node).
   if (program.type === "Program") {
-    for (const statement of program.body) walk(statement as EsTreeNode, state);
+    for (const statement of program.body) walk(statement as EsTreeNode, state, rootScope);
   } else {
-    walk(program, state);
+    walk(program, state, rootScope);
   }
   resolveReferences(rootScope);
 

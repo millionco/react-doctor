@@ -10,6 +10,7 @@ export interface BuildBenchmarkEnvironmentInput {
   readonly heapProfile: boolean;
   readonly ruleTimings: boolean;
   readonly profileDirectory: string | null;
+  readonly spawnLogPath?: string | null;
 }
 
 export const buildBenchmarkEnvironment = (
@@ -43,6 +44,7 @@ export const buildBenchmarkEnvironment = (
       input.cpuProfile && input.profileDirectory !== null ? input.profileDirectory : undefined,
     REACT_DOCTOR_HEAP_PROFILE_DIR:
       input.heapProfile && input.profileDirectory !== null ? input.profileDirectory : undefined,
+    REACT_DOCTOR_OXLINT_SPAWN_LOG: input.spawnLogPath ?? undefined,
     REACT_DOCTOR_OXLINT_TIMINGS_DIR:
       input.ruleTimings && input.profileDirectory !== null ? input.profileDirectory : undefined,
     REACT_DOCTOR_RULE_TIMINGS_DIR:

@@ -15,6 +15,7 @@
     "dev": "turbo run dev --filter=react-doctor",
     "build": "turbo run build",
     "performance": "tsx scripts/performance/run-performance.ts",
+    "performance:corpus": "tsx scripts/performance/fetch-corpus.ts",
     "performance:stress": "tsx scripts/performance/run-stress-performance.ts",
     "performance:profile": "tsx scripts/performance/analyze-cpu-profile.ts",
     "performance:memory": "tsx scripts/performance/analyze-heap-profile.ts",

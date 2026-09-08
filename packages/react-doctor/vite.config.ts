@@ -64,6 +64,7 @@ export default defineConfig({
       entry: {
         cli: "./src/cli/index.ts",
         "project-analysis-worker": "./src/project-analysis-worker.ts",
+        "oxlint-worker": "./src/oxlint-worker.ts",
       },
       deps: {
         // Inline pure-JS CLI deps and the Ink/React renderer so the inspected

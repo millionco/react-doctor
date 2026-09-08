@@ -266,6 +266,7 @@ export const createOxlintConfig = ({
 
   return {
     ...(extendsPaths.length > 0 ? { extends: extendsPaths } : {}),
+    options: { typeAware: false },
     categories: {
       correctness: "off",
       suspicious: "off",

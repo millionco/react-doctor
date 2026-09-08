@@ -7,10 +7,8 @@ import {
   highlighter,
   type InspectResult,
   OXLINT_NODE_REQUIREMENT,
-  OxlintConcurrency,
   type ReactDoctorConfig,
   resolveScanTarget,
-  resolveScanConcurrency,
   restoreLegacyThrow,
   runInspect as runInspectEffect,
   yieldToEventLoop,
@@ -29,6 +27,7 @@ import { recordCount } from "./cli/utils/record-metric.js";
 import { recordRunEvent } from "./cli/utils/build-run-event.js";
 import { filterDiagnosticsByChangedLines } from "./cli/utils/filter-diagnostics-by-changed-lines.js";
 import { makeNoopConsole } from "./cli/utils/noop-console.js";
+import { resolveInvocationOxlintConcurrency } from "./cli/utils/resolve-invocation-oxlint-concurrency.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { resolveInspectOptions } from "./cli/utils/resolve-inspect-options.js";
 import { buildRunEventConfig } from "./cli/utils/render-and-record-scan.js";
@@ -164,9 +163,7 @@ const inspectWithOxlintRuntime = async (
 export const createInvocationInspect = (
   requestedOxlintConcurrency?: number,
 ): ((directory: string, inputOptions?: ReactDoctorInspectOptions) => Promise<InspectResult>) => {
-  const concurrency = resolveScanConcurrency(
-    requestedOxlintConcurrency ?? Effect.runSync(OxlintConcurrency),
-  );
+  const concurrency = resolveInvocationOxlintConcurrency(requestedOxlintConcurrency);
   const spawnSlots = createOxlintSpawnSlots(concurrency);
   const scanResultCacheInvocationState = createScanResultCacheInvocationState();
   return async (directory, inputOptions = {}) => {

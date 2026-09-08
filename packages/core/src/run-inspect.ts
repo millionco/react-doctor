@@ -239,26 +239,35 @@ export const runInspect = <HooksR = never>(
         reason: new NoReactDependency({ directory: scanDirectory }),
       });
     }
-    const [repo, sha, defaultBranch] = yield* Effect.all(
-      [
-        gitService
-          .githubRepo(scanDirectory)
-          .pipe(Effect.orElseSucceed(() => null as string | null)),
-        gitService.headSha(scanDirectory).pipe(Effect.orElseSucceed(() => null as string | null)),
-        gitService
-          .defaultBranch(scanDirectory)
-          .pipe(Effect.orElseSucceed(() => null as string | null)),
-      ],
-      { concurrency: 3 },
+    // The git metadata only feeds the score request + telemetry at the very
+    // end, so its four subprocesses run in the background and are joined
+    // after lint instead of gating the first oxlint spawn.
+    const gitMetadataFiber = yield* Effect.forkChild(
+      Effect.gen(function* () {
+        const [repo, sha, defaultBranch] = yield* Effect.all(
+          [
+            gitService
+              .githubRepo(scanDirectory)
+              .pipe(Effect.orElseSucceed(() => null as string | null)),
+            gitService
+              .headSha(scanDirectory)
+              .pipe(Effect.orElseSucceed(() => null as string | null)),
+            gitService
+              .defaultBranch(scanDirectory)
+              .pipe(Effect.orElseSucceed(() => null as string | null)),
+          ],
+          { concurrency: 3 },
+        );
+        const githubViewerPermission =
+          input.resolveLocalGithubViewerPermission === true && !input.isCi && repo !== null
+            ? yield* gitService
+                .githubViewerPermission({ directory: scanDirectory, repo })
+                .pipe(Effect.orElseSucceed(() => null as string | null))
+            : null;
+        return { repo, sha, defaultBranch, githubViewerPermission };
+      }),
     );
     const githubActionsScoreMetadata = input.isCi ? resolveGithubActionsScoreMetadata() : {};
-    const githubViewerPermissionFiber = yield* Effect.forkChild(
-      input.resolveLocalGithubViewerPermission === true && !input.isCi && repo !== null
-        ? gitService
-            .githubViewerPermission({ directory: scanDirectory, repo })
-            .pipe(Effect.orElseSucceed(() => null as string | null))
-        : Effect.succeed(null as string | null),
-    );
 
     const explicitLintIncludePaths = computeExplicitLintIncludePaths([...input.includePaths]);
     let lintIncludePaths =
@@ -584,6 +593,15 @@ export const runInspect = <HooksR = never>(
         ),
       );
     };
+    // The maintainability (duplicate-JSX) pass is parent-thread CPU work that
+    // used to trail lint as a multi-second tail; it now overlaps the lint wave,
+    // whose worker processes leave the parent thread mostly idle. Its result is
+    // discarded when lint fails, matching the sequential contract.
+    const maintainabilityFiber = yield* Effect.forkChild(
+      shouldRunMaintainability
+        ? Effect.suspend(buildCollectMaintainability)
+        : Effect.succeed<ReadonlyArray<Diagnostic>>([]),
+    );
     const scanProgress = yield* progressService.start("Scanning...");
     const scanStartTime = Date.now();
     let lastReportedTotalFileCount = 0;
@@ -720,18 +738,24 @@ export const runInspect = <HooksR = never>(
     const scannedFilesLabel = `${totalFileCount} ${totalFileCount === 1 ? "file" : "files"}`;
 
     let maintainabilityCollected: ReadonlyArray<Diagnostic> = [];
-    if (!lintFailureState.didFail && shouldRunMaintainability) {
+    if (lintFailureState.didFail) {
+      yield* Fiber.interrupt(maintainabilityFiber);
+    } else if (shouldRunMaintainability) {
+      const isMaintainabilityPending = maintainabilityFiber.pollUnsafe() === undefined;
       const isDeadlineSpent =
         input.deadlineEpochMs !== undefined &&
         remainingDeadlineBudgetMs(input.deadlineEpochMs) === 0;
       if (isDeadlineSpent) {
+        yield* Fiber.interrupt(maintainabilityFiber);
         yield* Ref.set(maintainabilityFailure, {
           didFail: true,
           reason: "Maintainability analysis skipped — max scan duration reached.",
         });
       } else {
-        yield* scanProgress.update(`Scanned ${scannedFilesLabel}, analyzing maintainability...`);
-        maintainabilityCollected = yield* buildCollectMaintainability();
+        if (isMaintainabilityPending) {
+          yield* scanProgress.update(`Scanned ${scannedFilesLabel}, analyzing maintainability...`);
+        }
+        maintainabilityCollected = yield* Fiber.join(maintainabilityFiber);
       }
     }
     const maintainabilityFailureState = lintFailureState.didFail
@@ -786,7 +810,8 @@ export const runInspect = <HooksR = never>(
       ]),
     );
 
-    const githubViewerPermission = yield* Fiber.join(githubViewerPermissionFiber);
+    const { repo, sha, defaultBranch, githubViewerPermission } =
+      yield* Fiber.join(gitMetadataFiber);
     const scoreMetadata: ScoreRequestMetadata = {
       ...(repo !== null ? { repo } : {}),
       ...(sha !== null ? { sha } : {}),

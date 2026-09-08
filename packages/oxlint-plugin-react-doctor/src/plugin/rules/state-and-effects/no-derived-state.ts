@@ -23,6 +23,22 @@ const getStateName = (stateDeclarator: EsTreeNode): string => {
   return setterBinding.name[3].toLowerCase() + setterBinding.name.slice(4);
 };
 
+const hasRenderTrackerGuardShape = (componentBody: EsTreeNode): boolean => {
+  if (!isNodeOfType(componentBody, "BlockStatement")) return false;
+  for (const statement of componentBody.body ?? []) {
+    if (
+      isNodeOfType(statement, "IfStatement") &&
+      !statement.alternate &&
+      isNodeOfType(statement.test, "BinaryExpression") &&
+      statement.test.operator === "!==" &&
+      isNodeOfType(statement.consequent, "BlockStatement")
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 export const noDerivedState = defineRule({
   id: "no-derived-state",
   title: "Derived value copied into state",
@@ -40,7 +56,7 @@ export const noDerivedState = defineRule({
     };
     const componentTracker = createComponentPropStackTracker({
       onComponentEnter: (componentBody) => {
-        if (!componentBody) return;
+        if (!componentBody || !hasRenderTrackerGuardShape(componentBody)) return;
         const analysis = getProgramAnalysis(componentBody);
         if (!analysis) return;
         for (const fact of collectRenderStateWriteFacts(

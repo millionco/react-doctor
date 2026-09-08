@@ -6,6 +6,8 @@ The native rule cohort is listed in `upstream.json`, with one Rust source file p
 
 ## Build and verify
 
+Default release builds enable Oxlint's allocator feature and require CMake in addition to the Rust and C/C++ toolchains. On macOS this feature uses Mimalloc. Pass `--no-allocator` to build without it, and keep allocator settings consistent when comparing performance.
+
 ```sh
 nr native:oxlint:verify
 nr native:oxlint:check

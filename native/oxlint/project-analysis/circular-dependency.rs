@@ -345,6 +345,7 @@ mod tests {
         let graph = ProjectAnalysisGraphInput {
             modules: vec![module_a, module("src/b.ts")],
             edges: vec![runtime_edge(0, 1, "valueB"), runtime_edge(1, 0, "valueA")],
+            ..ProjectAnalysisGraphInput::default()
         };
 
         assert_eq!(
@@ -367,6 +368,7 @@ mod tests {
             ProjectAnalysisGraphInput {
                 modules: vec![module("src/a.ts"), module("src/b.ts")],
                 edges: vec![runtime_edge(0, 1, "valueB"), runtime_edge(1, 0, "valueA")],
+                ..ProjectAnalysisGraphInput::default()
             },
             ProjectAnalysisGraphInput {
                 modules: vec![module("src/a.ts"), module("src/b.ts")],
@@ -377,6 +379,7 @@ mod tests {
                     },
                     runtime_edge(1, 0, "valueA"),
                 ],
+                ..ProjectAnalysisGraphInput::default()
             },
             ProjectAnalysisGraphInput {
                 modules: vec![module("src/a.ts"), module("src/b.ts")],
@@ -387,10 +390,12 @@ mod tests {
                     },
                     runtime_edge(1, 0, "valueA"),
                 ],
+                ..ProjectAnalysisGraphInput::default()
             },
             ProjectAnalysisGraphInput {
                 modules: vec![module("src/value.ts"), type_module],
                 edges: vec![runtime_edge(0, 1, "Shape"), runtime_edge(1, 0, "value")],
+                ..ProjectAnalysisGraphInput::default()
             },
         ];
 
@@ -410,6 +415,7 @@ mod tests {
                 },
                 runtime_edge(1, 0, "valueA"),
             ],
+            ..ProjectAnalysisGraphInput::default()
         };
         assert_eq!(analyze(&side_effect_graph).len(), 1);
 
@@ -426,6 +432,7 @@ mod tests {
                 },
                 runtime_edge(1, 0, "valueA"),
             ],
+            ..ProjectAnalysisGraphInput::default()
         };
         assert!(analyze(&excluded_graph).is_empty());
     }
@@ -439,6 +446,7 @@ mod tests {
         let graph = ProjectAnalysisGraphInput {
             modules: vec![module("src/\u{e000}.ts"), astral_module],
             edges: vec![runtime_edge(0, 1, "value"), runtime_edge(1, 0, "value")],
+            ..ProjectAnalysisGraphInput::default()
         };
 
         assert_eq!(analyze(&graph)[0].files[0], "src/\u{10000}.ts");
@@ -459,6 +467,7 @@ mod tests {
                     ..ProjectEdgeInput::default()
                 })
                 .collect(),
+            ..ProjectAnalysisGraphInput::default()
         };
         assert!(analyze(&oversized_graph).is_empty());
 
@@ -482,7 +491,11 @@ mod tests {
                 }
             }
         }
-        let capped_graph = ProjectAnalysisGraphInput { modules, edges };
+        let capped_graph = ProjectAnalysisGraphInput {
+            modules,
+            edges,
+            ..ProjectAnalysisGraphInput::default()
+        };
         assert_eq!(analyze(&capped_graph).len(), MAX_TOTAL_CYCLES);
     }
 }

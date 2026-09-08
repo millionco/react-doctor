@@ -2,18 +2,16 @@ use std::{
     collections::HashSet,
     path::{Component, Path, PathBuf},
     sync::OnceLock,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use lazy_regex::Regex;
-use oxc_allocator::Allocator;
 use oxc_ast::{
     AstKind,
-    ast::{Declaration, ImportDeclarationSpecifier, ModuleExportName, Statement},
+    ast::{ImportDeclarationSpecifier, Statement},
 };
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
-use oxc_parser::Parser;
-use oxc_span::SourceType;
 
 use crate::{
     AstNode,
@@ -50,6 +48,16 @@ struct BarrelModuleInfo {
 
 type BarrelModuleInfoCache =
     std::collections::HashMap<PathBuf, Option<std::sync::Arc<BarrelModuleInfo>>>;
+
+struct BarrelExportNamesCacheEntry {
+    modified_milliseconds: f64,
+    size: u64,
+    names: std::sync::Arc<HashSet<String>>,
+}
+
+static BARREL_EXPORT_NAMES_CACHE: OnceLock<
+    std::sync::Mutex<std::collections::HashMap<PathBuf, BarrelExportNamesCacheEntry>>,
+> = OnceLock::new();
 
 #[derive(Clone)]
 struct BarrelImportedBinding {
@@ -741,14 +749,6 @@ fn barrel_import_line_comment_pattern() -> &'static Regex {
     PATTERN.get_or_init(|| Regex::new(r"(?m)^\s*//.*$").unwrap())
 }
 
-fn barrel_import_module_export_name<'a>(name: &'a ModuleExportName<'a>) -> Option<&'a str> {
-    match name {
-        ModuleExportName::IdentifierName(identifier) => Some(identifier.name.as_str()),
-        ModuleExportName::IdentifierReference(identifier) => Some(identifier.name.as_str()),
-        ModuleExportName::StringLiteral(literal) => Some(literal.value.as_str()),
-    }
-}
-
 fn barrel_import_resolve_export_file_path(
     barrel_file_path: &Path,
     exported_name: &str,
@@ -800,78 +800,165 @@ fn barrel_import_resolve_export_file_path(
 }
 
 fn barrel_import_module_exports_name(file_path: &Path, exported_name: &str) -> bool {
-    let Ok(source_text) = std::fs::read_to_string(file_path) else {
-        return false;
-    };
-    let Ok(source_type) = SourceType::from_path(file_path).map(|source_type| {
-        if file_path
-            .extension()
-            .is_some_and(|extension| extension == "js")
-        {
-            source_type.with_jsx(true)
-        } else {
-            source_type
-        }
-    }) else {
-        return false;
-    };
-    let allocator = Allocator::default();
-    let parser_return = Parser::new(&allocator, &source_text, source_type).parse();
-    if parser_return.panicked || !parser_return.diagnostics.is_empty() {
-        return false;
-    }
-    parser_return
-        .program
-        .body
-        .iter()
-        .any(|statement| match statement {
-            Statement::ExportDefaultDeclaration(_) => exported_name == "default",
-            Statement::ExportNamedDeclaration(declaration) => {
-                declaration.specifiers.iter().any(|specifier| {
-                    barrel_import_module_export_name(&specifier.exported) == Some(exported_name)
-                })
-            }
-            Statement::ExportFromDeclaration(declaration) => {
-                declaration.specifiers.iter().any(|specifier| {
-                    barrel_import_module_export_name(&specifier.exported) == Some(exported_name)
-                })
-            }
-            Statement::ExportDeclaration(declaration) => {
-                barrel_import_declaration_exports_name(&declaration.declaration, exported_name)
-            }
-            _ => false,
-        })
+    barrel_import_module_export_names(file_path).is_some_and(|names| names.contains(exported_name))
 }
 
-fn barrel_import_declaration_exports_name(
-    declaration: &Declaration<'_>,
-    exported_name: &str,
-) -> bool {
-    match declaration {
-        Declaration::VariableDeclaration(declaration) => {
-            declaration.declarations.iter().any(|declarator| {
-                declarator
-                    .id
-                    .get_binding_identifier()
-                    .is_some_and(|identifier| identifier.name == exported_name)
-            })
+fn barrel_import_modified_milliseconds(modified: SystemTime) -> f64 {
+    let (seconds, nanoseconds) = match modified.duration_since(UNIX_EPOCH) {
+        Ok(duration) => (
+            duration.as_secs() as f64,
+            f64::from(duration.subsec_nanos()),
+        ),
+        Err(error) => {
+            let duration = error.duration();
+            if duration.subsec_nanos() == 0 {
+                (-(duration.as_secs() as f64), 0.0)
+            } else {
+                (
+                    -(duration.as_secs() as f64) - 1.0,
+                    1_000_000_000.0 - f64::from(duration.subsec_nanos()),
+                )
+            }
         }
-        Declaration::FunctionDeclaration(function) => {
-            !function.generator
-                && function
-                    .id
-                    .as_ref()
-                    .is_some_and(|identifier| identifier.name == exported_name)
-        }
-        Declaration::ClassDeclaration(class) => class
-            .id
-            .as_ref()
-            .is_some_and(|identifier| identifier.name == exported_name),
-        Declaration::TSTypeAliasDeclaration(declaration) => declaration.id.name == exported_name,
-        Declaration::TSInterfaceDeclaration(declaration) => declaration.id.name == exported_name,
-        Declaration::TSEnumDeclaration(declaration) => declaration.id.name == exported_name,
-        _ => false,
+    };
+    seconds * 1_000.0 + nanoseconds / 1_000_000.0
+}
+
+fn barrel_import_module_export_names(file_path: &Path) -> Option<std::sync::Arc<HashSet<String>>> {
+    let metadata = std::fs::metadata(file_path).ok()?;
+    let modified_milliseconds = barrel_import_modified_milliseconds(metadata.modified().ok()?);
+    let size = metadata.len();
+    let cache = BARREL_EXPORT_NAMES_CACHE
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    if let Ok(cache) = cache.lock()
+        && let Some(entry) = cache.get(file_path)
+        && entry.modified_milliseconds == modified_milliseconds
+        && entry.size == size
+    {
+        return Some(std::sync::Arc::clone(&entry.names));
     }
+    let names = std::sync::Arc::new(barrel_import_read_export_names(file_path)?);
+    if let Ok(mut cache) = cache.lock() {
+        cache.insert(
+            file_path.to_path_buf(),
+            BarrelExportNamesCacheEntry {
+                modified_milliseconds,
+                size,
+                names: std::sync::Arc::clone(&names),
+            },
+        );
+    }
+    Some(names)
+}
+
+fn barrel_import_read_export_names(file_path: &Path) -> Option<HashSet<String>> {
+    let source = std::fs::read(file_path).ok()?;
+    Some(barrel_import_collect_source_export_names(
+        &String::from_utf8_lossy(&source),
+    ))
+}
+
+fn barrel_import_leaf_regex(pattern: &str) -> Regex {
+    Regex::new(&pattern.replace(
+        r"\s",
+        r"[\t\n\x0B\x0C\r \u{00A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{FEFF}]",
+    ))
+    .unwrap()
+}
+
+fn barrel_import_for_each_leaf_line_match(
+    source: &str,
+    pattern: &Regex,
+    last_possible_start: usize,
+    mut visit: impl FnMut(usize, &lazy_regex::Captures<'_>),
+) {
+    let line_starts =
+        std::iter::once(0).chain(source.char_indices().filter_map(|(index, character)| {
+            matches!(character, '\n' | '\r' | '\u{2028}' | '\u{2029}')
+                .then_some(index + character.len_utf8())
+        }));
+    let mut search_start = 0;
+    for start in line_starts.take_while(|start| *start <= last_possible_start) {
+        if start < search_start {
+            continue;
+        }
+        let tail = &source[start..];
+        search_start = source.len() - tail.trim_start_matches(is_js_whitespace).len();
+        if let Some(captures) = pattern.captures(tail) {
+            search_start = start + captures.get(0).unwrap().end();
+            visit(start, &captures);
+        }
+    }
+}
+
+fn barrel_import_collect_source_export_names(source: &str) -> HashSet<String> {
+    static LINE_COMMENT: OnceLock<Regex> = OnceLock::new();
+    static DEFAULT_EXPORT: OnceLock<Regex> = OnceLock::new();
+    static NAMED_EXPORT: OnceLock<Regex> = OnceLock::new();
+    static LOCAL_EXPORT: OnceLock<Regex> = OnceLock::new();
+    static ALIAS: OnceLock<Regex> = OnceLock::new();
+    let without_blocks = barrel_import_block_comment_pattern().replace_all(source, "");
+    let mut stripped = String::new();
+    let mut copied_until = 0;
+    barrel_import_for_each_leaf_line_match(
+        &without_blocks,
+        LINE_COMMENT.get_or_init(|| barrel_import_leaf_regex(r"\A\s*//[^\r\n\u{2028}\u{2029}]*")),
+        without_blocks.len(),
+        |start, captures| {
+            stripped.push_str(&without_blocks[copied_until..start]);
+            copied_until = start + captures.get(0).unwrap().end();
+        },
+    );
+    stripped.push_str(&without_blocks[copied_until..]);
+    let mut names = HashSet::new();
+    barrel_import_for_each_leaf_line_match(
+        &stripped,
+        DEFAULT_EXPORT.get_or_init(|| barrel_import_leaf_regex(r"\A\s*export\s+default(?-u:\b)")),
+        stripped.len(),
+        |_, _| {
+            names.insert("default".to_string());
+        },
+    );
+    let named_export_pattern = NAMED_EXPORT.get_or_init(|| barrel_import_leaf_regex(r"\A\s*export\s+(?:declare\s+)?(?:(?:async\s+)?function|(?:abstract\s+)?class|const|let|var|enum|interface|type)\s+([A-Za-z0-9_$]+)"));
+    barrel_import_for_each_leaf_line_match(
+        &stripped,
+        named_export_pattern,
+        stripped.len(),
+        |_, captures| {
+            names.insert(captures[1].to_string());
+        },
+    );
+    if let Some(last_closing_brace) = stripped.rfind('}') {
+        let local_export_pattern = LOCAL_EXPORT.get_or_init(|| barrel_import_leaf_regex(r#"\A\s*export\s+(?:type\s+)?\{((?s:.*?))\}(?:\s+from\s+["'][^"']+["'])?\s*;?\s*(?:(?://[^\n]*)?\s*)"#));
+        barrel_import_for_each_leaf_line_match(
+            &stripped,
+            local_export_pattern,
+            last_closing_brace,
+            |_, captures| {
+                for raw_specifier in captures[1].split(',') {
+                    let specifier = raw_specifier.trim_matches(is_js_whitespace);
+                    if specifier.is_empty() {
+                        continue;
+                    }
+                    let mut parts = ALIAS
+                        .get_or_init(|| barrel_import_leaf_regex(r"\s+as\s+"))
+                        .split(specifier);
+                    let local = barrel_import_leaf_specifier_name(parts.next().unwrap_or_default());
+                    let exported = barrel_import_leaf_specifier_name(parts.next().unwrap_or(local));
+                    names.insert(exported.to_string());
+                }
+            },
+        );
+    }
+    names
+}
+
+fn barrel_import_leaf_specifier_name(name: &str) -> &str {
+    let name = name
+        .strip_prefix("type")
+        .filter(|tail| tail.chars().next().is_some_and(is_js_whitespace))
+        .map_or(name, |tail| tail.trim_start_matches(is_js_whitespace));
+    name.trim_matches(is_js_whitespace)
 }
 
 fn barrel_import_create_relative_source(filename: &Path, target_file_path: &Path) -> String {
@@ -925,4 +1012,223 @@ fn barrel_import_normalize_path(path: &Path) -> PathBuf {
         }
     }
     normalized
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        fs::{self, File, FileTimes},
+        sync::atomic::{AtomicUsize, Ordering},
+        time::Duration,
+    };
+
+    struct TemporaryModule {
+        directory: PathBuf,
+        path: PathBuf,
+    }
+
+    impl TemporaryModule {
+        fn new() -> Self {
+            static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+            let directory = std::env::temp_dir().join(format!(
+                "react-doctor-barrel-{}-{}",
+                std::process::id(),
+                NEXT_ID.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&directory).unwrap();
+            let path = directory.join("module.ts");
+            Self { directory, path }
+        }
+
+        fn write(&self, source: &str, modified: SystemTime) {
+            fs::write(&self.path, source).unwrap();
+            File::options()
+                .write(true)
+                .open(&self.path)
+                .unwrap()
+                .set_times(FileTimes::new().set_modified(modified))
+                .unwrap();
+        }
+    }
+
+    impl Drop for TemporaryModule {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.directory);
+        }
+    }
+
+    #[test]
+    fn reuses_all_export_names_for_unchanged_module() {
+        let module = TemporaryModule::new();
+        module.write(
+            "export const first = 1;\nexport const second = 2;",
+            UNIX_EPOCH + Duration::from_secs(2_000_000_000),
+        );
+        let first = barrel_import_module_export_names(&module.path).unwrap();
+        let second = barrel_import_module_export_names(&module.path).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+        assert!(first.contains("first") && first.contains("second"));
+        assert!(!first.contains("missing"));
+    }
+
+    #[test]
+    fn invalidates_on_modified_time_or_size() {
+        let module = TemporaryModule::new();
+        let initial_time = UNIX_EPOCH + Duration::from_secs(2_000_000_000);
+        module.write("export const first = 1;", initial_time);
+        let first = barrel_import_module_export_names(&module.path).unwrap();
+        module.write(
+            "export const later = 1;",
+            initial_time + Duration::from_secs(1),
+        );
+        let later = barrel_import_module_export_names(&module.path).unwrap();
+        assert!(!std::sync::Arc::ptr_eq(&first, &later));
+        assert!(later.contains("later") && !later.contains("first"));
+        module.write(
+            "export const longer_name = 1;",
+            initial_time + Duration::from_secs(1),
+        );
+        let resized = barrel_import_module_export_names(&module.path).unwrap();
+        assert!(!std::sync::Arc::ptr_eq(&later, &resized));
+        assert!(resized.contains("longer_name") && !resized.contains("later"));
+    }
+
+    #[test]
+    fn retries_missing_modules_and_caches_malformed_exports() {
+        let module = TemporaryModule::new();
+        assert!(barrel_import_module_export_names(&module.path).is_none());
+        let modified = UNIX_EPOCH + Duration::from_secs(2_000_000_000);
+        module.write("export const value = ;", modified);
+        let first = barrel_import_module_export_names(&module.path).unwrap();
+        assert!(first.contains("value"));
+        let second = barrel_import_module_export_names(&module.path).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+        fs::remove_file(&module.path).unwrap();
+        assert!(barrel_import_module_export_names(&module.path).is_none());
+        module.write("export const second=2;", modified + Duration::from_secs(1));
+        assert!(
+            barrel_import_module_export_names(&module.path)
+                .unwrap()
+                .contains("second")
+        );
+    }
+
+    #[test]
+    fn follows_canonical_regex_export_collection() {
+        let names = barrel_import_collect_source_export_names(
+            "export default 1;\nexport const plain=1, another=2;\nexport const { hidden }={hidden:1};\nexport function normal(){}\nexport function* generated(){}\nexport class View{}\nexport type Shape=number;\nexport interface Contract{}\nexport enum Mode{One}\nconst local=1;\nexport {local as renamed};\nexport {remote as forwarded} from './other';\nexport * from './star';\nexport const value = ;",
+        );
+        for name in [
+            "default",
+            "plain",
+            "normal",
+            "View",
+            "Shape",
+            "Contract",
+            "Mode",
+            "renamed",
+            "forwarded",
+            "value",
+        ] {
+            assert!(names.contains(name), "{name}");
+        }
+        for name in [
+            "another",
+            "hidden",
+            "generated",
+            "local",
+            "remote",
+            "missing",
+        ] {
+            assert!(!names.contains(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn preserves_javascript_line_and_whitespace_semantics() {
+        let names = barrel_import_collect_source_export_names(
+            "// comment\rexport const first = 1;\u{2028}// comment\u{2029}export const second=2;\n\u{FEFF}export const third=3;\n\u{0085}export const ignored=4;\nexport const café=1;\nexport {type\tShape, value as \u{FEFF}renamed\u{FEFF}};",
+        );
+        for name in ["first", "second", "third", "caf", "Shape", "renamed"] {
+            assert!(names.contains(name), "{name}");
+        }
+        for name in ["ignored", "café", "type\tShape"] {
+            assert!(!names.contains(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn collects_exports_from_javascript_with_jsx() {
+        let mut module = TemporaryModule::new();
+        module.path.set_extension("js");
+        module.write("export const View = () => <section />;", UNIX_EPOCH);
+        assert!(
+            barrel_import_module_export_names(&module.path)
+                .unwrap()
+                .contains("View")
+        );
+    }
+
+    #[test]
+    fn normalizes_unaliased_export_specifiers_twice() {
+        for (source, expected_name) in [
+            ("export { type type Wanted };", "Wanted"),
+            ("export { type type type Wanted };", "type Wanted"),
+            ("export { local as type type Wanted };", "type Wanted"),
+            ("export { type\u{FEFF}type\tWanted };", "Wanted"),
+        ] {
+            assert_eq!(
+                barrel_import_collect_source_export_names(source),
+                HashSet::from([expected_name.to_string()]),
+            );
+        }
+    }
+
+    #[test]
+    fn replaces_invalid_utf8_before_collecting_export_names() {
+        let module = TemporaryModule::new();
+        fs::write(&module.path, b"export const value = '\xff';").unwrap();
+        let first = barrel_import_module_export_names(&module.path).unwrap();
+        assert!(first.contains("value"));
+        assert!(std::sync::Arc::ptr_eq(
+            &first,
+            &barrel_import_module_export_names(&module.path).unwrap()
+        ));
+    }
+
+    #[test]
+    fn skips_unterminated_local_export_tail() {
+        let mut source = "export {before};\n".to_string();
+        for _ in 0..100 {
+            source.push_str("export { unfinished\n");
+        }
+        let names = barrel_import_collect_source_export_names(&source);
+        assert_eq!(names, HashSet::from(["before".to_string()]));
+        assert!(
+            barrel_import_collect_source_export_names("export { unfinished\nexport { other")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn modified_time_uses_fractional_javascript_milliseconds() {
+        assert_eq!(
+            barrel_import_modified_milliseconds(UNIX_EPOCH + Duration::new(2, 123_456_789)),
+            2_000.0 + 123.456789
+        );
+        assert_eq!(
+            barrel_import_modified_milliseconds(UNIX_EPOCH - Duration::new(2, 123_456_789)),
+            -3_000.0 + 876.543211
+        );
+        assert_eq!(
+            barrel_import_modified_milliseconds(UNIX_EPOCH - Duration::from_secs(2)),
+            -2_000.0
+        );
+        let distant = UNIX_EPOCH + Duration::from_secs(2_000_000_000);
+        assert_eq!(
+            barrel_import_modified_milliseconds(distant),
+            barrel_import_modified_milliseconds(distant + Duration::from_nanos(1))
+        );
+    }
 }

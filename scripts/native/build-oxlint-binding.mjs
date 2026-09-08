@@ -1096,7 +1096,10 @@ impl Rule for ${delegatedRule.struct} {
           "is_published_library_package",
         ],
       ],
-      ["no-barrel-import", ["is_non_production_file", "is_react_native_file_target"]],
+      [
+        "no-barrel-import",
+        ["is_non_production_file", "is_react_native_file_target", "is_js_whitespace"],
+      ],
       [
         "no-secrets-in-client-code",
         ["component_or_hook_function_name", "member_expression_identifier_property_name"],

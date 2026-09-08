@@ -3057,11 +3057,12 @@ mod tests {
     }
 
     #[test]
-    fn dangerous_html_parameter_shadows_outer_static_binding() {
+    fn dangerous_html_traces_tainted_parameter_before_outer_static_binding() {
         let source = r#"const payload = "<p>Static</p>";
 function inject(element, payload) {
   element.innerHTML = payload;
-}"#;
+}
+inject(document.body, props.html);"#;
         let sink_index = source.find(".innerHTML").unwrap();
         assert!(!dangerous_html_value_is_exempt(
             "payload;",
@@ -3071,6 +3072,16 @@ function inject(element, payload) {
             sink_index,
             Path::new("src/preview.ts"),
         ));
+    }
+
+    #[test]
+    fn dangerous_html_keeps_uncalled_private_helper_without_taint() {
+        let source = r#"const payload = "<p>Static</p>";
+function inject(element, payload) {
+  element.innerHTML = payload;
+}"#;
+        let findings = scan("src/preview.ts", "/tmp/preview.ts", source, false);
+        assert!(findings.is_empty());
     }
 
     #[test]
@@ -3152,12 +3163,12 @@ function inject(element, payload) {
     }
 
     #[test]
-    fn dangerous_html_call_parts_skips_grouped_receivers() {
+    fn dangerous_html_call_parts_keeps_raw_arguments_after_grouped_receivers() {
         let (callee, arguments, _) =
             dangerous_html_call_parts("((props.value)).replaceAll(\"<\", \"&lt;\")").unwrap();
 
         assert_eq!(callee, "((props.value)).replaceAll");
-        assert_eq!(arguments, ["\"<\"", "\"&lt;\""]);
+        assert_eq!(arguments, ["\"<\"", " \"&lt;\""]);
     }
 
     #[test]

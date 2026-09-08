@@ -1,5 +1,744 @@
 [
   {
+    "name": "only-export-manifest-null",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"manifest-probe\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "apps/web/package.json": "{\"name\":\"active-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui\" } } };\n",
+      "packages/ui/package.json": "null"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-manifest-number",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"manifest-probe\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "apps/web/package.json": "{\"name\":\"active-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui\" } } };\n",
+      "packages/ui/package.json": "42"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-manifest-true",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"manifest-probe\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "apps/web/package.json": "{\"name\":\"active-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui\" } } };\n",
+      "packages/ui/package.json": "true"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-manifest-false",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"manifest-probe\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "apps/web/package.json": "{\"name\":\"active-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui\" } } };\n",
+      "packages/ui/package.json": "false"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-manifest-string",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"manifest-probe\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "apps/web/package.json": "{\"name\":\"active-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui\" } } };\n",
+      "packages/ui/package.json": "\"inactive\""
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-manifest-empty-string",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"manifest-probe\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "apps/web/package.json": "{\"name\":\"active-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui\" } } };\n",
+      "packages/ui/package.json": "\"\""
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-manifest-invalid",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"manifest-probe\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "apps/web/package.json": "{\"name\":\"active-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui\" } } };\n",
+      "packages/ui/package.json": "{"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-manifest-object",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"manifest-probe\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "apps/web/package.json": "{\"name\":\"active-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui\" } } };\n",
+      "packages/ui/package.json": "{}"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-manifest-array",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"manifest-probe\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "apps/web/package.json": "{\"name\":\"active-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui\" } } };\n",
+      "packages/ui/package.json": "[]"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-manifest-missing",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"manifest-probe\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "apps/web/package.json": "{\"name\":\"active-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui\" } } };\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-manifest-workspace-null",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "null",
+      "apps/web/package.json": "{\"name\":\"active-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui\" } } };\n",
+      "packages/ui/package.json": "{}",
+      "pnpm-workspace.yaml": "packages:\n  - \"apps/*\"\n  - \"packages/*\"\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-manifest-workspace-number",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "42",
+      "apps/web/package.json": "{\"name\":\"active-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui\" } } };\n",
+      "packages/ui/package.json": "{}",
+      "pnpm-workspace.yaml": "packages:\n  - \"apps/*\"\n  - \"packages/*\"\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-alias-absolute-root",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"/\" } } };\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-alias-root-placeholder",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"/$1\" } } };\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-alias-double-slash-placeholder",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"//$1\" } } };\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-alias-relative-trailing-slashes",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui///\" } } };\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-alias-optional-single-slash",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui///*tail\" } } };\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-alias-first-placeholder",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui/*tail/other/$2\" } } };\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-alias-ascii-placeholder-digits",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui/$12tail\" } } };\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-alias-unicode-placeholder-digit",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui/$١tail\" } } };\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-alias-terminal-lf",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui/*tail\\n\" } } };\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-alias-last-line-lf",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../else/*blocked\\n/../../packages/ui/*tail\" } } };\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-alias-terminal-cr",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui/*tail\\r\" } } };\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-alias-last-line-cr",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../else/*blocked\\r/../../packages/ui/*tail\" } } };\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-alias-terminal-ls",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui/*tail \" } } };\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-alias-last-line-ls",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../else/*blocked /../../packages/ui/*tail\" } } };\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-alias-terminal-ps",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../packages/ui/*tail \" } } };\n"
+    },
+    "expectedCount": 0
+  },
+  {
+    "name": "only-export-alias-last-line-ps",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\";\nexport default { plugins: [react()], resolve: { alias: { preview: \"../../else/*blocked /../../packages/ui/*tail\" } } };\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "only-export-alias-config-expression-root-literal",
+    "ruleId": "only-export-components",
+    "filename": "packages/ui/src/Card.tsx",
+    "source": "export const Card = () => <div />;\nexport default registerDefinition({ component: Card });\n",
+    "files": {
+      "package.json": "{\"name\":\"alias-workspace\",\"private\":true,\"workspaces\":[\"apps/*\",\"packages/*\"]}",
+      "packages/ui/package.json": "{\"name\":\"unowned-ui\"}",
+      "apps/web/package.json": "{\"name\":\"alias-app\",\"scripts\":{\"dev\":\"vite\"},\"dependencies\":{\"react\":\"19.0.0\"},\"devDependencies\":{\"vite\":\"7.0.0\",\"@vitejs/plugin-react\":\"5.0.0\"}}",
+      "apps/web/vite.config.ts": "import react from \"@vitejs/plugin-react\"; import path from \"node:path\";\nexport default { plugins: [react()], resolve: { alias: { preview: path.resolve(\".\", \"preview\") + \"/\" } } };\n"
+    },
+    "expectedCount": 1
+  },
+  {
+    "name": "barrel-export-cache-unaliased-double-type",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { Wanted } from \"./components\"; console.log(Wanted);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "export { type type Wanted };",
+      "src/components/other.ts": "export const Other = 1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-unaliased-triple-type",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { Wanted } from \"./components\"; console.log(Wanted);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "export { type type type Wanted };",
+      "src/components/other.ts": "export const Other = 1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-aliased-double-type",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { Wanted } from \"./components\"; console.log(Wanted);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "export { local as type type Wanted };",
+      "src/components/other.ts": "export const Other = 1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-unaliased-type-js-whitespace",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { Wanted } from \"./components\"; console.log(Wanted);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "export { type﻿type\tWanted };",
+      "src/components/other.ts": "export const Other = 1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-multiple-leaf-names",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { First, Second } from \"./components\"; console.log(First, Second);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./values\";\nexport * from \"./other\";",
+      "src/components/values.ts": "export const First = 1;\nexport class Second {}",
+      "src/components/other.ts": "export const Other = 2;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-default-reexport",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { View } from \"./components\"; console.log(View);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export { default as View } from \"./view\";\nexport { Other } from \"./other\";",
+      "src/components/view.ts": "export default class View {}",
+      "src/components/other.ts": "export const Other = 2;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-type-and-named-alias",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { Shape, Named } from \"./components\"; console.log(Shape, Named);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./values\";\nexport * from \"./other\";",
+      "src/components/values.ts": "export interface Shape {}\nconst local = 1;\nexport { local as Named };",
+      "src/components/other.ts": "export const Other = 2;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-js-jsx-leaf",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { View } from \"./components\"; console.log(View);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./view.js\";\nexport * from \"./other\";",
+      "src/components/view.js": "export const View = () => <section />;",
+      "src/components/other.ts": "export const Other = 2;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-star-ambiguity",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { Shared } from \"./components\"; console.log(Shared);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./left\";\nexport * from \"./right\";",
+      "src/components/left.ts": "export const Shared = 1;",
+      "src/components/right.ts": "export const Shared = 2;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-star-diamond",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { Shared } from \"./components\"; console.log(Shared);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./left\";\nexport * from \"./right\";",
+      "src/components/left/index.ts": "export * from \"../leaf\";",
+      "src/components/right/index.ts": "export * from \"../leaf\";",
+      "src/components/leaf.ts": "export const Shared = 1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-star-cycle",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { Shared } from \"./components\"; console.log(Shared);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./loop\";\nexport * from \"./leaf\";",
+      "src/components/loop/index.ts": "export * from \"../index\";",
+      "src/components/leaf.ts": "export const Shared = 1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-all-runtime-exports",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { First, Second } from \"./components\"; console.log(First, Second);",
+    "expectedCount": 0,
+    "files": {
+      "src/components/index.ts": "export { First } from \"./first\";\nexport { Second } from \"./second\";",
+      "src/components/first.ts": "export const First = 1;",
+      "src/components/second.ts": "export const Second = 2;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-second-variable",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { value } from \"./components\"; console.log(value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "export const first = 1, value = 2;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-malformed-export",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { value } from \"./components\"; console.log(value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "export const value = ;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-cr-anchor",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { value } from \"./components\"; console.log(value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "const ignored=0;\rexport const value=1;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-ls-anchor",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { value } from \"./components\"; console.log(value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "const ignored=0;\u2028export const value=1;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-ps-anchor",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { value } from \"./components\"; console.log(value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "const ignored=0;\u2029export const value=1;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-crlf-comments",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { value } from \"./components\"; console.log(value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "// first\r\n// second\r\nexport const value=1;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-cr-comments",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { value } from \"./components\"; console.log(value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "// first\rexport const value=1;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-unicode-line-comments",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { value } from \"./components\"; console.log(value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "// first\u2028// second\u2029export const value=1;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-bom-leading",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { value } from \"./components\"; console.log(value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "\ufeffexport const value=1;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-nel-leading",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { value } from \"./components\"; console.log(value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "\u0085export const value=1;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-ascii-word-prefix",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { caf } from \"./components\"; console.log(caf);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "export const caf\u00e9=1;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-nonascii-name",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { \u00e9 } from \"./components\"; console.log(\u00e9);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "export const \u00e9=1;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-type-tab-specifier",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { Shape } from \"./components\"; console.log(Shape);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "interface Shape {}\nexport {type\tShape};",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-bom-specifier",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { renamed } from \"./components\"; console.log(renamed);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "const value=1;\nexport {value as \ufeffrenamed\ufeff};",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-generator",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { value } from \"./components\"; console.log(value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "export function* value() {}",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-inline-export",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { value } from \"./components\"; console.log(value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "const earlier=1; export const value=2;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-unrecognized-extension",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { value } from \"./components\"; console.log(value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.data\";\nexport * from \"./other\";",
+      "src/components/leaf.data": "export const value=1;",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
+    "name": "barrel-export-cache-declaration-modifiers",
+    "ruleId": "no-barrel-import",
+    "filename": "src/consumer.tsx",
+    "source": "import { Value } from \"./components\"; console.log(Value);",
+    "expectedCount": 1,
+    "files": {
+      "src/components/index.ts": "export * from \"./leaf.ts\";\nexport * from \"./other\";",
+      "src/components/leaf.ts": "export declare abstract class Value {}",
+      "src/components/other.ts": "export const Other=1;"
+    }
+  },
+  {
     "name": "state-updater-prior-setter-find-last-boundary",
     "ruleId": "no-side-effect-in-state-updater-function",
     "source": "import {useState} from \"react\"; import dayjs from \"dayjs\"; export const C=()=>{const [value,setValue]=useState({date:dayjs()}); [1].findLast(()=>{setValue({date:dayjs()}); return 1;}); setValue(previous=>({date:previous.date.add(1,\"day\")})); return null;};",

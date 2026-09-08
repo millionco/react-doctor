@@ -103,6 +103,9 @@ const REACT_ROUTER_FACTORIES: [&str; 5] = [
     "createRouter",
 ];
 
+static ONLY_EXPORT_MANIFEST_BY_PACKAGE: LazyLock<
+    Mutex<HashMap<PathBuf, Option<std::sync::Arc<serde_json::Value>>>>,
+> = LazyLock::new(|| Mutex::new(HashMap::new()));
 static ONLY_EXPORT_STATUS_BY_PACKAGE: LazyLock<Mutex<HashMap<PathBuf, Option<RefreshRuntime>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static ONLY_EXPORT_WORKSPACE_STATUS_BY_FILE: LazyLock<
@@ -410,20 +413,7 @@ fn only_export_fast_refresh_status(ctx: &LintContext<'_>) -> Option<RefreshRunti
     while let Some(current) = directory {
         let manifest_path = current.join("package.json");
         if manifest_path.is_file() {
-            if let Some(status) = ONLY_EXPORT_STATUS_BY_PACKAGE
-                .lock()
-                .ok()
-                .and_then(|statuses| statuses.get(current).copied())
-            {
-                return status
-                    .or_else(|| only_export_workspace_fast_refresh_status(filename, current));
-            }
-            let Ok(source) = fs::read_to_string(&manifest_path) else {
-                return None;
-            };
-            let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&source) else {
-                return None;
-            };
+            let manifest = only_export_read_package_manifest(current)?;
             return only_export_package_fast_refresh_status(current, &manifest)
                 .or_else(|| only_export_workspace_fast_refresh_status(filename, current));
         }
@@ -432,22 +422,34 @@ fn only_export_fast_refresh_status(ctx: &LintContext<'_>) -> Option<RefreshRunti
     None
 }
 
+fn only_export_read_package_manifest(
+    package_directory: &Path,
+) -> Option<std::sync::Arc<serde_json::Value>> {
+    let read_manifest = || {
+        let source = fs::read(package_directory.join("package.json")).ok()?;
+        let manifest =
+            serde_json::from_str::<serde_json::Value>(&String::from_utf8_lossy(&source)).ok()?;
+        (manifest.is_object() || manifest.is_array()).then(|| std::sync::Arc::new(manifest))
+    };
+    if let Ok(mut manifests) = ONLY_EXPORT_MANIFEST_BY_PACKAGE.lock() {
+        return manifests
+            .entry(package_directory.to_path_buf())
+            .or_insert_with(read_manifest)
+            .clone();
+    }
+    read_manifest()
+}
+
 fn only_export_package_fast_refresh_status(
     package_directory: &Path,
     manifest: &serde_json::Value,
 ) -> Option<RefreshRuntime> {
-    if let Some(status) = ONLY_EXPORT_STATUS_BY_PACKAGE
-        .lock()
-        .ok()
-        .and_then(|statuses| statuses.get(package_directory).copied())
-    {
-        return status;
-    }
-    let status = only_export_local_fast_refresh_status(package_directory, manifest);
     if let Ok(mut statuses) = ONLY_EXPORT_STATUS_BY_PACKAGE.lock() {
-        statuses.insert(package_directory.to_path_buf(), status);
+        return *statuses
+            .entry(package_directory.to_path_buf())
+            .or_insert_with(|| only_export_local_fast_refresh_status(package_directory, manifest));
     }
-    status
+    only_export_local_fast_refresh_status(package_directory, manifest)
 }
 
 fn only_export_local_fast_refresh_status(
@@ -1426,6 +1428,7 @@ fn only_export_workspace_fast_refresh_status(
         return status;
     }
     let status = only_export_find_workspace_root(package_directory).and_then(|workspace_root| {
+        only_export_read_package_manifest(&workspace_root)?;
         let status_for_index = |index: &OnlyExportWorkspaceIndex| {
             index
                 .alias_owners
@@ -1501,9 +1504,7 @@ fn only_export_build_workspace_index(workspace_root: &Path) -> OnlyExportWorkspa
 fn only_export_find_workspace_root(package_directory: &Path) -> Option<PathBuf> {
     let mut current = Some(package_directory);
     while let Some(directory) = current {
-        let manifest = fs::read_to_string(directory.join("package.json"))
-            .ok()
-            .and_then(|source| serde_json::from_str::<serde_json::Value>(&source).ok());
+        let manifest = only_export_read_package_manifest(directory);
         if manifest
             .as_ref()
             .is_some_and(|manifest| manifest.get("workspaces").is_some())
@@ -1518,18 +1519,17 @@ fn only_export_find_workspace_root(package_directory: &Path) -> Option<PathBuf> 
     None
 }
 
-fn only_export_workspace_packages(workspace_root: &Path) -> Vec<(PathBuf, serde_json::Value)> {
-    let root_manifest = fs::read_to_string(workspace_root.join("package.json"))
-        .ok()
-        .and_then(|source| serde_json::from_str::<serde_json::Value>(&source).ok());
+fn only_export_workspace_packages(
+    workspace_root: &Path,
+) -> Vec<(PathBuf, std::sync::Arc<serde_json::Value>)> {
+    let root_manifest = only_export_read_package_manifest(workspace_root);
     if let Some(directories) =
-        only_export_declared_workspace_directories(workspace_root, root_manifest.as_ref())
+        only_export_declared_workspace_directories(workspace_root, root_manifest.as_deref())
     {
         return std::iter::once(workspace_root.to_path_buf())
             .chain(directories)
             .filter_map(|directory| {
-                let source = fs::read_to_string(directory.join("package.json")).ok()?;
-                let manifest = serde_json::from_str(&source).ok()?;
+                let manifest = only_export_read_package_manifest(&directory)?;
                 Some((directory, manifest))
             })
             .collect();
@@ -1537,9 +1537,7 @@ fn only_export_workspace_packages(workspace_root: &Path) -> Vec<(PathBuf, serde_
     let mut packages = Vec::new();
     let mut pending = vec![workspace_root.to_path_buf()];
     while let Some(directory) = pending.pop() {
-        if let Ok(source) = fs::read_to_string(directory.join("package.json"))
-            && let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&source)
-        {
+        if let Some(manifest) = only_export_read_package_manifest(&directory) {
             packages.push((directory.clone(), manifest));
         }
         let Ok(entries) = fs::read_dir(&directory) else {
@@ -1729,24 +1727,10 @@ fn only_export_config_alias_roots(path: &Path) -> Option<Vec<PathBuf>> {
                     {
                         continue;
                     }
-                    let alias = literal.value.as_str();
-                    if !alias.starts_with('.') && !Path::new(alias).is_absolute() {
-                        continue;
-                    }
-                    let placeholder = alias
-                        .char_indices()
-                        .find(|(index, character)| {
-                            *character == '*'
-                                || *character == '$'
-                                    && alias[*index + 1..]
-                                        .chars()
-                                        .next()
-                                        .is_some_and(|digit| digit.is_ascii_digit())
-                        })
-                        .map_or(alias.len(), |(index, _)| index);
-                    let alias = alias[..placeholder].trim_end_matches('/');
                     let config_directory = path.parent().unwrap_or(Path::new("."));
-                    if let Some(root) = only_export_resolve_relative(config_directory, alias) {
+                    if let Some(root) =
+                        only_export_normalize_alias_root(config_directory, literal.value.as_str())
+                    {
                         roots.push(root);
                     }
                 }
@@ -1754,6 +1738,274 @@ fn only_export_config_alias_roots(path: &Path) -> Option<Vec<PathBuf>> {
         }
         roots
     })
+}
+
+fn only_export_normalize_alias_root(config_directory: &Path, alias: &str) -> Option<PathBuf> {
+    static PLACEHOLDER: LazyLock<lazy_regex::Regex> = LazyLock::new(|| {
+        lazy_regex::Regex::new(r"(?:/)?(?:\*|\$[0-9]+)[^\r\n\u{2028}\u{2029}]*\z").unwrap()
+    });
+    if !alias.starts_with('.') && !Path::new(alias).has_root() {
+        return None;
+    }
+    let alias = PLACEHOLDER.replace(alias, "");
+    only_export_resolve_relative(config_directory, &alias)
+}
+
+#[cfg(test)]
+mod alias_root_tests {
+    use super::*;
+
+    #[test]
+    fn preserves_roots_and_normalizes_only_the_first_matching_placeholder() {
+        let config_directory = Path::new(if cfg!(windows) {
+            "C:/workspace/app"
+        } else {
+            "/workspace/app"
+        });
+        let root = config_directory.ancestors().last().unwrap();
+        for alias in ["/", "///", "//$1"] {
+            assert_eq!(
+                only_export_normalize_alias_root(config_directory, alias),
+                Some(root.to_path_buf()),
+                "{alias:?}",
+            );
+        }
+        for alias in ["/$1", "/*", ".", "./$123tail"] {
+            assert_eq!(
+                only_export_normalize_alias_root(config_directory, alias),
+                Some(config_directory.to_path_buf()),
+                "{alias:?}",
+            );
+        }
+        for alias in [
+            "./dir///",
+            "./dir///*tail",
+            "./dir/*first/$2",
+            "./dir/$123tail",
+        ] {
+            assert_eq!(
+                only_export_normalize_alias_root(config_directory, alias),
+                Some(config_directory.join("dir")),
+                "{alias:?}",
+            );
+        }
+        assert_eq!(
+            only_export_normalize_alias_root(config_directory, "./dir/$١tail"),
+            Some(config_directory.join("dir/$١tail")),
+        );
+        assert!(only_export_normalize_alias_root(config_directory, "bare/path").is_none());
+    }
+
+    #[test]
+    fn matches_placeholders_only_after_the_last_javascript_line_terminator() {
+        let config_directory = Path::new(if cfg!(windows) {
+            "C:/workspace/app"
+        } else {
+            "/workspace/app"
+        });
+        for terminator in ['\n', '\r', '\u{2028}', '\u{2029}'] {
+            for suffix in ["", "other"] {
+                let alias = format!("./dir/$1{terminator}{suffix}");
+                assert_eq!(
+                    only_export_normalize_alias_root(config_directory, &alias),
+                    Some(config_directory.join(format!("dir/$1{terminator}{suffix}"))),
+                    "{alias:?}",
+                );
+            }
+            let alias = format!("./dir/$1{terminator}next/*first/$2");
+            assert_eq!(
+                only_export_normalize_alias_root(config_directory, &alias),
+                Some(config_directory.join(format!("dir/$1{terminator}next"))),
+                "{alias:?}",
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn resolves_windows_root_relative_aliases_on_the_configuration_drive() {
+        let config_directory = Path::new("C:/workspace/app");
+        for alias in ["/shared", "\\shared"] {
+            assert_eq!(
+                only_export_normalize_alias_root(config_directory, alias),
+                Some(PathBuf::from("C:/shared")),
+                "{alias:?}",
+            );
+        }
+        assert_eq!(
+            only_export_normalize_alias_root(config_directory, "D:/shared"),
+            Some(PathBuf::from("D:/shared")),
+        );
+        assert!(only_export_normalize_alias_root(config_directory, "C:relative").is_none());
+    }
+}
+
+#[cfg(test)]
+mod manifest_cache_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct TemporaryWorkspace {
+        directory: PathBuf,
+    }
+
+    impl TemporaryWorkspace {
+        fn new() -> Self {
+            static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+            let directory = std::env::temp_dir().join(format!(
+                "react-doctor-only-export-manifest-{}-{}",
+                std::process::id(),
+                NEXT_ID.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&directory).unwrap();
+            Self { directory }
+        }
+
+        fn write(&self, relative_path: &str, contents: &[u8]) {
+            let filename = self.directory.join(relative_path);
+            fs::create_dir_all(filename.parent().unwrap()).unwrap();
+            fs::write(filename, contents).unwrap();
+        }
+
+        fn add_alias_owner(&self) -> PathBuf {
+            self.write(
+                "pnpm-workspace.yaml",
+                b"packages:\n  - 'apps/*'\n  - 'packages/*'\n",
+            );
+            self.write("packages/ui/package.json", b"{}");
+            self.write(
+                "packages/ui/src/Card.tsx",
+                b"export const Card = () => <div />;",
+            );
+            self.write(
+                "apps/web/package.json",
+                br#"{"name":"active-app","scripts":{"dev":"vite"},"dependencies":{"react":"19.0.0"},"devDependencies":{"vite":"7.0.0","@vitejs/plugin-react":"5.0.0"}}"#,
+            );
+            self.write(
+                "apps/web/vite.config.ts",
+                b"import react from '@vitejs/plugin-react'; export default { plugins: [react()], resolve: { alias: { preview: '../../packages/ui' } } };",
+            );
+            self.directory.join("packages/ui/src/Card.tsx")
+        }
+    }
+
+    impl Drop for TemporaryWorkspace {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.directory);
+        }
+    }
+
+    #[test]
+    fn caches_object_and_array_identity_across_manifest_edits() {
+        for source in [br#"{"name":"original"}"#.as_slice(), b"[]"] {
+            let workspace = TemporaryWorkspace::new();
+            workspace.write("package.json", source);
+            let first = only_export_read_package_manifest(&workspace.directory).unwrap();
+            workspace.write("package.json", b"null");
+            let second = only_export_read_package_manifest(&workspace.directory).unwrap();
+            assert!(std::sync::Arc::ptr_eq(&first, &second));
+            assert_eq!(
+                *second,
+                serde_json::from_slice::<serde_json::Value>(source).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn caches_invalid_and_scalar_manifests_as_absent() {
+        for source in [
+            "null",
+            "42",
+            "true",
+            "false",
+            "\"inactive\"",
+            "\"\"",
+            "{",
+            "\u{FEFF}{}",
+        ] {
+            let workspace = TemporaryWorkspace::new();
+            workspace.write("package.json", source.as_bytes());
+            assert!(only_export_read_package_manifest(&workspace.directory).is_none());
+            workspace.write("package.json", b"{}");
+            assert!(only_export_read_package_manifest(&workspace.directory).is_none());
+        }
+    }
+
+    #[test]
+    fn caches_missing_and_unreadable_manifests_as_absent() {
+        for manifest_is_directory in [false, true] {
+            let workspace = TemporaryWorkspace::new();
+            let filename = workspace.directory.join("package.json");
+            if manifest_is_directory {
+                fs::create_dir(&filename).unwrap();
+            }
+            assert!(only_export_read_package_manifest(&workspace.directory).is_none());
+            if manifest_is_directory {
+                fs::remove_dir(filename).unwrap();
+            }
+            workspace.write("package.json", b"{}");
+            assert!(only_export_read_package_manifest(&workspace.directory).is_none());
+        }
+    }
+
+    #[test]
+    fn replaces_invalid_utf8_before_parsing_manifest_json() {
+        let workspace = TemporaryWorkspace::new();
+        workspace.write(
+            "package.json",
+            b"{\"name\":\"before\xffafter\",\"other\":\"\xf0\x90\x80\"}",
+        );
+        let manifest = only_export_read_package_manifest(&workspace.directory).unwrap();
+        assert_eq!(
+            manifest.get("name").and_then(serde_json::Value::as_str),
+            Some("before\u{FFFD}after")
+        );
+        assert_eq!(
+            manifest.get("other").and_then(serde_json::Value::as_str),
+            Some("\u{FFFD}")
+        );
+        let invalid_json = TemporaryWorkspace::new();
+        invalid_json.write("package.json", b"\xff{}");
+        assert!(only_export_read_package_manifest(&invalid_json.directory).is_none());
+    }
+
+    #[test]
+    fn requires_object_or_array_workspace_manifest_before_alias_ownership() {
+        for source in [
+            None,
+            Some("null"),
+            Some("42"),
+            Some("true"),
+            Some("\"name\""),
+            Some("{"),
+        ] {
+            let workspace = TemporaryWorkspace::new();
+            if let Some(source) = source {
+                workspace.write("package.json", source.as_bytes());
+            }
+            let filename = workspace.add_alias_owner();
+            let package_directory = workspace.directory.join("packages/ui");
+            assert_eq!(
+                only_export_find_workspace_root(&package_directory),
+                Some(workspace.directory.clone())
+            );
+            assert!(
+                only_export_workspace_fast_refresh_status(&filename, &package_directory).is_none()
+            );
+        }
+        for source in ["{}", "[]"] {
+            let workspace = TemporaryWorkspace::new();
+            workspace.write("package.json", source.as_bytes());
+            let filename = workspace.add_alias_owner();
+            assert!(
+                only_export_workspace_fast_refresh_status(
+                    &filename,
+                    &workspace.directory.join("packages/ui"),
+                )
+                .is_some()
+            );
+        }
+    }
 }
 
 fn only_export_resolve_relative(directory: &Path, relative_path: &str) -> Option<PathBuf> {

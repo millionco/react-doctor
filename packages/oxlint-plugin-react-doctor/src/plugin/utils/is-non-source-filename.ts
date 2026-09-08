@@ -13,8 +13,16 @@ const NON_SOURCE_FILENAME_MARKERS = [
   "/public/",
 ];
 
+// Every rule asks about the same filename while a file lints, so a one-entry
+// memo absorbs the substring scans for all but the first call per file.
+let lastFilename: string | undefined;
+let lastResult = false;
+
 export const isNonSourceFilename = (filename: string | undefined): boolean => {
   if (!filename) return false;
+  if (filename === lastFilename) return lastResult;
   const normalizedFilename = `/${filename.replaceAll("\\", "/")}`;
-  return NON_SOURCE_FILENAME_MARKERS.some((marker) => normalizedFilename.includes(marker));
+  lastFilename = filename;
+  lastResult = NON_SOURCE_FILENAME_MARKERS.some((marker) => normalizedFilename.includes(marker));
+  return lastResult;
 };

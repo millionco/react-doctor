@@ -15,6 +15,7 @@ import {
   toRelativePath,
 } from "@react-doctor/core";
 import { createInvocationInspect } from "../../inspect.js";
+import { resolveInvocationOxlintConcurrency } from "../utils/resolve-invocation-oxlint-concurrency.js";
 import type { ReactDoctorInspectOptions } from "../../inspect-options.js";
 import { flushSentry } from "../../instrument.js";
 import { shutdownTelemetry } from "../utils/telemetry-runtime.js";
@@ -343,7 +344,8 @@ export const inspectAction = async (
     }
 
     const scanOptions: CliInspectOptions = resolveCliInspectOptions(flags, userConfig);
-    const inspectProject = createInvocationInspect(scanOptions.concurrency);
+    const oxlintConcurrency = resolveInvocationOxlintConcurrency(scanOptions.concurrency);
+    const inspectProject = createInvocationInspect(oxlintConcurrency);
     // One `--max-duration` budget per invocation, shared by every project of a
     // workspace scan: fix the absolute deadline once here and hand it to each
     // project's `inspect()` (rather than restarting the budget per project).
@@ -566,6 +568,7 @@ export const inspectAction = async (
       projects: projectScans,
       isQuiet,
       isSilent: scanOptions.silent === true,
+      oxlintConcurrency,
       scanProject: (projectScan) =>
         runConfiguredProjectScan({ context: projectScanExecutionContext, projectScan }),
     });

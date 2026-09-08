@@ -9,7 +9,7 @@ import {
 } from "oxlint-plugin-react-doctor/core";
 import type { Diagnostic } from "./types/index.js";
 import { batchIncludePaths } from "./batch-include-paths.js";
-import { COOPERATIVE_YIELD_BUDGET_MS } from "./constants.js";
+import { COOPERATIVE_YIELD_BUDGET_MS, MIN_SCAN_CONCURRENCY } from "./constants.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
@@ -44,7 +44,9 @@ import { hashFileContents } from "./utils/hash-file-contents.js";
 import { listSourceFilesWithSize } from "./utils/list-source-files.js";
 import { planLintBatches } from "./utils/plan-lint-batches.js";
 import { prepareLintSources } from "./utils/prepare-lint-sources.js";
+import { resolveOxlintThreadCount } from "./utils/resolve-oxlint-thread-count.js";
 import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
+import { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
 import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
 
 export type { LintFileCoverage as RunOxlintFileCoverage } from "./types/run-oxlint.js";
@@ -389,6 +391,15 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       fs.writeFileSync(combinedIgnorePath, `${combinedPatterns.join("\n")}\n`);
       sharedArgs.push("--ignore-path", combinedIgnorePath);
     }
+
+    sharedArgs.push(
+      "--threads",
+      String(
+        resolveOxlintThreadCount(
+          resolveScanConcurrency(options.concurrency ?? MIN_SCAN_CONCURRENCY),
+        ),
+      ),
+    );
 
     const makeBaseArgs = (oxlintConfigPath: string): string[] => [
       oxlintBinary,

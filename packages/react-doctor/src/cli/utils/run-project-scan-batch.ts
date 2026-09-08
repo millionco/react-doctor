@@ -1,5 +1,9 @@
 import { performance } from "node:perf_hooks";
-import { DEFAULT_PROJECT_SCAN_CONCURRENCY, mapWithConcurrency } from "@react-doctor/core";
+import {
+  DEFAULT_PROJECT_SCAN_CONCURRENCY,
+  MIN_SCAN_CONCURRENCY,
+  mapWithConcurrency,
+} from "@react-doctor/core";
 import { partitionProjectScanOutcomes, type ProjectScanOutcome } from "./project-scan-outcome.js";
 import { isSpinnerSilent, setSpinnerSilent, spinner } from "./spinner.js";
 
@@ -9,6 +13,13 @@ interface RunProjectScanBatchInput<Project, Scan, SkippedScan> {
   readonly projects: ReadonlyArray<Project>;
   readonly isQuiet: boolean;
   readonly isSilent: boolean;
+  /**
+   * The invocation-wide oxlint worker count. Every project's lint batches
+   * already queue through one shared `OxlintSpawnSlots` pool, so the batch
+   * keeps at least that many projects in flight — otherwise a workspace of
+   * many one-batch projects could never fill the pool.
+   */
+  readonly oxlintConcurrency?: number;
   readonly scanProject: (project: Project) => Promise<ProjectScanOutcome<Scan, SkippedScan>>;
 }
 
@@ -38,12 +49,16 @@ export const runProjectScanBatch = async <Project, Scan, SkippedScan>(
   const ownsBatchSpinnerSilence = isMultiProject && input.isSilent;
   const wasSpinnerSilent = isSpinnerSilent();
   if (ownsBatchSpinnerSilence) setSpinnerSilent(true);
+  const projectConcurrency = Math.max(
+    DEFAULT_PROJECT_SCAN_CONCURRENCY,
+    input.oxlintConcurrency ?? MIN_SCAN_CONCURRENCY,
+  );
   let finishedProjectCount = 0;
   let scanOutcomes: ReadonlyArray<ProjectScanOutcome<Scan, SkippedScan>>;
   try {
     scanOutcomes = await mapWithConcurrency(
       input.projects,
-      isMultiProject ? DEFAULT_PROJECT_SCAN_CONCURRENCY : 1,
+      isMultiProject ? projectConcurrency : 1,
       async (project) => {
         const scanOutcome = await input.scanProject(project);
         finishedProjectCount += 1;

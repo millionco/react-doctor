@@ -286,6 +286,13 @@ export const AUTO_MAX_SCAN_CONCURRENCY = 10;
 // proportionally more speed.
 export const HARD_MAX_SCAN_CONCURRENCY = 32;
 
+// Rust parse threads per oxlint subprocess (`--threads`). oxlint defaults to one
+// rayon thread per core, so N concurrent workers would otherwise run N × cores
+// parse threads against N JS-plugin main threads; sharing the cores instead
+// (`floor(cores / workers)`, never below this floor) measured 7-8% less wall
+// and CPU on an 8-core box at 8 workers.
+export const MIN_OXLINT_THREADS_PER_WORKER = 1;
+
 // Memory one oxlint subprocess is budgeted at the OXLINT_MAX_FILES_PER_BATCH=200
 // batch size (the native binding's parser arena + the batch's ASTs + the
 // JS-plugin heap). The auto path takes `floor(availableMemory / this)` as a

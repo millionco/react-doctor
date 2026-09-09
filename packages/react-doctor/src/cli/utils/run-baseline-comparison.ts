@@ -32,6 +32,7 @@ import { createDiagnosticEvidenceReader } from "./read-diagnostic-evidence.js";
 import { createSourceLineReader } from "./read-source-line.js";
 import { materializeBaselineFiles } from "./materialize-baseline-files.js";
 import { makeNoopConsole } from "./noop-console.js";
+import { hasUnlintedSurvivingBaseFile } from "./has-unlinted-surviving-base-file.js";
 import { toForwardSlashes } from "./path-format.js";
 import { getRunId } from "./run-id.js";
 import { VERSION } from "./version.js";
@@ -243,10 +244,14 @@ export const runBaselineComparison = async (
       ),
       { signal: input.oxlintRuntime.abortSignal },
     );
+    if (baseOutput.didLintFail || baseOutput.didDeadCodeFail) return null;
     if (
-      baseOutput.didLintFail ||
-      baseOutput.didDeadCodeFail ||
-      countIncompleteLintFiles(baseOutput.lintPartialFailures) > 0
+      countIncompleteLintFiles(baseOutput.lintPartialFailures) > 0 &&
+      hasUnlintedSurvivingBaseFile({
+        baseLintPaths: materializedLintPaths,
+        headFiles: expectedHeadFiles,
+        analyzedBaseFiles: baseOutput.analyzedFiles,
+      })
     ) {
       return null;
     }

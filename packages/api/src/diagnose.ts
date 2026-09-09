@@ -31,7 +31,7 @@ import {
   type InspectOutput,
   type ResolvedScanTarget,
   type SourceFileEntry,
-  type WorkerSlots,
+  type OxlintSpawnSlotsHandle,
 } from "@react-doctor/core";
 import type {
   DiagnoseOptions,
@@ -62,7 +62,7 @@ interface DiagnoseLayerInput {
   readonly shouldRunLint: boolean;
   readonly shouldRunDeadCode: boolean;
   readonly oxlintConcurrency: number;
-  readonly oxlintSpawnSlots: WorkerSlots;
+  readonly oxlintSpawnSlots: OxlintSpawnSlotsHandle;
   readonly configOverrideTarget?: Pick<
     ResolvedScanTarget,
     "resolvedDirectory" | "configSourceDirectory"
@@ -214,7 +214,7 @@ const diagnoseProject = async (
   baseOptions: DiagnoseOptions,
   batchConfig: ReactDoctorConfig | undefined,
   oxlintConcurrency: number,
-  oxlintSpawnSlots: WorkerSlots,
+  oxlintSpawnSlots: OxlintSpawnSlotsHandle,
   precomputedSourceFiles: ReadonlyArray<SourceFileEntry> | undefined,
 ): Promise<ProjectResult> => {
   const startTime = globalThis.performance.now();

@@ -17,7 +17,7 @@ import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
 import { mapWithConcurrency } from "../../utils/map-with-concurrency.js";
 import { remainingDeadlineBudgetMs } from "../../utils/remaining-deadline-budget-ms.js";
 import { resolveScanConcurrency } from "../../utils/resolve-scan-concurrency.js";
-import type { WorkerSlots } from "../../utils/create-worker-slots.js";
+import type { OxlintSpawnSlotsHandle } from "../../utils/create-oxlint-spawn-slots.js";
 import { parseOxlintOutput } from "./parse-output.js";
 import { runOxlintJob } from "./run-oxlint-job.js";
 
@@ -95,7 +95,7 @@ export interface SpawnLintBatchesInput {
    * resource error replays once with a single worker.
    */
   readonly concurrency?: number;
-  readonly spawnSlots?: WorkerSlots;
+  readonly spawnSlots?: OxlintSpawnSlotsHandle;
 }
 
 interface BatchPassOutcome {
@@ -265,6 +265,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
             spawnTimeoutMs: effectiveSpawnTimeoutMs ?? OXLINT_SPAWN_TIMEOUT_MS,
             outputMaxBytes: outputMaxBytes ?? OXLINT_OUTPUT_MAX_BYTES,
             maxWorkers: requestedConcurrency,
+            filesystemCacheEpoch: input.spawnSlots?.filesystemCacheEpoch ?? null,
             abortSignal: signal,
             onStart: () => {
               if (batchState.didStart) return;

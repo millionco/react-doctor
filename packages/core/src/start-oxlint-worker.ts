@@ -2,12 +2,19 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { OXLINT_WORKER_JOB_END_MARKER, REACT_DOCTOR_PLUGIN_RESET_HOOK_KEY } from "./constants.js";
+import { createFilesystemCacheEpochGate } from "./utils/create-filesystem-cache-epoch-gate.js";
 
 export interface OxlintWorkerJobMessage {
   readonly type: "job";
   readonly id: number;
   readonly cwd: string;
   readonly argumentsList: ReadonlyArray<string>;
+  /**
+   * Scan invocation the job belongs to. The filesystem is treated as frozen
+   * for one invocation, so plugin caches survive between its jobs and are
+   * dropped when the epoch changes; `null` drops them before every job.
+   */
+  readonly filesystemCacheEpoch: number | null;
 }
 
 export interface OxlintWorkerReadyMessage {
@@ -115,18 +122,22 @@ const isJobMessage = (message: unknown): message is OxlintWorkerJobMessage =>
   "cwd" in message &&
   typeof message.cwd === "string" &&
   "argumentsList" in message &&
-  Array.isArray(message.argumentsList);
+  Array.isArray(message.argumentsList) &&
+  "filesystemCacheEpoch" in message &&
+  (message.filesystemCacheEpoch === null || typeof message.filesystemCacheEpoch === "number");
 
 const sendToParent = (message: OxlintWorkerBootMessage): void => {
   process.send?.(message);
 };
 
 // The plugin module stays loaded between jobs, so its filesystem caches must
-// be dropped for each job to see the disk like a fresh process would.
+// be dropped whenever a job may see a different disk than the previous one.
 const resetPluginFilesystemCaches = (): void => {
   const resetHook: unknown = Reflect.get(globalThis, REACT_DOCTOR_PLUGIN_RESET_HOOK_KEY);
   if (typeof resetHook === "function") resetHook();
 };
+
+const filesystemCacheEpochGate = createFilesystemCacheEpochGate();
 
 const runJob = async (internals: OxlintInternals, job: OxlintWorkerJobMessage): Promise<void> => {
   const workspaceUri = `file:///react-doctor-oxlint-job-${job.id}`;
@@ -134,7 +145,9 @@ const runJob = async (internals: OxlintInternals, job: OxlintWorkerJobMessage): 
   let errorMessage: string | null = null;
   try {
     process.chdir(job.cwd);
-    resetPluginFilesystemCaches();
+    if (filesystemCacheEpochGate.shouldReset(job.filesystemCacheEpoch)) {
+      resetPluginFilesystemCaches();
+    }
     internals.createWorkspace(workspaceUri);
     const didPass = await internals.lint(
       job.argumentsList,

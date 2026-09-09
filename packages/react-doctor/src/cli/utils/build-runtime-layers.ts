@@ -20,7 +20,7 @@ import type {
   ProgressHandle,
   ProjectInfo,
   ReactDoctorConfig,
-  WorkerSlots,
+  OxlintSpawnSlotsHandle,
 } from "@react-doctor/core";
 import { spinner } from "./spinner.js";
 
@@ -73,7 +73,7 @@ export interface BuildRuntimeLayersInput {
    * count) in place.
    */
   readonly oxlintConcurrency?: number;
-  readonly oxlintSpawnSlots?: WorkerSlots;
+  readonly oxlintSpawnSlots?: OxlintSpawnSlotsHandle;
   readonly reporterLayer?: Layer.Layer<Reporter>;
   readonly progressLayer?: Layer.Layer<Progress>;
 }

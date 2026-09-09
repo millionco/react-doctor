@@ -39,7 +39,13 @@ process.on("message", (job) => {
     writeLine(2, MARKER + ":" + job.id + ":end");
     return;
   }
-  const payload = JSON.stringify({ pid: process.pid, cwd: process.cwd(), rest, id: job.id });
+  const payload = JSON.stringify({
+    pid: process.pid,
+    cwd: process.cwd(),
+    rest,
+    id: job.id,
+    filesystemCacheEpoch: job.filesystemCacheEpoch,
+  });
   fs.writeSync(1, mode === "big" ? payload + "x".repeat(4096) : payload);
   if (mode === "warn") fs.writeSync(2, "some warning");
   writeLine(1, MARKER + ":" + job.id + ":findings");
@@ -52,6 +58,7 @@ interface FakeWorkerOutput {
   readonly cwd: string;
   readonly rest: string[];
   readonly id: number;
+  readonly filesystemCacheEpoch: number | null;
 }
 
 const parseOutput = (stdout: string): FakeWorkerOutput => JSON.parse(stdout) as FakeWorkerOutput;
@@ -85,13 +92,19 @@ describe("createOxlintWorkerPool", () => {
     pool: OxlintWorkerPool,
     argumentsList: string[],
     cwd: string = jobDirectoryA,
-    extra: { outputMaxBytes?: number; timeoutMs?: number; abortSignal?: AbortSignal } = {},
+    extra: {
+      outputMaxBytes?: number;
+      timeoutMs?: number;
+      abortSignal?: AbortSignal;
+      filesystemCacheEpoch?: number | null;
+    } = {},
   ): Promise<string> =>
     pool.run({
       argumentsList,
       cwd,
       timeoutMs: extra.timeoutMs ?? 10_000,
       outputMaxBytes: extra.outputMaxBytes ?? 1_000_000,
+      filesystemCacheEpoch: extra.filesystemCacheEpoch ?? null,
       abortSignal: extra.abortSignal,
     });
 
@@ -121,6 +134,17 @@ describe("createOxlintWorkerPool", () => {
     expect(fs.realpathSync(first.cwd)).toBe(fs.realpathSync(jobDirectoryA));
     expect(fs.realpathSync(second.cwd)).toBe(fs.realpathSync(jobDirectoryB));
     expect(pool.workerCount()).toBe(1);
+  });
+
+  it("forwards the filesystem cache epoch to the worker", async () => {
+    const pool = createPool({ maxWorkers: 1 });
+    const withEpoch = parseOutput(
+      await runJob(pool, ["echo"], jobDirectoryA, { filesystemCacheEpoch: 7 }),
+    );
+    const withoutEpoch = parseOutput(await runJob(pool, ["echo"], jobDirectoryA));
+
+    expect(withEpoch.filesystemCacheEpoch).toBe(7);
+    expect(withoutEpoch.filesystemCacheEpoch).toBeNull();
   });
 
   it("caps concurrent workers at maxWorkers and queues the rest", async () => {

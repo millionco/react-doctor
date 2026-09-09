@@ -17,6 +17,7 @@ export interface OxlintWorkerJob {
   readonly cwd: string;
   readonly timeoutMs: number;
   readonly outputMaxBytes: number;
+  readonly filesystemCacheEpoch: number | null;
   readonly abortSignal?: AbortSignal;
   readonly onStart?: () => void;
 }
@@ -388,6 +389,7 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
       id,
       cwd: job.cwd,
       argumentsList: job.argumentsList,
+      filesystemCacheEpoch: job.filesystemCacheEpoch,
     };
     void worker.ready.then(
       () => {

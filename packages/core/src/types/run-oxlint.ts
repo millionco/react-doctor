@@ -1,4 +1,4 @@
-import type { WorkerSlots } from "../utils/create-worker-slots.js";
+import type { OxlintSpawnSlotsHandle } from "../utils/create-oxlint-spawn-slots.js";
 import type { ReactDoctorConfig } from "./config.js";
 import type { SourceFileEntry } from "./diagnostic.js";
 import type { ProjectInfo } from "./project-info.js";
@@ -92,7 +92,7 @@ export interface RunOxlintOptions {
    * exhaustion (see `spawnLintBatches`).
    */
   concurrency?: number;
-  spawnSlots?: WorkerSlots;
+  spawnSlots?: OxlintSpawnSlotsHandle;
   /**
    * Aborted when the orchestrator's lint-phase timeout fires; forwarded to
    * `spawnLintBatches` so in-flight oxlint subprocesses are torn down instead

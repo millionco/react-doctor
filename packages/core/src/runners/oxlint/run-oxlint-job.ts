@@ -18,6 +18,7 @@ export interface RunOxlintJobInput {
   readonly spawnTimeoutMs: number;
   readonly outputMaxBytes: number;
   readonly maxWorkers: number;
+  readonly filesystemCacheEpoch: number | null;
   readonly abortSignal?: AbortSignal;
   readonly onStart?: () => void;
 }
@@ -67,6 +68,7 @@ export const runOxlintJob = async (input: RunOxlintJobInput): Promise<string> =>
       cwd: input.rootDirectory,
       timeoutMs: input.spawnTimeoutMs,
       outputMaxBytes: input.outputMaxBytes,
+      filesystemCacheEpoch: input.filesystemCacheEpoch,
       abortSignal: input.abortSignal,
       onStart: () => {
         startedAt = Date.now();

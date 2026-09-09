@@ -191,7 +191,7 @@ describe("performance analysis", () => {
       expect(names).toContain("grafana");
       const [tldraw, tldrawPackage] = selectCorpusTargets(targets, ["tldraw", "tldraw-package"]);
       expect(tldraw?.sha).toMatch(/^[0-9a-f]{40}$/);
-      expect(corpusTargetDirectory(tldraw!, "/corpus")).toBe("/corpus/tldraw");
+      expect(corpusTargetDirectory(tldraw!, "/corpus")).toBe(path.join("/corpus", "tldraw"));
       expect(corpusTargetDirectory(tldrawPackage!, "/corpus")).toBe(
         path.join("/corpus/tldraw", "packages/tldraw"),
       );

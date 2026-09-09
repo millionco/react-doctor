@@ -47,8 +47,6 @@ export const prepareLintSources = (
     const absoluteSourcePath = path.isAbsolute(candidateFile)
       ? candidateFile
       : path.resolve(rootDirectory, candidateFile);
-    // Oxlint silently skips a listed JS/TS file that no longer exists; keep
-    // the same tolerance for the HTML/Astro sources we transpile ourselves.
     if (isMissingPath(absoluteSourcePath)) continue;
     const sourceBuffer = fs.readFileSync(absoluteSourcePath);
     if (ASTRO_FILE_PATTERN.test(candidateFile)) {

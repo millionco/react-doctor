@@ -21,11 +21,8 @@ import { yieldToEventLoop } from "./yield-to-event-loop.js";
 // `listSourceFilesWithSize`, so the scanned set and the reported source-file
 // count can never diverge. A file that can't be stat'd but still exists is
 // KEPT (parity with `isLargeMinifiedFile`'s keep-on-error) with size `0`, so
-// it sorts to the cheap tail. A path with no file behind it is dropped:
-// `git ls-files --stage` lists index entries whose working-tree copy was
-// deleted or skipped (sparse checkout), and a dangling symlink survives the
-// filesystem walk, but neither can be read by the lint or maintainability
-// passes.
+// it sorts to the cheap tail. A missing path is dropped: `git ls-files --stage`
+// still lists index entries whose working-tree copy was deleted.
 const toSizedSourceFileEntry = (
   rootDirectory: string,
   relativePath: string,

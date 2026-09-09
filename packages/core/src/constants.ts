@@ -636,6 +636,31 @@ export const OXLINT_WORKER_READY_TIMEOUT_MS = 30_000;
 // held open by idle workers — their handles are unref'd — so this only
 // matters between scans in one process.
 export const OXLINT_WORKER_IDLE_TIMEOUT_MS = 30_000;
+export const DUPLICATE_JSX_WORKER_IDLE_TIMEOUT_MS = 30_000;
+
+// Every pooled job hands the plugin a fresh oxlint transfer buffer and fresh
+// rule closures, and the full GC that follows drops every TurboFan code object
+// specialized on the previous job's objects ("weak objects" deopt). With V8's
+// default tier-up threshold (3 000 invocations) the ~300 functions that just
+// got invalidated re-optimize on every job, and the background compiler
+// threads end up burning more CPU than the lint itself. Raising the threshold
+// keeps TurboFan for the genuinely hot walkers while the rest stay on Maglev;
+// measured on refine/grafana/tldraw it cut worker CPU ~30% and wall ~15-25%.
+// The flag exists from V8 12 (Node 22); Node 20 keeps the default tiering.
+export const OXLINT_WORKER_TURBOFAN_INVOCATION_COUNT = 30_000;
+export const OXLINT_WORKER_TIERING_FLAGS_MIN_NODE_MAJOR = 22;
+
+// oxlint parses every file into a fixed 2 GiB transfer buffer per native
+// thread, registered with V8 as external memory, and every pooled job builds
+// a fresh set while the previous job's set is still awaiting collection. V8
+// treats external growth beyond half its old-space limit since the last full
+// GC as memory pressure and answers with a synchronous, non-incremental
+// compacting GC that also shrinks the young generation — one per job, and
+// ~4x more scavenges after it. Sizing the old-space limit at two buffers per
+// thread (plus headroom) keeps the burst under that threshold so V8 falls back
+// to ordinary incremental marking; it is a ceiling only, no memory is
+// committed. Measured on refine: -14% CPU, major GC 5.5s → 1.6s.
+export const OXLINT_WORKER_OLD_SPACE_MB_PER_NATIVE_THREAD = 4352;
 
 // Global registry key under which the react-doctor oxlint plugin publishes its
 // filesystem-cache reset. A warm worker calls it before every job so each job

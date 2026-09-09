@@ -773,12 +773,24 @@ export const detectDuplicateJsxSubtreesCooperative = async (
   const candidates: JsxSubtreeCandidate[] = [];
   let scannedSourceFileCount = 0;
   let scannedJsxNodeCount = 0;
-  for (const sourcePath of sortedPaths.slice(0, resolvedOptions.maxSourceFiles)) {
+  const scannedPaths = sortedPaths.slice(0, resolvedOptions.maxSourceFiles);
+  const readAhead = (pathIndex: number): Promise<string | null> | null => {
+    if (pathIndex >= scannedPaths.length) return null;
+    const pendingRead = sourceReader.read(
+      scannedPaths[pathIndex],
+      resolvedOptions.maxSourceLengthChars,
+    );
+    void pendingRead.catch(() => undefined);
+    return pendingRead;
+  };
+  let pendingRead = readAhead(0);
+  for (const [pathIndex, sourcePath] of scannedPaths.entries()) {
     if (options.signal?.aborted) {
       incompleteReasons.push({ kind: "aborted", observed: scannedSourceFileCount });
       break;
     }
-    const sourceText = await sourceReader.read(sourcePath, resolvedOptions.maxSourceLengthChars);
+    const sourceText = await pendingRead;
+    pendingRead = readAhead(pathIndex + 1);
     if (sourceText === null) continue;
     const source: JsxDuplicationSource = { path: sourcePath, sourceText };
     const scannedSource = scanSource({

@@ -16,6 +16,7 @@ export default defineConfig({
         index: "./src/index.ts",
         "project-analysis-worker": "./src/project-analysis-worker.ts",
         "oxlint-worker": "./src/oxlint-worker.ts",
+        "duplicate-jsx-worker": "./src/duplicate-jsx-worker.ts",
         schemas: "./src/schemas.ts",
       },
       deps: {

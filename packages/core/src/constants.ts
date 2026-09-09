@@ -662,8 +662,8 @@ export const OXLINT_WORKER_TIERING_FLAGS_MIN_NODE_MAJOR = 22;
 export const OXLINT_WORKER_OLD_SPACE_MB_PER_NATIVE_THREAD = 4352;
 
 // Global registry key under which the react-doctor oxlint plugin publishes its
-// filesystem-cache reset. A warm worker calls it before every job so each job
-// observes the disk like the fresh process it replaces. Mirrored in
+// filesystem-cache reset. A warm worker calls it when a job's scan epoch differs
+// from the previous job's, so caches never outlive one invocation. Mirrored in
 // `oxlint-plugin-react-doctor/src/plugin/constants/host.ts`.
 export const REACT_DOCTOR_PLUGIN_RESET_HOOK_KEY = Symbol.for(
   "react-doctor.reset-filesystem-caches",

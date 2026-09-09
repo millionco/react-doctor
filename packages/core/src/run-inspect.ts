@@ -607,10 +607,9 @@ export const runInspect = <HooksR = never>(
         ),
       );
     };
-    // The maintainability (duplicate-JSX) pass is parent-thread CPU work that
-    // used to trail lint as a multi-second tail; it now overlaps the lint wave,
-    // whose worker processes leave the parent thread mostly idle. Its result is
-    // discarded when lint fails, matching the sequential contract.
+    // The maintainability (duplicate-JSX) pass is parent-thread CPU work, so it
+    // overlaps the lint wave, whose worker processes leave the parent thread
+    // mostly idle. Its result is discarded when lint fails.
     const maintainabilityFiber = yield* Effect.forkChild(
       shouldRunMaintainability
         ? Effect.suspend(buildCollectMaintainability)

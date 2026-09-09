@@ -1,4 +1,5 @@
 import { defineConfig } from "vite-plus";
+import { requireTypescriptPlugin } from "../../scripts/require-typescript-plugin.js";
 
 export default defineConfig({
   pack: [
@@ -10,15 +11,16 @@ export default defineConfig({
         "duplicate-jsx-worker": "./src/duplicate-jsx-worker.ts",
       },
       deps: {
+        alwaysBundle: ["typescript"],
         neverBundle: [
           "effect",
           "oxc-parser",
           "oxc-resolver",
           "oxlint",
           "oxlint-plugin-react-doctor",
-          "typescript",
         ],
       },
+      plugins: [requireTypescriptPlugin()],
       dts: true,
       target: "node20",
       platform: "node",

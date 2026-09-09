@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
+import { requireTypescriptPlugin } from "../../scripts/require-typescript-plugin.js";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 
@@ -71,8 +72,10 @@ export default defineConfig({
         // Inline pure-JS CLI deps and the Ink/React renderer so the inspected
         // project cannot supply a missing or incompatible React peer. Native
         // dependencies, Yoga's WASM module, prompts (we monkey-patch it via
-        // require), agent-install (its config parsers ship as UMD), and the
-        // TypeScript compiler stay external.
+        // require), and agent-install (its config parsers ship as UMD) stay
+        // external. The TypeScript compiler also stays installed, not inlined:
+        // `typescript` is listed here only so `requireTypescriptPlugin` gets
+        // to rewrite its import to a runtime `require` (see the plugin).
         // `yaml` (pure JS, no native deps) backs the `ci config` in-place
         // workflow editor; inline it so end users get no extra install.
         alwaysBundle: [
@@ -86,6 +89,7 @@ export default defineConfig({
           "react/jsx-dev-runtime",
           "react-reconciler",
           "scheduler",
+          "typescript",
           "yaml",
         ],
         neverBundle: [
@@ -117,10 +121,10 @@ export default defineConfig({
           "oxlint-plugin-react-doctor",
           "playwright-core",
           "prompts",
-          "typescript",
           "yoga-layout",
         ],
       },
+      plugins: [requireTypescriptPlugin()],
       dts: true,
       target: "node20",
       platform: "node",
@@ -150,7 +154,7 @@ export default defineConfig({
     {
       entry: { index: "./src/index.ts" },
       deps: {
-        alwaysBundle: ["commander", "ora", "yaml"],
+        alwaysBundle: ["commander", "ora", "typescript", "yaml"],
         neverBundle: [
           "@astrojs/compiler",
           "@sentry/node",
@@ -163,9 +167,9 @@ export default defineConfig({
           "oxlint",
           "oxlint-plugin-react-doctor",
           "prompts",
-          "typescript",
         ],
       },
+      plugins: [requireTypescriptPlugin()],
       dts: true,
       target: "node20",
       platform: "node",

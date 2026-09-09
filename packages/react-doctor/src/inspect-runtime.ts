@@ -1,4 +1,4 @@
-import type { OxlintSpawnSlotsHandle } from "@react-doctor/core";
+import type { GitRepositoryMetadataCacheHandle, OxlintSpawnSlotsHandle } from "@react-doctor/core";
 import type { ScanResultCacheInvocationState } from "./cli/utils/scan-result-cache.js";
 
 export interface OxlintInvocationRuntime {
@@ -6,4 +6,5 @@ export interface OxlintInvocationRuntime {
   readonly spawnSlots: OxlintSpawnSlotsHandle;
   readonly abortSignal: AbortSignal;
   readonly scanResultCacheInvocationState: ScanResultCacheInvocationState;
+  readonly gitRepositoryMetadataCache: GitRepositoryMetadataCacheHandle;
 }

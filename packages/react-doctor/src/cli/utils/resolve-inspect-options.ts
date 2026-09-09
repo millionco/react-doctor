@@ -58,5 +58,6 @@ export const resolveInspectOptions = (
     retainExcludedProjectDeadCodeDiagnostics:
       inputOptions.retainExcludedProjectDeadCodeDiagnostics ?? false,
     precomputedSourceFileCount: inputOptions.precomputedSourceFileCount,
+    precomputedSourceFiles: inputOptions.precomputedSourceFiles,
   };
 };

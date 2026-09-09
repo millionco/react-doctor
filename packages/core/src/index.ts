@@ -96,6 +96,7 @@ export * from "./utils/collect-source-file-counts-by-directory.js";
 export * from "./utils/collect-source-files-by-directory.js";
 export * from "./utils/compute-config-fingerprint.js";
 export * from "./utils/create-oxlint-spawn-slots.js";
+export * from "./utils/create-git-repository-metadata-cache.js";
 export * from "./utils/create-worker-slots.js";
 export * from "./utils/dedupe-diagnostics.js";
 export * from "./utils/define-config.js";

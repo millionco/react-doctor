@@ -43,11 +43,14 @@ import { getCapabilities, shouldEnableRule } from "./project-info/capabilities.j
 import { isAnalyzableProject } from "./project-info/index.js";
 import {
   DeadCodePhaseTimeoutMs,
+  GitRepositoryMetadataCache,
   LintPhaseTimeoutMs,
   OxlintConcurrency,
   ScanDeadlineMs,
   SupplyChainOverlapTimeoutMs,
 } from "./refs.js";
+import type { GitRepositoryMetadata } from "./utils/create-git-repository-metadata-cache.js";
+import { findGitRepositoryRoot } from "./utils/find-git-repository-root.js";
 import { remainingDeadlineBudgetMs } from "./utils/remaining-deadline-budget-ms.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { filterPathsOutsideDirectories } from "./utils/filter-paths-outside-directories.js";
@@ -242,30 +245,34 @@ export const runInspect = <HooksR = never>(
     // The git metadata only feeds the score request + telemetry at the very
     // end, so its four subprocesses run in the background and are joined
     // after lint instead of gating the first oxlint spawn.
+    const resolveGitMetadata: Effect.Effect<GitRepositoryMetadata> = Effect.gen(function* () {
+      const [repo, sha, defaultBranch] = yield* Effect.all(
+        [
+          gitService
+            .githubRepo(scanDirectory)
+            .pipe(Effect.orElseSucceed(() => null as string | null)),
+          gitService.headSha(scanDirectory).pipe(Effect.orElseSucceed(() => null as string | null)),
+          gitService
+            .defaultBranch(scanDirectory)
+            .pipe(Effect.orElseSucceed(() => null as string | null)),
+        ],
+        { concurrency: 3 },
+      );
+      const githubViewerPermission =
+        input.resolveLocalGithubViewerPermission === true && !input.isCi && repo !== null
+          ? yield* gitService
+              .githubViewerPermission({ directory: scanDirectory, repo })
+              .pipe(Effect.orElseSucceed(() => null as string | null))
+          : null;
+      return { repo, sha, defaultBranch, githubViewerPermission };
+    });
+    const gitRepositoryMetadataCache = yield* GitRepositoryMetadataCache;
+    const gitRepositoryRoot =
+      gitRepositoryMetadataCache === null ? null : findGitRepositoryRoot(scanDirectory);
     const gitMetadataFiber = yield* Effect.forkChild(
-      Effect.gen(function* () {
-        const [repo, sha, defaultBranch] = yield* Effect.all(
-          [
-            gitService
-              .githubRepo(scanDirectory)
-              .pipe(Effect.orElseSucceed(() => null as string | null)),
-            gitService
-              .headSha(scanDirectory)
-              .pipe(Effect.orElseSucceed(() => null as string | null)),
-            gitService
-              .defaultBranch(scanDirectory)
-              .pipe(Effect.orElseSucceed(() => null as string | null)),
-          ],
-          { concurrency: 3 },
-        );
-        const githubViewerPermission =
-          input.resolveLocalGithubViewerPermission === true && !input.isCi && repo !== null
-            ? yield* gitService
-                .githubViewerPermission({ directory: scanDirectory, repo })
-                .pipe(Effect.orElseSucceed(() => null as string | null))
-            : null;
-        return { repo, sha, defaultBranch, githubViewerPermission };
-      }),
+      gitRepositoryMetadataCache === null || gitRepositoryRoot === null
+        ? resolveGitMetadata
+        : gitRepositoryMetadataCache.getOrResolve(gitRepositoryRoot, resolveGitMetadata),
     );
     const githubActionsScoreMetadata = input.isCi ? resolveGithubActionsScoreMetadata() : {};
 

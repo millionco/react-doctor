@@ -3,9 +3,9 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { activeScanAbortRegistry } from "../src/cli/utils/active-scan-abort-registry.js";
-import { collectProjectSourceFileCounts } from "../src/cli/utils/collect-project-source-file-counts.js";
+import { collectProjectSourceFiles } from "../src/cli/utils/collect-project-source-files.js";
 
-describe("collectProjectSourceFileCounts", () => {
+describe("collectProjectSourceFiles", () => {
   let rootDirectory: string;
 
   beforeEach(() => {
@@ -18,9 +18,9 @@ describe("collectProjectSourceFileCounts", () => {
   });
 
   it("stops workspace enumeration when active scans are cancelled", async () => {
-    const sourceFileCounts = collectProjectSourceFileCounts(rootDirectory, [rootDirectory]);
+    const sourceFiles = collectProjectSourceFiles(rootDirectory, [rootDirectory]);
     await activeScanAbortRegistry.abortAll();
 
-    await expect(sourceFileCounts).rejects.toThrow();
+    await expect(sourceFiles).rejects.toThrow();
   });
 });

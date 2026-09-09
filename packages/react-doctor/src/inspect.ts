@@ -1,7 +1,9 @@
+import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
+  createGitRepositoryMetadataCache,
   createOxlintSpawnSlots,
   type Diagnostic,
   highlighter,
@@ -105,7 +107,15 @@ const inspectWithOxlintRuntime = async (
     configSourceDirectory = scanTarget.configSourceDirectory;
   }
 
-  const options = resolveInspectOptions(inputOptions, userConfig);
+  // Precomputed entries are relative to the requested directory, so they are
+  // only valid when scan-target resolution did not redirect the scan root.
+  const canReusePrecomputedSourceFiles = path.resolve(directory) === path.resolve(scanDirectory);
+  const options = resolveInspectOptions(
+    canReusePrecomputedSourceFiles
+      ? inputOptions
+      : { ...inputOptions, precomputedSourceFiles: undefined },
+    userConfig,
+  );
 
   // HACK: spinner.ts still has module-level silent state for imperative CLI
   // helpers. Concurrent batch members never touch the shared flag — overlapping
@@ -166,6 +176,7 @@ export const createInvocationInspect = (
   const concurrency = resolveInvocationOxlintConcurrency(requestedOxlintConcurrency);
   const spawnSlots = createOxlintSpawnSlots(concurrency);
   const scanResultCacheInvocationState = createScanResultCacheInvocationState();
+  const gitRepositoryMetadataCache = createGitRepositoryMetadataCache();
   return async (directory, inputOptions = {}) => {
     const abortController = new AbortController();
     const unregisterAbortController = activeScanAbortRegistry.register(abortController);
@@ -175,6 +186,7 @@ export const createInvocationInspect = (
         spawnSlots,
         abortSignal: abortController.signal,
         scanResultCacheInvocationState,
+        gitRepositoryMetadataCache,
       };
       return await inspectWithOxlintRuntime(directory, inputOptions, oxlintRuntime);
     } finally {
@@ -252,6 +264,7 @@ const runInspectWithRuntime = async (
     shouldShowProgressSpinners,
     oxlintConcurrency: oxlintRuntime.concurrency,
     oxlintSpawnSlots: oxlintRuntime.spawnSlots,
+    gitRepositoryMetadataCache: oxlintRuntime.gitRepositoryMetadataCache,
     reporterLayer: options.uiLayers?.reporter,
     progressLayer: options.uiLayers?.progress,
   });
@@ -260,6 +273,7 @@ const runInspectWithRuntime = async (
     {
       directory,
       precomputedSourceFileCount: options.precomputedSourceFileCount,
+      precomputedSourceFiles: options.precomputedSourceFiles,
       includePaths: options.includePaths,
       changedLineRanges: options.changedLineRanges ?? undefined,
       customRulesOnly: options.customRulesOnly,

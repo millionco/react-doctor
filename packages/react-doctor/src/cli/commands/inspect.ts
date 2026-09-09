@@ -12,6 +12,7 @@ import {
   type JsonReportSkippedProject,
   remainingDeadlineBudgetMs,
   resolveScanTarget,
+  type SourceFileEntry,
   toRelativePath,
 } from "@react-doctor/core";
 import { createInvocationInspect } from "../../inspect.js";
@@ -26,7 +27,7 @@ import { recordCount, recordDistribution } from "../utils/record-metric.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";
 import { filterDiagnosticsByCategories } from "../utils/filter-diagnostics-by-categories.js";
 import { deduplicateProjectScans } from "../utils/deduplicate-project-scans.js";
-import { collectProjectSourceFileCounts } from "../utils/collect-project-source-file-counts.js";
+import { collectProjectSourceFiles } from "../utils/collect-project-source-files.js";
 import { handleError, handleUserError } from "../utils/handle-error.js";
 import { isDebugFlagEnabled } from "../utils/is-debug-flag.js";
 import { isExpectedUserError } from "../utils/is-expected-user-error.js";
@@ -107,7 +108,7 @@ interface ProjectScanExecutionContext {
   readonly isQuiet: boolean;
   readonly isMultiProject: boolean;
   readonly workspaceDeadCodeOwner: string | null;
-  readonly precomputedSourceFileCounts: ReadonlyMap<string, number> | null;
+  readonly precomputedSourceFiles: ReadonlyMap<string, ReadonlyArray<SourceFileEntry>> | null;
   readonly projectScans: ReadonlyArray<ResolvedProjectScan>;
   readonly baselineRef: string | null;
   readonly scope: RequestedScope["scope"];
@@ -153,7 +154,7 @@ const buildProjectInspectOptions = ({
       context.workspaceDeadCodeOwner === null
         ? context.scanOptions.deadCode
         : ownsWorkspaceDeadCode,
-    precomputedSourceFileCount: context.precomputedSourceFileCounts?.get(scanDirectory),
+    precomputedSourceFiles: context.precomputedSourceFiles?.get(scanDirectory),
     deadlineEpochMs: context.scanDeadlineEpochMs,
     includePaths: projectScanPlan.includePaths,
     configOverride: projectScan.config,
@@ -538,9 +539,9 @@ export const inspectAction = async (
         projectCount: projectScans.length,
       });
     }
-    const precomputedSourceFileCounts =
+    const precomputedSourceFiles =
       isMultiProject && !isDiffMode
-        ? await collectProjectSourceFileCounts(
+        ? await collectProjectSourceFiles(
             resolvedDirectory,
             projectScans.map((projectScan) => projectScan.directory),
           )
@@ -557,7 +558,7 @@ export const inspectAction = async (
       isQuiet,
       isMultiProject,
       workspaceDeadCodeOwner,
-      precomputedSourceFileCounts,
+      precomputedSourceFiles,
       projectScans,
       baselineRef,
       scope,

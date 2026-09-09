@@ -121,10 +121,10 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
   };
 });
 
-vi.mock("../../src/cli/utils/collect-project-source-file-counts.js", () => ({
-  collectProjectSourceFileCounts: vi.fn(
+vi.mock("../../src/cli/utils/collect-project-source-files.js", () => ({
+  collectProjectSourceFiles: vi.fn(
     async (_rootDirectory: string, projectDirectories: ReadonlyArray<string>) =>
-      new Map(projectDirectories.map((projectDirectory) => [projectDirectory, 0])),
+      new Map(projectDirectories.map((projectDirectory) => [projectDirectory, []])),
   ),
 }));
 
@@ -406,7 +406,7 @@ describe("runScanApp", () => {
       expect.objectContaining({
         deadCode: true,
         excludedProjectDirectories: [webDirectory],
-        precomputedSourceFileCount: 0,
+        precomputedSourceFiles: [],
         retainExcludedProjectDeadCodeDiagnostics: true,
         uiLayers: expect.objectContaining({ progress: expect.anything() }),
       }),

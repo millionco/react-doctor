@@ -4,6 +4,7 @@ import type {
   InspectOptions,
   Progress,
   Reporter,
+  SourceFileEntry,
 } from "@react-doctor/core";
 import type * as Layer from "effect/Layer";
 
@@ -14,6 +15,7 @@ export interface InspectUiLayers {
 
 export interface ReactDoctorInspectOptions extends InspectOptions {
   precomputedSourceFileCount?: number;
+  precomputedSourceFiles?: ReadonlyArray<SourceFileEntry>;
   categoryFilters?: string[];
   includedTags?: ReadonlySet<string>;
   includeTagDefaults?: boolean;
@@ -63,4 +65,5 @@ export interface ResolvedInspectOptions {
   excludedProjectDirectories: ReadonlyArray<string>;
   retainExcludedProjectDeadCodeDiagnostics: boolean;
   precomputedSourceFileCount: number | undefined;
+  precomputedSourceFiles: ReadonlyArray<SourceFileEntry> | undefined;
 }

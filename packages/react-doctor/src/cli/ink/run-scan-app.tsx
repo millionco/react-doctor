@@ -31,7 +31,7 @@ import { buildEmptyReportMessage } from "../utils/build-empty-report-message.js"
 import { computeProjectedScore } from "../utils/compute-score-projection.js";
 import { countUniqueScannedFiles } from "../utils/count-unique-scanned-files.js";
 import { deduplicateProjectScans } from "../utils/deduplicate-project-scans.js";
-import { collectProjectSourceFileCounts } from "../utils/collect-project-source-file-counts.js";
+import { collectProjectSourceFiles } from "../utils/collect-project-source-files.js";
 import { discoverWorkspacePackages, selectProjects } from "../utils/select-projects.js";
 import { isCiEnvironment } from "../utils/is-ci-environment.js";
 import { formatElapsedTime } from "../utils/format-elapsed-time.js";
@@ -639,9 +639,9 @@ const runMultiProjectScan = async (
     });
     context.store.setProgress(`Scanning ${projectCount} projects…`);
     await yieldToEventLoop();
-    const precomputedSourceFileCounts =
+    const precomputedSourceFiles =
       scopePlan.scope === "full"
-        ? await collectProjectSourceFileCounts(
+        ? await collectProjectSourceFiles(
             rootDirectory,
             projectScans.map(({ projectScan }) => projectScan.directory),
           )
@@ -680,7 +680,7 @@ const runMultiProjectScan = async (
           isCi: isCiEnvironment(),
           configOverride: projectScan.config,
           configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
-          precomputedSourceFileCount: precomputedSourceFileCounts?.get(projectScan.directory),
+          precomputedSourceFiles: precomputedSourceFiles?.get(projectScan.directory),
           uiLayers: {
             reporter: Reporter.layerNoop,
             progress: progressLayerForStore(context.store, {

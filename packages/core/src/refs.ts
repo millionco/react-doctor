@@ -10,6 +10,7 @@ import { resolveAutoScanConcurrency } from "./utils/resolve-auto-scan-concurrenc
 import { resolveLintBatchOrdering } from "./utils/resolve-lint-batch-ordering.js";
 import { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
 import type { OxlintSpawnSlotsHandle } from "./utils/create-oxlint-spawn-slots.js";
+import type { GitRepositoryMetadataCacheHandle } from "./utils/create-git-repository-metadata-cache.js";
 
 /**
  * Per-batch oxlint wall-clock budget. Reads from the env var on
@@ -121,6 +122,19 @@ export class OxlintConcurrency extends Context.Reference<number>("react-doctor/O
 
 export class OxlintSpawnSlots extends Context.Reference<OxlintSpawnSlotsHandle | null>(
   "react-doctor/OxlintSpawnSlots",
+  {
+    defaultValue: () => null,
+  },
+) {}
+
+/**
+ * Shared across every project scan of one CLI invocation so repository-level
+ * git metadata is resolved once per worktree. `null` (the default) resolves it
+ * per scan, which is what a long-lived programmatic caller needs when `HEAD`
+ * can move between `diagnose()` calls.
+ */
+export class GitRepositoryMetadataCache extends Context.Reference<GitRepositoryMetadataCacheHandle | null>(
+  "react-doctor/GitRepositoryMetadataCache",
   {
     defaultValue: () => null,
   },

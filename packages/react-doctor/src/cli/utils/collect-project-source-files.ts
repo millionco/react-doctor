@@ -1,14 +1,15 @@
-import { collectSourceFileCountsByDirectory } from "@react-doctor/core";
+import { collectSourceFilesByDirectory } from "@react-doctor/core";
+import type { SourceFileEntry } from "@react-doctor/core";
 import { activeScanAbortRegistry } from "./active-scan-abort-registry.js";
 
-export const collectProjectSourceFileCounts = async (
+export const collectProjectSourceFiles = async (
   rootDirectory: string,
   projectDirectories: ReadonlyArray<string>,
-): Promise<ReadonlyMap<string, number>> => {
+): Promise<ReadonlyMap<string, ReadonlyArray<SourceFileEntry>>> => {
   const abortController = new AbortController();
   const unregisterAbortController = activeScanAbortRegistry.register(abortController);
   try {
-    return await collectSourceFileCountsByDirectory(
+    return await collectSourceFilesByDirectory(
       rootDirectory,
       projectDirectories,
       abortController.signal,

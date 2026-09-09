@@ -266,6 +266,19 @@ const Toolbar = () => <div><Button /><Button /><Button /></div>;
     expect(result.families).toHaveLength(1);
   });
 
+  it("counts .ts sources as scanned without producing JSX candidates", () => {
+    const sourceText = componentSource("Card", "Card", "value");
+    const result = detectDuplicateJsxSubtrees([
+      { path: "src/first.ts", sourceText },
+      { path: "src/second.ts", sourceText },
+    ]);
+
+    expect(result.families).toEqual([]);
+    expect(result.scannedSourceFileCount).toBe(2);
+    expect(result.scannedJsxNodeCount).toBe(0);
+    expect(result.incompleteReasons).toEqual([]);
+  });
+
   it("ignores JSX formatting whitespace and comment-only expressions", () => {
     const compactSource =
       "export const Compact = () => <section><header><h2>Title</h2></header><main><Value value={value} /></main><footer><Button /></footer></section>;";

@@ -237,7 +237,7 @@ export const getBarrelIndexModuleInfo = (filePath: string): BarrelIndexModuleInf
 
   let fileStat: fs.Stats | null;
   try {
-    fileStat = fs.statSync(filePath);
+    fileStat = fs.statSync(filePath, { throwIfNoEntry: false }) ?? null;
   } catch {
     fileStat = null;
   }

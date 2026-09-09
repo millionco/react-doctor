@@ -170,13 +170,11 @@ const resolveOptions = (
 });
 
 const hashParts = (parts: string[]): string => {
-  const hash = crypto.createHash("sha256");
+  let framedParts = "";
   for (const part of parts) {
-    hash.update(String(part.length));
-    hash.update(":");
-    hash.update(part);
+    framedParts += `${part.length}:${part}`;
   }
-  return hash.digest("hex");
+  return crypto.hash("sha256", framedParts, "hex");
 };
 
 const collectDirectJsxDescendants = (node: ts.Node): JsxSubtreeNode[] => {
@@ -529,12 +527,21 @@ const scanSource = (input: ScanJsxDuplicationSourceInput): ScannedJsxDuplication
       didScan: false,
     };
   }
+  const scriptKind = getTypescriptScriptKind(input.source.path);
+  if (scriptKind === ts.ScriptKind.TS) {
+    return {
+      candidates: [],
+      incompleteReason: null,
+      didAbort: false,
+      didScan: true,
+    };
+  }
   const sourceFile = ts.createSourceFile(
     input.source.path,
     input.source.sourceText,
     ts.ScriptTarget.Latest,
     true,
-    getTypescriptScriptKind(input.source.path),
+    scriptKind,
   );
   if (isNonReactJsxSource(sourceFile)) {
     return {

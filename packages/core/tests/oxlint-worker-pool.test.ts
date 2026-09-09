@@ -166,6 +166,30 @@ describe("createOxlintWorkerPool", () => {
     ]);
   });
 
+  it("warm boots idle workers up to maxWorkers and later jobs reuse them", async () => {
+    const pool = createPool({ maxWorkers: 2 });
+    pool.warm();
+    pool.warm();
+    expect(pool.workerCount()).toBe(2);
+
+    const outputs = await Promise.all(
+      Array.from({ length: 4 }, (_, index) => runJob(pool, ["echo", String(index)])),
+    );
+    const pids = new Set(outputs.map((stdout) => parseOutput(stdout).pid));
+
+    expect(pids.size).toBe(2);
+    expect(pool.workerCount()).toBe(2);
+  });
+
+  it("warm is a no-op once the pool is unavailable", async () => {
+    const pool = createPool({ environment: { ...process.env, FAKE_WORKER_UNAVAILABLE: "1" } });
+    await expect(runJob(pool, ["echo"])).rejects.toBeInstanceOf(OxlintWorkerUnavailableError);
+    const workerCountBeforeWarm = pool.workerCount();
+    pool.warm();
+    expect(pool.isAvailable()).toBe(false);
+    expect(pool.workerCount()).toBe(workerCountBeforeWarm);
+  });
+
   it("strips the end markers and keeps stdout when the job also wrote to stderr", async () => {
     const pool = createPool();
     const stdout = await runJob(pool, ["warn"]);

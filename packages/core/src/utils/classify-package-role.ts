@@ -45,7 +45,8 @@ const findNearestPackageDirectory = (filename: string): string | null => {
     const candidatePackageJsonPath = path.join(currentDirectory, "package.json");
     let hasPackageJson = false;
     try {
-      hasPackageJson = fs.statSync(candidatePackageJsonPath).isFile();
+      hasPackageJson =
+        fs.statSync(candidatePackageJsonPath, { throwIfNoEntry: false })?.isFile() ?? false;
     } catch {
       hasPackageJson = false;
     }

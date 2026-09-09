@@ -37,6 +37,8 @@ export interface OxlintWorkerPoolOptions {
 
 export interface OxlintWorkerPool {
   readonly run: (job: OxlintWorkerJob) => Promise<string>;
+  /** Boots idle workers up to `maxWorkers` so the first jobs skip the ~300ms worker startup. */
+  readonly warm: () => void;
   readonly isAvailable: () => boolean;
   readonly workerCount: () => number;
   readonly closeIdleWorkers: () => void;
@@ -432,6 +434,12 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
     }
   };
 
+  const warm = (): void => {
+    while (unavailableDetail === null && workers.size < options.maxWorkers) {
+      releaseWorker(createWorker());
+    }
+  };
+
   const closeIdleWorkers = (): void => {
     for (const worker of idleWorkers.splice(0)) killWorker(worker);
   };
@@ -464,6 +472,7 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
 
   return {
     run,
+    warm,
     isAvailable: () => unavailableDetail === null,
     workerCount: () => workers.size,
     closeIdleWorkers,

@@ -94,7 +94,8 @@ export const findNearestPackageDirectory = (filename: string): string | null => 
     recordExistenceProbe(candidatePackageJsonPath);
     let hasPackageJson = false;
     try {
-      hasPackageJson = fs.statSync(candidatePackageJsonPath).isFile();
+      hasPackageJson =
+        fs.statSync(candidatePackageJsonPath, { throwIfNoEntry: false })?.isFile() ?? false;
     } catch {
       hasPackageJson = false;
     }
@@ -121,13 +122,15 @@ export const readNearestPackageManifest = (filename: string): PackageManifest | 
 };
 
 export const readPackageManifest = (packageDirectory: string): PackageManifest | null => {
+  const cached = cachedManifestByPackageDirectory.get(packageDirectory);
+  if (cached !== undefined && !isProbeRecorderActive()) return cached;
+
   const packageJsonPath = path.join(packageDirectory, "package.json");
 
   // Recorded BEFORE the memo lookup — every consumer's verdict is a pure
   // function of this one manifest's content, so the probe alone captures the
   // dependency while the memo stays warm (see cross-file-probe-recorder.ts).
   recordContentProbe(packageJsonPath);
-  const cached = cachedManifestByPackageDirectory.get(packageDirectory);
   if (cached !== undefined) return cached;
 
   let manifest: PackageManifest | null = null;

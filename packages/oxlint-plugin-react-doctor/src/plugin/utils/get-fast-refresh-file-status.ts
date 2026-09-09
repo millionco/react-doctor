@@ -7,7 +7,7 @@ import {
   MINIMUM_FAST_REFRESH_VERSIONS,
 } from "../constants/fast-refresh.js";
 import { declaresDependency } from "./classify-package-platform.js";
-import { recordExistenceProbe } from "./cross-file-probe-recorder.js";
+import { recordContentProbe, recordExistenceProbe } from "./cross-file-probe-recorder.js";
 import { getDirectUnreassignedInitializer } from "./get-direct-unreassigned-initializer.js";
 import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import { getImportedName } from "./get-imported-name.js";
@@ -734,7 +734,21 @@ const collectWorkspacePackagesRecursively = (workspaceRoot: string): WorkspacePa
   while (pendingDirectories.length > 0) {
     const directory = pendingDirectories.pop();
     if (!directory) continue;
-    const manifest = readPackageManifest(directory);
+    let entries: fs.Dirent[] | null;
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch {
+      entries = null;
+    }
+    const mayHaveManifest =
+      entries === null ||
+      entries.some((entry) => entry.name === "package.json" && !entry.isDirectory());
+    let manifest: PackageManifest | null = null;
+    if (mayHaveManifest) {
+      manifest = readPackageManifest(directory);
+    } else {
+      recordContentProbe(path.join(directory, "package.json"));
+    }
     if (manifest) {
       packages.push({
         directory,
@@ -742,12 +756,7 @@ const collectWorkspacePackagesRecursively = (workspaceRoot: string): WorkspacePa
         status: getLocalFastRefreshStatus(directory, manifest),
       });
     }
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(directory, { withFileTypes: true });
-    } catch {
-      continue;
-    }
+    if (entries === null) continue;
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       if (entry.name.startsWith(".") || WORKSPACE_IGNORED_DIRECTORY_NAMES.has(entry.name)) {

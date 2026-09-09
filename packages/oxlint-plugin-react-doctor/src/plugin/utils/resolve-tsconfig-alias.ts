@@ -181,10 +181,13 @@ const loadTsconfigCached = (configFilePath: string): TsconfigLookup => {
   // so the entry path itself is always a content dependency (its answer is
   // "absent" when the statSync throws).
   recordContentProbe(configFilePath);
-  let fileStat: fs.Stats;
+  let fileStat: fs.Stats | undefined;
   try {
-    fileStat = fs.statSync(configFilePath);
+    fileStat = fs.statSync(configFilePath, { throwIfNoEntry: false });
   } catch {
+    fileStat = undefined;
+  }
+  if (fileStat === undefined) {
     return { config: null, probedContentPaths: new Set([configFilePath]) };
   }
   // The resolved config depends on the whole `extends` CHAIN, not just this

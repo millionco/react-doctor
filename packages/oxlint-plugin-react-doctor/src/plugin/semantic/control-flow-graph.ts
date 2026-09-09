@@ -101,11 +101,15 @@ const mapDescendantsToBlock = (builder: CfgBuilder, node: EsTreeNode, block: Bas
   }
   const record = node as unknown as Record<string, unknown>;
   const childKeys = RUNTIME_VISITOR_KEYS[node.type] ?? Object.keys(record);
-  for (const key of childKeys) {
-    if (key === "parent") continue;
+  for (let keyIndex = 0; keyIndex < childKeys.length; keyIndex += 1) {
+    const key = childKeys[keyIndex];
+    if (key === undefined || key === "parent") continue;
     const child = record[key];
     if (Array.isArray(child)) {
-      for (const item of child) if (isAstNode(item)) mapDescendantsToBlock(builder, item, block);
+      for (let itemIndex = 0; itemIndex < child.length; itemIndex += 1) {
+        const item: unknown = child[itemIndex];
+        if (isAstNode(item)) mapDescendantsToBlock(builder, item, block);
+      }
     } else if (isAstNode(child)) {
       mapDescendantsToBlock(builder, child, block);
     }

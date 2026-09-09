@@ -102,13 +102,13 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
     absoluteFilePath.endsWith(".d.cts");
   if (!isDeclarationFile) recordContentProbe(absoluteFilePath);
 
-  let fileStat: fs.Stats;
+  let fileStat: fs.Stats | undefined;
   try {
-    fileStat = fs.statSync(absoluteFilePath);
+    fileStat = fs.statSync(absoluteFilePath, { throwIfNoEntry: false });
   } catch {
     return null;
   }
-  if (!fileStat.isFile()) return null;
+  if (!fileStat?.isFile()) return null;
   if (fileStat.size > CROSS_FILE_PARSE_MAX_BYTES) return null;
 
   const cached = parseCache.get(absoluteFilePath);

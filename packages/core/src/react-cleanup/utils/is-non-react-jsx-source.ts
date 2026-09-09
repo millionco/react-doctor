@@ -30,7 +30,21 @@ const openingElementHasNonReactMarker = (openingElement: ts.JsxOpeningLikeElemen
     );
   });
 
+const NON_REACT_RUNTIME_SOURCE_TEXT_MARKERS = [
+  ...NON_REACT_JSX_RUNTIME_PREFIXES,
+  ...NON_REACT_JSX_RUNTIME_PACKAGES,
+  "classList",
+];
+const NAMESPACED_ATTRIBUTE_MARKER_PATTERN = /\b(?:class|bind)\s*:/;
+const ESCAPED_MODULE_SPECIFIER_PATTERN = /(?:import|from)\s*["'][^"'\n]*\\/;
+
+const mayContainNonReactMarker = (sourceText: string): boolean =>
+  NON_REACT_RUNTIME_SOURCE_TEXT_MARKERS.some((marker) => sourceText.includes(marker)) ||
+  NAMESPACED_ATTRIBUTE_MARKER_PATTERN.test(sourceText) ||
+  ESCAPED_MODULE_SPECIFIER_PATTERN.test(sourceText);
+
 export const isNonReactJsxSource = (sourceFile: ts.SourceFile): boolean => {
+  if (!mayContainNonReactMarker(sourceFile.text)) return false;
   let hasNonReactRuntime = false;
   let hasReactRuntime = false;
   let hasNonReactMarker = false;

@@ -25,9 +25,9 @@ const classifyFilesystemEntry = (absolutePath: string): FilesystemEntryClassific
 
   let entry = OTHER_ENTRY;
   try {
-    const fileStat = fs.statSync(absolutePath);
-    if (fileStat.isFile()) entry = FILE_ENTRY;
-    else if (fileStat.isDirectory()) entry = DIRECTORY_ENTRY;
+    const fileStat = fs.statSync(absolutePath, { throwIfNoEntry: false });
+    if (fileStat?.isFile()) entry = FILE_ENTRY;
+    else if (fileStat?.isDirectory()) entry = DIRECTORY_ENTRY;
   } catch {
     filesystemEntryByPath.set(absolutePath, OTHER_ENTRY);
     return OTHER_ENTRY;

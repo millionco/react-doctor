@@ -47,7 +47,8 @@ export const doesModuleExportName = (filePath: string, exportedName: string): bo
   // file lands in the same probe: its content answer is "absent".
   recordContentProbe(filePath);
   try {
-    const fileStat = fs.statSync(filePath);
+    const fileStat = fs.statSync(filePath, { throwIfNoEntry: false });
+    if (fileStat === undefined) return false;
     const cached = exportNamesCache.get(filePath);
     if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
       return cached.exportedNames.has(exportedName);

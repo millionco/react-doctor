@@ -13,6 +13,7 @@ import {
   resolveScanTarget,
   restoreLegacyThrow,
   runInspect as runInspectEffect,
+  warmOxlintWorkerPool,
   yieldToEventLoop,
 } from "@react-doctor/core";
 import { activeScanAbortRegistry } from "./cli/utils/active-scan-abort-registry.js";
@@ -237,6 +238,9 @@ const runInspectWithRuntime = async (
   });
   const cachedResult = scanResultCacheLifecycle.replay();
   if (cachedResult !== null) return cachedResult;
+  if (options.lint && resolvedNodeBinaryPath) {
+    warmOxlintWorkerPool(resolvedNodeBinaryPath, oxlintRuntime.concurrency);
+  }
 
   // Suppress the orchestrator-owned lint + maintainability spinners when
   // the CLI is in score-only / silent / suppressed-rendering mode (or

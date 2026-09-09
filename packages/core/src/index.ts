@@ -133,3 +133,4 @@ export * from "./utils/yield-to-event-loop.js";
 export * from "./project-info/capabilities.js";
 export * from "./runners/oxlint/config.js";
 export * from "./runners/oxlint/plugin-resolution.js";
+export { warmOxlintWorkerPool } from "./runners/oxlint/run-oxlint-job.js";

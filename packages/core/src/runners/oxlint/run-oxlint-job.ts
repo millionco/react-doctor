@@ -48,6 +48,12 @@ const resolveSharedPool = (nodeBinaryPath: string, maxWorkers: number): OxlintWo
   return pool;
 };
 
+// Boots the shared pool ahead of the first batch so worker startup overlaps
+// project discovery and config resolution instead of delaying the first job.
+export const warmOxlintWorkerPool = (nodeBinaryPath: string, maxWorkers: number): void => {
+  resolveSharedPool(nodeBinaryPath, maxWorkers)?.warm();
+};
+
 export const runOxlintJob = async (input: RunOxlintJobInput): Promise<string> => {
   const runLegacySpawn = (): Promise<string> =>
     spawnOxlint(

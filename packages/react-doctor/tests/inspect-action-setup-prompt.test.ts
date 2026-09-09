@@ -97,6 +97,7 @@ vi.mock("../src/inspect.js", () => {
 });
 
 vi.mock("../src/cli/utils/select-projects.js", () => ({
+  discoverWorkspacePackages: vi.fn(() => []),
   selectProjects: vi.fn(async () => mockState.projectDirectories),
 }));
 

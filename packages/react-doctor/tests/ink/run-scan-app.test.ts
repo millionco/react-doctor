@@ -422,6 +422,64 @@ describe("runScanApp", () => {
     );
   });
 
+  it("excludes unselected nested workspace projects from a root-only scan", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const nativeDirectory = "/repo/apps/native";
+    mockState.workspacePackages.push(
+      { name: "root", directory: rootDirectory },
+      { name: "native", directory: nativeDirectory },
+    );
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledWith(
+      rootDirectory,
+      expect.objectContaining({
+        excludedProjectDirectories: [nativeDirectory],
+        retainExcludedProjectDeadCodeDiagnostics: true,
+      }),
+    );
+  });
+
+  it("scans a selected nested project without excluding its own directory", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const nativeDirectory = "/repo/apps/native";
+    mockState.workspacePackages.push(
+      { name: "root", directory: rootDirectory },
+      { name: "native", directory: nativeDirectory },
+    );
+    mockState.projectDirectories.push(nativeDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      nativeDirectory,
+      buildScanTarget(nativeDirectory, nativeDirectory, null, nativeDirectory),
+    );
+    mockState.inspectResults.set(nativeDirectory, buildInspectResult(nativeDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledWith(
+      nativeDirectory,
+      expect.objectContaining({
+        excludedProjectDirectories: [],
+        retainExcludedProjectDeadCodeDiagnostics: false,
+      }),
+    );
+  });
+
   it("preserves workspace dead-code ownership when a scoped scan skips the root", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const rootDirectory = "/repo";

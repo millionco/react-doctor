@@ -91,6 +91,7 @@ interface Worker {
   idleTimer: NodeJS.Timeout | null;
   isReady: boolean;
   isDead: boolean;
+  isReclaimed: boolean;
 }
 
 const MAX_END_TOKEN_BYTES = 64;
@@ -183,6 +184,14 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
     worker.child.kill("SIGKILL");
   };
 
+  // A worker the pool kills on purpose (job timeout, abort, output ceiling,
+  // idle) may still be booting; its exit must not be mistaken for a boot
+  // failure that takes the whole pool down.
+  const reclaimWorker = (worker: Worker): void => {
+    worker.isReclaimed = true;
+    killWorker(worker);
+  };
+
   const markUnavailable = (detail: string): void => {
     if (unavailableDetail === null) unavailableDetail = detail;
     for (const worker of workers) killWorker(worker);
@@ -228,7 +237,7 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
     collector.totalLength += chunk.length;
     if (pending.stdout.totalLength + pending.stderr.totalLength > pending.job.outputMaxBytes) {
       pending.didKillForSize = true;
-      killWorker(worker);
+      reclaimWorker(worker);
       return;
     }
     completePending(worker, pending);
@@ -247,23 +256,24 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
     const pending = worker.current;
     if (pending !== null) {
       const stderrOutput = readOutput(pending.stderr);
-      const error = !worker.isReady
-        ? new OxlintWorkerUnavailableError(
-            `worker exited before ready (code ${code ?? "null"}, signal ${signal ?? "none"})${stderrOutput ? `: ${stderrOutput}` : ""}`,
-          )
-        : pending.didKillForSize
-          ? new ReactDoctorError({
-              reason: new OxlintBatchExceeded({
-                kind: "output-too-large",
-                detail: `exceeded ${pending.job.outputMaxBytes} bytes — scan a smaller subset with --diff or --staged`,
-              }),
-            })
-          : (buildOxlintExitError({ exitCode: code, signal, stderrOutput }) ??
-            new ReactDoctorError({
-              reason: new OxlintSpawnFailed({
-                cause: stderrOutput || `oxlint worker exited with code ${code ?? "null"}`,
-              }),
-            }));
+      const error =
+        !worker.isReady && !worker.isReclaimed
+          ? new OxlintWorkerUnavailableError(
+              `worker exited before ready (code ${code ?? "null"}, signal ${signal ?? "none"})${stderrOutput ? `: ${stderrOutput}` : ""}`,
+            )
+          : pending.didKillForSize
+            ? new ReactDoctorError({
+                reason: new OxlintBatchExceeded({
+                  kind: "output-too-large",
+                  detail: `exceeded ${pending.job.outputMaxBytes} bytes — scan a smaller subset with --diff or --staged`,
+                }),
+              })
+            : (buildOxlintExitError({ exitCode: code, signal, stderrOutput }) ??
+              new ReactDoctorError({
+                reason: new OxlintSpawnFailed({
+                  cause: stderrOutput || `oxlint worker exited with code ${code ?? "null"}`,
+                }),
+              }));
       failPending(worker, pending, error);
     }
     dispatchWaiting();
@@ -305,6 +315,7 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
       idleTimer: null,
       isReady: false,
       isDead: false,
+      isReclaimed: false,
     };
     ready.then(
       () => {
@@ -313,6 +324,7 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
       },
       (error: unknown) => {
         clearTimeout(readyTimer);
+        if (worker.isReclaimed) return;
         markUnavailable(error instanceof Error ? error.message : String(error));
       },
     );
@@ -352,7 +364,7 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
     }
     idleWorkers.push(worker);
     setWorkerRef(worker, false);
-    worker.idleTimer = setTimeout(() => killWorker(worker), idleTimeoutMs);
+    worker.idleTimer = setTimeout(() => reclaimWorker(worker), idleTimeoutMs);
     worker.idleTimer.unref();
   };
 
@@ -364,7 +376,7 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
     let timeoutHandle: NodeJS.Timeout | null = null;
     const onAbort = (): void => {
       failPending(worker, pending, buildAbortedError());
-      killWorker(worker);
+      reclaimWorker(worker);
     };
     const pending: PendingJob = {
       id,
@@ -390,7 +402,7 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
           }),
         }),
       );
-      killWorker(worker);
+      reclaimWorker(worker);
     }, job.timeoutMs);
     timeoutHandle.unref();
     job.abortSignal?.addEventListener("abort", onAbort, { once: true });
@@ -441,7 +453,7 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
   };
 
   const closeIdleWorkers = (): void => {
-    for (const worker of idleWorkers.splice(0)) killWorker(worker);
+    for (const worker of idleWorkers.splice(0)) reclaimWorker(worker);
   };
 
   const run = (job: OxlintWorkerJob): Promise<string> =>

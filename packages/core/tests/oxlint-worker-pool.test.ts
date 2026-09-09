@@ -25,7 +25,7 @@ process.on("message", (job) => {
   if (job.type !== "job") return;
   const [mode, ...rest] = job.argumentsList;
   process.chdir(job.cwd);
-  if (mode === "crash") process.kill(process.pid, "SIGABRT");
+  if (mode === "crash") process.abort();
   if (mode === "hang") return;
   if (mode === "stderr-only") {
     fs.writeSync(2, "Failed to find tsgolint executable");
@@ -60,6 +60,9 @@ interface FakeWorkerOutput {
   readonly id: number;
   readonly filesystemCacheEpoch: number | null;
 }
+
+// Killed workers on Windows keep their cwd locked until the OS reaps them.
+const TEMPORARY_DIRECTORY_REMOVE_MAX_RETRIES = 10;
 
 const parseOutput = (stdout: string): FakeWorkerOutput => JSON.parse(stdout) as FakeWorkerOutput;
 
@@ -120,7 +123,11 @@ describe("createOxlintWorkerPool", () => {
 
   afterAll(() => {
     for (const pool of pools) pool.close();
-    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+    fs.rmSync(temporaryDirectory, {
+      recursive: true,
+      force: true,
+      maxRetries: TEMPORARY_DIRECTORY_REMOVE_MAX_RETRIES,
+    });
   });
 
   it("reuses one worker for sequential jobs and applies the per-job cwd", async () => {
@@ -219,7 +226,7 @@ describe("createOxlintWorkerPool", () => {
     const error: unknown = await runJob(pool, ["crash"]).catch((caught: unknown) => caught);
 
     expect(readReasonTag(error)).toBe("OxlintBatchExceeded");
-    expect(String(error)).toContain("SIGABRT");
+    expect(String(error)).toMatch(/killed by SIGABRT|aborted with exit code 134/);
     expect(pool.isAvailable()).toBe(true);
     expect(parseOutput(await runJob(pool, ["echo", "after"])).rest).toEqual(["after"]);
   });
@@ -246,6 +253,17 @@ describe("createOxlintWorkerPool", () => {
 
     expect(readReasonTag(error)).toBe("OxlintBatchExceeded");
     expect(String(error)).toContain("budget exceeded");
+    expect(parseOutput(await runJob(pool, ["echo", "next"])).rest).toEqual(["next"]);
+  });
+
+  it("keeps the pool available when a job times out before its worker is ready", async () => {
+    const pool = createPool({ maxWorkers: 1 });
+    const error: unknown = await runJob(pool, ["hang"], jobDirectoryA, { timeoutMs: 1 }).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(readReasonTag(error)).toBe("OxlintBatchExceeded");
+    expect(pool.isAvailable()).toBe(true);
     expect(parseOutput(await runJob(pool, ["echo", "next"])).rest).toEqual(["next"]);
   });
 

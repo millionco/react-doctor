@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
@@ -20,6 +20,31 @@ const timeChild = (priority: number | null): Promise<number> =>
     child.once("close", () => resolve(Date.now() - startedAt));
   });
 
+const snapshotProcesses = (): string => {
+  if (process.platform === "win32") return "n/a";
+  try {
+    const rows = execFileSync("ps", ["-eo", "rss=,comm="], { encoding: "utf8" })
+      .split("\n")
+      .map((row) => row.trim())
+      .filter((row) => row.length > 0);
+    let nodeCount = 0;
+    let nodeRssMb = 0;
+    let totalRssMb = 0;
+    for (const row of rows) {
+      const [rss, ...command] = row.split(/\s+/);
+      const rssMb = Number(rss) / 1024;
+      totalRssMb += rssMb;
+      if (command.join(" ").includes("node")) {
+        nodeCount += 1;
+        nodeRssMb += rssMb;
+      }
+    }
+    return `procs=${rows.length} node=${nodeCount} nodeRssMb=${Math.round(nodeRssMb)} totalRssMb=${Math.round(totalRssMb)} freeMemMb=${Math.round(os.freemem() / 1048576)}`;
+  } catch (error) {
+    return `ps failed: ${String(error)}`;
+  }
+};
+
 export const runPoolTimingProbe = async (label: string): Promise<void> => {
   const debugLogPath = path.join(
     os.tmpdir(),
@@ -39,6 +64,7 @@ export const runPoolTimingProbe = async (label: string): Promise<void> => {
         ",",
       )} freeMemMb=${Math.round(os.freemem() / 1048576)} totalMemMb=${Math.round(os.totalmem() / 1048576)} node=${process.version} execArgv=${JSON.stringify(process.execArgv)} priority=${os.getPriority()}`,
   );
+  log(`processes before: ${snapshotProcesses()}`);
   const normalMs = await timeChild(null);
   const loweredMs = await timeChild(10);
   const normalAgainMs = await timeChild(null);
@@ -59,6 +85,7 @@ export const runPoolTimingProbe = async (label: string): Promise<void> => {
     log(
       `runOxlint #${index + 1}: wall=${Date.now() - startedAt}ms parentCpu=${Math.round((cpu.user + cpu.system) / 1000)}ms diagnostics=${diagnostics.length} loadavg=${os.loadavg()[0]?.toFixed(2)}`,
     );
+    log(`processes after #${index + 1}: ${snapshotProcesses()}`);
   }
   if (fs.existsSync(debugLogPath)) {
     for (const line of fs.readFileSync(debugLogPath, "utf8").split("\n")) {
@@ -67,5 +94,5 @@ export const runPoolTimingProbe = async (label: string): Promise<void> => {
   } else {
     log("no debug log written");
   }
-  process.stderr.write(`${lines.join("\n")}\n`);
+  console.error(lines.join("\n"));
 };

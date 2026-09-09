@@ -25,7 +25,13 @@ process.on("message", (job) => {
   if (job.type !== "job") return;
   const [mode, ...rest] = job.argumentsList;
   process.chdir(job.cwd);
-  if (mode === "crash") process.abort();
+  if (mode === "crash") {
+    // HACK: process.abort() on Windows hands the process to Windows Error
+    // Reporting, which can stall it past the job timeout, so the abort exit
+    // code is emulated there instead.
+    if (process.platform === "win32") process.exit(134);
+    process.abort();
+  }
   if (mode === "hang") return;
   if (mode === "stderr-only") {
     fs.writeSync(2, "Failed to find tsgolint executable");

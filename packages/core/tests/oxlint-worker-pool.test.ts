@@ -121,8 +121,8 @@ describe("createOxlintWorkerPool", () => {
     fs.mkdirSync(jobDirectoryB);
   });
 
-  afterAll(() => {
-    for (const pool of pools) pool.close();
+  afterAll(async () => {
+    await Promise.all(pools.map((pool) => pool.close()));
     fs.rmSync(temporaryDirectory, {
       recursive: true,
       force: true,

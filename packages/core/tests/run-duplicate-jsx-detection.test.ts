@@ -79,7 +79,7 @@ describe("runDuplicateJsxDetection", () => {
     expect(results[1].families[0].primaryOccurrence.path).toBe("src/account.tsx");
   });
 
-  it("reports cancellation from the worker instead of failing", async () => {
+  it("reports cancellation instead of failing when the signal is already aborted", async () => {
     const project = createProject();
     const abortController = new AbortController();
     abortController.abort();

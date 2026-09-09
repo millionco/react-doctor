@@ -42,7 +42,8 @@ export interface OxlintWorkerPool {
   readonly isAvailable: () => boolean;
   readonly workerCount: () => number;
   readonly closeIdleWorkers: () => void;
-  readonly close: () => void;
+  /** Kills every worker; resolves once the host has reaped them all. */
+  readonly close: () => Promise<void>;
 }
 
 // Raised instead of a `ReactDoctorError` when the pool cannot serve jobs at
@@ -87,6 +88,7 @@ interface WaitingJob {
 interface Worker {
   readonly child: ChildProcess;
   readonly ready: Promise<void>;
+  readonly closed: Promise<void>;
   current: PendingJob | null;
   idleTimer: NodeJS.Timeout | null;
   isReady: boolean;
@@ -311,6 +313,7 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
     const worker: Worker = {
       child,
       ready,
+      closed: new Promise<void>((resolve) => child.once("close", () => resolve())),
       current: null,
       idleTimer: null,
       isReady: false,
@@ -488,6 +491,10 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
     isAvailable: () => unavailableDetail === null,
     workerCount: () => workers.size,
     closeIdleWorkers,
-    close: () => markUnavailable("pool closed"),
+    close: () => {
+      const closing = [...workers].map((worker) => worker.closed);
+      markUnavailable("pool closed");
+      return Promise.all(closing).then(() => undefined);
+    },
   };
 };

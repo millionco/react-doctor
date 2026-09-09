@@ -138,15 +138,16 @@ const runInWorker = (
       rootDirectory: input.rootDirectory,
       sourceFiles: input.sourceFiles,
     });
-    if (input.signal?.aborted) onAbort();
-    else input.signal?.addEventListener("abort", onAbort, { once: true });
+    input.signal?.addEventListener("abort", onAbort, { once: true });
   });
 
 export const runDuplicateJsxDetection = (
   input: RunDuplicateJsxDetectionInput,
 ): Promise<DuplicateJsxSubtreesResult> => {
   const scriptPath = input.workerScriptPath ?? DEFAULT_WORKER_SCRIPT_PATH;
-  if (fs.existsSync(scriptPath)) return runInWorker(input, scriptPath);
+  if (input.signal?.aborted !== true && fs.existsSync(scriptPath)) {
+    return runInWorker(input, scriptPath);
+  }
   return detectDuplicateJsxSubtreesCooperative(createJsxSourceReader(input), {
     signal: input.signal,
   });

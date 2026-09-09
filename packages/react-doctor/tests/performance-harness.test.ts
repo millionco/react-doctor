@@ -409,6 +409,9 @@ describe("performance harness", () => {
           fileCount: 4,
           componentsPerFileCount: 1,
         });
+        const debugLogPath = path.join(directory, "pool-debug.log");
+        process.env.REACT_DOCTOR_DEBUG_POOL_LOG = debugLogPath;
+        const lintStartedAt = Date.now();
         const result = runPerformance({
           directories: [projectDirectory],
           samples: 2,
@@ -429,6 +432,10 @@ describe("performance harness", () => {
             .map((value) => value.toFixed(1))
             .join(",")}`,
         );
+        console.error(
+          `[perf-harness-debug:lint-children] startedAt=${lintStartedAt}\n${fs.existsSync(debugLogPath) ? fs.readFileSync(debugLogPath, "utf8") : "(no debug log)"}`,
+        );
+        delete process.env.REACT_DOCTOR_DEBUG_POOL_LOG;
 
         expect(result.series).toHaveLength(1);
         expect(result.series[0]?.samples).toHaveLength(2);
@@ -455,6 +462,8 @@ describe("performance harness", () => {
           fileCount: 1,
           componentsPerFileCount: 1,
         });
+        const debugLogPath = path.join(directory, "pool-debug.log");
+        process.env.REACT_DOCTOR_DEBUG_POOL_LOG = debugLogPath;
         const fullStartedAt = performance.now();
         const fullResult = runPerformance({
           directories: [projectDirectory],
@@ -476,6 +485,10 @@ describe("performance harness", () => {
             .map((value) => value.toFixed(1))
             .join(",")}`,
         );
+        console.error(
+          `[perf-harness-debug:full-children]\n${fs.existsSync(debugLogPath) ? fs.readFileSync(debugLogPath, "utf8") : "(no debug log)"}`,
+        );
+        delete process.env.REACT_DOCTOR_DEBUG_POOL_LOG;
 
         const cpuAnalysis = analyzeCpuProfiles(outputDirectory);
         const heapAnalysis = analyzeHeapProfiles(outputDirectory);

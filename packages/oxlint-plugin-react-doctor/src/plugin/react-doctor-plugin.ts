@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
 import { REACT_DOCTOR_PLUGIN_RESET_HOOK_KEY } from "./constants/host.js";
 import { ruleRegistry } from "./rule-registry.js";
 import { RULE_REQUIRED_IMPORTS } from "./rule-required-imports.js";
@@ -129,12 +131,74 @@ const applyRequiredImportsGate = (ruleId: string, rule: HostRule): HostRule => {
   };
 };
 
+// THROWAWAY DEBUG: per-process phase trace for CI timing investigation.
+const debugTrace = {
+  pluginLoadedAtMs: Math.round(performance.now()),
+  firstCreateAtMs: -1,
+  lastCreateAtMs: -1,
+  createCount: 0,
+  createCpuMs: 0,
+  files: new Set<string>(),
+};
+const debugPath = process.env.REACT_DOCTOR_DEBUG_POOL_LOG;
+if (debugPath !== undefined) {
+  process.on("exit", (code) => {
+    const usage = process.cpuUsage();
+    const memory = process.memoryUsage();
+    fs.appendFileSync(
+      debugPath,
+      `${JSON.stringify({
+        kind: "plugin-process-exit",
+        pid: process.pid,
+        at: Date.now(),
+        code,
+        argv: process.argv.slice(1, 3),
+        execArgv: process.execArgv,
+        uptimeMs: Math.round(performance.now()),
+        pluginLoadedAtMs: debugTrace.pluginLoadedAtMs,
+        firstCreateAtMs: debugTrace.firstCreateAtMs,
+        lastCreateAtMs: debugTrace.lastCreateAtMs,
+        createCount: debugTrace.createCount,
+        fileCount: debugTrace.files.size,
+        createCpuMs: Math.round(debugTrace.createCpuMs),
+        cpuUserMs: Math.round(usage.user / 1000),
+        cpuSystemMs: Math.round(usage.system / 1000),
+        rssMb: Math.round(memory.rss / 1048576),
+        externalMb: Math.round(memory.external / 1048576),
+        heapUsedMb: Math.round(memory.heapUsed / 1048576),
+        loadavg: os.loadavg().map((value) => Number(value.toFixed(1))),
+      })}\n`,
+    );
+  });
+}
+
+const applyDebugTrace = (rule: HostRule): HostRule =>
+  debugPath === undefined
+    ? rule
+    : {
+        ...rule,
+        create: (context: BaseRuleContext): RuleVisitors => {
+          const now = Math.round(performance.now());
+          if (debugTrace.firstCreateAtMs < 0) debugTrace.firstCreateAtMs = now;
+          debugTrace.lastCreateAtMs = now;
+          debugTrace.createCount += 1;
+          debugTrace.files.add(context.filename ?? "");
+          const cpuBefore = process.cpuUsage();
+          const visitors = rule.create(context);
+          const cpuAfter = process.cpuUsage(cpuBefore);
+          debugTrace.createCpuMs += (cpuAfter.user + cpuAfter.system) / 1000;
+          return visitors;
+        },
+      };
+
 const applyFrameworkRuleWrappers = (registry: Record<string, Rule>): Record<string, HostRule> => {
   const wrapped: Record<string, HostRule> = {};
   for (const [ruleId, rule] of Object.entries(registry)) {
-    wrapped[ruleId] = wrapRuleWithPerformanceTiming(
-      ruleId,
-      applyRequiredImportsGate(ruleId, wrapWithSemanticContext(applyFrameworkGate(rule))),
+    wrapped[ruleId] = applyDebugTrace(
+      wrapRuleWithPerformanceTiming(
+        ruleId,
+        applyRequiredImportsGate(ruleId, wrapWithSemanticContext(applyFrameworkGate(rule))),
+      ),
     );
   }
   return wrapped;

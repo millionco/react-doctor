@@ -423,6 +423,12 @@ describe("performance harness", () => {
           heapProfile: false,
           ruleTimings: false,
         });
+        console.error(
+          `[perf-harness-debug:lint] ${JSON.stringify(result.series[0]?.samples)} loadavg=${os
+            .loadavg()
+            .map((value) => value.toFixed(1))
+            .join(",")}`,
+        );
 
         expect(result.series).toHaveLength(1);
         expect(result.series[0]?.samples).toHaveLength(2);
@@ -449,7 +455,8 @@ describe("performance harness", () => {
           fileCount: 1,
           componentsPerFileCount: 1,
         });
-        runPerformance({
+        const fullStartedAt = performance.now();
+        const fullResult = runPerformance({
           directories: [projectDirectory],
           samples: 1,
           warmups: 0,
@@ -463,6 +470,12 @@ describe("performance harness", () => {
           heapProfile: true,
           ruleTimings: true,
         });
+        console.error(
+          `[perf-harness-debug:full] runPerformanceMs=${Math.round(performance.now() - fullStartedAt)} ${JSON.stringify(fullResult.series[0]?.samples)} loadavg=${os
+            .loadavg()
+            .map((value) => value.toFixed(1))
+            .join(",")}`,
+        );
 
         const cpuAnalysis = analyzeCpuProfiles(outputDirectory);
         const heapAnalysis = analyzeHeapProfiles(outputDirectory);

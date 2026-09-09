@@ -9,8 +9,8 @@ import {
   filterPathsOutsideDirectories,
   filterSourceFiles,
   isPathInsideDirectory,
-  JSX_DUPLICATION_SOURCE_FILE_PATTERN,
   listSourceFilesCooperative,
+  MAINTAINABILITY_SOURCE_FILE_PATTERN,
   remainingDeadlineBudgetMs,
   type Diagnostic,
   type InspectResult,
@@ -102,7 +102,7 @@ export const runBaselineComparison = async (
         await listSourceFilesCooperative(input.directory, baselineListingSignal)
       ).filter(
         (filePath) =>
-          JSX_DUPLICATION_SOURCE_FILE_PATTERN.test(filePath) &&
+          MAINTAINABILITY_SOURCE_FILE_PATTERN.test(filePath) &&
           classifyFileContext(filePath) === "production",
       );
     } catch (error) {

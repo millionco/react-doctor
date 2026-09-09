@@ -9,6 +9,8 @@ import { getDependencySpec } from "./project-info/dependencies.js";
 import { findMonorepoRoot, isFile, readPackageJson } from "./project-info/index.js";
 import { getWorkspacePatterns, resolveWorkspaceDirectories } from "./project-info/workspaces.js";
 import type { Diagnostic, ProjectInfo } from "./types/index.js";
+import type { WorkspaceProbeCache } from "./utils/create-invocation-caches.js";
+import { getOrCompute } from "./utils/get-or-compute.js";
 
 const RULE_KEY = "no-vulnerable-react-server-components";
 
@@ -70,19 +72,23 @@ const buildAdvisoryDiagnostic = (input: BuildAdvisoryDiagnosticInput): Diagnosti
 // `listWorkspacePackages`, which keeps only React- or Three-bearing packages. A
 // workspace that declares only a `react-server-dom-*` package (or `next` solely
 // under `optionalDependencies`) must still have its `node_modules` probed.
-const enumerateWorkspaceDirectories = (workspaceRoot: string): string[] => {
-  const patterns = getWorkspacePatterns(
-    workspaceRoot,
-    readPackageJson(path.join(workspaceRoot, "package.json")),
-  );
-  const directories = new Set<string>();
-  for (const pattern of patterns) {
-    for (const directory of resolveWorkspaceDirectories(workspaceRoot, pattern)) {
-      directories.add(directory);
+const enumerateWorkspaceDirectories = (
+  workspaceRoot: string,
+  probeCache: WorkspaceProbeCache | null,
+): ReadonlyArray<string> =>
+  getOrCompute(probeCache?.workspaceDirectoriesByRoot ?? null, workspaceRoot, () => {
+    const patterns = getWorkspacePatterns(
+      workspaceRoot,
+      readPackageJson(path.join(workspaceRoot, "package.json")),
+    );
+    const directories = new Set<string>();
+    for (const pattern of patterns) {
+      for (const directory of resolveWorkspaceDirectories(workspaceRoot, pattern)) {
+        directories.add(directory);
+      }
     }
-  }
-  return [...directories];
-};
+    return [...directories];
+  });
 
 // Resolves the concrete version a package runs *in a single directory*,
 // preferring the installed manifest under that directory's `node_modules`
@@ -91,30 +97,38 @@ const enumerateWorkspaceDirectories = (workspaceRoot: string): string[] => {
 // (`^19.2.0`), so the check never guesses off an ambiguous range whose lockfile
 // may resolve higher. The caller probes every candidate directory (scan root +
 // each workspace package) so heterogeneous monorepo installs are all seen.
-const resolveVersionInDirectory = (
+const resolveConcreteVersionInDirectory = (
   directory: string,
   packageName: string,
-  declaredSpecOverride: string | null,
 ): string | null => {
   const manifestPath = path.join(directory, "node_modules", packageName, "package.json");
   if (isFile(manifestPath)) {
     const installedVersion = semver.valid(readPackageJson(manifestPath).version ?? null);
     if (installedVersion !== null) return installedVersion;
   }
+  const declaredSpec = getDependencySpec(
+    readPackageJson(path.join(directory, "package.json")),
+    packageName,
+  );
+  return declaredSpec === null ? null : semver.valid(declaredSpec);
+};
 
-  // Fall through to the first spec that is actually a concrete version. The
-  // directory's own declaration is tried first, then the seed (discovery's
-  // catalog-resolved `project.nextjsVersion`) — so an unparseable manifest spec
-  // like `catalog:` doesn't shadow an already-resolved concrete pin.
-  const candidateSpecs = [
-    getDependencySpec(readPackageJson(path.join(directory, "package.json")), packageName),
-    declaredSpecOverride,
-  ];
-  for (const spec of candidateSpecs) {
-    const pinnedVersion = spec === null ? null : semver.valid(spec);
-    if (pinnedVersion !== null) return pinnedVersion;
-  }
-  return null;
+// The directory's own install/declaration is tried first, then the seed
+// (discovery's catalog-resolved `project.nextjsVersion`) — so an unparseable
+// manifest spec like `catalog:` doesn't shadow an already-resolved concrete pin.
+const resolveVersionInDirectory = (
+  directory: string,
+  packageName: string,
+  declaredSpecOverride: string | null,
+  probeCache: WorkspaceProbeCache | null,
+): string | null => {
+  const concreteVersion = getOrCompute(
+    probeCache?.concreteVersionsByProbe ?? null,
+    `${directory}\0${packageName}`,
+    () => resolveConcreteVersionInDirectory(directory, packageName),
+  );
+  if (concreteVersion !== null) return concreteVersion;
+  return declaredSpecOverride === null ? null : semver.valid(declaredSpecOverride);
 };
 
 const checkReactServerDomAdvisory = (packageName: string, version: string): Diagnostic[] => {
@@ -214,6 +228,7 @@ const checkNextjsAdvisory = (version: string): Diagnostic[] => {
 export const checkReactServerComponentsAdvisory = (
   scanDirectory: string,
   project: ProjectInfo,
+  probeCache: WorkspaceProbeCache | null = null,
 ): Diagnostic[] => {
   // `project.rootDirectory` is the scanned directory, not necessarily the
   // monorepo root, so walk up to the real root: it enumerates every sibling
@@ -225,7 +240,7 @@ export const checkReactServerComponentsAdvisory = (
       scanDirectory,
       project.rootDirectory,
       workspaceRoot,
-      ...enumerateWorkspaceDirectories(workspaceRoot),
+      ...enumerateWorkspaceDirectories(workspaceRoot, probeCache),
     ]),
   ];
 
@@ -246,6 +261,7 @@ export const checkReactServerComponentsAdvisory = (
       directory,
       "next",
       directory === scanDirectory ? project.nextjsVersion : null,
+      probeCache,
     );
     if (nextVersion !== null) pushUnique(checkNextjsAdvisory(nextVersion));
 
@@ -258,7 +274,7 @@ export const checkReactServerComponentsAdvisory = (
     if (nextGovernsRsc) continue;
 
     for (const packageName of REACT_SERVER_DOM_PACKAGES) {
-      const version = resolveVersionInDirectory(directory, packageName, null);
+      const version = resolveVersionInDirectory(directory, packageName, null, probeCache);
       if (version !== null) pushUnique(checkReactServerDomAdvisory(packageName, version));
     }
   }

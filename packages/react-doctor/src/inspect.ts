@@ -3,7 +3,7 @@ import { performance } from "node:perf_hooks";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
-  createGitRepositoryMetadataCache,
+  createInvocationCaches,
   createOxlintSpawnSlots,
   type Diagnostic,
   highlighter,
@@ -176,7 +176,7 @@ export const createInvocationInspect = (
   const concurrency = resolveInvocationOxlintConcurrency(requestedOxlintConcurrency);
   const spawnSlots = createOxlintSpawnSlots(concurrency);
   const scanResultCacheInvocationState = createScanResultCacheInvocationState();
-  const gitRepositoryMetadataCache = createGitRepositoryMetadataCache();
+  const invocationCaches = createInvocationCaches();
   return async (directory, inputOptions = {}) => {
     const abortController = new AbortController();
     const unregisterAbortController = activeScanAbortRegistry.register(abortController);
@@ -186,7 +186,7 @@ export const createInvocationInspect = (
         spawnSlots,
         abortSignal: abortController.signal,
         scanResultCacheInvocationState,
-        gitRepositoryMetadataCache,
+        invocationCaches,
       };
       return await inspectWithOxlintRuntime(directory, inputOptions, oxlintRuntime);
     } finally {
@@ -264,7 +264,7 @@ const runInspectWithRuntime = async (
     shouldShowProgressSpinners,
     oxlintConcurrency: oxlintRuntime.concurrency,
     oxlintSpawnSlots: oxlintRuntime.spawnSlots,
-    gitRepositoryMetadataCache: oxlintRuntime.gitRepositoryMetadataCache,
+    invocationCaches: oxlintRuntime.invocationCaches,
     reporterLayer: options.uiLayers?.reporter,
     progressLayer: options.uiLayers?.progress,
   });

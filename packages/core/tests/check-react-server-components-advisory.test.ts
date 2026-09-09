@@ -2,7 +2,11 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vite-plus/test";
-import { checkReactServerComponentsAdvisory, clearPackageJsonCache } from "@react-doctor/core";
+import {
+  checkReactServerComponentsAdvisory,
+  clearPackageJsonCache,
+  createInvocationCaches,
+} from "@react-doctor/core";
 import type { Diagnostic, PackageJson, ProjectInfo } from "@react-doctor/core";
 
 const FIXTURES_DIRECTORY = path.resolve(
@@ -412,5 +416,41 @@ describe("checkReactServerComponentsAdvisory (installed-version resolution)", ()
       buildProject(temporaryRoot, "nextjs", null),
     );
     expect(diagnostics).toEqual([]);
+  });
+
+  it("shares workspace probes across projects of one invocation without changing the result", () => {
+    writePackageJson(temporaryRoot, {
+      name: "monorepo-root",
+      workspaces: ["packages/*"],
+      dependencies: { react: "19.2.0" },
+    });
+    const webDirectory = path.join(temporaryRoot, "packages", "web");
+    writePackageJson(webDirectory, { name: "web", dependencies: { next: "15.0.0" } });
+    writeInstalledManifest(webDirectory, "next", "15.0.0");
+    const libDirectory = path.join(temporaryRoot, "packages", "lib");
+    writePackageJson(libDirectory, { name: "lib", dependencies: { react: "19.2.0" } });
+    clearPackageJsonCache();
+
+    const uncached = [
+      checkReactServerComponentsAdvisory(webDirectory, buildProject(webDirectory, "nextjs", null)),
+      checkReactServerComponentsAdvisory(libDirectory, buildProject(libDirectory, "vite", null)),
+    ];
+    const probeCache = createInvocationCaches().workspaceProbes;
+    const cached = [
+      checkReactServerComponentsAdvisory(
+        webDirectory,
+        buildProject(webDirectory, "nextjs", null),
+        probeCache,
+      ),
+      checkReactServerComponentsAdvisory(
+        libDirectory,
+        buildProject(libDirectory, "vite", null),
+        probeCache,
+      ),
+    ];
+    expect(cached).toEqual(uncached);
+    expect(cached[0]).toHaveLength(1);
+    expect(probeCache.workspaceDirectoriesByRoot.size).toBe(1);
+    expect(probeCache.concreteVersionsByProbe.get(`${webDirectory}\0next`)).toBe("15.0.0");
   });
 });

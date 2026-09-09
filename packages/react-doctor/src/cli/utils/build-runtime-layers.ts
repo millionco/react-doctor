@@ -4,7 +4,7 @@ import {
   Config,
   Files,
   Git,
-  GitRepositoryMetadataCache,
+  InvocationCaches,
   Linter,
   LintPartialFailures,
   Maintainability,
@@ -18,7 +18,7 @@ import {
   SupplyChain,
 } from "@react-doctor/core";
 import type {
-  GitRepositoryMetadataCacheHandle,
+  InvocationCachesHandle,
   ProgressHandle,
   ProjectInfo,
   ReactDoctorConfig,
@@ -76,7 +76,7 @@ export interface BuildRuntimeLayersInput {
    */
   readonly oxlintConcurrency?: number;
   readonly oxlintSpawnSlots?: OxlintSpawnSlotsHandle;
-  readonly gitRepositoryMetadataCache?: GitRepositoryMetadataCacheHandle;
+  readonly invocationCaches?: InvocationCachesHandle;
   readonly reporterLayer?: Layer.Layer<Reporter>;
   readonly progressLayer?: Layer.Layer<Progress>;
 }
@@ -188,10 +188,7 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
           layersWithConcurrency,
           Layer.succeed(OxlintSpawnSlots, input.oxlintSpawnSlots),
         );
-  return input.gitRepositoryMetadataCache === undefined
+  return input.invocationCaches === undefined
     ? layersWithSpawnSlots
-    : Layer.mergeAll(
-        layersWithSpawnSlots,
-        Layer.succeed(GitRepositoryMetadataCache, input.gitRepositoryMetadataCache),
-      );
+    : Layer.mergeAll(layersWithSpawnSlots, Layer.succeed(InvocationCaches, input.invocationCaches));
 };

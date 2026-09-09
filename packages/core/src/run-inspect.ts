@@ -43,7 +43,7 @@ import { getCapabilities, shouldEnableRule } from "./project-info/capabilities.j
 import { isAnalyzableProject } from "./project-info/index.js";
 import {
   DeadCodePhaseTimeoutMs,
-  GitRepositoryMetadataCache,
+  InvocationCaches,
   LintPhaseTimeoutMs,
   OxlintConcurrency,
   ScanDeadlineMs,
@@ -266,13 +266,16 @@ export const runInspect = <HooksR = never>(
           : null;
       return { repo, sha, defaultBranch, githubViewerPermission };
     });
-    const gitRepositoryMetadataCache = yield* GitRepositoryMetadataCache;
+    const invocationCaches = yield* InvocationCaches;
     const gitRepositoryRoot =
-      gitRepositoryMetadataCache === null ? null : findGitRepositoryRoot(scanDirectory);
+      invocationCaches === null ? null : findGitRepositoryRoot(scanDirectory);
     const gitMetadataFiber = yield* Effect.forkChild(
-      gitRepositoryMetadataCache === null || gitRepositoryRoot === null
+      invocationCaches === null || gitRepositoryRoot === null
         ? resolveGitMetadata
-        : gitRepositoryMetadataCache.getOrResolve(gitRepositoryRoot, resolveGitMetadata),
+        : invocationCaches.gitRepositoryMetadata.getOrResolve(
+            gitRepositoryRoot,
+            resolveGitMetadata,
+          ),
     );
     const githubActionsScoreMetadata = input.isCi ? resolveGithubActionsScoreMetadata() : {};
 
@@ -359,7 +362,11 @@ export const runInspect = <HooksR = never>(
       : [
           ...checkReducedMotion(scanDirectory),
           ...checkPnpmHardening(scanDirectory),
-          ...checkReactServerComponentsAdvisory(scanDirectory, project),
+          ...checkReactServerComponentsAdvisory(
+            scanDirectory,
+            project,
+            invocationCaches?.workspaceProbes ?? null,
+          ),
           ...checkExpoProject(scanDirectory, project),
           ...checkReactNativeProject(scanDirectory, project),
         ];

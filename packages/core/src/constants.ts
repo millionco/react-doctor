@@ -650,16 +650,11 @@ export const DUPLICATE_JSX_WORKER_IDLE_TIMEOUT_MS = 30_000;
 export const OXLINT_WORKER_TURBOFAN_INVOCATION_COUNT = 30_000;
 export const OXLINT_WORKER_TIERING_FLAGS_MIN_NODE_MAJOR = 22;
 
-// oxlint parses every file into a fixed 2 GiB transfer buffer per native
-// thread, registered with V8 as external memory, and every pooled job builds
-// a fresh set while the previous job's set is still awaiting collection. V8
-// treats external growth beyond half its old-space limit since the last full
-// GC as memory pressure and answers with a synchronous, non-incremental
-// compacting GC that also shrinks the young generation — one per job, and
-// ~4x more scavenges after it. Sizing the old-space limit at two buffers per
-// thread (plus headroom) keeps the burst under that threshold so V8 falls back
-// to ordinary incremental marking; it is a ceiling only, no memory is
-// committed. Measured on refine: -14% CPU, major GC 5.5s → 1.6s.
+// HACK: oxlint registers one 2 GiB fixed-size AST transfer buffer per native
+// thread as V8 external memory, and a pooled job allocates a new set before the
+// previous set is collected. External growth past half the old-space limit
+// triggers a synchronous full GC per job; a ceiling of two buffers per thread
+// (plus headroom) keeps V8 on incremental marking. Nothing is committed up front.
 export const OXLINT_WORKER_OLD_SPACE_MB_PER_NATIVE_THREAD = 4352;
 
 // Global registry key under which the react-doctor oxlint plugin publishes its

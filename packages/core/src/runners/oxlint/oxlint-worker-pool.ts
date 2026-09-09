@@ -10,7 +10,10 @@ import {
 import { OxlintBatchExceeded, OxlintSpawnFailed, ReactDoctorError } from "../../errors.js";
 import type { OxlintWorkerBootMessage, OxlintWorkerJobMessage } from "../../start-oxlint-worker.js";
 import { buildOxlintExitError } from "../../utils/build-oxlint-exit-error.js";
+import { buildOxlintWorkerNodeArguments } from "../../utils/build-oxlint-worker-node-arguments.js";
 import { lowerChildProcessPriority } from "../../utils/lower-child-process-priority.js";
+import { resolveOxlintThreadCount } from "../../utils/resolve-oxlint-thread-count.js";
+import { resolveChildNodeVersion } from "./resolve-toolchain-versions.js";
 
 export interface OxlintWorkerJob {
   readonly argumentsList: ReadonlyArray<string>;
@@ -267,7 +270,14 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
   const createWorker = (): Worker => {
     const child = spawn(
       options.nodeBinaryPath,
-      [options.workerScriptPath, options.oxlintPackageDirectory],
+      [
+        ...buildOxlintWorkerNodeArguments({
+          childNodeVersion: resolveChildNodeVersion(options.nodeBinaryPath),
+          nativeThreadCount: resolveOxlintThreadCount(options.maxWorkers),
+        }),
+        options.workerScriptPath,
+        options.oxlintPackageDirectory,
+      ],
       {
         env: options.environment,
         stdio: ["ignore", "pipe", "pipe", "ipc"],

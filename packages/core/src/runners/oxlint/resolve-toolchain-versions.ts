@@ -13,7 +13,7 @@ const childNodeVersionByBinaryPath = new Map<string, string>();
 // child's, not the parent's. Probed once per binary per process; a failed
 // probe contributes a stable marker so the hash stays deterministic (and
 // conservative: distinct markers for distinct binaries still bust the cache).
-const resolveChildNodeVersion = (nodeBinaryPath: string): string => {
+export const resolveChildNodeVersion = (nodeBinaryPath: string): string => {
   if (nodeBinaryPath === process.execPath) return process.version;
   const cachedVersion = childNodeVersionByBinaryPath.get(nodeBinaryPath);
   if (cachedVersion !== undefined) return cachedVersion;

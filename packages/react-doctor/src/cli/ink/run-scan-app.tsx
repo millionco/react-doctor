@@ -545,11 +545,10 @@ const runSingleProjectScan = async (
         reporter: reporterLayerForStore(context.store),
         progress: progressLayerForStore(context.store),
       },
-      excludedProjectDirectories: resolveExcludedProjectDirectories({
-        scanDirectory: projectScan.directory,
-        selectedProjectDirectories: [],
+      excludedProjectDirectories: resolveExcludedProjectDirectories(
+        projectScan.directory,
         workspaceProjectDirectories,
-      }),
+      ),
       retainExcludedProjectDeadCodeDiagnostics: isRootProject,
     });
     const reportSelection = selectReportDiagnostics({
@@ -706,13 +705,10 @@ const runMultiProjectScan = async (
             }),
           },
           concurrentScan: true,
-          excludedProjectDirectories: resolveExcludedProjectDirectories({
-            scanDirectory: projectScan.directory,
-            selectedProjectDirectories: discoveredProjectScans.map(
-              (candidateProjectScan) => candidateProjectScan.directory,
-            ),
-            workspaceProjectDirectories,
-          }),
+          excludedProjectDirectories: resolveExcludedProjectDirectories(projectScan.directory, [
+            ...discoveredProjectScans.map((candidateProjectScan) => candidateProjectScan.directory),
+            ...workspaceProjectDirectories,
+          ]),
           retainExcludedProjectDeadCodeDiagnostics: ownsWorkspaceDeadCode,
         });
         finishedCount += 1;

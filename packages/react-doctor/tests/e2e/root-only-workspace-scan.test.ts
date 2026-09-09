@@ -18,7 +18,9 @@ interface CliWorkspaceReport {
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const builtCliPath = path.resolve(currentDirectory, "../../dist/cli.js");
 const hasBuiltCli = fs.existsSync(builtCliPath);
-const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-root-only-workspace-scan-"));
+const temporaryRoot = fs.realpathSync(
+  fs.mkdtempSync(path.join(os.tmpdir(), "rd-root-only-workspace-scan-")),
+);
 
 afterAll(() => {
   fs.rmSync(temporaryRoot, { recursive: true, force: true });
@@ -95,7 +97,7 @@ const runScan = (directory: string, projects: string): CliWorkspaceReport => {
   return JSON.parse(result.stdout);
 };
 
-const collectRuleHits = (report: CliWorkspaceReport): string[] =>
+const collectRuleHitPaths = (report: CliWorkspaceReport): string[] =>
   report.projects.flatMap((projectReport) =>
     projectReport.diagnostics
       .filter((diagnostic) => diagnostic.rule === RULE_UNDER_TEST)
@@ -113,13 +115,13 @@ describe.skipIf(!hasBuiltCli)("root-only scan of a workspace with a nested proje
       rootDirectory,
       path.join(rootDirectory, "apps/native"),
     ]);
-    expect(collectRuleHits(bothReport)).toEqual([rootListPath]);
+    expect(collectRuleHitPaths(bothReport)).toEqual([rootListPath]);
 
     const rootOnlyReport = runScan(rootDirectory, "workspace-root");
     expect(rootOnlyReport.projects.map((projectReport) => projectReport.directory)).toEqual([
       rootDirectory,
     ]);
-    expect(collectRuleHits(rootOnlyReport)).toEqual([rootListPath]);
-    expect(collectRuleHits(rootOnlyReport)).not.toContain(nativePanelPath);
+    expect(collectRuleHitPaths(rootOnlyReport)).toEqual([rootListPath]);
+    expect(collectRuleHitPaths(rootOnlyReport)).not.toContain(nativePanelPath);
   }, 120_000);
 });

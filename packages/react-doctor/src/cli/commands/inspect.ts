@@ -160,11 +160,10 @@ const buildProjectInspectOptions = ({
     configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
     suppressRendering: context.isMultiProject,
     concurrentScan: context.isMultiProject,
-    excludedProjectDirectories: resolveExcludedProjectDirectories({
-      scanDirectory,
-      selectedProjectDirectories: context.projectScans.map((projectScan) => projectScan.directory),
-      workspaceProjectDirectories: context.workspaceProjectDirectories,
-    }),
+    excludedProjectDirectories: resolveExcludedProjectDirectories(scanDirectory, [
+      ...context.projectScans.map((candidateProjectScan) => candidateProjectScan.directory),
+      ...context.workspaceProjectDirectories,
+    ]),
     retainExcludedProjectDeadCodeDiagnostics: ownsWorkspaceDeadCode,
     baseline:
       context.baselineRef !== null &&

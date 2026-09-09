@@ -4,6 +4,7 @@ import { convertToTSX } from "@astrojs/compiler/sync";
 import { TraceMap } from "@jridgewell/trace-mapping";
 import { HTML_FILE_PATTERN } from "../constants.js";
 import { containsThreeModuleImport } from "./contains-three-module-import.js";
+import { isMissingPath } from "./is-missing-path.js";
 import { prepareHtmlScriptSource } from "./prepare-html-script-source.js";
 
 const ASTRO_FILE_PATTERN = /\.astro$/;
@@ -46,6 +47,9 @@ export const prepareLintSources = (
     const absoluteSourcePath = path.isAbsolute(candidateFile)
       ? candidateFile
       : path.resolve(rootDirectory, candidateFile);
+    // Oxlint silently skips a listed JS/TS file that no longer exists; keep
+    // the same tolerance for the HTML/Astro sources we transpile ourselves.
+    if (isMissingPath(absoluteSourcePath)) continue;
     const sourceBuffer = fs.readFileSync(absoluteSourcePath);
     if (ASTRO_FILE_PATTERN.test(candidateFile)) {
       const compilerSourcePath = absoluteSourcePath.replaceAll("\\", "/");

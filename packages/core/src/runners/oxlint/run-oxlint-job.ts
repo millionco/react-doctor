@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import { buildOxlintChildEnv } from "../../utils/build-oxlint-child-env.js";
 import {
   isOxlintJobTimelineEnabled,
@@ -54,9 +55,19 @@ export const warmOxlintWorkerPool = (nodeBinaryPath: string, maxWorkers: number)
   resolveSharedPool(nodeBinaryPath, maxWorkers)?.warm();
 };
 
+const debugLog = (entry: Record<string, unknown>): void => {
+  const debugPath = process.env.REACT_DOCTOR_DEBUG_POOL_LOG;
+  if (debugPath === undefined) return;
+  fs.appendFileSync(
+    debugPath,
+    `${JSON.stringify({ pid: process.pid, at: Date.now(), ...entry })}\n`,
+  );
+};
+
 export const runOxlintJob = async (input: RunOxlintJobInput): Promise<string> => {
-  const runLegacySpawn = (): Promise<string> =>
-    spawnOxlint(
+  const requestedAt = Date.now();
+  const runLegacySpawn = async (): Promise<string> => {
+    const output = await spawnOxlint(
       input.argumentsList,
       input.rootDirectory,
       input.nodeBinaryPath,
@@ -65,6 +76,14 @@ export const runOxlintJob = async (input: RunOxlintJobInput): Promise<string> =>
       input.abortSignal,
       input.onStart,
     );
+    debugLog({
+      kind: "parent-job",
+      mode: "legacy",
+      wallMs: Date.now() - requestedAt,
+      maxWorkers: input.maxWorkers,
+    });
+    return output;
+  };
   const pool = resolveSharedPool(input.nodeBinaryPath, input.maxWorkers);
   if (pool === null || !pool.isAvailable()) return runLegacySpawn();
   let startedAt = Date.now();
@@ -94,6 +113,14 @@ export const runOxlintJob = async (input: RunOxlintJobInput): Promise<string> =>
         stdoutPreview: previewOxlintStdout(stdout),
       });
     }
+    debugLog({
+      kind: "parent-job",
+      mode: "pool",
+      wallMs: Date.now() - requestedAt,
+      queuedMs: startedAt - requestedAt,
+      maxWorkers: input.maxWorkers,
+      workers: pool.workerCount(),
+    });
     return stdout;
   } catch (error) {
     if (error instanceof OxlintWorkerUnavailableError) return runLegacySpawn();

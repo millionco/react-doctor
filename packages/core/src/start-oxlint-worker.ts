@@ -159,10 +159,21 @@ const resetPluginFilesystemCaches = (): void => {
 
 const filesystemCacheEpochGate = createFilesystemCacheEpochGate();
 
+const debugLog = (entry: Record<string, unknown>): void => {
+  const debugPath = process.env.REACT_DOCTOR_DEBUG_POOL_LOG;
+  if (debugPath === undefined) return;
+  fs.appendFileSync(
+    debugPath,
+    `${JSON.stringify({ pid: process.pid, at: Date.now(), ...entry })}\n`,
+  );
+};
+
 const runJob = async (internals: OxlintInternals, job: OxlintWorkerJobMessage): Promise<void> => {
   const workspaceUri = `file:///react-doctor-oxlint-job-${job.id}`;
   let status: OxlintWorkerJobStatus = "error";
   let errorMessage: string | null = null;
+  const jobStartedAt = Date.now();
+  const jobCpuStart = process.cpuUsage();
   try {
     process.chdir(job.cwd);
     if (filesystemCacheEpochGate.shouldReset(job.filesystemCacheEpoch)) {
@@ -186,6 +197,18 @@ const runJob = async (internals: OxlintInternals, job: OxlintWorkerJobMessage): 
     internals.destroyWorkspace(workspaceUri);
     internals.workspaces?.delete(workspaceUri);
   }
+  const jobCpu = process.cpuUsage(jobCpuStart);
+  debugLog({
+    kind: "worker-job",
+    jobId: job.id,
+    status,
+    wallMs: Date.now() - jobStartedAt,
+    cpuUserMs: jobCpu.user / 1000,
+    cpuSystemMs: jobCpu.system / 1000,
+    rssMb: Math.round(process.memoryUsage().rss / 1048576),
+    externalMb: Math.round(process.memoryUsage().external / 1048576),
+    argv: job.argumentsList.length,
+  });
   if (errorMessage !== null) fs.writeSync(2, `${errorMessage}\n`);
   writeLine(1, `${OXLINT_WORKER_JOB_END_MARKER}:${job.id}:${status}`);
   writeLine(2, `${OXLINT_WORKER_JOB_END_MARKER}:${job.id}:end`);
@@ -200,8 +223,16 @@ export const startOxlintWorker = (): void => {
   }
   setStdioBlocking(process.stdout);
   setStdioBlocking(process.stderr);
+  const importStartedAt = Date.now();
   void importOxlintInternals(oxlintPackageDirectory).then(
     (internals) => {
+      debugLog({
+        kind: "worker-booted",
+        importMs: Date.now() - importStartedAt,
+        sinceProcessStartMs: Math.round(performance.now()),
+        execArgv: process.execArgv,
+        cpuMs: (process.cpuUsage().user + process.cpuUsage().system) / 1000,
+      });
       let queue: Promise<void> = Promise.resolve();
       process.on("message", (message: unknown) => {
         if (!isJobMessage(message)) return;

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import * as fs from "node:fs";
 import type { ChildProcess } from "node:child_process";
 import * as net from "node:net";
 import {
@@ -282,13 +283,16 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
   };
 
   const createWorker = (): Worker => {
+    const debugSpawnedAt = Date.now();
     const child = spawn(
       options.nodeBinaryPath,
       [
-        ...buildOxlintWorkerNodeArguments({
-          childNodeVersion: resolveChildNodeVersion(options.nodeBinaryPath),
-          nativeThreadCount: resolveOxlintThreadCount(options.maxWorkers),
-        }),
+        ...(process.env.REACT_DOCTOR_DEBUG_NO_WORKER_FLAGS
+          ? []
+          : buildOxlintWorkerNodeArguments({
+              childNodeVersion: resolveChildNodeVersion(options.nodeBinaryPath),
+              nativeThreadCount: resolveOxlintThreadCount(options.maxWorkers),
+            })),
         options.workerScriptPath,
         options.oxlintPackageDirectory,
       ],
@@ -324,6 +328,12 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
       () => {
         clearTimeout(readyTimer);
         worker.isReady = true;
+        if (process.env.REACT_DOCTOR_DEBUG_POOL_LOG) {
+          fs.appendFileSync(
+            process.env.REACT_DOCTOR_DEBUG_POOL_LOG,
+            `${JSON.stringify({ kind: "pool-ready", pid: child.pid, spawnToReadyMs: Date.now() - debugSpawnedAt, maxWorkers: options.maxWorkers, at: Date.now() })}\n`,
+          );
+        }
       },
       (error: unknown) => {
         clearTimeout(readyTimer);

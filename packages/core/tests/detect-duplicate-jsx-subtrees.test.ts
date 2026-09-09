@@ -83,9 +83,19 @@ describe("detectDuplicateJsxSubtrees", () => {
         sources.find((source) => source.path === filePath)?.sourceText ?? null,
     });
 
-    expect(result.incomplete).toBe(false);
+    expect(result).toMatchObject({
+      incomplete: false,
+      incompleteReasons: [],
+      scannedSourceFileCount: 2,
+      scannedJsxNodeCount: 14,
+    });
     expect(result.families).toHaveLength(1);
-    expect(result.families[0].fingerprint).toBe(fingerprint);
+    expect(result.families[0]).toMatchObject({
+      fingerprint,
+      nodeCount: 7,
+      depth: 3,
+      occurrenceCount: 2,
+    });
     expect(cooperativeResult).toEqual(result);
   });
 

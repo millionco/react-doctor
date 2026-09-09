@@ -34,7 +34,7 @@ export const readDirectoryEntries = (directoryPath: string): fs.Dirent[] => {
 
 export const isFile = (filePath: string): boolean => {
   try {
-    return fs.statSync(filePath).isFile();
+    return fs.statSync(filePath, { throwIfNoEntry: false })?.isFile() ?? false;
   } catch {
     return false;
   }
@@ -42,7 +42,7 @@ export const isFile = (filePath: string): boolean => {
 
 export const isDirectory = (directoryPath: string): boolean => {
   try {
-    return fs.statSync(directoryPath).isDirectory();
+    return fs.statSync(directoryPath, { throwIfNoEntry: false })?.isDirectory() ?? false;
   } catch {
     return false;
   }

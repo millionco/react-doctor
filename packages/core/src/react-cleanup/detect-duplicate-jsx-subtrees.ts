@@ -173,7 +173,7 @@ const resolveOptions = (
 });
 
 const hashParts = (parts: string[]): string => {
-  const hash = crypto.createHash("sha256");
+  let hash: crypto.Hash | null = null;
   let framedInput = "";
   for (const part of parts) {
     const partLengthText = String(part.length);
@@ -181,6 +181,7 @@ const hashParts = (parts: string[]): string => {
       framedInput.length + partLengthText.length + 1 + part.length >
       JSX_DUPLICATION_HASH_BUFFER_MAX_LENGTH_CHARS
     ) {
+      hash ??= crypto.createHash("sha256");
       hash.update(framedInput);
       framedInput = "";
       hash.update(partLengthText);
@@ -190,7 +191,9 @@ const hashParts = (parts: string[]): string => {
       framedInput += `${partLengthText}:${part}`;
     }
   }
-  return hash.update(framedInput).digest("hex");
+  return hash === null
+    ? crypto.hash("sha256", framedInput, "hex")
+    : hash.update(framedInput).digest("hex");
 };
 
 const collectDirectJsxDescendants = (node: ts.Node): JsxSubtreeNode[] => {

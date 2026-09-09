@@ -2773,6 +2773,177 @@ describe("discoverProject", () => {
     },
   );
 
+  it.each([
+    {
+      name: "default-import-boolean",
+      config:
+        "import react from '@vitejs/plugin-react'; export default { plugins: [react({ compiler: true })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "default-import-options-object",
+      config:
+        "import react from '@vitejs/plugin-react'; export default { plugins: [react({ compiler: { compilationMode: 'annotation' } })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "aliased-default-import",
+      config:
+        "import viteReact from '@vitejs/plugin-react'; export default { plugins: [viteReact({ compiler: true })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "namespace-import",
+      config:
+        "import * as viteReact from '@vitejs/plugin-react'; export default { plugins: [viteReact.default({ compiler: true })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "commonjs-require",
+      config:
+        "const react = require('@vitejs/plugin-react'); module.exports = { plugins: [react({ compiler: true })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "inline-require",
+      config:
+        "module.exports = { plugins: [require('@vitejs/plugin-react')({ compiler: true })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "inline-require-default",
+      config:
+        "module.exports = { plugins: [require('@vitejs/plugin-react').default({ compiler: true })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "options-variable",
+      config:
+        "import react from '@vitejs/plugin-react'; const reactOptions = { compiler: true }; export default { plugins: [react(reactOptions)] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "spread-options",
+      config:
+        "import react from '@vitejs/plugin-react'; const shared = { compiler: {} }; export default { plugins: [react({ jsxRuntime: 'automatic', ...shared })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "define-config-lazy-plugins",
+      config:
+        "import { defineConfig, lazyPlugins } from 'vite-plus'; import react from '@vitejs/plugin-react'; export default defineConfig({ plugins: lazyPlugins(() => [react({ compiler: true })]) });",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "local-plugin-factory",
+      config:
+        "import { createPlugins } from './plugins'; export default { plugins: createPlugins() };",
+      helper:
+        "import react from '@vitejs/plugin-react'; export const createPlugins = () => [react({ compiler: true })];",
+      expected: true,
+    },
+    {
+      name: "disabled-option",
+      config:
+        "import react from '@vitejs/plugin-react'; export default { plugins: [react({ compiler: false })] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "later-disabled-option",
+      config:
+        "import react from '@vitejs/plugin-react'; const shared = { compiler: true }; export default { plugins: [react({ ...shared, compiler: false })] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "statically-disabled-binding",
+      config:
+        "import react from '@vitejs/plugin-react'; const useCompiler = false; export default { plugins: [react({ compiler: useCompiler })] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "missing-option",
+      config:
+        "import react from '@vitejs/plugin-react'; export default { plugins: [react({ jsxRuntime: 'automatic' })] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "no-arguments",
+      config: "import react from '@vitejs/plugin-react'; export default { plugins: [react()] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "unrelated-plugin-option",
+      config:
+        "import react from '@vitejs/plugin-react'; import other from 'other-plugin'; export default { plugins: [react(), other({ compiler: true })] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "unrelated-config-property",
+      config:
+        "import react from '@vitejs/plugin-react'; export default { compiler: true, plugins: [react()] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "shadowed-import",
+      config:
+        "import react from '@vitejs/plugin-react'; const make = (react) => ({ plugins: [react({ compiler: true })] }); export default make(other);",
+      helper: null,
+      expected: false,
+    },
+  ])(
+    "detects React Compiler through the @vitejs/plugin-react compiler option: $name",
+    ({ name, config, helper, expected }) => {
+      const projectDirectory = path.join(
+        tempDirectory,
+        `vite-plugin-react-compiler-option-${name}`,
+      );
+      const pluginDirectory = path.join(
+        projectDirectory,
+        "node_modules",
+        "@vitejs",
+        "plugin-react",
+      );
+      fs.mkdirSync(pluginDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({
+          name: `vite-plugin-react-compiler-option-${name}`,
+          dependencies: { react: "^19.0.0" },
+          devDependencies: { "@vitejs/plugin-react": "^6.1.0", "oxc-transform-react": "^0.145.0" },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(pluginDirectory, "package.json"),
+        JSON.stringify({ name: "@vitejs/plugin-react", type: "module", exports: "./index.js" }),
+      );
+      fs.writeFileSync(
+        path.join(pluginDirectory, "index.js"),
+        "export default (_options) => [{ name: 'vite:react' }];\nexport const reactCompilerPreset = () => ({});\n",
+      );
+      fs.writeFileSync(path.join(projectDirectory, "vite.config.ts"), config);
+      if (helper) fs.writeFileSync(path.join(projectDirectory, "plugins.ts"), helper);
+
+      expect(discoverProject(projectDirectory).hasReactCompiler).toBe(expected);
+    },
+  );
+
   it("detects the Rsbuild React Compiler transform", () => {
     const projectDirectory = path.join(tempDirectory, "rsbuild-react-compiler");
     fs.mkdirSync(projectDirectory, { recursive: true });

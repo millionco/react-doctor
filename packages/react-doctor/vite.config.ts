@@ -190,5 +190,6 @@ export default defineConfig({
   ],
   test: {
     testTimeout: TEST_TIMEOUT_MS,
+    hookTimeout: TEST_TIMEOUT_MS,
   },
 });

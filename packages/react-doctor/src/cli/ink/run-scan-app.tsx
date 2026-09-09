@@ -5,7 +5,6 @@ import * as Effect from "effect/Effect";
 import {
   DEFAULT_PROJECT_SCAN_CONCURRENCY,
   highlighter,
-  isPathInsideDirectory,
   mapWithConcurrency,
   remainingDeadlineBudgetMs,
   Reporter,
@@ -32,6 +31,7 @@ import { computeProjectedScore } from "../utils/compute-score-projection.js";
 import { countUniqueScannedFiles } from "../utils/count-unique-scanned-files.js";
 import { deduplicateProjectScans } from "../utils/deduplicate-project-scans.js";
 import { collectProjectSourceFiles } from "../utils/collect-project-source-files.js";
+import { resolveExcludedProjectDirectories } from "../utils/resolve-excluded-project-directories.js";
 import { discoverWorkspacePackages, selectProjects } from "../utils/select-projects.js";
 import { isCiEnvironment } from "../utils/is-ci-environment.js";
 import { formatElapsedTime } from "../utils/format-elapsed-time.js";
@@ -108,6 +108,11 @@ interface TuiProjectScan {
   readonly config: ReactDoctorConfig | null;
 }
 
+interface TuiProjectSelection {
+  readonly selectedDirectories: ReadonlyArray<string>;
+  readonly workspaceProjectDirectories: ReadonlyArray<string>;
+}
+
 const qualifyDiagnosticPaths = (
   diagnostics: ReadonlyArray<Diagnostic>,
   rootDirectory: string,
@@ -157,11 +162,14 @@ const resolveTuiInspectOptions = (
   return warnings === undefined ? { ...input.options } : { ...input.options, warnings };
 };
 
-const resolveSelectedDirectories = async (
+const resolveProjectSelection = async (
   rootDirectory: string,
   input: RunScanAppInput,
-): Promise<string[]> => {
+): Promise<TuiProjectSelection> => {
   const packages = discoverWorkspacePackages(rootDirectory);
+  const workspaceProjectDirectories = packages.map(
+    (workspacePackage) => workspacePackage.directory,
+  );
   const needsPrompt =
     packages.length > 1 &&
     !input.projectFlag &&
@@ -169,16 +177,15 @@ const resolveSelectedDirectories = async (
     (input.configProjects ?? []).length === 0 &&
     process.stdin.isTTY === true;
 
-  if (!needsPrompt) {
-    return selectProjects(
-      rootDirectory,
-      input.projectFlag,
-      input.skipPrompts ?? false,
-      input.configProjects,
-    );
-  }
-
-  return promptProjectSelection(packages, rootDirectory);
+  const selectedDirectories = needsPrompt
+    ? await promptProjectSelection(packages, rootDirectory)
+    : await selectProjects(
+        rootDirectory,
+        input.projectFlag,
+        input.skipPrompts ?? false,
+        input.configProjects,
+      );
+  return { selectedDirectories, workspaceProjectDirectories };
 };
 
 const promptProjectSelection = (
@@ -501,12 +508,15 @@ const runMountedScan = async (
 const runSingleProjectScan = async (
   rootScanTarget: ResolvedScanTarget,
   projectDirectory: string,
+  workspaceProjectDirectories: ReadonlyArray<string>,
   input: RunScanAppInput,
   scopePlan: TuiScanScopePlan,
   blockingLevel: BlockingLevel,
   inspectProject: ReturnType<typeof createInvocationInspect>,
 ): Promise<RunScanAppResult> => {
   const projectScan = await resolveProjectScan(rootScanTarget, projectDirectory);
+  const isRootProject =
+    path.resolve(projectScan.directory) === path.resolve(rootScanTarget.resolvedDirectory);
   const isSupplyChainEnabled =
     input.options?.supplyChain ?? projectScan.config?.supplyChain?.enabled ?? true;
   const scopeOptions = resolveProjectTuiScanScope({
@@ -535,6 +545,11 @@ const runSingleProjectScan = async (
         reporter: reporterLayerForStore(context.store),
         progress: progressLayerForStore(context.store),
       },
+      excludedProjectDirectories: resolveExcludedProjectDirectories(
+        projectScan.directory,
+        workspaceProjectDirectories,
+      ),
+      retainExcludedProjectDeadCodeDiagnostics: isRootProject,
     });
     const reportSelection = selectReportDiagnostics({
       scan: { result, config: projectScan.config },
@@ -582,6 +597,7 @@ const runSingleProjectScan = async (
 const runMultiProjectScan = async (
   rootScanTarget: ResolvedScanTarget,
   directories: ReadonlyArray<string>,
+  workspaceProjectDirectories: ReadonlyArray<string>,
   input: RunScanAppInput,
   scopePlan: TuiScanScopePlan,
   blockingLevel: BlockingLevel,
@@ -689,11 +705,10 @@ const runMultiProjectScan = async (
             }),
           },
           concurrentScan: true,
-          excludedProjectDirectories: discoveredProjectScans
-            .filter((candidateProjectScan) =>
-              isPathInsideDirectory(candidateProjectScan.directory, projectScan.directory),
-            )
-            .map((candidateProjectScan) => candidateProjectScan.directory),
+          excludedProjectDirectories: resolveExcludedProjectDirectories(projectScan.directory, [
+            ...discoveredProjectScans.map((candidateProjectScan) => candidateProjectScan.directory),
+            ...workspaceProjectDirectories,
+          ]),
           retainExcludedProjectDeadCodeDiagnostics: ownsWorkspaceDeadCode,
         });
         finishedCount += 1;
@@ -837,7 +852,10 @@ export const runScanApp = async (input: RunScanAppInput): Promise<RunScanAppResu
     configProjects: input.configProjects ?? scanTarget.userConfig?.projects,
     share: input.share ?? scanTarget.userConfig?.share ?? true,
   };
-  const selectedDirectories = await resolveSelectedDirectories(rootDirectory, resolvedInput);
+  const { selectedDirectories, workspaceProjectDirectories } = await resolveProjectSelection(
+    rootDirectory,
+    resolvedInput,
+  );
   const inspectProject = createInvocationInspect(input.options?.concurrency);
   const blockingLevel = resolveBlockingLevel(
     { blocking: resolvedInput.blocking },
@@ -851,6 +869,7 @@ export const runScanApp = async (input: RunScanAppInput): Promise<RunScanAppResu
     return runSingleProjectScan(
       scanTarget,
       selectedDirectories[0],
+      workspaceProjectDirectories,
       resolvedInput,
       scopePlan,
       blockingLevel,
@@ -860,6 +879,7 @@ export const runScanApp = async (input: RunScanAppInput): Promise<RunScanAppResu
   return runMultiProjectScan(
     scanTarget,
     selectedDirectories,
+    workspaceProjectDirectories,
     resolvedInput,
     scopePlan,
     blockingLevel,

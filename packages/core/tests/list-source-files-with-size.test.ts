@@ -251,6 +251,34 @@ describe("listSourceFilesWithSize", () => {
     ).toHaveLength(1);
   });
 
+  // Issue #1770: a TanStack Start app committed `index.html`, then deleted
+  // it from the working tree. `git ls-files --stage` still listed the index
+  // entry, so `prepareLintSources` hit ENOENT reading it and the scan died.
+  it("git discovery drops tracked files deleted from the working tree", async () => {
+    writeNestedFile("index.html", '<script type="module" src="/src/app.tsx"></script>\n');
+    writeNestedFile("src/app.tsx", "export const App = () => null;\n");
+    writeNestedFile("src/removed.tsx", "export const Removed = () => null;\n");
+    runGit("init", "--quiet");
+    commitAll();
+    fs.rmSync(path.join(temporaryDirectory, "index.html"));
+    fs.rmSync(path.join(temporaryDirectory, "src/removed.tsx"));
+    fs.symlinkSync(
+      path.join(temporaryDirectory, "src/removed.tsx"),
+      path.join(temporaryDirectory, "src/dangling.tsx"),
+    );
+
+    const filePaths = listSourceFiles(temporaryDirectory);
+
+    expect(filePaths).toEqual(["src/app.tsx"]);
+    expect(listSourceFilesWithSize(temporaryDirectory)).toEqual([
+      {
+        path: "src/app.tsx",
+        sizeBytes: fs.statSync(path.join(temporaryDirectory, "src/app.tsx")).size,
+      },
+    ]);
+    await expect(listSourceFilesCooperative(temporaryDirectory)).resolves.toEqual(filePaths);
+  });
+
   const writeEmitQuartet = (): void => {
     writeNestedFile("src/store.js", "export const store = 1;\n//# sourceMappingURL=store.js.map\n");
     writeNestedFile(

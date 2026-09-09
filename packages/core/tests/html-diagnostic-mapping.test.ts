@@ -49,6 +49,25 @@ describe("HTML diagnostic mapping", () => {
     ).toEqual([]);
   });
 
+  it("skips HTML and Astro candidates with no file behind them", () => {
+    const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-missing-html-"));
+    temporaryDirectories.push(rootDirectory);
+    fs.mkdirSync(path.join(rootDirectory, "src"));
+    fs.writeFileSync(
+      path.join(rootDirectory, "src", "app.tsx"),
+      "export const App = () => null;\n",
+    );
+
+    const preparedSources = prepareLintSources(rootDirectory, path.join(rootDirectory, "tmp"), [
+      "index.html",
+      "src/page.astro",
+      "src/app.tsx",
+    ]);
+
+    expect(preparedSources.lintFiles).toEqual(["src/app.tsx"]);
+    expect(preparedSources.sourcePathByLintPath.size).toBe(0);
+  });
+
   it("maps a virtual script diagnostic back to the HTML path and source position", () => {
     const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-html-map-"));
     temporaryDirectories.push(rootDirectory);

@@ -2,7 +2,12 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { InspectResult, JsonReport, ReactDoctorConfig } from "@react-doctor/core";
+import type {
+  InspectResult,
+  JsonReport,
+  ReactDoctorConfig,
+  WorkspacePackage,
+} from "@react-doctor/core";
 import { inspectAction } from "../src/cli/commands/inspect.js";
 import type { InspectFlags } from "../src/cli/utils/inspect-flags.js";
 import { buildDiagnostic, buildTestProject } from "./regressions/_helpers.js";
@@ -16,6 +21,7 @@ interface InspectInvocation {
 
 const mockState = vi.hoisted(() => ({
   projectDirectories: [] as string[],
+  workspacePackages: [] as WorkspacePackage[],
   inspectInvocations: [] as InspectInvocation[],
   resolvedDirectories: new Map<string, string>(),
   result: undefined as InspectResult | undefined,
@@ -92,6 +98,7 @@ vi.mock("../src/inspect.js", () => {
 });
 
 vi.mock("../src/cli/utils/select-projects.js", () => ({
+  discoverWorkspacePackages: vi.fn(() => mockState.workspacePackages),
   selectProjects: vi.fn(async () => mockState.projectDirectories),
 }));
 
@@ -142,6 +149,7 @@ describe("inspectAction exit-code gate", () => {
     process.exitCode = savedExitCode;
     mockState.result = undefined;
     mockState.projectDirectories = [];
+    mockState.workspacePackages = [];
     mockState.inspectInvocations = [];
     mockState.resolvedDirectories.clear();
     mockState.userConfig = undefined;
@@ -235,6 +243,27 @@ describe("inspectAction exit-code gate", () => {
       excludedProjectDirectories: [],
       retainExcludedProjectDeadCodeDiagnostics: false,
     });
+  });
+
+  it("excludes unselected nested workspace projects from a root-only scan", async () => {
+    const nestedProjectDirectory = path.join(projectDirectory, "apps", "native");
+    fs.mkdirSync(nestedProjectDirectory, { recursive: true });
+    mockState.workspacePackages = [
+      { name: "root", directory: projectDirectory },
+      { name: "native", directory: nestedProjectDirectory },
+    ];
+    mockState.projectDirectories = [projectDirectory];
+
+    await runInspectAction({});
+
+    expect(mockState.inspectInvocations).toEqual([
+      {
+        directory: projectDirectory,
+        deadCode: true,
+        excludedProjectDirectories: [nestedProjectDirectory],
+        retainExcludedProjectDeadCodeDiagnostics: true,
+      },
+    ]);
   });
 
   it("computes workspace exclusions from unique resolved project roots", async () => {

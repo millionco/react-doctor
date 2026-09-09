@@ -8,7 +8,6 @@ import {
   getChangedLineRanges,
   getDiffInfo,
   highlighter,
-  isPathInsideDirectory,
   type JsonReportSkippedProject,
   remainingDeadlineBudgetMs,
   resolveScanTarget,
@@ -64,7 +63,8 @@ import { runExplain } from "../utils/run-explain.js";
 import { type ProjectScanOutcome, runProjectScanBatch } from "../utils/run-project-scan-batch.js";
 import { buildProjectScanPlan, type ProjectScanPlan } from "../utils/build-project-scan-plan.js";
 import { filterScansForSurface } from "../utils/filter-scans-for-surface.js";
-import { selectProjects } from "../utils/select-projects.js";
+import { resolveExcludedProjectDirectories } from "../utils/resolve-excluded-project-directories.js";
+import { discoverWorkspacePackages, selectProjects } from "../utils/select-projects.js";
 import { resolveProjectRelativeDirectory } from "../utils/resolve-project-relative-directory.js";
 import { spinner } from "../utils/spinner.js";
 import { shouldSkipPrompts } from "../utils/should-skip-prompts.js";
@@ -110,6 +110,7 @@ interface ProjectScanExecutionContext {
   readonly workspaceDeadCodeOwner: string | null;
   readonly precomputedSourceFiles: ReadonlyMap<string, ReadonlyArray<SourceFileEntry>> | null;
   readonly projectScans: ReadonlyArray<ResolvedProjectScan>;
+  readonly workspaceProjectDirectories: ReadonlyArray<string>;
   readonly baselineRef: string | null;
   readonly scope: RequestedScope["scope"];
   readonly changedLineRanges: ReadonlyArray<ChangedFileLineRanges> | null;
@@ -161,11 +162,10 @@ const buildProjectInspectOptions = ({
     configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
     suppressRendering: context.isMultiProject,
     concurrentScan: context.isMultiProject,
-    excludedProjectDirectories: context.projectScans
-      .filter((candidateProjectScan) =>
-        isPathInsideDirectory(candidateProjectScan.directory, scanDirectory),
-      )
-      .map((candidateProjectScan) => candidateProjectScan.directory),
+    excludedProjectDirectories: resolveExcludedProjectDirectories(scanDirectory, [
+      ...context.projectScans.map((candidateProjectScan) => candidateProjectScan.directory),
+      ...context.workspaceProjectDirectories,
+    ]),
     retainExcludedProjectDeadCodeDiagnostics: ownsWorkspaceDeadCode,
     baseline:
       context.baselineRef !== null &&
@@ -372,6 +372,9 @@ export const inspectAction = async (
       });
       return;
     }
+    const workspaceProjectDirectories = discoverWorkspacePackages(resolvedDirectory).map(
+      (workspacePackage) => workspacePackage.directory,
+    );
     const projectDirectories = await selectProjects(
       resolvedDirectory,
       flags.project,
@@ -560,6 +563,7 @@ export const inspectAction = async (
       workspaceDeadCodeOwner,
       precomputedSourceFiles,
       projectScans,
+      workspaceProjectDirectories,
       baselineRef,
       scope,
       changedLineRanges,

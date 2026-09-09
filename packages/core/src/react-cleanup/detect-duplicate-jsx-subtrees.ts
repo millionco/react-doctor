@@ -11,6 +11,7 @@ import {
   JSX_DUPLICATION_DEFAULT_MINIMUM_OCCURRENCES,
   JSX_DUPLICATION_FAMILY_PROCESSING_MULTIPLIER,
   JSX_DUPLICATION_MAX_COMPOSITION_PATH_DEPTH,
+  JSX_DUPLICATION_SOURCE_FILE_PATTERN,
 } from "../constants.js";
 import { getTypescriptScriptKind } from "../utils/get-typescript-script-kind.js";
 import { unwrapTypescriptExpression } from "../utils/unwrap-typescript-expression.js";
@@ -527,21 +528,12 @@ const scanSource = (input: ScanJsxDuplicationSourceInput): ScannedJsxDuplication
       didScan: false,
     };
   }
-  const scriptKind = getTypescriptScriptKind(input.source.path);
-  if (scriptKind === ts.ScriptKind.TS) {
-    return {
-      candidates: [],
-      incompleteReason: null,
-      didAbort: false,
-      didScan: true,
-    };
-  }
   const sourceFile = ts.createSourceFile(
     input.source.path,
     input.source.sourceText,
     ts.ScriptTarget.Latest,
     true,
-    scriptKind,
+    getTypescriptScriptKind(input.source.path),
   );
   if (isNonReactJsxSource(sourceFile)) {
     return {
@@ -720,7 +712,9 @@ export const detectDuplicateJsxSubtrees = (
 ): DuplicateJsxSubtreesResult => {
   const resolvedOptions = resolveOptions(options);
   const incompleteReasons: JsxDuplicationIncompleteReason[] = [];
-  const sortedSources = [...sources].sort((left, right) => left.path.localeCompare(right.path));
+  const sortedSources = sources
+    .filter((source) => JSX_DUPLICATION_SOURCE_FILE_PATTERN.test(source.path))
+    .sort((left, right) => left.path.localeCompare(right.path));
   if (sortedSources.length > resolvedOptions.maxSourceFiles) {
     incompleteReasons.push({
       kind: "source-file-limit",
@@ -768,7 +762,9 @@ export const detectDuplicateJsxSubtreesCooperative = async (
 ): Promise<DuplicateJsxSubtreesResult> => {
   const resolvedOptions = resolveOptions(options);
   const incompleteReasons: JsxDuplicationIncompleteReason[] = [];
-  const sortedPaths = [...sourceReader.paths].sort((left, right) => left.localeCompare(right));
+  const sortedPaths = sourceReader.paths
+    .filter((sourcePath) => JSX_DUPLICATION_SOURCE_FILE_PATTERN.test(sourcePath))
+    .sort((left, right) => left.localeCompare(right));
   if (sortedPaths.length > resolvedOptions.maxSourceFiles) {
     incompleteReasons.push({
       kind: "source-file-limit",

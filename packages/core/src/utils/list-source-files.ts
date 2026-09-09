@@ -11,6 +11,7 @@ import { collectTypeScriptEmitDuplicateJsPaths } from "./collect-typescript-emit
 import { hasIgnoredPathSegment } from "./has-ignored-path-segment.js";
 import { isLintableSourceFile } from "./is-lintable-source-file.js";
 import { isLargeMinifiedFile, statSourceFileSize } from "./is-large-minified-file.js";
+import { isMissingPath } from "./is-missing-path.js";
 import { walkSourceTreeFiles } from "./walk-source-tree-files.js";
 import { yieldToEventLoop } from "./yield-to-event-loop.js";
 
@@ -18,19 +19,29 @@ import { yieldToEventLoop } from "./yield-to-event-loop.js";
 // drops files that sniff as large minified bundles, and keeps the size so the
 // lint pass can order batches largest-first. `countSourceFiles` delegates to
 // `listSourceFilesWithSize`, so the scanned set and the reported source-file
-// count can never diverge. A file that can't be stat'd is KEPT (parity with
-// `isLargeMinifiedFile`'s keep-on-error) with size `0`, so it sorts to the
-// cheap tail.
+// count can never diverge. A file that can't be stat'd but still exists is
+// KEPT (parity with `isLargeMinifiedFile`'s keep-on-error) with size `0`, so
+// it sorts to the cheap tail. A missing path is dropped: `git ls-files --stage`
+// still lists index entries whose working-tree copy was deleted.
+const toSizedSourceFileEntry = (
+  rootDirectory: string,
+  relativePath: string,
+): SourceFileEntry | null => {
+  const absolutePath = path.resolve(rootDirectory, relativePath);
+  const sizeBytes = statSourceFileSize(absolutePath);
+  if (sizeBytes === null && isMissingPath(absolutePath)) return null;
+  if (isLargeMinifiedFile(absolutePath, sizeBytes)) return null;
+  return { path: relativePath, sizeBytes: sizeBytes ?? 0 };
+};
+
 const collectSizedSourceFiles = (
   rootDirectory: string,
   relativePaths: ReadonlyArray<string>,
 ): SourceFileEntry[] => {
   const entries: SourceFileEntry[] = [];
   for (const relativePath of relativePaths) {
-    const absolutePath = path.resolve(rootDirectory, relativePath);
-    const sizeBytes = statSourceFileSize(absolutePath);
-    if (isLargeMinifiedFile(absolutePath, sizeBytes)) continue;
-    entries.push({ path: relativePath, sizeBytes: sizeBytes ?? 0 });
+    const entry = toSizedSourceFileEntry(rootDirectory, relativePath);
+    if (entry !== null) entries.push(entry);
   }
   return entries;
 };
@@ -44,11 +55,8 @@ const collectSizedSourceFilesCooperative = async (
   let sliceStartedAt = performance.now();
   for (const relativePath of relativePaths) {
     signal?.throwIfAborted();
-    const absolutePath = path.resolve(rootDirectory, relativePath);
-    const sizeBytes = statSourceFileSize(absolutePath);
-    if (!isLargeMinifiedFile(absolutePath, sizeBytes)) {
-      entries.push({ path: relativePath, sizeBytes: sizeBytes ?? 0 });
-    }
+    const entry = toSizedSourceFileEntry(rootDirectory, relativePath);
+    if (entry !== null) entries.push(entry);
     if (performance.now() - sliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
       await yieldToEventLoop();
       sliceStartedAt = performance.now();

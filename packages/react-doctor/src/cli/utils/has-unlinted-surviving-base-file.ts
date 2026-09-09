@@ -1,17 +1,15 @@
 import { filterSourceFiles } from "@react-doctor/core";
 import { toForwardSlashes } from "./path-format.js";
 
-/**
- * Whether the base lint pass left a file unanalyzed that still exists at head.
- * Those are the only gaps that can hide a pre-existing finding: a base file
- * deleted at head has no head counterpart, so skipping it can only undercount
- * fixed findings, never surface a stale one as new.
- */
-export const hasUnlintedSurvivingBaseFile = (input: {
+export interface HasUnlintedSurvivingBaseFileInput {
   readonly baseLintPaths: ReadonlyArray<string>;
   readonly headFiles: ReadonlySet<string>;
   readonly analyzedBaseFiles: ReadonlyArray<string>;
-}): boolean => {
+}
+
+// A base file deleted at head has no counterpart to compare against, so only an
+// unanalyzed base file that survives at head can hide a pre-existing finding.
+export const hasUnlintedSurvivingBaseFile = (input: HasUnlintedSurvivingBaseFileInput): boolean => {
   const analyzedBaseFiles = new Set(input.analyzedBaseFiles.map(toForwardSlashes));
   return filterSourceFiles(input.baseLintPaths.map(toForwardSlashes)).some(
     (filePath) => input.headFiles.has(filePath) && !analyzedBaseFiles.has(filePath),

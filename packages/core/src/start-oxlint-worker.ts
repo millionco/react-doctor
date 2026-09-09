@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { OXLINT_WORKER_JOB_END_MARKER, REACT_DOCTOR_PLUGIN_RESET_HOOK_KEY } from "./constants.js";
@@ -159,6 +160,18 @@ const resetPluginFilesystemCaches = (): void => {
 
 const filesystemCacheEpochGate = createFilesystemCacheEpochGate();
 
+const idleWorkingDirectory = process.cwd();
+
+// A process's working directory is a lock on Windows: the parent cannot remove a
+// scanned project while an idle worker still sits in it.
+const leaveJobWorkingDirectory = (): void => {
+  try {
+    process.chdir(idleWorkingDirectory);
+  } catch {
+    process.chdir(os.tmpdir());
+  }
+};
+
 const runJob = async (internals: OxlintInternals, job: OxlintWorkerJobMessage): Promise<void> => {
   const workspaceUri = `file:///react-doctor-oxlint-job-${job.id}`;
   let status: OxlintWorkerJobStatus = "error";
@@ -185,6 +198,7 @@ const runJob = async (internals: OxlintInternals, job: OxlintWorkerJobMessage): 
   } finally {
     internals.destroyWorkspace(workspaceUri);
     internals.workspaces?.delete(workspaceUri);
+    leaveJobWorkingDirectory();
   }
   if (errorMessage !== null) fs.writeSync(2, `${errorMessage}\n`);
   writeLine(1, `${OXLINT_WORKER_JOB_END_MARKER}:${job.id}:${status}`);

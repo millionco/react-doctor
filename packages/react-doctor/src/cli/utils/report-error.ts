@@ -1,5 +1,5 @@
-import * as Sentry from "@sentry/node";
 import { isReactDoctorError } from "@react-doctor/core";
+import { getSentry } from "../../instrument.js";
 import { getActiveRunTrace, recordRunTraceId } from "./active-run-trace.js";
 import { buildSentryScope } from "./build-sentry-scope.js";
 import { METRIC, SENTRY_FLUSH_TIMEOUT_MS } from "./constants.js";
@@ -24,7 +24,8 @@ import { getRunId } from "./run-id.js";
  * original error.
  */
 export const reportErrorToSentry = async (error: unknown): Promise<string | undefined> => {
-  if (!Sentry.isInitialized()) return undefined;
+  const Sentry = await getSentry();
+  if (!Sentry?.isInitialized()) return undefined;
   // Expected user errors (see `isExpectedUserError`) are the user's
   // project/input, not a bug. Drop them before the metric + capture so they
   // never become a Sentry crash or inflate the alertable error rate — the one

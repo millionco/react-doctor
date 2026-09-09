@@ -40,6 +40,13 @@ interface OxlintInternals {
   readonly createWorkspace: ForwardedFunction;
   readonly destroyWorkspace: ForwardedFunction;
   readonly loadJsConfigs: ForwardedFunction;
+  /**
+   * oxlint's `destroyWorkspace` is a no-op, so every job's workspace (its
+   * registered rules, their contexts and the last linted file's AST) stays
+   * reachable from the module-level `workspaces` map for the worker's lifetime.
+   * The entry is dropped here instead; `null` when the map is not exported.
+   */
+  readonly workspaces: Map<unknown, unknown> | null;
 }
 
 const LINT_IMPORT_PATTERN = /import\s*\{\s*(\w+)\s+as\s+lint\s*\}\s*from\s*"\.\/bindings\.js"/;
@@ -60,6 +67,18 @@ const readFunctionExport = (moduleNamespace: unknown, exportName: string): Forwa
     throw new Error(`oxlint internal export "${exportName}" is not a function`);
   }
   return exported;
+};
+
+const readWorkspacesExport = (moduleNamespace: unknown): Map<unknown, unknown> | null => {
+  if (
+    typeof moduleNamespace !== "object" ||
+    moduleNamespace === null ||
+    !("workspaces" in moduleNamespace)
+  ) {
+    return null;
+  }
+  const exported: unknown = Reflect.get(moduleNamespace, "workspaces");
+  return exported instanceof Map ? exported : null;
 };
 
 const importOxlintInternals = async (oxlintPackageDirectory: string): Promise<OxlintInternals> => {
@@ -93,6 +112,7 @@ const importOxlintInternals = async (oxlintPackageDirectory: string): Promise<Ox
     createWorkspace: readFunctionExport(workspace, "createWorkspace"),
     destroyWorkspace: readFunctionExport(workspace, "destroyWorkspace"),
     loadJsConfigs,
+    workspaces: readWorkspacesExport(workspace),
   };
 };
 
@@ -164,6 +184,7 @@ const runJob = async (internals: OxlintInternals, job: OxlintWorkerJobMessage): 
     errorMessage = error instanceof Error ? (error.stack ?? error.message) : String(error);
   } finally {
     internals.destroyWorkspace(workspaceUri);
+    internals.workspaces?.delete(workspaceUri);
   }
   if (errorMessage !== null) fs.writeSync(2, `${errorMessage}\n`);
   writeLine(1, `${OXLINT_WORKER_JOB_END_MARKER}:${job.id}:${status}`);

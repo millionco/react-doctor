@@ -313,6 +313,10 @@ export const PER_WORKER_MEM_BUDGET_BYTES = 1024 * 1024 * 1024;
 // default. Callers opt into more via `DiagnoseProjectsInput.concurrency`.
 export const DEFAULT_PROJECT_SCAN_CONCURRENCY = 4;
 
+// A project holds its batch slot through its trailing score round-trip, so one
+// project per worker would leave the shared oxlint pool idle on small packages.
+export const PROJECT_SCANS_IN_FLIGHT_PER_OXLINT_WORKER = 4;
+
 export const DEFAULT_BRANCH_CANDIDATES = ["main", "master"];
 
 // JSON-format oxlint / eslint configs react-doctor can fold into the

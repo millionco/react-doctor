@@ -6,6 +6,23 @@ const WHITESPACE_PATTERN = /\s/;
 // invariant this file relies on.
 const IDENTIFIER_CHARACTER_PATTERN = /[\p{ID_Continue}$]/u;
 
+const NEWLINE_CHAR_CODE = 0x0a;
+const DOUBLE_QUOTE_CHAR_CODE = 0x22;
+const DOLLAR_CHAR_CODE = 0x24;
+const SINGLE_QUOTE_CHAR_CODE = 0x27;
+const ASTERISK_CHAR_CODE = 0x2a;
+const SLASH_CHAR_CODE = 0x2f;
+const BACKSLASH_CHAR_CODE = 0x5c;
+const BACKTICK_CHAR_CODE = 0x60;
+const OPEN_BRACE_CHAR_CODE = 0x7b;
+const CLOSE_BRACE_CHAR_CODE = 0x7d;
+
+const CODE_MODE_TOKEN_PATTERN = /["'`/]/g;
+const CODE_MODE_TOKEN_OR_BRACE_PATTERN = /["'`/{}]/g;
+const DOUBLE_QUOTED_STRING_TOKEN_PATTERN = /["\\\n]/g;
+const SINGLE_QUOTED_STRING_TOKEN_PATTERN = /['\\\n]/g;
+const TEMPLATE_STRING_TOKEN_PATTERN = /[`\\$\n]/g;
+
 // These keywords put a following `/` in expression position (`return /x/`)
 // even though they end with an identifier character.
 const REGEX_PRECEDING_KEYWORDS = new Set([
@@ -25,6 +42,72 @@ const REGEX_PRECEDING_KEYWORDS = new Set([
   "throw",
 ]);
 
+interface BlankedRanges {
+  readonly blank: (offset: number) => void;
+  readonly blankSpan: (start: number, end: number) => void;
+  readonly isBlanked: (offset: number) => boolean;
+  readonly apply: (content: string) => string;
+}
+
+// Blanked positions as sorted `[start, end)` ranges instead of a per-character
+// array: blanking only ever moves forward, and spans never contain a newline.
+const createBlankedRanges = (): BlankedRanges => {
+  const starts: number[] = [];
+  const ends: number[] = [];
+  let openStart = -1;
+  let openEnd = -1;
+
+  const closeOpenRange = (): void => {
+    if (openStart < 0) return;
+    starts.push(openStart);
+    ends.push(openEnd);
+    openStart = -1;
+    openEnd = -1;
+  };
+
+  const blankSpan = (start: number, end: number): void => {
+    if (start === openEnd) {
+      openEnd = end;
+      return;
+    }
+    if (start < openEnd) {
+      openEnd = Math.max(openEnd, end);
+      return;
+    }
+    closeOpenRange();
+    openStart = start;
+    openEnd = end;
+  };
+
+  return {
+    blank: (offset) => blankSpan(offset, offset + 1),
+    blankSpan,
+    isBlanked: (offset) => {
+      if (offset >= openStart && offset < openEnd) return true;
+      for (let rangeIndex = starts.length - 1; rangeIndex >= 0; rangeIndex -= 1) {
+        if (starts[rangeIndex] > offset) continue;
+        return ends[rangeIndex] > offset;
+      }
+      return false;
+    },
+    apply: (content) => {
+      closeOpenRange();
+      if (starts.length === 0) return content;
+      const pieces: string[] = [];
+      let copiedUpTo = 0;
+      for (let rangeIndex = 0; rangeIndex < starts.length; rangeIndex += 1) {
+        pieces.push(
+          content.slice(copiedUpTo, starts[rangeIndex]),
+          " ".repeat(ends[rangeIndex] - starts[rangeIndex]),
+        );
+        copiedUpTo = ends[rangeIndex];
+      }
+      pieces.push(content.slice(copiedUpTo));
+      return pieces.join("");
+    },
+  };
+};
+
 // Whether a `/` at `slashIndex` sits in expression position (a regex literal)
 // rather than operator position (division). Looks at the last significant
 // character before it in the already-blanked output, so blanked comments don't
@@ -35,24 +118,26 @@ const REGEX_PRECEDING_KEYWORDS = new Set([
 // then lexed as plain code, which is exactly the pre-regex-support behavior.
 const isRegexLiteralStart = (
   content: string,
-  characters: ArrayLike<string>,
+  blankedRanges: BlankedRanges,
   slashIndex: number,
 ): boolean => {
+  const characterAt = (offset: number): string =>
+    blankedRanges.isBlanked(offset) ? " " : content[offset];
   let cursor = slashIndex - 1;
-  while (cursor >= 0 && WHITESPACE_PATTERN.test(characters[cursor])) cursor -= 1;
+  while (cursor >= 0 && WHITESPACE_PATTERN.test(characterAt(cursor))) cursor -= 1;
   if (cursor < 0) return true;
-  const previousCharacter = characters[cursor];
-  const characterBefore = cursor > 0 ? characters[cursor - 1] : "";
+  const previousCharacter = characterAt(cursor);
+  const characterBefore = cursor > 0 ? characterAt(cursor - 1) : "";
   if (IDENTIFIER_CHARACTER_PATTERN.test(previousCharacter)) {
     let wordStartIndex = cursor;
     while (
       wordStartIndex > 0 &&
-      IDENTIFIER_CHARACTER_PATTERN.test(characters[wordStartIndex - 1])
+      IDENTIFIER_CHARACTER_PATTERN.test(characterAt(wordStartIndex - 1))
     ) {
       wordStartIndex -= 1;
     }
     // `obj.return / 2` is a property access, not the keyword.
-    if (wordStartIndex > 0 && characters[wordStartIndex - 1] === ".") return false;
+    if (wordStartIndex > 0 && characterAt(wordStartIndex - 1) === ".") return false;
     return REGEX_PRECEDING_KEYWORDS.has(content.slice(wordStartIndex, cursor + 1));
   }
   // `</` opens a JSX closing tag, never a regex.
@@ -128,16 +213,16 @@ const findRegexLiteralEnd = (content: string, slashIndex: number): number | null
 const quotedLiteralHasWhitespace = (
   content: string,
   openQuoteIndex: number,
-  delimiter: string,
+  delimiterCharCode: number,
 ): boolean => {
   for (let cursor = openQuoteIndex + 1; cursor < content.length; cursor += 1) {
-    const character = content[cursor];
-    if (character === "\\") {
+    const charCode = content.charCodeAt(cursor);
+    if (charCode === BACKSLASH_CHAR_CODE) {
       cursor += 1;
       continue;
     }
-    if (character === delimiter) return false;
-    if (WHITESPACE_PATTERN.test(character)) return true;
+    if (charCode === delimiterCharCode) return false;
+    if (WHITESPACE_PATTERN.test(content[cursor])) return true;
   }
   return false;
 };
@@ -152,25 +237,49 @@ const quotedLiteralHasWhitespace = (
 // counts as a real call site; single-token literals (module specifiers,
 // identifiers) are exempt. Newlines are always preserved for line mapping.
 const blankNonCodePreservingPositions = (content: string, blankStringContents: boolean): string => {
-  let characters: string[] | null = null;
-  let stringDelimiter: string | null = null;
+  const contentLength = content.length;
+  const blankedRanges = createBlankedRanges();
+  // Char code of the open string's delimiter; -1 outside strings.
+  let stringDelimiterCharCode = -1;
   let isBlankingString = false;
   // Brace depth of each open template `${…}` expression, innermost last.
   const templateExpressionDepths: number[] = [];
   let index = 0;
 
   const blankUnlessNewline = (offset: number): void => {
-    if (offset >= content.length || content[offset] === "\n") return;
-    characters ??= content.split("");
-    characters[offset] = " ";
+    if (offset >= contentLength || content.charCodeAt(offset) === NEWLINE_CHAR_CODE) return;
+    blankedRanges.blank(offset);
   };
 
-  while (index < content.length) {
-    const character = content[index];
-    const nextCharacter = content[index + 1];
+  while (index < contentLength) {
+    if (stringDelimiterCharCode === -1) {
+      const codeModeTokenPattern =
+        templateExpressionDepths.length > 0
+          ? CODE_MODE_TOKEN_OR_BRACE_PATTERN
+          : CODE_MODE_TOKEN_PATTERN;
+      codeModeTokenPattern.lastIndex = index;
+      const codeModeToken = codeModeTokenPattern.exec(content);
+      if (codeModeToken === null) break;
+      index = codeModeToken.index;
+    } else {
+      const stringModeTokenPattern =
+        stringDelimiterCharCode === DOUBLE_QUOTE_CHAR_CODE
+          ? DOUBLE_QUOTED_STRING_TOKEN_PATTERN
+          : stringDelimiterCharCode === SINGLE_QUOTE_CHAR_CODE
+            ? SINGLE_QUOTED_STRING_TOKEN_PATTERN
+            : TEMPLATE_STRING_TOKEN_PATTERN;
+      stringModeTokenPattern.lastIndex = index;
+      const stringModeToken = stringModeTokenPattern.exec(content);
+      const stringTextEnd = stringModeToken === null ? contentLength : stringModeToken.index;
+      if (isBlankingString && stringTextEnd > index) blankedRanges.blankSpan(index, stringTextEnd);
+      index = stringTextEnd;
+      if (stringModeToken === null) break;
+    }
+    const charCode = content.charCodeAt(index);
+    const nextCharCode = content.charCodeAt(index + 1);
 
-    if (stringDelimiter !== null) {
-      if (character === "\\") {
+    if (stringDelimiterCharCode !== -1) {
+      if (charCode === BACKSLASH_CHAR_CODE) {
         if (isBlankingString) {
           blankUnlessNewline(index);
           blankUnlessNewline(index + 1);
@@ -183,13 +292,13 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
       // swallow the rest of the file — close string mode at the line end so
       // any lexer desync is bounded to a single line. Template literals
       // legitimately span lines and keep the multi-line behavior.
-      if (character === "\n" && stringDelimiter !== "`") {
-        stringDelimiter = null;
+      if (charCode === NEWLINE_CHAR_CODE && stringDelimiterCharCode !== BACKTICK_CHAR_CODE) {
+        stringDelimiterCharCode = -1;
         index += 1;
         continue;
       }
-      if (character === stringDelimiter) {
-        stringDelimiter = null;
+      if (charCode === stringDelimiterCharCode) {
+        stringDelimiterCharCode = -1;
         index += 1;
         continue;
       }
@@ -199,12 +308,12 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
       // opaque strings (its consumers never look inside them).
       if (
         blankStringContents &&
-        stringDelimiter === "`" &&
-        character === "$" &&
-        nextCharacter === "{"
+        stringDelimiterCharCode === BACKTICK_CHAR_CODE &&
+        charCode === DOLLAR_CHAR_CODE &&
+        nextCharCode === OPEN_BRACE_CHAR_CODE
       ) {
         templateExpressionDepths.push(0);
-        stringDelimiter = null;
+        stringDelimiterCharCode = -1;
         index += 2;
         continue;
       }
@@ -213,36 +322,37 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
       continue;
     }
 
-    if (character === '"' || character === "'") {
-      stringDelimiter = character;
+    if (charCode === DOUBLE_QUOTE_CHAR_CODE || charCode === SINGLE_QUOTE_CHAR_CODE) {
+      stringDelimiterCharCode = charCode;
       isBlankingString =
-        blankStringContents && quotedLiteralHasWhitespace(content, index, character);
+        blankStringContents && quotedLiteralHasWhitespace(content, index, charCode);
       index += 1;
       continue;
     }
 
-    if (character === "`") {
-      stringDelimiter = "`";
+    if (charCode === BACKTICK_CHAR_CODE) {
+      stringDelimiterCharCode = BACKTICK_CHAR_CODE;
       isBlankingString = blankStringContents;
       index += 1;
       continue;
     }
 
-    if (character === "/" && nextCharacter === "/") {
-      characters ??= content.split("");
-      while (index < content.length && content[index] !== "\n") {
-        characters[index] = " ";
+    if (charCode === SLASH_CHAR_CODE && nextCharCode === SLASH_CHAR_CODE) {
+      while (index < contentLength && content.charCodeAt(index) !== NEWLINE_CHAR_CODE) {
+        blankedRanges.blank(index);
         index += 1;
       }
       continue;
     }
 
-    if (character === "/" && nextCharacter === "*") {
-      characters ??= content.split("");
-      while (index < content.length) {
-        if (content[index] === "*" && content[index + 1] === "/") {
-          characters[index] = " ";
-          characters[index + 1] = " ";
+    if (charCode === SLASH_CHAR_CODE && nextCharCode === ASTERISK_CHAR_CODE) {
+      while (index < contentLength) {
+        if (
+          content.charCodeAt(index) === ASTERISK_CHAR_CODE &&
+          content.charCodeAt(index + 1) === SLASH_CHAR_CODE
+        ) {
+          blankedRanges.blank(index);
+          blankedRanges.blank(index + 1);
           index += 2;
           break;
         }
@@ -258,8 +368,8 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
     // rest of the line is still lexed as code; in string-blanking mode its
     // interior is blanked like prose so pattern words inside it don't count as
     // call sites.
-    if (character === "/") {
-      const regexEndIndex = isRegexLiteralStart(content, characters ?? content, index)
+    if (charCode === SLASH_CHAR_CODE) {
+      const regexEndIndex = isRegexLiteralStart(content, blankedRanges, index)
         ? findRegexLiteralEnd(content, index)
         : null;
       if (regexEndIndex !== null) {
@@ -281,12 +391,12 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
     // to the enclosing template string and resumes blanking its static text.
     if (templateExpressionDepths.length > 0) {
       const innermost = templateExpressionDepths.length - 1;
-      if (character === "{") {
+      if (charCode === OPEN_BRACE_CHAR_CODE) {
         templateExpressionDepths[innermost] += 1;
-      } else if (character === "}") {
+      } else if (charCode === CLOSE_BRACE_CHAR_CODE) {
         if (templateExpressionDepths[innermost] === 0) {
           templateExpressionDepths.pop();
-          stringDelimiter = "`";
+          stringDelimiterCharCode = BACKTICK_CHAR_CODE;
           isBlankingString = blankStringContents;
         } else {
           templateExpressionDepths[innermost] -= 1;
@@ -297,7 +407,7 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
     index += 1;
   }
 
-  return characters?.join("") ?? content;
+  return blankedRanges.apply(content);
 };
 
 export const stripCommentsPreservingPositions = (content: string): string =>

@@ -7,7 +7,7 @@ import { REACT_COMPILER_CONFIG_IMPORT_MAX_DEPTH } from "../constants.js";
 import type { PackageJson } from "../types/index.js";
 import { isProjectBoundary } from "../utils/is-project-boundary.js";
 import { unwrapTypescriptExpression } from "../utils/unwrap-typescript-expression.js";
-import { isFile, isPlainObject } from "./fs-utils.js";
+import { isFile, isPlainObject, readDirectoryEntries } from "./fs-utils.js";
 import { isLocalModuleSpecifier } from "./is-local-module-specifier.js";
 import { NEXT_CONFIG_FILENAMES } from "./detect-nextjs-static-export.js";
 import { readPackageJson } from "./package-json.js";
@@ -2125,8 +2125,16 @@ const analyzeConfigNode = (
 const hasCompilerInConfigFile = (filePath: string): boolean =>
   analyzeConfigModuleExport(filePath, "default", false, 0, new Set<string>());
 
-const hasCompilerInConfigFiles = (directory: string, filenames: string[]): boolean =>
-  filenames.some((filename) => hasCompilerInConfigFile(path.join(directory, filename)));
+const hasCompilerInConfigFiles = (directory: string, filenames: string[]): boolean => {
+  const presentEntryNames = new Set(
+    readDirectoryEntries(directory).map((entry) => entry.name.toLowerCase()),
+  );
+  return filenames.some(
+    (filename) =>
+      presentEntryNames.has(filename.toLowerCase()) &&
+      hasCompilerInConfigFile(path.join(directory, filename)),
+  );
+};
 
 const hasCompilerInPackageJsonConfig = (directory: string, packageJson: PackageJson): boolean => {
   if (!isPlainObject(packageJson.babel)) return false;

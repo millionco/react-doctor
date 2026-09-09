@@ -1,7 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseSync } from "oxc-parser";
-import { CROSS_FILE_PARSE_MAX_BYTES } from "../constants/thresholds.js";
+import {
+  CROSS_FILE_PARSE_CACHE_MAX_ENTRIES,
+  CROSS_FILE_PARSE_MAX_BYTES,
+} from "../constants/thresholds.js";
 import { attachParentReferences } from "./attach-parent-references.js";
 import { recordContentProbe } from "./cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./es-tree-node.js";
@@ -61,7 +64,23 @@ export const parseSourceText = ({
 // changed file invalidates the cache automatically. Storing `null`
 // for known-broken files prevents re-parsing the same .d.ts /
 // generated / unparseable file on every rule invocation.
+//
+// Bounded LRU: the plugin lives in a long-running worker that lints many
+// files, and every cached Program is a full AST. Without a bound the
+// retained heap grows with every cross-file target ever parsed, and each
+// GC cycle pays to mark all of it. Insertion order is recency: a hit
+// re-inserts its entry at the end, and the oldest entry is evicted on
+// overflow.
 const parseCache = new Map<string, CacheEntry>();
+
+const rememberParsedFile = (absoluteFilePath: string, entry: CacheEntry): void => {
+  parseCache.delete(absoluteFilePath);
+  parseCache.set(absoluteFilePath, entry);
+  if (parseCache.size > CROSS_FILE_PARSE_CACHE_MAX_ENTRIES) {
+    const oldestFilePath = parseCache.keys().next().value;
+    if (oldestFilePath !== undefined) parseCache.delete(oldestFilePath);
+  }
+};
 
 // Parses a file at `absoluteFilePath` and returns the program AST
 // with parent references attached, or null when the file is missing
@@ -94,6 +113,7 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
 
   const cached = parseCache.get(absoluteFilePath);
   if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
+    rememberParsedFile(absoluteFilePath, cached);
     return cached.program;
   }
 
@@ -107,7 +127,7 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
     absoluteFilePath.endsWith(".d.mts") ||
     absoluteFilePath.endsWith(".d.cts")
   ) {
-    parseCache.set(absoluteFilePath, {
+    rememberParsedFile(absoluteFilePath, {
       mtimeMs: fileStat.mtimeMs,
       size: fileStat.size,
       program: null,
@@ -119,7 +139,7 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
   try {
     sourceText = fs.readFileSync(absoluteFilePath, "utf8");
   } catch {
-    parseCache.set(absoluteFilePath, {
+    rememberParsedFile(absoluteFilePath, {
       mtimeMs: fileStat.mtimeMs,
       size: fileStat.size,
       program: null,
@@ -132,7 +152,7 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
     sourceText,
   });
 
-  parseCache.set(absoluteFilePath, {
+  rememberParsedFile(absoluteFilePath, {
     mtimeMs: fileStat.mtimeMs,
     size: fileStat.size,
     program: parsedProgram,

@@ -50,6 +50,8 @@ export const MIN_OVERPRECISE_SVG_TOKEN_OCCURRENCES = 2;
 // caps how many re-export hops the barrel resolver chases before
 // giving up.
 export const CROSS_FILE_PARSE_MAX_BYTES = 2_000_000;
+// Most parsed Programs a worker keeps alive at once (see parse-source-file.ts).
+export const CROSS_FILE_PARSE_CACHE_MAX_ENTRIES = 256;
 export const CROSS_FILE_BARREL_FOLLOW_DEPTH = 4;
 export const DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH = CROSS_FILE_BARREL_FOLLOW_DEPTH * 2;
 export const KATEX_CROSS_FILE_PROOF_MAX_DEPTH = 2;

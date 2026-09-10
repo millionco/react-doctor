@@ -2,6 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noBooleanToggleWithoutFunctionalUpdate } from "./no-boolean-toggle-without-functional-update.js";
 
+const SMALL_SETTER_COUNT = 2_000;
+const LARGE_SETTER_COUNT = 10_000;
+const MEASUREMENT_SAMPLE_COUNT = 5;
+const MAXIMUM_SCALING_MULTIPLIER = 18;
+
 describe("no-boolean-toggle-without-functional-update", () => {
   it("flags setIsOpen(!isOpen) inside a setTimeout", () => {
     const result = runRule(
@@ -545,20 +550,24 @@ describe("no-boolean-toggle-without-functional-update", () => {
   it("caches await reachability across many setters", () => {
     const buildSource = (setterCount: number): string =>
       `const C=()=>{const[open,setOpen]=useState(false);const run=async()=>{await load();${"setOpen(!open);".repeat(setterCount)}}}`;
-    runRule(noBooleanToggleWithoutFunctionalUpdate, buildSource(100));
-    const measureFastestDuration = (setterCount: number): number => {
-      let fastestDuration = Number.POSITIVE_INFINITY;
-      for (let repetition = 0; repetition < 3; repetition += 1) {
-        const start = performance.now();
-        const result = runRule(noBooleanToggleWithoutFunctionalUpdate, buildSource(setterCount));
-        fastestDuration = Math.min(fastestDuration, performance.now() - start);
-        expect(result.diagnostics).toHaveLength(setterCount);
-      }
-      return fastestDuration;
+    const smallSource = buildSource(SMALL_SETTER_COUNT);
+    const largeSource = buildSource(LARGE_SETTER_COUNT);
+    const measureDuration = (source: string, setterCount: number): number => {
+      const startedAt = performance.now();
+      const result = runRule(noBooleanToggleWithoutFunctionalUpdate, source);
+      const duration = performance.now() - startedAt;
+      expect(result.diagnostics).toHaveLength(setterCount);
+      return duration;
     };
-    const smallDuration = measureFastestDuration(2_000);
-    const largeDuration = measureFastestDuration(10_000);
-    expect(largeDuration).toBeLessThan(smallDuration * 18);
+    measureDuration(smallSource, SMALL_SETTER_COUNT);
+    measureDuration(largeSource, LARGE_SETTER_COUNT);
+    let smallDuration = Number.POSITIVE_INFINITY;
+    let largeDuration = Number.POSITIVE_INFINITY;
+    for (let sampleIndex = 0; sampleIndex < MEASUREMENT_SAMPLE_COUNT; sampleIndex += 1) {
+      smallDuration = Math.min(smallDuration, measureDuration(smallSource, SMALL_SETTER_COUNT));
+      largeDuration = Math.min(largeDuration, measureDuration(largeSource, LARGE_SETTER_COUNT));
+    }
+    expect(largeDuration).toBeLessThan(smallDuration * MAXIMUM_SCALING_MULTIPLIER);
   });
 
   it("proves cleanup identity, correlated paths, and render-time ref freshness", () => {

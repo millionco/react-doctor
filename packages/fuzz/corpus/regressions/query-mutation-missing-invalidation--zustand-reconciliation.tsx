@@ -1,10 +1,10 @@
-import { useMutation } from '@tanstack/react-query';
-import { Button, Text, View } from 'react-native';
-import { create } from 'zustand';
+import { useMutation } from "@tanstack/react-query";
+import { Button, Text, View } from "react-native";
+import { create } from "zustand";
 
-declare function purchase(): Promise<'purchased' | 'cancelled'>;
+declare function purchase(): Promise<"purchased" | "cancelled">;
 declare function getMembership(): Promise<{ tier: string }>;
-const useMembership = create<{ tier: string }>(() => ({ tier: 'free' }));
+const useMembership = create<{ tier: string }>(() => ({ tier: "free" }));
 
 async function reconcileMembership() {
   const membership = await getMembership();
@@ -15,7 +15,7 @@ export function Upgrade() {
   const tier = useMembership((state) => state.tier);
   const upgrade = useMutation({
     mutationFn: async () => {
-      if ((await purchase()) === 'purchased') await reconcileMembership();
+      if ((await purchase()) === "purchased") await reconcileMembership();
     },
   });
   return (

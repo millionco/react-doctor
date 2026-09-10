@@ -292,10 +292,10 @@ const isSetStateArgumentDerivedFromData = (argument: EsTreeNode): boolean => {
 const hasAwaitBeforeSetState = (functionBody: EsTreeNode, setStateNode: EsTreeNode): boolean => {
   let hasSeenAwait = false;
   let foundSetStateAfterAwait = false;
-  
+
   walkAst(functionBody, (child: EsTreeNode) => {
     if (foundSetStateAfterAwait) return false;
-    
+
     if (
       isNodeOfType(child, "ArrowFunctionExpression") ||
       isNodeOfType(child, "FunctionExpression") ||
@@ -303,17 +303,17 @@ const hasAwaitBeforeSetState = (functionBody: EsTreeNode, setStateNode: EsTreeNo
     ) {
       return false;
     }
-    
+
     if (isNodeOfType(child, "AwaitExpression")) {
       hasSeenAwait = true;
     }
-    
+
     if (hasSeenAwait && child === setStateNode) {
       foundSetStateAfterAwait = true;
       return false;
     }
   });
-  
+
   return foundSetStateAfterAwait;
 };
 

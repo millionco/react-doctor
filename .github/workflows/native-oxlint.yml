@@ -2,7 +2,7 @@ name: Native Oxlint
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex/oxc-source-patch]
     paths:
       - "LICENSE"
       - "native/oxlint/**"

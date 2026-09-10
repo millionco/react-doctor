@@ -11978,7 +11978,7 @@
       "id": "rn-prefer-reanimated",
       "title": "JS-thread animation instead of Reanimated",
       "severity": "warn",
-      "recommendation": "Use `import Animated from 'react-native-reanimated'` so animations run on the UI thread instead of the JS thread, which keeps them smooth.",
+      "recommendation": "Use Reanimated for always-native animations (`import Animated from 'react-native-reanimated'`), or ensure every Animated.timing/spring/decay has `useNativeDriver: true` for native-thread execution.",
       "category": "Bugs",
       "framework": "react-native",
       "requires": ["react-native"],

@@ -364,4 +364,101 @@ describe("tanstack-query/query-mutation-missing-invalidation — regressions", (
 
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("stays silent when mutation reconciles Zustand state after fetching fresh data", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      import { create } from "zustand";
+      
+      declare function purchase(): Promise<'purchased' | 'cancelled'>;
+      declare function getMembership(): Promise<{ tier: string }>;
+      const useMembership = create<{ tier: string }>(() => ({ tier: 'free' }));
+      
+      async function reconcileMembership() {
+        const membership = await getMembership();
+        useMembership.setState(membership);
+      }
+      
+      export function Upgrade() {
+        const tier = useMembership((state) => state.tier);
+        const upgrade = useMutation({
+          mutationFn: async () => {
+            if ((await purchase()) === 'purchased') await reconcileMembership();
+          },
+        });
+      }`,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags when Zustand setState happens without fetching fresh data", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      import { create } from "zustand";
+      
+      const posts = useQuery({ queryKey: ["posts"], queryFn: fetchPosts });
+      const useFlag = create(() => ({ enabled: false }));
+      
+      function setFlag() {
+        useFlag.setState({ enabled: true });
+      }
+      
+      useMutation({
+        mutationFn: async () => {
+          await deletePost();
+          setFlag();
+        },
+      });`,
+    );
+
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags when mutation only updates an unrelated Zustand store", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      import { create } from "zustand";
+      
+      const posts = useQuery({ queryKey: ["posts"], queryFn: fetchPosts });
+      const useUiState = create(() => ({ isOpen: false }));
+      
+      async function cleanup() {
+        await someCleanup();
+        useUiState.setState({ isOpen: false });
+      }
+      
+      useMutation({
+        mutationFn: deletePost,
+        onSuccess: () => cleanup(),
+      });`,
+    );
+
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when onSuccess reconciles Zustand state", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      import { create } from "zustand";
+      
+      const useStore = create(() => ({ data: null }));
+      
+      async function sync() {
+        const fresh = await refetch();
+        useStore.setState({ data: fresh });
+      }
+      
+      useMutation({
+        mutationFn: update,
+        onSuccess: () => sync(),
+      });`,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

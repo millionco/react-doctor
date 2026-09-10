@@ -12063,7 +12063,7 @@
       "id": "rn-scrollview-dynamic-padding",
       "title": "Dynamic padding on contentContainerStyle",
       "severity": "warn",
-      "recommendation": "Use `contentInset={{ bottom: dynamicValue }}` so the OS shifts the content instead of relaying it out, which avoids the jump.",
+      "recommendation": "Move the changing value to the matching `contentInset` edge (`contentInset={{ bottom: keyboardHeight }}`, iOS-only) so the OS shifts the content instead of relaying it out, and keep static spacing in `contentContainerStyle`.",
       "category": "Bugs",
       "framework": "react-native",
       "requires": ["react-native"],

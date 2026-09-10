@@ -1,0 +1,18 @@
+{
+  "name": "react-doctor-loop",
+  "version": "0.1.0+codex.20260809025047",
+  "description": "Continuously turn confirmed React Doctor benchmark false positives into validated draft pull requests.",
+  "author": {
+    "name": "Million"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "React Doctor Loop",
+    "shortDescription": "Fix audited false positives with Codex",
+    "longDescription": "A single Codex-native loop for auditing one root-cause cohort, implementing the narrow fix, proving it against the benchmark and open-source corpus, and opening a review-only draft pull request.",
+    "developerName": "Million",
+    "category": "Developer Tools",
+    "capabilities": ["skills", "hooks"],
+    "defaultPrompt": "Use $react-doctor-loop to fix the next confirmed false-positive cohort."
+  }
+}

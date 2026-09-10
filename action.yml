@@ -131,6 +131,7 @@ runs:
       env:
         INPUT_DIRECTORY: ${{ inputs.directory }}
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         CHANGED_FILES_FILE: ${{ runner.temp }}/react-doctor-changed-files.txt
       run: |
         # Best-effort fetch of the PR base commit so react-doctor can read base
@@ -169,13 +170,15 @@ runs:
 
         # Derive the changed set locally. Three-dot (merge-base) + AMR
         # (added/modified/renamed) match the `pulls.listFiles` API contract and
-        # the CLI's baseline semantics. Attempt it whenever a base SHA is known —
-        # the base may be reachable in history even when the fetch above was a
-        # no-op or failed. On any failure (shallow history with no reachable
-        # merge-base), leave the file unwritten so the API fallback runs — no
-        # regression vs the previous API-only behavior.
+        # the CLI's baseline semantics. Compare the event's base SHA to the
+        # event's head SHA (not the synthetic merge-ref HEAD, which includes
+        # base-branch drift). Attempt it whenever both SHAs are known — the base
+        # may be reachable in history even when the fetch above was a no-op or
+        # failed. On any failure (shallow history with no reachable merge-base),
+        # leave the file unwritten so the API fallback runs — no regression vs
+        # the previous API-only behavior.
         RAW_CHANGED="${RUNNER_TEMP:-/tmp}/react-doctor-raw-changed.txt"
-        if [ -n "$BASE_SHA" ] && git -C "$INPUT_DIRECTORY" diff --name-only --diff-filter=AMR "$BASE_SHA...HEAD" > "$RAW_CHANGED" 2>/dev/null; then
+        if [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ] && git -C "$INPUT_DIRECTORY" diff --name-only --diff-filter=AMR "$BASE_SHA...$HEAD_SHA" > "$RAW_CHANGED" 2>/dev/null; then
           node "$GITHUB_ACTION_PATH/scripts/normalize-changed-files.mjs" "$SCAN_PREFIX" "$CHANGED_FILES_FILE" < "$RAW_CHANGED"
           echo "path=$CHANGED_FILES_FILE" >> "$GITHUB_OUTPUT"
         else
@@ -273,7 +276,9 @@ runs:
         # exists even when the scan dies before its first cache write.
         mkdir -p "${RUNNER_TEMP:-/tmp}/react-doctor-cache"
 
-        FLAGS=("--json" "--json-compact")
+        # Use the CLI's synchronous file writer so process exit cannot truncate
+        # a report that shell redirection was still draining (#1242).
+        FLAGS=("--json" "--json-compact" "--json-out" "$REPORT_FILE")
         if [ -n "$INPUT_BLOCKING" ]; then FLAGS+=("--blocking" "$INPUT_BLOCKING"); fi
         if [ -n "$INPUT_PROJECT" ]; then FLAGS+=("--project" "$INPUT_PROJECT"); fi
 
@@ -331,9 +336,9 @@ runs:
 
         set +e
         if [ -n "$RD_BIN" ]; then
-          "$RD_BIN" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+          "$RD_BIN" "$INPUT_DIRECTORY" "${FLAGS[@]}"
         else
-          npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+          npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}"
         fi
         SCAN_STATUS=$?
         set -e

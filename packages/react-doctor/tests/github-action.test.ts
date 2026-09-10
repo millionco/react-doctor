@@ -28,6 +28,15 @@ const runGit = (cwd: string, ...args: string[]): string =>
 
 const BASE_STEP_RUN_MARKER = "run: |\n";
 
+interface ExecuteBaseStepScriptInput {
+  readonly checkoutDirectory: string;
+  readonly baseSha: string;
+  readonly pullRequestHeadSha: string;
+  readonly changedFilesFile: string;
+  readonly runnerTemp: string;
+  readonly githubOutputFile: string;
+}
+
 const extractBaseStepScript = (actionYaml: string): string => {
   const baseStep = extractStep(actionYaml, "- id: base");
   const runIndex = baseStep.indexOf(BASE_STEP_RUN_MARKER);
@@ -42,6 +51,41 @@ const extractBaseStepScript = (actionYaml: string): string => {
   }
   return scriptLines.join("\n");
 };
+
+const executeBaseStepScript = ({
+  checkoutDirectory,
+  baseSha,
+  pullRequestHeadSha,
+  changedFilesFile,
+  runnerTemp,
+  githubOutputFile,
+}: ExecuteBaseStepScriptInput): string =>
+  execFileSync(
+    "bash",
+    [
+      "--noprofile",
+      "--norc",
+      "-e",
+      "-o",
+      "pipefail",
+      "-c",
+      extractBaseStepScript(readActionYaml()),
+    ],
+    {
+      cwd: checkoutDirectory,
+      encoding: "utf8",
+      env: {
+        ...GIT_TEST_ENV,
+        INPUT_DIRECTORY: ".",
+        BASE_SHA: baseSha,
+        HEAD_SHA: pullRequestHeadSha,
+        CHANGED_FILES_FILE: changedFilesFile,
+        RUNNER_TEMP: runnerTemp,
+        GITHUB_OUTPUT: githubOutputFile,
+        GITHUB_ACTION_PATH: REPOSITORY_ROOT,
+      },
+    },
+  );
 
 // The fixture spawns bash + git; Windows runners route through Git Bash where
 // file:// shallow transport quirks make this flaky, and CI covers it on the
@@ -210,6 +254,7 @@ describe("GitHub Action contract", () => {
         );
         runGit(originDirectory, "add", ".");
         runGit(originDirectory, "-c", "commit.gpgsign=false", "commit", "-m", "feature");
+        const pullRequestHeadSha = runGit(originDirectory, "rev-parse", "HEAD");
         // refs/pull/N/merge: a merge commit whose FIRST parent is the base tip.
         runGit(originDirectory, "-c", "advice.detachedHead=false", "checkout", "--detach", "main");
         runGit(
@@ -246,31 +291,14 @@ describe("GitHub Action contract", () => {
         const githubOutputFile = path.join(runnerTemp, "github-output.txt");
         fs.writeFileSync(githubOutputFile, "");
         // Match the composite `shell: bash` invocation (errexit + pipefail).
-        const scriptOutput = execFileSync(
-          "bash",
-          [
-            "--noprofile",
-            "--norc",
-            "-e",
-            "-o",
-            "pipefail",
-            "-c",
-            extractBaseStepScript(readActionYaml()),
-          ],
-          {
-            cwd: checkoutDirectory,
-            encoding: "utf8",
-            env: {
-              ...GIT_TEST_ENV,
-              INPUT_DIRECTORY: ".",
-              BASE_SHA: baseSha,
-              CHANGED_FILES_FILE: changedFilesFile,
-              RUNNER_TEMP: runnerTemp,
-              GITHUB_OUTPUT: githubOutputFile,
-              GITHUB_ACTION_PATH: REPOSITORY_ROOT,
-            },
-          },
-        );
+        const scriptOutput = executeBaseStepScript({
+          checkoutDirectory,
+          baseSha,
+          pullRequestHeadSha,
+          changedFilesFile,
+          runnerTemp,
+          githubOutputFile,
+        });
 
         expect(scriptOutput).toContain(
           "::warning::React Doctor could not derive the PR's changed files from git",
@@ -280,6 +308,95 @@ describe("GitHub Action contract", () => {
         const githubOutput = fs.readFileSync(githubOutputFile, "utf8");
         expect(githubOutput).toContain("prefix=.");
         expect(githubOutput).not.toContain("path=");
+      } finally {
+        fs.rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
+
+  itOnPosix(
+    "compares the event base and head instead of the synthetic merge commit",
+    () => {
+      const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-action-drift-"));
+      try {
+        const originDirectory = path.join(fixtureRoot, "origin");
+        const checkoutDirectory = path.join(fixtureRoot, "checkout");
+        const runnerTemp = path.join(fixtureRoot, "runner-temp");
+        fs.mkdirSync(originDirectory);
+        fs.mkdirSync(checkoutDirectory);
+        fs.mkdirSync(runnerTemp);
+
+        runGit(originDirectory, "init", "--initial-branch=main");
+        fs.mkdirSync(path.join(originDirectory, "src"));
+        fs.writeFileSync(
+          path.join(originDirectory, "src", "app.tsx"),
+          "export const App = () => null;\n",
+        );
+        runGit(originDirectory, "add", ".");
+        runGit(originDirectory, "-c", "commit.gpgsign=false", "commit", "-m", "base");
+        const baseSha = runGit(originDirectory, "rev-parse", "HEAD");
+
+        runGit(originDirectory, "checkout", "-b", "pull-request");
+        fs.writeFileSync(
+          path.join(originDirectory, "src", "feature.tsx"),
+          "export const Feature = () => null;\n",
+        );
+        runGit(originDirectory, "add", ".");
+        runGit(originDirectory, "-c", "commit.gpgsign=false", "commit", "-m", "feature");
+        const pullRequestHeadSha = runGit(originDirectory, "rev-parse", "HEAD");
+
+        runGit(originDirectory, "checkout", "main");
+        fs.writeFileSync(
+          path.join(originDirectory, "src", "base-drift.tsx"),
+          "export const BaseDrift = () => null;\n",
+        );
+        runGit(originDirectory, "add", ".");
+        runGit(originDirectory, "-c", "commit.gpgsign=false", "commit", "-m", "base drift");
+        runGit(
+          originDirectory,
+          "-c",
+          "commit.gpgsign=false",
+          "merge",
+          "--no-ff",
+          "pull-request",
+          "-m",
+          "synthetic merge",
+        );
+        runGit(originDirectory, "update-ref", "refs/pull/1/merge", "HEAD");
+
+        runGit(checkoutDirectory, "init");
+        runGit(checkoutDirectory, "remote", "add", "origin", pathToFileURL(originDirectory).href);
+        runGit(
+          checkoutDirectory,
+          "fetch",
+          "--no-tags",
+          "origin",
+          "+refs/pull/1/merge:refs/remotes/pull/1/merge",
+        );
+        runGit(
+          checkoutDirectory,
+          "-c",
+          "advice.detachedHead=false",
+          "checkout",
+          "--force",
+          "refs/remotes/pull/1/merge",
+        );
+
+        const changedFilesFile = path.join(runnerTemp, "react-doctor-changed-files.txt");
+        const githubOutputFile = path.join(runnerTemp, "github-output.txt");
+        fs.writeFileSync(githubOutputFile, "");
+        const scriptOutput = executeBaseStepScript({
+          checkoutDirectory,
+          baseSha,
+          pullRequestHeadSha,
+          changedFilesFile,
+          runnerTemp,
+          githubOutputFile,
+        });
+
+        expect(scriptOutput).not.toContain("could not derive");
+        expect(fs.readFileSync(changedFilesFile, "utf8").trim()).toBe("src/feature.tsx");
       } finally {
         fs.rmSync(fixtureRoot, { recursive: true, force: true });
       }
@@ -310,7 +427,7 @@ describe("GitHub Action contract", () => {
       extractStep(actionYaml, "INPUT_PROJECT: ${{ inputs.project }}"),
     );
 
-    expect(scanStep).toContain('FLAGS=("--json" "--json-compact")');
+    expect(scanStep).toContain('FLAGS=("--json" "--json-compact" "--json-out" "$REPORT_FILE")');
     expect(scanStep).not.toContain("--pr-comment");
     // The gate threshold is forwarded as `--blocking` (renamed from the
     // deprecated `--fail-on`); annotations were replaced by review comments.
@@ -324,8 +441,9 @@ describe("GitHub Action contract", () => {
     );
     expect(scanStep).toContain('FLAGS+=("--changed-files-from" "$CHANGED_FILES_FROM")');
     expect(scanStep).toContain(
-      'npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"',
+      'npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}"',
     );
+    expect(scanStep).not.toContain('> "$REPORT_FILE"');
     // PACKAGE_SPEC is resolved once (and made cacheable) by the resolve-version
     // step and read from its output, not derived inline in the scan step.
     expect(scanStep).toContain("PACKAGE_SPEC: ${{ steps.resolve-version.outputs.spec }}");
@@ -351,7 +469,8 @@ describe("GitHub Action contract", () => {
     expect(actionYaml).toContain("react-doctor-toolchain");
     expect(actionYaml).toContain("react-doctor-scan-cache-");
     expect(scanStep).toContain('npm install --prefix "$TOOLCHAIN_DIR"');
-    expect(scanStep).toContain('"$RD_BIN" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"');
+    expect(scanStep).toContain('"$RD_BIN" "$INPUT_DIRECTORY" "${FLAGS[@]}"');
+    expect(scanStep).not.toContain('> "$REPORT_FILE"');
     expect(scanStep).toContain("REACT_DOCTOR_CACHE_DIR: ${{ runner.temp }}/react-doctor-cache");
     // A cache-miss install runs under `set +e` and the toolchain is adopted
     // only when the bin actually RUNS (`--version`), not merely exists — npm

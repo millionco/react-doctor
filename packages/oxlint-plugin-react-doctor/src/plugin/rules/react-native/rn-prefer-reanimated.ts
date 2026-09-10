@@ -14,7 +14,7 @@ export const rnPreferReanimated = defineRule({
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `import Animated from 'react-native-reanimated'` so animations run on the UI thread instead of the JS thread, which keeps them smooth.",
+    "Use Reanimated for always-native animations (`import Animated from 'react-native-reanimated'`), or ensure every Animated.timing/spring/decay has `useNativeDriver: true` for native-thread execution.",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "react-native") return;
@@ -26,14 +26,14 @@ export const rnPreferReanimated = defineRule({
         const importedName = getImportedName(specifier);
         if (!importedName || !JS_THREAD_ANIMATION_IMPORTS.has(importedName)) continue;
 
-        const suggestion =
+        const message =
           importedName === "LayoutAnimation"
-            ? "Your users see stutter when LayoutAnimation runs on the JS thread."
-            : "Your users see stutter when Animated from react-native runs on the JS thread.";
+            ? "LayoutAnimation from react-native may cause stutter when it runs on the JS thread."
+            : "Animated from react-native may cause stutter when animations run on the JS thread without `useNativeDriver: true`.";
 
         context.report({
           node: specifier,
-          message: suggestion,
+          message,
         });
       }
     },

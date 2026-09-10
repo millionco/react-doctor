@@ -201,4 +201,79 @@ const C = () => <ScrollView contentContainerStyle={{ paddingTop: -OVERLAP }} />;
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("stays silent on a conditional with both static branches", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ hasHeader }) => <ScrollView contentContainerStyle={{ paddingTop: hasHeader ? 0 : 16 }} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a conditional with both static const branches", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const HEADER_SPACING = 0;
+const DEFAULT_SPACING = 16;
+const C = ({ hasHeader }) => <ScrollView contentContainerStyle={{ paddingTop: hasHeader ? HEADER_SPACING : DEFAULT_SPACING }} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a nested conditional with all static branches", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ mode, hasHeader }) => <ScrollView contentContainerStyle={{ paddingTop: mode === 'compact' ? 0 : (hasHeader ? 8 : 16) }} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a conditional where consequent is dynamic", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ keyboardHeight, hasHeader }) => <ScrollView contentContainerStyle={{ paddingBottom: hasHeader ? keyboardHeight : 16 }} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a conditional where alternate is dynamic", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ keyboardHeight, hasHeader }) => <ScrollView contentContainerStyle={{ paddingBottom: hasHeader ? 0 : keyboardHeight }} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a conditional where both branches are dynamic", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ keyboardHeight, insets }) => <ScrollView contentContainerStyle={{ paddingBottom: keyboardHeight > 0 ? keyboardHeight : insets.bottom }} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on FlashList with conditional static padding based on header presence (#1785)", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `import { FlashList } from '@shopify/flash-list';
+import { Text } from 'react-native';
+
+const Grid = ({ ListHeaderComponent }) => (
+  <FlashList
+    data={[]}
+    renderItem={() => <Text>Item</Text>}
+    ListHeaderComponent={ListHeaderComponent}
+    contentContainerStyle={{ paddingTop: ListHeaderComponent ? 0 : 16 }}
+  />
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

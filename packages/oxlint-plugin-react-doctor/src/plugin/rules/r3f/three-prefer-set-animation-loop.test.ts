@@ -29,10 +29,10 @@ describe("three-prefer-set-animation-loop", () => {
     expect(runRule(threePreferSetAnimationLoop, code).diagnostics).toHaveLength(1);
   });
 
-  it("reports a recursive loop that delegates rendering to an imported viewer", () => {
+  it("reports a recursive loop with @react-three/fiber import", () => {
     const code = `
-      import { Viewer } from "./scene/viewer";
-      const viewer = new Viewer(canvas);
+      import { Canvas } from "@react-three/fiber";
+      const viewer = setupViewer(canvas);
       function frame() {
         viewer.frame();
         app.tick();
@@ -41,6 +41,19 @@ describe("three-prefer-set-animation-loop", () => {
       requestAnimationFrame(frame);
     `;
     expect(runRule(threePreferSetAnimationLoop, code).diagnostics).toHaveLength(1);
+  });
+
+  it("allows a 2D canvas animation loop without Three.js imports", () => {
+    const code = `
+      const canvas = document.querySelector("canvas");
+      const context = canvas.getContext("2d");
+      function frame() {
+        context.fillRect(0, 0, 1, 1);
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    `;
+    expect(runRule(threePreferSetAnimationLoop, code).diagnostics).toHaveLength(0);
   });
 
   it("allows renderer-managed frames and unrelated or shadowed callbacks", () => {

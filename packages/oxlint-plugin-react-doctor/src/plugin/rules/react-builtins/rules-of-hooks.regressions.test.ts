@@ -978,6 +978,88 @@ describe("react-builtins/rules-of-hooks — regressions: package-imported member
   });
 });
 
+describe("react-builtins/rules-of-hooks — regressions: local member .use() calls", () => {
+  it("does not flag Service.use(...) where Service is a declared local API", () => {
+    const result = runTsx(`
+      declare const Service: {
+        use: (callback: (value: string) => unknown) => unknown;
+      };
+
+      export const fixture = async () => {
+        Service.use((value) => value);
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag Api.use(...) where Api is a local class", () => {
+    const result = runTsx(`
+      class Api {
+        static use(callback: () => void) {
+          callback();
+        }
+      }
+
+      export const setup = () => {
+        Api.use(() => console.log("setup"));
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag Database.use(...) where Database is a const object", () => {
+    const result = runTsx(`
+      const Database = {
+        use: (handler: () => void) => handler(),
+      };
+
+      export const query = () => {
+        Database.use(() => console.log("query"));
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags React.use(...) in an async function", () => {
+    const result = runTsx(`
+      import * as React from "react";
+
+      export const App = async () => {
+        React.use(Promise.resolve("value"));
+        return null;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("async function");
+  });
+
+  it("still flags bare use(...) from React import in async function", () => {
+    const result = runTsx(`
+      import { use } from "react";
+
+      export const App = async () => {
+        use(Promise.resolve("value"));
+        return null;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("async function");
+  });
+
+  it("does not flag X.use([plugins]) plugin registration pattern", () => {
+    const result = runTsx(`
+      declare const SwiperCore: {
+        use: (plugins: unknown[]) => void;
+      };
+
+      export const setup = () => {
+        SwiperCore.use([]);
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+});
+
 describe("react-builtins/rules-of-hooks — regressions: non-Hook APIs called from classes", () => {
   it("does not flag package-alias imported helpers that borrow the use prefix", () => {
     const result = runTsx(`

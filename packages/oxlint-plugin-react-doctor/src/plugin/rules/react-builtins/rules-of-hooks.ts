@@ -237,6 +237,13 @@ const isHookCall = (
       ) {
         return null;
       }
+      if (propertyName === "use") {
+        const symbol = scopes.symbolFor(callObject);
+        if (symbol) {
+          const reactName = resolveReactImportName(symbol, scopes);
+          if (!reactName || reactName === "use") return null;
+        }
+      }
       return { hookName: propertyName };
     }
     // Chained-call hooks (`<callExpr>.useFoo(...)`) are vanishingly

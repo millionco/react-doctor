@@ -3,15 +3,29 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { CACHE_FILENAME_HASH_LENGTH_CHARS } from "../constants.js";
+import { findGitRepositoryRoot } from "./find-git-repository-root.js";
 
-// SHA-256 (not SHA-1) purely to name a per-project cache subdirectory — it's a
-// filesystem-safe digest of the path, never a security/identity hash.
-const projectCacheSubdir = (projectDirectory: string): string =>
-  crypto
+const resolveRelativeProjectPath = (projectDirectory: string): string | null => {
+  const explicitPartition = process.env["REACT_DOCTOR_CACHE_PARTITION"]?.trim();
+  if (explicitPartition) return explicitPartition;
+
+  const gitRoot = findGitRepositoryRoot(projectDirectory);
+  if (!gitRoot) return null;
+
+  const relativePath = path.relative(gitRoot, projectDirectory);
+  return relativePath || ".";
+};
+
+const projectCacheSubdir = (projectDirectory: string): string => {
+  const relativePath = resolveRelativeProjectPath(projectDirectory);
+  const pathToHash = relativePath ?? projectDirectory;
+
+  return crypto
     .createHash("sha256")
-    .update(projectDirectory)
+    .update(pathToHash)
     .digest("hex")
     .slice(0, CACHE_FILENAME_HASH_LENGTH_CHARS);
+};
 
 // Resolves the directory react-doctor's on-disk caches live in. Order:
 //   1. `REACT_DOCTOR_CACHE_DIR` — an operator/CI-pinned cache root. The GitHub
@@ -19,6 +33,10 @@ const projectCacheSubdir = (projectDirectory: string): string =>
 //      `actions/cache` across runs (the project-local `node_modules/.cache` is
 //      a fresh, SHA-scoped checkout in CI, so it never survives between commits).
 //      A per-project subdirectory keeps a batch scan's projects from colliding.
+//      The subdirectory name is a hash of the git-relative project path (when in
+//      a git repo) or `REACT_DOCTOR_CACHE_PARTITION` (when set), making the cache
+//      portable between CI and local checkouts of the same repository. Falls back
+//      to hashing the absolute path when neither is available.
 //   2. the project's `node_modules/.cache/react-doctor` (npm convention,
 //      project-local, cleaned by `node_modules` removal).
 //   3. a per-user, per-project subdirectory of the OS temp dir, when the

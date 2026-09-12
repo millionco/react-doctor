@@ -17,7 +17,7 @@ import {
   SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES,
   SCAN_RESULT_CACHE_SCHEMA_VERSION,
 } from "./constants.js";
-import { getPackageJsonPath, isRecord, runGit } from "./git-hook-shared.js";
+import { getPackageJsonPath, isRecord, runGitAsync } from "./git-hook-shared.js";
 import { decodeCachedScanPayload, type CachedScanPayload } from "./scan-result-cache-payload.js";
 import type { ResolvedInspectOptions } from "../../inspect-options.js";
 
@@ -121,8 +121,8 @@ const stringifyStableJson = (value: unknown): string | null => {
 
 const hashString = (value: string): string => crypto.createHash("sha1").update(value).digest("hex");
 
-const readHeadSha = (projectDirectory: string): string | null =>
-  runGit(projectDirectory, ["rev-parse", "HEAD"]);
+const readHeadSha = (projectDirectory: string): Promise<string | null> =>
+  runGitAsync(projectDirectory, ["rev-parse", "HEAD"]);
 
 interface WorktreeStatusEntry {
   readonly statusCode: string;
@@ -202,18 +202,19 @@ const buildDirtyPathContentFingerprint = (
 // Returns [] for a clean tree and null when the state cannot be fingerprinted
 // (git failure, oversized dirty set, unfingerprintable path) — the caller
 // treats null exactly like the old dirty-tree bail: cache off.
+const WORKTREE_STATUS_ARGUMENTS: ReadonlyArray<string> = [
+  "status",
+  "--porcelain=v1",
+  "-z",
+  // `all` expands untracked directories into their contained files so each
+  // one is content-fingerprinted; the entry-count bound below caps the cost.
+  "--untracked-files=all",
+];
+
 const buildWorktreeFingerprint = (
-  projectDirectory: string,
   repositoryRoot: string,
+  statusOutput: string | null,
 ): ReadonlyArray<WorktreeDirtyEntry> | null => {
-  const statusOutput = runGit(projectDirectory, [
-    "status",
-    "--porcelain=v1",
-    "-z",
-    // `all` expands untracked directories into their contained files so each
-    // one is content-fingerprinted; the entry-count bound below caps the cost.
-    "--untracked-files=all",
-  ]);
   if (statusOutput === null) return null;
   if (statusOutput.length === 0) return [];
   const statusEntries = parseWorktreeStatusRecords(statusOutput);
@@ -239,16 +240,31 @@ const buildWorktreeFingerprint = (
   });
 };
 
-const resolveRepositoryCacheIdentity = (
+// The four git commands behind the key are independent, so they run
+// concurrently: the trust check and the repository root always, and the
+// status + HEAD probes alongside them for the first project of an invocation
+// (the only one that cannot hit the per-root memo). Later projects of a
+// workspace scan resolve the root first and only probe on a memo miss, so
+// sibling members never pay a speculative `git status`.
+const resolveRepositoryCacheIdentity = async (
   projectDirectory: string,
   invocationState: ScanResultCacheInvocationState,
-): RepositoryCacheIdentity | null => {
-  const repositoryRoot = runGit(projectDirectory, ["rev-parse", "--show-toplevel"]);
+  repositoryRootPromise: Promise<string | null>,
+): Promise<RepositoryCacheIdentity | null> => {
+  const isFirstProject = invocationState.repositoryIdentityByRoot.size === 0;
+  const speculativeStatus = isFirstProject
+    ? runGitAsync(projectDirectory, WORKTREE_STATUS_ARGUMENTS)
+    : null;
+  const speculativeHeadSha = isFirstProject ? readHeadSha(projectDirectory) : null;
+  const repositoryRoot = await repositoryRootPromise;
   if (repositoryRoot === null) return null;
   const cachedIdentity = invocationState.repositoryIdentityByRoot.get(repositoryRoot);
   if (cachedIdentity !== undefined) return cachedIdentity;
-  const worktreeFingerprint = buildWorktreeFingerprint(projectDirectory, repositoryRoot);
-  const headSha = readHeadSha(repositoryRoot);
+  const [statusOutput, headSha] = await Promise.all([
+    speculativeStatus ?? runGitAsync(projectDirectory, WORKTREE_STATUS_ARGUMENTS),
+    speculativeHeadSha ?? readHeadSha(repositoryRoot),
+  ]);
+  const worktreeFingerprint = buildWorktreeFingerprint(repositoryRoot, statusOutput);
   const identity =
     worktreeFingerprint === null || headSha === null ? null : { headSha, worktreeFingerprint };
   invocationState.repositoryIdentityByRoot.set(repositoryRoot, identity);
@@ -286,8 +302,8 @@ const resolveDotenvFingerprint = (projectDirectory: string): ReadonlyArray<strin
 // files and different project contents would key identically; a non-"H"
 // entry means assume-unchanged / skip-worktree bits hide tracked-file changes
 // from every fingerprint built on `git status`.
-const isGitIdentityTrustworthy = (projectDirectory: string): boolean => {
-  const output = runGit(projectDirectory, ["ls-files", "-v"]);
+const isGitIdentityTrustworthy = async (projectDirectory: string): Promise<boolean> => {
+  const output = await runGitAsync(projectDirectory, ["ls-files", "-v"]);
   if (output === null) return false;
   const entryLines = output.split("\n").filter((line) => line.length > 0);
   return entryLines.length > 0 && entryLines.every((line) => line[0] === "H");
@@ -385,14 +401,21 @@ export const resolveScanResultToolchainFingerprint = (
   return fingerprints;
 };
 
-export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string | null => {
+export const buildScanResultCacheKey = async (
+  input: ScanResultCacheKeyInput,
+): Promise<string | null> => {
   if (isCacheGloballyDisabled()) return null;
-  if (!isGitIdentityTrustworthy(input.projectDirectory)) return null;
-  const repositoryIdentity = resolveRepositoryCacheIdentity(
+  const isTrustworthyPromise = isGitIdentityTrustworthy(input.projectDirectory);
+  const repositoryIdentityPromise = resolveRepositoryCacheIdentity(
     input.projectDirectory,
     input.invocationState,
+    runGitAsync(input.projectDirectory, ["rev-parse", "--show-toplevel"]),
   );
-  if (repositoryIdentity === null) return null;
+  const [isTrustworthy, repositoryIdentity] = await Promise.all([
+    isTrustworthyPromise,
+    repositoryIdentityPromise,
+  ]);
+  if (!isTrustworthy || repositoryIdentity === null) return null;
   const userConfigJson = stringifyStableJson(input.userConfig);
   if (userConfigJson === null) return null;
   const cacheKeyJson = stringifyStableJson({

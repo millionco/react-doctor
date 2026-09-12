@@ -38,10 +38,10 @@ interface ScanResultCacheLifecycle {
   readonly complete: (input: CompleteScanResultCacheInput) => Promise<InspectResult>;
 }
 
-export const createScanResultCacheLifecycle = (
+export const createScanResultCacheLifecycle = async (
   input: CreateScanResultCacheLifecycleInput,
-): ScanResultCacheLifecycle => {
-  const cacheKey = buildScanResultCacheKey({
+): Promise<ScanResultCacheLifecycle> => {
+  const cacheKey = await buildScanResultCacheKey({
     projectDirectory: input.directory,
     version: VERSION,
     nodeBinaryPath: input.resolvedNodeBinaryPath,

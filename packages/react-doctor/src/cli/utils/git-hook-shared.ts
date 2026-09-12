@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { RUN_GIT_MAX_BUFFER_BYTES } from "./constants.js";
@@ -43,6 +43,26 @@ export const runGitRaw = (projectRoot: string, args: ReadonlyArray<string>): str
 
 export const runGit = (projectRoot: string, args: ReadonlyArray<string>): string | null =>
   runGitRaw(projectRoot, args)?.trim() ?? null;
+
+// Async twin of `runGit` for callers that issue several independent git
+// commands and want them in flight at once instead of serialized on the main
+// thread; same cwd / buffer / fail-open (`null`) contract.
+export const runGitAsync = (
+  projectRoot: string,
+  args: ReadonlyArray<string>,
+): Promise<string | null> =>
+  new Promise((resolve) => {
+    execFile(
+      "git",
+      [...args],
+      {
+        cwd: projectRoot,
+        encoding: "utf8",
+        maxBuffer: RUN_GIT_MAX_BUFFER_BYTES,
+      },
+      (error, stdout) => resolve(error ? null : stdout.trim()),
+    );
+  });
 
 export const resolveGitPath = (baseDirectory: string, value: string): string =>
   path.isAbsolute(value) ? value : path.resolve(baseDirectory, value);

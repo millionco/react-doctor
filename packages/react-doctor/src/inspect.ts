@@ -225,7 +225,7 @@ const runInspectWithRuntime = async (
   );
   const lintBindingMissing = options.lint && !resolvedNodeBinaryPath;
   await yieldToEventLoop();
-  const scanResultCacheLifecycle = createScanResultCacheLifecycle({
+  const scanResultCacheLifecycle = await createScanResultCacheLifecycle({
     directory,
     options,
     userConfig,

@@ -9,7 +9,13 @@ import {
 } from "oxlint-plugin-react-doctor/core";
 import type { Diagnostic } from "./types/index.js";
 import { batchIncludePaths } from "./batch-include-paths.js";
-import { COOPERATIVE_YIELD_BUDGET_MS, MIN_SCAN_CONCURRENCY } from "./constants.js";
+import {
+  COOPERATIVE_YIELD_BUDGET_MS,
+  MIN_SCAN_CONCURRENCY,
+  OXLINT_OUTPUT_MAX_BYTES,
+  OXLINT_POOLED_MIN_FILES_PER_BATCH,
+  OXLINT_SPAWN_TIMEOUT_MS,
+} from "./constants.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
@@ -19,7 +25,8 @@ import { ReactDoctorError } from "./errors.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
 import { computeRulesetHash } from "./runners/oxlint/compute-ruleset-hash.js";
 import { createOxlintConfig } from "./runners/oxlint/config.js";
-import { isOxlintWorkerPoolAvailable } from "./runners/oxlint/run-oxlint-job.js";
+import { isOxlintWorkerPoolAvailable, runOxlintProbeJob } from "./runners/oxlint/run-oxlint-job.js";
+import type { RunOxlintProbeJobInput } from "./runners/oxlint/run-oxlint-job.js";
 import { collectUnpluginAutoImportGlobalScopes } from "./runners/oxlint/collect-unplugin-auto-import-global-scopes.js";
 import type { UnpluginAutoImportGlobalScope } from "./runners/oxlint/collect-unplugin-auto-import-global-scopes.js";
 import { createFileLintCache } from "./runners/oxlint/file-lint-cache.js";
@@ -40,7 +47,8 @@ import { dedupeDiagnostics } from "./utils/dedupe-diagnostics.js";
 import { collectProjectIndexModuleSources } from "./utils/collect-project-index-module-sources.js";
 import { hashFileContents } from "./utils/hash-file-contents.js";
 import { listSourceFilesWithSize } from "./utils/list-source-files.js";
-import { planLintBatches } from "./utils/plan-lint-batches.js";
+import { mapWithConcurrency } from "./utils/map-with-concurrency.js";
+import { planLintBatches, resolvePooledBatchCount } from "./utils/plan-lint-batches.js";
 import { prepareLintSources } from "./utils/prepare-lint-sources.js";
 import { resolveOxlintThreadCount } from "./utils/resolve-oxlint-thread-count.js";
 import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
@@ -120,21 +128,34 @@ interface SidecarStorablePass {
  * sibling fibers) keep flowing; each per-file collection is synchronous, so
  * the module-level probe recorder never sees interleaved use. Never rejects.
  */
+interface PooledProbeCollection {
+  /** Everything but `rootDirectory` / `probeRequest`, shared by every batch job. */
+  readonly job: Omit<RunOxlintProbeJobInput, "rootDirectory" | "probeRequest">;
+  readonly workerCount: number;
+  readonly runInSlot: <Result>(task: () => Promise<Result>) => Promise<Result>;
+}
+
 const collectSidecarProbesForFiles = async (input: {
   files: ReadonlyArray<string>;
   rootDirectory: string;
   boundedSidecarRuleIds: ReadonlyArray<string>;
   probeAnswers: SidecarProbeAnswerResolver;
   sidecarCache: SidecarLintCache;
+  /** Set when a warm worker pool can collect instead of the parent thread. */
+  pooled: PooledProbeCollection | null;
 }): Promise<Map<string, ReadonlyArray<number> | null>> => {
-  const internProbe = (kind: "content" | "exists", absolutePath: string): number => {
-    const relativePath = input.probeAnswers.toRelativePath(absolutePath);
-    return input.sidecarCache.internProbe(
+  const internRelativeProbe = (
+    kind: "content" | "exists",
+    relativePath: string,
+    knownAnswer: string | null,
+  ): number =>
+    input.sidecarCache.internProbe(
       kind,
       relativePath,
-      input.probeAnswers.answerFor(kind, relativePath),
+      knownAnswer ?? input.probeAnswers.answerFor(kind, relativePath),
     );
-  };
+  const internProbe = (kind: "content" | "exists", absolutePath: string): number =>
+    internRelativeProbe(kind, input.probeAnswers.toRelativePath(absolutePath), null);
   const buildProbeIds = (file: string): number[] | null => {
     const absoluteFilePath = path.resolve(input.rootDirectory, file);
     let trace: ReturnType<typeof collectCrossFileDependencyProbes>;
@@ -163,12 +184,70 @@ const collectSidecarProbesForFiles = async (input: {
   };
 
   const probeIdsByFile = new Map<string, ReadonlyArray<number> | null>();
-  let collectSliceStartedAt = performance.now();
-  for (const file of input.files) {
-    probeIdsByFile.set(file, buildProbeIds(file));
-    if (performance.now() - collectSliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
-      await yieldToEventLoop();
-      collectSliceStartedAt = performance.now();
+  const collectInProcess = async (files: ReadonlyArray<string>): Promise<void> => {
+    let collectSliceStartedAt = performance.now();
+    for (const file of files) {
+      probeIdsByFile.set(file, buildProbeIds(file));
+      if (performance.now() - collectSliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
+        await yieldToEventLoop();
+        collectSliceStartedAt = performance.now();
+      }
+    }
+  };
+
+  // Warm pool workers hold the plugin (whose collectors these are) and its
+  // filesystem memos, so the probe walk is sharded across them like lint
+  // batches; the parent only interns the returned traces. A batch whose job
+  // fails for any reason is collected in-process instead, so the stored probe
+  // sets are identical either way — only where the work ran differs.
+  const pooled = input.pooled;
+  if (pooled === null || input.files.length < OXLINT_POOLED_MIN_FILES_PER_BATCH) {
+    await collectInProcess(input.files);
+    return probeIdsByFile;
+  }
+  const batchCount = resolvePooledBatchCount(input.files.length, pooled.workerCount);
+  const batchSize = Math.ceil(input.files.length / batchCount);
+  const batches: ReadonlyArray<string>[] = [];
+  for (let start = 0; start < input.files.length; start += batchSize) {
+    batches.push(input.files.slice(start, start + batchSize));
+  }
+  const results = await mapWithConcurrency(batches, pooled.workerCount, (batch) =>
+    pooled
+      .runInSlot(() =>
+        runOxlintProbeJob({
+          ...pooled.job,
+          rootDirectory: input.rootDirectory,
+          probeRequest: { files: batch, ruleIds: input.boundedSidecarRuleIds },
+        }),
+      )
+      .catch(() => null),
+  );
+  for (const [batchIndex, batch] of batches.entries()) {
+    const result = results[batchIndex];
+    if (result === null || result === undefined) {
+      await collectInProcess(batch);
+      continue;
+    }
+    for (const [fileIndex, file] of batch.entries()) {
+      const trace = result.traces[fileIndex];
+      if (trace === null || trace === undefined) {
+        probeIdsByFile.set(file, null);
+        continue;
+      }
+      const probeIds: number[] = [];
+      for (const pathIndex of trace.content) {
+        probeIds.push(internRelativeProbe("content", result.paths[pathIndex], null));
+      }
+      for (const pathIndex of trace.existence) {
+        probeIds.push(
+          internRelativeProbe(
+            "exists",
+            result.paths[pathIndex],
+            result.existenceAnswers[pathIndex],
+          ),
+        );
+      }
+      probeIdsByFile.set(file, probeIds);
     }
   }
   return probeIdsByFile;
@@ -693,6 +772,24 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         rootDirectory,
         contentHashByRelativePath,
       });
+      const pooledProbeCollection: PooledProbeCollection | null =
+        pooledWorkerCount === undefined
+          ? null
+          : {
+              job: {
+                nodeBinaryPath,
+                spawnTimeoutMs: spawnTimeoutMs ?? OXLINT_SPAWN_TIMEOUT_MS,
+                outputMaxBytes: outputMaxBytes ?? OXLINT_OUTPUT_MAX_BYTES,
+                maxWorkers: lintWorkerCount,
+                filesystemCacheEpoch: options.spawnSlots?.filesystemCacheEpoch ?? null,
+                abortSignal: options.signal,
+              },
+              workerCount: pooledWorkerCount,
+              runInSlot: (task) =>
+                options.spawnSlots === undefined
+                  ? task()
+                  : options.spawnSlots.run(task, options.signal),
+            };
       // Started UNAWAITED so the in-process probe collection interleaves with
       // the full pass's child-process await below (the filesystem is frozen
       // for the scan, so collecting before/during/after the pass is
@@ -706,6 +803,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
               boundedSidecarRuleIds,
               probeAnswers,
               sidecarCache,
+              pooled: pooledProbeCollection,
             });
 
       // Miss files run the FULL config in one pass — cacheable and cross-file
@@ -770,6 +868,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
               boundedSidecarRuleIds,
               probeAnswers,
               sidecarCache,
+              pooled: pooledProbeCollection,
             });
       // Replayed files are completed work: without them in the numerator the
       // spinner stalls at missFiles + sidecarLintFiles of candidateFiles, and

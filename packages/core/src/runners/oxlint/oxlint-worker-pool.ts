@@ -8,16 +8,32 @@ import {
   OXLINT_WORKER_READY_TIMEOUT_MS,
 } from "../../constants.js";
 import { OxlintBatchExceeded, OxlintSpawnFailed, ReactDoctorError } from "../../errors.js";
-import type { OxlintWorkerBootMessage, OxlintWorkerJobMessage } from "../../start-oxlint-worker.js";
+import type {
+  OxlintWorkerBootMessage,
+  OxlintWorkerJobMessage,
+  OxlintWorkerProbeJobMessage,
+} from "../../start-oxlint-worker.js";
 import { buildOxlintExitError } from "../../utils/build-oxlint-exit-error.js";
 import { buildOxlintWorkerNodeArguments } from "../../utils/build-oxlint-worker-node-arguments.js";
 import { lowerChildProcessPriority } from "../../utils/lower-child-process-priority.js";
 import { resolveOxlintThreadCount } from "../../utils/resolve-oxlint-thread-count.js";
 import { resolveChildNodeVersion } from "./resolve-toolchain-versions.js";
 
+export interface OxlintWorkerProbeRequest {
+  readonly files: ReadonlyArray<string>;
+  readonly ruleIds: ReadonlyArray<string>;
+}
+
 export interface OxlintWorkerJob {
   readonly argumentsList: ReadonlyArray<string>;
   readonly cwd: string;
+  /**
+   * When set, the worker collects sidecar dependency probes for these files
+   * instead of linting `argumentsList`; the resolved stdout is the JSON
+   * `OxlintWorkerProbeResult`. Same framing, timeout, ceiling and abort
+   * handling as a lint job.
+   */
+  readonly probeRequest?: OxlintWorkerProbeRequest;
   readonly timeoutMs: number;
   readonly outputMaxBytes: number;
   readonly filesystemCacheEpoch: number | null;
@@ -414,13 +430,23 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
     job.abortSignal?.addEventListener("abort", onAbort, { once: true });
     worker.current = pending;
     job.onStart?.();
-    const message: OxlintWorkerJobMessage = {
-      type: "job",
-      id,
-      cwd: job.cwd,
-      argumentsList: job.argumentsList,
-      filesystemCacheEpoch: job.filesystemCacheEpoch,
-    };
+    const message: OxlintWorkerJobMessage | OxlintWorkerProbeJobMessage =
+      job.probeRequest === undefined
+        ? {
+            type: "job",
+            id,
+            cwd: job.cwd,
+            argumentsList: job.argumentsList,
+            filesystemCacheEpoch: job.filesystemCacheEpoch,
+          }
+        : {
+            type: "probes",
+            id,
+            cwd: job.cwd,
+            files: job.probeRequest.files,
+            ruleIds: job.probeRequest.ruleIds,
+            filesystemCacheEpoch: job.filesystemCacheEpoch,
+          };
     void worker.ready.then(
       () => {
         if (worker.current !== pending) return;

@@ -1,5 +1,5 @@
-import * as fs from "node:fs";
 import * as path from "node:path";
+import { classifyExistenceAnswer } from "../../utils/classify-existence-answer.js";
 import { hashFileContents } from "../../utils/hash-file-contents.js";
 import type { SidecarDependencyProbe } from "./sidecar-lint-cache.js";
 
@@ -64,13 +64,7 @@ export const createSidecarProbeAnswerResolver = (input: {
   const existsAnswer = (relativePath: string): string => {
     const memoized = existsAnswerByPath.get(relativePath);
     if (memoized !== undefined) return memoized;
-    let answer: string;
-    try {
-      const stat = fs.statSync(path.resolve(input.rootDirectory, relativePath));
-      answer = stat.isFile() ? "file" : stat.isDirectory() ? "dir" : "none";
-    } catch {
-      answer = "none";
-    }
+    const answer = classifyExistenceAnswer(path.resolve(input.rootDirectory, relativePath));
     existsAnswerByPath.set(relativePath, answer);
     return answer;
   };

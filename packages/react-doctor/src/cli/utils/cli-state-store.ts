@@ -1,4 +1,5 @@
-import Conf from "conf";
+import { createRequire } from "node:module";
+import type Conf from "conf";
 import { REACT_DOCTOR_CONFIG_PROJECT_NAME } from "./constants.js";
 import { nowIso } from "./now-iso.js";
 
@@ -196,8 +197,16 @@ export const migrateCliState = (state: CliState): CliState => {
 const resolveConfigDir = (options: CliStateOptions): string | undefined =>
   options.cwd ?? (process.env[CONFIG_DIR_ENV_VAR] || undefined);
 
+// `conf` (with ajv behind it) only matters once a lifecycle gate or preference
+// is read, so it is required on first use rather than at scan startup;
+// `require` of the ESM package is synchronous on the supported Node versions.
+const requireConf = createRequire(import.meta.url);
+let cachedConf: typeof Conf | null = null;
+const loadConf = (): typeof Conf =>
+  (cachedConf ??= (requireConf("conf") as { default: typeof Conf }).default);
+
 const openStore = (options: CliStateOptions = {}): Conf<CliState> =>
-  new Conf<CliState>({
+  new (loadConf())<CliState>({
     projectName: REACT_DOCTOR_CONFIG_PROJECT_NAME,
     cwd: resolveConfigDir(options),
   });

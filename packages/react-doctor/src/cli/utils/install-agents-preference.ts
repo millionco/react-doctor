@@ -1,4 +1,5 @@
-import { isSkillAgentType, type SkillAgentType } from "agent-install";
+import type { SkillAgentType } from "agent-install";
+import { loadAgentInstall } from "./load-agent-install.js";
 import { type CliStateOptions, INSTALL_AGENTS_PREFERENCE_ID } from "./cli-state-store.js";
 import { type Preference, readPreference, writePreference } from "./cli-lifecycle.js";
 
@@ -21,6 +22,7 @@ const PREFERENCE_SEPARATOR = ",";
 export const readInstallAgents = (options: CliStateOptions = {}): SkillAgentType[] => {
   const stored = readPreference(INSTALL_AGENTS_PREFERENCE, {}, options);
   if (stored === null) return [];
+  const { isSkillAgentType } = loadAgentInstall();
   return stored
     .split(PREFERENCE_SEPARATOR)
     .map((entry) => entry.trim())

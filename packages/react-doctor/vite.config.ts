@@ -64,6 +64,7 @@ export default defineConfig({
     {
       entry: {
         cli: "./src/cli/index.ts",
+        "prefetch-scan-git": "./src/cli/prefetch-scan-git.ts",
         "project-analysis-worker": "./src/project-analysis-worker.ts",
         "oxlint-worker": "./src/oxlint-worker.ts",
         "duplicate-jsx-worker": "./src/duplicate-jsx-worker.ts",

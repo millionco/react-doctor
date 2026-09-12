@@ -19,6 +19,7 @@ export default defineConfig({
         "oxlint-worker": "./src/oxlint-worker.ts",
         "duplicate-jsx-worker": "./src/duplicate-jsx-worker.ts",
         schemas: "./src/schemas.ts",
+        "git-prefetch": "./src/git-prefetch.ts",
       },
       deps: {
         alwaysBundle: ["typescript"],
@@ -51,6 +52,10 @@ export default defineConfig({
       {
         find: /^@react-doctor\/core\/schemas$/,
         replacement: path.join(packageRoot, "src/schemas.ts"),
+      },
+      {
+        find: /^@react-doctor\/core\/git-prefetch$/,
+        replacement: path.join(packageRoot, "src/git-prefetch.ts"),
       },
       {
         find: /^oxlint-plugin-react-doctor\/core$/,

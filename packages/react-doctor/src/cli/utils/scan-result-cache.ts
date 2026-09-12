@@ -11,13 +11,18 @@ import {
 } from "@react-doctor/core";
 import type { ReactDoctorConfig } from "@react-doctor/core";
 import {
+  HEAD_SHA_GIT_ARGUMENTS,
+  REPOSITORY_ROOT_GIT_ARGUMENTS,
   SCAN_RESULT_CACHE_FILENAME,
   SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT,
   SCAN_RESULT_CACHE_MAX_ENTRY_COUNT,
   SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES,
   SCAN_RESULT_CACHE_SCHEMA_VERSION,
+  TRACKED_FILE_FLAGS_GIT_ARGUMENTS,
+  WORKTREE_STATUS_GIT_ARGUMENTS,
 } from "./constants.js";
 import { getPackageJsonPath, isRecord, runGitAsync } from "./git-hook-shared.js";
+import { isCacheGloballyDisabled } from "./is-cache-globally-disabled.js";
 import { decodeCachedScanPayload, type CachedScanPayload } from "./scan-result-cache-payload.js";
 import type { ResolvedInspectOptions } from "../../inspect-options.js";
 
@@ -64,7 +69,6 @@ export const createScanResultCacheInvocationState = (): ScanResultCacheInvocatio
   repositoryIdentityByRoot: new Map(),
 });
 
-const CACHE_DISABLED_VALUES = new Set(["1", "true"]);
 const TOOLCHAIN_PACKAGE_SPECIFIERS = [
   "oxlint/package.json",
   "oxlint-plugin-react-doctor/package.json",
@@ -122,7 +126,7 @@ const stringifyStableJson = (value: unknown): string | null => {
 const hashString = (value: string): string => crypto.createHash("sha1").update(value).digest("hex");
 
 const readHeadSha = (projectDirectory: string): Promise<string | null> =>
-  runGitAsync(projectDirectory, ["rev-parse", "HEAD"]);
+  runGitAsync(projectDirectory, HEAD_SHA_GIT_ARGUMENTS);
 
 interface WorktreeStatusEntry {
   readonly statusCode: string;
@@ -202,15 +206,6 @@ const buildDirtyPathContentFingerprint = (
 // Returns [] for a clean tree and null when the state cannot be fingerprinted
 // (git failure, oversized dirty set, unfingerprintable path) — the caller
 // treats null exactly like the old dirty-tree bail: cache off.
-const WORKTREE_STATUS_ARGUMENTS: ReadonlyArray<string> = [
-  "status",
-  "--porcelain=v1",
-  "-z",
-  // `all` expands untracked directories into their contained files so each
-  // one is content-fingerprinted; the entry-count bound below caps the cost.
-  "--untracked-files=all",
-];
-
 const buildWorktreeFingerprint = (
   repositoryRoot: string,
   statusOutput: string | null,
@@ -253,7 +248,7 @@ const resolveRepositoryCacheIdentity = async (
 ): Promise<RepositoryCacheIdentity | null> => {
   const isFirstProject = invocationState.repositoryIdentityByRoot.size === 0;
   const speculativeStatus = isFirstProject
-    ? runGitAsync(projectDirectory, WORKTREE_STATUS_ARGUMENTS)
+    ? runGitAsync(projectDirectory, WORKTREE_STATUS_GIT_ARGUMENTS)
     : null;
   const speculativeHeadSha = isFirstProject ? readHeadSha(projectDirectory) : null;
   const repositoryRoot = await repositoryRootPromise;
@@ -261,7 +256,7 @@ const resolveRepositoryCacheIdentity = async (
   const cachedIdentity = invocationState.repositoryIdentityByRoot.get(repositoryRoot);
   if (cachedIdentity !== undefined) return cachedIdentity;
   const [statusOutput, headSha] = await Promise.all([
-    speculativeStatus ?? runGitAsync(projectDirectory, WORKTREE_STATUS_ARGUMENTS),
+    speculativeStatus ?? runGitAsync(projectDirectory, WORKTREE_STATUS_GIT_ARGUMENTS),
     speculativeHeadSha ?? readHeadSha(repositoryRoot),
   ]);
   const worktreeFingerprint = buildWorktreeFingerprint(repositoryRoot, statusOutput);
@@ -303,7 +298,7 @@ const resolveDotenvFingerprint = (projectDirectory: string): ReadonlyArray<strin
 // entry means assume-unchanged / skip-worktree bits hide tracked-file changes
 // from every fingerprint built on `git status`.
 const isGitIdentityTrustworthy = async (projectDirectory: string): Promise<boolean> => {
-  const output = await runGitAsync(projectDirectory, ["ls-files", "-v"]);
+  const output = await runGitAsync(projectDirectory, TRACKED_FILE_FLAGS_GIT_ARGUMENTS);
   if (output === null) return false;
   const entryLines = output.split("\n").filter((line) => line.length > 0);
   return entryLines.length > 0 && entryLines.every((line) => line[0] === "H");
@@ -354,8 +349,6 @@ const readPersistedCache = (cacheFilePath: string): PersistedScanResultCache => 
  * is on. Granular knobs (`REACT_DOCTOR_NO_FILE_CACHE`, …) are deliberately
  * not consulted — they leave the other subsystems live.
  */
-export const isCacheGloballyDisabled = (): boolean =>
-  CACHE_DISABLED_VALUES.has(process.env.REACT_DOCTOR_NO_CACHE?.toLowerCase() ?? "");
 
 const resolveProjectIdentity = (projectDirectory: string): string => {
   try {
@@ -409,7 +402,7 @@ export const buildScanResultCacheKey = async (
   const repositoryIdentityPromise = resolveRepositoryCacheIdentity(
     input.projectDirectory,
     input.invocationState,
-    runGitAsync(input.projectDirectory, ["rev-parse", "--show-toplevel"]),
+    runGitAsync(input.projectDirectory, REPOSITORY_ROOT_GIT_ARGUMENTS),
   );
   const [isTrustworthy, repositoryIdentity] = await Promise.all([
     isTrustworthyPromise,

@@ -1,6 +1,7 @@
 import { findLegacyConfig, toRelativePath } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import { type CliStateOptions } from "./cli-state-store.js";
+import { discardPrefetchedGitCommands } from "@react-doctor/core/git-prefetch";
 import { type Migration, type MigrationResult, runMigrations } from "./cli-lifecycle.js";
 import {
   findAgentsWithOutdatedReactDoctorHooks,
@@ -96,7 +97,13 @@ const PROJECT_MIGRATIONS: ReadonlyArray<Migration> = [
 
 // Runs every pending per-repo migration for `projectRoot` once, recording the
 // ones that apply. Safe to call on every scan — recorded migrations are skipped.
-export const runProjectMigrations = (
+export const runProjectMigrations = async (
   projectRoot: string,
   options: CliStateOptions = {},
-): Promise<MigrationResult[]> => runMigrations(PROJECT_MIGRATIONS, { projectRoot }, options);
+): Promise<MigrationResult[]> => {
+  const results = await runMigrations(PROJECT_MIGRATIONS, { projectRoot }, options);
+  // A migration that rewrote project files invalidates git output captured
+  // before it ran.
+  if (results.some((result) => result.ran && result.applied)) discardPrefetchedGitCommands();
+  return results;
+};

@@ -21,7 +21,7 @@ import { ACTION_INPUT_ENVIRONMENT_VARIABLES, detectRunnerOs } from "./is-ci-envi
 import { summarizeRuleFirings } from "./record-scan-metrics.js";
 import { isValidBlockingLevel } from "./resolve-blocking-level.js";
 import { resolveScoreUnavailableReason } from "./resolve-score-unavailable-reason.js";
-import { isCacheGloballyDisabled } from "./scan-result-cache.js";
+import { isCacheGloballyDisabled } from "./is-cache-globally-disabled.js";
 import { shouldBlockCi } from "./should-block-ci.js";
 import { toCategoryKey } from "./to-category-key.js";
 import { toSpanAttributes } from "./to-span-attributes.js";

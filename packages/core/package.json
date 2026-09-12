@@ -14,6 +14,10 @@
     "./schemas": {
       "types": "./dist/schemas.d.ts",
       "default": "./dist/schemas.js"
+    },
+    "./git-prefetch": {
+      "types": "./dist/git-prefetch.d.ts",
+      "default": "./dist/git-prefetch.js"
     }
   },
   "scripts": {

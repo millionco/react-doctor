@@ -38,7 +38,9 @@
     "LICENSE"
   ],
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "**/prefetch-scan-git*"
+  ],
   "exports": {
     ".": {
       "types": "./dist/cli.d.ts",

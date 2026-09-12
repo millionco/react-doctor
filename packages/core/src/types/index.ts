@@ -71,3 +71,4 @@ export type {
   RulePriority,
   RuleTier,
 } from "./score.js";
+export type { GitCommandRequest } from "./git-command-request.js";

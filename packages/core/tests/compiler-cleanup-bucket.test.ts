@@ -48,12 +48,12 @@ const buildRules = (
   }).rules;
 
 describe("compiler-cleanup severity bucket", () => {
-  it("ships react-compiler-no-manual-memoization as a warning by default", () => {
-    expect(buildRules()[MANUAL_MEMO_KEY]).toBe("warn");
+  it("keeps retired manual memoization advice out of default scans", () => {
+    expect(buildRules()[MANUAL_MEMO_KEY]).toBeUndefined();
   });
 
-  it("re-enables errors when the compiler-cleanup bucket is set to error", () => {
-    expect(buildRules({ "compiler-cleanup": "error" })[MANUAL_MEMO_KEY]).toBe("error");
+  it("does not enable a retired default through the compiler-cleanup bucket", () => {
+    expect(buildRules({ "compiler-cleanup": "error" })[MANUAL_MEMO_KEY]).toBeUndefined();
   });
 
   it("lets a per-rule override win over the bucket", () => {

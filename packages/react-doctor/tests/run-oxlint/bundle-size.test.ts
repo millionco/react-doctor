@@ -33,6 +33,7 @@ describe("runOxlint", () => {
         category: "Performance",
       },
       "no-barrel-import": {
+        expectedCount: 0,
         fixture: "bundle-issues.tsx",
         ruleSource: "rules/bundle-size.ts",
       },

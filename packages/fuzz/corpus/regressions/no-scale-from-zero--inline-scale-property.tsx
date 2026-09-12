@@ -1,7 +1,8 @@
 // rule: no-scale-from-zero
 // weakness: individual-transform-property
 // source: 0.8.1-to-main all-rules audit
-// verdict: fail
+// verdict: pass
+// reason: zero scale is valid; the rule is retired
 
 export const HiddenDot = () => <span style={{ scale: 0, transition: "scale 200ms" }} />;
 

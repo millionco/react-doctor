@@ -1,0 +1,134 @@
+[
+  {
+    "ruleId": "activity-wraps-effect-heavy-subtree",
+    "code": "import {Activity,useEffect} from \"react\"; const Feed=()=>{useEffect(()=>{const connection=connect();return ()=>connection.close();},[]);return <p>Feed</p>;}; export const App=({visible})=> <Activity mode={visible?\"visible\":\"hidden\"}><Feed/></Activity>;"
+  },
+  {
+    "ruleId": "client-localstorage-no-version",
+    "code": "export const save=state=>localStorage.setItem(\"editor\",JSON.stringify({version:1,state}));"
+  },
+  {
+    "ruleId": "design-no-em-dash-in-jsx-text",
+    "code": "const C = () => <p>It's fast \u2014 blazingly fast \u2014 and simple to use.</p>;"
+  },
+  {
+    "ruleId": "design-no-three-period-ellipsis",
+    "code": "const Search = () => <><input placeholder=\"Search...\" aria-label={'Search files...'} /><img alt={`Loading...`} /></>;"
+  },
+  {
+    "ruleId": "hooks-no-nan-in-deps",
+    "code": "import { useEffect } from \"react\"; export const Example = () => { useEffect(() => { console.log(\"ready\"); }, [NaN]); return null; };"
+  },
+  {
+    "ruleId": "js-early-exit",
+    "code": "export const process = (one,two,three,four) => { if(one){if(two){if(three){if(four){act();}}}} finish(); };"
+  },
+  {
+    "ruleId": "js-tosorted-immutable",
+    "code": "export const sortNames = names => [...names].sort();"
+  },
+  {
+    "ruleId": "no-children-prop",
+    "code": "export const Wrapper=({children})=> <div children={children}/>;"
+  },
+  {
+    "ruleId": "no-common-root-font",
+    "code": "const Page = () => <main style={{ fontFamily: \"Inter, sans-serif\" }}>Content</main>;"
+  },
+  {
+    "ruleId": "no-default-purple-page-gradient",
+    "code": "const Page = () => <main className=\"min-h-screen bg-gradient-to-br from-violet-600 to-cyan-400\">Content</main>;"
+  },
+  {
+    "ruleId": "no-default-warm-page-surface",
+    "code": "const Page = () => <main className=\"min-h-screen bg-stone-50\">Content</main>;"
+  },
+  {
+    "ruleId": "no-full-viewport-centered-hero",
+    "code": "const Hero = () => <section className=\"flex min-h-dvh items-center justify-center\"><div><h1>Build faster</h1><p>Everything you need.</p></div></section>;"
+  },
+  {
+    "ruleId": "no-hero-eyebrow-chip",
+    "code": "const Hero = () => <header><p className=\"uppercase tracking-widest\">Built for teams</p><h1 className=\"text-7xl\">Work together</h1></header>;"
+  },
+  {
+    "ruleId": "no-icon-tile-heading-stack",
+    "code": "const Feature = () => <article className=\"rounded-xl border bg-white p-6\"><div className=\"size-12 rounded-lg bg-blue-100\"><SparklesIcon /></div><h3>Automations</h3></article>;"
+  },
+  {
+    "ruleId": "no-italic-serif-display-heading",
+    "code": "const Hero = () => <h1 className=\"font-serif italic text-7xl\">A considered approach</h1>;"
+  },
+  {
+    "ruleId": "no-jsx-element-type",
+    "code": "export const Icon = (): JSX.Element => <svg/>;"
+  },
+  {
+    "ruleId": "no-many-boolean-props",
+    "code": "export const Control = ({isLoading,isDisabled,isSelected,isExpanded}) => <button disabled={isDisabled} aria-pressed={isSelected} aria-expanded={isExpanded}>{isLoading ? \"Loading\" : \"Choose\"}</button>;"
+  },
+  {
+    "ruleId": "no-multi-comp",
+    "code": "import {useState} from \"react\"; const Internal=()=> {const [open,setOpen]=useState(false); return <button onClick={()=>setOpen(!open)}>{String(open)}</button>}; export const Root=()=> <Internal/>; export const Header=()=> <h1>Header</h1>; export const Footer=()=> <footer>Footer</footer>;"
+  },
+  {
+    "ruleId": "no-numbered-section-markers",
+    "code": "const Page = () => <main>\n        <section><span className=\"text-xs font-mono text-amber-700\">01</span><h2>Principles</h2></section>\n        <section><span className=\"text-xs font-semibold tracking-wider\">02</span><h2>Process</h2></section>\n      </main>;"
+  },
+  {
+    "ruleId": "no-polymorphic-children",
+    "code": "export const Label=({children})=> typeof children === \"string\" ? <span>{children}</span> : children;"
+  },
+  {
+    "ruleId": "no-render-prop-children",
+    "code": "const Panel = ({renderHeader,renderBody,renderFooter}) => <section>{renderHeader()}{renderBody()}{renderFooter()}</section>; export const App=()=> <Panel renderHeader={()=> <h1>Title</h1>} renderBody={()=> <p>Body</p>} renderFooter={()=> <button>Close</button>} />;"
+  },
+  {
+    "ruleId": "no-scale-from-zero",
+    "code": "import {motion} from \"motion/react\"; export const Dot = () => <motion.div initial={{scale:0}} animate={{scale:1}} />;"
+  },
+  {
+    "ruleId": "prefer-explicit-variants",
+    "code": "export const Editor = ({isEditing,isPrimary}) => <section>{isEditing ? <EditorForm/> : <Preview/>}{isPrimary ? <SaveButton/> : <CopyButton/>}</section>;"
+  },
+  {
+    "ruleId": "react-compiler-no-manual-memoization",
+    "code": "import { useMemo } from \"react\"; export const Table = ({rows}) => { const sorted = useMemo(() => rows.toSorted(), [rows]); return <List rows={sorted} />; };"
+  },
+  {
+    "ruleId": "rendering-animate-svg-wrapper",
+    "code": "export const Graphic=()=> <svg animate={{viewBox:\"0 0 200 200\"}}/>;"
+  },
+  {
+    "ruleId": "rendering-usetransition-loading",
+    "code": "import {useState} from \"react\"; export const Example=()=>{const [isLoading,setIsLoading]=useState(false);return <p>{isLoading?\"Loading\":\"Ready\"}</p>;};"
+  },
+  {
+    "ruleId": "rn-no-set-native-props",
+    "code": "import { useRef } from \"react\"; import { TextInput, Button } from \"react-native\"; export const Editor = () => { const input = useRef(null); return <><TextInput ref={input} /><Button title=\"Clear\" onPress={() => input.current.setNativeProps({text: \"\"})} /></>; };"
+  },
+  {
+    "ruleId": "rn-no-single-element-style-array",
+    "code": "import {View} from \"react-native\"; export const Card=({containerStyle})=> <View style={[containerStyle]}/>;"
+  },
+  {
+    "ruleId": "rn-prefer-reanimated",
+    "code": "import { Animated } from \"react-native\"; export const fade = value => Animated.timing(value, {toValue: 1, duration: 200, useNativeDriver: true}).start();"
+  },
+  {
+    "ruleId": "tanstack-start-no-direct-fetch-in-loader",
+    "code": "import { createFileRoute } from \"@tanstack/react-router\"; export const Route = createFileRoute(\"/public\")({loader: async () => { const response = await fetch(\"https://example.com/public.json\"); if (!response.ok) throw new Error(\"Load failed\"); return response.json(); }});"
+  },
+  {
+    "ruleId": "no-multi-component-file",
+    "code": "const Foo = () => <div />; const Bar = () => <div />; const Baz = () => <div />;"
+  },
+  {
+    "ruleId": "no-pure-black-background",
+    "code": "export const Page = () => <main className=\"bg-black text-white\">Content</main>;"
+  },
+  {
+    "ruleId": "no-monotonous-page-spacing",
+    "code": "export const Page = () => <main><div className=\"p-4\">0</div><div className=\"p-4\">1</div><div className=\"p-4\">2</div><div className=\"p-4\">3</div><div className=\"p-4\">4</div><div className=\"p-4\">5</div><div className=\"p-4\">6</div><div className=\"p-4\">7</div><div className=\"p-4\">8</div><div className=\"p-4\">9</div><div className=\"p-4\">10</div><div className=\"p-4\">11</div></main>;"
+  }
+]

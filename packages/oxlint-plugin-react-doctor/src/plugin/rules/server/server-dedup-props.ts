@@ -39,6 +39,7 @@ const getDerivingMethodName = (node: EsTreeNode): string | null => {
 // deferred to Program:exit and dropped once a client signal appears.
 export const serverDedupProps = defineRule({
   id: "server-dedup-props",
+  defaultEnabled: false,
   title: "Duplicate data in server props",
   tags: ["test-noise"],
   severity: "warn",

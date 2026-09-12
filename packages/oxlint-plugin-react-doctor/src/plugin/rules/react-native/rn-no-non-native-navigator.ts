@@ -45,6 +45,7 @@ const bindsNavigatorFactory = (node: EsTreeNodeOfType<"ImportDeclaration">): boo
 // swipe-back, and large titles for free.
 export const rnNoNonNativeNavigator = defineRule({
   id: "rn-no-non-native-navigator",
+  defaultEnabled: false,
   title: "Non-native JS navigator",
   tags: ["test-noise"],
   requires: ["react-native"],

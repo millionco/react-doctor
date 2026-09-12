@@ -14,6 +14,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoClientFetchForServerData = defineRule({
   id: "nextjs-no-client-fetch-for-server-data",
+  defaultEnabled: false,
   title: "Client fetch for server data",
   tags: ["test-noise"],
   requires: ["nextjs"],

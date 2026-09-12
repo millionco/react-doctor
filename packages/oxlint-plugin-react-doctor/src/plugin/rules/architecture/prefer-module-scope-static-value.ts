@@ -314,6 +314,7 @@ const containsImpureExpression = (expression: EsTreeNode, scopes: ScopeAnalysis)
 //     would change its semantics.
 export const preferModuleScopeStaticValue = defineRule({
   id: "prefer-module-scope-static-value",
+  defaultEnabled: false,
   title: "Static value rebuilt every render",
   tags: ["test-noise"],
   severity: "warn",

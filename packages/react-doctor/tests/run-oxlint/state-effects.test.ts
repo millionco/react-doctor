@@ -74,6 +74,7 @@ describe("runOxlint", () => {
         category: "Bugs",
       },
       "prefer-useReducer": {
+        expectedCount: 0,
         fixture: "state-issues.tsx",
         ruleSource: "rules/state-and-effects.ts",
         severity: "warning",

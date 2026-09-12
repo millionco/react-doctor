@@ -12,7 +12,7 @@ afterAll(() => {
 });
 
 describe("react-compiler-no-manual-memoization", () => {
-  it("flags useMemo, useCallback, and memo when React Compiler is enabled", async () => {
+  it("keeps retired memoization advice quiet with React Compiler", async () => {
     const projectDir = setupReactProject(tempRoot, "manual-memoization-with-compiler", {
       files: {
         "src/Widget.tsx": `import { memo, useCallback, useMemo } from "react";
@@ -42,14 +42,10 @@ export const Widget = memo(({ items, onSelect }: WidgetProps) => {
     const hits = await collectRuleHits(projectDir, "react-compiler-no-manual-memoization", {
       hasReactCompiler: true,
     });
-    const messages = hits.map((hit) => hit.message);
-    expect(messages).toHaveLength(3);
-    expect(messages.some((message) => message.includes("useMemo"))).toBe(true);
-    expect(messages.some((message) => message.includes("useCallback"))).toBe(true);
-    expect(messages.some((message) => message.includes("memo()"))).toBe(true);
+    expect(hits).toHaveLength(0);
   });
 
-  it("matches React.useMemo / React.useCallback / React.memo namespace calls", async () => {
+  it("keeps retired memoization advice quiet for namespace calls", async () => {
     const projectDir = setupReactProject(tempRoot, "manual-memoization-namespaced", {
       files: {
         "src/Counter.tsx": `import * as React from "react";
@@ -70,7 +66,7 @@ export const Counter = React.memo(({ initial }: CounterProps) => {
     const hits = await collectRuleHits(projectDir, "react-compiler-no-manual-memoization", {
       hasReactCompiler: true,
     });
-    expect(hits).toHaveLength(3);
+    expect(hits).toHaveLength(0);
   });
 
   it("does not flag manual memoization when React Compiler is disabled", async () => {

@@ -445,11 +445,12 @@ describe("createOxlintConfig settings", () => {
       severityControls: { categories: { Maintainability: "error" } },
     });
 
-    expect(config.rules["react-doctor/no-multi-component-file"]).toBe("error");
+    expect(config.rules["react-doctor/no-react19-deprecated-apis"]).toBe("error");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-component-file");
     expect(config.rules).not.toHaveProperty("react-doctor/no-multi-comp");
   });
 
-  it("opts the faithful no-multi-comp port in through its upstream alias", () => {
+  it("accepts the retired no-multi-comp ID through its upstream alias", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
       project: viteWebProject,

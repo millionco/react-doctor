@@ -27,6 +27,7 @@ describe("runOxlint", () => {
         ruleSource: "rules/js-performance.ts",
       },
       "js-flatmap-filter": {
+        expectedCount: 0,
         fixture: "js-performance-issues.tsx",
         ruleSource: "rules/js-performance.ts",
         category: "Performance",

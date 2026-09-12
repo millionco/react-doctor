@@ -31,6 +31,7 @@ describe("runOxlint", () => {
         category: "Bugs",
       },
       "tanstack-start-no-direct-fetch-in-loader": {
+        expectedCount: 0,
         fixture: "src/routes/route-issues.tsx",
         ruleSource: "rules/tanstack-start.ts",
         category: "Bugs",

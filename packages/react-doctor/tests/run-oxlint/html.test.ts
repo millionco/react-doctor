@@ -169,7 +169,7 @@ describe("runOxlint Astro support", () => {
       '<label for="topic">Topic</label>',
       '<input id="topic" class="field" />',
       "<ul>{items.map((item) => <li>{item}</li>)}</ul>",
-      "<p>The build is ready — deploy it now</p>",
+      '<button title="Save changes">Save changes</button>',
     ].join("\n");
     fs.mkdirSync(path.join(rootDirectory, "src"), { recursive: true });
     fs.writeFileSync(path.join(rootDirectory, "src", "page.astro"), astroSource);
@@ -185,7 +185,7 @@ describe("runOxlint Astro support", () => {
       perFileLintCacheEnabled: false,
       userConfig: {
         rules: {
-          "react-doctor/design-no-em-dash-in-jsx-text": "warn",
+          "react-doctor/no-redundant-title-tooltip": "warn",
         },
       },
       onFileCoverage: (nextCoverage) => {
@@ -193,13 +193,13 @@ describe("runOxlint Astro support", () => {
       },
     });
 
-    const emDashDiagnostic = diagnostics.find(
-      (diagnostic) => diagnostic.rule === "design-no-em-dash-in-jsx-text",
+    const tooltipDiagnostic = diagnostics.find(
+      (diagnostic) => diagnostic.rule === "no-redundant-title-tooltip",
     );
-    expect(emDashDiagnostic).toMatchObject({
+    expect(tooltipDiagnostic).toMatchObject({
       filePath: "src/page.astro",
       line: 8,
-      offset: Buffer.from(astroSource).indexOf("The build"),
+      offset: Buffer.from(astroSource).indexOf("title="),
     });
     expect(diagnostics).toContainEqual(
       expect.objectContaining({

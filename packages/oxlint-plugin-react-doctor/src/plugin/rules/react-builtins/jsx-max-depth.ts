@@ -123,6 +123,7 @@ interface DeepLeafCandidate {
 // outermost JSX tree — the deepest offending leaf wins.
 export const jsxMaxDepth = defineRule({
   id: "jsx-max-depth",
+  defaultEnabled: false,
   title: "JSX nested too deeply",
   severity: "warn",
   tags: ["test-noise"],

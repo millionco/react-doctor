@@ -14,6 +14,7 @@ const AGENT_TOOL_CONTEXT_PATH_PATTERN =
 
 export const agentToolCapabilityRisk = defineRule({
   id: "agent-tool-capability-risk",
+  defaultEnabled: false,
   title: "Agent tool exposes dangerous capability",
   severity: "warn",
   recommendation:

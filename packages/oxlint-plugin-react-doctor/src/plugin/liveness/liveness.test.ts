@@ -194,6 +194,13 @@ describe("rule liveness", () => {
       continue;
     }
 
+    if (rule.lifecycle === "retired") {
+      it(`${ruleId} stays quiet on its former positive control`, () => {
+        expect(countFindings(rule, fixture)).toBe(0);
+      });
+      continue;
+    }
+
     it(`${ruleId} fires on its canonical bad example`, () => {
       expect(
         countFindings(rule, fixture),

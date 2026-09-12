@@ -1,42 +1,12 @@
-import { defineRule } from "../../utils/define-rule.js";
-import { walkAst } from "../../utils/walk-ast.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
-import type { RuleContext } from "../../utils/rule-context.js";
-import { getRouteOptionsObject } from "./utils/get-route-options-object.js";
-import { getPropertyKeyName } from "./utils/get-property-key-name.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { defineRetiredRule } from "../../utils/define-retired-rule.js";
 
-export const tanstackStartNoDirectFetchInLoader = defineRule({
+export const tanstackStartNoDirectFetchInLoader = defineRetiredRule({
   id: "tanstack-start-no-direct-fetch-in-loader",
-  title: "Direct fetch in route loader",
-  tags: ["test-noise"],
-  requires: ["tanstack-start"],
   severity: "warn",
+  category: "Bugs",
+  requires: ["tanstack-start"],
+  tags: ["test-noise"],
+  title: "Direct fetch in route loader",
   recommendation:
-    "Use `createServerFn()` from @tanstack/react-start for type-safe RPC, input validation, and proper server/client code splitting",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const optionsObject = getRouteOptionsObject(node);
-      if (!optionsObject) return;
-
-      const properties = optionsObject.properties ?? [];
-      for (const property of properties) {
-        const keyName = getPropertyKeyName(property);
-        if (keyName !== "loader") continue;
-
-        const loaderValue = isNodeOfType(property, "Property") ? property.value : property;
-        walkAst(loaderValue, (child: EsTreeNode) => {
-          if (!isNodeOfType(child, "CallExpression")) return;
-          if (isNodeOfType(child.callee, "Identifier") && child.callee.name === "fetch") {
-            context.report({
-              node: child,
-              message:
-                "Direct fetch() in a route loader runs on the client too with no type safety.",
-            });
-          }
-        });
-      }
-    },
-  }),
+    "Retired: A loader can fetch public client-capable data directly. A fetch call alone does not require a server function.",
 });

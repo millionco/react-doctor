@@ -1,20 +1,11 @@
-import { defineRule } from "../../utils/define-rule.js";
-import { createNoMultiCompVisitors } from "./no-multi-comp.js";
+import { defineRetiredRule } from "../../utils/define-retired-rule.js";
 
-const MESSAGE =
-  "This file declares several components, so each component is harder to find, test, and change.";
-
-export const noMultiComponentFile = defineRule({
+export const noMultiComponentFile = defineRetiredRule({
   id: "no-multi-component-file",
-  title: "Crowded component file",
   severity: "warn",
+  category: "Maintainability",
+  requires: ["react"],
+  title: "Crowded component file",
   recommendation:
-    "Move secondary components into their own files so each component stays easier to find, test, and change.",
-  category: "Architecture",
-  create: (context) =>
-    createNoMultiCompVisitors(context, {
-      message: MESSAGE,
-      shouldAllowRelatedComponentColocation: true,
-      shouldSkipTestlikeFiles: true,
-    }),
+    "Retired: Component count does not establish that splitting a module improves maintenance.",
 });

@@ -223,7 +223,7 @@ describe("design-no-space-on-flex-children", () => {
 });
 
 describe("design-no-three-period-ellipsis", () => {
-  it("flags three-period ellipses after letters", async () => {
+  it("keeps retired ellipsis advice quiet", async () => {
     const projectDir = setupReactProject(tempRoot, "no-three-period-pos", {
       files: {
         "src/Spinner.tsx": `export const Spinner = () => <span>Loading...</span>;\n`,
@@ -231,7 +231,7 @@ describe("design-no-three-period-ellipsis", () => {
     });
 
     const hits = await collectRuleHits(projectDir, "design-no-three-period-ellipsis");
-    expect(hits).toHaveLength(1);
+    expect(hits).toHaveLength(0);
   });
 
   it("does not flag the typographic ellipsis character", async () => {
@@ -261,7 +261,7 @@ describe("design-no-three-period-ellipsis", () => {
 });
 
 describe("design-no-em-dash-in-jsx-text", () => {
-  it("flags em dashes in JSX text", async () => {
+  it("keeps retired em-dash advice quiet", async () => {
     const projectDir = setupReactProject(tempRoot, "no-em-dash-pos", {
       files: {
         "src/Message.tsx": `export const Message = () => <p>The build is ready — deploy it now</p>;\n`,
@@ -269,8 +269,7 @@ describe("design-no-em-dash-in-jsx-text", () => {
     });
 
     const hits = await collectRuleHits(projectDir, "design-no-em-dash-in-jsx-text");
-    expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("Em dash");
+    expect(hits).toHaveLength(0);
   });
 
   it("does not flag em dashes in code-like or non-translated text", async () => {

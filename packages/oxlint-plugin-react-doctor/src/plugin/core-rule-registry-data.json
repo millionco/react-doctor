@@ -24,10 +24,11 @@
       "id": "activity-wraps-effect-heavy-subtree",
       "title": "Activity wraps an effect-heavy subtree",
       "severity": "warn",
-      "recommendation": "Check what's under `<Activity>`. Every hide and show rebuilds every Effect inside from scratch. Move subscriptions and effect-driven setState out of the Activity, or load the data above it.",
+      "recommendation": "Retired: Activity intentionally cleans up effects while hidden and preserves component state.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react", "react:19.2"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -61,6 +62,7 @@
       "category": "Security",
       "framework": "global",
       "tags": ["security-scan"],
+      "defaultEnabled": false,
       "isScanRule": true
     }
   },
@@ -263,6 +265,7 @@
       "category": "Security",
       "framework": "global",
       "tags": ["security-scan"],
+      "defaultEnabled": false,
       "isScanRule": true
     }
   },
@@ -552,11 +555,12 @@
       "id": "client-localstorage-no-version",
       "title": "Unversioned localStorage key",
       "severity": "warn",
-      "recommendation": "Put a version in the storage key (e.g. \"myKey:v1\"). If you change the data shape later, old saved data can be ignored instead of crashing the app.",
+      "recommendation": "Retired: Storage can keep its version in the payload or use a separate migration path.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -702,8 +706,8 @@
       "id": "design-no-em-dash-in-jsx-text",
       "title": "Em dash in JSX text",
       "severity": "warn",
-      "recommendation": "Replace em dashes in UI text with commas, colons, semicolons, or parentheses so the copy reads less like AI output.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Visual and writing preferences belong in an explicit design guide, not a general defect check.",
+      "category": "Bugs",
       "framework": "global",
       "requires": ["react"],
       "tags": ["design", "test-noise"],
@@ -774,8 +778,8 @@
       "id": "design-no-three-period-ellipsis",
       "title": "Three dots instead of ellipsis",
       "severity": "warn",
-      "recommendation": "Use the real ellipsis character (\"…\") so UI labels look polished and consistent instead of like three separate periods.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Visual and writing preferences belong in an explicit design guide, not a general defect check.",
+      "category": "Bugs",
       "framework": "global",
       "requires": ["react"],
       "tags": ["design", "test-noise"],
@@ -1079,6 +1083,7 @@
       "category": "Security",
       "framework": "global",
       "tags": ["security-scan"],
+      "defaultEnabled": false,
       "isScanRule": true
     }
   },
@@ -1240,10 +1245,11 @@
       "id": "hooks-no-nan-in-deps",
       "title": "NaN in a hook dependency array",
       "severity": "warn",
-      "recommendation": "Remove `NaN` (or `Number.NaN`) from the dependency array. If a value can be NaN at runtime, normalise it (`Number.isNaN(x) ? 0 : x`) before passing it.",
+      "recommendation": "Retired: React compares dependencies with Object.is. A stable NaN dependency does not establish a defect.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -1936,6 +1942,7 @@
       "category": "Performance",
       "framework": "global",
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -1968,6 +1975,7 @@
       "category": "Performance",
       "framework": "global",
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -1980,10 +1988,11 @@
       "id": "js-early-exit",
       "title": "Deeply nested if statements",
       "severity": "warn",
-      "recommendation": "Add an early `return` or `continue` so the deep nesting flattens out and you bail as soon as the answer is known",
+      "recommendation": "Retired: Nested conditions do not establish a performance defect or a safe early return.",
       "category": "Performance",
       "framework": "global",
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -2000,6 +2009,7 @@
       "category": "Performance",
       "framework": "global",
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -2064,6 +2074,7 @@
       "category": "Performance",
       "framework": "global",
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -2108,11 +2119,12 @@
       "id": "js-tosorted-immutable",
       "title": "Spread copy before sort()",
       "severity": "warn",
-      "recommendation": "Use `array.toSorted()` (ES2023) instead of `[...array].sort()` so you sort without copying the array first",
+      "recommendation": "Retired: Both sorted-copy forms create an array. Prefer one only for an explicit compatibility or measured performance reason.",
       "category": "Performance",
       "framework": "global",
       "disabledWhen": ["react-native", "pre-es2023"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -2231,6 +2243,7 @@
       "framework": "global",
       "requires": ["react"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -2600,6 +2613,7 @@
       "category": "Security",
       "framework": "global",
       "tags": ["security-scan"],
+      "defaultEnabled": false,
       "isScanRule": true
     }
   },
@@ -3048,6 +3062,7 @@
       "framework": "nextjs",
       "requires": ["nextjs"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -3185,6 +3200,7 @@
       "framework": "nextjs",
       "requires": ["nextjs"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -3617,6 +3633,7 @@
       "category": "Performance",
       "framework": "global",
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -3732,10 +3749,11 @@
       "id": "no-children-prop",
       "title": "Children passed as a prop",
       "severity": "warn",
-      "recommendation": "Nest children between the tags so the rendered content is visible in JSX and cannot be hidden inside a props object.",
+      "recommendation": "Retired: Passing children explicitly is valid when it does not conflict with nested children.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -3815,8 +3833,8 @@
       "id": "no-common-root-font",
       "title": "Page root uses a generic default font choice",
       "severity": "warn",
-      "recommendation": "Choose a typeface that supports the product's voice, or document why the conventional UI font is intentional.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Visual and writing preferences belong in an explicit design guide, not a general defect check.",
+      "category": "Bugs",
       "framework": "global",
       "tags": ["design", "test-noise"],
       "defaultEnabled": false,
@@ -4131,8 +4149,8 @@
       "id": "no-default-purple-page-gradient",
       "title": "Page root uses a default purple-spectrum gradient",
       "severity": "warn",
-      "recommendation": "Build the page palette from the product's identity instead of a conventional purple-to-bright gradient.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Visual and writing preferences belong in an explicit design guide, not a general defect check.",
+      "category": "Bugs",
       "framework": "global",
       "tags": ["design", "test-noise"],
       "defaultEnabled": false,
@@ -4148,8 +4166,8 @@
       "id": "no-default-warm-page-surface",
       "title": "Page defaults to a warm off-white surface",
       "severity": "warn",
-      "recommendation": "Choose the page surface from an intentional product palette rather than a generic warm neutral default.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Visual and writing preferences belong in an explicit design guide, not a general defect check.",
+      "category": "Bugs",
       "framework": "global",
       "tags": ["design", "test-noise"],
       "defaultEnabled": false,
@@ -4946,8 +4964,8 @@
       "id": "no-full-viewport-centered-hero",
       "title": "Hero uses a full-viewport centered template",
       "severity": "warn",
-      "recommendation": "Give the opening section a content-driven height and a composition tied to the product instead of centering a headline in an empty viewport.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Visual and writing preferences belong in an explicit design guide, not a general defect check.",
+      "category": "Bugs",
       "framework": "global",
       "tags": ["design", "test-noise"],
       "defaultEnabled": false,
@@ -5117,8 +5135,8 @@
       "id": "no-hero-eyebrow-chip",
       "title": "Hero uses a decorative eyebrow label",
       "severity": "warn",
-      "recommendation": "Integrate the context into the headline or navigation instead of adding a generic chip above the hero title.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Visual and writing preferences belong in an explicit design guide, not a general defect check.",
+      "category": "Bugs",
       "framework": "global",
       "tags": ["design", "test-noise"],
       "defaultEnabled": false,
@@ -5183,8 +5201,8 @@
       "id": "no-icon-tile-heading-stack",
       "title": "Card stacks an icon tile above its heading",
       "severity": "warn",
-      "recommendation": "Place the icon beside the heading or let it sit in the content flow without another boxed surface.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Visual and writing preferences belong in an explicit design guide, not a general defect check.",
+      "category": "Bugs",
       "framework": "global",
       "tags": ["design", "test-noise"],
       "defaultEnabled": false,
@@ -5255,6 +5273,7 @@
       "framework": "global",
       "requires": ["ssr"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -5485,8 +5504,8 @@
       "id": "no-italic-serif-display-heading",
       "title": "Display heading combines italic serif styling",
       "severity": "warn",
-      "recommendation": "Use a roman display face or reserve the italic serif treatment for a smaller editorial accent.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Visual and writing preferences belong in an explicit design guide, not a general defect check.",
+      "category": "Bugs",
       "framework": "global",
       "tags": ["design", "test-noise"],
       "defaultEnabled": false,
@@ -5518,9 +5537,10 @@
       "id": "no-jsx-element-type",
       "title": "No JSX.Element",
       "severity": "warn",
-      "recommendation": "Replace `JSX.Element` with `React.ReactNode`. `JSX.Element` is too narrow: it excludes `null`, strings, numbers, and fragments that components commonly return.",
+      "recommendation": "Retired: A component can intentionally promise an element return value. Widen its type only when its return values require it.",
       "category": "Bugs",
       "framework": "global",
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -5735,10 +5755,11 @@
       "id": "no-many-boolean-props",
       "title": "Boolean prop combinations are hard to test",
       "severity": "warn",
-      "recommendation": "Split boolean-heavy APIs into smaller components or named variants so combinations stay testable.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Boolean prop count does not establish invalid state combinations or a defective API.",
+      "category": "Bugs",
       "framework": "global",
       "tags": ["test-noise", "react-jsx-only"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -5849,8 +5870,8 @@
       "id": "no-monotonous-page-spacing",
       "title": "Page repeats one spacing value throughout",
       "severity": "warn",
-      "recommendation": "Use deliberate spacing tiers to distinguish local groups, components, and page sections.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Visual and writing preferences belong in an explicit design guide, not a general defect check.",
+      "category": "Bugs",
       "framework": "global",
       "tags": ["design", "test-noise"],
       "defaultEnabled": false,
@@ -5866,8 +5887,8 @@
       "id": "no-multi-comp",
       "title": "Multiple components in one file",
       "severity": "warn",
-      "recommendation": "Move every secondary component into its own file.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Component count does not establish that splitting a module improves maintenance.",
+      "category": "Bugs",
       "framework": "global",
       "requires": ["react"],
       "defaultEnabled": false,
@@ -5883,10 +5904,11 @@
       "id": "no-multi-component-file",
       "title": "Crowded component file",
       "severity": "warn",
-      "recommendation": "Move secondary components into their own files so each component stays easier to find, test, and change.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Component count does not establish that splitting a module improves maintenance.",
+      "category": "Bugs",
       "framework": "global",
       "requires": ["react"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -6189,8 +6211,8 @@
       "id": "no-numbered-section-markers",
       "title": "Styled numbers are used as section decoration",
       "severity": "warn",
-      "recommendation": "Remove decorative section numbering unless the sequence communicates real progress or ordered steps.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Visual and writing preferences belong in an explicit design guide, not a general defect check.",
+      "category": "Bugs",
       "framework": "global",
       "tags": ["design", "test-noise"],
       "defaultEnabled": false,
@@ -6458,9 +6480,10 @@
       "id": "no-polymorphic-children",
       "title": "Children type checked at runtime",
       "severity": "warn",
-      "recommendation": "Add clear subcomponents like `<Button.Text>` and `<Button.Icon>` so callers don't have to check `typeof children`.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Accepting text and element children can be an intentional component contract.",
+      "category": "Bugs",
       "framework": "global",
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -6607,8 +6630,8 @@
       "id": "no-pure-black-background",
       "title": "Pure black background",
       "severity": "warn",
-      "recommendation": "Nudge the background slightly toward your brand color, like `#0a0a0f` or Tailwind's `bg-gray-950`. Pure black looks harsh on modern screens.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Visual and writing preferences belong in an explicit design guide, not a general defect check.",
+      "category": "Bugs",
       "framework": "global",
       "tags": ["design", "test-noise"],
       "defaultEnabled": false,
@@ -6859,10 +6882,11 @@
       "id": "no-render-prop-children",
       "title": "Render-prop slots make this component hard to extend",
       "severity": "warn",
-      "recommendation": "Swap `renderXxx` props for child components like `<Modal.Header>` or plain `children`, so the parent doesn't control every slot.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Multiple render slots can be an intentional component API.",
+      "category": "Bugs",
       "framework": "global",
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -7061,11 +7085,12 @@
       "id": "no-scale-from-zero",
       "title": "Animating scale from zero",
       "severity": "warn",
-      "recommendation": "Use `initial={{ scale: 0.95, opacity: 0 }}`. Elements should gently shrink and fade, not vanish into a point",
+      "recommendation": "Retired: A zero scale endpoint is an animation design choice, not a proven defect.",
       "category": "Performance",
       "framework": "global",
       "requires": ["react"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -7978,6 +8003,7 @@
       "framework": "global",
       "requires": ["react"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -8315,10 +8341,11 @@
       "id": "prefer-explicit-variants",
       "title": "Prefer explicit variant components",
       "severity": "warn",
-      "recommendation": "Replace boolean props that switch whole subtrees with explicit variant components, like `<ThreadComposer />` and `<EditMessageComposer />`, so each variant renders one clear path.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Boolean branches do not prove that separate variant components are easier to maintain.",
+      "category": "Bugs",
       "framework": "global",
       "tags": ["test-noise", "react-jsx-only"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -8369,6 +8396,7 @@
       "framework": "global",
       "disabledWhen": ["react-compiler"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -8386,6 +8414,7 @@
       "framework": "global",
       "disabledWhen": ["react-compiler"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -8524,6 +8553,7 @@
       "framework": "global",
       "requires": ["react"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -10145,10 +10175,11 @@
       "id": "react-compiler-no-manual-memoization",
       "title": "Manual memoization in compiler-managed code",
       "severity": "warn",
-      "recommendation": "Profile compiler-managed code and remove `useMemo`, `useCallback`, or `memo` only when the manual cache no longer carries behavioral or performance intent.",
-      "category": "Maintainability",
+      "recommendation": "Retired: Compiler availability does not prove that existing manual memoization is redundant. Check its purpose and performance before removing it.",
+      "category": "Bugs",
       "framework": "global",
       "requires": ["react-compiler"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -11024,11 +11055,12 @@
       "id": "rendering-animate-svg-wrapper",
       "title": "Animating an SVG directly",
       "severity": "warn",
-      "recommendation": "Wrap the SVG in a motion element so animation props apply to a stable wrapper instead of the SVG node itself.",
+      "recommendation": "Retired: An SVG animate prop does not prove slow animation, and a wrapper cannot replace SVG attribute animation.",
       "category": "Performance",
       "framework": "global",
       "requires": ["react"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -11062,6 +11094,7 @@
       "requires": ["react"],
       "disabledWhen": ["react-compiler"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -11128,6 +11161,7 @@
       "category": "Performance",
       "framework": "global",
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -11140,11 +11174,12 @@
       "id": "rendering-usetransition-loading",
       "title": "Loading useState forces extra render",
       "severity": "warn",
-      "recommendation": "Replace with `const [isPending, startTransition] = useTransition()`, which marks the update as non-urgent and interruptible so the input stays responsive",
+      "recommendation": "Retired: A loading state name does not establish expensive non-urgent work that should use a transition.",
       "category": "Performance",
       "framework": "global",
       "requires": ["react"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -11485,6 +11520,7 @@
       "framework": "react-native",
       "requires": ["react-native"],
       "tags": ["react-native", "test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -11761,6 +11797,7 @@
       "framework": "react-native",
       "requires": ["react-native"],
       "tags": ["react-native", "test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -11778,6 +11815,7 @@
       "framework": "react-native",
       "requires": ["react-native"],
       "tags": ["react-native", "test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -11856,13 +11894,14 @@
     "originallyExternal": false,
     "rule": {
       "id": "rn-no-set-native-props",
-      "title": "Imperative setNativeProps (no-op under Fabric)",
+      "title": "Imperative setNativeProps",
       "severity": "warn",
-      "recommendation": "Drive the prop through React state, an `Animated.Value` (with `useNativeDriver: true`), or a Reanimated shared value. `setNativeProps` is a silent no-op under the New Architecture.",
+      "recommendation": "Retired: React Native supports setNativeProps under the New Architecture.",
       "category": "Bugs",
       "framework": "react-native",
       "requires": ["react-native"],
       "tags": ["react-native"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -11875,11 +11914,12 @@
       "id": "rn-no-single-element-style-array",
       "title": "Single-element style array adds wasted allocation",
       "severity": "warn",
-      "recommendation": "Use `style={value}` instead of `style={[value]}`. A one-item array just adds extra work for nothing.",
+      "recommendation": "Retired: A one-item style array does not establish a meaningful performance cost.",
       "category": "Bugs",
       "framework": "react-native",
       "requires": ["react-native"],
       "tags": ["react-native", "test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -11932,6 +11972,7 @@
       "framework": "react-native",
       "requires": ["react-native"],
       "tags": ["react-native", "test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -11949,6 +11990,7 @@
       "framework": "react-native",
       "requires": ["react-native"],
       "tags": ["react-native", "test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -11978,11 +12020,12 @@
       "id": "rn-prefer-reanimated",
       "title": "JS-thread animation instead of Reanimated",
       "severity": "warn",
-      "recommendation": "Use `import Animated from 'react-native-reanimated'` so animations run on the UI thread instead of the JS thread, which keeps them smooth.",
+      "recommendation": "Retired: An Animated import does not prove that an animation runs on the JavaScript thread.",
       "category": "Bugs",
       "framework": "react-native",
       "requires": ["react-native"],
       "tags": ["react-native", "test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -12283,6 +12326,7 @@
       "category": "Bugs",
       "framework": "global",
       "tags": ["server-action", "test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -12709,11 +12753,12 @@
       "id": "tanstack-start-no-direct-fetch-in-loader",
       "title": "Direct fetch in route loader",
       "severity": "warn",
-      "recommendation": "Use `createServerFn()` from @tanstack/react-start for type-safe RPC, input validation, and proper server/client code splitting",
+      "recommendation": "Retired: A loader can fetch public client-capable data directly. A fetch call alone does not require a server function.",
       "category": "Bugs",
       "framework": "tanstack-start",
       "requires": ["tanstack-start"],
       "tags": ["test-noise"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },
@@ -15066,6 +15111,7 @@
       "framework": "global",
       "requires": ["zod:4"],
       "tags": ["migration-hint"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },

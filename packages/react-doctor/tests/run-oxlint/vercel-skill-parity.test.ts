@@ -28,6 +28,7 @@ describe("runOxlint", () => {
         category: "Performance",
       },
       "rendering-hoist-jsx": {
+        expectedCount: 0,
         fixture: "new-rules.tsx",
         ruleSource: "rules/performance.ts",
         category: "Performance",
@@ -38,11 +39,13 @@ describe("runOxlint", () => {
         category: "Performance",
       },
       "js-cache-property-access": {
+        expectedCount: 0,
         fixture: "new-rules.tsx",
         ruleSource: "rules/js-performance.ts",
         category: "Performance",
       },
       "js-length-check-first": {
+        expectedCount: 0,
         fixture: "new-rules.tsx",
         ruleSource: "rules/js-performance.ts",
         category: "Performance",
@@ -62,11 +65,13 @@ describe("runOxlint", () => {
         ruleSource: "rules/state-and-effects.ts",
       },
       "no-polymorphic-children": {
+        expectedCount: 0,
         fixture: "composition-issues.tsx",
         ruleSource: "rules/correctness.ts",
         category: "Maintainability",
       },
       "rendering-svg-precision": {
+        expectedCount: 0,
         fixture: "composition-issues.tsx",
         ruleSource: "rules/correctness.ts",
         category: "Performance",
@@ -102,6 +107,7 @@ describe("runOxlint", () => {
         category: "Performance",
       },
       "client-localstorage-no-version": {
+        expectedCount: 0,
         fixture: "transient-and-async-issues.tsx",
         ruleSource: "rules/client.ts",
         category: "Bugs",

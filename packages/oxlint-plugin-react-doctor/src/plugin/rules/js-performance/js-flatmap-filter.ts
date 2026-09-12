@@ -20,6 +20,7 @@ const isBoundedPipelineSource = (node: EsTreeNode): boolean => {
 
 export const jsFlatmapFilter = defineRule({
   id: "js-flatmap-filter",
+  defaultEnabled: false,
   title: ".map().filter(Boolean) loops twice",
   tags: ["test-noise"],
   severity: "warn",

@@ -274,8 +274,6 @@ export const TRANSLATORS: Record<
   "no-did-update-set-state": noDidUpdateSetStateTranslator,
   "no-string-refs": noStringRefsTranslator,
   "no-this-in-sfc": noThisInSfcTranslator,
-  "no-multi-comp": (fixture: OxcFixtureLike) =>
-    wrapForReactDoctor("noMultiComp", passthroughTopLevelObject(fixture.oxcOptions)),
   "jsx-no-target-blank": (fixture: OxcFixtureLike) => {
     const result: Record<string, unknown> = {};
     const reactDoctor = wrapForReactDoctor(

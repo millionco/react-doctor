@@ -21,6 +21,7 @@ const BAAS_AUTHORITY_SURFACE_PATTERN =
 
 export const artifactBaasAuthoritySurface = defineRule({
   id: "artifact-baas-authority-surface",
+  defaultEnabled: false,
   title: "BaaS authority map shipped in browser artifact",
   severity: "warn",
   recommendation:

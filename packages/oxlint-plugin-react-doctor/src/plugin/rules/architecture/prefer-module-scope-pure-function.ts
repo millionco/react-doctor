@@ -73,6 +73,7 @@ const hasComponentLocalCaptures = (
 //     to detect any binding from inside the component's body scope.
 export const preferModuleScopePureFunction = defineRule({
   id: "prefer-module-scope-pure-function",
+  defaultEnabled: false,
   title: "Pure function rebuilt every render",
   tags: ["test-noise"],
   severity: "warn",

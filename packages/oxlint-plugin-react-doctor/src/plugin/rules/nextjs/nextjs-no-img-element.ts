@@ -161,6 +161,7 @@ const isMarkdownImgComponentOverride = (node: EsTreeNode): boolean => {
 
 export const nextjsNoImgElement = defineRule({
   id: "nextjs-no-img-element",
+  defaultEnabled: false,
   title: "Plain img ships unoptimized images",
   tags: ["test-noise"],
   requires: ["nextjs"],

@@ -1442,14 +1442,13 @@ describe("issue #543: js-tosorted-immutable is gated off for React Native / Expo
         : cardType;
   `;
 
-  it("flags [...array].sort() in a non-React-Native project", async () => {
+  it("keeps retired sorted-copy advice quiet in a web project", async () => {
     const projectDir = setupReactProject(tempRoot, "tosorted-web-project", {
       files: { "src/sort-cards.ts": SPREAD_SORT_SOURCE },
     });
 
     const hits = await collectRuleHits(projectDir, "js-tosorted-immutable");
-    expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("toSorted()");
+    expect(hits).toHaveLength(0);
   });
 
   it("does not flag [...array].sort() in an Expo project (Hermes lacks toSorted)", async () => {
@@ -1488,7 +1487,7 @@ describe("issue #543: js-tosorted-immutable is gated off for React Native / Expo
     expect(hits).toHaveLength(0);
   });
 
-  it("flags [...freshlyFiltered].sort() — the documented spread-sort shape fires even on fresh arrays", async () => {
+  it("keeps retired sorted-copy advice quiet for fresh arrays", async () => {
     const projectDir = setupReactProject(tempRoot, "tosorted-fresh-array-spread", {
       files: {
         "src/sort-shown.ts": `
@@ -1501,7 +1500,7 @@ describe("issue #543: js-tosorted-immutable is gated off for React Native / Expo
     });
 
     const hits = await collectRuleHits(projectDir, "js-tosorted-immutable");
-    expect(hits).toHaveLength(1);
+    expect(hits).toHaveLength(0);
   });
 });
 

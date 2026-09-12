@@ -61,6 +61,9 @@ const setupWorkspace = (): string => {
     dependencies: { react: "^19.0.0", "react-dom": "^19.0.0" },
     devDependencies: { vite: "^7.0.0" },
   });
+  writeJson(path.join(rootDirectory, "react-doctor.config.json"), {
+    rules: { [`react-doctor/${RULE_UNDER_TEST}`]: "warn" },
+  });
   writeJson(path.join(rootDirectory, "tsconfig.json"), TSCONFIG);
   writeFile(path.join(rootDirectory, "src/list.tsx"), WEB_LIST);
   writeJson(path.join(rootDirectory, "apps/native/package.json"), {

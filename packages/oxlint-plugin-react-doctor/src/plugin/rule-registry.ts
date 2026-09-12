@@ -1449,7 +1449,7 @@ export const reactDoctorRules = [
     rule: {
       ...noEmDashInJsxText,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noEmDashInJsxText.requires ?? [])])],
     },
   },
@@ -1497,7 +1497,7 @@ export const reactDoctorRules = [
     rule: {
       ...noThreePeriodEllipsis,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noThreePeriodEllipsis.requires ?? [])])],
     },
   },
@@ -3691,7 +3691,8 @@ export const reactDoctorRules = [
     rule: {
       ...noCommonRootFont,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
+      defaultEnabled: false,
       tags: [...new Set(["design", ...(noCommonRootFont.tags ?? [])])],
     },
   },
@@ -3921,7 +3922,8 @@ export const reactDoctorRules = [
     rule: {
       ...noDefaultPurplePageGradient,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
+      defaultEnabled: false,
       tags: [...new Set(["design", ...(noDefaultPurplePageGradient.tags ?? [])])],
     },
   },
@@ -3933,7 +3935,8 @@ export const reactDoctorRules = [
     rule: {
       ...noDefaultWarmPageSurface,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
+      defaultEnabled: false,
       tags: [...new Set(["design", ...(noDefaultWarmPageSurface.tags ?? [])])],
     },
   },
@@ -4519,7 +4522,8 @@ export const reactDoctorRules = [
     rule: {
       ...noFullViewportCenteredHero,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
+      defaultEnabled: false,
       tags: [...new Set(["design", ...(noFullViewportCenteredHero.tags ?? [])])],
     },
   },
@@ -4640,7 +4644,8 @@ export const reactDoctorRules = [
     rule: {
       ...noHeroEyebrowChip,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
+      defaultEnabled: false,
       tags: [...new Set(["design", ...(noHeroEyebrowChip.tags ?? [])])],
     },
   },
@@ -4689,7 +4694,8 @@ export const reactDoctorRules = [
     rule: {
       ...noIconTileHeadingStack,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
+      defaultEnabled: false,
       tags: [...new Set(["design", ...(noIconTileHeadingStack.tags ?? [])])],
     },
   },
@@ -4913,7 +4919,8 @@ export const reactDoctorRules = [
     rule: {
       ...noItalicSerifDisplayHeading,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
+      defaultEnabled: false,
       tags: [...new Set(["design", ...(noItalicSerifDisplayHeading.tags ?? [])])],
     },
   },
@@ -5094,7 +5101,7 @@ export const reactDoctorRules = [
     rule: {
       ...noManyBooleanProps,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
     },
   },
   {
@@ -5177,7 +5184,8 @@ export const reactDoctorRules = [
     rule: {
       ...noMonotonousPageSpacing,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
+      defaultEnabled: false,
       tags: [...new Set(["design", ...(noMonotonousPageSpacing.tags ?? [])])],
     },
   },
@@ -5189,7 +5197,7 @@ export const reactDoctorRules = [
     rule: {
       ...noMultiComp,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noMultiComp.requires ?? [])])],
     },
   },
@@ -5201,7 +5209,7 @@ export const reactDoctorRules = [
     rule: {
       ...noMultiComponentFile,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noMultiComponentFile.requires ?? [])])],
     },
   },
@@ -5436,7 +5444,8 @@ export const reactDoctorRules = [
     rule: {
       ...noNumberedSectionMarkers,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
+      defaultEnabled: false,
       tags: [...new Set(["design", ...(noNumberedSectionMarkers.tags ?? [])])],
     },
   },
@@ -5627,7 +5636,7 @@ export const reactDoctorRules = [
     rule: {
       ...noPolymorphicChildren,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
     },
   },
   {
@@ -5736,7 +5745,8 @@ export const reactDoctorRules = [
     rule: {
       ...noPureBlackBackground,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
+      defaultEnabled: false,
       tags: [...new Set(["design", ...(noPureBlackBackground.tags ?? [])])],
     },
   },
@@ -5916,7 +5926,7 @@ export const reactDoctorRules = [
     rule: {
       ...noRenderPropChildren,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
     },
   },
   {
@@ -6987,7 +6997,7 @@ export const reactDoctorRules = [
     rule: {
       ...preferExplicitVariants,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
     },
   },
   {
@@ -8587,7 +8597,7 @@ export const reactDoctorRules = [
     rule: {
       ...reactCompilerNoManualMemoization,
       framework: "global",
-      category: "Maintainability",
+      category: "Bugs",
     },
   },
   {

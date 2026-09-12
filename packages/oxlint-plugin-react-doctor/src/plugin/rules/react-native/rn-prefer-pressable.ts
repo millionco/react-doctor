@@ -20,6 +20,7 @@ const TOUCHABLE_SOURCES = new Set(["react-native", "react-native-gesture-handler
 // same on iOS, Android, and Fabric.
 export const rnPreferPressable = defineRule({
   id: "rn-prefer-pressable",
+  defaultEnabled: false,
   title: "Touchable components instead of Pressable",
   tags: ["test-noise"],
   requires: ["react-native"],

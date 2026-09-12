@@ -484,6 +484,7 @@ const isInsidePrefixNamedFunction = (node: EsTreeNode): boolean => {
 // runs the every-loop only when lengths match.
 export const jsLengthCheckFirst = defineRule({
   id: "js-length-check-first",
+  defaultEnabled: false,
   title: "Array compare without length check",
   tags: ["test-noise"],
   severity: "warn",

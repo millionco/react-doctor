@@ -638,6 +638,12 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
 
     const withoutCompiler = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
+      severityControls: {
+        rules: {
+          "react-doctor/prefer-module-scope-pure-function": "warn",
+          "react-doctor/rendering-hoist-jsx": "warn",
+        },
+      },
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: false }),
     });
     for (const [ruleKey, severity] of reactCompilerGatedRules) {
@@ -646,6 +652,12 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
 
     const withCompiler = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
+      severityControls: {
+        rules: {
+          "react-doctor/prefer-module-scope-pure-function": "warn",
+          "react-doctor/rendering-hoist-jsx": "warn",
+        },
+      },
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
     });
     for (const ruleKey of reactCompilerGatedRules.keys()) {
@@ -693,14 +705,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
     }
   });
 
-  // The inverse of the rule above: `react-compiler-no-manual-memoization`
-  // is gated with `requires: ["react-compiler"]` so it ONLY fires once
-  // the project ships with React Compiler. Without the compiler, manual
-  // `useMemo` / `useCallback` / `memo()` are still legitimate perf
-  // tools — the gate must keep the rule out of the default config. With
-  // the compiler it ships as a `warn` (redundant-memo cleanup is hidden in
-  // the default report); the `compiler-cleanup` bucket re-enables errors.
-  it("ships react-compiler-no-manual-memoization as a warning, gated on React Compiler", () => {
+  it("keeps retired compiler advice out of defaults and category opt-ins", () => {
     const ruleKey = "react-doctor/react-compiler-no-manual-memoization";
 
     const withoutCompiler = createOxlintConfig({
@@ -713,14 +718,14 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       pluginPath: "/tmp/react-doctor-plugin.js",
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
     });
-    expect(withCompiler.rules[ruleKey]).toBe("warn");
+    expect(withCompiler.rules[ruleKey]).toBeUndefined();
 
     const withCompilerCleanupBucket = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
       severityControls: { buckets: { "compiler-cleanup": "error" } },
     });
-    expect(withCompilerCleanupBucket.rules[ruleKey]).toBe("error");
+    expect(withCompilerCleanupBucket.rules[ruleKey]).toBeUndefined();
   });
 
   // The three noisy upstream rules ship `defaultEnabled: false` —

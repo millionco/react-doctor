@@ -78,12 +78,7 @@ describe("checkSecurityScan", () => {
 
     it("flags Arc and Chattr style Firebase authorization mistakes", () => {
       expect(fixtureRules("eva-arc-chattr-firebase")).toEqual(
-        new Set([
-          "artifact-baas-authority-surface",
-          "firebase-client-owned-authz-field",
-          "firebase-permissive-rules",
-          "firebase-query-filter-as-auth",
-        ]),
+        new Set(["firebase-client-owned-authz-field", "firebase-permissive-rules"]),
       );
     });
 
@@ -167,12 +162,20 @@ describe("checkSecurityScan", () => {
       ).toEqual([]);
     });
 
-    it("flags ported agent, MCP, SQL, NoSQL, and command execution matcher patterns", () => {
-      expect(fixtureRules("ported-agent-mcp-tool-risks")).toEqual(
-        new Set(["agent-tool-capability-risk", "mcp-tool-capability-risk"]),
-      );
+    it("keeps capability inventory optional while reporting database and command risks", () => {
+      expect(fixtureRules("ported-agent-mcp-tool-risks")).toEqual(new Set());
       expect(fixtureRules("ported-database-and-command-risks")).toEqual(
         new Set(["command-execution-input-risk", "nosql-injection-risk", "raw-sql-injection-risk"]),
+      );
+    });
+
+    it("allows an explicit security review to include capability observations", () => {
+      const diagnostics = checkSecurityScan(
+        path.join(FIXTURES_DIRECTORY, "ported-agent-mcp-tool-risks"),
+        { includedTags: new Set(["security-scan"]), includeTagDefaults: true },
+      );
+      expect(rulesOf(diagnostics)).toEqual(
+        new Set(["agent-tool-capability-risk", "mcp-tool-capability-risk"]),
       );
     });
 
@@ -1140,7 +1143,6 @@ alter table data enable row level security;
         "cors-cookie-trust-risk",
         "firebase-client-owned-authz-field",
         "firebase-permissive-rules",
-        "firebase-query-filter-as-auth",
         "import-metadata-execution-risk",
         "key-lifecycle-risk",
         "local-rpc-native-bridge-risk",
@@ -1154,8 +1156,6 @@ alter table data enable row level security;
         "untrusted-redirect-following",
         "dangerous-html-sink",
         "url-prefilled-privileged-action",
-        "agent-tool-capability-risk",
-        "mcp-tool-capability-risk",
         "raw-sql-injection-risk",
         "nosql-injection-risk",
         "command-execution-input-risk",

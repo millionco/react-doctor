@@ -34,6 +34,7 @@ const buildMemberAccessKey = (node: EsTreeNode): string | null => {
 // (two dots) and ≥ 3 occurrences in the same loop block to fire.
 export const jsCachePropertyAccess = defineRule({
   id: "js-cache-property-access",
+  defaultEnabled: false,
   title: "Repeated property access in a loop",
   tags: ["test-noise"],
   severity: "warn",

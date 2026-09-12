@@ -9,6 +9,7 @@ import {
   buildScanResultCacheKey,
   createScanResultCacheInvocationState,
   createScanResultCache,
+  isScanCacheDisabled,
   resolveScanResultToolchainFingerprint,
   shouldStoreScanPayload,
   type CachedScanPayload,
@@ -387,6 +388,72 @@ describe("scan result cache", () => {
         delete process.env.REACT_DOCTOR_NO_CACHE;
       } else {
         process.env.REACT_DOCTOR_NO_CACHE = previousValue;
+      }
+    }
+  });
+
+  it("honors REACT_DOCTOR_NO_SCAN_CACHE (granular opt-out)", () => {
+    const projectDirectory = setupReactProject(tempDirectory, "scan-cache-disabled", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const previousValue = process.env.REACT_DOCTOR_NO_SCAN_CACHE;
+    try {
+      process.env.REACT_DOCTOR_NO_SCAN_CACHE = "true";
+      expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
+    } finally {
+      if (previousValue === undefined) {
+        delete process.env.REACT_DOCTOR_NO_SCAN_CACHE;
+      } else {
+        process.env.REACT_DOCTOR_NO_SCAN_CACHE = previousValue;
+      }
+    }
+  });
+
+  it("REACT_DOCTOR_NO_CACHE overrides REACT_DOCTOR_NO_SCAN_CACHE=false", () => {
+    const projectDirectory = setupReactProject(tempDirectory, "global-override", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const previousGlobalValue = process.env.REACT_DOCTOR_NO_CACHE;
+    const previousScanValue = process.env.REACT_DOCTOR_NO_SCAN_CACHE;
+    try {
+      process.env.REACT_DOCTOR_NO_CACHE = "true";
+      process.env.REACT_DOCTOR_NO_SCAN_CACHE = "false";
+      expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
+    } finally {
+      if (previousGlobalValue === undefined) {
+        delete process.env.REACT_DOCTOR_NO_CACHE;
+      } else {
+        process.env.REACT_DOCTOR_NO_CACHE = previousGlobalValue;
+      }
+      if (previousScanValue === undefined) {
+        delete process.env.REACT_DOCTOR_NO_SCAN_CACHE;
+      } else {
+        process.env.REACT_DOCTOR_NO_SCAN_CACHE = previousScanValue;
+      }
+    }
+  });
+
+  it("does not call git status when REACT_DOCTOR_NO_SCAN_CACHE is set", () => {
+    const projectDirectory = setupReactProject(tempDirectory, "no-git-calls", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const previousValue = process.env.REACT_DOCTOR_NO_SCAN_CACHE;
+    const gitSpy = vi.spyOn({ runGit }, "runGit");
+    try {
+      process.env.REACT_DOCTOR_NO_SCAN_CACHE = "true";
+      expect(isScanCacheDisabled()).toBe(true);
+      const key = cacheKey(projectDirectory, baseOptions());
+      expect(key).toBeNull();
+      expect(gitSpy).not.toHaveBeenCalled();
+    } finally {
+      gitSpy.mockRestore();
+      if (previousValue === undefined) {
+        delete process.env.REACT_DOCTOR_NO_SCAN_CACHE;
+      } else {
+        process.env.REACT_DOCTOR_NO_SCAN_CACHE = previousValue;
       }
     }
   });

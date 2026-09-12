@@ -335,11 +335,29 @@ const readPersistedCache = (cacheFilePath: string): PersistedScanResultCache => 
  * sidecar caches (their `Context.Reference` defaults read the
  * same variable). Exported for the wide event's `cache.temperature`
  * derivation, which reports `"disabled"` instead of `"cold"` when the switch
- * is on. Granular knobs (`REACT_DOCTOR_NO_FILE_CACHE`, …) are deliberately
+ * is on. Granular knobs (`REACT_DOCTOR_NO_FILE_CACHE`, `REACT_DOCTOR_NO_SCAN_CACHE`, …) are deliberately
  * not consulted — they leave the other subsystems live.
  */
 export const isCacheGloballyDisabled = (): boolean =>
   CACHE_DISABLED_VALUES.has(process.env.REACT_DOCTOR_NO_CACHE?.toLowerCase() ?? "");
+
+/**
+ * Whether the scan-result cache (`buildScanResultCacheKey` → `createScanResultCache`)
+ * is disabled. Checks two knobs:
+ *
+ *   - `REACT_DOCTOR_NO_CACHE` — the global off-switch; disables ALL caches.
+ *   - `REACT_DOCTOR_NO_SCAN_CACHE` — granular: bust only the scan-result cache
+ *     while keeping per-file and sidecar caches enabled.
+ *
+ * Use case: outer task caches (Vite Task, Turborepo) record filesystem accesses,
+ * and the scan cache's `git status` + dirty-file reads make unrelated repository
+ * changes invalidate the outer task. Opting out leaves the per-file and sidecar
+ * caches productive when the package actually re-runs.
+ */
+export const isScanCacheDisabled = (): boolean => {
+  if (isCacheGloballyDisabled()) return true;
+  return CACHE_DISABLED_VALUES.has(process.env.REACT_DOCTOR_NO_SCAN_CACHE?.toLowerCase() ?? "");
+};
 
 const resolveProjectIdentity = (projectDirectory: string): string => {
   try {
@@ -386,7 +404,7 @@ export const resolveScanResultToolchainFingerprint = (
 };
 
 export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string | null => {
-  if (isCacheGloballyDisabled()) return null;
+  if (isScanCacheDisabled()) return null;
   if (!isGitIdentityTrustworthy(input.projectDirectory)) return null;
   const repositoryIdentity = resolveRepositoryCacheIdentity(
     input.projectDirectory,

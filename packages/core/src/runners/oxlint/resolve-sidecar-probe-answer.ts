@@ -37,9 +37,18 @@ export const createSidecarProbeAnswerResolver = (input: {
 }): SidecarProbeAnswerResolver => {
   const contentAnswerByPath = new Map<string, string>();
   const existsAnswerByPath = new Map<string, string>();
+  // The same dependency paths recur across most files' probe sets (a shared
+  // barrel, the tsconfig chain, every node_modules candidate), so the
+  // relative form is computed once per absolute path.
+  const relativePathByAbsolutePath = new Map<string, string>();
 
-  const toRelativePath = (absolutePath: string): string =>
-    path.relative(input.rootDirectory, absolutePath).replaceAll("\\", "/");
+  const toRelativePath = (absolutePath: string): string => {
+    const memoized = relativePathByAbsolutePath.get(absolutePath);
+    if (memoized !== undefined) return memoized;
+    const relativePath = path.relative(input.rootDirectory, absolutePath).replaceAll("\\", "/");
+    relativePathByAbsolutePath.set(absolutePath, relativePath);
+    return relativePath;
+  };
 
   const contentAnswer = (relativePath: string): string => {
     const memoized = contentAnswerByPath.get(relativePath);

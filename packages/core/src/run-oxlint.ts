@@ -26,10 +26,7 @@ import { createFileLintCache } from "./runners/oxlint/file-lint-cache.js";
 import { createSidecarProbeAnswerResolver } from "./runners/oxlint/resolve-sidecar-probe-answer.js";
 import type { SidecarProbeAnswerResolver } from "./runners/oxlint/resolve-sidecar-probe-answer.js";
 import { createSidecarLintCache } from "./runners/oxlint/sidecar-lint-cache.js";
-import type {
-  SidecarDependencyProbe,
-  SidecarLintCache,
-} from "./runners/oxlint/sidecar-lint-cache.js";
+import type { SidecarLintCache } from "./runners/oxlint/sidecar-lint-cache.js";
 import { resolveUserPlugins } from "./runners/oxlint/plugin-resolution.js";
 import { resolveOxlintToolchainVersions } from "./runners/oxlint/resolve-toolchain-versions.js";
 import {
@@ -107,8 +104,8 @@ interface SidecarStorablePass {
   /** False when the pass had a partial failure or a config fallback — its
    * output may be incomplete, so nothing from it is stored. */
   readonly isTrusted: boolean;
-  /** Each file's answered probe set (from `collectSidecarProbesForFiles`). */
-  readonly probesByFile: ReadonlyMap<string, ReadonlyArray<SidecarDependencyProbe> | null>;
+  /** Each file's interned probe ids (from `collectSidecarProbesForFiles`). */
+  readonly probeIdsByFile: ReadonlyMap<string, ReadonlyArray<number> | null>;
 }
 
 /**
@@ -128,8 +125,17 @@ const collectSidecarProbesForFiles = async (input: {
   rootDirectory: string;
   boundedSidecarRuleIds: ReadonlyArray<string>;
   probeAnswers: SidecarProbeAnswerResolver;
-}): Promise<Map<string, ReadonlyArray<SidecarDependencyProbe> | null>> => {
-  const buildProbes = (file: string): SidecarDependencyProbe[] | null => {
+  sidecarCache: SidecarLintCache;
+}): Promise<Map<string, ReadonlyArray<number> | null>> => {
+  const internProbe = (kind: "content" | "exists", absolutePath: string): number => {
+    const relativePath = input.probeAnswers.toRelativePath(absolutePath);
+    return input.sidecarCache.internProbe(
+      kind,
+      relativePath,
+      input.probeAnswers.answerFor(kind, relativePath),
+    );
+  };
+  const buildProbeIds = (file: string): number[] | null => {
     const absoluteFilePath = path.resolve(input.rootDirectory, file);
     let trace: ReturnType<typeof collectCrossFileDependencyProbes>;
     try {
@@ -142,40 +148,30 @@ const collectSidecarProbesForFiles = async (input: {
       return null;
     }
     if (trace === null) return null;
-    const probes: SidecarDependencyProbe[] = [];
+    const probeIds: number[] = [];
     for (const contentPath of trace.contentPaths) {
-      const relativePath = input.probeAnswers.toRelativePath(contentPath);
-      probes.push({
-        kind: "content",
-        path: relativePath,
-        answer: input.probeAnswers.answerFor("content", relativePath),
-      });
+      probeIds.push(internProbe("content", contentPath));
     }
     // A path can carry BOTH probe kinds (e.g. a package.json probed for
     // existence during the ancestor walk and then read): keep both — the
     // content answer can't distinguish a directory from a missing file, but
     // the resolvers can (`"dir"` vs `"none"`).
     for (const existencePath of trace.existencePaths) {
-      const relativePath = input.probeAnswers.toRelativePath(existencePath);
-      probes.push({
-        kind: "exists",
-        path: relativePath,
-        answer: input.probeAnswers.answerFor("exists", relativePath),
-      });
+      probeIds.push(internProbe("exists", existencePath));
     }
-    return probes;
+    return probeIds;
   };
 
-  const probesByFile = new Map<string, ReadonlyArray<SidecarDependencyProbe> | null>();
+  const probeIdsByFile = new Map<string, ReadonlyArray<number> | null>();
   let collectSliceStartedAt = performance.now();
   for (const file of input.files) {
-    probesByFile.set(file, buildProbes(file));
+    probeIdsByFile.set(file, buildProbeIds(file));
     if (performance.now() - collectSliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
       await yieldToEventLoop();
       collectSliceStartedAt = performance.now();
     }
   }
-  return probesByFile;
+  return probeIdsByFile;
 };
 
 /**
@@ -195,10 +191,10 @@ const storeSidecarEntries = (input: {
     for (const file of pass.files) {
       const cacheKey = input.cacheKeyByFile.get(file);
       if (cacheKey === undefined) continue;
-      const probes = pass.probesByFile.get(file);
-      if (probes === undefined || probes === null) continue;
+      const probeIds = pass.probeIdsByFile.get(file);
+      if (probeIds === undefined || probeIds === null) continue;
       input.sidecarCache.store(cacheKey, {
-        probes,
+        probeIds,
         diagnostics: diagnosticsByFile.get(file) ?? [],
       });
       didStoreAnyEntry = true;
@@ -709,6 +705,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
               rootDirectory,
               boundedSidecarRuleIds,
               probeAnswers,
+              sidecarCache,
             });
 
       // Miss files run the FULL config in one pass — cacheable and cross-file
@@ -750,10 +747,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           const cacheKey = cacheKeyByFile.get(hitFile);
           const entry = cacheKey === undefined ? null : sidecarCache.lookup(cacheKey);
           const isReplayable =
-            entry !== null &&
-            entry.probes.every(
-              (probe) => probeAnswers.answerFor(probe.kind, probe.path) === probe.answer,
-            );
+            entry !== null && sidecarCache.isReplayable(entry, probeAnswers.answerFor);
           if (isReplayable) {
             sidecarReplayedFiles.push(hitFile);
             sidecarReplayedDiagnostics.push(...entry.diagnostics);
@@ -775,6 +769,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
               rootDirectory,
               boundedSidecarRuleIds,
               probeAnswers,
+              sidecarCache,
             });
       // Replayed files are completed work: without them in the numerator the
       // spinner stalls at missFiles + sidecarLintFiles of candidateFiles, and
@@ -869,7 +864,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
               files: sidecarLintFiles,
               diagnostics: boundedSidecarResult.diagnostics,
               isTrusted: !boundedSidecarResult.hadPartialFailure,
-              probesByFile: await sidecarProbesTask,
+              probeIdsByFile: await sidecarProbesTask,
             },
             {
               files: missFiles,
@@ -877,7 +872,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
                 boundedSidecarRuleIdSet.has(diagnostic.rule),
               ),
               isTrusted: !fullResult.didDropReactHooksJsPlugin && !fullResult.hadPartialFailure,
-              probesByFile: await missProbesTask,
+              probeIdsByFile: await missProbesTask,
             },
           ],
         });

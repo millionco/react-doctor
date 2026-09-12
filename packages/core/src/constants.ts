@@ -938,8 +938,9 @@ export const FILE_LINT_CACHE_MAX_FILE_COUNT = 50_000;
 // ruleset hash, each entry guarded by the file's cross-file dependency probe
 // set, so a warm rescan replays the sidecar instead of re-linting every
 // unchanged file. Shares the file cache's bucket/file caps.
-// Bumped to 3 with the same parser-diagnostic compatibility change.
-export const SIDECAR_LINT_CACHE_SCHEMA_VERSION = 3;
+// Bumped to 3 with the same parser-diagnostic compatibility change, and to 4
+// when probes became an interned per-bucket table referenced by id.
+export const SIDECAR_LINT_CACHE_SCHEMA_VERSION = 4;
 
 export const SIDECAR_LINT_CACHE_FILENAME = "sidecar-lint-cache.json";
 

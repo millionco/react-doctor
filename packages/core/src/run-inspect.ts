@@ -6,7 +6,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { REACT_DOCTOR_RULE_REGISTRY } from "oxlint-plugin-react-doctor/core";
-import type { Diagnostic, DiagnosticSurface } from "./types/index.js";
+import type { Diagnostic, DiagnosticSurface, SourceFileEntry } from "./types/index.js";
 import { assignFixGroups } from "./utils/assign-fix-groups.js";
 import { dedupeRelatedDiagnostics } from "./utils/dedupe-related-diagnostics.js";
 import { isPathInsideDirectory } from "./utils/is-path-inside-directory.js";
@@ -187,8 +187,13 @@ export const runInspect = <HooksR = never>(
     const progressService = yield* Progress;
     const partialFailuresRef = yield* LintPartialFailures;
 
+    // Start the React Compiler detection before config resolution so the
+    // worker's TypeScript load overlaps as much of the scan preamble as
+    // possible; a `rootDir` redirect simply warms the redirected directory too.
+    yield* projectService.warm(input.directory);
     const resolvedConfig: ResolvedConfig = yield* configService.resolve(input.directory);
     const scanDirectory = resolvedConfig.resolvedDirectory;
+    if (scanDirectory !== input.directory) yield* projectService.warm(scanDirectory);
     const ignoredFilePatterns = Array.isArray(resolvedConfig.config?.ignore?.files)
       ? resolvedConfig.config.ignore.files.filter(
           (pattern): pattern is string => typeof pattern === "string",
@@ -208,17 +213,26 @@ export const runInspect = <HooksR = never>(
           relativeFilePath.startsWith(`${excludedRelativePath}/`),
       );
     };
+    // One sized listing serves discovery's source count, the include-path
+    // filters, and the lint batch planner; a full scan lists here so neither
+    // `discoverProject` nor the linter walks the tree again. Only an explicit
+    // include-path scan (diff / staged / positional files) that needs neither
+    // the summary's file set nor an exclusion filter skips the listing.
     const shouldListSourceFiles =
       input.precomputedSourceFiles === undefined &&
-      (input.suppressScanSummary === true || excludedProjectDirectories.length > 0);
-    const precomputedSourceFilePaths =
-      input.precomputedSourceFiles?.map((sourceFile) => sourceFile.path) ??
+      (input.includePaths.length === 0 ||
+        input.suppressScanSummary === true ||
+        excludedProjectDirectories.length > 0);
+    const sizedSourceFiles: ReadonlyArray<SourceFileEntry> | null =
+      input.precomputedSourceFiles ??
       (shouldListSourceFiles
-        ? yield* filesService.listSourceFilesCooperative({
+        ? yield* filesService.listSourceFilesWithSizeCooperative({
             rootDirectory: scanDirectory,
             signal: input.signal,
           })
         : null);
+    const precomputedSourceFilePaths =
+      sizedSourceFiles?.map((sourceFile) => sourceFile.path) ?? null;
     const includedPrecomputedSourceFilePaths =
       precomputedSourceFilePaths !== null && excludedProjectDirectories.length > 0
         ? filterPathsOutsideDirectories({
@@ -298,15 +312,14 @@ export const runInspect = <HooksR = never>(
         excludedDirectories: excludedProjectDirectories,
       });
     }
-    const suppliedSourceFiles = input.precomputedSourceFiles;
     const includedPrecomputedSourceFilePathSet =
-      suppliedSourceFiles === undefined || input.includePaths.length > 0
+      sizedSourceFiles === null || input.includePaths.length > 0
         ? null
         : new Set(lintIncludePaths ?? includedPrecomputedSourceFilePaths ?? []);
     const precomputedLintSourceFiles =
-      includedPrecomputedSourceFilePathSet === null || suppliedSourceFiles === undefined
+      includedPrecomputedSourceFilePathSet === null || sizedSourceFiles === null
         ? undefined
-        : suppliedSourceFiles.filter((sourceFile) =>
+        : sizedSourceFiles.filter((sourceFile) =>
             includedPrecomputedSourceFilePathSet.has(sourceFile.path),
           );
 
@@ -557,6 +570,14 @@ export const runInspect = <HooksR = never>(
               ignorePatterns: ignoredFilePatterns,
               workerTimeoutMs: resolveProjectAnalysisTimeout(project.sourceFileCount),
               signal: input.signal,
+              // Only the orchestrator's own raw listing is shareable; supplied
+              // entries are a per-project assignment the duplicate-JSX pass
+              // must not inherit (a family split across nested projects
+              // would lose occurrences).
+              sourceFiles:
+                input.precomputedSourceFiles === undefined && sizedSourceFiles !== null
+                  ? sizedSourceFiles
+                  : undefined,
               onIncomplete: (reasons) => {
                 incompleteReason = describeMaintainabilityIncompleteness(reasons);
               },

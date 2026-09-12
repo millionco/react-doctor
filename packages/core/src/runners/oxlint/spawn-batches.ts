@@ -54,6 +54,13 @@ export interface SpawnLintBatchesInput {
   readonly sourceMapByLintPath?: ReadonlyMap<string, PreparedSourceMap>;
   readonly onPartialFailure?: (reason: string) => void;
   readonly onAnalyzedFiles?: (filePaths: ReadonlyArray<string>) => void;
+  /**
+   * Fires once, when every top-level batch of the first pass has been handed
+   * to a worker (or skipped for the deadline): from here on a worker that
+   * finishes has no lint batch left to pick up, so other pool work can fill
+   * it without extending the lint wave.
+   */
+  readonly onAllBatchesStarted?: () => void;
   readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
   /** Per-batch wall-clock budget (from `OxlintSpawnTimeoutMs`). */
   readonly spawnTimeoutMs?: number;
@@ -166,6 +173,14 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     signal,
     deadlineEpochMs,
   } = input;
+  let didReportAllBatchesStarted = false;
+  let startedTopLevelBatchCount = 0;
+  const reportBatchStarted = (topLevelBatchCount: number): void => {
+    startedTopLevelBatchCount += 1;
+    if (didReportAllBatchesStarted || startedTopLevelBatchCount < topLevelBatchCount) return;
+    didReportAllBatchesStarted = true;
+    input.onAllBatchesStarted?.();
+  };
   const resolveSourcePath = (filePath: string): string => {
     const absoluteFilePath = path.isAbsolute(filePath)
       ? filePath
@@ -271,6 +286,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
               if (batchState.didStart) return;
               batchState.didStart = true;
               startedFileCount += batchState.initialFileCount;
+              reportBatchStarted(passBatches.length);
             },
           });
         };
@@ -349,6 +365,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
       const batchResults = await mapWithConcurrency(passBatches, concurrency, async (batch) => {
         if (isPastDeadline()) {
           deadlineSkippedFiles.push(...batch);
+          reportBatchStarted(passBatches.length);
           return [];
         }
         const batchState: BatchState = {

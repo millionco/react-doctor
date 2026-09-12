@@ -382,6 +382,7 @@ describe("runInspect — happy path", () => {
     }
     const layers = Layer.mergeAll(
       Layer.mock(Project, {
+        warm: () => Effect.void,
         discover: (input) => {
           discoveredSourceFileCount = input.sourceFileCount;
           return Effect.succeed({
@@ -719,6 +720,7 @@ describe("runInspect — missing React dependency", () => {
     // points. This pins how the orchestrator propagates a tagged project error.
     const explicitFailLayers = Layer.mergeAll(
       Layer.mock(Project, {
+        warm: () => Effect.void,
         discover: () =>
           Effect.fail(
             new ReactDoctorError({ reason: new NoReactDependency({ directory: "/repo" }) }),

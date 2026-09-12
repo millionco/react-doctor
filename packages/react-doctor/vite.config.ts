@@ -64,9 +64,11 @@ export default defineConfig({
     {
       entry: {
         cli: "./src/cli/index.ts",
+        "start-scan-preamble": "./src/cli/start-scan-preamble.ts",
         "project-analysis-worker": "./src/project-analysis-worker.ts",
         "oxlint-worker": "./src/oxlint-worker.ts",
         "duplicate-jsx-worker": "./src/duplicate-jsx-worker.ts",
+        "react-compiler-detection-worker": "./src/react-compiler-detection-worker.ts",
       },
       deps: {
         // Inline pure-JS CLI deps and the Ink/React renderer so the inspected

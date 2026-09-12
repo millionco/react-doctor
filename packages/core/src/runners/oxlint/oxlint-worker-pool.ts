@@ -1,6 +1,4 @@
-import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import * as net from "node:net";
 import {
   MILLISECONDS_PER_SECOND,
   OXLINT_WORKER_IDLE_TIMEOUT_MS,
@@ -8,16 +6,34 @@ import {
   OXLINT_WORKER_READY_TIMEOUT_MS,
 } from "../../constants.js";
 import { OxlintBatchExceeded, OxlintSpawnFailed, ReactDoctorError } from "../../errors.js";
-import type { OxlintWorkerBootMessage, OxlintWorkerJobMessage } from "../../start-oxlint-worker.js";
+import type {
+  OxlintWorkerBootMessage,
+  OxlintWorkerJobMessage,
+  OxlintWorkerProbeJobMessage,
+} from "../../start-oxlint-worker.js";
 import { buildOxlintExitError } from "../../utils/build-oxlint-exit-error.js";
-import { buildOxlintWorkerNodeArguments } from "../../utils/build-oxlint-worker-node-arguments.js";
-import { lowerChildProcessPriority } from "../../utils/lower-child-process-priority.js";
-import { resolveOxlintThreadCount } from "../../utils/resolve-oxlint-thread-count.js";
-import { resolveChildNodeVersion } from "./resolve-toolchain-versions.js";
+import { setChildProcessRef } from "../../utils/set-child-process-ref.js";
+import {
+  buildOxlintWorkerSpawnSpec,
+  spawnOxlintWorkerProcess,
+  takePrespawnedOxlintWorker,
+} from "./oxlint-worker-prespawn.js";
+
+export interface OxlintWorkerProbeRequest {
+  readonly files: ReadonlyArray<string>;
+  readonly ruleIds: ReadonlyArray<string>;
+}
 
 export interface OxlintWorkerJob {
   readonly argumentsList: ReadonlyArray<string>;
   readonly cwd: string;
+  /**
+   * When set, the worker collects sidecar dependency probes for these files
+   * instead of linting `argumentsList`; the resolved stdout is the JSON
+   * `OxlintWorkerProbeResult`. Same framing, timeout, ceiling and abort
+   * handling as a lint job.
+   */
+  readonly probeRequest?: OxlintWorkerProbeRequest;
   readonly timeoutMs: number;
   readonly outputMaxBytes: number;
   readonly filesystemCacheEpoch: number | null;
@@ -29,6 +45,8 @@ export interface OxlintWorkerPoolOptions {
   readonly nodeBinaryPath: string;
   readonly workerScriptPath: string;
   readonly oxlintPackageDirectory: string;
+  /** Rule plugin entry the worker pre-imports at boot (see `OxlintWorkerRuntime`). */
+  readonly pluginPath?: string | null;
   readonly maxWorkers: number;
   readonly environment: NodeJS.ProcessEnv;
   readonly readyTimeoutMs?: number;
@@ -143,29 +161,10 @@ const isBootMessage = (message: unknown): message is OxlintWorkerBootMessage =>
   "type" in message &&
   (message.type === "ready" || message.type === "unavailable");
 
-const setStreamRef = (stream: unknown, shouldRef: boolean): void => {
-  if (!(stream instanceof net.Socket)) return;
-  if (shouldRef) {
-    stream.ref();
-  } else {
-    stream.unref();
-  }
-};
-
 // Idle workers must not hold the host's event loop open (the CLI exits by
 // draining the loop), so every handle is unref'd between jobs.
-const setWorkerRef = (worker: Worker, shouldRef: boolean): void => {
-  const { child } = worker;
-  if (shouldRef) {
-    child.ref();
-    child.channel?.ref();
-  } else {
-    child.unref();
-    child.channel?.unref();
-  }
-  setStreamRef(child.stdout, shouldRef);
-  setStreamRef(child.stderr, shouldRef);
-};
+const setWorkerRef = (worker: Worker, shouldRef: boolean): void =>
+  setChildProcessRef(worker.child, shouldRef);
 
 export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): OxlintWorkerPool => {
   const readyTimeoutMs = options.readyTimeoutMs ?? OXLINT_WORKER_READY_TIMEOUT_MS;
@@ -282,23 +281,16 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
   };
 
   const createWorker = (): Worker => {
-    const child = spawn(
-      options.nodeBinaryPath,
-      [
-        ...buildOxlintWorkerNodeArguments({
-          childNodeVersion: resolveChildNodeVersion(options.nodeBinaryPath),
-          nativeThreadCount: resolveOxlintThreadCount(options.maxWorkers),
-        }),
-        options.workerScriptPath,
-        options.oxlintPackageDirectory,
-      ],
-      {
-        env: options.environment,
-        stdio: ["ignore", "pipe", "pipe", "ipc"],
-        windowsHide: true,
-      },
-    );
-    lowerChildProcessPriority(child.pid);
+    const spawnSpec = buildOxlintWorkerSpawnSpec({
+      nodeBinaryPath: options.nodeBinaryPath,
+      maxWorkers: options.maxWorkers,
+      workerScriptPath: options.workerScriptPath,
+      oxlintPackageDirectory: options.oxlintPackageDirectory,
+      pluginPath: options.pluginPath ?? null,
+      environment: options.environment,
+    });
+    const prespawned = takePrespawnedOxlintWorker(spawnSpec);
+    const child = prespawned === null ? spawnOxlintWorkerProcess(spawnSpec) : prespawned.child;
     let resolveReady: () => void = () => undefined;
     let rejectReady: (error: OxlintWorkerUnavailableError) => void = () => undefined;
     const ready = new Promise<void>((resolve, reject) => {
@@ -331,7 +323,7 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
         markUnavailable(error instanceof Error ? error.message : String(error));
       },
     );
-    child.on("message", (message: unknown) => {
+    const onBootMessage = (message: unknown): void => {
       if (!isBootMessage(message)) return;
       if (message.type === "ready") {
         worker.isReady = true;
@@ -339,21 +331,28 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
       } else {
         rejectReady(new OxlintWorkerUnavailableError(message.message));
       }
-    });
-    child.on("error", (error) =>
-      rejectReady(new OxlintWorkerUnavailableError(`worker spawn failed: ${error.message}`)),
-    );
-    child.stdout?.on("data", (chunk: Buffer) => onWorkerData(worker, true, chunk));
-    child.stderr?.on("data", (chunk: Buffer) => onWorkerData(worker, false, chunk));
-    child.on("close", (code, signal) => {
+    };
+    const onSpawnError = (error: Error): void =>
+      rejectReady(new OxlintWorkerUnavailableError(`worker spawn failed: ${error.message}`));
+    const onClose = (code: number | null, signal: NodeJS.Signals | null): void => {
       rejectReady(
         new OxlintWorkerUnavailableError(
           `worker exited before ready (code ${code ?? "null"}, signal ${signal ?? "none"})`,
         ),
       );
       onWorkerClose(worker, code, signal);
-    });
+    };
+    child.on("message", onBootMessage);
+    child.on("error", onSpawnError);
+    child.stdout?.on("data", (chunk: Buffer) => onWorkerData(worker, true, chunk));
+    child.stderr?.on("data", (chunk: Buffer) => onWorkerData(worker, false, chunk));
+    child.on("close", onClose);
     workers.add(worker);
+    if (prespawned !== null) {
+      if (prespawned.bootMessage !== null) onBootMessage(prespawned.bootMessage);
+      if (prespawned.spawnError !== null) onSpawnError(prespawned.spawnError);
+      if (prespawned.exit !== null) onClose(prespawned.exit.code, prespawned.exit.signal);
+    }
     return worker;
   };
 
@@ -411,13 +410,23 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
     job.abortSignal?.addEventListener("abort", onAbort, { once: true });
     worker.current = pending;
     job.onStart?.();
-    const message: OxlintWorkerJobMessage = {
-      type: "job",
-      id,
-      cwd: job.cwd,
-      argumentsList: job.argumentsList,
-      filesystemCacheEpoch: job.filesystemCacheEpoch,
-    };
+    const message: OxlintWorkerJobMessage | OxlintWorkerProbeJobMessage =
+      job.probeRequest === undefined
+        ? {
+            type: "job",
+            id,
+            cwd: job.cwd,
+            argumentsList: job.argumentsList,
+            filesystemCacheEpoch: job.filesystemCacheEpoch,
+          }
+        : {
+            type: "probes",
+            id,
+            cwd: job.cwd,
+            files: job.probeRequest.files,
+            ruleIds: job.probeRequest.ruleIds,
+            filesystemCacheEpoch: job.filesystemCacheEpoch,
+          };
     void worker.ready.then(
       () => {
         if (worker.current !== pending) return;

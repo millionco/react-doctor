@@ -1,14 +1,12 @@
 import * as Context from "effect/Context";
 import {
-  MIN_SCAN_CONCURRENCY,
   OXLINT_OUTPUT_MAX_BYTES,
   OXLINT_SPAWN_TIMEOUT_MS,
   SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS,
 } from "./constants.js";
 import { readPositiveEnvMs } from "./utils/read-positive-env-ms.js";
-import { resolveAutoScanConcurrency } from "./utils/resolve-auto-scan-concurrency.js";
+import { resolveConfiguredScanConcurrency } from "./utils/resolve-configured-scan-concurrency.js";
 import { resolveLintBatchOrdering } from "./utils/resolve-lint-batch-ordering.js";
-import { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
 import type { OxlintSpawnSlotsHandle } from "./utils/create-oxlint-spawn-slots.js";
 import type { InvocationCachesHandle } from "./utils/create-invocation-caches.js";
 
@@ -105,19 +103,7 @@ export class OxlintOutputMaxBytes extends Context.Reference<number>(
  * `[MIN_SCAN_CONCURRENCY, HARD_MAX_SCAN_CONCURRENCY]`.
  */
 export class OxlintConcurrency extends Context.Reference<number>("react-doctor/OxlintConcurrency", {
-  defaultValue: () => {
-    const raw = process.env["REACT_DOCTOR_PARALLEL"];
-    if (raw === undefined) return resolveAutoScanConcurrency();
-    const normalized = raw.trim().toLowerCase();
-    if (normalized === "0" || normalized === "false" || normalized === "off") {
-      return MIN_SCAN_CONCURRENCY;
-    }
-    const parsed = Number.parseInt(normalized, 10);
-    // A positive integer pins the worker count; everything else (empty,
-    // `auto`/`true`/`on`, or unparseable) takes the parallel default.
-    if (Number.isInteger(parsed) && parsed > 0) return resolveScanConcurrency(parsed);
-    return resolveAutoScanConcurrency();
-  },
+  defaultValue: resolveConfiguredScanConcurrency,
 }) {}
 
 export class OxlintSpawnSlots extends Context.Reference<OxlintSpawnSlotsHandle | null>(

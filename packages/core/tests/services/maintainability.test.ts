@@ -8,6 +8,7 @@ import { JSX_DUPLICATION_DEFAULT_MAX_SOURCE_LENGTH_CHARS } from "../../src/const
 import type { ChangedFileLineRanges } from "../../src/types/index.js";
 import { DeadCode } from "../../src/services/dead-code.js";
 import { Maintainability, type MaintainabilityInput } from "../../src/services/maintainability.js";
+import { listSourceFilesWithSizeCooperative } from "../../src/utils/list-source-files.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -102,6 +103,23 @@ describe("Maintainability.layerNode", () => {
       expect(diagnostics[0].rule).toBe("duplicate-jsx-subtree");
     },
   );
+
+  it("reports identical families when the orchestrator supplies the source listing", async () => {
+    const rootDirectory = createProject();
+    const sourceFiles = await listSourceFilesWithSizeCooperative(rootDirectory);
+    const withListing = Array.from(
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const maintainability = yield* Maintainability;
+          return yield* Stream.runCollect(maintainability.run({ rootDirectory, sourceFiles }));
+        }).pipe(Effect.provide(Maintainability.layerNode)),
+      ),
+    );
+    const withOwnWalk = Array.from(await runService(rootDirectory));
+
+    expect(withListing).toHaveLength(1);
+    expect(withListing).toEqual(withOwnWalk);
+  });
 
   it("reports maximal cross-file JSX families with related composition paths", async () => {
     const diagnostics = Array.from(await runService(createProject()));

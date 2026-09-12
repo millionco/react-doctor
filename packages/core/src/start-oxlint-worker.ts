@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { OXLINT_WORKER_JOB_END_MARKER, REACT_DOCTOR_PLUGIN_RESET_HOOK_KEY } from "./constants.js";
+import { classifyExistenceAnswer } from "./utils/classify-existence-answer.js";
 import { createFilesystemCacheEpochGate } from "./utils/create-filesystem-cache-epoch-gate.js";
 
 export interface OxlintWorkerJobMessage {
@@ -16,6 +17,42 @@ export interface OxlintWorkerJobMessage {
    * dropped when the epoch changes; `null` drops them before every job.
    */
   readonly filesystemCacheEpoch: number | null;
+}
+
+/**
+ * Sidecar dependency-probe collection for a batch of files, run by the warm
+ * worker instead of the parent thread: the worker already holds the rule
+ * plugin (whose collectors these are) and its filesystem memos, and ten
+ * workers collect in parallel while the parent stays free to dispatch.
+ */
+export interface OxlintWorkerProbeJobMessage {
+  readonly type: "probes";
+  readonly id: number;
+  /** Scan root; probe paths in the result are relative to it. */
+  readonly cwd: string;
+  readonly files: ReadonlyArray<string>;
+  readonly ruleIds: ReadonlyArray<string>;
+  readonly filesystemCacheEpoch: number | null;
+}
+
+/** One file's probe set as indexes into `OxlintWorkerProbeResult.paths`. */
+export interface OxlintWorkerProbeTrace {
+  readonly file: string;
+  readonly content: ReadonlyArray<number>;
+  readonly existence: ReadonlyArray<number>;
+}
+
+/**
+ * Probe traces for one job, written to stdout as JSON before the end marker.
+ * Paths are interned once per job (a batch's files share most dependencies)
+ * and each existence-probed path carries its classification so the parent
+ * never re-stats it; `null` traces are files the collectors could not
+ * fingerprint (the parent stores nothing for them).
+ */
+export interface OxlintWorkerProbeResult {
+  readonly paths: ReadonlyArray<string>;
+  readonly existenceAnswers: ReadonlyArray<string | null>;
+  readonly traces: ReadonlyArray<OxlintWorkerProbeTrace | null>;
 }
 
 export interface OxlintWorkerReadyMessage {
@@ -147,6 +184,22 @@ const isJobMessage = (message: unknown): message is OxlintWorkerJobMessage =>
   "filesystemCacheEpoch" in message &&
   (message.filesystemCacheEpoch === null || typeof message.filesystemCacheEpoch === "number");
 
+const isProbeJobMessage = (message: unknown): message is OxlintWorkerProbeJobMessage =>
+  typeof message === "object" &&
+  message !== null &&
+  "type" in message &&
+  message.type === "probes" &&
+  "id" in message &&
+  typeof message.id === "number" &&
+  "cwd" in message &&
+  typeof message.cwd === "string" &&
+  "files" in message &&
+  Array.isArray(message.files) &&
+  "ruleIds" in message &&
+  Array.isArray(message.ruleIds) &&
+  "filesystemCacheEpoch" in message &&
+  (message.filesystemCacheEpoch === null || typeof message.filesystemCacheEpoch === "number");
+
 const sendToParent = (message: OxlintWorkerBootMessage): void => {
   process.send?.(message);
 };
@@ -205,8 +258,103 @@ const runJob = async (internals: OxlintInternals, job: OxlintWorkerJobMessage): 
   writeLine(2, `${OXLINT_WORKER_JOB_END_MARKER}:${job.id}:end`);
 };
 
+// oxlint imports the rule plugin by `file://` URL on a job's first
+// `loadPlugin`; evaluating the bundle there costs the first job on every
+// worker ~50 ms inside the lint wave. Importing it while the worker boots
+// (overlapping project discovery) leaves that job a module-cache hit.
+// Best-effort: a failure here surfaces, if at all, as oxlint's own plugin
+// load error on the first job.
+const preloadPlugin = async (pluginPath: string | undefined): Promise<void> => {
+  if (pluginPath === undefined) return;
+  try {
+    await import(pathToFileURL(pluginPath).href);
+  } catch {
+    return;
+  }
+};
+
+type ProbeCollectorModule = typeof import("oxlint-plugin-react-doctor/core");
+
+let probeCollectorModule: Promise<ProbeCollectorModule> | null = null;
+
+// The collectors live in the plugin's core entry, which lint jobs never need.
+// It is imported right after the worker reports ready (so readiness is not
+// delayed) and settles while the parent is still discovering the project;
+// loading it lazily on the first probe job instead cost every worker ~40 ms
+// at the tail of the lint wave, more than a trivial chunk of probes is worth.
+const loadProbeCollector = (): Promise<ProbeCollectorModule> =>
+  (probeCollectorModule ??= import("oxlint-plugin-react-doctor/core"));
+
+const collectProbeTraces = (
+  collectCrossFileDependencyProbes: ProbeCollectorModule["collectCrossFileDependencyProbes"],
+  job: OxlintWorkerProbeJobMessage,
+): OxlintWorkerProbeResult => {
+  const paths: string[] = [];
+  const existenceAnswers: Array<string | null> = [];
+  const pathIndexByRelativePath = new Map<string, number>();
+  const internPath = (absolutePath: string, isExistenceProbe: boolean): number => {
+    const relativePath = path.relative(job.cwd, absolutePath).replaceAll("\\", "/");
+    let pathIndex = pathIndexByRelativePath.get(relativePath);
+    if (pathIndex === undefined) {
+      pathIndex = paths.length;
+      paths.push(relativePath);
+      existenceAnswers.push(null);
+      pathIndexByRelativePath.set(relativePath, pathIndex);
+    }
+    if (isExistenceProbe && existenceAnswers[pathIndex] === null) {
+      existenceAnswers[pathIndex] = classifyExistenceAnswer(absolutePath);
+    }
+    return pathIndex;
+  };
+  const traces = job.files.map((file): OxlintWorkerProbeTrace | null => {
+    const absoluteFilePath = path.resolve(job.cwd, file);
+    let trace: ReturnType<typeof collectCrossFileDependencyProbes>;
+    try {
+      trace = collectCrossFileDependencyProbes({
+        absoluteFilePath,
+        sourceText: fs.readFileSync(absoluteFilePath, "utf8"),
+        ruleIds: job.ruleIds,
+      });
+    } catch {
+      return null;
+    }
+    if (trace === null) return null;
+    return {
+      file,
+      content: [...trace.contentPaths].map((contentPath) => internPath(contentPath, false)),
+      existence: [...trace.existencePaths].map((existencePath) => internPath(existencePath, true)),
+    };
+  });
+  return { paths, existenceAnswers, traces };
+};
+
+// Same framing as a lint job: the JSON result goes to stdout, the end marker
+// carries the status, and any failure surfaces on stderr so the parent falls
+// back to collecting that batch in-process.
+const runProbeJob = async (job: OxlintWorkerProbeJobMessage): Promise<void> => {
+  let status: OxlintWorkerJobStatus = "error";
+  let errorMessage: string | null = null;
+  try {
+    const { collectCrossFileDependencyProbes } = await loadProbeCollector();
+    process.chdir(job.cwd);
+    if (filesystemCacheEpochGate.shouldReset(job.filesystemCacheEpoch)) {
+      resetPluginFilesystemCaches();
+    }
+    fs.writeSync(1, JSON.stringify(collectProbeTraces(collectCrossFileDependencyProbes, job)));
+    status = "ok";
+  } catch (error) {
+    errorMessage = error instanceof Error ? (error.stack ?? error.message) : String(error);
+  } finally {
+    leaveJobWorkingDirectory();
+  }
+  if (errorMessage !== null) fs.writeSync(2, `${errorMessage}\n`);
+  writeLine(1, `${OXLINT_WORKER_JOB_END_MARKER}:${job.id}:${status}`);
+  writeLine(2, `${OXLINT_WORKER_JOB_END_MARKER}:${job.id}:end`);
+};
+
 export const startOxlintWorker = (): void => {
   const oxlintPackageDirectory = process.argv[2];
+  const pluginPath = process.argv[3];
   process.on("disconnect", () => process.exit(0));
   if (oxlintPackageDirectory === undefined) {
     sendToParent({ type: "unavailable", message: "missing oxlint package directory argument" });
@@ -214,14 +362,19 @@ export const startOxlintWorker = (): void => {
   }
   setStdioBlocking(process.stdout);
   setStdioBlocking(process.stderr);
-  void importOxlintInternals(oxlintPackageDirectory).then(
-    (internals) => {
+  void Promise.all([importOxlintInternals(oxlintPackageDirectory), preloadPlugin(pluginPath)]).then(
+    ([internals]) => {
       let queue: Promise<void> = Promise.resolve();
       process.on("message", (message: unknown) => {
+        if (isProbeJobMessage(message)) {
+          queue = queue.then(() => runProbeJob(message));
+          return;
+        }
         if (!isJobMessage(message)) return;
         queue = queue.then(() => runJob(internals, message));
       });
       sendToParent({ type: "ready" });
+      loadProbeCollector().catch(() => undefined);
     },
     (error: unknown) => {
       sendToParent({

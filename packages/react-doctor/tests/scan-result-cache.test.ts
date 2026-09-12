@@ -62,7 +62,7 @@ const cacheKey = (
   version = VERSION,
   nodeBinaryPath: string | null = null,
   invocationState = createScanResultCacheInvocationState(),
-): string | null =>
+): Promise<string | null> =>
   buildScanResultCacheKey({
     projectDirectory,
     version,
@@ -148,7 +148,7 @@ afterEach(() => {
 });
 
 describe("scan result cache", () => {
-  it("fingerprints the bundled rule implementation", () => {
+  it("fingerprints the bundled rule implementation", async () => {
     const fingerprint = resolveScanResultToolchainFingerprint(null).find((entry) =>
       entry.startsWith("oxlint-plugin-react-doctor#fingerprint="),
     );
@@ -156,7 +156,7 @@ describe("scan result cache", () => {
     expect(fingerprint).toMatch(/^oxlint-plugin-react-doctor#fingerprint=[0-9a-f]+$/);
   });
 
-  it("reuses one repository identity across workspace projects", () => {
+  it("reuses one repository identity across workspace projects", async () => {
     const firstProjectDirectory = setupReactProject(tempDirectory, "apps/first", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },
     });
@@ -167,21 +167,21 @@ describe("scan result cache", () => {
     const invocationState = createScanResultCacheInvocationState();
 
     expect(
-      cacheKey(firstProjectDirectory, baseOptions(), VERSION, null, invocationState),
+      await cacheKey(firstProjectDirectory, baseOptions(), VERSION, null, invocationState),
     ).not.toBeNull();
     expect(
-      cacheKey(secondProjectDirectory, baseOptions(), VERSION, null, invocationState),
+      await cacheKey(secondProjectDirectory, baseOptions(), VERSION, null, invocationState),
     ).not.toBeNull();
     expect(invocationState.repositoryIdentityByRoot.size).toBe(1);
   });
 
-  it("returns cached payloads for the same clean project key", () => {
+  it("returns cached payloads for the same clean project key", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "hit", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },
     });
     initGitRepo(projectDirectory, { commit: true });
     const options = baseOptions();
-    const key = cacheKey(projectDirectory, options);
+    const key = await cacheKey(projectDirectory, options);
     expect(key).not.toBeNull();
     if (key === null) return;
 
@@ -191,7 +191,7 @@ describe("scan result cache", () => {
     expect(cache.lookup(key)?.diagnostics).toEqual([diagnostic(projectDirectory)]);
   });
 
-  it("merges entries stored by independently loaded cache instances", () => {
+  it("merges entries stored by independently loaded cache instances", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "merged-writers", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },
     });
@@ -207,7 +207,7 @@ describe("scan result cache", () => {
     expect(reloadedCache.lookup("second")).not.toBeNull();
   });
 
-  it("drops malformed persisted payloads instead of throwing during lookup", () => {
+  it("drops malformed persisted payloads instead of throwing during lookup", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "malformed-payload", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },
     });
@@ -228,7 +228,7 @@ describe("scan result cache", () => {
     expect(createScanResultCache(projectDirectory).lookup("malformed")).toBeNull();
   });
 
-  it("honors REACT_DOCTOR_CACHE_DIR so the action-persisted dir carries the scan cache", () => {
+  it("honors REACT_DOCTOR_CACHE_DIR so the action-persisted dir carries the scan cache", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "cache-dir-override", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },
     });
@@ -237,7 +237,7 @@ describe("scan result cache", () => {
     const previousValue = process.env.REACT_DOCTOR_CACHE_DIR;
     try {
       process.env.REACT_DOCTOR_CACHE_DIR = overrideDirectory;
-      const key = cacheKey(projectDirectory, baseOptions());
+      const key = await cacheKey(projectDirectory, baseOptions());
       expect(key).not.toBeNull();
       if (key === null) return;
       createScanResultCache(projectDirectory).store(key, basePayload(projectDirectory));
@@ -251,7 +251,7 @@ describe("scan result cache", () => {
     }
   });
 
-  it("keys identically across a fresh-checkout mtime bump of config and dotenv files", () => {
+  it("keys identically across a fresh-checkout mtime bump of config and dotenv files", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "fresh-checkout", {
       files: {
         "src/App.tsx": "export const App = () => <div />;\n",
@@ -261,7 +261,7 @@ describe("scan result cache", () => {
       },
     });
     initGitRepo(projectDirectory, { commit: true });
-    const keyBefore = cacheKey(projectDirectory, baseOptions());
+    const keyBefore = await cacheKey(projectDirectory, baseOptions());
     expect(keyBefore).not.toBeNull();
 
     // A fresh CI checkout re-creates every file: same bytes, new mtimes.
@@ -269,7 +269,7 @@ describe("scan result cache", () => {
     for (const fileName of ["package.json", "doctor.config.json", ".env"]) {
       fs.utimesSync(path.join(projectDirectory, fileName), bumpedDate, bumpedDate);
     }
-    expect(cacheKey(projectDirectory, baseOptions())).toBe(keyBefore);
+    expect(await cacheKey(projectDirectory, baseOptions())).toBe(keyBefore);
   });
 
   // The cache is deliberately NOT keyed on `--max-duration`: it's safe to serve
@@ -277,7 +277,7 @@ describe("scan result cache", () => {
   // stored. A budget-truncated run (lint partial or dead-code skipped) must be
   // barred here, so a `--max-duration` cache hit can only ever be a complete
   // result — honoring the max budget without replaying a stale partial.
-  it("never stores a budget-truncated (or otherwise incomplete) scan", () => {
+  it("never stores a budget-truncated (or otherwise incomplete) scan", async () => {
     const directory = tempDirectory;
     expect(shouldStoreScanPayload(basePayload(directory))).toBe(true);
     expect(
@@ -291,37 +291,39 @@ describe("scan result cache", () => {
     expect(shouldStoreScanPayload(basePayload(directory, { didLintFail: true }))).toBe(false);
   });
 
-  it("misses when commit, config, version, or selected files change", () => {
+  it("misses when commit, config, version, or selected files change", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "miss", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },
     });
     initGitRepo(projectDirectory, { commit: true });
     const options = baseOptions();
-    const originalKey = cacheKey(projectDirectory, options);
+    const originalKey = await cacheKey(projectDirectory, options);
     expect(originalKey).not.toBeNull();
 
-    expect(cacheKey(projectDirectory, options, "999.0.0")).not.toBe(originalKey);
-    expect(cacheKey(projectDirectory, baseOptions({ includePaths: ["src/App.tsx"] }))).not.toBe(
-      originalKey,
-    );
+    expect(await cacheKey(projectDirectory, options, "999.0.0")).not.toBe(originalKey);
     expect(
-      cacheKey(
+      await cacheKey(projectDirectory, baseOptions({ includePaths: ["src/App.tsx"] })),
+    ).not.toBe(originalKey);
+    expect(
+      await cacheKey(
         projectDirectory,
         baseOptions({ excludedProjectDirectories: [path.join(projectDirectory, "packages/web")] }),
       ),
     ).not.toBe(originalKey);
     // `--no-supply-chain` must not share a key with a supply-chain-on run at the
     // same commit — the flag no longer rides the keyed `userConfig` blob.
-    expect(cacheKey(projectDirectory, baseOptions({ supplyChain: false }))).not.toBe(originalKey);
+    expect(await cacheKey(projectDirectory, baseOptions({ supplyChain: false }))).not.toBe(
+      originalKey,
+    );
     expect(
-      cacheKey(
+      await cacheKey(
         projectDirectory,
         baseOptions({ includedTags: new Set(["design"]), includeTagDefaults: true }),
       ),
     ).not.toBe(originalKey);
     const alternateNodeBinaryPath = path.join(tempDirectory, "fake-node");
     fs.writeFileSync(alternateNodeBinaryPath, "node-a");
-    expect(cacheKey(projectDirectory, options, VERSION, alternateNodeBinaryPath)).not.toBe(
+    expect(await cacheKey(projectDirectory, options, VERSION, alternateNodeBinaryPath)).not.toBe(
       originalKey,
     );
 
@@ -331,11 +333,11 @@ describe("scan result cache", () => {
     );
     // An uncommitted config no longer bails the key — the dirty-worktree
     // fingerprint folds it in, so the key exists but differs from clean.
-    expect(cacheKey(projectDirectory, options)).not.toBeNull();
-    expect(cacheKey(projectDirectory, options)).not.toBe(originalKey);
+    expect(await cacheKey(projectDirectory, options)).not.toBeNull();
+    expect(await cacheKey(projectDirectory, options)).not.toBe(originalKey);
 
     commitAll(projectDirectory, "config");
-    const configCommitKey = cacheKey(projectDirectory, options);
+    const configCommitKey = await cacheKey(projectDirectory, options);
     expect(configCommitKey).not.toBeNull();
     expect(configCommitKey).not.toBe(originalKey);
 
@@ -344,10 +346,10 @@ describe("scan result cache", () => {
       "export const App = () => <main />;\n",
     );
     commitAll(projectDirectory, "source");
-    expect(cacheKey(projectDirectory, options)).not.toBe(configCommitKey);
+    expect(await cacheKey(projectDirectory, options)).not.toBe(configCommitKey);
   });
 
-  it("misses when the lint batch ordering changes", () => {
+  it("misses when the lint batch ordering changes", async () => {
     // Batch ordering (`cost` vs `arrival`) can change which files trip the
     // spawn timeout and get dropped, so a `cost` payload must not be served to
     // an `arrival` lookup at the same commit.
@@ -359,11 +361,11 @@ describe("scan result cache", () => {
     const previousOrdering = process.env.REACT_DOCTOR_LINT_BATCH_ORDERING;
     try {
       delete process.env.REACT_DOCTOR_LINT_BATCH_ORDERING;
-      const defaultOrderingKey = cacheKey(projectDirectory, options);
+      const defaultOrderingKey = await cacheKey(projectDirectory, options);
       expect(defaultOrderingKey).not.toBeNull();
       // The default ordering is `cost`; rolling back to `arrival` must change the key.
       process.env.REACT_DOCTOR_LINT_BATCH_ORDERING = "arrival";
-      expect(cacheKey(projectDirectory, options)).not.toBe(defaultOrderingKey);
+      expect(await cacheKey(projectDirectory, options)).not.toBe(defaultOrderingKey);
     } finally {
       if (previousOrdering === undefined) {
         delete process.env.REACT_DOCTOR_LINT_BATCH_ORDERING;
@@ -373,7 +375,7 @@ describe("scan result cache", () => {
     }
   });
 
-  it("honors REACT_DOCTOR_NO_CACHE", () => {
+  it("honors REACT_DOCTOR_NO_CACHE", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "disabled", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },
     });
@@ -381,7 +383,7 @@ describe("scan result cache", () => {
     const previousValue = process.env.REACT_DOCTOR_NO_CACHE;
     try {
       process.env.REACT_DOCTOR_NO_CACHE = "true";
-      expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
+      expect(await cacheKey(projectDirectory, baseOptions())).toBeNull();
     } finally {
       if (previousValue === undefined) {
         delete process.env.REACT_DOCTOR_NO_CACHE;
@@ -391,7 +393,7 @@ describe("scan result cache", () => {
     }
   });
 
-  it("does not cache when git hides tracked file changes", () => {
+  it("does not cache when git hides tracked file changes", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "hidden-state", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },
     });
@@ -400,10 +402,10 @@ describe("scan result cache", () => {
       cwd: projectDirectory,
     });
 
-    expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
+    expect(await cacheKey(projectDirectory, baseOptions())).toBeNull();
   });
 
-  it("does not cache a .git-less checkout git resolves to an enclosing repository", () => {
+  it("does not cache a .git-less checkout git resolves to an enclosing repository", async () => {
     // The mining/benchmark layout: an enclosing "runner" repo gitignores a
     // clones/ directory into which different projects are materialized at the
     // same path with .git stripped. Every git probe from the clone resolves
@@ -418,10 +420,10 @@ describe("scan result cache", () => {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },
     });
 
-    expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
+    expect(await cacheKey(projectDirectory, baseOptions())).toBeNull();
   });
 
-  it("still caches a tracked workspace-member subdirectory", () => {
+  it("still caches a tracked workspace-member subdirectory", async () => {
     const repositoryDirectory = path.join(tempDirectory, "workspace");
     fs.mkdirSync(repositoryDirectory, { recursive: true });
     const projectDirectory = setupReactProject(repositoryDirectory, "packages/app", {
@@ -429,16 +431,16 @@ describe("scan result cache", () => {
     });
     initGitRepo(repositoryDirectory, { commit: true });
 
-    expect(cacheKey(projectDirectory, baseOptions())).not.toBeNull();
+    expect(await cacheKey(projectDirectory, baseOptions())).not.toBeNull();
   });
 
   describe("replay verification", () => {
-    it("misses when the manifest content changed since the payload was stored", () => {
+    it("misses when the manifest content changed since the payload was stored", async () => {
       const projectDirectory = setupReactProject(tempDirectory, "manifest-drift", {
         files: { "src/App.tsx": "export const App = () => <div />;\n" },
       });
       initGitRepo(projectDirectory, { commit: true });
-      const key = cacheKey(projectDirectory, baseOptions());
+      const key = await cacheKey(projectDirectory, baseOptions());
       expect(key).not.toBeNull();
       if (key === null) return;
       createScanResultCache(projectDirectory).store(key, basePayload(projectDirectory));
@@ -453,12 +455,12 @@ describe("scan result cache", () => {
       expect(createScanResultCache(projectDirectory).lookup(key)).toBeNull();
     });
 
-    it("misses when the stored payload describes another directory", () => {
+    it("misses when the stored payload describes another directory", async () => {
       const projectDirectory = setupReactProject(tempDirectory, "directory-drift", {
         files: { "src/App.tsx": "export const App = () => <div />;\n" },
       });
       initGitRepo(projectDirectory, { commit: true });
-      const key = cacheKey(projectDirectory, baseOptions());
+      const key = await cacheKey(projectDirectory, baseOptions());
       expect(key).not.toBeNull();
       if (key === null) return;
       const cache = createScanResultCache(projectDirectory);
@@ -471,7 +473,7 @@ describe("scan result cache", () => {
     });
   });
 
-  it("handles git output larger than Node's default maxBuffer", () => {
+  it("handles git output larger than Node's default maxBuffer", async () => {
     // `git ls-files -v` exceeds execFileSync's 1 MiB default on repos with
     // ~15-25k tracked files (getsentry/sentry: 1.25 MB); the resulting ENOBUFS
     // surfaced as `null`, which the cache gates read as hidden tracked state —
@@ -502,89 +504,89 @@ describe("scan result cache", () => {
       return projectDirectory;
     };
 
-    it("keys a clean tree identically across runs", () => {
+    it("keys a clean tree identically across runs", async () => {
       const projectDirectory = setupCleanProject("clean-stable");
-      const firstKey = cacheKey(projectDirectory, baseOptions());
+      const firstKey = await cacheKey(projectDirectory, baseOptions());
       expect(firstKey).not.toBeNull();
-      expect(cacheKey(projectDirectory, baseOptions())).toBe(firstKey);
+      expect(await cacheKey(projectDirectory, baseOptions())).toBe(firstKey);
     });
 
-    it("keys an untracked file distinctly from clean, stably across identical states", () => {
+    it("keys an untracked file distinctly from clean, stably across identical states", async () => {
       const projectDirectory = setupCleanProject("untracked");
-      const cleanKey = cacheKey(projectDirectory, baseOptions());
+      const cleanKey = await cacheKey(projectDirectory, baseOptions());
       fs.writeFileSync(path.join(projectDirectory, "scratch.txt"), "x\n");
-      const dirtyKey = cacheKey(projectDirectory, baseOptions());
+      const dirtyKey = await cacheKey(projectDirectory, baseOptions());
       expect(dirtyKey).not.toBeNull();
       expect(dirtyKey).not.toBe(cleanKey);
-      expect(cacheKey(projectDirectory, baseOptions())).toBe(dirtyKey);
+      expect(await cacheKey(projectDirectory, baseOptions())).toBe(dirtyKey);
     });
 
-    it("misses when dirty content is edited, and rejoins the clean key when reverted", () => {
+    it("misses when dirty content is edited, and rejoins the clean key when reverted", async () => {
       const projectDirectory = setupCleanProject("edited");
-      const cleanKey = cacheKey(projectDirectory, baseOptions());
+      const cleanKey = await cacheKey(projectDirectory, baseOptions());
       const appPath = path.join(projectDirectory, "src", "App.tsx");
       const committedSource = fs.readFileSync(appPath, "utf8");
       fs.writeFileSync(appPath, "export const App = () => <main />;\n");
-      const firstDirtyKey = cacheKey(projectDirectory, baseOptions());
+      const firstDirtyKey = await cacheKey(projectDirectory, baseOptions());
       expect(firstDirtyKey).not.toBeNull();
       expect(firstDirtyKey).not.toBe(cleanKey);
       fs.writeFileSync(appPath, "export const App = () => <section />;\n");
-      const secondDirtyKey = cacheKey(projectDirectory, baseOptions());
+      const secondDirtyKey = await cacheKey(projectDirectory, baseOptions());
       expect(secondDirtyKey).not.toBe(firstDirtyKey);
       expect(secondDirtyKey).not.toBe(cleanKey);
       fs.writeFileSync(appPath, committedSource);
-      expect(cacheKey(projectDirectory, baseOptions())).toBe(cleanKey);
+      expect(await cacheKey(projectDirectory, baseOptions())).toBe(cleanKey);
     });
 
-    it("keys staged and unstaged states of the same content differently", () => {
+    it("keys staged and unstaged states of the same content differently", async () => {
       const projectDirectory = setupCleanProject("staged");
       fs.writeFileSync(
         path.join(projectDirectory, "src", "App.tsx"),
         "export const App = () => <main />;\n",
       );
-      const unstagedKey = cacheKey(projectDirectory, baseOptions());
+      const unstagedKey = await cacheKey(projectDirectory, baseOptions());
       spawnSync("git", ["add", "src/App.tsx"], { cwd: projectDirectory });
-      const stagedKey = cacheKey(projectDirectory, baseOptions());
+      const stagedKey = await cacheKey(projectDirectory, baseOptions());
       expect(unstagedKey).not.toBeNull();
       expect(stagedKey).not.toBeNull();
       expect(stagedKey).not.toBe(unstagedKey);
     });
 
-    it("keys a deleted file distinctly from clean and from a modified one", () => {
+    it("keys a deleted file distinctly from clean and from a modified one", async () => {
       const projectDirectory = setupCleanProject("deleted");
-      const cleanKey = cacheKey(projectDirectory, baseOptions());
+      const cleanKey = await cacheKey(projectDirectory, baseOptions());
       const appPath = path.join(projectDirectory, "src", "App.tsx");
       fs.writeFileSync(appPath, "export const App = () => <main />;\n");
-      const modifiedKey = cacheKey(projectDirectory, baseOptions());
+      const modifiedKey = await cacheKey(projectDirectory, baseOptions());
       fs.rmSync(appPath);
-      const deletedKey = cacheKey(projectDirectory, baseOptions());
+      const deletedKey = await cacheKey(projectDirectory, baseOptions());
       expect(deletedKey).not.toBeNull();
       expect(deletedKey).not.toBe(cleanKey);
       expect(deletedKey).not.toBe(modifiedKey);
-      expect(cacheKey(projectDirectory, baseOptions())).toBe(deletedKey);
+      expect(await cacheKey(projectDirectory, baseOptions())).toBe(deletedKey);
     });
 
-    it("parses rename records (including paths with spaces) into a stable key", () => {
+    it("parses rename records (including paths with spaces) into a stable key", async () => {
       const projectDirectory = setupCleanProject("renamed");
-      const cleanKey = cacheKey(projectDirectory, baseOptions());
+      const cleanKey = await cacheKey(projectDirectory, baseOptions());
       spawnSync("git", ["mv", "src/App.tsx", "src/My App.tsx"], { cwd: projectDirectory });
-      const renamedKey = cacheKey(projectDirectory, baseOptions());
+      const renamedKey = await cacheKey(projectDirectory, baseOptions());
       expect(renamedKey).not.toBeNull();
       expect(renamedKey).not.toBe(cleanKey);
-      expect(cacheKey(projectDirectory, baseOptions())).toBe(renamedKey);
+      expect(await cacheKey(projectDirectory, baseOptions())).toBe(renamedKey);
     });
 
-    it("fingerprints files inside untracked directories individually", () => {
+    it("fingerprints files inside untracked directories individually", async () => {
       const projectDirectory = setupCleanProject("untracked-dir");
       fs.mkdirSync(path.join(projectDirectory, "notes"));
       fs.writeFileSync(path.join(projectDirectory, "notes", "todo.txt"), "a\n");
-      const firstKey = cacheKey(projectDirectory, baseOptions());
+      const firstKey = await cacheKey(projectDirectory, baseOptions());
       expect(firstKey).not.toBeNull();
       fs.writeFileSync(path.join(projectDirectory, "notes", "todo.txt"), "b\n");
-      expect(cacheKey(projectDirectory, baseOptions())).not.toBe(firstKey);
+      expect(await cacheKey(projectDirectory, baseOptions())).not.toBe(firstKey);
     });
 
-    it("bails to null when the dirty set exceeds the entry bound", () => {
+    it("bails to null when the dirty set exceeds the entry bound", async () => {
       const projectDirectory = setupCleanProject("oversized");
       const scratchDirectory = path.join(projectDirectory, "scratch");
       fs.mkdirSync(scratchDirectory);
@@ -595,23 +597,23 @@ describe("scan result cache", () => {
       ) {
         fs.writeFileSync(path.join(scratchDirectory, `file-${fileIndex}.txt`), String(fileIndex));
       }
-      expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
+      expect(await cacheKey(projectDirectory, baseOptions())).toBeNull();
     });
 
-    it("disables caching when an oversized dirty file cannot be content-hashed", () => {
+    it("disables caching when an oversized dirty file cannot be content-hashed", async () => {
       const projectDirectory = setupCleanProject("oversized-file");
       const pluginPath = path.join(projectDirectory, "custom-rule.cjs");
       const fileSize = SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES + 1;
       fs.writeFileSync(pluginPath, "a".repeat(fileSize));
       const originalStat = fs.statSync(pluginPath);
-      expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
+      expect(await cacheKey(projectDirectory, baseOptions())).toBeNull();
 
       fs.writeFileSync(pluginPath, "b".repeat(fileSize));
       fs.utimesSync(pluginPath, originalStat.atime, originalStat.mtime);
-      expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
+      expect(await cacheKey(projectDirectory, baseOptions())).toBeNull();
     });
 
-    it("keys gitignored dotenv files the security scan reads", () => {
+    it("keys gitignored dotenv files the security scan reads", async () => {
       const projectDirectory = setupReactProject(tempDirectory, "dotenv", {
         files: {
           "src/App.tsx": "export const App = () => <div />;\n",
@@ -620,10 +622,10 @@ describe("scan result cache", () => {
         },
       });
       initGitRepo(projectDirectory, { commit: true });
-      const firstKey = cacheKey(projectDirectory, baseOptions());
+      const firstKey = await cacheKey(projectDirectory, baseOptions());
       expect(firstKey).not.toBeNull();
       fs.writeFileSync(path.join(projectDirectory, ".env"), "API_KEY=second-value\n");
-      expect(cacheKey(projectDirectory, baseOptions())).not.toBe(firstKey);
+      expect(await cacheKey(projectDirectory, baseOptions())).not.toBe(firstKey);
     });
   });
 
@@ -643,7 +645,7 @@ describe("scan result cache", () => {
       noScore: true,
       silent: true,
     });
-    const key = cacheKey(projectDirectory, quietOptions);
+    const key = await cacheKey(projectDirectory, quietOptions);
     expect(key).not.toBeNull();
     if (key === null) return;
 

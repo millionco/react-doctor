@@ -20,6 +20,7 @@ export interface RunBenchmarkSampleInput {
   targetDirectory: string;
   artifactDirectory: string;
   cacheDirectory: string;
+  compileCacheDirectory: string;
   mode: BenchmarkMode;
   cacheCohort: BenchmarkCacheCohort;
   workerCount: number | "auto";
@@ -73,6 +74,7 @@ const resolveTimeCommand = (): TimeCommand | null => {
 export const runBenchmarkSample = (input: RunBenchmarkSampleInput): BenchmarkSample => {
   fs.mkdirSync(input.artifactDirectory, { recursive: true });
   fs.mkdirSync(input.cacheDirectory, { recursive: true });
+  fs.mkdirSync(input.compileCacheDirectory, { recursive: true });
   const reportPath = path.join(input.artifactDirectory, `sample-${input.sampleIndex}.report.json`);
   const profileDirectory =
     input.cpuProfile || input.heapProfile || input.ruleTimings
@@ -88,6 +90,7 @@ export const runBenchmarkSample = (input: RunBenchmarkSampleInput): BenchmarkSam
   const environment = buildBenchmarkEnvironment({
     baseEnvironment: process.env,
     cacheDirectory: input.cacheDirectory,
+    compileCacheDirectory: input.compileCacheDirectory,
     cacheCohort: input.cacheCohort,
     workerCount: input.workerCount,
     cpuProfile: input.cpuProfile,

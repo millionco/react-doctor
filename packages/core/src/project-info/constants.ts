@@ -44,6 +44,13 @@ export const MINIFIED_SNIFF_BYTES = 65_536;
 export const MINIFIED_MIN_SIZE_BYTES = 20_000;
 
 export const GIT_LS_FILES_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
+export const GIT_SOURCE_LISTING_ARGUMENTS: ReadonlyArray<string> = [
+  "ls-files",
+  "-z",
+  "--stage",
+  "--others",
+  "--exclude-standard",
+];
 export const GIT_CHECK_ATTR_MAX_BUFFER_BYTES = GIT_LS_FILES_MAX_BUFFER_BYTES;
 
 // Hidden (dot-)directories are excluded from source discovery by default:

@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parseSync } from "oxc-parser";
+import { parseSync, rawTransferSupported } from "oxc-parser";
+import type { ParserOptions } from "oxc-parser";
 import {
   CROSS_FILE_PARSE_CACHE_MAX_ENTRIES,
   CROSS_FILE_PARSE_MAX_BYTES,
@@ -27,6 +28,27 @@ export const resolveLang = (filename: string): "ts" | "tsx" | "js" | "jsx" => {
   return FILENAME_TO_LANG[extension] ?? "tsx";
 };
 
+// oxc's default transfer hands the AST over as one JSON string that
+// `JSON.parse` rebuilds on first `.program` access; raw transfer deserializes
+// it straight from the parser's buffer, about 2-3x faster for the same ESTree
+// shape (it is what oxlint itself feeds the rules at lint time). Supported on
+// 64-bit little-endian hosts running Node >= 22; older runtimes keep JSON.
+const isRawTransferSupported = rawTransferSupported();
+
+// oxc-parser's runtime accepts the flag (see its `parseSync`) but its published
+// typings do not declare it yet.
+interface CrossFileParseOptions extends ParserOptions {
+  readonly experimentalRawTransfer?: boolean;
+}
+
+// One option set for every cross-file parse — the rules' own lookups and the
+// dependency collectors — so both see byte-identical trees.
+export const buildCrossFileParseOptions = (filename: string): CrossFileParseOptions => ({
+  astType: "ts",
+  lang: resolveLang(filename),
+  experimentalRawTransfer: isRawTransferSupported,
+});
+
 interface CacheEntry {
   readonly mtimeMs: number;
   readonly size: number;
@@ -45,10 +67,7 @@ export const parseSourceText = ({
   shouldAttachParentReferences = true,
 }: ParseSourceTextInput): EsTreeNode | null => {
   try {
-    const result = parseSync(filename, sourceText, {
-      astType: "ts",
-      lang: resolveLang(filename),
-    });
+    const result = parseSync(filename, sourceText, buildCrossFileParseOptions(filename));
     const hasFatalError = result.errors.some((parseError) => parseError.severity === "Error");
     if (hasFatalError) return null;
     const parsedProgram = result.program as unknown as EsTreeNode;

@@ -90,6 +90,36 @@ export const SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 // still bounding a pathological child.
 export const RUN_GIT_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
+export const HEAD_SHA_GIT_ARGUMENTS: ReadonlyArray<string> = ["rev-parse", "HEAD"];
+export const REPOSITORY_ROOT_GIT_ARGUMENTS: ReadonlyArray<string> = [
+  "rev-parse",
+  "--show-toplevel",
+];
+export const TRACKED_FILE_FLAGS_GIT_ARGUMENTS: ReadonlyArray<string> = ["ls-files", "-v"];
+export const WORKTREE_STATUS_GIT_ARGUMENTS: ReadonlyArray<string> = [
+  "status",
+  "--porcelain=v1",
+  "-z",
+  // `all` expands untracked directories into their contained files so each
+  // one is content-fingerprinted; the scan-result cache bounds the entry count.
+  "--untracked-files=all",
+];
+// Every git command `buildScanResultCacheKey` runs for the first project of an
+// invocation, so the CLI entry can start them before the bundle evaluates.
+export const SCAN_RESULT_CACHE_GIT_ARGUMENTS: ReadonlyArray<ReadonlyArray<string>> = [
+  TRACKED_FILE_FLAGS_GIT_ARGUMENTS,
+  REPOSITORY_ROOT_GIT_ARGUMENTS,
+  WORKTREE_STATUS_GIT_ARGUMENTS,
+  HEAD_SHA_GIT_ARGUMENTS,
+];
+export const CACHE_DISABLED_VALUES: ReadonlySet<string> = new Set(["1", "true"]);
+export const HELP_OR_VERSION_FLAGS: ReadonlySet<string> = new Set([
+  "-h",
+  "--help",
+  "-V",
+  "--version",
+]);
+
 export const GIT_HOOK_EXECUTABLE_MODE = 0o755;
 
 export const AGENT_HOOK_TIMEOUT_SECONDS = 120;

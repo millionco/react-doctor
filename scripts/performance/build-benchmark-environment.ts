@@ -4,6 +4,13 @@ import type { BenchmarkCacheCohort } from "./types.ts";
 export interface BuildBenchmarkEnvironmentInput {
   readonly baseEnvironment: NodeJS.ProcessEnv;
   readonly cacheDirectory: string;
+  /**
+   * V8 compile cache shared by every sample of a series. It is a Node/OS
+   * artifact that persists across real runs, not a React Doctor cache, so
+   * the `no-cache` and `cold` cohorts must not pay a cold compile of every
+   * bundle on every sample — that overstated startup by ~150 ms per run.
+   */
+  readonly compileCacheDirectory: string;
   readonly cacheCohort: BenchmarkCacheCohort;
   readonly workerCount: number | "auto";
   readonly cpuProfile: boolean;
@@ -36,7 +43,7 @@ export const buildBenchmarkEnvironment = (
     CI: "1",
     GIT_TERMINAL_PROMPT: "0",
     LC_ALL: "C",
-    NODE_COMPILE_CACHE: path.join(input.cacheDirectory, "node-compile"),
+    NODE_COMPILE_CACHE: input.compileCacheDirectory,
     NODE_DISABLE_COMPILE_CACHE: undefined,
     REACT_DOCTOR_CACHE_DIR: path.join(input.cacheDirectory, "react-doctor"),
     REACT_DOCTOR_DEAD_CODE_OVERLAP: undefined,

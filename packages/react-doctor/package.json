@@ -38,7 +38,9 @@
     "LICENSE"
   ],
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "**/start-scan-preamble*"
+  ],
   "exports": {
     ".": {
       "types": "./dist/cli.d.ts",

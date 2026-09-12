@@ -4,8 +4,10 @@ import {
   previewOxlintStdout,
   recordOxlintJobTimeline,
 } from "../../utils/record-oxlint-job-timeline.js";
+import type { OxlintWorkerProbeResult } from "../../start-oxlint-worker.js";
+import { isRecord } from "../../utils/is-record.js";
 import { createOxlintWorkerPool, OxlintWorkerUnavailableError } from "./oxlint-worker-pool.js";
-import type { OxlintWorkerPool } from "./oxlint-worker-pool.js";
+import type { OxlintWorkerPool, OxlintWorkerProbeRequest } from "./oxlint-worker-pool.js";
 import { resolveOxlintWorkerRuntime } from "./resolve-oxlint-worker-runtime.js";
 import type { OxlintWorkerRuntime } from "./resolve-oxlint-worker-runtime.js";
 import { spawnOxlint } from "./spawn-oxlint.js";
@@ -23,6 +25,10 @@ export interface RunOxlintJobInput {
   readonly onStart?: () => void;
 }
 
+// Stands in for the oxlint binary slot of a probe job's timeline `args`, so
+// the harness can tell probe jobs from lint jobs.
+const PROBE_JOB_TIMELINE_MARKER = "<sidecar-probes>";
+
 let cachedRuntime: OxlintWorkerRuntime | null | undefined;
 const poolsByKey = new Map<string, OxlintWorkerPool>();
 
@@ -38,6 +44,7 @@ const resolveSharedPool = (nodeBinaryPath: string, maxWorkers: number): OxlintWo
     nodeBinaryPath,
     workerScriptPath: cachedRuntime.workerScriptPath,
     oxlintPackageDirectory: cachedRuntime.oxlintPackageDirectory,
+    pluginPath: cachedRuntime.pluginPath,
     maxWorkers,
     environment: buildOxlintChildEnv(process.env),
   });
@@ -53,6 +60,11 @@ const resolveSharedPool = (nodeBinaryPath: string, maxWorkers: number): OxlintWo
 export const warmOxlintWorkerPool = (nodeBinaryPath: string, maxWorkers: number): void => {
   resolveSharedPool(nodeBinaryPath, maxWorkers)?.warm();
 };
+
+// Whether lint jobs will run on warm pool workers rather than per-batch
+// spawns, so the batch planner can split work for the pool's idle workers.
+export const isOxlintWorkerPoolAvailable = (nodeBinaryPath: string, maxWorkers: number): boolean =>
+  resolveSharedPool(nodeBinaryPath, maxWorkers)?.isAvailable() ?? false;
 
 export const runOxlintJob = async (input: RunOxlintJobInput): Promise<string> => {
   const runLegacySpawn = (): Promise<string> =>
@@ -99,4 +111,68 @@ export const runOxlintJob = async (input: RunOxlintJobInput): Promise<string> =>
     if (error instanceof OxlintWorkerUnavailableError) return runLegacySpawn();
     throw error;
   }
+};
+
+export interface RunOxlintProbeJobInput {
+  readonly rootDirectory: string;
+  readonly probeRequest: OxlintWorkerProbeRequest;
+  readonly nodeBinaryPath: string;
+  readonly spawnTimeoutMs: number;
+  readonly outputMaxBytes: number;
+  readonly maxWorkers: number;
+  readonly filesystemCacheEpoch: number | null;
+  readonly abortSignal?: AbortSignal;
+}
+
+const isProbeResult = (value: unknown): value is OxlintWorkerProbeResult =>
+  isRecord(value) &&
+  Array.isArray(value.paths) &&
+  value.paths.every((entry) => typeof entry === "string") &&
+  Array.isArray(value.existenceAnswers) &&
+  value.existenceAnswers.length === value.paths.length &&
+  value.existenceAnswers.every((entry) => entry === null || typeof entry === "string") &&
+  Array.isArray(value.traces);
+
+/**
+ * Collects sidecar dependency probes for a batch of files on a warm pool
+ * worker. Returns `null` when no pool is available (the caller collects
+ * in-process); throws when the worker job fails, which the caller also folds
+ * into the in-process fallback for that batch.
+ */
+export const runOxlintProbeJob = async (
+  input: RunOxlintProbeJobInput,
+): Promise<OxlintWorkerProbeResult | null> => {
+  const pool = resolveSharedPool(input.nodeBinaryPath, input.maxWorkers);
+  if (pool === null || !pool.isAvailable()) return null;
+  let startedAt = Date.now();
+  const stdout = await pool.run({
+    argumentsList: [],
+    probeRequest: input.probeRequest,
+    cwd: input.rootDirectory,
+    timeoutMs: input.spawnTimeoutMs,
+    outputMaxBytes: input.outputMaxBytes,
+    filesystemCacheEpoch: input.filesystemCacheEpoch,
+    abortSignal: input.abortSignal,
+    onStart: () => {
+      startedAt = Date.now();
+    },
+  });
+  if (isOxlintJobTimelineEnabled) {
+    recordOxlintJobTimeline({
+      pid: null,
+      startedAt,
+      endedAt: Date.now(),
+      args: [PROBE_JOB_TIMELINE_MARKER, ...input.probeRequest.files],
+      exitCode: null,
+      signal: null,
+      stdoutBytes: Buffer.byteLength(stdout),
+      stderrBytes: 0,
+      stdoutPreview: previewOxlintStdout(stdout),
+    });
+  }
+  const parsed: unknown = JSON.parse(stdout);
+  if (!isProbeResult(parsed) || parsed.traces.length !== input.probeRequest.files.length) {
+    throw new Error("oxlint worker returned a malformed probe result");
+  }
+  return parsed;
 };

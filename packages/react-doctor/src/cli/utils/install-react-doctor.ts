@@ -3,12 +3,8 @@ import { promisify } from "node:util";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as fs from "node:fs";
-import {
-  getSkillAgentConfig,
-  installSkillsFromSource,
-  SKILL_MANIFEST_FILE,
-  type SkillAgentType,
-} from "agent-install";
+import type { SkillAgentType } from "agent-install";
+import { loadAgentInstall } from "./load-agent-install.js";
 import { highlighter, SKILL_NAME } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import { computeDefaultSelectedAgents, detectAvailableAgents } from "./detect-agents.js";
@@ -361,6 +357,7 @@ const installReactDoctorSkillStep = async (
   selectedAgents: SkillAgentType[],
   projectRoot: string,
 ): Promise<void> => {
+  const { getSkillAgentConfig, installSkillsFromSource, SKILL_MANIFEST_FILE } = loadAgentInstall();
   const installSpinner = spinner(`Installing ${SKILL_NAME} skill...`).start();
   try {
     const installResult = await installSkillsFromSource({
@@ -415,6 +412,7 @@ const installReactDoctorAgentHooksStep = (
   projectRoot: string,
   selectedAgents: SkillAgentType[],
 ): void => {
+  const { getSkillAgentConfig } = loadAgentInstall();
   const hookSpinner = spinner("Installing React Doctor agent hooks...").start();
   try {
     const hookResult = installReactDoctorAgentHooks({
@@ -485,6 +483,7 @@ const upgradeReactDoctorWorkflowStep = (projectRoot: string): boolean => {
 export const runInstallReactDoctor = async (
   options: InstallReactDoctorOptions = {},
 ): Promise<void> => {
+  const { getSkillAgentConfig, SKILL_MANIFEST_FILE } = loadAgentInstall();
   const requestedProjectRoot = options.projectRoot ?? process.cwd();
   const projectRoot = findNearestPackageDirectory(requestedProjectRoot) ?? requestedProjectRoot;
   const sourceDir = options.sourceDir ?? getSkillSourceDirectory();

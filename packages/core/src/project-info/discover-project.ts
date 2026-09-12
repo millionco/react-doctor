@@ -48,6 +48,7 @@ const cachedProjectInfos = new Map<string, ProjectInfo>();
 
 export interface DiscoverProjectOptions {
   readonly sourceFileCount?: number;
+  readonly hasReactCompiler?: boolean;
 }
 
 // HACK: paired with clearConfigCache — exposed so programmatic API
@@ -387,7 +388,7 @@ export const discoverProject = (
     zustandMajorVersion: zustandVersion === null ? null : getLowestDependencyMajor(zustandVersion),
     framework,
     hasTypeScript,
-    hasReactCompiler: detectReactCompiler(directory, packageJson),
+    hasReactCompiler: options.hasReactCompiler ?? detectReactCompiler(directory, packageJson),
     hasReactCompilerLintPlugin: detectReactCompilerLintPlugin(directory, packageJson),
     hasTanStackQuery: tanstackQueryVersion !== null,
     hasI18nLibrary: workspaceFacts.hasI18nLibrary,

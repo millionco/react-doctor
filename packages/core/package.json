@@ -14,6 +14,10 @@
     "./schemas": {
       "types": "./dist/schemas.d.ts",
       "default": "./dist/schemas.js"
+    },
+    "./scan-preamble": {
+      "types": "./dist/scan-preamble.d.ts",
+      "default": "./dist/scan-preamble.js"
     }
   },
   "scripts": {

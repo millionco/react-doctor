@@ -19,7 +19,8 @@ export default defineConfig({
         "oxlint-worker": "./src/oxlint-worker.ts",
         "duplicate-jsx-worker": "./src/duplicate-jsx-worker.ts",
         schemas: "./src/schemas.ts",
-        "git-prefetch": "./src/git-prefetch.ts",
+        "scan-preamble": "./src/scan-preamble.ts",
+        "react-compiler-detection-worker": "./src/react-compiler-detection-worker.ts",
       },
       deps: {
         alwaysBundle: ["typescript"],
@@ -54,8 +55,8 @@ export default defineConfig({
         replacement: path.join(packageRoot, "src/schemas.ts"),
       },
       {
-        find: /^@react-doctor\/core\/git-prefetch$/,
-        replacement: path.join(packageRoot, "src/git-prefetch.ts"),
+        find: /^@react-doctor\/core\/scan-preamble$/,
+        replacement: path.join(packageRoot, "src/scan-preamble.ts"),
       },
       {
         find: /^oxlint-plugin-react-doctor\/core$/,

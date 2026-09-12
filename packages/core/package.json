@@ -15,9 +15,9 @@
       "types": "./dist/schemas.d.ts",
       "default": "./dist/schemas.js"
     },
-    "./git-prefetch": {
-      "types": "./dist/git-prefetch.d.ts",
-      "default": "./dist/git-prefetch.js"
+    "./scan-preamble": {
+      "types": "./dist/scan-preamble.d.ts",
+      "default": "./dist/scan-preamble.js"
     }
   },
   "scripts": {

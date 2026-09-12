@@ -187,8 +187,13 @@ export const runInspect = <HooksR = never>(
     const progressService = yield* Progress;
     const partialFailuresRef = yield* LintPartialFailures;
 
+    // Start the React Compiler detection before config resolution so the
+    // worker's TypeScript load overlaps as much of the scan preamble as
+    // possible; a `rootDir` redirect simply warms the redirected directory too.
+    yield* projectService.warm(input.directory);
     const resolvedConfig: ResolvedConfig = yield* configService.resolve(input.directory);
     const scanDirectory = resolvedConfig.resolvedDirectory;
+    if (scanDirectory !== input.directory) yield* projectService.warm(scanDirectory);
     const ignoredFilePatterns = Array.isArray(resolvedConfig.config?.ignore?.files)
       ? resolvedConfig.config.ignore.files.filter(
           (pattern): pattern is string => typeof pattern === "string",

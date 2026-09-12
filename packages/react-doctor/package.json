@@ -39,7 +39,7 @@
   ],
   "type": "module",
   "sideEffects": [
-    "**/prefetch-scan-git*"
+    "**/start-scan-preamble*"
   ],
   "exports": {
     ".": {

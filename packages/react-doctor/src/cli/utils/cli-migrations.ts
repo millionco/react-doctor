@@ -1,7 +1,7 @@
 import { findLegacyConfig, toRelativePath } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import { type CliStateOptions } from "./cli-state-store.js";
-import { discardPrefetchedGitCommands } from "@react-doctor/core/git-prefetch";
+import { discardPrefetchedGitCommands } from "@react-doctor/core/scan-preamble";
 import { type Migration, type MigrationResult, runMigrations } from "./cli-lifecycle.js";
 import {
   findAgentsWithOutdatedReactDoctorHooks,

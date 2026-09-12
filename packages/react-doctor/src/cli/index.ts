@@ -1,4 +1,4 @@
-import "./prefetch-scan-git.js";
+import "./start-scan-preamble.js";
 import { Command, Option } from "commander";
 import { CANONICAL_GITHUB_URL, CI_URL, highlighter } from "@react-doctor/core";
 import { flushSentry, initializeSentry } from "../instrument.js";

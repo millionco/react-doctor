@@ -163,6 +163,7 @@ describe("performance harness", () => {
         REACT_DOCTOR_NO_FILE_CACHE: "1",
       },
       cacheDirectory: path.join(createTemporaryDirectory(), "cache"),
+      compileCacheDirectory: path.join(createTemporaryDirectory(), "node-compile"),
       workerCount: "auto",
       cpuProfile: true,
       heapProfile: true,
@@ -182,6 +183,7 @@ describe("performance harness", () => {
     expect(noCacheEnvironment.REACT_DOCTOR_NO_CACHE).toBe("1");
     expect(coldEnvironment.NODE_OPTIONS ?? "").not.toContain("--trace-warnings");
     expect(coldEnvironment.NODE_DISABLE_COMPILE_CACHE).toBeUndefined();
+    expect(coldEnvironment.NODE_COMPILE_CACHE).toBe(sharedInput.compileCacheDirectory);
     expect(coldEnvironment.REACT_DOCTOR_LINT_BATCH_ORDERING).toBeUndefined();
     expect(coldEnvironment.REACT_DOCTOR_NO_FILE_CACHE).toBeUndefined();
     expect(coldEnvironment.REACT_DOCTOR_OXLINT_TIMINGS_DIR).toBe(profileDirectory);

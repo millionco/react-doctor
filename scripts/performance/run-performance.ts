@@ -261,6 +261,7 @@ const runSeries = (
       targetDirectory: target.directory,
       artifactDirectory: path.join(seriesDirectory, sampleName),
       cacheDirectory: cacheDirectoryForSample(seriesDirectory, cacheCohort, sampleName),
+      compileCacheDirectory: path.join(seriesDirectory, "node-compile"),
       mode,
       cacheCohort,
       workerCount,

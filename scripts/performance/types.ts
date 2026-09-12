@@ -27,12 +27,21 @@ export interface CreateStressProjectInput {
   readonly directory: string;
   readonly fileCount: number;
   readonly componentsPerFileCount: number;
+  /**
+   * Shared helper modules each component file imports through a barrel
+   * (`src/helpers/index.ts`). `0` keeps the classic self-contained files;
+   * a positive count gives every file real cross-file dependencies, so the
+   * sidecar rules, their dependency probes, and the cold-cache tail are
+   * exercised like a real repository.
+   */
+  readonly importsPerFileCount?: number;
 }
 
 export interface StressProjectMetadata {
   readonly directory: string;
   readonly generatedSourceFileCount: number;
   readonly componentCount: number;
+  readonly helperModuleCount: number;
 }
 
 export interface PerformanceCommandOptions {
@@ -54,6 +63,7 @@ export interface PerformanceCommandOptions {
 export interface StressPerformanceCommandOptions extends PerformanceCommandOptions {
   readonly files: number;
   readonly componentsPerFile: number;
+  readonly importsPerFile: number;
   readonly project: string;
 }
 

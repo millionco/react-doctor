@@ -283,6 +283,34 @@ describe("performance harness", () => {
     expect(fs.readFileSync(componentPath, "utf8")).toBe(firstSource);
   });
 
+  it("wires shared helper imports through a barrel when imports per file is set", () => {
+    const directory = createTemporaryDirectory();
+    const stressProject = createStressProject({
+      directory,
+      fileCount: 3,
+      componentsPerFileCount: 1,
+      importsPerFileCount: 2,
+    });
+    const firstSource = fs.readFileSync(path.join(directory, "src", "component-00000.tsx"), "utf8");
+    const secondSource = fs.readFileSync(
+      path.join(directory, "src", "component-00001.tsx"),
+      "utf8",
+    );
+
+    expect(stressProject.helperModuleCount).toBe(8);
+    expect(stressProject.generatedSourceFileCount).toBe(3 + 2 + 8 + 1);
+    expect(firstSource).toContain(
+      'import { stressHelper0000, stressHelper0001 } from "./helpers";',
+    );
+    expect(firstSource).toContain("useState(stressHelper0001(stressHelper0000(seed)))");
+    expect(secondSource).toContain(
+      'import { stressHelper0001, stressHelper0002 } from "./helpers";',
+    );
+    expect(fs.readFileSync(path.join(directory, "src", "helpers", "index.ts"), "utf8")).toContain(
+      'export { stressHelper0007 } from "./stressHelper0007";',
+    );
+  });
+
   it("refuses to replace unmarked stress directories", () => {
     const directory = createTemporaryDirectory();
     const projectDirectory = path.join(directory, "existing-project");

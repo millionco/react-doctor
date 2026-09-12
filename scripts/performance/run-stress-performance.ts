@@ -26,6 +26,7 @@ export const runStressPerformance = (argumentsList: string[]): PerformanceResult
     directory: projectDirectory,
     fileCount: stressOptions.files,
     componentsPerFileCount: stressOptions.componentsPerFile,
+    importsPerFileCount: stressOptions.importsPerFile,
   });
   fs.mkdirSync(outputDirectory, { recursive: true });
   fs.writeFileSync(

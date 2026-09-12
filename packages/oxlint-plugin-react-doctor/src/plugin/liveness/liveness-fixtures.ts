@@ -1352,6 +1352,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "export const findUsers = (req, collection) => collection.find(JSON.parse(req.query.filter));",
     filePath: "src/server/db/users.ts",
   },
+  "octane-no-hook-in-loop": {
+    code: 'import {useState} from "octane";for(const value of values)useState(value);',
+  },
+  "octane-no-native-text-onchange": {
+    code: 'import {Fragment} from "octane";const Field=()=> <input onChange={()=>{}}/>;',
+  },
   "only-export-components": {
     code: "export const foo = () => 'label'; export const Bar = () => <div />;",
     forceJsx: true,

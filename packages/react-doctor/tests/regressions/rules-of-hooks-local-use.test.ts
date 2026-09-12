@@ -36,6 +36,28 @@ describe("rules-of-hooks local use false positives", () => {
     ).toHaveLength(0);
   });
 
+  it("reports only React.use when an async service also has a use method", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "local-member-use", {
+      files: {
+        "src/fixture.tsx": `
+          import * as React from "react";
+          declare const Service: { use: (callback: (value: string) => unknown) => unknown };
+          export const fixture = async () => { Service.use((value) => value); };
+          export const App = async () => { React.use(Promise.resolve("value")); return null; };
+        `,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDirectory,
+      project: buildTestProject({ rootDirectory: projectDirectory }),
+    });
+    const hookDiagnostics = diagnostics.filter(
+      (diagnostic) => diagnostic.plugin === "react-doctor" && diagnostic.rule === "rules-of-hooks",
+    );
+    expect(hookDiagnostics).toHaveLength(1);
+    expect(hookDiagnostics[0]?.line).toBe(5);
+  });
+
   it("still reports React use inside async components", async () => {
     const projectDir = setupReactProject(tempRoot, "react-use-async", {
       files: {

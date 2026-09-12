@@ -32,6 +32,7 @@ import { resolveImportedApiReference } from "../../utils/resolve-imported-api-re
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { getModuleNamespaceSource } from "../r3f/utils/get-module-namespace-source.js";
 import { isRulesOfHooksSuppressedAt } from "./rules-of-hooks-suppression.js";
 
 // Port of `oxc_linter::rules::react::rules_of_hooks`. Enforces React's
@@ -234,6 +235,14 @@ const isHookCall = (
         propertyName === "use" &&
         callObject.name !== "React" &&
         isNodeOfType(call.arguments[0], "ArrayExpression")
+      ) {
+        return null;
+      }
+      if (
+        propertyName === "use" &&
+        scopes.symbolFor(callObject) &&
+        !isReactNamespaceImport(callObject, scopes) &&
+        !REACT_RUNTIME_MODULE_SOURCES.has(getModuleNamespaceSource(callObject, scopes) ?? "")
       ) {
         return null;
       }

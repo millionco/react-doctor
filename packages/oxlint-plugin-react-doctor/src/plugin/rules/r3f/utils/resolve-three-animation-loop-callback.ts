@@ -7,24 +7,7 @@ import { resolveRecursiveAnimationFrameCallback } from "../../../utils/resolve-r
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { isThreeRendererReference } from "./is-three-renderer-reference.js";
 import { resolveLocalReactCallback } from "./resolve-local-react-callback.js";
-import { THREE_RENDER_METHOD_NAMES } from "./three-render-method-names.js";
-import { walkFunctionExecution } from "./walk-function-execution.js";
-
-const callbackRendersWithThree = (callback: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  let doesRenderWithThree = false;
-  walkFunctionExecution(callback, scopes, (candidate) => {
-    if (doesRenderWithThree || !isNodeOfType(candidate, "CallExpression")) return;
-    const callee = stripParenExpression(candidate.callee);
-    if (
-      isNodeOfType(callee, "MemberExpression") &&
-      THREE_RENDER_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") &&
-      isThreeRendererReference(callee.object, scopes)
-    ) {
-      doesRenderWithThree = true;
-    }
-  });
-  return doesRenderWithThree;
-};
+import { callbackRendersWithThree } from "./callback-renders-with-three.js";
 
 export const resolveThreeAnimationLoopCallback = (
   call: EsTreeNodeOfType<"CallExpression">,

@@ -1341,3 +1341,59 @@ describe("react-builtins/rules-of-hooks — regressions: upstream disable-commen
     });
   });
 });
+
+describe("react-builtins/rules-of-hooks — local member use bindings", () => {
+  it.each([
+    "declare const Service: { use: (callback: (value: string) => unknown) => unknown };",
+    'const Service = { use: (callback) => callback("value") };',
+    'class Service { static use(callback) { return callback("value"); } }',
+    'import { useState as Service } from "react";',
+    'import { use as Service } from "react";',
+    "const Service = React.useState;",
+  ])("allows non-namespace .use calls: %s", (declaration) => {
+    expect(
+      runTsx(`
+      import * as React from "react";
+      ${declaration}
+      export const fixture = async () => { Service.use((value) => value); };
+    `).diagnostics,
+    ).toHaveLength(0);
+  });
+
+  it("allows a parameter that shadows the React namespace", () => {
+    expect(
+      runTsx(`
+      import * as React from "react";
+      export const fixture = async (React) => { React.use((value) => value); };
+    `).diagnostics,
+    ).toHaveLength(0);
+  });
+
+  it("allows a shadowed require that returns a local service", () => {
+    expect(
+      runTsx(`
+      export const fixture = async (require) => {
+        const Service = require("react");
+        Service.use((value) => value);
+      };
+    `).diagnostics,
+    ).toHaveLength(0);
+  });
+
+  it.each([
+    'import * as ReactApi from "react";',
+    'import ReactApi from "react";',
+    'import { default as ReactApi } from "react";',
+    'import * as React from "react"; const ReactApi = React;',
+    'const ReactApi = require("react");',
+    'const React = require("react"); const ReactApi = React;',
+    'import ReactApi = require("react");',
+  ])("keeps async React.use diagnostics: %s", (declaration) => {
+    const diagnostics = runTsx(`
+      ${declaration}
+      export const App = async () => { ReactApi.use(promise); return null; };
+    `).diagnostics;
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.message).toContain("async function");
+  });
+});

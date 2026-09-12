@@ -1,0 +1,24 @@
+import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
+import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
+import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
+import { isThreeRendererReference } from "./is-three-renderer-reference.js";
+import { THREE_RENDER_METHOD_NAMES } from "./three-render-method-names.js";
+import { walkFunctionExecution } from "./walk-function-execution.js";
+
+export const callbackRendersWithThree = (callback: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  let doesRenderWithThree = false;
+  walkFunctionExecution(callback, scopes, (candidate) => {
+    if (doesRenderWithThree || !isNodeOfType(candidate, "CallExpression")) return;
+    const callee = stripParenExpression(candidate.callee);
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      THREE_RENDER_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") &&
+      isThreeRendererReference(callee.object, scopes)
+    ) {
+      doesRenderWithThree = true;
+    }
+  });
+  return doesRenderWithThree;
+};

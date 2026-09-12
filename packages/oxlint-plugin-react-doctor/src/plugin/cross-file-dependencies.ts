@@ -29,7 +29,7 @@ import { resolveInkVersion } from "./utils/resolve-ink-version.js";
 import { isNodeOfType } from "./utils/is-node-of-type.js";
 import { isReactApiCall } from "./utils/is-react-api-call.js";
 import { normalizeFilename } from "./utils/normalize-filename.js";
-import { parseSourceFile, resolveLang } from "./utils/parse-source-file.js";
+import { buildCrossFileParseOptions, parseSourceFile } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
 import { resolveCrossFileExport } from "./utils/resolve-cross-file-export.js";
 import {
@@ -620,10 +620,11 @@ export const collectCrossFileDependencyProbes = (input: {
   let staticImports: ReadonlyArray<StaticImport>;
   let getProgram: () => EsTreeNode;
   try {
-    const parseResult = parseSync(absoluteFilePath, input.sourceText, {
-      astType: "ts",
-      lang: resolveLang(absoluteFilePath),
-    });
+    const parseResult = parseSync(
+      absoluteFilePath,
+      input.sourceText,
+      buildCrossFileParseOptions(absoluteFilePath),
+    );
     if (parseResult.errors.some((parseError) => parseError.severity === "Error")) return null;
     staticImports = parseResult.module.staticImports;
     let program: EsTreeNode | undefined;

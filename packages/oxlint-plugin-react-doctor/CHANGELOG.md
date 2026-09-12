@@ -1,5 +1,37 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.14
+
+### Patch Changes
+
+- [#1783](https://github.com/millionco/react-doctor/pull/1783) [`1239043`](https://github.com/millionco/react-doctor/commit/1239043c65a55c1e1755087536fdb3f3f18c5734) Thanks [@aidenybai](https://github.com/aidenybai)! - Upgrade oxlint to 1.81 and oxc-parser to 0.148.
+
+- [#1762](https://github.com/millionco/react-doctor/pull/1762) [`ff7dd67`](https://github.com/millionco/react-doctor/commit/ff7dd679e8b9939a7dd8f828a530559a275836f7) Thanks [@skoshx](https://github.com/skoshx)! - Avoid `effect-needs-cleanup` diagnostics for owned chained timers, guarded post-await timers, and listeners released through an abort handler.
+
+- [#1763](https://github.com/millionco/react-doctor/pull/1763) [`0fbef9b`](https://github.com/millionco/react-doctor/commit/0fbef9b01162d301167be6ca6b5263714610f4e5) Thanks [@skoshx](https://github.com/skoshx)! - Fix an `async-defer-await` false positive on exact `live` and `isLive` liveness guards without exempting unrelated names that only contain the same text.
+
+- [#1761](https://github.com/millionco/react-doctor/pull/1761) [`6ac8b71`](https://github.com/millionco/react-doctor/commit/6ac8b71985123ce43f7219965e188bdecf11f7b8) Thanks [@skoshx](https://github.com/skoshx)! - Fix false positive in `nextjs-no-side-effect-in-get-handler` when locally-built `Headers` object is passed to a same-file helper that mutates it.
+
+  The rule now transfers locally-created response object safety through the exact same-file helper call. Calls that pass external state to the same helper remain reportable.
+
+  Fixes [#1757](https://github.com/millionco/react-doctor/issues/1757)
+
+- [#1781](https://github.com/millionco/react-doctor/pull/1781) [`dfcde10`](https://github.com/millionco/react-doctor/commit/dfcde1035aca34e7bb8fbeea8da78cead7cc20e9) Thanks [@aidenybai](https://github.com/aidenybai)! - Speed up large-repository scans: reuse warm oxlint worker processes across projects, overlap project discovery with linting, and trim rule hot paths (2.4–5.5x faster wall-clock on the large-repo corpus).
+
+- [#1801](https://github.com/millionco/react-doctor/pull/1801) [`fd64d26`](https://github.com/millionco/react-doctor/commit/fd64d2605481e241ada5561b01a635f2cd923b6a) Thanks [@aidenybai](https://github.com/aidenybai)! - Stop reporting local service `.use()` methods as React hooks. Preserve diagnostics for React namespace calls, including aliases and CommonJS imports.
+
+  Only recommend `setAnimationLoop` when a recursive animation frame callback renders through a known Three.js renderer. Leave independent 2D canvas and DOM loops alone, including files that also import Three.js.
+
+- [#1750](https://github.com/millionco/react-doctor/pull/1750) [`576d756`](https://github.com/millionco/react-doctor/commit/576d7563ffc7a6208cd77d3e3ec81d7f91bf6143) Thanks [@skoshx](https://github.com/skoshx)! - fix: respect "use no memo" directive in react-compiler-no-manual-memoization rule
+
+  When a function or module has a React Compiler opt-out directive, the compiler skips optimization, so manual memoization can still be necessary. The rule now respects `"use no memo"`, its `"use no forget"` alias, and local components passed to `memo`.
+
+  Fixes [#1749](https://github.com/millionco/react-doctor/issues/1749)
+
+- [#1760](https://github.com/millionco/react-doctor/pull/1760) [`2e3f6eb`](https://github.com/millionco/react-doctor/commit/2e3f6eb98a0eec411b3adf87d8205d3d654538ac) Thanks [@skoshx](https://github.com/skoshx)! - Exempt magic-link delivery mutations from `query-mutation-missing-invalidation` while keeping generic send, notification, and email mutations reportable.
+
+- [#1802](https://github.com/millionco/react-doctor/pull/1802) [`c9e3e15`](https://github.com/millionco/react-doctor/commit/c9e3e1590e06ed3b776af5f21dda38a060b9eef9) Thanks [@aidenybai](https://github.com/aidenybai)! - Retire 33 low-value rule IDs while keeping them registered as silent compatibility entries. Make 26 cleanup, migration, performance, and security-review rules opt-in. Existing rule configurations still load; default scans no longer report these recommendations as defects.
+
 ## 0.9.13
 
 ### Patch Changes

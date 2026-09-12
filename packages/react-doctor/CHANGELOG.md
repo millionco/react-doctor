@@ -1,5 +1,34 @@
 # react-doctor
 
+## 0.9.14
+
+### Patch Changes
+
+- [#1783](https://github.com/millionco/react-doctor/pull/1783) [`1239043`](https://github.com/millionco/react-doctor/commit/1239043c65a55c1e1755087536fdb3f3f18c5734) Thanks [@aidenybai](https://github.com/aidenybai)! - Upgrade oxlint to 1.81 and oxc-parser to 0.148.
+
+- [#1777](https://github.com/millionco/react-doctor/pull/1777) [`52ab4f5`](https://github.com/millionco/react-doctor/commit/52ab4f5bb2631b8df24f71e82a749e8d30802234) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect React Compiler when `@vitejs/plugin-react` is called with an enabled `compiler` option (`react({ compiler: true })` or `react({ compiler: { ... } })`), including aliased, namespace, and CommonJS forms of the default export. `compiler: false` and unrelated objects with a `compiler` property stay undetected, so rules disabled under React Compiler now switch off for these Vite projects.
+
+- [#1778](https://github.com/millionco/react-doctor/pull/1778) [`1279996`](https://github.com/millionco/react-doctor/commit/1279996ea1936d8fc31489f0bc03ddfc18934dd0) Thanks [@aidenybai](https://github.com/aidenybai)! - Skip source files that Git still tracks but that no longer exist in the working tree (for example a deleted root `index.html` in a TanStack Start app) instead of failing the scan with `ENOENT` while preparing lint sources.
+
+- [#1780](https://github.com/millionco/react-doctor/pull/1780) [`7c31dc7`](https://github.com/millionco/react-doctor/commit/7c31dc7355c60a6f4d45e073b0d4a4d20bcc6579) Thanks [@aidenybai](https://github.com/aidenybai)! - Exclude every discovered nested workspace project from an ancestor scan, whether or not it was selected. Scanning only the root of a monorepo previously pulled a nested app's files into the root scan and judged them against the root's framework and React Compiler settings, so a compiler-enabled Expo app inside a Vite workspace reported compiler-gated rules like `prefer-module-scope-pure-function` that its own config suppresses. A nested project's files are now only checked by that project's scan, matching what selecting both projects already did.
+
+- [#1779](https://github.com/millionco/react-doctor/pull/1779) [`9b1fbf4`](https://github.com/millionco/react-doctor/commit/9b1fbf4ab64743af5ebd4e0e11d32223b261db5b) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep `--scope changed` in baseline mode when the change set deletes a source file. A deleted file that cannot be read or linted at the base commit no longer degrades the whole comparison to a plain diff; only an unreadable or unlinted base file that still exists at head does, since that is the only gap that could surface a pre-existing finding as new.
+
+- [#1781](https://github.com/millionco/react-doctor/pull/1781) [`dfcde10`](https://github.com/millionco/react-doctor/commit/dfcde1035aca34e7bb8fbeea8da78cead7cc20e9) Thanks [@aidenybai](https://github.com/aidenybai)! - Speed up large-repository scans: reuse warm oxlint worker processes across projects, overlap project discovery with linting, and trim rule hot paths (2.4–5.5x faster wall-clock on the large-repo corpus).
+
+- [#1801](https://github.com/millionco/react-doctor/pull/1801) [`fd64d26`](https://github.com/millionco/react-doctor/commit/fd64d2605481e241ada5561b01a635f2cd923b6a) Thanks [@aidenybai](https://github.com/aidenybai)! - Stop reporting local service `.use()` methods as React hooks. Preserve diagnostics for React namespace calls, including aliases and CommonJS imports.
+
+  Only recommend `setAnimationLoop` when a recursive animation frame callback renders through a known Three.js renderer. Leave independent 2D canvas and DOM loops alone, including files that also import Three.js.
+
+- [#1802](https://github.com/millionco/react-doctor/pull/1802) [`c9e3e15`](https://github.com/millionco/react-doctor/commit/c9e3e1590e06ed3b776af5f21dda38a060b9eef9) Thanks [@aidenybai](https://github.com/aidenybai)! - Retire 33 low-value rule IDs while keeping them registered as silent compatibility entries. Make 26 cleanup, migration, performance, and security-review rules opt-in. Existing rule configurations still load; default scans no longer report these recommendations as defects.
+
+- [#1776](https://github.com/millionco/react-doctor/pull/1776) [`8956a92`](https://github.com/millionco/react-doctor/commit/8956a92efea13259937f89c325a2e67a402759d6) Thanks [@aidenybai](https://github.com/aidenybai)! - Skip TypeScript files without JSX support (`.ts`, `.mts`, and `.cts`, including declarations) before applying JSX duplication analysis budgets. Large generated type files no longer make the maintainability scan incomplete or consume its source-file budget. JSX-capable files retain the existing limits.
+
+- [#1753](https://github.com/millionco/react-doctor/pull/1753) [`ce5ce93`](https://github.com/millionco/react-doctor/commit/ce5ce930de300c7dcddb44819cdecb93de336bfd) Thanks [@skoshx](https://github.com/skoshx)! - Increase runtime trace finalization timeout from 10 to 60 seconds to handle large traces from longer recording sessions
+
+- Updated dependencies [[`1239043`](https://github.com/millionco/react-doctor/commit/1239043c65a55c1e1755087536fdb3f3f18c5734), [`ff7dd67`](https://github.com/millionco/react-doctor/commit/ff7dd679e8b9939a7dd8f828a530559a275836f7), [`0fbef9b`](https://github.com/millionco/react-doctor/commit/0fbef9b01162d301167be6ca6b5263714610f4e5), [`6ac8b71`](https://github.com/millionco/react-doctor/commit/6ac8b71985123ce43f7219965e188bdecf11f7b8), [`dfcde10`](https://github.com/millionco/react-doctor/commit/dfcde1035aca34e7bb8fbeea8da78cead7cc20e9), [`fd64d26`](https://github.com/millionco/react-doctor/commit/fd64d2605481e241ada5561b01a635f2cd923b6a), [`576d756`](https://github.com/millionco/react-doctor/commit/576d7563ffc7a6208cd77d3e3ec81d7f91bf6143), [`2e3f6eb`](https://github.com/millionco/react-doctor/commit/2e3f6eb98a0eec411b3adf87d8205d3d654538ac), [`c9e3e15`](https://github.com/millionco/react-doctor/commit/c9e3e1590e06ed3b776af5f21dda38a060b9eef9)]:
+  - oxlint-plugin-react-doctor@0.9.14
+
 ## 0.9.13
 
 ### Patch Changes

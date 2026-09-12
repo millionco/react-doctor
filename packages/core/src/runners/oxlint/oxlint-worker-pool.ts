@@ -29,6 +29,8 @@ export interface OxlintWorkerPoolOptions {
   readonly nodeBinaryPath: string;
   readonly workerScriptPath: string;
   readonly oxlintPackageDirectory: string;
+  /** Rule plugin entry the worker pre-imports at boot (see `OxlintWorkerRuntime`). */
+  readonly pluginPath?: string | null;
   readonly maxWorkers: number;
   readonly environment: NodeJS.ProcessEnv;
   readonly readyTimeoutMs?: number;
@@ -291,6 +293,7 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
         }),
         options.workerScriptPath,
         options.oxlintPackageDirectory,
+        ...(options.pluginPath ? [options.pluginPath] : []),
       ],
       {
         env: options.environment,

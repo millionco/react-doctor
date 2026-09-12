@@ -205,8 +205,24 @@ const runJob = async (internals: OxlintInternals, job: OxlintWorkerJobMessage): 
   writeLine(2, `${OXLINT_WORKER_JOB_END_MARKER}:${job.id}:end`);
 };
 
+// oxlint imports the rule plugin by `file://` URL on a job's first
+// `loadPlugin`; evaluating the bundle there costs the first job on every
+// worker ~50 ms inside the lint wave. Importing it while the worker boots
+// (overlapping project discovery) leaves that job a module-cache hit.
+// Best-effort: a failure here surfaces, if at all, as oxlint's own plugin
+// load error on the first job.
+const preloadPlugin = async (pluginPath: string | undefined): Promise<void> => {
+  if (pluginPath === undefined) return;
+  try {
+    await import(pathToFileURL(pluginPath).href);
+  } catch {
+    return;
+  }
+};
+
 export const startOxlintWorker = (): void => {
   const oxlintPackageDirectory = process.argv[2];
+  const pluginPath = process.argv[3];
   process.on("disconnect", () => process.exit(0));
   if (oxlintPackageDirectory === undefined) {
     sendToParent({ type: "unavailable", message: "missing oxlint package directory argument" });
@@ -214,8 +230,8 @@ export const startOxlintWorker = (): void => {
   }
   setStdioBlocking(process.stdout);
   setStdioBlocking(process.stderr);
-  void importOxlintInternals(oxlintPackageDirectory).then(
-    (internals) => {
+  void Promise.all([importOxlintInternals(oxlintPackageDirectory), preloadPlugin(pluginPath)]).then(
+    ([internals]) => {
       let queue: Promise<void> = Promise.resolve();
       process.on("message", (message: unknown) => {
         if (!isJobMessage(message)) return;

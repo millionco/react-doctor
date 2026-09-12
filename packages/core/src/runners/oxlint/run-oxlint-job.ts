@@ -38,6 +38,7 @@ const resolveSharedPool = (nodeBinaryPath: string, maxWorkers: number): OxlintWo
     nodeBinaryPath,
     workerScriptPath: cachedRuntime.workerScriptPath,
     oxlintPackageDirectory: cachedRuntime.oxlintPackageDirectory,
+    pluginPath: cachedRuntime.pluginPath,
     maxWorkers,
     environment: buildOxlintChildEnv(process.env),
   });

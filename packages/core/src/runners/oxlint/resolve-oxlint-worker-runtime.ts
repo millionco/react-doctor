@@ -1,11 +1,18 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveOxlintPackageDirectory } from "./resolve-paths.js";
+import { resolveOxlintPackageDirectory, resolvePluginPath } from "./resolve-paths.js";
 
 export interface OxlintWorkerRuntime {
   readonly workerScriptPath: string;
   readonly oxlintPackageDirectory: string;
+  /**
+   * Entry of the react-doctor rule plugin, imported by each worker at boot so
+   * its first job finds the module already evaluated instead of paying the
+   * bundle's import (~50 ms) inside the lint wave. `null` when unresolvable;
+   * the worker then loads it lazily like before.
+   */
+  readonly pluginPath: string | null;
 }
 
 // Profiling and rule-timing captures are per-process artifacts (V8 writes the
@@ -25,6 +32,14 @@ const OXLINT_INTERNAL_MODULES: ReadonlyArray<string> = [
   "plugins.js",
   "workspace.js",
 ];
+
+const resolveOptionalPluginPath = (): string | null => {
+  try {
+    return resolvePluginPath();
+  } catch {
+    return null;
+  }
+};
 
 const isLegacySpawnForced = (environment: NodeJS.ProcessEnv): boolean =>
   LEGACY_SPAWN_ENV_NAMES.some((name) => Boolean(environment[name]));
@@ -46,5 +61,5 @@ export const resolveOxlintWorkerRuntime = (
     fs.existsSync(path.join(oxlintPackageDirectory, "dist", fileName)),
   );
   if (!hasInternalModules) return null;
-  return { workerScriptPath, oxlintPackageDirectory };
+  return { workerScriptPath, oxlintPackageDirectory, pluginPath: resolveOptionalPluginPath() };
 };

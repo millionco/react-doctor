@@ -19,6 +19,7 @@ import { ReactDoctorError } from "./errors.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
 import { computeRulesetHash } from "./runners/oxlint/compute-ruleset-hash.js";
 import { createOxlintConfig } from "./runners/oxlint/config.js";
+import { isOxlintWorkerPoolAvailable } from "./runners/oxlint/run-oxlint-job.js";
 import { collectUnpluginAutoImportGlobalScopes } from "./runners/oxlint/collect-unplugin-auto-import-global-scopes.js";
 import type { UnpluginAutoImportGlobalScope } from "./runners/oxlint/collect-unplugin-auto-import-global-scopes.js";
 import { createFileLintCache } from "./runners/oxlint/file-lint-cache.js";
@@ -392,14 +393,11 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       sharedArgs.push("--ignore-path", combinedIgnorePath);
     }
 
-    sharedArgs.push(
-      "--threads",
-      String(
-        resolveOxlintThreadCount(
-          resolveScanConcurrency(options.concurrency ?? MIN_SCAN_CONCURRENCY),
-        ),
-      ),
-    );
+    const lintWorkerCount = resolveScanConcurrency(options.concurrency ?? MIN_SCAN_CONCURRENCY);
+    sharedArgs.push("--threads", String(resolveOxlintThreadCount(lintWorkerCount)));
+    const pooledWorkerCount = isOxlintWorkerPoolAvailable(nodeBinaryPath, lintWorkerCount)
+      ? lintWorkerCount
+      : undefined;
 
     const makeBaseArgs = (oxlintConfigPath: string): string[] => [
       oxlintBinary,
@@ -488,7 +486,12 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     }
     const buildFileBatches = (passBaseArgs: string[], passFiles: string[]): string[][] =>
       sizeByFile !== null
-        ? planLintBatches({ baseArgs: passBaseArgs, files: passFiles, sizeByFile })
+        ? planLintBatches({
+            baseArgs: passBaseArgs,
+            files: passFiles,
+            sizeByFile,
+            pooledWorkerCount,
+          })
         : batchIncludePaths(passBaseArgs, passFiles);
 
     // Runs one oxlintrc over a file list, retrying once with the optional

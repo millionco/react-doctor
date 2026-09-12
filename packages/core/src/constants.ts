@@ -265,6 +265,18 @@ export const NODE_VERSION_PROBE_TIMEOUT_MS = 5_000;
 // vs the hard-cap perf cliffs they prevent.
 export const OXLINT_MAX_FILES_PER_BATCH = 200;
 
+// Lint batches planned per pooled oxlint worker. The legacy per-batch spawn
+// path keeps the mandatory `ceil(files / OXLINT_MAX_FILES_PER_BATCH)` count
+// because every extra batch there paid a contended cold start; a warm pool
+// worker runs a job for a few milliseconds of setup, so a scan smaller than
+// `workers × OXLINT_MAX_FILES_PER_BATCH` files is split further to keep every
+// worker busy, with a second batch per worker absorbing per-file cost skew.
+export const OXLINT_POOLED_BATCHES_PER_WORKER = 2;
+
+// Floor on files per pooled batch: below this the fixed per-job setup
+// dominates the lint work, so tiny scans stay in fewer batches.
+export const OXLINT_POOLED_MIN_FILES_PER_BATCH = 8;
+
 // Bounds for the lint worker count (the `OxlintConcurrency` Reference, seeded by
 // the `REACT_DOCTOR_PARALLEL` env var; the CLI's `--no-parallel` flag forces the
 // MIN end). React Doctor's rules are oxlint JS plugins — single-threaded per

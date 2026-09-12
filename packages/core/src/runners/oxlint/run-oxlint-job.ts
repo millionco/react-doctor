@@ -54,6 +54,11 @@ export const warmOxlintWorkerPool = (nodeBinaryPath: string, maxWorkers: number)
   resolveSharedPool(nodeBinaryPath, maxWorkers)?.warm();
 };
 
+// Whether lint jobs will run on warm pool workers rather than per-batch
+// spawns, so the batch planner can split work for the pool's idle workers.
+export const isOxlintWorkerPoolAvailable = (nodeBinaryPath: string, maxWorkers: number): boolean =>
+  resolveSharedPool(nodeBinaryPath, maxWorkers)?.isAvailable() ?? false;
+
 export const runOxlintJob = async (input: RunOxlintJobInput): Promise<string> => {
   const runLegacySpawn = (): Promise<string> =>
     spawnOxlint(

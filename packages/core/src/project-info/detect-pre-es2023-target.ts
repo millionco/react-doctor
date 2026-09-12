@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
+import { type JSONCParseError, parseJSONC } from "confbox";
 import ts from "typescript";
 import { ES2023_YEAR, ES_TARGET_YEAR_BY_NAME, TSCONFIG_EXTENDS_MAX_DEPTH } from "../constants.js";
 import { isFile, isPlainObject } from "./fs-utils.js";
@@ -77,14 +78,26 @@ const readTsConfig = (filePath: string): TsConfigShape | null => {
     return null;
   }
 
-  const parsed = ts.parseConfigFileTextToJson(filePath, content);
-  if (!isPlainObject(parsed.config)) return null;
+  const config = parseTsConfigText(filePath, content);
+  if (!isPlainObject(config)) return null;
 
   return {
-    extends: typeof parsed.config.extends === "string" ? parsed.config.extends : undefined,
-    referencePaths: normalizeReferencePaths(parsed.config.references),
-    compilerOptions: normalizeCompilerOptions(parsed.config.compilerOptions),
+    extends: typeof config.extends === "string" ? config.extends : undefined,
+    referencePaths: normalizeReferencePaths(config.references),
+    compilerOptions: normalizeCompilerOptions(config.compilerOptions),
   };
+};
+
+// A well-formed tsconfig parses as JSONC without loading the TypeScript
+// compiler; only a document the strict parser reports errors on falls back to
+// TypeScript's lenient recovering parser so malformed files keep their shape.
+const parseTsConfigText = (filePath: string, content: string): unknown => {
+  const errors: JSONCParseError[] = [];
+  try {
+    const parsed = parseJSONC<unknown>(content, { allowTrailingComma: true, errors });
+    if (errors.length === 0) return parsed;
+  } catch {}
+  return ts.parseConfigFileTextToJson(filePath, content).config;
 };
 
 const normalizeReferencePaths = (references: unknown): string[] => {

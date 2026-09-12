@@ -91,6 +91,43 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
     ]);
   });
 
+  it("still parses a config whose adapter specifier is spelled with an escape", () => {
+    const rootDirectory = createCaseDirectory("escaped-specifier");
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(
+      rootDirectory,
+      "vite.config.ts",
+      `
+        import { defineConfig } from "vite";
+        import AutoImport from "unplugin\\u002dauto-import/vite";
+        export default defineConfig({
+          plugins: [AutoImport({ eslintrc: { enabled: true, filepath: "./globals.json" } })],
+        });
+      `,
+    );
+    writeFile(rootDirectory, "globals.json", JSON.stringify({ globals: { Route: "readonly" } }));
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => <Route />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({ rootDirectory, candidateFiles: ["src/app.tsx"] }),
+    ).toEqual([{ directory: "", names: ["Route"] }]);
+  });
+
+  it("skips parsing configs that cannot name the adapter", () => {
+    const rootDirectory = createCaseDirectory("plain-config");
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(
+      rootDirectory,
+      "vite.config.ts",
+      'import { defineConfig } from "vite";\nexport default defineConfig({ plugins: [] });\n',
+    );
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => null;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({ rootDirectory, candidateFiles: ["src/app.tsx"] }),
+    ).toEqual([]);
+  });
+
   it("keeps inactive nested packages as boundaries for root globals", () => {
     const rootDirectory = createCaseDirectory("nested-boundary");
     writeFile(rootDirectory, "package.json", "{}");

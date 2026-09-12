@@ -72,3 +72,4 @@ export type {
   RuleTier,
 } from "./score.js";
 export type { GitCommandRequest } from "./git-command-request.js";
+export type { OxlintWorkerSpawnSpec } from "./oxlint-worker-spawn-spec.js";

@@ -2,7 +2,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   buildGitSourceListingRequest,
+  buildOxlintChildEnv,
+  buildOxlintWorkerSpawnSpec,
   prefetchGitCommand,
+  prespawnOxlintWorkers,
+  resolveConfiguredScanConcurrency,
+  resolveOxlintWorkerRuntime,
   resolveReactDoctorCacheDir,
   warmReactCompilerDetection,
 } from "@react-doctor/core/scan-preamble";
@@ -19,7 +24,25 @@ import { resolvePrefetchScanDirectory } from "./utils/resolve-prefetch-scan-dire
 // is still loading: git lists the project and resolves the cache identity,
 // and, when no whole-repo cache can replay, a worker thread begins the
 // React Compiler config detection (the one discovery step that needs the
-// TypeScript compiler).
+// TypeScript compiler) and the oxlint worker processes start booting so
+// they are ready by the time the first lint batch is planned.
+const prespawnOxlintWorkersForScan = (): void => {
+  if (process.argv.includes("--no-lint")) return;
+  const workerRuntime = resolveOxlintWorkerRuntime();
+  if (workerRuntime === null) return;
+  const workerCount = resolveConfiguredScanConcurrency();
+  prespawnOxlintWorkers(
+    buildOxlintWorkerSpawnSpec({
+      nodeBinaryPath: process.execPath,
+      maxWorkers: workerCount,
+      workerScriptPath: workerRuntime.workerScriptPath,
+      oxlintPackageDirectory: workerRuntime.oxlintPackageDirectory,
+      pluginPath: workerRuntime.pluginPath,
+      environment: buildOxlintChildEnv(process.env),
+    }),
+    workerCount,
+  );
+};
 
 const prefetchDirectory = resolvePrefetchScanDirectory(process.argv.slice(2), process.cwd());
 if (prefetchDirectory !== null) {
@@ -39,5 +62,8 @@ if (prefetchDirectory !== null) {
     fs.existsSync(
       path.join(resolveReactDoctorCacheDir(prefetchDirectory), SCAN_RESULT_CACHE_FILENAME),
     );
-  if (!canReplayScanResult) warmReactCompilerDetection(prefetchDirectory);
+  if (!canReplayScanResult) {
+    warmReactCompilerDetection(prefetchDirectory);
+    prespawnOxlintWorkersForScan();
+  }
 }

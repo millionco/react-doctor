@@ -8,6 +8,11 @@ import {
   createOxlintWorkerPool,
   OxlintWorkerUnavailableError,
 } from "../src/runners/oxlint/oxlint-worker-pool.js";
+import {
+  buildOxlintWorkerSpawnSpec,
+  prespawnOxlintWorkers,
+  takePrespawnedOxlintWorker,
+} from "../src/runners/oxlint/oxlint-worker-prespawn.js";
 import type { OxlintWorkerPool } from "../src/runners/oxlint/oxlint-worker-pool.js";
 
 // Speaks the worker protocol without oxlint: the first argument selects the
@@ -343,5 +348,44 @@ describe("createOxlintWorkerPool", () => {
     const error: unknown = await runJob(pool, ["echo"]).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(OxlintWorkerUnavailableError);
+  });
+
+  it("adopts a pre-spawned worker that already reported ready", async () => {
+    const spec = buildOxlintWorkerSpawnSpec({
+      nodeBinaryPath: process.execPath,
+      maxWorkers: 2,
+      workerScriptPath,
+      oxlintPackageDirectory: temporaryDirectory,
+      pluginPath: null,
+      environment: { ...process.env },
+    });
+    prespawnOxlintWorkers(spec, 1);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const pool = createPool();
+    pool.warm();
+    expect(takePrespawnedOxlintWorker(spec)).toBeNull();
+    expect(pool.workerCount()).toBe(2);
+    const output = parseOutput(await runJob(pool, ["ok", "adopted"]));
+    expect(output.rest).toEqual(["adopted"]);
+  });
+
+  it("leaves a pre-spawned worker alone when the spawn parameters differ", async () => {
+    const spec = buildOxlintWorkerSpawnSpec({
+      nodeBinaryPath: process.execPath,
+      maxWorkers: 3,
+      workerScriptPath,
+      oxlintPackageDirectory: temporaryDirectory,
+      pluginPath: null,
+      environment: { ...process.env },
+    });
+    prespawnOxlintWorkers(spec, 1);
+    const pool = createPool();
+    pool.warm();
+    const untouched = takePrespawnedOxlintWorker(spec);
+    expect(untouched).not.toBeNull();
+    untouched?.child.kill("SIGKILL");
+    expect(takePrespawnedOxlintWorker(spec)).toBeNull();
+    const output = parseOutput(await runJob(pool, ["ok"]));
+    expect(output.id).toBeGreaterThan(0);
   });
 });

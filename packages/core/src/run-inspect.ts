@@ -565,6 +565,14 @@ export const runInspect = <HooksR = never>(
               ignorePatterns: ignoredFilePatterns,
               workerTimeoutMs: resolveProjectAnalysisTimeout(project.sourceFileCount),
               signal: input.signal,
+              // Only the orchestrator's own raw listing is shareable; supplied
+              // entries are a per-project assignment the duplicate-JSX pass
+              // must not inherit (a family split across nested projects
+              // would lose occurrences).
+              sourceFiles:
+                input.precomputedSourceFiles === undefined && sizedSourceFiles !== null
+                  ? sizedSourceFiles
+                  : undefined,
               onIncomplete: (reasons) => {
                 incompleteReason = describeMaintainabilityIncompleteness(reasons);
               },

@@ -40,6 +40,14 @@ export interface MaintainabilityInput {
   readonly workerTimeoutMs?: number;
   readonly signal?: AbortSignal;
   readonly onIncomplete?: (reasons: ReadonlyArray<JsxDuplicationIncompleteReason>) => void;
+  /**
+   * The scan root's sized source listing when the orchestrator already took
+   * it (the same `listSourceFilesWithSizeCooperative` walk this service would
+   * otherwise repeat, two git subprocesses on the parent loop). Must be the
+   * raw whole-tree listing: callers with a filtered or per-project set leave
+   * it undefined so the pass keeps its own view.
+   */
+  readonly sourceFiles?: ReadonlyArray<SourceFileEntry>;
 }
 
 const listJsxSourceFiles = async (
@@ -49,7 +57,8 @@ const listJsxSourceFiles = async (
     warnConfigIssue(`ignore.files: ${error.message}`),
   );
   const sourceFiles = (
-    await listSourceFilesWithSizeCooperative(input.rootDirectory, input.signal)
+    input.sourceFiles ??
+    (await listSourceFilesWithSizeCooperative(input.rootDirectory, input.signal))
   ).filter(
     (sourceFile) =>
       JSX_DUPLICATION_SOURCE_FILE_PATTERN.test(sourceFile.path) &&

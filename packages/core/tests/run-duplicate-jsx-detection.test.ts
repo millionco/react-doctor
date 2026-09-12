@@ -3,7 +3,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { runDuplicateJsxDetection } from "../src/react-cleanup/run-duplicate-jsx-detection.js";
+import {
+  runDuplicateJsxDetection,
+  warmDuplicateJsxWorker,
+} from "../src/react-cleanup/run-duplicate-jsx-detection.js";
 import type { SourceFileEntry } from "../src/types/index.js";
 
 const workerScriptPath = path.join(
@@ -65,6 +68,14 @@ describe("runDuplicateJsxDetection", () => {
     expect(workerResult.families).toHaveLength(1);
     expect(workerResult.families[0].primaryOccurrence.path).toBe("src/account.tsx");
     expect(workerResult).toEqual(fallbackResult);
+  });
+
+  it("warms the shared worker idempotently and reuses it for a later detection", async () => {
+    warmDuplicateJsxWorker();
+    warmDuplicateJsxWorker();
+    const project = createProject();
+    const result = await runDuplicateJsxDetection({ ...project, workerScriptPath });
+    expect(result.families).toHaveLength(1);
   });
 
   it("serves consecutive projects from one shared worker", async () => {

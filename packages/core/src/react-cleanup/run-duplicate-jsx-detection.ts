@@ -141,6 +141,15 @@ const runInWorker = (
     input.signal?.addEventListener("abort", onAbort, { once: true });
   });
 
+// Boots the shared detection thread ahead of the maintainability pass so its
+// bundle (and the TypeScript compiler it parses with) loads while the parent
+// discovers the project instead of after the pass is forked. Idempotent; a
+// missing script means the in-thread fallback will run, so nothing to warm.
+export const warmDuplicateJsxWorker = (): void => {
+  if (!fs.existsSync(DEFAULT_WORKER_SCRIPT_PATH)) return;
+  settleIdleState(acquireSharedWorker(DEFAULT_WORKER_SCRIPT_PATH));
+};
+
 export const runDuplicateJsxDetection = (
   input: RunDuplicateJsxDetectionInput,
 ): Promise<DuplicateJsxSubtreesResult> => {

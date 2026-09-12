@@ -13,6 +13,8 @@ import {
   resolveScanTarget,
   restoreLegacyThrow,
   runInspect as runInspectEffect,
+  shouldUseMaintainabilityLayer,
+  warmDuplicateJsxWorker,
   warmOxlintWorkerPool,
   yieldToEventLoop,
 } from "@react-doctor/core";
@@ -240,6 +242,15 @@ const runInspectWithRuntime = async (
   if (cachedResult !== null) return cachedResult;
   if (options.lint && resolvedNodeBinaryPath) {
     warmOxlintWorkerPool(resolvedNodeBinaryPath, oxlintRuntime.concurrency);
+  }
+  // The duplicate-JSX thread parses with TypeScript; booting it now hides
+  // that load behind discovery. Skipped when the config disables the pass
+  // (`--ignore-tags project-analysis` still warms it: a rare, harmless waste).
+  if (
+    options.deadCode &&
+    shouldUseMaintainabilityLayer({ shouldRunDuplicateJsx: options.deadCode, userConfig })
+  ) {
+    warmDuplicateJsxWorker();
   }
 
   // Suppress the orchestrator-owned lint + maintainability spinners when

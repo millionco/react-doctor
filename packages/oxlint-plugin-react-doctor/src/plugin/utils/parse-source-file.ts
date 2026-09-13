@@ -33,7 +33,10 @@ export const resolveLang = (filename: string): "ts" | "tsx" | "js" | "jsx" => {
 // it straight from the parser's buffer, about 2-3x faster for the same ESTree
 // shape (it is what oxlint itself feeds the rules at lint time). Supported on
 // 64-bit little-endian hosts running Node >= 22; older runtimes keep JSON.
-const isRawTransferSupported = rawTransferSupported();
+// HACK: Windows CI resolved imported components differently through the raw
+// transfer path (rn-no-raw-text cross-file regressions), so Windows keeps the
+// JSON transfer until that is understood.
+const isRawTransferSupported = process.platform !== "win32" && rawTransferSupported();
 
 // oxc-parser's runtime accepts the flag (see its `parseSync`) but its published
 // typings do not declare it yet.

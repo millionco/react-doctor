@@ -1,5 +1,11 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.15
+
+### Patch Changes
+
+- [#1803](https://github.com/millionco/react-doctor/pull/1803) [`922616f`](https://github.com/millionco/react-doctor/commit/922616f08db7d48463b1495e4dbdb699fc3d7c34) Thanks [@aidenybai](https://github.com/aidenybai)! - Speed up scans without changing any diagnostic: lint batches are planned for every pooled oxlint worker, sidecar cache probes are interned into a per-bucket table (a 27 MB cache file becomes about 2.5 MB) and collected by the idle pool workers instead of the parent thread, source files are listed once per scan and shared with the duplicate-JSX pass, workers import the rule plugin while they boot, cross-file targets are parsed with oxc raw transfer, the whole-repo cache identity resolves its git calls concurrently, and TypeScript, conf, prompts and agent-install load on first use instead of at startup. The CLI now also starts the scan's git commands, the oxlint worker processes, and a React Compiler detection worker thread before its bundle finishes loading (only when no whole-repo cache can replay), parses tsconfig files as JSONC, and skips parsing build configs that cannot reference unplugin-auto-import, so the TypeScript compiler stays off the main thread's path to the first lint batch.
+
 ## 0.9.14
 
 ### Patch Changes

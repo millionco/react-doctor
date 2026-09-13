@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { OXLINT_WORKER_JOB_END_MARKER, REACT_DOCTOR_PLUGIN_RESET_HOOK_KEY } from "./constants.js";
 import { classifyExistenceAnswer } from "./utils/classify-existence-answer.js";
+import { collectFileProbeTrace } from "./utils/collect-file-probe-trace.js";
 import { createFilesystemCacheEpochGate } from "./utils/create-filesystem-cache-epoch-gate.js";
 
 export interface OxlintWorkerJobMessage {
@@ -307,17 +308,11 @@ const collectProbeTraces = (
     return pathIndex;
   };
   const traces = job.files.map((file): OxlintWorkerProbeTrace | null => {
-    const absoluteFilePath = path.resolve(job.cwd, file);
-    let trace: ReturnType<typeof collectCrossFileDependencyProbes>;
-    try {
-      trace = collectCrossFileDependencyProbes({
-        absoluteFilePath,
-        sourceText: fs.readFileSync(absoluteFilePath, "utf8"),
-        ruleIds: job.ruleIds,
-      });
-    } catch {
-      return null;
-    }
+    const trace = collectFileProbeTrace(
+      collectCrossFileDependencyProbes,
+      path.resolve(job.cwd, file),
+      job.ruleIds,
+    );
     if (trace === null) return null;
     return {
       file,

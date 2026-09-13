@@ -5,7 +5,8 @@ import {
   OXLINT_POOLED_MIN_FILES_PER_BATCH,
   SPAWN_ARGS_MAX_LENGTH_CHARS,
 } from "../src/constants.js";
-import { planLintBatches, resolvePooledBatchCount } from "../src/utils/plan-lint-batches.js";
+import { planLintBatches } from "../src/utils/plan-lint-batches.js";
+import { resolvePooledBatchCount } from "../src/utils/resolve-pooled-batch-count.js";
 
 const BASE_ARGS = ["/usr/bin/node", "oxlint", "-c", "oxlintrc.json", "--format", "json"];
 const HEAVY_FILE_COUNT = 4;

@@ -1,10 +1,6 @@
-import {
-  OXLINT_MAX_FILES_PER_BATCH,
-  OXLINT_POOLED_BATCHES_PER_WORKER,
-  OXLINT_POOLED_MIN_FILES_PER_BATCH,
-  SPAWN_ARGS_MAX_LENGTH_CHARS,
-} from "../constants.js";
+import { OXLINT_MAX_FILES_PER_BATCH, SPAWN_ARGS_MAX_LENGTH_CHARS } from "../constants.js";
 import { estimateArgsLength } from "./estimate-args-length.js";
+import { resolvePooledBatchCount } from "./resolve-pooled-batch-count.js";
 
 export interface PlanLintBatchesInput {
   readonly baseArgs: ReadonlyArray<string>;
@@ -28,18 +24,6 @@ interface MutableLintBatch {
   totalSizeBytes: number;
   argsLengthChars: number;
 }
-
-// Batches a warm worker pool should run: `OXLINT_POOLED_BATCHES_PER_WORKER`
-// per worker so the pool has a second wave to absorb per-file cost skew, never
-// so many that a batch drops under `OXLINT_POOLED_MIN_FILES_PER_BATCH` files.
-export const resolvePooledBatchCount = (fileCount: number, pooledWorkerCount: number): number =>
-  Math.max(
-    1,
-    Math.min(
-      pooledWorkerCount * OXLINT_POOLED_BATCHES_PER_WORKER,
-      Math.floor(fileCount / OXLINT_POOLED_MIN_FILES_PER_BATCH),
-    ),
-  );
 
 /**
  * Balanced LPT (longest-processing-time-first) lint batch planner. Where

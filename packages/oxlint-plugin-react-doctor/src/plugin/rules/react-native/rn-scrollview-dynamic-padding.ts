@@ -54,10 +54,12 @@ const isSpacingTokenExpression = (
 
 // A value is "static" when it can't change between renders: any literal
 // (`16`, `"10%"`), an expression-free template literal, unary minus /
-// arithmetic over static values (`BASE + 8`), or an identifier bound by a
-// `const` declaration whose initializer is itself static
-// (`const EXTRA = TAB_BAR_HEIGHT + 8`). `let` / `var` bindings can be
-// reassigned after declaration, and state / hook / prop values
+// arithmetic over static values (`BASE + 8`), a conditional whose two
+// branches are both static (`hasHeader ? 0 : 16` picks between two
+// design-time values rather than tracking a runtime measurement), or an
+// identifier bound by a `const` declaration whose initializer is itself
+// static (`const EXTRA = TAB_BAR_HEIGHT + 8`). `let` / `var` bindings can
+// be reassigned after declaration, and state / hook / prop values
 // (keyboardHeight, insets.bottom) never resolve to a static initializer,
 // so all of those still fire.
 const isStaticStyleValue = (value: EsTreeNode, resolutionDepth = 0): boolean => {
@@ -80,6 +82,12 @@ const isStaticStyleValue = (value: EsTreeNode, resolutionDepth = 0): boolean => 
       isStaticStyleValue(value.right, resolutionDepth + 1)
     );
   }
+  if (isNodeOfType(value, "ConditionalExpression")) {
+    return (
+      isStaticStyleValue(value.consequent, resolutionDepth + 1) &&
+      isStaticStyleValue(value.alternate, resolutionDepth + 1)
+    );
+  }
   if (!isNodeOfType(value, "Identifier")) return false;
   const binding = findVariableInitializer(value, value.name);
   if (!binding?.initializer || !isConstDeclaredBinding(binding)) return false;
@@ -99,7 +107,7 @@ export const rnScrollviewDynamicPadding = defineRule({
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `contentInset={{ bottom: dynamicValue }}` so the OS shifts the content instead of relaying it out, which avoids the jump.",
+    "Move the changing value to the matching `contentInset` edge (`contentInset={{ bottom: keyboardHeight }}`, iOS-only) so the OS shifts the content instead of relaying it out, and keep static spacing in `contentContainerStyle`.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);

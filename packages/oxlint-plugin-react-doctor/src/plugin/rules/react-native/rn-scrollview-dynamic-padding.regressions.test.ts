@@ -201,4 +201,72 @@ const C = () => <ScrollView contentContainerStyle={{ paddingTop: -OVERLAP }} />;
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("stays silent on a conditional between two static literals keyed off a prop", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const List = ({ ListHeaderComponent, ...props }) => (
+  <FlashList
+    ListHeaderComponent={ListHeaderComponent}
+    contentContainerStyle={{ paddingTop: ListHeaderComponent ? 0 : 16 }}
+    {...props}
+  />
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a conditional between two static consts", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const COMPACT_PADDING = 8;
+const REGULAR_PADDING = 16;
+const C = ({ compact }) => <ScrollView contentContainerStyle={{ paddingBottom: compact ? COMPACT_PADDING : REGULAR_PADDING }} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on nested conditionals whose leaves are all static", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ hasHeader, dense }) => <ScrollView contentContainerStyle={{ paddingTop: hasHeader ? 0 : dense ? 8 : 16 }} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a conditional whose consequent is dynamic", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ keyboardHeight, isKeyboardOpen }) => <ScrollView contentContainerStyle={{ paddingBottom: isKeyboardOpen ? keyboardHeight : 0 }} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a conditional whose alternate is dynamic", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ hasTabBar }) => {
+  const insets = useSafeAreaInsets();
+  return <ScrollView contentContainerStyle={{ paddingBottom: hasTabBar ? 0 : insets.bottom }} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a conditional whose branches are both dynamic", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ keyboardHeight, isKeyboardOpen }) => {
+  const insets = useSafeAreaInsets();
+  return <ScrollView contentContainerStyle={{ paddingBottom: isKeyboardOpen ? keyboardHeight : insets.bottom }} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

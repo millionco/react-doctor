@@ -45,3 +45,22 @@ export const SAFE_MUTABLE_CONSTRUCTOR_NAMES = new Set([
 
 export const RESPONSE_FACTORY_OBJECTS = new Set(["Response", "NextResponse"]);
 export const RESPONSE_FACTORY_METHODS = new Set(["json", "redirect", "next", "rewrite", "error"]);
+
+// Dedicated keyboard-shortcut libraries, keyed by import source. When a
+// file that hand-rolls a `keydown`/`keyup` listener already imports one
+// of these, `prefer-keybind-library` points at the library the project
+// already uses instead of defaulting to the recommendation below. The
+// display value is what the diagnostic names back to the user.
+export const KEYBIND_LIBRARY_BY_IMPORT_SOURCE = new Map<string, string>([
+  ["react-hotkeys-hook", "react-hotkeys-hook"],
+  ["react-hotkeys", "react-hotkeys"],
+  ["@mantine/hooks", "@mantine/hooks"],
+  ["hotkeys-js", "hotkeys-js"],
+  ["mousetrap", "mousetrap"],
+  ["tinykeys", "tinykeys"],
+  ["@github/hotkey", "@github/hotkey"],
+]);
+
+// The library suggested when the file doesn't already import a keybind
+// library — the most widely used React option.
+export const DEFAULT_KEYBIND_LIBRARY = "react-hotkeys-hook";

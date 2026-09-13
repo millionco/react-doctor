@@ -653,6 +653,7 @@ export const OXLINT_WORKER_READY_TIMEOUT_MS = 30_000;
 // matters between scans in one process.
 export const OXLINT_WORKER_IDLE_TIMEOUT_MS = 30_000;
 export const DUPLICATE_JSX_WORKER_IDLE_TIMEOUT_MS = 30_000;
+export const REACT_COMPILER_DETECTION_WORKER_IDLE_TIMEOUT_MS = 30_000;
 
 // Every pooled job hands the plugin a fresh oxlint transfer buffer and fresh
 // rule closures, and the full GC that follows drops every TurboFan code object

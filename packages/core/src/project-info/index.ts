@@ -1,5 +1,6 @@
 export {
   discoverProject,
+  isProjectInfoCached,
   clearProjectCache,
   discoverReactSubprojects,
   discoverSupportedSubprojects,

@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import {
   AmbiguousProjectError,
   discoverProject as discoverProjectSync,
+  isProjectInfoCached,
   NoReactDependencyError,
   PackageJsonNotFoundError,
   ProjectNotFoundError,
@@ -64,7 +65,7 @@ export class Project extends Context.Service<
         Effect.gen(function* () {
           const pendingDetection = takeReactCompilerDetection(input.directory);
           const hasReactCompiler =
-            pendingDetection === null
+            pendingDetection === null || isProjectInfoCached(input.directory)
               ? undefined
               : ((yield* Effect.promise(() => pendingDetection)) ?? undefined);
           return yield* Effect.try({

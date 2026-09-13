@@ -46,6 +46,9 @@ export { listWorkspacePackages } from "./workspaces.js";
 
 const cachedProjectInfos = new Map<string, ProjectInfo>();
 
+export const isProjectInfoCached = (directory: string): boolean =>
+  cachedProjectInfos.has(directory);
+
 export interface DiscoverProjectOptions {
   readonly sourceFileCount?: number;
   readonly hasReactCompiler?: boolean;

@@ -259,39 +259,50 @@ const resolveIdentityFromProbes = async (
   return identity;
 };
 
+const resolveSiblingIdentity = async (
+  projectDirectory: string,
+  invocationState: ScanResultCacheInvocationState,
+  repositoryRootPromise: Promise<string | null>,
+  firstProjectIdentity: Promise<RepositoryCacheIdentity | null>,
+): Promise<RepositoryCacheIdentity | null> => {
+  const [repositoryRoot] = await Promise.all([repositoryRootPromise, firstProjectIdentity]);
+  if (repositoryRoot === null) return null;
+  const cachedIdentity = invocationState.repositoryIdentityByRoot.get(repositoryRoot);
+  if (cachedIdentity !== undefined) return cachedIdentity;
+  return resolveIdentityFromProbes(
+    repositoryRoot,
+    runGitAsync(projectDirectory, WORKTREE_STATUS_GIT_ARGUMENTS),
+    readHeadSha(repositoryRoot),
+    invocationState,
+  );
+};
+
 const resolveRepositoryCacheIdentity = (
   projectDirectory: string,
   invocationState: ScanResultCacheInvocationState,
   repositoryRootPromise: Promise<string | null>,
 ): Promise<RepositoryCacheIdentity | null> => {
-  if (invocationState.firstProjectIdentity === null) {
-    const speculativeStatus = runGitAsync(projectDirectory, WORKTREE_STATUS_GIT_ARGUMENTS);
-    const speculativeHeadSha = readHeadSha(projectDirectory);
-    invocationState.firstProjectIdentity = repositoryRootPromise.then((repositoryRoot) =>
-      repositoryRoot === null
-        ? null
-        : resolveIdentityFromProbes(
-            repositoryRoot,
-            speculativeStatus,
-            speculativeHeadSha,
-            invocationState,
-          ),
-    );
-    return invocationState.firstProjectIdentity;
-  }
-  const firstProjectIdentity = invocationState.firstProjectIdentity;
-  return (async () => {
-    const [repositoryRoot] = await Promise.all([repositoryRootPromise, firstProjectIdentity]);
-    if (repositoryRoot === null) return null;
-    const cachedIdentity = invocationState.repositoryIdentityByRoot.get(repositoryRoot);
-    if (cachedIdentity !== undefined) return cachedIdentity;
-    return resolveIdentityFromProbes(
-      repositoryRoot,
-      runGitAsync(projectDirectory, WORKTREE_STATUS_GIT_ARGUMENTS),
-      readHeadSha(repositoryRoot),
+  if (invocationState.firstProjectIdentity !== null) {
+    return resolveSiblingIdentity(
+      projectDirectory,
       invocationState,
+      repositoryRootPromise,
+      invocationState.firstProjectIdentity,
     );
-  })();
+  }
+  const speculativeStatus = runGitAsync(projectDirectory, WORKTREE_STATUS_GIT_ARGUMENTS);
+  const speculativeHeadSha = readHeadSha(projectDirectory);
+  invocationState.firstProjectIdentity = repositoryRootPromise.then((repositoryRoot) =>
+    repositoryRoot === null
+      ? null
+      : resolveIdentityFromProbes(
+          repositoryRoot,
+          speculativeStatus,
+          speculativeHeadSha,
+          invocationState,
+        ),
+  );
+  return invocationState.firstProjectIdentity;
 };
 
 const DOTENV_FILE_NAME_PATTERN = /^\.env(\.|$)/;

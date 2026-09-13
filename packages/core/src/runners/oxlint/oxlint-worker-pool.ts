@@ -12,6 +12,7 @@ import type {
   OxlintWorkerProbeJobMessage,
 } from "../../start-oxlint-worker.js";
 import { buildOxlintExitError } from "../../utils/build-oxlint-exit-error.js";
+import { createDeferred } from "../../utils/create-deferred.js";
 import { setChildProcessRef } from "../../utils/set-child-process-ref.js";
 import {
   buildOxlintWorkerSpawnSpec,
@@ -291,20 +292,15 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
     });
     const prespawned = takePrespawnedOxlintWorker(spawnSpec);
     const child = prespawned === null ? spawnOxlintWorkerProcess(spawnSpec) : prespawned.child;
-    let resolveReady: () => void = () => undefined;
-    let rejectReady: (error: OxlintWorkerUnavailableError) => void = () => undefined;
-    const ready = new Promise<void>((resolve, reject) => {
-      resolveReady = resolve;
-      rejectReady = reject;
-    });
+    const ready = createDeferred<void>();
     const readyTimer = setTimeout(() => {
-      rejectReady(new OxlintWorkerUnavailableError("worker did not report ready in time"));
+      ready.reject(new OxlintWorkerUnavailableError("worker did not report ready in time"));
       killWorker(worker);
     }, readyTimeoutMs);
     readyTimer.unref();
     const worker: Worker = {
       child,
-      ready,
+      ready: ready.promise,
       closed: new Promise<void>((resolve) => child.once("close", () => resolve())),
       current: null,
       idleTimer: null,
@@ -312,7 +308,7 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
       isDead: false,
       isReclaimed: false,
     };
-    ready.then(
+    ready.promise.then(
       () => {
         clearTimeout(readyTimer);
         worker.isReady = true;
@@ -327,15 +323,15 @@ export const createOxlintWorkerPool = (options: OxlintWorkerPoolOptions): Oxlint
       if (!isBootMessage(message)) return;
       if (message.type === "ready") {
         worker.isReady = true;
-        resolveReady();
+        ready.resolve();
       } else {
-        rejectReady(new OxlintWorkerUnavailableError(message.message));
+        ready.reject(new OxlintWorkerUnavailableError(message.message));
       }
     };
     const onSpawnError = (error: Error): void =>
-      rejectReady(new OxlintWorkerUnavailableError(`worker spawn failed: ${error.message}`));
+      ready.reject(new OxlintWorkerUnavailableError(`worker spawn failed: ${error.message}`));
     const onClose = (code: number | null, signal: NodeJS.Signals | null): void => {
-      rejectReady(
+      ready.reject(
         new OxlintWorkerUnavailableError(
           `worker exited before ready (code ${code ?? "null"}, signal ${signal ?? "none"})`,
         ),

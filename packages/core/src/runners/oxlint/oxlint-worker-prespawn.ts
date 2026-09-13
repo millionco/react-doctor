@@ -20,18 +20,23 @@ export interface OxlintWorkerSpawnSpecInput {
   readonly environment: NodeJS.ProcessEnv;
 }
 
+export interface OxlintWorkerExit {
+  readonly code: number | null;
+  readonly signal: NodeJS.Signals | null;
+}
+
+/** A child spawned early plus whatever it reported before the pool adopted it. */
 export interface PrespawnedOxlintWorker {
   readonly child: ChildProcess;
   readonly bootMessage: unknown;
   readonly spawnError: Error | null;
-  readonly exit: { readonly code: number | null; readonly signal: NodeJS.Signals | null } | null;
+  readonly exit: OxlintWorkerExit | null;
 }
 
-interface PrespawnRecord {
-  readonly child: ChildProcess;
+interface PrespawnRecord extends PrespawnedOxlintWorker {
   bootMessage: unknown;
   spawnError: Error | null;
-  exit: PrespawnedOxlintWorker["exit"];
+  exit: OxlintWorkerExit | null;
   readonly detach: () => void;
 }
 
@@ -58,7 +63,7 @@ const toSpecKey = (spec: OxlintWorkerSpawnSpec): string =>
     spec.nodeBinaryPath,
     spec.args,
     Object.entries(spec.environment).sort(([firstName], [secondName]) =>
-      firstName < secondName ? -1 : firstName > secondName ? 1 : 0,
+      firstName.localeCompare(secondName),
     ),
   ]);
 
@@ -129,10 +134,5 @@ export const takePrespawnedOxlintWorker = (
   if (record === undefined) return null;
   record.detach();
   setChildProcessRef(record.child, true);
-  return {
-    child: record.child,
-    bootMessage: record.bootMessage,
-    spawnError: record.spawnError,
-    exit: record.exit,
-  };
+  return record;
 };

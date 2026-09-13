@@ -8,7 +8,9 @@ import * as fs from "node:fs";
 export const classifyExistenceAnswer = (absolutePath: string): string => {
   try {
     const stat = fs.statSync(absolutePath);
-    return stat.isFile() ? "file" : stat.isDirectory() ? "dir" : "none";
+    if (stat.isFile()) return "file";
+    if (stat.isDirectory()) return "dir";
+    return "none";
   } catch {
     return "none";
   }

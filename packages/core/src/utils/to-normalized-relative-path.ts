@@ -6,12 +6,10 @@ import { resolveCandidateReadPath } from "./resolve-candidate-read-path.js";
 // resolves back to itself, so the resolve/relative round trip is skipped.
 // Source listings hand thousands of such paths to the per-file filters.
 const NORMALIZED_RELATIVE_PATH_PATTERN =
-  /^(?!\.{1,2}(?:\/|$))[^/\\]+(?:\/(?!\.{1,2}(?:\/|$))[^/\\]+)*$/;
+  /^(?![a-zA-Z]:)(?!\.{1,2}(?:\/|$))[^/\\]+(?:\/(?!\.{1,2}(?:\/|$))[^/\\]+)*$/;
 
 export const toNormalizedRelativePath = (filePath: string, rootDirectory: string): string => {
-  if (NORMALIZED_RELATIVE_PATH_PATTERN.test(filePath) && !/^[a-zA-Z]:/.test(filePath)) {
-    return filePath;
-  }
+  if (NORMALIZED_RELATIVE_PATH_PATTERN.test(filePath)) return filePath;
   return (
     path
       .relative(

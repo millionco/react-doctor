@@ -1,4 +1,3 @@
-import { parseSync } from "oxc-parser";
 import type { StaticImport } from "oxc-parser";
 import { analyzeScopes } from "./semantic/scope-analysis.js";
 import {
@@ -29,7 +28,7 @@ import { resolveInkVersion } from "./utils/resolve-ink-version.js";
 import { isNodeOfType } from "./utils/is-node-of-type.js";
 import { isReactApiCall } from "./utils/is-react-api-call.js";
 import { normalizeFilename } from "./utils/normalize-filename.js";
-import { buildCrossFileParseOptions, parseSourceFile } from "./utils/parse-source-file.js";
+import { parseCrossFileSource, parseSourceFile } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
 import { resolveCrossFileExport } from "./utils/resolve-cross-file-export.js";
 import {
@@ -620,11 +619,7 @@ export const collectCrossFileDependencyProbes = (input: {
   let staticImports: ReadonlyArray<StaticImport>;
   let getProgram: () => EsTreeNode;
   try {
-    const parseResult = parseSync(
-      absoluteFilePath,
-      input.sourceText,
-      buildCrossFileParseOptions(absoluteFilePath),
-    );
+    const parseResult = parseCrossFileSource(absoluteFilePath, input.sourceText);
     if (parseResult.errors.some((parseError) => parseError.severity === "Error")) return null;
     staticImports = parseResult.module.staticImports;
     let program: EsTreeNode | undefined;

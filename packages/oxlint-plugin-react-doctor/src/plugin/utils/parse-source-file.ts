@@ -33,10 +33,14 @@ export const resolveLang = (filename: string): "ts" | "tsx" | "js" | "jsx" => {
 // it straight from the parser's buffer, about 2-3x faster for the same ESTree
 // shape (it is what oxlint itself feeds the rules at lint time). Supported on
 // 64-bit little-endian hosts running Node >= 22; older runtimes keep JSON.
-// HACK: Windows CI resolved imported components differently through the raw
-// transfer path (rn-no-raw-text cross-file regressions), so Windows keeps the
-// JSON transfer until that is understood.
-const isRawTransferSupported = process.platform !== "win32" && rawTransferSupported();
+//
+// Raw transfer backs each parse with a multi-GiB ArrayBuffer reservation
+// (oxc-parser keeps a small pool of them). Windows commits that reservation
+// against the pagefile instead of reserving it lazily, so on a constrained
+// host the allocation fails and the cross-file parse would silently come back
+// unparseable; Windows therefore keeps the JSON transfer, and any other host
+// whose allocation throws falls back to JSON for the rest of the process.
+let shouldUseRawTransfer = process.platform !== "win32" && rawTransferSupported();
 
 // oxc-parser's runtime accepts the flag (see its `parseSync`) but its published
 // typings do not declare it yet.
@@ -44,13 +48,30 @@ interface CrossFileParseOptions extends ParserOptions {
   readonly experimentalRawTransfer?: boolean;
 }
 
-// One option set for every cross-file parse — the rules' own lookups and the
-// dependency collectors — so both see byte-identical trees.
-export const buildCrossFileParseOptions = (filename: string): CrossFileParseOptions => ({
+const buildCrossFileParseOptions = (
+  filename: string,
+  useRawTransfer: boolean,
+): CrossFileParseOptions => ({
   astType: "ts",
   lang: resolveLang(filename),
-  experimentalRawTransfer: isRawTransferSupported,
+  experimentalRawTransfer: useRawTransfer,
 });
+
+// One parse path for every cross-file parse — the rules' own lookups and the
+// dependency collectors — so both see byte-identical trees.
+export const parseCrossFileSource = (
+  filename: string,
+  sourceText: string,
+): ReturnType<typeof parseSync> => {
+  if (shouldUseRawTransfer) {
+    try {
+      return parseSync(filename, sourceText, buildCrossFileParseOptions(filename, true));
+    } catch {
+      shouldUseRawTransfer = false;
+    }
+  }
+  return parseSync(filename, sourceText, buildCrossFileParseOptions(filename, false));
+};
 
 interface CacheEntry {
   readonly mtimeMs: number;
@@ -70,7 +91,7 @@ export const parseSourceText = ({
   shouldAttachParentReferences = true,
 }: ParseSourceTextInput): EsTreeNode | null => {
   try {
-    const result = parseSync(filename, sourceText, buildCrossFileParseOptions(filename));
+    const result = parseCrossFileSource(filename, sourceText);
     const hasFatalError = result.errors.some((parseError) => parseError.severity === "Error");
     if (hasFatalError) return null;
     const parsedProgram = result.program as unknown as EsTreeNode;

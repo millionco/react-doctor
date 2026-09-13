@@ -15,12 +15,21 @@ const pendingOutputsByRequestKey = new Map<string, Promise<string | null>>();
 const toRequestKey = (request: GitCommandRequest): string =>
   [request.directory, String(request.maxBufferBytes), ...request.args].join("\0");
 
-export const runGitCommand = (request: GitCommandRequest): Promise<string | null> =>
+export const runGitCommand = (
+  request: GitCommandRequest,
+  signal?: AbortSignal,
+): Promise<string | null> =>
   new Promise((resolve) => {
     execFile(
       "git",
       [...request.args],
-      { cwd: request.directory, encoding: "utf-8", maxBuffer: request.maxBufferBytes },
+      {
+        cwd: request.directory,
+        encoding: "utf-8",
+        killSignal: "SIGKILL",
+        maxBuffer: request.maxBufferBytes,
+        signal,
+      },
       (error, stdout) => resolve(error ? null : stdout),
     );
   });
@@ -39,6 +48,12 @@ export const takePrefetchedGitCommand = (
   if (pendingOutput !== null) pendingOutputsByRequestKey.delete(requestKey);
   return pendingOutput;
 };
+
+/** The prefetched output when the identical command was started early, otherwise a fresh run. */
+export const resolveGitCommand = (
+  request: GitCommandRequest,
+  signal?: AbortSignal,
+): Promise<string | null> => takePrefetchedGitCommand(request) ?? runGitCommand(request, signal);
 
 export const discardPrefetchedGitCommands = (): void => {
   pendingOutputsByRequestKey.clear();

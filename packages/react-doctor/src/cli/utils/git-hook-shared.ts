@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { GitCommandRequest } from "@react-doctor/core";
-import { runGitCommand, takePrefetchedGitCommand } from "@react-doctor/core/scan-preamble";
+import { resolveGitCommand } from "@react-doctor/core/scan-preamble";
 import { RUN_GIT_MAX_BUFFER_BYTES } from "./constants.js";
 
 export const HOOK_FILE_NAME = "pre-commit";
@@ -58,7 +58,7 @@ export const runGitAsync = async (
     args,
     maxBufferBytes: RUN_GIT_MAX_BUFFER_BYTES,
   };
-  const output = await (takePrefetchedGitCommand(request) ?? runGitCommand(request));
+  const output = await resolveGitCommand(request);
   return output === null ? null : output.trim();
 };
 

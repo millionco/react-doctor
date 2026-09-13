@@ -1,9 +1,9 @@
-import { execFile, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { SourceFileEntry } from "../types/index.js";
 import { COOPERATIVE_YIELD_BUDGET_MS, GIT_LS_FILES_MAX_BUFFER_BYTES } from "../constants.js";
-import { buildGitSourceListingRequest, takePrefetchedGitCommand } from "../git-prefetch.js";
+import { buildGitSourceListingRequest, resolveGitCommand } from "../git-prefetch.js";
 import { GIT_SOURCE_LISTING_ARGUMENTS } from "../project-info/constants.js";
 import {
   collectGitLinguistIgnoredPaths,
@@ -129,38 +129,12 @@ const listSourceFilesViaGit = (rootDirectory: string): string[] | null => {
   return paths === null ? null : filterGitSourceFilePaths(rootDirectory, paths);
 };
 
-const runGitSourceListing = (rootDirectory: string, signal?: AbortSignal): Promise<string | null> =>
-  new Promise((resolve, reject) => {
-    execFile(
-      "git",
-      [...GIT_SOURCE_LISTING_ARGUMENTS],
-      {
-        cwd: rootDirectory,
-        encoding: "utf-8",
-        killSignal: "SIGKILL",
-        maxBuffer: GIT_LS_FILES_MAX_BUFFER_BYTES,
-        signal,
-      },
-      (error, stdout) => {
-        if (signal?.aborted) {
-          reject(signal.reason);
-          return;
-        }
-        resolve(error ? null : stdout);
-      },
-    );
-  });
-
 const listSourceFilesViaGitCooperative = async (
   rootDirectory: string,
   signal?: AbortSignal,
 ): Promise<string[] | null> => {
   signal?.throwIfAborted();
-  const prefetchedOutput = takePrefetchedGitCommand(buildGitSourceListingRequest(rootDirectory));
-  const output =
-    prefetchedOutput === null
-      ? await runGitSourceListing(rootDirectory, signal)
-      : await prefetchedOutput;
+  const output = await resolveGitCommand(buildGitSourceListingRequest(rootDirectory), signal);
   if (signal?.aborted) throw signal.reason;
   const paths = output === null ? null : parseGitSourceFilePaths(output);
   if (paths === null) return null;

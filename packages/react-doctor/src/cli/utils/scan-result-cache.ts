@@ -63,10 +63,13 @@ interface RepositoryCacheIdentity {
 
 export interface ScanResultCacheInvocationState {
   readonly repositoryIdentityByRoot: Map<string, RepositoryCacheIdentity | null>;
+  /** The first project's identity resolution, awaited by concurrent siblings before they probe. */
+  firstProjectIdentity: Promise<RepositoryCacheIdentity | null> | null;
 }
 
 export const createScanResultCacheInvocationState = (): ScanResultCacheInvocationState => ({
   repositoryIdentityByRoot: new Map(),
+  firstProjectIdentity: null,
 });
 
 const TOOLCHAIN_PACKAGE_SPECIFIERS = [
@@ -239,31 +242,56 @@ const buildWorktreeFingerprint = (
 // concurrently: the trust check and the repository root always, and the
 // status + HEAD probes alongside them for the first project of an invocation
 // (the only one that cannot hit the per-root memo). Later projects of a
-// workspace scan resolve the root first and only probe on a memo miss, so
-// sibling members never pay a speculative `git status`.
-const resolveRepositoryCacheIdentity = async (
-  projectDirectory: string,
+// workspace scan — including ones started while the first is still in
+// flight — wait for that first resolution, resolve their root, and only probe
+// on a memo miss, so sibling members never pay a speculative `git status`.
+const resolveIdentityFromProbes = async (
+  repositoryRoot: string,
+  statusPromise: Promise<string | null>,
+  headShaPromise: Promise<string | null>,
   invocationState: ScanResultCacheInvocationState,
-  repositoryRootPromise: Promise<string | null>,
 ): Promise<RepositoryCacheIdentity | null> => {
-  const isFirstProject = invocationState.repositoryIdentityByRoot.size === 0;
-  const speculativeStatus = isFirstProject
-    ? runGitAsync(projectDirectory, WORKTREE_STATUS_GIT_ARGUMENTS)
-    : null;
-  const speculativeHeadSha = isFirstProject ? readHeadSha(projectDirectory) : null;
-  const repositoryRoot = await repositoryRootPromise;
-  if (repositoryRoot === null) return null;
-  const cachedIdentity = invocationState.repositoryIdentityByRoot.get(repositoryRoot);
-  if (cachedIdentity !== undefined) return cachedIdentity;
-  const [statusOutput, headSha] = await Promise.all([
-    speculativeStatus ?? runGitAsync(projectDirectory, WORKTREE_STATUS_GIT_ARGUMENTS),
-    speculativeHeadSha ?? readHeadSha(repositoryRoot),
-  ]);
+  const [statusOutput, headSha] = await Promise.all([statusPromise, headShaPromise]);
   const worktreeFingerprint = buildWorktreeFingerprint(repositoryRoot, statusOutput);
   const identity =
     worktreeFingerprint === null || headSha === null ? null : { headSha, worktreeFingerprint };
   invocationState.repositoryIdentityByRoot.set(repositoryRoot, identity);
   return identity;
+};
+
+const resolveRepositoryCacheIdentity = (
+  projectDirectory: string,
+  invocationState: ScanResultCacheInvocationState,
+  repositoryRootPromise: Promise<string | null>,
+): Promise<RepositoryCacheIdentity | null> => {
+  if (invocationState.firstProjectIdentity === null) {
+    const speculativeStatus = runGitAsync(projectDirectory, WORKTREE_STATUS_GIT_ARGUMENTS);
+    const speculativeHeadSha = readHeadSha(projectDirectory);
+    invocationState.firstProjectIdentity = repositoryRootPromise.then((repositoryRoot) =>
+      repositoryRoot === null
+        ? null
+        : resolveIdentityFromProbes(
+            repositoryRoot,
+            speculativeStatus,
+            speculativeHeadSha,
+            invocationState,
+          ),
+    );
+    return invocationState.firstProjectIdentity;
+  }
+  const firstProjectIdentity = invocationState.firstProjectIdentity;
+  return (async () => {
+    const [repositoryRoot] = await Promise.all([repositoryRootPromise, firstProjectIdentity]);
+    if (repositoryRoot === null) return null;
+    const cachedIdentity = invocationState.repositoryIdentityByRoot.get(repositoryRoot);
+    if (cachedIdentity !== undefined) return cachedIdentity;
+    return resolveIdentityFromProbes(
+      repositoryRoot,
+      runGitAsync(projectDirectory, WORKTREE_STATUS_GIT_ARGUMENTS),
+      readHeadSha(repositoryRoot),
+      invocationState,
+    );
+  })();
 };
 
 const DOTENV_FILE_NAME_PATTERN = /^\.env(\.|$)/;

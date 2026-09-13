@@ -175,6 +175,25 @@ describe("scan result cache", () => {
     expect(invocationState.repositoryIdentityByRoot.size).toBe(1);
   });
 
+  it("shares the first project's identity with members keyed concurrently", async () => {
+    const firstProjectDirectory = setupReactProject(tempDirectory, "apps/concurrent-first", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    const secondProjectDirectory = setupReactProject(tempDirectory, "apps/concurrent-second", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(tempDirectory, { commit: true });
+    const invocationState = createScanResultCacheInvocationState();
+
+    const [firstKey, secondKey] = await Promise.all([
+      cacheKey(firstProjectDirectory, baseOptions(), VERSION, null, invocationState),
+      cacheKey(secondProjectDirectory, baseOptions(), VERSION, null, invocationState),
+    ]);
+    expect(firstKey).not.toBeNull();
+    expect(secondKey).not.toBeNull();
+    expect(invocationState.repositoryIdentityByRoot.size).toBe(1);
+  });
+
   it("returns cached payloads for the same clean project key", async () => {
     const projectDirectory = setupReactProject(tempDirectory, "hit", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },

@@ -8,8 +8,10 @@ export { warmReactCompilerDetection } from "./project-info/react-compiler-detect
 export { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
 export { buildOxlintChildEnv } from "./utils/build-oxlint-child-env.js";
 export { resolveConfiguredScanConcurrency } from "./utils/resolve-configured-scan-concurrency.js";
+export { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
 export {
   buildOxlintWorkerSpawnSpec,
   prespawnOxlintWorkers,
 } from "./runners/oxlint/oxlint-worker-prespawn.js";
+export { MIN_SCAN_CONCURRENCY } from "./constants.js";
 export { resolveOxlintWorkerRuntime } from "./runners/oxlint/resolve-oxlint-worker-runtime.js";

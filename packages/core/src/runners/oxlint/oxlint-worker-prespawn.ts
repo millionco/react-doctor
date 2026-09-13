@@ -110,6 +110,18 @@ export const prespawnOxlintWorkers = (spec: OxlintWorkerSpawnSpec, count: number
   prespawnedBySpecKey.set(specKey, records);
 };
 
+// Once the pool has adopted what it needs, any child left over (a spec the
+// pool did not use, or more than it warmed) is only wasting CPU: kill it.
+export const killUnadoptedOxlintWorkers = (): void => {
+  for (const records of prespawnedBySpecKey.values()) {
+    for (const record of records) {
+      record.detach();
+      record.child.kill("SIGKILL");
+    }
+  }
+  prespawnedBySpecKey.clear();
+};
+
 export const takePrespawnedOxlintWorker = (
   spec: OxlintWorkerSpawnSpec,
 ): PrespawnedOxlintWorker | null => {

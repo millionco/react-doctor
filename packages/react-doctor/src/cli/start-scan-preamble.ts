@@ -4,11 +4,13 @@ import {
   buildGitSourceListingRequest,
   buildOxlintChildEnv,
   buildOxlintWorkerSpawnSpec,
+  MIN_SCAN_CONCURRENCY,
   prefetchGitCommand,
   prespawnOxlintWorkers,
   resolveConfiguredScanConcurrency,
   resolveOxlintWorkerRuntime,
   resolveReactDoctorCacheDir,
+  resolveScanConcurrency,
   warmReactCompilerDetection,
 } from "@react-doctor/core/scan-preamble";
 import {
@@ -26,11 +28,18 @@ import { resolvePrefetchScanDirectory } from "./utils/resolve-prefetch-scan-dire
 // React Compiler config detection (the one discovery step that needs the
 // TypeScript compiler) and the oxlint worker processes start booting so
 // they are ready by the time the first lint batch is planned.
+//
+// Everything here mirrors what the scan will do with the same inputs (the
+// `--no-cache` env flip in `runScanCommand`, `--no-parallel` pinning one
+// worker) so the pre-spawned children match the pool's spawn spec exactly;
+// a mismatch only costs unused children, which the pool kills once warm.
 const prespawnOxlintWorkersForScan = (): void => {
   if (process.argv.includes("--no-lint")) return;
   const workerRuntime = resolveOxlintWorkerRuntime();
   if (workerRuntime === null) return;
-  const workerCount = resolveConfiguredScanConcurrency();
+  const workerCount = process.argv.includes("--no-parallel")
+    ? resolveScanConcurrency(MIN_SCAN_CONCURRENCY)
+    : resolveConfiguredScanConcurrency();
   prespawnOxlintWorkers(
     buildOxlintWorkerSpawnSpec({
       nodeBinaryPath: process.execPath,
@@ -44,10 +53,12 @@ const prespawnOxlintWorkersForScan = (): void => {
   );
 };
 
-const prefetchDirectory = resolvePrefetchScanDirectory(process.argv.slice(2), process.cwd());
-if (prefetchDirectory !== null) {
+const startScanPreamble = (): void => {
+  const prefetchDirectory = resolvePrefetchScanDirectory(process.argv.slice(2), process.cwd());
+  if (prefetchDirectory === null) return;
+  if (process.argv.includes("--no-cache")) process.env.REACT_DOCTOR_NO_CACHE = "1";
   prefetchGitCommand(buildGitSourceListingRequest(prefetchDirectory));
-  const isCacheDisabled = isCacheGloballyDisabled() || process.argv.includes("--no-cache");
+  const isCacheDisabled = isCacheGloballyDisabled();
   if (!isCacheDisabled) {
     for (const args of SCAN_RESULT_CACHE_GIT_ARGUMENTS) {
       prefetchGitCommand({
@@ -66,4 +77,11 @@ if (prefetchDirectory !== null) {
     warmReactCompilerDetection(prefetchDirectory);
     prespawnOxlintWorkersForScan();
   }
-}
+};
+
+// Speculative work only: a failure here (an unresolvable oxlint install, a
+// directory that vanished) must surface from the scan itself, through the
+// CLI's error handling, not reject the bundle import.
+try {
+  startScanPreamble();
+} catch {}

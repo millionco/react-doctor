@@ -39,9 +39,11 @@ describe("resolvePrefetchScanDirectory", () => {
     ).toBe(currentDirectory);
   });
 
-  it("skips help, version, subcommands, and file scans", () => {
+  it("skips help, version, staged, subcommands, and file scans", () => {
     expect(resolvePrefetchScanDirectory(["--help"], currentDirectory)).toBeNull();
     expect(resolvePrefetchScanDirectory(["-V"], currentDirectory)).toBeNull();
+    expect(resolvePrefetchScanDirectory(["-v"], currentDirectory)).toBeNull();
+    expect(resolvePrefetchScanDirectory(["--staged", "--json"], currentDirectory)).toBeNull();
     expect(resolvePrefetchScanDirectory(["rules", "list"], currentDirectory)).toBeNull();
     expect(resolvePrefetchScanDirectory(["--json", "rules", "list"], currentDirectory)).toBeNull();
     expect(resolvePrefetchScanDirectory(["design"], currentDirectory)).toBeNull();

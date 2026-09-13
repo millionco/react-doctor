@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { HELP_OR_VERSION_FLAGS } from "./constants.js";
+import { SCAN_PREAMBLE_SKIP_FLAGS } from "./constants.js";
 
 const isExistingDirectory = (absolutePath: string): boolean => {
   try {
@@ -22,7 +22,7 @@ export const resolvePrefetchScanDirectory = (
   const directoryCandidates: string[] = [];
   let previousToken: string | null = null;
   for (const token of argv) {
-    if (HELP_OR_VERSION_FLAGS.has(token)) return null;
+    if (SCAN_PREAMBLE_SKIP_FLAGS.has(token)) return null;
     const isFlag = token.startsWith("-");
     if (!isFlag) {
       if (isExistingDirectory(path.resolve(currentDirectory, token))) {

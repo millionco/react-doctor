@@ -10,6 +10,7 @@ import {
 } from "../src/runners/oxlint/oxlint-worker-pool.js";
 import {
   buildOxlintWorkerSpawnSpec,
+  killUnadoptedOxlintWorkers,
   prespawnOxlintWorkers,
   takePrespawnedOxlintWorker,
 } from "../src/runners/oxlint/oxlint-worker-prespawn.js";
@@ -85,6 +86,7 @@ interface FakeWorkerOutput {
 
 // Killed workers on Windows keep their cwd locked until the OS reaps them.
 const TEMPORARY_DIRECTORY_REMOVE_MAX_RETRIES = 10;
+const PRESPAWNED_WORKER_READY_SETTLE_MS = 500;
 
 const parseOutput = (stdout: string): FakeWorkerOutput => JSON.parse(stdout) as FakeWorkerOutput;
 
@@ -360,7 +362,9 @@ describe("createOxlintWorkerPool", () => {
       environment: { ...process.env },
     });
     prespawnOxlintWorkers(spec, 1);
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // HACK: let the fake worker boot and send its ready message before the
+    // pool exists, so adoption has to replay a message it never observed.
+    await new Promise((resolve) => setTimeout(resolve, PRESPAWNED_WORKER_READY_SETTLE_MS));
     const pool = createPool();
     pool.warm();
     expect(takePrespawnedOxlintWorker(spec)).toBeNull();
@@ -381,9 +385,9 @@ describe("createOxlintWorkerPool", () => {
     prespawnOxlintWorkers(spec, 1);
     const pool = createPool();
     pool.warm();
-    const untouched = takePrespawnedOxlintWorker(spec);
-    expect(untouched).not.toBeNull();
-    untouched?.child.kill("SIGKILL");
+    expect(takePrespawnedOxlintWorker({ ...spec, args: [...spec.args] })).not.toBeNull();
+    prespawnOxlintWorkers(spec, 1);
+    killUnadoptedOxlintWorkers();
     expect(takePrespawnedOxlintWorker(spec)).toBeNull();
     const output = parseOutput(await runJob(pool, ["ok"]));
     expect(output.id).toBeGreaterThan(0);

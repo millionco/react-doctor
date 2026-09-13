@@ -113,11 +113,16 @@ export const SCAN_RESULT_CACHE_GIT_ARGUMENTS: ReadonlyArray<ReadonlyArray<string
   HEAD_SHA_GIT_ARGUMENTS,
 ];
 export const CACHE_DISABLED_VALUES: ReadonlySet<string> = new Set(["1", "true"]);
-export const HELP_OR_VERSION_FLAGS: ReadonlySet<string> = new Set([
+// argv tokens that mean the invocation is not a plain directory scan, so the
+// preamble spawns nothing: help/version output, and staged scans (they lint a
+// temporary checkout, never the working tree).
+export const SCAN_PREAMBLE_SKIP_FLAGS: ReadonlySet<string> = new Set([
   "-h",
   "--help",
+  "-v",
   "-V",
   "--version",
+  "--staged",
 ]);
 
 export const GIT_HOOK_EXECUTABLE_MODE = 0o755;

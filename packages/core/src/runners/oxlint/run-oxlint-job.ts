@@ -7,6 +7,7 @@ import {
 import type { OxlintWorkerProbeResult } from "../../start-oxlint-worker.js";
 import { isRecord } from "../../utils/is-record.js";
 import { createOxlintWorkerPool, OxlintWorkerUnavailableError } from "./oxlint-worker-pool.js";
+import { killUnadoptedOxlintWorkers } from "./oxlint-worker-prespawn.js";
 import type { OxlintWorkerPool, OxlintWorkerProbeRequest } from "./oxlint-worker-pool.js";
 import { resolveOxlintWorkerRuntime } from "./resolve-oxlint-worker-runtime.js";
 import type { OxlintWorkerRuntime } from "./resolve-oxlint-worker-runtime.js";
@@ -59,6 +60,7 @@ const resolveSharedPool = (nodeBinaryPath: string, maxWorkers: number): OxlintWo
 // project discovery and config resolution instead of delaying the first job.
 export const warmOxlintWorkerPool = (nodeBinaryPath: string, maxWorkers: number): void => {
   resolveSharedPool(nodeBinaryPath, maxWorkers)?.warm();
+  killUnadoptedOxlintWorkers();
 };
 
 // Whether lint jobs will run on warm pool workers rather than per-batch

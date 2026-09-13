@@ -364,4 +364,119 @@ describe("tanstack-query/query-mutation-missing-invalidation — regressions", (
 
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("stays silent when a helper re-syncs a Zustand store from an awaited fetch", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      import { create } from "zustand";
+
+      export const useMembership = create(() => ({ tier: "free" }));
+
+      async function reconcileMembership() {
+        const membership = await getMembership();
+        useMembership.setState(membership);
+      }
+
+      export function usePurchase() {
+        return useMutation({
+          mutationFn: async () => {
+            await purchase();
+            await reconcileMembership();
+          },
+        });
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when onSuccess writes an awaited refetch into a Zustand store", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      import { createStore } from "zustand/vanilla";
+
+      const membershipStore = createStore(() => ({ tier: "free" }));
+
+      export function usePurchase() {
+        return useMutation({
+          mutationFn: purchase,
+          onSuccess: async () => {
+            membershipStore.setState({ membership: await getMembership() });
+          },
+        });
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a Zustand write that is not fed by an awaited fetch", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      import { create } from "zustand";
+
+      export const useCheckoutUi = create(() => ({ isOpen: false }));
+
+      export function usePurchase() {
+        return useMutation({
+          mutationFn: async () => {
+            await purchase();
+            useCheckoutUi.setState({ isOpen: false });
+          },
+        });
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a Zustand write of a value computed without awaiting", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      import { create } from "zustand";
+
+      export const useMembership = create(() => ({ tier: "free" }));
+
+      export function usePurchase() {
+        return useMutation({
+          mutationFn: async (tier) => {
+            await purchase(tier);
+            const optimistic = { tier };
+            useMembership.setState(optimistic);
+          },
+        });
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a setState on something that is not a Zustand store", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+
+      const membershipCache = createCache();
+
+      export function usePurchase() {
+        return useMutation({
+          mutationFn: async () => {
+            await purchase();
+            membershipCache.setState(await getMembership());
+          },
+        });
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

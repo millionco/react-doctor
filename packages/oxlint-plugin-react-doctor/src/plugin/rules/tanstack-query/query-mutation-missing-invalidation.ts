@@ -10,6 +10,10 @@ import { defineRule } from "../../utils/define-rule.js";
 import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
 import { flattenCalleeName } from "../../utils/flatten-callee-name.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { resolveZustandStoreFactoryCall } from "../../utils/resolve-zustand-api.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -32,6 +36,7 @@ const MUTATION_LIFECYCLE_CALLBACK_NAMES = new Set([
 ]);
 const FULL_PAGE_NAVIGATION_METHODS = new Set(["assign", "reload", "replace"]);
 const MAX_HELPER_RESOLUTION_DEPTH = 3;
+const ZUSTAND_SET_STATE_METHOD = "setState";
 
 // Words that mark a mutation as read-style: it fetches, checks, or produces
 // something ephemeral (a download URL, a validation verdict, a pairing code,
@@ -201,6 +206,47 @@ const isFullPageNavigation = (node: EsTreeNode): boolean => {
   return false;
 };
 
+const isZustandStoreIdentifier = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const symbol = resolveConstIdentifierAlias(stripParenExpression(node), scopes);
+  if (symbol?.kind !== "const" || !symbol.initializer) return false;
+  const initializer = stripParenExpression(symbol.initializer);
+  return (
+    isNodeOfType(initializer, "CallExpression") &&
+    resolveZustandStoreFactoryCall(initializer, scopes) !== null
+  );
+};
+
+const isAwaitedValue = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const value = stripParenExpression(node);
+  if (isNodeOfType(value, "AwaitExpression")) return true;
+  if (isNodeOfType(value, "ObjectExpression")) {
+    return value.properties.some(
+      (property) => isNodeOfType(property, "Property") && isAwaitedValue(property.value, scopes),
+    );
+  }
+  if (!isNodeOfType(value, "Identifier")) return false;
+  const symbol = resolveConstIdentifierAlias(value, scopes, true);
+  return Boolean(
+    symbol?.initializer &&
+    isNodeOfType(stripParenExpression(symbol.initializer), "AwaitExpression"),
+  );
+};
+
+// `useMembership.setState(await getMembership())` re-syncs the Zustand store
+// the UI reads from, so no cached data is left stale. A store write not fed
+// by an awaited fetch (`useUi.setState({ open: false })`) still flags.
+const isZustandServerStateSync = (
+  node: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const callee = stripParenExpression(node.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  if (getStaticPropertyName(callee) !== ZUSTAND_SET_STATE_METHOD) return false;
+  if (!isZustandStoreIdentifier(callee.object, scopes)) return false;
+  const nextState = node.arguments[0];
+  return Boolean(nextState && isAwaitedValue(nextState, scopes));
+};
+
 const mutationResultBindingName = (
   mutationCall: EsTreeNodeOfType<"CallExpression">,
 ): string | null => {
@@ -311,6 +357,7 @@ const createCacheUpdateDetector = (scopes: ScopeAnalysis): CacheUpdateDetector =
 
     if (isNodeOfType(node, "CallExpression")) {
       if (doesCallableSyncCache(node.callee, remainingDepth)) return true;
+      if (isZustandServerStateSync(node, scopes)) return true;
       // Handing the query client to a helper (`fetchDetails(queryClient)`)
       // delegates the cache update to it.
       return (node.arguments ?? []).some((argument) => isQueryClientValue(argument, scopes));

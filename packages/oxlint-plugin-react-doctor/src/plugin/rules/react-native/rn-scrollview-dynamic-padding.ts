@@ -80,6 +80,12 @@ const isStaticStyleValue = (value: EsTreeNode, resolutionDepth = 0): boolean => 
       isStaticStyleValue(value.right, resolutionDepth + 1)
     );
   }
+  if (isNodeOfType(value, "ConditionalExpression")) {
+    return (
+      isStaticStyleValue(value.consequent, resolutionDepth + 1) &&
+      isStaticStyleValue(value.alternate, resolutionDepth + 1)
+    );
+  }
   if (!isNodeOfType(value, "Identifier")) return false;
   const binding = findVariableInitializer(value, value.name);
   if (!binding?.initializer || !isConstDeclaredBinding(binding)) return false;

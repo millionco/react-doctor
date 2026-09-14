@@ -17,6 +17,9 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { resolveZustandStoreFactoryCall } from "../../utils/resolve-zustand-api.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 
 // Helper names that signal delegated cache synchronization when the callable
 // cannot be resolved to a same-file body (imported hooks/utilities such as
@@ -253,6 +256,67 @@ const mutationFnCalleeName = (
   return calleeSegments[calleeSegments.length - 1] ?? null;
 };
 
+const isZustandStoreBinding = (identifier: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  const symbol = resolveConstIdentifierAlias(identifier, scopes);
+  if (!symbol?.initializer) return false;
+  if (!isNodeOfType(symbol.initializer, "CallExpression")) return false;
+  return Boolean(resolveZustandStoreFactoryCall(symbol.initializer, scopes));
+};
+
+const isZustandSetStateCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  if (!isNodeOfType(node.callee, "MemberExpression")) return false;
+  if (!isNodeOfType(node.callee.property, "Identifier")) return false;
+  if (node.callee.property.name !== "setState") return false;
+  const storeObject = node.callee.object;
+  if (!isNodeOfType(storeObject, "Identifier")) return false;
+  return isZustandStoreBinding(storeObject, scopes);
+};
+
+const isSetStateArgumentDerivedFromData = (argument: EsTreeNode): boolean => {
+  if (isNodeOfType(argument, "Identifier")) return true;
+  if (isNodeOfType(argument, "CallExpression")) return true;
+  if (isNodeOfType(argument, "MemberExpression")) return true;
+  if (isNodeOfType(argument, "ObjectExpression")) {
+    return (argument.properties ?? []).some((property) => {
+      if (isNodeOfType(property, "Property") && !isNodeOfType(property.value, "Literal")) {
+        return true;
+      }
+      return false;
+    });
+  }
+  return false;
+};
+
+const hasAwaitBeforeSetState = (functionBody: EsTreeNode, setStateNode: EsTreeNode): boolean => {
+  let hasSeenAwait = false;
+  let foundSetStateAfterAwait = false;
+
+  walkAst(functionBody, (child: EsTreeNode) => {
+    if (foundSetStateAfterAwait) return false;
+
+    if (
+      isNodeOfType(child, "ArrowFunctionExpression") ||
+      isNodeOfType(child, "FunctionExpression") ||
+      isNodeOfType(child, "FunctionDeclaration")
+    ) {
+      return false;
+    }
+
+    if (isNodeOfType(child, "AwaitExpression")) {
+      hasSeenAwait = true;
+    }
+
+    if (hasSeenAwait && child === setStateNode) {
+      foundSetStateAfterAwait = true;
+      return false;
+    }
+  });
+
+  return foundSetStateAfterAwait;
+};
+
 interface CacheUpdateDetector {
   hasCacheUpdateWithin: (root: EsTreeNode) => boolean;
 }
@@ -313,7 +377,19 @@ const createCacheUpdateDetector = (scopes: ScopeAnalysis): CacheUpdateDetector =
       if (doesCallableSyncCache(node.callee, remainingDepth)) return true;
       // Handing the query client to a helper (`fetchDetails(queryClient)`)
       // delegates the cache update to it.
-      return (node.arguments ?? []).some((argument) => isQueryClientValue(argument, scopes));
+      if ((node.arguments ?? []).some((argument) => isQueryClientValue(argument, scopes))) {
+        return true;
+      }
+      if (isZustandSetStateCall(node, scopes)) {
+        const stateArgument = node.arguments?.[0];
+        if (stateArgument && isSetStateArgumentDerivedFromData(stateArgument)) {
+          const enclosingFunction = findEnclosingFunction(node);
+          const functionBody = enclosingFunction ? getFunctionBody(enclosingFunction) : null;
+          if (functionBody && hasAwaitBeforeSetState(functionBody, node)) {
+            return true;
+          }
+        }
+      }
     }
 
     // `onSuccess: invalidate` — a lifecycle callback passed by reference.

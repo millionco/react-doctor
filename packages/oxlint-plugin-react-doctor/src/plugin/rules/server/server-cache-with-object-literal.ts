@@ -6,6 +6,9 @@ import {
   OBJECT_FREEZE_OR_SEAL_METHOD_NAMES,
   unwrapObjectIntegrityExpression,
 } from "../../utils/unwrap-object-integrity-expression.js";
+import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
+import { collectBindingAliases } from "../../utils/collect-binding-aliases.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 
 // HACK: `cache(fn)` from React keys deduplication on REFERENCE equality
 // of the function arguments. Calling the cached function with object
@@ -21,36 +24,49 @@ export const serverCacheWithObjectLiteral = defineRule({
   recommendation:
     "Pass plain values like strings or numbers, not an object. React.cache() matches the exact value, so a new `{}` each render misses the cache.",
   create: (context: RuleContext) => {
-    const cachedFunctionNames = new Set<string>();
+    const cachedFunctionBindings = new Set<EsTreeNode>();
 
     return {
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isNodeOfType(node.id, "Identifier")) return;
         const init = node.init;
         if (!isNodeOfType(init, "CallExpression")) return;
-        const callee = init.callee;
-        const isCacheCall =
-          (isNodeOfType(callee, "Identifier") && callee.name === "cache") ||
-          (isNodeOfType(callee, "MemberExpression") &&
-            isNodeOfType(callee.object, "Identifier") &&
-            callee.object.name === "React" &&
-            isNodeOfType(callee.property, "Identifier") &&
-            callee.property.name === "cache");
-        if (!isCacheCall) return;
-        cachedFunctionNames.add(node.id.name);
+        if (init.arguments.length !== 1) return;
+        
+        const importedRef = resolveImportedApiReference(init.callee, context.scopes);
+        if (!importedRef || importedRef.source !== "react" || importedRef.importedName !== "cache") {
+          return;
+        }
+
+        const aliases = collectBindingAliases(node.id, context.scopes);
+        for (const alias of aliases) {
+          cachedFunctionBindings.add(alias);
+        }
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (cachedFunctionNames.size === 0) return;
+        if (cachedFunctionBindings.size === 0) return;
         if (!isNodeOfType(node.callee, "Identifier")) return;
-        if (!cachedFunctionNames.has(node.callee.name)) return;
-        const firstArg = node.arguments?.[0];
-        if (!firstArg || isNodeOfType(firstArg, "SpreadElement")) return;
-        const cacheKey = unwrapObjectIntegrityExpression(
-          firstArg,
-          context.scopes,
-          OBJECT_FREEZE_OR_SEAL_METHOD_NAMES,
-        );
-        if (!isNodeOfType(cacheKey, "ObjectExpression")) return;
+        
+        const calleeSymbol = context.scopes.symbolFor(node.callee);
+        if (!calleeSymbol) return;
+        const isCachedFunction = cachedFunctionBindings.has(calleeSymbol.bindingIdentifier);
+        if (!isCachedFunction) return;
+
+        let hasFreshObjectOrArray = false;
+        for (const argument of node.arguments ?? []) {
+          if (isNodeOfType(argument, "SpreadElement")) continue;
+          const cacheKey = unwrapObjectIntegrityExpression(
+            argument,
+            context.scopes,
+            OBJECT_FREEZE_OR_SEAL_METHOD_NAMES,
+          );
+          if (isNodeOfType(cacheKey, "ObjectExpression") || isNodeOfType(cacheKey, "ArrayExpression")) {
+            hasFreshObjectOrArray = true;
+            break;
+          }
+        }
+
+        if (!hasFreshObjectOrArray) return;
 
         context.report({
           node,

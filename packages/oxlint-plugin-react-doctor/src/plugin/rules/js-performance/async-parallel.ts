@@ -7,6 +7,7 @@ import {
 import { SEQUENTIAL_AWAIT_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { expressionReadsPatternBinding } from "../../utils/expression-reads-pattern-binding.js";
+import { findSideEffect } from "../../utils/find-side-effect.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { getCalleeIdentifierTrail } from "../../utils/get-callee-identifier-trail.js";
@@ -92,11 +93,11 @@ const isNonCallAwait = (statement: EsTreeNode): boolean => {
 
 // Skip a consecutive-await block whenever any one of its awaits is an
 // ordered-UI-flow call, an intentional sequencing call, a bare
-// side-effect await, or an await of an already-started promise. A single
-// `await page.click(...)` in the middle of three otherwise-independent
-// awaits is enough to mark the whole sequence as deliberately
-// serialized — collapsing it into `Promise.all([...])` would change
-// observable behavior.
+// side-effect await, an await of an already-started promise, or a mutating
+// HTTP request. A single `await page.click(...)` in the middle of three
+// otherwise-independent awaits is enough to mark the whole sequence as
+// deliberately serialized — collapsing it into `Promise.all([...])` would
+// change observable behavior.
 const sequenceContainsSerializationSignal = (
   statements: EsTreeNode[],
   context: RuleContext,
@@ -106,6 +107,7 @@ const sequenceContainsSerializationSignal = (
     if (isNonCallAwait(statement)) return true;
     const awaitedCall = getAwaitedCall(statement);
     if (awaitedCall && hasPossibleStaticMemberCallWrite(awaitedCall, context.scopes)) return true;
+    if (awaitedCall && findSideEffect(awaitedCall)) return true;
     const orderIndependentFunction = awaitedCall
       ? getOrderIndependentLocalFunction(awaitedCall, context.scopes)
       : null;

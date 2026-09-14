@@ -4,9 +4,15 @@ import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
 
+interface RethrowPredicate {
+  (throwStatement: EsTreeNodeOfType<"ThrowStatement">, caughtBindingName: string): boolean;
+}
+
 const doesThrowEscapeCatchClause = (
   throwStatement: EsTreeNodeOfType<"ThrowStatement">,
   handler: EsTreeNodeOfType<"CatchClause">,
+  frameworkRethrowPredicate?: RethrowPredicate,
+  caughtBindingName?: string,
 ): boolean => {
   let child: EsTreeNode = throwStatement;
   let ancestor: EsTreeNode | null | undefined = throwStatement.parent;
@@ -15,7 +21,7 @@ const doesThrowEscapeCatchClause = (
       isNodeOfType(ancestor, "TryStatement") &&
       ancestor.block === child &&
       ancestor.handler &&
-      !catchClauseRethrowsCaught(ancestor.handler)
+      !catchClauseRethrowsCaught(ancestor.handler, frameworkRethrowPredicate)
     ) {
       return false;
     }
@@ -37,18 +43,40 @@ const doesThrowEscapeCatchClause = (
 // callback doesn't count, and a rethrow nested inside a try (within the
 // catch body) whose own catch swallows it doesn't count either — that
 // error never escapes the catch clause.
-export const catchClauseRethrowsCaught = (handler: EsTreeNodeOfType<"CatchClause">): boolean => {
+//
+// An optional frameworkRethrowPredicate can recognize framework-specific
+// rethrow patterns (e.g. Next.js's `unstable_rethrow(error)`), which are
+// treated as equivalent to `throw error`.
+export const catchClauseRethrowsCaught = (
+  handler: EsTreeNodeOfType<"CatchClause">,
+  frameworkRethrowPredicate?: RethrowPredicate,
+): boolean => {
   const caughtBindingName = isNodeOfType(handler.param, "Identifier") ? handler.param.name : null;
   if (!caughtBindingName) return false;
   let didRethrow = false;
   walkAst(handler.body, (child: EsTreeNode) => {
     if (didRethrow) return false;
     if (child !== handler.body && isFunctionLike(child)) return false;
+    
+    if (frameworkRethrowPredicate && isNodeOfType(child, "ExpressionStatement")) {
+      const expression = child.expression;
+      if (
+        isNodeOfType(expression, "CallExpression") &&
+        frameworkRethrowPredicate(
+          { type: "ThrowStatement", argument: null, parent: child } as EsTreeNodeOfType<"ThrowStatement">,
+          caughtBindingName,
+        )
+      ) {
+        didRethrow = true;
+        return false;
+      }
+    }
+    
     if (
       isNodeOfType(child, "ThrowStatement") &&
       isNodeOfType(child.argument, "Identifier") &&
       child.argument.name === caughtBindingName &&
-      doesThrowEscapeCatchClause(child, handler)
+      doesThrowEscapeCatchClause(child, handler, frameworkRethrowPredicate, caughtBindingName)
     ) {
       didRethrow = true;
       return false;

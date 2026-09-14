@@ -246,4 +246,109 @@ export default async function Page() {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("stays silent when unstable_rethrow forwards the caught error", () => {
+    const result = runRule(
+      nextjsNoRedirectInTryCatch,
+      `import { redirect, unstable_rethrow } from "next/navigation";
+export default async function Page() {
+  try {
+    await save();
+    redirect("/done");
+  } catch (error) {
+    unstable_rethrow(error);
+    console.error(error);
+  }
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when unstable_rethrow is used as a namespace import", () => {
+    const result = runRule(
+      nextjsNoRedirectInTryCatch,
+      `import * as nav from "next/navigation";
+export default async function Page() {
+  try {
+    await save();
+    nav.redirect("/done");
+  } catch (error) {
+    nav.unstable_rethrow(error);
+    console.error(error);
+  }
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags when unstable_rethrow is called with a different binding", () => {
+    const result = runRule(
+      nextjsNoRedirectInTryCatch,
+      `import { redirect, unstable_rethrow } from "next/navigation";
+const savedError = new Error("saved");
+export default async function Page() {
+  try {
+    redirect("/done");
+  } catch (error) {
+    unstable_rethrow(savedError);
+    console.error(error);
+  }
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when a renamed unstable_rethrow forwards the caught error", () => {
+    const result = runRule(
+      nextjsNoRedirectInTryCatch,
+      `import { redirect, unstable_rethrow as rethrow } from "next/navigation";
+export default async function Page() {
+  try {
+    await save();
+    redirect("/done");
+  } catch (error) {
+    rethrow(error);
+    console.error(error);
+  }
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags when unstable_rethrow is deferred in a callback", () => {
+    const result = runRule(
+      nextjsNoRedirectInTryCatch,
+      `import { redirect, unstable_rethrow } from "next/navigation";
+export default async function Page() {
+  try {
+    redirect("/done");
+  } catch (error) {
+    setTimeout(() => unstable_rethrow(error), 0);
+  }
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when a local unstable_rethrow shadows the import", () => {
+    const result = runRule(
+      nextjsNoRedirectInTryCatch,
+      `import { redirect } from "next/navigation";
+const unstable_rethrow = (e) => { /* noop */ };
+export default async function Page() {
+  try {
+    redirect("/done");
+  } catch (error) {
+    unstable_rethrow(error);
+  }
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

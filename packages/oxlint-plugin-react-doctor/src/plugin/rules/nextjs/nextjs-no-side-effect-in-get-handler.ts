@@ -287,9 +287,11 @@ export const nextjsNoSideEffectInGetHandler = defineRule({
               helperFunction,
               locallyScopedSafeBindings,
             );
+            const helperLocallyScopedSafeBindings = collectLocallyScopedSafeBindings(helperBody);
             const effectiveSafeBindings = new Set([
               ...locallyScopedSafeBindings,
               ...helperParameterSafeBindings,
+              ...helperLocallyScopedSafeBindings,
             ]);
 
             const sideEffectInHelper = findSideEffect(helperBody, {

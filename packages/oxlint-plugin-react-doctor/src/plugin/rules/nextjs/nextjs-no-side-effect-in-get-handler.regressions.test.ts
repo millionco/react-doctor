@@ -177,4 +177,48 @@ export async function GET() {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("stays silent on Headers.set() on a freshly constructed response object", () => {
+    const result = runRule(
+      nextjsNoSideEffectInGetHandler,
+      `function downloadHeaders({ filename, contentType, contentLength }) {
+  const headers = new Headers({
+    'Content-Type': contentType,
+    'Content-Disposition': \`attachment; filename="\${filename}"\`,
+  });
+  if (contentLength) headers.set('Content-Length', contentLength);
+  return headers;
+}
+
+export async function GET(request) {
+  const denied = await authorize();
+  if (denied) return denied;
+  const upstream = await fetch('https://example.com');
+  return new Response(upstream.body, {
+    headers: downloadHeaders({ filename: 'x', contentType: 'video/mp4', contentLength: '123' }),
+  });
+}`,
+      { filename: "app/api/download/route.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on Headers.set() passed as parameter to a helper", () => {
+    const result = runRule(
+      nextjsNoSideEffectInGetHandler,
+      `const applyCachePolicy = (responseHeaders) => {
+  responseHeaders.set("Cache-Control", "max-age=60");
+};
+
+export const GET = () => {
+  const responseHeaders = new Headers();
+  applyCachePolicy(responseHeaders);
+  return new Response(null, { headers: responseHeaders });
+};`,
+      { filename: "src/app/api/proxy/route.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

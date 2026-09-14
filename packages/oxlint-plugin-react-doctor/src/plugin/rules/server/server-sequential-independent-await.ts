@@ -1,6 +1,7 @@
 import { INTENTIONAL_SEQUENCING_CALLEE_NAMES } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { expressionReadsPatternBinding } from "../../utils/expression-reads-pattern-binding.js";
+import { findSideEffect } from "../../utils/find-side-effect.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getOrderIndependentLocalFunction } from "../../utils/get-order-independent-local-function.js";
 import { hasPossibleStaticMemberCallWrite } from "../../utils/has-static-property-write-before.js";
@@ -127,18 +128,18 @@ const declarationAwaitsRequestScopedCall = (declaration: EsTreeNode): boolean =>
 
 // True when the first declaration awaits a guard / side-effect gate, so its
 // ordering before the next await is intentional (`await requireSession()`,
-// `await db.connect()`, `await beginTransaction()`).
+// `await db.connect()`, `await beginTransaction()`), or when the first
+// declaration awaits a mutating HTTP request.
 const declarationAwaitsGate = (declaration: EsTreeNode, context: RuleContext): boolean => {
   if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
   for (const declarator of declaration.declarations ?? []) {
     if (!isNodeOfType(declarator.init, "AwaitExpression")) continue;
-    // Only a function call is a gate — an awaited constructor (`await new X()`)
-    // must not suppress, so keep this CallExpression-only (getCalleeName also
-    // resolves NewExpression, which would over-suppress here).
     const argument = declarator.init.argument;
     if (!isNodeOfType(argument, "CallExpression")) continue;
     if (hasPossibleStaticMemberCallWrite(argument, context.scopes)) return true;
     if (getOrderIndependentLocalFunction(argument, context.scopes) !== null) continue;
+    const sideEffectDescription = findSideEffect(argument);
+    if (sideEffectDescription) return true;
     const calleeName = getCalleeName(argument);
     if (!calleeName) continue;
     if (isAuthGuardName(calleeName)) return true;

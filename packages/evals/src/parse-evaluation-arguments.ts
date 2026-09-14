@@ -49,6 +49,11 @@ export interface MatrixEvaluationOptions {
   waveWidth: number;
 }
 
+const hasCliOption = (argumentsToParse: ReadonlyArray<string>, option: string): boolean =>
+  argumentsToParse.some(
+    (argumentToParse) => argumentToParse === option || argumentToParse.startsWith(`${option}=`),
+  );
+
 export const parseEvaluationArguments = (
   argumentsToParse: ReadonlyArray<string>,
 ): EvaluationOptions => {
@@ -145,7 +150,7 @@ export const parseEvaluationArguments = (
     "--rule",
   ];
   const incompatibleMatrixOption = hasMatrixOption
-    ? matrixIncompatibleOptions.find((option) => argumentsToParse.includes(option))
+    ? matrixIncompatibleOptions.find((option) => hasCliOption(argumentsToParse, option))
     : undefined;
   if (incompatibleMatrixOption) {
     throw new Error(

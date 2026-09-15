@@ -419,6 +419,24 @@ describe("no-impure-state-updater", () => {
          return <button onClick={() => persist(["new"])}>{items.length}</button>;
        };`,
     ],
+    [
+      "a custom async run helper with state setters (#1812)",
+      `import { useCallback, useState } from "react";
+       const Repro = () => {
+         const [busy, setBusy] = useState(false);
+         const [value, setValue] = useState("");
+         const run = useCallback(async (operation) => {
+           setBusy(true);
+           try { await operation(); }
+           finally { setBusy(false); }
+         }, []);
+         const first = () => run(async () => {
+           await Promise.resolve();
+           setValue("first");
+         });
+         return <button disabled={busy} onClick={first}>{value || "Run"}</button>;
+       };`,
+    ],
   ])("stays silent for %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);

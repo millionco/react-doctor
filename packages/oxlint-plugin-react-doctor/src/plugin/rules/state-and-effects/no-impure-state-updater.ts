@@ -16,7 +16,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getRef, resolveToFunction } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import { getUseStateDecl, isStateSetterCall } from "./utils/effect/react.js";
+import { getUseStateDecl, isStateSetterCall, resolveStateSetterReference } from "./utils/effect/react.js";
 
 interface MemberCall {
   methodName: string;
@@ -265,7 +265,9 @@ const findImpureUpdaterOperation = (updater: EsTreeNode, scopes: ScopeAnalysis):
     if (isNodeOfType(child, "CallExpression")) {
       if (isNodeOfType(child.callee, "Identifier") && analysis) {
         const calleeReference = getRef(analysis, child.callee);
-        if (calleeReference && isStateSetterCall(analysis, calleeReference)) {
+        const stateSetterReference =
+          calleeReference && resolveStateSetterReference(analysis, calleeReference);
+        if (stateSetterReference) {
           operation = `the nested state update "${child.callee.name}()"`;
           return false;
         }
@@ -324,31 +326,75 @@ export const noImpureStateUpdater = defineRule({
         const analysis = getProgramAnalysis(node);
         if (!analysis) return;
         const calleeReference = getRef(analysis, node.callee);
-        if (!calleeReference || !isStateSetterCall(analysis, calleeReference)) return;
-        const stateDeclarator = getUseStateDecl(analysis, calleeReference);
-        if (
-          !isNodeOfType(stateDeclarator, "VariableDeclarator") ||
-          !isNodeOfType(stateDeclarator.init, "CallExpression") ||
-          !isReactApiCall(stateDeclarator.init, "useState", context.scopes, {
-            allowGlobalReactNamespace: true,
-          })
-        ) {
+        if (!calleeReference) return;
+        
+        const stateSetterReference = resolveStateSetterReference(analysis, calleeReference);
+        if (stateSetterReference) {
+          const stateDeclarator = getUseStateDecl(analysis, stateSetterReference);
+          if (
+            !isNodeOfType(stateDeclarator, "VariableDeclarator") ||
+            !isNodeOfType(stateDeclarator.init, "CallExpression") ||
+            !isReactApiCall(stateDeclarator.init, "useState", context.scopes, {
+              allowGlobalReactNamespace: true,
+            })
+          ) {
+            return;
+          }
+          let updater: EsTreeNode | null = null;
+          if (isFunctionLike(updaterArgument)) {
+            updater = updaterArgument;
+          } else if (isNodeOfType(updaterArgument, "Identifier")) {
+            const updaterReference = getRef(analysis, updaterArgument);
+            if (updaterReference) updater = resolveToFunction(updaterReference);
+          }
+          if (!updater) return;
+          const operation = findImpureUpdaterOperation(updater, context.scopes);
+          if (!operation) return;
+          context.report({
+            node: updaterArgument,
+            message: `This state updater performs ${operation}. React may run updater functions more than once, so side effects here can repeat or observe inconsistent external state.`,
+          });
           return;
         }
-        let updater: EsTreeNode | null = null;
-        if (isFunctionLike(updaterArgument)) {
-          updater = updaterArgument;
-        } else if (isNodeOfType(updaterArgument, "Identifier")) {
-          const updaterReference = getRef(analysis, updaterArgument);
-          if (updaterReference) updater = resolveToFunction(updaterReference);
+        
+        if (isStateSetterCall(analysis, calleeReference)) {
+          const definition = calleeReference.resolved?.defs[0];
+          const definitionNode = definition?.node as unknown as EsTreeNode | undefined;
+          if (
+            isNodeOfType(definitionNode, "VariableDeclarator") &&
+            isNodeOfType(definitionNode.init, "CallExpression") &&
+            isReactApiCall(definitionNode.init, "useCallback", context.scopes, {
+              allowGlobalReactNamespace: true,
+            })
+          ) {
+            return;
+          }
+          
+          const stateDeclarator = getUseStateDecl(analysis, calleeReference);
+          if (
+            !isNodeOfType(stateDeclarator, "VariableDeclarator") ||
+            !isNodeOfType(stateDeclarator.init, "CallExpression") ||
+            !isReactApiCall(stateDeclarator.init, "useState", context.scopes, {
+              allowGlobalReactNamespace: true,
+            })
+          ) {
+            return;
+          }
+          let updater: EsTreeNode | null = null;
+          if (isFunctionLike(updaterArgument)) {
+            updater = updaterArgument;
+          } else if (isNodeOfType(updaterArgument, "Identifier")) {
+            const updaterReference = getRef(analysis, updaterArgument);
+            if (updaterReference) updater = resolveToFunction(updaterReference);
+          }
+          if (!updater) return;
+          const operation = findImpureUpdaterOperation(updater, context.scopes);
+          if (!operation) return;
+          context.report({
+            node: updaterArgument,
+            message: `This state updater performs ${operation}. React may run updater functions more than once, so side effects here can repeat or observe inconsistent external state.`,
+          });
         }
-        if (!updater) return;
-        const operation = findImpureUpdaterOperation(updater, context.scopes);
-        if (!operation) return;
-        context.report({
-          node: updaterArgument,
-          message: `This state updater performs ${operation}. React may run updater functions more than once, so side effects here can repeat or observe inconsistent external state.`,
-        });
       },
     };
   },

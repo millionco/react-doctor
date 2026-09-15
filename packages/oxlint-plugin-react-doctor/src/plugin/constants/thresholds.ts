@@ -14,6 +14,10 @@ export const RENDER_PROP_PROLIFERATION_THRESHOLD = 3;
 // `isMobile ? <Mobile /> : <Desktop />` switch is legitimate and stays quiet.
 export const BOOLEAN_PROP_VARIANT_BRANCH_THRESHOLD = 2;
 export const GET_HANDLER_BINDING_RESOLUTION_DEPTH = 3;
+// Same-file wrapper hops `no-impure-state-updater` follows from a call
+// site to the React setter that receives the forwarded updater
+// (`update(fn)` → `(updater) => setCount(updater)`).
+export const UPDATER_WRAPPER_RESOLUTION_DEPTH = 3;
 export const SYNCHRONOUS_THROW_RESOLUTION_DEPTH = 3;
 export const FUNCTION_RESOLUTION_MAX_DEPTH = 15;
 // How many identifier→initializer hops jsx-key follows when proving a

@@ -10,6 +10,9 @@ import { defineRule } from "../../utils/define-rule.js";
 import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
 import { flattenCalleeName } from "../../utils/flatten-callee-name.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { resolveZustandStoreFactoryCall } from "../../utils/resolve-zustand-api.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -31,6 +34,7 @@ const MUTATION_LIFECYCLE_CALLBACK_NAMES = new Set([
   "onMutate",
 ]);
 const FULL_PAGE_NAVIGATION_METHODS = new Set(["assign", "reload", "replace"]);
+const EXTERNAL_STORE_WRITE_METHOD = "setState";
 const MAX_HELPER_RESOLUTION_DEPTH = 3;
 
 // Words that mark a mutation as read-style: it fetches, checks, or produces
@@ -201,6 +205,71 @@ const isFullPageNavigation = (node: EsTreeNode): boolean => {
   return false;
 };
 
+// True when `node` is, or reads a binding initialized by, an awaited
+// expression — the shape of a value that just came back from the server.
+const isAwaitedValueSource = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  let didFindAwaitedValue = false;
+  walkAst(node, (child: EsTreeNode) => {
+    if (didFindAwaitedValue) return false;
+    if (isNodeOfType(child, "AwaitExpression")) {
+      didFindAwaitedValue = true;
+      return false;
+    }
+    if (!isNodeOfType(child, "Identifier")) return;
+    const symbol = resolveConstIdentifierAlias(child, scopes, true);
+    if (
+      symbol?.initializer &&
+      isNodeOfType(stripParenExpression(symbol.initializer), "AwaitExpression")
+    ) {
+      didFindAwaitedValue = true;
+      return false;
+    }
+  });
+  return didFindAwaitedValue;
+};
+
+// A same-file Zustand store (`const useMembership = create(...)`), or an
+// imported binding whose store we cannot see into and trust like the
+// rule's other unresolvable callables.
+const isExternalStoreReceiver = (receiver: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const symbol = resolveConstIdentifierAlias(receiver, scopes);
+  if (!symbol) return false;
+  if (symbol.kind === "import") return true;
+  if (!symbol.initializer) return false;
+  const initializer = stripParenExpression(symbol.initializer);
+  return (
+    isNodeOfType(initializer, "CallExpression") &&
+    resolveZustandStoreFactoryCall(initializer, scopes) !== null
+  );
+};
+
+// `useMembership.setState(membership)` after `const membership = await
+// getMembership()` re-syncs the store that owns that server data, so the
+// UI reading it is not stale. Only an awaited value qualifies: a plain
+// UI-state write (`useUiStore.setState({ open: false })`) proves nothing
+// about cached server data and still reports.
+const isExternalStoreResyncFromServer = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const callee = callExpression.callee;
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.computed ||
+    !isNodeOfType(callee.property, "Identifier") ||
+    callee.property.name !== EXTERNAL_STORE_WRITE_METHOD
+  ) {
+    return false;
+  }
+  const nextStateArgument = callExpression.arguments[0];
+  return Boolean(
+    nextStateArgument &&
+    isExternalStoreReceiver(stripParenExpression(callee.object), scopes) &&
+    isAwaitedValueSource(nextStateArgument, scopes),
+  );
+};
+
 const mutationResultBindingName = (
   mutationCall: EsTreeNodeOfType<"CallExpression">,
 ): string | null => {
@@ -311,6 +380,7 @@ const createCacheUpdateDetector = (scopes: ScopeAnalysis): CacheUpdateDetector =
 
     if (isNodeOfType(node, "CallExpression")) {
       if (doesCallableSyncCache(node.callee, remainingDepth)) return true;
+      if (isExternalStoreResyncFromServer(node, scopes)) return true;
       // Handing the query client to a helper (`fetchDetails(queryClient)`)
       // delegates the cache update to it.
       return (node.arguments ?? []).some((argument) => isQueryClientValue(argument, scopes));

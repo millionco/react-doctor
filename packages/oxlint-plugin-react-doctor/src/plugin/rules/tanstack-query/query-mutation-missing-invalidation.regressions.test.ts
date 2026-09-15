@@ -364,4 +364,90 @@ describe("tanstack-query/query-mutation-missing-invalidation — regressions", (
 
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  // Issue #1786: the mutation re-fetches the membership and writes it into
+  // the Zustand store the UI reads from — the data owner is re-synced.
+  it("stays silent when a helper writes an awaited fetch into a same-file Zustand store", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      import { create } from "zustand";
+      declare function purchase(): Promise<"purchased" | "cancelled">;
+      declare function getMembership(): Promise<{ tier: string }>;
+      const useMembership = create<{ tier: string }>(() => ({ tier: "free" }));
+      async function reconcileMembership() {
+        const membership = await getMembership();
+        useMembership.setState(membership);
+      }
+      export function Upgrade() {
+        const tier = useMembership((state) => state.tier);
+        const upgrade = useMutation({
+          mutationFn: async () => {
+            if ((await purchase()) === "purchased") await reconcileMembership();
+          },
+        });
+        return <button disabled={upgrade.isPending} onClick={() => upgrade.mutate()}>{tier}</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when onSuccess writes a destructured awaited response into an imported store", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      import { useProfileStore } from "@/stores/profile";
+      export function useRenameProfile() {
+        return useMutation({
+          mutationFn: (name: string) => api.renameProfile(name),
+          onSuccess: async () => {
+            const { data } = await api.getProfile();
+            useProfileStore.setState((state) => ({ ...state, profile: data }));
+          },
+        });
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a Zustand write of UI state that never re-fetches", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      import { create } from "zustand";
+      const useUiStore = create(() => ({ isDialogOpen: false }));
+      export function useArchiveProject() {
+        return useMutation({
+          mutationFn: (id: string) => api.archiveProject(id),
+          onSuccess: () => {
+            useUiStore.setState({ isDialogOpen: false });
+          },
+        });
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a setState on a same-file non-store binding fed by an awaited value", () => {
+    const result = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      import { useForm } from "./use-form";
+      export function useSaveDraft() {
+        const form = useForm();
+        return useMutation({
+          mutationFn: (draft) => api.saveDraft(draft),
+          onSuccess: async () => {
+            const saved = await api.getDraft();
+            form.setState(saved);
+          },
+        });
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

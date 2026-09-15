@@ -158,6 +158,58 @@ export async function GET(request) {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  // Issue #1808: the helper constructs the response's own `Headers` and
+  // mutates it before returning — nothing outside the handler's return
+  // value changes, so a forged GET cannot observe anything.
+  it("stays silent on headers.set() over a Headers the helper itself constructed", () => {
+    const result = runRule(
+      nextjsNoSideEffectInGetHandler,
+      `function downloadHeaders({ filename, contentType, contentLength }: {
+  filename: string;
+  contentType: string;
+  contentLength?: string | null;
+}): Headers {
+  const headers = new Headers({
+    "Content-Type": contentType,
+    "Content-Disposition": \`attachment; filename="\${filename}"\`,
+  });
+  if (contentLength) headers.set("Content-Length", contentLength);
+  return headers;
+}
+
+export async function GET(request: Request) {
+  const denied = await authorize();
+  if (denied) return denied;
+  const upstream = await fetch("https://cdn.example.com/video.mp4");
+  return new Response(upstream.body, {
+    headers: downloadHeaders({ filename: "x", contentType: "video/mp4", contentLength: "123" }),
+  });
+}`,
+      { filename: "app/api/download/route.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a helper that mutates a store it did not construct", () => {
+    const result = runRule(
+      nextjsNoSideEffectInGetHandler,
+      `function touchSession(sessionStore) {
+  const headers = new Headers();
+  headers.set("Cache-Control", "no-store");
+  sessionStore.set("lastSeen", Date.now());
+  return headers;
+}
+
+export async function GET() {
+  return new Response(null, { headers: touchSession(kv) });
+}`,
+      { filename: "app/api/session/route.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("does not follow a second hop (helper calling another helper)", () => {
     const result = runRule(
       nextjsNoSideEffectInGetHandler,

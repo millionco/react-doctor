@@ -146,4 +146,46 @@ describe("findStagedSnapshotDivergences", () => {
   it("ignores an ignored configuration status entry", () => {
     expect(parseStagedSnapshotDivergences("!! .opencode/package.json\0")).toEqual([]);
   });
+
+  it("accepts staged files without false divergences when GIT_DIR is set in a linked worktree", () => {
+    const mainDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-main-"));
+    temporaryDirectories.push(mainDirectory);
+    const linkedDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-linked-"));
+    temporaryDirectories.push(linkedDirectory);
+
+    fs.mkdirSync(path.join(mainDirectory, "src"), { recursive: true });
+    fs.writeFileSync(path.join(mainDirectory, "package.json"), '{"dependencies":{"react":"19"}}\n');
+    fs.writeFileSync(path.join(mainDirectory, "doctor.config.json"), '{"rules":{}}\n');
+    fs.writeFileSync(path.join(mainDirectory, "src/app.tsx"), "export const App = () => null;\n");
+
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: mainDirectory });
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: mainDirectory });
+    execFileSync("git", ["config", "user.name", "test"], { cwd: mainDirectory });
+    execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: mainDirectory });
+    execFileSync("git", ["add", "."], { cwd: mainDirectory });
+    execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: mainDirectory });
+
+    execFileSync("git", ["worktree", "add", "-b", "feature", linkedDirectory, "main"], {
+      cwd: mainDirectory,
+    });
+
+    fs.writeFileSync(
+      path.join(linkedDirectory, "src/app.tsx"),
+      "export const App = () => <div />;\n",
+    );
+    execFileSync("git", ["add", "src/app.tsx"], { cwd: linkedDirectory });
+
+    const gitDir = execFileSync("git", ["rev-parse", "--git-dir"], {
+      cwd: linkedDirectory,
+      encoding: "utf8",
+    }).trim();
+    const originalGitDir = process.env.GIT_DIR;
+    try {
+      process.env.GIT_DIR = gitDir;
+      expect(findStagedSnapshotDivergences(linkedDirectory)).toEqual([]);
+    } finally {
+      if (originalGitDir === undefined) delete process.env.GIT_DIR;
+      else process.env.GIT_DIR = originalGitDir;
+    }
+  });
 });

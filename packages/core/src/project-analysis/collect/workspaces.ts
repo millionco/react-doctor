@@ -1,10 +1,10 @@
 import { resolve, join, relative, dirname } from "node:path";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import fg from "fast-glob";
-import { parseYAML } from "confbox";
 import { STANDALONE_PROJECT_LOCKFILES } from "../constants.js";
 import { evaluateStaticConfig } from "../utils/evaluate-static-config.js";
 import { toPosixPath } from "../utils/to-posix-path.js";
+import { parsePnpmWorkspacePatternsFromContent } from "../../utils/parse-pnpm-workspace-patterns.js";
 import { extractReactRouterRouteModuleEntries } from "./parse.js";
 
 export interface WorkspacePackage {
@@ -129,7 +129,7 @@ const collectWorkspacePatterns = (rootDir: string): string[] => {
   if (existsSync(pnpmWorkspacePath)) {
     try {
       const content = readFileSync(pnpmWorkspacePath, "utf-8");
-      const packageLines = extractPnpmWorkspacePackages(content);
+      const packageLines = parsePnpmWorkspacePatternsFromContent(content);
       patterns.push(...packageLines);
     } catch {}
   }
@@ -151,24 +151,6 @@ const collectWorkspacePatterns = (rootDir: string): string[] => {
   }
 
   return patterns;
-};
-
-const extractPnpmWorkspacePackages = (yamlContent: string): string[] => {
-  const workspaceConfig = parseYAML<unknown>(yamlContent);
-  if (
-    !workspaceConfig ||
-    typeof workspaceConfig !== "object" ||
-    Array.isArray(workspaceConfig) ||
-    !("packages" in workspaceConfig) ||
-    !Array.isArray(workspaceConfig.packages)
-  ) {
-    return [];
-  }
-
-  return workspaceConfig.packages.filter(
-    (packagePattern): packagePattern is string =>
-      typeof packagePattern === "string" && !packagePattern.startsWith("!"),
-  );
 };
 
 const expandWorkspaceGlobs = (patterns: string[], rootDir: string): string[] => {

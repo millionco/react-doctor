@@ -5,6 +5,10 @@ import { isFunctionLike } from "./is-function-like.js";
 import { isImmediatelyInvokedFunction } from "./is-immediately-invoked-function.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
+interface RethrowPredicate {
+  (throwStatement: EsTreeNodeOfType<"ThrowStatement">, caughtBindingName: string): boolean;
+}
+
 // The enclosing TryStatement that SWALLOWS a control-flow error (a thrown
 // redirect()/notFound()) raised at `node`: its `try` BLOCK contains `node`,
 // it has a catch handler, and that handler does not re-throw the caught
@@ -17,8 +21,13 @@ import { isNodeOfType } from "./is-node-of-type.js";
 // stops at the first function boundary — unless the function is the callee
 // of an immediately-invoked call (IIFE), which executes synchronously
 // inside the try.
+//
+// An optional frameworkRethrowPredicate recognizes framework-specific rethrow
+// patterns (e.g. Next.js's `unstable_rethrow(error)`), which silence the
+// diagnostic even when they don't use literal `throw`.
 export const findGuardingTryStatement = (
   node: EsTreeNode,
+  frameworkRethrowPredicate?: RethrowPredicate,
 ): EsTreeNodeOfType<"TryStatement"> | null => {
   let child: EsTreeNode = node;
   let ancestor: EsTreeNode | null | undefined = node.parent;
@@ -30,7 +39,7 @@ export const findGuardingTryStatement = (
       isNodeOfType(ancestor, "TryStatement") &&
       ancestor.block === child &&
       ancestor.handler &&
-      !catchClauseRethrowsCaught(ancestor.handler)
+      !catchClauseRethrowsCaught(ancestor.handler, frameworkRethrowPredicate)
     ) {
       return ancestor;
     }

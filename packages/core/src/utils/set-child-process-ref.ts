@@ -15,10 +15,14 @@ const setStreamRef = (stream: unknown, shouldRef: boolean): void => {
 export const setChildProcessRef = (child: ChildProcess, shouldRef: boolean): void => {
   if (shouldRef) {
     child.ref();
-    child.channel?.ref();
+    if (typeof child.channel?.ref === "function") {
+      child.channel.ref();
+    }
   } else {
     child.unref();
-    child.channel?.unref();
+    if (typeof child.channel?.unref === "function") {
+      child.channel.unref();
+    }
   }
   setStreamRef(child.stdout, shouldRef);
   setStreamRef(child.stderr, shouldRef);

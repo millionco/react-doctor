@@ -25,6 +25,7 @@ interface FinalizeInspectResultInput {
   readonly elapsedMilliseconds: number;
   readonly payload: CachedScanPayload;
   readonly cacheStats: InspectExecutionCacheStats;
+  readonly baselineDegradationReason?: InspectResult["baselineDegradationReason"];
 }
 
 interface InspectPresentation {

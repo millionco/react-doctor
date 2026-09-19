@@ -74,7 +74,8 @@ export const loadClassificationRules = async (
       );
     catalogCache.set(catalogUrl, contracts);
   }
-  return provenance.ruleKeys.length === 0
+  const enabledRuleKeys = new Set(provenance.ruleKeys);
+  return enabledRuleKeys.size === 0
     ? contracts
-    : contracts.filter((rule) => provenance.ruleKeys.includes(rule.key));
+    : contracts.filter((rule) => enabledRuleKeys.has(rule.key));
 };

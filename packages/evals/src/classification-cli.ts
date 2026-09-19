@@ -69,6 +69,7 @@ const main = async (): Promise<void> => {
   const concurrency = z.coerce.number().int().positive().parse(values.concurrency);
   const threshold = z.coerce.number().gt(0.5).max(1).parse(values.threshold);
   const silentFiles = z.coerce.number().int().nonnegative().parse(values["silent-files"]);
+  const requestedRules = values.rule ? new Set(values.rule) : null;
   const rules =
     command === "prepare" && values.rules
       ? z
@@ -101,8 +102,8 @@ const main = async (): Promise<void> => {
         const availableRules = values.rules
           ? rules
           : await loadClassificationRules(record, catalogCache);
-        const selectedRules = values.rule
-          ? availableRules.filter((rule) => values.rule?.includes(rule.key))
+        const selectedRules = requestedRules
+          ? availableRules.filter((rule) => requestedRules.has(rule.key))
           : availableRules;
         if (values.rule?.some((key) => !availableRules.some((rule) => rule.key === key))) {
           throw new Error("A selected --rule is absent from this evaluation's rule catalog");

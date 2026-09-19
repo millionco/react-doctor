@@ -122,8 +122,9 @@ export const prepareClassificationCandidates = async function* (
   const report = classificationReportSchema.parse(
     parseReactDoctorReport(JSON.stringify(parsed.report)),
   );
+  const enabledRuleKeys = new Set(evaluation.ruleKeys);
   for (const rule of options.rules) {
-    if (evaluation.ruleKeys.length > 0 && !evaluation.ruleKeys.includes(rule.key)) {
+    if (enabledRuleKeys.size > 0 && !enabledRuleKeys.has(rule.key)) {
       throw new Error(`Rule ${rule.key} was not enabled in this evaluation`);
     }
   }

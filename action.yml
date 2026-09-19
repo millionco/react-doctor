@@ -273,7 +273,7 @@ runs:
         # exists even when the scan dies before its first cache write.
         mkdir -p "${RUNNER_TEMP:-/tmp}/react-doctor-cache"
 
-        FLAGS=("--json" "--json-compact" "--json-out" "$REPORT_FILE")
+        FLAGS=("--json" "--json-compact")
         if [ -n "$INPUT_BLOCKING" ]; then FLAGS+=("--blocking" "$INPUT_BLOCKING"); fi
         if [ -n "$INPUT_PROJECT" ]; then FLAGS+=("--project" "$INPUT_PROJECT"); fi
 
@@ -331,9 +331,9 @@ runs:
 
         set +e
         if [ -n "$RD_BIN" ]; then
-          "$RD_BIN" "$INPUT_DIRECTORY" "${FLAGS[@]}"
+          "$RD_BIN" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
         else
-          npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}"
+          npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
         fi
         SCAN_STATUS=$?
         set -e

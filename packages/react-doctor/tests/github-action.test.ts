@@ -310,7 +310,7 @@ describe("GitHub Action contract", () => {
       extractStep(actionYaml, "INPUT_PROJECT: ${{ inputs.project }}"),
     );
 
-    expect(scanStep).toContain('FLAGS=("--json" "--json-compact" "--json-out" "$REPORT_FILE")');
+    expect(scanStep).toContain('FLAGS=("--json" "--json-compact")');
     expect(scanStep).not.toContain("--pr-comment");
     // The gate threshold is forwarded as `--blocking` (renamed from the
     // deprecated `--fail-on`); annotations were replaced by review comments.
@@ -324,9 +324,8 @@ describe("GitHub Action contract", () => {
     );
     expect(scanStep).toContain('FLAGS+=("--changed-files-from" "$CHANGED_FILES_FROM")');
     expect(scanStep).toContain(
-      'npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}"',
+      'npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"',
     );
-    expect(scanStep).not.toContain('> "$REPORT_FILE"');
     // PACKAGE_SPEC is resolved once (and made cacheable) by the resolve-version
     // step and read from its output, not derived inline in the scan step.
     expect(scanStep).toContain("PACKAGE_SPEC: ${{ steps.resolve-version.outputs.spec }}");
@@ -352,8 +351,7 @@ describe("GitHub Action contract", () => {
     expect(actionYaml).toContain("react-doctor-toolchain");
     expect(actionYaml).toContain("react-doctor-scan-cache-");
     expect(scanStep).toContain('npm install --prefix "$TOOLCHAIN_DIR"');
-    expect(scanStep).toContain('"$RD_BIN" "$INPUT_DIRECTORY" "${FLAGS[@]}"');
-    expect(scanStep).not.toContain('> "$REPORT_FILE"');
+    expect(scanStep).toContain('"$RD_BIN" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"');
     expect(scanStep).toContain("REACT_DOCTOR_CACHE_DIR: ${{ runner.temp }}/react-doctor-cache");
     // A cache-miss install runs under `set +e` and the toolchain is adopted
     // only when the bin actually RUNS (`--version`), not merely exists — npm

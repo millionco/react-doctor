@@ -422,12 +422,15 @@ describe("classification", () => {
     const directory = await createDirectory();
     let active = 0;
     let maximum = 0;
-    const overlappingCalls = Promise.withResolvers<void>();
+    let releaseOverlappingCalls = () => {};
+    const overlappingCalls = new Promise<void>((resolve) => {
+      releaseOverlappingCalls = resolve;
+    });
     const evaluate = vi.fn(async () => {
       active += 1;
       maximum = Math.max(maximum, active);
-      if (active === 2) overlappingCalls.resolve();
-      await overlappingCalls.promise;
+      if (active === 2) releaseOverlappingCalls();
+      await overlappingCalls;
       active -= 1;
       return buildAssessment();
     });

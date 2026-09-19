@@ -310,9 +310,7 @@ describe("GitHub Action contract", () => {
       extractStep(actionYaml, "INPUT_PROJECT: ${{ inputs.project }}"),
     );
 
-    expect(scanStep).toContain(
-      'FLAGS=("--json" "--json-compact" "--json-out" "$REPORT_FILE")',
-    );
+    expect(scanStep).toContain('FLAGS=("--json" "--json-compact" "--json-out" "$REPORT_FILE")');
     expect(scanStep).not.toContain("--pr-comment");
     // The gate threshold is forwarded as `--blocking` (renamed from the
     // deprecated `--fail-on`); annotations were replaced by review comments.

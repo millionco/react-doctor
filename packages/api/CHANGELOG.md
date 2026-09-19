@@ -1,5 +1,12 @@
 # @react-doctor/api
 
+## 0.9.15
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @react-doctor/core@0.9.15
+
 ## 0.9.14
 
 ### Patch Changes

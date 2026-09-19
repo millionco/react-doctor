@@ -8,6 +8,8 @@ dist
 .claude
 tmp/
 .performance/
+.classification-cache/
+.fpfn/
 review-report.md
 review-*.md
 *.review.md

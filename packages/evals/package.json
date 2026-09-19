@@ -8,19 +8,24 @@
   "sideEffects": false,
   "scripts": {
     "eval": "tsx src/cli.ts",
+    "classify": "tsx src/classification-cli.ts",
+    "mine": "tsx src/classification-mining-cli.ts",
     "matrix-corpus-identity": "tsx src/print-matrix-corpus-identity.ts",
     "source-hash": "tsx src/print-evaluator-source-hash.ts",
     "test": "vp test run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@daytona/sdk": "^0.196.0"
+    "@ai-sdk/gateway": "4.0.85",
+    "@daytona/sdk": "^0.196.0",
+    "ai": "7.0.105",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
     "tsx": "^4.22.4"
   },
   "engines": {
-    "node": "^20.19.0 || >=22.13.0"
+    "node": ">=22.13.0"
   }
 }

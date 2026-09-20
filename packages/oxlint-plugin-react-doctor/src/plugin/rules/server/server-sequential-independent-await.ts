@@ -1,4 +1,5 @@
 import { INTENTIONAL_SEQUENCING_CALLEE_NAMES } from "../../constants/js.js";
+import { awaitedStatementsMayShareWork } from "../../utils/awaited-statements-may-share-work.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { expressionReadsPatternBinding } from "../../utils/expression-reads-pattern-binding.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
@@ -13,12 +14,6 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
-// HACK: in async route handlers and Server Components, two consecutive
-// `await fetch()` (or any awaited calls) where the second one doesn't
-// reference the first's binding is a textbook waterfall — the second
-// fetch waits for the first to land before even starting, doubling
-// latency. Wrap independent awaits in `Promise.all([…])` so they race.
-//
 // Heuristic: scan async function bodies for two consecutive
 // VariableDeclaration statements whose init is `await something(...)`,
 // where the second's initializer reads no identifier introduced by the
@@ -202,7 +197,7 @@ export const serverSequentialIndependentAwait = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "These two awaits don't depend on each other. Wrap them in `Promise.all([...])` so they run at the same time.",
+    "Check whether these calls start independent work before running them together with `Promise.all([...])`.",
   create: (context: RuleContext) => {
     const inspectStatements = (statements: EsTreeNode[]): void => {
       for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {
@@ -216,6 +211,8 @@ export const serverSequentialIndependentAwait = defineRule({
         if (!declarationStartsWithAwait(nextStatement)) continue;
 
         if (declarationReadsAnyPatternBinding(nextStatement, declaredPatterns, context)) continue;
+        if (awaitedStatementsMayShareWork(currentStatement, nextStatement, context.scopes))
+          continue;
         // The second await is on a promise that already exists
         // (`const p = fetchPosts(); … const posts = await p;`,
         // `await props.params`) — already running, so there's no
@@ -242,7 +239,7 @@ export const serverSequentialIndependentAwait = defineRule({
         context.report({
           node: nextStatement,
           message:
-            "This await doesn't use the previous result, so your users wait twice as long for nothing.",
+            "This await doesn't use the previous result. If these calls start independent work, consider Promise.all.",
         });
         // Skip past the next so we don't double-report a chain.
         statementIndex++;

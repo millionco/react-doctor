@@ -217,7 +217,7 @@ const isHookCall = (
   ) {
     const callObject = stripParenExpression(callee.object);
     const propertyName = callee.property.name;
-    if (isLocalNonHookMemberCallee(callee, scopes)) return null;
+    if (isLocalNonHookMemberCallee(call, scopes)) return null;
     if (isPackageImportedNonReactHookMemberCallee(call, scopes)) return null;
     // Upstream's heuristic: a use-prefixed member call IS a hook iff
     // the object reads like a "namespace" — PascalCase identifier

@@ -20,6 +20,8 @@ const createInspector = (kind: string) => (value: unknown) => {
   return value;
 };
 const readAction = createInspector("action");
+const readMemo = (create: () => unknown) => create();
+const readCache = (length: number) => Array.from({ length }, () => null);
 const Local = {
   useContext: readContext,
   useState: readState,
@@ -28,6 +30,8 @@ const Local = {
   useEffect: recordEffect,
   useEffectEvent: recordEvent,
   useActionState: readAction,
+  useMemo: readMemo,
+  useMemoCache: readCache,
 };
 const Alias = Local;
 
@@ -39,6 +43,8 @@ export const collectStack = () => {
     Alias.useRef(null);
     Alias.useEffect(() => {});
     Alias.useActionState(null);
+    Alias.useMemo(() => null);
+    Alias.useMemoCache(0);
     if (typeof Alias.useEffectEvent === "function") Alias.useEffectEvent(() => {});
   } finally {
     inspectionLog.length = 0;

@@ -3,13 +3,15 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { effectNeedsCleanup } from "./effect-needs-cleanup.js";
 
-const overlaySource = fs.readFileSync(
-  new URL(
-    "../../../../../fuzz/corpus/regressions/effect-needs-cleanup--replacement-timer-cleanup.tsx",
-    import.meta.url,
-  ),
-  "utf8",
-);
+const overlaySource = fs
+  .readFileSync(
+    new URL(
+      "../../../../../fuzz/corpus/regressions/effect-needs-cleanup--replacement-timer-cleanup.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  )
+  .replaceAll("\r\n", "\n");
 
 describe("effect-needs-cleanup replacement timer ownership", () => {
   it.each([

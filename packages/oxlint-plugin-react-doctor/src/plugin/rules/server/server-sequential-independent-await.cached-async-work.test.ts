@@ -20,13 +20,34 @@ const format = async (key) => {
 describe("server-sequential-independent-await cached-async-work", () => {
   it.each([
     {
-      name: "opaque helpers sharing the same input in the pinned Promise.all/then shape",
+      name: "a local wrapper calling the same namespace member with const aliases",
       code: `
-import { read, format, snippet } from "./context";
+import * as source from "./context";
+const sourceAlias = source;
+const format = async (target) => {
+  const key = target;
+  const value = await sourceAlias["read"](key);
+  return String(value);
+};
 async function load(element) {
-  const [html, stack] = await Promise.all([snippet(element), read(element).then(value => value ?? [])]);
-  const text = await format(element);
-  return [html, stack, text];
+  const first = await source.read(element);
+  const second = await format(element);
+  return [first, second];
+}`,
+    },
+    {
+      name: "const callee aliases and all arguments forwarded in order",
+      code: `
+import { read } from "./context";
+const readAlias = read;
+const format = async (target, options) => {
+  const value = await readAlias(target, options);
+  return String(value);
+};
+async function load(element, options) {
+  const first = await read(element, options);
+  const second = await format(element, options);
+  return [first, second];
 }`,
     },
     {
@@ -64,13 +85,16 @@ async function load(element) {
 }`,
     },
     {
-      name: "an imported namespace and renamed import sharing an input",
+      name: "a local formatter delegating to the same renamed import",
       code: `
-import * as source from "./context";
-import { format as formatValue } from "./context";
+import { read as readValue } from "./context";
+const format = async (target) => {
+  const value = await readValue(target);
+  return String(value);
+};
 async function load(element) {
-  const first = await source.read(element);
-  const second = await formatValue(element);
+  const [first] = await Promise.all([readValue(element).then(value => value ?? [])]);
+  const second = await format(element);
   return [first, second];
 }`,
     },
@@ -81,6 +105,135 @@ async function load(element) {
   });
 
   it.each([
+    {
+      name: "independent imported requests sharing a stable user ID",
+      code: `
+import { getUser, getPermissions } from "./requests";
+async function load(userId) {
+  const user = await getUser(userId);
+  const permissions = await getPermissions(userId);
+  return [user, permissions];
+}`,
+    },
+    {
+      name: "local wrappers delegating to different imported requests",
+      code: `
+import { getUser, getPermissions } from "./requests";
+const readUser = async (target) => getUser(target);
+const readPermissions = async (target) => getPermissions(target);
+async function load(userId) {
+  const user = await readUser(userId);
+  const permissions = await readPermissions(userId);
+  return [user, permissions];
+}`,
+    },
+    {
+      name: "distinct methods on the same imported namespace",
+      code: `
+import * as requests from "./requests";
+async function load(userId) {
+  const user = await requests.getUser(userId);
+  const permissions = await requests.getPermissions(userId);
+  return [user, permissions];
+}`,
+    },
+    {
+      name: "distinct imported receivers with the same method name",
+      code: `
+import * as users from "./users";
+import * as permissions from "./permissions";
+async function load(userId) {
+  const user = await users.read(userId);
+  const permission = await permissions.read(userId);
+  return [user, permission];
+}`,
+    },
+    {
+      name: "a dynamic method on an imported namespace",
+      code: `
+import * as requests from "./requests";
+async function load(userId, method) {
+  const first = await requests.read(userId);
+  const second = await requests[method](userId);
+  return [first, second];
+}`,
+    },
+    {
+      name: "an imported operation with a different second argument",
+      code: `
+import { read } from "./requests";
+const format = async (target, options) => read(target, options);
+async function load(userId, userOptions, permissionOptions) {
+  const user = await read(userId, userOptions);
+  const permission = await format(userId, permissionOptions);
+  return [user, permission];
+}`,
+    },
+    {
+      name: "an imported operation with arguments in a different order",
+      code: `
+import { read } from "./requests";
+async function load(left, right) {
+  const first = await read(left, right);
+  const second = await read(right, left);
+  return [first, second];
+}`,
+    },
+    {
+      name: "an imported operation with different argument counts",
+      code: `
+import { read } from "./requests";
+async function load(userId, options) {
+  const first = await read(userId);
+  const second = await read(userId, options);
+  return [first, second];
+}`,
+    },
+    {
+      name: "unresolved arguments to the same imported operation",
+      code: `
+import { read } from "./requests";
+async function load(userId) {
+  const first = await read(userId, { table: "users" });
+  const second = await read(userId, { table: "permissions" });
+  return [first, second];
+}`,
+    },
+    {
+      name: "a shadowed imported operation inside a local wrapper",
+      code: `
+import { read } from "./requests";
+const format = async (target) => {
+  const read = (key) => fetch("/permissions/" + key);
+  return read(target);
+};
+async function load(userId) {
+  const first = await read(userId);
+  const second = await format(userId);
+  return [first, second];
+}`,
+    },
+    {
+      name: "opaque helpers sharing the same input in the pinned Promise.all/then shape",
+      code: `
+import { read, format, snippet } from "./context";
+async function load(element) {
+  const [html, stack] = await Promise.all([snippet(element), read(element).then(value => value ?? [])]);
+  const text = await format(element);
+  return [html, stack, text];
+}`,
+    },
+    {
+      name: "an imported namespace and renamed import sharing an input",
+      code: `
+import * as source from "./context";
+import { format as formatValue } from "./context";
+async function load(element) {
+  const first = await source.read(element);
+  const second = await formatValue(element);
+  return [first, second];
+}`,
+    },
     {
       name: "direct fetch requests even with the same URL binding",
       code: `

@@ -1,8 +1,13 @@
 // rule: server-sequential-independent-await
 // verdict: pass
-// weakness: cross-file
-// source: confirmed FP 2bacf0aa5ac16a08a2702279800d56b01ead8890f3725cc9b6e46189b77b0d82
-import { getStack, getStackContext } from "./context";
+// weakness: alias-guard
+// source: same-file variant of FP 2bacf0aa5ac16a08a2702279800d56b01ead8890f3725cc9b6e46189b77b0d82; imported formatter remains unsupported
+import { getStack } from "./context";
+
+const getStackContext = async (element: Element) => {
+  const stack = await getStack(element);
+  return String(stack);
+};
 
 export const describeElement = async (element: Element) => {
   const [stack] = await Promise.all([getStack(element).then((value) => value ?? [])]);

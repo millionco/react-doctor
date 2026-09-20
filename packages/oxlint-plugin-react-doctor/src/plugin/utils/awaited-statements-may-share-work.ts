@@ -12,7 +12,8 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 
 interface AwaitedWork {
-  cache: EsTreeNode | null;
+  binding: EsTreeNode;
+  member: string | null;
   inputs: ReadonlyArray<EsTreeNode | null>;
 }
 
@@ -51,7 +52,12 @@ const collectAwaitedWork = (statement: EsTreeNode, scopes: ScopeAnalysis): Await
         : callee;
       const receiverSymbol = resolveConstIdentifierAlias(receiver, scopes);
       if (receiverSymbol?.kind === "import") {
-        work.push({ cache: null, inputs });
+        const member = isNodeOfType(callee, "MemberExpression")
+          ? getStaticPropertyName(callee)
+          : null;
+        if (isNodeOfType(callee, "Identifier") || member !== null) {
+          work.push({ binding: receiverSymbol.bindingIdentifier, member, inputs });
+        }
       } else if (
         isNodeOfType(callee, "MemberExpression") &&
         getStaticPropertyName(callee) === "get" &&
@@ -66,7 +72,7 @@ const collectAwaitedWork = (statement: EsTreeNode, scopes: ScopeAnalysis): Await
           scopes.isGlobalReference(initializer.callee)
         ) {
           const cache = resolveInput(receiver);
-          if (cache) work.push({ cache, inputs: [inputs[0] ?? null] });
+          if (cache) work.push({ binding: cache, member: "get", inputs: [inputs[0] ?? null] });
         }
       }
       if (!isNodeOfType(callee, "Identifier") || remainingCalls <= 0) return;
@@ -101,8 +107,11 @@ export const awaitedStatementsMayShareWork = (
   return previousWork.some((previous) =>
     nextWork.some(
       (next) =>
-        previous.cache === next.cache &&
-        previous.inputs.some((input) => input !== null && next.inputs.includes(input)),
+        previous.binding === next.binding &&
+        previous.member === next.member &&
+        previous.inputs.length > 0 &&
+        previous.inputs.length === next.inputs.length &&
+        previous.inputs.every((input, index) => input !== null && input === next.inputs[index]),
     ),
   );
 };

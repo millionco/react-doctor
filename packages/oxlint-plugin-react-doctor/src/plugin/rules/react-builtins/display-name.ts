@@ -9,6 +9,7 @@ import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
+import { functionReturnsDisplayNameRenderOutput } from "../../utils/function-returns-display-name-render-output.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
@@ -425,6 +426,12 @@ export const displayName = defineRule({
       },
       FunctionExpression(node: EsTreeNodeOfType<"FunctionExpression">) {
         if (!containsJsx(node)) return;
+        if (
+          shouldUseCuratedBehavior &&
+          !functionReturnsDisplayNameRenderOutput(node, context.scopes, context.cfg)
+        ) {
+          return;
+        }
         if (!shouldUseCuratedBehavior && !node.id && isModuleExportsAssignment(node)) {
           reportAt(node);
           return;
@@ -469,6 +476,12 @@ export const displayName = defineRule({
         const isDefaultExport = isNodeOfType(node.parent, "ExportDefaultDeclaration");
         const containsCreateElementCall = containsJsx(node);
         if (!containsCreateElementCall && !isDefaultExport) return;
+        if (
+          shouldUseCuratedBehavior &&
+          !functionReturnsDisplayNameRenderOutput(node, context.scopes, context.cfg)
+        ) {
+          return;
+        }
         if (!shouldUseCuratedBehavior && isModuleExportsAssignment(node)) {
           reportAt(node);
           return;

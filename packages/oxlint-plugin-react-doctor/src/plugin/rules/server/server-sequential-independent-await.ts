@@ -211,7 +211,14 @@ export const serverSequentialIndependentAwait = defineRule({
         if (!declarationStartsWithAwait(nextStatement)) continue;
 
         if (declarationReadsAnyPatternBinding(nextStatement, declaredPatterns, context)) continue;
-        if (awaitedStatementsMayShareWork(currentStatement, nextStatement, context.scopes))
+        if (
+          awaitedStatementsMayShareWork(
+            currentStatement,
+            nextStatement,
+            context.scopes,
+            context.filename,
+          )
+        )
           continue;
         // The second await is on a promise that already exists
         // (`const p = fetchPosts(); … const posts = await p;`,

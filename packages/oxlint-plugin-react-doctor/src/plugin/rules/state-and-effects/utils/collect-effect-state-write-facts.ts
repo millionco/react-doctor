@@ -31,6 +31,7 @@ import {
   isState,
   isStateSetter,
 } from "./effect/react.js";
+import { hasReturnedStateSetter } from "./has-returned-state-setter.js";
 import { hasUserInputSetterWriter } from "./has-user-input-setter-writer.js";
 import { readsPostMountValueThroughLocals } from "./reads-post-mount-through-locals.js";
 
@@ -2224,13 +2225,9 @@ export const collectEffectStateWriteFacts = (
       const sourceReferences = [...valueEvidence.sourceReferences].filter(
         (sourceReference) => getUseStateDecl(analysis, sourceReference) !== stateDeclarator,
       );
-      const hasIndependentWriter = hasUserInputSetterWriter(
-        analysis,
-        context,
-        setterReference,
-        effectNode,
-        true,
-      );
+      const hasIndependentWriter =
+        hasUserInputSetterWriter(analysis, context, setterReference, effectNode, true) ||
+        hasReturnedStateSetter(context, stateDeclarator);
       const doesMatchStateInitializer = matchesStateInitializer(
         analysis,
         callExpression,

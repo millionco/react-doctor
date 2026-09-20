@@ -5176,6 +5176,29 @@ const hasOnlySafeHandleStorageAssignments = (
     ) {
       return true;
     }
+    if (assignedTimerUsage && assignmentOwner === currentUsageOwner) {
+      const assignmentStatement = findTransparentExpressionRoot(assignment).parent;
+      const assignmentBlock = assignmentStatement?.parent;
+      if (
+        !isNodeOfType(assignmentStatement, "ExpressionStatement") ||
+        !isNodeOfType(assignmentBlock, "BlockStatement")
+      ) {
+        return false;
+      }
+      const previousStatement =
+        assignmentBlock.body[
+          assignmentBlock.body.findIndex((statement) => statement === assignmentStatement) - 1
+        ];
+      const releaseCall = isNodeOfType(previousStatement, "ExpressionStatement")
+        ? stripParenExpression(previousStatement.expression)
+        : null;
+      return Boolean(
+        isNodeOfType(releaseCall, "CallExpression") &&
+        isNodeOfType(releaseCall.callee, "Identifier") &&
+        context.scopes.isGlobalReference(releaseCall.callee) &&
+        doesReleaseCallMatchUsage(releaseCall, usage, context),
+      );
+    }
     const isNullishReset =
       (isNodeOfType(assignedValue, "Literal") && assignedValue.value === null) ||
       (isNodeOfType(assignedValue, "Identifier") &&
@@ -5330,12 +5353,15 @@ const hasEffectOwnedNestedTimerCleanup = (
   );
   return functionSymbol.references.every((reference) => {
     const referenceKey = resolveExpressionKey(reference.identifier, context);
+    const referenceParent = findTransparentExpressionRoot(reference.identifier).parent;
     if (selfSchedulingReferences.some((candidate) => candidate === reference)) return true;
     const callbackOwnerUsage = allUsages.find(
       (candidateUsage) =>
         candidateUsage !== usage &&
         referenceKey !== null &&
-        getUsageCallbackKey(candidateUsage, context) === referenceKey,
+        getUsageCallbackKey(candidateUsage, context) === referenceKey &&
+        (isAstDescendant(reference.identifier, candidateUsage.node) ||
+          (referenceParent && doesReleaseCallMatchUsage(referenceParent, candidateUsage, context))),
     );
     const callbackOwnerArgument = callbackOwnerUsage
       ? getSubscribeUsageCallbackArgument(callbackOwnerUsage)

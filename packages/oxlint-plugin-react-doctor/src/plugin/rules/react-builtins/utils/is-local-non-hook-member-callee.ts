@@ -28,19 +28,21 @@ const containsHookCall = (
   let foundHook = false;
   walkAst(functionNode, (node) => {
     if (foundHook) return false;
-    if (!isNodeOfType(node, "CallExpression")) return;
-    const callee = stripParenExpression(node.callee);
+    if (!isNodeOfType(node, "CallExpression") && !isNodeOfType(node, "AssignmentPattern")) return;
+    const callee = stripParenExpression(
+      isNodeOfType(node, "CallExpression") ? node.callee : node.right,
+    );
     const calleeName = isNodeOfType(callee, "Identifier")
       ? callee.name
       : isNodeOfType(callee, "MemberExpression")
         ? getStaticPropertyName(callee)
         : null;
-    const importedName = resolveImportedApiReference(node.callee, scopes)?.importedName;
+    const importedName = resolveImportedApiReference(callee, scopes)?.importedName;
     if (isReactHookName(calleeName ?? "") || (importedName && isReactHookName(importedName))) {
       foundHook = true;
       return false;
     }
-    const localFunction = resolveExactLocalFunction(node.callee, scopes);
+    const localFunction = resolveExactLocalFunction(callee, scopes);
     if (localFunction && containsHookCall(localFunction, scopes, nextVisitedFunctions)) {
       foundHook = true;
       return false;

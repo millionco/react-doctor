@@ -491,6 +491,7 @@ const resolveExactLocalFunctionInternal = (
       remainingDepth - 1,
     );
     if (!isFunctionLike(factory) || factory.async || factory.generator) return null;
+    if (!factory.params.every((parameter) => isNodeOfType(parameter, "Identifier"))) return null;
     const returnedExpression = getSingleReturnExpression(factory);
     const returnedFunction = returnedExpression && stripParenExpression(returnedExpression);
     return isFunctionLike(returnedFunction) ? returnedFunction : null;

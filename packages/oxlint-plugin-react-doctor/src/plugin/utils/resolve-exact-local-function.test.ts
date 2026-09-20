@@ -51,6 +51,8 @@ describe("resolveExactLocalFunction", () => {
     `const create = async () => () => 1; const Local = { handler: create() };`,
     `function* create() { return () => 1; } const Local = { handler: create() };`,
     `const create = (callback) => () => callback(); const Local = { handler: create(unknown) };`,
+    `const create = (callback = unknown) => () => callback(); const Local = { handler: create() };`,
+    `const create = ({ callback }) => () => callback(); const Local = { handler: create(null) };`,
     `const create = () => unknown; const Local = { handler: create() };`,
     `const create = () => { sideEffect(); return () => 1; }; const Local = { handler: create() };`,
     `const create = () => () => 1; const Local = { handler: create() }; mutate(Local);`,

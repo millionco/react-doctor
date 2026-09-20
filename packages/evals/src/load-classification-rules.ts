@@ -1,9 +1,13 @@
+import { createHash } from "node:crypto";
+
 import { z } from "zod";
 
 import { ruleContractSchema } from "./classification-schema.js";
 import type { RuleContract } from "./classification-schema.js";
 import { CLASSIFICATION_TIMEOUT_MS } from "./constants.js";
 import { parseReactDoctorEvaluationProvenance } from "./utils/parse-react-doctor-evaluation-provenance.js";
+import { pinnedRuleContracts } from "./pinned-rule-contracts.js";
+import { loadPinnedClassificationSource } from "./prepare-classification.js";
 
 const catalogSchema = z.array(
   z.object({
@@ -16,6 +20,10 @@ const catalogSchema = z.array(
       disabledWhen: z.array(z.string()).optional(),
       tags: z.array(z.string()).optional(),
       isScanRule: z.boolean(),
+      isProjectRule: z.boolean().optional(),
+      defaultEnabled: z.boolean().optional(),
+      minimumInkVersion: z.string().optional(),
+      lifecycle: z.string().optional(),
     }),
   }),
 );
@@ -49,7 +57,12 @@ export const loadClassificationRules = async (
       throw new Error(`Rule catalog fetch failed (${response.status}); use --rules`);
     const catalog = catalogSchema.parse(await response.json());
     contracts = catalog
-      .filter((entry) => !entry.rule.isScanRule && (entry.rule.title || entry.rule.recommendation))
+      .filter(
+        (entry) =>
+          !entry.rule.isScanRule &&
+          !entry.rule.isProjectRule &&
+          (entry.rule.title || entry.rule.recommendation),
+      )
       .map((entry) =>
         ruleContractSchema.parse({
           key: entry.key,
@@ -70,8 +83,43 @@ export const loadClassificationRules = async (
             "If the description does not resolve a possible intentional exception, request review.",
           ],
           sampleSilentFiles: !entry.rule.isScanRule,
+          defaultEnabled: entry.rule.defaultEnabled ?? true,
+          applicability: {
+            framework: entry.rule.framework,
+            requires: entry.rule.requires ?? [],
+            disabledWhen: entry.rule.disabledWhen ?? [],
+            tags: entry.rule.tags ?? [],
+            minimumInkVersion: entry.rule.minimumInkVersion ?? null,
+            lifecycle: entry.rule.lifecycle ?? "active",
+          },
+          contractSource: catalogUrl,
+          contractHash: createHash("sha256").update(JSON.stringify(entry)).digest("hex"),
         }),
       );
+    await Promise.all(
+      contracts.map(async (contract) => {
+        const pinned = pinnedRuleContracts[contract.key];
+        if (!pinned) return;
+        contract.requiredEvidence = pinned.contract.requiredEvidence;
+        try {
+          const [org, name] = repository.slice(1).split("/");
+          const source = await loadPinnedClassificationSource(
+            { org, name, rootDir: ".", ref: provenance.reactDoctorCommit },
+            pinned.path,
+          );
+          const hash = createHash("sha256").update(source).digest("hex");
+          if (hash !== pinned.sha256)
+            throw new Error("Canonical rule source is not a supported revision");
+          Object.assign(contract, pinned.contract, {
+            contractSource: `https://raw.githubusercontent.com${repository}/${provenance.reactDoctorCommit}/${pinned.path}`,
+            contractHash: hash,
+          });
+        } catch {
+          contract.contractIssue =
+            "Canonical exceptions/settings could not be verified at the detector revision; supply --rules";
+        }
+      }),
+    );
     catalogCache.set(catalogUrl, contracts);
   }
   const enabledRuleKeys = new Set(provenance.ruleKeys);

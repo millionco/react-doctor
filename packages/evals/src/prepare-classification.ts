@@ -31,11 +31,15 @@ const classificationReportSchema = z.object({
       analyzedFiles: z.array(z.string()),
       diagnostics: z.array(
         z.object({
+          id: z.string().optional(),
           normalizedFilePath: z.string(),
           plugin: z.string(),
           rule: z.string(),
           line: z.number().int().nonnegative(),
           column: z.number().int().nonnegative(),
+          message: z.string().optional(),
+          help: z.string().optional(),
+          tags: z.array(z.string()).optional(),
         }),
       ),
     }),
@@ -59,9 +63,12 @@ export interface PrepareClassificationOptions {
   loadSource: ClassificationSourceLoader;
   concurrency?: number;
   limit?: number;
+  metadataOnly?: boolean;
+  groupOccurrences?: boolean;
+  population?: "default" | "exhaustive" | "explicit-contract";
 }
 
-const sourcePath = (root: string, filePath: string): string => {
+export const sourcePath = (root: string, filePath: string): string => {
   const relativePath = posix.normalize(posix.join(root, filePath));
   if (
     posix.isAbsolute(filePath) ||
@@ -76,6 +83,8 @@ const sourcePath = (root: string, filePath: string): string => {
   return relativePath;
 };
 
+export class PinnedSourceMissingError extends Error {}
+
 export const loadPinnedClassificationSource: ClassificationSourceLoader = async (
   repository,
   filePath,
@@ -86,6 +95,7 @@ export const loadPinnedClassificationSource: ClassificationSourceLoader = async 
   const response = await fetch(`https://raw.githubusercontent.com/${path}`, {
     signal: AbortSignal.timeout(CLASSIFICATION_TIMEOUT_MS),
   });
+  if (response.status === 404) throw new PinnedSourceMissingError("Pinned source is absent");
   if (!response.ok) throw new Error(`Pinned source fetch failed (${response.status})`);
   const reader = response.body?.getReader();
   if (!reader) throw new Error("Pinned source response has no body");
@@ -119,6 +129,14 @@ export const prepareClassificationCandidates = async function* (
     throw new Error("Classification requires a pinned corpus repository");
   }
   const evaluation = parseReactDoctorEvaluationProvenance(JSON.stringify(parsed.evaluation));
+  const { evaluatorSourceHash } = z
+    .object({
+      evaluatorSourceHash: z
+        .string()
+        .regex(/^[0-9a-f]{64}$/)
+        .optional(),
+    })
+    .parse(parsed.evaluation);
   const report = classificationReportSchema.parse(
     parseReactDoctorReport(JSON.stringify(parsed.report)),
   );
@@ -133,6 +151,7 @@ export const prepareClassificationCandidates = async function* (
     options.concurrency ?? CLASSIFICATION_CONCURRENCY,
   );
   const seen = new Set<string>();
+  const seenGroups = new Set<string>();
   let prepared = 0;
   for (const project of report.projects) {
     const projectRoot = posix.relative(
@@ -143,6 +162,7 @@ export const prepareClassificationCandidates = async function* (
       sourcePath(repository.rootDir, sourcePath(projectRoot, filePath));
     const analyzedFiles = new Set(project.analyzedFiles.map(toSourcePath));
     for (const rule of options.rules) {
+      if (options.population === "default" && rule.defaultEnabled !== true) continue;
       const diagnostics = project.diagnostics.filter(
         (diagnostic) => `${diagnostic.plugin}/${diagnostic.rule}` === rule.key,
       );
@@ -158,19 +178,46 @@ export const prepareClassificationCandidates = async function* (
               .filter((filePath) => !detectedFiles.has(filePath))
               .sort((left, right) => samplingHash(left).localeCompare(samplingHash(right)))
               .slice(0, options.silentFilesPerProject);
+      const occurrences = new Map<string, NonNullable<ClassificationCandidate["occurrences"]>>();
+      for (const diagnostic of diagnostics) {
+        const filePath = toSourcePath(diagnostic.normalizedFilePath);
+        const members = occurrences.get(filePath) ?? [];
+        const id = createHash("sha256")
+          .update(JSON.stringify([repository, projectRoot, rule.key, diagnostic]))
+          .digest("hex");
+        members.push({ ...diagnostic, id, diagnosticId: diagnostic.id });
+        occurrences.set(filePath, members);
+      }
+      for (const members of occurrences.values()) {
+        members.sort(
+          (left, right) =>
+            left.line - right.line || left.column - right.column || left.id.localeCompare(right.id),
+        );
+      }
+      const diagnosticTargets = options.groupOccurrences
+        ? [...occurrences].map(([filePath, members]) => ({
+            filePath,
+            line: members[0].line || null,
+            column: members[0].column || null,
+            detected: true,
+          }))
+        : diagnostics.map((diagnostic) => ({
+            filePath: toSourcePath(diagnostic.normalizedFilePath),
+            line: diagnostic.line || null,
+            column: diagnostic.column || null,
+            detected: true,
+          }));
       const targets = [
-        ...diagnostics.map((diagnostic) => ({
-          filePath: toSourcePath(diagnostic.normalizedFilePath),
-          line: diagnostic.line || null,
-          column: diagnostic.column || null,
-          detected: true,
-        })),
+        ...diagnosticTargets,
         ...silentFiles.map((filePath) => ({ filePath, line: null, column: null, detected: false })),
       ].slice(0, options.limit === undefined ? undefined : options.limit - prepared);
       for (const target of targets) {
         if (!analyzedFiles.has(target.filePath)) {
-          throw new Error(`Diagnostic is outside analyzed coverage: ${target.filePath}`);
+          throw new Error(
+            `Diagnostic is outside analyzed coverage: ${target.filePath} (${rule.key})`,
+          );
         }
+        if (options.metadataOnly) continue;
         if (sources.has(target.filePath)) continue;
         sources.set(
           target.filePath,
@@ -184,12 +231,21 @@ export const prepareClassificationCandidates = async function* (
         );
       }
       for (const target of targets) {
+        if (options.groupOccurrences) {
+          const group = JSON.stringify([rule.key, target.filePath]);
+          if (seenGroups.has(group))
+            throw new Error("Overlapping project coverage for a file/rule group");
+          seenGroups.add(group);
+        }
         const identity = JSON.stringify([rule.key, target, project.framework]);
         if (seen.has(identity)) continue;
         seen.add(identity);
         const source = sources.get(target.filePath);
-        if (!source) throw new Error("Missing prepared source");
-        const { code, contextIssue } = await source;
+        if (!source && !options.metadataOnly) throw new Error("Missing prepared source");
+        const { code, contextIssue } = (await source) ?? {
+          code: "",
+          contextIssue: "Source not loaded",
+        };
         const lineIsValid =
           !target.detected || (target.line !== null && target.line <= code.split("\n").length);
         yield classificationCandidateSchema.parse({
@@ -197,7 +253,23 @@ export const prepareClassificationCandidates = async function* (
           repository,
           detectorCommit: evaluation.reactDoctorCommit,
           ruleSetHash: evaluation.ruleSetHash,
+          evaluatorSourceHash,
           rule,
+          policy: {
+            population: options.population ?? "explicit-contract",
+            scan: enabledRuleKeys.size === 0 ? "exhaustive" : "explicit-rule-list",
+            configContract: evaluation.configContract,
+            repositoryPolicy: "unobserved",
+            adoptExistingLintConfig: false,
+            respectInlineDisables: false,
+            severity: "error",
+          },
+          occurrences: options.groupOccurrences
+            ? (occurrences.get(target.filePath) ?? [])
+            : undefined,
+          occurrenceCount: options.groupOccurrences
+            ? (occurrences.get(target.filePath)?.length ?? 0)
+            : undefined,
           ...target,
           framework: project.framework,
           project: {

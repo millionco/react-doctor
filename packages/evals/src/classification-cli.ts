@@ -1,4 +1,5 @@
-import { readFile, open } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile, open, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
 import { z } from "zod";
@@ -23,6 +24,8 @@ import { runClassification } from "./run-classification.js";
 import { readNdjson } from "./utils/read-ndjson.js";
 import { serializeNdjsonRecord } from "./utils/serialize-ndjson-record.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
+import { selectClassification } from "./select-classification.js";
+import { loadClassificationContext } from "./load-classification-context.js";
 
 const main = async (): Promise<void> => {
   const { values, positionals } = parseArgs({
@@ -32,6 +35,7 @@ const main = async (): Promise<void> => {
       output: { type: "string" },
       rules: { type: "string" },
       rule: { type: "string", multiple: true },
+      population: { type: "string", default: "default" },
       "skip-failed": { type: "boolean", default: false },
       cache: { type: "string", default: ".classification-cache" },
       concurrency: { type: "string", default: String(CLASSIFICATION_CONCURRENCY) },
@@ -49,6 +53,8 @@ const main = async (): Promise<void> => {
         "  nr classify run --input candidates.ndjson --output results.ndjson [--dry-run]\n\n" +
         "Options: --limit 1000, --concurrency 8, --threshold 0.9, --cache .classification-cache\n" +
         "Prepare uses pinned rule descriptions automatically; --rule plugin/rule filters them.\n" +
+        "Prepare: --population default selects default-enabled rules; exhaustive includes optional policies.\n" +
+        "Selection balances repositories, rules and files across all input records; writes OUTPUT.selection.json.\n" +
         "Prepare: --silent-files 0 (FP only); set 10 for FN sampling per project and rule.\n" +
         "Prepare: --skip-failed skips failed scans, logging their count to stderr.\n" +
         "Run requires AI_GATEWAY_API_KEY. Outputs are created exclusively; reuse --cache to resume.\n" +
@@ -69,6 +75,7 @@ const main = async (): Promise<void> => {
   const concurrency = z.coerce.number().int().positive().parse(values.concurrency);
   const threshold = z.coerce.number().gt(0.5).max(1).parse(values.threshold);
   const silentFiles = z.coerce.number().int().nonnegative().parse(values["silent-files"]);
+  const population = z.enum(["default", "exhaustive"]).parse(values.population);
   const requestedRules = values.rule ? new Set(values.rule) : null;
   const rules =
     command === "prepare" && values.rules
@@ -93,35 +100,83 @@ const main = async (): Promise<void> => {
       let incomplete = 0;
       let skipped = 0;
       const catalogCache = new Map<string, RuleContract[]>();
-      prepare: for await (const record of readNdjson(values.input)) {
-        const failed = z.object({ error: z.string() }).safeParse(record);
-        if (values["skip-failed"] && failed.success) {
-          skipped += 1;
-          continue;
+      const inputPath = values.input;
+      let pass = 0;
+      const readGroups = async function* () {
+        const scans = new Map<string, string>();
+        pass += 1;
+        for await (const record of readNdjson(inputPath)) {
+          const failed = z.object({ error: z.string() }).safeParse(record);
+          if (values["skip-failed"] && failed.success) {
+            if (pass === 1) skipped += 1;
+            continue;
+          }
+          const identity = z.object({ repository: z.json(), evaluation: z.json() }).parse(record);
+          const scanKey = JSON.stringify(identity);
+          const scanHash = createHash("sha256").update(JSON.stringify(record)).digest("hex");
+          if (scans.has(scanKey)) {
+            if (scans.get(scanKey) !== scanHash)
+              throw new Error("Conflicting duplicate scan records");
+            continue;
+          }
+          scans.set(scanKey, scanHash);
+          const availableRules = values.rules
+            ? rules
+            : await loadClassificationRules(record, catalogCache);
+          const selectedRules = requestedRules
+            ? availableRules.filter((rule) => requestedRules.has(rule.key))
+            : availableRules;
+          if (values.rule?.some((key) => !availableRules.some((rule) => rule.key === key))) {
+            throw new Error("A selected --rule is absent from this evaluation's rule catalog");
+          }
+          if (
+            !values.rules &&
+            requestedRules &&
+            population === "default" &&
+            selectedRules.some((rule) => !rule.defaultEnabled)
+          ) {
+            throw new Error(
+              "A selected --rule is optional; use --population exhaustive to include it",
+            );
+          }
+          yield* prepareClassificationCandidates(record, {
+            rules: selectedRules,
+            concurrency,
+            silentFilesPerProject: silentFiles,
+            loadSource: loadPinnedClassificationSource,
+            metadataOnly: true,
+            groupOccurrences: true,
+            population: values.rules ? "explicit-contract" : population,
+          });
         }
-        const availableRules = values.rules
-          ? rules
-          : await loadClassificationRules(record, catalogCache);
-        const selectedRules = requestedRules
-          ? availableRules.filter((rule) => requestedRules.has(rule.key))
-          : availableRules;
-        if (values.rule?.some((key) => !availableRules.some((rule) => rule.key === key))) {
-          throw new Error("A selected --rule is absent from this evaluation's rule catalog");
-        }
-        for await (const candidate of prepareClassificationCandidates(record, {
-          rules: selectedRules,
-          concurrency,
-          limit: limit - prepared,
-          silentFilesPerProject: silentFiles,
-          loadSource: loadPinnedClassificationSource,
-        })) {
+      };
+      const selection = await selectClassification(readGroups, limit);
+      for (let offset = 0; offset < selection.candidates.length; offset += concurrency) {
+        const batch = await Promise.all(
+          selection.candidates
+            .slice(offset, offset + concurrency)
+            .map((candidate) =>
+              loadClassificationContext(candidate, loadPinnedClassificationSource),
+            ),
+        );
+        for (const candidate of batch) {
           await output.writeFile(serializeNdjsonRecord(candidate));
           prepared += 1;
           incomplete += Number(!candidate.contextComplete);
-          if (prepared >= limit) break prepare;
         }
       }
-      process.stderr.write(`${JSON.stringify({ prepared, incomplete, skipped })}\n`);
+      const summary = {
+        prepared,
+        incomplete,
+        skipped,
+        population: values.rules ? "explicit-contract" : population,
+        coverage: selection.coverage,
+      };
+      await writeFile(`${values.output}.selection.json`, JSON.stringify(summary), {
+        flag: "wx",
+        mode: EVALUATION_ARTIFACT_FILE_MODE,
+      });
+      process.stderr.write(`${JSON.stringify(summary)}\n`);
       return;
     }
     if (values["dry-run"]) {

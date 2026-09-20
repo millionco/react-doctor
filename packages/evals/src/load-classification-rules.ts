@@ -96,28 +96,30 @@ export const loadClassificationRules = async (
           contractHash: createHash("sha256").update(JSON.stringify(entry)).digest("hex"),
         }),
       );
-    for (const contract of contracts) {
-      const pinned = pinnedRuleContracts[contract.key];
-      if (!pinned) continue;
-      contract.requiredEvidence = pinned.contract.requiredEvidence;
-      try {
-        const [org, name] = repository.slice(1).split("/");
-        const source = await loadPinnedClassificationSource(
-          { org, name, rootDir: ".", ref: provenance.reactDoctorCommit },
-          pinned.path,
-        );
-        const hash = createHash("sha256").update(source).digest("hex");
-        if (hash !== pinned.sha256)
-          throw new Error("Canonical rule source is not a supported revision");
-        Object.assign(contract, pinned.contract, {
-          contractSource: `https://raw.githubusercontent.com${repository}/${provenance.reactDoctorCommit}/${pinned.path}`,
-          contractHash: hash,
-        });
-      } catch {
-        contract.contractIssue =
-          "Canonical exceptions/settings could not be verified at the detector revision; supply --rules";
-      }
-    }
+    await Promise.all(
+      contracts.map(async (contract) => {
+        const pinned = pinnedRuleContracts[contract.key];
+        if (!pinned) return;
+        contract.requiredEvidence = pinned.contract.requiredEvidence;
+        try {
+          const [org, name] = repository.slice(1).split("/");
+          const source = await loadPinnedClassificationSource(
+            { org, name, rootDir: ".", ref: provenance.reactDoctorCommit },
+            pinned.path,
+          );
+          const hash = createHash("sha256").update(source).digest("hex");
+          if (hash !== pinned.sha256)
+            throw new Error("Canonical rule source is not a supported revision");
+          Object.assign(contract, pinned.contract, {
+            contractSource: `https://raw.githubusercontent.com${repository}/${provenance.reactDoctorCommit}/${pinned.path}`,
+            contractHash: hash,
+          });
+        } catch {
+          contract.contractIssue =
+            "Canonical exceptions/settings could not be verified at the detector revision; supply --rules";
+        }
+      }),
+    );
     catalogCache.set(catalogUrl, contracts);
   }
   const enabledRuleKeys = new Set(provenance.ruleKeys);

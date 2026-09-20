@@ -13,24 +13,22 @@ import {
 import type { ClassificationSourceLoader } from "./prepare-classification.js";
 import { PinnedSourceMissingError, sourcePath } from "./prepare-classification.js";
 
-const configSchema = z
-  .object({
-    extends: z.string().optional(),
-    compilerOptions: z
-      .object({
-        jsx: z.string().optional(),
-        jsxFactory: z.string().optional(),
-        jsxFragmentFactory: z.string().optional(),
-        jsxImportSource: z.string().optional(),
-        noEmit: z.boolean().optional(),
-        emitDeclarationOnly: z.boolean().optional(),
-        allowJs: z.boolean().optional(),
-        outDir: z.string().optional(),
-      })
-      .optional(),
-    references: z.unknown().optional(),
-  })
-  .passthrough();
+const configSchema = z.looseObject({
+  extends: z.string().optional(),
+  compilerOptions: z
+    .object({
+      jsx: z.string().optional(),
+      jsxFactory: z.string().optional(),
+      jsxFragmentFactory: z.string().optional(),
+      jsxImportSource: z.string().optional(),
+      noEmit: z.boolean().optional(),
+      emitDeclarationOnly: z.boolean().optional(),
+      allowJs: z.boolean().optional(),
+      outDir: z.string().optional(),
+    })
+    .optional(),
+  references: z.unknown().optional(),
+});
 
 const unsupportedBuildConfigs = [
   ".babelrc",
@@ -62,6 +60,7 @@ export const loadClassificationBuildEvidence = async (
   let buildScript: string | undefined;
   let packageDirectory: string | undefined;
   const loaded = new Map<string, string | null>();
+  const fileIndexes = new Map<string, number>();
   const load = async (path: string): Promise<string | null> => {
     const safePath = sourcePath(".", path);
     if (loaded.has(safePath)) return loaded.get(safePath) ?? null;
@@ -81,6 +80,7 @@ export const loadClassificationBuildEvidence = async (
     }
     if (content.length > CLASSIFICATION_MAX_CONFIG_CHARACTERS)
       throw new Error("Build evidence exceeds the context limit");
+    fileIndexes.set(safePath, evidence.files.length);
     evidence.files.push({
       path: safePath,
       status: "present",
@@ -109,7 +109,8 @@ export const loadClassificationBuildEvidence = async (
       if (relativeSource !== ".." && !relativeSource.startsWith("../"))
         throw new Error("Source is excluded by the compiler output directory");
     }
-    const file = evidence.files.find((entry) => entry.path === path);
+    const fileIndex = fileIndexes.get(path);
+    const file = fileIndex === undefined ? undefined : evidence.files[fileIndex];
     if (file)
       file.facts = {
         compilerOptions: config.compilerOptions ?? {},
@@ -146,7 +147,8 @@ export const loadClassificationBuildEvidence = async (
             scripts: z.record(z.string(), z.string()).optional(),
           })
           .parse(JSON.parse(manifestText));
-        const file = evidence.files.find((entry) => entry.path === manifestPath);
+        const fileIndex = fileIndexes.get(manifestPath);
+        const file = fileIndex === undefined ? undefined : evidence.files[fileIndex];
         if (file)
           file.facts = { scripts: manifest.scripts ?? {}, hasBabel: manifest.babel !== undefined };
         if (manifest.babel !== undefined)

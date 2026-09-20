@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { z } from "zod";
+
 import {
   assessmentSchema,
   classificationCandidateSchema,
@@ -14,12 +16,19 @@ import type {
   ClassificationResult,
 } from "./classification-schema.js";
 import {
+  CLASSIFICATION_ASSESSMENT_VERSION,
+  CLASSIFICATION_POLICY_VERSION,
   CLASSIFICATION_MODEL,
   CLASSIFICATION_PROMPT_VERSION,
   CLASSIFICATION_SCHEMA_VERSION,
   EVALUATION_ARTIFACT_FILE_MODE,
 } from "./constants.js";
-import { classificationQuestions } from "./jev-classifier.js";
+import { classificationQuestions, classificationState } from "./jev-classifier.js";
+import {
+  classificationErrorEvidence,
+  ClassificationResponseError,
+} from "./classification-response-error.js";
+import { sanitizeClassificationEvidence } from "./utils/sanitize-classification-evidence.js";
 import { createConcurrencyLimit } from "./utils/create-concurrency-limit.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
 
@@ -67,6 +76,28 @@ export const classificationId = (candidate: ClassificationCandidate, threshold: 
         model: CLASSIFICATION_MODEL,
         promptVersion: CLASSIFICATION_PROMPT_VERSION,
         questions: classificationQuestions,
+        assessmentVersion: CLASSIFICATION_ASSESSMENT_VERSION,
+        policyVersion: CLASSIFICATION_POLICY_VERSION,
+      }),
+    )
+    .digest("hex");
+
+export const classificationAssessmentId = (candidate: ClassificationCandidate): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify({
+        state: classificationState(candidate),
+        repository: candidate.repository,
+        detectorCommit: candidate.detectorCommit,
+        ruleSetHash: candidate.ruleSetHash,
+        evaluatorSourceHash: candidate.evaluatorSourceHash,
+        schemaVersion: candidate.schemaVersion,
+        contextComplete: candidate.contextComplete,
+        contextIssue: candidate.contextIssue,
+        model: CLASSIFICATION_MODEL,
+        promptVersion: CLASSIFICATION_PROMPT_VERSION,
+        assessmentVersion: CLASSIFICATION_ASSESSMENT_VERSION,
+        questions: classificationQuestions,
       }),
     )
     .digest("hex");
@@ -77,8 +108,15 @@ const readCachedResult = async (
 ): Promise<ClassificationResult | null> => {
   try {
     const result = classificationResultSchema.parse(JSON.parse(await readFile(filePath, "utf8")));
-    return result.id === id &&
-      classificationId(result.candidate, result.threshold) === id &&
+    const expected =
+      result.candidate.schemaVersion === 1
+        ? classificationId(result.candidate, result.threshold)
+        : classificationAssessmentId(result.candidate);
+    return expected === id &&
+      result.id === classificationId(result.candidate, result.threshold) &&
+      result.assessmentId === id &&
+      result.assessmentVersion === CLASSIFICATION_ASSESSMENT_VERSION &&
+      result.policyVersion === CLASSIFICATION_POLICY_VERSION &&
       result.model === CLASSIFICATION_MODEL &&
       result.promptVersion === CLASSIFICATION_PROMPT_VERSION &&
       result.verdict !== "error" &&
@@ -94,14 +132,39 @@ const readCachedResult = async (
   }
 };
 
+const assessmentCacheSchema = z.object({
+  schemaVersion: z.literal(CLASSIFICATION_SCHEMA_VERSION),
+  assessmentId: z.string(),
+  assessmentVersion: z.literal(CLASSIFICATION_ASSESSMENT_VERSION),
+  model: z.literal(CLASSIFICATION_MODEL),
+  promptVersion: z.literal(CLASSIFICATION_PROMPT_VERSION),
+  candidate: classificationCandidateSchema,
+  assessment: assessmentSchema.nullable(),
+});
+
+const readCachedAssessment = async (
+  filePath: string,
+  id: string,
+): Promise<Pick<ClassificationResult, "assessment"> | null> => {
+  try {
+    const cached = assessmentCacheSchema.parse(JSON.parse(await readFile(filePath, "utf8")));
+    if (cached.assessmentId !== id || classificationAssessmentId(cached.candidate) !== id)
+      return null;
+    if (cached.candidate.contextComplete !== Boolean(cached.assessment)) return null;
+    return { assessment: cached.assessment };
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code !== "ENOENT") throw error;
+    return null;
+  }
+};
+
 const classifyCandidate = async (
   candidate: ClassificationCandidate,
   options: ClassificationOptions,
 ): Promise<{ result: ClassificationResult; cached: boolean }> => {
   const id = classificationId(candidate, options.threshold);
-  const cachePath = join(options.cacheDirectory, `${id}.json`);
-  const cachedResult = await readCachedResult(cachePath, id);
-  if (cachedResult) return { result: cachedResult, cached: true };
+  const assessmentId = candidate.schemaVersion === 1 ? id : classificationAssessmentId(candidate);
+  const cachePath = join(options.cacheDirectory, `${assessmentId}.json`);
   let result: ClassificationResult = {
     schemaVersion: CLASSIFICATION_SCHEMA_VERSION,
     id,
@@ -111,10 +174,38 @@ const classifyCandidate = async (
     threshold: options.threshold,
     verdict: "review",
     assessment: null,
+    assessmentId,
+    assessmentVersion: CLASSIFICATION_ASSESSMENT_VERSION,
+    policyVersion: CLASSIFICATION_POLICY_VERSION,
   };
+  const cachedResult =
+    candidate.schemaVersion === 1
+      ? await readCachedResult(cachePath, assessmentId)
+      : await readCachedAssessment(cachePath, assessmentId);
+  if (cachedResult)
+    return {
+      result: {
+        ...result,
+        assessment: cachedResult.assessment,
+        verdict: cachedResult.assessment
+          ? classifyAssessment(candidate, cachedResult.assessment, options.threshold)
+          : "review",
+      },
+      cached: true,
+    };
   if (candidate.contextComplete && candidate.code.trim()) {
     try {
-      const assessment = assessmentSchema.parse(await options.evaluate(candidate));
+      const response = await options.evaluate(candidate);
+      const parsed = assessmentSchema.safeParse(response);
+      if (!parsed.success)
+        throw new ClassificationResponseError("Invalid evaluation assessment", response);
+      const assessment = {
+        ...parsed.data,
+        provenance:
+          parsed.data.provenance === undefined
+            ? undefined
+            : sanitizeClassificationEvidence(parsed.data.provenance),
+      };
       result = {
         ...result,
         assessment,
@@ -122,14 +213,20 @@ const classifyCandidate = async (
       };
     } catch (error) {
       return {
-        result: { ...result, verdict: "error", error: toErrorMessage(error) },
+        result: {
+          ...result,
+          verdict: "error",
+          error: String(sanitizeClassificationEvidence(toErrorMessage(error))),
+          errorEvidence: sanitizeClassificationEvidence(classificationErrorEvidence(error)),
+        },
         cached: false,
       };
     }
   }
   const temporaryPath = `${cachePath}.${randomUUID()}.partial`;
   try {
-    await writeFile(temporaryPath, JSON.stringify(result), {
+    const cached = candidate.schemaVersion === 1 ? result : assessmentCacheSchema.parse(result);
+    await writeFile(temporaryPath, JSON.stringify(cached), {
       flag: "wx",
       mode: EVALUATION_ARTIFACT_FILE_MODE,
     });

@@ -42,6 +42,7 @@ const main = async (): Promise<void> => {
       output: { type: "string", default: ".fpfn" },
       input: { type: "string" },
       rules: { type: "string" },
+      population: { type: "string", default: "default" },
       "interval-minutes": { type: "string", default: "0" },
       "silent-files": { type: "string", default: String(CLASSIFICATION_SILENT_FILES_PER_PROJECT) },
       limit: { type: "string", default: String(CLASSIFICATION_LIMIT) },
@@ -56,6 +57,7 @@ const main = async (): Promise<void> => {
         "               -- <existing nr eval arguments>\n\n" +
         "Default: one FP-only Daytona scan → Jev classification → issues.ndjson.\n" +
         "Use --input run.ndjson to classify an existing scan instead of starting Daytona.\n" +
+        "Mining selects default-enabled rules; --population exhaustive includes optional stress policies.\n" +
         "A positive interval repeats until interrupted. Each cycle keeps its scan and results.\n" +
         "The shared cache resumes model calls; issues.ndjson deduplicates candidate IDs.\n" +
         "Requires AI_GATEWAY_API_KEY and, for fresh scans, DAYTONA_API_KEY.\n",
@@ -70,6 +72,7 @@ const main = async (): Promise<void> => {
   z.coerce.number().int().positive().parse(values.limit);
   z.coerce.number().int().positive().parse(values.concurrency);
   z.coerce.number().int().nonnegative().parse(values["silent-files"]);
+  z.enum(["default", "exhaustive"]).parse(values.population);
   if (!process.env.AI_GATEWAY_API_KEY || (!values.input && !process.env.DAYTONA_API_KEY)) {
     throw new Error("Set AI_GATEWAY_API_KEY and, for fresh scans, DAYTONA_API_KEY");
   }
@@ -112,6 +115,8 @@ const main = async (): Promise<void> => {
         values.limit,
         "--concurrency",
         values.concurrency,
+        "--population",
+        values.population,
         ...(values.rules ? ["--rules", values.rules] : []),
       ]);
       if (prepareExitCode !== 0)

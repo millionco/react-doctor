@@ -38,6 +38,29 @@ const parseLastCallExpression = (sourceText: string): ParsedCallExpression => {
 };
 
 describe("resolveExactLocalFunction", () => {
+  it.each([
+    `const create = (kind) => () => kind; const Local = { handler: create("state") };`,
+    `const create = () => { return () => 1; }; const Local = { handler: create() };`,
+  ])("resolves a literal-argument factory's returned function: %s", (setup) => {
+    const { callExpression, scopes } = parseLastCallExpression(`${setup}\nLocal.handler();`);
+    const resolved = resolveExactLocalFunction(callExpression.callee, scopes);
+    expect(resolved?.type).toBe("ArrowFunctionExpression");
+  });
+
+  it.each([
+    `const create = async () => () => 1; const Local = { handler: create() };`,
+    `function* create() { return () => 1; } const Local = { handler: create() };`,
+    `const create = (callback) => () => callback(); const Local = { handler: create(unknown) };`,
+    `const create = () => unknown; const Local = { handler: create() };`,
+    `const create = () => { sideEffect(); return () => 1; }; const Local = { handler: create() };`,
+    `const create = () => () => 1; const Local = { handler: create() }; mutate(Local);`,
+    `const create = () => () => 1; const Local = { handler: create() }; Local.handler = unknown;`,
+    `const create = () => create(); const Local = { handler: create() };`,
+  ])("keeps an uncertain factory member unresolved: %s", (setup) => {
+    const { callExpression, scopes } = parseLastCallExpression(`${setup}\nLocal.handler();`);
+    expect(resolveExactLocalFunction(callExpression.callee, scopes)).toBe(null);
+  });
+
   it("resolves a simple function reference", () => {
     const { callExpression, scopes } = parseLastCallExpression(`
         const helper = () => {};

@@ -34,6 +34,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getModuleNamespaceSource } from "../r3f/utils/get-module-namespace-source.js";
 import { isRulesOfHooksSuppressedAt } from "./rules-of-hooks-suppression.js";
+import { isLocalNonHookMemberCallee } from "./utils/is-local-non-hook-member-callee.js";
 
 // Port of `oxc_linter::rules::react::rules_of_hooks`. Enforces React's
 // Rules of Hooks:
@@ -216,6 +217,7 @@ const isHookCall = (
   ) {
     const callObject = stripParenExpression(callee.object);
     const propertyName = callee.property.name;
+    if (isLocalNonHookMemberCallee(callee, scopes)) return null;
     if (isPackageImportedNonReactHookMemberCallee(call, scopes)) return null;
     // Upstream's heuristic: a use-prefixed member call IS a hook iff
     // the object reads like a "namespace" — PascalCase identifier

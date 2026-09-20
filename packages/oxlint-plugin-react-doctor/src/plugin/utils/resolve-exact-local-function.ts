@@ -6,6 +6,7 @@ import { findProgramRoot } from "./find-program-root.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getEquivalentSymbols } from "./get-equivalent-symbols.js";
 import { getResolvedStaticPropertyName } from "./get-resolved-static-property-name.js";
+import { getSingleReturnExpression } from "./get-single-return-expression.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOnUnconditionalPath } from "./is-node-on-unconditional-path.js";
@@ -480,7 +481,19 @@ const resolveExactLocalFunctionInternal = (
         remainingDepth - 1,
       );
     }
-    return null;
+    if (!unwrappedExpression.arguments.every((argument) => isNodeOfType(argument, "Literal"))) {
+      return null;
+    }
+    const factory = resolveExactLocalFunctionInternal(
+      callee,
+      scopes,
+      visitedSymbolIds,
+      remainingDepth - 1,
+    );
+    if (!isFunctionLike(factory) || factory.async || factory.generator) return null;
+    const returnedExpression = getSingleReturnExpression(factory);
+    const returnedFunction = returnedExpression && stripParenExpression(returnedExpression);
+    return isFunctionLike(returnedFunction) ? returnedFunction : null;
   }
   if (isNodeOfType(unwrappedExpression, "MemberExpression")) {
     const propertyName = getStaticPropertyName(unwrappedExpression);

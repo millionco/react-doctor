@@ -122,4 +122,25 @@ describe("no-hydration-branch-on-browser-global — imported helper provenance",
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not crash on circular cross-file parameter dependencies (issue #1836)", () => {
+    writeFile(
+      "src/helpers-a.ts",
+      `import { checkB } from "./helpers-b";
+      export const checkA = (value) => checkB(value);`,
+    );
+    writeFile(
+      "src/helpers-b.ts",
+      `import { checkA } from "./helpers-a";
+      export const checkB = (value) => checkA(value);`,
+    );
+    const result = runConsumer(`
+      "use client";
+      import { checkA } from "./helpers-a";
+      const AnimatedBackgroundImage = () =>
+        checkA(typeof window !== "undefined") ? <video /> : <Image />;
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+  });
 });

@@ -145,7 +145,7 @@ const createArgumentResolutionState = (
   argumentContext: RuleContext,
   currentContext: RuleContext,
 ): HydrationResolutionState =>
-  argumentContext === currentContext ? state : { ...state, visitedSymbolIds: new Set() };
+  argumentContext === currentContext ? state : state;
 
 const findGuardingIfStatements = (
   node: EsTreeNode,

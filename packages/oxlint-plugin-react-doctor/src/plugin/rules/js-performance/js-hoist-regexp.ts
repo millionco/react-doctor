@@ -12,7 +12,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
+import { getStaticStringExpression } from "../../utils/get-static-string-expression.js";
 import type { ScopeDescriptor } from "../../semantic/scope-analysis.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -44,23 +44,11 @@ const GLOBAL_BUILTIN_NAMES: ReadonlySet<string> = new Set([
 const STRING_PROTOTYPE_PATH = "String.prototype";
 const REGEXP_PROTOTYPE_PATH = "RegExp.prototype";
 
-const getStaticStringValue = (argument: EsTreeNode | null | undefined): string | null => {
-  if (!argument) return null;
-  const unwrappedArgument = stripParenExpression(argument);
-  if (isNodeOfType(unwrappedArgument, "Literal") && typeof unwrappedArgument.value === "string") {
-    return unwrappedArgument.value;
-  }
-  if (isNodeOfType(unwrappedArgument, "TemplateLiteral")) {
-    return getStaticTemplateLiteralValue(unwrappedArgument);
-  }
-  return null;
-};
-
 const getEffectiveRegExpFlags = (
   patternArgument: EsTreeNode | null | undefined,
   flagsArgument: EsTreeNode | null | undefined,
 ): string | null => {
-  if (flagsArgument) return getStaticStringValue(flagsArgument);
+  if (flagsArgument) return getStaticStringExpression(flagsArgument);
   if (!patternArgument) return "";
   const unwrappedPattern = stripParenExpression(patternArgument);
   if (isNodeOfType(unwrappedPattern, "Literal") && unwrappedPattern.value instanceof RegExp) {
@@ -365,7 +353,7 @@ const getCallRegExpHazard = (
     targetPath === "global" ? "globalRegExpReplaced" : "replaceAllIntegrityLost";
   const guardedPropertyName = targetPath === "global" ? "RegExp" : "replaceAll";
   if (isSinglePropertyMutation) {
-    const propertyName = getStaticStringValue(node.arguments?.[1]);
+    const propertyName = getStaticStringExpression(node.arguments?.[1]);
     return propertyName === null || propertyName === guardedPropertyName ? mutationHazard : "none";
   }
   if (!isPropertyCollectionMutation) return "none";

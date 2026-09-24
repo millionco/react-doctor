@@ -1,19 +1,14 @@
 import type { PackageJson } from "../types/index.js";
+import { hasAnyDependency } from "./has-any-dependency.js";
 
-const SSR_DEPENDENCY_NAMES = new Set([
+const SSR_DEPENDENCY_NAMES = [
   "@react-router/cloudflare",
   "@react-router/node",
   "@react-router/serve",
   "vike",
   "vite-plugin-ssr",
-]);
+] as const;
 
 export const isPackageJsonSsrAware = (packageJson: PackageJson): boolean => {
-  const allDependencies = {
-    ...packageJson.peerDependencies,
-    ...packageJson.dependencies,
-    ...packageJson.devDependencies,
-    ...packageJson.optionalDependencies,
-  };
-  return Object.keys(allDependencies).some((packageName) => SSR_DEPENDENCY_NAMES.has(packageName));
+  return hasAnyDependency(packageJson, SSR_DEPENDENCY_NAMES);
 };

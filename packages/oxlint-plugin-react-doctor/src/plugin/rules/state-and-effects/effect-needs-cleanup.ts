@@ -3408,7 +3408,7 @@ const callbackReturnsCleanupForUsage = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
   context: RuleContext,
-  isReactRefCallback: boolean = false,
+  isReactRefCallback = false,
 ): boolean => {
   if (
     !isNodeOfType(callback, "ArrowFunctionExpression") &&
@@ -6790,19 +6790,6 @@ const isFunctionForwardedToReactRef = (functionNode: EsTreeNode, context: RuleCo
   });
 };
 
-const isFunctionUsedAsUseCallbackReactRef = (
-  functionNode: EsTreeNode,
-  context: RuleContext,
-): boolean => {
-  if (!isFunctionLike(functionNode) || !hasNullableFirstParameter(functionNode)) return false;
-  const functionRoot = findTransparentExpressionRoot(functionNode);
-  const callExpression = functionRoot.parent;
-  return Boolean(
-    isNodeOfType(callExpression, "CallExpression") &&
-    isReactHookCall(callExpression, "useCallback", context.scopes),
-  );
-};
-
 const isFunctionReturnedFromReactHook = (
   functionNode: EsTreeNode,
   context: RuleContext,
@@ -6839,9 +6826,19 @@ const isFunctionReturnedFromReactHook = (
   if (
     symbol.references.some((reference) => {
       const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-      const property = referenceRoot.parent;
-      return isNodeOfType(property, "Property") && property.value === referenceRoot
-        ? isReturnedProperty(property)
+      const parent = referenceRoot.parent;
+      if (
+        !requireRefPropertyName &&
+        isNodeOfType(parent, "ReturnStatement") &&
+        parent.argument === referenceRoot
+      ) {
+        const ownerFunction = findEnclosingFunction(parent);
+        return Boolean(
+          ownerFunction && isReactHookName(getFunctionBindingIdentifier(ownerFunction)?.name ?? ""),
+        );
+      }
+      return isNodeOfType(parent, "Property") && parent.value === referenceRoot
+        ? isReturnedProperty(parent)
         : false;
     })
   ) {
@@ -6972,16 +6969,12 @@ const isReturnedHookPropertyExclusivelyForwardedToReactRef = (
   return didFindForwardedProperty;
 };
 
-const isFunctionUsedAsReactRef = (functionNode: EsTreeNode, context: RuleContext): boolean => {
-  if (isFunctionUsedAsUseCallbackReactRef(functionNode, context)) return true;
-  return (
-    isFunctionForwardedToReactRef(functionNode, context) ||
-    isFunctionReturnedFromReactHook(functionNode, context, true) ||
-    isReturnedHookPropertyExclusivelyForwardedToReactRef(functionNode, context) ||
-    (hasNullableFirstParameter(functionNode) &&
-      isFunctionReturnedFromReactHook(functionNode, context, false))
-  );
-};
+const isFunctionUsedAsReactRef = (functionNode: EsTreeNode, context: RuleContext): boolean =>
+  isFunctionForwardedToReactRef(functionNode, context) ||
+  isFunctionReturnedFromReactHook(functionNode, context, true) ||
+  isReturnedHookPropertyExclusivelyForwardedToReactRef(functionNode, context) ||
+  (hasNullableFirstParameter(functionNode) &&
+    isFunctionReturnedFromReactHook(functionNode, context, false));
 
 const isExplicitCleanupReturningJsxProp = (
   functionNode: EsTreeNode,

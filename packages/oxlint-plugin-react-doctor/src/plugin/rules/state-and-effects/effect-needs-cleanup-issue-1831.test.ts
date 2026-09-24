@@ -76,4 +76,44 @@ export const useContainerWidth = () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("observe");
   });
+  test("reports cleanup returned by an ordinary nullable event callback", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      import { useCallback } from "react";
+      export function Component() {
+        const observe = useCallback((node: HTMLDivElement | null) => {
+          if (node === null) return;
+          const observer = new ResizeObserver(() => {});
+          observer.observe(node);
+          return () => observer.disconnect();
+        }, []);
+        return <button onClick={() => { observe(document.querySelector("div")); }}>Observe</button>;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  test("reports a ref callback with an uncleaned path after resource acquisition", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      import { useCallback } from "react";
+      export function Component({ skipCleanup }) {
+        const ref = useCallback((node: HTMLDivElement | null) => {
+          if (node === null) return;
+          const observer = new ResizeObserver(() => {});
+          observer.observe(node);
+          if (skipCleanup) return;
+          return () => observer.disconnect();
+        }, [skipCleanup]);
+        return <div ref={ref} />;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -1,13 +1,10 @@
+import type { RethrowPredicate } from "./catch-clause-rethrows-caught.js";
 import { catchClauseRethrowsCaught } from "./catch-clause-rethrows-caught.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isImmediatelyInvokedFunction } from "./is-immediately-invoked-function.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-
-interface RethrowPredicate {
-  (throwStatement: EsTreeNodeOfType<"ThrowStatement">, caughtBindingName: string): boolean;
-}
 
 // The enclosing TryStatement that SWALLOWS a control-flow error (a thrown
 // redirect()/notFound()) raised at `node`: its `try` BLOCK contains `node`,

@@ -402,7 +402,7 @@ export default async function Page() {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("still flags when mutation is in the second await, not the first", () => {
+  it("stays silent when the second await mutates data read by the first", () => {
     const result = runRule(
       serverSequentialIndependentAwait,
       `export default async function handler() {
@@ -412,6 +412,6 @@ export default async function Page() {
 }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 });

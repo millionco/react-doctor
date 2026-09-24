@@ -287,9 +287,13 @@ export const nextjsNoSideEffectInGetHandler = defineRule({
               helperFunction,
               locallyScopedSafeBindings,
             );
+            // The helper may build its own response object (`const headers =
+            // new Headers(...)`) — a `.set()` on that never leaves the
+            // helper's return value.
             const effectiveSafeBindings = new Set([
               ...locallyScopedSafeBindings,
               ...helperParameterSafeBindings,
+              ...collectLocallyScopedSafeBindings(helperBody),
             ]);
 
             const sideEffectInHelper = findSideEffect(helperBody, {

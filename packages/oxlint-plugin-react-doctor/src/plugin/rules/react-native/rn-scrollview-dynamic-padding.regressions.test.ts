@@ -192,6 +192,61 @@ const C = () => <FlatList contentContainerStyle={{ paddingTop: spacing(4), paddi
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  // Issue #1785: a header-presence ternary between two literals.
+  it("stays silent on a ternary between static literals", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const Grid = ({ ListHeaderComponent }) => (
+  <FlashList
+    data={rows}
+    renderItem={renderRow}
+    ListHeaderComponent={ListHeaderComponent}
+    contentContainerStyle={{ paddingTop: ListHeaderComponent ? 0 : 16 }}
+  />
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a ternary between static consts and a nested static ternary", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const HEADER_GAP = 0;
+const DEFAULT_GAP = 16;
+const C = ({ hasHeader, compact }) => (
+  <ScrollView
+    contentContainerStyle={{ paddingTop: compact ? 8 : hasHeader ? HEADER_GAP : DEFAULT_GAP }}
+  />
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a ternary whose consequent tracks a live measurement", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ isKeyboardOpen, keyboardHeight }) => (
+  <ScrollView contentContainerStyle={{ paddingBottom: isKeyboardOpen ? keyboardHeight : 0 }} />
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a ternary whose alternate reads a dynamic inset", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ hasTabBar }) => {
+  const insets = useSafeAreaInsets();
+  return <ScrollView contentContainerStyle={{ paddingBottom: hasTabBar ? 0 : insets.bottom }} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("stays silent on a negated static const", () => {
     const result = runRule(
       rnScrollviewDynamicPadding,

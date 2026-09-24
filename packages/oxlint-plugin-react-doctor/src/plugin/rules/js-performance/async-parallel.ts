@@ -107,7 +107,8 @@ const sequenceContainsSerializationSignal = (
     if (isNonCallAwait(statement)) return true;
     const awaitedCall = getAwaitedCall(statement);
     if (awaitedCall && hasPossibleStaticMemberCallWrite(awaitedCall, context.scopes)) return true;
-    if (awaitedCall && findSideEffect(awaitedCall)) return true;
+    if (awaitedCall && findSideEffect(awaitedCall, { shouldTraverseNestedFunction: () => false }))
+      return true;
     const orderIndependentFunction = awaitedCall
       ? getOrderIndependentLocalFunction(awaitedCall, context.scopes)
       : null;

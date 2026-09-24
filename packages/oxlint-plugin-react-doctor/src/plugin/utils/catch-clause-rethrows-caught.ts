@@ -4,15 +4,17 @@ import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
 
-interface RethrowPredicate {
-  (throwStatement: EsTreeNodeOfType<"ThrowStatement">, caughtBindingName: string): boolean;
+export interface RethrowPredicate {
+  (
+    call: EsTreeNodeOfType<"CallExpression">,
+    caughtBinding: EsTreeNodeOfType<"Identifier">,
+  ): boolean;
 }
 
 const doesThrowEscapeCatchClause = (
-  throwStatement: EsTreeNodeOfType<"ThrowStatement">,
+  throwStatement: EsTreeNode,
   handler: EsTreeNodeOfType<"CatchClause">,
   frameworkRethrowPredicate?: RethrowPredicate,
-  caughtBindingName?: string,
 ): boolean => {
   let child: EsTreeNode = throwStatement;
   let ancestor: EsTreeNode | null | undefined = throwStatement.parent;
@@ -57,26 +59,17 @@ export const catchClauseRethrowsCaught = (
   walkAst(handler.body, (child: EsTreeNode) => {
     if (didRethrow) return false;
     if (child !== handler.body && isFunctionLike(child)) return false;
-    
-    if (frameworkRethrowPredicate && isNodeOfType(child, "ExpressionStatement")) {
-      const expression = child.expression;
-      if (
-        isNodeOfType(expression, "CallExpression") &&
-        frameworkRethrowPredicate(
-          { type: "ThrowStatement", argument: null, parent: child } as EsTreeNodeOfType<"ThrowStatement">,
-          caughtBindingName,
-        )
-      ) {
-        didRethrow = true;
-        return false;
-      }
-    }
-    
-    if (
+    const isCaughtThrow =
       isNodeOfType(child, "ThrowStatement") &&
       isNodeOfType(child.argument, "Identifier") &&
-      child.argument.name === caughtBindingName &&
-      doesThrowEscapeCatchClause(child, handler, frameworkRethrowPredicate, caughtBindingName)
+      child.argument.name === caughtBindingName;
+    const isFrameworkRethrow =
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(handler.param, "Identifier") &&
+      frameworkRethrowPredicate?.(child, handler.param);
+    if (
+      (isCaughtThrow || isFrameworkRethrow) &&
+      doesThrowEscapeCatchClause(child, handler, frameworkRethrowPredicate)
     ) {
       didRethrow = true;
       return false;

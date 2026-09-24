@@ -183,4 +183,33 @@ export const loadUser = async () => getUser({ id: 1 }, { include: ["posts"] });`
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+  it("stays silent when a cached function alias is reassigned", () => {
+    const result = runRule(
+      serverCacheWithObjectLiteral,
+      `
+      import { cache } from "react";
+      const read = cache(load);
+      let alias = read;
+      alias = other;
+      export const result = alias({ id: 1 });
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports through a chain of immutable cached function aliases", () => {
+    const result = runRule(
+      serverCacheWithObjectLiteral,
+      `
+      import { cache } from "react";
+      const read = cache(load);
+      const alias = read;
+      const secondAlias = alias;
+      export const result = secondAlias({ id: 1 });
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

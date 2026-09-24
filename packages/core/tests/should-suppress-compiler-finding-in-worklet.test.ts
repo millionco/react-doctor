@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import type { ProjectInfo } from "../src/types/index.js";
 import { shouldSuppressCompilerFindingInWorklet } from "../src/runners/oxlint/should-suppress-compiler-finding-in-worklet.js";
 
 let temporaryRoot: string;
@@ -15,8 +14,8 @@ afterEach(() => {
   fs.rmSync(temporaryRoot, { recursive: true, force: true });
 });
 
-const reanimatedProject = { hasReanimated: true } as ProjectInfo;
-const plainProject = { hasReanimated: false } as ProjectInfo;
+const reanimatedProject = { hasReanimated: true };
+const plainProject = { hasReanimated: false };
 
 const writeFixture = (relativePath: string, contents: string): string => {
   const absolutePath = path.join(temporaryRoot, relativePath);

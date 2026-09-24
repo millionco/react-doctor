@@ -128,8 +128,7 @@ const declarationAwaitsRequestScopedCall = (declaration: EsTreeNode): boolean =>
 
 // True when the first declaration awaits a guard / side-effect gate, so its
 // ordering before the next await is intentional (`await requireSession()`,
-// `await db.connect()`, `await beginTransaction()`), or when the first
-// declaration awaits a mutating HTTP request.
+// `await db.connect()`, `await beginTransaction()`).
 const declarationAwaitsGate = (declaration: EsTreeNode, context: RuleContext): boolean => {
   if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
   for (const declarator of declaration.declarations ?? []) {
@@ -138,8 +137,6 @@ const declarationAwaitsGate = (declaration: EsTreeNode, context: RuleContext): b
     if (!isNodeOfType(argument, "CallExpression")) continue;
     if (hasPossibleStaticMemberCallWrite(argument, context.scopes)) return true;
     if (getOrderIndependentLocalFunction(argument, context.scopes) !== null) continue;
-    const sideEffectDescription = findSideEffect(argument);
-    if (sideEffectDescription) return true;
     const calleeName = getCalleeName(argument);
     if (!calleeName) continue;
     if (isAuthGuardName(calleeName)) return true;
@@ -174,6 +171,7 @@ const declarationAwaitsIntentionalSequence = (
     if (!isNodeOfType(declarator.init, "AwaitExpression")) continue;
     const argument = declarator.init.argument;
     if (!isNodeOfType(argument, "CallExpression")) continue;
+    if (findSideEffect(argument, { shouldTraverseNestedFunction: () => false })) return true;
     const localFunction = getOrderIndependentLocalFunction(argument, context.scopes);
     const calleeName = getCalleeName(argument);
     if (

@@ -122,4 +122,66 @@ describe("no-hydration-branch-on-browser-global — imported helper provenance",
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not crash on circular cross-file parameter dependencies (issue #1836)", () => {
+    writeFile(
+      "src/helpers-a.ts",
+      `import { checkB } from "./helpers-b";
+      export const checkA = (value) => checkB(value);`,
+    );
+    writeFile(
+      "src/helpers-b.ts",
+      `import { checkA } from "./helpers-a";
+      export const checkB = (value) => checkA(value);`,
+    );
+    const result = runConsumer(`
+      "use client";
+      import { checkA } from "./helpers-a";
+      const AnimatedBackgroundImage = () =>
+        checkA(typeof window !== "undefined") ? <video /> : <Image />;
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports a browser predicate forwarded through imported helpers with matching symbol IDs", () => {
+    writeFile("src/identity.ts", `export const identity = (value) => value;`);
+    writeFile(
+      "src/helpers-b.ts",
+      `import { identity } from "./identity";
+      export const checkB = (value) => identity(value);`,
+    );
+    writeFile(
+      "src/helpers-a.ts",
+      `import { checkB } from "./helpers-b";
+      export const checkA = (value) => checkB(value);`,
+    );
+    const result = runConsumer(`
+      "use client";
+      import { checkA } from "./helpers-a";
+      const AnimatedBackgroundImage = () =>
+        checkA(typeof window !== "undefined") ? <video /> : <Image />;
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not cycle through colliding caller and imported helper parameter IDs", () => {
+    writeFile("src/identity.ts", `export const identity = (value) => value;`);
+    writeFile(
+      "src/helpers.ts",
+      `import { identity } from "./identity";
+      export const check = (value) => identity(value);`,
+    );
+    const result = runConsumer(`
+      "use client";
+      import { check } from "./helpers";
+      export default (loading) => check(loading) ? <video /> : <Image />;
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

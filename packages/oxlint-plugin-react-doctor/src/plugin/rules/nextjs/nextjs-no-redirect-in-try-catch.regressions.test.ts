@@ -335,7 +335,7 @@ export default async function Page() {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("stays silent when a local unstable_rethrow shadows the import", () => {
+  it("reports when a local unstable_rethrow shadows the import", () => {
     const result = runRule(
       nextjsNoRedirectInTryCatch,
       `import { redirect } from "next/navigation";
@@ -350,5 +350,49 @@ export default async function Page() {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+  it.each([
+    `try { unstable_rethrow(error); } catch (inner) { console.error(inner); }`,
+    `{ const error = new Error("other"); unstable_rethrow(error); }`,
+  ])("reports when the framework rethrow does not forward the caught error: %s", (catchBody) => {
+    const result = runRule(
+      nextjsNoRedirectInTryCatch,
+      `
+      import { redirect, unstable_rethrow } from "next/navigation";
+      export function Page() {
+        try { redirect("/done"); } catch (error) { ${catchBody} }
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("reports namespace navigation when the catch swallows the error", () => {
+    const result = runRule(
+      nextjsNoRedirectInTryCatch,
+      `
+      import * as navigation from "next/navigation";
+      export function Page() {
+        try { navigation.redirect("/done"); } catch (error) { console.error(error); }
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+  it("accepts a framework rethrow forwarded through a nested catch", () => {
+    const result = runRule(
+      nextjsNoRedirectInTryCatch,
+      `
+      import { redirect, unstable_rethrow } from "next/navigation";
+      export function Page() {
+        try { redirect("/done"); } catch (error) {
+          try { unstable_rethrow(error); } catch (inner) { unstable_rethrow(inner); }
+        }
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 });

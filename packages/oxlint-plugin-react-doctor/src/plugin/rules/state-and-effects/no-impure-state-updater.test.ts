@@ -132,6 +132,37 @@ describe("no-impure-state-updater", () => {
        };`,
     ],
     [
+      "a wrapper that forwards the updater and also sets other state",
+      `import { useState } from "react";
+       const Counter = () => {
+         const [count, setCount] = useState(0);
+         const [dirty, setDirty] = useState(false);
+         const updateCount = (updater) => {
+           setDirty(true);
+           setCount(updater);
+         };
+         updateCount((previousCount) => {
+           localStorage.setItem("count", String(previousCount));
+           return previousCount + 1;
+         });
+         return count;
+       };`,
+    ],
+    [
+      "an updater forwarded through two same-file wrappers",
+      `import { useState } from "react";
+       const Counter = () => {
+         const [count, setCount] = useState(0);
+         const applyCount = (updater) => setCount(updater);
+         const updateCount = (updater) => applyCount(updater);
+         updateCount((previousCount) => {
+           localStorage.setItem("count", String(previousCount));
+           return previousCount + 1;
+         });
+         return count;
+       };`,
+    ],
+    [
       "a deep captured assignment",
       `import { useState } from "react";
        const cache = { nested: { value: 0 } };
@@ -406,6 +437,37 @@ describe("no-impure-state-updater", () => {
        };
        declare function fetchA(): Promise<number>;
        declare function fetchB(): Promise<number>;`,
+    ],
+    [
+      "an async operation callback run by a busy-tracking helper",
+      `import { useCallback, useState } from "react";
+       const Repro = () => {
+         const [busy, setBusy] = useState(false);
+         const [value, setValue] = useState("");
+         const run = useCallback(async (operation) => {
+           setBusy(true);
+           try { await operation(); }
+           finally { setBusy(false); }
+         }, []);
+         const first = () => run(async () => {
+           await Promise.resolve();
+           setValue("first");
+         });
+         return <button type="button" disabled={busy} onClick={first}>{value || "Run"}</button>;
+       };`,
+    ],
+    [
+      "a callback whose wrapper only calls it and stores the result",
+      `import { useState } from "react";
+       const Panel = () => {
+         const [result, setResult] = useState(null);
+         const measure = (compute) => setResult(compute());
+         const refresh = () => measure(() => {
+           localStorage.setItem("measured", "true");
+           return 1;
+         });
+         return <button onClick={refresh}>{result}</button>;
+       };`,
     ],
     [
       "a callback with adjacent side effect outside updater",

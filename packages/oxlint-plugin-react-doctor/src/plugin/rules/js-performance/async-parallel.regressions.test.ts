@@ -399,4 +399,70 @@ async function loadDashboard(api) {
 `,
     );
   });
+
+  it("stays silent when the first await is a POST mutation", () => {
+    expectPass(
+      `export default async function handler() {
+  const created = await fetch("/api/users", { method: "POST", body: data });
+  const user = await fetch("/api/user");
+  const posts = await fetch("/api/posts");
+  return { created, user, posts };
+}`,
+    );
+  });
+
+  it("stays silent when any await is a PUT mutation", () => {
+    expectPass(
+      `export default async function handler() {
+  const user = await fetch("/api/user");
+  const updated = await fetch("/api/users/1", { method: "PUT", body: data });
+  const posts = await fetch("/api/posts");
+  return { user, updated, posts };
+}`,
+    );
+  });
+
+  it("stays silent when any await is a PATCH mutation", () => {
+    expectPass(
+      `export default async function handler() {
+  const user = await fetch("/api/user");
+  const posts = await fetch("/api/posts");
+  const patched = await fetch("/api/users/1", { method: "PATCH", body: data });
+  return { user, posts, patched };
+}`,
+    );
+  });
+
+  it("stays silent when any await is a DELETE mutation", () => {
+    expectPass(
+      `export default async function handler() {
+  const user = await fetch("/api/user");
+  const posts = await fetch("/api/posts");
+  const deleted = await fetch("/api/users/1", { method: "DELETE" });
+  return { user, posts, deleted };
+}`,
+    );
+  });
+
+  it("stays silent for lowercase mutating method names", () => {
+    expectPass(
+      `export default async function handler() {
+  const created = await fetch("/api/users", { method: "post", body: data });
+  const user = await fetch("/api/user");
+  const posts = await fetch("/api/posts");
+  return { created, user, posts };
+}`,
+    );
+  });
+
+  it("still flags when all fetches are GET", () => {
+    expectFail(
+      `export default async function handler() {
+  const user = await fetch("/api/user", { method: "GET" });
+  const posts = await fetch("/api/posts", { method: "GET" });
+  const comments = await fetch("/api/comments", { method: "GET" });
+  return { user, posts, comments };
+}`,
+    );
+  });
 });

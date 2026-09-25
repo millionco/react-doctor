@@ -1,10 +1,10 @@
 import { NEXTJS_NAVIGATION_FUNCTIONS } from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findGuardingTryStatement } from "../../utils/find-guarding-try-statement.js";
-import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
 
 export const nextjsNoRedirectInTryCatch = defineRule({
   id: "nextjs-no-redirect-in-try-catch",
@@ -16,21 +16,36 @@ export const nextjsNoRedirectInTryCatch = defineRule({
     "Move `redirect()` or `notFound()` outside the try block, or rethrow in `catch`, because these APIs throw control-flow errors that catch blocks swallow.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isNodeOfType(node.callee, "Identifier")) return;
-      // Resolve to the actual next/navigation export so a local function of the
-      // same name (`const redirect = ...`) is never flagged.
-      const importedName = getImportedNameFromModule(node, node.callee.name, "next/navigation");
-      if (!importedName || !NEXTJS_NAVIGATION_FUNCTIONS.has(importedName)) return;
+      const navigationReference = resolveImportedApiReference(node.callee, context.scopes);
+      if (
+        navigationReference?.source !== "next/navigation" ||
+        !navigationReference.importedName ||
+        !NEXTJS_NAVIGATION_FUNCTIONS.has(navigationReference.importedName)
+      )
+        return;
 
-      // findGuardingTryStatement resolves the try/catch that actually
-      // swallows the thrown control-flow error, climbing past re-throwing
-      // catches, bare try/finally, and IIFE boundaries.
-      const guardingTry = findGuardingTryStatement(node);
+      const frameworkRethrowPredicate = (
+        expression: EsTreeNodeOfType<"CallExpression">,
+        caughtBinding: EsTreeNodeOfType<"Identifier">,
+      ): boolean => {
+        const rethrowReference = resolveImportedApiReference(expression.callee, context.scopes);
+        if (
+          rethrowReference?.source !== "next/navigation" ||
+          rethrowReference.importedName !== "unstable_rethrow"
+        )
+          return false;
+        const argument = expression.arguments[0];
+        if (!isNodeOfType(argument, "Identifier")) return false;
+        const caughtSymbol = context.scopes.symbolFor(caughtBinding);
+        return Boolean(caughtSymbol && context.scopes.symbolFor(argument) === caughtSymbol);
+      };
+
+      const guardingTry = findGuardingTryStatement(node, frameworkRethrowPredicate);
       if (!guardingTry) return;
 
       context.report({
         node,
-        message: `${node.callee.name}() inside try-catch gets swallowed, so the redirect silently fails.`,
+        message: `${navigationReference.importedName}() inside try-catch gets swallowed, so the redirect silently fails.`,
       });
     },
   }),

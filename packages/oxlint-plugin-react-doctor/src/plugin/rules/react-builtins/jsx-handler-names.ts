@@ -166,6 +166,7 @@ export const jsxHandlerNames = defineRule({
   id: "jsx-handler-names",
   title: "Inconsistent event handler names",
   severity: "warn",
+  tags: ["react-jsx-only"],
   // Stylistic naming convention rule — the upstream pattern
   // (`onClick={handleClick}`) is widely-followed but not universal.
   // The rule also fires on solid-js `<Show when={props.onFoo}>` and

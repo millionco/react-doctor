@@ -2209,6 +2209,7 @@
       "category": "Maintainability",
       "framework": "global",
       "requires": ["react"],
+      "tags": ["react-jsx-only"],
       "defaultEnabled": false,
       "isScanRule": false
     }
@@ -7869,6 +7870,7 @@
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],
+      "tags": ["react-jsx-only"],
       "isScanRule": false
     }
   },
@@ -8395,7 +8397,7 @@
       "category": "Maintainability",
       "framework": "global",
       "disabledWhen": ["react-compiler"],
-      "tags": ["test-noise"],
+      "tags": ["test-noise", "react-jsx-only"],
       "defaultEnabled": false,
       "isScanRule": false
     }

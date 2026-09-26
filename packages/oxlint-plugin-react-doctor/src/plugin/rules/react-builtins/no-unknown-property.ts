@@ -13,7 +13,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
-import { fileImportsNonReactJsxDialect } from "../../utils/non-react-jsx-dialect.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 interface NoUnknownPropertySettings {
@@ -89,38 +88,15 @@ export const noUnknownProperty = defineRule({
   id: "no-unknown-property",
   title: "Unknown DOM property",
   severity: "warn",
+  tags: ["react-jsx-only"],
   recommendation:
     "Use the prop name React expects, like `className`, `htmlFor`, or `tabIndex`, so the attribute is applied correctly.",
   create: (context) => {
     const { ignore = [], requireDataLowercase = false } = resolveSettings(context.settings);
     const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const ignoreSet = new Set(ignore);
-    let fileIsNonReactJsx = false;
-
     return {
-      Program(node: EsTreeNodeOfType<"Program">) {
-        fileIsNonReactJsx = fileImportsNonReactJsxDialect(node);
-      },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        // Solid-distinctive `classList={{…}}` attribute — only the
-        // object-value shape (`classList={{foo: true}}`) is unique to
-        // Solid. A plain `classList={...}` in a React file is just a
-        // user mistake we should still flag as an unknown prop, so we
-        // require the ObjectExpression form before promoting the entire
-        // file to a non-React dialect.
-        if (!fileIsNonReactJsx) {
-          for (const attribute of node.attributes) {
-            if (!isNodeOfType(attribute, "JSXAttribute")) continue;
-            if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
-            if (attribute.name.name !== "classList") continue;
-            const value = attribute.value;
-            if (!isNodeOfType(value, "JSXExpressionContainer")) continue;
-            if (!isNodeOfType(value.expression, "ObjectExpression")) continue;
-            fileIsNonReactJsx = true;
-            break;
-          }
-        }
-        if (fileIsNonReactJsx) return;
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
         const elementType = resolveJsxElementType(node);
         const firstCharacter = elementType.charCodeAt(0);

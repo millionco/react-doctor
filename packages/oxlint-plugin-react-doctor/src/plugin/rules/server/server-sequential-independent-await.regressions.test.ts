@@ -323,4 +323,43 @@ export default async function Page() {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("flags serialized-queue method calls where syntactic independence cannot prove runtime independence (#1840)", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `class Repository {
+  private tail: Promise<void> = Promise.resolve();
+  private serialize<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(operation, operation);
+    this.tail = result.then(() => undefined, () => undefined);
+    return result;
+  }
+  private runSqliteRead(kind: string): Promise<string[]> {
+    return this.serialize(async () => [kind]);
+  }
+  async readSnapshot(): Promise<string[]> {
+    const collectionRows = await this.runSqliteRead('collection');
+    const binderRows = await this.runSqliteRead('binders');
+    return [...collectionRows, ...binderRows];
+  }
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags async facades over synchronous work where syntactic await cannot prove asynchrony (#1840)", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `const files = new Set(['a', 'b']);
+const cache = { exists: async (path: string) => files.has(path) };
+async function readMetadata(): Promise<string[]> {
+  const hasConfig = await cache.exists('config.json');
+  const hasManifest = await cache.exists('manifest.json');
+  return [hasConfig ? 'config' : '', hasManifest ? 'manifest' : ''].filter(Boolean);
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

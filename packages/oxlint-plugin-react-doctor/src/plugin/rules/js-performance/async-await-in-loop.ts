@@ -1313,7 +1313,7 @@ export const asyncAwaitInLoop = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Collect the items, then use `await Promise.all(items.map(...))` so independent work runs at the same time",
+    "If the work is truly independent (no shared queues, transactions, ordering requirements, or synchronous facades), consider parallelizing with `await Promise.all(items.map(...))`. Verify independence before applying.",
   create: (context: RuleContext) => {
     let hasTestLibraryImport = false;
     const inspectLoop = (
@@ -1345,7 +1345,7 @@ export const asyncAwaitInLoop = defineRule({
       if (firstAwait) {
         context.report({
           node: firstAwait,
-          message: `This makes the ${label} slow because each await runs one after another, so collect the independent calls & run them together with \`await Promise.all(items.map(...))\``,
+          message: `This ${label} runs awaits sequentially. Parallelization may improve performance if work is truly independent (no shared queues, transactions, or ordering requirements). Verify before applying \`await Promise.all(items.map(...))\`.`,
         });
       }
     };
@@ -1399,7 +1399,7 @@ export const asyncAwaitInLoop = defineRule({
           const message =
             methodName === "forEach"
               ? "Async callback in .forEach silently drops every await, so the work never finishes before the loop moves on. Use a `for…of` loop, or `await Promise.all(items.map(async (item) => {...}))`"
-              : `Async callback in .${methodName} runs the awaits one after another, so it is slow. Use \`await Promise.all(items.map(async (item) => {...}))\` to run them at the same time`;
+              : `Async callback in .${methodName} runs awaits sequentially. Parallelization may improve performance if work is truly independent (no shared queues, transactions, or ordering requirements). Consider \`await Promise.all(items.map(async (item) => {...}))\`.`;
           context.report({ node: firstAwait, message });
         }
       },

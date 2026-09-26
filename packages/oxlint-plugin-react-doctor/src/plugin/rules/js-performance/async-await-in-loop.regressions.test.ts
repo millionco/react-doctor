@@ -871,4 +871,46 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("flags serialized-queue method calls where syntactic independence cannot prove runtime serialization (#1840)", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `class Repository {
+  private tail: Promise<void> = Promise.resolve();
+  private serialize<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(operation, operation);
+    this.tail = result.then(() => undefined, () => undefined);
+    return result;
+  }
+  runAsync(id: string): Promise<void> {
+    return this.serialize(async () => { this.writes.push(id); });
+  }
+}
+async function writeBatch(repository: Repository, ids: string[]): Promise<void> {
+  for (const id of ids) {
+    await repository.runAsync(id);
+  }
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags async facades over synchronous work where syntactic await cannot prove asynchrony (#1840)", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const files = new Set(['a', 'b']);
+const cache = { exists: async (path: string) => files.has(path) };
+async function readExisting(paths: string[]): Promise<string[]> {
+  const found: string[] = [];
+  for (const path of paths) {
+    if (!(await cache.exists(path))) continue;
+    found.push(path);
+  }
+  return found;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

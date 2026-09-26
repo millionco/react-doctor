@@ -1250,9 +1250,7 @@ const isBindingCombinedWithPromiseConcurrency = (
   return isCombined;
 };
 
-const doesLocalFunctionUsePromiseConcurrency = (
-  localFunction: EsTreeNode,
-): boolean => {
+const doesLocalFunctionUsePromiseConcurrency = (localFunction: EsTreeNode): boolean => {
   if (!isFunctionLike(localFunction)) return false;
   let usesPromiseConcurrency = false;
   walkAst(localFunction.body, (child: EsTreeNode): boolean | void => {

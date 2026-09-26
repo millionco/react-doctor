@@ -202,7 +202,7 @@ export const serverSequentialIndependentAwait = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "These two awaits don't depend on each other. Wrap them in `Promise.all([...])` so they run at the same time.",
+    "If these awaits perform truly independent asynchronous work (no shared queues, transactions, or resources), wrap them in `Promise.all([...])` to run them concurrently. Verify independence before applying.",
   create: (context: RuleContext) => {
     const inspectStatements = (statements: EsTreeNode[]): void => {
       for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {
@@ -242,7 +242,7 @@ export const serverSequentialIndependentAwait = defineRule({
         context.report({
           node: nextStatement,
           message:
-            "This await doesn't use the previous result, so your users wait twice as long for nothing.",
+            "These awaits appear independent, but parallelization only improves performance when work doesn't share queues, transactions, or resources. Verify independence, then consider `Promise.all([...])`.",
         });
         // Skip past the next so we don't double-report a chain.
         statementIndex++;

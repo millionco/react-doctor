@@ -16,6 +16,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { unwrapDiscardedExpression } from "../../utils/unwrap-discarded-expression.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
+import { doesLastItemGuardConverge } from "./utils/does-last-item-guard-converge.js";
 
 // Every literal builds a value-equal result except a regex literal,
 // which evaluates to a fresh `RegExp` object each render and so never
@@ -919,6 +920,8 @@ export const noSelfUpdatingEffect = defineRule({
           if (isAcceptedConvergingUpdater(setterCall, stateName, earlyReturnGuardTests)) {
             continue;
           }
+          const binding = useStateBindings.find((candidate) => candidate.valueName === stateName);
+          if (binding && doesLastItemGuardConverge(callback, binding, context.scopes)) continue;
 
           reportedStateNames.add(stateName);
           context.report({

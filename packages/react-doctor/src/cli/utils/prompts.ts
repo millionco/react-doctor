@@ -18,7 +18,7 @@ const onCancel = () => {
   process.exit(0);
 };
 
-export interface CliPromptOptions {
+interface CliPromptOptions {
   readonly onCancel?: () => void;
 }
 

@@ -1,4 +1,4 @@
-export interface ActiveTuiRenderer {
+interface ActiveTuiRenderer {
   readonly preserveOutput: () => void;
 }
 

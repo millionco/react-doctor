@@ -11,7 +11,7 @@ import { toSpanAttributes } from "./to-span-attributes.js";
 
 export type RunRootSpan = Tracer.Span | undefined;
 
-export interface WithRunSpanOptions {
+interface WithRunSpanOptions {
   readonly concurrentScan?: boolean;
   readonly mapErrorForSpan?: (error: unknown) => unknown;
 }

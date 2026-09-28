@@ -10,7 +10,7 @@ export interface FuzzCorpusEntry {
   verdict?: "pass" | "fail";
 }
 
-export interface FuzzCorpusLoadOptions {
+interface FuzzCorpusLoadOptions {
   maximumFiles?: number;
 }
 

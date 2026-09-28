@@ -2,13 +2,13 @@ import type { Diagnostic, DiagnosticSurface } from "@react-doctor/core";
 import { filterDiagnosticsByCategories } from "./filter-diagnostics-by-categories.js";
 import { filterScansForSurface, type SurfaceFilterableScan } from "./filter-scans-for-surface.js";
 
-export interface SelectReportDiagnosticsInput {
+interface SelectReportDiagnosticsInput {
   readonly categoryFilters?: ReadonlyArray<string>;
   readonly scan: SurfaceFilterableScan;
   readonly surface?: DiagnosticSurface;
 }
 
-export interface SelectedReportDiagnostics {
+interface SelectedReportDiagnostics {
   readonly diagnostics: Diagnostic[];
   readonly demotedDiagnosticCount: number;
 }

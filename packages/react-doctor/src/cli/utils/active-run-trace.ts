@@ -1,4 +1,4 @@
-export interface ActiveRunTrace {
+interface ActiveRunTrace {
   readonly traceId: string;
   readonly spanId: string;
   readonly sampled: boolean;

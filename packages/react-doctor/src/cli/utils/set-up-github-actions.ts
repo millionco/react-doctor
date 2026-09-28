@@ -10,7 +10,7 @@ import { openWorkflowPullRequest, stageWorkflowFile } from "./open-workflow-pull
 import { reportWorkflowResult } from "./report-workflow-result.js";
 import { spinner } from "./spinner.js";
 
-export interface SetUpGitHubActionsOptions {
+interface SetUpGitHubActionsOptions {
   readonly rootDirectory: string;
 }
 

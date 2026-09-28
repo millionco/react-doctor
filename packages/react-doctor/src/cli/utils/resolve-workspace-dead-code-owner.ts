@@ -1,6 +1,6 @@
 import * as path from "node:path";
 
-export interface ResolveWorkspaceDeadCodeOwnerInput {
+interface ResolveWorkspaceDeadCodeOwnerInput {
   readonly rootDirectory: string;
   readonly projectDirectories: ReadonlyArray<string>;
   readonly isRootDeadCodeEnabled: boolean;

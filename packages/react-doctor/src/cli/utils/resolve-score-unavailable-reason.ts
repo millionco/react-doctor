@@ -1,4 +1,4 @@
-export interface ResolveScoreUnavailableReasonInput {
+interface ResolveScoreUnavailableReasonInput {
   readonly isScoreDisabled: boolean;
   readonly isAnalysisIncomplete: boolean;
 }

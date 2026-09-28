@@ -198,6 +198,29 @@ export interface SupplyChainConfig {
   includeDevDependencies?: boolean;
 }
 
+/**
+ * Configuration for the pnpm hardening environment check. When enabled,
+ * warns about missing or weak lockfile security settings in pnpm projects
+ * (`minimumReleaseAge`, `trustPolicy`, `blockExoticSubdeps`).
+ *
+ * **Opt-in by default** (`enabled: false`) because the recommended 7-day
+ * `minimumReleaseAge` is stricter than pnpm's own 24-hour default and can
+ * delay critical CVE patches, break Dependabot workflows, or require
+ * immediate lockfile surgery in existing projects. Teams that want the
+ * extra hardening (at the cost of dependency management flexibility) can
+ * explicitly enable it.
+ */
+export interface PnpmHardeningConfig {
+  /**
+   * Whether to run the pnpm hardening environment check. Default: `false`
+   * (opt-in). Set to `true` to warn about missing `minimumReleaseAge`,
+   * `trustPolicy: no-downgrade`, or `blockExoticSubdeps` settings in
+   * `pnpm-workspace.yaml`. The check only runs on pnpm-managed projects
+   * and is always skipped in `--diff` / `--staged` mode.
+   */
+  enabled?: boolean;
+}
+
 export interface ReactDoctorConfig {
   $schema?: string;
   ignore?: ReactDoctorIgnoreConfig;
@@ -209,6 +232,12 @@ export interface ReactDoctorConfig {
    * a low score fails the scan (at the default `severity: "error"`).
    */
   supplyChain?: SupplyChainConfig;
+  /**
+   * pnpm lockfile hardening check. Opt-in (default: `false`); set
+   * `pnpmHardening: { enabled: true }` to warn about missing strict
+   * lockfile settings. See {@link PnpmHardeningConfig}.
+   */
+  pnpmHardening?: PnpmHardeningConfig;
   /**
    * Compatibility switch for React maintainability analysis. Default: `true`.
    * @deprecated React maintainability checks are part of React Doctor.

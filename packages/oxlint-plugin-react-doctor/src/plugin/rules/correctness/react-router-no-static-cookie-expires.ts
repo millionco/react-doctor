@@ -17,7 +17,7 @@ const COOKIE_FACTORY_EXPORT_NAMES = new Set([
 
 const findCookieFactoryCall = (context: RuleContext, node: EsTreeNode): boolean => {
   let current = node.parent;
-  while (current !== null && current !== undefined) {
+  while (current != null) {
     if (isNodeOfType(current, "CallExpression") && isNodeOfType(current.callee, "Identifier")) {
       const importedName = getImportedNameFromReactRouter(
         context,

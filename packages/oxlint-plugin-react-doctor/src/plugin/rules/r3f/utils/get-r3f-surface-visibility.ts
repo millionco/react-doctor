@@ -30,7 +30,7 @@ const getMaterialVisibility = (
   if (isTransparent === false) return true;
   if (isTransparent === null) return null;
   const opacityExpression = getJsxAttributeExpression(node, "opacity");
-  if (opacityExpression === undefined || opacityExpression === null) return true;
+  if (opacityExpression == null) return true;
   if (isNullishExpression(opacityExpression)) return true;
   const opacity = getStaticNumber(opacityExpression, context.scopes);
   return opacity === null ? null : opacity > 0;

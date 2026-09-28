@@ -34,9 +34,7 @@ const checkReanimatedPluginOrder = (
   pluginNames: ReadonlyArray<string>,
 ): Diagnostic[] => {
   const reanimatedMajorVersion =
-    project.reanimatedVersion === null || project.reanimatedVersion === undefined
-      ? null
-      : getLowestDependencyMajor(project.reanimatedVersion);
+    project.reanimatedVersion == null ? null : getLowestDependencyMajor(project.reanimatedVersion);
   if (
     reanimatedMajorVersion === null ||
     reanimatedMajorVersion < REANIMATED_WORKLETS_MINIMUM_MAJOR_VERSION

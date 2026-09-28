@@ -223,7 +223,7 @@ const collectSidecarProbesForFiles = async (input: {
   ): void => {
     for (const [fileIndex, file] of chunk.entries()) {
       const trace = result.traces[fileIndex];
-      if (trace === null || trace === undefined) {
+      if (trace == null) {
         probeIdsByFile.set(file, null);
         continue;
       }
@@ -300,7 +300,7 @@ const storeSidecarEntries = (input: {
       const cacheKey = input.cacheKeyByFile.get(file);
       if (cacheKey === undefined) continue;
       const probeIds = pass.probeIdsByFile.get(file);
-      if (probeIds === undefined || probeIds === null) continue;
+      if (probeIds == null) continue;
       input.sidecarCache.store(cacheKey, {
         probeIds,
         diagnostics: diagnosticsByFile.get(file) ?? [],

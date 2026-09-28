@@ -10,7 +10,7 @@ import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
 const findRouteConfigCall = (node: EsTreeNode): EsTreeNode | null => {
   let current = node.parent;
-  while (current !== null && current !== undefined) {
+  while (current != null) {
     if (isNodeOfType(current, "CallExpression")) return current;
     current = current.parent;
   }

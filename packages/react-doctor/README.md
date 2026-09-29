@@ -59,6 +59,9 @@ This adds the workflow, scans every pull request, and posts a summary comment. C
 
 You can configure which rules to run and how to run them in `doctor.config.ts`.
 
+The pnpm hardening check is off by default. To enable it, set
+`rules: { "react-doctor/require-pnpm-hardening": "warn" }` in your config.
+
 [Learn more →](https://react.doctor/docs/configuration/config-files)
 
 ## Runtime performance traces

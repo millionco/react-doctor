@@ -14,17 +14,6 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
-// HACK: in async route handlers and Server Components, two consecutive
-// `await fetch()` (or any awaited calls) where the second one doesn't
-// reference the first's binding is a textbook waterfall — the second
-// fetch waits for the first to land before even starting, doubling
-// latency. Wrap independent awaits in `Promise.all([…])` so they race.
-//
-// Heuristic: scan async function bodies for two consecutive
-// VariableDeclaration statements whose init is `await something(...)`,
-// where the second's initializer reads no identifier introduced by the
-// first declaration. We require both declarations to be at the top
-// level of the same block to keep precision high.
 const declarationStartsWithAwait = (declaration: EsTreeNode): boolean => {
   if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
   for (const declarator of declaration.declarations ?? []) {
@@ -201,7 +190,7 @@ export const serverSequentialIndependentAwait = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "These two awaits don't depend on each other. Wrap them in `Promise.all([...])` so they run at the same time.",
+    "Consider `Promise.all([...])` only for independent asynchronous work. Shared queues or synchronous work may not benefit. Preserve resource limits, transaction ordering, and failure/cancellation semantics.",
   create: (context: RuleContext) => {
     const inspectStatements = (statements: EsTreeNode[]): void => {
       for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {
@@ -241,7 +230,7 @@ export const serverSequentialIndependentAwait = defineRule({
         context.report({
           node: nextStatement,
           message:
-            "This await doesn't use the previous result, so your users wait twice as long for nothing.",
+            "This awaited initializer does not read the previous result. If the operations are independent asynchronous work, they may overlap; await syntax alone does not establish a speedup.",
         });
         // Skip past the next so we don't double-report a chain.
         statementIndex++;

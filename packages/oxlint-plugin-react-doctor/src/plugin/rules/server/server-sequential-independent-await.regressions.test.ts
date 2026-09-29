@@ -415,3 +415,17 @@ export default async function Page() {
     expect(result.diagnostics).toEqual([]);
   });
 });
+
+it("limits advice for reads that share a queue", () => {
+  const result = runRule(
+    serverSequentialIndependentAwait,
+    `class Repository { tail = Promise.resolve(); serialize(operation) { const result = this.tail.then(operation, operation); this.tail = result.then(() => undefined, () => undefined); return result; } runSqliteRead(kind) { return this.serialize(async () => [kind]); } async readSnapshot() { const collections = await this.runSqliteRead('collections'); const binders = await this.runSqliteRead('binders'); return [...collections, ...binders]; } }`,
+  );
+  expect(result.parseErrors).toEqual([]);
+  expect(result.diagnostics).toHaveLength(1);
+  expect(result.diagnostics[0].message).toContain("may overlap");
+  expect(result.diagnostics[0].message).not.toContain("twice as long");
+  expect(serverSequentialIndependentAwait.recommendation).toContain(
+    "Shared queues or synchronous work may not benefit",
+  );
+});

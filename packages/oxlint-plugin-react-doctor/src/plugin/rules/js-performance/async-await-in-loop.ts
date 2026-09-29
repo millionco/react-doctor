@@ -1250,7 +1250,21 @@ const isBindingCombinedWithPromiseConcurrency = (
   return isCombined;
 };
 
-const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode): boolean => {
+const doesLocalFunctionUsePromiseConcurrency = (localFunction: EsTreeNode): boolean => {
+  if (!isFunctionLike(localFunction)) return false;
+  let usesPromiseConcurrency = false;
+  walkAst(localFunction.body, (child: EsTreeNode): boolean | void => {
+    if (usesPromiseConcurrency) return false;
+    if (child !== localFunction.body && isFunctionLike(child)) return false;
+    if (isPromiseConcurrencyCall(child)) {
+      usesPromiseConcurrency = true;
+      return false;
+    }
+  });
+  return usesPromiseConcurrency;
+};
+
+const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode, context: RuleContext): boolean => {
   const flowNode = resolvePromiseFlowNode(mapCall);
   const parent = flowNode.parent;
   if (
@@ -1259,6 +1273,15 @@ const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode): boolean => {
     (parent.arguments ?? []).some((argument) => argument === flowNode)
   ) {
     return true;
+  }
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    (parent.arguments ?? []).some((argument) => argument === flowNode)
+  ) {
+    const localFunction = resolveStaticLocalCallFunction(parent, context.scopes);
+    if (localFunction && doesLocalFunctionUsePromiseConcurrency(localFunction)) {
+      return true;
+    }
   }
   let bindingName: string | null = null;
   if (
@@ -1390,7 +1413,7 @@ export const asyncAwaitInLoop = defineRule({
 
         if (
           (methodName === "map" || methodName === "flatMap") &&
-          isWrappedInPromiseConcurrency(node)
+          isWrappedInPromiseConcurrency(node, context)
         ) {
           return;
         }

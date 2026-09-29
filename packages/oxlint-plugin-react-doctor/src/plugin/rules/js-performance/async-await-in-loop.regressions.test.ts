@@ -871,4 +871,78 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("stays silent on .map(async) passed to a local Promise.allSettled wrapper", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const waitForAll = async (operations) => {
+        const settled = await Promise.allSettled(operations);
+        const values = [];
+        for (const result of settled) {
+          if (result.status === 'rejected') throw result.reason;
+          values.push(result.value);
+        }
+        return values;
+      };
+      async function runBatch(ids, operation) {
+        await waitForAll(ids.map(async (id) => {
+          await operation(id);
+        }));
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on .map(async) passed to a local Promise.all wrapper", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const runAll = async (tasks) => {
+        return await Promise.all(tasks);
+      };
+      async function execute(items) {
+        await runAll(items.map(async (item) => {
+          await process(item);
+        }));
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on .map(async) passed to a local Promise.race wrapper", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const firstToComplete = async (operations) => {
+        return await Promise.race(operations);
+      };
+      async function compete(items) {
+        return await firstToComplete(items.map(async (item) => {
+          return await load(item);
+        }));
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags .map(async) passed to a local wrapper that does not use promise concurrency", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const processSequentially = async (operations) => {
+        const results = [];
+        for (const op of operations) {
+          results.push(await op);
+        }
+        return results;
+      };
+      async function runBatch(ids, operation) {
+        await processSequentially(ids.map(async (id) => {
+          await operation(id);
+        }));
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

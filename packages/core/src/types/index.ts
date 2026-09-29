@@ -1,6 +1,7 @@
 export type {
   BlockingLevel,
   DiagnosticSurface,
+  PnpmHardeningConfig,
   ReactDoctorConfig,
   ReactDoctorIgnoreOverride,
   RuleSeverityControls,

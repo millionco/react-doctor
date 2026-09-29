@@ -370,11 +370,12 @@ export const runInspect = <HooksR = never>(
     // ── Phase: environment checks ──────────────────────────────────
     // The project-shape checks below are sub-millisecond; the security scan
     // (whole-tree content pass) is heavy and forks separately just below.
+    const pnpmHardeningEnabled = resolvedConfig.config?.pnpmHardening?.enabled === true;
     const environmentDiagnostics: ReadonlyArray<Diagnostic> = isDiffMode
       ? []
       : [
           ...checkReducedMotion(scanDirectory),
-          ...checkPnpmHardening(scanDirectory),
+          ...(pnpmHardeningEnabled ? checkPnpmHardening(scanDirectory) : []),
           ...checkReactServerComponentsAdvisory(
             scanDirectory,
             project,

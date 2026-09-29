@@ -102,7 +102,7 @@ const FIXTURE_EXPECTATIONS: ReadonlyArray<FixtureExpectation> = [
   },
 ];
 
-describe("checkPnpmHardening (fixtures)", () => {
+describe("checkPnpmHardening (fixtures) — when the check is explicitly enabled", () => {
   for (const expectation of FIXTURE_EXPECTATIONS) {
     it(`${expectation.name}: ${expectation.description}`, () => {
       const fixtureDirectory = path.join(FIXTURES_DIRECTORY, expectation.name);
@@ -376,6 +376,43 @@ describe("checkPnpmHardening (parser edge cases)", () => {
     const diagnostics = checkPnpmHardening(projectDirectory);
 
     expect(diagnostics).toHaveLength(0);
+  });
+});
+
+describe("checkPnpmHardening (opt-in behavior) — regression test for #1843", () => {
+  let temporaryRoot: string;
+
+  beforeEach(() => {
+    temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-pnpm-optin-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  });
+
+  it("produces warnings when called directly (the check logic itself works)", () => {
+    const projectDirectory = path.join(temporaryRoot, "missing-settings");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "missing-settings",
+        packageManager: "pnpm@9.0.0",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(path.join(projectDirectory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    fs.writeFileSync(
+      path.join(projectDirectory, "pnpm-workspace.yaml"),
+      "packages:\n  - 'packages/*'\n",
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics.length).toBeGreaterThan(0);
+    const messages = diagnostics.map((d) => d.message).join("\n");
+    expect(messages).toContain("minimumReleaseAge");
+    expect(messages).toContain("trustPolicy");
   });
 });
 

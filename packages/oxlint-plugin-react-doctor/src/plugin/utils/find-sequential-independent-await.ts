@@ -9,7 +9,7 @@ interface AwaitedStatementInfo {
   boundNames: string[];
 }
 
-const getAwaitedStatementInfo = (statement: EsTreeNode): AwaitedStatementInfo | null => {
+export const getAwaitedStatementInfo = (statement: EsTreeNode): AwaitedStatementInfo | null => {
   const awaitedExpressions: EsTreeNode[] = [];
   const boundNames = new Set<string>();
 

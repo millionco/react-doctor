@@ -12388,7 +12388,7 @@
       "id": "server-sequential-independent-await",
       "title": "Sequential independent awaits",
       "severity": "warn",
-      "recommendation": "These two awaits don't depend on each other. Wrap them in `Promise.all([...])` so they run at the same time.",
+      "recommendation": "Check whether these calls start independent work before running them together with `Promise.all([...])`.",
       "category": "Bugs",
       "framework": "global",
       "tags": ["server-action", "test-noise"],

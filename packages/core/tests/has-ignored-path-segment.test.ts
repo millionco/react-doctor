@@ -8,6 +8,7 @@ describe("hasIgnoredPathSegment", () => {
     expect(hasIgnoredPathSegment("packages/app/build/main.tsx")).toBe(true);
     expect(hasIgnoredPathSegment("out/page.jsx")).toBe(true);
     expect(hasIgnoredPathSegment(".next/server/app.js")).toBe(true);
+    expect(hasIgnoredPathSegment(".cloudflare/output/v0/bundle/worker.js")).toBe(true);
     expect(hasIgnoredPathSegment("node_modules/react/index.js")).toBe(true);
   });
 

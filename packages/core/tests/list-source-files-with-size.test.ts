@@ -108,6 +108,7 @@ describe("listSourceFilesWithSize", () => {
     writeNestedFile(".storybook/preview.tsx", "export const decorators = [];\n");
     writeNestedFile("src/app.tsx", "export const App = () => null;\n");
     writeNestedFile(".next/server/page.js", "module.exports = {};\n");
+    writeNestedFile(".cloudflare/output/v0/worker.js", "module.exports = {};\n");
     writeNestedFile(".git/hooks/sample.js", "module.exports = {};\n");
 
     const filePaths = listSourceFiles(temporaryDirectory);
@@ -116,6 +117,7 @@ describe("listSourceFilesWithSize", () => {
     expect(filePaths).toContain(".storybook/preview.tsx");
     expect(filePaths).toContain("src/app.tsx");
     expect(filePaths).not.toContain(".next/server/page.js");
+    expect(filePaths).not.toContain(".cloudflare/output/v0/worker.js");
     expect(filePaths).not.toContain(".git/hooks/sample.js");
   });
 

@@ -65,6 +65,7 @@ export const IGNORED_DIRECTORIES = new Set([
   ".angular",
   ".astro",
   ".cache",
+  ".cloudflare",
   ".contentlayer",
   ".direnv",
   ".docusaurus",

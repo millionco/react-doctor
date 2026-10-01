@@ -108,6 +108,7 @@ export * from "./utils/has-published-fix-recipe.js";
 export * from "./utils/has-react-runtime.js";
 export * from "./utils/has-supported-framework-or-library.js";
 export * from "./utils/filter-paths-outside-directories.js";
+export * from "./utils/find-git-repository-root.js";
 export * from "./utils/is-errno-exception.js";
 export * from "./utils/is-large-minified-file.js";
 export * from "./utils/is-path-inside-directory.js";

@@ -1,9 +1,11 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
+import { findGitRepositoryRoot } from "@react-doctor/core";
 
 export interface InstallGitHubWorkflowResult {
   readonly status: "created" | "exists" | "failed";
   readonly workflowPath: string;
+  readonly error?: "no-git-root" | "write-failed";
 }
 
 // Self-documenting workflow file. It installs advisory-first: the action's
@@ -83,8 +85,16 @@ jobs:
         #   project: "web,admin"     # In a monorepo, scan specific workspace project(s)
 `;
 
-export const getReactDoctorWorkflowPath = (projectRoot: string): string =>
-  path.join(projectRoot, ".github", "workflows", "react-doctor.yml");
+const getGitRootWorkflowPath = (gitRoot: string): string =>
+  path.join(gitRoot, ".github", "workflows", "react-doctor.yml");
+
+export const getReactDoctorWorkflowPath = (projectRoot: string): string => {
+  const gitRoot = findGitRepositoryRoot(projectRoot);
+  if (gitRoot === null) {
+    return path.join(projectRoot, ".github", "workflows", "react-doctor.yml");
+  }
+  return getGitRootWorkflowPath(gitRoot);
+};
 
 export const isReactDoctorWorkflowInstalled = (projectRoot: string): boolean =>
   fs.existsSync(getReactDoctorWorkflowPath(projectRoot));
@@ -129,17 +139,29 @@ export const upgradeWorkflowActionToV2 = (
   return { content: upgraded, changed: upgraded !== content };
 };
 
-// Writes `.github/workflows/react-doctor.yml`, creating the workflows
-// directory if needed. Returns "exists" without overwriting a workflow that's
-// already there, and "failed" (rather than throwing) so callers can degrade to
-// printing manual setup instructions. `defaultBranch` lands in the template's
-// push trigger; callers resolve it via `detectDefaultBranch` and fall back to
-// `main` when the repo has no detectable default.
+// Writes `.github/workflows/react-doctor.yml` at the git repository root,
+// creating the workflows directory if needed. Returns "exists" without
+// overwriting a workflow that's already there, and "failed" (rather than
+// throwing) so callers can degrade to printing manual setup instructions.
+// `defaultBranch` lands in the template's push trigger; callers resolve it via
+// `detectDefaultBranch` and fall back to `main` when the repo has no detectable
+// default. When called from a subdirectory (e.g., `apps/website/` in a
+// monorepo), this finds the git root and installs there — GitHub Actions only
+// checks `.github/workflows/` at the repository root.
 export const installReactDoctorWorkflow = (
   projectRoot: string,
   defaultBranch: string = "main",
 ): InstallGitHubWorkflowResult => {
-  const workflowPath = getReactDoctorWorkflowPath(projectRoot);
+  const gitRoot = findGitRepositoryRoot(projectRoot);
+  if (gitRoot === null) {
+    return {
+      status: "failed",
+      workflowPath: path.join(projectRoot, ".github", "workflows", "react-doctor.yml"),
+      error: "no-git-root",
+    };
+  }
+
+  const workflowPath = getGitRootWorkflowPath(gitRoot);
   if (fs.existsSync(workflowPath)) return { status: "exists", workflowPath };
 
   try {
@@ -147,7 +169,7 @@ export const installReactDoctorWorkflow = (
     fs.writeFileSync(workflowPath, buildWorkflowContent(defaultBranch));
     return { status: "created", workflowPath };
   } catch {
-    return { status: "failed", workflowPath };
+    return { status: "failed", workflowPath, error: "write-failed" };
   }
 };
 

@@ -17,7 +17,13 @@ export const reportWorkflowResult = (
   projectRoot: string,
 ): boolean => {
   if (result.status === "failed") {
-    workflowSpinner.fail("Couldn't write the GitHub Actions workflow.");
+    if (result.error === "no-git-root") {
+      workflowSpinner.fail(
+        "Couldn't write the GitHub Actions workflow: no git repository found. Run this command from inside a git repository.",
+      );
+    } else {
+      workflowSpinner.fail("Couldn't write the GitHub Actions workflow.");
+    }
     return false;
   }
   if (result.status === "exists") {

@@ -52,3 +52,38 @@ describe("installReactDoctorWorkflow push trigger", () => {
     }
   });
 });
+
+describe("installReactDoctorWorkflow git root placement", () => {
+  it("installs workflow at the git root when called from a subdirectory", () => {
+    const gitRoot = fs.mkdtempSync(path.join(tmpdir(), "react-doctor-git-root-"));
+    const subdirPath = path.join(gitRoot, "apps", "website");
+    
+    try {
+      fs.mkdirSync(path.join(gitRoot, ".git"));
+      fs.mkdirSync(subdirPath, { recursive: true });
+      fs.writeFileSync(path.join(subdirPath, "package.json"), JSON.stringify({ name: "website" }));
+
+      const result = installReactDoctorWorkflow(subdirPath, "main");
+      
+      expect(result.status).toBe("created");
+      expect(result.workflowPath).toBe(path.join(gitRoot, ".github", "workflows", "react-doctor.yml"));
+      expect(fs.existsSync(result.workflowPath)).toBe(true);
+      expect(fs.existsSync(path.join(subdirPath, ".github", "workflows", "react-doctor.yml"))).toBe(false);
+    } finally {
+      fs.rmSync(gitRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("warns when there is no git repository", () => {
+    const noGitRoot = fs.mkdtempSync(path.join(tmpdir(), "react-doctor-no-git-"));
+    
+    try {
+      const result = installReactDoctorWorkflow(noGitRoot, "main");
+      
+      expect(result.status).toBe("failed");
+      expect(result.error).toBe("no-git-root");
+    } finally {
+      fs.rmSync(noGitRoot, { recursive: true, force: true });
+    }
+  });
+});

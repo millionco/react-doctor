@@ -9,7 +9,7 @@ import {
 } from "./diagnostic-grouping.js";
 import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 
-export interface HandoffPayloadInput {
+interface HandoffPayloadInput {
   readonly diagnostics: ReadonlyArray<Diagnostic>;
   readonly projectName: string;
   readonly outputDirectory?: string | null;

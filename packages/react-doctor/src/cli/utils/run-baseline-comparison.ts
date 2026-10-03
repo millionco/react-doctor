@@ -42,7 +42,7 @@ export interface BaselineComparison {
   readonly baselineDelta: NonNullable<InspectResult["baselineDelta"]>;
 }
 
-export interface RunBaselineComparisonInput {
+interface RunBaselineComparisonInput {
   readonly directory: string;
   readonly options: ResolvedInspectOptions;
   readonly userConfig: ReactDoctorConfig | null;

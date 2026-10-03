@@ -55,9 +55,7 @@ const resolveProjectRoot = (options: RulesCwdOptions): string => {
 };
 
 const parseSeverity = (value: string): RuleSeverityOverride | null =>
-  (SEVERITY_VALUES as ReadonlyArray<string>).includes(value)
-    ? (value as RuleSeverityOverride)
-    : null;
+  SEVERITY_VALUES.find((severity) => severity === value) ?? null;
 
 const reportInvalidSeverity = (value: string): void => {
   logger.error(`Invalid severity "${value}". Expected one of: ${SEVERITY_VALUES.join(", ")}.`);

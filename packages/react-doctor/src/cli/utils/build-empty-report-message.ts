@@ -1,6 +1,6 @@
 import type { DiagnosticSurface } from "@react-doctor/core";
 
-export interface BuildEmptyReportMessageInput {
+interface BuildEmptyReportMessageInput {
   readonly categoryFilters: Iterable<string>;
   readonly demotedDiagnosticCount: number;
   readonly outputSurface: DiagnosticSurface;

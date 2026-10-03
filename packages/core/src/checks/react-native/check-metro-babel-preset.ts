@@ -63,7 +63,7 @@ const isReactNativeVersionAtLeastPresetRename = (
     : undefined;
   const reactNativeVersionSpec =
     installedReactNativeVersion ?? getDependencySpec(packageJson, REACT_NATIVE_PACKAGE);
-  if (reactNativeVersionSpec === null || reactNativeVersionSpec === undefined) return false;
+  if (reactNativeVersionSpec == null) return false;
 
   const normalizedVersionRange = semver.validRange(reactNativeVersionSpec);
   if (normalizedVersionRange === null) return false;

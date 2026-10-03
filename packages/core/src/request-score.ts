@@ -49,7 +49,7 @@ const sanitizeScoreDiagnostics = (
   }));
 
 const isPresentMetadataValue = (value: unknown): boolean => {
-  if (value === undefined || value === null) return false;
+  if (value == null) return false;
   return value !== "";
 };
 

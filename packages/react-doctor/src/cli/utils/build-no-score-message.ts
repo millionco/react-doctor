@@ -3,7 +3,7 @@ import { resolveScoreUnavailableReason } from "./resolve-score-unavailable-reaso
 
 const ENTERPRISE_CONTACT_HINT = `Want something custom to your company? Contact us at ${ENTERPRISE_CONTACT_URL}.`;
 
-export interface BuildNoScoreMessageInput {
+interface BuildNoScoreMessageInput {
   readonly isScoreDisabled: boolean;
   readonly isAnalysisIncomplete?: boolean;
   readonly disabledMessage?: string;

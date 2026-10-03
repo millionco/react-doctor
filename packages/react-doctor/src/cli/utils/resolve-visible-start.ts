@@ -1,6 +1,6 @@
 import { clampNumber } from "./clamp-number.js";
 
-export interface ResolveVisibleStartInput {
+interface ResolveVisibleStartInput {
   readonly itemCount: number;
   readonly offset: number;
   readonly selectedIndex: number;

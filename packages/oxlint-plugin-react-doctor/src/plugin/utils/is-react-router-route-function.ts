@@ -29,7 +29,7 @@ export const isReactRouterRouteFunction = (
   if (!isFrameworkRouteOrSpecialFilename(context, "react-router")) return false;
 
   let declaration: EsTreeNode | null | undefined = functionNode;
-  while (declaration !== null && declaration !== undefined) {
+  while (declaration != null) {
     if (isNodeOfType(declaration.parent, "ExportNamedDeclaration")) return true;
     if (
       !isNodeOfType(declaration.parent, "VariableDeclarator") &&

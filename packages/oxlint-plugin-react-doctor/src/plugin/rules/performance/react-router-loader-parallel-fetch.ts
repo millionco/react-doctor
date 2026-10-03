@@ -27,7 +27,7 @@ export const reactRouterLoaderParallelFetch = wrapReactRouterRule(
     create: (context: RuleContext) => ({
       BlockStatement(node: EsTreeNodeOfType<"BlockStatement">) {
         const functionNode = node.parent;
-        if (functionNode === null || functionNode === undefined) return;
+        if (functionNode == null) return;
         if (
           !isReactRouterRouteFunction(context, functionNode, "loader") &&
           !isReactRouterRouteFunction(context, functionNode, "clientLoader")

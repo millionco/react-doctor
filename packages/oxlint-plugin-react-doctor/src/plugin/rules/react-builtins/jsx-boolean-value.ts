@@ -58,7 +58,7 @@ export const jsxBooleanValue = defineRule({
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
         const attributeName = node.name.name;
         const value = node.value;
-        const isShorthand = value === null || value === undefined;
+        const isShorthand = value == null;
         const isExpressionBooleanLiteral =
           value !== null &&
           isNodeOfType(value, "JSXExpressionContainer") &&

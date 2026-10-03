@@ -27,7 +27,7 @@ export const reactRouterNoNestedRouter = wrapReactRouterRule(
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         if (!isRouterElement(context, node)) return;
         let ancestor = node.parent;
-        while (ancestor !== null && ancestor !== undefined) {
+        while (ancestor != null) {
           if (isRouterElement(context, ancestor)) {
             context.report({
               node,

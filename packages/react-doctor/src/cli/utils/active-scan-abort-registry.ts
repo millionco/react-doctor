@@ -1,4 +1,4 @@
-export interface ActiveScanAbortRegistry {
+interface ActiveScanAbortRegistry {
   readonly register: (controller: AbortController) => () => void;
   readonly registerCleanup: (cleanup: () => Promise<void>) => () => void;
   readonly abortAll: () => Promise<void>;

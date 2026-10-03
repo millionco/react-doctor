@@ -337,7 +337,7 @@ const isFunctionBodyBlock = (block: EsTreeNode): boolean => {
 // block. Same reasoning — the catch clause already pushed its own
 // scope.
 const isCatchClauseBlock = (block: EsTreeNode): boolean =>
-  block.parent !== null && block.parent !== undefined && block.parent.type === "CatchClause";
+  block.parent != null && block.parent.type === "CatchClause";
 
 const handleVariableDeclaration = (declaration: EsTreeNode, state: BuilderState): void => {
   if (!isNodeOfType(declaration, "VariableDeclaration")) return;

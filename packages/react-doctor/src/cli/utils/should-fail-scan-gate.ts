@@ -3,7 +3,7 @@ import { filterScansForSurface, type SurfaceFilterableScan } from "./filter-scan
 import { hasLintHardFailure } from "./has-lint-hard-failure.js";
 import { shouldBlockCi } from "./should-block-ci.js";
 
-export interface ShouldFailScanGateInput {
+interface ShouldFailScanGateInput {
   readonly scans: ReadonlyArray<SurfaceFilterableScan>;
   readonly blockingLevel: BlockingLevel;
   readonly diagnosticsAreGateExempt?: boolean;

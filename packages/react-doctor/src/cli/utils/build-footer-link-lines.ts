@@ -1,7 +1,7 @@
 import { CANONICAL_GITHUB_URL, DOCS_URL, highlighter } from "@react-doctor/core";
 import { buildFooterDescriptionLines } from "./build-footer-description-lines.js";
 
-export interface BuildFooterLinkLinesInput {
+interface BuildFooterLinkLinesInput {
   readonly shareUrl: string | null;
 }
 

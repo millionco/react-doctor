@@ -37,7 +37,7 @@ export const canOxlintExtendConfig = (configPath: string): boolean => {
   if (!isPlainObject(parsed)) return true;
 
   const extendsValue = parsed.extends;
-  if (extendsValue === undefined || extendsValue === null) return true;
+  if (extendsValue == null) return true;
 
   const extendsEntries = Array.isArray(extendsValue) ? extendsValue : [extendsValue];
   if (extendsEntries.length === 0) return true;

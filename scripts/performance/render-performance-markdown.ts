@@ -16,7 +16,7 @@ import { shortenProfileUrl } from "./summarize-cpu-profiles.ts";
 
 const formatMilliseconds = (value: number): string => `${value.toFixed(1)} ms`;
 const formatSeconds = (value: number | null | undefined): string =>
-  value === null || value === undefined ? "n/a" : `${value.toFixed(2)} s`;
+  value == null ? "n/a" : `${value.toFixed(2)} s`;
 const formatMebibytes = (value: number | null): string =>
   value === null ? "n/a" : `${(value / BYTES_PER_MEBIBYTE).toFixed(1)} MiB`;
 const formatPercent = (value: number): string => `${value.toFixed(1)}%`;
@@ -26,9 +26,7 @@ const seriesTitle = (series: BenchmarkSeries): string =>
   `${series.target.label} (${series.mode}/${series.cacheCohort}/workers=${series.workerCount})`;
 
 const renderTimelineTable = (seriesList: readonly BenchmarkSeries[]): string[] => {
-  const seriesWithTimeline = seriesList.filter(
-    (series) => series.timeline !== null && series.timeline !== undefined,
-  );
+  const seriesWithTimeline = seriesList.filter((series) => series.timeline != null);
   if (seriesWithTimeline.length === 0) return [];
   const lines = [
     "",
@@ -39,7 +37,7 @@ const renderTimelineTable = (seriesList: readonly BenchmarkSeries[]): string[] =
   ];
   for (const series of seriesWithTimeline) {
     const timeline = series.timeline;
-    if (timeline === null || timeline === undefined) continue;
+    if (timeline == null) continue;
     lines.push(
       `| ${series.target.label} | ${series.mode} | ${series.cacheCohort} | ${series.workerCount} | ${formatMilliseconds(timeline.wallMilliseconds)} | ${formatSeconds(series.userSeconds?.median)} | ${formatSeconds(series.systemSeconds?.median)} | ${formatSeconds(timeline.parentUserSeconds)} / ${formatSeconds(timeline.parentSystemSeconds)} | ${timeline.childProcessCount} | ${timeline.failedChildProcessCount} | ${timeline.configCount} | ${timeline.childFileCount} | ${formatMilliseconds(timeline.childDurationSumMilliseconds)} | ${formatMilliseconds(timeline.childDurationMedianMilliseconds)} / ${formatMilliseconds(timeline.childDurationMaximumMilliseconds)} | ${timeline.averageConcurrency.toFixed(2)} | ${timeline.peakConcurrency} | ${formatMilliseconds(timeline.headMilliseconds)} | ${formatMilliseconds(timeline.tailMilliseconds)} |`,
     );

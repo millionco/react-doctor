@@ -13,13 +13,13 @@ export interface CompletedScan {
   readonly config: ReactDoctorConfig | null;
 }
 
-export interface AggregatedBaselineDelta {
+interface AggregatedBaselineDelta {
   readonly baseRef: string;
   readonly fixedCount: number;
   readonly baseTotalCount: number;
 }
 
-export interface BuildFinalCliScanOutcomeInput {
+interface BuildFinalCliScanOutcomeInput {
   readonly completedScans: ReadonlyArray<CompletedScan>;
   readonly skippedProjects: ReadonlyArray<JsonReportSkippedProject>;
   readonly mode: JsonReportMode;
@@ -27,7 +27,7 @@ export interface BuildFinalCliScanOutcomeInput {
   readonly categoryFilters: ReadonlySet<string>;
 }
 
-export interface FinalCliScanOutcome {
+interface FinalCliScanOutcome {
   readonly baseline: AggregatedBaselineDelta | undefined;
   readonly baselineDegraded: boolean;
   readonly mode: JsonReportMode;

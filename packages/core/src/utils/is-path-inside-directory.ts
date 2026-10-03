@@ -5,5 +5,10 @@ export const isPathInsideDirectory = (
   parentAbsolutePath: string,
 ): boolean => {
   const relativePath = path.relative(parentAbsolutePath, childAbsolutePath);
-  return Boolean(relativePath) && !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
+  return (
+    relativePath !== "" &&
+    relativePath !== ".." &&
+    !relativePath.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relativePath)
+  );
 };

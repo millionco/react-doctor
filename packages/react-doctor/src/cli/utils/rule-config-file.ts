@@ -39,7 +39,7 @@ export interface RuleConfigTarget {
   readonly migratedFromFilePath?: string;
 }
 
-export interface WriteRuleConfigResult {
+interface WriteRuleConfigResult {
   /** `false` when a dynamic module config couldn't be edited automatically. */
   readonly written: boolean;
 }

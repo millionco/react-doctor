@@ -246,6 +246,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "rn-no-raw-text",
       "rn-prefer-expo-image",
       "rn-style-prefer-boxshadow",
+      "server-sequential-independent-await",
       "window-open-without-noopener",
     ]);
   });

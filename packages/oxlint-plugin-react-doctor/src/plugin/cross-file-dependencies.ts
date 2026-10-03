@@ -1,5 +1,6 @@
 import type { StaticImport } from "oxc-parser";
 import { analyzeScopes } from "./semantic/scope-analysis.js";
+import { awaitedStatementsMayShareWork } from "./utils/awaited-statements-may-share-work.js";
 import {
   INTERNAL_PAGE_PATH_PATTERN,
   PAGE_FILE_PATTERN,
@@ -340,6 +341,24 @@ const collectFunctionExportDependencies = (
   }
 };
 
+const collectSequentialAwaitDependencies: CrossFileDependencyCollector = (input) => {
+  const program = input.getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "BlockStatement")) return;
+    for (const [index, statement] of node.body.entries()) {
+      const next = node.body[index + 1];
+      if (
+        !isNodeOfType(statement, "VariableDeclaration") ||
+        !isNodeOfType(next, "VariableDeclaration")
+      )
+        continue;
+      awaitedStatementsMayShareWork(statement, next, scopes, input.absoluteFilePath);
+    }
+  });
+};
+
 const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) => {
   collectFunctionExportDependencies(input, CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH);
 };
@@ -562,6 +581,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["rendering-hydration-mismatch-time", collectNearestManifestDependencies],
     ["rendering-hydration-no-flicker", collectEffectValueHelperDependencies],
     ["rerender-memo-with-default-value", collectForwardedHookDependencies],
+    ["server-sequential-independent-await", collectSequentialAwaitDependencies],
     ["rn-no-legacy-shadow-styles", collectLegacyArchDependencies],
     ["rn-no-raw-text", collectRnNoRawTextDependencies],
     ["rn-prefer-expo-image", collectNearestManifestDependencies],

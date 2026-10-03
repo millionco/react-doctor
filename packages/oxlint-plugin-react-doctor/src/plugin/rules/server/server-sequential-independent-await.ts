@@ -1,4 +1,5 @@
 import { INTENTIONAL_SEQUENCING_CALLEE_NAMES } from "../../constants/js.js";
+import { awaitedStatementsMayShareWork } from "../../utils/awaited-statements-may-share-work.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { expressionReadsPatternBinding } from "../../utils/expression-reads-pattern-binding.js";
 import { findSideEffect } from "../../utils/find-side-effect.js";
@@ -204,6 +205,15 @@ export const serverSequentialIndependentAwait = defineRule({
         if (!declarationStartsWithAwait(nextStatement)) continue;
 
         if (declarationReadsAnyPatternBinding(nextStatement, declaredPatterns, context)) continue;
+        if (
+          awaitedStatementsMayShareWork(
+            currentStatement,
+            nextStatement,
+            context.scopes,
+            context.filename,
+          )
+        )
+          continue;
         // The second await is on a promise that already exists
         // (`const p = fetchPosts(); … const posts = await p;`,
         // `await props.params`) — already running, so there's no

@@ -4,6 +4,7 @@ import type { PackageJson, WorkspacePackage } from "../types/index.js";
 import { hasSupportedProjectDependency } from "./dependencies.js";
 import { isDirectory, isFile, readDirectoryEntries } from "./fs-utils.js";
 import { readPackageJson } from "./package-json.js";
+import { parsePnpmWorkspacePatternsFromContent } from "../utils/parse-pnpm-workspace-patterns.js";
 
 export const getWorkspacePatterns = (rootDirectory: string, packageJson: PackageJson): string[] => {
   const pnpmPatterns = parsePnpmWorkspacePatterns(rootDirectory);
@@ -28,23 +29,7 @@ export const parsePnpmWorkspacePatterns = (rootDirectory: string): string[] => {
   if (!isFile(workspacePath)) return [];
 
   const content = fs.readFileSync(workspacePath, "utf-8");
-  const patterns: string[] = [];
-  let isInsidePackagesBlock = false;
-
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed === "packages:") {
-      isInsidePackagesBlock = true;
-      continue;
-    }
-    if (isInsidePackagesBlock && trimmed.startsWith("-")) {
-      patterns.push(trimmed.replace(/^-\s*/, "").replace(/["']/g, ""));
-    } else if (isInsidePackagesBlock && trimmed.length > 0 && !trimmed.startsWith("#")) {
-      isInsidePackagesBlock = false;
-    }
-  }
-
-  return patterns;
+  return parsePnpmWorkspacePatternsFromContent(content);
 };
 
 const NX_PROJECT_DISCOVERY_DIRS = ["apps", "libs", "packages"];

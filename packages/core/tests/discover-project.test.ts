@@ -3114,6 +3114,24 @@ describe("listWorkspacePackages", () => {
     expect(packages).toEqual([{ name: "web", directory: appDirectory }]);
   });
 
+  it("supports pnpm workspace flow sequence form", () => {
+    const rootDirectory = path.join(tempDirectory, "pnpm-workspace-flow-form");
+    const appDirectory = path.join(rootDirectory, "apps", "web");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "workspace-root", workspaces: ["packages/*"] }),
+    );
+    fs.writeFileSync(path.join(rootDirectory, "pnpm-workspace.yaml"), 'packages: ["apps/*"]\n');
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({ name: "web", dependencies: { react: "^19.0.0" } }),
+    );
+
+    const packages = listWorkspacePackages(rootDirectory);
+    expect(packages).toEqual([{ name: "web", directory: appDirectory }]);
+  });
+
   // HACK: cal.com's workspace patterns include both `"packages/*"` AND
   // `"packages/app-store"` — overlapping globs that resolve the same
   // directory through two patterns. Without dedup-by-directory the

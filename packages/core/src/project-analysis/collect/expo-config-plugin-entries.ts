@@ -1,7 +1,9 @@
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import fg from "fast-glob";
 import ts from "typescript";
+import { isFile } from "../../project-info/fs-utils.js";
+import { isRecord } from "../../utils/is-record.js";
 import { unwrapTypescriptExpression } from "../../utils/unwrap-typescript-expression.js";
 import { EXPO_CONFIG_SCAN_MAX_DEPTH, SOURCE_EXTENSIONS } from "../constants.js";
 
@@ -23,9 +25,6 @@ interface StaticConfigBindings {
   readonly functions: Map<string, ts.FunctionDeclaration>;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
 const isExpoOrReactNativeWorkspace = (dependencies: Record<string, string>): boolean =>
   [...EXPO_REACT_NATIVE_DEPENDENCIES].some((dependencyName) => dependencyName in dependencies);
 
@@ -33,14 +32,6 @@ const isLocalExpoPluginPath = (value: string): boolean =>
   (value.startsWith("./") || value.startsWith("../")) &&
   !value.includes("*") &&
   !value.includes("?");
-
-const isFile = (filePath: string): boolean => {
-  try {
-    return statSync(filePath).isFile();
-  } catch {
-    return false;
-  }
-};
 
 const resolveExpoPluginPath = (configDirectory: string, pluginPath: string): string | undefined => {
   const candidatePath = resolve(configDirectory, pluginPath);

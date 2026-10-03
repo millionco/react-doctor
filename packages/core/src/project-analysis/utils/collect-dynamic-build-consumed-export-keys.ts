@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import fg from "fast-glob";
 import ts from "typescript";
 import { extractScriptFileReferences } from "./extract-script-file-references.js";

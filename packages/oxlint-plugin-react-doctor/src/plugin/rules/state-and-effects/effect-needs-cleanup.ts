@@ -6379,6 +6379,60 @@ const oneShotTimerHasUnmountGuard = (usage: SubscribeLikeUsage, context: RuleCon
   return hasUnmountInvalidation;
 };
 
+const hasReturnedObserverDisconnectInEffectBody = (
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  const usageFunction = findEnclosingFunction(usage.node);
+  if (
+    usage.kind !== "subscribe" ||
+    usage.registrationVerbName !== "observe" ||
+    usage.receiverKey === null ||
+    !isFunctionLike(callback) ||
+    !isNodeOfType(callback.body, "BlockStatement")
+  ) {
+    return false;
+  }
+  if (usageFunction !== callback) {
+    const effectInvokedFunctions = collectEffectOwnedResourceCallbackFunctions(callback, context);
+    if (!usageFunction || !effectInvokedFunctions.has(usageFunction)) {
+      return false;
+    }
+  }
+  const matchingCleanupReturns: EsTreeNode[] = [];
+  walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "ReturnStatement") || !child.argument) return;
+    const returnedValue = stripParenExpression(child.argument);
+    const cleanupFunction = resolveStableValue(returnedValue, context);
+    if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return;
+    const disconnectCalls: EsTreeNode[] = [];
+    walkAst(cleanupFunction.body, (cleanupChild: EsTreeNode) => {
+      if (cleanupChild !== cleanupFunction.body && isFunctionLike(cleanupChild)) return false;
+      const cleanupCall = isNodeOfType(cleanupChild, "ChainExpression")
+        ? cleanupChild.expression
+        : cleanupChild;
+      const cleanupCallee = isNodeOfType(cleanupCall, "CallExpression")
+        ? stripParenExpression(cleanupCall.callee)
+        : null;
+      if (
+        isNodeOfType(cleanupCall, "CallExpression") &&
+        isNodeOfType(cleanupCallee, "MemberExpression") &&
+        !cleanupCallee.computed &&
+        isNodeOfType(cleanupCallee.property, "Identifier") &&
+        (cleanupCallee.property.name === "disconnect" || cleanupCallee.property.name === "unobserve") &&
+        resolveExpressionKey(cleanupCallee.object, context) === usage.receiverKey
+      ) {
+        disconnectCalls.push(cleanupChild);
+      }
+    });
+    if (doNodesCoverEveryPathFromFunctionEntry(cleanupFunction, disconnectCalls, context)) {
+      matchingCleanupReturns.push(child);
+    }
+  });
+  return matchingCleanupReturns.length > 0;
+};
+
 const hasReturnedObserverDisconnectAfterSynchronousIteration = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -6457,6 +6511,7 @@ const effectHasCleanupForUsage = (
   if (
     cleanupRegistryReleasesUsage(callback, usage, context) ||
     symmetricForEachListenerCleanupReleasesUsage(callback, usage, context) ||
+    hasReturnedObserverDisconnectInEffectBody(callback, usage, context) ||
     hasReturnedObserverDisconnectAfterSynchronousIteration(callback, usage, context) ||
     hasEffectLocalStoredDisposerCleanup(callback, usage, context) ||
     oneShotTimerHasUnmountGuard(usage, context) ||

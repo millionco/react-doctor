@@ -1,5 +1,40 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.16
+
+### Patch Changes
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid sequential-await warnings when local helpers read the same cache entry or delegate to the same imported operation with matching stable arguments. Follow bounded imported helpers to guarded, module-owned Map/WeakMap caches keyed by unchanged function parameters, with dependency fingerprints for cache invalidation. Preserve warnings for distinct imported operations sharing an input, and bound the diagnostic's parallelization advice.
+
+  Keep diagnostics when a helper computes a cache key with an unknown call or property read. These values can change between calls.
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize convergent last-item equality guards in no-self-updating-effect, including literal tail replacements and appends with tail-preserving deferred trims.
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid no-derived-state false positives when custom hooks return draft state setters through immutable aliases.
+
+- [#1846](https://github.com/millionco/react-doctor/pull/1846) [`6313667`](https://github.com/millionco/react-doctor/commit/631366777e01637f3c36b8a8c2ae8f19ba1060e8) Thanks [@aidenybai](https://github.com/aidenybai)! - Disable `require-pnpm-hardening` by default; enable it explicitly through `rules` when wanted. Describe await parallelization as a conditional opportunity, preserving ordering, resource limits, and error semantics. Recognize local Promise.all/allSettled collectors and stop describing async array callbacks as sequential.
+
+- [#1811](https://github.com/millionco/react-doctor/pull/1811) [`3242a81`](https://github.com/millionco/react-doctor/commit/3242a81b1596055da3207f735e873b4ce81fae13) Thanks [@skoshx](https://github.com/skoshx)! - Fix cache/navigation binding resolution and unsafe mutation parallelization (issue [#1810](https://github.com/millionco/react-doctor/issues/1810))
+
+  - **server-cache-with-object-literal**: Properly resolve React.cache imports through aliases and check all argument positions for fresh objects/arrays. Shadowed or non-React cache functions no longer trigger false positives.
+
+  - **nextjs-no-redirect-in-try-catch**: Recognize Next.js `unstable_rethrow(error)` as a valid error forwarding pattern, suppressing the diagnostic when the caught error is correctly rethrown.
+
+  - **server-sequential-independent-await** and **async-parallel**: Detect mutating HTTP requests (POST, PUT, PATCH, DELETE) and preserve their ordering, preventing incorrect parallelization suggestions for operations that must run sequentially.
+
+- [#1832](https://github.com/millionco/react-doctor/pull/1832) [`8a950f0`](https://github.com/millionco/react-doctor/commit/8a950f04477696e1dee1a509b3c25780f2837389) Thanks [@skoshx](https://github.com/skoshx)! - Fix `effect-needs-cleanup` false positive for React 19 callback ref cleanup returns. React 19 callback refs can return cleanup functions with the signature `(node: T | null) => void | (() => void)`. The rule now correctly handles cases where cleanup is only returned after resource usage (e.g., after `ResizeObserver.observe()`), allowing `void` returns on the null branch.
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Resolve local Hook-shaped object methods before applying React Hook namespace heuristics, including inspection dispatchers and useEffectEvent.
+  Preserve Hook diagnostics for unresolved invoked callbacks and bound Hook aliases, while resolving proven local callbacks at each call site.
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid display-name diagnostics for data factories that return descriptors containing JSX icons.
+
+  Preserve anonymous-component diagnostics for proven array maps and React useMemo callbacks that return render output.
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize effect-owned timer replacements that clear the previous handle before assignment and release the final timer during teardown.
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Respect Solid JSX applicability in handler naming, DOM property, and module-scope helper advice while preserving React diagnostics in mixed-runtime files.
+
 ## 0.9.15
 
 ### Patch Changes

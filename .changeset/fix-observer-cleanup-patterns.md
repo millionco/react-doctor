@@ -2,10 +2,14 @@
 "oxlint-plugin-react-doctor": patch
 ---
 
-fix(effect-needs-cleanup): accept observer cleanup for for-of loops and nested functions
+fix(effect-needs-cleanup): accept observer cleanup for tuple-loop and retry patterns
 
 Fixes false positives for two observer patterns:
 - Observer with multiple `.observe()` calls inside a `for...of` loop, cleaned up with single `.disconnect()`
-- Observer created/assigned inside an effect-invoked nested function, cleaned up at effect level
+- Observer created/assigned inside an effect-invoked retry function (e.g., using `requestAnimationFrame`), cleaned up at effect level
 
-The rule now recognizes that calling `.disconnect()` on an observer cleans up ALL observations, so a single cleanup call is sufficient even when `.observe()` is called multiple times in a loop or from a nested function.
+The rule now correctly distinguishes between:
+- Safe: observers created in synchronously-invoked functions or timer/scheduler callbacks
+- Unsafe: observers created in functions passed to external APIs (MutationObserver constructor, scheduler registration)
+
+This preserves the rule's ability to catch legitimate missing cleanup while eliminating false positives for controlled patterns.

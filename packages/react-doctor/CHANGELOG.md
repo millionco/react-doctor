@@ -1,5 +1,16 @@
 # react-doctor
 
+## 0.9.16
+
+### Patch Changes
+
+- [#1846](https://github.com/millionco/react-doctor/pull/1846) [`6313667`](https://github.com/millionco/react-doctor/commit/631366777e01637f3c36b8a8c2ae8f19ba1060e8) Thanks [@aidenybai](https://github.com/aidenybai)! - Disable `require-pnpm-hardening` by default; enable it explicitly through `rules` when wanted. Describe await parallelization as a conditional opportunity, preserving ordering, resource limits, and error semantics. Recognize local Promise.all/allSettled collectors and stop describing async array callbacks as sequential.
+
+- [#1832](https://github.com/millionco/react-doctor/pull/1832) [`8a950f0`](https://github.com/millionco/react-doctor/commit/8a950f04477696e1dee1a509b3c25780f2837389) Thanks [@skoshx](https://github.com/skoshx)! - Fix `effect-needs-cleanup` false positive for React 19 callback ref cleanup returns. React 19 callback refs can return cleanup functions with the signature `(node: T | null) => void | (() => void)`. The rule now correctly handles cases where cleanup is only returned after resource usage (e.g., after `ResizeObserver.observe()`), allowing `void` returns on the null branch.
+
+- Updated dependencies [[`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`6313667`](https://github.com/millionco/react-doctor/commit/631366777e01637f3c36b8a8c2ae8f19ba1060e8), [`3242a81`](https://github.com/millionco/react-doctor/commit/3242a81b1596055da3207f735e873b4ce81fae13), [`8a950f0`](https://github.com/millionco/react-doctor/commit/8a950f04477696e1dee1a509b3c25780f2837389), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147)]:
+  - oxlint-plugin-react-doctor@0.9.16
+
 ## 0.9.15
 
 ### Patch Changes

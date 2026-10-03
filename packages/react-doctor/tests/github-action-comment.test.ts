@@ -356,6 +356,7 @@ describe("render-github-action-comment", () => {
     expect(comment).not.toContain("No React Doctor issues found");
     expect(comment).not.toContain("found no issues");
     expect(outputs).toContain("skipped=true");
+    expect(outputs).toContain("clean=false");
   });
 
   it("marks a diff scan whose changed files examined zero eligible files as skipped", () => {
@@ -378,6 +379,7 @@ describe("render-github-action-comment", () => {
 
     expect(comment).toContain("React Doctor skipped this pull request");
     expect(outputs).toContain("skipped=true");
+    expect(outputs).toContain("clean=false");
   });
 
   it("does NOT skip a clean scan of real React changes (eligible files examined)", () => {
@@ -401,6 +403,14 @@ describe("render-github-action-comment", () => {
     expect(comment).toContain("**React Doctor** found no issues. 🎉");
     expect(comment).not.toContain("skipped this pull request");
     expect(outputs).toContain("skipped=false");
+    expect(outputs).toContain("clean=true");
+  });
+
+  it("marks a scan with issues as not clean", () => {
+    const { outputs } = runRenderer(buildReport());
+
+    expect(outputs).toContain("skipped=false");
+    expect(outputs).toContain("clean=false");
   });
 
   it("does NOT skip a full-scope scan with no projects (clean success, not a no-op)", () => {

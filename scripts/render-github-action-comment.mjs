@@ -401,6 +401,14 @@ const isSkippedScan = (report) => {
   return (report.projects ?? []).every((project) => project.scannedFileCount === 0);
 };
 
+const isCleanScan = (report) => {
+  if (!report.ok) return false;
+  if (isSkippedScan(report)) return false;
+  if ((report.summary?.totalDiagnosticCount ?? 0) > 0) return false;
+  if (hasIncompleteChecks(report)) return false;
+  return true;
+};
+
 // Unified body for every successful scan (baseline, diff, full). The lead line
 // adapts to the mode; the error/warning lists are shared.
 const buildIssuesBody = (report) => {
@@ -434,6 +442,7 @@ if (!report) {
   process.exit(0);
 }
 const skipped = isSkippedScan(report);
+const clean = isCleanScan(report);
 const body = skipped ? buildSingleLineBody(COPY.skipped) : buildCommentBody(report);
 
 if (commentPath) {
@@ -445,6 +454,7 @@ if (commentPath) {
 // The Action reads this to suppress the sticky PR comment (it still mirrors the
 // body into the job summary + commit status, which read "skipped").
 appendOutput("skipped", skipped ? "true" : "false");
+appendOutput("clean", clean ? "true" : "false");
 
 appendOutput(
   "score",

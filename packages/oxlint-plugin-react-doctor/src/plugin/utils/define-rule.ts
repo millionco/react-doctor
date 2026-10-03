@@ -70,6 +70,7 @@ const wrapCreateForReactJsxOnly = <
           fileIsNonReactJsx =
             !runtimeImports.hasReactRuntime &&
             (runtimeImports.hasNonReactRuntime || runtimeImports.hasNonReactMarker);
+          if (fileIsNonReactJsx) return;
           (visitor as (n: EsTreeNodeOfType<"Program">) => void)(node);
         };
         continue;

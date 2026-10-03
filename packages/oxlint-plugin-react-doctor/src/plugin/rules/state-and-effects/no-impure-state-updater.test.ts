@@ -481,6 +481,34 @@ describe("no-impure-state-updater", () => {
          return <button onClick={() => persist(["new"])}>{items.length}</button>;
        };`,
     ],
+    [
+      "a callback stored via lazy initializer",
+      `import { useState } from "react";
+       const Repro = () => {
+         const [pending, setPending] = useState<(() => void) | null>(null);
+         const [open, setOpen] = useState(false);
+         const guard = (action: () => void) => {
+           setPending(() => action);
+         };
+         const openForEdit = () => setOpen(true);
+         guard(() => openForEdit());
+       };`,
+    ],
+    [
+      "a callback stored via lazy initializer in a conditional wrapper",
+      `import { useState } from "react";
+       const Repro = () => {
+         const [dirty] = useState(false);
+         const [pending, setPending] = useState<(() => void) | null>(null);
+         const [open, setOpen] = useState(false);
+         const guard = (action: () => void) => {
+           if (dirty) setPending(() => action);
+           else action();
+         };
+         const openForEdit = () => setOpen(true);
+         guard(() => openForEdit());
+       };`,
+    ],
   ])("stays silent for %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);

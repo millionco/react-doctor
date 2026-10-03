@@ -97,11 +97,12 @@ const collectAwaitedWork = (
           : null;
         const specifier = receiverSymbol.declarationNode;
         const declaration = getImportDeclarationForSymbol(receiverSymbol);
-        const exportedName = isNodeOfType(specifier, "ImportNamespaceSpecifier")
-          ? member
-          : isNodeOfType(callee, "Identifier")
-            ? resolveImportedExportName(specifier)
-            : null;
+        let exportedName: string | null = null;
+        if (isNodeOfType(specifier, "ImportNamespaceSpecifier")) {
+          exportedName = member;
+        } else if (isNodeOfType(callee, "Identifier")) {
+          exportedName = resolveImportedExportName(specifier);
+        }
         if (
           currentFilename &&
           remainingCalls > 0 &&

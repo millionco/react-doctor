@@ -71,11 +71,11 @@ export const isGuardedCacheReader = (functionNode: EsTreeNode, scopes: ScopeAnal
   ) {
     return false;
   }
-  const guardReturn = isNodeOfType(guard.consequent, "BlockStatement")
-    ? guard.consequent.body.length === 1
-      ? guard.consequent.body[0]
-      : null
-    : guard.consequent;
+  let guardReturn: EsTreeNode = guard.consequent;
+  if (isNodeOfType(guardReturn, "BlockStatement")) {
+    if (guardReturn.body.length !== 1) return false;
+    guardReturn = guardReturn.body[0];
+  }
   const cachedSymbol = scopes.symbolFor(cached.id);
   const valueSymbol = scopes.symbolFor(value.id);
   const key = read.arguments[0];

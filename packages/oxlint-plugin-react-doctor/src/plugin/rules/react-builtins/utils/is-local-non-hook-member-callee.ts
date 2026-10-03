@@ -90,11 +90,12 @@ const mayInvokeHook = (
     const expression = isNodeOfType(node, "CallExpression") ? node.callee : node.right;
     const callee = resolveArgument(expression, scopes, localBindings);
     if (!callee || isNodeOfType(callee, "Literal")) return;
-    const calleeName = isNodeOfType(callee, "Identifier")
-      ? callee.name
-      : isNodeOfType(callee, "MemberExpression")
-        ? getStaticPropertyName(callee)
-        : null;
+    let calleeName: string | null = null;
+    if (isNodeOfType(callee, "Identifier")) {
+      calleeName = callee.name;
+    } else if (isNodeOfType(callee, "MemberExpression")) {
+      calleeName = getStaticPropertyName(callee);
+    }
     const importedName = resolveImportedApiReference(callee, scopes)?.importedName;
     if (isReactHookName(calleeName ?? "") || (importedName && isReactHookName(importedName))) {
       foundHook = true;

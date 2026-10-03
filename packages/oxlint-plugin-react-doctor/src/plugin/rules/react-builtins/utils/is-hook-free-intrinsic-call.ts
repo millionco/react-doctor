@@ -93,15 +93,19 @@ const hasOnlyArrayReferences = (
         parameterSymbol && hasOnlyArrayReferences(parameterSymbol, scopes, nextVisited),
       );
     }
-    const alias =
-      isNodeOfType(parent, "VariableDeclarator") && parent.init === identifier
-        ? parent.id
-        : isNodeOfType(parent, "AssignmentExpression") &&
-            parent.operator === "=" &&
-            parent.right === identifier
-          ? parent.left
-          : null;
-    const aliasSymbol = alias && isNodeOfType(alias, "Identifier") ? scopes.symbolFor(alias) : null;
+    let aliasBinding: EsTreeNode | null = null;
+    if (isNodeOfType(parent, "VariableDeclarator") && parent.init === identifier) {
+      aliasBinding = parent.id;
+    } else if (
+      isNodeOfType(parent, "AssignmentExpression") &&
+      parent.operator === "=" &&
+      parent.right === identifier
+    ) {
+      aliasBinding = parent.left;
+    }
+    const aliasSymbol = isNodeOfType(aliasBinding, "Identifier")
+      ? scopes.symbolFor(aliasBinding)
+      : null;
     return Boolean(aliasSymbol && hasOnlyArrayReferences(aliasSymbol, scopes, nextVisited));
   });
 };

@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
 import { getDirectUnreassignedInitializer } from "../../../utils/get-direct-unreassigned-initializer.js";
+import { getSingleReturnExpression } from "../../../utils/get-single-return-expression.js";
 import { getNodeStartIndex } from "../../../utils/get-node-start-index.js";
 import { getStaticObjectPropertyValue } from "../../../utils/get-static-object-property-value.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
@@ -20,18 +21,18 @@ interface LastItemGuard {
 }
 
 const resolveImmutableAlias = (node: EsTreeNode, scopes: ScopeAnalysis): EsTreeNode => {
-  let current = stripParenExpression(node);
-  const seen = new Set<SymbolDescriptor>();
-  while (isNodeOfType(current, "Identifier")) {
-    const symbol = scopes.symbolFor(current);
-    if (!symbol || seen.has(symbol)) break;
+  let resolvedExpression = stripParenExpression(node);
+  const visitedSymbols = new Set<SymbolDescriptor>();
+  while (isNodeOfType(resolvedExpression, "Identifier")) {
+    const symbol = scopes.symbolFor(resolvedExpression);
+    if (!symbol || visitedSymbols.has(symbol)) break;
     if (symbol.references.some((reference) => reference.flag !== "read")) break;
     const initializer = getDirectUnreassignedInitializer(symbol);
     if (!initializer) break;
-    seen.add(symbol);
-    current = stripParenExpression(initializer);
+    visitedSymbols.add(symbol);
+    resolvedExpression = stripParenExpression(initializer);
   }
-  return current;
+  return resolvedExpression;
 };
 
 const isFixedStringTarget = (
@@ -174,16 +175,6 @@ const hasOnlyReadSelections = (
   return true;
 };
 
-const getPureUpdaterReturn = (updater: EsTreeNode): EsTreeNode | null => {
-  if (!isFunctionLike(updater) || updater.async || updater.generator) return null;
-  if (!isNodeOfType(updater.body, "BlockStatement")) return stripParenExpression(updater.body);
-  if (updater.body.body.length !== 1) return null;
-  const statement = updater.body.body[0];
-  return isNodeOfType(statement, "ReturnStatement") && statement.argument
-    ? stripParenExpression(statement.argument)
-    : null;
-};
-
 const preservesLastItem = (
   updater: EsTreeNode,
   returned: EsTreeNode,
@@ -270,8 +261,13 @@ export const doesLastItemGuardConverge = (
     const allWritesConverge = calls.every((call) => {
       if (call.arguments.length !== 1) return false;
       const argument = stripParenExpression(call.arguments[0]);
-      const returned = isFunctionLike(argument) ? getPureUpdaterReturn(argument) : argument;
-      if (!returned) return false;
+      let returned = argument;
+      if (isFunctionLike(argument)) {
+        if (argument.async || argument.generator) return false;
+        const returnedExpression = getSingleReturnExpression(argument);
+        if (!returnedExpression) return false;
+        returned = stripParenExpression(returnedExpression);
+      }
       if (!isDescendantWithoutFunctionBoundary(call, callback)) {
         return preservesLastItem(argument, returned, scopes);
       }

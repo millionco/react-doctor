@@ -1,0 +1,241 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 3eda727a01d5ea9e20bd1f5d3b8f37b2ee36a2d8505d86f4e5f1d2c86eff133c
+/** DOM heads-up display: objectives, flight strip, alerts and the inset bezel. */
+
+export interface Objective {
+  id: string;
+  name: string;
+  tone: "green" | "amber" | "cyan";
+}
+
+export interface AlertSpec {
+  text: string;
+  tone: "red" | "amber" | "pink" | "cyan";
+}
+
+const CROSSHAIR = `
+<svg viewBox="0 0 220 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="110" cy="110" r="52" stroke="rgba(150,215,240,0.30)" stroke-width="1"/>
+  <circle cx="110" cy="110" r="74" stroke="rgba(150,215,240,0.12)" stroke-width="1" stroke-dasharray="4 9"/>
+  <path d="M110 40v16M110 164v16M40 110h16M164 110h16" stroke="rgba(160,225,250,0.55)" stroke-width="1.4"/>
+  <path d="M92 110h11M117 110h11" stroke="rgba(160,225,250,0.8)" stroke-width="1.6"/>
+  <circle cx="110" cy="110" r="2.2" fill="rgba(180,240,255,0.9)"/>
+</svg>`;
+
+export class Hud {
+  private readonly root: HTMLDivElement;
+  private readonly overlay: HTMLDivElement;
+  private readonly overlayTitle: HTMLHeadingElement;
+  private readonly overlayBody: HTMLParagraphElement;
+  private readonly overlayKeys: HTMLDivElement;
+  private readonly loadWrap: HTMLDivElement;
+  private readonly loadFill: HTMLElement;
+  private readonly loadLabel: HTMLDivElement;
+  private readonly startBtn: HTMLButtonElement;
+  private readonly phaseEl: HTMLDivElement;
+  private readonly phaseSub: HTMLDivElement;
+  private readonly objWrap: HTMLDivElement;
+  private readonly objects = new Map<string, { row: HTMLDivElement; val: HTMLSpanElement; fill: HTMLElement }>();
+  private readonly stats = new Map<string, HTMLSpanElement>();
+  private readonly bandTag: HTMLDivElement;
+  private readonly alertsEl: HTMLDivElement;
+  private readonly hintEl: HTMLDivElement;
+  private readonly insetFrame: HTMLDivElement;
+  private lastAlertKey = "";
+  private lastHint = "";
+
+  constructor(objectives: Objective[]) {
+    this.root = document.createElement("div");
+    this.root.id = "hud";
+    document.body.appendChild(this.root);
+
+    const center = document.createElement("div");
+    center.id = "center";
+    center.innerHTML = CROSSHAIR;
+    this.root.appendChild(center);
+
+    // Objectives ----------------------------------------------------------
+    const obj = document.createElement("div");
+    obj.className = "panel";
+    obj.id = "objectives";
+    this.phaseEl = document.createElement("div");
+    this.phaseEl.id = "phase";
+    this.phaseSub = document.createElement("div");
+    this.phaseSub.id = "phaseSub";
+    this.objWrap = document.createElement("div");
+    obj.append(this.phaseEl, this.phaseSub, this.objWrap);
+    this.root.appendChild(obj);
+
+    for (const o of objectives) {
+      const row = document.createElement("div");
+      row.className = "obj";
+      const head = document.createElement("div");
+      head.className = "obj-row";
+      const name = document.createElement("span");
+      name.className = "obj-name";
+      name.textContent = o.name;
+      const val = document.createElement("span");
+      val.className = "obj-val";
+      val.textContent = "--";
+      head.append(name, val);
+      const bar = document.createElement("div");
+      bar.className = `bar ${o.tone === "green" ? "" : o.tone}`.trim();
+      const fill = document.createElement("i");
+      bar.appendChild(fill);
+      row.append(head, bar);
+      this.objWrap.appendChild(row);
+      this.objects.set(o.id, { row, val, fill });
+    }
+
+    // Flight strip ---------------------------------------------------------
+    const status = document.createElement("div");
+    status.className = "panel";
+    status.id = "status";
+    for (const [key, label] of [
+      ["spd", "SPD"],
+      ["alt", "AGL"],
+      ["thr", "THR"],
+      ["spore", "SPORE"],
+      ["score", "SCORE"],
+    ] as const) {
+      const row = document.createElement("div");
+      row.className = "stat";
+      const l = document.createElement("span");
+      l.textContent = label;
+      const v = document.createElement("span");
+      v.textContent = "0";
+      row.append(l, v);
+      status.appendChild(row);
+      this.stats.set(key, v);
+    }
+    this.bandTag = document.createElement("div");
+    this.bandTag.id = "bandTag";
+    this.bandTag.textContent = "NO BAND";
+    status.appendChild(this.bandTag);
+    this.root.appendChild(status);
+
+    this.alertsEl = document.createElement("div");
+    this.alertsEl.id = "alerts";
+    this.root.appendChild(this.alertsEl);
+
+    this.hintEl = document.createElement("div");
+    this.hintEl.id = "hint";
+    this.root.appendChild(this.hintEl);
+
+    this.insetFrame = document.createElement("div");
+    this.insetFrame.id = "insetFrame";
+    const insetLabel = document.createElement("div");
+    insetLabel.id = "insetLabel";
+    insetLabel.textContent = "COCKPIT / SURVEY CONSOLE";
+    this.insetFrame.appendChild(insetLabel);
+    this.root.appendChild(this.insetFrame);
+
+    // Overlay --------------------------------------------------------------
+    this.overlay = document.createElement("div");
+    this.overlay.id = "overlay";
+    this.overlayTitle = document.createElement("h1");
+    this.overlayBody = document.createElement("p");
+    this.overlayKeys = document.createElement("div");
+    this.overlayKeys.className = "keys";
+    this.loadWrap = document.createElement("div");
+    this.loadWrap.id = "loadbar";
+    this.loadFill = document.createElement("i");
+    this.loadWrap.appendChild(this.loadFill);
+    this.loadLabel = document.createElement("div");
+    this.loadLabel.id = "loadlabel";
+    this.startBtn = document.createElement("button");
+    this.startBtn.id = "start";
+    this.startBtn.textContent = "Launch";
+    this.startBtn.style.display = "none";
+    this.overlay.append(
+      this.overlayTitle,
+      this.overlayBody,
+      this.overlayKeys,
+      this.loadWrap,
+      this.loadLabel,
+      this.startBtn,
+    );
+    document.body.appendChild(this.overlay);
+  }
+
+  onStart(fn: () => void): void {
+    this.startBtn.addEventListener("click", fn);
+  }
+
+  setLoading(t: number, label: string): void {
+    this.loadFill.style.width = `${Math.round(t * 100)}%`;
+    this.loadLabel.textContent = `BAKING ${label.toUpperCase()}`;
+  }
+
+  showTitle(title: string, body: string, keys: [string, string][], button: string | null): void {
+    this.overlayTitle.textContent = title;
+    this.overlayBody.innerHTML = body;
+    this.overlayKeys.innerHTML = keys
+      .map(([k, v]) => `<div><b>${k}</b> ${v}</div>`)
+      .join("");
+    this.overlayKeys.style.display = keys.length ? "grid" : "none";
+    this.loadWrap.style.display = "none";
+    this.loadLabel.style.display = "none";
+    this.startBtn.style.display = button ? "inline-block" : "none";
+    if (button) this.startBtn.textContent = button;
+    this.overlay.classList.remove("hidden");
+  }
+
+  hideOverlay(): void {
+    this.overlay.classList.add("hidden");
+  }
+
+  setPhase(title: string, sub: string): void {
+    this.phaseEl.textContent = title;
+    this.phaseSub.textContent = sub;
+  }
+
+  setObjective(id: string, value: string, pct: number, done: boolean): void {
+    const o = this.objects.get(id);
+    if (!o) return;
+    o.val.textContent = value;
+    o.fill.style.width = `${Math.round(Math.min(1, Math.max(0, pct)) * 100)}%`;
+    o.row.classList.toggle("done", done);
+  }
+
+  setStat(key: string, value: string): void {
+    const el = this.stats.get(key);
+    if (el) el.textContent = value;
+  }
+
+  setBand(band: -1 | 0 | 1): void {
+    this.bandTag.className = band === -1 ? "low" : band === 1 ? "high" : "";
+    this.bandTag.textContent =
+      band === -1 ? "CANOPY BAND" : band === 1 ? "THERMAL BAND" : "NO BAND";
+  }
+
+  setAlerts(list: AlertSpec[]): void {
+    const key = list.map((a) => a.tone + a.text).join("|");
+    if (key === this.lastAlertKey) return;
+    this.lastAlertKey = key;
+    this.alertsEl.innerHTML = list
+      .map((a) => `<div class="alert ${a.tone}">${a.text}</div>`)
+      .join("");
+  }
+
+  setHint(html: string): void {
+    if (html === this.lastHint) return;
+    this.lastHint = html;
+    this.hintEl.innerHTML = html;
+    this.hintEl.style.display = html ? "block" : "none";
+  }
+
+  setInsetRect(x: number, y: number, w: number, h: number): void {
+    this.insetFrame.style.left = `${x}px`;
+    this.insetFrame.style.top = `${y}px`;
+    this.insetFrame.style.width = `${w}px`;
+    this.insetFrame.style.height = `${h}px`;
+  }
+
+  setInsetVisible(on: boolean): void {
+    this.insetFrame.style.display = on ? "block" : "none";
+  }
+}

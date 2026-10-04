@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { GITHUB_ACTIONS_SETUP_URL } from "@react-doctor/core";
 import type { ScoreResult } from "@react-doctor/core";
@@ -15,6 +14,7 @@ import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
 import { buildDiagnosticListEntries } from "../lib/diagnostic-list-entries.js";
 import { buildDiagnosticRows } from "../lib/diagnostic-rows.js";
 import { resolveReportLayout } from "../lib/resolve-report-layout.js";
+import { useEffect, useMemo, useRef, useState } from "../react-runtime.js";
 import type { ScanReport, TuiHandoffRequest } from "../scan-store.js";
 import type { ActionMenuAction } from "./action-menu.js";
 import { AgentHandoff } from "./agent-handoff.js";
@@ -133,8 +133,18 @@ export const Report = ({
   };
 
   const isCiSetupAvailable = Boolean(canAddToCi && onAddToCi && !isCiSetupQueued);
-  const isHandoffAvailable =
-    diagnosticRows.length > 0 && launchableAgents.length > 0 && Boolean(onHandoff);
+  const isHandoffAvailable = diagnosticRows.length > 0 && Boolean(onHandoff);
+  const completeHandoff = (destination: TuiHandoffRequest["destination"]): void => {
+    if (!onHandoff) return;
+    onHandoff({
+      destination,
+      prompt: buildHandoffPayload({
+        diagnostics: report.diagnostics,
+        projectName: report.projectName,
+      }),
+    });
+    onExit();
+  };
   const firstDiagnosticEntry = diagnosticListEntries.find((entry) => entry.kind === "item");
   const resolvedViewerSelectedRowIndex =
     viewerSelectedRowIndex ??
@@ -208,9 +218,8 @@ export const Report = ({
       />
     ) : null;
 
-  let activeScreenContent: ReactNode;
-  if (activeReportScreen === "ci") {
-    activeScreenContent = (
+  const screenContent: Record<ReportScreen, ReactNode> = {
+    ci: (
       <CiSetup
         feedback={ciSetupFeedback}
         onConfirm={() => {
@@ -234,28 +243,17 @@ export const Report = ({
         }}
         onQuit={onQuit}
       />
-    );
-  } else if (activeReportScreen === "handoff") {
-    activeScreenContent = (
+    ),
+    handoff: (
       <AgentHandoff
         agents={launchableAgents}
-        onSelect={(agentId) => {
-          if (!onHandoff) return;
-          onHandoff({
-            agentId,
-            prompt: buildHandoffPayload({
-              diagnostics: report.diagnostics,
-              projectName: report.projectName,
-            }),
-          });
-          onExit();
-        }}
+        onSelect={completeHandoff}
+        onCopyPrompt={() => completeHandoff("clipboard")}
         onBack={() => setActiveReportScreen("landing")}
         onQuit={onQuit}
       />
-    );
-  } else if (activeReportScreen === "handoff-ci") {
-    activeScreenContent = (
+    ),
+    "handoff-ci": (
       <HandoffCiRecommendation
         onAddToCi={() => {
           onAddToCi?.();
@@ -265,9 +263,8 @@ export const Report = ({
         onContinue={() => setActiveReportScreen("handoff")}
         onQuit={onQuit}
       />
-    );
-  } else if (activeReportScreen === "landing") {
-    activeScreenContent = (
+    ),
+    landing: (
       <ReportLanding
         header={<ScoreHeader variant="landing" {...scoreHeaderProps} />}
         phase={reportReveal.phase}
@@ -281,9 +278,8 @@ export const Report = ({
         onSelectionChange={setLandingSelectedIndex}
         onQuit={onQuit}
       />
-    );
-  } else {
-    activeScreenContent = (
+    ),
+    issues: (
       <DiagnosticList
         header={
           reportLayout.showsViewerScoreHeader ? (
@@ -311,13 +307,13 @@ export const Report = ({
         }}
         exitHint={`esc back · ${exitHint}`}
       />
-    );
-  }
+    ),
+  };
 
   return (
     <>
       {activeReportScreen === "landing" && shouldShowIssueStream ? issueStream : null}
-      {activeScreenContent}
+      {screenContent[activeReportScreen]}
     </>
   );
 };

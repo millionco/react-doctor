@@ -1,0 +1,49 @@
+{
+  "clips": [
+    {
+      "from": "project-command",
+      "to": "project-selection",
+      "speed": 1.5,
+      "caption": "Choose projects in the interactive CLI",
+      "hold_ms": 1000
+    },
+    {
+      "from": "project-selection",
+      "to": "scan-started",
+      "caption": "Scanning starts before the delayed Git operation finishes",
+      "hold_ms": 1000
+    },
+    {
+      "from": "scan-started",
+      "to": "clean-report",
+      "speed": 3,
+      "caption": "The selected project completes with a clean result",
+      "hold_ms": 1200
+    },
+    {
+      "from": "report-command",
+      "to": "action-menu",
+      "speed": 2,
+      "caption": "Inspect the compact interactive report",
+      "hold_ms": 1000
+    },
+    {
+      "from": "action-menu",
+      "to": "copy-context",
+      "caption": "Open the copy-context action",
+      "hold_ms": 1000
+    },
+    {
+      "from": "action-menu-returned",
+      "to": "action-confirmation",
+      "caption": "Open the GitHub Actions confirmation",
+      "hold_ms": 1000
+    },
+    {
+      "from": "action-confirmation",
+      "to": "action-confirmation-cancelled",
+      "caption": "Cancel safely and return to the report",
+      "hold_ms": 1200
+    }
+  ]
+}

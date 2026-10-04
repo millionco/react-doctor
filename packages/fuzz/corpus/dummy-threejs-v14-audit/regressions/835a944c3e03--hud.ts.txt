@@ -1,0 +1,688 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 835a944c3e0325f40b1c5caf772db7cc14954f8b257c1e8c2f3d6ef658b7c58d
+import { clamp01, formatDelta, formatTime } from "../core/math";
+import type { TyreSetup } from "../vehicle/car";
+import type { BridgeModule, ModuleConfig, Route } from "../world/route";
+import type { EventDef, Session } from "../game/events";
+import { parTime } from "../game/events";
+
+/** DOM overlay: loading, paddock setup, race HUD, results and standings. */
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+export interface HudCallbacks {
+  onStart: () => void;
+  onSelectTyre: (index: number) => void;
+  onToggleModule: (index: number) => void;
+  onNext: () => void;
+  onRetry: () => void;
+  onRestartSeries: () => void;
+  onToggleFps: () => void;
+  onToggleMute: () => void;
+}
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private readonly loading: HTMLDivElement;
+  private readonly loadingBar: HTMLElement;
+  private readonly loadingStep: HTMLElement;
+
+  private readonly hud: HTMLDivElement;
+  private readonly speedValue: HTMLElement;
+  private readonly gearValue: HTMLElement;
+  private readonly revBar: HTMLElement;
+  private readonly clock: HTMLElement;
+  private readonly underLine: HTMLElement;
+  private readonly progressBar: HTMLElement;
+  private readonly eventName: HTMLElement;
+  private readonly eventSub: HTMLElement;
+  private readonly eventCfg: HTMLElement;
+  private readonly splitFlash: HTMLElement;
+  private readonly toast: HTMLElement;
+  private readonly countdownEl: HTMLElement;
+  private readonly warnEl: HTMLElement;
+  private readonly wearBar: HTMLElement;
+  private readonly wearText: HTMLElement;
+  private readonly heatBar: HTMLElement;
+  private readonly heatText: HTMLElement;
+  private readonly gripText: HTMLElement;
+  private readonly gateText: HTMLElement;
+  private readonly perf: HTMLElement;
+
+  private readonly paddock: HTMLDivElement;
+  private readonly paddockBody: HTMLDivElement;
+  private readonly results: HTMLDivElement;
+  private readonly resultsBody: HTMLDivElement;
+  private readonly standings: HTMLDivElement;
+  private readonly standingsBody: HTMLDivElement;
+
+  private splitTimer = 0;
+  private toastTimer = 0;
+  private lastToast = "";
+
+  constructor(private readonly cb: HudCallbacks) {
+    this.root = el("div");
+    this.root.id = "ui";
+
+    // --- loading ---------------------------------------------------
+    this.loading = el("div");
+    this.loading.id = "loading";
+    this.loading.appendChild(el("h1", undefined, "Mountain Trifecta"));
+    this.loading.appendChild(el("div", "sub", "One peak · three heats · one reconfigurable circuit"));
+    const bar = el("div", "bar");
+    this.loadingBar = el("i");
+    bar.appendChild(this.loadingBar);
+    this.loading.appendChild(bar);
+    this.loadingStep = el("div", "step", "waking the mountain…");
+    this.loading.appendChild(this.loadingStep);
+    this.root.appendChild(this.loading);
+
+    // --- race hud ---------------------------------------------------
+    this.hud = el("div");
+    this.hud.id = "hud";
+
+    const speedo = el("div", "panel");
+    speedo.id = "speedo";
+    const kph = el("div", "kph");
+    this.speedValue = el("b", "mono", "0");
+    kph.appendChild(this.speedValue);
+    kph.appendChild(el("span", undefined, "KM/H"));
+    speedo.appendChild(kph);
+    const rev = el("div");
+    rev.id = "rev";
+    this.revBar = el("i");
+    rev.appendChild(this.revBar);
+    speedo.appendChild(rev);
+    const srow = el("div", "row");
+    const gearWrap = el("div");
+    gearWrap.appendChild(el("div", "label", "Gear"));
+    this.gearValue = el("div", "mono");
+    this.gearValue.id = "gear";
+    this.gearValue.textContent = "1";
+    gearWrap.appendChild(this.gearValue);
+    srow.appendChild(gearWrap);
+    const gripWrap = el("div");
+    gripWrap.style.textAlign = "right";
+    gripWrap.appendChild(el("div", "label", "Surface"));
+    this.gripText = el("div", "mono", "DRY");
+    this.gripText.style.fontSize = "16px";
+    this.gripText.style.fontWeight = "700";
+    gripWrap.appendChild(this.gripText);
+    srow.appendChild(gripWrap);
+    speedo.appendChild(srow);
+    this.hud.appendChild(speedo);
+
+    const timing = el("div", "panel");
+    timing.id = "timing";
+    this.clock = el("div", "clock mono", "0:00.00");
+    timing.appendChild(this.clock);
+    this.underLine = el("div", "under");
+    timing.appendChild(this.underLine);
+    const prog = el("div");
+    prog.id = "progress";
+    this.progressBar = el("i");
+    prog.appendChild(this.progressBar);
+    timing.appendChild(prog);
+    this.hud.appendChild(timing);
+
+    const tag = el("div", "panel");
+    tag.id = "eventTag";
+    this.eventName = el("div", "name", "—");
+    this.eventSub = el("div", "sub", "");
+    this.eventCfg = el("div", "cfg", "");
+    tag.append(this.eventName, this.eventSub, this.eventCfg);
+    this.hud.appendChild(tag);
+
+    const status = el("div", "panel");
+    status.id = "status";
+    const mkMeter = (name: string, colour: string): { wrap: HTMLElement; bar: HTMLElement; text: HTMLElement } => {
+      const wrap = el("div", "meter");
+      const top = el("div", "top");
+      top.appendChild(el("span", "label", name));
+      const text = el("span", "mono", "0%");
+      top.appendChild(text);
+      wrap.appendChild(top);
+      const track = el("div", "track");
+      const barEl = el("i");
+      barEl.style.background = colour;
+      track.appendChild(barEl);
+      wrap.appendChild(track);
+      return { wrap, bar: barEl, text };
+    };
+    const wear = mkMeter("Tyre life", "#4fd97f");
+    this.wearBar = wear.bar;
+    this.wearText = wear.text;
+    status.appendChild(wear.wrap);
+    const heat = mkMeter("Brake temp", "#ff8a3d");
+    this.heatBar = heat.bar;
+    this.heatText = heat.text;
+    status.appendChild(heat.wrap);
+    this.gateText = el("div", "mono");
+    this.gateText.style.fontSize = "12px";
+    status.appendChild(this.gateText);
+    this.hud.appendChild(status);
+
+    this.splitFlash = el("div", "mono");
+    this.splitFlash.id = "splitFlash";
+    this.hud.appendChild(this.splitFlash);
+
+    this.toast = el("div");
+    this.toast.id = "toast";
+    this.hud.appendChild(this.toast);
+
+    this.countdownEl = el("div", "mono");
+    this.countdownEl.id = "countdown";
+    this.hud.appendChild(this.countdownEl);
+
+    this.warnEl = el("div");
+    this.warnEl.id = "warn";
+    this.warnEl.textContent = "Low clearance — keep it down";
+    this.hud.appendChild(this.warnEl);
+
+    this.perf = el("div", "panel mono");
+    this.perf.id = "perf";
+    this.hud.appendChild(this.perf);
+
+    this.root.appendChild(this.hud);
+
+    // --- overlays -------------------------------------------------------
+    this.paddock = el("div", "screen");
+    this.paddockBody = el("div", "panel card");
+    this.paddock.appendChild(this.paddockBody);
+    this.root.appendChild(this.paddock);
+
+    this.results = el("div", "screen");
+    this.resultsBody = el("div", "panel card");
+    this.results.appendChild(this.resultsBody);
+    this.root.appendChild(this.results);
+
+    this.standings = el("div", "screen");
+    this.standingsBody = el("div", "panel card");
+    this.standings.appendChild(this.standingsBody);
+    this.root.appendChild(this.standings);
+
+    document.body.appendChild(this.root);
+  }
+
+  /* ---------------- loading ---------------- */
+
+  setLoading(fraction: number, step: string): void {
+    this.loadingBar.style.width = `${Math.round(clamp01(fraction) * 100)}%`;
+    this.loadingStep.textContent = step;
+  }
+
+  hideLoading(): void {
+    this.loading.style.opacity = "0";
+    setTimeout(() => {
+      this.loading.style.display = "none";
+    }, 700);
+  }
+
+  /* ---------------- paddock ---------------- */
+
+  showPaddock(
+    session: Session,
+    route: Route,
+    modules: BridgeModule[],
+    config: ModuleConfig,
+    tyres: TyreSetup[],
+    tyreIndex: number,
+    settings: { fpsCap: number; muted: boolean; quality: string },
+  ): void {
+    const def = session.current;
+    this.paddockBody.innerHTML = "";
+    this.paddockBody.appendChild(el("h2", undefined, `Heat ${session.eventIndex + 1} / 3 · ${def.name}`));
+    this.paddockBody.appendChild(el("div", "lede", def.subtitle));
+
+    const grid = el("div", "grid");
+
+    // --- left: bridge modules -------------------------------------
+    const left = el("div", "block");
+    left.appendChild(el("span", "label", "Bridge modules — rotate to reshape the circuit"));
+    const modOpts = el("div", "opts");
+    modules.forEach((mod, i) => {
+      const state = config[i] ?? 0;
+      const variant = mod.variants[state as 0 | 1];
+      const row = el("div", `opt${mod.event === session.eventIndex ? " sel" : ""}`);
+      const dot = el("div", "dot");
+      dot.style.background = mod.event === session.eventIndex ? "#ff8a3d" : "#4a5763";
+      row.appendChild(dot);
+      const txt = el("div");
+      txt.appendChild(el("div", "t", `${mod.name} — ${variant.name}`));
+      txt.appendChild(el("div", "d", variant.blurb));
+      row.appendChild(txt);
+      row.appendChild(el("div", "k", `${i + 1}`));
+      row.onclick = () => this.cb.onToggleModule(i);
+      modOpts.appendChild(row);
+    });
+    left.appendChild(modOpts);
+
+    // Elevation profile of the heat as it stands.
+    left.appendChild(el("span", "label", "Elevation profile of this heat"));
+    const canvas = el("canvas");
+    canvas.id = "profile";
+    left.appendChild(canvas);
+    left.appendChild(this.buildStats(route, def));
+    grid.appendChild(left);
+
+    // --- right: tyres + settings ------------------------------------
+    const right = el("div");
+    right.style.display = "flex";
+    right.style.flexDirection = "column";
+    right.style.gap = "18px";
+
+    const tyreBlock = el("div", "block");
+    tyreBlock.appendChild(el("span", "label", "Tyre setup — one choice for the whole heat"));
+    const tyreOpts = el("div", "opts");
+    tyres.forEach((t, i) => {
+      const row = el("div", `opt${i === tyreIndex ? " sel" : ""}`);
+      const dot = el("div", "dot");
+      dot.style.background = `#${t.colour.toString(16).padStart(6, "0")}`;
+      row.appendChild(dot);
+      const txt = el("div");
+      txt.appendChild(el("div", "t", t.name));
+      txt.appendChild(el("div", "d", t.blurb));
+      row.appendChild(txt);
+      row.appendChild(el("div", "k", ["Q", "W", "E"][i] ?? ""));
+      row.onclick = () => this.cb.onSelectTyre(i);
+      tyreOpts.appendChild(row);
+    });
+    tyreBlock.appendChild(tyreOpts);
+    right.appendChild(tyreBlock);
+
+    const setBlock = el("div", "block");
+    setBlock.appendChild(el("span", "label", "Display"));
+    const setRow = el("div", "actions");
+    setRow.style.marginTop = "0";
+    const fpsBtn = el("button", "ghost", `Frame cap: ${settings.fpsCap === 30 ? "30 fps" : "60 fps"}`);
+    fpsBtn.onclick = () => this.cb.onToggleFps();
+    setRow.appendChild(fpsBtn);
+    const muteBtn = el("button", "ghost", settings.muted ? "Sound: off" : "Sound: on");
+    muteBtn.onclick = () => this.cb.onToggleMute();
+    setRow.appendChild(muteBtn);
+    setRow.appendChild(el("span", "label", `Quality ${settings.quality}`));
+    setBlock.appendChild(setRow);
+    right.appendChild(setBlock);
+    grid.appendChild(right);
+
+    this.paddockBody.appendChild(grid);
+
+    const actions = el("div", "actions");
+    const go = el("button", "go", `Run the ${def.name}`);
+    go.onclick = () => this.cb.onStart();
+    actions.appendChild(go);
+    const best = session.bestFor(def.id);
+    if (best !== undefined) {
+      actions.appendChild(el("span", "label", `Your best: ${formatTime(best)}`));
+    }
+    actions.appendChild(el("span", "label", `Par: ${formatTime(parTime(def))}`));
+    this.paddockBody.appendChild(actions);
+
+    this.paddockBody.appendChild(
+      el(
+        "div",
+        "keys",
+        `<span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>drive</span>
+         <span><kbd>Space</kbd>handbrake</span>
+         <span><kbd>V</kbd>summit overview</span>
+         <span><kbd>C</kbd>recenter camera</span>
+         <span><kbd>R</kbd>restart heat</span>
+         <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>rotate module</span>
+         <span><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd>tyres (in paddock)</span>
+         <span><kbd>Enter</kbd>go</span>
+         <span><kbd>M</kbd>mute</span>
+         <span><kbd>F</kbd>frame cap</span>`,
+      ),
+    );
+
+    this.drawProfile(canvas, route, def);
+    this.paddock.classList.add("on");
+    this.results.classList.remove("on");
+    this.standings.classList.remove("on");
+    this.hud.classList.remove("on");
+  }
+
+  private buildStats(route: Route, def: EventDef): HTMLElement {
+    const stats = el("div", "stats");
+    const length = def.finishS - def.startS;
+    let climb = 0;
+    let drop = 0;
+    let maxGrade = 0;
+    const steps = 160;
+    let prev = route.sampleAt(def.startS).pos.y;
+    for (let i = 1; i <= steps; i++) {
+      const s = def.startS + (length * i) / steps;
+      const y = route.sampleAt(s).pos.y;
+      const d = y - prev;
+      if (d > 0) climb += d;
+      else drop -= d;
+      maxGrade = Math.max(maxGrade, Math.abs(d) / (length / steps));
+      prev = y;
+    }
+    const add = (label: string, value: string): void => {
+      const s = el("div", "stat");
+      s.appendChild(el("span", "label", label));
+      s.appendChild(el("b", "mono", value));
+      stats.appendChild(s);
+    };
+    add("Length", `${(length / 1000).toFixed(2)} km`);
+    add("Climb", `${climb.toFixed(0)} m`);
+    add("Descent", `${drop.toFixed(0)} m`);
+    add("Max grade", `${(maxGrade * 100).toFixed(0)}%`);
+    return stats;
+  }
+
+  private drawProfile(canvas: HTMLCanvasElement, route: Route, def: EventDef): void {
+    const dpr = Math.min(devicePixelRatio, 2);
+    const w = canvas.clientWidth || 520;
+    const h = canvas.clientHeight || 116;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    const n = 220;
+    const ys: number[] = [];
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i <= n; i++) {
+      const s = def.startS + ((def.finishS - def.startS) * i) / n;
+      const y = route.sampleAt(s).pos.y;
+      ys.push(y);
+      lo = Math.min(lo, y);
+      hi = Math.max(hi, y);
+    }
+    const pad = 12;
+    const px = (i: number): number => pad + ((w - pad * 2) * i) / n;
+    const py = (y: number): number => h - pad - ((h - pad * 2) * (y - lo)) / Math.max(1, hi - lo);
+
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, "rgba(255,138,61,0.42)");
+    grad.addColorStop(1, "rgba(255,138,61,0.02)");
+    ctx.beginPath();
+    ctx.moveTo(px(0), h - pad);
+    for (let i = 0; i <= n; i++) ctx.lineTo(px(i), py(ys[i] as number));
+    ctx.lineTo(px(n), h - pad);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const x = px(i);
+      const y = py(ys[i] as number);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = "#ffb56b";
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    // Split markers.
+    ctx.strokeStyle = "rgba(255,255,255,0.28)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 4]);
+    for (const sp of def.splits) {
+      const t = (sp - def.startS) / (def.finishS - def.startS);
+      const x = pad + (w - pad * 2) * t;
+      ctx.beginPath();
+      ctx.moveTo(x, pad);
+      ctx.lineTo(x, h - pad);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = "#7f8c99";
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.fillText(`${hi.toFixed(0)} m`, 4, pad + 2);
+    ctx.fillText(`${lo.toFixed(0)} m`, 4, h - 4);
+  }
+
+  hidePaddock(): void {
+    this.paddock.classList.remove("on");
+    this.hud.classList.add("on");
+  }
+
+  /* ---------------- race hud ---------------- */
+
+  updateRace(
+    session: Session,
+    state: {
+      speedKph: number;
+      gear: number;
+      rpmFraction: number;
+      wet: number;
+      tyreWear: number;
+      brakeHeat: number;
+      clearanceMargin: number;
+      gatesTaken: number;
+      gatesTotal: number;
+      configLabel: string;
+      fps: number;
+      fpsCap: number;
+      tier: string;
+    },
+    dt: number,
+  ): void {
+    const def = session.current;
+    this.speedValue.textContent = Math.round(state.speedKph).toString();
+    this.gearValue.textContent = state.gear.toString();
+    this.revBar.style.width = `${clamp01(state.rpmFraction) * 100}%`;
+    this.gripText.textContent = state.wet > 0.55 ? "WET" : state.wet > 0.2 ? "DAMP" : "DRY";
+    this.gripText.style.color = state.wet > 0.55 ? "#7cc0ff" : state.wet > 0.2 ? "#9fd5c8" : "#e8eef4";
+
+    this.clock.textContent = formatTime(session.phase === "countdown" ? 0 : session.time);
+    this.progressBar.style.width = `${session.progressFraction() * 100}%`;
+
+    const par = parTime(def);
+    const delta = session.time + session.penaltySeconds - par * session.progressFraction();
+    this.underLine.innerHTML = `<span class="label">Pen</span><span class="mono ${session.penaltySeconds > 0 ? "bad" : ""}">+${session.penaltySeconds.toFixed(0)}s</span>
+      <span class="label">vs par</span><span class="mono ${delta <= 0 ? "good" : "bad"}">${formatDelta(delta)}</span>`;
+
+    this.eventName.textContent = def.name;
+    this.eventSub.textContent = def.subtitle;
+    this.eventCfg.textContent = state.configLabel;
+
+    const life = 1 - clamp01(state.tyreWear);
+    this.wearBar.style.width = `${life * 100}%`;
+    this.wearBar.style.background = life > 0.6 ? "#4fd97f" : life > 0.3 ? "#ffc46b" : "#ff5f52";
+    this.wearText.textContent = `${Math.round(life * 100)}%`;
+    this.heatBar.style.width = `${clamp01(state.brakeHeat) * 100}%`;
+    this.heatText.textContent = `${Math.round(clamp01(state.brakeHeat) * 100)}%`;
+
+    this.gateText.innerHTML =
+      state.gatesTotal > 0
+        ? `<span class="label">Gates</span> <b>${state.gatesTaken}</b> / ${state.gatesTotal}${
+            session.gatesMissed > 0 ? ` <span class="bad">(${session.gatesMissed} missed)</span>` : ""
+          }`
+        : `<span class="label">Tyres</span> <b>${state.configLabel.split("·")[0]?.trim() ?? ""}</b>`;
+
+    this.perf.innerHTML = `<span class="label">FPS</span><b>${Math.round(state.fps)}</b><span class="label">cap ${state.fpsCap}</span><span class="label">${state.tier}</span>`;
+
+    // Countdown.
+    if (session.phase === "countdown") {
+      const n = Math.ceil(session.countdown);
+      this.countdownEl.textContent = n > 0 ? String(n) : "GO";
+      this.countdownEl.style.color = n > 0 ? "#ffffff" : "#4fd97f";
+      this.countdownEl.style.opacity = "1";
+    } else {
+      this.countdownEl.style.opacity = "0";
+    }
+
+    // Clearance warning.
+    this.warnEl.style.opacity = state.clearanceMargin < 1.6 && isFinite(state.clearanceMargin) ? "1" : "0";
+
+    // Split flash — raised by flashSplit(), decayed here.
+    this.splitTimer = Math.max(0, this.splitTimer - dt);
+    this.splitFlash.style.opacity = this.splitTimer > 0 ? "1" : "0";
+
+    this.toastTimer = Math.max(0, this.toastTimer - dt);
+    if (session.message && session.message !== this.lastToast) {
+      this.toast.textContent = session.message;
+      // Penalties read as a warning; anything else is good news.
+      const bad = session.message.startsWith("+");
+      this.toast.style.background = bad ? "rgba(176, 34, 24, 0.88)" : "rgba(28, 128, 74, 0.88)";
+      this.lastToast = session.message;
+      this.toastTimer = 2.2;
+    }
+    if (!session.message) this.lastToast = "";
+    this.toast.style.opacity = this.toastTimer > 0 && session.message ? "1" : "0";
+  }
+
+  flashSplit(index: number, time: number, delta: number | null): void {
+    const label = `S${index + 1} ${formatTime(time)}`;
+    if (delta === null) {
+      this.splitFlash.innerHTML = `${label}`;
+      this.splitFlash.className = "mono";
+    } else {
+      this.splitFlash.innerHTML = `${label} <span class="${delta <= 0 ? "good" : "bad"}">${formatDelta(delta)}</span>`;
+      this.splitFlash.className = "mono";
+    }
+    this.splitTimer = 2.4;
+  }
+
+  /* ---------------- results ---------------- */
+
+  showResults(session: Session): void {
+    const result = session.results[session.eventIndex];
+    const def = session.current;
+    if (!result) return;
+    this.resultsBody.innerHTML = "";
+    const beat = result.totalTime <= result.par;
+    this.resultsBody.appendChild(el("h2", undefined, `${def.name} — ${beat ? "inside par" : "outside par"}`));
+    this.resultsBody.appendChild(
+      el("div", "lede", `${result.tyre} · ${result.config}`),
+    );
+
+    const grid = el("div", "grid");
+
+    const timesBlock = el("div", "block");
+    timesBlock.appendChild(el("span", "label", "Timing"));
+    const table = el("table", "results");
+    table.innerHTML = `<tr><th>Segment</th><th>Time</th><th>Delta to best</th></tr>`;
+    result.splits.forEach((t, i) => {
+      const best = session.best[`${def.id}-split-${i}`];
+      const d = best === undefined ? null : t - best;
+      table.innerHTML += `<tr><td>Split ${i + 1}</td><td class="mono">${formatTime(t)}</td><td class="mono ${
+        d === null ? "" : d <= 0 ? "good" : "bad"
+      }">${d === null ? "—" : formatDelta(d)}</td></tr>`;
+    });
+    table.innerHTML += `<tr><td><b>Raw</b></td><td class="mono"><b>${formatTime(result.rawTime)}</b></td><td></td></tr>`;
+    table.innerHTML += `<tr><td>Penalties</td><td class="mono ${result.penaltySeconds > 0 ? "bad" : ""}">+${result.penaltySeconds.toFixed(
+      0,
+    )}.00</td><td></td></tr>`;
+    table.innerHTML += `<tr><td><b>Classified</b></td><td class="mono accent"><b>${formatTime(
+      result.totalTime,
+    )}</b></td><td class="mono ${beat ? "good" : "bad"}">${formatDelta(result.totalTime - result.par)} vs par</td></tr>`;
+    timesBlock.appendChild(table);
+    grid.appendChild(timesBlock);
+
+    const penBlock = el("div", "block");
+    penBlock.appendChild(el("span", "label", "Penalties"));
+    if (session.penalties.length === 0) {
+      penBlock.appendChild(el("div", "d", "Clean run. Nothing added."));
+    } else {
+      const list = el("table", "results");
+      list.innerHTML = `<tr><th>At</th><th>Reason</th><th>Cost</th></tr>`;
+      for (const p of session.penalties) {
+        list.innerHTML += `<tr><td class="mono">${formatTime(p.time)}</td><td>${p.reason}</td><td class="mono bad">+${p.seconds.toFixed(
+          0,
+        )}s</td></tr>`;
+      }
+      penBlock.appendChild(list);
+    }
+    const pts = el("div", "stats");
+    const addStat = (label: string, value: string): void => {
+      const s = el("div", "stat");
+      s.appendChild(el("span", "label", label));
+      s.appendChild(el("b", "mono", value));
+      pts.appendChild(s);
+    };
+    addStat("Points", String(result.points));
+    addStat("Par", formatTime(result.par));
+    if (def.gateCount > 0) addStat("Gates missed", String(result.gatesMissed));
+    addStat("Series", String(session.totalPoints()));
+    penBlock.appendChild(pts);
+    grid.appendChild(penBlock);
+
+    this.resultsBody.appendChild(grid);
+
+    const actions = el("div", "actions");
+    const next = el("button", "go", session.eventIndex >= 2 ? "See standings" : "Next heat");
+    next.onclick = () => this.cb.onNext();
+    actions.appendChild(next);
+    const retry = el("button", "ghost", "Run it again");
+    retry.onclick = () => this.cb.onRetry();
+    actions.appendChild(retry);
+    this.resultsBody.appendChild(actions);
+
+    this.results.classList.add("on");
+    this.hud.classList.remove("on");
+  }
+
+  hideResults(): void {
+    this.results.classList.remove("on");
+  }
+
+  /* ---------------- standings ---------------- */
+
+  showStandings(session: Session): void {
+    this.standingsBody.innerHTML = "";
+    this.standingsBody.appendChild(el("h2", undefined, "Event standings"));
+    this.standingsBody.appendChild(el("div", "lede", "Three heats, one mountain. Points are scored against each heat's par time."));
+
+    const table = el("table", "results");
+    table.innerHTML = `<tr><th>Heat</th><th>Tyre</th><th>Configuration</th><th>Raw</th><th>Pen</th><th>Classified</th><th>Par</th><th>Points</th></tr>`;
+    session.events.forEach((def, i) => {
+      const r = session.results[i];
+      if (!r) {
+        table.innerHTML += `<tr><td>${def.name}</td><td colspan="7" class="label">not run</td></tr>`;
+        return;
+      }
+      table.innerHTML += `<tr>
+        <td><b>${def.name}</b></td>
+        <td>${r.tyre}</td>
+        <td style="font-size:11.5px;color:#8e9ba8">${r.config}</td>
+        <td class="mono">${formatTime(r.rawTime)}</td>
+        <td class="mono ${r.penaltySeconds > 0 ? "bad" : ""}">+${r.penaltySeconds.toFixed(0)}</td>
+        <td class="mono accent">${formatTime(r.totalTime)}</td>
+        <td class="mono">${formatTime(r.par)}</td>
+        <td class="mono"><b>${r.points}</b></td>
+      </tr>`;
+    });
+    const total = session.totalPoints();
+    table.innerHTML += `<tr><td colspan="7" style="text-align:right"><b>Trifecta total</b></td><td class="mono accent"><b>${total}</b></td></tr>`;
+    this.standingsBody.appendChild(table);
+
+    const verdict =
+      total >= 330 ? "Mountain mastered." : total >= 250 ? "A strong weekend's work." : total >= 160 ? "Points on the board." : "The mountain won.";
+    this.standingsBody.appendChild(el("div", "lede", verdict));
+
+    const actions = el("div", "actions");
+    const again = el("button", "go", "Run the trifecta again");
+    again.onclick = () => this.cb.onRestartSeries();
+    actions.appendChild(again);
+    this.standingsBody.appendChild(actions);
+
+    this.standings.classList.add("on");
+    this.hud.classList.remove("on");
+  }
+
+  hideStandings(): void {
+    this.standings.classList.remove("on");
+  }
+
+  setHudVisible(on: boolean): void {
+    this.hud.classList.toggle("on", on);
+  }
+}

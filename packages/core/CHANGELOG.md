@@ -1,5 +1,141 @@
 # @react-doctor/core
 
+## 0.9.15
+
+### Patch Changes
+
+- Updated dependencies [[`83466a8`](https://github.com/millionco/react-doctor/commit/83466a8faae436c902e8f602e7363ea3e23354d5), [`499a020`](https://github.com/millionco/react-doctor/commit/499a0208fca5c0422b713bdedf2b83fcc8e29d20), [`922616f`](https://github.com/millionco/react-doctor/commit/922616f08db7d48463b1495e4dbdb699fc3d7c34)]:
+  - oxlint-plugin-react-doctor@0.9.15
+
+## 0.9.14
+
+### Patch Changes
+
+- [#1755](https://github.com/millionco/react-doctor/pull/1755) [`d030b11`](https://github.com/millionco/react-doctor/commit/d030b113306c7d3a56426e4ce4c6be46ca20ae1e) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect React Compiler configuration passed through `withSentryConfig`.
+
+- [#1748](https://github.com/millionco/react-doctor/pull/1748) [`fa72869`](https://github.com/millionco/react-doctor/commit/fa72869c6cdec705c82066693c565ff48831be95) Thanks [@skoshx](https://github.com/skoshx)! - Treat Sanity blueprint files as convention entries
+
+  `sanity.blueprint.ts` is a Sanity Studio convention file loaded by filename by the Sanity CLI (`sanity blueprints deploy`), similar to `sanity.config.ts` and `sanity.cli.ts`. It was incorrectly reported as unused by `react-doctor/unused-file`.
+
+  Fixes [#1747](https://github.com/millionco/react-doctor/issues/1747)
+
+- Updated dependencies [[`1239043`](https://github.com/millionco/react-doctor/commit/1239043c65a55c1e1755087536fdb3f3f18c5734), [`ff7dd67`](https://github.com/millionco/react-doctor/commit/ff7dd679e8b9939a7dd8f828a530559a275836f7), [`0fbef9b`](https://github.com/millionco/react-doctor/commit/0fbef9b01162d301167be6ca6b5263714610f4e5), [`6ac8b71`](https://github.com/millionco/react-doctor/commit/6ac8b71985123ce43f7219965e188bdecf11f7b8), [`dfcde10`](https://github.com/millionco/react-doctor/commit/dfcde1035aca34e7bb8fbeea8da78cead7cc20e9), [`fd64d26`](https://github.com/millionco/react-doctor/commit/fd64d2605481e241ada5561b01a635f2cd923b6a), [`576d756`](https://github.com/millionco/react-doctor/commit/576d7563ffc7a6208cd77d3e3ec81d7f91bf6143), [`2e3f6eb`](https://github.com/millionco/react-doctor/commit/2e3f6eb98a0eec411b3adf87d8205d3d654538ac), [`c9e3e15`](https://github.com/millionco/react-doctor/commit/c9e3e1590e06ed3b776af5f21dda38a060b9eef9)]:
+  - oxlint-plugin-react-doctor@0.9.14
+
+## 0.9.13
+
+### Patch Changes
+
+- [#1695](https://github.com/millionco/react-doctor/pull/1695) [`ac87f7d`](https://github.com/millionco/react-doctor/commit/ac87f7d7f64d77cc0a648ee863dd50b3c69c0257) Thanks [@skoshx](https://github.com/skoshx)! - Preserve plugin settings when React Doctor adopts an existing lint config.
+
+- [#1713](https://github.com/millionco/react-doctor/pull/1713) [`40b9d79`](https://github.com/millionco/react-doctor/commit/40b9d79703c398f47ba92488ce1bdea011f12109) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize Expo config plugin packages and local plugin paths behind TypeScript `satisfies` expressions.
+
+- [#1728](https://github.com/millionco/react-doctor/pull/1728) [`6adf55e`](https://github.com/millionco/react-doctor/commit/6adf55ed8841c9a6f63a3e93cc0d2ccfbe4ca852) Thanks [@skoshx](https://github.com/skoshx)! - Keep `@expo/metro-config` as a direct dependency when project code imports a package subpath that the `expo/metro-config` umbrella does not expose.
+
+- [#1718](https://github.com/millionco/react-doctor/pull/1718) [`990daaf`](https://github.com/millionco/react-doctor/commit/990daafa6277b966aab30152a8e23c194bcce738) Thanks [@skoshx](https://github.com/skoshx)! - Fix Expo Metro config false positives for local helpers and the PostHog Expo wrapper.
+
+- [#1666](https://github.com/millionco/react-doctor/pull/1666) [`77aec24`](https://github.com/millionco/react-doctor/commit/77aec24f42fa8a2c55504550df929ea3985b7748) Thanks [@skoshx](https://github.com/skoshx)! - Use entry points from discovered implicit subprojects outside declared workspace globs, preventing legitimate files from being reported as unused.
+
+- [#1676](https://github.com/millionco/react-doctor/pull/1676) [`79d8007`](https://github.com/millionco/react-doctor/commit/79d80072817eb86c74f3dd42ce91c8104f448810) Thanks [@aidenybai](https://github.com/aidenybai)! - Compare automatic changed scopes against the remote default branch, so committed branch changes are not mistaken for working-tree changes or skipped when no local default branch exists.
+
+- [#1690](https://github.com/millionco/react-doctor/pull/1690) [`a163de9`](https://github.com/millionco/react-doctor/commit/a163de9afa0c4a84c2d6e13ddd7ac55c910dacc3) Thanks [@skoshx](https://github.com/skoshx)! - Recover audit-mode source files after an interrupted process, without overwriting files that changed after the interruption.
+
+- Updated dependencies [[`ffc2d14`](https://github.com/millionco/react-doctor/commit/ffc2d142545167107b11908f004d764ac4e31399), [`f7efb7d`](https://github.com/millionco/react-doctor/commit/f7efb7d1c4fc564fa647a0dc26c48867da9166c9), [`05ef989`](https://github.com/millionco/react-doctor/commit/05ef98926de787b01e817c8853101d6c31e2071a), [`a04b933`](https://github.com/millionco/react-doctor/commit/a04b933c027f6addf4161ba0df1c11eb8922b879), [`adc3a91`](https://github.com/millionco/react-doctor/commit/adc3a9129190315263a5fa92bda7ea3e3e2ba94a), [`2c4560f`](https://github.com/millionco/react-doctor/commit/2c4560fc0abbf70f1574fe847402d320347d061e), [`e1d4c51`](https://github.com/millionco/react-doctor/commit/e1d4c51abfd9d15ec96f5001259c3e8f332f7d50), [`905607f`](https://github.com/millionco/react-doctor/commit/905607f7fc2240304cbad5f41d3ad496eab06b17), [`17eeeb5`](https://github.com/millionco/react-doctor/commit/17eeeb5367177e6a3ba814ca8d107d009addc9dc), [`afa1780`](https://github.com/millionco/react-doctor/commit/afa1780254bfd72175e6d0025841560582d32ad1), [`025d69d`](https://github.com/millionco/react-doctor/commit/025d69d701581092632caa87ea59e5a719094ab9), [`0f59a3b`](https://github.com/millionco/react-doctor/commit/0f59a3b84dd5233f6bcf5e4a621da6699c432405), [`5bc88ae`](https://github.com/millionco/react-doctor/commit/5bc88ae6a0cd7518ffa8c6348f9176868d00ea77), [`4bf7aff`](https://github.com/millionco/react-doctor/commit/4bf7aff4398383adb6b3dace48f72050dfd195a6), [`bd08406`](https://github.com/millionco/react-doctor/commit/bd08406381618785181aedf8bee956047ad107d3), [`2b0f06e`](https://github.com/millionco/react-doctor/commit/2b0f06ec70943f083d8893f8a1b989eba2ae40c6), [`8c2f03a`](https://github.com/millionco/react-doctor/commit/8c2f03aea9885f24da8f2002e85a32ac186bf5bf), [`6416370`](https://github.com/millionco/react-doctor/commit/6416370836deaa0a09189343a8579fb3f5d13494), [`28d4343`](https://github.com/millionco/react-doctor/commit/28d4343e4d90a8d80c0fdb5eac0173bdd8826866)]:
+  - oxlint-plugin-react-doctor@0.9.13
+
+## 0.9.12
+
+### Patch Changes
+
+- [#1617](https://github.com/millionco/react-doctor/pull/1617) [`51e198d`](https://github.com/millionco/react-doctor/commit/51e198db8bcbd61ad896098bb4985376641a0f69) Thanks [@aidenybai](https://github.com/aidenybai)! - Reduce `diagnose({ projects })` wall time by inventorying sibling workspace projects once, reusing their sized source-file lists through discovery and lint planning, and scanning larger projects first while preserving result order.
+
+- [#1643](https://github.com/millionco/react-doctor/pull/1643) [`0f3995b`](https://github.com/millionco/react-doctor/commit/0f3995b822ad9fdbd355eda05c8568f67643a31c) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize every detected framework and library capability as a supported scan target, including plain Three.js projects and React-backed frameworks without direct React declarations, and anchor remote-installer diagnostics on the executable download command.
+
+- Updated dependencies [[`f1899d2`](https://github.com/millionco/react-doctor/commit/f1899d2e57ad35f016323e77592e000dce293439), [`7b7bfe7`](https://github.com/millionco/react-doctor/commit/7b7bfe7c1ecc1d31a5fb591756ef34060fd916f1), [`d908bb1`](https://github.com/millionco/react-doctor/commit/d908bb115210e3b412a83ae66780d8596125f838), [`51e198d`](https://github.com/millionco/react-doctor/commit/51e198db8bcbd61ad896098bb4985376641a0f69), [`0f3995b`](https://github.com/millionco/react-doctor/commit/0f3995b822ad9fdbd355eda05c8568f67643a31c), [`bea01b8`](https://github.com/millionco/react-doctor/commit/bea01b8cf5e6d29db7793f86ce6a13f0b3c7823e), [`8dfb013`](https://github.com/millionco/react-doctor/commit/8dfb01306772760201e75ea1478368390eddf58f), [`b49f499`](https://github.com/millionco/react-doctor/commit/b49f49984055a505b80de2bb1530efe7e7286619)]:
+  - oxlint-plugin-react-doctor@0.9.12
+  - deslop-js@0.9.12
+
+## 0.9.11
+
+### Patch Changes
+
+- Updated dependencies [[`27a39de`](https://github.com/millionco/react-doctor/commit/27a39dede7ae41adb8895aefc589800bc56e6bc9)]:
+  - oxlint-plugin-react-doctor@0.9.11
+  - deslop-js@0.9.11
+
+## 0.9.10
+
+### Patch Changes
+
+- [#1610](https://github.com/millionco/react-doctor/pull/1610) [`e69faca`](https://github.com/millionco/react-doctor/commit/e69facac7e7ec455c7ad63c771c4a76f5cd0862c) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Send traces and metrics to Axiom instead of Sentry. Sentry keeps crash reporting,
+  where its source-map symbolication, issue grouping, and quotable event ids have no
+  Axiom equivalent — so error reports are unchanged, and the JSON report's
+  `sentryEventId` field keeps its meaning.
+
+  Two user-visible changes: `--debug` now prints the run's Axiom trace id (crash
+  reports carry the same id as a tag, so one id resolves in both backends), and
+  `REACT_DOCTOR_NO_TELEMETRY` is now honored by the CLI as well as the language
+  server. `--no-score` and `--no-telemetry` are unchanged and still disable
+  everything.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.9.10
+  - deslop-js@0.9.10
+
+## 0.9.9
+
+### Patch Changes
+
+- Updated dependencies [[`7f028ea`](https://github.com/millionco/react-doctor/commit/7f028ea904da08bba8e108b92a0d2bfb84254f2e)]:
+  - oxlint-plugin-react-doctor@0.9.9
+  - deslop-js@0.9.9
+
+## 0.9.8
+
+### Patch Changes
+
+- Updated dependencies [[`f27fd5d`](https://github.com/millionco/react-doctor/commit/f27fd5d136371c8164675ddf52da3742e248f7d8), [`13138a4`](https://github.com/millionco/react-doctor/commit/13138a4af515938a49a2e467d3922d2ef4f35fb4)]:
+  - oxlint-plugin-react-doctor@0.9.8
+  - deslop-js@0.9.8
+
+## 0.9.7
+
+### Patch Changes
+
+- Updated dependencies [[`3299454`](https://github.com/millionco/react-doctor/commit/3299454344b7ad44909a2d758fe1d4352b5e3e73)]:
+  - oxlint-plugin-react-doctor@0.9.7
+  - deslop-js@0.9.7
+
+## 0.9.6
+
+### Patch Changes
+
+- [#1592](https://github.com/millionco/react-doctor/pull/1592) [`ac4e51f`](https://github.com/millionco/react-doctor/commit/ac4e51f6856dd0df091eed6ed4cdcb190574c048) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect React Compiler transforms passed through an installed `@rolldown/plugin-babel` wrapper.
+
+- Updated dependencies [[`2b8bc5c`](https://github.com/millionco/react-doctor/commit/2b8bc5cf9d524594e3a3f923e463f128fd4a7ac9), [`a4d2c5c`](https://github.com/millionco/react-doctor/commit/a4d2c5c8bf45c3e38f07e2ffbaae5fe4443f5754), [`4ffeb2c`](https://github.com/millionco/react-doctor/commit/4ffeb2cb71e195d21d3693a7578be7f74ee78d19), [`d62caa5`](https://github.com/millionco/react-doctor/commit/d62caa575f9bcf2abca5933f2899dd907a3d344d)]:
+  - deslop-js@0.9.6
+  - oxlint-plugin-react-doctor@0.9.6
+
+## 0.9.5
+
+### Patch Changes
+
+- [#1572](https://github.com/millionco/react-doctor/pull/1572) [`212b8b4`](https://github.com/millionco/react-doctor/commit/212b8b41131dcc486ffbfde19e84b2043a9a3470) Thanks [@aidenybai](https://github.com/aidenybai)! - Prevent interactive-report crashes under Bun and pnpm, harden project and config discovery against cyclic or inaccessible inputs, and handle operational failures without reporting product crashes.
+
+- Updated dependencies [[`8b97fdc`](https://github.com/millionco/react-doctor/commit/8b97fdcb4014160bb2df916ad6dead9924f10266), [`25dbf6d`](https://github.com/millionco/react-doctor/commit/25dbf6d92524f2495e6f81bdc68b710ce434bc69), [`881ecfe`](https://github.com/millionco/react-doctor/commit/881ecfe674b8ae630953b5f31f418ac1f52730e1), [`0efadda`](https://github.com/millionco/react-doctor/commit/0efadda676fb773dad60b311d4d5d46c2f99be71), [`bafef41`](https://github.com/millionco/react-doctor/commit/bafef41699dec8ec228d89c831ff16c2f09f28a1)]:
+  - oxlint-plugin-react-doctor@0.9.5
+  - deslop-js@0.9.5
+
+## 0.9.4
+
+### Patch Changes
+
+- [#1549](https://github.com/millionco/react-doctor/pull/1549) [`48ec9a8`](https://github.com/millionco/react-doctor/commit/48ec9a802077749f3ec7534a5cac00397d4dd4df) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep large workspace scans responsive by reducing TUI redraws, cooperatively enumerating source files, excluding source explicitly marked generated or vendored by repository attributes, precomputing workspace project file counts in one pass, reusing source listings for configured ignores, reusing repository cache fingerprints across workspace projects, running root-owned dead-code analysis once instead of again for every child project, sizing that shared pass from the full workspace tree, balancing lint batches, detecting cross-file renderer capabilities once before workers start, skipping unnecessary whole-project source indexes, capping automatic lint parallelism before its contention cliff, removing redundant binding-marker work from semantic analysis, and lowering lint subprocess priority so foreground applications remain responsive. Remove implicit lint and whole-scan deadlines while enforcing explicitly configured deadlines on active subprocesses, preserve partial security findings without marking disabled passes incomplete, list queued projects skipped at the deadline, show every incomplete-result warning, retry scores after a contended workspace pool settles, terminate every subprocess and clear the active TUI on cancellation or quit, suppress bundled Browserslist maintenance warnings, memoize module-resolution filesystem probes, path-compress config lookup walks, bound recursive helper analysis, index repeated class-member lookups, and visit each alias binding once. Project selection now uses a disposable terminal screen while bounded scan progress and the final report stay inline, workspace indexing is labeled immediately, scan progress uses a smoother spinner, long score fallbacks wrap within the terminal, incomplete analysis is no longer mislabeled as a score API outage, `--no-cache` disables every cache layer for the run, precomputed project counts remain accurate across discovery-cache hits, fixed command literals no longer trigger imported-metadata security findings, and extensionless module paths passed to dynamic loaders no longer produce unused-file findings.
+
+- Updated dependencies [[`f7dbdfa`](https://github.com/millionco/react-doctor/commit/f7dbdfa399bddb16c5d0e4ba180fb3a1d297448d), [`44922d6`](https://github.com/millionco/react-doctor/commit/44922d67821680d6622809be43bc5b951e294a6e), [`cc28626`](https://github.com/millionco/react-doctor/commit/cc2862666bf694fe8de84d66f3d276ce023c3c41), [`b02bc69`](https://github.com/millionco/react-doctor/commit/b02bc694f134fc856ad1e17304a93e0aba3e31a6), [`85e1052`](https://github.com/millionco/react-doctor/commit/85e1052289a7a9cb7ba09bf5fb6d991415bca979), [`4c61080`](https://github.com/millionco/react-doctor/commit/4c610803cb5af467776a275a7c27c9e916c08280), [`02e3188`](https://github.com/millionco/react-doctor/commit/02e3188d4b307c04cc8cbf0395b50fe20755d7c7), [`48ec9a8`](https://github.com/millionco/react-doctor/commit/48ec9a802077749f3ec7534a5cac00397d4dd4df), [`afd60db`](https://github.com/millionco/react-doctor/commit/afd60dbe694a20feeba3b15e594ebf36d15f9af5), [`3466fe1`](https://github.com/millionco/react-doctor/commit/3466fe11d7b2962ec26f9853d573a5d886a6b441), [`4e4740d`](https://github.com/millionco/react-doctor/commit/4e4740dde3bd9c4c62a7efdf5c858293fab7b5eb), [`a34d6a1`](https://github.com/millionco/react-doctor/commit/a34d6a159e9eed004ba3d2b1f37b4dc463a08482), [`91ebe85`](https://github.com/millionco/react-doctor/commit/91ebe85fdc3731219d558f7253cfee7976783c41), [`3a93a34`](https://github.com/millionco/react-doctor/commit/3a93a34beb050a4b55a34b5ac3f6f5b23a07be58), [`8a22de1`](https://github.com/millionco/react-doctor/commit/8a22de1263826531e7c0c5eeccac860739570b2a), [`19f2148`](https://github.com/millionco/react-doctor/commit/19f2148e0004278b31d63863d9116b9a4f1f1c0f), [`7f29eca`](https://github.com/millionco/react-doctor/commit/7f29ecaa32a1b399098d531e4002bb2f666158db), [`37427c9`](https://github.com/millionco/react-doctor/commit/37427c915ca3d7ae219900f3c17d04e6840a8796)]:
+  - oxlint-plugin-react-doctor@0.9.4
+  - deslop-js@0.9.4
+
 ## 0.9.3
 
 ### Patch Changes

@@ -1,7 +1,6 @@
 import type { Writable } from "node:stream";
 
-import pLimit from "p-limit";
-
+import { createConcurrencyLimit } from "./create-concurrency-limit.js";
 import { serializeNdjsonRecord } from "./serialize-ndjson-record.js";
 import { writeWritableContents } from "./write-writable-contents.js";
 
@@ -51,7 +50,7 @@ export const createPairedNdjsonWriter = ({
   baselineFileHandle,
   treatmentOutput,
 }: CreatePairedNdjsonWriterInput): PairedNdjsonWriter => {
-  const limitWrite = pLimit(1);
+  const limitWrite = createConcurrencyLimit(1);
   let baselineOffset = 0;
   let hasWriteFailed = false;
   let writeFailure: unknown;

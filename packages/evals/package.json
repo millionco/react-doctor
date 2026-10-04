@@ -19,7 +19,6 @@
     "@ai-sdk/gateway": "4.0.85",
     "@vercel/sandbox": "^3.5.1",
     "ai": "7.0.105",
-    "p-limit": "^3.1.0",
     "zod": "4.3.6"
   },
   "devDependencies": {

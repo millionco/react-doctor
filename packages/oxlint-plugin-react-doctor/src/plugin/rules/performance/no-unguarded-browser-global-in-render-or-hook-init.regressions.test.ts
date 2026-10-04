@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { __clearParseSourceFileCacheForTests } from "../../utils/parse-source-file.js";
-import { __clearTsconfigAliasCacheForTests } from "../../utils/resolve-tsconfig-alias.js";
+import { resetTsconfigAliasCaches } from "../../utils/resolve-tsconfig-alias.js";
 import { noUnguardedBrowserGlobalInRenderOrHookInit } from "./no-unguarded-browser-global-in-render-or-hook-init.js";
 
 const run = (code: string, filename = "src/components/animated-background-image.tsx") =>
@@ -335,7 +335,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init — imported server
       JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } } }),
     );
     __clearParseSourceFileCacheForTests();
-    __clearTsconfigAliasCacheForTests();
+    resetTsconfigAliasCaches();
   });
 
   afterEach(() => {
@@ -413,7 +413,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init — imported server
       }),
     );
     writeFixtureFile("node_modules/hydration-library/index.ts", falseSnapshotHook);
-    __clearTsconfigAliasCacheForTests();
+    resetTsconfigAliasCaches();
     const result = runImportedHook(`import { useHydrated } from "@vendor";`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

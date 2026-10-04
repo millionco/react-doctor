@@ -22,11 +22,13 @@ export const USER_OXLINT_CONFIG_BROKEN_DIRECTORY = path.join(
   FIXTURES_DIRECTORY,
   "user-oxlint-config-broken",
 );
+export const USER_TAILWIND_CONFIG_DIRECTORY = path.join(FIXTURES_DIRECTORY, "user-tailwind-config");
 
 const findDiagnosticsByRule = (diagnostics: Diagnostic[], rule: string): Diagnostic[] =>
   diagnostics.filter((diagnostic) => diagnostic.rule === rule);
 
 export interface RuleTestCase {
+  expectedCount?: number;
   fixture: string;
   ruleSource: string;
   severity?: "error" | "warning";
@@ -42,6 +44,10 @@ export const describeRules = (
     for (const [ruleName, testCase] of Object.entries(rules)) {
       it(`${ruleName} (${testCase.fixture} → ${testCase.ruleSource})`, () => {
         const issues = findDiagnosticsByRule(getDiagnostics(), ruleName);
+        if (testCase.expectedCount !== undefined) {
+          expect(issues).toHaveLength(testCase.expectedCount);
+          return;
+        }
         expect(issues.length).toBeGreaterThan(0);
         if (testCase.severity) expect(issues[0].severity).toBe(testCase.severity);
         if (testCase.category) expect(issues[0].category).toBe(testCase.category);

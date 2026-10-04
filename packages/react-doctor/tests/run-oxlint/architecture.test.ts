@@ -39,6 +39,7 @@ describe("runOxlint", () => {
         severity: "warning",
       },
       "no-many-boolean-props": {
+        expectedCount: 0,
         fixture: "new-rules.tsx",
         ruleSource: "rules/architecture.ts",
         category: "Maintainability",
@@ -49,6 +50,7 @@ describe("runOxlint", () => {
         category: "Maintainability",
       },
       "no-render-prop-children": {
+        expectedCount: 0,
         fixture: "composition-issues.tsx",
         ruleSource: "rules/architecture.ts",
         category: "Maintainability",

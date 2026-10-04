@@ -3,16 +3,19 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
+import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 
 interface ForbiddenPropDescriptor {
   propName: string;
   disallowedFor?: ReadonlySet<string>;
+  disallowedValues?: ReadonlySet<string>;
   message?: string;
 }
 
 interface ForbidDomPropsSettingsItem {
   propName: string;
   disallowedFor?: ReadonlyArray<string>;
+  disallowedValues?: ReadonlyArray<string>;
   message?: string;
 }
 
@@ -23,6 +26,30 @@ interface ForbidDomPropsSettings {
 const buildMessage = (propName: string, customMessage?: string): string =>
   customMessage ??
   `Your project blocks the \`${propName}\` prop on plain HTML tags, so this bypasses the agreed DOM API contract.`;
+
+const getStaticAttributeStringValue = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+): string | null => {
+  const directValue = getJsxPropStringValue(attribute);
+  if (directValue !== null) return directValue;
+  if (
+    attribute.value &&
+    isNodeOfType(attribute.value, "JSXExpressionContainer") &&
+    isNodeOfType(attribute.value.expression, "Literal") &&
+    typeof attribute.value.expression.value === "string"
+  ) {
+    return attribute.value.expression.value;
+  }
+  if (
+    attribute.value &&
+    isNodeOfType(attribute.value, "JSXExpressionContainer") &&
+    isNodeOfType(attribute.value.expression, "TemplateLiteral") &&
+    attribute.value.expression.expressions.length === 0
+  ) {
+    return attribute.value.expression.quasis[0]?.value.cooked ?? "";
+  }
+  return null;
+};
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
@@ -41,9 +68,13 @@ const resolveSettings = (
       // JSXOpeningElement visitor — avoids `array.includes()` on every
       // attribute (flagged by react-doctor's own `js-set-map-lookups`).
       const disallowedForSet = item.disallowedFor ? new Set(item.disallowedFor) : undefined;
+      const disallowedValuesSet = item.disallowedValues
+        ? new Set(item.disallowedValues)
+        : undefined;
       map.set(item.propName, {
         propName: item.propName,
         disallowedFor: disallowedForSet,
+        disallowedValues: disallowedValuesSet,
         message: item.message,
       });
     }
@@ -78,6 +109,12 @@ export const forbidDomProps = defineRule({
           const disallowedFor = descriptor.disallowedFor;
           if (disallowedFor && disallowedFor.size > 0 && !disallowedFor.has(elementName)) {
             continue;
+          }
+          const disallowedValues = descriptor.disallowedValues;
+          if (disallowedValues) {
+            if (disallowedValues.size === 0) continue;
+            const attributeValue = getStaticAttributeStringValue(attribute);
+            if (attributeValue === null || !disallowedValues.has(attributeValue)) continue;
           }
           context.report({
             node: attribute.name,

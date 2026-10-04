@@ -26,6 +26,7 @@ describe("runOxlint", () => {
         ruleSource: "rules/performance.ts",
       },
       "no-usememo-simple-expression": {
+        expectedCount: 0,
         fixture: "performance-issues.tsx",
         ruleSource: "rules/performance.ts",
         category: "Performance",
@@ -44,6 +45,7 @@ describe("runOxlint", () => {
         ruleSource: "rules/performance.ts",
       },
       "no-scale-from-zero": {
+        expectedCount: 0,
         fixture: "performance-issues.tsx",
         ruleSource: "rules/performance.ts",
       },
@@ -56,6 +58,7 @@ describe("runOxlint", () => {
         ruleSource: "rules/performance.ts",
       },
       "rendering-animate-svg-wrapper": {
+        expectedCount: 0,
         fixture: "performance-issues.tsx",
         ruleSource: "rules/performance.ts",
       },

@@ -1,5 +1,4 @@
 import { Sandbox } from "@vercel/sandbox";
-import pLimit from "p-limit";
 
 import {
   SANDBOX_CLEANUP_CONCURRENCY,
@@ -9,6 +8,7 @@ import {
 import type { SandboxCredentials } from "./utils/get-sandbox-credentials.js";
 import { isSandboxNotFoundError } from "./utils/is-sandbox-not-found-error.js";
 import { runBeforeDeadline } from "./utils/run-before-deadline.js";
+import { createConcurrencyLimit } from "./utils/create-concurrency-limit.js";
 
 export interface CleanupEvaluationSandboxesInput {
   credentials: SandboxCredentials;
@@ -21,7 +21,7 @@ export const cleanupEvaluationSandboxes = async ({
   evaluationId,
   deadlineMilliseconds,
 }: CleanupEvaluationSandboxesInput): Promise<void> => {
-  const cleanupLimit = pLimit(SANDBOX_CLEANUP_CONCURRENCY);
+  const cleanupLimit = createConcurrencyLimit(SANDBOX_CLEANUP_CONCURRENCY);
   const remainingSandboxes = await runBeforeDeadline({
     operation: async () => {
       const sandboxes = await Sandbox.list({ ...credentials, tags: { evaluation: evaluationId } });

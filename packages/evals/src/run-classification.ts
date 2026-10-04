@@ -29,7 +29,7 @@ import {
   ClassificationResponseError,
 } from "./classification-response-error.js";
 import { sanitizeClassificationEvidence } from "./utils/sanitize-classification-evidence.js";
-import createConcurrencyLimit from "p-limit";
+import { createConcurrencyLimit } from "./utils/create-concurrency-limit.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
 
 export interface ClassificationOptions {

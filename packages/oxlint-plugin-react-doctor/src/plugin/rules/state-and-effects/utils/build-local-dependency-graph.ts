@@ -53,13 +53,6 @@ const addDependencyNames = (into: Set<string>, dependencyNames: Set<string>): vo
   for (const dependencyName of dependencyNames) into.add(dependencyName);
 };
 
-const getPatternDefaultReferenceNames = (
-  pattern: EsTreeNode,
-  scope: BindingScope,
-  eventHandlerReferenceNames: Set<string>,
-): Set<string> =>
-  collectScopedPatternDefaultReferenceNames(pattern, scope, eventHandlerReferenceNames);
-
 const addVariableDeclarationDependencies = (
   graph: Map<string, Set<string>>,
   statement: EsTreeNode,
@@ -74,7 +67,7 @@ const addVariableDeclarationDependencies = (
       : new Set<string>();
     addDependencyNames(
       dependencyNames,
-      getPatternDefaultReferenceNames(declarator.id, scope, eventHandlerReferenceNames),
+      collectScopedPatternDefaultReferenceNames(declarator.id, scope, eventHandlerReferenceNames),
     );
     const declaredNames = addPatternBindings(declarator.id, declarationScope);
     for (const declaredName of declaredNames) {
@@ -98,7 +91,7 @@ const addAssignmentExpressionDependencies = (
   );
   addDependencyNames(
     dependencyNames,
-    getPatternDefaultReferenceNames(expression.left, scope, eventHandlerReferenceNames),
+    collectScopedPatternDefaultReferenceNames(expression.left, scope, eventHandlerReferenceNames),
   );
   addDependencyNames(dependencyNames, controlDependencyNames);
   if (expression.operator !== "=") {

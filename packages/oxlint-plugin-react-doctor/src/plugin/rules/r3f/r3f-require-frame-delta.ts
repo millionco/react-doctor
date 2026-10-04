@@ -15,7 +15,7 @@ import { collectR3fHostRefSymbolIds } from "./utils/collect-r3f-host-ref-symbol-
 import { isR3fUseThreeStateProperty } from "./utils/is-r3f-use-three-state-property.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
 import { getApiReferenceModuleSource } from "./utils/get-api-reference-module-source.js";
-import { resolveStaticNumber } from "./utils/resolve-static-number.js";
+import { getStaticNumber } from "./utils/get-static-number.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const TRANSFORM_PROPERTIES = new Set(["position", "rotation", "scale", "quaternion"]);
@@ -265,7 +265,7 @@ const getFixedInterpolationFactor = (
   if (factorArgumentIndex === undefined) return null;
   const factor = node.arguments[factorArgumentIndex];
   if (!factor || isNodeOfType(factor, "SpreadElement")) return null;
-  const staticFactor = resolveStaticNumber(factor, context.scopes);
+  const staticFactor = getStaticNumber(factor, context.scopes);
   return staticFactor !== null && staticFactor > 0 && staticFactor < 1 ? factor : null;
 };
 

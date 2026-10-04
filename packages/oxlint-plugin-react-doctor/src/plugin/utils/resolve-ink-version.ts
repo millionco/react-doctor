@@ -1,7 +1,10 @@
 import * as path from "node:path";
 import { INK_MODULE } from "../constants/ink.js";
+import { captureCrossFileProbes, replayCrossFileProbes } from "./cross-file-probe-recorder.js";
+import type { CrossFileProbeTrace } from "./cross-file-probe-recorder.js";
 import {
   findNearestPackageDirectory,
+  getManifestCacheGeneration,
   readPackageManifest,
 } from "./read-nearest-package-manifest.js";
 import type { PackageManifest } from "./read-nearest-package-manifest.js";
@@ -17,6 +20,17 @@ interface InstalledInkVersionResolution {
   didFindPackage: boolean;
   version: ParsedPackageVersion | null;
 }
+
+interface CachedInkVersionResolution {
+  version: ParsedPackageVersion | null;
+  trace: CrossFileProbeTrace;
+}
+
+// Every file of a package resolves to the same ink version, and every ink
+// rule asks for it on every file. The memo follows the manifest cache's
+// lifetime: a generation bump (`resetManifestCaches()`) empties it.
+const cachedInkVersionByPackageDirectory = new Map<string, CachedInkVersionResolution>();
+let cachedInkVersionGeneration = getManifestCacheGeneration();
 
 const parseVersionToken = (version: string): ParsedPackageVersion | null => {
   const match = version.match(
@@ -97,14 +111,32 @@ const findInstalledInkVersion = (packageDirectory: string): InstalledInkVersionR
   }
 };
 
-export const resolveInkVersion = (filename: string | undefined): ParsedPackageVersion | null => {
-  if (!filename) return null;
-  const packageDirectory = findNearestPackageDirectory(path.resolve(filename));
-  if (!packageDirectory) return null;
+const resolvePackageInkVersion = (packageDirectory: string): ParsedPackageVersion | null => {
   const installedVersionResolution = findInstalledInkVersion(packageDirectory);
   if (installedVersionResolution.didFindPackage) return installedVersionResolution.version;
   const owningManifest = readPackageManifest(packageDirectory);
   return owningManifest ? getDeclaredInkVersion(owningManifest) : null;
+};
+
+export const resolveInkVersion = (filename: string | undefined): ParsedPackageVersion | null => {
+  if (!filename) return null;
+  const packageDirectory = findNearestPackageDirectory(path.resolve(filename));
+  if (!packageDirectory) return null;
+  const manifestCacheGeneration = getManifestCacheGeneration();
+  if (manifestCacheGeneration !== cachedInkVersionGeneration) {
+    cachedInkVersionByPackageDirectory.clear();
+    cachedInkVersionGeneration = manifestCacheGeneration;
+  }
+  const cached = cachedInkVersionByPackageDirectory.get(packageDirectory);
+  if (cached) {
+    replayCrossFileProbes(cached.trace);
+    return cached.version;
+  }
+  const { value: version, trace } = captureCrossFileProbes(() =>
+    resolvePackageInkVersion(packageDirectory),
+  );
+  cachedInkVersionByPackageDirectory.set(packageDirectory, { version, trace });
+  return version;
 };
 
 export const isInkVersionAtLeast = (

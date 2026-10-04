@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { computeDiagnosticDelta } from "@react-doctor/core";
+import { computeDiagnosticDelta, DIAGNOSTIC_DELTA_IDENTITY } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
 
 const makeDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
@@ -22,6 +22,50 @@ const lineReaderFrom =
     lines[`${filePath}:${line}`] ?? null;
 
 describe("computeDiagnosticDelta", () => {
+  it("uses a detector identity instead of changed source or summary text", () => {
+    const baseDiagnostic = makeDiagnostic({ message: "2 copies repeat about 10 lines" });
+    const headDiagnostic = makeDiagnostic({ message: "2 copies repeat about 14 lines" });
+    Object.defineProperty(baseDiagnostic, DIAGNOSTIC_DELTA_IDENTITY, {
+      enumerable: true,
+      value: "jsx:stable-family",
+    });
+    Object.defineProperty(headDiagnostic, DIAGNOSTIC_DELTA_IDENTITY, {
+      enumerable: true,
+      value: "jsx:stable-family",
+    });
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [headDiagnostic],
+      baseDiagnostics: [baseDiagnostic],
+      readHeadLine: () => "<Link />",
+      readBaseLine: () => "<Button />",
+    });
+
+    expect(delta.newDiagnostics).toHaveLength(0);
+    expect(delta.fixedCount).toBe(0);
+  });
+
+  it("does not match a detector identity whose occurrence count increased", () => {
+    const baseDiagnostic = makeDiagnostic({ matchByOccurrence: true });
+    const headDiagnostic = makeDiagnostic({ matchByOccurrence: true });
+    Object.defineProperty(baseDiagnostic, DIAGNOSTIC_DELTA_IDENTITY, {
+      enumerable: true,
+      value: "jsx:stable-family\0occurrences:2",
+    });
+    Object.defineProperty(headDiagnostic, DIAGNOSTIC_DELTA_IDENTITY, {
+      enumerable: true,
+      value: "jsx:stable-family\0occurrences:3",
+    });
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [headDiagnostic],
+      baseDiagnostics: [baseDiagnostic],
+      readHeadLine: () => "same summary",
+      readBaseLine: () => "same summary",
+    });
+
+    expect(delta.newDiagnostics).toHaveLength(1);
+    expect(delta.fixedCount).toBe(1);
+  });
+
   it("flags a diagnostic present only in head as new", () => {
     const head = [makeDiagnostic()];
     const lines = lineReaderFrom({ "src/App.tsx:10": "items.map((x, i) => <Row key={i} />)" });

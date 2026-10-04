@@ -317,4 +317,28 @@ describe("no-transition-all", () => {
     const result = runRule(noTransitionAll, code);
     expect(result.diagnostics).toHaveLength(3);
   });
+
+  it("does NOT treat animation durations as transitions", () => {
+    const code = `const A = () => <><div className="animate-in fade-in slide-in-from-bottom-2 duration-300" /><div className="animate-out fade-out duration-200" /><div className="[animation:spin_1s_linear] duration-1000" /></>;`;
+    const result = runRule(noTransitionAll, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags explicit transition-all with animation utilities", () => {
+    const code = `const A = () => <><div className="animate-in transition-all duration-300" /><div className="animate-in" style={{ transition: "all 200ms" }} /></>;`;
+    const result = runRule(noTransitionAll, code);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("keeps animation and transition variant scopes separate", () => {
+    const code = `const A = () => <><div className="hover:animate-in duration-300" /><div className="animate-in hover:duration-300" /></>;`;
+    const result = runRule(noTransitionAll, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat disabled animation utilities as animation context", () => {
+    const code = `const A = () => <><div className="animate-none duration-300" /><div className="[animation:none] duration-300" /></>;`;
+    const result = runRule(noTransitionAll, code);
+    expect(result.diagnostics).toHaveLength(2);
+  });
 });

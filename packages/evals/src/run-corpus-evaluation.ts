@@ -8,7 +8,6 @@ import { createEvaluationSnapshot } from "./utils/create-evaluation-snapshot.js"
 import type { EvaluationSnapshotBuild } from "./utils/create-evaluation-snapshot.js";
 import { getSandboxCredentials } from "./utils/get-sandbox-credentials.js";
 import { isSandboxNotFoundError } from "./utils/is-sandbox-not-found-error.js";
-import pLimit from "p-limit";
 
 import { cleanupEvaluationSandboxes } from "./cleanup-evaluation-sandboxes.js";
 import { deleteVercelSnapshotBeforeDeadline } from "./utils/delete-vercel-snapshot-before-deadline.js";
@@ -42,6 +41,7 @@ import type { EvaluationOptions } from "./parse-evaluation-arguments.js";
 import { runEvaluationAttempts } from "./run-evaluation-attempts.js";
 import { runMatrixCorpusEvaluation } from "./run-matrix-corpus-evaluation.js";
 import { createPairedNdjsonWriter } from "./utils/create-paired-ndjson-writer.js";
+import { createConcurrencyLimit } from "./utils/create-concurrency-limit.js";
 import { getEvaluationAttemptDeadlineMilliseconds } from "./utils/get-evaluation-attempt-deadline-milliseconds.js";
 import { getEvaluatorSourceHash } from "./utils/get-evaluator-source-hash.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
@@ -193,7 +193,7 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
           Math.min(options.concurrency, concurrency),
         ),
       ];
-      const limitSandboxCreation = pLimit(
+      const limitSandboxCreation = createConcurrencyLimit(
         Math.min(options.concurrency, SANDBOX_CREATE_CONCURRENCY),
       );
       const snapshotId = snapshot.snapshotId;

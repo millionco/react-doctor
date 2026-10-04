@@ -1,6 +1,7 @@
 import { Box, Text, useInput } from "ink";
 import type { ReactNode } from "react";
 import { TUI_REPORT_ACTION_MENU_MARGIN_ROWS } from "../../utils/constants.js";
+import { formatSkippedCheckLabel } from "../../utils/format-skipped-check-label.js";
 import type { ReportReveal } from "../hooks/use-report-reveal.js";
 import { ActionMenu } from "./action-menu.js";
 import type { ActionMenuAction } from "./action-menu.js";
@@ -19,6 +20,48 @@ export interface ReportLandingProps {
   readonly onQuit: () => void;
 }
 
+interface ReportStatusProps {
+  readonly issueCount: number;
+  readonly emptyStateMessage?: string;
+  readonly lintFailureReason?: string;
+  readonly skippedChecks?: ReadonlyArray<string>;
+  readonly incompleteMessage?: string;
+}
+
+const ReportStatus = ({
+  issueCount,
+  emptyStateMessage,
+  lintFailureReason,
+  skippedChecks,
+  incompleteMessage,
+}: ReportStatusProps) => {
+  const skippedCheckLabel = skippedChecks
+    ?.flatMap((skippedCheck) =>
+      skippedCheck === "lint" && lintFailureReason ? [] : [formatSkippedCheckLabel(skippedCheck)],
+    )
+    .join(" and ");
+  const hasIncompleteResult = Boolean(incompleteMessage || lintFailureReason || skippedCheckLabel);
+  if (!hasIncompleteResult && issueCount > 0) return null;
+
+  return (
+    <Box flexDirection="column" marginTop={TUI_REPORT_ACTION_MENU_MARGIN_ROWS}>
+      {incompleteMessage ? <Text color="yellow">⚠ {incompleteMessage}</Text> : null}
+      {lintFailureReason ? (
+        <Text color="yellow">⚠ Lint did not run: {lintFailureReason}</Text>
+      ) : null}
+      {skippedCheckLabel ? (
+        <Text color="yellow">
+          ⚠ {issueCount === 0 ? "No issues detected, but " : ""}
+          {skippedCheckLabel} checks failed — results are incomplete.
+        </Text>
+      ) : null}
+      {issueCount === 0 && !hasIncompleteResult ? (
+        <Text color="green">✔ {emptyStateMessage ?? "No issues found. Nice work."}</Text>
+      ) : null}
+    </Box>
+  );
+};
+
 export const ReportLanding = ({
   header,
   phase,
@@ -33,10 +76,6 @@ export const ReportLanding = ({
   onQuit,
 }: ReportLandingProps) => {
   const showScore = phase === "actions" || phase === "score";
-  const skippedCheckLabel = skippedChecks
-    ?.filter((skippedCheck) => skippedCheck !== "lint" || !lintFailureReason)
-    .join(" and ");
-  const hasIncompleteResult = Boolean(incompleteMessage || lintFailureReason || skippedCheckLabel);
   useInput(
     (input) => {
       if (input === "q") onQuit();
@@ -47,23 +86,13 @@ export const ReportLanding = ({
   return (
     <Box flexDirection="column">
       {showScore ? header : null}
-      {hasIncompleteResult || issueCount === 0 ? (
-        <Box flexDirection="column" marginTop={TUI_REPORT_ACTION_MENU_MARGIN_ROWS}>
-          {incompleteMessage ? <Text color="yellow">⚠ {incompleteMessage}</Text> : null}
-          {lintFailureReason ? (
-            <Text color="yellow">⚠ Lint did not run: {lintFailureReason}</Text>
-          ) : null}
-          {skippedCheckLabel ? (
-            <Text color="yellow">
-              ⚠ {issueCount === 0 ? "No issues detected, but " : ""}
-              {skippedCheckLabel} checks failed — results are incomplete.
-            </Text>
-          ) : null}
-          {issueCount === 0 && !hasIncompleteResult ? (
-            <Text color="green">✔ {emptyStateMessage ?? "No issues found. Nice work."}</Text>
-          ) : null}
-        </Box>
-      ) : null}
+      <ReportStatus
+        issueCount={issueCount}
+        emptyStateMessage={emptyStateMessage}
+        lintFailureReason={lintFailureReason}
+        skippedChecks={skippedChecks}
+        incompleteMessage={incompleteMessage}
+      />
       {phase === "actions" ? (
         <>
           <ActionMenu

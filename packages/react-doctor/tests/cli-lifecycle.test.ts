@@ -6,10 +6,8 @@ import {
   type Gate,
   type Migration,
   type Preference,
-  clearGate,
   isGatePending,
   isMigrationPending,
-  readGateOutcome,
   readPreference,
   recordGate,
   runMigrations,
@@ -37,10 +35,9 @@ describe("cli-lifecycle", () => {
       expect(isGatePending(gate, {}, options)).toBe(false);
     });
 
-    it("records and reads an outcome (project scope)", () => {
+    it("records an outcome (project scope)", () => {
       const gate: Gate = { id: "ci-pitch", scope: "project" };
       recordGate(gate, { projectRoot: "/repo/a", outcome: "accepted" }, options);
-      expect(readGateOutcome(gate, { projectRoot: "/repo/a" }, options)).toBe("accepted");
       expect(isGatePending(gate, { projectRoot: "/repo/a" }, options)).toBe(false);
     });
 
@@ -60,14 +57,6 @@ describe("cli-lifecycle", () => {
       expect(isGatePending(v2, {}, options)).toBe(true);
       recordGate(v2, {}, options);
       expect(isGatePending(v2, {}, options)).toBe(false);
-    });
-
-    it("can be explicitly cleared so it fires again", () => {
-      const gate: Gate = { id: "cta", scope: "project" };
-      recordGate(gate, { projectRoot: "/repo/a" }, options);
-      expect(isGatePending(gate, { projectRoot: "/repo/a" }, options)).toBe(false);
-      clearGate(gate, { projectRoot: "/repo/a" }, options);
-      expect(isGatePending(gate, { projectRoot: "/repo/a" }, options)).toBe(true);
     });
 
     it("fails safe to not-pending on an unreadable store (default)", () => {
@@ -191,14 +180,12 @@ describe("cli-lifecycle", () => {
       expect(readPreference(preference, {}, options)).toBe(null);
     });
 
-    it("keeps gate outcomes and preferences in separate namespaces", () => {
+    it("keeps gate events and preferences in separate namespaces", () => {
       const gate: Gate = { id: "handoff-target", scope: "global" };
       const preference: Preference = { id: "handoff-target", scope: "global" };
       recordGate(gate, { outcome: "accepted" }, options);
       writePreference(preference, "skip", {}, options);
-      // Same id, different stores: the gate outcome is "accepted", the
-      // preference value is "skip" — neither clobbers the other.
-      expect(readGateOutcome(gate, {}, options)).toBe("accepted");
+      expect(isGatePending(gate, {}, options)).toBe(false);
       expect(readPreference(preference, {}, options)).toBe("skip");
     });
   });

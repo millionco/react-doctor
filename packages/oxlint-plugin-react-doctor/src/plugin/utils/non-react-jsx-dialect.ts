@@ -1,9 +1,13 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { getImportedName } from "./get-imported-name.js";
+import { getJsxAttributeName } from "./get-jsx-attribute-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isTypeOnlyImport } from "./is-type-only-import.js";
+import { walkAst } from "./walk-ast.js";
 
 export interface JsxRuntimeImports {
+  readonly hasNonReactMarker: boolean;
   readonly hasNonReactRuntime: boolean;
   readonly hasReactRuntime: boolean;
 }
@@ -53,16 +57,50 @@ export const collectJsxRuntimeImports = (
 
   let hasNonReactRuntime = false;
   let hasReactRuntime = false;
+  let hasNonReactMarker = false;
+  let hasSolidComponentType = false;
+  let hasSolidJsxType = false;
+  let hasNativeClassAttribute = false;
   for (const statement of program.body) {
+    if (!hasNonReactMarker) {
+      walkAst(statement as EsTreeNode, (node) => {
+        if (hasNonReactMarker) return false;
+        if (isNodeOfType(node, "JSXOpeningElement") && jsxAttributeIsNonReactDialectMarker(node)) {
+          hasNonReactMarker = true;
+          return false;
+        }
+        if (
+          isNodeOfType(node, "JSXOpeningElement") &&
+          isNodeOfType(node.name, "JSXIdentifier") &&
+          /^[a-z]/.test(node.name.name) &&
+          node.attributes.some(
+            (attribute) =>
+              isNodeOfType(attribute, "JSXAttribute") &&
+              getJsxAttributeName(attribute.name) === "class",
+          )
+        ) {
+          hasNativeClassAttribute = true;
+        }
+      });
+    }
     if (!isNodeOfType(statement as EsTreeNode, "ImportDeclaration")) continue;
     const importDeclaration = statement as EsTreeNodeOfType<"ImportDeclaration">;
-    if (isTypeOnlyImport(importDeclaration)) continue;
     const source = importDeclaration.source;
     const value =
       source && typeof (source as { value?: unknown }).value === "string"
         ? (source as { value: string }).value
         : null;
     if (!value) continue;
+    if (value === "solid-js") {
+      for (const specifier of importDeclaration.specifiers) {
+        if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
+        if (importDeclaration.importKind !== "type" && specifier.importKind !== "type") continue;
+        const importedName = getImportedName(specifier);
+        if (importedName === "Component") hasSolidComponentType = true;
+        if (importedName === "JSX") hasSolidJsxType = true;
+      }
+    }
+    if (isTypeOnlyImport(importDeclaration)) continue;
     if (
       NON_REACT_JSX_DIALECT_PACKAGES.has(value) ||
       startsWithAny(value, NON_REACT_JSX_DIALECT_PACKAGE_PREFIXES)
@@ -73,14 +111,14 @@ export const collectJsxRuntimeImports = (
       hasReactRuntime = true;
     }
   }
-  const runtimeImports = { hasNonReactRuntime, hasReactRuntime };
+  const runtimeImports = {
+    hasNonReactMarker:
+      hasNonReactMarker || hasSolidComponentType || (hasSolidJsxType && hasNativeClassAttribute),
+    hasNonReactRuntime,
+    hasReactRuntime,
+  };
   runtimeImportsByProgram.set(program, runtimeImports);
   return runtimeImports;
-};
-
-export const fileImportsNonReactJsxDialect = (program: EsTreeNodeOfType<"Program">): boolean => {
-  const runtimeImports = collectJsxRuntimeImports(program);
-  return runtimeImports.hasNonReactRuntime && !runtimeImports.hasReactRuntime;
 };
 
 // `classList={...}` is Solid-distinctive — React JSX would write
@@ -95,14 +133,20 @@ export const jsxAttributeIsNonReactDialectMarker = (
   let isNonReactDialectMarker = false;
   for (const attribute of openingNode.attributes) {
     if (!isNodeOfType(attribute, "JSXAttribute")) continue;
-    if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
-    // `classList` (Solid), `class:hover` (svelte-jsx style — rare in
-    // React), `bind:value` (svelte) — collectively non-React markers.
-    const attributeName = attribute.name.name;
+    const attributeName = getJsxAttributeName(attribute.name);
+    if (!attributeName) continue;
+    const isObjectClassList =
+      attributeName === "classList" &&
+      isNodeOfType(attribute.value, "JSXExpressionContainer") &&
+      isNodeOfType(attribute.value.expression, "ObjectExpression");
     if (
-      attributeName === "classList" ||
-      attributeName.startsWith("class:") ||
-      attributeName.startsWith("bind:")
+      isObjectClassList ||
+      (isNodeOfType(openingNode.name, "JSXIdentifier") &&
+        /^[a-z]/.test(openingNode.name.name) &&
+        (attributeName.startsWith("class:") ||
+          attributeName.startsWith("bind:") ||
+          attributeName.startsWith("on:") ||
+          attributeName.startsWith("oncapture:")))
     ) {
       isNonReactDialectMarker = true;
       break;

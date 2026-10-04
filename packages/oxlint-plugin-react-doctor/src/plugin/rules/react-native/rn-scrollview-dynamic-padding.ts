@@ -5,7 +5,7 @@ import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
-import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
+import { isContentContainerStyleScrollContainer } from "./utils/scrollview-names.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -80,6 +80,16 @@ const isStaticStyleValue = (value: EsTreeNode, resolutionDepth = 0): boolean => 
       isStaticStyleValue(value.right, resolutionDepth + 1)
     );
   }
+  // A ternary that only picks between static values (`hasHeader ? 0 : 16`)
+  // is a discrete layout switch, not a value tracking a live measurement:
+  // the rows move once, with the structural change that flipped it, rather
+  // than on every keyboard or inset frame `contentInset` exists to absorb.
+  if (isNodeOfType(value, "ConditionalExpression")) {
+    return (
+      isStaticStyleValue(value.consequent, resolutionDepth + 1) &&
+      isStaticStyleValue(value.alternate, resolutionDepth + 1)
+    );
+  }
   if (!isNodeOfType(value, "Identifier")) return false;
   const binding = findVariableInitializer(value, value.name);
   if (!binding?.initializer || !isConstDeclaredBinding(binding)) return false;
@@ -99,12 +109,12 @@ export const rnScrollviewDynamicPadding = defineRule({
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `contentInset={{ bottom: dynamicValue }}` so the OS shifts the content instead of relaying it out, which avoids the jump.",
+    "Move the changing value to the matching `contentInset` edge (`contentInset={{ bottom: keyboardHeight }}` for `paddingBottom`; iOS only) so the OS offsets the content instead of relaying it out, and keep static spacing in `contentContainerStyle`.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
       if (!elementName) return;
-      if (!SCROLLVIEW_NAMES.has(elementName) && elementName !== "FlashList") return;
+      if (!isContentContainerStyleScrollContainer(elementName)) return;
       if (elementName === "KeyboardAwareScrollView") return;
 
       for (const attr of node.attributes ?? []) {

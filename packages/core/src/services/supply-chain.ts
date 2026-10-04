@@ -25,7 +25,7 @@ interface SupplyChainInput {
  * mode (dependency health is a whole-project property).
  * The underlying `checkSupplyChain` Effect is total/fail-open — per-package
  * timeouts and network failures recover to "skip" — so the stream never
- * fails, mirroring `DeadCode`'s stream shape so the two compose the same way.
+ * fails, mirroring `Maintainability`'s stream shape so the two compose the same way.
  * The orchestrator (`run-inspect.ts`) consumes this stream on a background
  * fiber whose network time overlaps the lint pass, joined under a generous
  * wall-clock budget; a budget expiry is the same fail-open outcome as a Socket

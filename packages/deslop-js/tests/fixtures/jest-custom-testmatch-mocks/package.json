@@ -1,7 +1,0 @@
-{
-  "name": "jest-custom-testmatch-mocks",
-  "main": "src/index.ts",
-  "dependencies": {
-    "jest": "*"
-  }
-}

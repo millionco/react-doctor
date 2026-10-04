@@ -1,3 +1,5 @@
+import type { Reference } from "eslint-scope";
+import { UPDATER_WRAPPER_RESOLUTION_DEPTH } from "../../constants/thresholds.js";
 import { isDescendantScope } from "../../semantic/scope-analysis.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -16,7 +18,12 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getRef, resolveToFunction } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import { getUseStateDecl, isStateSetterCall } from "./utils/effect/react.js";
+import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import {
+  getUseStateDecl,
+  isStateSetterCall,
+  resolveStateSetterReference,
+} from "./utils/effect/react.js";
 
 interface MemberCall {
   methodName: string;
@@ -250,6 +257,40 @@ const isDefinitelySynchronousCallback = (callback: EsTreeNode, scopes: ScopeAnal
   );
 };
 
+// `run(async () => setValue("x"))` eventually calls `setBusy`, but `run`
+// invokes the callback itself — React never replays it as an updater. A
+// wrapper only counts when it hands its first parameter straight into a
+// setter's updater slot (`const update = (updater) => setCount(updater)`).
+const isUpdaterConsumingSetterCall = (
+  analysis: ProgramAnalysis,
+  scopes: ScopeAnalysis,
+  calleeReference: Reference,
+  remainingDepth = UPDATER_WRAPPER_RESOLUTION_DEPTH,
+): boolean => {
+  if (resolveStateSetterReference(analysis, calleeReference)) return true;
+  if (remainingDepth <= 0) return false;
+  const updaterParameter = resolveToFunction(calleeReference)?.params[0];
+  if (!updaterParameter || !isNodeOfType(updaterParameter, "Identifier")) return false;
+  const parameterSymbol = scopes.symbolFor(updaterParameter);
+  return Boolean(
+    parameterSymbol?.references.some((reference) => {
+      const forwardingCall = reference.identifier.parent;
+      if (
+        !isNodeOfType(forwardingCall, "CallExpression") ||
+        forwardingCall.arguments[0] !== reference.identifier ||
+        !isNodeOfType(forwardingCall.callee, "Identifier")
+      ) {
+        return false;
+      }
+      const forwardedCalleeReference = getRef(analysis, forwardingCall.callee);
+      return (
+        forwardedCalleeReference !== null &&
+        isUpdaterConsumingSetterCall(analysis, scopes, forwardedCalleeReference, remainingDepth - 1)
+      );
+    }),
+  );
+};
+
 const findImpureUpdaterOperation = (updater: EsTreeNode, scopes: ScopeAnalysis): string | null => {
   const analysis = getProgramAnalysis(updater);
   let operation: string | null = null;
@@ -324,7 +365,12 @@ export const noImpureStateUpdater = defineRule({
         const analysis = getProgramAnalysis(node);
         if (!analysis) return;
         const calleeReference = getRef(analysis, node.callee);
-        if (!calleeReference || !isStateSetterCall(analysis, calleeReference)) return;
+        if (
+          !calleeReference ||
+          !isUpdaterConsumingSetterCall(analysis, context.scopes, calleeReference)
+        ) {
+          return;
+        }
         const stateDeclarator = getUseStateDecl(analysis, calleeReference);
         if (
           !isNodeOfType(stateDeclarator, "VariableDeclarator") ||

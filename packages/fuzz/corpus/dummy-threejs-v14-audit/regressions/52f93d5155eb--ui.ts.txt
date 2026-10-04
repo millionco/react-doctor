@@ -1,0 +1,387 @@
+// rule: dangerous-html-sink
+// file-path: src/game/ui.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 52f93d5155eb84c9bf1766ee0b3e786073af4bdf71ffd24a8b8ee9980c81fe5e
+/**
+ * DOM heads-up display.
+ *
+ * Kept out of the 3D layer entirely: the scene shows physical state (piles,
+ * carts, jams), the HUD shows the contract — time, revenue, orders, permits.
+ */
+import {
+  GOOD_LABEL,
+  MAX_UPGRADES,
+  REVENUE_TARGET,
+  TIME_LIMIT,
+  UPGRADES,
+  formatTime,
+  upgradeCost,
+  type GoodKind,
+} from "./config";
+import type { GameState } from "./state";
+import type { HoverInfo } from "./interaction";
+import type { RouteManager } from "../world/carriers";
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+export class Hud {
+  private root: HTMLDivElement;
+  private timeValue: HTMLElement;
+  private cashValue: HTMLElement;
+  private revValue: HTMLElement;
+  private revFill: HTMLElement;
+  private orderList: HTMLElement;
+  private upgradeRow: HTMLElement;
+  private permits: HTMLElement;
+  private hint: HTMLElement;
+  private tip: HTMLElement;
+  private fault: HTMLElement;
+  private faultTitle: HTMLElement;
+  private faultDesc: HTMLElement;
+  private overlay: HTMLElement;
+  private card: HTMLElement;
+  private flash: HTMLElement;
+  private upgradeCards: HTMLElement[] = [];
+  private orderCards: HTMLElement[] = [];
+  private lastPhase = "";
+  private faultShownAt = 0;
+  private recoveredUntil = 0;
+
+  constructor(private state: GameState, private routes: RouteManager) {
+    this.root = el("div");
+    this.root.id = "ui";
+    document.body.appendChild(this.root);
+
+    // --- top bar ---
+    const top = el("div", "panel");
+    top.id = "topbar";
+    const mkStat = (label: string, initial: string): HTMLElement => {
+      const s = el("div", "stat");
+      s.appendChild(el("div", "label", label));
+      const v = el("div", "value", initial);
+      s.appendChild(v);
+      top.appendChild(s);
+      return v;
+    };
+    this.timeValue = mkStat("Time", formatTime(TIME_LIMIT));
+    this.cashValue = mkStat("Marks", "0");
+
+    const revStat = el("div", "stat");
+    revStat.appendChild(el("div", "label", "Revenue"));
+    this.revValue = el("div", "value", `0 / ${REVENUE_TARGET}`);
+    revStat.appendChild(this.revValue);
+    const bar = el("div");
+    bar.id = "revbar";
+    this.revFill = el("div");
+    this.revFill.id = "revfill";
+    bar.appendChild(this.revFill);
+    revStat.appendChild(bar);
+    top.appendChild(revStat);
+
+    this.root.appendChild(top);
+
+    // --- orders ---
+    const orders = el("div", "panel");
+    orders.id = "orders";
+    orders.appendChild(el("h2", undefined, "Standing Orders"));
+    this.orderList = el("div");
+    orders.appendChild(this.orderList);
+    this.root.appendChild(orders);
+    for (const o of this.state.orders) {
+      const card = el("div", "order locked");
+      card.innerHTML = `<div class="title">${o.def.title}</div><div class="where"></div><div class="need"></div>`;
+      this.orderList.appendChild(card);
+      this.orderCards.push(card);
+    }
+
+    // --- controls ---
+    const controls = el("div", "panel");
+    controls.id = "controls";
+    controls.innerHTML = `
+      <div class="ttl">Controls</div>
+      <b>Hold</b> a node to work it<br>
+      <b>Drag</b> a node's ring → a stall<br>
+      <b>Drag to ground</b> clears its routes<br>
+      <b>Drag</b> empty space to orbit<br>
+      <b>Right-drag</b> pan · <b>Wheel</b> zoom<br>
+      <b>Click</b> a cart to ride it<br>
+      <b>Tab</b> focus · <b>F</b> follow · <b>Space</b> wide<br>
+      <b>1-6</b> buy upgrade · <b>M</b> mute`;
+    this.root.appendChild(controls);
+
+    // --- upgrades ---
+    const upgrades = el("div", "panel");
+    upgrades.id = "upgrades";
+    upgrades.appendChild(el("h2", undefined, "Reinvest Profits"));
+    this.upgradeRow = el("div");
+    this.upgradeRow.id = "upgradeRow";
+    upgrades.appendChild(this.upgradeRow);
+    this.permits = el("div");
+    this.permits.id = "permits";
+    upgrades.appendChild(this.permits);
+    this.root.appendChild(upgrades);
+
+    for (const def of UPGRADES) {
+      const card = el("div", "upg");
+      card.innerHTML = `
+        <div><span class="k">${def.key}</span><span class="n">${def.name}</span><span class="pips"></span></div>
+        <div class="b">${def.blurb}</div>
+        <div class="c"></div>`;
+      this.upgradeRow.appendChild(card);
+      this.upgradeCards.push(card);
+    }
+
+    this.hint = el("div");
+    this.hint.id = "hint";
+    this.root.appendChild(this.hint);
+
+    this.tip = el("div", "panel");
+    this.tip.id = "tip";
+    this.root.appendChild(this.tip);
+
+    // --- fault banner ---
+    this.fault = el("div");
+    this.fault.id = "fault";
+    this.faultTitle = el("div", "ft", "WORKS JAMMED");
+    this.faultDesc = el("div", "fd", "");
+    this.fault.appendChild(this.faultTitle);
+    this.fault.appendChild(this.faultDesc);
+    this.root.appendChild(this.fault);
+
+    this.flash = el("div");
+    this.flash.id = "flash";
+    this.root.appendChild(this.flash);
+
+    // --- overlay ---
+    this.overlay = el("div");
+    this.overlay.id = "overlay";
+    this.card = el("div", "panel");
+    this.card.id = "card";
+    this.overlay.appendChild(this.card);
+    this.root.appendChild(this.overlay);
+    this.showBriefing();
+  }
+
+  private showBriefing(): void {
+    this.card.innerHTML = `
+      <h1>Moonmarket</h1>
+      <div class="sub">Restore the moonlit plaza</div>
+      <p>The plaza has gone dark. Work the <b>Moonlit Jetty</b> for fish and the
+      <b>Glimmer Adit</b> for gems, then drag routes so your carriers haul the catch
+      to whichever stall pays best — remembering that the richest buyer is always
+      the longest walk.</p>
+      <p>Let a store fill up and the works will jam, and the moon dims with them.
+      Hold a jammed node to clear it.</p>
+      <div class="goals">
+        <div class="goal"><div class="g1">3</div><div class="g2">Orders filled</div></div>
+        <div class="goal"><div class="g1">${REVENUE_TARGET}</div><div class="g2">Marks earned</div></div>
+        <div class="goal"><div class="g1">${formatTime(TIME_LIMIT)}</div><div class="g2">On the clock</div></div>
+        <div class="goal"><div class="g1">${MAX_UPGRADES}</div><div class="g2">Permits at most</div></div>
+      </div>
+      <div class="cta">Click to open the market</div>`;
+    this.overlay.classList.add("on");
+  }
+
+  private showEnd(won: boolean): void {
+    const s = this.state;
+    const used = s.upgradesUsed;
+    this.card.innerHTML = `
+      <h1>${won ? "The Plaza Shines" : "The Moon Has Set"}</h1>
+      <div class="sub">${won ? "Moonmarket restored" : "Trading closed"}</div>
+      <p>${
+        won
+          ? "Every order filled, the lamps relit and the moonstone raised. The market keeps its square."
+          : "The clock ran out before the ledger balanced. The stones stay cold a little longer."
+      }</p>
+      <div class="goals">
+        <div class="goal"><div class="g1">${s.ordersDone} / 3</div><div class="g2">Orders</div></div>
+        <div class="goal"><div class="g1">${Math.floor(s.revenue)}</div><div class="g2">Revenue</div></div>
+        <div class="goal"><div class="g1">${used} / ${MAX_UPGRADES}</div><div class="g2">Permits used</div></div>
+        <div class="goal"><div class="g1">${formatTime(TIME_LIMIT - s.timeLeft)}</div><div class="g2">Elapsed</div></div>
+      </div>
+      <div class="cta">Press R to trade again</div>`;
+    this.overlay.classList.add("on");
+  }
+
+  update(dt: number, hover: HoverInfo): void {
+    const s = this.state;
+
+    // Phase transitions.
+    if (s.phase !== this.lastPhase) {
+      this.lastPhase = s.phase;
+      if (s.phase === "running") this.overlay.classList.remove("on");
+      else if (s.phase === "won") this.showEnd(true);
+      else if (s.phase === "lost") this.showEnd(false);
+    }
+
+    // Top bar.
+    this.timeValue.textContent = formatTime(s.timeLeft);
+    this.timeValue.className = `value ${s.timeLeft < 30 ? "crit" : s.timeLeft < 75 ? "warn" : ""}`;
+    this.cashValue.textContent = String(Math.floor(s.cash));
+    const pct = Math.min(100, (s.revenue / REVENUE_TARGET) * 100);
+    this.revValue.textContent = `${Math.floor(s.revenue)} / ${REVENUE_TARGET}`;
+    this.revValue.className = `value ${s.revenue >= REVENUE_TARGET ? "good" : ""}`;
+    this.revFill.style.width = `${pct}%`;
+
+    // Orders.
+    for (let i = 0; i < this.orderCards.length; i++) {
+      const card = this.orderCards[i]!;
+      const order = s.orders[i]!;
+      card.className = `order ${order.state}`;
+      const stallName = order.def.stallId;
+      const where = card.querySelector(".where") as HTMLElement;
+      const need = card.querySelector(".need") as HTMLElement;
+      const stall = this.routes.routes.find((r) => r.stall.def.id === stallName)?.stall;
+      const stallLabel = stall?.def.name ?? this.stallName(stallName);
+      where.textContent = `for ${stallLabel} · +${order.def.bonus} marks`;
+      const parts = (Object.entries(order.def.need) as Array<[GoodKind, number]>).map(([k, v]) => {
+        const have = order.state === "done" ? v : (order.have[k] ?? 0);
+        return `<b>${Math.min(have, v)}</b>/${v} ${GOOD_LABEL[k].toLowerCase()}`;
+      });
+      need.innerHTML = order.state === "locked" ? "sealed until the previous order lands" : parts.join(" · ");
+    }
+
+    // Upgrades.
+    for (let i = 0; i < this.upgradeCards.length; i++) {
+      const card = this.upgradeCards[i]!;
+      const def = UPGRADES[i]!;
+      const level = s.upgradeLevels[i]!;
+      const check = s.canBuy(i);
+      const cost = upgradeCost(def, level);
+      const pips = card.querySelector(".pips") as HTMLElement;
+      pips.textContent = "●".repeat(level) + "○".repeat(def.maxLevel - level);
+      const c = card.querySelector(".c") as HTMLElement;
+      if (level >= def.maxLevel) {
+        c.textContent = "maxed";
+        card.className = "upg maxed";
+      } else if (check.ok) {
+        c.textContent = `${cost} marks`;
+        card.className = "upg affordable";
+      } else {
+        c.textContent = s.upgradesLeft <= 0 ? "no permits" : `${cost} marks`;
+        card.className = "upg locked";
+      }
+    }
+    this.permits.innerHTML = `Permits remaining: <b>${s.upgradesLeft}</b> of ${MAX_UPGRADES}`;
+
+    // Hint line: the freshest event for a moment, otherwise the standing goal.
+    this.hint.textContent = s.hint();
+
+    // Hover tooltip.
+    this.updateTip(hover);
+
+    // Fault / recovery banner.
+    this.updateFault(dt);
+  }
+
+  private stallName(id: string): string {
+    switch (id) {
+      case "tackle":
+        return "Tide & Tackle";
+      case "facet":
+        return "Facet & Filigree";
+      default:
+        return "The Nightly";
+    }
+  }
+
+  private updateTip(hover: HoverInfo): void {
+    if (hover.kind === "none" || this.state.phase !== "running") {
+      this.tip.classList.remove("on");
+      return;
+    }
+    let title = "";
+    let body = "";
+    if (hover.node) {
+      const n = hover.node;
+      const routes = this.routes.routesFrom(n);
+      title = n.def.name;
+      const stateWord =
+        n.state === "fault" ? "<em>JAMMED — hold to clear</em>" : n.state === "full" ? "<em>store full</em>" : n.state;
+      body = `${GOOD_LABEL[n.good]} · store <em>${n.stock}/${n.capacity}</em><br>
+        ${stateWord}<br>
+        routes: ${routes.length === 0 ? "none — drag the ring to a stall" : routes.map((r) => r.stall.def.name).join(", ")}`;
+    } else if (hover.stall) {
+      const st = hover.stall;
+      title = st.def.name;
+      body = `pays <em>${st.priceFor("fish")}</em> per fish · <em>${st.priceFor("gem")}</em> per gem<br>
+        counter <em>${st.total}/${st.capacity}</em> (${st.stock.fish} fish, ${st.stock.gem} gems)`;
+    } else if (hover.carrier) {
+      const c = hover.carrier;
+      title = `Carrier ${c.id + 1}`;
+      body = `${c.state} · carrying <em>${c.cargoCount}/${c.capacity}</em><br>click to ride along`;
+    }
+    this.tip.innerHTML = `<div class="t">${title}</div><div class="d">${body}</div>`;
+    this.tip.classList.add("on");
+    const x = Math.min(hover.screenX + 18, innerWidth - 250);
+    const y = Math.min(hover.screenY + 16, innerHeight - 110);
+    this.tip.style.left = `${x}px`;
+    this.tip.style.top = `${y}px`;
+  }
+
+  private updateFault(dt: number): void {
+    const s = this.state;
+    const now = performance.now();
+    if (s.faultBanner.active) {
+      this.faultShownAt = now;
+      this.fault.classList.add("on");
+      this.fault.classList.remove("recovered");
+      this.faultTitle.textContent = "WORKS JAMMED";
+      this.faultDesc.textContent = `${s.faultBanner.nodeName} has backed up and the moon is dimming — press and hold the works to clear it.`;
+      this.recoveredUntil = 0;
+    } else if (this.faultShownAt > 0 && this.recoveredUntil === 0) {
+      // Failure → recovery: the banner flips rather than simply vanishing.
+      this.recoveredUntil = now + 3200;
+      this.fault.classList.add("recovered");
+      this.faultTitle.textContent = "WORKS RUNNING";
+      this.faultDesc.textContent = "The belt turns again and the moonlight sweeps back across the plaza.";
+    } else if (this.recoveredUntil > 0 && now > this.recoveredUntil) {
+      this.fault.classList.remove("on");
+      this.faultShownAt = 0;
+      this.recoveredUntil = 0;
+    }
+
+    // Recovery flash across the screen.
+    this.flash.style.opacity = String(Math.min(0.85, s.recoveryFlash * 0.7));
+  }
+}
+
+/** The boot loading screen; removed once the material library is generated. */
+export class Loader {
+  private root: HTMLDivElement;
+  private text: HTMLElement;
+  private fill: HTMLElement;
+
+  constructor() {
+    this.root = document.createElement("div");
+    this.root.id = "loader";
+    this.root.innerHTML = `
+      <div class="moon"></div>
+      <h1>Moonmarket</h1>
+      <div class="lt">preparing the square…</div>
+      <div class="bar"><div class="fill"></div></div>`;
+    document.body.appendChild(this.root);
+    this.text = this.root.querySelector(".lt") as HTMLElement;
+    this.fill = this.root.querySelector(".fill") as HTMLElement;
+  }
+
+  progress(t: number, label: string): void {
+    this.fill.style.width = `${Math.round(t * 100)}%`;
+    this.text.textContent = `${label}…`;
+  }
+
+  done(): void {
+    this.root.classList.add("done");
+    setTimeout(() => this.root.remove(), 700);
+  }
+}

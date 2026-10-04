@@ -17,7 +17,7 @@ import { parseCorpusRepository } from "./utils/parse-corpus-repository.js";
 import { parseReactDoctorEvaluationProvenance } from "./utils/parse-react-doctor-evaluation-provenance.js";
 import { parseReactDoctorReport } from "./utils/parse-react-doctor-report.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
-import createConcurrencyLimit from "p-limit";
+import { createConcurrencyLimit } from "./utils/create-concurrency-limit.js";
 
 const classificationReportSchema = z.object({
   schemaVersion: z.literal(3),

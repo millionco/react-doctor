@@ -9,6 +9,7 @@ import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { containsDirectAwait } from "../../utils/contains-direct-await.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { isBareAwaitExpressionStatement } from "../../utils/is-bare-await-expression-statement.js";
 import { isEarlyExitIfStatement } from "../../utils/is-early-exit-if-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -118,6 +119,9 @@ const CANCELLATION_GUARD_NAMES: ReadonlySet<string> = new Set([
   "isActive",
   "stale",
   "isStale",
+  "live",
+  "isLive",
+  "ignore",
   "signal",
   "abortSignal",
   "abortController",
@@ -200,7 +204,7 @@ const isCancellationGuardTest = (test: EsTreeNode | null): boolean => {
   // `controller.signal.aborted`, `this._destroyed`, `batch.aborted`,
   // `seq !== getSeq.current`, `token !== runToken`.
   for (const name of collectAllTestNames(test)) {
-    if (isCancellationLikeName(name)) return true;
+    if (CANCELLATION_GUARD_NAMES.has(name) || isCancellationLikeName(name)) return true;
   }
   return testReadsRefCurrent(test);
 };
@@ -360,15 +364,6 @@ const guardConsequentPerformsSideEffects = (consequent: EsTreeNode | null | unde
     }
   });
   return performsSideEffects;
-};
-
-const findEnclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
-  let ancestor: EsTreeNode | null | undefined = node.parent;
-  while (ancestor) {
-    if (isFunctionLike(ancestor)) return ancestor;
-    ancestor = ancestor.parent;
-  }
-  return null;
 };
 
 // `let failed = false; try { await del(); } catch { failed = true; }

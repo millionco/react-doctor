@@ -1,0 +1,254 @@
+// rule: effect-needs-cleanup
+// file-path: src/victory-animation/victory-animation.tsx
+// audit-verdict: pass
+// weakness: react-bench-exact-callsite
+// source: React Bench 0.9.11 exhaustive audit 60151913eb092a935273f16053b6235d52a27f7d0c557475dfc1641be5e641fb
+import React from "react";
+import * as d3Ease from "victory-vendor/d3-ease";
+import { victoryInterpolator } from "./util";
+import TimerContext from "../victory-util/timer-context";
+
+/**
+ * Single animation object to interpolate
+ */
+export type AnimationStyle = { [key: string]: string | number };
+/**
+ * Animation styles to interpolate
+ */
+
+export type AnimationData = AnimationStyle | AnimationStyle[];
+
+export type AnimationEasing =
+  | "back"
+  | "backIn"
+  | "backOut"
+  | "backInOut"
+  | "bounce"
+  | "bounceIn"
+  | "bounceOut"
+  | "bounceInOut"
+  | "circle"
+  | "circleIn"
+  | "circleOut"
+  | "circleInOut"
+  | "linear"
+  | "linearIn"
+  | "linearOut"
+  | "linearInOut"
+  | "cubic"
+  | "cubicIn"
+  | "cubicOut"
+  | "cubicInOut"
+  | "elastic"
+  | "elasticIn"
+  | "elasticOut"
+  | "elasticInOut"
+  | "exp"
+  | "expIn"
+  | "expOut"
+  | "expInOut"
+  | "poly"
+  | "polyIn"
+  | "polyOut"
+  | "polyInOut"
+  | "quad"
+  | "quadIn"
+  | "quadOut"
+  | "quadInOut"
+  | "sin"
+  | "sinIn"
+  | "sinOut"
+  | "sinInOut";
+
+export interface VictoryAnimationProps {
+  children: (style: AnimationStyle, info: AnimationInfo) => React.ReactElement;
+  duration?: number;
+  easing?: AnimationEasing;
+  delay?: number;
+  onEnd?: () => void;
+  data: AnimationData;
+}
+
+export interface VictoryAnimationState {
+  data: AnimationStyle;
+  animationInfo: AnimationInfo;
+}
+
+export interface AnimationInfo {
+  progress: number;
+  animating: boolean;
+  terminating?: boolean;
+}
+
+export interface VictoryAnimation {
+  context: React.ContextType<typeof TimerContext>;
+}
+
+/** d3-ease changed the naming scheme for ease from "linear" -> "easeLinear" etc. */
+const formatAnimationName = (name: AnimationEasing) => {
+  const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+  return `ease${capitalizedName}`;
+};
+
+const DEFAULT_DURATION = 1000;
+
+export const VictoryAnimation = ({
+  duration = DEFAULT_DURATION,
+  easing = "quadInOut",
+  delay = 0,
+  data,
+  children,
+  onEnd,
+}: VictoryAnimationProps) => {
+  const [state, setState] = React.useState<VictoryAnimationState>({
+    data: Array.isArray(data) ? data[0] : data,
+    animationInfo: {
+      progress: 0,
+      animating: false,
+    },
+  });
+
+  const timer = React.useContext(TimerContext).animationTimer;
+  const queue = React.useRef<AnimationStyle[]>(
+    Array.isArray(data) ? data.slice(1) : [],
+  );
+  const interpolator = React.useRef<null | ((value: number) => AnimationStyle)>(
+    null,
+  );
+  const loopID = React.useRef<number | undefined>(undefined);
+
+  // Latest-value refs so an in-progress animation always adopts the most
+  // recent settings instead of the values captured when it was subscribed.
+  const durationRef = React.useRef(duration);
+  const easeRef = React.useRef(d3Ease[formatAnimationName(easing)]);
+  const delayRef = React.useRef(delay);
+  const onEndRef = React.useRef(onEnd);
+  durationRef.current = duration;
+  easeRef.current = d3Ease[formatAnimationName(easing)];
+  delayRef.current = delay;
+  onEndRef.current = onEnd;
+
+  // Tracks the currently visible style so a hand-off can continue from it
+  // rather than the superseded target.
+  const styleRef = React.useRef<AnimationStyle>(state.data);
+  // Identifies the active run. Bumping it invalidates any in-flight frame or
+  // pending delayed start so a superseded run can neither render nor complete.
+  const runIDRef = React.useRef(0);
+
+  const isFirstRun = React.useRef(true);
+
+  // Mount / unmount lifecycle.
+  React.useEffect(() => {
+    // Length check prevents us from triggering `onEnd` in `traverseQueue`.
+    if (queue.current.length) {
+      traverseQueue();
+    }
+
+    // Clean up the animation loop. Invalidate the active run first so a queued
+    // completion cannot fire after the component has unmounted.
+    return () => {
+      runIDRef.current++;
+      if (loopID.current) {
+        timer.unsubscribe(loopID.current);
+      } else {
+        timer.stop();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Respond to `data` changes. Other prop changes (duration/easing/delay/onEnd)
+  // are picked up live through the refs above and must not restart the run.
+  React.useEffect(() => {
+    if (isFirstRun.current) {
+      isFirstRun.current = false;
+      return;
+    }
+
+    // Cancel the existing loop so the superseded run can't render or complete.
+    if (loopID.current) {
+      timer.unsubscribe(loopID.current);
+      loopID.current = undefined;
+    }
+    // Continue from the currently visible style toward the new data.
+    queue.current = Array.isArray(data) ? data : [data];
+    // Start traversing the tween queue (this also invalidates prior runs).
+    traverseQueue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  const traverseQueue = () => {
+    // Every traversal is a fresh run; bumping invalidates anything still in
+    // flight from a previous run (including a pending delayed start).
+    const runID = ++runIDRef.current;
+
+    if (queue.current.length) {
+      const nextData = queue.current[0];
+
+      // Interpolate from the currently visible style to the next target.
+      interpolator.current = victoryInterpolator(styleRef.current, nextData);
+
+      const start = () => {
+        // Bail if a newer run superseded this one during the delay.
+        if (runID !== runIDRef.current) return;
+        loopID.current = timer.subscribe(
+          functionToBeRunEachFrame(runID),
+          durationRef.current,
+        );
+      };
+
+      if (delayRef.current) {
+        setTimeout(start, delayRef.current);
+      } else {
+        start();
+      }
+    } else if (onEndRef.current) {
+      onEndRef.current();
+    }
+  };
+
+  const functionToBeRunEachFrame = (runID: number) => (elapsed: number) => {
+    // Ignore frames belonging to a superseded run.
+    if (runID !== runIDRef.current) return;
+    if (!interpolator.current) return;
+
+    // Step can generate imprecise values, sometimes greater than 1
+    // if this happens set the state to 1 and return, cancelling the timer
+    const duration = durationRef.current;
+    const step = duration ? elapsed / duration : 1;
+
+    if (step >= 1) {
+      const finalData = interpolator.current(1);
+      styleRef.current = finalData;
+      setState({
+        data: finalData,
+        animationInfo: {
+          progress: 1,
+          animating: false,
+          terminating: true,
+        },
+      });
+      if (loopID.current) {
+        timer.unsubscribe(loopID.current);
+      }
+      queue.current.shift();
+      traverseQueue();
+      return;
+    }
+
+    // If we're not at the end of the timer, set the state by passing
+    // current step value that's transformed by the ease function to the
+    // interpolator, which is cached for performance whenever props are received
+    const nextData = interpolator.current(easeRef.current(step));
+    styleRef.current = nextData;
+    setState({
+      data: nextData,
+      animationInfo: {
+        progress: step,
+        animating: step < 1,
+      },
+    });
+  };
+
+  return children(state.data, state.animationInfo);
+};

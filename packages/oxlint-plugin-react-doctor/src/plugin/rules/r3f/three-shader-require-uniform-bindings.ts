@@ -57,6 +57,31 @@ const MANAGED_UNIFORM_FEATURE_BY_NAME: ReadonlyMap<string, string> = new Map([
   ["transmissionSamplerMap", "transmission"],
   ["transmissionSamplerSize", "transmission"],
 ]);
+const MATERIAL_UNIFORM_LIBRARY_NAMES: ReadonlySet<string> = new Set([
+  "ambientLightColor",
+  "directionalLights",
+  "directionalLightShadows",
+  "directionalShadowMap",
+  "directionalShadowMatrix",
+  "fogColor",
+  "fogDensity",
+  "fogFar",
+  "fogNear",
+  "hemisphereLights",
+  "lightProbe",
+  "ltc_1",
+  "ltc_2",
+  "pointLights",
+  "pointLightShadows",
+  "pointShadowMap",
+  "pointShadowMatrix",
+  "rectAreaLights",
+  "spotLightMap",
+  "spotLightMatrix",
+  "spotLights",
+  "spotLightShadows",
+  "spotShadowMap",
+]);
 
 const isRendererManagedUniform = (
   uniformName: string,
@@ -64,7 +89,8 @@ const isRendererManagedUniform = (
 ): boolean => {
   if (
     material.constructorName !== "ShaderMaterial" ||
-    !THREE_RENDERER_MANAGED_SHADER_UNIFORM_NAMES.has(uniformName)
+    !THREE_RENDERER_MANAGED_SHADER_UNIFORM_NAMES.has(uniformName) ||
+    MATERIAL_UNIFORM_LIBRARY_NAMES.has(uniformName)
   ) {
     return false;
   }

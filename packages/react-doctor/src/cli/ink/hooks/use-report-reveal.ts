@@ -1,5 +1,4 @@
 import { useStdout } from "ink";
-import { useEffect, useRef, useState } from "react";
 import {
   TUI_REPORT_ISSUE_STREAM_FRAME_DELAY_MS,
   TUI_REPORT_ISSUE_STREAM_MAX_STEPS,
@@ -10,6 +9,7 @@ import {
   canAnimateOnboarding,
   ONBOARDING_SECTION_DELAY_MS,
 } from "../../utils/onboarding-pacing.js";
+import { useEffect, useRef, useState } from "../react-runtime.js";
 
 export interface ReportReveal {
   readonly phase: "actions" | "score" | "streaming";

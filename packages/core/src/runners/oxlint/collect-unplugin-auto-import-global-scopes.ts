@@ -264,6 +264,14 @@ const collectGlobalsPathsFromConfig = (
   } catch {
     return { didFindActiveAutoImport: false, globalsPaths: [] };
   }
+  // An active auto-import needs a literal `unplugin-auto-import/<adapter>`
+  // module specifier in this file (imports are not followed), so a file
+  // without that text cannot configure one. Only an escape sequence could
+  // spell the specifier without the literal bytes, so any backslash still
+  // parses. This keeps the TypeScript compiler unloaded for ordinary configs.
+  if (!sourceText.includes("unplugin-auto-import") && !sourceText.includes("\\")) {
+    return { didFindActiveAutoImport: false, globalsPaths: [] };
+  }
 
   const sourceFile = ts.createSourceFile(configPath, sourceText, ts.ScriptTarget.Latest, true);
   const autoImportBindings = new Map<string, string>();

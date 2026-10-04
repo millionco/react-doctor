@@ -31,6 +31,7 @@ import {
   isState,
   isStateSetter,
 } from "./effect/react.js";
+import { hasReturnedStateSetter } from "./has-returned-state-setter.js";
 import { hasUserInputSetterWriter } from "./has-user-input-setter-writer.js";
 import { readsPostMountValueThroughLocals } from "./reads-post-mount-through-locals.js";
 
@@ -1627,7 +1628,15 @@ const matchesStateInitializer = (
   if (!isNodeOfType(stateDeclarator.init, "CallExpression")) return false;
   const writtenValue = callExpression.arguments?.[0];
   const initializerValue = stateDeclarator.init.arguments?.[0];
-  if (!writtenValue || !initializerValue) return false;
+  if (!writtenValue) return false;
+  if (!initializerValue) {
+    const unwrappedWrittenValue = stripParenExpression(writtenValue as EsTreeNode);
+    return (
+      isNodeOfType(unwrappedWrittenValue, "Identifier") &&
+      unwrappedWrittenValue.name === "undefined" &&
+      !getRef(analysis, unwrappedWrittenValue)?.resolved
+    );
+  }
   const unwrappedInitializer = stripParenExpression(initializerValue as EsTreeNode);
   if (
     isNodeOfType(unwrappedInitializer, "LogicalExpression") &&
@@ -1793,6 +1802,7 @@ const collectFrameSetterCalls = (
 const expressionReadsStateDeclarator = (
   analysis: ProgramAnalysis,
   context: RuleContext,
+  frame: EffectExecutionFrame,
   expression: EsTreeNode,
   stateDeclarator: EsTreeNode,
 ): boolean => {
@@ -1843,12 +1853,16 @@ const expressionReadsStateDeclarator = (
         const assignedCallee = isNodeOfType(assignedCandidate, "CallExpression")
           ? stripParenExpression(assignedCandidate.callee)
           : null;
+        const assignedReceiver =
+          assignedCallee && isNodeOfType(assignedCallee, "MemberExpression")
+            ? stripParenExpression(assignedCallee.object)
+            : null;
         if (
           assignedCallee &&
           isNodeOfType(assignedCallee, "MemberExpression") &&
           FRESH_ARRAY_COPY_METHOD_NAMES.has(getStaticMemberName(assignedCallee) ?? "") &&
-          isNodeOfType(assignedCallee.object, "Identifier") &&
-          context.scopes.symbolFor(assignedCallee.object) === symbol
+          isNodeOfType(assignedReceiver, "Identifier") &&
+          context.scopes.symbolFor(assignedReceiver) === symbol
         ) {
           if (!isUnmodifiedMemberCall(assignedCandidate, executionReferenceNode)) return false;
           continue;
@@ -1937,6 +1951,22 @@ const expressionReadsStateDeclarator = (
     expression,
     (child: EsTreeNode): void => {
       if (readsState) return;
+      if (isNodeOfType(child, "MemberExpression") && getStaticMemberName(child) === "current") {
+        const valueEvidence = collectValueEvidence(analysis, child, frame, 1);
+        const sourceStateDeclarators = [...valueEvidence.sourceReferences]
+          .filter((reference) => isState(analysis, reference))
+          .map((reference) => getUseStateDecl(analysis, reference));
+        if (
+          sourceStateDeclarators.length > 0 &&
+          sourceStateDeclarators.every((declarator) => declarator === stateDeclarator) &&
+          !valueEvidence.hasUnknownSource &&
+          !valueEvidence.hasDeferredIntroducedValue &&
+          !valueEvidence.readsExternalValue
+        ) {
+          readsState = true;
+        }
+        return;
+      }
       if (!isNodeOfType(child, "Identifier")) return;
       const reference = getRef(analysis, child);
       if (
@@ -2003,7 +2033,13 @@ const isNodeControlledByStateInFrame = (
       isNodeOfType(cursor, "IfStatement") &&
       (isAstDescendant(child, cursor.consequent as EsTreeNode) ||
         Boolean(cursor.alternate && isAstDescendant(child, cursor.alternate as EsTreeNode))) &&
-      expressionReadsStateDeclarator(analysis, context, cursor.test as EsTreeNode, stateDeclarator)
+      expressionReadsStateDeclarator(
+        analysis,
+        context,
+        frame,
+        cursor.test as EsTreeNode,
+        stateDeclarator,
+      )
     ) {
       return true;
     }
@@ -2011,14 +2047,26 @@ const isNodeControlledByStateInFrame = (
       isNodeOfType(cursor, "ConditionalExpression") &&
       (isAstDescendant(child, cursor.consequent as EsTreeNode) ||
         isAstDescendant(child, cursor.alternate as EsTreeNode)) &&
-      expressionReadsStateDeclarator(analysis, context, cursor.test as EsTreeNode, stateDeclarator)
+      expressionReadsStateDeclarator(
+        analysis,
+        context,
+        frame,
+        cursor.test as EsTreeNode,
+        stateDeclarator,
+      )
     ) {
       return true;
     }
     if (
       isNodeOfType(cursor, "LogicalExpression") &&
       isAstDescendant(child, cursor.right as EsTreeNode) &&
-      expressionReadsStateDeclarator(analysis, context, cursor.left as EsTreeNode, stateDeclarator)
+      expressionReadsStateDeclarator(
+        analysis,
+        context,
+        frame,
+        cursor.left as EsTreeNode,
+        stateDeclarator,
+      )
     ) {
       return true;
     }
@@ -2038,6 +2086,7 @@ const isNodeControlledByStateInFrame = (
           expressionReadsStateDeclarator(
             analysis,
             context,
+            frame,
             precedingStatement.test as EsTreeNode,
             stateDeclarator,
           )
@@ -2106,14 +2155,22 @@ const areInMutuallyExclusiveBranches = (leftNode: EsTreeNode, rightNode: EsTreeN
   return false;
 };
 
+const effectStateWriteFactsByNode = new WeakMap<EsTreeNode, ReadonlyArray<EffectStateWriteFact>>();
+
 export const collectEffectStateWriteFacts = (
   analysis: ProgramAnalysis,
   context: RuleContext,
   effectNode: EsTreeNode,
   currentFilename?: string,
 ): ReadonlyArray<EffectStateWriteFact> => {
+  const cachedFacts = effectStateWriteFactsByNode.get(effectNode);
+  if (cachedFacts) return cachedFacts;
   const frames = collectBoundedEffectExecutionFrames(analysis, effectNode, currentFilename);
-  if (frames.length === 0) return [];
+  if (frames.length === 0) {
+    const emptyFacts: ReadonlyArray<EffectStateWriteFact> = [];
+    effectStateWriteFactsByNode.set(effectNode, emptyFacts);
+    return emptyFacts;
+  }
   const frameByFunctionNode = new Map<EsTreeNode, EffectExecutionFrame>();
   for (const frame of frames) {
     if (!frameByFunctionNode.has(frame.functionNode)) {
@@ -2168,13 +2225,9 @@ export const collectEffectStateWriteFacts = (
       const sourceReferences = [...valueEvidence.sourceReferences].filter(
         (sourceReference) => getUseStateDecl(analysis, sourceReference) !== stateDeclarator,
       );
-      const hasIndependentWriter = hasUserInputSetterWriter(
-        analysis,
-        context,
-        setterReference,
-        effectNode,
-        true,
-      );
+      const hasIndependentWriter =
+        hasUserInputSetterWriter(analysis, context, setterReference, effectNode, true) ||
+        hasReturnedStateSetter(context, stateDeclarator);
       const doesMatchStateInitializer = matchesStateInitializer(
         analysis,
         callExpression,
@@ -2228,7 +2281,7 @@ export const collectEffectStateWriteFacts = (
     }
   }
 
-  return facts.map((fact) => {
+  const collectedFacts = facts.map((fact) => {
     const sourceStateDeclarators = fact.sourceReferences
       .filter((sourceReference) => isState(analysis, sourceReference))
       .map((sourceReference) => getUseStateDecl(analysis, sourceReference))
@@ -2251,4 +2304,6 @@ export const collectEffectStateWriteFacts = (
         !resetsSourceState,
     };
   });
+  effectStateWriteFactsByNode.set(effectNode, collectedFacts);
+  return collectedFacts;
 };

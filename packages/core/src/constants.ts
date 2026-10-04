@@ -37,6 +37,15 @@ export const DEFAULT_SHOW_WARNINGS = true;
 
 export const MILLISECONDS_PER_SECOND = 1000;
 
+export const PROJECT_ANALYSIS_WORKER_TIMEOUT_MS = 120_000;
+export const PROJECT_ANALYSIS_WORKER_TIMEOUT_MS_PER_SOURCE_FILE = 30;
+export const PROJECT_ANALYSIS_WORKER_TIMEOUT_CEILING_MS = 600_000;
+export const PROJECT_ANALYSIS_WORKER_MAX_OLD_SPACE_MB = 8192;
+export const PROJECT_ANALYSIS_WORKER_MEMORY_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
+
+export const HTTP_SUCCESS_STATUS_CODE_MIN = 200;
+export const HTTP_SUCCESS_STATUS_CODE_MAX_EXCLUSIVE = 300;
+
 // Upper bound for the `react:<major>` capability loop in
 // `buildCapabilities`, clamping an unvalidated package.json spec like
 // `"react": "20240101"` that would otherwise drive the loop to tens of
@@ -154,6 +163,40 @@ export const SCORE_BAR_WIDTH_CHARS = 50;
 
 export const SCORE_API_URL = "https://www.react.doctor/api/score";
 
+export const AXIOM_DEFAULT_DOMAIN = "https://api.axiom.co";
+
+export const SLASH_CHAR_CODE = 47;
+
+export const AXIOM_TRACES_PATH = "/v1/traces";
+
+export const AXIOM_METRICS_PATH = "/v1/metrics";
+
+// Axiom routes traces and metrics to different datasets, and the two signals
+// read *different* header names to pick one. This is why the Axiom layer
+// composes OtlpTracer/OtlpMetrics by hand instead of using `Otlp.layer`,
+// which passes a single `headers` object to every signal.
+export const AXIOM_DATASET_HEADER = "X-Axiom-Dataset";
+
+export const AXIOM_METRICS_DATASET_HEADER = "x-axiom-metrics-dataset";
+
+// The CLI is a short-lived process: a scan usually finishes before any
+// periodic export would fire, so telemetry is delivered by the flush that
+// runs when the layer's scope closes. The interval is set well past a
+// realistic run so the periodic path stays out of the way rather than
+// racing that flush.
+export const TELEMETRY_EXPORT_INTERVAL_MS = 600_000;
+
+// Caps how long CLI exit may block on the final telemetry flush.
+//
+// Deliberately tighter than Sentry's 2s error flush. The metrics exporter
+// passes `maxBatchSize: "disabled"`, which skips Effect's empty-buffer
+// short-circuit — so it POSTs on every scope close whether or not anything
+// was recorded. On a firewalled or offline machine that request cannot fail
+// fast, and unlike the Sentry flush (which only runs when an error occurred)
+// this one runs on every single scan. A full second is ample for a reachable
+// endpoint and keeps telemetry from dominating exit latency for everyone else.
+export const TELEMETRY_SHUTDOWN_TIMEOUT_MS = 1_000;
+
 export const ENTERPRISE_CONTACT_URL = "https://react.doctor/enterprise";
 
 export const SHARE_BASE_URL = "https://react.doctor/share";
@@ -222,6 +265,18 @@ export const NODE_VERSION_PROBE_TIMEOUT_MS = 5_000;
 // vs the hard-cap perf cliffs they prevent.
 export const OXLINT_MAX_FILES_PER_BATCH = 200;
 
+// Lint batches planned per pooled oxlint worker. The legacy per-batch spawn
+// path keeps the mandatory `ceil(files / OXLINT_MAX_FILES_PER_BATCH)` count
+// because every extra batch there paid a contended cold start; a warm pool
+// worker runs a job for a few milliseconds of setup, so a scan smaller than
+// `workers × OXLINT_MAX_FILES_PER_BATCH` files is split further to keep every
+// worker busy, with a second batch per worker absorbing per-file cost skew.
+export const OXLINT_POOLED_BATCHES_PER_WORKER = 2;
+
+// Floor on files per pooled batch: below this the fixed per-job setup
+// dominates the lint work, so tiny scans stay in fewer batches.
+export const OXLINT_POOLED_MIN_FILES_PER_BATCH = 8;
+
 // Bounds for the lint worker count (the `OxlintConcurrency` Reference, seeded by
 // the `REACT_DOCTOR_PARALLEL` env var; the CLI's `--no-parallel` flag forces the
 // MIN end). React Doctor's rules are oxlint JS plugins — single-threaded per
@@ -243,6 +298,13 @@ export const AUTO_MAX_SCAN_CONCURRENCY = 10;
 // proportionally more speed.
 export const HARD_MAX_SCAN_CONCURRENCY = 32;
 
+// Rust parse threads per oxlint subprocess (`--threads`). oxlint defaults to one
+// rayon thread per core, so N concurrent workers would otherwise run N × cores
+// parse threads against N JS-plugin main threads; sharing the cores instead
+// (`floor(cores / workers)`, never below this floor) measured 7-8% less wall
+// and CPU on an 8-core box at 8 workers.
+export const MIN_OXLINT_THREADS_PER_WORKER = 1;
+
 // Memory one oxlint subprocess is budgeted at the OXLINT_MAX_FILES_PER_BATCH=200
 // batch size (the native binding's parser arena + the batch's ASTs + the
 // JS-plugin heap). The auto path takes `floor(availableMemory / this)` as a
@@ -262,6 +324,10 @@ export const PER_WORKER_MEM_BUDGET_BYTES = 1024 * 1024 * 1024;
 // keeps an 80-module monorepo from spawning hundreds of subprocesses by
 // default. Callers opt into more via `DiagnoseProjectsInput.concurrency`.
 export const DEFAULT_PROJECT_SCAN_CONCURRENCY = 4;
+
+// A project holds its batch slot through its trailing score round-trip, so one
+// project per worker would leave the shared oxlint pool idle on small packages.
+export const PROJECT_SCANS_IN_FLIGHT_PER_OXLINT_WORKER = 4;
 
 export const DEFAULT_BRANCH_CANDIDATES = ["main", "master"];
 
@@ -451,6 +517,11 @@ export const ES_TARGET_YEAR_BY_NAME: Readonly<Record<string, number>> = {
  */
 export const TSCONFIG_FILENAMES = ["tsconfig.json", "tsconfig.base.json"] as const;
 
+export const DISABLE_DIRECTIVE_BACKUP_DIRECTORY_SEGMENTS = [
+  ".react-doctor",
+  "audit-backups",
+] as const;
+
 /**
  * Project-config files that `StagedFiles.materialize` copies into
  * the temp directory alongside staged sources so oxlint resolves
@@ -537,8 +608,6 @@ export const COOPERATIVE_YIELD_BUDGET_MS = 12;
 // so the bin (parent) and the spawned oxlint batches (children) share one tree.
 export const NODE_COMPILE_CACHE_DIR_NAME = "node-compile-cache";
 
-export const DEAD_CODE_WORKER_TIMEOUT_MS = 120_000;
-
 // Cumulative wall-clock budget across ALL binary-split retries of one
 // batch pass. A pathological file recurses through ~log2(200)≈8
 // split levels, and each level re-waits a full OXLINT_SPAWN_TIMEOUT_MS;
@@ -566,6 +635,57 @@ export const OXLINT_SPLIT_MAX_DEPTH = 9;
 // rescue pass work on Windows too.
 export const ABORT_EXIT_CODES: ReadonlySet<number> = new Set([134, 0xc0000409]);
 
+// Line the oxlint worker writes to fd 1 / fd 2 after each `lint()` job so the
+// parent can split one worker's stream into per-job outputs. oxlint's JSON
+// formatter escapes newlines inside strings, so a whole line equal to this
+// marker cannot occur inside the payload.
+export const OXLINT_WORKER_JOB_END_MARKER = "__REACT_DOCTOR_OXLINT_JOB_END__";
+
+// Boot budget for an oxlint worker (Node start + importing oxlint's native
+// binding and the plugin runtime). A worker that has not reported ready by
+// then is treated as unavailable and the batch falls back to the per-batch
+// spawn path.
+export const OXLINT_WORKER_READY_TIMEOUT_MS = 30_000;
+
+// An idle worker keeps ~150 MB of warmed plugin heap alive; long-lived hosts
+// (`@react-doctor/api`) reclaim it after this quiet period. The CLI is not
+// held open by idle workers — their handles are unref'd — so this only
+// matters between scans in one process.
+export const OXLINT_WORKER_IDLE_TIMEOUT_MS = 30_000;
+export const DUPLICATE_JSX_WORKER_IDLE_TIMEOUT_MS = 30_000;
+export const REACT_COMPILER_DETECTION_WORKER_IDLE_TIMEOUT_MS = 30_000;
+
+// Every pooled job hands the plugin a fresh oxlint transfer buffer and fresh
+// rule closures, and the full GC that follows drops every TurboFan code object
+// specialized on the previous job's objects ("weak objects" deopt). With V8's
+// default tier-up threshold (3 000 invocations) the ~300 functions that just
+// got invalidated re-optimize on every job, and the background compiler
+// threads end up burning more CPU than the lint itself. Raising the threshold
+// keeps TurboFan for the genuinely hot walkers while the rest stay on Maglev;
+// measured on refine/grafana/tldraw it cut worker CPU ~30% and wall ~15-25%.
+// The flag exists from V8 12 (Node 22); Node 20 keeps the default tiering.
+export const OXLINT_WORKER_TURBOFAN_INVOCATION_COUNT = 30_000;
+export const OXLINT_WORKER_TIERING_FLAGS_MIN_NODE_MAJOR = 22;
+
+// HACK: oxlint registers one 2 GiB fixed-size AST transfer buffer per native
+// thread as V8 external memory, and a pooled job allocates a new set before the
+// previous set is collected. External growth past half the old-space limit
+// triggers a synchronous full GC per job; a ceiling of two buffers per thread
+// (plus headroom) keeps V8 on incremental marking. Nothing is committed up front.
+export const OXLINT_WORKER_OLD_SPACE_MB_PER_NATIVE_THREAD = 4352;
+
+// Global registry key under which the react-doctor oxlint plugin publishes its
+// filesystem-cache reset. A warm worker calls it when a job's scan epoch differs
+// from the previous job's, so caches never outlive one invocation. Mirrored in
+// `oxlint-plugin-react-doctor/src/plugin/constants/host.ts`.
+export const REACT_DOCTOR_PLUGIN_RESET_HOOK_KEY = Symbol.for(
+  "react-doctor.reset-filesystem-caches",
+);
+
+// Bytes of each oxlint job's stdout kept in the performance-harness timeline
+// (`REACT_DOCTOR_OXLINT_SPAWN_LOG`), enough to tell JSON output from a crash.
+export const OXLINT_JOB_TIMELINE_STDOUT_PREVIEW_BYTES = 160;
+
 // Wall-clock cap on the serial OOM rescue pass (replaying OOM-dropped
 // files one at a time after the parallel pass). The rescue is unbounded
 // by batch count — each file that STILL fails re-waits a spawn timeout —
@@ -573,48 +693,6 @@ export const ABORT_EXIT_CODES: ReadonlySet<number> = new Set([134, 0xc0000409]);
 // 60 s rescues dozens of healthy files while at most one
 // still-pathological file can burn the budget.
 export const OXLINT_OOM_RESCUE_BUDGET_MS = 60_000;
-
-// deslop's semantic pass builds a full TypeScript program and walks
-// every identifier through the type checker. On type-heavy projects
-// (large tRPC routers, Effect/Zod schemas, deep generics) the checker
-// instantiates enormous types and the child can exceed Node's default
-// ~4 GB heap, dying with an uncatchable "heap out of memory" — which
-// surfaces as a silent "Scanning failed (dead-code analysis)". Raise
-// the child's heap so those projects complete instead of crashing.
-export const DEAD_CODE_WORKER_MAX_OLD_SPACE_MB = 8192;
-
-// Memory budgeted per concurrent dead-code worker when sizing the global
-// `withDeadCodeWorkerSlot` semaphore (`resolveDeadCodeConcurrency`). Deliberately
-// well below the worker's `--max-old-space-size` ceiling above (that's a crash
-// guard, not steady-state use): a deslop graph on a few-hundred-file project
-// peaks around 1–1.5 GB, so 2 GB leaves headroom while still collapsing the
-// concurrency toward 1 on a small CI runner — capping how many 8 GB-ceiling
-// children a multi-project scan starts at once.
-export const DEAD_CODE_WORKER_MEM_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
-
-// Dead-code timeout scales with the work. deslop is CPU-bound and roughly
-// linear in source-file count, so a single fixed timeout is at once too
-// generous for a small repo and too tight for a large one — on a multi-thousand
-// file repo the graph build legitimately approaches the old fixed 120s cap, so
-// any contention (a still-running supply-chain pass, an overlapped lint pool)
-// tips it over and the findings are silently dropped. The worker timeout is
-// `max(DEAD_CODE_WORKER_TIMEOUT_MS floor, fileCount * this)` capped at the
-// ceiling; the phase timeout sits a margin above it.
-export const DEAD_CODE_TIMEOUT_MS_PER_SOURCE_FILE = 30;
-export const DEAD_CODE_TIMEOUT_CEILING_MS = 600_000;
-
-// When dead-code is explicitly overlapped with lint (`DeadCodeOverlap="on"`),
-// the two CPU-bound worker pools must SHARE the cores rather than each claiming
-// all of them — uncoordinated, deslop's parse pool (`os.availableParallelism()`)
-// and the oxlint pool (one child per core) sum to ~2x the cores and thrash,
-// starving the parse pass past its timeout. The dead-code parse pool gets this
-// fraction of the scan's worker budget and lint gets the rest, so the two sum to
-// the budget instead of doubling it. (Overlap is OFF by default: dead-code is
-// CPU-bound, so a sequential full-core pass is both faster per-phase and never
-// oversubscribes — overlapping it with lint buys no wall-clock and only risks
-// the starvation. This split exists for operators who force overlap on.)
-export const DEAD_CODE_OVERLAP_PARSE_SHARE = 0.4;
-export const MIN_DEAD_CODE_PARSE_CONCURRENCY = 1;
 
 // HACK: lookahead cap for JSX opener-span scanning; bounds worst-case
 // work on pathological files. Real openers stay well under this.
@@ -624,9 +702,6 @@ export const JSX_OPENER_SCAN_MAX_LINES = 32;
 // Larger gaps stop being intentional suppressions and become noise.
 export const SUPPRESSION_NEAR_MISS_MAX_LINES = 10;
 
-// In the default human output, show several category sections like an
-// audit report, but cap each section so one noisy category does not
-// bury the rest of the scan.
 export const MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE = 5;
 
 export const MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE = 3;
@@ -659,7 +734,7 @@ export const VERCEL_NEXTJS_SECURITY_RELEASE_URL =
 // The closed set of user-facing diagnostic categories. Every rule
 // (collapsed at codegen via `CATEGORY_BUCKET` in
 // `generate-rule-registry.mjs`) and every directly-constructed
-// diagnostic (dead-code, reduced-motion, pnpm-hardening) must report one
+// diagnostic (maintainability, reduced-motion, pnpm-hardening) must report one
 // of these — the renderer, JSON output, and `categories` severity
 // overrides all assume this set is exhaustive. `rule-metadata.test.ts`
 // asserts the registry never drifts outside it.
@@ -750,8 +825,8 @@ export const MIN_SHARED_FIX_SITE_COUNT = 2;
 // in the JSON output.
 export const FIX_GROUP_ID_LENGTH_CHARS = 16;
 
-// How many of the highest-priority error rules to surface in the
-// "Top N errors you should fix" header above the category breakdown.
+// How many of the highest-priority error rules to use for projected scores
+// and agent handoff recommendations.
 export const TOP_ERRORS_DISPLAY_COUNT = 3;
 
 // A single rule firing across this many distinct files is a migration, not a
@@ -776,13 +851,6 @@ export const CODE_FRAME_LINES_BELOW = 1;
 // so we fall back to the bare `file:line` reference instead.
 export const CODE_FRAME_MAX_LINE_LENGTH_CHARS = 200;
 
-// When one rule hits several sites in the same file, sites whose frames
-// would overlap are merged into a single spanning frame instead of
-// rendering near-duplicate boxes. Two sites merge when the gap between
-// their lines is within this window (the frame's own context reach), and
-// a merged frame never spans more offending lines than the max below — a
-// long contiguous run is split into a few bounded frames rather than one
-// giant wall.
 export const CODE_FRAME_BATCH_MAX_SPAN_LINES = 20;
 
 export const OUTPUT_DETAIL_WRAP_WIDTH_CHARS = 88;
@@ -812,7 +880,7 @@ export const MAX_GLOB_PATTERN_WILDCARD_COUNT = 24;
 // repeated `inspect()` calls (one per project in a monorepo loop) don't
 // reload the same `react-doctor.config.json` each time. Capacity bounds
 // memory on monorepos with hundreds of workspace packages; TTL handles
-// long-running consumers (watch-mode tools, language servers).
+// long-running consumers such as watch-mode tools.
 export const CONFIG_CACHE_CAPACITY = 16;
 
 export const CONFIG_CACHE_TTL_MS = 5 * 60 * 1_000;
@@ -871,8 +939,9 @@ export const FILE_LINT_CACHE_MAX_FILE_COUNT = 50_000;
 // ruleset hash, each entry guarded by the file's cross-file dependency probe
 // set, so a warm rescan replays the sidecar instead of re-linting every
 // unchanged file. Shares the file cache's bucket/file caps.
-// Bumped to 3 with the same parser-diagnostic compatibility change.
-export const SIDECAR_LINT_CACHE_SCHEMA_VERSION = 3;
+// Bumped to 3 with the same parser-diagnostic compatibility change, and to 4
+// when probes became an interned per-bucket table referenced by id.
+export const SIDECAR_LINT_CACHE_SCHEMA_VERSION = 4;
 
 export const SIDECAR_LINT_CACHE_FILENAME = "sidecar-lint-cache.json";
 
@@ -892,22 +961,6 @@ export const PLUGIN_FINGERPRINT_LENGTH_CHARS = 16;
 // carry core's POST-PROCESSING (message text, toolchain-dependency filtering),
 // so an upgrade must never replay entries shaped by an older core.
 export const CORE_PACKAGE_VERSION = process.env.REACT_DOCTOR_CORE_VERSION ?? "0.0.0";
-
-// Whole-project dead-code result cache (`dead-code/dead-code-result-cache.ts`).
-// Replays deslop's diagnostics — skipping the analysis worker entirely — when
-// nothing the analysis reads has changed since the stored run.
-// Bumped to 2: entries carry a per-file `files` map (mtime, size, content
-// hash) instead of folding the file stats into the key, so a fresh checkout's
-// bumped mtimes can be repaired against unchanged content.
-export const DEAD_CODE_CACHE_SCHEMA_VERSION = 2;
-
-export const DEAD_CODE_CACHE_FILENAME = "dead-code-cache.json";
-
-// deslop's incremental analysis store (`DeslopConfig.incrementalCachePath`) —
-// per-file parse summaries + collect/resolution/package-fact layers, written
-// by the analysis WORKER for the changed-files case the whole-result cache
-// above can't serve. Lives in the same per-project cache directory.
-export const DEAD_CODE_SUMMARY_CACHE_FILENAME = "dead-code-summaries.json";
 
 // Plugin / rule / category identity for the diagnostics the supply-chain
 // check emits. `plugin: "socket"` keeps Socket findings visually distinct
@@ -973,3 +1026,21 @@ export const SPACE_UTF8_BYTE = 32;
 
 export const EXPO_PLATFORM_TREE_SHAKING_MINIMUM_SDK_VERSION = 54;
 export const REANIMATED_WORKLETS_MINIMUM_MAJOR_VERSION = 4;
+
+export const JSX_DUPLICATION_DEFAULT_MAX_SOURCE_FILES = 5_000;
+export const JSX_DUPLICATION_DEFAULT_MAX_SOURCE_LENGTH_CHARS = 1_000_000;
+export const UTF8_MAX_BYTES_PER_UTF16_CODE_UNIT = 3;
+export const JSX_DUPLICATION_SOURCE_READ_SENTINEL_BYTES = 1;
+export const JSX_DUPLICATION_DEFAULT_MAX_JSX_NODES = 50_000;
+export const JSX_DUPLICATION_DEFAULT_MAX_FAMILIES = 20;
+export const JSX_DUPLICATION_FAMILY_PROCESSING_MULTIPLIER = 10;
+export const JSX_DUPLICATION_MAX_COMPOSITION_PATH_DEPTH = 20;
+export const JSX_DUPLICATION_DEFAULT_MINIMUM_NODE_COUNT = 6;
+export const JSX_DUPLICATION_DEFAULT_MINIMUM_DEPTH = 3;
+export const JSX_DUPLICATION_DEFAULT_MINIMUM_OCCURRENCES = 2;
+export const JSX_DUPLICATION_DEFAULT_MINIMUM_DISTINCT_FILES = 1;
+export const JSX_DUPLICATION_SOURCE_FILE_PATTERN = /\.[cm]?(?:jsx?|tsx)$/;
+export const MAINTAINABILITY_SOURCE_FILE_PATTERN = /\.[cm]?[jt]sx?$/;
+export const MAINTAINABILITY_PLUGIN = "react-doctor";
+export const MAINTAINABILITY_DUPLICATE_JSX_RULE = "duplicate-jsx-subtree";
+export const MAINTAINABILITY_CATEGORY = "Maintainability";

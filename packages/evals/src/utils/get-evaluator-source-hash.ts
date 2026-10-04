@@ -17,7 +17,7 @@ const collectSourceFilePaths = (directory: string): ReadonlyArray<string> =>
   });
 
 const defaultInput = (): GetEvaluatorSourceHashInput => {
-  const sourceDirectory = dirname(fileURLToPath(new URL("../cli.ts", import.meta.url)));
+  const sourceDirectory = fileURLToPath(new URL("..", import.meta.url));
   const packageDirectory = dirname(sourceDirectory);
   return {
     sourceDirectory,

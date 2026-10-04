@@ -1,6 +1,6 @@
 import { useStdout } from "ink";
-import { useEffect, useState } from "react";
 import { TUI_DEFAULT_TERMINAL_COLUMNS, TUI_DEFAULT_TERMINAL_ROWS } from "../../utils/constants.js";
+import { useEffect, useState } from "../react-runtime.js";
 
 export interface StdoutDimensions {
   readonly columns: number;

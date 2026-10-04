@@ -26,7 +26,7 @@ import {
 } from "./utils/effect/ast.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import { isReducerState, isState } from "./utils/effect/react.js";
+import { isReducerState, isState, isStateSetterCall } from "./utils/effect/react.js";
 import { getParentCallbackPropNames } from "./utils/resolve-parent-callback-provenance.js";
 import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
 
@@ -121,11 +121,12 @@ const isCustomHookStateDependency = (
   analysis: ProgramAnalysis | null,
   element: EsTreeNode,
   isPropName: (name: string) => boolean,
+  scopes: RuleContext["scopes"],
 ): boolean =>
   Boolean(
     analysis &&
     getStateDependencyReferences(analysis, element, isPropName).some((reference) =>
-      isCustomHookStateResultReference(analysis, reference),
+      isCustomHookStateResultReference(analysis, reference, scopes),
     ),
   );
 
@@ -134,7 +135,7 @@ const isSameReference = (left: Reference, right: Reference): boolean =>
     ? left.resolved === right.resolved
     : left.identifier === right.identifier;
 
-const doesCallUseCustomHookStateDependency = (
+const doesCallUseStateDependency = (
   analysis: ProgramAnalysis,
   callExpression: EsTreeNodeOfType<"CallExpression">,
   dependencyReferences: readonly Reference[],
@@ -153,6 +154,51 @@ const doesCallUseCustomHookStateDependency = (
         ),
     );
   });
+
+const areEquivalentPayloadExpressions = (
+  analysis: ProgramAnalysis,
+  left: EsTreeNode,
+  right: EsTreeNode,
+): boolean => {
+  const leftCandidate = stripParenExpression(left);
+  const rightCandidate = stripParenExpression(right);
+  if (isNodeOfType(leftCandidate, "Literal") && isNodeOfType(rightCandidate, "Literal")) {
+    return Object.is(leftCandidate.value, rightCandidate.value);
+  }
+  if (!isNodeOfType(leftCandidate, "Identifier") || !isNodeOfType(rightCandidate, "Identifier")) {
+    return false;
+  }
+  const leftReference = getRef(analysis, leftCandidate);
+  const rightReference = getRef(analysis, rightCandidate);
+  return Boolean(
+    leftReference?.resolved &&
+    rightReference?.resolved &&
+    leftReference.resolved === rightReference.resolved,
+  );
+};
+
+const hasMatchingLocalStateWrite = (
+  analysis: ProgramAnalysis,
+  effectBody: EsTreeNode,
+  callbackCall: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  const callbackPayload = callbackCall.arguments[0];
+  if (!callbackPayload || isNodeOfType(callbackPayload, "SpreadElement")) return false;
+  let didFindMatchingWrite = false;
+  walkInsideStatementBlocks(effectBody, (child: EsTreeNode) => {
+    if (didFindMatchingWrite || !isNodeOfType(child, "CallExpression")) return;
+    const callee = stripParenExpression(child.callee);
+    if (!isNodeOfType(callee, "Identifier")) return;
+    const setterReference = getRef(analysis, callee);
+    if (!setterReference || !isStateSetterCall(analysis, setterReference)) return;
+    const writtenValue = child.arguments[0];
+    if (!writtenValue || isNodeOfType(writtenValue, "SpreadElement")) return;
+    if (areEquivalentPayloadExpressions(analysis, callbackPayload, writtenValue)) {
+      didFindMatchingWrite = true;
+    }
+  });
+  return didFindMatchingWrite;
+};
 
 const getRefHeldPropCallbackName = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
@@ -249,12 +295,25 @@ export const noPropCallbackInEffect = defineRule({
         const customHookStateDeps = dependencyElements.filter(
           (element) =>
             !reactStateDeps.includes(element) &&
-            isCustomHookStateDependency(analysis, element, propStackTracker.isPropName),
+            isCustomHookStateDependency(
+              analysis,
+              element,
+              propStackTracker.isPropName,
+              context.scopes,
+            ),
         );
-        const customHookStateDependencyReferences = analysis
-          ? customHookStateDeps.flatMap((element) =>
+        const reactStateDependencyReferences = analysis
+          ? reactStateDeps.flatMap((element) =>
               getStateDependencyReferences(analysis, element, propStackTracker.isPropName),
             )
+          : [];
+        const stateDependencyReferences = analysis
+          ? [
+              ...reactStateDependencyReferences,
+              ...customHookStateDeps.flatMap((element) =>
+                getStateDependencyReferences(analysis, element, propStackTracker.isPropName),
+              ),
+            ]
           : [];
         const stateLikeDeps = [...reactStateDeps, ...customHookStateDeps];
         if (stateLikeDeps.length === 0) return;
@@ -332,17 +391,25 @@ export const noPropCallbackInEffect = defineRule({
           if (!isNodeOfType(child, "CallExpression")) return;
           const calleeName = getPropCallbackName(child);
           if (!calleeName) return;
-          if (
-            reactStateDeps.length === 0 &&
-            analysis &&
-            (!doesCallUseCustomHookStateDependency(
+          if (analysis) {
+            const doesUseStateDependency = doesCallUseStateDependency(
               analysis,
               child,
-              customHookStateDependencyReferences,
-            ) ||
-              cleanupPropCallbackNames.has(calleeName))
-          ) {
-            return;
+              stateDependencyReferences,
+            );
+            const doesUseReactStateDependency = doesCallUseStateDependency(
+              analysis,
+              child,
+              reactStateDependencyReferences,
+            );
+            if (cleanupPropCallbackNames.has(calleeName) && !doesUseReactStateDependency) return;
+            if (
+              !doesUseStateDependency &&
+              (reactStateDeps.length === 0 ||
+                hasMatchingLocalStateWrite(analysis, callback.body, child))
+            ) {
+              return;
+            }
           }
           // Only the "lift state up" hand-back fires: a discarded
           // `onChange(state)`. When the prop call's result flows somewhere

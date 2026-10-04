@@ -43,7 +43,7 @@ const isJsonMethodCall = (
 // point, so the `structuredClone` advice (preserve Date/Map/Set/cycles)
 // would change behavior. `clone`-named helpers are intentionally NOT
 // exempt: those are the deep clones the rule exists to redirect.
-const SNAPSHOT_FUNCTION_NAME_PATTERN = /snapshot|serializ|tojson/i;
+const SNAPSHOT_FUNCTION_NAME_PATTERN = /snapshot|serializ|tojson|jsonsafe/i;
 
 // `const normalizedDate = JSON.parse(JSON.stringify(date))` uses the
 // round-trip to coerce values into their JSON form on purpose;

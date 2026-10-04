@@ -2,7 +2,6 @@ import { render } from "ink-testing-library";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { GITHUB_ACTIONS_SETUP_URL } from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
-import figures from "figures";
 import {
   TUI_DEFAULT_TERMINAL_COLUMNS,
   TUI_REPORT_COMPACT_MAX_ROWS,
@@ -10,8 +9,11 @@ import {
   TUI_REPORT_STATUS_ROWS,
   TUI_REPORT_VIEWPORT_MARGIN_ROWS,
 } from "../../src/cli/utils/constants.js";
+import { terminalSymbols } from "../../src/cli/utils/terminal-symbols.js";
+import * as exitGracefullyModule from "../../src/cli/utils/exit-gracefully.js";
 import * as launchAgent from "../../src/cli/utils/launch-agent.js";
 import * as openUrlModule from "../../src/cli/utils/open-url.js";
+import * as writeDiagnosticsDirectoryModule from "../../src/cli/utils/write-diagnostics-directory.js";
 import { ScanApp } from "../../src/cli/ink/scan-app.js";
 import { createScanStore } from "../../src/cli/ink/scan-store.js";
 import { severityVariant } from "../../src/cli/ink/lib/severity-variants.js";
@@ -77,9 +79,9 @@ describe("ScanApp", () => {
   it("renders repeated live diagnostics without duplicate React keys", () => {
     const store = createScanStore();
     const repeatedDiagnostic = makeDiagnostic({
-      filePath: "package.json",
-      plugin: "deslop",
-      rule: "unused-dev-dependency",
+      filePath: "src/Card.tsx",
+      plugin: "react-doctor",
+      rule: "duplicate-jsx-subtree",
       line: 0,
       column: 0,
     });
@@ -135,7 +137,7 @@ describe("ScanApp", () => {
     expect(frame).toContain("demo-app");
     expect(frame).toContain("React Doctor");
     expect(frame).toContain("┌─────┐");
-    expect(frame).toContain(`${figures.pointer} Review 2 issues`);
+    expect(frame).toContain(`${terminalSymbols.pointer} Review 2 issues`);
     expect(frame).not.toContain("Top 1 error to review first");
     expect(frame).not.toContain("Why Your users briefly see stale state on every prop");
     const frameLines = frame.split("\n");
@@ -309,7 +311,7 @@ describe("ScanApp", () => {
 
     const { lastFrame, unmount } = render(<ScanApp store={store} />);
     expect(lastFrame()).toContain(
-      "No issues detected, but dead-code checks failed — results are incomplete.",
+      "No issues detected, but maintainability checks failed — results are incomplete.",
     );
     expect(lastFrame()).not.toContain("No issues found");
     unmount();
@@ -401,7 +403,7 @@ describe("ScanApp", () => {
     const { lastFrame, unmount } = render(<ScanApp store={store} />);
     expect(lastFrame()).toContain("2 projects were skipped because scanning failed.");
     expect(lastFrame()).toContain(
-      "No issues detected, but dead-code checks failed — results are incomplete.",
+      "No issues detected, but maintainability checks failed — results are incomplete.",
     );
     expect(lastFrame()).not.toContain("No issues found");
     unmount();
@@ -472,7 +474,7 @@ describe("ScanApp", () => {
     await flush();
     resizeTerminal(stdout, { rows: 30 });
     await flush();
-    expect(lastFrame()).toContain(`${figures.pointer} Review 2 issues`);
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Review 2 issues`);
     expect(lastFrame()).toContain("Add to GitHub Actions (Recommended)");
     expect(lastFrame()).toContain("58");
     stdin.write("\r");
@@ -513,7 +515,7 @@ describe("ScanApp", () => {
     resizeTerminal(stdout, { rows: 30 });
     await flush();
 
-    expect(lastFrame()).toContain(`${figures.pointer} Review 2 issues`);
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Review 2 issues`);
     stdin.write("\r");
     await flush();
 
@@ -528,7 +530,7 @@ describe("ScanApp", () => {
     await flush();
     const returnedLandingFrame = lastFrame() ?? "";
     expect(returnedLandingFrame).toContain(
-      `${figures.pointer} Add to GitHub Actions (Recommended)`,
+      `${terminalSymbols.pointer} Add to GitHub Actions (Recommended)`,
     );
     expect(returnedLandingFrame).toContain("› Review 2 issues");
     expect(returnedLandingFrame).not.toContain("Top 1 error to review first");
@@ -572,7 +574,7 @@ describe("ScanApp", () => {
     stdin.write("\u001B");
     await flush();
 
-    expect(lastFrame()).toContain(`${figures.pointer} Hand off to an agent`);
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Hand off to an agent`);
     expect(lastFrame()).toContain("› Review 1 issue");
     unmount();
   });
@@ -621,6 +623,38 @@ describe("ScanApp", () => {
     await flush();
 
     expect(onQuit).toHaveBeenCalledOnce();
+    unmount();
+  });
+
+  it("marks the report quit before cancelling after issue review", async () => {
+    const exitGracefullySpy = vi
+      .spyOn(exitGracefullyModule, "exitGracefully")
+      .mockImplementation(() => {});
+    const store = createScanStore();
+    const onQuit = vi.fn();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { stdin, unmount } = render(<ScanApp store={store} onQuit={onQuit} />);
+    await flush();
+    stdin.write("\r");
+    await flush();
+    stdin.write("\u001B");
+    await flush();
+    stdin.write("\u0003");
+    await flush();
+
+    expect(onQuit).toHaveBeenCalledOnce();
+    expect(exitGracefullySpy).toHaveBeenCalledOnce();
     unmount();
   });
 
@@ -831,7 +865,7 @@ describe("ScanApp", () => {
     await flush();
 
     expect(lastFrame()).toContain("┌─────┐");
-    expect(lastFrame()).toContain(`${figures.pointer} Review 30 issues`);
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Review 30 issues`);
     stdin.write("\r");
     await flush();
 
@@ -912,6 +946,33 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("keeps the score face intact beside a long project name", async () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "threejs-scaffolding-with-a-long-project-name",
+      rootDirectory: process.cwd(),
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
+    resizeTerminal(stdout, { columns: 120, rows: 44 });
+    await flush();
+    stdin.write("\r");
+    await flush();
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("┌─────┐");
+    expect(frame).toContain("└─────┘");
+    expect(frame).not.toMatch(/^\s*┘$/m);
+    unmount();
+  });
+
   it("shows only usable controls when a clean report has no actions", async () => {
     const store = createScanStore();
     store.setReport({
@@ -979,14 +1040,14 @@ describe("ScanApp", () => {
     );
     await flush();
 
-    expect(lastFrame()).toContain(`${figures.pointer} Review 1 issue`);
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Review 1 issue`);
     expect(lastFrame()).toContain("Add to GitHub Actions (Recommended)");
     expect(lastFrame()).toContain(
-      `${figures.pointer} Review 1 issue\n\n› Add to GitHub Actions (Recommended)`,
+      `${terminalSymbols.pointer} Review 1 issue\n\n› Add to GitHub Actions (Recommended)`,
     );
     stdin.write("j");
     await flush();
-    expect(lastFrame()).toContain(`${figures.pointer} Add to GitHub Actions (Recommended)`);
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Add to GitHub Actions (Recommended)`);
     expect(lastFrame()).toContain("Used by teams at PayPal, Rippling, and Alibaba.");
     stdin.write("\r");
     await flush();
@@ -1003,13 +1064,13 @@ describe("ScanApp", () => {
     );
     expect(ciSetupLines[trustLineIndex + 1]).toContain(GITHUB_ACTIONS_SETUP_URL);
     expect(lastFrame()).not.toContain("`doctor` package script");
-    expect(lastFrame()).toContain(`${figures.pointer} Yes, add the workflow`);
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Yes, add the workflow`);
     expect(lastFrame()).toContain("Open the GitHub Actions guide");
 
     stdin.write("\u001B");
     await flush();
     expect(onAddToCi).not.toHaveBeenCalled();
-    expect(lastFrame()).toContain(`${figures.pointer} Add to GitHub Actions (Recommended)`);
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Add to GitHub Actions (Recommended)`);
 
     stdin.write("\r");
     await flush();
@@ -1115,7 +1176,7 @@ describe("ScanApp", () => {
     await flush();
     stdin.write("j");
     await flush();
-    expect(lastFrame()).toContain(`${figures.pointer} Hand off to an agent`);
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Hand off to an agent`);
     stdin.write("\r");
     await flush();
 
@@ -1124,21 +1185,24 @@ describe("ScanApp", () => {
       "Scan every pull request to prevent new React issues while you fix the backlog.",
     );
     expect(lastFrame()).toContain("Used by teams at PayPal, Rippling, and Alibaba.");
-    expect(lastFrame()).toContain(`${figures.pointer} Add to GitHub Actions first (Recommended)`);
+    expect(lastFrame()).toContain(
+      `${terminalSymbols.pointer} Add to GitHub Actions first (Recommended)`,
+    );
     expect(lastFrame()).toContain("Continue without GitHub Actions");
 
     stdin.write("\u001B");
     await flush();
     expect(onAddToCi).not.toHaveBeenCalled();
-    expect(lastFrame()).toContain("  Choose an agent");
-    expect(lastFrame()).toContain(`${figures.pointer} Codex`);
+    expect(lastFrame()).toContain("  Choose how to continue");
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Codex`);
     expect(lastFrame()).toContain("Cursor");
+    expect(lastFrame()).toContain("Copy prompt");
 
     stdin.write("\r");
     await flush();
     expect(onHandoff).toHaveBeenCalledOnce();
     const request = onHandoff.mock.calls[0]?.[0];
-    expect(request?.agentId).toBe("codex");
+    expect(request?.destination).toBe("codex");
     expect(request?.prompt).not.toContain("First, configure React Doctor in GitHub Actions");
     unmount();
   });
@@ -1179,16 +1243,16 @@ describe("ScanApp", () => {
     stdin.write("\r");
     await flush();
     expect(onAddToCi).toHaveBeenCalledOnce();
-    expect(lastFrame()).toContain(`${figures.pointer} Codex`);
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Codex`);
 
     stdin.write("\u001B");
     await flush();
     expect(lastFrame()).not.toContain("Add to GitHub Actions (Recommended)");
-    expect(lastFrame()).toContain(`${figures.pointer} Hand off to an agent`);
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Hand off to an agent`);
 
     stdin.write("\r");
     await flush();
-    expect(lastFrame()).toContain(`${figures.pointer} Codex`);
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Codex`);
     expect(lastFrame()).not.toContain("Add React Doctor to GitHub Actions first");
 
     stdin.write("\r");
@@ -1198,6 +1262,50 @@ describe("ScanApp", () => {
       "First, configure React Doctor in GitHub Actions",
     );
     expect(onAddToCi).toHaveBeenCalledOnce();
+    unmount();
+  });
+
+  it("offers the full prompt for copying without a launchable agent", async () => {
+    const onHandoff = vi.fn();
+    const writeDiagnosticsDirectory = vi
+      .spyOn(writeDiagnosticsDirectoryModule, "writeDiagnosticsDirectory")
+      .mockReturnValue("/tmp/react-doctor-diagnostics");
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, unmount } = render(
+      <ScanApp store={store} launchableAgents={[]} onHandoff={onHandoff} />,
+    );
+    await flush();
+    expect(writeDiagnosticsDirectory).not.toHaveBeenCalled();
+
+    stdin.write("j");
+    await flush();
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Hand off to an agent`);
+    stdin.write("\r");
+    await flush();
+
+    expect(writeDiagnosticsDirectory).not.toHaveBeenCalled();
+    expect(lastFrame()).toContain("Choose how to continue");
+    expect(lastFrame()).toContain(`${terminalSymbols.pointer} Copy prompt`);
+    expect(lastFrame()).toContain("Paste into any agent or edit it first");
+    stdin.write("\r");
+    await flush();
+
+    expect(onHandoff).toHaveBeenCalledOnce();
+    expect(writeDiagnosticsDirectory).toHaveBeenCalledOnce();
+    expect(onHandoff.mock.calls[0]?.[0].destination).toBe("clipboard");
+    expect(onHandoff.mock.calls[0]?.[0].prompt).toContain("react-doctor/rules-of-hooks");
     unmount();
   });
 });

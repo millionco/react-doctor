@@ -1,4 +1,3 @@
-import * as path from "node:path";
 import type {
   Diagnostic,
   DiffInfo,
@@ -16,13 +15,14 @@ import { summarizeDiagnostics } from "./summarize-diagnostics.js";
 import { hasReactRuntime } from "./utils/has-react-runtime.js";
 import { isScanComplete } from "./utils/is-scan-complete.js";
 import { toNormalizedRelativePath } from "./utils/to-normalized-relative-path.js";
+import { resolveCandidateReadPath } from "./utils/resolve-candidate-read-path.js";
 
 interface BuildJsonReportInput {
   version: string;
   directory: string;
   mode: JsonReportMode;
   diff: DiffInfo | null;
-  scans: Array<{ directory: string; result: InspectResult }>;
+  scans: ReadonlyArray<{ directory: string; result: InspectResult }>;
   skippedProjects?: ReadonlyArray<JsonReportSkippedProject>;
   totalElapsedMilliseconds: number;
   /**
@@ -72,11 +72,9 @@ const toJsonReportDiagnostic = (
   projectRoot: string,
   reportRoot: string,
 ): JsonReportDiagnosticV3 => {
-  const normalizedFilePath = toNormalizedRelativePath(diagnostic.filePath, projectRoot);
-  const reportRelativeFilePath = toNormalizedRelativePath(
-    path.resolve(projectRoot, diagnostic.filePath),
-    reportRoot,
-  );
+  const resolvedFilePath = resolveCandidateReadPath(projectRoot, diagnostic.filePath);
+  const normalizedFilePath = toNormalizedRelativePath(resolvedFilePath, projectRoot);
+  const reportRelativeFilePath = toNormalizedRelativePath(resolvedFilePath, reportRoot);
   const ruleIdentity = getDiagnosticRuleIdentity(diagnostic);
   return {
     ...diagnostic,

@@ -1,11 +1,11 @@
-import figures from "figures";
 import { Box, Text, useInput } from "ink";
-import { useState } from "react";
 import type { ReactNode } from "react";
 import {
   TUI_REPORT_ACTION_MENU_ITEM_GAP_ROWS,
   TUI_REPORT_ACTION_MENU_MARGIN_ROWS,
 } from "../../utils/constants.js";
+import { terminalSymbols } from "../../utils/terminal-symbols.js";
+import { useState } from "../react-runtime.js";
 
 export interface ActionMenuAction {
   readonly id: string;
@@ -59,7 +59,7 @@ export const ActionMenu = ({
             }
           >
             <Text color={isSelected ? "cyan" : undefined} bold={isSelected}>
-              {isSelected ? figures.pointer : figures.pointerSmall} {action.label}
+              {isSelected ? terminalSymbols.pointer : terminalSymbols.pointerSmall} {action.label}
             </Text>
             {isSelected ? action.description : null}
           </Box>

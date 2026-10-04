@@ -303,6 +303,7 @@ const collectGeneratorNames = (programNode: EsTreeNode): Set<string> => {
 
 export const jsCombineIterations = defineRule({
   id: "js-combine-iterations",
+  defaultEnabled: false,
   title: "Chained array iterations",
   tags: ["test-noise"],
   severity: "warn",

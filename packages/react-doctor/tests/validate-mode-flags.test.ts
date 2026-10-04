@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  validateFilePathSelectionFlags,
   validateIncludeUntrackedScope,
   validateModeFlags,
 } from "../src/cli/utils/validate-mode-flags.js";
@@ -32,8 +33,8 @@ describe("validateModeFlags", () => {
     expect(() => validateModeFlags({ debug: true })).not.toThrow();
   });
 
-  it("allows --yes and --full together (skip prompts + force a full scan are orthogonal)", () => {
-    expect(() => validateModeFlags({ yes: true, full: true })).not.toThrow();
+  it("allows --yes and --scope full together (skip prompts + force a full scan are orthogonal)", () => {
+    expect(() => validateModeFlags({ yes: true, scope: "full" })).not.toThrow();
   });
 
   it("rejects --scope combined with the deprecated --diff alias", () => {
@@ -61,6 +62,31 @@ describe("validateModeFlags", () => {
     expect(() =>
       validateModeFlags({ includeUntracked: true, staged: true, scope: "files" }),
     ).toThrow("Cannot combine --include-untracked with --staged");
+  });
+});
+
+describe("validateFilePathSelectionFlags", () => {
+  it("allows file selection flags that do not change the file source", () => {
+    expect(() => validateFilePathSelectionFlags({ scope: "files", project: "app" })).not.toThrow();
+  });
+
+  it("rejects another file source", () => {
+    expect(() => validateFilePathSelectionFlags({ staged: true })).toThrow("Use one file source");
+    expect(() => validateFilePathSelectionFlags({ changedFilesFrom: "files.txt" })).toThrow(
+      "Use one file source",
+    );
+  });
+
+  it("rejects Git-derived scopes", () => {
+    expect(() => validateFilePathSelectionFlags({ scope: "changed" })).toThrow(
+      "File path arguments use --scope files",
+    );
+    expect(() => validateFilePathSelectionFlags({ diff: "main" })).toThrow(
+      "File path arguments use the files scope",
+    );
+    expect(() => validateFilePathSelectionFlags({ base: "main" })).toThrow(
+      "selected files do not need a Git base",
+    );
   });
 });
 

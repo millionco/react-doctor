@@ -1,7 +1,7 @@
 // rule: no-adjust-state-on-prop-change
 // verdict: pass
 // weakness: library-idiom
-// source: verified React Bench SlideshowContext trial 5sz2qXB
+// source: React Bench SlideshowContext trial 26Vu5Fo
 
 import * as React from "react";
 import { useTimeouts } from "./timeouts";
@@ -21,11 +21,15 @@ export const Slideshow = ({ disabled }: SlideshowProps) => {
   }, [clearTimeout]);
 
   React.useEffect(() => {
-    if (playing && disabled) {
+    if (disabled) {
       cancelScheduler();
-      setPlaying(false);
+      if (playing) {
+        setPlaying(false);
+      }
+    } else if (playing) {
+      scheduler.current = setTimeout(() => {}, 1_000);
     }
-  }, [playing, disabled, cancelScheduler]);
+  }, [playing, disabled, cancelScheduler, setTimeout]);
 
   return playing;
 };

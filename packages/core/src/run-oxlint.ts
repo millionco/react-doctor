@@ -7,28 +7,33 @@ import {
   collectCrossFileDependencyProbes,
   resetManifestCaches,
 } from "oxlint-plugin-react-doctor/core";
-import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "./types/index.js";
+import type { Diagnostic } from "./types/index.js";
 import { batchIncludePaths } from "./batch-include-paths.js";
-import { COOPERATIVE_YIELD_BUDGET_MS } from "./constants.js";
+import {
+  COOPERATIVE_YIELD_BUDGET_MS,
+  MIN_SCAN_CONCURRENCY,
+  OXLINT_OUTPUT_MAX_BYTES,
+  OXLINT_POOLED_MIN_FILES_PER_BATCH,
+  OXLINT_SPAWN_TIMEOUT_MS,
+} from "./constants.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
 import { detectUserLintConfigPaths } from "./detect-user-lint-config.js";
+import { readAdoptedLintConfigSettings } from "./read-adopted-lint-config-settings.js";
 import { ReactDoctorError } from "./errors.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
 import { computeRulesetHash } from "./runners/oxlint/compute-ruleset-hash.js";
 import { createOxlintConfig } from "./runners/oxlint/config.js";
+import { isOxlintWorkerPoolAvailable, runOxlintProbeJob } from "./runners/oxlint/run-oxlint-job.js";
+import type { RunOxlintProbeJobInput } from "./runners/oxlint/run-oxlint-job.js";
 import { collectUnpluginAutoImportGlobalScopes } from "./runners/oxlint/collect-unplugin-auto-import-global-scopes.js";
 import type { UnpluginAutoImportGlobalScope } from "./runners/oxlint/collect-unplugin-auto-import-global-scopes.js";
 import { createFileLintCache } from "./runners/oxlint/file-lint-cache.js";
 import { createSidecarProbeAnswerResolver } from "./runners/oxlint/resolve-sidecar-probe-answer.js";
 import type { SidecarProbeAnswerResolver } from "./runners/oxlint/resolve-sidecar-probe-answer.js";
 import { createSidecarLintCache } from "./runners/oxlint/sidecar-lint-cache.js";
-import type {
-  SidecarDependencyProbe,
-  SidecarLintCache,
-} from "./runners/oxlint/sidecar-lint-cache.js";
-import type { WorkerSlots } from "./utils/create-worker-slots.js";
+import type { SidecarLintCache } from "./runners/oxlint/sidecar-lint-cache.js";
 import { resolveUserPlugins } from "./runners/oxlint/plugin-resolution.js";
 import { resolveOxlintToolchainVersions } from "./runners/oxlint/resolve-toolchain-versions.js";
 import {
@@ -42,123 +47,20 @@ import { dedupeDiagnostics } from "./utils/dedupe-diagnostics.js";
 import { collectProjectIndexModuleSources } from "./utils/collect-project-index-module-sources.js";
 import { hashFileContents } from "./utils/hash-file-contents.js";
 import { listSourceFilesWithSize } from "./utils/list-source-files.js";
+import { mapWithConcurrency } from "./utils/map-with-concurrency.js";
 import { planLintBatches } from "./utils/plan-lint-batches.js";
+import { resolvePooledBatchCount } from "./utils/resolve-pooled-batch-count.js";
+import { createDeferred } from "./utils/create-deferred.js";
+import type { OxlintWorkerProbeResult } from "./start-oxlint-worker.js";
+import { collectFileProbeTrace } from "./utils/collect-file-probe-trace.js";
 import { prepareLintSources } from "./utils/prepare-lint-sources.js";
+import { resolveOxlintThreadCount } from "./utils/resolve-oxlint-thread-count.js";
 import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
+import { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
 import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
 
-interface RunOxlintOptions {
-  rootDirectory: string;
-  project: ProjectInfo;
-  includePaths?: string[];
-  nodeBinaryPath?: string;
-  customRulesOnly?: boolean;
-  respectInlineDisables?: boolean;
-  adoptExistingLintConfig?: boolean;
-  ignoredTags?: ReadonlySet<string>;
-  includedTags?: ReadonlySet<string>;
-  includeTagDefaults?: boolean;
-  /**
-   * Optional react-doctor user config (already-loaded
-   * `react-doctor.config.json` or `package.json#reactDoctor`). When
-   * provided, project-level knobs the rule surface honors —
-   * currently `serverAuthFunctionNames` — are forwarded to the
-   * generated oxlint settings so plugin rules can read them via
-   * `context.settings`. `userConfig.plugins` resolves through
-   * `configSourceDirectory` (or `rootDirectory` as the fallback).
-   */
-  userConfig?: ReactDoctorConfig | null;
-  /**
-   * Directory of the `react-doctor.config.json` (or `package.json`)
-   * that supplied `userConfig`. Used as the resolution base for
-   * `userConfig.plugins` entries — relative paths resolve against
-   * this directory and npm package names resolve through its
-   * `node_modules`, matching how `rootDir` resolves. Diverges from
-   * `rootDirectory` whenever `userConfig.rootDir` redirects the scan.
-   *
-   * Defaults to `rootDirectory` for direct callers that don't load
-   * a config file.
-   */
-  configSourceDirectory?: string;
-  /**
-   * Called once per soft-fail event (e.g. a batch hit
-   * `OXLINT_SPAWN_TIMEOUT_MS` and was skipped). The lint scan keeps
-   * going on remaining batches; the caller is expected to surface
-   * the warning to the user (via `skippedCheckReasons` in JSON
-   * mode, or a logger message in human mode).
-   */
-  onPartialFailure?: (reason: string) => void;
-  onFileCoverage?: (coverage: RunOxlintFileCoverage) => void;
-  onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
-  /**
-   * Enables the per-file lint cache, resolved from the
-   * `PerFileLintCacheEnabled` Reference. When on (and the scan is eligible —
-   * no audit mode, no adopted `extends`, no user plugins), unchanged files
-   * replay their cached cacheable-rule diagnostics and only changed files are
-   * re-linted; the cross-file rules always run fresh on every file (in the
-   * misses' full pass, and in a sidecar pass over the cache hits).
-   */
-  perFileLintCacheEnabled?: boolean;
-  /**
-   * Enables the sidecar lint cache, resolved from the
-   * `SidecarLintCacheEnabled` Reference. When on (and the per-file cache is
-   * active), each cache-hit file's cross-file diagnostics replay from the
-   * sidecar store as long as the file's recorded dependency probes still
-   * match the tree; only mismatching files re-lint. Off → every cache hit
-   * runs the always-fresh sidecar pass (the pre-cache behavior).
-   */
-  sidecarLintCacheEnabled?: boolean;
-  /**
-   * Called once after the cache split with `(cacheHitFileCount,
-   * totalConsideredFileCount)`. Surfaced to the Sentry wide event as
-   * `lintCacheHitRatio`. Not invoked when the cache is disabled or bypassed.
-   */
-  onCacheStats?: (cacheHitFileCount: number, totalConsideredFileCount: number) => void;
-  /**
-   * Called once with `(sidecarReplayedFileCount, sidecarConsideredFileCount)`
-   * — how many cache-hit files replayed their cross-file diagnostics from
-   * the sidecar store vs. the hits considered. Surfaced to the Sentry wide
-   * event as `lint.sidecarReplayRatio`. Not invoked when the sidecar cache
-   * is disabled or bypassed.
-   */
-  onSidecarStats?: (sidecarReplayedFileCount: number, sidecarConsideredFileCount: number) => void;
-  /** Per-batch wall-clock budget, resolved from the `OxlintSpawnTimeoutMs` Reference. */
-  spawnTimeoutMs?: number;
-  /** Per-batch stdout+stderr byte cap, resolved from the `OxlintOutputMaxBytes` Reference. */
-  outputMaxBytes?: number;
-  /**
-   * Number of oxlint subprocesses to run in parallel, resolved from the
-   * `OxlintConcurrency` Reference (which itself defaults to parallel —
-   * auto-detected cores). Omitting it here uses the low-level serial
-   * default; the orchestrated path always threads the Reference value
-   * through. A parallel pass auto-falls-back to serial on resource
-   * exhaustion (see `spawnLintBatches`).
-   */
-  concurrency?: number;
-  spawnSlots?: WorkerSlots;
-  /**
-   * Aborted when the orchestrator's lint-phase timeout fires; forwarded to
-   * `spawnLintBatches` so in-flight oxlint subprocesses are torn down instead
-   * of running on after the phase is abandoned.
-   */
-  signal?: AbortSignal;
-  /** See `SpawnLintBatchesInput.deadlineEpochMs`. */
-  deadlineEpochMs?: number;
-  /**
-   * Full-scan batch planning, resolved from the `LintBatchOrdering`
-   * Reference. `"cost"` (the default) plans size-balanced LPT batches via
-   * `planLintBatches`; `"arrival"` is the rollback hatch to the plain greedy
-   * fixed-size chunking in discovery order. Only affects the full-scan branch
-   * (`includePaths` undefined) — diff / staged scans pass explicit paths and
-   * are untouched.
-   */
-  lintBatchOrdering?: "cost" | "arrival";
-}
-
-export interface RunOxlintFileCoverage {
-  readonly candidateFiles: ReadonlyArray<string>;
-  readonly analyzedFiles: ReadonlyArray<string>;
-}
+export type { LintFileCoverage as RunOxlintFileCoverage } from "./types/run-oxlint.js";
+import type { RunOxlintOptions } from "./types/run-oxlint.js";
 
 /**
  * Atomically (re)writes the generated oxlintrc.json. Used twice in
@@ -214,8 +116,8 @@ interface SidecarStorablePass {
   /** False when the pass had a partial failure or a config fallback — its
    * output may be incomplete, so nothing from it is stored. */
   readonly isTrusted: boolean;
-  /** Each file's answered probe set (from `collectSidecarProbesForFiles`). */
-  readonly probesByFile: ReadonlyMap<string, ReadonlyArray<SidecarDependencyProbe> | null>;
+  /** Each file's interned probe ids (from `collectSidecarProbesForFiles`). */
+  readonly probeIdsByFile: ReadonlyMap<string, ReadonlyArray<number> | null>;
 }
 
 /**
@@ -230,59 +132,154 @@ interface SidecarStorablePass {
  * sibling fibers) keep flowing; each per-file collection is synchronous, so
  * the module-level probe recorder never sees interleaved use. Never rejects.
  */
+interface PooledProbeCollection {
+  /** Everything but `rootDirectory` / `probeRequest`, shared by every batch job. */
+  readonly job: Omit<RunOxlintProbeJobInput, "rootDirectory" | "probeRequest">;
+  readonly workerCount: number;
+  readonly runInSlot: <Result>(task: () => Promise<Result>) => Promise<Result>;
+  /** Resolves once every lint batch has been handed to a worker (or the pass ended). */
+  readonly allLintBatchesStarted: Promise<void>;
+}
+
 const collectSidecarProbesForFiles = async (input: {
   files: ReadonlyArray<string>;
   rootDirectory: string;
   boundedSidecarRuleIds: ReadonlyArray<string>;
   probeAnswers: SidecarProbeAnswerResolver;
-}): Promise<Map<string, ReadonlyArray<SidecarDependencyProbe> | null>> => {
-  const buildProbes = (file: string): SidecarDependencyProbe[] | null => {
-    const absoluteFilePath = path.resolve(input.rootDirectory, file);
-    let trace: ReturnType<typeof collectCrossFileDependencyProbes>;
-    try {
-      trace = collectCrossFileDependencyProbes({
-        absoluteFilePath,
-        sourceText: fs.readFileSync(absoluteFilePath, "utf8"),
-        ruleIds: input.boundedSidecarRuleIds,
-      });
-    } catch {
-      return null;
-    }
+  sidecarCache: SidecarLintCache;
+  /** Set when a warm worker pool can collect instead of the parent thread. */
+  pooled: PooledProbeCollection | null;
+}): Promise<Map<string, ReadonlyArray<number> | null>> => {
+  const internRelativeProbe = (
+    kind: "content" | "exists",
+    relativePath: string,
+    knownAnswer: string | null,
+  ): number =>
+    input.sidecarCache.internProbe(
+      kind,
+      relativePath,
+      knownAnswer ?? input.probeAnswers.answerFor(kind, relativePath),
+    );
+  const internProbe = (kind: "content" | "exists", absolutePath: string): number =>
+    internRelativeProbe(kind, input.probeAnswers.toRelativePath(absolutePath), null);
+  const buildProbeIds = (file: string): number[] | null => {
+    const trace = collectFileProbeTrace(
+      collectCrossFileDependencyProbes,
+      path.resolve(input.rootDirectory, file),
+      input.boundedSidecarRuleIds,
+    );
     if (trace === null) return null;
-    const probes: SidecarDependencyProbe[] = [];
+    const probeIds: number[] = [];
     for (const contentPath of trace.contentPaths) {
-      const relativePath = input.probeAnswers.toRelativePath(contentPath);
-      probes.push({
-        kind: "content",
-        path: relativePath,
-        answer: input.probeAnswers.answerFor("content", relativePath),
-      });
+      probeIds.push(internProbe("content", contentPath));
     }
     // A path can carry BOTH probe kinds (e.g. a package.json probed for
     // existence during the ancestor walk and then read): keep both — the
     // content answer can't distinguish a directory from a missing file, but
     // the resolvers can (`"dir"` vs `"none"`).
     for (const existencePath of trace.existencePaths) {
-      const relativePath = input.probeAnswers.toRelativePath(existencePath);
-      probes.push({
-        kind: "exists",
-        path: relativePath,
-        answer: input.probeAnswers.answerFor("exists", relativePath),
-      });
+      probeIds.push(internProbe("exists", existencePath));
     }
-    return probes;
+    return probeIds;
   };
 
-  const probesByFile = new Map<string, ReadonlyArray<SidecarDependencyProbe> | null>();
-  let collectSliceStartedAt = performance.now();
-  for (const file of input.files) {
-    probesByFile.set(file, buildProbes(file));
-    if (performance.now() - collectSliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
-      await yieldToEventLoop();
-      collectSliceStartedAt = performance.now();
+  const probeIdsByFile = new Map<string, ReadonlyArray<number> | null>();
+  const collectInProcess = async (files: ReadonlyArray<string>): Promise<void> => {
+    let collectSliceStartedAt = performance.now();
+    for (const file of files) {
+      probeIdsByFile.set(file, buildProbeIds(file));
+      if (performance.now() - collectSliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
+        await yieldToEventLoop();
+        collectSliceStartedAt = performance.now();
+      }
     }
+  };
+
+  // Warm pool workers hold the plugin (whose collectors these are) and its
+  // filesystem memos, so the probe walk is sharded across them like lint
+  // batches; the parent only interns the returned traces. The parent starts
+  // on the chunks at once, and pool workers join only after every lint batch
+  // has been handed out, so a probe job never takes a slot a lint batch is
+  // waiting for. A chunk whose job fails for any reason is collected
+  // in-process instead, so the stored probe sets are identical either way —
+  // only where the work ran differs.
+  const pooled = input.pooled;
+  if (pooled === null || input.files.length < OXLINT_POOLED_MIN_FILES_PER_BATCH) {
+    await collectInProcess(input.files);
+    return probeIdsByFile;
   }
-  return probesByFile;
+  const chunkCount = resolvePooledBatchCount(input.files.length, pooled.workerCount);
+  const chunkSize = Math.ceil(input.files.length / chunkCount);
+  const chunks: ReadonlyArray<string>[] = [];
+  for (let start = 0; start < input.files.length; start += chunkSize) {
+    chunks.push(input.files.slice(start, start + chunkSize));
+  }
+  let nextChunkIndex = 0;
+  const takeChunk = (): ReadonlyArray<string> | null =>
+    nextChunkIndex < chunks.length ? chunks[nextChunkIndex++] : null;
+  const internWorkerTraces = (
+    chunk: ReadonlyArray<string>,
+    result: OxlintWorkerProbeResult,
+  ): void => {
+    for (const [fileIndex, file] of chunk.entries()) {
+      const trace = result.traces[fileIndex];
+      if (trace === null || trace === undefined) {
+        probeIdsByFile.set(file, null);
+        continue;
+      }
+      const probeIds: number[] = [];
+      for (const pathIndex of trace.content) {
+        probeIds.push(
+          internRelativeProbe(
+            "content",
+            result.paths[pathIndex],
+            result.existenceAnswers[pathIndex],
+          ),
+        );
+      }
+      for (const pathIndex of trace.existence) {
+        probeIds.push(
+          internRelativeProbe(
+            "exists",
+            result.paths[pathIndex],
+            result.existenceAnswers[pathIndex],
+          ),
+        );
+      }
+      probeIdsByFile.set(file, probeIds);
+    }
+  };
+  const runParentLane = async (): Promise<void> => {
+    for (let chunk = takeChunk(); chunk !== null; chunk = takeChunk()) {
+      await collectInProcess(chunk);
+    }
+  };
+  const runPoolLane = async (): Promise<void> => {
+    for (let chunk = takeChunk(); chunk !== null; chunk = takeChunk()) {
+      if (pooled.job.abortSignal?.aborted === true) {
+        for (const file of chunk) probeIdsByFile.set(file, null);
+        continue;
+      }
+      const result = await pooled
+        .runInSlot(() =>
+          runOxlintProbeJob({
+            ...pooled.job,
+            rootDirectory: input.rootDirectory,
+            probeRequest: { files: chunk, ruleIds: input.boundedSidecarRuleIds },
+          }),
+        )
+        .catch(() => null);
+      if (result === null) {
+        await collectInProcess(chunk);
+      } else {
+        internWorkerTraces(chunk, result);
+      }
+    }
+  };
+  const parentLane = runParentLane();
+  await pooled.allLintBatchesStarted;
+  await Promise.all([parentLane, ...Array.from({ length: pooled.workerCount }, runPoolLane)]);
+  return probeIdsByFile;
 };
 
 /**
@@ -302,10 +299,10 @@ const storeSidecarEntries = (input: {
     for (const file of pass.files) {
       const cacheKey = input.cacheKeyByFile.get(file);
       if (cacheKey === undefined) continue;
-      const probes = pass.probesByFile.get(file);
-      if (probes === undefined || probes === null) continue;
+      const probeIds = pass.probeIdsByFile.get(file);
+      if (probeIds === undefined || probeIds === null) continue;
       input.sidecarCache.store(cacheKey, {
-        probes,
+        probeIds,
         diagnostics: diagnosticsByFile.get(file) ?? [],
       });
       didStoreAnyEntry = true;
@@ -439,15 +436,19 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   // the parser crash + misleading warning. Drop them up front so the
   // scan starts in the same state the fallback would land in.
   const extendsPaths = detectedConfigPaths.filter(canOxlintExtendConfig);
+  const adoptedSettings =
+    detectedConfigPaths.length > 0 ? readAdoptedLintConfigSettings(detectedConfigPaths) : {};
   const userPlugins =
     includedTags.size > 0 ? [] : resolveUserPlugins(userConfig?.plugins, configSourceDirectory);
 
   // HACK: only neutralize disable comments in audit mode. Default
   // behavior respects the user's existing `// eslint-disable*` /
   // `// oxlint-disable*` directives — we let oxlint apply them.
-  const restoreDisableDirectives = respectInlineDisables
-    ? () => {}
-    : await neutralizeDisableDirectives(rootDirectory, includePaths);
+  const restoreDisableDirectives = await neutralizeDisableDirectives(
+    rootDirectory,
+    includePaths ?? options.precomputedSourceFiles?.map((sourceFile) => sourceFile.path),
+    { recoverOnly: respectInlineDisables },
+  );
 
   // Created last so any throw in the setup above (plugin resolution,
   // user-plugin loading) happens before the temp dir exists — nothing
@@ -496,6 +497,12 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       sharedArgs.push("--ignore-path", combinedIgnorePath);
     }
 
+    const lintWorkerCount = resolveScanConcurrency(options.concurrency ?? MIN_SCAN_CONCURRENCY);
+    sharedArgs.push("--threads", String(resolveOxlintThreadCount(lintWorkerCount)));
+    const pooledWorkerCount = isOxlintWorkerPoolAvailable(nodeBinaryPath, lintWorkerCount)
+      ? lintWorkerCount
+      : undefined;
+
     const makeBaseArgs = (oxlintConfigPath: string): string[] => [
       oxlintBinary,
       "-c",
@@ -523,9 +530,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     // Only a full scan pays the walk — diff / staged scans pass
     // explicit paths.
     const sizedScanFiles =
-      includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null;
+      options.precomputedSourceFiles ??
+      (includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null);
     const candidateFiles =
-      includePaths !== undefined ? includePaths : (sizedScanFiles ?? []).map((entry) => entry.path);
+      sizedScanFiles === null ? (includePaths ?? []) : sizedScanFiles.map((entry) => entry.path);
     const projectIndexModuleSources =
       includePaths === undefined && options.deadlineEpochMs === undefined
         ? await collectProjectIndexModuleSources(rootDirectory, candidateFiles)
@@ -560,6 +568,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         serverAuthFunctionNames,
         projectIndexModuleSources,
         severityControls,
+        adoptedSettings,
         userPlugins,
         disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
         ruleSelection: overrides.ruleSelection,
@@ -581,7 +590,12 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     }
     const buildFileBatches = (passBaseArgs: string[], passFiles: string[]): string[][] =>
       sizeByFile !== null
-        ? planLintBatches({ baseArgs: passBaseArgs, files: passFiles, sizeByFile })
+        ? planLintBatches({
+            baseArgs: passBaseArgs,
+            files: passFiles,
+            sizeByFile,
+            pooledWorkerCount,
+          })
         : batchIncludePaths(passBaseArgs, passFiles);
 
     // Runs one oxlintrc over a file list, retrying once with the optional
@@ -595,6 +609,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       configFileName: string,
       files: string[],
       fileProgress: ((scannedFileCount: number, totalFileCount: number) => void) | undefined,
+      onAllBatchesStarted?: () => void,
     ): Promise<{
       diagnostics: Diagnostic[];
       analyzedFiles: ReadonlyArray<string>;
@@ -636,6 +651,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
             analyzedFiles = filePaths;
           },
           onFileProgress: fileProgress,
+          onAllBatchesStarted,
           spawnTimeoutMs,
           outputMaxBytes,
           concurrency: options.concurrency,
@@ -787,10 +803,30 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         rootDirectory,
         contentHashByRelativePath,
       });
-      // Started UNAWAITED so the in-process probe collection interleaves with
-      // the full pass's child-process await below (the filesystem is frozen
-      // for the scan, so collecting before/during/after the pass is
-      // equivalent). Never rejects — a failing file maps to `null`.
+      const allMissLintBatchesStarted = createDeferred<void>();
+      const pooledProbeCollection: PooledProbeCollection | null =
+        pooledWorkerCount === undefined
+          ? null
+          : {
+              job: {
+                nodeBinaryPath,
+                spawnTimeoutMs: spawnTimeoutMs ?? OXLINT_SPAWN_TIMEOUT_MS,
+                outputMaxBytes: outputMaxBytes ?? OXLINT_OUTPUT_MAX_BYTES,
+                maxWorkers: lintWorkerCount,
+                filesystemCacheEpoch: options.spawnSlots?.filesystemCacheEpoch ?? null,
+                abortSignal: options.signal,
+              },
+              workerCount: pooledWorkerCount,
+              runInSlot: (task) =>
+                options.spawnSlots === undefined
+                  ? task()
+                  : options.spawnSlots.run(task, options.signal),
+              allLintBatchesStarted: allMissLintBatchesStarted.promise,
+            };
+      // Started UNAWAITED so the probe collection interleaves with the full
+      // pass's child-process await below (the filesystem is frozen for the
+      // scan, so collecting before/during/after the pass is equivalent). Never
+      // rejects — a failing file maps to `null`.
       const missProbesTask =
         sidecarCache === null
           ? null
@@ -799,6 +835,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
               rootDirectory,
               boundedSidecarRuleIds,
               probeAnswers,
+              sidecarCache,
+              pooled: pooledProbeCollection,
             });
 
       // Miss files run the FULL config in one pass — cacheable and cross-file
@@ -811,17 +849,24 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       // and a stale cross-file verdict still can't be served (hits replay
       // only behind matching dependency probes, misses ran the cross-file
       // rules in the full pass).
-      const fullResult = await runConfigOverFiles(
-        (overrides) =>
-          buildConfig({
-            extendsPaths: [],
-            disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
-          }),
-        "oxlintrc.full.json",
-        missFiles,
-        options.onFileProgress &&
-          ((scannedFileCount) => options.onFileProgress?.(scannedFileCount, candidateFiles.length)),
-      );
+      let fullResult: Awaited<ReturnType<typeof runConfigOverFiles>>;
+      try {
+        fullResult = await runConfigOverFiles(
+          (overrides) =>
+            buildConfig({
+              extendsPaths: [],
+              disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
+            }),
+          "oxlintrc.full.json",
+          missFiles,
+          options.onFileProgress &&
+            ((scannedFileCount) =>
+              options.onFileProgress?.(scannedFileCount, candidateFiles.length)),
+          allMissLintBatchesStarted.resolve,
+        );
+      } finally {
+        allMissLintBatchesStarted.resolve();
+      }
       const missFileSet = new Set(missFiles);
       const hitFiles = candidateFiles.filter((candidateFile) => !missFileSet.has(candidateFile));
 
@@ -840,10 +885,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           const cacheKey = cacheKeyByFile.get(hitFile);
           const entry = cacheKey === undefined ? null : sidecarCache.lookup(cacheKey);
           const isReplayable =
-            entry !== null &&
-            entry.probes.every(
-              (probe) => probeAnswers.answerFor(probe.kind, probe.path) === probe.answer,
-            );
+            entry !== null && sidecarCache.isReplayable(entry, probeAnswers.answerFor);
           if (isReplayable) {
             sidecarReplayedFiles.push(hitFile);
             sidecarReplayedDiagnostics.push(...entry.diagnostics);
@@ -865,6 +907,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
               rootDirectory,
               boundedSidecarRuleIds,
               probeAnswers,
+              sidecarCache,
+              pooled: pooledProbeCollection,
             });
       // Replayed files are completed work: without them in the numerator the
       // spinner stalls at missFiles + sidecarLintFiles of candidateFiles, and
@@ -959,7 +1003,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
               files: sidecarLintFiles,
               diagnostics: boundedSidecarResult.diagnostics,
               isTrusted: !boundedSidecarResult.hadPartialFailure,
-              probesByFile: await sidecarProbesTask,
+              probeIdsByFile: await sidecarProbesTask,
             },
             {
               files: missFiles,
@@ -967,7 +1011,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
                 boundedSidecarRuleIdSet.has(diagnostic.rule),
               ),
               isTrusted: !fullResult.didDropReactHooksJsPlugin && !fullResult.hadPartialFailure,
-              probesByFile: await missProbesTask,
+              probeIdsByFile: await missProbesTask,
             },
           ],
         });

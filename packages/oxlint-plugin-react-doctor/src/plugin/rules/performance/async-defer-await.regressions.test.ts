@@ -104,6 +104,24 @@ describe("performance/async-defer-await — regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays silent on the conventional effect ignore guard", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string>;
+      declare let ignore: boolean;
+      export const refresh = async () => {
+        const value = await load();
+        if (ignore) return;
+        render(value);
+      };
+      declare const render: (value: string) => void;
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays silent on a bare side-effect await before a state guard", () => {
     const result = runRule(
       asyncDeferAwait,
@@ -474,6 +492,41 @@ describe("performance/async-defer-await — regressions", () => {
         const rows = await fetchRows();
         if (disabled) return null;
         return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a run.live liveness guard in a React effect", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const refreshSession: () => Promise<boolean>;
+      declare const setOk: (value: boolean) => void;
+      const run = { live: true };
+      export const effect = async () => {
+        const refreshed = await refreshSession();
+        if (!run.live) return;
+        setOk(refreshed);
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still reports guards with unrelated names that contain live", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const loadDelivery: () => Promise<string>;
+      declare const deliverNow: boolean;
+      export const deliver = async () => {
+        const payload = await loadDelivery();
+        if (!deliverNow) return;
+        console.log(payload);
       };
     `,
     );

@@ -15,6 +15,7 @@ runOxcFixtures(
   { passCases, failCases },
   {
     translateOxcFixture: TRANSLATORS["rules-of-hooks"],
+    canonicalPassDivergences: divergence?.canonicalPassSkips,
     knownPassDivergences: divergence?.passSkips,
     knownFailDivergences: divergence?.failSkips,
   },

@@ -1,7 +1,8 @@
 import type { Diagnostic, ReactDoctorConfig, ReactDoctorIgnoreOverride } from "./types/index.js";
 import { isPlainObject } from "./project-info/index.js";
+import { isSameRuleKey } from "./rule-key-aliases.js";
 import { compileGlobPatternsLenient } from "./utils/match-glob-pattern.js";
-import { toRelativePath } from "./utils/to-relative-path.js";
+import { toNormalizedRelativePath } from "./utils/to-normalized-relative-path.js";
 import { warnConfigIssue } from "./utils/warn-config-issue.js";
 
 interface CompiledIgnoreOverride {
@@ -12,8 +13,13 @@ interface CompiledIgnoreOverride {
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === "string");
 
-const collectStringList = (value: unknown): string[] =>
-  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+const hasMatchingRuleOverride = (ruleIds: ReadonlySet<string>, ruleIdentifier: string): boolean => {
+  if (ruleIds.size === 0) return true;
+  for (const ruleId of ruleIds) {
+    if (isSameRuleKey(ruleId, ruleIdentifier)) return true;
+  }
+  return false;
+};
 
 const validateOverrideEntry = (entry: unknown, index: number): ReactDoctorIgnoreOverride | null => {
   if (!isPlainObject(entry)) {
@@ -52,11 +58,11 @@ export const compileIgnoreOverrides = (
   return overrides.flatMap((entry, index) => {
     const validated = validateOverrideEntry(entry, index);
     if (!validated) return [];
-    const filePatterns = compileGlobPatternsLenient(collectStringList(validated.files), (error) =>
+    const filePatterns = compileGlobPatternsLenient(validated.files, (error) =>
       warnConfigIssue(`ignore.overrides[${index}]: ${error.message}`),
     );
     if (filePatterns.length === 0) return [];
-    const ruleIds = new Set(collectStringList(validated.rules));
+    const ruleIds = new Set(validated.rules ?? []);
     return [{ filePatterns, ruleIds }];
   });
 };
@@ -67,12 +73,12 @@ export const isDiagnosticIgnoredByOverrides = (
   overrides: CompiledIgnoreOverride[],
 ): boolean => {
   if (overrides.length === 0) return false;
-  const relativeFilePath = toRelativePath(diagnostic.filePath, rootDirectory);
+  const relativeFilePath = toNormalizedRelativePath(diagnostic.filePath, rootDirectory);
   const ruleIdentifier = `${diagnostic.plugin}/${diagnostic.rule}`;
 
   return overrides.some(
     (override) =>
       override.filePatterns.some((pattern) => pattern.test(relativeFilePath)) &&
-      (override.ruleIds.size === 0 || override.ruleIds.has(ruleIdentifier)),
+      hasMatchingRuleOverride(override.ruleIds, ruleIdentifier),
   );
 };

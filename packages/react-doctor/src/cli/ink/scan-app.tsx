@@ -29,13 +29,13 @@ export const ScanApp = ({
 }: ScanAppProps) => {
   const snapshot = useScanStore(store);
   const { exit } = useApp();
-  useExitOnCtrlC();
+  useExitOnCtrlC(onQuit);
   const handleQuit = (): void => {
     onQuit?.();
     exit();
   };
 
-  if (displayMode === "report" && snapshot.phase === "summary" && snapshot.summary) {
+  if (displayMode === "report" && snapshot.phase === "summary") {
     return (
       <Summary
         summary={snapshot.summary}
@@ -49,7 +49,7 @@ export const ScanApp = ({
     );
   }
 
-  if (displayMode === "report" && snapshot.phase === "report" && snapshot.report) {
+  if (displayMode === "report" && snapshot.phase === "report") {
     return (
       <Report
         report={snapshot.report}

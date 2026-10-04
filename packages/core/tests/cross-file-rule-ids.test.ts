@@ -144,6 +144,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
     expect([...CROSS_FILE_RULE_IDS].sort()).toEqual([
       "anchor-target-exists",
       "client-passive-event-listeners",
+      "effect-needs-cleanup",
       "exhaustive-deps",
       "ink-ctrl-c-handler-requires-exit-option",
       "ink-newline-inside-text",
@@ -187,6 +188,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-locale-format-in-render",
       "no-match-media-in-state-initializer",
       "no-mutating-reducer-state",
+      "no-reset-all-state-on-prop-change",
       "no-side-effect-in-state-updater-function",
       "no-unguarded-browser-global-at-module-scope",
       "no-unguarded-browser-global-in-render-or-hook-init",
@@ -238,11 +240,13 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "remotion-no-native-media-elements",
       "remotion-no-next-image",
       "rendering-hydration-mismatch-time",
+      "rendering-hydration-no-flicker",
       "rerender-memo-with-default-value",
       "rn-no-legacy-shadow-styles",
       "rn-no-raw-text",
       "rn-prefer-expo-image",
       "rn-style-prefer-boxshadow",
+      "server-sequential-independent-await",
       "window-open-without-noopener",
     ]);
   });

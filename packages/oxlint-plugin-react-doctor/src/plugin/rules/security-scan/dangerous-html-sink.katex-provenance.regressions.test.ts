@@ -1138,4 +1138,37 @@ describe("security-scan/dangerous-html-sink — KaTeX provenance", () => {
     `);
     expect(findings).toHaveLength(0);
   });
+
+  it("recognizes an immutable regular expression and escape-table callback", () => {
+    expect(
+      scan(`
+        import katex from "katex";
+        const pattern = /[&<>"']/g;
+        const replacements = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+        const escapeHtml = (value: string) => value.replace(pattern, (character) => replacements[character]);
+        const renderMath = (value: string) => {
+          try { return katex.renderToString(value, { throwOnError: false }); }
+          catch { return \`<span>\${escapeHtml(value)}</span>\`; }
+        };
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />
+        );
+      `),
+    ).toHaveLength(0);
+    expect(
+      scan(`
+        import katex from "katex";
+        const pattern = /[&<>"']/g;
+        const replacements = { "<": "<" };
+        const escapeHtml = (value: string) => value.replace(pattern, (character) => replacements[character]);
+        const renderMath = (value: string) => {
+          try { return katex.renderToString(value); }
+          catch { return \`<span>\${escapeHtml(value)}</span>\`; }
+        };
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />
+        );
+      `),
+    ).toHaveLength(1);
+  });
 });

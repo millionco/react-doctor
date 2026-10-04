@@ -1,8 +1,0 @@
-{
-  "name": "electron-project-fixture",
-  "private": true,
-  "main": "dist-electron/main.cjs",
-  "devDependencies": {
-    "electron": "^30.0.0"
-  }
-}

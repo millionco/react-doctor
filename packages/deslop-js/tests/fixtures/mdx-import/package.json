@@ -1,6 +1,0 @@
-{
-  "name": "mdx-imports-test",
-  "dependencies": {
-    "@docusaurus/core": "3.0.0"
-  }
-}

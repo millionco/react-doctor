@@ -23,6 +23,89 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     }
   });
 
+  it.each([
+    "yieldNow",
+    "yieldToBrowser",
+    "sliceYield",
+    "nextFrame",
+    "breathe",
+    "onYield",
+    "onProgress",
+    "progress",
+    "onStep",
+    "step",
+    "runStage",
+  ])("keeps opaque pacing helper %s sequential", (helperName) => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function build(items) { for (const item of items) { await ${helperName}(item); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a scheduler check sequential without trusting arbitrary check methods", () => {
+    const paced = runRule(
+      asyncAwaitInLoop,
+      `async function build(scheduler, items) { for (const item of items) { await scheduler.check(item.progress); } }`,
+    );
+    const independent = runRule(
+      asyncAwaitInLoop,
+      `async function build(api, items) { for (const item of items) { results.push(await api.check(item)); } }`,
+    );
+    expect(paced.parseErrors).toEqual([]);
+    expect(paced.diagnostics).toEqual([]);
+    expect(independent.parseErrors).toEqual([]);
+    expect(independent.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("follows local wrappers to a host-yielding Promise", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const nextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
+       const sliceYield = () => nextTask();
+       async function build(items) { for (const item of items) { consume(item); await sliceYield(); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not mistake an unrelated scheduled Promise for the awaited result", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const load = async (item) => { void new Promise((resolve) => setTimeout(resolve, 0)); return fetch(item); };
+       async function build(items) { for (const item of items) { results.push(await load(item)); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("keeps work paced by an explicit scheduler argument sequential", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function build(jobs, scheduler) { for (const job of jobs) { results.push(await job(scheduler)); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("skips ordered browser-automation driver loops", () => {
+    const browserDriver = runRule(
+      asyncAwaitInLoop,
+      `import { chromium } from "playwright";
+       async function drive(page, steps) { for (const step of steps) { await page.evaluate(step); } }`,
+      { filename: "dev/capture.mjs" },
+    );
+    const production = runRule(
+      asyncAwaitInLoop,
+      `async function load(api, items) { for (const item of items) { results.push(await api.read(item)); } }`,
+    );
+    expect(browserDriver.parseErrors).toEqual([]);
+    expect(browserDriver.diagnostics).toEqual([]);
+    expect(production.parseErrors).toEqual([]);
+    expect(production.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it.each(["query", "execute", "wait"])(
     "flags the pure local %s spelling without trusting its name",
     (helperName) => {
@@ -128,6 +211,15 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     const result = runRule(
       asyncAwaitInLoop,
       `async function f(ids, results) { for (const id of ids) { const prev = results[results.length - 1]; results.push(await fetchNext(id, prev)); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when each awaited result becomes the next member-call receiver", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function descend(root, parts) { let directory = root; for (const part of parts) directory = await directory.getDirectoryHandle(part); return directory; }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
@@ -760,5 +852,84 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on resolved helpers that deliberately yield to the browser", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); async function load(steps) { for (const step of steps) { build(step); await nextFrame(); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags local helpers whose names imply waiting but whose work is independent", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const nextFrame = async (item) => Promise.resolve(item * 2); async function load(items) { for (const item of items) { await nextFrame(item); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+describe("async-await-in-loop — promise consumers and advice", () => {
+  it.each([
+    "const waitForAll = async (operations) => { const settled = await Promise.allSettled(operations); for (const result of settled) { if (result.status === 'rejected') throw result.reason; } return settled; };",
+    "function waitForAll(operations) { return Promise.allSettled(operations); }",
+    "const collect = (operations) => Promise.all(operations); const waitForAll = collect;",
+    "const waitForAll = async (operations) => { await Promise['allSettled']((operations)); };",
+  ])("accepts a local promise collector: %s", (collectorSource) => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `${collectorSource} async function run(items) { await waitForAll(items.map(async item => { await operation(item); })); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "const waitForAll = (operations) => { Promise.allSettled(operations); };",
+    "const waitForAll = async (operations) => { if (enabled) await Promise.allSettled(operations); };",
+    "const waitForAll = async (operations) => { const nested = async () => await Promise.allSettled(operations); };",
+    "const waitForAll = async (operations) => { operations = []; return Promise.allSettled(operations); };",
+    "const waitForAll = async (operations) => { return Promise.allSettled(otherOperations); };",
+    "const Promise = { allSettled: () => [] }; const waitForAll = operations => Promise.allSettled(operations);",
+    "let waitForAll = operations => Promise.allSettled(operations); waitForAll = () => undefined;",
+    "import { waitForAll } from './opaque';",
+  ])(
+    "keeps unproven consumers visible without claiming sequential callbacks: %s",
+    (collectorSource) => {
+      const result = runRule(
+        asyncAwaitInLoop,
+        `${collectorSource} async function run(items) { await waitForAll(items.map(async item => { await operation(item); })); }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("consumer observes completion");
+      expect(result.diagnostics[0].message).not.toContain("one after another");
+    },
+  );
+
+  it("does not confuse a shadowed wrapper with the collector", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const waitForAll = operations => Promise.allSettled(operations); async function run(items, waitForAll) { await waitForAll(items.map(async item => { await operation(item); })); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "async function run(repository, items) { for (const item of items) { await repository.runAsync(item); } }",
+    "const files = new Set(); const cache = { exists: async path => files.has(path) }; async function run(paths) { for (const path of paths) { await cache.exists(path); } }",
+  ])("does not promise a speedup for queued or synchronous work", (source) => {
+    const result = runRule(asyncAwaitInLoop, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics[0].message).toContain(
+      "If iterations perform independent asynchronous work",
+    );
+    expect(asyncAwaitInLoop.recommendation).toContain("transaction ordering");
   });
 });

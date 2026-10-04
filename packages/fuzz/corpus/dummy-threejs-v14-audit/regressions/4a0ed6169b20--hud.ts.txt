@@ -1,0 +1,531 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 4a0ed6169b20e78836b7a7cfb069ce14a5fc1ef13817b25d2f3d67f635df774f
+/**
+ * Slaghold HUD.
+ *
+ * Built as DOM so it stays crisp at any resolution. Everything the player needs
+ * to make a decision under fuse pressure is on one horizontal band: who has the
+ * Core, how long it has left, whether the Maws are open and which one, and how
+ * the danger-handoff objective stands.
+ */
+import * as THREE from "three";
+import type { CameraRig } from "../render/camerarig";
+import {
+  DANGER_HANDOFF_GOAL,
+  DANGER_WINDOW,
+  FUSE_TOTAL,
+  ROUNDS_TO_WIN,
+  ROUNDS_TOTAL,
+  type Match,
+  type Toast,
+} from "../game/match";
+import { icon } from "./icons";
+
+interface LiveToast {
+  el: HTMLElement;
+  life: number;
+}
+
+const el = (tag: string, cls?: string, html?: string): HTMLElement => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+};
+
+export class Hud {
+  private readonly root: HTMLElement;
+  private readonly loading: HTMLElement;
+  private readonly loadingBar: HTMLElement;
+  private readonly loadingLabel: HTMLElement;
+  private readonly title: HTMLElement;
+  private readonly play: HTMLElement;
+  private readonly fuseFill: HTMLElement;
+  private readonly fuseHead: HTMLElement;
+  private readonly fuseSeconds: HTMLElement;
+  private readonly fuseState: HTMLElement;
+  private readonly fuseTrack: HTMLElement;
+  private readonly roster: HTMLElement;
+  private readonly rosterRows: {
+    row: HTMLElement;
+    state: HTMLElement;
+    pips: HTMLElement;
+    carry: HTMLElement;
+  }[] = [];
+  private readonly objectiveCount: HTMLElement;
+  private readonly objectiveBox: HTMLElement;
+  private readonly roundLabel: HTMLElement;
+  private readonly gateLabel: HTMLElement;
+  private readonly prompt: HTMLElement;
+  private readonly banner: HTMLElement;
+  private readonly bannerTitle: HTMLElement;
+  private readonly bannerSub: HTMLElement;
+  private readonly toastStack: HTMLElement;
+  private readonly markerLayer: HTMLElement;
+  private readonly markers: HTMLElement[] = [];
+  private readonly gateMarker: HTMLElement;
+  private readonly vignette: HTMLElement;
+  private readonly summary: HTMLElement;
+  private readonly summaryBody: HTMLElement;
+  private readonly soundBtn: HTMLElement;
+
+  private toasts: LiveToast[] = [];
+  private bannerLife = 0;
+  // Cached last-written values. The HUD runs every frame, and blindly writing
+  // innerHTML/textContent forces a parse and a style recalc each time.
+  private lastHandoffs = -1;
+  private lastFuseText = "";
+  private lastGateText = "";
+  private lastRoundText = "";
+  private lastPrompt = "";
+  private readonly projected = new THREE.Vector3();
+  private readonly worldTmp = new THREE.Vector3();
+
+  onStart: (() => void) | null = null;
+  onRestart: (() => void) | null = null;
+  onToggleSound: (() => void) | null = null;
+
+  constructor(root: HTMLElement) {
+    this.root = root;
+
+    /* ------------------------------ loading ----------------------------- */
+    this.loading = el("div", "screen loading");
+    this.loading.appendChild(el("div", "brandmark", brandmark()));
+    this.loading.appendChild(el("div", "loading-title", "STOKING THE SLAGHOLD"));
+    const barWrap = el("div", "loading-track");
+    this.loadingBar = el("div", "loading-fill");
+    barWrap.appendChild(this.loadingBar);
+    this.loading.appendChild(barWrap);
+    this.loadingLabel = el("div", "loading-label", "warming the vault");
+    this.loading.appendChild(this.loadingLabel);
+    root.appendChild(this.loading);
+
+    /* ------------------------------- title ------------------------------ */
+    this.title = el("div", "screen title hidden");
+    this.title.innerHTML = `
+      <div class="brandmark">${brandmark()}</div>
+      <h1>BAT<span>THE</span>BOMB</h1>
+      <p class="tagline">Four contestants. One live core. The Slaghold keeps the difference.</p>
+      <div class="rules">
+        <div class="rule"><i>${icon("fuse")}</i><b>THE FUSE RULES</b><span>The Ember Core is served lit. Every Maw stays <em>sealed</em> until the fuse goes critical &mdash; nobody scores early.</span></div>
+        <div class="rule"><i>${icon("maw")}</i><b>FEED THE LIVE MAW</b><span>When the fuse turns critical, <em>one</em> Maw lights &mdash; and not until then. Carry the Core into it to take the round. Three rounds decide the match.</span></div>
+        <div class="rule"><i>${icon("handoff")}</i><b>DANGER HANDOFF</b><span>Pass inside the danger window and you survive &mdash; but you hand a rival the scoring chance. Log <b>${DANGER_HANDOFF_GOAL}</b> to clear the objective.</span></div>
+        <div class="rule"><i>${icon("bat")}</i><b>SWING TO STRIP</b><span>A clean hit stuns and rips the Core loose. Bodies keep their momentum: corridors are contested lanes.</span></div>
+      </div>
+      <div class="controls">
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> MOVE</span>
+        <span><kbd>MOUSE</kbd> AIM</span>
+        <span><kbd>CLICK</kbd> SWING</span>
+        <span><kbd>E</kbd> GRAB / PASS</span>
+        <span><kbd>SHIFT</kbd> SURGE</span>
+        <span><kbd>&larr;</kbd><kbd>&rarr;</kbd> ORBIT</span>
+        <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> PITCH</span>
+      </div>
+      <button class="start">ENTER THE SLAGHOLD</button>
+      <p class="footnote">Audio starts on entry. Right-drag also orbits the rig.</p>`;
+    root.appendChild(this.title);
+    const startBtn = this.title.querySelector(".start");
+    startBtn?.addEventListener("click", () => this.onStart?.());
+
+    /* -------------------------------- play ------------------------------ */
+    this.play = el("div", "playui hidden");
+
+    const top = el("div", "topbar");
+
+    const left = el("div", "panel roundpanel");
+    this.roundLabel = el("div", "round", `ROUND 1 / ${ROUNDS_TOTAL}`);
+    left.appendChild(this.roundLabel);
+    this.gateLabel = el("div", "gate", "MAWS SEALED");
+    left.appendChild(this.gateLabel);
+    top.appendChild(left);
+
+    const centre = el("div", "panel fusepanel");
+    const fuseHead = el("div", "fusehead-row");
+    fuseHead.appendChild(el("i", "ico", icon("fuse")));
+    this.fuseState = el("div", "fusestate", "FUSE SEALED");
+    fuseHead.appendChild(this.fuseState);
+    this.fuseSeconds = el("div", "fuseseconds", "26.0");
+    fuseHead.appendChild(this.fuseSeconds);
+    centre.appendChild(fuseHead);
+    this.fuseTrack = el("div", "fusetrack");
+    this.fuseFill = el("div", "fusefill");
+    this.fuseHead = el("div", "fuseember");
+    const dangerMark = el("div", "dangermark");
+    dangerMark.style.left = `${(DANGER_WINDOW / FUSE_TOTAL) * 100}%`;
+    this.fuseTrack.appendChild(this.fuseFill);
+    this.fuseTrack.appendChild(dangerMark);
+    this.fuseTrack.appendChild(this.fuseHead);
+    centre.appendChild(this.fuseTrack);
+    top.appendChild(centre);
+
+    const right = el("div", "panel objpanel");
+    this.objectiveBox = right;
+    const objHead = el("div", "objhead");
+    objHead.appendChild(el("i", "ico", icon("handoff")));
+    objHead.appendChild(el("span", undefined, "DANGER HANDOFFS"));
+    right.appendChild(objHead);
+    this.objectiveCount = el("div", "objcount", `0<em>/${DANGER_HANDOFF_GOAL}</em>`);
+    right.appendChild(this.objectiveCount);
+    this.soundBtn = el("button", "soundbtn", icon("sound"));
+    this.soundBtn.addEventListener("click", () => this.onToggleSound?.());
+    right.appendChild(this.soundBtn);
+    top.appendChild(right);
+
+    this.play.appendChild(top);
+
+    this.roster = el("div", "roster");
+    this.play.appendChild(this.roster);
+
+    this.prompt = el("div", "prompt");
+    this.play.appendChild(this.prompt);
+
+    this.markerLayer = el("div", "markers");
+    this.play.appendChild(this.markerLayer);
+    this.gateMarker = el("div", "marker gatemarker", `<i>${icon("maw")}</i><b></b>`);
+    this.markerLayer.appendChild(this.gateMarker);
+
+    this.banner = el("div", "banner");
+    this.bannerTitle = el("div", "bannertitle");
+    this.bannerSub = el("div", "bannersub");
+    this.banner.appendChild(this.bannerTitle);
+    this.banner.appendChild(this.bannerSub);
+    this.play.appendChild(this.banner);
+
+    this.toastStack = el("div", "toasts");
+    this.play.appendChild(this.toastStack);
+
+    this.vignette = el("div", "vignette");
+    this.play.appendChild(this.vignette);
+
+    this.summary = el("div", "summary hidden");
+    this.summaryBody = el("div", "summarybody");
+    this.summary.appendChild(this.summaryBody);
+    this.play.appendChild(this.summary);
+
+    root.appendChild(this.play);
+  }
+
+  /** Called once the contestants exist, to build the roster rows. */
+  bindRoster(match: Match): void {
+    this.lastHandoffs = -1;
+    this.lastFuseText = "";
+    this.lastGateText = "";
+    this.lastRoundText = "";
+    this.lastPrompt = "";
+    this.roster.innerHTML = "";
+    this.rosterRows.length = 0;
+    this.markerLayer.querySelectorAll(".contestmarker").forEach((n) => n.remove());
+    this.markers.length = 0;
+
+    for (const c of match.contestants) {
+      const row = el("div", "rosterrow");
+      row.style.setProperty("--hue", c.skin.hud);
+      const bar = el("div", "rosterbar");
+      row.appendChild(bar);
+      const nameWrap = el("div", "rosternames");
+      nameWrap.appendChild(
+        el("div", "rostername", `${c.skin.name}${c.index === 0 ? '<em class="you">YOU</em>' : ""}`),
+      );
+      nameWrap.appendChild(el("div", "rosterepi", c.skin.epithet));
+      row.appendChild(nameWrap);
+      const meta = el("div", "rostermeta");
+      const carry = el("i", "rostercarry", icon("core"));
+      meta.appendChild(carry);
+      const state = el("div", "rosterstate", "READY");
+      meta.appendChild(state);
+      const pips = el("div", "rosterpips");
+      for (let i = 0; i < ROUNDS_TO_WIN; i++) pips.appendChild(el("i", "pip", icon("pip")));
+      meta.appendChild(pips);
+      row.appendChild(meta);
+      this.roster.appendChild(row);
+      this.rosterRows.push({ row, state, pips, carry });
+
+      const m = el("div", "marker contestmarker", `<i>${icon("arrow")}</i><b>${c.skin.name}</b>`);
+      m.style.setProperty("--hue", c.skin.hud);
+      this.markerLayer.appendChild(m);
+      this.markers.push(m);
+    }
+  }
+
+  setLoading(fraction: number, label: string): void {
+    this.loadingBar.style.width = `${Math.round(fraction * 100)}%`;
+    this.loadingLabel.textContent = label;
+  }
+
+  showTitle(): void {
+    this.loading.classList.add("hidden");
+    this.title.classList.remove("hidden");
+  }
+
+  showPlay(): void {
+    this.title.classList.add("hidden");
+    this.loading.classList.add("hidden");
+    this.play.classList.remove("hidden");
+  }
+
+  setSoundIcon(muted: boolean): void {
+    this.soundBtn.innerHTML = icon(muted ? "mute" : "sound");
+    this.soundBtn.classList.toggle("muted", muted);
+  }
+
+  toast(t: Toast): void {
+    const e = el("div", "toast", `<i>${icon(t.icon)}</i><span>${t.text}</span>`);
+    e.style.setProperty("--hue", t.color);
+    this.toastStack.appendChild(e);
+    this.toasts.push({ el: e, life: 2.8 });
+    while (this.toasts.length > 5) {
+      const old = this.toasts.shift();
+      old?.el.remove();
+    }
+  }
+
+  showBanner(title: string, sub: string, color: string, hold: number): void {
+    this.bannerTitle.textContent = title;
+    this.bannerSub.textContent = sub;
+    this.banner.style.setProperty("--hue", color);
+    this.banner.classList.remove("show");
+    // Force reflow so the entry animation replays on rapid repeats.
+    void this.banner.offsetWidth;
+    this.banner.classList.add("show");
+    this.bannerLife = hold;
+  }
+
+  private hideSummary(): void {
+    this.summary.classList.add("hidden");
+  }
+
+  update(dt: number, match: Match, rig: CameraRig): void {
+    /* ----------------------------- fuse ------------------------------- */
+    const frac = Math.max(0, match.fuse / FUSE_TOTAL);
+    const danger = match.danger;
+    this.fuseFill.style.width = `${frac * 100}%`;
+    this.fuseHead.style.left = `${frac * 100}%`;
+    const fuseText = match.fuseArmed ? match.fuse.toFixed(1) : "--";
+    if (fuseText !== this.lastFuseText) {
+      this.fuseSeconds.textContent = fuseText;
+      this.lastFuseText = fuseText;
+    }
+    this.fuseTrack.classList.toggle("danger", danger);
+    this.fuseSeconds.classList.toggle("danger", danger);
+    if (!match.fuseArmed) this.fuseState.textContent = "CORE COLD";
+    else if (danger) this.fuseState.textContent = "CRITICAL";
+    else this.fuseState.textContent = "BURNING";
+    this.fuseState.classList.toggle("danger", danger);
+
+    const roundText = `ROUND ${match.round} / ${ROUNDS_TOTAL}`;
+    if (roundText !== this.lastRoundText) {
+      this.roundLabel.textContent = roundText;
+      this.lastRoundText = roundText;
+    }
+    const gate = match.maze.gates[match.hotGate]!;
+    const gateText = danger && match.gateArmed ? `${gate.name} OPEN` : "ALL MAWS SEALED";
+    if (gateText !== this.lastGateText) {
+      this.gateLabel.textContent = gateText;
+      this.lastGateText = gateText;
+    }
+    this.gateLabel.classList.toggle("open", danger);
+
+    /* --------------------------- objective ---------------------------- */
+    const handoffs = match.player.dangerHandoffs;
+    if (handoffs !== this.lastHandoffs) {
+      this.objectiveCount.innerHTML = `${handoffs}<em>/${DANGER_HANDOFF_GOAL}</em>`;
+      this.objectiveBox.classList.toggle("done", handoffs >= DANGER_HANDOFF_GOAL);
+      this.lastHandoffs = handoffs;
+    }
+
+    /* ---------------------------- roster ------------------------------ */
+    for (let i = 0; i < this.rosterRows.length; i++) {
+      const r = this.rosterRows[i]!;
+      const c = match.contestants[i]!;
+      let label = "IN PLAY";
+      let cls = "";
+      if (c.state === "down") {
+        label = `DOWN ${c.timer.toFixed(1)}`;
+        cls = "down";
+      } else if (c.state === "stunned") {
+        label = "STAGGERED";
+        cls = "stunned";
+      } else if (c.recover > 0) {
+        label = "RECOVERING";
+        cls = "recovering";
+      } else if (c.carrying) {
+        label = "CARRYING";
+        cls = "carrying";
+      }
+      if (r.state.textContent !== label) r.state.textContent = label;
+      r.state.className = `rosterstate ${cls}`;
+      r.row.classList.toggle("iscarrying", c.carrying);
+      r.row.classList.toggle("isdown", c.state === "down");
+      r.carry.style.opacity = c.carrying ? "1" : "0.12";
+      const pips = r.pips.children;
+      for (let p = 0; p < pips.length; p++) {
+        (pips[p] as HTMLElement).classList.toggle("won", p < c.rounds);
+      }
+    }
+
+    /* ---------------------------- prompt ------------------------------ */
+    if (match.prompt) {
+      if (match.prompt !== this.lastPrompt) {
+        this.prompt.textContent = match.prompt;
+        this.lastPrompt = match.prompt;
+      }
+      this.prompt.classList.add("show");
+      this.prompt.classList.toggle("danger", match.promptKind === "pass" && danger);
+    } else {
+      this.prompt.classList.remove("show");
+    }
+
+    /* --------------------------- vignette ----------------------------- */
+    const player = match.player;
+    const pulse = match.dangerPulse;
+    let vig = pulse * 0.55;
+    if (player.state === "down") vig = Math.max(vig, 0.85);
+    else if (player.state === "stunned") vig = Math.max(vig, 0.4);
+    this.vignette.style.opacity = vig.toFixed(3);
+    this.vignette.classList.toggle("failure", player.state === "down");
+    this.vignette.classList.toggle("beat", danger);
+
+    /* ---------------------------- markers ----------------------------- */
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    for (let i = 0; i < this.markers.length; i++) {
+      const c = match.contestants[i]!;
+      const marker = this.markers[i]!;
+      if (i === 0) {
+        marker.style.display = "none";
+        continue;
+      }
+      this.worldTmp.set(c.x, 2.6, c.z);
+      rig.project(this.worldTmp, this.projected);
+      const behind = this.projected.z > 1;
+      const offX = Math.abs(this.projected.x) > 0.94;
+      const offY = Math.abs(this.projected.y) > 0.92;
+      if (!behind && !offX && !offY) {
+        marker.style.display = "none";
+        continue;
+      }
+      let nx = this.projected.x;
+      let ny = this.projected.y;
+      if (behind) {
+        nx = -nx;
+        ny = -ny;
+      }
+      const m = Math.max(Math.abs(nx), Math.abs(ny)) || 1;
+      nx = (nx / m) * 0.94;
+      ny = (ny / m) * 0.9;
+      const sx = ((nx + 1) / 2) * w;
+      const sy = ((1 - ny) / 2) * h;
+      marker.style.display = "flex";
+      marker.style.transform = `translate(${sx.toFixed(0)}px, ${sy.toFixed(0)}px) translate(-50%,-50%)`;
+      const arrow = marker.querySelector("i") as HTMLElement | null;
+      if (arrow) arrow.style.transform = `rotate(${(Math.atan2(nx, ny) * 180) / Math.PI}deg)`;
+      marker.classList.toggle("carrying", c.carrying);
+      marker.classList.toggle("dim", c.state === "down");
+    }
+
+    // Compass to the live Maw.
+    this.worldTmp.set(gate.x + gate.dx * 1.2, 2.4, gate.z + gate.dz * 1.2);
+    rig.project(this.worldTmp, this.projected);
+    const gBehind = this.projected.z > 1;
+    let gx = this.projected.x;
+    let gy = this.projected.y;
+    if (gBehind) {
+      gx = -gx;
+      gy = -gy;
+    }
+    const showGate = danger && match.gateArmed;
+    const inView = !gBehind && Math.abs(gx) <= 0.96 && Math.abs(gy) <= 0.94;
+    const gm = Math.max(Math.abs(gx), Math.abs(gy)) || 1;
+    if (!inView) {
+      gx = (gx / gm) * 0.96;
+      gy = (gy / gm) * 0.92;
+    }
+    const gsx = ((gx + 1) / 2) * w;
+    const gsy = ((1 - gy) / 2) * h;
+    this.gateMarker.style.display = showGate ? "flex" : "none";
+    this.gateMarker.style.transform = `translate(${gsx.toFixed(0)}px, ${gsy.toFixed(0)}px) translate(-50%,-50%)`;
+    this.gateMarker.classList.toggle("hot", danger);
+    const gLabel = this.gateMarker.querySelector("b");
+    if (gLabel && gLabel.textContent !== gate.name) gLabel.textContent = gate.name;
+
+    /* ----------------------------- banner ----------------------------- */
+    if (this.bannerLife > 0) {
+      this.bannerLife -= dt;
+      if (this.bannerLife <= 0) this.banner.classList.remove("show");
+    }
+
+    /* ----------------------------- toasts ----------------------------- */
+    for (let i = this.toasts.length - 1; i >= 0; i--) {
+      const t = this.toasts[i]!;
+      t.life -= dt;
+      if (t.life <= 0) {
+        t.el.remove();
+        this.toasts.splice(i, 1);
+      } else if (t.life < 0.5) {
+        t.el.style.opacity = (t.life / 0.5).toFixed(2);
+      }
+    }
+
+    /* ---------------------------- summary ----------------------------- */
+    if (match.phase === "matchEnd") this.renderSummary(match);
+    else this.hideSummary();
+  }
+
+  private renderSummary(match: Match): void {
+    if (!this.summary.classList.contains("hidden")) return;
+    const p = match.player;
+    const won = match.winner === 0;
+    const champ = match.contestants[match.winner] ?? p;
+    const objective = p.dangerHandoffs >= DANGER_HANDOFF_GOAL;
+    const rows = match.contestants
+      .map(
+        (c) => `<tr class="${c.index === match.winner ? "champ" : ""}">
+          <td class="cname" style="color:${c.skin.hud}">${c.skin.name}</td>
+          <td>${c.rounds}</td><td>${c.dangerHandoffs}</td><td>${c.hits}</td><td>${c.detonations}</td>
+        </tr>`,
+      )
+      .join("");
+    this.summaryBody.innerHTML = `
+      <div class="sumhead" style="--hue:${champ.skin.hud}">
+        <div class="sumtitle">${won ? "MATCH WON" : "MATCH LOST"}</div>
+        <div class="sumsub">${champ.skin.name} takes the Slaghold ${champ.rounds}&ndash;${
+          match.contestants.filter((c) => c !== champ).reduce((m, c) => Math.max(m, c.rounds), 0)
+        }</div>
+      </div>
+      <div class="objective ${objective ? "met" : "unmet"}">
+        <i>${icon("handoff")}</i>
+        <div>
+          <b>DANGER HANDOFFS &mdash; ${p.dangerHandoffs}/${DANGER_HANDOFF_GOAL}</b>
+          <span>${
+            objective
+              ? "Objective cleared. You traded the Core inside the danger window and lived to argue about it."
+              : "Objective missed. Pass while the fuse is critical to log a danger handoff."
+          }</span>
+        </div>
+      </div>
+      <table class="sumtable">
+        <thead><tr><th>CONTESTANT</th><th>ROUNDS</th><th>HANDOFFS</th><th>HITS</th><th>DOWNED</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <button class="restart">RUN IT BACK</button>`;
+    this.summary.classList.remove("hidden");
+    this.summaryBody.querySelector(".restart")?.addEventListener("click", () => {
+      this.hideSummary();
+      this.onRestart?.();
+    });
+  }
+}
+
+/** The Slaghold sigil: a girdled core inside an open maw. */
+function brandmark(): string {
+  return `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M6 60V30a26 26 0 0 1 52 0v30h-9V30a17 17 0 0 0-34 0v30z" fill="currentColor" opacity="0.85"/>
+    <circle cx="32" cy="34" r="12" fill="none" stroke="currentColor" stroke-width="3"/>
+    <path d="M20 34h24M32 22v24" stroke="currentColor" stroke-width="3"/>
+    <path d="M29 6h6l2 6h-10z" fill="currentColor"/>
+    <circle cx="32" cy="4" r="3.4" fill="currentColor"/>
+  </svg>`;
+}

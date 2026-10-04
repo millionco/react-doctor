@@ -3,7 +3,7 @@
 // weakness: cleanup-provenance
 // source: issue #1558
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 export const Watchdog = ({ AppState, done }) => {
   useEffect(() => {
@@ -35,5 +35,23 @@ export const Tabs = ({ onPress, tabs }) => {
       for (const unsubscribe of unsubscribers) unsubscribe();
     };
   }, [onPress, tabs]);
+  return null;
+};
+
+export const PermissionCard = ({ interactive, requestId, resolved, timeoutMs }) => {
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (resolved || !interactive) return;
+    timerRef.current = setInterval(() => tick(requestId, timeoutMs), 1000);
+    return () => stopTimer();
+  }, [interactive, requestId, resolved, stopTimer, timeoutMs]);
+
   return null;
 };

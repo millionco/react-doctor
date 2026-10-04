@@ -1,22 +1,11 @@
-import os from "node:os";
 import { AUTO_MAX_SCAN_CONCURRENCY, PER_WORKER_MEM_BUDGET_BYTES } from "../constants.js";
-import { readCgroupMemoryLimitBytes } from "./read-cgroup-memory-limit-bytes.js";
+import {
+  type SystemConcurrencyFacts,
+  readSystemConcurrencyFacts,
+} from "./read-system-concurrency-facts.js";
 import { resolveScanConcurrency } from "./resolve-scan-concurrency.js";
 
-export interface AutoScanConcurrencyFacts {
-  /** `os.availableParallelism()` — already cgroup-CPU-aware on the supported Node range. */
-  readonly availableCores: number;
-  /** `os.totalmem()` — the HOST total; floored by `cgroupMemoryLimitBytes` below. */
-  readonly totalMemoryBytes: number;
-  /** The cgroup memory limit, or `undefined` when there is none (bare metal / dev machines). */
-  readonly cgroupMemoryLimitBytes: number | undefined;
-}
-
-const readSystemFacts = (): AutoScanConcurrencyFacts => ({
-  availableCores: os.availableParallelism(),
-  totalMemoryBytes: os.totalmem(),
-  cgroupMemoryLimitBytes: readCgroupMemoryLimitBytes(),
-});
+export interface AutoScanConcurrencyFacts extends SystemConcurrencyFacts {}
 
 /**
  * Auto lint-worker count: the smaller of the (cgroup-CPU-aware) core count and
@@ -36,7 +25,7 @@ const readSystemFacts = (): AutoScanConcurrencyFacts => ({
  * limited, and ceiling cases without mocking `os` or the filesystem.
  */
 export const resolveAutoScanConcurrency = (
-  facts: AutoScanConcurrencyFacts = readSystemFacts(),
+  facts: AutoScanConcurrencyFacts = readSystemConcurrencyFacts(),
 ): number => {
   const availableMemoryBytes = Math.min(
     facts.totalMemoryBytes,

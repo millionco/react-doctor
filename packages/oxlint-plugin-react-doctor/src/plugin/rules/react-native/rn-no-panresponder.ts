@@ -15,6 +15,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // package never trips the rule.
 export const rnNoPanresponder = defineRule({
   id: "rn-no-panresponder",
+  defaultEnabled: false,
   title: "PanResponder over react-native-gesture-handler",
   tags: ["test-noise"],
   requires: ["react-native"],

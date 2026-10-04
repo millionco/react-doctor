@@ -20,7 +20,7 @@ export const buildNoScoreMessage = (input: BuildNoScoreMessageInput): string => 
       reason = input.disabledMessage ?? "Score disabled by --no-score.";
       break;
     case "analysis-incomplete":
-      reason = "Score not shown because lint or dead-code analysis could not complete.";
+      reason = "Score not shown because lint or maintainability analysis could not complete.";
       break;
     case "api-unavailable":
       reason = "Score unavailable (could not reach the score API).";

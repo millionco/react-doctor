@@ -1,0 +1,305 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 310e5542f1fdb2d47950ac4d0c74e5afab523c51dbc0bd2715d0ad4a97558b38
+export interface TaskItem {
+  label: string;
+  done: boolean;
+  active: boolean;
+  note?: string;
+}
+
+export interface ToolItem {
+  id: string;
+  key: string;
+  label: string;
+  enabled: boolean;
+  active: boolean;
+  urgent?: boolean;
+}
+
+interface Floater {
+  el: HTMLElement;
+  life: number;
+  maxLife: number;
+  x: number;
+  y: number;
+  rise: number;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  parent?: HTMLElement,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (parent) parent.appendChild(node);
+  return node;
+}
+
+/** All DOM chrome: objectives, ledger, toolbar, tips, banners, end card. */
+export class Hud {
+  private readonly root = el("div");
+  private readonly taskList: HTMLElement;
+  private readonly ledgerBody: HTMLElement;
+  private readonly toolbar: HTMLElement;
+  private readonly tip: HTMLElement;
+  private readonly banner: HTMLElement;
+  private readonly bannerBig: HTMLElement;
+  private readonly bannerSmall: HTMLElement;
+  private readonly alert: HTMLElement;
+  private readonly hint: HTMLElement;
+  private readonly phaseLabel: HTMLElement;
+  private readonly loading: HTMLElement;
+  private readonly loadFill: HTMLElement;
+  private readonly loadStep: HTMLElement;
+  private readonly endCard: HTMLElement;
+
+  private readonly statValues = new Map<string, HTMLElement>();
+  private readonly statLast = new Map<string, number>();
+  private readonly toolButtons = new Map<string, HTMLButtonElement>();
+  private readonly floaters: Floater[] = [];
+  private bannerTimer = 0;
+
+  onTool: (id: string) => void = () => {};
+
+  constructor() {
+    this.root.id = "hud";
+    document.body.appendChild(this.root);
+
+    // -- objectives ---------------------------------------------------------
+    const obj = el("div", "panel", this.root);
+    obj.id = "objectives";
+    const title = el("h2", undefined, obj);
+    title.textContent = "Trade Winds";
+    this.phaseLabel = el("p", "sub", obj);
+    this.phaseLabel.textContent = "Making ready";
+    el("div", "rule", obj);
+    this.taskList = el("div", undefined, obj);
+
+    // -- ledger -------------------------------------------------------------
+    const led = el("div", "panel", this.root);
+    led.id = "ledger";
+    const lt = el("h2", undefined, led);
+    lt.textContent = "Ledger";
+    this.ledgerBody = el("div", undefined, led);
+
+    // -- toolbar ------------------------------------------------------------
+    this.toolbar = el("div", undefined, this.root);
+    this.toolbar.id = "toolbar";
+
+    // -- hint ---------------------------------------------------------------
+    this.hint = el("div", undefined, this.root);
+    this.hint.id = "hint";
+
+    // -- tip ----------------------------------------------------------------
+    this.tip = el("div", undefined, this.root);
+    this.tip.id = "tip";
+
+    // -- banner -------------------------------------------------------------
+    this.banner = el("div", undefined, this.root);
+    this.banner.id = "banner";
+    this.bannerBig = el("div", "big", this.banner);
+    this.bannerSmall = el("div", "small", this.banner);
+
+    this.alert = el("div", undefined, this.root);
+    this.alert.id = "alert";
+
+    // -- loading ------------------------------------------------------------
+    this.loading = el("div");
+    this.loading.id = "loading";
+    document.body.appendChild(this.loading);
+    const lTitle = el("div", "title", this.loading);
+    lTitle.textContent = "Trade Winds";
+    const tag = el("div", "tag", this.loading);
+    tag.textContent = "Chart a coast · Found a port · Sail for profit";
+    const bar = el("div", "bar", this.loading);
+    this.loadFill = el("div", "fill", bar);
+    this.loadStep = el("div", "step", this.loading);
+
+    // -- end card -----------------------------------------------------------
+    this.endCard = el("div");
+    this.endCard.id = "end";
+    document.body.appendChild(this.endCard);
+  }
+
+  // -- loading --------------------------------------------------------------
+
+  setLoading(step: string, frac: number): void {
+    this.loadStep.textContent = step;
+    this.loadFill.style.width = `${Math.round(frac * 100)}%`;
+  }
+
+  hideLoading(): void {
+    this.loading.classList.add("gone");
+    window.setTimeout(() => this.loading.remove(), 900);
+  }
+
+  // -- objectives -----------------------------------------------------------
+
+  setPhase(text: string): void {
+    this.phaseLabel.textContent = text;
+  }
+
+  setTasks(tasks: TaskItem[]): void {
+    while (this.taskList.children.length < tasks.length) {
+      const row = el("div", "task", this.taskList);
+      el("span", "tick", row);
+      el("span", "lbl", row);
+      el("span", "n", row);
+    }
+    while (this.taskList.children.length > tasks.length) {
+      this.taskList.lastElementChild?.remove();
+    }
+    tasks.forEach((task, i) => {
+      const row = this.taskList.children[i] as HTMLElement | undefined;
+      if (!row) return;
+      row.className = `task${task.done ? " done" : ""}${task.active && !task.done ? " active" : ""}`;
+      const lbl = row.querySelector(".lbl");
+      const note = row.querySelector(".n");
+      if (lbl) lbl.textContent = task.label;
+      if (note) note.textContent = task.note ?? "";
+    });
+  }
+
+  // -- ledger ---------------------------------------------------------------
+
+  setStat(key: string, label: string, value: number, format?: (v: number) => string): void {
+    let node = this.statValues.get(key);
+    if (!node) {
+      const row = el("div", "stat", this.ledgerBody);
+      const k = el("span", "k", row);
+      k.textContent = label;
+      node = el("span", "v", row);
+      this.statValues.set(key, node);
+    }
+    const prev = this.statLast.get(key);
+    node.textContent = format ? format(value) : String(Math.round(value));
+    if (prev !== undefined && Math.round(prev) !== Math.round(value)) {
+      node.classList.remove("up", "down");
+      void node.offsetWidth;
+      node.classList.add(value > prev ? "up" : "down");
+    }
+    this.statLast.set(key, value);
+  }
+
+  // -- toolbar --------------------------------------------------------------
+
+  setTools(tools: ToolItem[]): void {
+    const seen = new Set<string>();
+    for (const tool of tools) {
+      seen.add(tool.id);
+      let btn = this.toolButtons.get(tool.id);
+      if (!btn) {
+        btn = el("button", "tool", this.toolbar);
+        btn.innerHTML = `<span class="lbl"></span><span class="key"></span>`;
+        btn.addEventListener("click", () => {
+          if (!btn!.classList.contains("disabled")) this.onTool(tool.id);
+        });
+        this.toolButtons.set(tool.id, btn);
+      }
+      const lbl = btn.querySelector(".lbl");
+      const key = btn.querySelector(".key");
+      if (lbl) lbl.textContent = tool.label;
+      if (key) key.textContent = tool.key;
+      btn.className = `tool${tool.active ? " active" : ""}${tool.enabled ? "" : " disabled"}${
+        tool.urgent ? " urgent" : ""
+      }`;
+    }
+    for (const [id, btn] of this.toolButtons) {
+      if (!seen.has(id)) {
+        btn.remove();
+        this.toolButtons.delete(id);
+      }
+    }
+  }
+
+  setHint(html: string): void {
+    this.hint.innerHTML = html;
+  }
+
+  // -- cursor tip -----------------------------------------------------------
+
+  showTip(text: string, kind: "ok" | "bad" | "plain", x: number, y: number): void {
+    this.tip.textContent = text;
+    this.tip.className = `show ${kind}`;
+    this.tip.style.left = `${x}px`;
+    this.tip.style.top = `${y}px`;
+  }
+
+  hideTip(): void {
+    this.tip.className = "";
+  }
+
+  // -- banner ---------------------------------------------------------------
+
+  showBanner(big: string, small: string, kind: "alarm" | "good" | "plain", seconds = 3): void {
+    this.bannerBig.textContent = big;
+    this.bannerSmall.textContent = small;
+    this.banner.className = `show ${kind}`;
+    this.bannerTimer = seconds;
+  }
+
+  setAlert(on: boolean): void {
+    this.alert.className = on ? "on" : "";
+  }
+
+  // -- floating numbers -----------------------------------------------------
+
+  float(text: string, x: number, y: number, color: string, life = 1.5): void {
+    const node = el("div", "floater", this.root);
+    node.textContent = text;
+    node.style.color = color;
+    node.style.left = `${x}px`;
+    node.style.top = `${y}px`;
+    this.floaters.push({ el: node, life, maxLife: life, x, y, rise: 58 + Math.random() * 22 });
+  }
+
+  // -- end ------------------------------------------------------------------
+
+  showEnd(
+    crest: string,
+    headline: string,
+    body: string,
+    figures: Array<[string, string]>,
+  ): void {
+    this.endCard.innerHTML = "";
+    const c = el("div", "crest", this.endCard);
+    c.textContent = crest;
+    const h = el("div", "headline", this.endCard);
+    h.textContent = headline;
+    const b = el("div", "body", this.endCard);
+    b.textContent = body;
+    const figs = el("div", "figures", this.endCard);
+    for (const [label, value] of figures) {
+      const f = el("div", "fig", figs);
+      const v = el("div", "v", f);
+      v.textContent = value;
+      const k = el("div", "k", f);
+      k.textContent = label;
+    }
+    this.endCard.classList.add("show");
+  }
+
+  update(dt: number): void {
+    if (this.bannerTimer > 0) {
+      this.bannerTimer -= dt;
+      if (this.bannerTimer <= 0) this.banner.className = "";
+    }
+    for (let i = this.floaters.length - 1; i >= 0; i--) {
+      const f = this.floaters[i]!;
+      f.life -= dt;
+      const t = 1 - f.life / f.maxLife;
+      f.el.style.transform = `translate(-50%, -50%) translateY(${-t * f.rise}px) scale(${
+        1 + (1 - t) * 0.22
+      })`;
+      f.el.style.opacity = String(Math.min(1, f.life * 3));
+      if (f.life <= 0) {
+        f.el.remove();
+        this.floaters.splice(i, 1);
+      }
+    }
+  }
+}

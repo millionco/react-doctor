@@ -58,4 +58,105 @@ describe("defineRule", () => {
     expect(visitors.Program).toBeTypeOf("function");
     expect(visitors.JSXOpeningElement).toBeTypeOf("function");
   });
+
+  it("keeps test-noise visitors in product directories below a source root", () => {
+    let didCreateVisitors = false;
+    const rule = defineRule({
+      id: "test-noise-rule",
+      title: "test",
+      severity: "warn",
+      tags: ["test-noise"],
+      create: () => {
+        didCreateVisitors = true;
+        return { Program: () => {} };
+      },
+    });
+
+    const visitors = rule.create({
+      filename: "src/components/tools/widget.tsx",
+      report: () => {},
+      get scopes(): never {
+        throw new Error("scopes should stay lazy");
+      },
+      get cfg(): never {
+        throw new Error("cfg should stay lazy");
+      },
+    });
+
+    expect(didCreateVisitors).toBe(true);
+    expect(visitors.Program).toBeTypeOf("function");
+  });
+
+  it("skips test-noise visitors in root-level tooling directories", () => {
+    let didCreateVisitors = false;
+    const rule = defineRule({
+      id: "test-noise-rule",
+      title: "test",
+      severity: "warn",
+      tags: ["test-noise"],
+      create: () => {
+        didCreateVisitors = true;
+        return { Program: () => {} };
+      },
+    });
+
+    const visitors = rule.create({
+      filename: "tools/widget.tsx",
+      report: () => {},
+      get scopes(): never {
+        throw new Error("scopes should stay lazy");
+      },
+      get cfg(): never {
+        throw new Error("cfg should stay lazy");
+      },
+    });
+
+    expect(didCreateVisitors).toBe(false);
+    expect(visitors).toEqual({});
+  });
+
+  it("keeps capability-gated rules compatible when capabilities are unspecified", () => {
+    const rule = defineRule({
+      id: "compiler-disabled-rule",
+      title: "test",
+      severity: "warn",
+      disabledWhen: ["react-compiler"],
+      create: () => ({ Program: () => {} }),
+    });
+
+    const visitors = rule.create({
+      report: () => {},
+      get scopes(): never {
+        throw new Error("scopes should stay lazy");
+      },
+      get cfg(): never {
+        throw new Error("cfg should stay lazy");
+      },
+    });
+
+    expect(visitors.Program).toBeTypeOf("function");
+  });
+
+  it("skips rules disabled by an explicitly configured capability", () => {
+    const rule = defineRule({
+      id: "compiler-disabled-rule",
+      title: "test",
+      severity: "warn",
+      disabledWhen: ["react-compiler"],
+      create: () => ({ Program: () => {} }),
+    });
+
+    const visitors = rule.create({
+      report: () => {},
+      settings: { "react-doctor": { capabilities: ["react-compiler"] } },
+      get scopes(): never {
+        throw new Error("scopes should stay lazy");
+      },
+      get cfg(): never {
+        throw new Error("cfg should stay lazy");
+      },
+    });
+
+    expect(visitors).toEqual({});
+  });
 });

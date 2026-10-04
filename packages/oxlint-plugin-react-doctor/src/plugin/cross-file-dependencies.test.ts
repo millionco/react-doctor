@@ -15,7 +15,7 @@ import {
 import { __clearParseSourceFileCacheForTests } from "./utils/parse-source-file.js";
 import { resetManifestCaches } from "./utils/read-nearest-package-manifest.js";
 import { resetCrossFileExportCaches } from "./utils/resolve-cross-file-function-export.js";
-import { __clearTsconfigAliasCacheForTests } from "./utils/resolve-tsconfig-alias.js";
+import { resetTsconfigAliasCaches } from "./utils/resolve-tsconfig-alias.js";
 
 // The collectors' contract (see cross-file-dependencies.ts): for a given file,
 // the recorded probe set must contain every path whose existence or content
@@ -32,7 +32,7 @@ const DAYJS_DEPENDENCY_DAG_MAX_ANALYSIS_DURATION_MS = 2_000;
 beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-cross-file-deps-"));
   __clearParseSourceFileCacheForTests();
-  __clearTsconfigAliasCacheForTests();
+  resetTsconfigAliasCaches();
   resetCrossFileExportCaches();
   resetManifestCaches();
 });
@@ -79,6 +79,28 @@ describe("collectCrossFileDependencyProbes — driver", () => {
     expect(trace).not.toBeNull();
     expect(trace?.contentPaths.size).toBe(0);
     expect(trace?.existencePaths.size).toBe(0);
+  });
+});
+
+describe("no-hydration-branch-on-browser-global collector", () => {
+  it("records both imported helpers and the nearest manifest", () => {
+    const manifestPath = writeFixtureFile(
+      "package.json",
+      JSON.stringify({ dependencies: { react: "19.1.0" } }),
+    );
+    const helperPath = writeFixtureFile(
+      "src/environment.ts",
+      `export const isBrowser = () => typeof window !== "undefined";\n`,
+    );
+    const componentPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { isBrowser } from "./environment";\nexport const App = () => isBrowser() ? <main /> : null;\n`,
+    );
+
+    const trace = collectFor(componentPath, ["no-hydration-branch-on-browser-global"]);
+
+    expect(trace?.contentPaths.has(manifestPath)).toBe(true);
+    expect(trace?.contentPaths.has(helperPath)).toBe(true);
   });
 });
 
@@ -220,11 +242,13 @@ describe("no-mutating-reducer-state collector", () => {
 describe("effect value helper collectors", () => {
   const affectedRuleIds = [
     "client-passive-event-listeners",
+    "effect-needs-cleanup",
     "no-adjust-state-on-prop-change",
     "no-derived-state",
     "no-derived-state-effect",
     "no-event-handler",
     "no-initialize-state",
+    "no-reset-all-state-on-prop-change",
   ];
 
   it("records imported helper content for every affected rule and replays cached parse probes", () => {

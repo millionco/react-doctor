@@ -509,7 +509,7 @@ const isGuardedAnchoredCharacterMatch = (
   const sliceCallee = stripParenExpression(slicedValue.callee as EsTreeNode);
   if (
     !isNodeOfType(sliceCallee, "MemberExpression") ||
-    getPropertyName(sliceCallee) !== "slice" ||
+    getStaticPropertyName(sliceCallee) !== "slice" ||
     slicedValue.arguments.length !== 1 ||
     !slicedValue.arguments[0]
   ) {
@@ -909,7 +909,7 @@ const isMatchProvenByFindUpUntilPredicate = (
     const callee = stripParenExpression(child.callee as EsTreeNode);
     if (
       !isNodeOfType(callee, "MemberExpression") ||
-      getPropertyName(callee) !== "match" ||
+      getStaticPropertyName(callee) !== "match" ||
       !child.arguments[0] ||
       !areRegexPatternsEquivalent(child.arguments[0] as EsTreeNode, assertedPattern, context) ||
       !doesPredicateTruthRequireMatch(child, predicateFunction)
@@ -1690,9 +1690,6 @@ const isEnsureThenMapGet = (
   }
   return false;
 };
-
-const getPropertyName = (memberExpression: EsTreeNodeOfType<"MemberExpression">): string | null =>
-  getStaticPropertyName(memberExpression);
 
 const isPredicateArgument = (
   node: EsTreeNode | null | undefined,

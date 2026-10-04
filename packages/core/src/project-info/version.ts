@@ -161,20 +161,20 @@ export const normalizeDependencyVersion = (version: string): string | null => {
   return normalizedVersion;
 };
 
-export const splitDependencyVersionBranches = (version: string): string[] =>
+const splitDependencyVersionBranches = (version: string): string[] =>
   version
     .split("||")
     .map((branch) => branch.trim())
     .filter(Boolean);
 
-export const hasUpperBoundComparator = (version: string): boolean => {
+const hasUpperBoundComparator = (version: string): boolean => {
   for (let index = 0; index < version.length; index += 1) {
     if (getUpperBoundComparatorEnd(version, index) !== null) return true;
   }
   return false;
 };
 
-export const getBranchLowestMajor = (branch: string): number | null => {
+const getBranchLowestMajor = (branch: string): number | null => {
   if (hasNonLowerBoundComparator(branch)) return null;
 
   const lowerBoundComparators = stripUpperBoundComparators(branch).trim();
@@ -387,7 +387,7 @@ export const parseTailwindMajorMinor = (
 // range. Used to compute the effective React version for libraries:
 // a library with `"react": "^17 || ^18 || ^19"` has an effective major
 // of 17, so version-gated rules that require React 19+ are suppressed.
-export const hasUpperBoundOnlyPeerRange = (range: string | null | undefined): boolean => {
+const hasUpperBoundOnlyPeerRange = (range: string | null | undefined): boolean => {
   if (typeof range !== "string") return false;
   const normalizedRange = normalizeDependencyVersion(range);
   if (normalizedRange === null) return false;

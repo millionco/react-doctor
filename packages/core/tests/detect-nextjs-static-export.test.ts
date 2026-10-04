@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
-import { detectNextjsStaticExport } from "../src/project-info/detectors.js";
+import { detectNextjsStaticExport } from "../src/project-info/detect-nextjs-static-export.js";
 
 const temporaryRoots: string[] = [];
 

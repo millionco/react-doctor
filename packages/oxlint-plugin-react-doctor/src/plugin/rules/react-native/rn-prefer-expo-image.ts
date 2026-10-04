@@ -72,6 +72,7 @@ const propertyKeyName = (property: EsTreeNode): string | null => {
 
 export const rnPreferExpoImage = defineRule({
   id: "rn-prefer-expo-image",
+  defaultEnabled: false,
   title: "react-native Image instead of expo-image",
   tags: ["test-noise"],
   requires: ["react-native"],

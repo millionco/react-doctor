@@ -1,0 +1,341 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 85350ed45f3e6b5f05e1c6d0c6c12880b03548c83251db0dc156cb867152ec11
+import type { TeamStyle } from "../game/units";
+import type { WeaponId } from "../game/weapons";
+import { WEAPON_ORDER, WEAPONS } from "../game/weapons";
+
+/**
+ * DOM heads-up display. Kept out of the 3D layer so text stays crisp and the
+ * renderer only ever draws the crater.
+ */
+
+export interface HudUnitState {
+  hp: number;
+  maxHp: number;
+  alive: boolean;
+  active: boolean;
+}
+
+export interface HudState {
+  round: number;
+  maxRounds: number;
+  activeTeam: number;
+  squads: [HudUnitState[], HudUnitState[]];
+  weapon: WeaponId;
+  ammo: Record<WeaponId, number>;
+  power: number;
+  angleDeg: number;
+  moveLeft: number;
+  moveMax: number;
+  lavaLevel: number;
+  lavaStart: number;
+  lavaMax: number;
+  phase: "aim" | "flight" | "resolve" | "over";
+}
+
+export interface HudMarker {
+  x: number;
+  y: number;
+  visible: boolean;
+  team: number;
+  hp: number;
+  maxHp: number;
+  active: boolean;
+}
+
+const ICONS: Record<WeaponId, string> = {
+  shell: `<svg viewBox="0 0 32 32"><path d="M16 2c3 3.6 4.6 7 4.6 10.4v9.2H11.4v-9.2C11.4 9 13 5.6 16 2z"/><rect x="10.4" y="21.4" width="11.2" height="2.4" rx="0.6"/><path d="M12.2 24.6h7.6l-1.5 5.4h-4.6z"/><rect x="11.4" y="13.6" width="9.2" height="1.5" opacity=".55"/><rect x="11.4" y="16.6" width="9.2" height="1.5" opacity=".55"/></svg>`,
+  grenade: `<svg viewBox="0 0 32 32"><circle cx="16" cy="19" r="9"/><rect x="13" y="6.5" width="6" height="5" rx="1.2"/><path d="M19 7.5h4.5c1 0 1.6.8 1.6 1.7v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M10.6 15.6h10.8M10 19.4h12M10.6 23.2h10.8" stroke="#000" stroke-width="1.1" opacity=".45"/></svg>`,
+  charge: `<svg viewBox="0 0 32 32"><rect x="4" y="11" width="24" height="11" rx="2"/><rect x="4" y="14.6" width="24" height="3.8" opacity=".4"/><circle cx="24.5" cy="8.5" r="2.6"/><path d="M24.5 11v2" stroke="currentColor" stroke-width="1.6"/><path d="M9 24l2.5 5 2-3 2 3 2-3 2 3 2.5-5z" opacity=".8"/></svg>`,
+};
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+export class Hud {
+  readonly root = el("div", "hud");
+
+  private readonly roundLabel = el("span", "hv");
+  private readonly teamBadge = el("div", "team-badge");
+  private readonly phaseLabel = el("div", "phase");
+  private readonly lavaFill = el("div", "gauge-fill lava");
+  private readonly lavaLabel = el("span", "hv");
+
+  private readonly rosters: HTMLDivElement[] = [];
+  private readonly rosterChips: HTMLDivElement[][] = [[], []];
+
+  private readonly weaponCards = new Map<WeaponId, HTMLDivElement>();
+  private readonly weaponDetail = el("div", "weapon-detail");
+  private readonly powerFill = el("div", "gauge-fill power");
+  private readonly powerLabel = el("span", "hv");
+  private readonly angleLabel = el("span", "hv");
+  private readonly moveFill = el("div", "gauge-fill move");
+  private readonly moveLabel = el("span", "hv");
+  private readonly fireHint = el("div", "fire-hint", "hold <b>drag</b> to aim &middot; <b>space</b> to fire");
+
+  private readonly toast = el("div", "toast");
+  private readonly markerLayer = el("div", "markers");
+  private readonly markerNodes: HTMLDivElement[] = [];
+  private readonly endScreen = el("div", "end-screen");
+
+  private toastTimer = 0;
+
+  constructor(private readonly teams: readonly [TeamStyle, TeamStyle]) {
+    this.buildTop();
+    this.buildRosters();
+    this.buildBottom();
+    this.buildOverlays();
+    document.body.appendChild(this.root);
+  }
+
+  private buildTop(): void {
+    const top = el("div", "hud-top");
+
+    const turnBox = el("div", "panel turn-box");
+    turnBox.appendChild(el("span", "hk", "TURN"));
+    turnBox.appendChild(this.roundLabel);
+    top.appendChild(turnBox);
+
+    const center = el("div", "center-stack");
+    this.teamBadge.innerHTML = `<span class="dot"></span><span class="tname"></span><span class="tsub">to act</span>`;
+    center.appendChild(this.teamBadge);
+    this.phaseLabel.textContent = "";
+    center.appendChild(this.phaseLabel);
+    top.appendChild(center);
+
+    const lavaBox = el("div", "panel lava-box");
+    lavaBox.appendChild(el("span", "hk", "LAVA"));
+    const gauge = el("div", "gauge");
+    gauge.appendChild(this.lavaFill);
+    lavaBox.appendChild(gauge);
+    lavaBox.appendChild(this.lavaLabel);
+    top.appendChild(lavaBox);
+
+    this.root.appendChild(top);
+  }
+
+  private buildRosters(): void {
+    const wrap = el("div", "hud-sides");
+    for (let t = 0; t < 2; t++) {
+      const style = this.teams[t as 0 | 1];
+      const col = el("div", `roster roster-${t}`);
+      col.style.setProperty("--team", style.css);
+      const head = el("div", "roster-head");
+      head.innerHTML = `<span class="dot"></span>${style.name}`;
+      col.appendChild(head);
+      const list = el("div", "roster-list");
+      col.appendChild(list);
+      this.rosters.push(list);
+      wrap.appendChild(col);
+    }
+    this.root.appendChild(wrap);
+  }
+
+  private buildBottom(): void {
+    const bottom = el("div", "hud-bottom");
+
+    const weapons = el("div", "weapon-strip");
+    for (const id of WEAPON_ORDER) {
+      const def = WEAPONS[id];
+      const card = el("div", "weapon-card");
+      card.style.setProperty("--wc", `#${def.color.toString(16).padStart(6, "0")}`);
+      card.innerHTML = `
+        <div class="wicon">${ICONS[id]}</div>
+        <div class="wtext">
+          <div class="wname">${def.name}</div>
+          <div class="wtag">${def.tagline}</div>
+        </div>
+        <div class="wammo"><span class="ammo-n">0</span></div>`;
+      weapons.appendChild(card);
+      this.weaponCards.set(id, card);
+    }
+    bottom.appendChild(weapons);
+    bottom.appendChild(this.weaponDetail);
+
+    const meters = el("div", "meters");
+
+    const power = el("div", "meter");
+    power.appendChild(el("span", "hk", "POWER"));
+    const pg = el("div", "gauge tall");
+    pg.appendChild(this.powerFill);
+    power.appendChild(pg);
+    power.appendChild(this.powerLabel);
+    meters.appendChild(power);
+
+    const angle = el("div", "meter narrow");
+    angle.appendChild(el("span", "hk", "ANGLE"));
+    angle.appendChild(this.angleLabel);
+    meters.appendChild(angle);
+
+    const move = el("div", "meter");
+    move.appendChild(el("span", "hk", "MOVE"));
+    const mg = el("div", "gauge tall");
+    mg.appendChild(this.moveFill);
+    move.appendChild(mg);
+    move.appendChild(this.moveLabel);
+    meters.appendChild(move);
+
+    bottom.appendChild(meters);
+    bottom.appendChild(this.fireHint);
+    this.root.appendChild(bottom);
+
+    const help = el("div", "help panel");
+    help.innerHTML = `
+      <div class="help-title">CONTROLS</div>
+      <div><b>drag</b> aim &amp; power</div>
+      <div><b>W A S D</b> reposition</div>
+      <div><b>Q / E</b> change weapon</div>
+      <div><b>R / F</b> elevation</div>
+      <div><b>SPACE</b> fire</div>
+      <div><b>ENTER</b> hold position</div>
+      <div><b>right-drag</b> orbit &middot; <b>wheel</b> zoom</div>`;
+    this.root.appendChild(help);
+  }
+
+  private buildOverlays(): void {
+    this.root.appendChild(this.markerLayer);
+    this.toast.style.opacity = "0";
+    this.root.appendChild(this.toast);
+    this.endScreen.style.display = "none";
+    this.root.appendChild(this.endScreen);
+  }
+
+  private ensureRoster(team: number, count: number): void {
+    const list = this.rosters[team];
+    if (!list) return;
+    const chips = this.rosterChips[team]!;
+    while (chips.length < count) {
+      const chip = el("div", "chip");
+      chip.innerHTML = `<div class="chip-id">${chips.length + 1}</div>
+        <div class="chip-bar"><div class="chip-fill"></div></div>
+        <div class="chip-hp">100</div>`;
+      list.appendChild(chip);
+      chips.push(chip);
+    }
+  }
+
+  update(state: HudState): void {
+    this.roundLabel.textContent = `${Math.min(state.round, state.maxRounds)} / ${state.maxRounds}`;
+
+    const team = this.teams[state.activeTeam as 0 | 1];
+    this.teamBadge.style.setProperty("--team", team.css);
+    const nameNode = this.teamBadge.querySelector(".tname");
+    if (nameNode) nameNode.textContent = team.name;
+
+    const phaseText =
+      state.phase === "aim"
+        ? ""
+        : state.phase === "flight"
+          ? "SHOT IN FLIGHT"
+          : state.phase === "resolve"
+            ? "IMPACT"
+            : "";
+    this.phaseLabel.textContent = phaseText;
+
+    const lavaT =
+      (state.lavaLevel - state.lavaStart) / Math.max(0.001, state.lavaMax - state.lavaStart);
+    this.lavaFill.style.width = `${Math.max(0, Math.min(1, lavaT)) * 100}%`;
+    this.lavaLabel.textContent = `${state.lavaLevel.toFixed(1)}m`;
+
+    for (let t = 0; t < 2; t++) {
+      const squad = state.squads[t as 0 | 1];
+      this.ensureRoster(t, squad.length);
+      const chips = this.rosterChips[t]!;
+      for (let i = 0; i < squad.length; i++) {
+        const u = squad[i]!;
+        const chip = chips[i]!;
+        chip.classList.toggle("dead", !u.alive);
+        chip.classList.toggle("active", u.active);
+        const fill = chip.querySelector<HTMLElement>(".chip-fill");
+        if (fill) fill.style.width = `${(u.hp / u.maxHp) * 100}%`;
+        const hp = chip.querySelector<HTMLElement>(".chip-hp");
+        if (hp) hp.textContent = u.alive ? String(Math.ceil(u.hp)) : "KIA";
+      }
+    }
+
+    for (const id of WEAPON_ORDER) {
+      const card = this.weaponCards.get(id);
+      if (!card) continue;
+      const ammo = state.ammo[id];
+      card.classList.toggle("selected", id === state.weapon);
+      card.classList.toggle("empty", ammo <= 0);
+      const n = card.querySelector<HTMLElement>(".ammo-n");
+      if (n) n.textContent = String(ammo);
+    }
+    this.weaponDetail.textContent = WEAPONS[state.weapon].detail;
+
+    this.powerFill.style.width = `${state.power * 100}%`;
+    this.powerLabel.textContent = `${Math.round(state.power * 100)}%`;
+    this.angleLabel.textContent = `${Math.round(state.angleDeg)}°`;
+    const moveT = state.moveMax > 0 ? state.moveLeft / state.moveMax : 0;
+    this.moveFill.style.width = `${Math.max(0, moveT) * 100}%`;
+    this.moveLabel.textContent = `${state.moveLeft.toFixed(1)}m`;
+
+    const canAct = state.phase === "aim";
+    this.fireHint.style.opacity = canAct ? "1" : "0.25";
+    this.root.classList.toggle("locked", !canAct);
+  }
+
+  message(text: string, kind: "info" | "good" | "bad" | "route" = "info", duration = 2.6): void {
+    this.toast.textContent = text;
+    this.toast.className = `toast ${kind}`;
+    this.toast.style.opacity = "1";
+    this.toastTimer = duration;
+  }
+
+  tick(dt: number): void {
+    if (this.toastTimer > 0) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) this.toast.style.opacity = "0";
+      else if (this.toastTimer < 0.4) this.toast.style.opacity = String(this.toastTimer / 0.4);
+    }
+  }
+
+  updateMarkers(markers: HudMarker[]): void {
+    while (this.markerNodes.length < markers.length) {
+      const node = el("div", "marker");
+      node.innerHTML = `<div class="marker-bar"><div class="marker-fill"></div></div><div class="marker-tip"></div>`;
+      this.markerLayer.appendChild(node);
+      this.markerNodes.push(node);
+    }
+    for (let i = 0; i < this.markerNodes.length; i++) {
+      const node = this.markerNodes[i]!;
+      const m = markers[i];
+      if (!m || !m.visible) {
+        node.style.display = "none";
+        continue;
+      }
+      node.style.display = "block";
+      node.style.transform = `translate(${m.x}px, ${m.y}px)`;
+      node.style.setProperty("--team", this.teams[m.team as 0 | 1].css);
+      node.classList.toggle("active", m.active);
+      const fill = node.querySelector<HTMLElement>(".marker-fill");
+      if (fill) fill.style.width = `${(m.hp / m.maxHp) * 100}%`;
+    }
+  }
+
+  showEnd(title: string, subtitle: string, accent: string): void {
+    this.endScreen.style.display = "flex";
+    this.endScreen.innerHTML = `
+      <div class="end-card" style="--team:${accent}">
+        <div class="end-title">${title}</div>
+        <div class="end-sub">${subtitle}</div>
+        <div class="end-hint">press <b>R</b> to redeploy</div>
+      </div>`;
+  }
+
+  hideEnd(): void {
+    this.endScreen.style.display = "none";
+  }
+}

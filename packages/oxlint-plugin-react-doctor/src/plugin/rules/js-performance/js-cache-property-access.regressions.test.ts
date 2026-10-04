@@ -104,6 +104,22 @@ function f(state, n, use, next) {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when a method can mutate a mid-chain receiver between reads", () => {
+    const result = runRule(
+      jsCachePropertyAccess,
+      `function f(points, use) {
+        for (const point of points) {
+          use(point.position.x);
+          point.position.set(1, 2, 3);
+          use(point.position.x);
+          use(point.position.x);
+        }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags when an inner callback assigns to a param-shadowed same-named binding", () => {
     const result = runRule(
       jsCachePropertyAccess,
@@ -123,5 +139,22 @@ function f(items, theme, render, fallback) {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("does not count reads in a deferred event callback as outer-loop reads", () => {
+    const result = runRule(
+      jsCachePropertyAccess,
+      `function bind(buttons, theme, render) {
+        for (const button of buttons) {
+          button.addEventListener("click", () => {
+            render(theme.colors.primary);
+            render(theme.colors.primary);
+            render(theme.colors.primary);
+          });
+        }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 });

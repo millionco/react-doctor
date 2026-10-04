@@ -10,18 +10,38 @@ export interface BenchmarkCliOptions {
   cliPath: string;
   profile: boolean;
   heapProfile: boolean;
+  ruleTimings: boolean;
+  corpus?: string[];
+  strict?: boolean;
+}
+
+export interface CorpusTarget {
+  readonly name: string;
+  readonly repository: string;
+  readonly sha: string;
+  readonly subdirectory?: string;
+  readonly fileCount?: number;
 }
 
 export interface CreateStressProjectInput {
   readonly directory: string;
   readonly fileCount: number;
   readonly componentsPerFileCount: number;
+  /**
+   * Shared helper modules each component file imports through a barrel
+   * (`src/helpers/index.ts`). `0` keeps the classic self-contained files;
+   * a positive count gives every file real cross-file dependencies, so the
+   * sidecar rules, their dependency probes, and the cold-cache tail are
+   * exercised like a real repository.
+   */
+  readonly importsPerFileCount?: number;
 }
 
 export interface StressProjectMetadata {
   readonly directory: string;
   readonly generatedSourceFileCount: number;
   readonly componentCount: number;
+  readonly helperModuleCount: number;
 }
 
 export interface PerformanceCommandOptions {
@@ -35,12 +55,21 @@ export interface PerformanceCommandOptions {
   readonly compare?: string;
   readonly profile: boolean;
   readonly heapProfile: boolean;
+  readonly ruleTimings: boolean;
+  readonly corpus?: string;
+  readonly strict?: boolean;
 }
 
 export interface StressPerformanceCommandOptions extends PerformanceCommandOptions {
   readonly files: number;
   readonly componentsPerFile: number;
+  readonly importsPerFile: number;
   readonly project: string;
+}
+
+export interface BenchmarkTargetInput {
+  readonly directory: string;
+  readonly label: string;
 }
 
 export interface BenchmarkTargetMetadata {
@@ -93,6 +122,97 @@ export interface BenchmarkSample {
   diagnosticCount: number;
   diagnosticHash: string;
   scannedFileCount: number;
+  timeline?: ScanTimeline | null;
+}
+
+export interface OxlintSpawnChildRecord {
+  pid: number | null;
+  startedAt: number;
+  endedAt: number;
+  fileCount: number;
+  configPath: string | null;
+  exitCode: number | null;
+  signal: string | null;
+  stdoutBytes: number;
+  stderrBytes: number;
+  stdoutPreview: string;
+}
+
+export interface OxlintSpawnParentRecord {
+  pid: number;
+  exitedAt: number;
+  userMicroseconds: number;
+  systemMicroseconds: number;
+}
+
+export interface OxlintSpawnLog {
+  children: OxlintSpawnChildRecord[];
+  parent: OxlintSpawnParentRecord | null;
+}
+
+export interface SummarizeScanTimelineInput {
+  readonly spawnLog: OxlintSpawnLog;
+  readonly scanStartedAt: number;
+  readonly scanEndedAt: number;
+}
+
+export interface ScanTimeline {
+  wallMilliseconds: number;
+  childProcessCount: number;
+  failedChildProcessCount: number;
+  configCount: number;
+  childFileCount: number;
+  childDurationSumMilliseconds: number;
+  childDurationMedianMilliseconds: number;
+  childDurationMaximumMilliseconds: number;
+  childSpanMilliseconds: number;
+  averageConcurrency: number;
+  peakConcurrency: number;
+  headMilliseconds: number;
+  tailMilliseconds: number;
+  parentUserSeconds: number | null;
+  parentSystemSeconds: number | null;
+}
+
+export interface RuleTimingRow {
+  rule: string;
+  totalMilliseconds: number;
+  percentOfTotal: number;
+  calls: number;
+  createMilliseconds: number;
+  topSelector: string;
+}
+
+export interface SelectorTimingRow {
+  selector: string;
+  totalMilliseconds: number;
+  percentOfTotal: number;
+  calls: number;
+  ruleCount: number;
+  topRule: string;
+}
+
+export interface RuleTimingSummary {
+  processCount: number;
+  totalMilliseconds: number;
+  createMilliseconds: number;
+  rules: RuleTimingRow[];
+  selectors: SelectorTimingRow[];
+}
+
+export interface CpuProfileSourceSummary {
+  source: string;
+  selfMicroseconds: number;
+  selfPercent: number;
+  frameCount: number;
+}
+
+export interface CpuProfileSummary {
+  processCount: number;
+  sampledMicroseconds: number;
+  categories: CpuProfileSourceSummary[];
+  functions: CpuProfileFrameSummary[];
+  sources: CpuProfileSourceSummary[];
 }
 
 export interface DistributionSummary {
@@ -114,6 +234,11 @@ export interface BenchmarkSeries {
   filesPerSecond: number;
   mebibytesPerSecond: number;
   diagnosticHash: string;
+  userSeconds?: DistributionSummary | null;
+  systemSeconds?: DistributionSummary | null;
+  timeline?: ScanTimeline | null;
+  ruleTimings?: RuleTimingSummary | null;
+  cpuProfile?: CpuProfileSummary | null;
 }
 
 export interface BenchmarkComparison {
@@ -122,7 +247,13 @@ export interface BenchmarkComparison {
   currentMedianMilliseconds: number;
   deltaMilliseconds: number;
   deltaRatio: number;
-  classification: "improved" | "stable" | "regressed";
+  speedupRatio: number;
+  diagnosticsMatch: boolean;
+  classification: "improved" | "stable" | "regressed" | "diagnostics-mismatch";
+}
+
+export interface BuildBenchmarkComparisonsOptions {
+  readonly allowDiagnosticMismatch?: boolean;
 }
 
 export interface BenchmarkComparisonSeries {
@@ -232,6 +363,35 @@ export interface HeapProfileAnalysis {
   sampledBytes: number;
   processes: HeapProfileProcessSummary[];
   aggregateTopFrames: HeapProfileFrameSummary[];
+}
+
+export interface OxlintRuleTiming {
+  rule: string;
+  timeMilliseconds: number;
+  relativePercent: number;
+  calls: number;
+  source: string;
+}
+
+export interface CapturedRulePerformanceTiming {
+  rule: string;
+  selector: string;
+  timeNanoseconds: string;
+  calls: number;
+}
+
+export interface OxlintTimingProcessSummary {
+  file: string;
+  totalTimeMilliseconds: number;
+  rules: OxlintRuleTiming[];
+}
+
+export interface OxlintTimingAnalysis {
+  generatedAt: string;
+  profileDirectory: string;
+  totalTimeMilliseconds: number;
+  processes: OxlintTimingProcessSummary[];
+  aggregateRules: OxlintRuleTiming[];
 }
 
 export type BenchmarkMode = "lint" | "full";

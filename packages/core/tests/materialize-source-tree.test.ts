@@ -51,6 +51,7 @@ describe("materializeSourceTree", () => {
       path.join(sourceDirectory, "packages/app/package.json"),
       '{"name":"app","dependencies":{"react":"19"}}\n',
     );
+    fs.mkdirSync(path.join(sourceDirectory, ".oxlintrc.json"));
     // The escape source exists and is readable, so only the containment guard
     // can keep it out of the snapshot.
     fs.mkdirSync(path.join(sourceParent, "escape"), { recursive: true });
@@ -73,6 +74,7 @@ describe("materializeSourceTree", () => {
       expect(
         fs.readFileSync(path.join(snapshotDirectory, "packages/app/package.json"), "utf8"),
       ).toContain('"react"');
+      expect(fs.existsSync(path.join(snapshotDirectory, ".oxlintrc.json"))).toBe(false);
       expect(fs.existsSync(path.join(snapshotParent, "escape/package.json"))).toBe(false);
     } finally {
       fs.rmSync(sourceParent, { recursive: true, force: true });

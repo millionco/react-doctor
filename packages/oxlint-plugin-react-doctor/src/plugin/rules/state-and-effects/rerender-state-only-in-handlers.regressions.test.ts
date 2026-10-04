@@ -3809,4 +3809,41 @@ describe("rerender-state-only-in-handlers — external location invalidation", (
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("revision");
   });
+
+  it("does not flag state consumed by react-native-unistyles useVariants (issue #1716)", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `import { useState } from "react";
+      import { TextInput } from "react-native";
+      import { StyleSheet } from "react-native-unistyles";
+
+      const styles = StyleSheet.create(() => ({
+        input: {
+          borderWidth: 1,
+          variants: {
+            state: {
+              focused: { borderColor: "blue", borderWidth: 2 },
+            },
+          },
+        },
+      }));
+
+      export const Input = () => {
+        const [focused, setFocused] = useState(false);
+        const state = focused ? ("focused" as const) : undefined;
+
+        styles.useVariants({ state });
+
+        return (
+          <TextInput
+            onBlur={() => setFocused(false)}
+            onFocus={() => setFocused(true)}
+            style={styles.input}
+          />
+        );
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

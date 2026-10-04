@@ -1,9 +1,11 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { REACT_NATIVE_TRANSLATION_TEXT_COMPONENTS } from "../constants/react-native.js";
 import { isJsxFragmentElement } from "./is-jsx-fragment-element.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactComponentName } from "./is-react-component-name.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
+import { visitStaticJsxChildren } from "./visit-static-jsx-children.js";
 import { walkAst } from "./walk-ast.js";
 import { resolveJsxElementName } from "./resolve-jsx-element-name.js";
 
@@ -407,11 +409,52 @@ const resolveClassRenderFunction = (classNode: EsTreeNode): FunctionNode | null 
   return null;
 };
 
+const isTranslationTextJsxRoot = (jsxRoot: EsTreeNode): boolean => {
+  const fragmentChildren = fragmentChildrenOrNull(jsxRoot);
+  if (fragmentChildren !== null) {
+    let didContainTranslationTextElement = false;
+    let didContainUnsupportedChild = false;
+    visitStaticJsxChildren(fragmentChildren, {
+      onElement: (element) => {
+        if (isJsxFragmentElement(element.openingElement)) return true;
+        const elementName = resolveJsxElementName(element.openingElement);
+        if (elementName && REACT_NATIVE_TRANSLATION_TEXT_COMPONENTS.has(elementName)) {
+          didContainTranslationTextElement = true;
+        } else {
+          didContainUnsupportedChild = true;
+        }
+        return false;
+      },
+      onOpaqueExpression: () => {
+        didContainUnsupportedChild = true;
+      },
+    });
+    return didContainTranslationTextElement && !didContainUnsupportedChild;
+  }
+  if (!isNodeOfType(jsxRoot, "JSXElement")) return false;
+  const rootName = resolveJsxElementName(jsxRoot.openingElement);
+  return rootName !== null && REACT_NATIVE_TRANSLATION_TEXT_COMPONENTS.has(rootName);
+};
+
+const returnsOnlyTranslationTextElements = (definitionNode: EsTreeNode): boolean => {
+  const unwrapped = unwrapComponentDefinition(definitionNode);
+  if (!isFunctionNode(unwrapped)) return false;
+  const jsxRoots = collectReturnedJsxRoots(unwrapped);
+  return jsxRoots.length > 0 && jsxRoots.every(isTranslationTextJsxRoot);
+};
+
 export interface ChildrenForwardingComponents {
   // Forward their children into a `<Text>` — raw text inside them is safe.
   textWrappers: ReadonlySet<string>;
   // Proven to render their children into a non-text host.
   nonTextWrappers: ReadonlySet<string>;
+  // Return only direct translation text elements such as `<fbt>` or `<fbs>`.
+  translationTextReturnComponents: ReadonlySet<string>;
+}
+
+interface ComponentDeclaration {
+  readonly componentName: string;
+  readonly definitionNode: EsTreeNode;
 }
 
 export type ChildrenForwardingKind = "text" | "nonText" | "unknown";
@@ -514,8 +557,14 @@ export const collectTextWrapperComponents = (
 ): ChildrenForwardingComponents => {
   const wrappers = new Set<string>();
   const nonTextWrappers = new Set<string>();
+  const translationTextReturnComponents = new Set<string>();
   const componentBindingCounts = new Map<string, number>();
+  const componentDeclarations: ComponentDeclaration[] = [];
+  let didContainJsxElement = false;
   walkAst(programNode, (node) => {
+    if (isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment")) {
+      didContainJsxElement = true;
+    }
     let componentName: string | null = null;
     if (
       (isNodeOfType(node, "ImportSpecifier") ||
@@ -534,14 +583,25 @@ export const collectTextWrapperComponents = (
     }
     if (!componentName || !isReactComponentName(componentName)) return;
     componentBindingCounts.set(componentName, (componentBindingCounts.get(componentName) ?? 0) + 1);
+    if (isNodeOfType(node, "VariableDeclarator") && node.init) {
+      componentDeclarations.push({ componentName, definitionNode: node.init });
+    } else if (
+      isNodeOfType(node, "FunctionDeclaration") ||
+      isNodeOfType(node, "ClassDeclaration")
+    ) {
+      componentDeclarations.push({ componentName, definitionNode: node });
+    }
   });
+  if (!didContainJsxElement) {
+    return { textWrappers: wrappers, nonTextWrappers, translationTextReturnComponents };
+  }
   const isTextHandlingElement = (elementName: string, contextNode: EsTreeNode): boolean =>
     isTextHandlingRoot(elementName, contextNode) || wrappers.has(elementName);
   const isNonTextHostElement = (elementName: string, contextNode: EsTreeNode): boolean =>
     isNonTextHostRoot(elementName, contextNode) || nonTextWrappers.has(elementName);
 
-  const recordDeclaration = (componentName: string | null, definitionNode: EsTreeNode | null) => {
-    if (componentName && componentBindingCounts.get(componentName) !== 1) return;
+  const recordDeclaration = (componentName: string, definitionNode: EsTreeNode): void => {
+    if (componentBindingCounts.get(componentName) !== 1) return;
     recordWrapperFromDeclaration(
       componentName,
       definitionNode,
@@ -552,21 +612,21 @@ export const collectTextWrapperComponents = (
     );
   };
 
+  for (const declaration of componentDeclarations) {
+    if (
+      componentBindingCounts.get(declaration.componentName) === 1 &&
+      returnsOnlyTranslationTextElements(declaration.definitionNode)
+    ) {
+      translationTextReturnComponents.add(declaration.componentName);
+    }
+  }
+
   while (true) {
     const wrappersSizeBeforePass = wrappers.size;
     const nonTextSizeBeforePass = nonTextWrappers.size;
-    walkAst(programNode, (node) => {
-      if (isNodeOfType(node, "VariableDeclarator")) {
-        const componentName = node.id && isNodeOfType(node.id, "Identifier") ? node.id.name : null;
-        recordDeclaration(componentName, node.init ?? null);
-      } else if (
-        isNodeOfType(node, "FunctionDeclaration") ||
-        isNodeOfType(node, "ClassDeclaration")
-      ) {
-        const componentName = node.id && isNodeOfType(node.id, "Identifier") ? node.id.name : null;
-        recordDeclaration(componentName, node);
-      }
-    });
+    for (const declaration of componentDeclarations) {
+      recordDeclaration(declaration.componentName, declaration.definitionNode);
+    }
     if (
       wrappers.size === wrappersSizeBeforePass &&
       nonTextWrappers.size === nonTextSizeBeforePass
@@ -577,5 +637,5 @@ export const collectTextWrapperComponents = (
 
   for (const wrapperName of wrappers) nonTextWrappers.delete(wrapperName);
 
-  return { textWrappers: wrappers, nonTextWrappers };
+  return { textWrappers: wrappers, nonTextWrappers, translationTextReturnComponents };
 };

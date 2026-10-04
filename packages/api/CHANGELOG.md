@@ -1,5 +1,93 @@
 # @react-doctor/api
 
+## 0.9.15
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @react-doctor/core@0.9.15
+
+## 0.9.14
+
+### Patch Changes
+
+- Updated dependencies [[`d030b11`](https://github.com/millionco/react-doctor/commit/d030b113306c7d3a56426e4ce4c6be46ca20ae1e), [`fa72869`](https://github.com/millionco/react-doctor/commit/fa72869c6cdec705c82066693c565ff48831be95)]:
+  - @react-doctor/core@0.9.14
+
+## 0.9.13
+
+### Patch Changes
+
+- Updated dependencies [[`ac87f7d`](https://github.com/millionco/react-doctor/commit/ac87f7d7f64d77cc0a648ee863dd50b3c69c0257), [`40b9d79`](https://github.com/millionco/react-doctor/commit/40b9d79703c398f47ba92488ce1bdea011f12109), [`6adf55e`](https://github.com/millionco/react-doctor/commit/6adf55ed8841c9a6f63a3e93cc0d2ccfbe4ca852), [`990daaf`](https://github.com/millionco/react-doctor/commit/990daafa6277b966aab30152a8e23c194bcce738), [`77aec24`](https://github.com/millionco/react-doctor/commit/77aec24f42fa8a2c55504550df929ea3985b7748), [`79d8007`](https://github.com/millionco/react-doctor/commit/79d80072817eb86c74f3dd42ce91c8104f448810), [`a163de9`](https://github.com/millionco/react-doctor/commit/a163de9afa0c4a84c2d6e13ddd7ac55c910dacc3)]:
+  - @react-doctor/core@0.9.13
+
+## 0.9.12
+
+### Patch Changes
+
+- [#1617](https://github.com/millionco/react-doctor/pull/1617) [`51e198d`](https://github.com/millionco/react-doctor/commit/51e198db8bcbd61ad896098bb4985376641a0f69) Thanks [@aidenybai](https://github.com/aidenybai)! - Reduce `diagnose({ projects })` wall time by inventorying sibling workspace projects once, reusing their sized source-file lists through discovery and lint planning, and scanning larger projects first while preserving result order.
+
+- [#1643](https://github.com/millionco/react-doctor/pull/1643) [`0f3995b`](https://github.com/millionco/react-doctor/commit/0f3995b822ad9fdbd355eda05c8568f67643a31c) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize every detected framework and library capability as a supported scan target, including plain Three.js projects and React-backed frameworks without direct React declarations, and anchor remote-installer diagnostics on the executable download command.
+
+- Updated dependencies [[`51e198d`](https://github.com/millionco/react-doctor/commit/51e198db8bcbd61ad896098bb4985376641a0f69), [`0f3995b`](https://github.com/millionco/react-doctor/commit/0f3995b822ad9fdbd355eda05c8568f67643a31c)]:
+  - @react-doctor/core@0.9.12
+
+## 0.9.11
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @react-doctor/core@0.9.11
+
+## 0.9.10
+
+### Patch Changes
+
+- Updated dependencies [[`e69faca`](https://github.com/millionco/react-doctor/commit/e69facac7e7ec455c7ad63c771c4a76f5cd0862c)]:
+  - @react-doctor/core@0.9.10
+
+## 0.9.9
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @react-doctor/core@0.9.9
+
+## 0.9.8
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @react-doctor/core@0.9.8
+
+## 0.9.7
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @react-doctor/core@0.9.7
+
+## 0.9.6
+
+### Patch Changes
+
+- Updated dependencies [[`ac4e51f`](https://github.com/millionco/react-doctor/commit/ac4e51f6856dd0df091eed6ed4cdcb190574c048)]:
+  - @react-doctor/core@0.9.6
+
+## 0.9.5
+
+### Patch Changes
+
+- Updated dependencies [[`212b8b4`](https://github.com/millionco/react-doctor/commit/212b8b41131dcc486ffbfde19e84b2043a9a3470)]:
+  - @react-doctor/core@0.9.5
+
+## 0.9.4
+
+### Patch Changes
+
+- Updated dependencies [[`48ec9a8`](https://github.com/millionco/react-doctor/commit/48ec9a802077749f3ec7534a5cac00397d4dd4df)]:
+  - @react-doctor/core@0.9.4
+
 ## 0.9.3
 
 ### Patch Changes

@@ -554,7 +554,7 @@ Resource-informed implementation rules:
 - From Babel: nested structures are common; explicitly prune or model nested functions, classes, and blocks.
 - From OXC/Babex: expect Babel-compatible vocabulary, but verify parser-specific node shapes for TypeScript, JSX, optional chaining, and computed members.
 - From React Compiler: document unsupported JavaScript/control-flow cases instead of pretending every pattern is modeled soundly.
-- From Deslop: think in confidence tiers; strong diagnostics should be high-confidence findings.
+- Think in confidence tiers; strong diagnostics should be high-confidence findings.
 
 ## AST Vocabulary
 
@@ -924,7 +924,6 @@ Spend 1-2 hours asking an agent Q/A about these resources. Use them to build AST
 | Babel handbook        | https://github.com/jamiebuilds/babel-handbook                                                | ASTs, visitors, paths, scopes, bindings, traversal state, nested structures, and plugin testing patterns.                                                      |
 | Babel plugin handbook | https://github.com/jamiebuilds/babel-handbook/blob/master/translations/en/plugin-handbook.md | Practical plugin authoring guidance: visitors, path APIs, scope/binding lookups, traversal performance, and unit testing.                                      |
 | OXC                   | https://github.com/oxc-project/oxc                                                           | Oxlint/parser context, high-performance AST tooling, and rule implementation patterns to compare against React Doctor rules.                                   |
-| Deslop                | https://github.com/millionco/deslop-js/                                                      | Confidence tiers, syntactic vs semantic findings, structured analysis errors, and CI-gating strategy for high-signal findings.                                 |
 | React Compiler        | https://github.com/facebook/react/tree/main/compiler                                         | React rule semantics, conservative modeling, control-flow needs, React rules validation, and why unsupported JavaScript features should be explicit non-goals. |
 | React Doctor          | https://github.com/millionco/react-doctor                                                    | Product context: deterministic React scans across state/effects, performance, architecture, security, and accessibility.                                       |
 | Babex                 | https://github.com/millionco/babex                                                           | Babel-compatible APIs backed by OXC; useful for understanding parser/traverse compatibility and the shape of fast AST tooling.                                 |
@@ -947,5 +946,5 @@ Resource takeaways:
 - Traversal is expensive. Prefer a single visitor or direct child lookup when that is enough.
 - Nested structures are easy to mishandle. Explicitly skip nested functions unless the rule intends to inspect them.
 - React Compiler is conservative about unsupported or hard-to-model JavaScript. React Doctor rules should also document v1 unsupported cases.
-- Deslop-style confidence tiers are a useful mental model: only high-confidence findings should block or produce strong diagnostics.
+- Confidence tiers are a useful mental model: only high-confidence findings should block or produce strong diagnostics.
 - Babex shows the compatibility target: Babel-style parse/traverse APIs can sit on top of OXC, so rule authors should understand both Babel vocabulary and OXC-powered parsing.

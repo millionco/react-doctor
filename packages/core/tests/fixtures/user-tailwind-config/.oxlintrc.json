@@ -1,0 +1,14 @@
+{
+  "plugins": ["oxlint-plugin-tailwindcss"],
+  "rules": {
+    "tailwindcss/enforce-canonical": "error",
+    "tailwindcss/enforce-sort-order": "error",
+    "tailwindcss/no-conflicting-classes": "error",
+    "tailwindcss/no-unknown-classes": "error"
+  },
+  "settings": {
+    "tailwindcss": {
+      "entryPoint": "src/styles.css"
+    }
+  }
+}

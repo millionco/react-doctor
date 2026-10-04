@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { getSkillAgentConfig } from "agent-install";
+import { loadAgentInstall } from "./load-agent-install.js";
 import type { Diagnostic } from "@react-doctor/core";
 import { highlighter } from "@react-doctor/core";
 import { buildHandoffPayload } from "./build-handoff-payload.js";
@@ -212,6 +212,7 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
   }
 
   const launchableAgents = await detectLaunchableAgents();
+  const { getSkillAgentConfig } = loadAgentInstall();
   const choices = [
     ...launchableAgents.map((agentId) => ({
       title: getSkillAgentConfig(agentId).displayName,
@@ -286,7 +287,7 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
   }
 
   const agentId = handoffTarget as CliAgentId;
-  const displayName = getSkillAgentConfig(agentId).displayName;
+  const displayName = loadAgentInstall().getSkillAgentConfig(agentId).displayName;
 
   // Install the /react-doctor skill for the agent we're handing off to, so
   // it already knows the triage workflow. Best-effort — never blocks the

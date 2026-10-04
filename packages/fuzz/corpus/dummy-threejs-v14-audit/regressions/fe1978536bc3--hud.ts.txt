@@ -1,0 +1,267 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit fe1978536bc36faa8e533eaad4b6efc00ad1f95dbfa0ae6b211080e1b481bb07
+/** DOM overlay: resources, phase clock, power budget, toolbar, messages. */
+
+export interface ToolDef {
+  id: string;
+  key: string;
+  name: string;
+  cost: string;
+  desc: string;
+  icon: string;
+}
+
+export const TOOLS: ToolDef[] = [
+  { id: "hands", key: "1", name: "Hands", cost: "free", icon: "✋", desc: "Chop trees, break rock, harvest ripe gourds." },
+  { id: "hoe", key: "2", name: "Hoe", cost: "free", icon: "⛏", desc: "Till a grass cell into a seed bed." },
+  { id: "seed", key: "3", name: "Seed", cost: "free", icon: "🌱", desc: "Sow a tilled bed. Ripens overnight." },
+  { id: "fence", key: "4", name: "Fence", cost: "4 timber", icon: "▤", desc: "Slow and redirect creatures. Q/E to rotate." },
+  { id: "lamp", key: "5", name: "Lamp", cost: "6 timber 2 stone", icon: "🏮", desc: "Lights the field. Costs 1 power." },
+  { id: "ballista", key: "6", name: "Ballista", cost: "12 timber 8 stone", icon: "🏹", desc: "Long range, heavy single bolts. 3 power." },
+  { id: "thresher", key: "7", name: "Thresher", cost: "10 timber 12 stone", icon: "⚙", desc: "Short range, shreds everything close. 2 power." },
+  { id: "repair", key: "8", name: "Repair", cost: "3 timber", icon: "🔨", desc: "Patch a damaged fence, lamp or turret." },
+  { id: "power", key: "9", name: "Power", cost: "free", icon: "⚡", desc: "Switch a device on or off to redirect the grid." },
+  { id: "raze", key: "0", name: "Raze", cost: "refunds half", icon: "✖", desc: "Tear a structure down and reclaim materials." },
+];
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  onTool: (id: string) => void = () => {};
+  onRestart: () => void = () => {};
+  onStartNight: () => void = () => {};
+
+  private elPhase: HTMLDivElement;
+  private elClockFill: HTMLDivElement;
+  private elClockText: HTMLDivElement;
+  private elRes: Record<string, HTMLSpanElement> = {};
+  private elPowerFill: HTMLDivElement;
+  private elPowerText: HTMLDivElement;
+  private elBarnFill: HTMLDivElement;
+  private elBarnText: HTMLDivElement;
+  private elWave: HTMLDivElement;
+  private elHint: HTMLDivElement;
+  private elToast: HTMLDivElement;
+  private elGoal: HTMLDivElement;
+  private buttons = new Map<string, HTMLButtonElement>();
+  private elLoad: HTMLDivElement;
+  private elLoadBar: HTMLDivElement;
+  private elLoadText: HTMLDivElement;
+  private elEnd: HTMLDivElement;
+  private elHelp: HTMLDivElement;
+  private elNightBtn: HTMLButtonElement;
+  private toastTimer = 0;
+
+  constructor(parent: HTMLElement) {
+    this.root = document.createElement("div");
+    this.root.className = "hud";
+    parent.appendChild(this.root);
+
+    // --- top left: phase + clock
+    const tl = div("panel topleft");
+    this.elPhase = div("phase");
+    tl.appendChild(this.elPhase);
+    const clock = div("bar clock");
+    this.elClockFill = div("fill");
+    clock.appendChild(this.elClockFill);
+    this.elClockText = div("bartext");
+    clock.appendChild(this.elClockText);
+    tl.appendChild(clock);
+    this.elWave = div("wave");
+    tl.appendChild(this.elWave);
+    this.elNightBtn = document.createElement("button");
+    this.elNightBtn.className = "nightbtn";
+    this.elNightBtn.textContent = "Bring on the night  [Space]";
+    this.elNightBtn.onclick = () => this.onStartNight();
+    tl.appendChild(this.elNightBtn);
+    this.root.appendChild(tl);
+
+    // --- top right: resources + power
+    const tr = div("panel topright");
+    const resRow = div("resrow");
+    for (const [id, icon, label] of [
+      ["timber", "🪵", "Timber"],
+      ["stone", "🪨", "Stone"],
+      ["food", "🎃", "Food"],
+    ] as const) {
+      const r = div("res");
+      r.innerHTML = `<span class="ico">${icon}</span><span class="num" id="res-${id}">0</span>`;
+      r.title = label;
+      resRow.appendChild(r);
+      this.elRes[id] = r.querySelector(".num") as HTMLSpanElement;
+    }
+    tr.appendChild(resRow);
+    const pw = div("bar power");
+    this.elPowerFill = div("fill");
+    pw.appendChild(this.elPowerFill);
+    this.elPowerText = div("bartext");
+    pw.appendChild(this.elPowerText);
+    tr.appendChild(pw);
+    this.elGoal = div("goal");
+    tr.appendChild(this.elGoal);
+    this.root.appendChild(tr);
+
+    // --- top center: barn health
+    const tc = div("panel topcenter");
+    const barn = div("bar barn");
+    this.elBarnFill = div("fill");
+    barn.appendChild(this.elBarnFill);
+    this.elBarnText = div("bartext");
+    barn.appendChild(this.elBarnText);
+    tc.appendChild(barn);
+    this.root.appendChild(tc);
+
+    // --- bottom: toolbar
+    const bar = div("toolbar");
+    for (const t of TOOLS) {
+      const b = document.createElement("button");
+      b.className = "tool";
+      b.innerHTML = `<span class="tkey">${t.key}</span><span class="ticon">${t.icon}</span><span class="tname">${t.name}</span><span class="tcost">${t.cost}</span>`;
+      b.onclick = () => this.onTool(t.id);
+      b.title = `${t.name} — ${t.desc}`;
+      bar.appendChild(b);
+      this.buttons.set(t.id, b);
+    }
+    this.root.appendChild(bar);
+
+    this.elHint = div("hint");
+    this.root.appendChild(this.elHint);
+
+    this.elToast = div("toast");
+    this.root.appendChild(this.elToast);
+
+    // --- help
+    this.elHelp = div("panel help");
+    this.elHelp.innerHTML = `
+      <h3>Harvest After Dark</h3>
+      <p>Three nights. Keep the barn standing, then bring in the harvest.</p>
+      <ul>
+        <li><b>W A S D</b> walk · <b>drag</b> orbit · <b>wheel</b> zoom</li>
+        <li><b>1–0</b> pick a tool · <b>click</b> use it on a cell</li>
+        <li><b>Q / E</b> rotate what you are about to place</li>
+        <li><b>Space</b> start the night early · <b>H</b> hide this</li>
+      </ul>
+      <p class="dim">You must stand near a cell to work it. Powered devices glow;
+      the grid is small, so switch things off where the creatures are not walking.</p>`;
+    this.root.appendChild(this.elHelp);
+
+    // --- loading
+    this.elLoad = div("loading");
+    const lg = div("loadinner");
+    const title = div("loadtitle");
+    title.textContent = "Harvest After Dark";
+    lg.appendChild(title);
+    const lb = div("loadbar");
+    this.elLoadBar = div("loadfill");
+    lb.appendChild(this.elLoadBar);
+    lg.appendChild(lb);
+    this.elLoadText = div("loadtext");
+    this.elLoadText.textContent = "waking the farm…";
+    lg.appendChild(this.elLoadText);
+    this.elLoad.appendChild(lg);
+    this.root.appendChild(this.elLoad);
+
+    // --- end card
+    this.elEnd = div("endcard hidden");
+    this.root.appendChild(this.elEnd);
+  }
+
+  setLoading(frac: number, label: string): void {
+    this.elLoadBar.style.width = `${Math.round(frac * 100)}%`;
+    this.elLoadText.textContent = label;
+  }
+
+  hideLoading(): void {
+    this.elLoad.classList.add("gone");
+    setTimeout(() => this.elLoad.classList.add("hidden"), 700);
+  }
+
+  setPhase(text: string, night: boolean): void {
+    this.elPhase.textContent = text;
+    this.root.classList.toggle("isnight", night);
+  }
+
+  setClock(frac: number, text: string): void {
+    this.elClockFill.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
+    this.elClockText.textContent = text;
+  }
+
+  setNightButton(show: boolean): void {
+    this.elNightBtn.style.display = show ? "" : "none";
+  }
+
+  setResources(timber: number, stone: number, food: number): void {
+    this.elRes.timber!.textContent = String(Math.floor(timber));
+    this.elRes.stone!.textContent = String(Math.floor(stone));
+    this.elRes.food!.textContent = String(Math.floor(food));
+  }
+
+  setPower(used: number, total: number): void {
+    this.elPowerFill.style.width = `${total ? Math.min(1, used / total) * 100 : 0}%`;
+    this.elPowerFill.classList.toggle("over", used > total);
+    this.elPowerText.textContent = `⚡ ${used} / ${total}`;
+  }
+
+  setBarn(hp: number, max: number): void {
+    const f = Math.max(0, hp / max);
+    this.elBarnFill.style.width = `${f * 100}%`;
+    this.elBarnFill.classList.toggle("low", f < 0.34);
+    this.elBarnText.textContent = `Barn  ${Math.ceil(Math.max(0, hp))} / ${max}`;
+  }
+
+  setWave(text: string): void {
+    this.elWave.textContent = text;
+  }
+
+  setGoal(text: string): void {
+    this.elGoal.textContent = text;
+  }
+
+  setTool(id: string): void {
+    for (const [k, b] of this.buttons) b.classList.toggle("active", k === id);
+    const t = TOOLS.find((x) => x.id === id);
+    if (t) this.setHint(`<b>${t.name}</b> — ${t.desc}`);
+  }
+
+  setToolAffordable(id: string, ok: boolean): void {
+    this.buttons.get(id)?.classList.toggle("broke", !ok);
+  }
+
+  setHint(html: string): void {
+    this.elHint.innerHTML = html;
+  }
+
+  toast(msg: string, kind: "info" | "good" | "bad" = "info"): void {
+    this.elToast.textContent = msg;
+    this.elToast.className = `toast show ${kind}`;
+    clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => {
+      this.elToast.className = "toast";
+    }, 2600);
+  }
+
+  toggleHelp(): void {
+    this.elHelp.classList.toggle("hidden");
+  }
+
+  showEnd(win: boolean, title: string, body: string): void {
+    this.elEnd.className = `endcard ${win ? "win" : "lose"}`;
+    this.elEnd.innerHTML = `<h2>${title}</h2><p>${body}</p>`;
+    const b = document.createElement("button");
+    b.textContent = "Work it again";
+    b.onclick = () => this.onRestart();
+    this.elEnd.appendChild(b);
+  }
+
+  hideEnd(): void {
+    this.elEnd.className = "endcard hidden";
+  }
+}
+
+function div(cls: string): HTMLDivElement {
+  const d = document.createElement("div");
+  d.className = cls;
+  return d;
+}

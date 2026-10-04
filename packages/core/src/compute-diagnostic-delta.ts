@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import type { Diagnostic } from "./types/index.js";
 
+export const DIAGNOSTIC_DELTA_IDENTITY = Symbol.for("react-doctor/diagnostic-delta-identity");
+
 export interface DiagnosticDelta {
   /** Diagnostics present in head with no base match — introduced by the change. */
   readonly newDiagnostics: Diagnostic[];
@@ -42,16 +44,23 @@ const getDiagnosticMatchKeys = (
   const ruleKey = `${diagnostic.plugin}/${diagnostic.rule}`;
   const messageFingerprint = fingerprintText(`${diagnostic.title ?? ""}\0${diagnostic.message}`);
   const normalizedEvidence = evidence === null ? "" : normalizeEvidence(evidence);
-  const stableEvidenceKey =
-    normalizedEvidence.length > 0
-      ? `evidence\0${ruleKey}\0${messageFingerprint}\0${fingerprintText(normalizedEvidence)}`
+  const explicitIdentity = Reflect.get(diagnostic, DIAGNOSTIC_DELTA_IDENTITY);
+  const explicitIdentityKey =
+    typeof explicitIdentity === "string"
+      ? `identity\0${ruleKey}\0${fingerprintText(explicitIdentity)}`
       : null;
+  const stableEvidenceKey =
+    explicitIdentityKey ??
+    (normalizedEvidence.length > 0
+      ? `evidence\0${ruleKey}\0${messageFingerprint}\0${fingerprintText(normalizedEvidence)}`
+      : null);
   return {
     stableEvidenceKey,
     sameFileStableEvidenceKey:
       stableEvidenceKey === null ? null : `${diagnostic.filePath}\0${stableEvidenceKey}`,
     sameFileFallbackKey:
-      diagnostic.matchByOccurrence || normalizedEvidence.length === 0
+      explicitIdentityKey === null &&
+      (diagnostic.matchByOccurrence || normalizedEvidence.length === 0)
         ? `fallback\0${diagnostic.filePath}\0${ruleKey}\0${messageFingerprint}`
         : null,
   };
@@ -101,10 +110,11 @@ const buildMatchCandidates = (
 
 /**
  * Diffs a head scan against a base scan using a multiset of construct-level
- * evidence. Stable identities combine plugin/rule, the diagnostic message,
- * and normalized diagnosed source, so unchanged findings can move across
- * files while changed constructs or messages remain new. Cardinality is
- * retained for identical findings. Diagnostics explicitly marked
+ * evidence. Detector-provided identities take precedence when source text is
+ * intentionally normalized. Otherwise, stable identities combine plugin/rule,
+ * the diagnostic message, and normalized diagnosed source, so unchanged
+ * findings can move across files while changed constructs or messages remain
+ * new. Cardinality is retained for identical findings. Diagnostics explicitly marked
  * `matchByOccurrence` may fall back to same-file plugin/rule/message matching
  * after same-file strict evidence matching. Cross-file evidence matching runs
  * last so a copy cannot consume a reformatted local occurrence. Unreadable

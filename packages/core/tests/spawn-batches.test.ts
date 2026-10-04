@@ -102,6 +102,8 @@ describe("issue #599: spawnLintBatches never leaks its progress interval", () =>
  * the run succeeds — the assertion is purely about how many ran at once.
  */
 const SLEEP_MS = 200;
+const SHARED_SLOT_POLL_INTERVAL_MS = 10;
+const SHARED_SLOT_WAIT_TIMEOUT_MS = 5_000;
 
 const computePeakConcurrency = (marks: string): number => {
   let depth = 0;
@@ -166,7 +168,12 @@ describe("spawnLintBatches concurrency", () => {
       `const markFile = ${JSON.stringify(markFile)};`,
       'fs.appendFileSync(markFile, "+");',
       "const files = process.argv.slice(1);",
-      "setTimeout(() => {",
+      `const deadline = Date.now() + ${SHARED_SLOT_WAIT_TIMEOUT_MS};`,
+      "const interval = setInterval(() => {",
+      '  const marks = fs.readFileSync(markFile, "utf8");',
+      '  const activeCount = Array.from(marks).reduce((count, mark) => count + (mark === "+" ? 1 : -1), 0);',
+      "  if (activeCount < 2 && Date.now() < deadline) return;",
+      "  clearInterval(interval);",
       '  fs.appendFileSync(markFile, "-");',
       "  const diagnostics = files.map((filename) => ({",
       '    message: "Array index used as a key",',
@@ -178,7 +185,7 @@ describe("spawnLintBatches concurrency", () => {
       "    related: [],",
       "  }));",
       "  process.stdout.write(JSON.stringify({ diagnostics, number_of_files: files.length, number_of_rules: 1 }));",
-      `}, ${SLEEP_MS});`,
+      `}, ${SHARED_SLOT_POLL_INTERVAL_MS});`,
     ].join("\n");
     const spawnSlots = createOxlintSpawnSlots(2);
     const runProjectBatches = (projectName: string) =>

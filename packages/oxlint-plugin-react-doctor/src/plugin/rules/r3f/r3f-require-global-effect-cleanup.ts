@@ -19,6 +19,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
 import { isR3fReactApiCall } from "./utils/is-r3f-react-api-call.js";
+import { programReferencesR3f } from "./utils/program-references-r3f.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
@@ -263,6 +264,7 @@ export const r3fRequireGlobalEffectCleanup = defineRule({
     "Register addEffect, addAfterEffect, and addTail from an effect and return the exact disposer so remounts do not retain global render-loop callbacks",
   create: (context: RuleContext) => {
     const reportedRegistrations = new Set<EsTreeNode>();
+    let shouldAnalyzeFile = false;
     const reportRegistration = (registration: EsTreeNode): void => {
       if (reportedRegistrations.has(registration)) return;
       reportedRegistrations.add(registration);
@@ -274,7 +276,12 @@ export const r3fRequireGlobalEffectCleanup = defineRule({
     };
 
     return {
+      Program(programNode: EsTreeNodeOfType<"Program">) {
+        shouldAnalyzeFile = programReferencesR3f(programNode);
+      },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!shouldAnalyzeFile) return;
+
         if (isR3fReactApiCall(node, EFFECT_HOOK_NAMES, context.scopes)) {
           const effectCallback = getEffectCallback(node, context.scopes);
           if (!effectCallback) return;

@@ -40,6 +40,25 @@ describe("no-loading-flag-reset-outside-finally", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when a non-rethrowing catch performs opaque error reporting before a trailing reset", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const handleUpload = async () => {
+        setIsUploading(true);
+        try {
+          const response = await upload();
+          if (response.ok) onSuccess();
+          else toast.show({ variant: "danger", label: "Upload failed" });
+        } catch {
+          toast.show({ variant: "danger", label: "Upload failed" });
+        }
+        setIsUploading(false);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags a trailing reset when the catch rethrows, so rejection still skips it", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
@@ -266,9 +285,131 @@ describe("no-loading-flag-reset-outside-finally", () => {
          };
        };`,
     ];
-    for (const source of sources) {
-      expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(0);
+    for (const [sourceIndex, source] of sources.entries()) {
+      expect(
+        runRule(noLoadingFlagResetOutsideFinally, source).diagnostics,
+        `source ${sourceIndex}`,
+      ).toHaveLength(0);
     }
+  });
+
+  it("accepts an outer render identity claimed by a ref", () => {
+    const sources = [
+      `import { useCallback, useRef, useState } from "react";
+       const Preview = ({ requestId }) => {
+         const [, setDeliveryPending] = useState(false);
+         const requestIdRef = useRef(requestId);
+         requestIdRef.current = requestId;
+         const deliver = useCallback(async () => {
+           const attemptedRequestId = requestId;
+           setDeliveryPending(true);
+           try { await send(); }
+           finally {
+             if (requestIdRef.current === attemptedRequestId) setDeliveryPending(false);
+           }
+         }, [requestId]);
+       };`,
+      `import { useCallback, useRef, useState } from "react";
+       const Preview = ({ requestId }) => {
+         const [, setIsSending] = useState(false);
+         const activeRequestRef = useRef(requestId);
+         activeRequestRef.current = requestId;
+         const deliver = useCallback(async (request) => {
+           setIsSending(true);
+           try { await send(request); }
+           finally {
+             if (activeRequestRef.current === request.requestId) setIsSending(false);
+           }
+         }, []);
+       };`,
+    ];
+    for (const [sourceIndex, source] of sources.entries()) {
+      expect(
+        runRule(noLoadingFlagResetOutsideFinally, source).diagnostics,
+        `source ${sourceIndex}`,
+      ).toHaveLength(0);
+    }
+  });
+
+  it("accepts stale-owner exits when success and catch both clear", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const flightRef = useRef(0);
+         const load = async () => {
+           const flight = ++flightRef.current;
+           setIsLoading(true);
+           try {
+             await fetchFeed();
+             if (flight !== flightRef.current) return;
+             setIsLoading(false);
+           } catch {
+             if (flight !== flightRef.current) return;
+             setIsLoading(false);
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts react-hook-form setValue before a mirrored catch reset", () => {
+    const runSetValueCase = (importSource: string) =>
+      runRule(
+        noLoadingFlagResetOutsideFinally,
+        `import { useForm } from "${importSource}";
+         import { useRef, useState } from "react";
+         const Preview = () => {
+           const form = useForm();
+           const [, setIsLoading] = useState(false);
+           const loadRef = useRef(0);
+           const load = async () => {
+             const load = ++loadRef.current;
+             setIsLoading(true);
+             try {
+               await readFile();
+               if (load !== loadRef.current) return;
+               setIsLoading(false);
+             } catch {
+               if (load !== loadRef.current) return;
+               form.setValue("private_key", "");
+               setIsLoading(false);
+             }
+           };
+         };`,
+      );
+    expect(runSetValueCase("react-hook-form").diagnostics).toHaveLength(0);
+    expect(runSetValueCase("userland-form").diagnostics).toHaveLength(1);
+  });
+
+  it("accepts independent generation-guarded loaders sharing a ref", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useCallback, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setRefreshPending] = useState(false);
+         const generationRef = useRef(0);
+         const loadFirst = useCallback(async () => {
+           const generation = ++generationRef.current;
+           setRefreshPending(true);
+           try { await fetchFirst(); }
+           finally {
+             if (generation === generationRef.current) setRefreshPending(false);
+           }
+         }, []);
+         const loadSecond = useCallback(async () => {
+           const generation = ++generationRef.current;
+           setRefreshPending(true);
+           try { await fetchSecond(); }
+           finally {
+             if (generation === generationRef.current) setRefreshPending(false);
+           }
+         }, []);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("requires a proven current-operation ownership guard around a final reset", () => {
@@ -2993,6 +3134,29 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("reuses throw coverage across repeated local catch helper calls", () => {
+    const helperCalls = Array.from(
+      { length: STRESS_SITE_COUNT },
+      (_, callIndex) => `observe(${callIndex});`,
+    ).join("\n");
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const C = () => {
+        const [, setLoading] = useState(false);
+        const observe = (value) => console.info(value);
+        const run = async () => {
+          setLoading(true);
+          try { await fetch("/value"); }
+          catch { ${helperCalls} }
+          setLoading(false);
+        };
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("groups stable setter aliases by binding identity", () => {
     const aliasedReset = runRule(
       noLoadingFlagResetOutsideFinally,
@@ -3289,8 +3453,30 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     );
     expect(catchBefore.diagnostics).toHaveLength(1);
     expect(catchAfter.diagnostics).toHaveLength(0);
-    expect(finallyBefore.diagnostics).toHaveLength(1);
+    expect(finallyBefore.diagnostics).toHaveLength(0);
     expect(finallyAfter.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a latest-request guard in finally", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const mounted = useRef(true);
+         const requestId = useRef(0);
+         useEffect(() => () => { mounted.current = false; }, []);
+         const load = async () => {
+           const id = ++requestId.current;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (mounted.current && id === requestId.current) setIsLoading(false);
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag the reported formatting calls from issue #1421", () => {
@@ -3359,23 +3545,23 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("keeps potentially throwing and dynamic global calls conservative", () => {
-    const catchBodies = [
-      'JSON.parse("invalid")',
-      "Date.parse(Symbol())",
-      'Object.defineProperty(null, "value", {})',
-      "Math.round(1n)",
-      "Math.round(formatDuration())",
-      "Math.round(performance.now() - start); const start = performance.now()",
-      'String({ toString() { throw new Error("failed") } })',
-      'const method = "round"; Math[method](1)',
-      'const method = "log"; console[method](error)',
-      "console.missing(error)",
-      'const console = { log() { throw new Error("failed") } }; console.log(error)',
-      'const performance = { now() { throw new Error("failed") } }; performance.now()',
-      'const String = () => { throw new Error("failed") }; String(error)',
+  it("distinguishes opaque catch calls from provably throwing local implementations", () => {
+    const catchCases: ReadonlyArray<[string, number]> = [
+      ['JSON.parse("invalid")', 0],
+      ["Date.parse(Symbol())", 0],
+      ['Object.defineProperty(null, "value", {})', 0],
+      ["Math.round(1n)", 0],
+      ["Math.round(formatDuration())", 0],
+      ["Math.round(performance.now() - start); const start = performance.now()", 0],
+      ['String({ toString() { throw new Error("failed") } })', 0],
+      ['const method = "round"; Math[method](1)', 0],
+      ['const method = "log"; console[method](error)', 0],
+      ["console.missing(error)", 0],
+      ['const console = { log() { throw new Error("failed") } }; console.log(error)', 1],
+      ['const performance = { now() { throw new Error("failed") } }; performance.now()', 1],
+      ['const String = () => { throw new Error("failed") }; String(error)', 1],
     ];
-    for (const catchBody of catchBodies) {
+    for (const [catchBody, expectedDiagnosticCount] of catchCases) {
       const result = runRule(
         noLoadingFlagResetOutsideFinally,
         `async function run() {
@@ -3388,7 +3574,7 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
           setLoading(false);
         }`,
       );
-      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics, catchBody).toHaveLength(expectedDiagnosticCount);
     }
   });
 });

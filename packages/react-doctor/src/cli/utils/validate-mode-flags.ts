@@ -25,6 +25,29 @@ export const validateIncludeUntrackedScope = (
   );
 };
 
+export const validateFilePathSelectionFlags = (flags: InspectFlags): void => {
+  if (flags.staged || flags.changedFilesFrom !== undefined) {
+    throw new CliInputError(
+      "Cannot combine file path arguments with --staged or --changed-files-from. Use one file source.",
+    );
+  }
+  if (usedDiffAlias(flags)) {
+    throw new CliInputError(
+      "Cannot combine file path arguments with --diff. File path arguments use the files scope.",
+    );
+  }
+  if (usedScope(flags) && flags.scope !== "files") {
+    throw new CliInputError(
+      `Cannot combine file path arguments with --scope ${flags.scope}. File path arguments use --scope files.`,
+    );
+  }
+  if (flags.base !== undefined) {
+    throw new CliInputError(
+      "Cannot combine file path arguments with --base. The selected files do not need a Git base.",
+    );
+  }
+};
+
 export const validateModeFlags = (flags: InspectFlags): void => {
   if (usedScope(flags) && usedDiffAlias(flags)) {
     throw new CliInputError("Cannot combine --scope and --diff; --diff is the deprecated alias.");

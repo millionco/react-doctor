@@ -401,7 +401,7 @@ const isUndefinedIdentifier = (node: EsTreeNode): boolean => {
   return isNodeOfType(unwrappedNode, "Identifier") && unwrappedNode.name === "undefined";
 };
 
-export const getThisFieldName = (node: EsTreeNode): string | null => {
+const getThisFieldName = (node: EsTreeNode): string | null => {
   const unwrappedNode = stripParenExpression(node);
   if (
     !isNodeOfType(unwrappedNode, "MemberExpression") ||

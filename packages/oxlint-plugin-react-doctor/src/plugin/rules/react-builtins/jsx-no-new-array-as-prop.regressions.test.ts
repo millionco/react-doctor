@@ -66,4 +66,15 @@ describe("react-builtins/jsx-no-new-array-as-prop — regressions", () => {
       const Item = memo((props) => props.children, (prev, next) => prev.payload.every((v, i) => v === next.payload[i]));
       const Foo = () => <Item payload={[a, b].concat(c)} />;`,
     ));
+
+  it("does not flag fresh arrays when React Compiler is configured", () => {
+    const result = runRule(
+      jsxNoNewArrayAsProp,
+      `${memoisedConsumer}const Foo = () => <Item payload={[a, b]} />;`,
+      { settings: { "react-doctor": { capabilities: ["react-compiler"] } } },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

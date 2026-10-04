@@ -149,4 +149,81 @@ describe("rerender-state-only-in-handlers", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not flag state consumed by a member expression hook call", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `
+      function Input() {
+        const styles = { useVariants: (v) => v };
+        const [focused, setFocused] = useState(false);
+        const state = focused ? "focused" : undefined;
+        styles.useVariants({ state });
+        return (
+          <input
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+          />
+        );
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag state consumed directly by a member expression hook call", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `
+      function Input() {
+        const styles = { useVariants: (v) => v };
+        const [focused, setFocused] = useState(false);
+        styles.useVariants({ focused });
+        return (
+          <input
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+          />
+        );
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags state not consumed even with member expression non-hook calls", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `
+      function Widget() {
+        const [logged, setLogged] = useState(false);
+        const onClick = () => {
+          Math.random();
+          setLogged(true);
+        };
+        return <button onClick={onClick}>go</button>;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("logged");
+  });
+
+  it("does not treat an unrelated member call as the state setter", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `
+      function Widget() {
+        const [logged, setLogged] = useState(false);
+        const store = { setLogged: (value) => console.log(value) };
+        return <button onClick={() => store.setLogged(true)}>go</button>;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
 });

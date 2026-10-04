@@ -9,9 +9,10 @@ describe("hasPublishedFixRecipe", () => {
     expect(hasPublishedFixRecipe({ plugin: "react-doctor", rule: "no-derived-state" })).toBe(true);
   });
 
-  it("is false for dead-code diagnostics (deslop has no recipes)", () => {
-    expect(hasPublishedFixRecipe({ plugin: "deslop", rule: "unused-file" })).toBe(false);
-    expect(hasPublishedFixRecipe({ plugin: "deslop", rule: "circular-dependency" })).toBe(false);
+  it("is true for registered project rules with a published recipe", () => {
+    expect(hasPublishedFixRecipe({ plugin: "react-doctor", rule: "duplicate-jsx-subtree" })).toBe(
+      true,
+    );
   });
 
   it("is false for react-doctor-namespaced synthetic environment checks", () => {

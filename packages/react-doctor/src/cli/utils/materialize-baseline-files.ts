@@ -19,8 +19,10 @@ export interface BaselineMaterializedTree extends MaterializedTree {
  * `tempDirectory`, mirroring the project layout plus head's config files so
  * both sides lint under the same rules. Git rename heuristics are disabled by
  * the diff planner, so an old path is retained as a base deletion while its
- * new path is a head addition. Missing head-only additions are expected;
- * missing paths that the plan says must exist at base make `isComplete` false.
+ * new path is a head addition. Missing head-only additions are expected, and a
+ * base-only deletion that cannot be read has nothing at head to compare
+ * against; only a missing path that the plan says exists on both sides makes
+ * `isComplete` false.
  */
 export const materializeBaselineFiles = (input: {
   directory: string;
@@ -61,11 +63,14 @@ export const materializeBaselineFiles = (input: {
             ),
       });
       const materializedFiles = new Set(tree.materializedFiles);
+      const headFileSet = new Set(headFiles);
       return {
         ...tree,
         baseFiles,
         headFiles,
-        isComplete: baseFiles.every((filePath) => materializedFiles.has(filePath)),
+        isComplete: baseFiles.every(
+          (filePath) => materializedFiles.has(filePath) || !headFileSet.has(filePath),
+        ),
         untrackedFiles,
       } satisfies BaselineMaterializedTree;
     }).pipe(Effect.provide(Git.layerNode)),

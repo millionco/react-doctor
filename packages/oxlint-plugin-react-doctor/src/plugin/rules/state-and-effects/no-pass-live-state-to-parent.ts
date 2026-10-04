@@ -204,6 +204,7 @@ const collectUpstreamStateRefs = (
   ref: Reference,
   stateRefs: Reference[],
   visited: Set<Reference>,
+  scopes: RuleContext["scopes"],
 ): void => {
   if (visited.has(ref)) return;
   visited.add(ref);
@@ -211,7 +212,7 @@ const collectUpstreamStateRefs = (
     stateRefs.push(ref);
     return;
   }
-  if (isCustomHookStateResultReference(analysis, ref)) {
+  if (isCustomHookStateResultReference(analysis, ref, scopes)) {
     stateRefs.push(ref);
     return;
   }
@@ -235,7 +236,7 @@ const collectUpstreamStateRefs = (
       if (isInsideSpreadElement(innerRef.identifier as unknown as EsTreeNode, initializer)) {
         continue;
       }
-      collectUpstreamStateRefs(analysis, innerRef, stateRefs, visited);
+      collectUpstreamStateRefs(analysis, innerRef, stateRefs, visited, scopes);
     }
   }
 };
@@ -251,6 +252,7 @@ const collectPropCallbackBoundStateRefs = (
   analysis: ProgramAnalysis,
   ref: Reference,
   isPropCallbackRef: (innerRef: Reference) => boolean,
+  scopes: RuleContext["scopes"],
 ): Reference[] => {
   const stateRefs: Reference[] = [];
   for (const upRef of getUpstreamRefs(analysis, ref)) {
@@ -263,7 +265,7 @@ const collectPropCallbackBoundStateRefs = (
       if (isFunctionLike(argument as EsTreeNode)) continue;
       for (const argRef of getDownstreamRefs(analysis, argument as EsTreeNode)) {
         if (resolveToFunction(argRef)) continue;
-        collectUpstreamStateRefs(analysis, argRef, stateRefs, new Set());
+        collectUpstreamStateRefs(analysis, argRef, stateRefs, new Set(), scopes);
       }
     }
   }
@@ -273,13 +275,14 @@ const collectPropCallbackBoundStateRefs = (
 const collectDirectCallStateRefs = (
   analysis: ProgramAnalysis,
   callExpression: EsTreeNodeOfType<"CallExpression">,
+  scopes: RuleContext["scopes"],
 ): Reference[] => {
   const stateReferences: Reference[] = [];
   for (const argument of callExpression.arguments) {
     if (isFunctionLike(argument as EsTreeNode)) continue;
     for (const argumentReference of getDownstreamRefs(analysis, argument as EsTreeNode)) {
       if (resolveToFunction(argumentReference)) continue;
-      collectUpstreamStateRefs(analysis, argumentReference, stateReferences, new Set());
+      collectUpstreamStateRefs(analysis, argumentReference, stateReferences, new Set(), scopes);
     }
   }
   return stateReferences;
@@ -588,15 +591,19 @@ export const noPassLiveStateToParent = defineRule({
 
         const stateArgRefs =
           transparentPropReference || notificationCallbackPropNames
-            ? collectDirectCallStateRefs(analysis, callExpr)
+            ? collectDirectCallStateRefs(analysis, callExpr, context.scopes)
             : callGraphReferences.flatMap((callGraphReference) =>
-                collectPropCallbackBoundStateRefs(analysis, callGraphReference, (innerRef) =>
-                  isParentNotificationCallbackRef(
-                    analysis,
-                    innerRef,
-                    context,
-                    discardedDirectLocalEffectHelper,
-                  ),
+                collectPropCallbackBoundStateRefs(
+                  analysis,
+                  callGraphReference,
+                  (innerRef) =>
+                    isParentNotificationCallbackRef(
+                      analysis,
+                      innerRef,
+                      context,
+                      discardedDirectLocalEffectHelper,
+                    ),
+                  context.scopes,
                 ),
               );
         const handsSetterNamedCallbackData = propCallbackRefs.some(

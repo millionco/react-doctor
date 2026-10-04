@@ -96,7 +96,7 @@ export const selectorMatches = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
 ): StaticSelectorMatch => selectorMatchesAt(selector, selector.length - 1, node);
 
-export const selectorListMatches = (
+const selectorListMatches = (
   selectors: ReadonlyArray<Selector>,
   node: EsTreeNodeOfType<"JSXOpeningElement">,
 ): StaticSelectorMatch =>

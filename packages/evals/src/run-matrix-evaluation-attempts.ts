@@ -1,10 +1,9 @@
-import pLimit from "p-limit";
-
 import type { CorpusRepository, CorpusRepositoryGroup } from "./corpus.js";
 import type { MatrixEvaluationLane } from "./build-matrix-evaluation-plan.js";
 import type { MatrixEvaluationFailure } from "./evaluate-matrix-repository-batch.js";
 import { groupCorpusRepositories } from "./group-corpus-repositories.js";
 import { partitionRepositoryGroups } from "./utils/partition-repository-groups.js";
+import { createConcurrencyLimit } from "./utils/create-concurrency-limit.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
 
 export interface RunMatrixEvaluationAttemptsInput {
@@ -136,7 +135,7 @@ export const runMatrixEvaluationAttempts = async ({
   ).map((repositoryBatch) => ({ repositoryGroups: repositoryBatch, lanes }));
 
   for (const [attemptIndex, concurrency] of attemptConcurrencies.entries()) {
-    const limit = pLimit(concurrency);
+    const limit = createConcurrencyLimit(concurrency);
     const workResults = await Promise.allSettled(
       pendingWork.map((work) =>
         limit(() => evaluateRepositoryBatch(work.repositoryGroups, work.lanes, attemptIndex)),

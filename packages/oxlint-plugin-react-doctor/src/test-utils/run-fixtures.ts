@@ -20,6 +20,7 @@ export interface RunFixturesOptions {
   // depends on scope analysis we don't have").
   knownPassDivergences?: ReadonlyArray<number>;
   knownFailDivergences?: ReadonlyArray<number>;
+  canonicalPassDivergences?: ReadonlyArray<number>;
   // Some rules in OXC use a configuration tuple that doesn't translate
   // 1-to-1 to our settings shape. When set, `translateOxcFixture`
   // converts an OXC `oxcOptions` / `oxcSettings` pair into the
@@ -28,13 +29,19 @@ export interface RunFixturesOptions {
   normalizeOxcFixtureCode?: (fixture: OxcFixture, kind: "pass" | "fail", index: number) => string;
 }
 
+const SHOULD_ENFORCE_OXC_PARITY = process.env.REACT_DOCTOR_ENFORCE_OXC_PARITY === "1";
+
 const buildSettingsForFixture = (
   fixture: OxcFixture,
   options: RunFixturesOptions,
 ): Record<string, unknown> | undefined => {
-  if (!options.translateOxcFixture) return undefined;
-  const translated = options.translateOxcFixture(fixture);
-  return translated ?? undefined;
+  const translated = options.translateOxcFixture?.(fixture);
+  const reactDoctorSettings = translated?.["react-doctor"];
+  const mergedReactDoctorSettings =
+    typeof reactDoctorSettings === "object" && reactDoctorSettings !== null
+      ? { ...reactDoctorSettings, portedRuleMode: "upstream" }
+      : { portedRuleMode: "upstream" };
+  return { ...translated, "react-doctor": mergedReactDoctorSettings };
 };
 
 const summarizeFixtureCode = (rawCode: string): string => {
@@ -82,8 +89,12 @@ export const runOxcFixtures = (
   fixtures: { passCases: ReadonlyArray<OxcFixture>; failCases: ReadonlyArray<OxcFixture> },
   options: RunFixturesOptions = {},
 ): void => {
-  const passSkips = new Set(options.knownPassDivergences ?? []);
-  const failSkips = new Set(options.knownFailDivergences ?? []);
+  const passSkips = new Set(
+    SHOULD_ENFORCE_OXC_PARITY
+      ? (options.canonicalPassDivergences ?? [])
+      : [...(options.knownPassDivergences ?? []), ...(options.canonicalPassDivergences ?? [])],
+  );
+  const failSkips = new Set(SHOULD_ENFORCE_OXC_PARITY ? [] : (options.knownFailDivergences ?? []));
 
   // We don't assert on `result.parseErrors` because OXC's upstream
   // fixture suite intentionally includes some non-self-contained

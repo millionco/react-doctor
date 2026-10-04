@@ -25,9 +25,9 @@ const classifyFilesystemEntry = (absolutePath: string): FilesystemEntryClassific
 
   let entry = OTHER_ENTRY;
   try {
-    const fileStat = fs.statSync(absolutePath);
-    if (fileStat.isFile()) entry = FILE_ENTRY;
-    else if (fileStat.isDirectory()) entry = DIRECTORY_ENTRY;
+    const fileStat = fs.statSync(absolutePath, { throwIfNoEntry: false });
+    if (fileStat?.isFile()) entry = FILE_ENTRY;
+    else if (fileStat?.isDirectory()) entry = DIRECTORY_ENTRY;
   } catch {
     filesystemEntryByPath.set(absolutePath, OTHER_ENTRY);
     return OTHER_ENTRY;
@@ -46,7 +46,7 @@ const getExistingDirectoryPath = (directoryPath: string): string | null => {
 
 const getModuleFilePathCandidates = (modulePath: string): string[] => {
   const extension = path.extname(modulePath);
-  if (!extension) {
+  if (!MODULE_FILE_EXTENSIONS.includes(extension)) {
     return MODULE_FILE_EXTENSIONS.map((moduleExtension) => `${modulePath}${moduleExtension}`);
   }
 

@@ -37,7 +37,7 @@ interface FunctionReturnMatcher {
   readonly functionMatches: (candidateFunction: EsTreeNode) => boolean;
 }
 
-const createFunctionReturnMatcher = (
+export const createFunctionReturnMatcher = (
   scopes: ScopeAnalysis,
   matchesExpression: (expression: EsTreeNode) => boolean,
   controlFlow?: ControlFlowAnalysis,

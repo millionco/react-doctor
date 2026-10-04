@@ -300,14 +300,30 @@ const isHookStateValue = (
     ref.resolved?.defs.some((def) => {
       const node = def.node as unknown as EsTreeNode;
       if (!isNodeOfType(node, "VariableDeclarator")) return false;
-      if (!isNodeOfType(node.init, "CallExpression")) return false;
-      if (!isHookCallee(analysis, node.init.callee as EsTreeNode, hookName)) return false;
       if (!isNodeOfType(node.id, "ArrayPattern")) return false;
       const elements = node.id.elements ?? [];
       if (elements.length !== 1 && elements.length !== 2) return false;
       const first = elements[0];
+      if (!first || !isNodeOfType(first, "Identifier") || first.name !== ref.identifier.name) {
+        return false;
+      }
+      if (isGenuineReactHookDeclarator(analysis, node, hookName)) return true;
+      if (!isNodeOfType(node.init, "Identifier")) return false;
+      const tupleReference = getRef(analysis, node.init);
       return Boolean(
-        first && isNodeOfType(first, "Identifier") && first.name === ref.identifier.name,
+        tupleReference?.resolved?.defs.some((tupleDefinition) => {
+          const tupleDeclarator = tupleDefinition.node as unknown as EsTreeNode;
+          if (!isNodeOfType(tupleDeclarator, "VariableDeclarator")) return false;
+          if (!isNodeOfType(tupleDeclarator.id, "Identifier")) return false;
+          const tupleDeclaration = tupleDeclarator.parent;
+          if (
+            !isNodeOfType(tupleDeclaration, "VariableDeclaration") ||
+            tupleDeclaration.kind !== "const"
+          ) {
+            return false;
+          }
+          return isGenuineReactHookDeclarator(analysis, tupleDeclarator, hookName);
+        }),
       );
     }),
   );
@@ -490,9 +506,6 @@ export const isSyncStateSetterCall = (
   isStateSetterCall(analysis, ref) &&
   isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn) &&
   !resolvesToAsyncFunction(ref);
-
-export const isPropCall = (analysis: ProgramAnalysis, ref: Reference): boolean =>
-  isEventualCallTo(analysis, ref, (innerRef) => isPropAlias(analysis, innerRef));
 
 const HANDLER_NAMED_METHOD_PATTERN = /^(on|handle)[A-Z]/;
 const SYNCHRONOUS_CALLBACK_ARGUMENT_INDEX_BY_METHOD: ReadonlyMap<string, number> = new Map([

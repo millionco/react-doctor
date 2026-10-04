@@ -1,26 +1,20 @@
+import { INTENTIONAL_SEQUENCING_CALLEE_NAMES } from "../../constants/js.js";
+import { awaitedStatementsMayShareWork } from "../../utils/awaited-statements-may-share-work.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { expressionReadsPatternBinding } from "../../utils/expression-reads-pattern-binding.js";
+import { findSideEffect } from "../../utils/find-side-effect.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getOrderIndependentLocalFunction } from "../../utils/get-order-independent-local-function.js";
 import { hasPossibleStaticMemberCallWrite } from "../../utils/has-static-property-write-before.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { isAuthGuardName } from "../../utils/is-auth-guard-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
-// HACK: in async route handlers and Server Components, two consecutive
-// `await fetch()` (or any awaited calls) where the second one doesn't
-// reference the first's binding is a textbook waterfall — the second
-// fetch waits for the first to land before even starting, doubling
-// latency. Wrap independent awaits in `Promise.all([…])` so they race.
-//
-// Heuristic: scan async function bodies for two consecutive
-// VariableDeclaration statements whose init is `await something(...)`,
-// where the second's initializer reads no identifier introduced by the
-// first declaration. We require both declarations to be at the top
-// level of the same block to keep precision high.
 const declarationStartsWithAwait = (declaration: EsTreeNode): boolean => {
   if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
   for (const declarator of declaration.declarations ?? []) {
@@ -129,9 +123,6 @@ const declarationAwaitsGate = (declaration: EsTreeNode, context: RuleContext): b
   if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
   for (const declarator of declaration.declarations ?? []) {
     if (!isNodeOfType(declarator.init, "AwaitExpression")) continue;
-    // Only a function call is a gate — an awaited constructor (`await new X()`)
-    // must not suppress, so keep this CallExpression-only (getCalleeName also
-    // resolves NewExpression, which would over-suppress here).
     const argument = declarator.init.argument;
     if (!isNodeOfType(argument, "CallExpression")) continue;
     if (hasPossibleStaticMemberCallWrite(argument, context.scopes)) return true;
@@ -145,13 +136,62 @@ const declarationAwaitsGate = (declaration: EsTreeNode, context: RuleContext): b
   return false;
 };
 
+const PROGRESS_CALLBACK_WORDS = new Set(["progress", "stage", "step"]);
+
+const callbackReportsProgress = (callback: EsTreeNode): boolean => {
+  let doesReportProgress = false;
+  walkAst(callback, (candidate) => {
+    if (doesReportProgress || (candidate !== callback && isFunctionLike(candidate))) return false;
+    if (!isNodeOfType(candidate, "CallExpression")) return;
+    const calleeName = getCalleeName(candidate);
+    if (!calleeName) return;
+    doesReportProgress = tokenizeIdentifierWords(calleeName).some((word) =>
+      PROGRESS_CALLBACK_WORDS.has(word),
+    );
+  });
+  return doesReportProgress;
+};
+
+const declarationAwaitsIntentionalSequence = (
+  declaration: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
+  for (const declarator of declaration.declarations ?? []) {
+    if (!isNodeOfType(declarator.init, "AwaitExpression")) continue;
+    const argument = declarator.init.argument;
+    if (!isNodeOfType(argument, "CallExpression")) continue;
+    if (findSideEffect(argument, { shouldTraverseNestedFunction: () => false })) return true;
+    const localFunction = getOrderIndependentLocalFunction(argument, context.scopes);
+    const calleeName = getCalleeName(argument);
+    if (
+      localFunction === null &&
+      calleeName &&
+      INTENTIONAL_SEQUENCING_CALLEE_NAMES.has(calleeName)
+    ) {
+      return true;
+    }
+    if (
+      argument.arguments.some(
+        (callArgument) =>
+          !isNodeOfType(callArgument, "SpreadElement") &&
+          isFunctionLike(callArgument) &&
+          callbackReportsProgress(callArgument),
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 export const serverSequentialIndependentAwait = defineRule({
   id: "server-sequential-independent-await",
   title: "Sequential independent awaits",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "These two awaits don't depend on each other. Wrap them in `Promise.all([...])` so they run at the same time.",
+    "Consider `Promise.all([...])` only for independent asynchronous work. Shared queues or synchronous work may not benefit. Preserve resource limits, transaction ordering, and failure/cancellation semantics.",
   create: (context: RuleContext) => {
     const inspectStatements = (statements: EsTreeNode[]): void => {
       for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {
@@ -165,6 +205,15 @@ export const serverSequentialIndependentAwait = defineRule({
         if (!declarationStartsWithAwait(nextStatement)) continue;
 
         if (declarationReadsAnyPatternBinding(nextStatement, declaredPatterns, context)) continue;
+        if (
+          awaitedStatementsMayShareWork(
+            currentStatement,
+            nextStatement,
+            context.scopes,
+            context.filename,
+          )
+        )
+          continue;
         // The second await is on a promise that already exists
         // (`const p = fetchPosts(); … const posts = await p;`,
         // `await props.params`) — already running, so there's no
@@ -178,6 +227,11 @@ export const serverSequentialIndependentAwait = defineRule({
           declarationAwaitsRequestScopedCall(nextStatement)
         )
           continue;
+        if (
+          declarationAwaitsIntentionalSequence(currentStatement, context) ||
+          declarationAwaitsIntentionalSequence(nextStatement, context)
+        )
+          continue;
         // A guard / side-effect gate (`await requireSession()`, `db.connect()`)
         // must run before the next await — its ordering is intentional, not a
         // parallelizable waterfall.
@@ -186,7 +240,7 @@ export const serverSequentialIndependentAwait = defineRule({
         context.report({
           node: nextStatement,
           message:
-            "This await doesn't use the previous result, so your users wait twice as long for nothing.",
+            "This awaited initializer does not read the previous result. If the operations are independent asynchronous work, they may overlap; await syntax alone does not establish a speedup.",
         });
         // Skip past the next so we don't double-report a chain.
         statementIndex++;

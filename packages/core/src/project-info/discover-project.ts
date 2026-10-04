@@ -1,16 +1,13 @@
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { PackageJsonNotFoundError } from "./errors.js";
 import type { PackageJson, ProjectInfo } from "../types/index.js";
 import { LATEST_SUPPORTED_MOBX_MAJOR } from "../constants.js";
 import { isFile } from "./fs-utils.js";
 import { countSourceFiles } from "./count-source-files.js";
-import {
-  detectNextjsStaticExport,
-  detectPreES2023Target,
-  detectReactCompiler,
-  detectReactCompilerLintPlugin,
-} from "./detectors.js";
+import { detectNextjsStaticExport } from "./detect-nextjs-static-export.js";
+import { detectReactCompiler, detectReactCompilerLintPlugin } from "./detect-react-compiler.js";
+import { detectPreES2023Target } from "./detect-pre-es2023-target.js";
+import { detectShadcnUi } from "./detect-shadcn-ui.js";
 import {
   extractDependencyInfo,
   getDependencyDeclaration,
@@ -40,14 +37,21 @@ import {
 } from "./version.js";
 import { clearTargetBlankOpenerProtectionCache } from "./detect-target-blank-opener-protection.js";
 
-export { discoverReactSubprojects } from "./discover-react-subprojects.js";
-export { formatFrameworkName } from "./detectors.js";
+export {
+  discoverReactSubprojects,
+  discoverSupportedSubprojects,
+} from "./discover-react-subprojects.js";
+export { formatFrameworkName } from "./detect-framework.js";
 export { listWorkspacePackages } from "./workspaces.js";
 
 const cachedProjectInfos = new Map<string, ProjectInfo>();
 
+export const isProjectInfoCached = (directory: string): boolean =>
+  cachedProjectInfos.has(directory);
+
 export interface DiscoverProjectOptions {
   readonly sourceFileCount?: number;
+  readonly hasReactCompiler?: boolean;
 }
 
 // HACK: paired with clearConfigCache — exposed so programmatic API
@@ -73,7 +77,7 @@ const discoverProjectWithoutPackageJson = (
   options: DiscoverProjectOptions,
 ): ProjectInfo => {
   const sourceFileCount = options.sourceFileCount ?? countSourceFiles(directory);
-  const hasOwnTsConfig = fs.existsSync(path.join(directory, "tsconfig.json"));
+  const hasOwnTsConfig = isFile(path.join(directory, "tsconfig.json"));
 
   const enclosingProjectRoot = findNearestAncestorPackageJson(directory);
   const enclosingProject =
@@ -128,6 +132,12 @@ const discoverProjectWithoutPackageJson = (
     remotionVersion: null,
     remotionMajorVersion: null,
     hasI18nLibrary: false,
+    hasRadixUi: false,
+    hasBaseUi: false,
+    hasReactAriaComponents: false,
+    hasTanstackTable: false,
+    hasTanstackVirtual: false,
+    hasTanstackForm: false,
     tanstackQueryVersion: null,
     styledComponentsVersion: null,
     hasThree: false,
@@ -149,6 +159,7 @@ const discoverProjectWithoutPackageJson = (
     shopifyFlashListMajorVersion: null,
     hasReanimated: false,
     reanimatedVersion: null,
+    hasShadcnUi: detectShadcnUi(directory),
     isPreES2023Target: hasOwnTsConfig && detectPreES2023Target(directory),
     isStaticExport: false,
     sourceFileCount,
@@ -262,7 +273,7 @@ export const discoverProject = (
   const zodVersion = zod.version;
 
   const projectName = packageJson.name ?? path.basename(directory);
-  const hasTypeScript = fs.existsSync(path.join(directory, "tsconfig.json"));
+  const hasTypeScript = isFile(path.join(directory, "tsconfig.json"));
   const sourceFileCount = options.sourceFileCount ?? countSourceFiles(directory);
 
   // The gates below are semantic, not perf: `expoVersion` / `nextjsVersion`
@@ -380,10 +391,16 @@ export const discoverProject = (
     zustandMajorVersion: zustandVersion === null ? null : getLowestDependencyMajor(zustandVersion),
     framework,
     hasTypeScript,
-    hasReactCompiler: detectReactCompiler(directory, packageJson),
+    hasReactCompiler: options.hasReactCompiler ?? detectReactCompiler(directory, packageJson),
     hasReactCompilerLintPlugin: detectReactCompilerLintPlugin(directory, packageJson),
     hasTanStackQuery: tanstackQueryVersion !== null,
     hasI18nLibrary: workspaceFacts.hasI18nLibrary,
+    hasRadixUi: workspaceFacts.hasRadixUi,
+    hasBaseUi: workspaceFacts.hasBaseUi,
+    hasReactAriaComponents: workspaceFacts.hasReactAriaComponents,
+    hasTanstackTable: workspaceFacts.hasTanstackTable,
+    hasTanstackVirtual: workspaceFacts.hasTanstackVirtual,
+    hasTanstackForm: workspaceFacts.hasTanstackForm,
     tanstackQueryVersion,
     styledComponentsVersion: workspaceFacts.styledComponentsVersion,
     valtioVersion,
@@ -413,6 +430,7 @@ export const discoverProject = (
       shopifyFlashListVersion === null ? null : getLowestDependencyMajor(shopifyFlashListVersion),
     hasReanimated,
     reanimatedVersion,
+    hasShadcnUi: workspaceFacts.hasShadcnUi,
     isPreES2023Target,
     // The static-export probe reads `next.config.*` next to the manifest
     // that supplied the `next` dependency signal — the scan root when it

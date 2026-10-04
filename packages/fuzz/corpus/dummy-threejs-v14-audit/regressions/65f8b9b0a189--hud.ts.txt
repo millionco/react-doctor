@@ -1,0 +1,291 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 65f8b9b0a189f55161dc1986fe49de095ffe35b9cd0cc2b356710d0d7f1e8d2c
+import { BEATS_PER_BAR } from "../core/config";
+import { clamp } from "../core/util";
+
+export type SegState = "pending" | "current" | "cleared" | "mastered";
+
+export interface RunStats {
+  score: number;
+  bestCombo: number;
+  perfect: number;
+  good: number;
+  off: number;
+  motes: number;
+  moteTotal: number;
+  crashes: number;
+  mastered: number;
+  bars: number;
+  seconds: number;
+}
+
+const el = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] => {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+};
+
+/** All 2D feedback: progress, judgement, cues, banners and the two overlays. */
+export class Hud {
+  readonly root = el("div");
+  private segs: HTMLDivElement[] = [];
+  private pips: HTMLDivElement[] = [];
+  private vScore = el("div", "v");
+  private vCombo = el("div", "v combo");
+  private vBar = el("div", "v");
+  private vTries = el("div", "v");
+  private judgeEl = el("div", "judge");
+  private bannerEl = el("div", "banner");
+  private bannerBig = el("div", "big");
+  private bannerSub = el("div", "sub");
+  private chipFloor = el("div", "chip floor", "Floor");
+  private chipCeil = el("div", "chip ceil", "Ceiling");
+  private cueEl = el("div", "cue");
+  private nudgeEl = el("div", "nudge");
+  private modeTag = el("div", "mode-tag");
+  private titleOverlay = el("div", "overlay show");
+  private resultsOverlay = el("div", "overlay");
+  private resultsBody = el("div", "results");
+  private resultsGrade = el("div", "grade");
+  private resultsTitle = el("div", "title");
+  private resultsCta = el("div", "cta");
+  private loading = document.getElementById("loading");
+  private judgeToken = 0;
+
+  constructor() {
+    this.root.id = "hud";
+
+    // --- top bar
+    const top = el("div", "top");
+    const left = el("div", "panel");
+    const stats = el("div", "stat-row");
+    stats.append(
+      this.stat("Score", this.vScore),
+      this.stat("Combo", this.vCombo),
+      this.stat("Bar", this.vBar),
+      this.stat("Retries", this.vTries),
+    );
+    left.append(stats);
+
+    const mid = el("div", "timeline-wrap");
+    const timeline = el("div", "timeline");
+    const labels = el("div", "timeline-labels");
+    const pipWrap = el("div", "beat-pips");
+    for (let i = 0; i < BEATS_PER_BAR; i++) {
+      const pip = el("div", "pip");
+      this.pips.push(pip);
+      pipWrap.append(pip);
+    }
+    labels.append(el("span", undefined, "Start"), pipWrap, el("span", undefined, "Finish"));
+    mid.append(timeline, labels);
+    this.timelineHost = timeline;
+
+    const right = el("div", "panel");
+    right.append(el("div", "hint", "<b>Mouse wheel</b> zoom &nbsp; <b>M</b> mute &nbsp; <b>Esc</b> pause"));
+
+    top.append(left, mid, right);
+
+    // --- centre
+    const centre = el("div", "centre");
+    this.bannerEl.append(this.bannerBig, this.bannerSub);
+    centre.append(this.judgeEl, this.bannerEl, this.modeTag);
+
+    // --- bottom
+    const bottom = el("div", "bottom");
+    const hint = el(
+      "div",
+      "hint",
+      "<b>Space / W / &uarr;</b> flip polarity<br><b>A D / &larr; &rarr;</b> change lane<br><b>Tab</b> rehearse bar &nbsp; <b>R</b> retry bar",
+    );
+    const pol = el("div", "polarity");
+    const chips = el("div", "chips");
+    chips.append(this.chipFloor, this.chipCeil);
+    pol.append(this.cueEl, chips);
+    bottom.append(hint, pol, this.nudgeEl);
+
+    this.root.append(top, centre, bottom, this.buildTitle(), this.buildResults());
+    document.body.append(this.root);
+  }
+
+  private timelineHost!: HTMLDivElement;
+
+  private stat(k: string, v: HTMLElement): HTMLElement {
+    const s = el("div", "stat");
+    s.append(el("div", "k", k), v);
+    return s;
+  }
+
+  private buildTitle(): HTMLElement {
+    const o = this.titleOverlay;
+    const keys = el("div", "keys");
+    const rows: [string, string][] = [
+      ["Space / W", "Flip polarity"],
+      ["A / D", "Change lane"],
+      ["Tab", "Rehearse bar"],
+      ["Wheel", "Zoom camera"],
+      ["R", "Retry bar"],
+      ["M / Esc", "Mute / pause"],
+    ];
+    for (const [k, v] of rows) {
+      const row = el("div", "key");
+      row.append(el("kbd", undefined, k), el("span", undefined, v));
+      keys.append(row);
+    }
+    o.append(
+      el("div", "title", "Polarity&nbsp;Beat"),
+      el("div", "tagline", "Flip decks on the beat &middot; rehearse the hard bars &middot; reach the finish"),
+      keys,
+      el("div", "cta", "Press Space to run"),
+    );
+    return o;
+  }
+
+  private buildResults(): HTMLElement {
+    const o = this.resultsOverlay;
+    o.append(this.resultsTitle, this.resultsGrade, this.resultsBody, this.resultsCta);
+    return o;
+  }
+
+  /** Gameplay chrome is hidden behind the title and results overlays. */
+  setPlaying(playing: boolean): void {
+    this.root.classList.toggle("playing", playing);
+  }
+
+  hideLoading(): void {
+    const node = this.loading;
+    if (!node) return;
+    node.classList.add("hide");
+    window.setTimeout(() => node.remove(), 700);
+  }
+
+  buildTimeline(bars: number, flipsPerBar: number[]): void {
+    this.timelineHost.innerHTML = "";
+    this.segs = [];
+    for (let i = 0; i < bars; i++) {
+      const seg = el("div", "seg");
+      if ((flipsPerBar[i] ?? 0) >= 2) seg.classList.add("hard");
+      this.segs.push(seg);
+      this.timelineHost.append(seg);
+    }
+  }
+
+  setSeg(i: number, state: SegState): void {
+    const seg = this.segs[i];
+    if (!seg) return;
+    seg.classList.remove("current", "cleared", "mastered");
+    if (state !== "pending") seg.classList.add(state);
+  }
+
+  setCurrent(i: number): void {
+    for (const [j, seg] of this.segs.entries()) {
+      if (j === i) seg.classList.add("current");
+      else seg.classList.remove("current");
+    }
+  }
+
+  setStats(score: number, combo: number, bar: number, bars: number, retries: number): void {
+    this.vScore.textContent = String(Math.round(score)).padStart(5, "0");
+    this.vCombo.textContent = combo > 0 ? `x${combo}` : "-";
+    this.vBar.textContent = `${clamp(bar + 1, 1, bars)}/${bars}`;
+    this.vTries.textContent = String(retries);
+    this.vTries.className = retries > 0 ? "v warn" : "v";
+  }
+
+  setBeatPips(beatInBar: number, active: boolean): void {
+    for (const [i, pip] of this.pips.entries()) {
+      pip.classList.toggle("on", active && i === beatInBar);
+    }
+  }
+
+  setPolarity(pol: 0 | 1): void {
+    this.chipFloor.classList.toggle("on", pol === 0);
+    this.chipCeil.classList.toggle("on", pol === 1);
+  }
+
+  setCue(text: string): void {
+    this.cueEl.textContent = text;
+  }
+
+  setNudge(text: string): void {
+    this.nudgeEl.textContent = text;
+  }
+
+  setMode(text: string): void {
+    this.modeTag.textContent = text;
+    this.modeTag.classList.toggle("show", text.length > 0);
+  }
+
+  judge(text: string, kind: "perfect" | "good" | "off" | "bad"): void {
+    const token = ++this.judgeToken;
+    this.judgeEl.className = "judge";
+    // Restart the CSS animation.
+    void this.judgeEl.offsetWidth;
+    this.judgeEl.textContent = text;
+    this.judgeEl.className = `judge ${kind} show`;
+    window.setTimeout(() => {
+      if (this.judgeToken === token) this.judgeEl.className = "judge";
+    }, 640);
+  }
+
+  banner(big: string, sub = ""): void {
+    this.bannerBig.textContent = big;
+    this.bannerSub.textContent = sub;
+    this.bannerEl.classList.add("show");
+  }
+
+  hideBanner(): void {
+    this.bannerEl.classList.remove("show");
+  }
+
+  showTitle(show: boolean): void {
+    this.titleOverlay.classList.toggle("show", show);
+  }
+
+  showResults(stats: RunStats | null): void {
+    if (!stats) {
+      this.resultsOverlay.classList.remove("show");
+      return;
+    }
+    const flips = stats.perfect + stats.good + stats.off;
+    const accuracy = flips > 0 ? Math.round(((stats.perfect + stats.good * 0.6) / flips) * 100) : 100;
+    const grade =
+      stats.crashes === 0 && accuracy >= 92
+        ? "S"
+        : accuracy >= 85
+          ? "A"
+          : accuracy >= 70
+            ? "B"
+            : accuracy >= 55
+              ? "C"
+              : "D";
+    this.resultsTitle.textContent = "Track Complete";
+    this.resultsGrade.textContent = grade;
+    this.resultsBody.innerHTML = "";
+    const rows: [string, string][] = [
+      ["Score", String(Math.round(stats.score))],
+      ["Sync accuracy", `${accuracy}%`],
+      ["Best combo", `x${stats.bestCombo}`],
+      ["Perfect flips", `${stats.perfect}`],
+      ["Motes", `${stats.motes}/${stats.moteTotal}`],
+      ["Bars first try", `${stats.mastered}/${stats.bars}`],
+      ["Retries", `${stats.crashes}`],
+      ["Time", `${stats.seconds.toFixed(1)}s`],
+      ["Off-beat flips", `${stats.off}`],
+    ];
+    for (const [k, v] of rows) {
+      const r = el("div", "result");
+      r.append(el("div", "k", k), el("div", "v", v));
+      this.resultsBody.append(r);
+    }
+    this.resultsCta.textContent = "Press R to run again";
+    this.resultsOverlay.classList.add("show");
+  }
+}

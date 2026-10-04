@@ -279,47 +279,83 @@ export const authTokenInWebStorage = defineRule({
   severity: "warn",
   recommendation:
     "Don't persist auth tokens (JWTs, access/refresh tokens, secrets) in `localStorage`/`sessionStorage`; they're readable by any XSS. Use an `HttpOnly` cookie set by the server.",
-  create: skipNonProductionFiles((context) => ({
-    // `localStorage.setItem("authToken", t)`
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const callee = stripParenExpression(node.callee);
-      const keyArguments: EsTreeNode[] = [];
-      if (
-        isNodeOfType(callee, "MemberExpression") &&
-        !callee.computed &&
-        isNodeOfType(callee.property, "Identifier") &&
-        callee.property.name === "setItem" &&
-        isWebStorageObject(stripParenExpression(callee.object))
-      ) {
-        const keyArgument = node.arguments[0];
-        if (keyArgument) keyArguments.push(keyArgument);
-      } else if (isNodeOfType(callee, "Identifier")) {
-        const helperFunction = immutableInitializer(callee);
-        const helperSinks = helperFunction
-          ? findStorageHelperSinks(helperFunction, context.scopes)
-          : [];
-        for (const helperSink of helperSinks) {
-          const keyArgument = node.arguments[helperSink.keyParameterIndex];
-          if (keyArgument && node.arguments[helperSink.valueParameterIndex]) {
-            keyArguments.push(keyArgument);
-          }
-        }
-      }
+  create: skipNonProductionFiles((context) => {
+    let programHasSetItemMember = false;
+    const pendingHelperCalls: EsTreeNodeOfType<"CallExpression">[] = [];
+
+    const reportCredentialKey = (
+      node: EsTreeNodeOfType<"CallExpression">,
+      keyArguments: readonly EsTreeNode[],
+    ): void => {
       const hasCredentialKey = keyArguments.some((keyArgument) => {
         const keyString = resolveStaticKeyString(keyArgument);
         return keyString !== null && isAuthCredentialKey(keyString);
       });
       if (!hasCredentialKey) return;
       context.report({ node, message: MESSAGE });
-    },
-    // `localStorage.authToken = t` / `localStorage["jwt"] = t`
-    AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
-      const target = node.left;
-      if (!isNodeOfType(target, "MemberExpression")) return;
-      if (!isWebStorageObject(target.object)) return;
-      const propertyName = staticMemberName(target);
-      if (!propertyName || !isAuthCredentialKey(propertyName)) return;
-      context.report({ node: target, message: MESSAGE });
-    },
-  })),
+    };
+
+    const checkHelperCall = (
+      node: EsTreeNodeOfType<"CallExpression">,
+      callee: EsTreeNodeOfType<"Identifier">,
+    ): void => {
+      const helperFunction = immutableInitializer(callee);
+      const helperSinks = helperFunction
+        ? findStorageHelperSinks(helperFunction, context.scopes)
+        : [];
+      const keyArguments: EsTreeNode[] = [];
+      for (const helperSink of helperSinks) {
+        const keyArgument = node.arguments[helperSink.keyParameterIndex];
+        if (keyArgument && node.arguments[helperSink.valueParameterIndex]) {
+          keyArguments.push(keyArgument);
+        }
+      }
+      reportCredentialKey(node, keyArguments);
+    };
+
+    return {
+      MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
+        if (
+          !programHasSetItemMember &&
+          !node.computed &&
+          isNodeOfType(node.property, "Identifier") &&
+          node.property.name === "setItem"
+        ) {
+          programHasSetItemMember = true;
+        }
+      },
+      // `localStorage.setItem("authToken", t)`
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        const callee = stripParenExpression(node.callee);
+        if (
+          isNodeOfType(callee, "MemberExpression") &&
+          !callee.computed &&
+          isNodeOfType(callee.property, "Identifier") &&
+          callee.property.name === "setItem" &&
+          isWebStorageObject(stripParenExpression(callee.object))
+        ) {
+          const keyArgument = node.arguments[0];
+          reportCredentialKey(node, keyArgument ? [keyArgument] : []);
+        } else if (isNodeOfType(callee, "Identifier")) {
+          pendingHelperCalls.push(node);
+        }
+      },
+      "Program:exit"() {
+        if (!programHasSetItemMember) return;
+        for (const pendingHelperCall of pendingHelperCalls) {
+          const callee = stripParenExpression(pendingHelperCall.callee);
+          if (isNodeOfType(callee, "Identifier")) checkHelperCall(pendingHelperCall, callee);
+        }
+      },
+      // `localStorage.authToken = t` / `localStorage["jwt"] = t`
+      AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
+        const target = node.left;
+        if (!isNodeOfType(target, "MemberExpression")) return;
+        const propertyName = staticMemberName(target);
+        if (!propertyName || !isAuthCredentialKey(propertyName)) return;
+        if (!isWebStorageObject(target.object)) return;
+        context.report({ node: target, message: MESSAGE });
+      },
+    };
+  }),
 });

@@ -28,7 +28,7 @@ describe("buildNoScoreMessage", () => {
 
   it("explains when incomplete analysis suppressed the score", () => {
     expect(buildNoScoreMessage({ isScoreDisabled: false, isAnalysisIncomplete: true })).toBe(
-      `Score not shown because lint or dead-code analysis could not complete. Want something custom to your company? Contact us at ${ENTERPRISE_CONTACT_URL}.`,
+      `Score not shown because lint or maintainability analysis could not complete. Want something custom to your company? Contact us at ${ENTERPRISE_CONTACT_URL}.`,
     );
   });
 });

@@ -19,6 +19,22 @@ describe("security-scan/public-env-secret-name — regressions", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it("stays silent on public tokens", () => {
+    const findings = runScanRule(publicEnvSecretName, {
+      relativePath: "src/lib/identity.ts",
+      content: `const token = import.meta.env.VITE_STYTCH_PUBLIC_TOKEN;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags secret-qualified public token names", () => {
+    const findings = runScanRule(publicEnvSecretName, {
+      relativePath: "src/lib/identity.ts",
+      content: `const token = import.meta.env.VITE_STYTCH_PUBLIC_TOKEN_SECRET;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("stays silent on snippets under a docs tree", () => {
     const findings = runScanRule(publicEnvSecretName, {
       relativePath: "docs/onboarding/feature-flags/react-router.tsx",

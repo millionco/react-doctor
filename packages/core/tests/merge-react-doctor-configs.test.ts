@@ -61,6 +61,33 @@ describe("mergeReactDoctorConfigs", () => {
     });
   });
 
+  it("does not throw when programmatic configs contain malformed ignore arrays", () => {
+    const malformedBase = {
+      ignore: {
+        rules: "react-doctor/no-prop-drilling",
+        files: 42,
+        tags: { name: "design" },
+        overrides: "legacy",
+      },
+    } as unknown as ReactDoctorConfig;
+
+    expect(
+      mergeReactDoctorConfigs(malformedBase, {
+        ignore: {
+          rules: ["react-doctor/no-array-index-as-key"],
+          files: ["dist/**"],
+          tags: ["test-noise"],
+          overrides: [{ files: ["generated/**"] }],
+        },
+      })?.ignore,
+    ).toEqual({
+      rules: ["react-doctor/no-array-index-as-key"],
+      files: ["dist/**"],
+      tags: ["test-noise"],
+      overrides: [{ files: ["generated/**"] }],
+    });
+  });
+
   it("merges `supplyChain` per field", () => {
     const merged = mergeReactDoctorConfigs(
       { supplyChain: { enabled: true } },

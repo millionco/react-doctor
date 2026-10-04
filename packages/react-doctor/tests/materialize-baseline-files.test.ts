@@ -104,4 +104,62 @@ describe("materializeBaselineFiles", () => {
     expect(snapshot?.unmaterializedFiles).toEqual([filePath]);
     snapshot?.cleanup();
   });
+
+  it("materializes a deleted base source alongside the modified files", async () => {
+    const deletedPath = path.join(directory, "src/components/footer.tsx");
+    const modifiedPath = path.join(directory, "src/components/header.tsx");
+    fs.mkdirSync(path.dirname(deletedPath), { recursive: true });
+    fs.writeFileSync(deletedPath, "export const Footer = () => <footer />;\n");
+    fs.writeFileSync(modifiedPath, "export const Header = () => <header />;\n");
+    const baseRef = commitAll(directory, "base");
+    fs.rmSync(deletedPath);
+    fs.writeFileSync(modifiedPath, "export const Header = () => <header>hi</header>;\n");
+    commitAll(directory, "delete footer");
+
+    const snapshot = await materializeBaselineFiles({
+      directory,
+      ref: baseRef,
+      files: ["src/components/header.tsx"],
+      tempDirectory,
+    });
+
+    expect(snapshot?.isComplete).toBe(true);
+    expect(snapshot?.baseFiles).toEqual(["src/components/footer.tsx", "src/components/header.tsx"]);
+    expect(snapshot?.headFiles).toEqual(["src/components/header.tsx"]);
+    expect(snapshot?.materializedFiles).toEqual([
+      "src/components/header.tsx",
+      "src/components/footer.tsx",
+    ]);
+    expect(fs.readFileSync(path.join(tempDirectory, "src/components/footer.tsx"), "utf-8")).toBe(
+      "export const Footer = () => <footer />;\n",
+    );
+    snapshot?.cleanup();
+  });
+
+  it("stays complete when an unreadable base source no longer exists at head", async () => {
+    const deletedPath = "src/pointer.tsx";
+    const modifiedPath = "src/tracked.tsx";
+    fs.mkdirSync(path.join(directory, "src"), { recursive: true });
+    fs.writeFileSync(
+      path.join(directory, deletedPath),
+      "version https://git-lfs.github.com/spec/v1\noid sha256:0123456789\nsize 10\n",
+    );
+    fs.writeFileSync(path.join(directory, modifiedPath), "export const value = 1;\n");
+    const baseRef = commitAll(directory, "base");
+    fs.rmSync(path.join(directory, deletedPath));
+    fs.writeFileSync(path.join(directory, modifiedPath), "export const value = 2;\n");
+
+    const snapshot = await materializeBaselineFiles({
+      directory,
+      ref: baseRef,
+      files: [modifiedPath],
+      tempDirectory,
+    });
+
+    expect(snapshot?.isComplete).toBe(true);
+    expect(snapshot?.baseFiles).toEqual([deletedPath, modifiedPath]);
+    expect(snapshot?.headFiles).toEqual([modifiedPath]);
+    expect(snapshot?.unmaterializedFiles).toEqual([deletedPath]);
+    snapshot?.cleanup();
+  });
 });

@@ -1,13 +1,20 @@
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import { render } from "ink";
+import { isValidElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { InspectResult, ResolvedScanTarget, WorkspacePackage } from "@react-doctor/core";
-import { Reporter, resolveScanTarget } from "@react-doctor/core";
+import type {
+  DiffInfo,
+  InspectResult,
+  ResolvedScanTarget,
+  WorkspacePackage,
+} from "@react-doctor/core";
+import { getBaselineDiffPlan, getDiffInfo, Reporter, resolveScanTarget } from "@react-doctor/core";
 import { runScanApp } from "../../src/cli/ink/run-scan-app.js";
 import type { ScanStore, TuiHandoffRequest } from "../../src/cli/ink/scan-store.js";
-import { clearActiveTuiRenderer } from "../../src/cli/utils/active-tui-renderer.js";
+import { preserveActiveTuiRendererOutput } from "../../src/cli/utils/active-tui-renderer.js";
 import { computeProjectedScore } from "../../src/cli/utils/compute-score-projection.js";
+import { METRIC } from "../../src/cli/utils/constants.js";
 import { inspect } from "../../src/inspect.js";
 import { buildDiagnostic, buildTestProject } from "../regressions/_helpers.js";
 
@@ -31,8 +38,11 @@ const mockState = vi.hoisted(() => ({
   scanTargets: new Map<string, ResolvedScanTarget>(),
   inspectResults: new Map<string, InspectResult>(),
   shouldRequestHandoff: false,
+  shouldRequestPromptCopy: false,
+  shouldCopyPromptSucceed: true,
   shouldSetUpCi: false,
   shouldQuit: false,
+  shouldAutoSubmitProjectSelection: true,
   scanRendererClearCount: 0,
   lifecycleEvents: new Array<string>(),
   scanStores: new Array<ScanStore>(),
@@ -40,13 +50,24 @@ const mockState = vi.hoisted(() => ({
   ciRecommendationStates: new Array<boolean>(),
 }));
 
+const mockRecordCount = vi.hoisted(() => vi.fn());
+
+vi.mock("../../src/cli/utils/record-metric.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/cli/utils/record-metric.js")>();
+  return { ...actual, recordCount: mockRecordCount };
+});
+
 vi.mock("ink", async (importOriginal) => {
   const actual = await importOriginal<typeof import("ink")>();
   const React = await import("react");
   return {
     ...actual,
     render: vi.fn((node) => {
-      if (React.isValidElement<MockProjectSelectProps>(node) && node.props.packages) {
+      if (
+        React.isValidElement<MockProjectSelectProps>(node) &&
+        node.props.packages &&
+        mockState.shouldAutoSubmitProjectSelection
+      ) {
         queueMicrotask(() => node.props.onSubmit?.(mockState.projectDirectories));
       }
       if (React.isValidElement<MockScanAppProps>(node)) {
@@ -58,7 +79,10 @@ vi.mock("ink", async (importOriginal) => {
           mockState.ciRecommendationStates.push(Boolean(node.props.canAddToCi));
         }
         if (mockState.shouldRequestHandoff && node.props.displayMode === "report") {
-          node.props.onHandoff?.({ agentId: "codex", prompt: "fix" });
+          node.props.onHandoff?.({ destination: "codex", prompt: "fix" });
+        }
+        if (mockState.shouldRequestPromptCopy && node.props.displayMode === "report") {
+          node.props.onHandoff?.({ destination: "clipboard", prompt: "fix" });
         }
         if (mockState.shouldSetUpCi && node.props.displayMode === "report") {
           node.props.onAddToCi?.();
@@ -92,13 +116,15 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
         mapInput: (input: Input) => Promise<Output>,
       ): Promise<Output[]> => Promise.all(inputs.map(mapInput)),
     ),
+    getBaselineDiffPlan: vi.fn(),
+    getDiffInfo: vi.fn(),
   };
 });
 
-vi.mock("../../src/cli/utils/collect-project-source-file-counts.js", () => ({
-  collectProjectSourceFileCounts: vi.fn(
+vi.mock("../../src/cli/utils/collect-project-source-files.js", () => ({
+  collectProjectSourceFiles: vi.fn(
     async (_rootDirectory: string, projectDirectories: ReadonlyArray<string>) =>
-      new Map(projectDirectories.map((projectDirectory) => [projectDirectory, 0])),
+      new Map(projectDirectories.map((projectDirectory) => [projectDirectory, []])),
   ),
 }));
 
@@ -123,8 +149,10 @@ vi.mock("../../src/cli/utils/detect-launchable-agents.js", () => ({
   detectLaunchableAgents: vi.fn(async () => []),
 }));
 
+const mockIsReactDoctorWorkflowInstalled = vi.hoisted(() => vi.fn(() => true));
+
 vi.mock("../../src/cli/utils/install-github-workflow.js", () => ({
-  isReactDoctorWorkflowInstalled: vi.fn(() => true),
+  isReactDoctorWorkflowInstalled: mockIsReactDoctorWorkflowInstalled,
 }));
 
 vi.mock("../../src/cli/utils/set-up-github-actions.js", () => ({
@@ -134,13 +162,9 @@ vi.mock("../../src/cli/utils/set-up-github-actions.js", () => ({
   }),
 }));
 
-vi.mock("../../src/cli/utils/render-summary.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../src/cli/utils/render-summary.js")>();
-  return {
-    ...actual,
-    printFooter: vi.fn(() => Effect.sync(() => mockState.lifecycleEvents.push("footer"))),
-  };
-});
+vi.mock("../../src/cli/utils/print-footer.js", () => ({
+  printFooter: vi.fn(() => Effect.sync(() => mockState.lifecycleEvents.push("footer"))),
+}));
 
 vi.mock("../../src/cli/utils/launch-agent.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/cli/utils/launch-agent.js")>();
@@ -148,6 +172,10 @@ vi.mock("../../src/cli/utils/launch-agent.js", async (importOriginal) => {
     ...actual,
     launchCliAgent: vi.fn(async () => {
       mockState.lifecycleEvents.push("handoff");
+    }),
+    copyToClipboard: vi.fn(async () => {
+      mockState.lifecycleEvents.push("copy");
+      return mockState.shouldCopyPromptSucceed;
     }),
   };
 });
@@ -191,8 +219,11 @@ describe("runScanApp", () => {
     mockState.scanTargets.clear();
     mockState.inspectResults.clear();
     mockState.shouldRequestHandoff = false;
+    mockState.shouldRequestPromptCopy = false;
+    mockState.shouldCopyPromptSucceed = true;
     mockState.shouldSetUpCi = false;
     mockState.shouldQuit = false;
+    mockState.shouldAutoSubmitProjectSelection = true;
     mockState.scanRendererClearCount = 0;
     mockState.lifecycleEvents.length = 0;
     mockState.scanStores.length = 0;
@@ -232,7 +263,7 @@ describe("runScanApp", () => {
     });
   });
 
-  it("clears the project selection screen through the active renderer lifecycle", async () => {
+  it("preserves the active screen in scrollback when exiting", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const rootDirectory = "/repo";
     const originalIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
@@ -241,6 +272,7 @@ describe("runScanApp", () => {
       { name: "web", directory: "/repo/apps/web" },
       { name: "admin", directory: "/repo/apps/admin" },
     );
+    mockState.shouldAutoSubmitProjectSelection = false;
     mockState.scanTargets.set(
       rootDirectory,
       buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
@@ -248,15 +280,19 @@ describe("runScanApp", () => {
 
     try {
       const scanPromise = runScanApp({ directory: rootDirectory });
-      await Promise.resolve();
+      await vi.waitFor(() => expect(render).toHaveBeenCalled());
       const selectionRenderer = vi.mocked(render).mock.results[0]?.value;
 
-      clearActiveTuiRenderer();
+      preserveActiveTuiRendererOutput();
 
-      expect(selectionRenderer?.clear).toHaveBeenCalledOnce();
+      expect(selectionRenderer?.clear).not.toHaveBeenCalled();
       expect(selectionRenderer?.unmount).toHaveBeenCalledOnce();
+      const selectionNode = vi.mocked(render).mock.calls[0]?.[0];
+      if (isValidElement<MockProjectSelectProps>(selectionNode)) {
+        selectionNode.props.onSubmit?.([]);
+      }
       await scanPromise;
-      expect(selectionRenderer?.clear).toHaveBeenCalledOnce();
+      expect(selectionRenderer?.clear).not.toHaveBeenCalled();
       expect(selectionRenderer?.unmount).toHaveBeenCalledOnce();
     } finally {
       if (originalIsTtyDescriptor) {
@@ -306,13 +342,13 @@ describe("runScanApp", () => {
     mockState.inspectResults.set(rootDirectory, {
       ...buildInspectResult(rootDirectory),
       skippedChecks: ["dead-code"],
-      skippedCheckReasons: { "dead-code": "Dead-code analysis failed." },
+      skippedCheckReasons: { "dead-code": "Maintainability analysis failed." },
     });
 
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 
     expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).toContain(
-      "lint or dead-code analysis could not complete",
+      "lint or maintainability analysis could not complete",
     );
     expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).not.toContain(
       "score API",
@@ -337,7 +373,7 @@ describe("runScanApp", () => {
 
     expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).toContain("score API");
     expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).not.toContain(
-      "lint or dead-code analysis could not complete",
+      "lint or maintainability analysis could not complete",
     );
   });
 
@@ -352,7 +388,12 @@ describe("runScanApp", () => {
     );
     mockState.scanTargets.set(
       webDirectory,
-      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+      buildScanTarget(
+        webDirectory,
+        webDirectory,
+        { rules: { "react-doctor/unused-export": "warn" } },
+        webDirectory,
+      ),
     );
     mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
     mockState.inspectResults.set(webDirectory, buildInspectResult(webDirectory));
@@ -365,7 +406,7 @@ describe("runScanApp", () => {
       expect.objectContaining({
         deadCode: true,
         excludedProjectDirectories: [webDirectory],
-        precomputedSourceFileCount: 0,
+        precomputedSourceFiles: [],
         retainExcludedProjectDeadCodeDiagnostics: true,
         uiLayers: expect.objectContaining({ progress: expect.anything() }),
       }),
@@ -374,9 +415,138 @@ describe("runScanApp", () => {
       webDirectory,
       expect.objectContaining({
         deadCode: false,
+        configOverride: { rules: { "react-doctor/unused-export": "warn" } },
         excludedProjectDirectories: [],
         retainExcludedProjectDeadCodeDiagnostics: false,
       }),
+    );
+  });
+
+  it("excludes unselected nested workspace projects from a root-only scan", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const nativeDirectory = "/repo/apps/native";
+    mockState.workspacePackages.push(
+      { name: "root", directory: rootDirectory },
+      { name: "native", directory: nativeDirectory },
+    );
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledWith(
+      rootDirectory,
+      expect.objectContaining({
+        excludedProjectDirectories: [nativeDirectory],
+        retainExcludedProjectDeadCodeDiagnostics: true,
+      }),
+    );
+  });
+
+  it("scans a selected nested project without excluding its own directory", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const nativeDirectory = "/repo/apps/native";
+    mockState.workspacePackages.push(
+      { name: "root", directory: rootDirectory },
+      { name: "native", directory: nativeDirectory },
+    );
+    mockState.projectDirectories.push(nativeDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      nativeDirectory,
+      buildScanTarget(nativeDirectory, nativeDirectory, null, nativeDirectory),
+    );
+    mockState.inspectResults.set(nativeDirectory, buildInspectResult(nativeDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledWith(
+      nativeDirectory,
+      expect.objectContaining({
+        excludedProjectDirectories: [],
+        retainExcludedProjectDeadCodeDiagnostics: false,
+      }),
+    );
+  });
+
+  it("preserves workspace dead-code ownership when a scoped scan skips the root", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const webDirectory = "/repo/apps/web";
+    const diffInfo: DiffInfo = {
+      currentBranch: "feature",
+      baseBranch: "main",
+      changedFiles: ["apps/web/package.json"],
+      isCurrentChanges: true,
+    };
+    vi.mocked(getDiffInfo).mockResolvedValue(diffInfo);
+    mockState.projectDirectories.push(rootDirectory, webDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      webDirectory,
+      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+    );
+    mockState.inspectResults.set(webDirectory, buildInspectResult(webDirectory));
+
+    await runScanApp({
+      directory: rootDirectory,
+      flags: { scope: "files" },
+      skipPrompts: true,
+    });
+
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledWith(
+      webDirectory,
+      expect.objectContaining({ deadCode: false }),
+    );
+  });
+
+  it("excludes unchanged nested projects from a scoped ancestor scan", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const webDirectory = "/repo/apps/web";
+    const diffInfo: DiffInfo = {
+      currentBranch: "feature",
+      baseBranch: "main",
+      changedFiles: ["src/app.tsx"],
+      isCurrentChanges: true,
+    };
+    vi.mocked(getDiffInfo).mockResolvedValue(diffInfo);
+    mockState.projectDirectories.push(rootDirectory, webDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      webDirectory,
+      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+
+    await runScanApp({
+      directory: rootDirectory,
+      flags: { scope: "files" },
+      skipPrompts: true,
+    });
+
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledWith(
+      rootDirectory,
+      expect.objectContaining({ excludedProjectDirectories: [webDirectory] }),
     );
   });
 
@@ -503,6 +673,44 @@ describe("runScanApp", () => {
     expect(result.shouldFail).toBe(true);
   });
 
+  it("copies the full handoff prompt after exiting the report", async () => {
+    const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    mockState.shouldRequestPromptCopy = true;
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.lifecycleEvents).toEqual(["footer", "copy"]);
+    expect(write.mock.calls.flat().join("")).toContain("Copied the prompt to your clipboard.");
+  });
+
+  it("prints the full handoff prompt when clipboard access fails", async () => {
+    const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    mockState.shouldRequestPromptCopy = true;
+    mockState.shouldCopyPromptSucceed = false;
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    const writtenOutput = write.mock.calls.flat().join("");
+    expect(mockState.lifecycleEvents).toEqual(["footer", "copy"]);
+    expect(writtenOutput).toContain("Couldn't access the clipboard. Here's the prompt instead:\n");
+    expect(writtenOutput).toContain("──── Agent prompt ────");
+    expect(writtenOutput).toContain("\nfix\n");
+  });
+
   it("does not start queued project scans after the shared deadline", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const rootDirectory = "/repo";
@@ -585,6 +793,37 @@ describe("runScanApp", () => {
       skipPrompts: true,
     });
     expect(surfaceExcludedResult.shouldFail).toBe(false);
+  });
+
+  it("keeps diagnostics advisory when an intended baseline cannot be computed", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const diffInfo: DiffInfo = {
+      currentBranch: "feature",
+      baseBranch: "main",
+      diffBaseRef: "base-commit",
+      changedFiles: ["src/app.tsx"],
+      isCurrentChanges: false,
+    };
+    vi.mocked(getDiffInfo).mockResolvedValue(diffInfo);
+    vi.mocked(getBaselineDiffPlan).mockResolvedValue(null);
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, {
+      ...buildInspectResult(rootDirectory),
+      diagnostics: [buildDiagnostic({ severity: "error" })],
+    });
+
+    const result = await runScanApp({
+      directory: rootDirectory,
+      flags: { scope: "changed" },
+      skipPrompts: true,
+    });
+
+    expect(result.shouldFail).toBe(false);
   });
 
   it("applies the CLI surface and category filter to the TUI report", async () => {
@@ -744,8 +983,9 @@ describe("runScanApp", () => {
     );
   });
 
-  it("recommends GitHub Actions after scanning multiple projects", async () => {
+  it("recommends GitHub Actions when CI is not configured at root", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    mockIsReactDoctorWorkflowInstalled.mockReturnValue(false);
     const rootDirectory = "/repo";
     const webDirectory = "/repo/apps/web";
     const adminDirectory = "/repo/apps/admin";
@@ -765,6 +1005,55 @@ describe("runScanApp", () => {
     );
     mockState.inspectResults.set(webDirectory, buildInspectResult(webDirectory));
     mockState.inspectResults.set(adminDirectory, buildInspectResult(adminDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.ciRecommendationStates).toEqual([true]);
+    expect(mockIsReactDoctorWorkflowInstalled).toHaveBeenCalledWith(rootDirectory);
+    expect(mockRecordCount).toHaveBeenCalledWith(METRIC.tuiCiRecommendationShown);
+  });
+
+  it("does not recommend CI when root workflow already exists (issue #1696)", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    mockIsReactDoctorWorkflowInstalled.mockReturnValue(true);
+    const rootDirectory = "/repo";
+    const webDirectory = "/repo/apps/web";
+    const adminDirectory = "/repo/apps/admin";
+
+    mockState.projectDirectories.push(webDirectory, adminDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      webDirectory,
+      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+    );
+    mockState.scanTargets.set(
+      adminDirectory,
+      buildScanTarget(adminDirectory, adminDirectory, null, adminDirectory),
+    );
+    mockState.inspectResults.set(webDirectory, buildInspectResult(webDirectory));
+    mockState.inspectResults.set(adminDirectory, buildInspectResult(adminDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.ciRecommendationStates).toEqual([false]);
+    expect(mockIsReactDoctorWorkflowInstalled).toHaveBeenCalledWith(rootDirectory);
+    expect(mockRecordCount).not.toHaveBeenCalledWith(METRIC.tuiCiRecommendationShown);
+  });
+
+  it("checks root directory for CI config in single-project scans", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    mockIsReactDoctorWorkflowInstalled.mockReturnValue(false);
+    const rootDirectory = "/repo";
+
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
 
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 

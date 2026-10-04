@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/display_name.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/react/display_name.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -13,6 +13,7 @@ export interface OxcFixture {
 }
 
 export const passCases: ReadonlyArray<OxcFixture> = [
+  { code: `const createHandler = () => () => { someGlobalFunc(<div />); };` },
   {
     code: `
                     var Hello = createReactClass({
@@ -752,9 +753,29 @@ export const passCases: ReadonlyArray<OxcFixture> = [
                   `,
     oxcOptions: [{ checkContextObjects: true }],
   },
+  {
+    code: `
+                    export default function Hello() {
+                      return <div>Hello {this.props.name}</div>;
+                    }
+                    Hello.displayName = 'Hello';
+                  `,
+    oxcOptions: [{ ignoreTranspilerName: true }],
+  },
+  {
+    code: `
+                    export default function Testing() {
+                      const renderThing = () => <div>Thing</div>;
+                      return <div>{renderThing()}</div>;
+                    }
+                    Testing.displayName = 'Testing';
+                  `,
+    oxcOptions: [{ ignoreTranspilerName: true }],
+  },
 ];
 
 export const failCases: ReadonlyArray<OxcFixture> = [
+  { code: `export default () => { const view = <div/>; return view; };` },
   {
     code: `
                     var Hello = createReactClass({
@@ -1118,5 +1139,11 @@ export const failCases: ReadonlyArray<OxcFixture> = [
                     Hello = React.createContext();
                   `,
     oxcOptions: [{ checkContextObjects: true }],
+  },
+  {
+    code: `export default function Hello() {
+  return <div>Hello {this.props.name}</div>;
+}`,
+    oxcOptions: [{ ignoreTranspilerName: true }],
   },
 ];

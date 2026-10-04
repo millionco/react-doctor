@@ -29,6 +29,7 @@ import {
   REACT_ROUTER_CAPABILITY_THRESHOLDS,
   REANIMATED_WORKLETS_MINIMUM_MAJOR_VERSION,
 } from "../constants.js";
+import { hasReactRuntime } from "../utils/has-react-runtime.js";
 import {
   getLowestDependencyMajor,
   isMajorMinorAtLeast,
@@ -88,9 +89,10 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
 
   capabilities.add(project.framework);
   // `react` gates every React-runtime rule family (hooks, JSX, a11y, render
-  // performance) so they stay off on a plain TS/JS project. Preact satisfies
-  // it too (same hooks + JSX model).
-  if (project.reactVersion !== null || project.preactVersion !== null) {
+  // performance) so they stay off on a plain TS/JS project. Preact and
+  // React-backed frameworks satisfy it even when the leaf manifest omits a
+  // direct runtime dependency.
+  if (hasReactRuntime(project)) {
     capabilities.add("react");
   }
   // `hasReactNativeWorkspace` / `expoVersion` cover the inverted case the
@@ -181,6 +183,13 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
       capabilities.add("tailwind:4");
     }
   }
+  if (project.hasShadcnUi === true) capabilities.add("shadcn");
+  if (project.hasRadixUi === true) capabilities.add("radix-ui");
+  if (project.hasBaseUi === true) capabilities.add("base-ui");
+  if (project.hasReactAriaComponents === true) capabilities.add("react-aria");
+  if (project.hasTanstackTable === true) capabilities.add("tanstack-table");
+  if (project.hasTanstackVirtual === true) capabilities.add("tanstack-virtual");
+  if (project.hasTanstackForm === true) capabilities.add("tanstack-form");
   if (project.zodVersion !== null) capabilities.add("zod");
   if (project.zodMajorVersion !== null && project.zodMajorVersion >= 4) capabilities.add("zod:4");
   if (

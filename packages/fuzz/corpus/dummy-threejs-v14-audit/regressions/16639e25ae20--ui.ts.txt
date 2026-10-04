@@ -1,0 +1,399 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/ui.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 16639e25ae20a9b6ccf611aca7397a9d9fb1a2276ff9547d87c2c16f6b389b39
+/**
+ * DOM overlay: chat, turn banner, builder controls, hand-off curtain and scorecard.
+ * The 3D scene owns all spatial information; this layer only carries language and state.
+ */
+
+export type Role = "architect" | "builder";
+export type GameMode = "duo" | "solo";
+export type MoveDir = "left" | "right" | "forward" | "back" | "up" | "down";
+export type PieceStatus = "pending" | "active" | "locked" | "good" | "near" | "bad";
+
+export interface UiHandlers {
+  onBegin: (mode: GameMode) => void;
+  onSend: (text: string) => void;
+  onMove: (dir: MoveDir) => void;
+  onLock: () => void;
+  onAsk: () => void;
+  onHandoffReady: () => void;
+  onNextRound: () => void;
+  onToggleMute: () => void;
+}
+
+export interface SummaryRow {
+  name: string;
+  glyph: string;
+  color: string;
+  label: string;
+  points: number;
+}
+
+export interface SummaryData {
+  title: string;
+  blurb: string;
+  stars: number;
+  passed: boolean;
+  total: number;
+  max: number;
+  rows: SummaryRow[];
+  nextLabel: string;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+const ROLE_NAME: Record<Role, string> = { architect: "Architect", builder: "Builder" };
+
+export class Ui {
+  readonly root: HTMLDivElement;
+  private titleScreen: HTMLDivElement;
+  private hud: HTMLDivElement;
+  private phaseBanner: HTMLDivElement;
+  private phaseTitle: HTMLDivElement;
+  private phaseSub: HTMLDivElement;
+  private roundLabel: HTMLSpanElement;
+  private scoreLabel: HTMLSpanElement;
+  private pips: HTMLDivElement;
+  private pieceCard: HTMLDivElement;
+  private chatLog: HTMLDivElement;
+  private chatInput: HTMLInputElement;
+  private chatSend: HTMLButtonElement;
+  private chatCounter: HTMLSpanElement;
+  private chatHint: HTMLDivElement;
+  private controls: HTMLDivElement;
+  private moveMeter: HTMLDivElement;
+  private moveLabel: HTMLSpanElement;
+  private lockBtn: HTMLButtonElement;
+  private askBtn: HTMLButtonElement;
+  private curtain: HTMLDivElement;
+  private curtainTitle: HTMLDivElement;
+  private curtainSub: HTMLDivElement;
+  private summary: HTMLDivElement;
+  private toastBox: HTMLDivElement;
+  private muteBtn: HTMLButtonElement;
+  private helpPanel: HTMLDivElement;
+  private maxLen = 140;
+  private toastTimer = 0;
+
+  constructor(private handlers: UiHandlers) {
+    this.root = el("div", "ui-root");
+
+    /* ---------- title ---------- */
+    this.titleScreen = el("div", "title-screen");
+    this.titleScreen.innerHTML = `
+      <div class="title-card">
+        <div class="title-kicker">A two-player kiln-yard puzzle</div>
+        <h1>Blind&nbsp;Build</h1>
+        <p class="title-blurb">
+          You stand on opposite sides of the same rack. The <b>Architect</b> sees a hologram of the
+          finished stack and may only speak. The <b>Builder</b> sees real fired blocks — and everything
+          the Architect says is <b>mirrored</b>: their left is your right, their far row is your near row.
+        </p>
+        <ul class="title-points">
+          <li><b>Landmarks beat left and right.</b> The kiln burns at one end, the cistern sits at the other. Both of you can see them.</li>
+          <li><b>Blocks hide blocks.</b> Lean and zoom to see past the front row; you cannot walk around to the other side.</li>
+          <li><b>Moves are rationed.</b> Lock a block when you are sure, then swap the turn.</li>
+        </ul>
+        <div class="title-modes">
+          <button class="btn primary" data-mode="duo">Two players &mdash; hot seat</button>
+          <button class="btn" data-mode="solo">Solo drill &mdash; the Foreman dictates</button>
+        </div>
+        <div class="title-controls">
+          Arrow keys / WASD move &middot; Q&nbsp;E change shelf &middot; Space locks &middot;
+          drag to lean &middot; wheel to zoom
+        </div>
+      </div>`;
+    this.root.appendChild(this.titleScreen);
+    this.titleScreen.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((b) => {
+      b.addEventListener("click", () => this.handlers.onBegin(b.dataset.mode as GameMode));
+    });
+
+    /* ---------- hud ---------- */
+    this.hud = el("div", "hud hidden");
+    this.root.appendChild(this.hud);
+
+    const topBar = el("div", "top-bar");
+    this.roundLabel = el("span", "round-label", "Commission 1");
+    this.pips = el("div", "pips");
+    this.scoreLabel = el("span", "score-label", "");
+    topBar.append(this.roundLabel, this.pips, this.scoreLabel);
+    this.hud.appendChild(topBar);
+
+    this.phaseBanner = el("div", "phase-banner");
+    this.phaseTitle = el("div", "phase-title", "");
+    this.phaseSub = el("div", "phase-sub", "");
+    this.phaseBanner.append(this.phaseTitle, this.phaseSub);
+    this.hud.appendChild(this.phaseBanner);
+
+    this.pieceCard = el("div", "piece-card");
+    this.hud.appendChild(this.pieceCard);
+
+    /* ---------- chat ---------- */
+    const chat = el("div", "chat");
+    chat.appendChild(el("div", "chat-head", "Yard talk"));
+    this.chatLog = el("div", "chat-log");
+    chat.appendChild(this.chatLog);
+    this.chatHint = el("div", "chat-hint", "");
+    chat.appendChild(this.chatHint);
+    const chatRow = el("div", "chat-row");
+    this.chatInput = el("input", "chat-input");
+    this.chatInput.type = "text";
+    this.chatInput.maxLength = this.maxLen;
+    this.chatInput.placeholder = "Describe the placement…";
+    this.chatSend = el("button", "btn small", "Send");
+    chatRow.append(this.chatInput, this.chatSend);
+    chat.appendChild(chatRow);
+    this.chatCounter = el("span", "chat-counter", "");
+    chat.appendChild(this.chatCounter);
+    this.hud.appendChild(chat);
+
+    const submit = (): void => {
+      const text = this.chatInput.value.trim();
+      if (!text) return;
+      this.chatInput.value = "";
+      this.updateCounter();
+      this.handlers.onSend(text);
+    };
+    this.chatSend.addEventListener("click", submit);
+    this.chatInput.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") submit();
+    });
+    this.chatInput.addEventListener("keyup", (e) => e.stopPropagation());
+    this.chatInput.addEventListener("input", () => this.updateCounter());
+
+    /* ---------- builder controls ---------- */
+    this.controls = el("div", "controls");
+    const pad = el("div", "pad");
+    const mk = (dir: MoveDir, label: string, key: string, cls: string): HTMLButtonElement => {
+      const b = el("button", `pad-btn ${cls}`, `<span class="pad-label">${label}</span><span class="pad-key">${key}</span>`);
+      b.addEventListener("click", () => this.handlers.onMove(dir));
+      return b;
+    };
+    pad.append(
+      mk("forward", "Push away", "↑", "up"),
+      mk("left", "Left", "←", "left"),
+      mk("back", "Pull near", "↓", "down"),
+      mk("right", "Right", "→", "right"),
+    );
+    this.controls.appendChild(pad);
+
+    const tierCol = el("div", "tier-col");
+    const upBtn = mk("up", "Shelf up", "Q", "tier");
+    const downBtn = mk("down", "Shelf down", "E", "tier");
+    tierCol.append(upBtn, downBtn);
+    this.controls.appendChild(tierCol);
+
+    const actions = el("div", "actions");
+    this.moveLabel = el("span", "move-label", "");
+    this.moveMeter = el("div", "move-meter");
+    this.lockBtn = el("button", "btn primary", "Lock it in <span class='key'>Space</span>");
+    this.lockBtn.addEventListener("click", () => this.handlers.onLock());
+    this.askBtn = el("button", "btn", "Ask the Architect");
+    this.askBtn.addEventListener("click", () => this.handlers.onAsk());
+    actions.append(this.moveLabel, this.moveMeter, this.lockBtn, this.askBtn);
+    this.controls.appendChild(actions);
+    this.hud.appendChild(this.controls);
+
+    /* ---------- curtain ---------- */
+    this.curtain = el("div", "curtain hidden");
+    const curtainCard = el("div", "curtain-card");
+    this.curtainTitle = el("div", "curtain-title", "");
+    this.curtainSub = el("div", "curtain-sub", "");
+    const curtainBtn = el("button", "btn primary large", "I'm ready");
+    curtainBtn.addEventListener("click", () => this.handlers.onHandoffReady());
+    curtainCard.append(this.curtainTitle, this.curtainSub, curtainBtn);
+    this.curtain.appendChild(curtainCard);
+    this.root.appendChild(this.curtain);
+
+    /* ---------- summary ---------- */
+    this.summary = el("div", "summary hidden");
+    this.root.appendChild(this.summary);
+
+    /* ---------- misc ---------- */
+    this.toastBox = el("div", "toast-box");
+    this.root.appendChild(this.toastBox);
+
+    const corner = el("div", "corner");
+    this.muteBtn = el("button", "icon-btn", "🔊");
+    this.muteBtn.title = "Toggle sound";
+    this.muteBtn.addEventListener("click", () => this.handlers.onToggleMute());
+    const helpBtn = el("button", "icon-btn", "?");
+    helpBtn.title = "How to play";
+    this.helpPanel = el("div", "help-panel hidden");
+    this.helpPanel.innerHTML = `
+      <h3>How to play</h3>
+      <p><b>Architect turn.</b> The hologram shows where the block belongs. Say it in words — one message, then the turn passes.</p>
+      <p><b>Builder turn.</b> Move the glowing block with the arrows. Everything the Architect said is mirrored; the kiln and cistern are not.</p>
+      <p><b>Camera.</b> Drag to lean, wheel to zoom. Blocks in the way turn to glass so you can still see the live one.</p>
+      <p><b>Scoring.</b> Exact cell 100 &middot; one off 55 &middot; two off 20. 240 of 400 accepts the commission.</p>`;
+    helpBtn.addEventListener("click", () => this.helpPanel.classList.toggle("hidden"));
+    corner.append(helpBtn, this.muteBtn);
+    this.root.append(corner, this.helpPanel);
+
+    document.body.appendChild(this.root);
+    this.updateCounter();
+  }
+
+  private updateCounter(): void {
+    const n = this.chatInput.value.length;
+    this.chatCounter.textContent = `${n} / ${this.maxLen}`;
+    this.chatCounter.classList.toggle("warn", n > this.maxLen - 20);
+  }
+
+  hideTitle(): void {
+    this.titleScreen.classList.add("gone");
+    this.hud.classList.remove("hidden");
+  }
+
+  setRound(round: number, mode: GameMode): void {
+    this.roundLabel.textContent = `Commission ${round}${mode === "solo" ? " · solo drill" : ""}`;
+  }
+
+  setScore(total: number, max: number): void {
+    this.scoreLabel.textContent = `${total} / ${max}`;
+  }
+
+  setProgress(statuses: PieceStatus[]): void {
+    this.pips.replaceChildren();
+    statuses.forEach((s, i) => {
+      const pip = el("div", `pip ${s}`);
+      pip.textContent = `${i + 1}`;
+      this.pips.appendChild(pip);
+    });
+  }
+
+  setPhase(role: Role | "reveal", title: string, sub: string): void {
+    this.phaseBanner.classList.remove("architect", "builder", "reveal");
+    this.phaseBanner.classList.add(role);
+    this.phaseTitle.textContent = title;
+    this.phaseSub.innerHTML = sub;
+  }
+
+  setPieceCard(glyph: string, name: string, shape: string, color: string, note: string): void {
+    this.pieceCard.innerHTML = `
+      <div class="piece-glyph" style="--tint:${color}">${glyph}</div>
+      <div class="piece-text"><div class="piece-name">${name}</div><div class="piece-shape">${shape}</div></div>
+      <div class="piece-note">${note}</div>`;
+  }
+
+  /** `focus` is opt-in: the Builder needs the keyboard for movement, not the input box. */
+  setChat(enabled: boolean, placeholder: string, hint: string, maxLen = 140, focus = false): void {
+    this.maxLen = maxLen;
+    this.chatInput.maxLength = maxLen;
+    this.chatInput.disabled = !enabled;
+    this.chatSend.disabled = !enabled;
+    this.chatInput.placeholder = placeholder;
+    this.chatHint.innerHTML = hint;
+    this.chatHint.classList.toggle("hidden", hint === "");
+    this.updateCounter();
+    if (enabled && focus) setTimeout(() => this.chatInput.focus(), 30);
+    else this.chatInput.blur();
+  }
+
+  addChat(kind: Role | "system" | "foreman", text: string, tag?: string): void {
+    const line = el("div", `chat-line ${kind}`);
+    const who = kind === "system" ? "Yard" : kind === "foreman" ? "Foreman" : ROLE_NAME[kind];
+    line.innerHTML = `<span class="who">${tag ?? who}</span><span class="msg"></span>`;
+    const msg = line.querySelector(".msg");
+    if (msg) msg.textContent = text;
+    this.chatLog.appendChild(line);
+    this.chatLog.scrollTop = this.chatLog.scrollHeight;
+    while (this.chatLog.children.length > 60) this.chatLog.removeChild(this.chatLog.children[0]!);
+  }
+
+  clearChat(): void {
+    this.chatLog.replaceChildren();
+  }
+
+  setBuilderControls(enabled: boolean): void {
+    this.controls.classList.toggle("disabled", !enabled);
+    this.controls.querySelectorAll("button").forEach((b) => (b.disabled = !enabled));
+  }
+
+  setMoves(left: number, budget: number): void {
+    this.moveLabel.textContent = `Moves left ${left} of ${budget}`;
+    this.moveMeter.replaceChildren();
+    for (let i = 0; i < budget; i++) {
+      const dot = el("div", `move-dot ${i < left ? "on" : "off"}`);
+      this.moveMeter.appendChild(dot);
+    }
+    this.moveMeter.classList.toggle("low", left <= 2);
+  }
+
+  setHints(n: number): void {
+    this.askBtn.innerHTML = `Ask the Architect <span class="key">${n}</span>`;
+    this.askBtn.disabled = n <= 0 || this.controls.classList.contains("disabled");
+  }
+
+  showCurtain(title: string, sub: string, role: Role): void {
+    this.curtain.classList.remove("hidden", "architect", "builder");
+    this.curtain.classList.add(role);
+    this.curtainTitle.textContent = title;
+    this.curtainSub.innerHTML = sub;
+  }
+
+  hideCurtain(): void {
+    this.curtain.classList.add("hidden");
+  }
+
+  showSummary(data: SummaryData): void {
+    const stars = "★★★".slice(0, data.stars).padEnd(3, "☆");
+    this.summary.innerHTML = `
+      <div class="summary-card ${data.passed ? "pass" : "fail"}">
+        <div class="summary-stars">${stars}</div>
+        <h2>${data.title}</h2>
+        <p class="summary-blurb">${data.blurb}</p>
+        <div class="summary-rows"></div>
+        <div class="summary-total"><span>Fit score</span><b>${data.total} / ${data.max}</b></div>
+        <button class="btn primary large next">${data.nextLabel}</button>
+      </div>`;
+    const rows = this.summary.querySelector(".summary-rows");
+    if (rows) {
+      for (const r of data.rows) {
+        const row = el("div", "summary-row");
+        row.innerHTML = `
+          <span class="sr-glyph" style="--tint:${r.color}">${r.glyph}</span>
+          <span class="sr-name">${r.name}</span>
+          <span class="sr-label">${r.label}</span>
+          <span class="sr-points">${r.points}</span>`;
+        rows.appendChild(row);
+      }
+    }
+    this.summary.querySelector<HTMLButtonElement>(".next")?.addEventListener("click", () => this.handlers.onNextRound());
+    this.summary.classList.remove("hidden");
+  }
+
+  hideSummary(): void {
+    this.summary.classList.add("hidden");
+  }
+
+  toast(text: string, kind: "info" | "warn" | "good" = "info"): void {
+    const node = el("div", `toast ${kind}`, "");
+    node.textContent = text;
+    this.toastBox.appendChild(node);
+    this.toastTimer = window.setTimeout(() => node.remove(), 2200);
+    while (this.toastBox.children.length > 3) this.toastBox.removeChild(this.toastBox.children[0]!);
+  }
+
+  setMuted(muted: boolean): void {
+    this.muteBtn.textContent = muted ? "🔇" : "🔊";
+  }
+
+  dispose(): void {
+    window.clearTimeout(this.toastTimer);
+    this.root.remove();
+  }
+}

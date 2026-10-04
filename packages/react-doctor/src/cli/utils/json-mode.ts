@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { buildJsonReportError } from "@react-doctor/core";
 import type { JsonReport, JsonReportMode } from "@react-doctor/core";
+import { CliInputError } from "./cli-input-error.js";
 import { INTERNAL_ERROR_JSON_FALLBACK } from "./constants.js";
 import { makeNoopConsole } from "./noop-console.js";
 import { VERSION } from "./version.js";
@@ -13,6 +14,7 @@ interface JsonModeContext {
   directory: string;
   mode: JsonReportMode;
   outputFile: string | null;
+  writeCancellationError?: () => void;
 }
 
 let context: JsonModeContext | null = null;
@@ -21,6 +23,7 @@ interface EnableJsonModeInput {
   compact: boolean;
   directory: string;
   outputFile?: string;
+  writeCancellationError?: () => void;
 }
 
 /**
@@ -53,15 +56,28 @@ const installSilentConsole = (): void => {
   }
 };
 
-export const enableJsonMode = ({ compact, directory, outputFile }: EnableJsonModeInput): void => {
+export const enableJsonMode = ({
+  compact,
+  directory,
+  outputFile,
+  writeCancellationError,
+}: EnableJsonModeInput): void => {
   context = {
     compact,
     directory,
     startTime: performance.now(),
     mode: "full",
-    outputFile: outputFile ?? null,
+    outputFile: null,
+    writeCancellationError,
   };
   installSilentConsole();
+  if (outputFile) {
+    const resolvedOutputFile = path.resolve(outputFile);
+    if (fs.existsSync(resolvedOutputFile) && !fs.statSync(resolvedOutputFile).isFile()) {
+      throw new CliInputError(`--json-out must point to a file, not ${resolvedOutputFile}.`);
+    }
+    context.outputFile = outputFile;
+  }
 };
 
 export const isJsonModeActive = (): boolean => context !== null;
@@ -101,4 +117,12 @@ export const writeJsonErrorReport = (error: unknown, sentryEventId?: string | nu
   } catch {
     process.stdout.write(INTERNAL_ERROR_JSON_FALLBACK);
   }
+};
+
+export const writeJsonCancellationReport = (): void => {
+  if (context?.writeCancellationError !== undefined) {
+    context.writeCancellationError();
+    return;
+  }
+  writeJsonErrorReport(new Error("Scan cancelled by user (SIGINT/SIGTERM)"));
 };

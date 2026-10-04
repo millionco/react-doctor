@@ -15,6 +15,7 @@ export interface CoreRuleMetadata {
   readonly defaultEnabled?: boolean;
   readonly matchByOccurrence?: boolean;
   readonly isScanRule: boolean;
+  readonly isProjectRule?: boolean;
 }
 
 export interface CoreRuleRegistryEntry {

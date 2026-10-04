@@ -1,0 +1,397 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit a31e366a1da5325f430d97a983b791362709cbb689726ab466edccf3f55febec
+/**
+ * Heads-up display: vitality, essence, ability state, run clock, threat
+ * direction indicators, mutation drafting and the run's start/fail/finish
+ * screens.  Everything is built in code so index.html stays a bare canvas.
+ */
+
+import * as THREE from "three";
+import { clamp01 } from "../core/rand";
+import type { Mutation } from "../game/mutations";
+
+export interface ThreatMark {
+  position: THREE.Vector3;
+  /** 0 = present, 1 = winding up an attack */
+  urgency: number;
+  boss: boolean;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  parent?: HTMLElement,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html !== undefined) n.innerHTML = html;
+  if (parent) parent.appendChild(n);
+  return n;
+}
+
+const SEED_MARK = `<svg viewBox="0 0 32 32" class="gw-mark"><path d="M16 2 C24 9 28 15 28 21 C28 27 22 31 16 31 C10 31 4 27 4 21 C4 15 8 9 16 2 Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 31 L16 12 M16 18 L9 12 M16 22 L23 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D | null;
+
+  private vitalFill: HTMLDivElement;
+  private vitalGhost: HTMLDivElement;
+  private vitalText: HTMLDivElement;
+  private essenceText: HTMLDivElement;
+  private clock: HTMLDivElement;
+  private objective: HTMLDivElement;
+  private objectiveSub: HTMLDivElement;
+  private reticle: HTMLDivElement;
+  private chargeRow: HTMLDivElement;
+  private burstDial: HTMLDivElement;
+  private burstLabel: HTMLDivElement;
+  private elevBadge: HTMLDivElement;
+  private banner: HTMLDivElement;
+  private wiltOverlay: HTMLDivElement;
+  private wiltRing: HTMLDivElement;
+  private wiltText: HTMLDivElement;
+  private wiltSub: HTMLDivElement;
+  private draft: HTMLDivElement;
+  private draftCards: HTMLDivElement;
+  private screen: HTMLDivElement;
+  private mutationRow: HTMLDivElement;
+  private hurtVignette: HTMLDivElement;
+  private toastBox: HTMLDivElement;
+
+  private ghostValue = 1;
+  private bannerTimer = 0;
+  private hurtLevel = 0;
+  private lastHurtStyle = -1;
+  onDraftPick: ((m: Mutation) => void) | null = null;
+  onScreenAction: (() => void) | null = null;
+
+  constructor() {
+    this.root = el("div", "gw-root");
+    document.body.appendChild(this.root);
+
+    this.canvas = el("canvas", "gw-canvas", this.root);
+    this.ctx = this.canvas.getContext("2d");
+
+    // ---- reticle -------------------------------------------------------
+    this.reticle = el("div", "gw-reticle", this.root);
+    el("div", "gw-ret-dot", this.reticle);
+    for (const side of ["n", "e", "s", "w"]) el("div", `gw-ret-tick gw-ret-${side}`, this.reticle);
+
+    // ---- top bar -------------------------------------------------------
+    const top = el("div", "gw-top", this.root);
+    this.clock = el("div", "gw-clock", top, "0:00");
+    this.objective = el("div", "gw-objective", top, "");
+    this.objectiveSub = el("div", "gw-objective-sub", top, "");
+
+    // ---- bottom left ---------------------------------------------------
+    const bl = el("div", "gw-bottom-left", this.root);
+    const vitalWrap = el("div", "gw-vital", bl);
+    el("div", "gw-vital-label", vitalWrap, `${SEED_MARK}<span>VITALITY</span>`);
+    const bar = el("div", "gw-bar", vitalWrap);
+    this.vitalGhost = el("div", "gw-bar-ghost", bar);
+    this.vitalFill = el("div", "gw-bar-fill", bar);
+    el("div", "gw-bar-ticks", bar);
+    this.vitalText = el("div", "gw-vital-text", vitalWrap, "100");
+    this.essenceText = el("div", "gw-essence", bl, "ESSENCE 0");
+    this.mutationRow = el("div", "gw-mutations", bl);
+
+    // ---- bottom right --------------------------------------------------
+    const br = el("div", "gw-bottom-right", this.root);
+    const abilities = el("div", "gw-abilities", br);
+
+    const primary = el("div", "gw-ability", abilities);
+    el("div", "gw-key", primary, "LMB");
+    el(
+      "div",
+      "gw-ability-icon",
+      primary,
+      `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="5" fill="currentColor"/><path d="M16 4 L16 9 M16 23 L16 28 M4 16 L9 16 M23 16 L28 16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>`,
+    );
+    el("div", "gw-ability-name", primary, "Seedshot");
+
+    const secondary = el("div", "gw-ability", abilities);
+    el("div", "gw-key", secondary, "RMB");
+    this.burstDial = el(
+      "div",
+      "gw-ability-icon gw-dial",
+      secondary,
+      `<svg viewBox="0 0 32 32"><path d="M16 3 C21 11 26 14 26 20 C26 26 21 29 16 29 C11 29 6 26 6 20 C6 14 11 11 16 3 Z" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="16" cy="20" r="4.5" fill="currentColor"/></svg>`,
+    );
+    this.burstLabel = el("div", "gw-ability-name", secondary, "Bloomburst");
+
+    const recovery = el("div", "gw-ability", abilities);
+    el("div", "gw-key", recovery, "R");
+    this.chargeRow = el("div", "gw-charges", recovery);
+    el("div", "gw-ability-name", recovery, "Rebloom");
+
+    // ---- misc ----------------------------------------------------------
+    this.elevBadge = el("div", "gw-elev", this.root, "HIGH GROUND");
+    this.banner = el("div", "gw-banner", this.root, "");
+    this.hurtVignette = el("div", "gw-hurt", this.root);
+    this.toastBox = el("div", "gw-toasts", this.root);
+
+    // ---- wilting overlay ------------------------------------------------
+    this.wiltOverlay = el("div", "gw-wilt", this.root);
+    const wiltInner = el("div", "gw-wilt-inner", this.wiltOverlay);
+    this.wiltRing = el("div", "gw-wilt-ring", wiltInner);
+    this.wiltText = el("div", "gw-wilt-text", wiltInner, "WILTING");
+    this.wiltSub = el("div", "gw-wilt-sub", wiltInner, "");
+
+    // ---- mutation draft --------------------------------------------------
+    this.draft = el("div", "gw-draft", this.root);
+    el("div", "gw-draft-title", this.draft, "CHOOSE A MUTATION");
+    el("div", "gw-draft-sub", this.draft, "the seed rewrites itself from what it absorbed");
+    this.draftCards = el("div", "gw-draft-cards", this.draft);
+
+    // ---- full screens ----------------------------------------------------
+    this.screen = el("div", "gw-screen", this.root);
+
+    addEventListener("resize", () => this.resize());
+    this.resize();
+  }
+
+  private resize(): void {
+    // the overlay is arrows and soft gradients — a 1:1 buffer is plenty, and
+    // it keeps the software compositor from choking on a 4K RGBA layer
+    const dpr = Math.min(1.25, devicePixelRatio || 1);
+    this.canvas.width = Math.floor(innerWidth * dpr);
+    this.canvas.height = Math.floor(innerHeight * dpr);
+    this.canvas.style.width = `${innerWidth}px`;
+    this.canvas.style.height = `${innerHeight}px`;
+    if (this.ctx) this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  /* ---------------------------------------------------------------- */
+
+  setVitality(hp: number, max: number): void {
+    const t = clamp01(hp / max);
+    this.vitalFill.style.width = `${t * 100}%`;
+    this.vitalText.textContent = `${Math.ceil(hp)}`;
+    this.vitalFill.classList.toggle("gw-low", t < 0.34);
+    if (t < this.ghostValue) this.ghostValue = Math.max(t, this.ghostValue - 0.012);
+    else this.ghostValue = t;
+    this.vitalGhost.style.width = `${this.ghostValue * 100}%`;
+  }
+
+  setEssence(v: number): void {
+    this.essenceText.textContent = `ESSENCE ${Math.floor(v)}`;
+  }
+
+  setCharges(current: number, max: number): void {
+    while (this.chargeRow.children.length < max) el("div", "gw-charge", this.chargeRow);
+    for (let i = 0; i < this.chargeRow.children.length; i++) {
+      (this.chargeRow.children[i] as HTMLElement).classList.toggle("gw-spent", i >= current);
+    }
+  }
+
+  setBurst(cooldown: number, total: number): void {
+    const ready = cooldown <= 0;
+    this.burstDial.classList.toggle("gw-ready", ready);
+    const pct = ready ? 0 : clamp01(cooldown / total);
+    this.burstDial.style.setProperty("--gw-cd", `${(1 - pct) * 100}%`);
+    this.burstLabel.textContent = ready ? "Bloomburst" : `${cooldown.toFixed(1)}s`;
+  }
+
+  setClock(seconds: number, target: number): void {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    this.clock.textContent = `${m}:${s.toString().padStart(2, "0")}`;
+    this.clock.classList.toggle("gw-over", seconds > target);
+  }
+
+  setObjective(text: string, sub: string): void {
+    this.objective.textContent = text;
+    this.objectiveSub.textContent = sub;
+  }
+
+  setElevated(on: boolean, bonus: number): void {
+    this.elevBadge.classList.toggle("gw-on", on);
+    if (on) this.elevBadge.textContent = `HIGH GROUND  +${Math.round((bonus - 1) * 100)}%`;
+  }
+
+  setReticle(mode: "idle" | "target" | "blocked"): void {
+    this.reticle.dataset.mode = mode;
+  }
+
+  setMutations(list: Mutation[]): void {
+    this.mutationRow.innerHTML = "";
+    for (const m of list) {
+      const chip = el("div", "gw-mut-chip", this.mutationRow);
+      chip.innerHTML = `<svg viewBox="0 0 32 32">${m.icon}</svg>`;
+      chip.title = m.name;
+    }
+  }
+
+  showBanner(text: string, sub = "", time = 2.6): void {
+    this.banner.innerHTML = `<div class="gw-banner-main">${text}</div><div class="gw-banner-sub">${sub}</div>`;
+    this.banner.classList.add("gw-show");
+    this.bannerTimer = time;
+  }
+
+  toast(text: string): void {
+    const t = el("div", "gw-toast", this.toastBox, text);
+    setTimeout(() => t.classList.add("gw-fade"), 1400);
+    setTimeout(() => t.remove(), 2200);
+  }
+
+  hurt(amount: number): void {
+    this.hurtLevel = Math.min(1, this.hurtLevel + amount);
+  }
+
+  showWilting(remaining: number, total: number, charges: number): void {
+    this.wiltOverlay.classList.add("gw-show");
+    const t = clamp01(remaining / total);
+    this.wiltRing.style.setProperty("--gw-w", `${t * 100}%`);
+    this.wiltText.textContent = charges > 0 ? "WILTING" : "THE SEED IS SPENT";
+    this.wiltSub.innerHTML =
+      charges > 0
+        ? `press <b>R</b> to rebloom &nbsp;·&nbsp; ${charges} charge${charges === 1 ? "" : "s"} left &nbsp;·&nbsp; ${remaining.toFixed(1)}s`
+        : `no recovery charges remain &nbsp;·&nbsp; ${remaining.toFixed(1)}s`;
+  }
+
+  hideWilting(): void {
+    this.wiltOverlay.classList.remove("gw-show");
+  }
+
+  showDraft(options: Mutation[]): void {
+    this.draftCards.innerHTML = "";
+    options.forEach((m, i) => {
+      const card = el("button", "gw-card", this.draftCards);
+      card.innerHTML = `
+        <div class="gw-card-key">${i + 1}</div>
+        <div class="gw-card-icon"><svg viewBox="0 0 32 32">${m.icon}</svg></div>
+        <div class="gw-card-name">${m.name}</div>
+        <div class="gw-card-line">${m.line}</div>`;
+      card.addEventListener("click", () => this.onDraftPick?.(m));
+      setTimeout(() => card.classList.add("gw-in"), 40 + i * 90);
+    });
+    this.draft.classList.add("gw-show");
+  }
+
+  hideDraft(): void {
+    this.draft.classList.remove("gw-show");
+  }
+
+  showScreen(html: string): void {
+    this.screen.innerHTML = html;
+    this.screen.classList.add("gw-show");
+    const btn = this.screen.querySelector(".gw-btn");
+    btn?.addEventListener("click", () => this.onScreenAction?.());
+  }
+
+  hideScreen(): void {
+    this.screen.classList.remove("gw-show");
+  }
+
+  get screenVisible(): boolean {
+    return this.screen.classList.contains("gw-show");
+  }
+
+  setPlaying(on: boolean): void {
+    this.root.classList.toggle("gw-playing", on);
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Directional threat readout                                        */
+  /* ---------------------------------------------------------------- */
+
+  drawThreats(
+    camera: THREE.PerspectiveCamera,
+    marks: ThreatMark[],
+    damageDir: THREE.Vector3 | null,
+    damageStrength: number,
+    dt: number,
+  ): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const w = innerWidth;
+    const h = innerHeight;
+    ctx.clearRect(0, 0, w, h);
+
+    this.bannerTimer -= dt;
+    if (this.bannerTimer <= 0) this.banner.classList.remove("gw-show");
+    const prevHurt = this.hurtLevel;
+    this.hurtLevel = Math.max(0, this.hurtLevel - dt * 1.6);
+    // only touch the full-screen gradient when it actually changed
+    if (Math.abs(prevHurt - this.hurtLevel) > 0.002 || this.hurtLevel === 0) {
+      const v = this.hurtLevel * 0.85;
+      if (this.lastHurtStyle !== v) {
+        this.hurtVignette.style.opacity = `${v}`;
+        this.lastHurtStyle = v;
+      }
+    }
+
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+    const margin = 62;
+    const v = new THREE.Vector3();
+
+    for (const m of marks) {
+      v.copy(m.position).project(camera);
+      const behind = v.z > 1;
+      let sx = (v.x * 0.5 + 0.5) * w;
+      let sy = (-v.y * 0.5 + 0.5) * h;
+      if (behind) {
+        sx = w - sx;
+        sy = h - sy;
+      }
+      const offscreen =
+        behind || sx < margin || sx > w - margin || sy < margin || sy > h - margin;
+      if (!offscreen && m.urgency < 0.05) continue;
+
+      const ang = Math.atan2(sy - cy, sx - cx);
+      const radius = Math.min(w, h) * (offscreen ? 0.38 : 0.32);
+      const ax = cx + Math.cos(ang) * radius;
+      const ay = cy + Math.sin(ang) * radius;
+
+      const alpha = offscreen ? 0.42 + m.urgency * 0.55 : m.urgency * 0.8;
+      if (alpha < 0.03) continue;
+
+      ctx.save();
+      ctx.translate(ax, ay);
+      ctx.rotate(ang);
+      const size = (m.boss ? 20 : 13) * (1 + m.urgency * 0.5);
+      const col = m.urgency > 0.05 ? "255,96,58" : m.boss ? "255,148,60" : "196,214,160";
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = `rgba(${col},1)`;
+      ctx.shadowColor = `rgba(${col},0.9)`;
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.moveTo(size, 0);
+      ctx.lineTo(-size * 0.6, -size * 0.62);
+      ctx.lineTo(-size * 0.2, 0);
+      ctx.lineTo(-size * 0.6, size * 0.62);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // damage came from ~there
+    if (damageDir && damageStrength > 0.01) {
+      const fwd = new THREE.Vector3();
+      camera.getWorldDirection(fwd);
+      const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+      const a = Math.atan2(damageDir.dot(right), damageDir.dot(fwd));
+      const screenAng = a - Math.PI / 2;
+      const r0 = Math.min(w, h) * 0.24;
+      const r1 = Math.min(w, h) * 0.34;
+      const grad = ctx.createRadialGradient(cx, cy, r0, cx, cy, r1);
+      grad.addColorStop(0, `rgba(255,60,40,0)`);
+      grad.addColorStop(1, `rgba(255,60,40,${0.55 * damageStrength})`);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r1, screenAng - 0.55, screenAng + 0.55);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}

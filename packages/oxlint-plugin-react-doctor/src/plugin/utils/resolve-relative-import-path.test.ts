@@ -29,6 +29,15 @@ describe("resolveRelativeImportPath", () => {
     expect(resolveRelativeImportPath(sourceFilePath, "./component")).toBe(importedFilePath);
   });
 
+  it("resolves a dotted basename without a source extension", () => {
+    const sourceFilePath = path.join(temporaryDirectory, "src/page.tsx");
+    const importedFilePath = path.join(temporaryDirectory, "src/component.utils.ts");
+    fs.mkdirSync(path.dirname(importedFilePath), { recursive: true });
+    fs.writeFileSync(importedFilePath, "export const value = true;", "utf8");
+
+    expect(resolveRelativeImportPath(sourceFilePath, "./component.utils")).toBe(importedFilePath);
+  });
+
   it("reuses filesystem classifications until scan caches reset", () => {
     const sourceFilePath = path.join(temporaryDirectory, "src/page.tsx");
     const importedFilePath = path.join(temporaryDirectory, "src/component.tsx");

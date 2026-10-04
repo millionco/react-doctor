@@ -1,25 +1,6 @@
-// Directory names that mark a file as part of a test / fixture /
-// Storybook / Cypress / docs-site (`.dumi`) / example surface, regardless
-// of the file's own suffix.
-const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
-  "/test/",
-  "/tests/",
-  "/testing/",
-  "/__tests__/",
-  "/__test__/",
-  "/__fixtures__/",
-  "/fixtures/",
-  "/__mocks__/",
-  "/mocks/",
-  "/testUtils/",
-  "/test-utils/",
-  "/testutils/",
-  "/cypress/",
-  "/playwright/",
-  "/.storybook/",
-  "/.dumi/",
-  "/stories/",
-  "/__stories__/",
+// These names describe non-application code at the repository root, but they
+// also name common product areas below an application source root.
+const AMBIGUOUS_NON_PRODUCTION_PATH_SEGMENTS: ReadonlySet<string> = new Set([
   "/playground/",
   "/playgrounds/",
   "/examples/",
@@ -28,23 +9,11 @@ const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/demos/",
   "/sandbox/",
   "/sandboxes/",
-  "/e2e/",
-  "/e2e-tests/",
   "/specs/",
   "/spec/",
-  "/integration-tests/",
   "/integration/",
   "/it/",
-  "/benchmarks/",
-  "/benchmark/",
-  "/__benchmarks__/",
   "/perf/",
-  "/perf-tests/",
-  // CLI / one-shot / build-time tooling — never shipped in the
-  // user-facing bundle, no render-perf or React-rule concerns. Captures
-  // top-level `scripts/`, `cli/`, `bin/`, `tooling/`, `tools/`,
-  // `codemods/`, `migrations/`, `generators/`, `runbooks/`, etc. as well
-  // as `src/scripts/...` shaped layouts.
   "/scripts/",
   "/cli/",
   "/bin/",
@@ -62,6 +31,40 @@ const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/seeds/",
   "/seed/",
   "/dev-seeder/",
+]);
+const EMPTY_IGNORED_PATH_SEGMENTS: ReadonlySet<string> = new Set();
+
+// Directory names that mark a file as part of a test / fixture /
+// Storybook / Cypress / docs-site (`.dumi`) / example surface, regardless
+// of the file's own suffix.
+const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
+  "/test/",
+  "/tests/",
+  "/testing/",
+  "/__tests__/",
+  "/__test__/",
+  "/__fixtures__/",
+  "/fixtures/",
+  "/__mocks__/",
+  "/mocks/",
+  "/testUtils/",
+  "/test-utils/",
+  "/test-stubs/",
+  "/testutils/",
+  "/cypress/",
+  "/playwright/",
+  "/.storybook/",
+  "/.dumi/",
+  "/stories/",
+  "/__stories__/",
+  ...AMBIGUOUS_NON_PRODUCTION_PATH_SEGMENTS,
+  "/e2e/",
+  "/e2e-tests/",
+  "/integration-tests/",
+  "/benchmarks/",
+  "/benchmark/",
+  "/__benchmarks__/",
+  "/perf-tests/",
 ];
 
 // True iff `filename` looks like test / spec / Storybook / Cypress /
@@ -216,6 +219,8 @@ const sliceBelowSourceRoot = (filename: string): string => {
 // call per file.
 let lastFilename: string | undefined;
 let lastResult = false;
+let lastTestNoiseFilename: string | undefined;
+let lastTestNoiseResult = false;
 
 export const isTestlikeFilename = (rawFilename: string | undefined): boolean => {
   if (!rawFilename) return false;
@@ -225,6 +230,22 @@ export const isTestlikeFilename = (rawFilename: string | undefined): boolean => 
   return lastResult;
 };
 
+export const isTestNoiseFilename = (rawFilename: string | undefined): boolean => {
+  if (!rawFilename) return false;
+  if (rawFilename === lastTestNoiseFilename) return lastTestNoiseResult;
+  lastTestNoiseFilename = rawFilename;
+  const filename = rawFilename.replaceAll("\\", "/");
+  const rootedFilename = filename.startsWith("/") ? filename : `/${filename}`;
+  const isBelowSourceRoot = SOURCE_ROOT_SEGMENTS.some((segment) =>
+    rootedFilename.includes(segment),
+  );
+  lastTestNoiseResult = computeIsTestlikeFilename(
+    rootedFilename,
+    isBelowSourceRoot ? AMBIGUOUS_NON_PRODUCTION_PATH_SEGMENTS : EMPTY_IGNORED_PATH_SEGMENTS,
+  );
+  return lastTestNoiseResult;
+};
+
 export const isTestlikeFilenameIgnoringPathSegments = (
   rawFilename: string | undefined,
   ignoredPathSegments: ReadonlySet<string>,
@@ -232,7 +253,7 @@ export const isTestlikeFilenameIgnoringPathSegments = (
 
 const computeIsTestlikeFilename = (
   rawFilename: string,
-  ignoredPathSegments: ReadonlySet<string> = new Set(),
+  ignoredPathSegments: ReadonlySet<string> = EMPTY_IGNORED_PATH_SEGMENTS,
 ): boolean => {
   const filename = rawFilename.replaceAll("\\", "/");
   const lastSlash = filename.lastIndexOf("/");

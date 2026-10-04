@@ -5,19 +5,16 @@ import * as Filter from "effect/Filter";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
-import type {
-  Diagnostic,
-  DiagnosticSurface,
-  ProjectInfo,
-  ReactDoctorConfig,
-  ScoreResult,
-  SuppressedRuleCount,
-} from "./types/index.js";
+import { REACT_DOCTOR_RULE_REGISTRY } from "oxlint-plugin-react-doctor/core";
+import type { Diagnostic, DiagnosticSurface, SourceFileEntry } from "./types/index.js";
 import { assignFixGroups } from "./utils/assign-fix-groups.js";
 import { dedupeRelatedDiagnostics } from "./utils/dedupe-related-diagnostics.js";
 import { isPathInsideDirectory } from "./utils/is-path-inside-directory.js";
+import { scrubSensitivePaths } from "./utils/scrub-sensitive-paths.js";
 import { sortDiagnosticsStable } from "./utils/sort-diagnostics-stable.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
+import { resolveRuleSeverityOverride } from "./resolve-rule-severity-override.js";
+import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { checkExpoProject } from "./check-expo-project.js";
 import { checkPnpmHardening } from "./check-pnpm-hardening.js";
 import { checkReactNativeProject } from "./check-react-native-project.js";
@@ -25,15 +22,16 @@ import { checkReactServerComponentsAdvisory } from "./check-react-server-compone
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { checkSecurityScanCooperative } from "./check-security-scan.js";
 import {
-  DEAD_CODE_OVERLAP_PARSE_SHARE,
   DEFAULT_SHOW_WARNINGS,
+  MAINTAINABILITY_DUPLICATE_JSX_RULE,
   MILLISECONDS_PER_SECOND,
-  MIN_DEAD_CODE_PARSE_CONCURRENCY,
-  MIN_SCAN_CONCURRENCY,
 } from "./constants.js";
 import { highlighter } from "./highlighter.js";
 import { computeExplicitLintIncludePaths } from "./explicit-lint-include-paths.js";
-import { deadCodeMaySurfaceWhenWarningsHidden } from "./utils/dead-code-may-surface.js";
+import {
+  projectRuleSelectionsMaySurfaceWhenWarningsAreHidden,
+  resolveProjectRuleSelections,
+} from "./resolve-project-rule-selections.js";
 import {
   NoReactDependency,
   type OxlintUnavailable,
@@ -42,21 +40,26 @@ import {
   ScanDeadlineExceeded,
 } from "./errors.js";
 import { filterDiagnosticsForSurface } from "./filter-for-surface.js";
+import { getCapabilities, shouldEnableRule } from "./project-info/capabilities.js";
 import { isAnalyzableProject } from "./project-info/index.js";
 import {
-  DeadCodeOverlap,
   DeadCodePhaseTimeoutMs,
+  InvocationCaches,
   LintPhaseTimeoutMs,
   OxlintConcurrency,
   ScanDeadlineMs,
   SupplyChainOverlapTimeoutMs,
 } from "./refs.js";
+import type { GitRepositoryMetadata } from "./utils/create-git-repository-metadata-cache.js";
+import { findGitRepositoryRoot } from "./utils/find-git-repository-root.js";
 import { remainingDeadlineBudgetMs } from "./utils/remaining-deadline-budget-ms.js";
-import { resolveDeadCodeTimeout } from "./utils/resolve-dead-code-timeout.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { filterPathsOutsideDirectories } from "./utils/filter-paths-outside-directories.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
-import { DeadCode } from "./services/dead-code.js";
+import {
+  describeMaintainabilityIncompleteness,
+  Maintainability,
+} from "./services/maintainability.js";
 import { Files } from "./services/files.js";
 import { Git } from "./services/git.js";
 import { type LintFileCoverage, LintPartialFailures, Linter } from "./services/linter.js";
@@ -68,230 +71,11 @@ import { SupplyChain } from "./services/supply-chain.js";
 import type { ScoreRequestMetadata } from "./calculate-score.js";
 import { resolveGithubActionsScoreMetadata } from "./utils/resolve-github-actions-score-metadata.js";
 import { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
+import { resolveProjectAnalysisTimeout } from "./utils/resolve-project-analysis-timeout.js";
 import { toNormalizedRelativePath } from "./utils/to-normalized-relative-path.js";
 
-export interface InspectInput {
-  readonly directory: string;
-  readonly precomputedSourceFileCount?: number;
-  readonly includePaths: ReadonlyArray<string>;
-  readonly customRulesOnly: boolean;
-  readonly respectInlineDisables: boolean;
-  /**
-   * Per-call override for `ReactDoctorConfig.warnings`. When omitted,
-   * the loaded config's `warnings` value wins (defaulting to `true`),
-   * so warnings surface unless the user opts out via `--no-warnings` or
-   * `warnings: false`.
-   */
-  readonly warnings?: boolean;
-  readonly adoptExistingLintConfig: boolean;
-  readonly ignoredTags: ReadonlySet<string>;
-  readonly includedTags?: ReadonlySet<string>;
-  readonly includeTagDefaults?: boolean;
-  readonly nodeBinaryPath?: string;
-  /** Whether dead-code analysis runs. Gated also on `!isDiffMode`. */
-  readonly runDeadCode: boolean;
-  /** Marks the run as CI-originated for the Score API. */
-  readonly isCi: boolean;
-  /** react-doctor release version sent with score requests. */
-  readonly doctorVersion?: string;
-  /** Random per-run id. */
-  readonly runId?: string;
-  /** Enables best-effort authenticated local GitHub permission lookup for score metadata. */
-  readonly resolveLocalGithubViewerPermission?: boolean;
-  /**
-   * Diagnostic surface fed to the Score service. Defaults to `"score"`,
-   * which excludes weak-signal rule families (e.g. `design`-tagged) from
-   * the score so they can't dilute the headline number. Public-API shells
-   * (`inspect()` / `diagnose()`) leave this at the default; pass `"cli"`
-   * (or any other surface) to score against an unfiltered diagnostic set.
-   *
-   * The returned `InspectOutput.diagnostics` is always the full
-   * per-element-filtered list — surface filtering only affects scoring.
-   */
-  readonly scoreSurface?: DiagnosticSurface;
-  /**
-   * Suppresses the orchestrator's own persistent "Scanned N files"
-   * success line. The live scan spinner still runs for feedback but
-   * clears on completion instead of leaving a status line behind. The
-   * CLI sets this when scanning multiple projects so it can render a
-   * single aggregate "Scanned N files" line in their place — the
-   * per-project file count + scan duration are surfaced on
-   * `InspectOutput` for that summary. Lint / dead-code failures still
-   * surface their own spinner state regardless of this flag.
-   */
-  readonly suppressScanSummary?: boolean;
-  /**
-   * When `true`, `includePaths` is linted verbatim instead of being filtered
-   * to React Doctor's supported source-file set. Editor scans use this for the
-   * exact buffer supplied by the language server.
-   */
-  readonly skipExplicitIncludePathFilter?: boolean;
-  /**
-   * Whether the scanned project's `package.json` is among the changed files
-   * in a diff / staged scan. Dependency health is a whole-project property
-   * (read from `package.json`, not the changed source files), so the
-   * supply-chain check is normally skipped in diff mode — but a PR that edits
-   * `package.json` should still have its dependencies scored. When `true`,
-   * the supply-chain pass runs even in diff mode. Ignored on full scans
-   * (those always run it). Defaults to `false`.
-   */
-  readonly supplyChainManifestChanged?: boolean;
-  /**
-   * Set when this scan runs concurrently with sibling scans in one process
-   * (the CLI's multi-project pool). Such a scan can't safely reason about the
-   * shared memory budget from its own available-memory reading — N concurrent
-   * scans each reading "plenty available" would each fork a dead-code worker
-   * and sum past the single-scan budget — so the dead-code overlap memory gate
-   * (`"auto"`) stays sequential for concurrent members. An explicit
-   * `REACT_DOCTOR_DEAD_CODE_OVERLAP=on` override still wins. Defaults to `false`.
-   */
-  readonly concurrentScan?: boolean;
-  /**
-   * Absolute epoch-millisecond deadline for the scan (the CLI's
-   * `--max-duration` budget resolved against the scan start). Past it the
-   * scan degrades gracefully: un-started lint batches are skipped (surfaced
-   * via `skippedCheckReasons["lint:partial"]` with the file list) and the
-   * dead-code phase is skipped or capped to the remaining budget.
-   */
-  readonly deadlineEpochMs?: number;
-  readonly signal?: AbortSignal;
-  /** Descendant project roots covered by sibling scans in a workspace batch. */
-  readonly excludedProjectDirectories?: ReadonlyArray<string>;
-  /** Keep descendant dead-code findings when this scan owns the workspace-wide pass. */
-  readonly retainExcludedProjectDeadCodeDiagnostics?: boolean;
-}
-
-export interface InspectOutput {
-  readonly project: ProjectInfo;
-  readonly userConfig: ReactDoctorConfig | null;
-  readonly resolvedDirectory: string;
-  readonly diagnostics: ReadonlyArray<Diagnostic>;
-  readonly score: ScoreResult | null;
-  readonly scoreMetadata: ScoreRequestMetadata;
-  readonly didLintFail: boolean;
-  readonly lintFailureReason: string | null;
-  /**
-   * The `_tag` of `error.reason` when the lint stream raised a
-   * `ReactDoctorError`, or `null` otherwise. Lets renderers dispatch
-   * on the typed reason without `error.message.includes(...)` style
-   * sniffs (e.g. show the "upgrade Node" hint only on
-   * `OxlintUnavailable` with `kind: "native-binding-missing"`).
-   */
-  readonly lintFailureReasonTag: ReactDoctorErrorReason["_tag"] | null;
-  /**
-   * The `kind` of an `OxlintUnavailable` lint failure
-   * (`binary-not-found` / `native-binding-missing`), or `null` for any
-   * other failure. Lets renderers show the "upgrade Node" hint by
-   * dispatching on structured data instead of matching message text.
-   */
-  readonly lintFailureReasonKind: OxlintUnavailable["kind"] | null;
-  readonly lintPartialFailures: ReadonlyArray<string>;
-  /** `false` when run-dead-code was disabled, diff/staged mode, or analysis crashed. */
-  readonly didDeadCodeFail: boolean;
-  readonly deadCodeFailureReason: string | null;
-  /**
-   * Whether the dead-code pass actually ran concurrently with lint this scan
-   * (the memory gate opened, or overlap was forced via
-   * `REACT_DOCTOR_DEAD_CODE_OVERLAP`). `false` for the strictly-sequential
-   * path: diff/staged/`--no-warnings` runs that skip dead-code, a closed
-   * memory gate, or `overlap=off`. Internal telemetry only (rides the per-scan
-   * wide event); NOT part of the public `inspect()` `InspectResult`.
-   */
-  readonly deadCodeOverlapped: boolean;
-  /**
-   * Number of files the scan reported (lint progress total, falling
-   * back to the project source-file count). Surfaced so a caller that
-   * sets `suppressScanSummary` can render its own aggregate
-   * "Scanned N files" line.
-   */
-  readonly scannedFileCount: number;
-  /**
-   * Absolute paths of every file this scan considered. Used by the
-   * multi-project summary to count UNIQUE files across projects:
-   * nested workspace packages (a parent whose tree contains a child
-   * package) would otherwise double-count the shared files when their
-   * per-project counts are summed.
-   */
-  readonly scannedFilePaths: ReadonlyArray<string>;
-  /** Project-relative POSIX paths the lint pass completed successfully. */
-  readonly analyzedFiles: ReadonlyArray<string>;
-  /** Wall-clock duration of the scan phase, in milliseconds. */
-  readonly scanElapsedMilliseconds: number;
-  /**
-   * Resolved lint worker count the linter actually fanned out to (the
-   * `OxlintConcurrency` Reference read through the spawn-boundary clamp).
-   * Surfaced so CLI telemetry reports the real worker count on the auto
-   * path, where the caller's `concurrency` option is `undefined`.
-   */
-  readonly scanConcurrency: number;
-  /**
-   * `true` when the background supply-chain fiber hit its overlap budget
-   * (`SupplyChainOverlapTimeoutMs`) and failed open to no diagnostics — a
-   * rare hung-socket guard, surfaced for telemetry and skipped-check
-   * accounting. `false` on the healthy path and whenever supply-chain was
-   * skipped (diff/staged scans).
-   */
-  readonly supplyChainOverlapTimedOut: boolean;
-  /**
-   * `true` when the forked security scan failed or reached the shared deadline.
-   * Filesystem failures fail open to no diagnostics; deadline truncation keeps
-   * findings collected before time elapsed. Surfaced for telemetry and
-   * skipped-check accounting so an incomplete pass is distinguishable from a
-   * clean one with zero findings. `false` on the healthy path and when the pass
-   * was skipped (diff/staged scans).
-   */
-  readonly securityScanFailed: boolean;
-  readonly securityScanFailureReason: string | null;
-  /**
-   * Per-file lint cache outcome for the lint pass: files served from cache and
-   * total files considered. Both `null` when the cache was disabled or bypassed
-   * (audit mode, adopted `extends`, user plugins) so the run never split. Fed
-   * to the Sentry wide event as `lint.cacheHitRatio`.
-   */
-  readonly lintCacheHitFileCount: number | null;
-  readonly lintCacheTotalFileCount: number | null;
-  /**
-   * Sidecar lint cache outcome for the lint pass: cache-hit files whose
-   * cross-file diagnostics replayed from the sidecar store, and the hits
-   * considered. Both `null` when the sidecar cache was disabled or bypassed
-   * (per-file cache off, `REACT_DOCTOR_NO_SIDECAR_CACHE`, no bounded
-   * cross-file rule enabled). Fed to the Sentry wide event as
-   * `lint.sidecarReplayRatio`.
-   */
-  readonly lintSidecarReplayedFileCount: number | null;
-  readonly lintSidecarTotalFileCount: number | null;
-  /**
-   * Dead-code result cache outcome for this scan's dead-code pass: `true`
-   * when the cached result was replayed (the analysis worker never spawned),
-   * `false` on a miss (fresh analysis). `null` when the pass never consulted
-   * the cache — dead-code skipped/disabled, the cache off
-   * (`REACT_DOCTOR_NO_CACHE` / `REACT_DOCTOR_NO_DEAD_CODE_CACHE`), or the
-   * pass discarded by a lint failure. Fed to the Sentry wide event as
-   * `deadCode.cacheHit`.
-   */
-  readonly deadCodeCacheHit: boolean | null;
-  /**
-   * deslop's incremental summary-cache outcome for this scan's dead-code
-   * ANALYSIS: collected files served from cached parse summaries vs freshly
-   * parsed. Both `null` whenever no analysis consulted the incremental store —
-   * a whole-result cache hit (no analysis ran), the cache off, dead-code
-   * skipped/disabled, or the pass discarded by a lint failure. Fed to the
-   * Sentry wide event as `deadCode.summaryCacheHits` /
-   * `deadCode.summaryCacheMisses`.
-   */
-  readonly deadCodeSummaryCacheHits: number | null;
-  readonly deadCodeSummaryCacheMisses: number | null;
-  /**
-   * Per-rule tallies of diagnostics the pipeline dropped because the user
-   * explicitly silenced the rule (config off switches, per-path overrides,
-   * inline disable comments) — see `DiagnosticPipeline.summarizeSuppressions`.
-   * Telemetry-only; NOT part of the public `inspect()` `InspectResult`. Note
-   * that a `rules: "off"` lint rule is removed from the generated oxlint
-   * config upstream and never fires, so its findings can't be counted here —
-   * the CLI's scan-level `rule.disabled` counter covers that case.
-   */
-  readonly suppressedRuleCounts: ReadonlyArray<SuppressedRuleCount>;
-}
+export type { InspectHooks, InspectInput, InspectOutput } from "./types/run-inspect.js";
+import type { InspectHooks, InspectInput, InspectOutput } from "./types/run-inspect.js";
 
 /**
  * The settled result of the background supply-chain fiber: its collected
@@ -303,36 +87,10 @@ interface SupplyChainForkResult {
   readonly timedOut: boolean;
 }
 
-/**
- * Hooks the caller participates in without owning the orchestration.
- * Today the CLI uses `beforeLint` to render the project-detection
- * block before lint runs; `afterLint` is invoked once lint (and any
- * downstream dead-code) finishes so the caller can attach side-effects
- * keyed on whether lint failed. Per-phase spinner reporting is owned
- * by the `Progress` service — the caller provides `Progress.layerOra`
- * or `Progress.layerNoop` rather than threading spinner handles
- * through hooks.
- */
-export interface InspectHooks<HooksR = never> {
-  readonly beforeLint?: (
-    project: ProjectInfo,
-    lintIncludePaths: ReadonlyArray<string> | undefined,
-  ) => Effect.Effect<void, never, HooksR>;
-  readonly afterLint?: (didFail: boolean) => Effect.Effect<void, never, HooksR>;
-}
-
 const NO_HOOKS: Required<InspectHooks<never>> = {
   beforeLint: () => Effect.void,
   afterLint: () => Effect.void,
 };
-
-const filterMapNullable = <Input, Output>(
-  transform: (value: Input) => Output | null,
-): Filter.Filter<Input, Output> =>
-  Filter.fromPredicateOption((value) => {
-    const result = transform(value);
-    return result === null ? Option.none() : Option.some(result);
-  });
 
 const fileReader =
   (filesService: Files["Service"], rootDirectory: string) =>
@@ -344,7 +102,7 @@ const fileReader =
 const LINT_FAIL_TEXT = "Scanning failed (lint, non-fatal).";
 const LINT_NATIVE_BINDING_FAIL_TEXT = (nodeVersion: string): string =>
   `Scanning failed — oxlint native binding not found (Node ${nodeVersion}).`;
-const DEAD_CODE_FAIL_TEXT = "Scanning failed (dead-code analysis, non-fatal).";
+const MAINTAINABILITY_FAIL_TEXT = "Scanning failed (maintainability analysis, non-fatal).";
 
 const formatLintFailText = (
   reasonTag: ReactDoctorErrorReason["_tag"] | null,
@@ -365,7 +123,7 @@ const formatLintFailText = (
  *      The GitHub viewer-permission lookup is forked onto a background
  *      fiber here and joined late (it feeds score metadata, not
  *      diagnostics).
- *   2. beforeLint hook (e.g. CLI renders the project-detection block)
+ *   2. beforeLint hook (e.g. CLI records project telemetry)
  *   3. environment checks (reduced-motion + pnpm hardening +
  *      expo/react-native), collected synchronously. The heavier
  *      content-regex security scan is forked instead (like supply-chain
@@ -378,19 +136,12 @@ const formatLintFailText = (
  *      `SupplyChainOverlapTimeoutMs` (measured from fork) so a hung
  *      socket can't drag out its join; on timeout it fails open to no
  *      diagnostics — the same outcome class as a Socket outage.
- *   5. Linter.run runs; DeadCode.run runs concurrently (forked child
- *      fiber) ONLY when the memory gate has headroom to run the 8 GB
- *      dead-code child alongside the oxlint workers — or when overlap is
- *      forced via REACT_DOCTOR_DEAD_CODE_OVERLAP. Otherwise dead-code
- *      runs sequentially after lint, exactly as it did pre-overlap. The
- *      fiber is joined (or interrupted, SIGKILLing its worker, on lint
- *      failure) before diagnostics are concatenated. The afterLint hook
- *      fires between lint and dead-code. Progress spinner labels AND the
- *      final diagnostic / score order stay independent of execution
- *      order, so terminal output is identical either way; supply-chain
- *      rides alongside without a spinner.
+ *   5. Linter.run completes, then the maintainability pass analyzes the full
+ *      React source corpus. Diff scans retain only duplicate families touching
+ *      the changed paths while still comparing against unchanged counterparts.
+ *      The afterLint hook fires between lint and maintainability.
  *   6. Join the supply-chain fiber, then assemble the diagnostics in a
- *      FIXED order (env, security-scan, supply-chain, lint, dead-code) so the output is
+ *      FIXED order (env, security-scan, supply-chain, lint, maintainability) so the output is
  *      byte-identical regardless of which fiber settled first. The
  *      viewer-permission fiber is joined later, during score-metadata
  *      assembly (it feeds score metadata, not diagnostics). The per-element
@@ -413,7 +164,7 @@ export const runInspect = <HooksR = never>(
   ReactDoctorError,
   | Project
   | Config
-  | DeadCode
+  | Maintainability
   | Files
   | Git
   | Linter
@@ -431,14 +182,24 @@ export const runInspect = <HooksR = never>(
     const linterService = yield* Linter;
     const reporterService = yield* Reporter;
     const scoreService = yield* Score;
-    const deadCodeService = yield* DeadCode;
+    const maintainabilityService = yield* Maintainability;
     const supplyChainService = yield* SupplyChain;
     const gitService = yield* Git;
     const progressService = yield* Progress;
     const partialFailuresRef = yield* LintPartialFailures;
 
+    // Start the React Compiler detection before config resolution so the
+    // worker's TypeScript load overlaps as much of the scan preamble as
+    // possible; a `rootDir` redirect simply warms the redirected directory too.
+    yield* projectService.warm(input.directory);
     const resolvedConfig: ResolvedConfig = yield* configService.resolve(input.directory);
     const scanDirectory = resolvedConfig.resolvedDirectory;
+    if (scanDirectory !== input.directory) yield* projectService.warm(scanDirectory);
+    const ignoredFilePatterns = Array.isArray(resolvedConfig.config?.ignore?.files)
+      ? resolvedConfig.config.ignore.files.filter(
+          (pattern): pattern is string => typeof pattern === "string",
+        )
+      : [];
     const excludedProjectDirectories = (input.excludedProjectDirectories ?? [])
       .map((excludedDirectory) => path.resolve(excludedDirectory))
       .filter((excludedDirectory) => isPathInsideDirectory(excludedDirectory, scanDirectory));
@@ -453,26 +214,40 @@ export const runInspect = <HooksR = never>(
           relativeFilePath.startsWith(`${excludedRelativePath}/`),
       );
     };
-    const shouldPrecomputeSourceFiles =
-      input.suppressScanSummary === true || excludedProjectDirectories.length > 0;
-    const precomputedSourceFiles = shouldPrecomputeSourceFiles
-      ? yield* filesService.listSourceFilesCooperative({
-          rootDirectory: scanDirectory,
-          signal: input.signal,
-        })
-      : null;
-    const includedPrecomputedSourceFiles =
-      precomputedSourceFiles !== null && excludedProjectDirectories.length > 0
+    // One sized listing serves discovery's source count, the include-path
+    // filters, and the lint batch planner; a full scan lists here so neither
+    // `discoverProject` nor the linter walks the tree again. Only an explicit
+    // include-path scan (diff / staged / positional files) that needs neither
+    // the summary's file set nor an exclusion filter skips the listing.
+    const shouldListSourceFiles =
+      input.precomputedSourceFiles === undefined &&
+      (input.includePaths.length === 0 ||
+        input.suppressScanSummary === true ||
+        excludedProjectDirectories.length > 0);
+    const sizedSourceFiles: ReadonlyArray<SourceFileEntry> | null =
+      input.precomputedSourceFiles ??
+      (shouldListSourceFiles
+        ? yield* filesService.listSourceFilesWithSizeCooperative({
+            rootDirectory: scanDirectory,
+            signal: input.signal,
+          })
+        : null);
+    const precomputedSourceFilePaths =
+      sizedSourceFiles?.map((sourceFile) => sourceFile.path) ?? null;
+    const includedPrecomputedSourceFilePaths =
+      precomputedSourceFilePaths !== null && excludedProjectDirectories.length > 0
         ? filterPathsOutsideDirectories({
             rootDirectory: scanDirectory,
-            relativePaths: precomputedSourceFiles,
+            relativePaths: precomputedSourceFilePaths,
             excludedDirectories: excludedProjectDirectories,
           })
-        : precomputedSourceFiles;
+        : precomputedSourceFilePaths;
     const sourceFileCount =
       excludedProjectDirectories.length > 0
-        ? includedPrecomputedSourceFiles?.length
-        : (input.precomputedSourceFileCount ?? includedPrecomputedSourceFiles?.length);
+        ? includedPrecomputedSourceFilePaths?.length
+        : (input.precomputedSourceFiles?.length ??
+          input.precomputedSourceFileCount ??
+          includedPrecomputedSourceFilePaths?.length);
     const project = yield* projectService.discover({
       directory: scanDirectory,
       sourceFileCount,
@@ -482,47 +257,55 @@ export const runInspect = <HooksR = never>(
         reason: new NoReactDependency({ directory: scanDirectory }),
       });
     }
-    const deadCodeSourceFileCount =
-      input.retainExcludedProjectDeadCodeDiagnostics === true && precomputedSourceFiles !== null
-        ? precomputedSourceFiles.length
-        : project.sourceFileCount;
-    const [repo, sha, defaultBranch] = yield* Effect.all(
-      [
-        gitService
-          .githubRepo(scanDirectory)
-          .pipe(Effect.orElseSucceed(() => null as string | null)),
-        gitService.headSha(scanDirectory).pipe(Effect.orElseSucceed(() => null as string | null)),
-        gitService
-          .defaultBranch(scanDirectory)
-          .pipe(Effect.orElseSucceed(() => null as string | null)),
-      ],
-      { concurrency: 3 },
+    // The git metadata only feeds the score request + telemetry at the very
+    // end, so its four subprocesses run in the background and are joined
+    // after lint instead of gating the first oxlint spawn.
+    const resolveGitMetadata: Effect.Effect<GitRepositoryMetadata> = Effect.gen(function* () {
+      const [repo, sha, defaultBranch] = yield* Effect.all(
+        [
+          gitService
+            .githubRepo(scanDirectory)
+            .pipe(Effect.orElseSucceed(() => null as string | null)),
+          gitService.headSha(scanDirectory).pipe(Effect.orElseSucceed(() => null as string | null)),
+          gitService
+            .defaultBranch(scanDirectory)
+            .pipe(Effect.orElseSucceed(() => null as string | null)),
+        ],
+        { concurrency: 3 },
+      );
+      const githubViewerPermission =
+        input.resolveLocalGithubViewerPermission === true && !input.isCi && repo !== null
+          ? yield* gitService
+              .githubViewerPermission({ directory: scanDirectory, repo })
+              .pipe(Effect.orElseSucceed(() => null as string | null))
+          : null;
+      return { repo, sha, defaultBranch, githubViewerPermission };
+    });
+    const invocationCaches = yield* InvocationCaches;
+    const gitRepositoryRoot =
+      invocationCaches === null ? null : findGitRepositoryRoot(scanDirectory);
+    const gitMetadataFiber = yield* Effect.forkChild(
+      invocationCaches === null || gitRepositoryRoot === null
+        ? resolveGitMetadata
+        : invocationCaches.gitRepositoryMetadata.getOrResolve(
+            gitRepositoryRoot,
+            resolveGitMetadata,
+          ),
     );
     const githubActionsScoreMetadata = input.isCi ? resolveGithubActionsScoreMetadata() : {};
-    const githubViewerPermissionFiber = yield* Effect.forkChild(
-      input.resolveLocalGithubViewerPermission === true && !input.isCi && repo !== null
-        ? gitService
-            .githubViewerPermission({ directory: scanDirectory, repo })
-            .pipe(Effect.orElseSucceed(() => null as string | null))
-        : Effect.succeed(null as string | null),
-    );
 
-    const explicitLintIncludePaths = input.skipExplicitIncludePathFilter
-      ? input.includePaths.length > 0
-        ? [...input.includePaths]
-        : undefined
-      : computeExplicitLintIncludePaths([...input.includePaths]);
+    const explicitLintIncludePaths = computeExplicitLintIncludePaths([...input.includePaths]);
     let lintIncludePaths =
       explicitLintIncludePaths ??
       resolveLintIncludePaths(
         scanDirectory,
         resolvedConfig.config,
-        includedPrecomputedSourceFiles ?? undefined,
+        includedPrecomputedSourceFilePaths ?? undefined,
       );
     if (excludedProjectDirectories.length > 0) {
       const candidatePaths =
         lintIncludePaths ??
-        includedPrecomputedSourceFiles ??
+        includedPrecomputedSourceFilePaths ??
         (yield* filesService.listSourceFiles(scanDirectory));
       lintIncludePaths = filterPathsOutsideDirectories({
         rootDirectory: scanDirectory,
@@ -530,6 +313,16 @@ export const runInspect = <HooksR = never>(
         excludedDirectories: excludedProjectDirectories,
       });
     }
+    const includedPrecomputedSourceFilePathSet =
+      sizedSourceFiles === null || input.includePaths.length > 0
+        ? null
+        : new Set(lintIncludePaths ?? includedPrecomputedSourceFilePaths ?? []);
+    const precomputedLintSourceFiles =
+      includedPrecomputedSourceFilePathSet === null || sizedSourceFiles === null
+        ? undefined
+        : sizedSourceFiles.filter((sourceFile) =>
+            includedPrecomputedSourceFilePathSet.has(sourceFile.path),
+          );
 
     // Absolute paths of the exact file set the linter scans, captured ONLY
     // for the multi-project summary (the sole consumer), which signals via
@@ -539,14 +332,14 @@ export const runInspect = <HooksR = never>(
     const fallbackScannedFilePaths = input.suppressScanSummary
       ? (
           lintIncludePaths ??
-          includedPrecomputedSourceFiles ??
+          includedPrecomputedSourceFilePaths ??
           (yield* filesService.listSourceFiles(scanDirectory))
         ).map((relativePath) => path.resolve(scanDirectory, relativePath))
       : [];
 
     const beforeLint = hooks.beforeLint ?? NO_HOOKS.beforeLint;
     const afterLint = hooks.afterLint ?? NO_HOOKS.afterLint;
-    yield* beforeLint(project, lintIncludePaths ?? undefined);
+    yield* beforeLint(project);
 
     const isDiffMode = input.includePaths.length > 0;
 
@@ -561,7 +354,14 @@ export const runInspect = <HooksR = never>(
     });
 
     const filterPerElementPipeline = <ToEnv>(rawStream: Stream.Stream<Diagnostic, never, ToEnv>) =>
-      rawStream.pipe(Stream.filterMap(filterMapNullable<Diagnostic, Diagnostic>(transform.apply)));
+      rawStream.pipe(
+        Stream.filterMap(
+          Filter.fromPredicateOption((diagnostic: Diagnostic) => {
+            const filteredDiagnostic = transform.apply(diagnostic);
+            return filteredDiagnostic === null ? Option.none() : Option.some(filteredDiagnostic);
+          }),
+        ),
+      );
 
     const applyPerElementPipeline = <ToEnv>(rawStream: Stream.Stream<Diagnostic, never, ToEnv>) =>
       filterPerElementPipeline(rawStream).pipe(
@@ -571,12 +371,22 @@ export const runInspect = <HooksR = never>(
     // ── Phase: environment checks ──────────────────────────────────
     // The project-shape checks below are sub-millisecond; the security scan
     // (whole-tree content pass) is heavy and forks separately just below.
+    const pnpmHardeningSeverity = resolveRuleSeverityOverride(
+      { ruleKey: "react-doctor/require-pnpm-hardening" },
+      buildRuleSeverityControls(resolvedConfig.config),
+    );
     const environmentDiagnostics: ReadonlyArray<Diagnostic> = isDiffMode
       ? []
       : [
           ...checkReducedMotion(scanDirectory),
-          ...checkPnpmHardening(scanDirectory),
-          ...checkReactServerComponentsAdvisory(scanDirectory, project),
+          ...(pnpmHardeningSeverity === "warn" || pnpmHardeningSeverity === "error"
+            ? checkPnpmHardening(scanDirectory)
+            : []),
+          ...checkReactServerComponentsAdvisory(
+            scanDirectory,
+            project,
+            invocationCaches?.workspaceProbes ?? null,
+          ),
           ...checkExpoProject(scanDirectory, project),
           ...checkReactNativeProject(scanDirectory, project),
         ];
@@ -656,10 +466,10 @@ export const runInspect = <HooksR = never>(
     // fail-open `[]` + a `timedOut` marker — the same outcome class as a Socket
     // outage. The deadline is measured FROM FORK (before lint), so it bounds a
     // hung undici socket without depending on how long lint takes. (On the rare
-    // timeout, a stateful `Reporter` — only `layerNdjson`, which has no in-tree
-    // consumer — may hold supply-chain emits from before the deadline that the
-    // returned `[]` omits; production `Reporter.layerNoop` makes emit a no-op,
-    // and the returned `diagnostics`/score only ever read the joined value.)
+    // timeout, a stateful reporter may hold supply-chain emits from before the
+    // deadline that the returned `[]` omits; production `Reporter.layerNoop`
+    // makes emit a no-op, and the returned diagnostics/score only read the
+    // joined value.)
     // When skipped, the fork takes the empty branch so the join below stays
     // unconditional (mirroring the viewer-permission fiber above).
     const capToDeadline = (phaseTimeoutMs: number): number =>
@@ -709,7 +519,7 @@ export const runInspect = <HooksR = never>(
       reasonTag: ReactDoctorErrorReason["_tag"] | null;
       reasonKind: OxlintUnavailable["kind"] | null;
     }>({ didFail: false, reason: null, reasonTag: null, reasonKind: null });
-    const deadCodeFailure = yield* Ref.make<{
+    const maintainabilityFailure = yield* Ref.make<{
       didFail: boolean;
       reason: string | null;
     }>({
@@ -724,77 +534,72 @@ export const runInspect = <HooksR = never>(
     // unclamped). Defaults to the memory-and-core-budgeted auto count.
     const scanConcurrency = resolveScanConcurrency(yield* OxlintConcurrency);
     const lintPhaseTimeoutMs = yield* LintPhaseTimeoutMs;
-    const deadCodePhaseTimeoutMs = yield* DeadCodePhaseTimeoutMs;
+    const maintainabilityPhaseTimeoutMs = yield* DeadCodePhaseTimeoutMs;
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
-    // ── Dead-code plan ────────────────────────────────────────────────
-    // Dead-code (deslop reachability) emits only `"warning"`-severity
-    // diagnostics, all `Maintainability`; warnings show by default, so this
-    // normally runs. Only `--no-warnings` / `warnings: false` filters its output
-    // out entirely before any surface or the score, making the expensive pass
-    // pure wasted work — so skip it then, unless a severity override restamps
-    // dead-code findings so they survive the global hide.
-    const shouldRunDeadCode =
-      input.runDeadCode &&
-      !isDiffMode &&
-      (showWarnings || deadCodeMaySurfaceWhenWarningsHidden(resolvedConfig.config));
-    // Dead-code runs SEQUENTIALLY (after lint, with the full core budget) by
-    // default. deslop's parse pass is CPU-bound, so overlapping it with the
-    // equally CPU-bound oxlint pool can't shrink wall-clock — there are no spare
-    // cores to absorb it — and only risks oversubscription: both pools size to
-    // all cores, so concurrently they demand ~2x the cores, thrash, and the
-    // parse pass misses its timeout and silently drops EVERY dead-code finding
-    // (observed: ~all 349 findings dropped on supply-chain-on Sentry scans).
-    // Sequential gives deslop the full cores (fastest per-phase) and never
-    // contends. `DeadCodeOverlap="on"` still forces the overlap for operators
-    // who want it; then the two pools SPLIT the budget — deslop's parse pool is
-    // capped (`parseConcurrency`) and lint shrinks to the remainder — so they
-    // sum to the cores instead of doubling them.
-    const deadCodeOverlapMode = yield* DeadCodeOverlap;
-    const shouldOverlapDeadCode = shouldRunDeadCode && deadCodeOverlapMode === "on";
-    const deadCodeParseConcurrency = shouldOverlapDeadCode
-      ? Math.max(
-          MIN_DEAD_CODE_PARSE_CONCURRENCY,
-          Math.floor(scanConcurrency * DEAD_CODE_OVERLAP_PARSE_SHARE),
-        )
-      : undefined;
-    const lintConcurrency =
-      deadCodeParseConcurrency === undefined
-        ? scanConcurrency
-        : Math.max(MIN_SCAN_CONCURRENCY, scanConcurrency - deadCodeParseConcurrency);
-
-    // Runs either forked (overlap) or inline (sequential) with the same pipeline
-    // + failure Ref. Building this is side-effect-free; the worker spawns only
-    // when the effect runs.
-    const buildCollectDeadCode = (deadCodeTimeout: {
-      workerTimeoutMs: number;
-      phaseTimeoutMs: number | null;
-    }) => {
-      const collectDeadCode = Stream.runCollect(
+    const projectCapabilities = getCapabilities(project);
+    const projectRuleSelections = resolveProjectRuleSelections(
+      buildRuleSeverityControls(resolvedConfig.config),
+    ).filter((selection) => {
+      const rule = REACT_DOCTOR_RULE_REGISTRY[selection.ruleId];
+      return (
+        rule !== undefined &&
+        shouldEnableRule(
+          rule.requires,
+          rule.tags,
+          projectCapabilities,
+          input.ignoredTags,
+          rule.disabledWhen,
+          input.includedTags,
+        ) &&
+        (selection.ruleId === MAINTAINABILITY_DUPLICATE_JSX_RULE
+          ? input.runDeadCode
+          : !isDiffMode) &&
+        (showWarnings || projectRuleSelectionsMaySurfaceWhenWarningsAreHidden([selection]))
+      );
+    });
+    const enabledProjectRuleIds = new Set(
+      projectRuleSelections.map((selection) => selection.ruleId),
+    );
+    const shouldRunMaintainability = enabledProjectRuleIds.size > 0;
+    const buildCollectMaintainability = () => {
+      let incompleteReason: string | null = null;
+      const collectMaintainability = Stream.runCollect(
         applyPerElementPipeline(
-          deadCodeService
+          maintainabilityService
             .run({
               rootDirectory: scanDirectory,
-              parseConcurrency: deadCodeParseConcurrency,
-              workerTimeoutMs: deadCodeTimeout.workerTimeoutMs,
-              onCacheOutcome: (didHitCache) => {
-                deadCodeCacheHit = didHitCache;
-              },
-              onSummaryCacheStats: (stats) => {
-                deadCodeSummaryCacheHits = stats.hits;
-                deadCodeSummaryCacheMisses = stats.misses;
+              enabledProjectRuleIds,
+              focusPaths:
+                input.maintainabilityFocusPaths ?? (isDiffMode ? input.includePaths : undefined),
+              changedLineRanges: input.changedLineRanges,
+              excludedProjectDirectories: input.excludedProjectDirectories,
+              ignorePatterns: ignoredFilePatterns,
+              workerTimeoutMs: resolveProjectAnalysisTimeout(project.sourceFileCount),
+              signal: input.signal,
+              // Only the orchestrator's own raw listing is shareable; supplied
+              // entries are a per-project assignment the duplicate-JSX pass
+              // must not inherit (a family split across nested projects
+              // would lose occurrences).
+              sourceFiles:
+                input.precomputedSourceFiles === undefined && sizedSourceFiles !== null
+                  ? sizedSourceFiles
+                  : undefined,
+              onIncomplete: (reasons) => {
+                incompleteReason = describeMaintainabilityIncompleteness(reasons);
               },
             })
             .pipe(
               Stream.filter(
                 (diagnostic) =>
-                  input.retainExcludedProjectDeadCodeDiagnostics === true ||
+                  (input.retainExcludedProjectDeadCodeDiagnostics === true &&
+                    diagnostic.rule === MAINTAINABILITY_DUPLICATE_JSX_RULE) ||
                   !isExcludedProjectDiagnostic(diagnostic),
               ),
               Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
                 Stream.unwrap(
                   Effect.gen(function* () {
-                    yield* Ref.set(deadCodeFailure, {
+                    yield* Ref.set(maintainabilityFailure, {
                       didFail: true,
                       reason: error.message,
                     });
@@ -805,16 +610,23 @@ export const runInspect = <HooksR = never>(
             ),
         ),
       );
-      const phaseTimeoutMs = deadCodeTimeout.phaseTimeoutMs;
-      if (phaseTimeoutMs === null) return collectDeadCode;
-      return collectDeadCode.pipe(
+      const collectAndRecordIncomplete = collectMaintainability.pipe(
+        Effect.tap(() =>
+          incompleteReason === null
+            ? Effect.void
+            : Ref.set(maintainabilityFailure, { didFail: true, reason: incompleteReason }),
+        ),
+      );
+      const phaseTimeoutMs = capOptionalToDeadline(maintainabilityPhaseTimeoutMs);
+      if (phaseTimeoutMs === null) return collectAndRecordIncomplete;
+      return collectAndRecordIncomplete.pipe(
         Effect.timeoutOption(phaseTimeoutMs),
         Effect.flatMap(
           Option.match({
             onNone: () =>
-              Ref.set(deadCodeFailure, {
+              Ref.set(maintainabilityFailure, {
                 didFail: true,
-                reason: `Dead-code analysis exceeded ${Math.round(
+                reason: `Maintainability analysis exceeded ${Math.round(
                   phaseTimeoutMs / MILLISECONDS_PER_SECOND,
                 )}s and was skipped.`,
               }).pipe(Effect.as<Diagnostic[]>([])),
@@ -823,26 +635,14 @@ export const runInspect = <HooksR = never>(
         ),
       );
     };
-    // The overlap fork happens BEFORE lint, so the lint-reported file count isn't
-    // known yet — scale the timeout off the project's discovered source count and
-    // the reduced core share. (`forkChild`, not `startImmediately`: the lint
-    // `Stream.runCollect` below blocks the parent on async oxlint spawns, yielding
-    // the runtime to this child so it runs DURING lint. Auto-supervised —
-    // interrupted if the parent dies.)
-    const overlapDeadCodeTimeout = resolveDeadCodeTimeout({
-      sourceFileCount: deadCodeSourceFileCount,
-      deadCodeConcurrency: deadCodeParseConcurrency ?? scanConcurrency,
-      fullConcurrency: scanConcurrency,
-    });
-    const deadCodeFiber = shouldOverlapDeadCode
-      ? yield* Effect.forkChild(
-          buildCollectDeadCode({
-            workerTimeoutMs: overlapDeadCodeTimeout.workerTimeoutMs,
-            phaseTimeoutMs: capOptionalToDeadline(deadCodePhaseTimeoutMs),
-          }),
-        )
-      : null;
-
+    // The maintainability (duplicate-JSX) pass is parent-thread CPU work, so it
+    // overlaps the lint wave, whose worker processes leave the parent thread
+    // mostly idle. Its result is discarded when lint fails.
+    const maintainabilityFiber = yield* Effect.forkChild(
+      shouldRunMaintainability
+        ? Effect.suspend(buildCollectMaintainability)
+        : Effect.succeed<ReadonlyArray<Diagnostic>>([]),
+    );
     const scanProgress = yield* progressService.start("Scanning...");
     const scanStartTime = Date.now();
     let lastReportedTotalFileCount = 0;
@@ -852,9 +652,6 @@ export const runInspect = <HooksR = never>(
     let lintCacheTotalFileCount: number | null = null;
     let lintSidecarReplayedFileCount: number | null = null;
     let lintSidecarTotalFileCount: number | null = null;
-    let deadCodeCacheHit: boolean | null = null;
-    let deadCodeSummaryCacheHits: number | null = null;
-    let deadCodeSummaryCacheMisses: number | null = null;
     const lintFileCoverageState: { value: LintFileCoverage | null } = { value: null };
 
     const baseLintStream = linterService
@@ -862,6 +659,7 @@ export const runInspect = <HooksR = never>(
         rootDirectory: scanDirectory,
         project,
         includePaths: lintIncludePaths ?? undefined,
+        precomputedSourceFiles: precomputedLintSourceFiles,
         nodeBinaryPath: input.nodeBinaryPath,
         customRulesOnly: input.customRulesOnly,
         respectInlineDisables: input.respectInlineDisables,
@@ -907,13 +705,7 @@ export const runInspect = <HooksR = never>(
           ),
         ),
       );
-    // When dead-code is overlapped (opt-in `DeadCodeOverlap="on"`), lint runs on
-    // the reduced share of the core budget so the two CPU-bound pools sum to the
-    // cores instead of oversubscribing. The default (sequential) path leaves lint
-    // untouched at the full budget.
-    const rawLintStream = shouldOverlapDeadCode
-      ? baseLintStream.pipe(Stream.provideService(OxlintConcurrency, lintConcurrency))
-      : baseLintStream;
+    const rawLintStream = baseLintStream;
 
     // Lint phase cap (Effect-side, runtime-independent of the per-batch
     // spawn timeout and the bounded split cascade): on timeout, fold into
@@ -953,8 +745,8 @@ export const runInspect = <HooksR = never>(
     // progress frame the linter emits on its last batch is overwritten by the
     // next phase's text before it ever paints — the live counter looks frozen
     // short of N even though every file was scanned (issue #815). Resolve the
-    // full total now and carry it into the dead-code label so "scanned N files"
-    // stays visible for the whole (longer) dead-code pass.
+    // full total now and carry it into the maintainability label so
+    // "scanned N files" stays visible for the whole scan.
     const candidateFiles =
       lintFileCoverageState.value === null
         ? []
@@ -986,67 +778,37 @@ export const runInspect = <HooksR = never>(
       : [];
     const scannedFilesLabel = `${totalFileCount} ${totalFileCount === 1 ? "file" : "files"}`;
 
-    // Resolve dead-code now that lint has settled. Three paths:
-    //   • lint failed → no score, so dead-code is wasted: interrupt the forked
-    //     fiber (its AbortSignal SIGKILLs the worker) / skip the inline run, and
-    //     discard any result — preserving the pre-overlap short-circuit.
-    //   • overlapped → the fiber has been running during lint; just join it.
-    //   • sequential → run it inline after the "analyzing dead code" label.
-    // The spinner label stays sequential (lint counter, then "analyzing dead
-    // code") for clean output even though an overlapped fiber is often already
-    // done by the time we get here — purely cosmetic.
-    let deadCodeCollected: ReadonlyArray<Diagnostic> = [];
+    let maintainabilityCollected: ReadonlyArray<Diagnostic> = [];
     if (lintFailureState.didFail) {
-      if (deadCodeFiber !== null) yield* Fiber.interrupt(deadCodeFiber);
-    } else if (shouldRunDeadCode) {
+      yield* Fiber.interrupt(maintainabilityFiber);
+    } else if (shouldRunMaintainability) {
+      const isMaintainabilityPending = maintainabilityFiber.pollUnsafe() === undefined;
       const isDeadlineSpent =
         input.deadlineEpochMs !== undefined &&
         remainingDeadlineBudgetMs(input.deadlineEpochMs) === 0;
       if (isDeadlineSpent) {
-        // Max-duration budget spent on lint — skip dead-code so a truncated
-        // run nulls the score consistently whether the pass would have run
-        // sequentially or was overlapped with lint. Interrupt an overlap
-        // fiber rather than joining it past the budget.
-        if (deadCodeFiber !== null) yield* Fiber.interrupt(deadCodeFiber);
-        yield* Ref.set(deadCodeFailure, {
+        yield* Fiber.interrupt(maintainabilityFiber);
+        yield* Ref.set(maintainabilityFailure, {
           didFail: true,
-          reason: "Dead-code analysis skipped — max scan duration reached.",
+          reason: "Maintainability analysis skipped — max scan duration reached.",
         });
       } else {
-        yield* scanProgress.update(`Scanned ${scannedFilesLabel}, analyzing dead code...`);
-        // Sequential path: deslop gets the full core budget, and lint has already
-        // reported the true file count — scale the timeout to it so a large repo's
-        // legitimately-long pass isn't reclaimed before it finishes.
-        const sequentialDeadCodeTimeout = resolveDeadCodeTimeout({
-          sourceFileCount:
-            input.retainExcludedProjectDeadCodeDiagnostics === true
-              ? deadCodeSourceFileCount
-              : totalFileCount,
-          deadCodeConcurrency: scanConcurrency,
-          fullConcurrency: scanConcurrency,
-        });
-        deadCodeCollected =
-          deadCodeFiber !== null
-            ? yield* Fiber.join(deadCodeFiber)
-            : yield* buildCollectDeadCode({
-                workerTimeoutMs: sequentialDeadCodeTimeout.workerTimeoutMs,
-                phaseTimeoutMs: capOptionalToDeadline(deadCodePhaseTimeoutMs),
-              });
+        if (isMaintainabilityPending) {
+          yield* scanProgress.update(`Scanned ${scannedFilesLabel}, analyzing maintainability...`);
+        }
+        maintainabilityCollected = yield* Fiber.join(maintainabilityFiber);
       }
     }
-    // On lint failure dead-code is discarded entirely, so a failure the forked
-    // fiber may have recorded before we interrupted it must not leak into the
-    // output — preserve the "lint failed ⇒ didDeadCodeFail: false" contract.
-    const deadCodeFailureState = lintFailureState.didFail
+    const maintainabilityFailureState = lintFailureState.didFail
       ? { didFail: false, reason: null }
-      : yield* Ref.get(deadCodeFailure);
+      : yield* Ref.get(maintainabilityFailure);
 
     const scanElapsedMilliseconds = Date.now() - scanStartTime;
     const scanElapsedSeconds = (scanElapsedMilliseconds / MILLISECONDS_PER_SECOND).toFixed(1);
 
     if (!lintFailureState.didFail) {
-      if (deadCodeFailureState.didFail) {
-        yield* scanProgress.fail(DEAD_CODE_FAIL_TEXT);
+      if (maintainabilityFailureState.didFail) {
+        yield* scanProgress.fail(MAINTAINABILITY_FAIL_TEXT);
       } else if (input.suppressScanSummary) {
         yield* scanProgress.stop();
       } else {
@@ -1056,7 +818,7 @@ export const runInspect = <HooksR = never>(
       }
     }
 
-    // Join the background supply-chain fiber now that lint + dead-code have
+    // Join the background supply-chain fiber now that lint + maintainability have
     // run, so its network time overlapped the lint pass. This lands BEFORE
     // `reporterService.finalize` so every supply-chain `Reporter.emit` from the
     // forked stream has flushed before a stateful reporter (e.g. NDJSON) closes
@@ -1085,11 +847,12 @@ export const runInspect = <HooksR = never>(
         ...securityScanCollected,
         ...supplyChainCollected,
         ...lintCollected,
-        ...deadCodeCollected,
+        ...maintainabilityCollected,
       ]),
     );
 
-    const githubViewerPermission = yield* Fiber.join(githubViewerPermissionFiber);
+    const { repo, sha, defaultBranch, githubViewerPermission } =
+      yield* Fiber.join(gitMetadataFiber);
     const scoreMetadata: ScoreRequestMetadata = {
       ...(repo !== null ? { repo } : {}),
       ...(sha !== null ? { sha } : {}),
@@ -1109,12 +872,11 @@ export const runInspect = <HooksR = never>(
       scoreSurface,
       resolvedConfig.config,
     );
-    // Dead-code findings feed the scored set, so a failed or deadline-skipped
-    // dead-code pass would leave the score computed over an incomplete set —
-    // overstating health. Null it like a lint failure; a pass that was merely
-    // disabled never sets `didFail`, so `--no-deslop` scans keep their score.
+    // Maintainability findings feed the scored set, so an incomplete pass
+    // nulls the score rather than overstating project health. The deprecated
+    // dead-code-shaped output fields below preserve compatibility for callers.
     const score =
-      lintFailureState.didFail || deadCodeFailureState.didFail
+      lintFailureState.didFail || maintainabilityFailureState.didFail
         ? null
         : yield* scoreService.compute({
             diagnostics: scoreDiagnostics,
@@ -1144,9 +906,9 @@ export const runInspect = <HooksR = never>(
       lintFailureReasonTag: lintFailureState.reasonTag,
       lintFailureReasonKind: lintFailureState.reasonKind,
       lintPartialFailures,
-      didDeadCodeFail: deadCodeFailureState.didFail,
-      deadCodeFailureReason: deadCodeFailureState.reason,
-      deadCodeOverlapped: shouldOverlapDeadCode,
+      didDeadCodeFail: maintainabilityFailureState.didFail,
+      deadCodeFailureReason: maintainabilityFailureState.reason,
+      deadCodeOverlapped: false,
       scannedFileCount: totalFileCount,
       scannedFilePaths,
       analyzedFiles,
@@ -1159,17 +921,15 @@ export const runInspect = <HooksR = never>(
       lintCacheTotalFileCount,
       lintSidecarReplayedFileCount,
       lintSidecarTotalFileCount,
-      // Lint failure discards the dead-code pass entirely (see
-      // `deadCodeFailureState` above), so its cache outcomes must not leak.
-      deadCodeCacheHit: lintFailureState.didFail ? null : deadCodeCacheHit,
-      deadCodeSummaryCacheHits: lintFailureState.didFail ? null : deadCodeSummaryCacheHits,
-      deadCodeSummaryCacheMisses: lintFailureState.didFail ? null : deadCodeSummaryCacheMisses,
+      deadCodeCacheHit: null,
+      deadCodeSummaryCacheHits: null,
+      deadCodeSummaryCacheMisses: null,
       suppressedRuleCounts: transform.summarizeSuppressions(),
     };
   }).pipe(
     Effect.withSpan("runInspect", {
       attributes: {
-        "inspect.directory": input.directory,
+        "inspect.directory": scrubSensitivePaths(input.directory),
         "inspect.includePathCount": input.includePaths.length,
         "inspect.runDeadCode": input.runDeadCode,
         "inspect.isCi": input.isCi,

@@ -134,6 +134,14 @@ describe("stripUnknownCliFlags", () => {
     ]);
   });
 
+  it("keeps the explicit score opt-in on the experimental TUI command", () => {
+    expect(stripUserArguments(["experimental-tui", ".", "--score"])).toEqual([
+      "experimental-tui",
+      ".",
+      "--score",
+    ]);
+  });
+
   it("keeps the --no-telemetry alias for --no-score", () => {
     expect(stripUserArguments([".", "--no-telemetry"])).toEqual([".", "--no-telemetry"]);
   });
@@ -188,6 +196,31 @@ describe("stripUnknownCliFlags", () => {
     expect(stripUserArguments(["why", "src/App.tsx:42", "--offline"])).toEqual([
       "why",
       "src/App.tsx:42",
+    ]);
+  });
+
+  it("keeps runtime scan options and their values", () => {
+    expect(
+      stripUserArguments([
+        "scan",
+        "http://localhost:3000",
+        "--format",
+        "jsonl",
+        "--cdp",
+        "http://127.0.0.1:9222",
+        "--trace-out",
+        "/tmp/runtime.json.gz",
+        "--offline",
+      ]),
+    ).toEqual([
+      "scan",
+      "http://localhost:3000",
+      "--format",
+      "jsonl",
+      "--cdp",
+      "http://127.0.0.1:9222",
+      "--trace-out",
+      "/tmp/runtime.json.gz",
     ]);
   });
 

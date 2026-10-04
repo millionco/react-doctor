@@ -1,7 +1,0 @@
-{
-  "name": "test-with-inertia",
-  "dependencies": {
-    "@inertiajs/react": "*",
-    "react": "*"
-  }
-}

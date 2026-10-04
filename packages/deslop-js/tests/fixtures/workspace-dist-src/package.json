@@ -1,8 +1,0 @@
-{
-  "name": "workspace-dist-to-src-root",
-  "version": "1.0.0",
-  "private": true,
-  "workspaces": [
-    "packages/*"
-  ]
-}

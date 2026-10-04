@@ -1,8 +1,0 @@
-{
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@myapp/shared/*": ["../../packages/shared/src/*"]
-    }
-  }
-}

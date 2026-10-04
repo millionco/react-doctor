@@ -31,6 +31,7 @@ import {
   batchIncludePaths,
   createOxlintConfig,
   OXLINT_MAX_FILES_PER_BATCH,
+  runOxlint,
   SPAWN_ARGS_MAX_LENGTH_CHARS,
 } from "@react-doctor/core";
 import {
@@ -637,6 +638,12 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
 
     const withoutCompiler = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
+      severityControls: {
+        rules: {
+          "react-doctor/prefer-module-scope-pure-function": "warn",
+          "react-doctor/rendering-hoist-jsx": "warn",
+        },
+      },
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: false }),
     });
     for (const [ruleKey, severity] of reactCompilerGatedRules) {
@@ -645,6 +652,12 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
 
     const withCompiler = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
+      severityControls: {
+        rules: {
+          "react-doctor/prefer-module-scope-pure-function": "warn",
+          "react-doctor/rendering-hoist-jsx": "warn",
+        },
+      },
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
     });
     for (const ruleKey of reactCompilerGatedRules.keys()) {
@@ -692,14 +705,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
     }
   });
 
-  // The inverse of the rule above: `react-compiler-no-manual-memoization`
-  // is gated with `requires: ["react-compiler"]` so it ONLY fires once
-  // the project ships with React Compiler. Without the compiler, manual
-  // `useMemo` / `useCallback` / `memo()` are still legitimate perf
-  // tools — the gate must keep the rule out of the default config. With
-  // the compiler it ships as a `warn` (redundant-memo cleanup is hidden in
-  // the default report); the `compiler-cleanup` bucket re-enables errors.
-  it("ships react-compiler-no-manual-memoization as a warning, gated on React Compiler", () => {
+  it("keeps retired compiler advice out of defaults and category opt-ins", () => {
     const ruleKey = "react-doctor/react-compiler-no-manual-memoization";
 
     const withoutCompiler = createOxlintConfig({
@@ -712,14 +718,14 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       pluginPath: "/tmp/react-doctor-plugin.js",
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
     });
-    expect(withCompiler.rules[ruleKey]).toBe("warn");
+    expect(withCompiler.rules[ruleKey]).toBeUndefined();
 
     const withCompilerCleanupBucket = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
       severityControls: { buckets: { "compiler-cleanup": "error" } },
     });
-    expect(withCompilerCleanupBucket.rules[ruleKey]).toBe("error");
+    expect(withCompilerCleanupBucket.rules[ruleKey]).toBeUndefined();
   });
 
   // The three noisy upstream rules ship `defaultEnabled: false` —
@@ -907,5 +913,77 @@ describe("issue #921: non-string `projects` config entry crashes selectProjects"
     clearConfigCache();
     const loaded = await loadConfigWithSource(projectDir);
     expect(loaded?.config.projects).toBeUndefined();
+  });
+});
+
+describe("issue #1657: stack overflow with zustand + Next.js + path aliases", () => {
+  it("completes without crashing when scanning zustand store with path aliases", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-1657-zustand-nextjs", {
+      packageJsonExtras: {
+        dependencies: {
+          next: "15.0.0",
+          react: "19.2.4",
+          "react-dom": "19.2.4",
+          zustand: "5.0.14",
+        },
+      },
+      files: {
+        "src/lib/preferences/theme.ts": `export type Theme = 'light' | 'dark' | 'system';
+export const DEFAULT_THEME: Theme = 'system';`,
+        "src/lib/preferences/theme-utils.ts": `import { type Theme, DEFAULT_THEME } from './theme';
+
+export const resolveTheme = (theme: Theme): 'light' | 'dark' => {
+  if (theme === 'system') {
+    return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+  }
+  return theme;
+};
+
+export const getInitialTheme = (): Theme => DEFAULT_THEME;`,
+        "src/lib/preferences/preference-runtime.ts": `import { resolveTheme, getInitialTheme } from './theme-utils';
+
+export const runtime = {
+  resolve: resolveTheme,
+  getInitial: getInitialTheme,
+};`,
+        "src/stores/preferences/preferences-store.ts": `import { createStore } from 'zustand/vanilla';
+import { runtime } from '@/lib/preferences/preference-runtime';
+import type { Theme } from '@/lib/preferences/theme';
+
+interface PreferencesState {
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  getResolvedTheme: () => 'light' | 'dark';
+}
+
+export const preferencesStore = createStore<PreferencesState>()((set, get) => ({
+  theme: runtime.getInitial(),
+  setTheme: (theme) => set({ theme }),
+  getResolvedTheme: () => runtime.resolve(get().theme),
+}));`,
+      },
+    });
+    writeJson(path.join(projectDir, "tsconfig.json"), {
+      compilerOptions: {
+        baseUrl: ".",
+        jsx: "preserve",
+        module: "esnext",
+        paths: { "@/*": ["./src/*"] },
+        target: "es2022",
+      },
+    });
+
+    const project = discoverProject(projectDir);
+    expect(project.framework).toBe("nextjs");
+
+    await expect(
+      runOxlint({
+        rootDirectory: projectDir,
+        project,
+        includePaths: [path.join(projectDir, "src/stores/preferences/preferences-store.ts")],
+      }),
+    ).resolves.toEqual(expect.any(Array));
   });
 });

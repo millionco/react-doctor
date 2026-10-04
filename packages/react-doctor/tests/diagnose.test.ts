@@ -173,12 +173,12 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
     expect(result.project.reactVersion).toBe("^19.0.0");
   });
 
-  it("throws a clear error when the directory has no root package.json and no nested React project", async () => {
-    const emptyDir = path.join(tempRoot, "diagnose-no-react-anywhere");
+  it("throws a clear error when the directory has no root package.json and no nested supported project", async () => {
+    const emptyDir = path.join(tempRoot, "diagnose-no-supported-project");
     fs.mkdirSync(emptyDir, { recursive: true });
 
     await expect(diagnose(emptyDir, { lint: false, deadCode: false })).rejects.toThrow(
-      "No React project found in",
+      "No React or Three.js project found in",
     );
   });
 

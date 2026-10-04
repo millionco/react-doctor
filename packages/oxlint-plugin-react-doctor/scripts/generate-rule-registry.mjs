@@ -102,6 +102,7 @@ const getRequiredCapabilities = (bucketName, ruleId) => {
 const BUCKET_TO_AUTO_TAGS = {
   design: ["design"],
   ink: ["ink"],
+  project: ["project-analysis"],
   "react-native": ["react-native"],
   r3f: ["r3f", "webgl"],
   webgl: ["webgl"],
@@ -162,32 +163,22 @@ const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "no-skipped-heading-level",
   "no-static-motion-config-never",
   "no-ungated-tailwind-animation",
+  "shadcn-dialog-content-requires-title",
+  "shadcn-form-item-requires-label",
+  "shadcn-icon-button-requires-label",
+  "radix-dialog-content-requires-title",
+  "base-ui-dialog-popup-requires-title",
+  "base-ui-field-requires-label",
+  "react-aria-dialog-requires-heading",
   "no-uninformative-aria-label",
   "dialog-has-accessible-name",
   "no-create-ref-in-function-component",
+  "no-multi-component-file",
   "no-call-component-as-function",
   "no-string-false-on-boolean-attribute",
   "hook-import-rename-loses-use-prefix",
   "no-invalid-progress-range",
   "role-button-requires-complete-keyboard-activation",
-]);
-
-// Rule ids whose source files are kept on disk but intentionally NOT
-// registered. Use sparingly — the canonical way to retire a rule is to
-// delete its file (and its tests, fixture references, etc.). This
-// skiplist exists for rules we want to stop shipping right away while
-// preserving their implementation, tests, and regression fixtures so
-// re-enabling is a one-line change. Add a brief justification next to
-// every entry.
-const RULE_IDS_TO_SKIP_REGISTRATION = new Set([
-  // The React-Compiler memoization premise didn't hold: the three
-  // canonical hooks it targeted (`useRouter`, `useSearchParams`,
-  // `useNavigation`) all return stable references, so destructuring
-  // their methods produces no measurable compiler win — and on Pages
-  // Router (`next/router`) destructuring `push` captures a stale
-  // reference. Implementation + regression suite + fixture lines kept
-  // in place; remove this entry to re-enable.
-  "react-compiler-destructure-method",
 ]);
 
 // Fine-grained category → the clear, user-facing bucket the scan output
@@ -234,6 +225,7 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   nextjs: "Next.js",
   performance: "Performance",
   preact: "Preact",
+  project: "Architecture",
   "react-builtins": "Correctness",
   "react-native": "React Native",
   r3f: "Performance",
@@ -310,7 +302,6 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
       process.exit(1);
     }
     const ruleId = idMatch[1];
-    if (RULE_IDS_TO_SKIP_REGISTRATION.has(ruleId)) continue;
     const category = toBucket(categoryMatch ? categoryMatch[1] : defaultCategory);
     const severity = severityMatch[1];
     // Force POSIX separators — `path.relative()` returns backslashes on
@@ -381,10 +372,18 @@ const formatAutoTagsLine = (entry) => {
   const autoTagLiteral = entry.autoTags.map((tag) => `"${tag}"`).join(", ");
   const tagsLine = `      tags: [...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])])],`;
   if (tagsLine.length <= GENERATED_LINE_WIDTH) return `${tagsLine}\n`;
-  return `      tags: [
-        ...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])]),
-      ],
-`;
+  const wrappedSetLine = `        ...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])]),`;
+  if (wrappedSetLine.length <= GENERATED_LINE_WIDTH) {
+    return `      tags: [\n${wrappedSetLine}\n      ],\n`;
+  }
+  return (
+    `      tags: [\n` +
+    `        ...new Set([\n` +
+    entry.autoTags.map((tag) => `          "${tag}",\n`).join("") +
+    `          ...(${entry.identifier}.tags ?? []),\n` +
+    `        ]),\n` +
+    `      ],\n`
+  );
 };
 
 // Merge bucket-synthesized capabilities with any rule-authored `requires`
@@ -403,9 +402,9 @@ const formatRequiresLine = (entry) => {
   // identifiers — e.g. `noNoninteractiveElementToInteractiveRole` — to spill
   // past the limit).
   const singleLine = `      requires: [...new Set<Capability>([${requiredCapabilities}, ...(${entry.identifier}.requires ?? [])])],`;
-  if (singleLine.length <= 100) return `${singleLine}\n`;
+  if (singleLine.length <= GENERATED_LINE_WIDTH) return `${singleLine}\n`;
   const wrappedSetLine = `        ...new Set<Capability>([${requiredCapabilities}, ...(${entry.identifier}.requires ?? [])]),`;
-  if (wrappedSetLine.length <= 100) {
+  if (wrappedSetLine.length <= GENERATED_LINE_WIDTH) {
     return `      requires: [\n${wrappedSetLine}\n      ],\n`;
   }
   return (
@@ -508,6 +507,7 @@ const coreRuleEntries = ruleEntries.map((entry) => {
           : undefined,
       matchByOccurrence: sourceRule.matchByOccurrence,
       isScanRule: typeof sourceRule.scan === "function",
+      isProjectRule: sourceRule.execution === "project" ? true : undefined,
     },
   };
 });

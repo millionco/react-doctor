@@ -50,6 +50,19 @@ const isSameApplicationChannelInstance = (targetText: string, fileContent: strin
   return constructorAssignmentPattern.test(fileContent);
 };
 
+const isSameApplicationChannelTypedReceiver = (
+  targetText: string,
+  fileContent: string,
+): boolean => {
+  const receiverRoot = /^[\w$]+/.exec(targetText)?.[0];
+  if (receiverRoot === undefined) return false;
+  const typedReceiverPattern = new RegExp(
+    `(?:^|[(,{;]\\s*)${escapeRegExp(receiverRoot)}\\s*[?!]?\\s*:\\s*(?:Worker|SharedWorker|MessagePort|BroadcastChannel|WebSocket|EventSource)\\b`,
+    "m",
+  );
+  return typedReceiverPattern.test(fileContent);
+};
+
 const WORKER_FILE_PATH_PATTERN = /worker/i;
 
 const getNodeText = (content: string, node: EsTreeNode): string => {
@@ -107,6 +120,7 @@ export const postmessageOriginRisk = defineRule({
       if (targetText === null) return;
       if (SAME_APPLICATION_CHANNEL_TARGET_PATTERN.test(targetText)) return;
       if (isSameApplicationChannelInstance(targetText, file.content)) return;
+      if (isSameApplicationChannelTypedReceiver(targetText, file.content)) return;
 
       const nodeText = getNodeText(file.content, node);
       const messageDataIndex = nodeText.search(MESSAGE_DATA_READ_PATTERN);

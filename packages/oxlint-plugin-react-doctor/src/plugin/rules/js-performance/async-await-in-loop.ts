@@ -18,8 +18,10 @@ import {
 import { hasPossibleStaticMemberCallWrite } from "../../utils/has-static-property-write-before.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isLocalPromiseCollector } from "../../utils/is-local-promise-collector.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTestLibraryImportSource } from "../../utils/is-test-library-import-source.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -28,6 +30,36 @@ import { walkAst } from "../../utils/walk-ast.js";
 
 const LOOP_STATEMENT_TYPES: ReadonlySet<string> = new Set(LOOP_TYPES);
 const ORDERED_OUTPUT_INSERTION_METHOD_NAMES = new Set(["push", "unshift"]);
+const HOST_YIELD_SCHEDULER_NAMES: ReadonlySet<string> = new Set([
+  "queueMicrotask",
+  "requestAnimationFrame",
+  "requestIdleCallback",
+  "setImmediate",
+  "setTimeout",
+]);
+const OPAQUE_PACING_CALLEE_NAMES: ReadonlySet<string> = new Set([
+  "yieldNow",
+  "yieldTo",
+  "yieldToBrowser",
+  "slice",
+  "sliceYield",
+  "nextFrame",
+  "breathe",
+  "onYield",
+  "onProgress",
+  "progress",
+  "onStep",
+  "step",
+  "runStage",
+]);
+
+const getCalleeName = (callee: EsTreeNode | null | undefined): string | null => {
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return callee.property.name;
+  }
+  return null;
+};
 
 const getLoopBody = (loopNode: EsTreeNode): EsTreeNode | null => {
   if (
@@ -81,9 +113,95 @@ const isIntentionalSequencingCallee = (callee: EsTreeNode | null | undefined): b
     return INTENTIONAL_SEQUENCING_CALLEE_NAMES.has(callee.name);
   }
   if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    const receiver = stripParenExpression(callee.object);
+    if (
+      callee.property.name === "check" &&
+      isNodeOfType(receiver, "Identifier") &&
+      /sched(?:uler)?/i.test(receiver.name)
+    ) {
+      return true;
+    }
     return INTENTIONAL_SEQUENCING_CALLEE_NAMES.has(callee.property.name);
   }
   return false;
+};
+
+const isGlobalHostSchedulerCall = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  if (
+    isNodeOfType(callExpression.callee, "Identifier") &&
+    HOST_YIELD_SCHEDULER_NAMES.has(callExpression.callee.name) &&
+    context.scopes.isGlobalReference(callExpression.callee)
+  ) {
+    return true;
+  }
+  if (
+    !isNodeOfType(callExpression.callee, "MemberExpression") ||
+    !isNodeOfType(callExpression.callee.property, "Identifier") ||
+    !HOST_YIELD_SCHEDULER_NAMES.has(callExpression.callee.property.name)
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(callExpression.callee.object);
+  return (
+    isNodeOfType(receiver, "Identifier") &&
+    (receiver.name === "globalThis" || receiver.name === "window") &&
+    context.scopes.isGlobalReference(receiver)
+  );
+};
+
+const doesLocalFunctionYieldToHost = (
+  localFunction: EsTreeNode,
+  context: RuleContext,
+  visitedFunctions: Set<EsTreeNode> = new Set(),
+): boolean => {
+  if (!isFunctionLike(localFunction) || visitedFunctions.has(localFunction)) return false;
+  visitedFunctions.add(localFunction);
+  let hasDirectHostYieldPromise = false;
+  let hasNestedPacingCall = false;
+  walkAst(localFunction.body, (child: EsTreeNode): boolean | void => {
+    if (child !== localFunction.body && isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "NewExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      child.callee.name === "Promise" &&
+      context.scopes.isGlobalReference(child.callee)
+    ) {
+      const promiseRoot = findTransparentExpressionRoot(child);
+      const promiseParent = promiseRoot.parent;
+      const producesFunctionResult =
+        (isNodeOfType(promiseParent, "ReturnStatement") &&
+          promiseParent.argument === promiseRoot) ||
+        (isNodeOfType(promiseParent, "AwaitExpression") &&
+          promiseParent.argument === promiseRoot) ||
+        (isFunctionLike(promiseParent) && promiseParent.body === promiseRoot);
+      const executor = child.arguments[0];
+      if (producesFunctionResult && isFunctionLike(executor)) {
+        walkAst(executor.body, (executorChild: EsTreeNode): boolean | void => {
+          if (executorChild !== executor.body && isFunctionLike(executorChild)) return false;
+          if (
+            isNodeOfType(executorChild, "CallExpression") &&
+            isGlobalHostSchedulerCall(executorChild, context)
+          ) {
+            hasDirectHostYieldPromise = true;
+          }
+        });
+      }
+    }
+    if (!isNodeOfType(child, "CallExpression")) return;
+    if (isGlobalHostSchedulerCall(child, context)) return;
+    const nestedLocalFunction = resolveStaticLocalCallFunction(child, context.scopes);
+    if (nestedLocalFunction !== null) {
+      if (doesLocalFunctionYieldToHost(nestedLocalFunction, context, visitedFunctions)) {
+        hasNestedPacingCall = true;
+      }
+      return;
+    }
+    if (isIntentionalSequencingCallee(child.callee)) hasNestedPacingCall = true;
+  });
+  return hasDirectHostYieldPromise || hasNestedPacingCall;
 };
 
 const isAwaitingSleepLikeCall = (awaitNode: EsTreeNode, context: RuleContext): boolean => {
@@ -91,7 +209,24 @@ const isAwaitingSleepLikeCall = (awaitNode: EsTreeNode, context: RuleContext): b
   const argument = awaitNode.argument;
   if (!argument) return false;
   if (!isNodeOfType(argument, "CallExpression")) return false;
+  if (
+    argument.arguments.some((callArgument) => {
+      if (isNodeOfType(callArgument, "SpreadElement")) return false;
+      const pacingArgument = stripParenExpression(callArgument);
+      return (
+        isNodeOfType(pacingArgument, "Identifier") && /sched(?:uler)?/i.test(pacingArgument.name)
+      );
+    })
+  ) {
+    return true;
+  }
+  const localFunction = resolveStaticLocalCallFunction(argument, context.scopes);
+  if (localFunction !== null && doesLocalFunctionYieldToHost(localFunction, context)) return true;
   if (getOrderIndependentLocalFunction(argument, context.scopes) !== null) return false;
+  const calleeName = getCalleeName(argument.callee);
+  if (localFunction !== null && calleeName && OPAQUE_PACING_CALLEE_NAMES.has(calleeName)) {
+    return false;
+  }
   return isIntentionalSequencingCallee(argument.callee);
 };
 
@@ -1116,7 +1251,7 @@ const isBindingCombinedWithPromiseConcurrency = (
   return isCombined;
 };
 
-const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode): boolean => {
+const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode, context: RuleContext): boolean => {
   const flowNode = resolvePromiseFlowNode(mapCall);
   const parent = flowNode.parent;
   if (
@@ -1126,6 +1261,11 @@ const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode): boolean => {
   ) {
     return true;
   }
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    isLocalPromiseCollector(parent, flowNode, context.scopes)
+  )
+    return true;
   let bindingName: string | null = null;
   if (
     isNodeOfType(parent, "VariableDeclarator") &&
@@ -1179,8 +1319,9 @@ export const asyncAwaitInLoop = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Collect the items, then use `await Promise.all(items.map(...))` so independent work runs at the same time",
+    "Consider concurrent calls only for independent asynchronous work. Shared queues or synchronous work may not benefit. Preserve resource limits, transaction ordering, and failure/cancellation semantics; observe all callback promises.",
   create: (context: RuleContext) => {
+    let hasTestLibraryImport = false;
     const inspectLoop = (
       loopNode:
         | EsTreeNodeOfType<"ForStatement">
@@ -1190,8 +1331,10 @@ export const asyncAwaitInLoop = defineRule({
         | EsTreeNodeOfType<"DoWhileStatement">,
       label: string,
     ): void => {
+      if (hasTestLibraryImport) return;
       const loopBody = loopNode.body;
       if (!loopBody) return;
+      if (!findFirstAwaitOutsideNestedFunctions(loopBody, true)) return;
       if (loopBodyHasIntentionallySequentialAwait(loopBody, context)) return;
       if (
         (isNodeOfType(loopNode, "WhileStatement") || isNodeOfType(loopNode, "DoWhileStatement")) &&
@@ -1208,12 +1351,15 @@ export const asyncAwaitInLoop = defineRule({
       if (firstAwait) {
         context.report({
           node: firstAwait,
-          message: `This makes the ${label} slow because each await runs one after another, so collect the independent calls & run them together with \`await Promise.all(items.map(...))\``,
+          message: `This ${label} waits before starting the next iteration. If iterations perform independent asynchronous work, consider bounded concurrency; await syntax alone does not establish a speedup.`,
         });
       }
     };
 
     return {
+      ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
+        if (isTestLibraryImportSource(node.source?.value)) hasTestLibraryImport = true;
+      },
       ForStatement(node: EsTreeNodeOfType<"ForStatement">) {
         inspectLoop(node, "for-loop");
       },
@@ -1233,9 +1379,7 @@ export const asyncAwaitInLoop = defineRule({
         inspectLoop(node, "do-while loop");
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        // arr.forEach(async item => { await fn(item); }) — sequential
-        // because forEach doesn't await; even worse, the awaits are
-        // dropped on the floor (forEach ignores return values).
+        if (hasTestLibraryImport) return;
         if (!isNodeOfType(node.callee, "MemberExpression")) return;
         if (!isNodeOfType(node.callee.property, "Identifier")) return;
         const methodName = node.callee.property.name;
@@ -1249,7 +1393,7 @@ export const asyncAwaitInLoop = defineRule({
 
         if (
           (methodName === "map" || methodName === "flatMap") &&
-          isWrappedInPromiseConcurrency(node)
+          isWrappedInPromiseConcurrency(node, context)
         ) {
           return;
         }
@@ -1257,8 +1401,8 @@ export const asyncAwaitInLoop = defineRule({
         if (firstAwait) {
           const message =
             methodName === "forEach"
-              ? "Async callback in .forEach silently drops every await, so the work never finishes before the loop moves on. Use a `for…of` loop, or `await Promise.all(items.map(async (item) => {...}))`"
-              : `Async callback in .${methodName} runs the awaits one after another, so it is slow. Use \`await Promise.all(items.map(async (item) => {...}))\` to run them at the same time`;
+              ? "Async callback in .forEach returns a promise that .forEach ignores. Use a `for…of` loop to await each operation, or collect and observe promises when concurrent work is safe."
+              : `Async callback in .${methodName} returns a promise that the array method does not await. Check that its consumer observes completion and handles rejections; callbacks may already overlap.`;
           context.report({ node: firstAwait, message });
         }
       },

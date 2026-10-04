@@ -3,7 +3,14 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
-import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "../types/index.js";
+import type {
+  Diagnostic,
+  ProjectInfo,
+  ReactDoctorConfig,
+  SourceFileEntry,
+} from "../types/index.js";
+export type { LintFileCoverage } from "../types/run-oxlint.js";
+import type { LintFileCoverage } from "../types/run-oxlint.js";
 import { OxlintSpawnFailed, ReactDoctorError } from "../errors.js";
 import {
   LintBatchOrdering,
@@ -39,6 +46,7 @@ export interface LintInput {
   readonly rootDirectory: string;
   readonly project: ProjectInfo;
   readonly includePaths?: ReadonlyArray<string>;
+  readonly precomputedSourceFiles?: ReadonlyArray<SourceFileEntry>;
   readonly customRulesOnly?: boolean;
   readonly respectInlineDisables?: boolean;
   readonly adoptExistingLintConfig?: boolean;
@@ -58,11 +66,6 @@ export interface LintInput {
   ) => void;
   /** See `RunOxlintOptions.deadlineEpochMs`. */
   readonly deadlineEpochMs?: number;
-}
-
-export interface LintFileCoverage {
-  readonly candidateFiles: ReadonlyArray<string>;
-  readonly analyzedFiles: ReadonlyArray<string>;
 }
 
 /**
@@ -144,6 +147,7 @@ export class Linter extends Context.Service<
                   rootDirectory: input.rootDirectory,
                   project: input.project,
                   includePaths: input.includePaths ? [...input.includePaths] : undefined,
+                  precomputedSourceFiles: input.precomputedSourceFiles,
                   nodeBinaryPath: input.nodeBinaryPath,
                   customRulesOnly: input.customRulesOnly,
                   respectInlineDisables: input.respectInlineDisables,
@@ -194,13 +198,6 @@ export class Linter extends Context.Service<
       }),
     );
 
-  /**
-   * Composite layer: runs every supplied backend in sequence and
-   * concatenates their diagnostic streams. Slot for a future
-   * second-backend integration (ESLint worker pool, sandboxed runner)
-   * — register an additional Linter instance and pass the array here
-   * without changing the orchestrator.
-   */
   static readonly layerComposite = (
     backends: ReadonlyArray<Linter["Service"]>,
   ): Layer.Layer<Linter> =>
@@ -208,12 +205,15 @@ export class Linter extends Context.Service<
       Linter,
       Linter.of({
         run: (input) => {
-          if (backends.length === 0) return Stream.empty;
-          let stream = backends[0].run(input);
-          for (let index = 1; index < backends.length; index++) {
-            stream = stream.pipe(Stream.concat(backends[index].run(input)));
+          if (backends.length === 0) {
+            return Stream.empty;
           }
-          return stream;
+
+          let diagnostics = backends[0].run(input);
+          for (let index = 1; index < backends.length; index++) {
+            diagnostics = diagnostics.pipe(Stream.concat(backends[index].run(input)));
+          }
+          return diagnostics;
         },
       }),
     );

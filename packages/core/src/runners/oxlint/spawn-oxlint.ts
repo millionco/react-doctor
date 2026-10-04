@@ -1,14 +1,20 @@
 import { spawn } from "node:child_process";
 import {
-  ABORT_EXIT_CODES,
   MILLISECONDS_PER_SECOND,
   OXLINT_OUTPUT_MAX_BYTES,
   OXLINT_SPAWN_TIMEOUT_MS as DEFAULT_OXLINT_SPAWN_TIMEOUT_MS,
 } from "../../constants.js";
 import { OxlintBatchExceeded, OxlintSpawnFailed, ReactDoctorError } from "../../errors.js";
 import { buildOxlintChildEnv } from "../../utils/build-oxlint-child-env.js";
+import { buildOxlintExitError } from "../../utils/build-oxlint-exit-error.js";
 import { buildProfiledNodeArguments } from "../../utils/build-profiled-node-arguments.js";
+import { captureOxlintRuleTimings } from "../../utils/capture-oxlint-rule-timings.js";
 import { lowerChildProcessPriority } from "../../utils/lower-child-process-priority.js";
+import {
+  isOxlintJobTimelineEnabled,
+  previewOxlintStdout,
+  recordOxlintJobTimeline,
+} from "../../utils/record-oxlint-job-timeline.js";
 
 const SANITIZED_ENV: NodeJS.ProcessEnv = buildOxlintChildEnv(process.env);
 
@@ -76,6 +82,7 @@ export const spawnOxlint = (
       },
     );
     lowerChildProcessPriority(child.pid);
+    const spawnedAt = Date.now();
 
     const onAbort = () => {
       child.kill("SIGKILL");
@@ -141,6 +148,19 @@ export const spawnOxlint = (
     child.on("close", (code, signal) => {
       clearTimeout(timeoutHandle);
       clearAbortListener();
+      if (isOxlintJobTimelineEnabled) {
+        recordOxlintJobTimeline({
+          pid: child.pid ?? null,
+          startedAt: spawnedAt,
+          endedAt: Date.now(),
+          args,
+          exitCode: code,
+          signal,
+          stdoutBytes: stdoutByteCount,
+          stderrBytes: stderrByteCount,
+          stdoutPreview: previewOxlintStdout(Buffer.concat(stdoutBuffers)),
+        });
+      }
       if (didKillForSize) {
         reject(
           new ReactDoctorError({
@@ -152,27 +172,13 @@ export const spawnOxlint = (
         );
         return;
       }
-      // Windows has no POSIX signals: an aborting child (the native binding
-      // panicking under memory pressure) reports `signal: null` plus a
-      // well-known abort exit code, so those exits are folded into the same
-      // OOM class a POSIX SIGABRT produces.
-      const isAbortExitCode = code !== null && ABORT_EXIT_CODES.has(code);
-      if (signal || isAbortExitCode) {
-        const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
-        const isOom = signal === "SIGABRT" || isAbortExitCode;
-        const detailParts: string[] = [
-          signal ? `killed by ${signal}` : `aborted with exit code ${code}`,
-        ];
-        if (isOom) detailParts.push("try scanning fewer files with --diff");
-        if (stderrOutput) detailParts.push(stderrOutput);
-        reject(
-          new ReactDoctorError({
-            reason: new OxlintBatchExceeded({
-              kind: isOom ? "oom" : "killed",
-              detail: detailParts.join(" — "),
-            }),
-          }),
-        );
+      const exitError = buildOxlintExitError({
+        exitCode: code,
+        signal,
+        stderrOutput: Buffer.concat(stderrBuffers).toString("utf-8").trim(),
+      });
+      if (exitError !== null) {
+        reject(exitError);
         return;
       }
       const output = Buffer.concat(stdoutBuffers).toString("utf-8").trim();
@@ -183,6 +189,17 @@ export const spawnOxlint = (
           return;
         }
       }
-      resolve(output);
+      const timingDirectory = SANITIZED_ENV.REACT_DOCTOR_OXLINT_TIMINGS_DIR;
+      if (timingDirectory === undefined) {
+        resolve(output);
+        return;
+      }
+      captureOxlintRuleTimings({
+        argumentsList: args,
+        environment: SANITIZED_ENV,
+        nodeBinaryPath,
+        rootDirectory,
+        timingDirectory,
+      }).then(() => resolve(output), reject);
     });
   });

@@ -218,11 +218,7 @@ const main = async (): Promise<void> => {
   const reviewCalls: SolReviewCall[] = [];
   const errors: Array<{ id: string; evidence: unknown }> = [];
   const queued = screenings.filter(
-    (screening) =>
-      screening.verdict !== "error" &&
-      (screening.verdict === "review" ||
-        screening.verdict === "candidate_fp" ||
-        screening.verdict === "candidate_fn"),
+    (screening) => screening.verdict !== "likely_tp" && screening.verdict !== "likely_tn",
   );
   const reviewLimit = createConcurrencyLimit(SOL_REVIEW_CONCURRENCY);
   let cachedReviews = 0;

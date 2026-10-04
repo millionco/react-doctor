@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { fingerprintDiagnosticEvidence } from "./utils/fingerprint-diagnostic-evidence.js";
 import type { Diagnostic } from "./types/index.js";
 
 export const DIAGNOSTIC_DELTA_IDENTITY = Symbol.for("react-doctor/diagnostic-delta-identity");
@@ -13,6 +13,8 @@ export interface DiagnosticDelta {
 }
 
 export interface ComputeDiagnosticDeltaInput {
+  /** When provided, cross-file matches require an entry from old path to new path. */
+  readonly renamedFiles?: Readonly<Record<string, string>>;
   readonly headDiagnostics: ReadonlyArray<Diagnostic>;
   readonly baseDiagnostics: ReadonlyArray<Diagnostic>;
   readonly readHeadLine: (filePath: string, line: number) => string | null;
@@ -33,26 +35,27 @@ interface DiagnosticMatchCandidate extends DiagnosticMatchKeys {
   readonly diagnosticIndex: number;
 }
 
-const fingerprintText = (text: string): string => createHash("sha256").update(text).digest("hex");
-
-const normalizeEvidence = (evidence: string): string => evidence.replace(/\s+/g, " ").trim();
-
 const getDiagnosticMatchKeys = (
   diagnostic: Diagnostic,
   evidence: string | null,
 ): DiagnosticMatchKeys => {
   const ruleKey = `${diagnostic.plugin}/${diagnostic.rule}`;
-  const messageFingerprint = fingerprintText(`${diagnostic.title ?? ""}\0${diagnostic.message}`);
-  const normalizedEvidence = evidence === null ? "" : normalizeEvidence(evidence);
+  const messageFingerprint = fingerprintDiagnosticEvidence(
+    `${diagnostic.title ?? ""}\0${diagnostic.message}`,
+  );
+  const evidenceFingerprint =
+    diagnostic.fingerprint ?? (evidence?.trim() ? fingerprintDiagnosticEvidence(evidence) : null);
   const explicitIdentity = Reflect.get(diagnostic, DIAGNOSTIC_DELTA_IDENTITY);
-  const explicitIdentityKey =
-    typeof explicitIdentity === "string"
-      ? `identity\0${ruleKey}\0${fingerprintText(explicitIdentity)}`
-      : null;
+  let explicitIdentityKey: string | null = null;
+  if (typeof explicitIdentity === "string") {
+    explicitIdentityKey = `identity\0${ruleKey}\0${fingerprintDiagnosticEvidence(explicitIdentity)}`;
+  } else if (diagnostic.fingerprint?.startsWith("identity:")) {
+    explicitIdentityKey = `identity\0${ruleKey}\0${diagnostic.fingerprint.slice("identity:".length)}`;
+  }
   const stableEvidenceKey =
     explicitIdentityKey ??
-    (normalizedEvidence.length > 0
-      ? `evidence\0${ruleKey}\0${messageFingerprint}\0${fingerprintText(normalizedEvidence)}`
+    (evidenceFingerprint !== null
+      ? `evidence\0${ruleKey}\0${messageFingerprint}\0${evidenceFingerprint}`
       : null);
   return {
     stableEvidenceKey,
@@ -60,7 +63,8 @@ const getDiagnosticMatchKeys = (
       stableEvidenceKey === null ? null : `${diagnostic.filePath}\0${stableEvidenceKey}`,
     sameFileFallbackKey:
       explicitIdentityKey === null &&
-      (diagnostic.matchByOccurrence || normalizedEvidence.length === 0)
+      diagnostic.fingerprint === undefined &&
+      (diagnostic.matchByOccurrence || evidenceFingerprint === null)
         ? `fallback\0${diagnostic.filePath}\0${ruleKey}\0${messageFingerprint}`
         : null,
   };
@@ -99,11 +103,12 @@ const buildMatchCandidates = (
   diagnostics: ReadonlyArray<Diagnostic>,
   readEvidence: ComputeDiagnosticDeltaInput["readHeadEvidence"],
   readLine: ComputeDiagnosticDeltaInput["readHeadLine"],
+  renamedFiles: Readonly<Record<string, string>> = {},
 ): DiagnosticMatchCandidate[] =>
   diagnostics.map((diagnostic, diagnosticIndex) => ({
     diagnosticIndex,
     ...getDiagnosticMatchKeys(
-      diagnostic,
+      { ...diagnostic, filePath: renamedFiles[diagnostic.filePath] ?? diagnostic.filePath },
       readDiagnosticEvidence(diagnostic, readEvidence, readLine),
     ),
   }));
@@ -126,6 +131,7 @@ export const computeDiagnosticDelta = (input: ComputeDiagnosticDeltaInput): Diag
     input.baseDiagnostics,
     input.readBaseEvidence,
     input.readBaseLine,
+    input.renamedFiles,
   );
   const headCandidates = buildMatchCandidates(
     input.headDiagnostics,
@@ -176,16 +182,21 @@ export const computeDiagnosticDelta = (input: ComputeDiagnosticDeltaInput): Diag
 
   matchCandidates(baseBySameFileStableEvidence, (candidate) => candidate.sameFileStableEvidenceKey);
   matchCandidates(baseBySameFileFallback, (candidate) => candidate.sameFileFallbackKey);
-  let crossFileMatchCount = 0;
-  matchCandidates(
-    baseByStableEvidence,
-    (candidate) => candidate.stableEvidenceKey,
-    (head, base) => {
-      if (input.headDiagnostics[head]?.filePath !== input.baseDiagnostics[base]?.filePath) {
-        crossFileMatchCount += 1;
-      }
-    },
-  );
+  let unrestrictedCrossFileMatchCount = 0;
+  if (input.renamedFiles === undefined) {
+    matchCandidates(
+      baseByStableEvidence,
+      (candidate) => candidate.stableEvidenceKey,
+      (headIndex, baseIndex) => {
+        if (input.headDiagnostics[headIndex].filePath !== input.baseDiagnostics[baseIndex].filePath)
+          unrestrictedCrossFileMatchCount += 1;
+      },
+    );
+  }
+  const crossFileMatchCount =
+    [...matchedBaseDiagnosticIndexes].filter((diagnosticIndex) =>
+      Boolean(input.renamedFiles?.[input.baseDiagnostics[diagnosticIndex].filePath]),
+    ).length + unrestrictedCrossFileMatchCount;
 
   const newDiagnostics = input.headDiagnostics.filter(
     (_diagnostic, diagnosticIndex) => !matchedHeadDiagnosticIndexes.has(diagnosticIndex),

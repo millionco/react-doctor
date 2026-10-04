@@ -38,6 +38,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
   ]),
   longOptionsWithRequiredValues: new Set([
     "--base",
+    "--baseline",
     "--category",
     "--changed-files-from",
     "--blocking",

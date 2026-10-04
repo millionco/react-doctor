@@ -443,6 +443,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
         fixed: result.baselineDelta.fixedCount,
         baseTotal: result.baselineDelta.baseTotalCount,
         crossFileMatches: result.baselineDelta.crossFileMatchCount,
+        source: result.baselineDelta.source ?? "base",
         degraded: false,
       }),
     );

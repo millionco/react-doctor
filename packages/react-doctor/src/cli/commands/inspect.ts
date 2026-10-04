@@ -14,6 +14,8 @@ import {
   type SourceFileEntry,
   toRelativePath,
 } from "@react-doctor/core";
+import { readBaselineReport } from "../utils/read-baseline-report.js";
+import { runGit } from "../utils/git-hook-shared.js";
 import { createInvocationInspect } from "../../inspect.js";
 import { resolveInvocationOxlintConcurrency } from "../utils/resolve-invocation-oxlint-concurrency.js";
 import type { ReactDoctorInspectOptions } from "../../inspect-options.js";
@@ -112,6 +114,7 @@ interface ProjectScanExecutionContext {
   readonly projectScans: ReadonlyArray<ResolvedProjectScan>;
   readonly workspaceProjectDirectories: ReadonlyArray<string>;
   readonly baselineRef: string | null;
+  readonly savedBaseline: ReturnType<typeof readBaselineReport> | null;
   readonly scope: RequestedScope["scope"];
   readonly changedLineRanges: ReadonlyArray<ChangedFileLineRanges> | null;
 }
@@ -149,6 +152,7 @@ const buildProjectInspectOptions = ({
   ownsWorkspaceDeadCode,
 }: BuildProjectInspectOptionsInput): ReactDoctorInspectOptions => {
   const scanDirectory = projectScan.directory;
+  const savedBaseline = context.savedBaseline;
   return {
     ...context.scanOptions,
     deadCode:
@@ -167,6 +171,49 @@ const buildProjectInspectOptions = ({
       ...context.workspaceProjectDirectories,
     ]),
     retainExcludedProjectDeadCodeDiagnostics: ownsWorkspaceDeadCode,
+    baselineReport:
+      savedBaseline && context.flags.baseline
+        ? {
+            file: context.flags.baseline,
+            diagnostics: savedBaseline.projects.flatMap((project) => {
+              const projectRelativePath = path.relative(savedBaseline.directory, project.directory);
+              if (path.resolve(context.resolvedDirectory, projectRelativePath) !== scanDirectory)
+                return [];
+              return project.diagnostics.flatMap((diagnostic) => {
+                const filePath = path
+                  .relative(project.directory, path.resolve(project.directory, diagnostic.filePath))
+                  .replace(/\\/g, "/");
+                if (
+                  projectScanPlan.includePaths &&
+                  !projectScanPlan.includePaths.includes(filePath) &&
+                  !projectScanPlan.projectBaselineBaseFiles?.includes(filePath)
+                )
+                  return [];
+                return [
+                  {
+                    ...diagnostic,
+                    relatedLocations: diagnostic.relatedLocations
+                      ? [...diagnostic.relatedLocations]
+                      : undefined,
+                    filePath,
+                  },
+                ];
+              });
+            }),
+            renamedFiles: Object.fromEntries(
+              Object.entries(context.baselineDiffPlan?.renamedFiles ?? {}).map(
+                ([basePath, headPath]) => [
+                  path
+                    .relative(scanDirectory, path.resolve(context.resolvedDirectory, basePath))
+                    .replace(/\\/g, "/"),
+                  path
+                    .relative(scanDirectory, path.resolve(context.resolvedDirectory, headPath))
+                    .replace(/\\/g, "/"),
+                ],
+              ),
+            ),
+          }
+        : undefined,
     baseline:
       context.baselineRef !== null &&
       projectScanPlan.projectBaselineBaseFiles !== null &&
@@ -403,7 +450,14 @@ export const inspectAction = async (
         };
       }
     }
-    const requestedScope = resolveScope(flags, userConfig);
+    const savedBaseline = flags.baseline ? readBaselineReport(path.resolve(flags.baseline)) : null;
+    const resolvedScopeRequest = resolveScope(flags, userConfig);
+    const requestedScope = {
+      ...resolvedScopeRequest,
+      base:
+        resolvedScopeRequest.base ??
+        (savedBaseline?.schemaVersion === 3 ? savedBaseline.sourceRevision : undefined),
+    };
     // Untracked files only exist in a local working tree, so this is a
     // CLI-only modifier (like `--staged`) — off unless the user opts in.
     const includeUntracked = flags.includeUntracked ?? false;
@@ -435,10 +489,26 @@ export const inspectAction = async (
     const shouldDetectDiff =
       providedFilesDiffInfo === null &&
       (wantsDiffMode || (scopeRequest.scope === undefined && !skipPrompts && !isQuiet));
-    const diffInfo =
+    const detectedDiffInfo =
       providedFilesDiffInfo ??
       (shouldDetectDiff
-        ? await getDiffInfo(resolvedDirectory, scopeRequest.base, includeUntracked)
+        ? await getDiffInfo(resolvedDirectory, scopeRequest.base, includeUntracked).catch(
+            (error: unknown) => {
+              if (savedBaseline) return null;
+              throw error;
+            },
+          )
+        : null);
+    const diffInfo =
+      detectedDiffInfo ??
+      (scopeRequest.scope === "changed" && !savedBaseline
+        ? await getDiffInfo(
+            resolvedDirectory,
+            scopeRequest.base === runGit(resolvedDirectory, ["branch", "--show-current"])
+              ? "HEAD"
+              : (scopeRequest.base ?? "HEAD"),
+            includeUntracked,
+          )
         : null);
     scanStartupSpinner?.stop();
     scanStartupSpinner = null;
@@ -451,24 +521,26 @@ export const inspectAction = async (
     scanStartupSpinner = !isQuiet ? spinner("Scanning...").start() : null;
     const isDiffMode = scope !== "full";
 
-    // The commit a baseline / line-range diff compares against. When diffing
-    // against a base ref (not just uncommitted changes), read base content from
-    // the SAME commit the file diff was taken against so the file set and the
-    // base snapshot agree. The GitHub Action forwards the PR base SHA — three-dot
-    // PR semantics, so merge-base it with HEAD; a local diff already knows its
-    // exact base (`diffBaseRef`). `null` when uncommitted, detached, or git is
-    // unavailable. Shared by `changed` (baseline) and `lines` (hunk ranges).
-    const comparisonBaseRef =
-      isDiffMode && diffInfo && !diffInfo.isCurrentChanges && !hasPositionalFileSelection
-        ? diffInfo.baseSha
-          ? await resolveMergeBaseRef(resolvedDirectory, diffInfo.baseSha)
-          : (diffInfo.diffBaseRef ??
-            (await resolveMergeBaseRef(resolvedDirectory, diffInfo.baseBranch)))
-        : null;
+    let comparisonBaseRef: string | null = null;
+    if (isDiffMode && diffInfo && !hasPositionalFileSelection) {
+      if (diffInfo.isCurrentChanges) {
+        comparisonBaseRef = "HEAD";
+      } else if (diffInfo.baseSha) {
+        comparisonBaseRef = await resolveMergeBaseRef(resolvedDirectory, diffInfo.baseSha);
+      } else {
+        comparisonBaseRef =
+          diffInfo.diffBaseRef ??
+          (await resolveMergeBaseRef(resolvedDirectory, diffInfo.baseBranch));
+      }
+    }
     // `changed` subtracts pre-existing findings (baseline); `files` / `lines` do not.
-    const baselineRef = scope === "changed" ? comparisonBaseRef : null;
-    const baselineDiffPlan =
-      baselineRef === null ? null : await getBaselineDiffPlan(resolvedDirectory, baselineRef);
+    const baselineRef = scope === "changed" && !savedBaseline ? comparisonBaseRef : null;
+    const comparisonPlanRef =
+      baselineRef ??
+      (savedBaseline?.schemaVersion === 3 ? savedBaseline.sourceRevision : undefined);
+    const baselineDiffPlan = comparisonPlanRef
+      ? await getBaselineDiffPlan(resolvedDirectory, comparisonPlanRef)
+      : null;
 
     // `--scope lines`: per-file changed line ranges (repo-relative). Working-tree
     // vs HEAD for uncommitted changes, vs the merge-base otherwise. When no base
@@ -504,7 +576,7 @@ export const inspectAction = async (
     // user hits Ctrl-C mid-scan, the SIGINT handler reads it for the JSON
     // cancel report. Setting it after the loop completes means a cancelled
     // diff scan would report mode: "full".
-    setJsonReportMode(baselineRef ? "baseline" : isDiffMode ? "diff" : "full");
+    setJsonReportMode(baselineRef || savedBaseline ? "baseline" : isDiffMode ? "diff" : "full");
 
     if (isDiffMode && diffInfo && !isQuiet) {
       if (hasPositionalFileSelection) {
@@ -565,6 +637,7 @@ export const inspectAction = async (
       projectScans,
       workspaceProjectDirectories,
       baselineRef,
+      savedBaseline,
       scope,
       changedLineRanges,
     };
@@ -634,12 +707,23 @@ export const inspectAction = async (
       skippedProjects,
       // A resolved base ref means a baseline run; finalization downgrades this
       // to `diff` if no delta was produced (degraded run).
-      mode: baselineRef ? "baseline" : isDiffMode ? "diff" : "full",
+      mode: baselineRef || savedBaseline ? "baseline" : isDiffMode ? "diff" : "full",
       diff: isDiffMode ? diffInfo : null,
       // Only `changed` intends a baseline. `files` / `lines` have no baseline
       // delta, so they must NOT look "degraded" — that would skip the CI gate
       // they're entitled to.
-      baselineIntended: scope === "changed" && diffInfo !== null && !diffInfo.isCurrentChanges,
+      baselineIntended: Boolean(savedBaseline) || (scope === "changed" && diffInfo !== null),
+      emptyComparison:
+        isDiffMode && baselineDiffPlan !== null
+          ? {
+              baseRef: flags.baseline ?? baselineRef ?? "",
+              source: savedBaseline ? "baseline" : "base",
+              baselineFile: flags.baseline,
+              matchedCount: 0,
+              baseTotalCount: 0,
+              fixedCount: 0,
+            }
+          : undefined,
       isJsonMode,
       isScoreOnly,
       flags,

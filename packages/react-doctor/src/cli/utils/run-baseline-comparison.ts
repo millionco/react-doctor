@@ -28,8 +28,7 @@ import { BASELINE_FILES_TEMP_DIR_PREFIX } from "./constants.js";
 import { countDeadlineSkippedFiles } from "./count-deadline-skipped-files.js";
 import { countDroppedLintFiles } from "./count-dropped-lint-files.js";
 import { copyUnchangedBaselineSources } from "./copy-unchanged-baseline-sources.js";
-import { createDiagnosticEvidenceReader } from "./read-diagnostic-evidence.js";
-import { createSourceLineReader } from "./read-source-line.js";
+import { withDiagnosticFingerprints } from "./with-diagnostic-fingerprints.js";
 import { materializeBaselineFiles } from "./materialize-baseline-files.js";
 import { makeNoopConsole } from "./noop-console.js";
 import { hasUnlintedSurvivingBaseFile } from "./has-unlinted-surviving-base-file.js";
@@ -265,18 +264,17 @@ export const runBaselineComparison = async (
     ).some((filePath) => !analyzedHeadFiles.has(filePath));
     const diagnosticDelta = computeDiagnosticDelta({
       headDiagnostics: input.headDiagnostics,
-      baseDiagnostics: baseOutput.diagnostics,
-      readHeadLine: createSourceLineReader(input.directory),
-      readBaseLine: createSourceLineReader(snapshot.tempDirectory),
-      readHeadEvidence: createDiagnosticEvidenceReader(input.directory, {
-        resolveForwardedHandlers: true,
-      }),
-      readBaseEvidence: createDiagnosticEvidenceReader(snapshot.tempDirectory),
+      renamedFiles: snapshot.renamedFiles ?? {},
+      baseDiagnostics: withDiagnosticFingerprints(snapshot.tempDirectory, baseOutput.diagnostics),
+      readHeadLine: () => null,
+      readBaseLine: () => null,
     });
     return {
       displayDiagnostics: diagnosticDelta.newDiagnostics,
       baselineDelta: {
         baseRef: input.baselineRef,
+        source: "base",
+        matchedCount: baseOutput.diagnostics.length - diagnosticDelta.fixedCount,
         fixedCount: hasUnscannedUntrackedSourceFiles ? 0 : diagnosticDelta.fixedCount,
         baseTotalCount: baseOutput.diagnostics.length,
         crossFileMatchCount: diagnosticDelta.crossFileMatchCount,

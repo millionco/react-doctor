@@ -66,6 +66,39 @@ describe("computeDiagnosticDelta", () => {
     expect(delta.fixedCount).toBe(1);
   });
 
+  it("restricts persisted fingerprints to the same file or an explicit rename", () => {
+    const baseDiagnostics = [makeDiagnostic({ fingerprint: "stable" })];
+    const headDiagnostics = [
+      makeDiagnostic({ filePath: "src/Renamed.tsx", line: 50, column: 30, fingerprint: "stable" }),
+    ];
+    const input = {
+      headDiagnostics,
+      baseDiagnostics,
+      readHeadLine: () => null,
+      readBaseLine: () => null,
+    };
+    expect(computeDiagnosticDelta({ ...input, renamedFiles: {} }).newDiagnostics).toEqual(
+      headDiagnostics,
+    );
+    const renamed = computeDiagnosticDelta({
+      ...input,
+      renamedFiles: { "src/App.tsx": "src/Renamed.tsx" },
+    });
+    expect(renamed.newDiagnostics).toEqual([]);
+    expect(renamed.crossFileMatchCount).toBe(1);
+  });
+
+  it("does not fall back to occurrence matching when fingerprints differ", () => {
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [makeDiagnostic({ fingerprint: "new-source", matchByOccurrence: true })],
+      baseDiagnostics: [makeDiagnostic({ fingerprint: "old-source", matchByOccurrence: true })],
+      renamedFiles: {},
+      readHeadLine: () => null,
+      readBaseLine: () => null,
+    });
+    expect(delta.newDiagnostics).toHaveLength(1);
+  });
+
   it("flags a diagnostic present only in head as new", () => {
     const head = [makeDiagnostic()];
     const lines = lineReaderFrom({ "src/App.tsx:10": "items.map((x, i) => <Row key={i} />)" });

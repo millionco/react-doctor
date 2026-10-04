@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { computeDiagnosticDelta } from "@react-doctor/core";
+import { computeDiagnosticDelta, DIAGNOSTIC_DELTA_IDENTITY } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { createDiagnosticEvidenceReader } from "../src/cli/utils/read-diagnostic-evidence.js";
+
+import { withDiagnosticFingerprints } from "../src/cli/utils/with-diagnostic-fingerprints.js";
 
 const makeDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
   filePath: "src/wrapper-before.tsx",
@@ -28,6 +30,25 @@ describe("createDiagnosticEvidenceReader", () => {
   beforeEach(() => {
     rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-evidence-"));
     fs.mkdirSync(path.join(rootDirectory, "src"));
+  });
+
+  it("preserves detector identities through a saved JSON report", () => {
+    const baseDiagnostic = makeDiagnostic({ message: "2 copies repeat about 10 lines" });
+    const headDiagnostic = makeDiagnostic({ message: "2 copies repeat about 14 lines" });
+    Reflect.set(baseDiagnostic, DIAGNOSTIC_DELTA_IDENTITY, "jsx:stable-family");
+    Reflect.set(headDiagnostic, DIAGNOSTIC_DELTA_IDENTITY, "jsx:stable-family");
+    const baseDiagnostics: Diagnostic[] = JSON.parse(
+      JSON.stringify(withDiagnosticFingerprints(rootDirectory, [baseDiagnostic])),
+    );
+    const delta = computeDiagnosticDelta({
+      baseDiagnostics,
+      headDiagnostics: withDiagnosticFingerprints(rootDirectory, [headDiagnostic]),
+      renamedFiles: {},
+      readHeadLine: () => null,
+      readBaseLine: () => null,
+    });
+    expect(delta.newDiagnostics).toEqual([]);
+    expect(delta.fixedCount).toBe(0);
   });
 
   afterEach(() => {

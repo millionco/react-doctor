@@ -298,6 +298,12 @@ runs:
           FLAGS+=("--changed-files-from" "$CHANGED_FILES_FROM")
         fi
 
+        # Detect the project's package manager and whether react-doctor is installed.
+        # This determines whether to use the installed version or download it.
+        PACKAGE_MANAGER_INFO="$(node "$GITHUB_ACTION_PATH/scripts/detect-package-manager.mjs" "$INPUT_DIRECTORY")"
+        PACKAGE_MANAGER="$(echo "$PACKAGE_MANAGER_INFO" | grep '^package-manager=' | cut -d= -f2-)"
+        HAS_INSTALLED="$(echo "$PACKAGE_MANAGER_INFO" | grep '^has-installed=' | cut -d= -f2-)"
+
         # Install/run from a cached prefix for a published version (the common
         # path): actions/cache restored $TOOLCHAIN_DIR before this step, so a
         # cache hit skips the ~15s npm download. `--prefix` gives a deterministic,
@@ -332,8 +338,38 @@ runs:
         set +e
         if [ -n "$RD_BIN" ]; then
           "$RD_BIN" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+        elif [ "$HAS_INSTALLED" = "true" ]; then
+          # react-doctor is installed in the project; use the package manager's run command
+          case "$PACKAGE_MANAGER" in
+            pnpm)
+              pnpm exec react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+              ;;
+            yarn)
+              yarn exec react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+              ;;
+            bun)
+              bun x react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+              ;;
+            *)
+              npx react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+              ;;
+          esac
         else
-          npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+          # react-doctor is not installed; use the package manager's download-and-run command
+          case "$PACKAGE_MANAGER" in
+            pnpm)
+              pnpm dlx "$PACKAGE_SPEC" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+              ;;
+            yarn)
+              yarn dlx "$PACKAGE_SPEC" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+              ;;
+            bun)
+              bunx --bun "$PACKAGE_SPEC" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+              ;;
+            *)
+              npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+              ;;
+          esac
         fi
         SCAN_STATUS=$?
         set -e

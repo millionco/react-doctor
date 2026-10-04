@@ -64,6 +64,8 @@ export const reviewWithSol = async (
         : solJudgmentSchema.omit({ detectorAssessment: true }),
     }),
     stopWhen: stepCountIs(SOL_REVIEW_MAX_STEPS),
+    prepareStep: ({ stepNumber }) =>
+      stepNumber >= SOL_REVIEW_MAX_STEPS - 1 ? { toolChoice: "none" } : undefined,
     maxOutputTokens: SOL_REVIEW_MAX_OUTPUT_TOKENS,
     maxRetries: 0,
     abortSignal: AbortSignal.timeout(SOL_REVIEW_TIMEOUT_MS),

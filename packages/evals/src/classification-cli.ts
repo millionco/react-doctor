@@ -13,6 +13,7 @@ import {
   FAILURE_EXIT_CODE,
   EVALUATION_ARTIFACT_FILE_MODE,
 } from "./constants.js";
+import { auditClassification } from "./audit-classification.js";
 import { evaluateWithJev } from "./jev-classifier.js";
 import { loadClassificationRules } from "./load-classification-rules.js";
 import type { RuleContract } from "./classification-schema.js";
@@ -27,6 +28,13 @@ import { toErrorMessage } from "./utils/to-error-message.js";
 import { selectClassification } from "./select-classification.js";
 import { loadClassificationContext } from "./load-classification-context.js";
 
+interface SilentSamplingSummary {
+  applicablePairs: number;
+  unknownPairs: number;
+  excludedPairs: number;
+  reasons: Record<string, number>;
+}
+
 const main = async (): Promise<void> => {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
@@ -34,6 +42,7 @@ const main = async (): Promise<void> => {
       input: { type: "string" },
       output: { type: "string" },
       rules: { type: "string" },
+      labels: { type: "string" },
       rule: { type: "string", multiple: true },
       population: { type: "string", default: "default" },
       "skip-failed": { type: "boolean", default: false },
@@ -51,6 +60,7 @@ const main = async (): Promise<void> => {
       "Usage:\n" +
         "  nr classify prepare --input run.ndjson --output candidates.ndjson [--rules contracts.json]\n" +
         "  nr classify run --input candidates.ndjson --output results.ndjson [--dry-run]\n\n" +
+        "  nr classify audit --input results.ndjson --labels labels.ndjson --output audit.json\n\n" +
         "Options: --limit 1000, --concurrency 8, --threshold 0.9, --cache .classification-cache\n" +
         "Prepare uses pinned rule descriptions automatically; --rule plugin/rule filters them.\n" +
         "Prepare: --population default selects default-enabled rules; exhaustive includes optional policies.\n" +
@@ -65,11 +75,26 @@ const main = async (): Promise<void> => {
   const command = positionals[0];
   if (
     positionals.length !== 1 ||
-    (command !== "prepare" && command !== "run") ||
+    (command !== "prepare" && command !== "run" && command !== "audit") ||
     !values.input ||
     !values.output
   ) {
-    throw new Error("Expected prepare or run with --input and --output; use --help");
+    throw new Error("Expected prepare, run or audit with --input and --output; use --help");
+  }
+  if (command === "audit") {
+    if (!values.labels)
+      throw new Error("Audit requires --labels with independent expected answers");
+    const labels: unknown[] = [];
+    for await (const label of readNdjson(values.labels)) labels.push(label);
+    const report = await auditClassification(readNdjson(values.input), labels);
+    await writeFile(values.output, JSON.stringify(report, null, 2), {
+      flag: "wx",
+      mode: EVALUATION_ARTIFACT_FILE_MODE,
+    });
+    process.stderr.write(
+      `${JSON.stringify({ labeled: report.labeled, accepted: report.accepted, acceptedIncorrect: report.acceptedIncorrect, decisionCoverage: report.decisionCoverage })}\n`,
+    );
+    return;
   }
   const limit = z.coerce.number().int().positive().parse(values.limit);
   const concurrency = z.coerce.number().int().positive().parse(values.concurrency);
@@ -101,6 +126,12 @@ const main = async (): Promise<void> => {
       let skipped = 0;
       const catalogCache = new Map<string, RuleContract[]>();
       const inputPath = values.input;
+      const silentSampling: SilentSamplingSummary = {
+        applicablePairs: 0,
+        unknownPairs: 0,
+        excludedPairs: 0,
+        reasons: {},
+      };
       let pass = 0;
       const readGroups = async function* () {
         const scans = new Map<string, string>();
@@ -144,6 +175,14 @@ const main = async (): Promise<void> => {
             concurrency,
             silentFilesPerProject: silentFiles,
             loadSource: loadPinnedClassificationSource,
+            onSilentSampling: (decision, fileCount) => {
+              if (pass !== 1) return;
+              if (decision.status === "applicable") silentSampling.applicablePairs += fileCount;
+              else if (decision.status === "unknown") silentSampling.unknownPairs += fileCount;
+              else silentSampling.excludedPairs += fileCount;
+              for (const reason of decision.reasons)
+                silentSampling.reasons[reason] = (silentSampling.reasons[reason] ?? 0) + fileCount;
+            },
             metadataOnly: true,
             groupOccurrences: true,
             population: values.rules ? "explicit-contract" : population,
@@ -171,6 +210,7 @@ const main = async (): Promise<void> => {
         skipped,
         population: values.rules ? "explicit-contract" : population,
         coverage: selection.coverage,
+        silentSampling,
       };
       await writeFile(`${values.output}.selection.json`, JSON.stringify(summary), {
         flag: "wx",
@@ -198,6 +238,10 @@ const main = async (): Promise<void> => {
       evaluate: evaluateWithJev,
       write: async (result, cached) =>
         output.writeFile(serializeNdjsonRecord({ ...result, cached })),
+    });
+    await writeFile(`${values.output}.summary.json`, JSON.stringify(summary), {
+      flag: "wx",
+      mode: EVALUATION_ARTIFACT_FILE_MODE,
     });
     process.stderr.write(`${JSON.stringify(summary)}\n`);
     if (summary.errors > 0) process.exitCode = FAILURE_EXIT_CODE;

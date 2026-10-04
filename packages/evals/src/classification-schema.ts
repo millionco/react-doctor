@@ -44,6 +44,7 @@ export const classificationCandidateSchema = z
     detectorCommit: z.string().regex(PINNED_REPOSITORY_REF_PATTERN),
     ruleSetHash: z.string().regex(/^[0-9a-f]{64}$/),
     rule: ruleContractSchema,
+    sourceKind: z.enum(["pinned", "synthetic"]).optional(),
     filePath: z.string().min(1),
     line: z.number().int().positive().nullable(),
     column: z.number().int().positive().nullable().optional(),
@@ -109,7 +110,8 @@ export const classificationCandidateSchema = z
   .refine(
     (candidate) =>
       !candidate.contextComplete ||
-      (!candidate.rule.contractIssue &&
+      (!candidate.contextIssue &&
+        !candidate.rule.contractIssue &&
         (!candidate.rule.requiredEvidence?.includes("verified-contract") ||
           Boolean(candidate.rule.contractHash)) &&
         (!candidate.rule.requiredEvidence?.includes("jsx-runtime") ||
@@ -172,6 +174,13 @@ export const assessmentSchema = z
 
 export interface ClassificationAssessment extends Infer<typeof assessmentSchema> {}
 
+export const classificationReviewReasonSchema = z.enum([
+  "incomplete_context",
+  "model_insufficient_context",
+  "context_confidence_below_threshold",
+  "choice_confidence_below_threshold",
+]);
+
 export const classificationResultSchema = z.object({
   schemaVersion: z.union([z.literal(1), z.literal(CLASSIFICATION_SCHEMA_VERSION)]),
   id: z.string().regex(/^[0-9a-f]{64}$/),
@@ -181,6 +190,7 @@ export const classificationResultSchema = z.object({
   threshold: z.number().gt(0.5).max(1),
   verdict: z.enum(["candidate_fp", "candidate_fn", "likely_tp", "likely_tn", "review", "error"]),
   assessment: assessmentSchema.nullable(),
+  reviewReasons: z.array(classificationReviewReasonSchema).optional(),
   error: z.string().optional(),
   errorEvidence: z.json().optional(),
   assessmentId: z.string().optional(),

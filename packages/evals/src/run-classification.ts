@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { z } from "zod";
+import { getClassificationReviewReasons } from "./utils/get-classification-review-reasons.js";
 
 import {
   assessmentSchema,
@@ -46,6 +47,9 @@ export interface ClassificationSummary {
   cached: number;
   errors: number;
   inputTokens: number;
+  modelCalls: number;
+  skipped: number;
+  byReviewReason: Record<string, number>;
   byRule: Record<string, Partial<Record<ClassificationResult["verdict"], number>>>;
 }
 
@@ -54,15 +58,9 @@ export const classifyAssessment = (
   assessment: ClassificationAssessment,
   threshold: number,
 ): ClassificationResult["verdict"] => {
-  const { choice, probabilities, contextSufficient } = assessment;
-  if (
-    !candidate.contextComplete ||
-    choice === "insufficient_context" ||
-    contextSufficient < threshold ||
-    probabilities[choice] < threshold
-  ) {
+  const { choice } = assessment;
+  if (getClassificationReviewReasons({ candidate, assessment, threshold }).length > 0)
     return "review";
-  }
   if (choice === "violation") return candidate.detected ? "likely_tp" : "candidate_fn";
   return candidate.detected ? "candidate_fp" : "likely_tn";
 };
@@ -174,6 +172,11 @@ const classifyCandidate = async (
     threshold: options.threshold,
     verdict: "review",
     assessment: null,
+    reviewReasons: getClassificationReviewReasons({
+      candidate,
+      assessment: null,
+      threshold: options.threshold,
+    }),
     assessmentId,
     assessmentVersion: CLASSIFICATION_ASSESSMENT_VERSION,
     policyVersion: CLASSIFICATION_POLICY_VERSION,
@@ -187,6 +190,11 @@ const classifyCandidate = async (
       result: {
         ...result,
         assessment: cachedResult.assessment,
+        reviewReasons: getClassificationReviewReasons({
+          candidate,
+          assessment: cachedResult.assessment,
+          threshold: options.threshold,
+        }),
         verdict: cachedResult.assessment
           ? classifyAssessment(candidate, cachedResult.assessment, options.threshold)
           : "review",
@@ -209,6 +217,11 @@ const classifyCandidate = async (
       result = {
         ...result,
         assessment,
+        reviewReasons: getClassificationReviewReasons({
+          candidate,
+          assessment,
+          threshold: options.threshold,
+        }),
         verdict: classifyAssessment(candidate, assessment, options.threshold),
       };
     } catch (error) {
@@ -257,6 +270,9 @@ export const runClassification = async (
     cached: 0,
     errors: 0,
     inputTokens: 0,
+    modelCalls: 0,
+    skipped: 0,
+    byReviewReason: {},
     byRule: {},
   };
   const seen = new Set<string>();
@@ -270,6 +286,10 @@ export const runClassification = async (
       summary.processed += 1;
       summary.cached += Number(cached);
       summary.errors += Number(result.verdict === "error");
+      summary.modelCalls += Number(!cached && result.candidate.contextComplete);
+      summary.skipped += Number(!cached && !result.candidate.contextComplete);
+      for (const reason of result.reviewReasons ?? [])
+        summary.byReviewReason[reason] = (summary.byReviewReason[reason] ?? 0) + 1;
       summary.inputTokens += cached ? 0 : (result.assessment?.inputTokens ?? 0);
       const counts = (summary.byRule[result.candidate.rule.key] ??= {});
       counts[result.verdict] = (counts[result.verdict] ?? 0) + 1;

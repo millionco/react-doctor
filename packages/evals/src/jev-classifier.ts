@@ -34,7 +34,10 @@ export const classificationQuestions = {
   contextSufficient: {
     type: "boolean",
     instructions:
-      "Can this specific rule be judged from the supplied file, framework, contract and pinned build evidence?",
+      "Can this specific rule be judged from the supplied file, framework, contract and pinned build evidence? " +
+      "For a local syntactic rule, visible syntax can be sufficient. Do not require imported implementations, " +
+      "runtime behavior, or configuration unless they can change the answer under this contract. " +
+      "For a semantic rule, require the dependencies and runtime facts that can change the answer.",
     criteria: {
       true: "All evidence needed to judge the rule at the requested scope is present.",
       false:
@@ -48,6 +51,7 @@ export const classificationState = (
 ): Record<string, z.core.util.JSONType> => ({
   rule: { ...candidate.rule },
   filePath: candidate.filePath,
+  sourceKind: candidate.sourceKind ?? "pinned",
   framework: candidate.framework,
   project: candidate.project ?? {},
   buildEvidence: candidate.buildEvidence ?? null,

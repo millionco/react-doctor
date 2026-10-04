@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { posix } from "node:path";
 
 import { z } from "zod";
+import { getClassificationApplicability } from "./utils/get-classification-applicability.js";
+import type { ClassificationApplicability } from "./utils/get-classification-applicability.js";
 
 import {
   CLASSIFICATION_MAX_CODE_CHARACTERS,
@@ -66,6 +68,7 @@ export interface PrepareClassificationOptions {
   metadataOnly?: boolean;
   groupOccurrences?: boolean;
   population?: "default" | "exhaustive" | "explicit-contract";
+  onSilentSampling?: (decision: ClassificationApplicability, fileCount: number) => void;
 }
 
 export const sourcePath = (root: string, filePath: string): string => {
@@ -84,6 +87,7 @@ export const sourcePath = (root: string, filePath: string): string => {
 };
 
 export class PinnedSourceMissingError extends Error {}
+export class PinnedSourceLimitError extends Error {}
 
 export const loadPinnedClassificationSource: ClassificationSourceLoader = async (
   repository,
@@ -107,7 +111,7 @@ export const loadPinnedClassificationSource: ClassificationSourceLoader = async 
       if (chunk.done) break;
       source += decoder.decode(chunk.value, { stream: true });
       if (source.length > CLASSIFICATION_MAX_CODE_CHARACTERS) {
-        throw new Error("Source exceeds the classification context limit");
+        throw new PinnedSourceLimitError("Source exceeds the classification context limit");
       }
     }
     return source + decoder.decode();
@@ -171,11 +175,20 @@ export const prepareClassificationCandidates = async function* (
       );
       const samplingHash = (filePath: string) =>
         createHash("sha256").update(`${repository.ref}:${rule.key}:${filePath}`).digest("hex");
+      const applicability = getClassificationApplicability({
+        rule,
+        framework: project.framework,
+        project: project.project,
+      });
+      const silentPool = [...analyzedFiles].filter((filePath) => !detectedFiles.has(filePath));
+      if (options.silentFilesPerProject > 0 && rule.sampleSilentFiles !== false)
+        options.onSilentSampling?.(applicability, silentPool.length);
       const silentFiles =
-        options.silentFilesPerProject === 0 || rule.sampleSilentFiles === false
+        options.silentFilesPerProject === 0 ||
+        rule.sampleSilentFiles === false ||
+        applicability.status === "inapplicable"
           ? []
-          : [...analyzedFiles]
-              .filter((filePath) => !detectedFiles.has(filePath))
+          : silentPool
               .sort((left, right) => samplingHash(left).localeCompare(samplingHash(right)))
               .slice(0, options.silentFilesPerProject);
       const occurrences = new Map<string, NonNullable<ClassificationCandidate["occurrences"]>>();

@@ -19,9 +19,9 @@ export const EVALUATION_MAXIMUM_RETRY_RESERVE_RATIO = 0.25;
 export const EVALUATION_RETRY_REPOSITORIES_PER_SANDBOX = 1;
 export const EVALUATION_CONFIG_CONTRACT = "revision-local-rule-config-v1";
 export const CLASSIFICATION_SCHEMA_VERSION = 2;
-export const CLASSIFICATION_PROMPT_VERSION = "rule-contract-v2";
+export const CLASSIFICATION_PROMPT_VERSION = "rule-contract-v3";
 export const CLASSIFICATION_ASSESSMENT_VERSION = "ai-7.0.105-gateway-4.0.85-rounding-v2";
-export const CLASSIFICATION_POLICY_VERSION = "two-gates-v1";
+export const CLASSIFICATION_POLICY_VERSION = "two-gates-v2";
 export const CLASSIFICATION_SELECTION_SEED = "repository-rule-file-v1";
 export const CLASSIFICATION_MAX_CONFIG_FILES = 64;
 export const CLASSIFICATION_MAX_CONFIG_DEPTH = 12;
@@ -382,3 +382,44 @@ export const SANDBOX_SNAPSHOT_EXPIRATION_MS = 86_400_000;
 
 // HACK: Oxlint reserves 4 GiB arenas that the VM default memory policy rejects.
 export const PREPARE_SANDBOX_COMMAND = "sudo sysctl -w vm.overcommit_memory=1";
+
+export const CLASSIFICATION_CAPABILITY_FIELDS: Readonly<Record<string, ReadonlyArray<string>>> = {
+  react: ["reactVersion", "preactVersion"],
+  three: ["hasThree", "hasReactThreeFiber"],
+  r3f: ["hasReactThreeFiber"],
+  remotion: ["hasRemotion"],
+  "react-compiler": ["hasReactCompiler"],
+  "tanstack-query": ["hasTanStackQuery", "tanstackQueryVersion"],
+  "react-router": ["reactRouterVersion"],
+  "react-router-framework": ["hasReactRouterFramework"],
+  "react-native": ["hasReactNativeWorkspace", "expoVersion"],
+  expo: ["expoVersion"],
+  nextjs: ["nextjsVersion"],
+  preact: ["preactVersion"],
+  tailwind: ["tailwindVersion"],
+  zod: ["zodVersion"],
+  mobx: [
+    "mobxVersion",
+    "hasMobxReact",
+    "hasMobxReactLite",
+    "hasMobxStateTree",
+    "hasMobxReactObserver",
+  ],
+  zustand: ["zustandVersion"],
+  valtio: ["valtioVersion"],
+  reanimated: ["reanimatedVersion"],
+  "styled-components": ["styledComponentsVersion"],
+  i18n: ["hasI18nLibrary"],
+  "pre-es2023": ["isPreES2023Target"],
+  "nextjs:static-export": ["isStaticExport"],
+};
+export const CLASSIFICATION_REACT_FRAMEWORKS: ReadonlySet<string> = new Set([
+  "nextjs",
+  "cra",
+  "remix",
+  "gatsby",
+  "expo",
+  "react-native",
+  "tanstack-start",
+  "preact",
+]);

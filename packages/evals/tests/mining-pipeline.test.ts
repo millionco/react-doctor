@@ -310,10 +310,39 @@ describe("mining-pipeline pinned contracts and evidence", () => {
       (await loadClassificationRules(record(), new Map())).map((contract) => contract.key),
     ).toEqual([candidate().rule.key]);
   });
+  it("filters inapplicable silent pairs but retains reported findings for FP review", async () => {
+    const scan = record();
+    Object.assign(scan.report.projects[0].project, { hasThree: false, hasReactThreeFiber: false });
+    const decisions: unknown[] = [];
+    const groups: ClassificationCandidate[] = [];
+    for await (const group of prepareClassificationCandidates(scan, {
+      rules: [{ ...candidate().rule, applicability: { requires: ["three"] } }],
+      silentFilesPerProject: 2,
+      metadataOnly: true,
+      groupOccurrences: true,
+      loadSource: async () => {
+        throw new Error("Metadata pass must not load source");
+      },
+      onSilentSampling: (decision, fileCount) => {
+        decisions.push({ decision, fileCount });
+      },
+    }))
+      groups.push(group);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].detected).toBe(true);
+    expect(decisions).toEqual([
+      {
+        decision: { status: "inapplicable", reasons: ["Required capability absent: three"] },
+        fileCount: 1,
+      },
+    ]);
+  });
   it("verifies canonical settings against exact source and fails closed on changed source", async () => {
     const key = "react-doctor/jsx-props-no-spreading";
     const pinned = pinnedRuleContracts[key];
-    const source = await readFile(new URL(`../../../${pinned.path}`, import.meta.url), "utf8");
+    const source = (
+      await readFile(new URL(`../../../${pinned.path}`, import.meta.url), "utf8")
+    ).replaceAll("\r\n", "\n");
     expect(createHash("sha256").update(source).digest("hex")).toBe(pinned.sha256);
     const catalog = [
       {

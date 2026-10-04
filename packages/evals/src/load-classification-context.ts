@@ -11,7 +11,11 @@ import {
   CLASSIFICATION_MAX_CONFIG_FILES,
 } from "./constants.js";
 import type { ClassificationSourceLoader } from "./prepare-classification.js";
-import { PinnedSourceMissingError, sourcePath } from "./prepare-classification.js";
+import {
+  PinnedSourceMissingError,
+  PinnedSourceLimitError,
+  sourcePath,
+} from "./prepare-classification.js";
 
 const configSchema = z.looseObject({
   extends: z.string().optional(),
@@ -216,8 +220,13 @@ export const loadClassificationContext = async (
     ) {
       contextIssue = "Source is empty or the diagnostic has no valid source line";
     }
-  } catch {
-    contextIssue = "Pinned source is unavailable";
+  } catch (error) {
+    contextIssue =
+      error instanceof PinnedSourceLimitError
+        ? "Source exceeds the classification context limit"
+        : error instanceof PinnedSourceMissingError
+          ? "Pinned source is absent"
+          : "Pinned source is unavailable";
   }
   const buildEvidence = candidate.rule.requiredEvidence?.includes("jsx-runtime")
     ? await loadClassificationBuildEvidence(candidate, loadSource)

@@ -93,7 +93,9 @@ For more precise adjudication, override the catalog with a JSON array of contrac
 
 Use rule keys that exist at the evaluated detector revision. Scoped evaluation records only permit their enabled rule keys; an empty provenance `ruleKeys` list means the evaluator enabled all rules available at that revision. Automatic catalog loading follows that scope. Supply contracts for external rules absent from the catalog, for older revisions without the generated catalog, or when using a non-GitHub detector fork. Whole-tree security and project-analysis rules are excluded from automatic catalog selection because their evidence can fall outside the linted source-file coverage. Overlapping project coverage for the same file/rule fails preparation rather than billing duplicate groups or silently choosing conflicting project facts.
 
-Preparation requires complete **v3 full-scan eval records**, including pinned repository and detector commits, rule-set hash, project roots, and analyzed file coverage. Use the baseline or treatment NDJSON from parity, not the comparison summary. Files come from the scanned repository root at its recorded commit; arbitrary paths outside that root are rejected. Public GitHub source is supported directly. Unavailable/private source, files over 48,000 characters, and invalid diagnostic locations become `review` outcomes without model calls. Files are never silently truncated.
+Preparation requires complete **v3 full-scan eval records**, including pinned repository and detector commits, rule-set hash, project roots, and analyzed file coverage. Use the baseline or treatment NDJSON from parity, not the comparison summary. Files come from the scanned repository root at its recorded commit; arbitrary paths outside that root are rejected. Public GitHub source is supported directly. Unavailable/private source, files over 48,000 characters, and invalid diagnostic locations become `review` outcomes without model calls. Files are never silently truncated. Missing, oversized, and unavailable source retain separate reasons.
+
+FN sampling excludes a file/rule pair only when the recorded project facts prove a required capability is absent or a disabling capability is present. This filter uses a conservative subset of the pinned catalog's gates; it does not execute the current detector's capability builder against historical records. Missing fields, unsupported gates, and unresolved version bounds stay unknown and remain eligible. The selection manifest reports applicable, unknown, and excluded file/rule pairs before per-rule sampling, with reasons. Reason counts can overlap. Reported findings are retained for FP review even when their gates appear inapplicable. This is a project-level filter; it does not prove that a rule applies to every file.
 
 ### Separate preparation and classification
 
@@ -110,7 +112,7 @@ nr classify run --input candidates.ndjson --output results.ndjson \
   --concurrency 8 --limit 10000 --threshold 0.9 --cache .classification-cache
 ```
 
-Outputs are created exclusively: choose a new output filename to resume, reusing the cache directory. Duplicate candidates within a run are classified once. Classification emits one JSON summary to stderr, including processed/cache/error counts, newly billed input-token usage when provided, and verdict counts by rule. Preparation reports its prepared, incomplete-context, and skipped-scan counts. The SDK retries transient failures twice and each request has a 60-second deadline.
+Outputs are created exclusively: choose a new output filename to resume, reusing the cache directory. Duplicate candidates within a run are classified once. Classification emits one JSON summary to stderr, including processed/cache/error counts, newly billed input-token usage when provided, verdict counts by rule, model-call and skipped counts, and every failed review gate. The same summary is saved as `OUTPUT.summary.json`. Review reasons distinguish incomplete input, model abstention, low context confidence, and low choice confidence; one result can have several reasons. Preparation reports its prepared, incomplete-context, and skipped-scan counts. The SDK retries transient failures twice and each request has a 60-second deadline.
 
 Assessment validation matches AI SDK 7.0.105: distributions keep their exact values and must sum to one within `1e-6 + 3 × 0.5 × 10^-probabilityDecimals` when rounding is declared (otherwise `1e-6`). The chosen option must have maximal probability. Declared rounding, Boolean `P(true)`, sanitized provider routing metadata and response ID/model/timestamp are retained. Response headers/bodies are excluded from successful provenance. Rejected answers retain bounded sanitized evidence (8,000 serialized characters); no malformed distribution is normalized into a valid one.
 
@@ -126,6 +128,16 @@ Jev receives two typed questions: `violation | valid | insufficient_context`, an
 | Either             | API failure or malformed answer | `error`        |
 
 These are triage candidates, not ground truth or measured precision/recall. FNs are file-level leads, with no invented source line; the sample excludes files where the same rule already fired and can miss additional violations within those files. Cross-file rules often need review. Before changing a detector, check the pinned source, the rule's deliberate exclusions, and a reproducer. Start with a manually reviewed calibration set; compare confirmed findings per reviewed candidate across rules before increasing spend. Rework or stop a rubric that produces mostly rejected candidates.
+
+### Audit independently labeled cases
+
+Write labels before model execution, and keep them out of candidate state and prompts. Each NDJSON label has `assessmentId`, `expected` (`violation`, `valid`, or `insufficient_context`), and a nonempty `rationale`. Use `classificationAssessmentId(candidate)` from `src/run-classification.ts` to bind a label to the exact source, contract, and prompt. Locally authored cases must set `sourceKind: "synthetic"`; omitted source kind means pinned repository source.
+
+```sh
+nr classify audit --input results.ndjson --labels labels.ndjson --output audit.json
+```
+
+Audit makes no model calls. It rejects missing or duplicate labels/results, changed candidate identities, mixed model/prompt/policy/threshold configurations, and verdicts inconsistent with the confidence policy. Use results from the current runner version. The report separates raw answer correctness, accepted correctness, accepted errors, and decision coverage. Abstentions stay in the denominator; zero accepted decisions gives `null` accuracy. A perfect score on a small synthetic set is not a repository precision/recall result. Include real cases, deliberate exceptions, and missing-context cases across rule families before increasing spend. Stop automatic acceptance for a rule family when independent review finds an accepted wrong answer.
 
 Source code is sent to Vercel AI Gateway with `zeroDataRetention` requested, and is retained locally in the candidate/result/cache artifacts. Keep those artifacts in your evaluation storage. The Jev API is experimental; this package pins the SDK versions used by the runner.
 

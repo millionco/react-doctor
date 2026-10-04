@@ -39,6 +39,23 @@ The React Doctor revision must exist in the configured Git repository. Use `--re
 
 ## FP/FN mining with Jev
 
+### Independent Sol review
+
+`nr audit-sol` runs Jev first, then `openai/gpt-6.1-sol` through Vercel AI Gateway. It uses existing pinned scan output. The first Sol pass does not receive Jev's answer or the detector verdict. Proposed FP/FN cases receive a second Sol pass that challenges the claim against the rule implementation, exceptions, and exact diagnostic wording.
+
+```bash
+nr audit-sol --input scan.ndjson --corpus repositories.json \
+  --repositories 10 --output .audit/pilot --cache .audit/cache
+```
+
+Inspect `.audit/pilot/summary.json` before expanding `--repositories` to 500. The first entries in the corpus define the fixed denominator. Missing and failed scans remain visible; the runner does not replace them. Each repository gets up to five reported file/rule groups and five silent file/rule pairs, balanced by rule. This is a sample of each scanned root, not exhaustive FP/FN measurement or a recall estimate.
+
+The reviewer can read related files at the same commit. Quotes must match complete source lines. A wrong line range can be corrected only when its exact quote has one match in that file; both judgments are retained. Missing source, missing context, ambiguous quotes, and unsupported claims stay unresolved. `report.md` contains source links, snippets, explanations, and the run summary. Per-case JSON retains model routing, costs, usage, and all loaded source. Cached reviews are bound to candidate, model, prompt version, and source hashes. Keep these benchmark artifacts outside training corpora.
+
+The report's FP/FN labels are source-reviewed model judgments. The saved detector scan establishes diagnostic presence or absence. A separate detector replay is needed before claiming a fresh reproduction.
+
+### Jev-only mining
+
 `nr mine` composes the existing Vercel Sandbox scanner with [TypeSafe AI's Jev evaluation model](https://vercel.com/docs/ai-gateway/modalities/evaluation), through Vercel AI Gateway. It takes each diagnostic's source file and rule description, classifies it, and logs likely false positives. Optional sampling checks files where a rule did not fire for likely false negatives.
 
 Use Node 22.13+ (required by the AI SDK), set Vercel Sandbox credentials and `AI_GATEWAY_API_KEY`, then, from this directory:

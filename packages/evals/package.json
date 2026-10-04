@@ -13,7 +13,8 @@
     "test": "vp test run",
     "typecheck": "tsc --noEmit",
     "classify": "tsx src/classification-cli.ts",
-    "mine": "tsx src/classification-mining-cli.ts"
+    "mine": "tsx src/classification-mining-cli.ts",
+    "audit-sol": "tsx src/sol-audit-cli.ts"
   },
   "dependencies": {
     "@ai-sdk/gateway": "4.0.85",

@@ -12,6 +12,11 @@ export const solJudgmentSchema = z.object({
     }),
   ),
   missingEvidence: z.array(z.string()),
+  detectorAssessment: z.enum(["correct", "incorrect", "uncertain"]).optional(),
+});
+
+export const solAdjudicationSchema = solJudgmentSchema.extend({
+  detectorAssessment: z.enum(["correct", "incorrect", "uncertain"]),
 });
 
 export interface SolJudgment extends z.infer<typeof solJudgmentSchema> {}

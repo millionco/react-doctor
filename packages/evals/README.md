@@ -52,6 +52,8 @@ Inspect `.audit/pilot/summary.json` before expanding `--repositories` to 500. Th
 
 The reviewer can read related files at the same commit. Quotes must match complete source lines. A wrong line range can be corrected only when its exact quote has one match in that file; both judgments are retained. Missing source, missing context, ambiguous quotes, and unsupported claims stay unresolved. `report.md` contains source links, snippets, explanations, and the run summary. Per-case JSON retains model routing, costs, usage, and all loaded source. Cached reviews are bound to candidate, model, prompt version, and source hashes. Keep these benchmark artifacts outside training corpora.
 
+The challenge pass receives up to 512,000 characters of pinned rule implementation, shared rule gates, and a bounded tool for reading detector helpers and regression tests. It judges the exact diagnostic separately from source validity: valid code can receive a correct conditional advisory. Unsupported platform coverage stays separate from a missed existing rule. Failed Jev screenings can proceed to independent Sol review while their raw errors remain in the report.
+
 The report's FP/FN labels are source-reviewed model judgments. The saved detector scan establishes diagnostic presence or absence. A separate detector replay is needed before claiming a fresh reproduction.
 
 ### Jev-only mining

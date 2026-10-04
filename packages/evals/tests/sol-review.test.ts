@@ -8,6 +8,9 @@ import type { SolJudgment, SolSource } from "../src/sol-review-schema.js";
 import { validateSolCitations } from "../src/utils/validate-sol-citations.js";
 import { resolveSolCitationLines } from "../src/utils/resolve-sol-citation-lines.js";
 import { getClassificationCost } from "../src/utils/get-classification-cost.js";
+import { loadPinnedDetectorFile } from "../src/utils/load-pinned-detector-file.js";
+import { finalizeSolReview } from "../src/utils/finalize-sol-review.js";
+import type { SolReview } from "../src/sol-review-schema.js";
 
 const mocks = vi.hoisted(() => ({ generateText: vi.fn() }));
 vi.mock("ai", async (importOriginal) => ({
@@ -50,6 +53,50 @@ const judgment: SolJudgment = {
 };
 
 describe("independent Sol review", () => {
+  it("does not turn valid code with a correct conditional advisory into an FP", () => {
+    const review: SolReview = {
+      id: "sample",
+      model: "test",
+      promptVersion: "test",
+      judgment: { ...judgment, detectorAssessment: "correct" },
+      verdict: "fp",
+      citationIssues: [],
+      sources,
+      inputTokens: 0,
+      outputTokens: 0,
+      provenance: null,
+    };
+    expect(finalizeSolReview(review, candidate).verdict).toBe("rejected");
+    expect(
+      finalizeSolReview(
+        { ...review, judgment: { ...judgment, detectorAssessment: "incorrect" } },
+        candidate,
+      ).verdict,
+    ).toBe("fp");
+    expect(
+      finalizeSolReview(
+        { ...review, judgment: { ...judgment, detectorAssessment: "uncertain" } },
+        candidate,
+      ).verdict,
+    ).toBe("unresolved");
+  });
+  it("rejects detector paths outside the pinned engine source", async () => {
+    await expect(
+      loadPinnedDetectorFile({
+        detectorCommit: "HEAD",
+        filePath: "packages/core/src/constants.ts",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      loadPinnedDetectorFile({ detectorCommit: "a".repeat(40), filePath: "../../.env.local" }),
+    ).rejects.toThrow();
+    await expect(
+      loadPinnedDetectorFile({
+        detectorCommit: "a".repeat(40),
+        filePath: "packages/core/src/../../../.env.local",
+      }),
+    ).rejects.toThrow();
+  });
   it("sums each gateway step once without counting cost breakdowns twice", () => {
     expect(
       getClassificationCost([
@@ -124,11 +171,19 @@ describe("independent Sol review", () => {
       totalUsage: { inputTokens: 10, outputTokens: 5 },
       steps: [],
     });
-    expect((await reviewWithSol(screening)).verdict).toBe("fp");
+    const firstReview = await reviewWithSol(screening);
+    expect(firstReview.verdict).toBe("fp");
     const request = mocks.generateText.mock.calls.at(-1)?.[0];
     expect(request.prompt).not.toContain("candidate_fp");
     expect(request.prompt).not.toContain('"detected"');
     expect(request.prompt).not.toContain('"assessment"');
+    mocks.generateText.mockResolvedValue({
+      output: { ...judgment, detectorAssessment: "correct" },
+      totalUsage: {},
+      steps: [],
+    });
+    expect((await reviewWithSol(screening, firstReview)).verdict).toBe("rejected");
+    expect(mocks.generateText.mock.calls.at(-1)?.[0].tools.readDetectorSource).toBeDefined();
     mocks.generateText.mockResolvedValue({
       output: { ...judgment, evidence: [] },
       totalUsage: {},

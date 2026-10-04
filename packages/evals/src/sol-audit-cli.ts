@@ -39,6 +39,8 @@ import { loadSolReviewCache } from "./utils/load-sol-review-cache.js";
 import { finalizeSolReview } from "./utils/finalize-sol-review.js";
 import { getClassificationCost } from "./utils/get-classification-cost.js";
 import { getEvaluatorSourceHash } from "./utils/get-evaluator-source-hash.js";
+import { toErrorMessage } from "./utils/to-error-message.js";
+import { sanitizeClassificationEvidence } from "./utils/sanitize-classification-evidence.js";
 
 interface AuditRepository {
   org: string;
@@ -284,7 +286,11 @@ const main = async (): Promise<void> => {
             `Sol ${reviews.length + errors.length}/${queued.length}: ${review.verdict}\n`,
           );
         } catch (error) {
-          const failure = { id: screening.id, evidence: classificationErrorEvidence(error) };
+          const failure = {
+            id: screening.id,
+            error: sanitizeClassificationEvidence(toErrorMessage(error)),
+            evidence: classificationErrorEvidence(error),
+          };
           errors.push(failure);
           await save(`sol-error-${screening.id}.json`, failure);
           process.stderr.write(`Sol ${reviews.length + errors.length}/${queued.length}: error\n`);

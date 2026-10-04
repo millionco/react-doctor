@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
 
-import { DaytonaNotFoundError } from "@daytona/sdk";
-import type { Daytona, Sandbox } from "@daytona/sdk";
+import { Sandbox } from "@vercel/sandbox";
+import type { SandboxCredentials } from "./utils/get-sandbox-credentials.js";
+import { isSandboxNotFoundError } from "./utils/is-sandbox-not-found-error.js";
+import { readSandboxFile } from "./utils/read-sandbox-file.js";
 
 import {
   BASE_REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
   BASE_REACT_DOCTOR_WORK_DIRECTORY,
   BASE_SANDBOX_REPORT_PATH,
   BASE_TARGET_WORK_DIRECTORY,
-  DAYTONA_RUN_NAME,
+  EVALUATION_RUN_NAME,
   EVALUATION_SCHEMA_VERSION,
   REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
   REACT_DOCTOR_WORK_DIRECTORY,
@@ -16,6 +18,7 @@ import {
   RESOLVE_PAIRED_TARGET_REPOSITORY_REF_COMMAND,
   RESOLVE_TARGET_REPOSITORY_REF_COMMAND,
   SANDBOX_DELETE_TIMEOUT_SECONDS,
+  MILLISECONDS_PER_SECOND,
   SANDBOX_REPORT_DOWNLOAD_TIMEOUT_SECONDS,
   SANDBOX_REPORT_PATH,
   SANDBOX_SCAN_TIMEOUT_SECONDS,
@@ -46,7 +49,7 @@ import { toErrorMessage } from "./utils/to-error-message.js";
 import { runBeforeDeadline } from "./utils/run-before-deadline.js";
 
 export interface EvaluateRepositoryBatchInput {
-  daytona: Daytona;
+  credentials: SandboxCredentials;
   createSandbox: (sandboxName: string, deadlineMilliseconds: number) => Promise<Sandbox>;
   repositoryGroups: ReadonlyArray<CorpusRepositoryGroup>;
   evaluationDeadlineMilliseconds: number;
@@ -144,7 +147,8 @@ export const scanRepository = async ({
     description: `${descriptionPrefix} ${repository.org}/${repository.name}:${repository.rootDir}`,
     acceptNonZeroExitCode: true,
   });
-  const reportContents = await sandbox.fs.downloadFile(
+  const reportContents = await readSandboxFile(
+    sandbox,
     reportPath,
     getEvaluationTimeoutSeconds({
       deadlineMilliseconds: evaluationDeadlineMilliseconds,
@@ -287,7 +291,7 @@ const evaluateRepositoryGroup = async ({
 };
 
 export const evaluateRepositoryBatch = async ({
-  daytona,
+  credentials,
   createSandbox,
   repositoryGroups,
   evaluationDeadlineMilliseconds,
@@ -295,7 +299,7 @@ export const evaluateRepositoryBatch = async ({
   onRecord,
   paired,
 }: EvaluateRepositoryBatchInput): Promise<ReadonlyArray<CorpusEvaluationRecord>> => {
-  const sandboxName = `${DAYTONA_RUN_NAME}-${randomUUID()}`;
+  const sandboxName = `${EVALUATION_RUN_NAME}-${randomUUID()}`;
   let sandbox: Sandbox | undefined;
   let shouldRecoverSandbox = true;
   try {
@@ -324,7 +328,7 @@ export const evaluateRepositoryBatch = async ({
         : [REACT_DOCTOR_EVALUATION_PROVENANCE_PATH];
       const provenanceContents = await Promise.all(
         provenancePaths.map((provenancePath) =>
-          activeSandbox.fs.downloadFile(provenancePath, provenanceTimeoutSeconds),
+          readSandboxFile(activeSandbox, provenancePath, provenanceTimeoutSeconds),
         ),
       );
       const treatmentProvenanceContents = provenanceContents.at(-1);
@@ -374,14 +378,14 @@ export const evaluateRepositoryBatch = async ({
     if (!sandboxToDelete && shouldRecoverSandbox) {
       try {
         sandboxToDelete = await runBeforeDeadline({
-          operation: () => daytona.get(sandboxName),
+          operation: () => Sandbox.get({ ...credentials, name: sandboxName }),
           deadlineMilliseconds: evaluationDeadlineMilliseconds,
-          timeoutMessage: `Timed out recovering Daytona sandbox ${sandboxName}`,
+          timeoutMessage: `Timed out recovering Vercel sandbox ${sandboxName}`,
         });
       } catch (error) {
-        if (!(error instanceof DaytonaNotFoundError)) {
+        if (!isSandboxNotFoundError(error)) {
           process.stderr.write(
-            `Failed to recover Daytona sandbox ${sandboxName}: ${toErrorMessage(error)}\n`,
+            `Failed to recover Vercel sandbox ${sandboxName}: ${toErrorMessage(error)}\n`,
           );
         }
       }
@@ -389,13 +393,16 @@ export const evaluateRepositoryBatch = async ({
     if (sandboxToDelete) {
       try {
         await runBeforeDeadline({
-          operation: () => daytona.delete(sandboxToDelete, SANDBOX_DELETE_TIMEOUT_SECONDS),
+          operation: () =>
+            sandboxToDelete.delete({
+              signal: AbortSignal.timeout(SANDBOX_DELETE_TIMEOUT_SECONDS * MILLISECONDS_PER_SECOND),
+            }),
           deadlineMilliseconds: evaluationDeadlineMilliseconds,
-          timeoutMessage: `Timed out deleting Daytona sandbox ${sandboxToDelete.id}`,
+          timeoutMessage: `Timed out deleting Vercel sandbox ${sandboxToDelete.name}`,
         });
       } catch (error) {
         process.stderr.write(
-          `Failed to delete Daytona sandbox ${sandboxToDelete.id}: ${toErrorMessage(error)}\n`,
+          `Failed to delete Vercel sandbox ${sandboxToDelete.name}: ${toErrorMessage(error)}\n`,
         );
       }
     }

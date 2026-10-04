@@ -18,15 +18,32 @@ export const EVALUATION_RETRY_ATTEMPT_RESERVE_MINUTES = 5;
 export const EVALUATION_MAXIMUM_RETRY_RESERVE_RATIO = 0.25;
 export const EVALUATION_RETRY_REPOSITORIES_PER_SANDBOX = 1;
 export const EVALUATION_CONFIG_CONTRACT = "revision-local-rule-config-v1";
+export const CLASSIFICATION_SCHEMA_VERSION = 2;
+export const CLASSIFICATION_PROMPT_VERSION = "rule-contract-v2";
+export const CLASSIFICATION_ASSESSMENT_VERSION = "ai-7.0.105-gateway-4.0.85-rounding-v2";
+export const CLASSIFICATION_POLICY_VERSION = "two-gates-v1";
+export const CLASSIFICATION_SELECTION_SEED = "repository-rule-file-v1";
+export const CLASSIFICATION_MAX_CONFIG_FILES = 64;
+export const CLASSIFICATION_MAX_CONFIG_DEPTH = 12;
+export const CLASSIFICATION_MAX_CONFIG_CHARACTERS = 16_000;
+export const CLASSIFICATION_MAX_RESPONSE_CHARACTERS = 8_000;
+export const CLASSIFICATION_MAX_EVIDENCE_DEPTH = 8;
+export const CLASSIFICATION_MAX_EVIDENCE_ENTRIES = 32;
+export const CLASSIFICATION_MAX_ROUNDING_DECIMALS = 15;
+export const CLASSIFICATION_MODEL = "typesafe-ai/jev";
+export const CLASSIFICATION_CONCURRENCY = 8;
+export const CLASSIFICATION_LIMIT = 1_000;
+export const CLASSIFICATION_THRESHOLD = 0.9;
+export const CLASSIFICATION_TIMEOUT_MS = 60_000;
+export const CLASSIFICATION_MAX_RETRIES = 2;
+export const CLASSIFICATION_MAX_CODE_CHARACTERS = 48_000;
+export const CLASSIFICATION_SILENT_FILES_PER_PROJECT = 0;
+export const CLASSIFICATION_PROBABILITY_TOLERANCE = 1e-6;
 
-export const DAYTONA_RUN_NAME = "react-doctor";
-export const SANDBOX_IMAGE = "node:22-bookworm";
+export const EVALUATION_RUN_NAME = "react-doctor";
+export const SANDBOX_IMAGE = "vercel/sandbox/node:22";
 export const SANDBOX_CPU_CORES = 2;
-export const SANDBOX_MEMORY_GIB = 4;
-export const SANDBOX_DISK_GIB = 10;
 export const PAIRED_SANDBOX_CPU_CORES = 4;
-export const PAIRED_SANDBOX_MEMORY_GIB = 8;
-export const PAIRED_SANDBOX_DISK_GIB = 20;
 export const PAIRED_SCAN_MINIMUM_PARALLEL_CPU_CORES = 4;
 export const DEFAULT_PAIRED_CORPUS_CONCURRENCY = 50;
 export const DEFAULT_MATRIX_WAVE_WIDTH = 2;
@@ -34,8 +51,6 @@ export const MATRIX_MAXIMUM_CONCURRENCY = 50;
 export const MATRIX_MAXIMUM_TREATMENTS = 8;
 export const MATRIX_MAXIMUM_CPU_CORES = 400;
 export const MATRIX_CPU_CORES_PER_LANE = 2;
-export const MATRIX_MEMORY_GIB_PER_LANE = 4;
-export const MATRIX_DISK_GIB_PER_DETECTOR = 10;
 export const MATRIX_DESCRIPTOR_SCHEMA_VERSION = 1;
 export const MATRIX_DESCRIPTOR_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 export const MATRIX_SCAN_CONTRACT = "react-doctor-json-full-v1";
@@ -53,7 +68,6 @@ export const MATRIX_PROVENANCE_DIRECTORY = "/workspace/react-doctor-matrix-prove
 export const MATRIX_TARGET_REPOSITORY_DIRECTORY = "/workspace/target-matrix.git";
 export const MATRIX_TARGET_WORKTREE_DIRECTORY = "/workspace/target-matrix-lanes";
 export const MATRIX_REPORT_DIRECTORY = "/tmp/react-doctor-matrix-reports";
-export const SANDBOX_AUTO_STOP_INTERVAL_MINUTES = 60;
 export const SANDBOX_CREATE_TIMEOUT_SECONDS = 600;
 export const SANDBOX_SETUP_TIMEOUT_SECONDS = 1_800;
 export const SANDBOX_SCAN_TIMEOUT_SECONDS = 1_800;
@@ -200,7 +214,7 @@ fs.writeFileSync(
 );
 REACT_DOCTOR_EVAL_PROVENANCE`;
 export const BUILD_REACT_DOCTOR_COMMANDS: ReadonlyArray<string> = [
-  "corepack enable",
+  "sudo corepack enable",
   "npx --yes --package @antfu/ni ni --frozen",
   "./node_modules/.bin/turbo run build --filter=react-doctor",
   MATERIALIZE_REACT_DOCTOR_EVALUATION_PROVENANCE_COMMAND,
@@ -220,7 +234,7 @@ export const PREPARE_PAIRED_REACT_DOCTOR_COMMANDS: ReadonlyArray<string> = [
 ];
 
 export const BUILD_PAIRED_REACT_DOCTOR_COMMANDS: ReadonlyArray<string> = [
-  "corepack enable",
+  "sudo corepack enable",
   `cd "${BASE_REACT_DOCTOR_WORK_DIRECTORY}" && npx --yes --package @antfu/ni ni --frozen`,
   `cd "${BASE_REACT_DOCTOR_WORK_DIRECTORY}" && ./node_modules/.bin/turbo run build --filter=react-doctor`,
   `cd "${TREATMENT_REACT_DOCTOR_WORK_DIRECTORY}" && npx --yes --package @antfu/ni ni --frozen`,
@@ -361,3 +375,9 @@ node "$REACT_DOCTOR_WORK_DIRECTORY/packages/react-doctor/bin/react-doctor.js" \
   --no-score \
   "$TARGET_CHECKOUT_DIRECTORY/$TARGET_ROOT_DIRECTORY" \
   > "$SANDBOX_REPORT_PATH"`;
+
+export const HTTP_NOT_FOUND_STATUS = 404;
+export const SANDBOX_SNAPSHOT_EXPIRATION_MS = 86_400_000;
+
+// HACK: Oxlint reserves 4 GiB arenas that the VM default memory policy rejects.
+export const PREPARE_SANDBOX_COMMAND = "sudo sysctl -w vm.overcommit_memory=1";

@@ -1,23 +1,27 @@
 import { randomUUID } from "node:crypto";
 import { open } from "node:fs/promises";
 
-import { Daytona, DaytonaNotFoundError, Image } from "@daytona/sdk";
+import type { Snapshot } from "@vercel/sandbox";
+import { createEvaluationSandbox } from "./utils/create-evaluation-sandbox.js";
+
+import { createEvaluationSnapshot } from "./utils/create-evaluation-snapshot.js";
+import type { EvaluationSnapshotBuild } from "./utils/create-evaluation-snapshot.js";
+import { getSandboxCredentials } from "./utils/get-sandbox-credentials.js";
+import { isSandboxNotFoundError } from "./utils/is-sandbox-not-found-error.js";
 import pLimit from "p-limit";
 
 import { cleanupEvaluationSandboxes } from "./cleanup-evaluation-sandboxes.js";
-import { deleteDaytonaSnapshotBeforeDeadline } from "./utils/delete-daytona-snapshot-before-deadline.js";
+import { deleteVercelSnapshotBeforeDeadline } from "./utils/delete-vercel-snapshot-before-deadline.js";
 import {
   BUILD_PAIRED_REACT_DOCTOR_COMMANDS,
   BUILD_REACT_DOCTOR_COMMANDS,
-  DAYTONA_RUN_NAME,
+  EVALUATION_RUN_NAME,
   EVALUATION_CLEANUP_RESERVE_MINUTES,
   EVALUATION_ARTIFACT_FILE_MODE,
   EVALUATION_RETRY_CONCURRENCIES,
   MILLISECONDS_PER_MINUTE,
   MILLISECONDS_PER_SECOND,
   PAIRED_SANDBOX_CPU_CORES,
-  PAIRED_SANDBOX_DISK_GIB,
-  PAIRED_SANDBOX_MEMORY_GIB,
   PAIRED_SCAN_MINIMUM_PARALLEL_CPU_CORES,
   PERCENT_MULTIPLIER,
   PREPARE_PAIRED_REACT_DOCTOR_COMMANDS,
@@ -25,14 +29,8 @@ import {
   PROGRESS_INTERVAL_PROJECTS,
   REACT_DOCTOR_WORK_DIRECTORY,
   REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
-  SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
   SANDBOX_CPU_CORES,
   SANDBOX_CREATE_CONCURRENCY,
-  SANDBOX_CREATE_TIMEOUT_SECONDS,
-  SANDBOX_DISK_GIB,
-  SANDBOX_IMAGE,
-  SANDBOX_MEMORY_GIB,
-  SANDBOX_SETUP_TIMEOUT_SECONDS,
   SUMMARY_DECIMAL_PLACES,
 } from "./constants.js";
 import type { CorpusEvaluationRecord } from "./corpus.js";
@@ -46,35 +44,38 @@ import { runMatrixCorpusEvaluation } from "./run-matrix-corpus-evaluation.js";
 import { createPairedNdjsonWriter } from "./utils/create-paired-ndjson-writer.js";
 import { getEvaluationAttemptDeadlineMilliseconds } from "./utils/get-evaluation-attempt-deadline-milliseconds.js";
 import { getEvaluatorSourceHash } from "./utils/get-evaluator-source-hash.js";
-import { getEvaluationTimeoutSeconds } from "./utils/get-evaluation-timeout-seconds.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
+import { verifyEvaluationResourcesClean } from "./utils/verify-evaluation-resources-clean.js";
 import { writeNdjsonRecord } from "./utils/write-ndjson-record.js";
 
-const buildEvaluationSnapshotImage = (options: EvaluationOptions): Image => {
+const buildEvaluationSnapshotImage = (options: EvaluationOptions): EvaluationSnapshotBuild => {
   if (options.paired) {
-    return Image.base(SANDBOX_IMAGE)
-      .env({
+    return {
+      environment: {
         BASE_REACT_DOCTOR_REPOSITORY: options.paired.baseReactDoctorRepository,
         BASE_REACT_DOCTOR_REF: options.paired.baseReactDoctorRef,
         BASE_REACT_DOCTOR_RULE_KEYS: JSON.stringify(options.paired.baseRuleKeys),
         TREATMENT_REACT_DOCTOR_REPOSITORY: options.reactDoctorRepository,
         TREATMENT_REACT_DOCTOR_REF: options.reactDoctorRef,
         TREATMENT_REACT_DOCTOR_RULE_KEYS: JSON.stringify(options.ruleKeys),
-      })
-      .runCommands(...PREPARE_PAIRED_REACT_DOCTOR_COMMANDS)
-      .runCommands(...BUILD_PAIRED_REACT_DOCTOR_COMMANDS);
+      },
+      commands: [...PREPARE_PAIRED_REACT_DOCTOR_COMMANDS, ...BUILD_PAIRED_REACT_DOCTOR_COMMANDS],
+    };
   }
-  return Image.base(SANDBOX_IMAGE)
-    .env({
+  return {
+    environment: {
       REACT_DOCTOR_REPOSITORY: options.reactDoctorRepository,
       REACT_DOCTOR_REF: options.reactDoctorRef,
       REACT_DOCTOR_RULE_KEYS: JSON.stringify(options.ruleKeys),
       REACT_DOCTOR_WORK_DIRECTORY,
       REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
-    })
-    .runCommands(...PREPARE_REACT_DOCTOR_COMMANDS)
-    .workdir(REACT_DOCTOR_WORK_DIRECTORY)
-    .runCommands(...BUILD_REACT_DOCTOR_COMMANDS);
+    },
+    commands: [
+      ...PREPARE_REACT_DOCTOR_COMMANDS,
+      `cd "${REACT_DOCTOR_WORK_DIRECTORY}"`,
+      ...BUILD_REACT_DOCTOR_COMMANDS,
+    ],
+  };
 };
 
 const shouldRunPairedScansInParallel = (options: EvaluationOptions): boolean => {
@@ -129,34 +130,30 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
       `Evaluating ${projectCount} projects from ${repositoryGroups.length} repositories in batches of ${options.repositoriesPerSandbox} at concurrency ${options.concurrency}\n`,
     );
 
-    const daytona = new Daytona();
+    const credentials = getSandboxCredentials();
     const evaluationId = randomUUID();
-    const snapshotName = `${DAYTONA_RUN_NAME}-snapshot-${evaluationId}`;
+    const snapshotName = `${EVALUATION_RUN_NAME}-snapshot-${evaluationId}`;
+    let snapshot: Snapshot | undefined;
+    let evaluationError: unknown;
+    let cleanupError: unknown;
     try {
       process.stderr.write(`Building React Doctor snapshot ${snapshotName}\n`);
       const snapshotStartedAt = globalThis.performance.now();
-      await daytona.snapshot.create(
+      snapshot = await createEvaluationSnapshot(
         {
           name: snapshotName,
-          image: buildEvaluationSnapshotImage(options),
+          evaluationId,
+          credentials,
+          build: buildEvaluationSnapshotImage(options),
           resources: options.paired
             ? {
                 cpu: PAIRED_SANDBOX_CPU_CORES,
-                memory: PAIRED_SANDBOX_MEMORY_GIB,
-                disk: PAIRED_SANDBOX_DISK_GIB,
               }
             : {
                 cpu: SANDBOX_CPU_CORES,
-                memory: SANDBOX_MEMORY_GIB,
-                disk: SANDBOX_DISK_GIB,
               },
         },
-        {
-          timeout: getEvaluationTimeoutSeconds({
-            deadlineMilliseconds: evaluationDeadlineMilliseconds,
-            maximumTimeoutSeconds: SANDBOX_SETUP_TIMEOUT_SECONDS,
-          }),
-        },
+        evaluationDeadlineMilliseconds,
       );
       const snapshotSetupSeconds =
         (globalThis.performance.now() - snapshotStartedAt) / MILLISECONDS_PER_SECOND;
@@ -199,28 +196,17 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
       const limitSandboxCreation = pLimit(
         Math.min(options.concurrency, SANDBOX_CREATE_CONCURRENCY),
       );
+      const snapshotId = snapshot.snapshotId;
       const createSandbox = (sandboxName: string, deadlineMilliseconds: number) =>
         limitSandboxCreation(() =>
-          daytona.create(
-            {
-              name: sandboxName,
-              snapshot: snapshotName,
-              ephemeral: true,
-              autoStopInterval: SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
-              labels: {
-                evaluation: evaluationId,
-                project: DAYTONA_RUN_NAME,
-                purpose: "eval-repository",
-                run: DAYTONA_RUN_NAME,
-              },
-            },
-            {
-              timeout: getEvaluationTimeoutSeconds({
-                deadlineMilliseconds,
-                maximumTimeoutSeconds: SANDBOX_CREATE_TIMEOUT_SECONDS,
-              }),
-            },
-          ),
+          createEvaluationSandbox({
+            credentials,
+            name: sandboxName,
+            snapshotId,
+            evaluationId,
+            cpuCores: options.paired ? PAIRED_SANDBOX_CPU_CORES : SANDBOX_CPU_CORES,
+            deadlineMilliseconds,
+          }),
         );
       await runEvaluationAttempts({
         repositoryGroups,
@@ -228,7 +214,7 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
         attemptConcurrencies,
         evaluateRepositoryBatch: (repositoryBatch, attemptIndex) =>
           evaluateRepositoryBatch({
-            daytona,
+            credentials,
             createSandbox,
             repositoryGroups: repositoryBatch,
             evaluatorSourceHash,
@@ -247,13 +233,13 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
           }),
         beforeRetry: () =>
           cleanupEvaluationSandboxes({
-            daytona,
+            credentials,
             evaluationId,
             deadlineMilliseconds: evaluationDeadlineMilliseconds,
           }),
         onBeforeRetryFailure: (error) => {
           process.stderr.write(
-            `Failed to clean up Daytona sandboxes before retry: ${toErrorMessage(error)}\n`,
+            `Failed to clean up Vercel sandboxes before retry: ${toErrorMessage(error)}\n`,
           );
         },
         onRetry: (retry) => {
@@ -269,29 +255,51 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
           }
         },
       });
+    } catch (error) {
+      evaluationError = error;
     } finally {
       try {
         await cleanupEvaluationSandboxes({
-          daytona,
+          credentials,
           evaluationId,
           deadlineMilliseconds: wholeRunDeadlineMilliseconds,
         });
-      } finally {
-        try {
-          await deleteDaytonaSnapshotBeforeDeadline({
-            snapshotClient: daytona.snapshot,
-            snapshotName,
-            deadlineMilliseconds: wholeRunDeadlineMilliseconds,
-          });
-        } catch (error) {
-          if (!(error instanceof DaytonaNotFoundError)) {
-            process.stderr.write(
-              `Failed to delete Daytona snapshot ${snapshotName}: ${toErrorMessage(error)}\n`,
-            );
-          }
-        }
+      } catch (error) {
+        cleanupError = error;
+      }
+      try {
+        await deleteVercelSnapshotBeforeDeadline({
+          snapshot,
+          credentials,
+          snapshotName,
+          deadlineMilliseconds: wholeRunDeadlineMilliseconds,
+        });
+      } catch (error) {
+        if (!isSandboxNotFoundError(error)) cleanupError ??= error;
+      }
+      try {
+        await verifyEvaluationResourcesClean({
+          credentials,
+          evaluationId,
+          snapshotId: snapshot?.snapshotId,
+          snapshotName,
+          deadlineMilliseconds: wholeRunDeadlineMilliseconds,
+        });
+        cleanupError = undefined;
+      } catch (error) {
+        cleanupError = cleanupError
+          ? new AggregateError([cleanupError, error], "Vercel cleanup was not verified")
+          : error;
       }
     }
+    if (evaluationError !== undefined && cleanupError !== undefined) {
+      throw new AggregateError(
+        [evaluationError, cleanupError],
+        "Evaluation failed and Vercel cleanup was not verified",
+      );
+    }
+    if (evaluationError !== undefined) throw evaluationError;
+    if (cleanupError !== undefined) throw cleanupError;
 
     const successfulProjects = completedProjects - failedProjects;
     const completionRate = (successfulProjects / projectCount) * PERCENT_MULTIPLIER;

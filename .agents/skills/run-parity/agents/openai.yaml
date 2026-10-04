@@ -1,4 +1,4 @@
 interface:
   display_name: "Run Parity"
-  short_description: "Compare pull request diagnostics with Daytona"
+  short_description: "Compare pull request diagnostics with Vercel Sandbox"
   default_prompt: "Use $run-parity to compare diagnostics for my current pull request."

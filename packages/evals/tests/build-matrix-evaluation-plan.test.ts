@@ -96,7 +96,7 @@ describe("buildMatrixEvaluationPlan", () => {
     });
     expect(plan.lanes.map((lane) => lane.id)).toEqual(["pr-1", "pr-2", "matrix-base"]);
     expect(plan.lanes).toHaveLength(3);
-    expect(plan.resources).toEqual({ cpu: 4, memory: 8, disk: 30 });
+    expect(plan.resources).toEqual({ cpu: 4 });
   });
 
   it("promotes the base to full when any treatment is full", () => {
@@ -128,6 +128,6 @@ describe("buildMatrixEvaluationPlan", () => {
       hasVerifiedFullBaseline: true,
     });
     expect(plan.lanes.map((lane) => lane.id)).toEqual(["pr-1"]);
-    expect(plan.resources).toEqual({ cpu: 2, memory: 4, disk: 10 });
+    expect(plan.resources).toEqual({ cpu: 2 });
   });
 });

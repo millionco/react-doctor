@@ -51,3 +51,9 @@ review-*.md
 /scripts/print-batch-input.mjs
 /scripts/rule-prompts/
 /rules.json
+
+packages/evals/classification/
+packages/evals/mining/
+
+.fpfn/
+.classification-cache/

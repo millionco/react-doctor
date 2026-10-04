@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { z } from "zod";
@@ -195,6 +195,7 @@ const main = async (): Promise<void> => {
     { mode: EVALUATION_ARTIFACT_FILE_MODE },
   );
   const screenings: ClassificationResult[] = [];
+  await writeFile(join(directory, "jev.ndjson"), "", { mode: EVALUATION_ARTIFACT_FILE_MODE });
   const screeningSummary = await runClassification(
     readNdjson(join(directory, "candidates.ndjson")),
     {
@@ -205,11 +206,9 @@ const main = async (): Promise<void> => {
       evaluate: evaluateWithJev,
       write: async (result) => {
         screenings.push(result);
-        await writeFile(
-          join(directory, "jev.ndjson"),
-          screenings.map(serializeNdjsonRecord).join(""),
-          { mode: EVALUATION_ARTIFACT_FILE_MODE },
-        );
+        await appendFile(join(directory, "jev.ndjson"), serializeNdjsonRecord(result), {
+          mode: EVALUATION_ARTIFACT_FILE_MODE,
+        });
         process.stderr.write(`Jev ${screenings.length}/${candidates.length}: ${result.verdict}\n`);
       },
     },

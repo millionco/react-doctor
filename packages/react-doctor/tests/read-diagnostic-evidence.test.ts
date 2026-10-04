@@ -37,9 +37,10 @@ describe("createDiagnosticEvidenceReader", () => {
     const headDiagnostic = makeDiagnostic({ message: "2 copies repeat about 14 lines" });
     Reflect.set(baseDiagnostic, DIAGNOSTIC_DELTA_IDENTITY, "jsx:stable-family");
     Reflect.set(headDiagnostic, DIAGNOSTIC_DELTA_IDENTITY, "jsx:stable-family");
-    const baseDiagnostics: Diagnostic[] = JSON.parse(
-      JSON.stringify(withDiagnosticFingerprints(rootDirectory, [baseDiagnostic])),
+    const serializedDiagnostics = JSON.stringify(
+      withDiagnosticFingerprints(rootDirectory, [baseDiagnostic]),
     );
+    const baseDiagnostics: Diagnostic[] = JSON.parse(serializedDiagnostics);
     const delta = computeDiagnosticDelta({
       baseDiagnostics,
       headDiagnostics: withDiagnosticFingerprints(rootDirectory, [headDiagnostic]),

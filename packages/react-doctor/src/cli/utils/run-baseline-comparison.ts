@@ -250,6 +250,7 @@ export const runBaselineComparison = async (
         baseLintPaths: materializedLintPaths,
         headFiles: expectedHeadFiles,
         analyzedBaseFiles: baseOutput.analyzedFiles,
+        renamedFiles: snapshot.renamedFiles,
       })
     ) {
       return null;

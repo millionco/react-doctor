@@ -153,6 +153,12 @@ const buildProjectInspectOptions = ({
 }: BuildProjectInspectOptionsInput): ReactDoctorInspectOptions => {
   const scanDirectory = projectScan.directory;
   const savedBaseline = context.savedBaseline;
+  const baselinePaths = projectScanPlan.includePaths
+    ? new Set([
+        ...projectScanPlan.includePaths,
+        ...(projectScanPlan.projectBaselineBaseFiles ?? []),
+      ])
+    : null;
   return {
     ...context.scanOptions,
     deadCode:
@@ -183,12 +189,7 @@ const buildProjectInspectOptions = ({
                 const filePath = path
                   .relative(project.directory, path.resolve(project.directory, diagnostic.filePath))
                   .replace(/\\/g, "/");
-                if (
-                  projectScanPlan.includePaths &&
-                  !projectScanPlan.includePaths.includes(filePath) &&
-                  !projectScanPlan.projectBaselineBaseFiles?.includes(filePath)
-                )
-                  return [];
+                if (baselinePaths && !baselinePaths.has(filePath)) return [];
                 return [
                   {
                     ...diagnostic,

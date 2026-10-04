@@ -62,17 +62,15 @@ interface SolReviewCall {
   outputTokens: number;
 }
 
-const recordSchema = z
-  .object({
-    repository: z.object({
-      org: z.string(),
-      name: z.string(),
-      ref: z.string(),
-      rootDir: z.string(),
-    }),
-    error: z.string().optional(),
-  })
-  .passthrough();
+const recordSchema = z.looseObject({
+  repository: z.object({
+    org: z.string(),
+    name: z.string(),
+    ref: z.string(),
+    rootDir: z.string(),
+  }),
+  error: z.string().optional(),
+});
 
 const main = async (): Promise<void> => {
   const { values } = parseArgs({

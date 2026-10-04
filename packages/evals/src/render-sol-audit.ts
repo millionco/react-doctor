@@ -7,6 +7,9 @@ export const renderSolAudit = (
   reviews: SolReview[],
   summary: unknown,
 ): string => {
+  const candidatesById = new Map(
+    screenings.map((screening) => [screening.id, screening.candidate]),
+  );
   const sections = [
     "# Jev → Sol FP/FN audit",
     "",
@@ -20,7 +23,7 @@ export const renderSolAudit = (
   for (const review of reviews.toSorted(
     (left, right) => left.verdict.localeCompare(right.verdict) || left.id.localeCompare(right.id),
   )) {
-    const candidate = screenings.find((screening) => screening.id === review.id)?.candidate;
+    const candidate = candidatesById.get(review.id);
     if (!candidate) continue;
     const evidence = review.judgment.evidence.find(
       (entry) => entry.filePath === candidate.filePath,

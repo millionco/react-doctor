@@ -7,8 +7,9 @@ export const validateSolCitations = (
   candidate: ClassificationCandidate,
 ): string[] => {
   const issues: string[] = [];
+  const sourcesByPath = new Map(sources.map((source) => [source.filePath, source]));
   for (const evidence of judgment.evidence) {
-    const source = sources.find((entry) => entry.filePath === evidence.filePath);
+    const source = sourcesByPath.get(evidence.filePath);
     const lines = source?.code.split("\n");
     if (
       !lines ||

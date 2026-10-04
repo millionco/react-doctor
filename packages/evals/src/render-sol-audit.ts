@@ -1,6 +1,6 @@
 import type { ClassificationResult } from "./classification-schema.js";
 import type { SolReview } from "./sol-review-schema.js";
-import { SOL_REVIEW_SNIPPET_LINES } from "./constants.js";
+import { SOL_REVIEW_SNIPPET_LINES, SOL_REVIEW_SNIPPET_CONTEXT_LINES } from "./constants.js";
 
 export const renderSolAudit = (
   screenings: ClassificationResult[],
@@ -26,9 +26,15 @@ export const renderSolAudit = (
     const candidate = candidatesById.get(review.id);
     if (!candidate) continue;
     const evidence = review.judgment.evidence.find(
-      (entry) => entry.filePath === candidate.filePath,
+      (entry) =>
+        entry.filePath === candidate.filePath &&
+        (candidate.line === null ||
+          (entry.startLine <= candidate.line && entry.endLine >= candidate.line)),
     );
-    const startLine = evidence?.startLine ?? candidate.line ?? 1;
+    const startLine = Math.max(
+      evidence?.startLine ?? candidate.line ?? 1,
+      candidate.line === null ? 1 : candidate.line - SOL_REVIEW_SNIPPET_CONTEXT_LINES,
+    );
     const endLine = Math.min(
       evidence?.endLine ?? startLine,
       startLine + SOL_REVIEW_SNIPPET_LINES - 1,

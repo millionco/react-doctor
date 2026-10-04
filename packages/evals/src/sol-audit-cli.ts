@@ -38,6 +38,7 @@ import type { SolReview } from "./sol-review-schema.js";
 import { loadSolReviewCache } from "./utils/load-sol-review-cache.js";
 import { finalizeSolReview } from "./utils/finalize-sol-review.js";
 import { getClassificationCost } from "./utils/get-classification-cost.js";
+import { getEvaluatorSourceHash } from "./utils/get-evaluator-source-hash.js";
 
 interface AuditRepository {
   org: string;
@@ -73,6 +74,7 @@ const recordSchema = z.looseObject({
 });
 
 const main = async (): Promise<void> => {
+  const reviewerSourceHash = getEvaluatorSourceHash();
   const { values } = parseArgs({
     options: {
       input: { type: "string" },
@@ -177,6 +179,7 @@ const main = async (): Promise<void> => {
   }
   await save("coverage.json", coverage);
   await save("manifest.json", {
+    reviewerSourceHash,
     repositoryCount,
     casesPerPopulation: SOL_REVIEW_CASES_PER_POPULATION,
     model: SOL_REVIEW_MODEL,

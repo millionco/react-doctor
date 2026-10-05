@@ -1,5 +1,14 @@
 # react-doctor
 
+## 0.9.17
+
+### Patch Changes
+
+- [#1864](https://github.com/millionco/react-doctor/pull/1864) [`fcfb6ea`](https://github.com/millionco/react-doctor/commit/fcfb6ea06717886c210bac1c93cf1c154076af76) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix false new findings in `--baseline` and `--scope changed` after formatting or editing existing flagged code. Compare finding counts per file and rule, then use fingerprints, messages, and Git line shifts to identify added findings. Skip location matching when counts do not increase. Apply portable config filters to saved baseline findings and reject reports with missing or incompatible source-dependent filter settings; regenerate those base reports with the current version and settings.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.9.17
+
 ## 0.9.16
 
 ### Patch Changes

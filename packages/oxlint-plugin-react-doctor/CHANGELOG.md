@@ -1,5 +1,7 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.17
+
 ## 0.9.16
 
 ### Patch Changes

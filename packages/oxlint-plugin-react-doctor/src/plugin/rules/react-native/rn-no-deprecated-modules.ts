@@ -2,6 +2,7 @@ import { resolvePackageVersion } from "../../utils/resolve-package-version.js";
 import {
   DEPRECATED_RN_MODULE_REPLACEMENTS,
   REACT_NATIVE_MODULE_REMOVAL_MINOR,
+  REACT_NATIVE_SINGLE_MINOR_RANGE_PATTERN,
 } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
@@ -33,8 +34,14 @@ export const rnNoDeprecatedModules = defineRule({
         if (!baseReplacement) continue;
         const removalMinor = REACT_NATIVE_MODULE_REMOVAL_MINOR.get(importedName);
         if (removalMinor !== undefined) {
-          const version = resolvePackageVersion(context.filename, "react-native");
-          if (version?.major === 0 && version.minor < removalMinor) continue;
+          const resolvedVersion = resolvePackageVersion(context.filename, "react-native");
+          if (
+            resolvedVersion?.version.major === 0 &&
+            resolvedVersion.version.minor < removalMinor &&
+            (resolvedVersion.declaredRange === null ||
+              REACT_NATIVE_SINGLE_MINOR_RANGE_PATTERN.test(resolvedVersion.declaredRange.trim()))
+          )
+            continue;
         }
 
         context.report({

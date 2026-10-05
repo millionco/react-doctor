@@ -4,7 +4,7 @@ import { parsePackageVersion } from "./parse-package-version.js";
 import { resolvePackageVersion } from "./resolve-package-version.js";
 
 export const resolveInkVersion = (filename: string | undefined) =>
-  resolvePackageVersion(filename, INK_MODULE);
+  resolvePackageVersion(filename, INK_MODULE)?.version ?? null;
 
 export const isInkVersionAtLeast = (
   filename: string | undefined,

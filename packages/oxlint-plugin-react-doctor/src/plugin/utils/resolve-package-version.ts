@@ -10,13 +10,18 @@ import {
 } from "./read-nearest-package-manifest.js";
 import type { PackageManifest } from "./read-nearest-package-manifest.js";
 
+export interface ResolvedPackageVersion {
+  version: ParsedPackageVersion;
+  declaredRange: string | null;
+}
+
 interface InstalledDependencyVersionResolution {
   didFindPackage: boolean;
   version: ParsedPackageVersion | null;
 }
 
 interface CachedDependencyVersionResolution {
-  version: ParsedPackageVersion | null;
+  version: ResolvedPackageVersion | null;
   trace: CrossFileProbeTrace;
 }
 
@@ -55,13 +60,15 @@ const parseDeclaredLowerBound = (versionRange: unknown): ParsedPackageVersion | 
 const getDeclaredDependencyVersion = (
   manifest: PackageManifest,
   packageName: string,
-): ParsedPackageVersion | null =>
-  parseDeclaredLowerBound(
+): ResolvedPackageVersion | null => {
+  const declaredRange =
     manifest.dependencies?.[packageName] ??
-      manifest.devDependencies?.[packageName] ??
-      manifest.peerDependencies?.[packageName] ??
-      manifest.optionalDependencies?.[packageName],
-  );
+    manifest.devDependencies?.[packageName] ??
+    manifest.peerDependencies?.[packageName] ??
+    manifest.optionalDependencies?.[packageName];
+  const version = parseDeclaredLowerBound(declaredRange);
+  return version && typeof declaredRange === "string" ? { version, declaredRange } : null;
+};
 
 const findInstalledDependencyVersion = (
   packageDirectory: string,
@@ -92,9 +99,13 @@ const findInstalledDependencyVersion = (
 const resolvePackageDependencyVersion = (
   packageDirectory: string,
   packageName: string,
-): ParsedPackageVersion | null => {
+): ResolvedPackageVersion | null => {
   const installedVersionResolution = findInstalledDependencyVersion(packageDirectory, packageName);
-  if (installedVersionResolution.didFindPackage) return installedVersionResolution.version;
+  if (installedVersionResolution.didFindPackage) {
+    return installedVersionResolution.version
+      ? { version: installedVersionResolution.version, declaredRange: null }
+      : null;
+  }
   const owningManifest = readPackageManifest(packageDirectory);
   return owningManifest ? getDeclaredDependencyVersion(owningManifest, packageName) : null;
 };
@@ -102,7 +113,7 @@ const resolvePackageDependencyVersion = (
 export const resolvePackageVersion = (
   filename: string | undefined,
   packageName: string,
-): ParsedPackageVersion | null => {
+): ResolvedPackageVersion | null => {
   if (!filename) return null;
   const packageDirectory = findNearestPackageDirectory(path.resolve(filename));
   if (!packageDirectory) return null;

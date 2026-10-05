@@ -39,6 +39,8 @@ describe("removed React Native export versions", () => {
     ["AsyncStorage", "0.70.0"],
     ["WebView", "0.55.4"],
     ["WebView", "0.59.10"],
+    ["WebView", "~0.59.0"],
+    ["WebView", "0.59.x"],
   ])("accepts %s before removal in %s", (moduleName, version) => {
     expect(checkImport(moduleName, version).diagnostics).toHaveLength(0);
   });
@@ -46,6 +48,8 @@ describe("removed React Native export versions", () => {
   it.each([
     ["AsyncStorage", "0.71.0"],
     ["WebView", "0.60.0"],
+    ["WebView", ">=0.55.0"],
+    ["AsyncStorage", "0.55.0 || 0.71.0"],
   ])("reports %s once removed in %s", (moduleName, version) => {
     expect(checkImport(moduleName, version).diagnostics).toHaveLength(1);
   });

@@ -182,3 +182,6 @@ export const REACT_NATIVE_MODULE_REMOVAL_MINOR: ReadonlyMap<string, number> = ne
   ["WebView", 60],
   ["AsyncStorage", 71],
 ]);
+
+export const REACT_NATIVE_SINGLE_MINOR_RANGE_PATTERN =
+  /^[~^=v]?\s*0\.\d+(?:\.(?:\d+|[xX*]))?(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;

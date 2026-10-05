@@ -1,3 +1,4 @@
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -106,7 +107,7 @@ export const noDynamicImportPath = defineRule({
     "Use a plain string path: `import('./feature/heavy.js')` so the bundler can split this into its own chunk.",
   create: (context: RuleContext) => ({
     ImportExpression(node: EsTreeNodeOfType<"ImportExpression">) {
-      const source = node.source;
+      const source = stripParenExpression(node.source);
       if (source && !isNodeOfType(source, "Literal") && !isNodeOfType(source, "TemplateLiteral")) {
         if (isDeliberateStaticIndirection(source)) return;
         if (hasBundlerIgnoreAnnotation(node, context.filename)) return;
@@ -136,10 +137,14 @@ export const noDynamicImportPath = defineRule({
     },
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "require") return;
-      const arg = node.arguments?.[0];
-      if (!arg) return;
-      if (!isNodeOfType(arg, "Literal") && !isNodeOfType(arg, "TemplateLiteral")) {
-        if (isDeliberateStaticIndirection(arg)) return;
+      const argument = node.arguments?.[0];
+      if (!argument) return;
+      const pathExpression = stripParenExpression(argument);
+      if (
+        !isNodeOfType(pathExpression, "Literal") &&
+        !isNodeOfType(pathExpression, "TemplateLiteral")
+      ) {
+        if (isDeliberateStaticIndirection(pathExpression)) return;
         if (isOutsideBrowserBundle(node, context.filename)) return;
         context.report({
           node,
@@ -149,11 +154,11 @@ export const noDynamicImportPath = defineRule({
         return;
       }
       if (
-        isNodeOfType(arg, "TemplateLiteral") &&
-        (arg.expressions?.length ?? 0) > 0 &&
-        !hasStaticDirectoryPrefix(arg) &&
-        !interpolatesOnlyQueryString(arg) &&
-        !targetsPackageManifest(arg)
+        isNodeOfType(pathExpression, "TemplateLiteral") &&
+        (pathExpression.expressions?.length ?? 0) > 0 &&
+        !hasStaticDirectoryPrefix(pathExpression) &&
+        !interpolatesOnlyQueryString(pathExpression) &&
+        !targetsPackageManifest(pathExpression)
       ) {
         if (isOutsideBrowserBundle(node, context.filename)) return;
         context.report({

@@ -3103,8 +3103,6 @@ const isDirectExhaustiveTimerCollectionCleanup = (
   const cleanupCallback = isNodeOfType(cleanupCall, "CallExpression")
     ? cleanupCall.arguments[0]
     : null;
-  const expectedCleanupName =
-    usage.registrationVerbName === "setInterval" ? "clearInterval" : "clearTimeout";
   const retainedCollectionKey = findContainingCollectionKey(usage.node, context);
   if (
     !isNodeOfType(cleanupCall, "CallExpression") ||
@@ -3113,7 +3111,7 @@ const isDirectExhaustiveTimerCollectionCleanup = (
     !isNodeOfType(cleanupCallee.property, "Identifier") ||
     cleanupCallee.property.name !== "forEach" ||
     !isNodeOfType(cleanupCallback, "Identifier") ||
-    cleanupCallback.name !== expectedCleanupName ||
+    !TIMER_CLEANUP_CALLEE_NAMES.has(cleanupCallback.name) ||
     !context.scopes.isGlobalReference(cleanupCallback) ||
     retainedCollectionKey === null ||
     retainedCollectionKey !== resolveExpressionKey(cleanupCallee.object, context)
@@ -6486,13 +6484,13 @@ const effectHasCleanupForUsage = (
       : null;
   const requiresDirectReleasePathCoverage =
     usage.kind === "timer" &&
-    findEnclosingFunction(usage.node) !== callback &&
-    Boolean(
-      assignedHandleSymbol &&
-      (assignedHandleSymbol.kind === "let" || assignedHandleSymbol.kind === "var") &&
-      isNodeOfType(assignedHandleSymbol.declarationNode, "VariableDeclarator") &&
-      findEnclosingFunction(assignedHandleSymbol.declarationNode) === callback,
-    );
+    (findEnclosingFunction(usage.node) === callback ||
+      Boolean(
+        assignedHandleSymbol &&
+        (assignedHandleSymbol.kind === "let" || assignedHandleSymbol.kind === "var") &&
+        isNodeOfType(assignedHandleSymbol.declarationNode, "VariableDeclarator") &&
+        findEnclosingFunction(assignedHandleSymbol.declarationNode) === callback,
+      ));
   const matchingCleanupReturns: EsTreeNode[] = [];
   walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "ReturnStatement")) return;
@@ -7628,12 +7626,10 @@ const doesReleaseCallMatchUsage = (
   const callee = stripParenExpression(callNode.callee);
 
   if (usage.kind === "timer") {
-    const expectedCleanupName =
-      usage.registrationVerbName === "setInterval" ? "clearInterval" : "clearTimeout";
     if (
       !isNodeOfType(callee, "Identifier") ||
       !TIMER_CLEANUP_CALLEE_NAMES.has(callee.name) ||
-      callee.name !== expectedCleanupName
+      !context.scopes.isGlobalReference(callee)
     ) {
       return false;
     }
@@ -8401,9 +8397,9 @@ const fileContainsReleaseForUsage = (usage: SubscribeLikeUsage, context: RuleCon
   }
   let candidates: ReadonlyArray<EsTreeNode>;
   if (usage.kind === "timer") {
-    const expectedCleanupName =
-      usage.registrationVerbName === "setInterval" ? "clearInterval" : "clearTimeout";
-    candidates = releaseCallIndex.identifierCallsByName.get(expectedCleanupName) ?? [];
+    candidates = [...TIMER_CLEANUP_CALLEE_NAMES].flatMap(
+      (cleanupName) => releaseCallIndex.identifierCallsByName.get(cleanupName) ?? [],
+    );
   } else {
     candidates = releaseCallIndex.potentialNonTimerCalls;
   }

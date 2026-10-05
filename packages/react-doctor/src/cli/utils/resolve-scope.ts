@@ -4,10 +4,9 @@ import { cliLogger as logger } from "./cli-logger.js";
 import type { InspectFlags } from "./inspect-flags.js";
 import { prompts } from "./prompts.js";
 
-const SCOPE_VALUES = new Set<ScopeValue>(["full", "files", "changed", "lines"]);
+const SCOPE_VALUES: ReadonlySet<string> = new Set(["full", "files", "changed", "lines"]);
 
-export const isScopeValue = (value: string): value is ScopeValue =>
-  SCOPE_VALUES.has(value as ScopeValue);
+export const isScopeValue = (value: string): value is ScopeValue => SCOPE_VALUES.has(value);
 
 export interface RequestedScope {
   /** Explicit scope from `--scope` / `config.scope` / the `--diff` alias; `undefined` when unset. */

@@ -24,4 +24,23 @@ describe("collectSecurityScanFiles", () => {
     expect(relativePaths).toContain(".env");
     expect(relativePaths).not.toContain("packages/web/.env");
   });
+
+  it("does not read symlinked candidate files outside the project", () => {
+    if (process.platform === "win32") return;
+    const projectDirectory = path.join(temporaryRoot, "symlinked-files");
+    const externalDirectory = path.join(temporaryRoot, "external");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.mkdirSync(externalDirectory, { recursive: true });
+    fs.writeFileSync(path.join(externalDirectory, "secrets.env"), "SECRET=value\n");
+    fs.symlinkSync(
+      path.join(externalDirectory, "secrets.env"),
+      path.join(projectDirectory, ".env"),
+    );
+
+    const relativePaths = [...collectSecurityScanFiles(projectDirectory)].flatMap((file) =>
+      file === null ? [] : [file.relativePath],
+    );
+
+    expect(relativePaths).not.toContain(".env");
+  });
 });

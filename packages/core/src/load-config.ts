@@ -257,7 +257,7 @@ const loadConfigWalkingUp = async (
   while (ancestorDirectory !== path.dirname(ancestorDirectory)) {
     const ancestorResult = await loadConfigFromDirectory(ancestorDirectory);
     if (ancestorResult.status === "found") return ancestorResult.loaded;
-    if (isProjectBoundary(ancestorDirectory)) return null;
+    if (ancestorResult.status === "invalid" || isProjectBoundary(ancestorDirectory)) return null;
     ancestorDirectory = path.dirname(ancestorDirectory);
   }
   return null;

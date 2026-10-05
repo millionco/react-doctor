@@ -1,6 +1,5 @@
 import type { PromptMultiselectChoiceState } from "@react-doctor/core";
 
 export const shouldSelectAllChoices = (choiceStates: PromptMultiselectChoiceState[]): boolean => {
-  const enabledChoiceStates = choiceStates.filter((choiceState) => !choiceState.disabled);
-  return enabledChoiceStates.some((choiceState) => choiceState.selected !== true);
+  return choiceStates.some((choiceState) => !choiceState.disabled && choiceState.selected !== true);
 };

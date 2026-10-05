@@ -544,6 +544,23 @@ describe("loadConfig", () => {
       expect(config).toEqual({ ignore: { rules: ["from-child"] } });
     });
 
+    it("does not inherit a root config through an invalid intermediate config", async () => {
+      const rootDirectory = path.join(tempRootDirectory, "invalid-intermediate-config");
+      const packageDirectory = path.join(rootDirectory, "packages");
+      const childDirectory = path.join(packageDirectory, "app");
+      fs.mkdirSync(childDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(rootDirectory, "doctor.config.json"),
+        JSON.stringify({ ignore: { rules: ["from-root"] } }),
+      );
+      fs.writeFileSync(path.join(packageDirectory, "doctor.config.json"), "not valid json{{{");
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const config = await loadConfig(childDirectory);
+      expect(config).toBeNull();
+      warnSpy.mockRestore();
+    });
+
     it("finds config from package.json reactDoctor key in ancestor", async () => {
       const parentDirectory = path.join(tempRootDirectory, "monorepo-pkg-inherit");
       const childDirectory = path.join(parentDirectory, "packages", "app");

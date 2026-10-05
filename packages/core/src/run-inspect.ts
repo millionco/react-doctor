@@ -265,11 +265,11 @@ export const runInspect = <HooksR = never>(
         [
           gitService
             .githubRepo(scanDirectory)
-            .pipe(Effect.orElseSucceed(() => null as string | null)),
-          gitService.headSha(scanDirectory).pipe(Effect.orElseSucceed(() => null as string | null)),
+            .pipe(Effect.orElseSucceed((): string | null => null)),
+          gitService.headSha(scanDirectory).pipe(Effect.orElseSucceed((): string | null => null)),
           gitService
             .defaultBranch(scanDirectory)
-            .pipe(Effect.orElseSucceed(() => null as string | null)),
+            .pipe(Effect.orElseSucceed((): string | null => null)),
         ],
         { concurrency: 3 },
       );
@@ -277,7 +277,7 @@ export const runInspect = <HooksR = never>(
         input.resolveLocalGithubViewerPermission === true && !input.isCi && repo !== null
           ? yield* gitService
               .githubViewerPermission({ directory: scanDirectory, repo })
-              .pipe(Effect.orElseSucceed(() => null as string | null))
+              .pipe(Effect.orElseSucceed((): string | null => null))
           : null;
       return { repo, sha, defaultBranch, githubViewerPermission };
     });

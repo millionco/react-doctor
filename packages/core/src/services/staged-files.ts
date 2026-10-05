@@ -116,9 +116,7 @@ export class StagedFiles extends Context.Service<
             tempDirectory,
             stagedFiles: snapshot.materializedFiles ?? snapshot.sourceFiles ?? [],
             unmaterializedFiles: [],
-            cleanup: () => {
-              /* test snapshot does not own any disk state */
-            },
+            cleanup: () => undefined,
           } satisfies StagedSnapshot),
       }),
     );

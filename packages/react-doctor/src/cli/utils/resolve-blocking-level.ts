@@ -2,7 +2,7 @@ import type { BlockingLevel, ReactDoctorConfig } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import type { InspectFlags } from "./inspect-flags.js";
 
-const VALID_BLOCKING_LEVELS = new Set<BlockingLevel>(["error", "warning", "none"]);
+const VALID_BLOCKING_LEVELS: ReadonlySet<string> = new Set(["error", "warning", "none"]);
 // react-doctor blocks CI on `"error"`-severity diagnostics by default. Opt into
 // a stricter gate with `--blocking warning` or disable it with `none`
 // (advisory). `--blocking` (or `blocking` in config) wins over the deprecated
@@ -10,7 +10,7 @@ const VALID_BLOCKING_LEVELS = new Set<BlockingLevel>(["error", "warning", "none"
 const DEFAULT_BLOCKING_LEVEL: BlockingLevel = "error";
 
 export const isValidBlockingLevel = (level: string): level is BlockingLevel =>
-  VALID_BLOCKING_LEVELS.has(level as BlockingLevel);
+  VALID_BLOCKING_LEVELS.has(level);
 
 // The configured blocking level before validation/defaulting (flag wins over
 // config; the new name wins over the deprecated `failOn` alias). `undefined`

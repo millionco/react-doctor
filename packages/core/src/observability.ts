@@ -69,7 +69,7 @@ export const layerUserOtlp: Layer.Layer<never> = Layer.unwrap(
       baseUrl: endpoint.value,
       resource: { serviceName: TRACER_PROJECT_NAME },
       headers,
-    }).pipe(Layer.provide(FetchHttpClient.layer));
+    }).pipe(Layer.provide(FetchHttpClient.layer), withScrubbedSpans);
   }).pipe(Effect.orDie),
 );
 

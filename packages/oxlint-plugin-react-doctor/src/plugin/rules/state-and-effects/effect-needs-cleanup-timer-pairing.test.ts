@@ -36,6 +36,24 @@ describe("shared timeout and interval handle cleanup", () => {
   });
 
   it.each([
+    "timers.reduce((count, timer) => { clearTimeout(timer); return count + 1; }, 0)",
+    "Array.from(timers, (timer) => { clearTimeout(timer); })",
+  ])("preserves collection callback cleanup: %s", (cleanup) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      import { useEffect } from "react";
+      const Clock = () => { useEffect(() => {
+        const timers = [setInterval(update, 100), setInterval(update, 200)];
+        return () => { ${cleanup}; };
+      }, []); return null; };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
     "return () => clearTimeout(other);",
     "return () => { if (enabled) clearTimeout(timer); };",
     "const clearTimeout = () => {}; return () => clearTimeout(timer);",

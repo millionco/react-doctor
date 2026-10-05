@@ -6484,7 +6484,8 @@ const effectHasCleanupForUsage = (
       : null;
   const requiresDirectReleasePathCoverage =
     usage.kind === "timer" &&
-    (findEnclosingFunction(usage.node) === callback ||
+    ((findEnclosingFunction(usage.node) === callback &&
+      isNodeOfType(usageAssignment, "VariableDeclarator")) ||
       Boolean(
         assignedHandleSymbol &&
         (assignedHandleSymbol.kind === "let" || assignedHandleSymbol.kind === "var") &&

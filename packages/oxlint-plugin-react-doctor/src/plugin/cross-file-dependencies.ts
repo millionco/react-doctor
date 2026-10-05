@@ -1,3 +1,4 @@
+import { resolvePackageVersion } from "./utils/resolve-package-version.js";
 import type { StaticImport } from "oxc-parser";
 import { analyzeScopes } from "./semantic/scope-analysis.js";
 import { awaitedStatementsMayShareWork } from "./utils/awaited-statements-may-share-work.js";
@@ -531,6 +532,12 @@ const collectLegacyArchDependencies: CrossFileDependencyCollector = ({ absoluteF
   isLegacyArchReactNativeFile(absoluteFilePath);
 };
 
+const collectReactNativeVersionDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+}) => {
+  resolvePackageVersion(absoluteFilePath, "react-native");
+};
+
 const collectInkVersionDependencies: CrossFileDependencyCollector = ({ absoluteFilePath }) => {
   resolveInkVersion(absoluteFilePath);
 };
@@ -582,6 +589,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["rendering-hydration-no-flicker", collectEffectValueHelperDependencies],
     ["rerender-memo-with-default-value", collectForwardedHookDependencies],
     ["server-sequential-independent-await", collectSequentialAwaitDependencies],
+    ["rn-no-deprecated-modules", collectReactNativeVersionDependencies],
     ["rn-no-legacy-shadow-styles", collectLegacyArchDependencies],
     ["rn-no-raw-text", collectRnNoRawTextDependencies],
     ["rn-prefer-expo-image", collectNearestManifestDependencies],

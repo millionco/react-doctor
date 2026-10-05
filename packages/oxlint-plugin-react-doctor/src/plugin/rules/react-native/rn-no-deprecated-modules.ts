@@ -1,4 +1,8 @@
-import { DEPRECATED_RN_MODULE_REPLACEMENTS } from "../../constants/react-native.js";
+import { resolvePackageVersion } from "../../utils/resolve-package-version.js";
+import {
+  DEPRECATED_RN_MODULE_REPLACEMENTS,
+  REACT_NATIVE_MODULE_REMOVAL_MINOR,
+} from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -27,6 +31,11 @@ export const rnNoDeprecatedModules = defineRule({
 
         const baseReplacement = DEPRECATED_RN_MODULE_REPLACEMENTS.get(importedName);
         if (!baseReplacement) continue;
+        const removalMinor = REACT_NATIVE_MODULE_REMOVAL_MINOR.get(importedName);
+        if (removalMinor !== undefined) {
+          const version = resolvePackageVersion(context.filename, "react-native");
+          if (version?.major === 0 && version.minor < removalMinor) continue;
+        }
 
         context.report({
           node: specifier,

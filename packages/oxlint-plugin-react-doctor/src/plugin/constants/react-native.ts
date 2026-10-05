@@ -177,3 +177,8 @@ export const LEGACY_SHADOW_STYLE_PROPERTIES = new Set([
   "shadowRadius",
   "elevation",
 ]);
+
+export const REACT_NATIVE_MODULE_REMOVAL_MINOR: ReadonlyMap<string, number> = new Map([
+  ["WebView", 60],
+  ["AsyncStorage", 71],
+]);

@@ -879,3 +879,20 @@ describe("collector registry", () => {
     ).toEqual([...CROSS_FILE_RULE_IDS].sort());
   });
 });
+
+describe("React Native export version dependencies", () => {
+  it("records the installed native manifest on cold and warm collection", () => {
+    writeFixtureFile("package.json", `{ "dependencies": { "react-native": "0.40.0" } }`);
+    writeFixtureFile(
+      "node_modules/react-native/package.json",
+      `{ "name": "react-native", "version": "0.71.0" }`,
+    );
+    const appPath = writeFixtureFile("src/App.tsx", `import { AsyncStorage } from 'react-native';`);
+    const coldTrace = collectFor(appPath, ["rn-no-deprecated-modules"]);
+    const warmTrace = collectFor(appPath, ["rn-no-deprecated-modules"]);
+    expect(coldTrace?.contentPaths.has(fixturePath("node_modules/react-native/package.json"))).toBe(
+      true,
+    );
+    expect(warmTrace?.contentPaths).toEqual(coldTrace?.contentPaths);
+  });
+});

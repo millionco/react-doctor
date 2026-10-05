@@ -75,7 +75,6 @@ export const DEPRECATED_RN_MODULE_REPLACEMENTS = new Map<string, string>([
   ["DatePickerAndroid", "@react-native-community/datetimepicker"],
   ["ProgressBarAndroid", "a community alternative"],
   ["ProgressViewIOS", "a community alternative"],
-  ["SafeAreaView", "react-native-safe-area-context"],
   ["Slider", "@react-native-community/slider"],
   ["ViewPagerAndroid", "react-native-pager-view"],
   ["WebView", "react-native-webview"],

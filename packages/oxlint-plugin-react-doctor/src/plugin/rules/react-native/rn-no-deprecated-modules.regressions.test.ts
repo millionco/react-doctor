@@ -21,8 +21,15 @@ describe("react-native/rn-no-deprecated-modules — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    `import { SafeAreaView } from "react-native";`,
+    `import { SafeAreaView as ScreenSafeArea } from "react-native";`,
+  ])("accepts a core SafeAreaView value import: %s", (code) => {
+    expect(runRule(rnNoDeprecatedModules, code).diagnostics).toHaveLength(0);
+  });
+
   it("still flags a value import of a removed module", () => {
-    const result = runRule(rnNoDeprecatedModules, `import { SafeAreaView } from "react-native";`);
+    const result = runRule(rnNoDeprecatedModules, `import { WebView } from "react-native";`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });

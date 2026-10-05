@@ -5,20 +5,20 @@ const collectRenderReachableExpressionsFromStatements = (
   statements: EsTreeNode[] | undefined,
   renderReachableExpressions: EsTreeNode[],
 ): boolean => {
-  let hasReturn = false;
+  let hasRenderExit = false;
   for (const statement of statements ?? []) {
     if (collectRenderReachableExpressionsFromStatement(statement, renderReachableExpressions)) {
-      hasReturn = true;
+      hasRenderExit = true;
     }
   }
-  return hasReturn;
+  return hasRenderExit;
 };
 
 const collectRenderReachableExpressionsFromStatement = (
   statement: EsTreeNode,
   renderReachableExpressions: EsTreeNode[],
 ): boolean => {
-  if (isNodeOfType(statement, "ReturnStatement")) {
+  if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
     if (statement.argument) renderReachableExpressions.push(statement.argument);
     return true;
   }
@@ -31,72 +31,72 @@ const collectRenderReachableExpressionsFromStatement = (
   }
 
   if (isNodeOfType(statement, "IfStatement")) {
-    const consequentHasReturn = collectRenderReachableExpressionsFromStatement(
+    const consequentHasRenderExit = collectRenderReachableExpressionsFromStatement(
       statement.consequent,
       renderReachableExpressions,
     );
-    const alternateHasReturn = statement.alternate
+    const alternateHasRenderExit = statement.alternate
       ? collectRenderReachableExpressionsFromStatement(
           statement.alternate,
           renderReachableExpressions,
         )
       : false;
-    if (consequentHasReturn || alternateHasReturn) {
+    if (consequentHasRenderExit || alternateHasRenderExit) {
       renderReachableExpressions.push(statement.test);
     }
-    return consequentHasReturn || alternateHasReturn;
+    return consequentHasRenderExit || alternateHasRenderExit;
   }
 
   if (isNodeOfType(statement, "SwitchStatement")) {
-    let hasReturn = false;
+    let hasRenderExit = false;
     for (const switchCase of statement.cases ?? []) {
-      const caseHasReturn = collectRenderReachableExpressionsFromStatements(
+      const caseHasRenderExit = collectRenderReachableExpressionsFromStatements(
         switchCase.consequent,
         renderReachableExpressions,
       );
-      if (!caseHasReturn) continue;
-      hasReturn = true;
+      if (!caseHasRenderExit) continue;
+      hasRenderExit = true;
       if (switchCase.test) renderReachableExpressions.push(switchCase.test);
     }
-    if (hasReturn) renderReachableExpressions.push(statement.discriminant);
-    return hasReturn;
+    if (hasRenderExit) renderReachableExpressions.push(statement.discriminant);
+    return hasRenderExit;
   }
 
   if (isNodeOfType(statement, "TryStatement")) {
-    const blockHasReturn = collectRenderReachableExpressionsFromStatement(
+    const blockHasRenderExit = collectRenderReachableExpressionsFromStatement(
       statement.block,
       renderReachableExpressions,
     );
-    const handlerHasReturn = statement.handler
+    const handlerHasRenderExit = statement.handler
       ? collectRenderReachableExpressionsFromStatement(
           statement.handler.body,
           renderReachableExpressions,
         )
       : false;
-    const finalizerHasReturn = statement.finalizer
+    const finalizerHasRenderExit = statement.finalizer
       ? collectRenderReachableExpressionsFromStatement(
           statement.finalizer,
           renderReachableExpressions,
         )
       : false;
-    return blockHasReturn || handlerHasReturn || finalizerHasReturn;
+    return blockHasRenderExit || handlerHasRenderExit || finalizerHasRenderExit;
   }
 
   if (isNodeOfType(statement, "WhileStatement") || isNodeOfType(statement, "DoWhileStatement")) {
-    const bodyHasReturn = collectRenderReachableExpressionsFromStatement(
+    const bodyHasRenderExit = collectRenderReachableExpressionsFromStatement(
       statement.body,
       renderReachableExpressions,
     );
-    if (bodyHasReturn) renderReachableExpressions.push(statement.test);
-    return bodyHasReturn;
+    if (bodyHasRenderExit) renderReachableExpressions.push(statement.test);
+    return bodyHasRenderExit;
   }
 
   if (isNodeOfType(statement, "ForStatement")) {
-    const bodyHasReturn = collectRenderReachableExpressionsFromStatement(
+    const bodyHasRenderExit = collectRenderReachableExpressionsFromStatement(
       statement.body,
       renderReachableExpressions,
     );
-    if (!bodyHasReturn) return false;
+    if (!bodyHasRenderExit) return false;
     if (statement.init) renderReachableExpressions.push(statement.init);
     if (statement.test) renderReachableExpressions.push(statement.test);
     if (statement.update) renderReachableExpressions.push(statement.update);
@@ -104,11 +104,11 @@ const collectRenderReachableExpressionsFromStatement = (
   }
 
   if (isNodeOfType(statement, "ForInStatement") || isNodeOfType(statement, "ForOfStatement")) {
-    const bodyHasReturn = collectRenderReachableExpressionsFromStatement(
+    const bodyHasRenderExit = collectRenderReachableExpressionsFromStatement(
       statement.body,
       renderReachableExpressions,
     );
-    if (!bodyHasReturn) return false;
+    if (!bodyHasRenderExit) return false;
     renderReachableExpressions.push(statement.right);
     return true;
   }
@@ -121,12 +121,12 @@ const collectRenderReachableExpressionsFromStatement = (
   }
 
   if (isNodeOfType(statement, "WithStatement")) {
-    const bodyHasReturn = collectRenderReachableExpressionsFromStatement(
+    const bodyHasRenderExit = collectRenderReachableExpressionsFromStatement(
       statement.body,
       renderReachableExpressions,
     );
-    if (bodyHasReturn) renderReachableExpressions.push(statement.object);
-    return bodyHasReturn;
+    if (bodyHasRenderExit) renderReachableExpressions.push(statement.object);
+    return bodyHasRenderExit;
   }
 
   return false;

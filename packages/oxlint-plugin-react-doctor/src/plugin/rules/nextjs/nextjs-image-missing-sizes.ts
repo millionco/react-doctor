@@ -1,3 +1,4 @@
+import { readStaticBoolean } from "../../utils/read-static-boolean.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { hasJsxAttribute } from "../../utils/has-jsx-attribute.js";
@@ -36,6 +37,15 @@ export const nextjsImageMissingSizes = defineRule({
       const attributes = node.attributes ?? [];
       if (hasJsxSpreadAttribute(attributes)) return;
       if (!isFillActive(attributes)) return;
+      const unoptimizedAttribute = findJsxAttribute(attributes, "unoptimized");
+      if (
+        unoptimizedAttribute &&
+        (!unoptimizedAttribute.value ||
+          (isNodeOfType(unoptimizedAttribute.value, "JSXExpressionContainer") &&
+            readStaticBoolean(unoptimizedAttribute.value.expression) === true))
+      ) {
+        return;
+      }
       if (hasJsxAttribute(attributes, "sizes")) return;
 
       context.report({

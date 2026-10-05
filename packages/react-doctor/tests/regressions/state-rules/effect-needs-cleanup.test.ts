@@ -945,12 +945,9 @@ export const Subscribe = () => {
   });
 
   it("does NOT flag a Promise timer that resets its own handle in its callback (issue #1882)", async () => {
-    const projectDir = setupReactProject(
-      tempRoot,
-      "effect-needs-cleanup-promise-timer-own-reset",
-      {
-        files: {
-          "src/ResetsOwnHandle.tsx": `import { useEffect } from "react";
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-promise-timer-own-reset", {
+      files: {
+        "src/ResetsOwnHandle.tsx": `import { useEffect } from "react";
 
 declare function probe(): Promise<boolean>;
 
@@ -974,9 +971,8 @@ export function ResetsOwnHandle() {
   return null;
 }
 `,
-        },
       },
-    );
+    });
 
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
     expect(hits).toHaveLength(0);

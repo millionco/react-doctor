@@ -5638,6 +5638,7 @@ const hasGuardedDeferredCleanup = (
     (handleAssignment) =>
       findTransparentExpressionRoot(handleAssignment.identifier).parent === usageAssignment,
   );
+  const timerArguments = usage.node.arguments;
   const hasUnsafeHandleAssignment = handleAssignments.some((handleAssignment) => {
     const assignmentTarget = findTransparentExpressionRoot(handleAssignment.identifier);
     const assignment = assignmentTarget.parent;
@@ -5660,7 +5661,7 @@ const hasGuardedDeferredCleanup = (
     const isResetInOwnCallback =
       assignmentFunction &&
       isFunctionLike(assignmentFunction) &&
-      usage.node.arguments?.some((argument) => {
+      timerArguments.some((argument) => {
         const callback = stripParenExpression(argument);
         return isFunctionLike(callback) && callback === assignmentFunction;
       });

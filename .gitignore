@@ -55,6 +55,7 @@ review-*.md
 
 packages/evals/classification/
 packages/evals/mining/
+packages/evals/.audit/
 
 .fpfn/
 .classification-cache/

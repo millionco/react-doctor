@@ -70,7 +70,7 @@ command above against the validated cached baseline and do not pass any
 `--paired-*` option.
 
 On a cache miss, or for a required full-versus-scoped shadow run, evaluate both
-detectors in the same Vercel Sandbox sandbox:
+detectors in the same Vercel sandbox:
 
 ```sh
 nr --silent eval \

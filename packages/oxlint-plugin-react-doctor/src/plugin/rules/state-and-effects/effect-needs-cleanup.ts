@@ -5656,6 +5656,15 @@ const hasGuardedDeferredCleanup = (
         assignedValue.name === "undefined" &&
         context.scopes.isGlobalReference(assignedValue));
     if (!isNullishReset) return true;
+    const assignmentFunction = findEnclosingFunction(assignment);
+    const isResetInOwnCallback =
+      assignmentFunction &&
+      isFunctionLike(assignmentFunction) &&
+      usage.node.arguments?.some((argument) => {
+        const callback = stripParenExpression(argument);
+        return isFunctionLike(callback) && callback === assignmentFunction;
+      });
+    if (isResetInOwnCallback) return false;
     const cleanupFunction = findEnclosingFunction(assignment);
     const globalReleaseProofs = cleanupFunction
       ? globalReleaseProofsByCleanup.get(cleanupFunction)

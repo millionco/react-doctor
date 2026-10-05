@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { activeScanAbortRegistry } from "../src/cli/utils/active-scan-abort-registry.js";
 import { collectProjectSourceFiles } from "../src/cli/utils/collect-project-source-files.js";
 
+const TEMP_DIRECTORY_CLEANUP_MAX_RETRIES = 5;
+const TEMP_DIRECTORY_CLEANUP_RETRY_DELAY_MS = 100;
+
 describe("collectProjectSourceFiles", () => {
   let rootDirectory: string;
 
@@ -14,7 +17,12 @@ describe("collectProjectSourceFiles", () => {
 
   afterEach(async () => {
     await activeScanAbortRegistry.abortAll();
-    fs.rmSync(rootDirectory, { recursive: true, force: true });
+    fs.rmSync(rootDirectory, {
+      recursive: true,
+      force: true,
+      maxRetries: TEMP_DIRECTORY_CLEANUP_MAX_RETRIES,
+      retryDelay: TEMP_DIRECTORY_CLEANUP_RETRY_DELAY_MS,
+    });
   });
 
   it("stops workspace enumeration when active scans are cancelled", async () => {

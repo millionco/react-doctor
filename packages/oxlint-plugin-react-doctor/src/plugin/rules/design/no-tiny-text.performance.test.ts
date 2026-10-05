@@ -5,7 +5,7 @@ import { noTinyText } from "./no-tiny-text.js";
 const SMALL_NESTING_DEPTH = 100;
 const LARGE_NESTING_DEPTH = 400;
 const MEASUREMENT_SAMPLE_COUNT = 5;
-const MAXIMUM_SCALING_MULTIPLIER = 10;
+const MAXIMUM_SCALING_MULTIPLIER = 20;
 
 const buildNestedJsxSource = (nestingDepth: number): string => {
   const openingElements = '<div className="level">'.repeat(nestingDepth);

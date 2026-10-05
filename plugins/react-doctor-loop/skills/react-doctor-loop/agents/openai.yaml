@@ -1,0 +1,4 @@
+interface:
+  display_name: "React Doctor Loop"
+  short_description: "Fix audited React Doctor false positives"
+  default_prompt: "Use $react-doctor-loop to fix the next confirmed false-positive cohort."

@@ -34,6 +34,7 @@ describe("shouldUseTui", () => {
     ["JSON output", { json: true }],
     ["compact JSON output", { jsonCompact: true }],
     ["JSON output file", { jsonOut: "report.json" }],
+    ["baseline report", { baseline: "report.json" }],
     ["staged scope", { staged: true }],
     ["changed-file input", { changedFilesFrom: "files.txt" }],
   ])("uses headless output for %s", (_name, flags: InspectFlags) => {

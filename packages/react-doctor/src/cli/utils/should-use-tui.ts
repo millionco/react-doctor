@@ -22,6 +22,7 @@ export const shouldUseTui = (input: ShouldUseTuiInput): boolean => {
     flags.json === true ||
     flags.jsonCompact === true ||
     flags.jsonOut !== undefined ||
+    flags.baseline !== undefined ||
     flags.staged === true ||
     flags.changedFilesFrom !== undefined;
   return !requiresHeadlessRenderer;

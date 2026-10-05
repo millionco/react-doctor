@@ -11,6 +11,7 @@ import {
   PERSPECTIVE_CAMERA_NEAR_ARGUMENT_INDEX,
 } from "./constants.js";
 import { getInvalidPerspectiveCameraParameter } from "./utils/get-invalid-perspective-camera-parameter.js";
+import { getJsxAttributeExpression } from "./utils/get-jsx-attribute-expression.js";
 import { getStaticNumber } from "./utils/get-static-number.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 import { isR3fCanvas } from "./utils/is-r3f-canvas.js";
@@ -33,22 +34,6 @@ const getStaticParameter = (
   if (!expression || isNodeOfType(expression, "SpreadElement")) return null;
   const value = getStaticNumber(expression, context.scopes);
   return value === null ? null : { node: expression, value };
-};
-
-const getJsxAttributeExpression = (
-  node: EsTreeNodeOfType<"JSXOpeningElement">,
-  attributeName: string,
-): EsTreeNode | null | undefined => {
-  const attribute = getAuthoritativeJsxAttribute(node.attributes, attributeName);
-  if (!attribute) return undefined;
-  if (
-    !attribute.value ||
-    !isNodeOfType(attribute.value, "JSXExpressionContainer") ||
-    isNodeOfType(attribute.value.expression, "JSXEmptyExpression")
-  ) {
-    return null;
-  }
-  return attribute.value.expression;
 };
 
 const getPerspectiveCameraParameters = (

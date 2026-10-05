@@ -29,7 +29,7 @@ interface SecurityScanCandidate {
 const readScannedFile = (candidate: SecurityScanCandidate): ScannedFile | null => {
   let stat: fs.Stats;
   try {
-    stat = fs.statSync(candidate.absolutePath);
+    stat = fs.lstatSync(candidate.absolutePath);
   } catch {
     return null;
   }

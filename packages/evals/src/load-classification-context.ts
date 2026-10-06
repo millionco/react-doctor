@@ -9,6 +9,7 @@ import {
   CLASSIFICATION_MAX_CONFIG_CHARACTERS,
   CLASSIFICATION_MAX_CONFIG_DEPTH,
   CLASSIFICATION_MAX_CONFIG_FILES,
+  CLASSIFICATION_MAX_CONFIG_PROBES,
 } from "./constants.js";
 import type { ClassificationSourceLoader } from "./prepare-classification.js";
 import {
@@ -68,8 +69,8 @@ export const loadClassificationBuildEvidence = async (
   const load = async (path: string): Promise<string | null> => {
     const safePath = sourcePath(".", path);
     if (loaded.has(safePath)) return loaded.get(safePath) ?? null;
-    if (loaded.size >= CLASSIFICATION_MAX_CONFIG_FILES)
-      throw new Error("Build evidence file budget exceeded");
+    if (loaded.size >= CLASSIFICATION_MAX_CONFIG_PROBES)
+      throw new Error("Build evidence lookup budget exceeded");
     loaded.set(safePath, null);
     let content: string;
     try {
@@ -82,6 +83,8 @@ export const loadClassificationBuildEvidence = async (
       evidence.files.push({ path: safePath, status: "unavailable" });
       throw new Error("Pinned build evidence is unavailable");
     }
+    if (fileIndexes.size >= CLASSIFICATION_MAX_CONFIG_FILES)
+      throw new Error("Build evidence file budget exceeded");
     if (content.length > CLASSIFICATION_MAX_CONFIG_CHARACTERS)
       throw new Error("Build evidence exceeds the context limit");
     fileIndexes.set(safePath, evidence.files.length);
@@ -133,6 +136,8 @@ export const loadClassificationBuildEvidence = async (
   };
   try {
     let directory = posix.dirname(sourcePath(".", candidate.filePath));
+    if (directory !== "." && directory.split("/").length >= CLASSIFICATION_MAX_CONFIG_DEPTH)
+      throw new Error("Build evidence ancestor limit exceeded");
     let nearestConfig: string | undefined;
     let depth = 0;
     while (true) {

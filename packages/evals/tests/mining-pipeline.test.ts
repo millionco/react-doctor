@@ -404,6 +404,37 @@ describe("mining-pipeline pinned contracts and evidence", () => {
     },
   );
 
+  it.each(["react-jsx", "react"])(
+    "resolves %s for deeply nested sources without charging absent paths as config files",
+    async (jsx) => {
+      const load = loadFiles({
+        "package.json": '{"scripts":{"build":"tsc"}}',
+        "tsconfig.json": JSON.stringify({ compilerOptions: { jsx } }),
+      });
+      const evidence = await loadClassificationBuildEvidence(
+        candidate("repo", "rule", "src/components/settings/panels/controls/inputs/app.tsx"),
+        load,
+      );
+      expect(evidence.jsxRuntime).toBe(jsx === "react" ? "classic" : "automatic");
+      expect(evidence.files.filter((file) => file.status === "present")).toHaveLength(2);
+      expect(evidence.files.filter((file) => file.status === "absent").length).toBeGreaterThan(64);
+      expect(load.mock.calls.length).toBeLessThanOrEqual(256);
+    },
+  );
+
+  it("still rejects a custom transform above a deeply nested source", async () => {
+    const evidence = await loadClassificationBuildEvidence(
+      candidate("repo", "rule", "src/components/settings/panels/app.tsx"),
+      loadFiles({
+        "package.json": '{"scripts":{"build":"tsc"}}',
+        "tsconfig.json": '{"compilerOptions":{"jsx":"react-jsx"}}',
+        "babel.config.js": "module.exports = { presets: [] };",
+      }),
+    );
+    expect(evidence.jsxRuntime).toBe("unknown");
+    expect(evidence.issue).toBe("Custom build configuration requires transform resolution");
+  });
+
   it.each([
     '{"extends":"../escape"}',
     '{"extends":"@tsconfig/react"}',

@@ -103,12 +103,8 @@ const hasKeyboardReveal = (
   if (!hoverVariant) return false;
   let hasUnknownKeyboardState = false;
   const hasProvenKeyboardReveal = parsedTokens.some((parsedToken) => {
-    const keyboardVariantIndex = parsedToken.variants.findIndex(
-      (variant) =>
-        isEquivalentKeyboardVariant(variant, hoverVariant) ||
-        (canReceiveKeyboardFocus &&
-          revealKind === "opacity" &&
-          DIRECT_KEYBOARD_REVEAL_VARIANTS.has(variant)),
+    const keyboardVariantIndex = parsedToken.variants.findIndex((variant) =>
+      isEquivalentKeyboardVariant(variant, hoverVariant),
     );
     if (keyboardVariantIndex < 0 || getRevealKind(parsedToken.utility) !== revealKind) return false;
     if (

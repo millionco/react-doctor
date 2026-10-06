@@ -2113,32 +2113,3 @@ const Hint = () => (
     });
   });
 });
-
-describe("placeholder indices passed to class render methods", () => {
-  it("allows numeric placeholder keys through a local method call", () => {
-    const result = runRule(
-      noArrayIndexAsKey,
-      `class Inputs {
-      renderInputs(length) { return Array.from({length}, (_, index) => this.renderInput(index + 1)); }
-      renderInput(index) { const key = "input-" + index; return <input key={key} />; }
-    }`,
-    );
-    expect(result.diagnostics).toEqual([]);
-  });
-  it.each([
-    `rows.map((row, index) => this.renderInput(index))`,
-    `Array.from({length}, (_, index) => this.renderInput(index)); rows.map((row, index) => this.renderInput(index))`,
-    `Array.from({length}, (_, index) => this.renderInput(index)); register(this.renderInput)`,
-    `Array.from({length}, (_, index) => this.renderInput(index)); rows.map((row, index) => this[methodName](index))`,
-    `Array.from({length}, (_, index) => this.renderInput(index)); rows.map((row, index) => other.renderInput(index))`,
-  ])("retains warnings for data indices or escaped methods: %s", (calls) => {
-    const result = runRule(
-      noArrayIndexAsKey,
-      `class Inputs {
-      renderInputs(rows, length) { ${calls}; }
-      renderInput(index) { return <input key={index} />; }
-    }`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-});

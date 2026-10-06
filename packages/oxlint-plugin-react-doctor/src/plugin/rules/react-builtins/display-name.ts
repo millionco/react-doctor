@@ -1,5 +1,3 @@
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
-import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -14,69 +12,6 @@ import { functionContainsReactRenderOutput } from "../../utils/function-contains
 import { functionReturnsDisplayNameRenderOutput } from "../../utils/function-returns-display-name-render-output.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { walkAst } from "../../utils/walk-ast.js";
-
-const hasOnlyNullArgumentRenderPaths = (
-  functionNode: EsTreeNodeOfType<"ArrowFunctionExpression" | "FunctionExpression">,
-  scopes: ScopeAnalysis,
-): boolean => {
-  const parameter = functionNode.params[0];
-  if (!isNodeOfType(parameter, "Identifier")) return false;
-  const parameterSymbol = scopes.symbolFor(parameter);
-  if (!parameterSymbol || parameterSymbol.references.some((reference) => reference.flag !== "read"))
-    return false;
-  const requiresNullArgument = (expression: EsTreeNode): boolean => {
-    const test = stripParenExpression(expression);
-    if (isNodeOfType(test, "LogicalExpression")) {
-      if (test.operator === "&&")
-        return requiresNullArgument(test.left) || requiresNullArgument(test.right);
-      if (test.operator === "||")
-        return requiresNullArgument(test.left) && requiresNullArgument(test.right);
-    }
-    if (!isNodeOfType(test, "BinaryExpression") || test.operator !== "===") return false;
-    const left = stripParenExpression(test.left);
-    const right = stripParenExpression(test.right);
-    return (
-      (isNodeOfType(left, "Identifier") &&
-        scopes.symbolFor(left)?.id === parameterSymbol.id &&
-        isNodeOfType(right, "Literal") &&
-        right.value === null) ||
-      (isNodeOfType(right, "Identifier") &&
-        scopes.symbolFor(right)?.id === parameterSymbol.id &&
-        isNodeOfType(left, "Literal") &&
-        left.value === null)
-    );
-  };
-  let foundRender = false;
-  let allRendersRequireNull = true;
-  walkAst(functionNode.body, (node) => {
-    if (!allRendersRequireNull) return false;
-    if (
-      !isNodeOfType(node, "JSXElement") &&
-      !isNodeOfType(node, "JSXFragment") &&
-      !isCreateElementCall(node)
-    )
-      return;
-    foundRender = true;
-    let current: EsTreeNode = node;
-    while (current.parent && current.parent !== functionNode) {
-      const parent = current.parent;
-      if (
-        ((isNodeOfType(parent, "IfStatement") || isNodeOfType(parent, "ConditionalExpression")) &&
-          parent.consequent === current &&
-          requiresNullArgument(parent.test)) ||
-        (isNodeOfType(parent, "LogicalExpression") &&
-          parent.operator === "&&" &&
-          parent.right === current &&
-          requiresNullArgument(parent.left))
-      )
-        return false;
-      current = parent;
-    }
-    allRendersRequireNull = false;
-    return false;
-  });
-  return foundRender && allRendersRequireNull;
-};
 
 const MESSAGE =
   "This component shows up as Anonymous in React DevTools because it has no `displayName`.";
@@ -534,19 +469,10 @@ export const displayName = defineRule({
           return;
         }
         if (isNodeOfType(node.parent, "ReturnStatement") && !node.id) {
-          if (shouldUseCuratedBehavior && hasOnlyNullArgumentRenderPaths(node, context.scopes))
-            return;
           reportAt(node as EsTreeNode);
         }
       },
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
-        if (
-          shouldUseCuratedBehavior &&
-          (isNodeOfType(node.parent, "ReturnStatement") ||
-            isNodeOfType(node.parent, "ArrowFunctionExpression")) &&
-          hasOnlyNullArgumentRenderPaths(node, context.scopes)
-        )
-          return;
         const isDefaultExport = isNodeOfType(node.parent, "ExportDefaultDeclaration");
         const containsCreateElementCall = containsJsx(node);
         if (!containsCreateElementCall && !isDefaultExport) return;

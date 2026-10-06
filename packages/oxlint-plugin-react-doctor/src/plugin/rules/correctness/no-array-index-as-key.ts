@@ -1,5 +1,3 @@
-import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
-import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { INDEX_PARAMETER_NAMES } from "../../constants/react.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -1186,61 +1184,6 @@ const iteratorCallExemptsIndexKey = (iteratorCall: EsTreeNodeOfType<"CallExpress
   );
 };
 
-const methodReceivesOnlyPlaceholderIndices = (binding: PositionalIndexBinding): boolean => {
-  if (binding.iteratorCall || binding.indexParameterPosition === null || !binding.bindingFunction)
-    return false;
-  const method = binding.bindingFunction.parent;
-  if (
-    !isNodeOfType(method, "MethodDefinition") ||
-    method.computed ||
-    method.static ||
-    !isNodeOfType(method.key, "Identifier")
-  )
-    return false;
-  const owner = findEnclosingClass(method);
-  if (!owner) return false;
-  const methodName = method.key.name;
-  const parameterPosition = binding.indexParameterPosition;
-  let foundCall = false;
-  let allCallsUsePlaceholders = true;
-  walkAst(findProgramRoot(owner) ?? owner, (child) => {
-    if (!allCallsUsePlaceholders) return false;
-    if (!isNodeOfType(child, "MemberExpression")) return;
-    const propertyName = getStaticPropertyName(child);
-    if (
-      propertyName === null &&
-      isNodeOfType(child.object, "ThisExpression") &&
-      findEnclosingClass(child) === owner
-    ) {
-      allCallsUsePlaceholders = false;
-      return;
-    }
-    if (propertyName !== methodName) return;
-    if (!isNodeOfType(child.object, "ThisExpression") || findEnclosingClass(child) !== owner) {
-      allCallsUsePlaceholders = false;
-      return;
-    }
-    const call = child.parent;
-    if (!isNodeOfType(call, "CallExpression") || call.callee !== child) {
-      allCallsUsePlaceholders = false;
-      return;
-    }
-    foundCall = true;
-    const argument = call.arguments[parameterPosition];
-    const source =
-      argument && !isNodeOfType(argument, "SpreadElement")
-        ? findPositionalIndexUse(argument, 0)
-        : null;
-    if (
-      !source?.binding.iteratorCall ||
-      !iteratorCallExemptsIndexKey(source.binding.iteratorCall)
-    ) {
-      allCallsUsePlaceholders = false;
-    }
-  });
-  return foundCall && allCallsUsePlaceholders;
-};
-
 const isReactNamespaceIdentifier = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "Identifier")) return false;
   const importBinding = getImportBindingForName(node, node.name);
@@ -1752,7 +1695,6 @@ export const noArrayIndexAsKey = defineRule({
       if (!indexUse) return;
       const indexName = indexUse.identifier.name;
       if (isNumericPlaceholderLoopCounter(node, indexName)) return;
-      if (methodReceivesOnlyPlaceholderIndices(indexUse.binding)) return;
       if (
         indexUse.binding.iteratorCall &&
         iteratorCallExemptsIndexKey(indexUse.binding.iteratorCall)

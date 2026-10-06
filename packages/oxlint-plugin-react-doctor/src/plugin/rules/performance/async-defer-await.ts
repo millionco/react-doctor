@@ -267,12 +267,14 @@ const isLocalConstSnapshotOperand = (
   const unwrappedOperand = stripParenExpression(operand);
   if (!isNodeOfType(unwrappedOperand, "Identifier")) return false;
   const symbol = scopes.symbolFor(unwrappedOperand);
-  return Boolean(
-    symbol &&
-    symbol.kind === "const" &&
-    symbol.initializer &&
-    isDescendantScope(symbol.scope, functionScope),
-  );
+  if (!symbol) return false;
+  if (symbol.kind === "const" && symbol.initializer && isDescendantScope(symbol.scope, functionScope)) {
+    return true;
+  }
+  if (symbol.kind === "parameter" && isDescendantScope(symbol.scope, functionScope)) {
+    return true;
+  }
+  return false;
 };
 
 const isLiveFreshnessOperand = (

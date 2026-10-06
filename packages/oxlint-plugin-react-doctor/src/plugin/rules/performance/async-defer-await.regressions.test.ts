@@ -533,4 +533,29 @@ describe("performance/async-defer-await — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("stays silent on compound parameter-based freshness guards (issue #1895)", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      import { useRef, useState } from 'react';
+
+      export function useLatestSearch(fetchResult: (query: string) => Promise<string>) {
+        const requestId = useRef(0);
+        const latest = useRef({ query: '' });
+        const [value, setValue] = useState('');
+
+        async function lookup(query: string, id: number) {
+          const result = await fetchResult(query);
+          if (id !== requestId.current || latest.current.query !== query) return;
+          setValue(result);
+        }
+
+        return { value };
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

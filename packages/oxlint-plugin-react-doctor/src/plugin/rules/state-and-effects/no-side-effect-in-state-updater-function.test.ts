@@ -1739,6 +1739,10 @@ describe("fresh mapped elements in helper loops", () => {
     `const next = previous.map(row => row); move(next);`,
     `const next = previous.map(row => ({...row})); next.push(shared); move(next);`,
     `const next = previous.map(row => ({...row})); next[0] = shared; move(next);`,
+    `const next = previous.map(row => ({...row})); Object.assign(next, {0: shared}); move(next);`,
+    `const next = previous.map(row => ({...row})); Object.defineProperty(next, 0, {value: shared}); move(next);`,
+    `const next = previous.map(row => ({...row})); Object.defineProperties(next, {0: {value: shared}}); move(next);`,
+    `const next = previous.map(row => ({...row})); const alias = next; Object.assign(alias, {0: shared}); move(next);`,
     `const next = previous.map(row => ({...row})); const alias = next; alias.push(shared); move(next);`,
     `const next = previous.map(row => ({...row})); move(next); move(previous);`,
   ])("keeps warnings when a loop may write shared elements: %s", (body) => {

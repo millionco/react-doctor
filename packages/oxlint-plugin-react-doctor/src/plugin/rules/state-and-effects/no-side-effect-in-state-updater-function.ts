@@ -481,14 +481,27 @@ const identifierIsFreshMappedArrayResult = (
   const hasElementReplacement = collectConstAliasSymbols(symbol, context.scopes)
     .flatMap((alias) => alias.references)
     .some((reference) => {
-      const member = findTransparentExpressionRoot(reference.identifier).parent;
-      if (!isNodeOfType(member, "MemberExpression")) return false;
-      const usage = findTransparentExpressionRoot(member).parent;
-      if (isNodeOfType(usage, "AssignmentExpression") && usage.left === member) return true;
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const referenceParent = referenceRoot.parent;
+      if (
+        isNodeOfType(referenceParent, "CallExpression") &&
+        referenceParent.arguments[0] === referenceRoot &&
+        getSymbolMutationInspector(context.scopes).isGlobalNamespaceMethod(
+          referenceParent.callee,
+          "Object",
+          OBJECT_PROPERTY_MUTATION_METHOD_NAMES,
+        )
+      ) {
+        return true;
+      }
+      if (!isNodeOfType(referenceParent, "MemberExpression")) return false;
+      const usage = findTransparentExpressionRoot(referenceParent).parent;
+      if (isNodeOfType(usage, "AssignmentExpression") && usage.left === referenceParent)
+        return true;
       return (
         isNodeOfType(usage, "CallExpression") &&
-        usage.callee === member &&
-        MUTATING_ARRAY_METHODS.has(getStaticPropertyName(member) ?? "")
+        usage.callee === referenceParent &&
+        MUTATING_ARRAY_METHODS.has(getStaticPropertyName(referenceParent) ?? "")
       );
     });
   if (hasElementReplacement) return false;

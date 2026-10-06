@@ -15,7 +15,7 @@ import { getImportedName } from "../../utils/get-imported-name.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
+import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
@@ -342,21 +342,14 @@ const isProvenComponentValue = (
 
 const functionReturnsProvenComponent = (expression: EsTreeNode, state: AnalyzerState): boolean => {
   const functionNode = skipTsExpression(expression);
-  if (!isFunctionLike(functionNode)) return false;
+  if (!isFunctionLike(functionNode) || functionNode.async || functionNode.generator) return false;
   if (!isNodeOfType(functionNode.body, "BlockStatement")) {
     return isProvenComponentValue(functionNode.body, state);
   }
   if (!isNodeOfType(functionNode.body.body.at(-1), "ReturnStatement")) return false;
-  let allReturnsAreComponents = true;
-  walkOwnFunctionScope(functionNode, (child) => {
-    if (
-      isNodeOfType(child, "ReturnStatement") &&
-      (!child.argument || !isProvenComponentValue(child.argument, state))
-    ) {
-      allReturnsAreComponents = false;
-    }
-  });
-  return allReturnsAreComponents;
+  return collectFunctionReturnStatements(functionNode).every((returnStatement) =>
+    Boolean(returnStatement.argument && isProvenComponentValue(returnStatement.argument, state)),
+  );
 };
 
 const isDirectRefreshWrapperCall = (

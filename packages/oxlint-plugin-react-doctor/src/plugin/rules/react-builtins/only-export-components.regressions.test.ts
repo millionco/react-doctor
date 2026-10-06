@@ -1555,6 +1555,9 @@ describe("proven local component factories", () => {
   });
 
   it.each([
+    `const createIcon = async () => forwardRef(() => <svg />);`,
+    `const createIcon = async function () { return forwardRef(() => <svg />); };`,
+    `const createIcon = function* () { return forwardRef(() => <svg />); };`,
     `const createIcon = (name) => { if (!name) return {}; return forwardRef(() => <svg />); };`,
     `const createIcon = (name) => { if (name) return forwardRef(() => <svg />); };`,
     `let createIcon = () => forwardRef(() => <svg />); createIcon = externalFactory;`,

@@ -9,6 +9,7 @@ import { solJudgmentSchema, solAdjudicationSchema } from "./sol-review-schema.js
 import type { SolReview, SolSource } from "./sol-review-schema.js";
 import {
   SOL_REVIEW_MAX_FILES,
+  SOL_REVIEW_REASON_MAX_CHARACTERS,
   SOL_REVIEW_MAX_OUTPUT_TOKENS,
   SOL_REVIEW_MAX_STEPS,
   SOL_REVIEW_MODEL,
@@ -22,6 +23,12 @@ import { loadPinnedRuleSource } from "./utils/load-pinned-rule-source.js";
 import { finalizeSolReview } from "./utils/finalize-sol-review.js";
 import { getClassificationCost } from "./utils/get-classification-cost.js";
 import { loadPinnedDetectorFile } from "./utils/load-pinned-detector-file.js";
+
+const modelReasonSchema = z
+  .string()
+  .min(1)
+  .max(SOL_REVIEW_REASON_MAX_CHARACTERS)
+  .regex(/^[^"`<>\r\n]+$/);
 
 export const reviewWithSol = async (
   screening: ClassificationResult,
@@ -60,8 +67,10 @@ export const reviewWithSol = async (
     model: gateway(SOL_REVIEW_MODEL),
     output: Output.object({
       schema: priorReview
-        ? solAdjudicationSchema
-        : solJudgmentSchema.omit({ detectorAssessment: true }),
+        ? solAdjudicationSchema.extend({ reason: modelReasonSchema })
+        : solJudgmentSchema
+            .omit({ detectorAssessment: true })
+            .extend({ reason: modelReasonSchema }),
     }),
     stopWhen: stepCountIs(SOL_REVIEW_MAX_STEPS),
     prepareStep: ({ stepNumber }) =>
@@ -80,7 +89,7 @@ export const reviewWithSol = async (
       "Cite exact complete lines from supplied or tool-loaded target repository files, without line-number prefixes. " +
       "Each quote must equal all lines from startLine through endLine, including indentation. " +
       "For a focus location include a citation covering that line. Include missingEvidence for any uncertainty. " +
-      "Give a short causal explanation, including the relevant exception and scope. " +
+      "Give a short plain-text causal explanation of at most 800 characters, including the relevant exception and scope. Do not use double quotes, backticks, angle brackets, or newlines in reason. Put source excerpts only in evidence quotes. " +
       (priorReview
         ? "This is a challenge pass: try to disprove the proposed detector error. Check each exception's necessary conditions in the implementation. " +
           "Distinguish project capability gates from per-file framework gates. Do not infer a per-file exclusion from a project-level React requirement. " +

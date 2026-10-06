@@ -1,3 +1,6 @@
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { splitTailwindClassName } from "../../utils/split-tailwind-class-name.js";
+import { parseTailwindClassNameToken } from "../../utils/parse-tailwind-class-name-token.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getStaticJsxText } from "../../utils/get-static-jsx-text.js";
 import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
@@ -8,6 +11,23 @@ import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-a
 
 const SYMMETRIC_PADDING_PATTERN = /^p-(?:px|[\d.]+|\[[^\]]+\])$/;
 const AXIS_PADDING_PATTERN = /^p[xytrbles]-(?:px|[\d.]+|\[[^\]]+\])$/;
+
+const getVisibleButtonText = (node: EsTreeNode): string => {
+  if (isNodeOfType(node, "JSXElement")) {
+    const tokens = splitTailwindClassName(
+      getStringFromClassNameAttr(node.openingElement) ?? "",
+    ).map(parseTailwindClassNameToken);
+    if (
+      tokens.some((token) => token.variants.length === 0 && token.utility === "sr-only") &&
+      !tokens.some((token) => token.utility === "not-sr-only")
+    )
+      return "";
+  }
+  if (isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment")) {
+    return node.children.map(getVisibleButtonText).join(" ");
+  }
+  return getStaticJsxText(node);
+};
 
 export const noSymmetricTextButtonPadding = defineRule({
   id: "no-symmetric-text-button-padding",
@@ -23,7 +43,7 @@ export const noSymmetricTextButtonPadding = defineRule({
         !isNodeOfType(node.openingElement.name, "JSXIdentifier") ||
         node.openingElement.name.name !== "button" ||
         node.children.some((child) => isNodeOfType(child, "JSXExpressionContainer")) ||
-        !getStaticJsxText(node).trim()
+        !getVisibleButtonText(node).trim()
       ) {
         return;
       }

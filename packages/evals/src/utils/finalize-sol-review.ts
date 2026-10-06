@@ -9,6 +9,26 @@ export const finalizeSolReview = (
 ): SolReview => {
   const originalJudgment = review.originalJudgment ?? review.judgment;
   const judgment = resolveSolCitationLines(originalJudgment, review.sources);
+  const requiredEvidence = candidate.rule.requiredEvidence ?? [];
+  const missingRequiredEvidence: string[] = [];
+  if (
+    requiredEvidence.includes("jsx-runtime") &&
+    (!candidate.buildEvidence || candidate.buildEvidence.jsxRuntime === "unknown")
+  ) {
+    missingRequiredEvidence.push("Verified JSX runtime build evidence is required.");
+  }
+  if (
+    requiredEvidence.includes("verified-contract") &&
+    (!candidate.rule.contractHash || candidate.rule.contractIssue)
+  ) {
+    missingRequiredEvidence.push("A verified rule contract is required.");
+  }
+  if (missingRequiredEvidence.length > 0) {
+    judgment.judgment = "insufficient_context";
+    judgment.missingEvidence = [
+      ...new Set([...judgment.missingEvidence, ...missingRequiredEvidence]),
+    ];
+  }
   const citationIssues = validateSolCitations(judgment, review.sources, candidate);
   let verdict: SolReview["verdict"] = "unresolved";
   if (

@@ -174,6 +174,12 @@ describe("independent Sol review", () => {
     const firstReview = await reviewWithSol(screening);
     expect(firstReview.verdict).toBe("fp");
     const request = mocks.generateText.mock.calls.at(-1)?.[0];
+    const outputSchema = (await request.output.responseFormat).schema;
+    expect(outputSchema.properties.reason.maxLength).toBe(2_000);
+    const reasonPattern = new RegExp(outputSchema.properties.reason.pattern);
+    expect(reasonPattern.test("The title supplies the control name.")).toBe(true);
+    expect(reasonPattern.test('Quoted JSX: <input title="Name" />')).toBe(false);
+    expect(reasonPattern.test("Line one\nLine two")).toBe(false);
     expect(request.prompt).not.toContain("candidate_fp");
     expect(request.prompt).not.toContain('"detected"');
     expect(request.prompt).not.toContain('"assessment"');

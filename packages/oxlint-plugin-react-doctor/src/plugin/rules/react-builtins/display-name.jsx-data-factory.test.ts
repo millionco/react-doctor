@@ -147,3 +147,21 @@ describe("display-name JSX data factories", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("scalar formatter factories", () => {
+  it.each([
+    `export const format = (pattern, allowHtml) => { return value => { if (allowHtml && value === null) return <Missing />; return String(value); }; };`,
+    `export const format = () => value => value === null ? <Missing /> : String(value);`,
+    `export function format() { return function(value) { if (null === value) return <Missing />; return String(value); }; }`,
+  ])("does not infer a component from a null scalar fallback: %s", (code) => {
+    expect(runRule(displayName, code).diagnostics).toEqual([]);
+  });
+  it.each([
+    `export const make = () => props => { if (props.value === null) return <Missing />; return String(props.value); };`,
+    `export const make = () => props => { if (props === null || enabled) return <Missing />; return String(props); };`,
+    `export const make = () => props => { if (props === null) return <Missing />; return <Content />; };`,
+    `export const make = () => props => { props = null; if (props === null) return <Missing />; return ""; };`,
+  ])("still reports factories with component render paths: %s", (code) => {
+    expect(runRule(displayName, code).diagnostics.length).toBeGreaterThan(0);
+  });
+});

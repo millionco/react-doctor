@@ -1,6 +1,10 @@
 import type { FunctionCfg } from "../../semantic/control-flow-graph.js";
 import { analyzeScopes } from "../../semantic/scope-analysis.js";
-import { MUTATING_COLLECTION_METHODS, PROMISE_SETTLE_METHODS } from "../../constants/js.js";
+import {
+  MUTATING_ARRAY_METHODS,
+  MUTATING_COLLECTION_METHODS,
+  PROMISE_SETTLE_METHODS,
+} from "../../constants/js.js";
 import { SAFE_MUTABLE_CONSTRUCTOR_NAMES } from "../../constants/library.js";
 import {
   OBJECT_PROPERTY_MUTATION_METHOD_NAMES,
@@ -467,18 +471,59 @@ const identifierIsFreshMappedArrayResult = (
   const symbol = context.scopes.symbolFor(identifier);
   if (
     !symbol ||
-    (symbol.kind !== "const" && symbol.kind !== "let") ||
-    !symbol.initializer ||
     visitedSymbolIds.has(symbol.id) ||
     symbol.references.some((reference) => reference.flag !== "read")
-  ) {
+  )
     return false;
-  }
   visitedSymbolIds.add(symbol.id);
-  const isDeclaredInsideUpdater = [...executedFunctions].some((functionNode) =>
-    isAstDescendant(symbol.bindingIdentifier, functionNode),
-  );
-  if (!isDeclaredInsideUpdater) return false;
+  const owner = findEnclosingFunction(symbol.bindingIdentifier);
+  if (!owner || !executedFunctions.has(owner)) return false;
+  const hasElementReplacement = collectConstAliasSymbols(symbol, context.scopes)
+    .flatMap((alias) => alias.references)
+    .some((reference) => {
+      const member = findTransparentExpressionRoot(reference.identifier).parent;
+      if (!isNodeOfType(member, "MemberExpression")) return false;
+      const usage = findTransparentExpressionRoot(member).parent;
+      if (isNodeOfType(usage, "AssignmentExpression") && usage.left === member) return true;
+      return (
+        isNodeOfType(usage, "CallExpression") &&
+        usage.callee === member &&
+        MUTATING_ARRAY_METHODS.has(getStaticPropertyName(member) ?? "")
+      );
+    });
+  if (hasElementReplacement) return false;
+  if (symbol.kind === "parameter" && isFunctionLike(owner)) {
+    const parameterIndex = owner.params.findIndex(
+      (parameter) => parameter === symbol.bindingIdentifier,
+    );
+    if (parameterIndex < 0) return false;
+    let foundInvocation = false;
+    let allArgumentsAreFresh = true;
+    for (const executedFunction of executedFunctions) {
+      walkOwnFunctionScope(executedFunction, (child) => {
+        if (
+          !isNodeOfType(child, "CallExpression") ||
+          resolveCalledLocalFunction(child, context) !== owner
+        )
+          return;
+        foundInvocation = true;
+        const argument = child.arguments[parameterIndex];
+        if (
+          !isNodeOfType(argument, "Identifier") ||
+          !identifierIsFreshMappedArrayResult(
+            argument,
+            executedFunctions,
+            context,
+            new Set(visitedSymbolIds),
+          )
+        ) {
+          allArgumentsAreFresh = false;
+        }
+      });
+    }
+    return foundInvocation && allArgumentsAreFresh;
+  }
+  if ((symbol.kind !== "const" && symbol.kind !== "let") || !symbol.initializer) return false;
   const initializer = stripParenExpression(symbol.initializer);
   if (isNodeOfType(initializer, "Identifier")) {
     return identifierIsFreshMappedArrayResult(
@@ -489,6 +534,27 @@ const identifierIsFreshMappedArrayResult = (
     );
   }
   if (!isNodeOfType(initializer, "CallExpression")) return false;
+  const callee = stripParenExpression(initializer.callee);
+  const ownerInvocation = findTransparentExpressionRoot(owner).parent;
+  const callback = initializer.arguments[0];
+  if (
+    isNodeOfType(callee, "MemberExpression") &&
+    getStaticPropertyName(callee) === "map" &&
+    receiverIsKnownSynchronousCollection(
+      callee.object,
+      owner,
+      isNodeOfType(ownerInvocation, "CallExpression") &&
+        stateValueIsArray(ownerInvocation, context),
+      new Set(),
+      context,
+    ) &&
+    callback &&
+    !isNodeOfType(callback, "SpreadElement")
+  ) {
+    const callbackFunction = resolveLocalFunction(callback, context);
+    if (callbackFunction && functionReturnsOnlyFreshContainerLiterals(callbackFunction))
+      return true;
+  }
   const calledFunction = resolveCalledLocalFunction(initializer, context);
   return Boolean(
     calledFunction && functionReturnsFreshArrayWithFreshElements(calledFunction, context),
@@ -1444,6 +1510,20 @@ const receiverIsUpdaterLocal = (
     }
     return didFindDirectInvocation && doAllArgumentsStayLocal;
   }
+  const declarator = symbol.bindingIdentifier.parent;
+  const declaration = declarator?.parent;
+  const loop = declaration?.parent;
+  if (
+    isNodeOfType(declarator, "VariableDeclarator") &&
+    isNodeOfType(declaration, "VariableDeclaration") &&
+    isNodeOfType(loop, "ForOfStatement") &&
+    loop.left === declaration &&
+    declarator.id === symbol.bindingIdentifier &&
+    symbol.references.every((reference) => reference.flag === "read") &&
+    isNodeOfType(loop.right, "Identifier") &&
+    identifierIsFreshMappedArrayResult(loop.right, executedFunctions, context)
+  )
+    return true;
   const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
   if (identifierIsAssignedOnlyFreshContainers(baseIdentifier, context)) return true;
   if (!initializer) return false;

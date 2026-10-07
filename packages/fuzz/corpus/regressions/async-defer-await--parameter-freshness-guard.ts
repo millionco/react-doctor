@@ -1,9 +1,7 @@
 // rule: async-defer-await
 // verdict: pass
-// weakness: name-heuristic
+// weakness: control-flow
 // source: issue #1895
-
-import { useRef, useState } from "react";
 
 declare function fetchResult(query: string): Promise<string>;
 declare function setValue(value: string): void;

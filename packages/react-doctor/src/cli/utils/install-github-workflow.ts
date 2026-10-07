@@ -76,6 +76,7 @@ jobs:
         #   blocking: error          # Gate level: "none" (advisory, the default) | "warning" | "error"
         #   scope: full              # On PRs, scan the whole project instead of just changed files
         #   comment: false           # Disable the sticky PR summary comment
+        #   comment-on-clean: false # Skip new comments for clean scans
         #   review-comments: false   # Disable inline review comments on changed lines
         #   commit-status: false     # Disable the commit status (score + counts, links to the run)
         #   version: "0.4.0"         # Pin to a specific react-doctor version instead of "latest"

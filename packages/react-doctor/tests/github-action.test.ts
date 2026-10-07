@@ -78,6 +78,7 @@ describe("GitHub Action contract", () => {
       "project",
       "blocking",
       "comment",
+      "comment-on-clean",
       "review-comments",
       "commit-status",
       "node-version",

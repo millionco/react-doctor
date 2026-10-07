@@ -499,6 +499,16 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["action.versionPin"]).toBe("latest");
     // `comment` env not set -> dropped, never coerced to a value.
     expect(attributes["action.comment"]).toBeUndefined();
+    expect(attributes["action.commentOnClean"]).toBeUndefined();
+
+    process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.commentOnClean] = "false";
+    expect(
+      buildRunEventAttributes(baseInput({ result: buildResult() }))["action.commentOnClean"],
+    ).toBe(false);
+    process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.commentOnClean] = "true";
+    expect(
+      buildRunEventAttributes(baseInput({ result: buildResult() }))["action.commentOnClean"],
+    ).toBe(true);
 
     process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.version] = "1.2.3";
     expect(buildRunEventAttributes(baseInput({ result: buildResult() }))["action.versionPin"]).toBe(

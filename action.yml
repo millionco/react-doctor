@@ -266,6 +266,7 @@ runs:
         REACT_DOCTOR_GITHUB_ACTION: ${{ github.action_ref || '1' }}
         REACT_DOCTOR_ACTION_BLOCKING: ${{ inputs.blocking }}
         REACT_DOCTOR_ACTION_COMMENT: ${{ inputs.comment }}
+        REACT_DOCTOR_ACTION_COMMENT_ON_CLEAN: ${{ inputs.comment-on-clean }}
         REACT_DOCTOR_ACTION_REVIEW_COMMENTS: ${{ inputs.review-comments }}
         REACT_DOCTOR_ACTION_VERSION: ${{ inputs.version }}
       run: |

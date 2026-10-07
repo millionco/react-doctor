@@ -1,0 +1,503 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit d9f0f7ad8074a95764a72a3253185f940bf62cd35ff215b671c433419f5bdad3
+import * as THREE from "three";
+import { clamp } from "../core/noise";
+import type { MissionSnapshot } from "../game/mission";
+
+/**
+ * Diegetic-flavoured HUD. Everything that can live in the world (objective
+ * beacons, impact markers, contact shadows) does; this layer only carries the
+ * readouts a ground controller would genuinely have on a wrist display.
+ */
+
+const CSS = `
+:root {
+  --amber: #ffb020;
+  --cyan: #35d6ff;
+  --green: #2aff8a;
+  --red: #ff4b32;
+  --panel: rgba(8, 12, 17, 0.72);
+  --line: rgba(120, 190, 220, 0.22);
+}
+#hud, #hud * { box-sizing: border-box; }
+#hud {
+  position: fixed; inset: 0; pointer-events: none;
+  font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  color: #cfe4ee; user-select: none; overflow: hidden;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+}
+#hud .panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(3px);
+  border-radius: 3px;
+}
+
+/* Objective, top left */
+#objective {
+  position: absolute; top: 18px; left: 18px; padding: 11px 15px 12px; min-width: 300px; max-width: 420px;
+  border-left: 3px solid var(--cyan);
+}
+#objective .eyebrow { font-size: 10px; letter-spacing: 2.4px; color: #6f92a4; }
+#objective .title { font-size: 16px; margin-top: 5px; color: #eaf6ff; letter-spacing: 0.4px; }
+#objective .detail { font-size: 11.5px; margin-top: 4px; color: #8fb0c0; line-height: 1.45; }
+
+/* Orbit clock, top centre */
+#orbit {
+  position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+  padding: 9px 18px 10px; text-align: center; min-width: 240px;
+}
+#orbit .eyebrow { font-size: 9.5px; letter-spacing: 2.4px; color: #6f92a4; }
+#orbit .clock { font-size: 24px; letter-spacing: 2px; margin-top: 2px; color: #eaf6ff; font-variant-numeric: tabular-nums; }
+#orbit.critical .clock { color: var(--red); }
+#orbit .track { height: 3px; margin-top: 7px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; }
+#orbit .fill { height: 100%; background: linear-gradient(90deg, var(--red), var(--amber), var(--cyan)); transition: width 0.25s linear; }
+
+/* Systems, bottom left */
+#systems { position: absolute; bottom: 18px; left: 18px; padding: 12px 15px; width: 280px; }
+#systems .head { font-size: 10px; letter-spacing: 2.4px; color: #6f92a4; margin-bottom: 9px; }
+.row { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; font-size: 11px; }
+.row:last-child { margin-bottom: 0; }
+.row .name { width: 74px; color: #7fa0b2; letter-spacing: 0.6px; }
+.row .bar { flex: 1; height: 7px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; position: relative; }
+.row .bar > i { display: block; height: 100%; width: 0%; transition: width 0.18s ease-out; }
+.row .val { width: 46px; text-align: right; color: #c8dfeb; font-variant-numeric: tabular-nums; }
+.row.off .name, .row.off .val { color: #4d6270; }
+
+/* Vitals, bottom right */
+#vitals { position: absolute; bottom: 18px; right: 18px; padding: 12px 15px; width: 210px; }
+#vitals .head { font-size: 10px; letter-spacing: 2.4px; color: #6f92a4; margin-bottom: 9px; }
+#vitals .hp { font-size: 26px; color: var(--green); font-variant-numeric: tabular-nums; line-height: 1; }
+#vitals.hurt .hp { color: var(--red); }
+#vitals .sub { font-size: 10px; color: #7fa0b2; margin-top: 6px; letter-spacing: 0.6px; }
+
+/* Controls */
+#controls {
+  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+  padding: 7px 14px; font-size: 10.5px; color: #7d9dad; letter-spacing: 0.7px;
+  display: flex; gap: 14px; white-space: nowrap;
+}
+#controls b { color: #cfe4ee; font-weight: 600; }
+
+/* World-anchored interaction prompt */
+#prompt {
+  position: absolute; transform: translate(-50%, -50%); padding: 7px 13px;
+  font-size: 12.5px; letter-spacing: 0.5px; white-space: nowrap; opacity: 0;
+  transition: opacity 0.12s ease-out; border: 1px solid var(--amber);
+  background: rgba(8, 12, 17, 0.85); border-radius: 3px; color: #ffe6bb;
+}
+#prompt.on { opacity: 1; }
+#prompt.disabled { border-color: rgba(120,150,170,0.35); color: #7d9dad; }
+#prompt kbd {
+  display: inline-block; margin-right: 8px; padding: 1px 6px; border-radius: 3px;
+  background: var(--amber); color: #17110a; font-weight: 700; font-size: 11px;
+}
+#prompt.disabled kbd { background: #4d6270; color: #0d1418; }
+
+/* Off-screen objective pointer */
+#pointer {
+  position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; opacity: 0;
+  transition: opacity 0.2s; display: grid; place-items: center;
+}
+#pointer svg { filter: drop-shadow(0 1px 3px rgba(0,0,0,0.8)); }
+#pointer.on { opacity: 0.92; }
+
+/* Toast message */
+#toast {
+  position: absolute; top: 96px; left: 50%; transform: translateX(-50%);
+  padding: 9px 18px; font-size: 12.5px; letter-spacing: 0.4px; color: #dff0fa;
+  opacity: 0; transition: opacity 0.35s ease-out; max-width: 620px; text-align: center;
+  border-left: 2px solid var(--amber); border-right: 2px solid var(--amber);
+}
+#toast.on { opacity: 1; }
+
+/* Aiming overlay */
+#aim { position: absolute; inset: 0; opacity: 0; transition: opacity 0.25s; }
+#aim.on { opacity: 1; }
+#aim .reticle {
+  position: absolute; top: 50%; left: 50%; width: 190px; height: 190px; margin: -95px 0 0 -95px;
+  border: 1px solid rgba(53, 214, 255, 0.35); border-radius: 50%;
+}
+#aim .reticle::before, #aim .reticle::after {
+  content: ""; position: absolute; background: rgba(53, 214, 255, 0.5);
+}
+#aim .reticle::before { left: 50%; top: -14px; bottom: -14px; width: 1px; }
+#aim .reticle::after { top: 50%; left: -14px; right: -14px; height: 1px; }
+#aim .inner {
+  position: absolute; top: 50%; left: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px;
+  border: 2px solid var(--cyan); border-radius: 50%; opacity: 0.25;
+  transition: opacity 0.15s, transform 0.15s;
+}
+#aim.close .inner { opacity: 1; transform: scale(0.72); border-color: var(--green); }
+#aim .lockbar {
+  position: absolute; top: 50%; left: 50%; margin: 116px 0 0 -110px; width: 220px;
+}
+#aim .lockbar .cap { font-size: 10px; letter-spacing: 2.2px; color: #6f92a4; text-align: center; margin-bottom: 6px; }
+#aim .lockbar .track { height: 5px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+#aim .lockbar .fill { height: 100%; width: 0%; background: var(--green); transition: width 0.1s linear; }
+#aim .hint {
+  position: absolute; top: 50%; left: 50%; margin: 150px 0 0 -180px; width: 360px;
+  text-align: center; font-size: 11px; color: #8fb0c0;
+}
+
+/* Full-screen states */
+#screen {
+  position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+  background: radial-gradient(ellipse at center, rgba(4,7,11,0.72) 0%, rgba(3,5,8,0.94) 72%);
+  opacity: 0; pointer-events: none; transition: opacity 0.4s;
+}
+#screen.on { opacity: 1; pointer-events: auto; }
+#screen .inner { max-width: 620px; padding: 0 28px; }
+#screen .kicker { font-size: 11px; letter-spacing: 5px; color: var(--amber); }
+#screen h1 { font-size: 40px; margin: 12px 0 0; letter-spacing: 2px; color: #eaf6ff; font-weight: 600; }
+#screen h1.win { color: var(--green); }
+#screen h1.lose { color: var(--red); }
+#screen p { font-size: 13px; line-height: 1.7; color: #9fbccb; margin: 16px 0 0; }
+#screen .cta { margin-top: 24px; font-size: 12px; color: #cfe4ee; letter-spacing: 1px; }
+#screen .cta b { color: var(--amber); }
+
+/* Damage / danger vignette */
+#vignette { position: absolute; inset: 0; opacity: 0; transition: opacity 0.2s; }
+#loading {
+  position: fixed; inset: 0; display: grid; place-items: center; background: #05070a; z-index: 10;
+  color: #7fa0b2; font-family: "SF Mono", Menlo, monospace; font-size: 12px; letter-spacing: 2.5px;
+  transition: opacity 0.6s; text-align: center;
+}
+#loading.done { opacity: 0; pointer-events: none; }
+#loading .bar { width: 240px; height: 2px; background: rgba(255,255,255,0.1); margin: 18px auto 0; }
+#loading .bar > i { display: block; height: 100%; width: 0%; background: var(--amber); transition: width 0.3s; }
+#credit {
+  position: absolute; top: 18px; right: 18px; padding: 7px 12px;
+  font-size: 9.5px; letter-spacing: 0.9px; color: #5d7885; line-height: 1.6; text-align: right;
+}
+#credit b { color: #7fa0b2; font-weight: 600; letter-spacing: 1.8px; display: block; margin-bottom: 3px; }
+
+/* Responsive: the panels are anchored to the four corners, so on small
+   viewports they have to shrink and shed the optional ones or they collide
+   over the middle of the play area. */
+@media (max-width: 1100px) {
+  #objective { min-width: 220px; max-width: 300px; padding: 9px 12px 10px; }
+  #objective .title { font-size: 14px; }
+  #objective .detail { font-size: 10.5px; }
+  #systems { width: 230px; padding: 10px 12px; }
+  #vitals { width: 170px; padding: 10px 12px; }
+  #vitals .hp { font-size: 21px; }
+  #orbit { min-width: 190px; padding: 7px 13px 8px; }
+  #orbit .clock { font-size: 19px; }
+  #credit { display: none; }
+  #controls { font-size: 9.5px; gap: 10px; padding: 6px 11px; }
+}
+@media (max-width: 820px), (max-height: 560px) {
+  #systems .row .name { width: 60px; font-size: 10px; }
+  #systems { width: 200px; }
+  #controls { display: none; }
+  #toast { top: 76px; font-size: 11px; max-width: 82vw; padding: 7px 13px; }
+  #aim .hint { display: none; }
+}
+@media (max-width: 620px), (max-height: 460px) {
+  #systems, #vitals { display: none; }
+  #objective { max-width: 62vw; }
+  #orbit { min-width: 150px; }
+  #orbit .clock { font-size: 16px; }
+}
+`;
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, html?: string): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+export class Hud {
+  private root: HTMLDivElement;
+  private objectiveTitle: HTMLElement;
+  private objectiveDetail: HTMLElement;
+  private orbit: HTMLElement;
+  private orbitClock: HTMLElement;
+  private orbitFill: HTMLElement;
+  private rows: Record<string, { row: HTMLElement; fill: HTMLElement; val: HTMLElement }> = {};
+  private vitals: HTMLElement;
+  private vitalsHp: HTMLElement;
+  private vitalsSub: HTMLElement;
+  private prompt: HTMLElement;
+  private pointer: HTMLElement;
+  private toast: HTMLElement;
+  private aim: HTMLElement;
+  private aimLock: HTMLElement;
+  private screen: HTMLElement;
+  private screenKicker: HTMLElement;
+  private screenTitle: HTMLElement;
+  private screenBody: HTMLElement;
+  private screenCta: HTMLElement;
+  private vignette: HTMLElement;
+  private loading: HTMLElement;
+  private loadingBar: HTMLElement;
+
+  private projected = new THREE.Vector3();
+
+  constructor() {
+    const style = el("style");
+    style.textContent = CSS;
+    document.head.appendChild(style);
+
+    this.loading = el("div");
+    this.loading.id = "loading";
+    this.loading.innerHTML =
+      `<div><div>GROUND CONTROL</div>` +
+      `<div style="margin-top:10px;font-size:10px;letter-spacing:1.6px;color:#4d6270">BAKING SURFACES &middot; LOADING STATION</div>` +
+      `<div class="bar"><i></i></div>` +
+      `<div style="margin-top:22px;font-size:9px;letter-spacing:1.2px;color:#33424c">SPACECRAFT, PLANETS AND PROPS: KENNEY SPACE KIT (CC0 1.0)</div></div>`;
+    document.body.appendChild(this.loading);
+    this.loadingBar = this.loading.querySelector(".bar > i") as HTMLElement;
+
+    this.root = el("div");
+    this.root.id = "hud";
+    document.body.appendChild(this.root);
+
+    // Objective
+    const objective = el("div", "panel");
+    objective.id = "objective";
+    objective.innerHTML = `<div class="eyebrow">CURRENT TASK</div><div class="title"></div><div class="detail"></div>`;
+    this.root.appendChild(objective);
+    this.objectiveTitle = objective.querySelector(".title") as HTMLElement;
+    this.objectiveDetail = objective.querySelector(".detail") as HTMLElement;
+
+    // Orbit clock
+    this.orbit = el("div", "panel");
+    this.orbit.id = "orbit";
+    this.orbit.innerHTML =
+      `<div class="eyebrow">LK-9 ORBIT DECAY</div><div class="clock">--:--</div><div class="track"><i class="fill"></i></div>`;
+    this.root.appendChild(this.orbit);
+    this.orbitClock = this.orbit.querySelector(".clock") as HTMLElement;
+    this.orbitFill = this.orbit.querySelector(".fill") as HTMLElement;
+
+    // Systems
+    const systems = el("div", "panel");
+    systems.id = "systems";
+    systems.innerHTML = `<div class="head">STATION SYSTEMS</div>`;
+    for (const [key, name] of [
+      ["power", "REACTOR"],
+      ["temp", "CORE TEMP"],
+      ["coolant", "COOLANT"],
+      ["uplink", "UPLINK"],
+    ] as const) {
+      const row = el("div", "row");
+      row.innerHTML = `<span class="name">${name}</span><span class="bar"><i></i></span><span class="val">--</span>`;
+      systems.appendChild(row);
+      this.rows[key] = {
+        row,
+        fill: row.querySelector("i") as HTMLElement,
+        val: row.querySelector(".val") as HTMLElement,
+      };
+    }
+    this.root.appendChild(systems);
+
+    // Vitals
+    this.vitals = el("div", "panel");
+    this.vitals.id = "vitals";
+    this.vitals.innerHTML = `<div class="head">SUIT INTEGRITY</div><div class="hp">100%</div><div class="sub">NOMINAL</div>`;
+    this.root.appendChild(this.vitals);
+    this.vitalsHp = this.vitals.querySelector(".hp") as HTMLElement;
+    this.vitalsSub = this.vitals.querySelector(".sub") as HTMLElement;
+
+    // Controls
+    const controls = el("div", "panel");
+    controls.id = "controls";
+    controls.innerHTML =
+      `<span><b>WASD</b> move</span><span><b>Shift</b> sprint</span><span><b>Space</b> hop</span>` +
+      `<span><b>E</b> interact</span><span><b>Q</b> recenter</span><span><b>Wheel</b> zoom</span><span><b>R</b> restart</span>`;
+    this.root.appendChild(controls);
+
+    // Attribution, kept quiet but always visible.
+    const credit = el("div", "panel");
+    credit.id = "credit";
+    credit.innerHTML = `<b>KEPLER SOUTH</b>Space Kit models by Kenney (CC0 1.0)`;
+    this.root.appendChild(credit);
+
+    // Prompt + pointer
+    this.prompt = el("div");
+    this.prompt.id = "prompt";
+    this.root.appendChild(this.prompt);
+
+    this.pointer = el("div");
+    this.pointer.id = "pointer";
+    this.pointer.innerHTML =
+      `<svg width="30" height="30" viewBox="0 0 30 30"><path d="M15 2 L25 24 L15 19 L5 24 Z" fill="#35d6ff" fill-opacity="0.9" stroke="#0b1a22" stroke-width="1.2"/></svg>`;
+    this.root.appendChild(this.pointer);
+
+    // Toast
+    this.toast = el("div", "panel");
+    this.toast.id = "toast";
+    this.root.appendChild(this.toast);
+
+    // Aiming
+    this.aim = el("div");
+    this.aim.id = "aim";
+    this.aim.innerHTML =
+      `<div class="reticle"></div><div class="inner"></div>` +
+      `<div class="lockbar"><div class="cap">TELEMETRY LOCK</div><div class="track"><i class="fill"></i></div></div>` +
+      `<div class="hint">Move the mouse to slew the dish. Find the red beacon of LK-9 and hold it centred. <b>E</b> to release.</div>`;
+    this.root.appendChild(this.aim);
+    this.aimLock = this.aim.querySelector(".fill") as HTMLElement;
+
+    // Vignette
+    this.vignette = el("div");
+    this.vignette.id = "vignette";
+    this.root.appendChild(this.vignette);
+
+    // Screens
+    this.screen = el("div");
+    this.screen.id = "screen";
+    this.screen.innerHTML =
+      `<div class="inner"><div class="kicker"></div><h1></h1><p></p><div class="cta"></div></div>`;
+    this.root.appendChild(this.screen);
+    this.screenKicker = this.screen.querySelector(".kicker") as HTMLElement;
+    this.screenTitle = this.screen.querySelector("h1") as HTMLElement;
+    this.screenBody = this.screen.querySelector("p") as HTMLElement;
+    this.screenCta = this.screen.querySelector(".cta") as HTMLElement;
+  }
+
+  setLoadProgress(t: number): void {
+    this.loadingBar.style.width = `${clamp(t, 0, 1) * 100}%`;
+  }
+
+  hideLoading(): void {
+    this.loading.classList.add("done");
+    setTimeout(() => this.loading.remove(), 800);
+  }
+
+  update(s: MissionSnapshot, camera: THREE.Camera, objectiveTarget: THREE.Vector3 | null): void {
+    this.objectiveTitle.textContent = s.objective;
+    this.objectiveDetail.textContent = s.detail;
+
+    // Orbit clock
+    const mins = Math.floor(s.orbitSeconds / 60);
+    const secs = Math.floor(s.orbitSeconds % 60);
+    this.orbitClock.textContent = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+    this.orbitFill.style.width = `${clamp(s.orbitFraction, 0, 1) * 100}%`;
+    this.orbit.classList.toggle("critical", s.orbitSeconds < 70);
+
+    // Systems
+    const power = this.rows.power!;
+    power.fill.style.width = `${s.power * 100}%`;
+    power.fill.style.background = s.power >= 1 ? "var(--cyan)" : "var(--amber)";
+    power.val.textContent = `${s.cellsSeated}/${s.cellsTotal}`;
+    power.row.classList.toggle("off", s.cellsSeated === 0);
+
+    const temp = this.rows.temp!;
+    temp.fill.style.width = `${clamp(s.coreTemp / 100, 0, 1) * 100}%`;
+    temp.fill.style.background =
+      s.coreTemp > 82 ? "var(--red)" : s.coreTemp > 55 ? "var(--amber)" : "var(--cyan)";
+    temp.val.textContent = `${Math.round(s.coreTemp)}%`;
+    temp.row.classList.toggle("off", s.power < 1 && s.coreTemp < 1);
+
+    const coolant = this.rows.coolant!;
+    coolant.fill.style.width = `${(s.valvesOpen / s.valvesTotal) * 100}%`;
+    coolant.fill.style.background = s.coolantOnline ? "var(--green)" : "var(--amber)";
+    coolant.val.textContent = `${s.valvesOpen}/${s.valvesTotal}`;
+    coolant.row.classList.toggle("off", s.power < 1);
+
+    const uplink = this.rows.uplink!;
+    uplink.fill.style.width = `${(s.telemetry ? 1 : s.uplinkLock) * 100}%`;
+    uplink.fill.style.background = s.telemetry ? "var(--green)" : "var(--cyan)";
+    uplink.val.textContent = s.telemetry ? (s.prediction ? "PRED" : "LOCK") : "----";
+    uplink.row.classList.toggle("off", !s.telemetry && s.uplinkLock < 0.01);
+
+    // Vitals
+    this.vitalsHp.textContent = `${Math.round(s.health)}%`;
+    this.vitals.classList.toggle("hurt", s.health < 40);
+    this.vitalsSub.textContent =
+      s.health >= 80 ? "NOMINAL" : s.health >= 40 ? "ABRASION DETECTED" : "SEAL FAILING";
+
+    // Prompt anchored to the world
+    if (s.prompt && !s.aiming) {
+      this.projected.copy(s.prompt.position).project(camera);
+      const visible = this.projected.z < 1;
+      if (visible) {
+        const x = (this.projected.x * 0.5 + 0.5) * innerWidth;
+        const y = (-this.projected.y * 0.5 + 0.5) * innerHeight;
+        this.prompt.style.left = `${x}px`;
+        this.prompt.style.top = `${y}px`;
+        this.prompt.innerHTML = `<kbd>${s.prompt.key}</kbd>${s.prompt.label}`;
+        this.prompt.classList.add("on");
+        this.prompt.classList.toggle("disabled", !s.prompt.enabled);
+      } else {
+        this.prompt.classList.remove("on");
+      }
+    } else {
+      this.prompt.classList.remove("on");
+    }
+
+    // Off-screen objective pointer
+    if (objectiveTarget && s.phase !== "won" && s.phase !== "lost") {
+      this.projected.copy(objectiveTarget).project(camera);
+      const behind = this.projected.z > 1;
+      let x = (this.projected.x * 0.5 + 0.5) * innerWidth;
+      let y = (-this.projected.y * 0.5 + 0.5) * innerHeight;
+      if (behind) {
+        x = innerWidth - x;
+        y = innerHeight - y;
+      }
+      const margin = 58;
+      const offscreen = behind || x < margin || x > innerWidth - margin || y < margin || y > innerHeight - margin;
+      if (offscreen) {
+        const cx = innerWidth / 2;
+        const cy = innerHeight / 2;
+        let dx = x - cx;
+        let dy = y - cy;
+        const len = Math.hypot(dx, dy) || 1;
+        dx /= len;
+        dy /= len;
+        const scale = Math.min(
+          (innerWidth / 2 - margin) / Math.abs(dx || 1e-3),
+          (innerHeight / 2 - margin) / Math.abs(dy || 1e-3),
+        );
+        this.pointer.style.left = `${cx + dx * scale}px`;
+        this.pointer.style.top = `${cy + dy * scale}px`;
+        this.pointer.style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
+        this.pointer.classList.add("on");
+      } else {
+        this.pointer.classList.remove("on");
+      }
+    } else {
+      this.pointer.classList.remove("on");
+    }
+
+    // Toast
+    const showToast = s.messageAge < 6.5 && s.message.length > 0;
+    this.toast.classList.toggle("on", showToast);
+    if (showToast) this.toast.textContent = s.message;
+
+    // Aiming
+    this.aim.classList.toggle("on", s.aiming);
+    this.aim.classList.toggle("close", s.aimAlignment > 0.82);
+    this.aimLock.style.width = `${s.uplinkLock * 100}%`;
+
+    // Vignette combines damage and incoming-impact danger.
+    const hurt = clamp(1 - s.health / 100, 0, 1);
+    const danger = clamp(s.danger, 0, 1);
+    const level = Math.max(hurt * 0.85, danger);
+    this.vignette.style.opacity = `${level * 0.9}`;
+    const hue = danger > hurt ? "255, 140, 40" : "255, 60, 40";
+    this.vignette.style.background =
+      `radial-gradient(ellipse at center, rgba(0,0,0,0) 38%, rgba(${hue}, ${0.18 + level * 0.3}) 100%)`;
+
+    // Screens
+    const showScreen = s.phase === "won" || s.phase === "lost";
+    this.screen.classList.toggle("on", showScreen);
+    if (showScreen) {
+      const won = s.phase === "won";
+      this.screenKicker.textContent = won ? "MISSION COMPLETE" : "MISSION FAILED";
+      this.screenTitle.textContent = won ? "LK-9 RECOVERED" : "RECOVERY LOST";
+      this.screenTitle.className = won ? "win" : "lose";
+      this.screenBody.textContent = won
+        ? "The rescue booster is away and tracking. Kepler South held its reactor bank, its coolant loop and its uplink through the swarm."
+        : s.failReason;
+      this.screenCta.innerHTML = `Press <b>R</b> to run the encounter again`;
+    }
+  }
+}

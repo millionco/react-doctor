@@ -11,7 +11,7 @@ interface ParseFixtureOptions {
   forceJsx?: boolean;
 }
 
-interface ParseFixtureResult {
+export interface ParseFixtureResult {
   program: EsTreeNode;
   errors: ReadonlyArray<{ message: string }>;
 }

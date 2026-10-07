@@ -15,12 +15,13 @@ const JS_BOTTOM_SHEET_PACKAGES = new Set([
 
 export const rnBottomSheetPreferNative = defineRule({
   id: "rn-bottom-sheet-prefer-native",
+  defaultEnabled: false,
   title: "JS bottom sheet misses native sheet behavior",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    'On RN v7+, use `<Modal presentationStyle="formSheet">` so the sheet uses platform-native gestures, detents, accessibility, and presentation behavior.',
+    'When native presentation fits the design, use `<Modal presentationStyle="formSheet">` for platform-native gestures, accessibility, and presentation behavior.',
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;

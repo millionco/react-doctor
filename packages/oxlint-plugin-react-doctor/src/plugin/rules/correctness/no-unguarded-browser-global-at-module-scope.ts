@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import * as path from "node:path";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -6,8 +7,10 @@ import { getImportBindingForName } from "../../utils/find-import-source-for-name
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isDomGuardIdentifierName } from "../../utils/is-dom-guard-identifier-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isNonSourceFilename } from "../../utils/is-non-source-filename.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { isTypeScriptTypePosition } from "../../utils/is-typescript-type-position.js";
 import { readBrowserGlobalAvailability } from "../../utils/read-browser-global-availability.js";
 import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -524,12 +527,15 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
   recommendation:
     'Reading `window`/`navigator`/`localStorage` at module scope throws `ReferenceError: window is not defined` when the module is imported during SSR. Move the read inside a function/effect, or guard it with `typeof window !== "undefined"`.',
   create: (context: RuleContext): RuleVisitors => {
-    if (/\.d\.[cm]?ts$/i.test(context.filename ?? "")) return {};
-    if (isTestlikeFilename(context.filename)) return {};
-    if (isBrowserOnlyModuleFilename(context.filename)) return {};
+    if (/\.d\.[cm]?ts$/i.test(context.filename ?? "")) return EMPTY_RULE_VISITORS;
+    if (isTestlikeFilename(context.filename)) return EMPTY_RULE_VISITORS;
+    if (isNonSourceFilename(context.filename)) return EMPTY_RULE_VISITORS;
+    if (isBrowserOnlyModuleFilename(context.filename)) return EMPTY_RULE_VISITORS;
 
     let guardAliasNames: ReadonlySet<string> = NO_GUARD_ALIASES;
     let browserOnlyGuardEndOffsetsByGlobalName = new Map<string, number[]>();
+    let programNode: EsTreeNodeOfType<"Program"> | null = null;
+    let didAnalyzeGuards = false;
 
     const importedGuardResolutionByName = new Map<string, ImportedGuardResolution>();
     let importedGuardResolutionCount = 0;
@@ -582,6 +588,17 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
     };
 
     const reportRead = (node: EsTreeNode, globalName: string): void => {
+      if (!isEvaluatedAtImportTime(node)) return;
+      if (!didAnalyzeGuards && programNode) {
+        guardAliasNames = collectGuardAliasNames(programNode);
+        browserOnlyGuardEndOffsetsByGlobalName = collectBrowserOnlyGuardEndOffsets(
+          programNode,
+          context,
+          guardAliasNames,
+          classifyImportedGuardIdentifier,
+        );
+        didAnalyzeGuards = true;
+      }
       if (
         browserOnlyGuardEndOffsetsByGlobalName
           .get(globalName)
@@ -589,7 +606,6 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
       ) {
         return;
       }
-      if (!isEvaluatedAtImportTime(node)) return;
       if (
         isGuardedAgainstSsrCrash(
           node,
@@ -608,17 +624,12 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
 
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        guardAliasNames = collectGuardAliasNames(node);
-        browserOnlyGuardEndOffsetsByGlobalName = collectBrowserOnlyGuardEndOffsets(
-          node,
-          context,
-          guardAliasNames,
-          classifyImportedGuardIdentifier,
-        );
+        programNode = node;
       },
       Identifier(node: EsTreeNodeOfType<"Identifier">) {
         if (!BROWSER_GLOBAL_NAMES.has(node.name)) return;
         if (!context.scopes.isGlobalReference(node)) return;
+        if (isTypeScriptTypePosition(node)) return;
         const expressionRoot = findTransparentExpressionRoot(node);
         if (
           expressionRoot.parent &&

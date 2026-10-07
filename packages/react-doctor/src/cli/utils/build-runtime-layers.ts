@@ -2,19 +2,28 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import {
   Config,
-  DeadCode,
   Files,
   Git,
+  InvocationCaches,
   Linter,
   LintPartialFailures,
+  Maintainability,
   OxlintConcurrency,
+  OxlintSpawnSlots,
   Progress,
   Project,
   Reporter,
   Score,
+  shouldUseMaintainabilityLayer,
   SupplyChain,
 } from "@react-doctor/core";
-import type { ProgressHandle, ProjectInfo, ReactDoctorConfig } from "@react-doctor/core";
+import type {
+  InvocationCachesHandle,
+  ProgressHandle,
+  ProjectInfo,
+  ReactDoctorConfig,
+  OxlintSpawnSlotsHandle,
+} from "@react-doctor/core";
 import { spinner } from "./spinner.js";
 
 export interface BuildRuntimeLayersInput {
@@ -51,7 +60,7 @@ export interface BuildRuntimeLayersInput {
    */
   readonly shouldComputeScore: boolean;
   /**
-   * Whether the lint + dead-code spinners should render on stderr.
+   * Whether the lint and maintainability spinners should render on stderr.
    * Set `false` for `--score-only`, `--silent`, or runs that skip
    * lint entirely — the orchestrator's `Progress` lifecycle becomes
    * a noop instead of emitting frames into a quiet stream.
@@ -66,6 +75,10 @@ export interface BuildRuntimeLayersInput {
    * count) in place.
    */
   readonly oxlintConcurrency?: number;
+  readonly oxlintSpawnSlots?: OxlintSpawnSlotsHandle;
+  readonly invocationCaches?: InvocationCachesHandle;
+  readonly reporterLayer?: Layer.Layer<Reporter>;
+  readonly progressLayer?: Layer.Layer<Progress>;
 }
 
 /**
@@ -110,7 +123,12 @@ const buildSpinnerProgressHandle = (text: string): ProgressHandle => {
  */
 export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
   const linterLayer = input.shouldSkipLint ? Linter.layerOf([]) : Linter.layerOxlint;
-  const deadCodeLayer = input.shouldRunDeadCode ? DeadCode.layerNode : DeadCode.layerOf([]);
+  const maintainabilityLayer = shouldUseMaintainabilityLayer({
+    shouldRunDuplicateJsx: input.shouldRunDeadCode,
+    userConfig: input.userConfig,
+  })
+    ? Maintainability.layerNode
+    : Maintainability.layerOf([]);
   const scoreLayer = input.shouldComputeScore ? Score.layerHttp : Score.layerOf(null);
   // Socket.dev supply-chain score gate runs by default (the keyless HTTP
   // layer); a no-op empty layer when the user opts out via
@@ -122,9 +140,12 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
     input.projectInfoOverride === undefined
       ? Project.layerNode
       : Project.layerOf(input.projectInfoOverride);
-  const progressLayer = input.shouldShowProgressSpinners
-    ? Progress.layerOra(buildSpinnerProgressHandle)
-    : Progress.layerNoop;
+  const progressLayer =
+    input.progressLayer ??
+    (input.shouldShowProgressSpinners
+      ? Progress.layerOra(buildSpinnerProgressHandle)
+      : Progress.layerNoop);
+  const reporterLayer = input.reporterLayer ?? Reporter.layerNoop;
   const configLayer = input.hasConfigOverride
     ? Config.layerOf({
         config: input.userConfig,
@@ -145,9 +166,9 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
     Git.layerNode,
     linterLayer,
     LintPartialFailures.layerLive,
-    deadCodeLayer,
+    maintainabilityLayer,
     progressLayer,
-    Reporter.layerNoop,
+    reporterLayer,
     scoreLayer,
     supplyChainLayer,
   );
@@ -156,7 +177,18 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
   // resolved a concrete worker count (today: `--no-parallel` → serial);
   // otherwise leave the env-seeded default (parallel) so
   // `REACT_DOCTOR_PARALLEL` still applies to flag-less runs.
-  return input.oxlintConcurrency === undefined
-    ? baseLayers
-    : Layer.mergeAll(baseLayers, Layer.succeed(OxlintConcurrency, input.oxlintConcurrency));
+  const layersWithConcurrency =
+    input.oxlintConcurrency === undefined
+      ? baseLayers
+      : Layer.mergeAll(baseLayers, Layer.succeed(OxlintConcurrency, input.oxlintConcurrency));
+  const layersWithSpawnSlots =
+    input.oxlintSpawnSlots === undefined
+      ? layersWithConcurrency
+      : Layer.mergeAll(
+          layersWithConcurrency,
+          Layer.succeed(OxlintSpawnSlots, input.oxlintSpawnSlots),
+        );
+  return input.invocationCaches === undefined
+    ? layersWithSpawnSlots
+    : Layer.mergeAll(layersWithSpawnSlots, Layer.succeed(InvocationCaches, input.invocationCaches));
 };

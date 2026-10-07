@@ -1,15 +1,22 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { describe, expect, it, vi } from "vite-plus/test";
-import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import type { CheckSecurityScanOptions, Diagnostic, ProjectInfo } from "@react-doctor/core";
 
 // Module-wide mock (why this lives in its own file, away from the main
 // run-inspect suite): the forked security scan must reject so the fail-open
 // path — not the healthy walk — is what the scan exercises.
+const securityScanMockState = vi.hoisted(() => ({ shouldReachDeadline: false }));
+
 vi.mock("../src/check-security-scan.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/check-security-scan.js")>()),
-  checkSecurityScanCooperative: () =>
-    Promise.reject(new Error("EMFILE: too many open files, open 'src/App.tsx'")),
+  checkSecurityScanCooperative: (_directory: string, options: CheckSecurityScanOptions) => {
+    if (securityScanMockState.shouldReachDeadline) {
+      options.onDeadlineExceeded?.();
+      return Promise.resolve([securityDiagnostic]);
+    }
+    return Promise.reject(new Error("EMFILE: too many open files, open 'src/App.tsx'"));
+  },
 }));
 
 import { runInspect, type InspectInput } from "../src/run-inspect.js";
@@ -65,6 +72,18 @@ const lintDiagnostic: Diagnostic = {
   category: "Correctness",
 };
 
+const securityDiagnostic: Diagnostic = {
+  filePath: "/repo/.env.production",
+  plugin: "react-doctor",
+  rule: "artifact-secret-leak",
+  severity: "error",
+  message: "A production secret is present in a shipped artifact.",
+  help: "Remove the secret and rotate it.",
+  line: 1,
+  column: 1,
+  category: "Security",
+};
+
 const baseInput: InspectInput = {
   directory: "/repo",
   includePaths: [],
@@ -93,6 +112,10 @@ const layers = Layer.mergeAll(
 );
 
 describe("runInspect — security-scan fail-open", () => {
+  afterEach(() => {
+    securityScanMockState.shouldReachDeadline = false;
+  });
+
   it("skips a failing security scan instead of sinking the scan, and records it on securityScanFailed", async () => {
     // Before the fail-open, this rejection defected through the unconditional
     // `Fiber.join` and the whole (otherwise successful) scan threw.
@@ -102,5 +125,18 @@ describe("runInspect — security-scan fail-open", () => {
     expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual(["no-derived-state"]);
     expect(output.didLintFail).toBe(false);
     expect(output.score).toEqual({ score: 85, label: "Good" });
+  });
+
+  it("keeps security findings collected before a deadline and marks the pass incomplete", async () => {
+    securityScanMockState.shouldReachDeadline = true;
+
+    const output = await Effect.runPromise(runInspect(baseInput).pipe(Effect.provide(layers)));
+
+    expect(output.securityScanFailed).toBe(true);
+    expect(output.securityScanFailureReason).toContain("findings collected before the deadline");
+    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
+      "artifact-secret-leak",
+      "no-derived-state",
+    ]);
   });
 });

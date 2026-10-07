@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "@react-doctor/core";
-import { formatRuleSummary } from "../src/cli/utils/render-diagnostics.js";
+import { formatRuleSummary } from "../src/cli/utils/format-rule-summary.js";
 
 const makeDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
   filePath: "src/App.tsx",

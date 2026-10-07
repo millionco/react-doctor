@@ -120,7 +120,7 @@ const isProvenArrayMapCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean 
   );
 };
 
-const isRenderPreservingCallArgumentFunction = (
+export const isRenderPreservingCallArgumentFunction = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean => {
@@ -151,7 +151,7 @@ const isRenderOutputExpression = (node: EsTreeNode, scopes: ScopeAnalysis): bool
   isReactApiCall(node, "createElement", scopes, REACT_CREATE_ELEMENT_OPTIONS) ||
   isReactDomCreatePortalCall(node, scopes);
 
-const isReactDomCreatePortalCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+export const isReactDomCreatePortalCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
   const callee = stripParenExpression(node.callee);
   if (isNodeOfType(callee, "Identifier")) {

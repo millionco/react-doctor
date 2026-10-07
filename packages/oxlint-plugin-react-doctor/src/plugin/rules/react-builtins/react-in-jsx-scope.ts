@@ -1,7 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
-import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE = "This JSX crashes because `React` isn't in scope.";
 

@@ -23,6 +23,7 @@ import {
 } from "./utils/analyze-owned-lifecycle-resource.js";
 import { getApiReferenceModuleSource } from "./utils/get-api-reference-module-source.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
+import { isThreeModuleSource } from "./utils/is-three-module-source.js";
 import { R3F_PUBLIC_MODULES } from "./utils/r3f-public-modules.js";
 import { R3F_WEBGPU_MODULES } from "./utils/r3f-webgpu-modules.js";
 import { THREE_RENDER_METHOD_NAMES } from "./utils/three-render-method-names.js";
@@ -39,9 +40,6 @@ interface AnimationFrameHandle {
   symbol: SymbolDescriptor | null;
   refSymbol: SymbolDescriptor | null;
 }
-
-const isThreeModuleSource = (moduleSource: string): boolean =>
-  moduleSource === "three" || moduleSource === "three-stdlib" || moduleSource.startsWith("three/");
 
 const isNullArgument = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
   const argument = call.arguments[0];

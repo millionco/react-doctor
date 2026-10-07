@@ -5,6 +5,8 @@ import {
   getCapabilities,
   shouldEnableRule,
 } from "../src/project-info/capabilities.js";
+import { hasReactRuntime } from "../src/utils/has-react-runtime.js";
+import { hasSupportedFrameworkOrLibrary } from "../src/utils/has-supported-framework-or-library.js";
 
 const baseProject: ProjectInfo = {
   rootDirectory: "/tmp/project",
@@ -48,12 +50,146 @@ const baseProject: ProjectInfo = {
   preactVersion: null,
   preactMajorVersion: null,
   hasReanimated: false,
+  reanimatedVersion: null,
   isPreES2023Target: false,
   isStaticExport: false,
   sourceFileCount: 1,
 };
 
 describe("buildCapabilities", () => {
+  it("recognizes every framework and library capability as a supported scan target", () => {
+    const plainProject: ProjectInfo = {
+      ...baseProject,
+      framework: "unknown",
+      reactVersion: null,
+      reactMajorVersion: null,
+      isPreES2023Target: true,
+    };
+    expect(hasSupportedFrameworkOrLibrary(plainProject)).toBe(false);
+
+    const supportedFrameworks: ReadonlyArray<ProjectInfo["framework"]> = [
+      "nextjs",
+      "astro",
+      "vite",
+      "cra",
+      "remix",
+      "gatsby",
+      "expo",
+      "react-native",
+      "tanstack-start",
+      "preact",
+    ];
+    for (const framework of supportedFrameworks) {
+      expect(hasSupportedFrameworkOrLibrary({ ...plainProject, framework })).toBe(true);
+    }
+
+    const supportedLibraryProjects: ReadonlyArray<ProjectInfo> = [
+      { ...plainProject, reactVersion: "19.0.0", reactMajorVersion: 19 },
+      { ...plainProject, tailwindVersion: "4.0.0" },
+      { ...plainProject, zodVersion: "4.0.0", zodMajorVersion: 4 },
+      { ...plainProject, mobxVersion: "6.0.0", mobxMajorVersion: 6 },
+      { ...plainProject, zustandVersion: "5.0.0", zustandMajorVersion: 5 },
+      { ...plainProject, hasReactCompiler: true },
+      { ...plainProject, reanimatedVersion: "4.0.0" },
+      { ...plainProject, hasTanStackQuery: true },
+      { ...plainProject, styledComponentsVersion: "6.0.0" },
+      { ...plainProject, hasI18nLibrary: true },
+      { ...plainProject, valtioVersion: "2.0.0", valtioMajorVersion: 2 },
+      { ...plainProject, hasRemotion: true },
+      { ...plainProject, hasThree: true },
+      { ...plainProject, hasReactThreeFiber: true },
+      { ...plainProject, preactVersion: "10.0.0", preactMajorVersion: 10 },
+      { ...plainProject, reactRouterVersion: "7.0.0" },
+      { ...plainProject, expoVersion: "54.0.0" },
+      { ...plainProject, hasReactNativeWorkspace: true },
+      { ...plainProject, hasSsrDependency: true },
+    ];
+    for (const project of supportedLibraryProjects) {
+      expect(hasSupportedFrameworkOrLibrary(project)).toBe(true);
+    }
+  });
+
+  it("treats React-backed frameworks as runtime evidence without a direct React version", () => {
+    for (const framework of [
+      "nextjs",
+      "tanstack-start",
+      "cra",
+      "remix",
+      "gatsby",
+      "expo",
+      "react-native",
+      "preact",
+    ] as const) {
+      const frameworkProject = {
+        ...baseProject,
+        framework,
+        reactVersion: null,
+        reactMajorVersion: null,
+      };
+      expect(hasReactRuntime(frameworkProject)).toBe(true);
+      expect(buildCapabilities(frameworkProject).has("react")).toBe(true);
+    }
+
+    for (const framework of ["vite", "astro"] as const) {
+      const frameworkProject = {
+        ...baseProject,
+        framework,
+        reactVersion: null,
+        reactMajorVersion: null,
+      };
+      expect(hasReactRuntime(frameworkProject)).toBe(false);
+      expect(buildCapabilities(frameworkProject).has("react")).toBe(false);
+    }
+  });
+
+  it("emits Expo 54 only when tree shaking is enabled by default", () => {
+    const expoFiftyThreeCapabilities = buildCapabilities({
+      ...baseProject,
+      framework: "expo",
+      expoVersion: "~53.0.0",
+    });
+    const expoFiftyFourCapabilities = buildCapabilities({
+      ...baseProject,
+      framework: "expo",
+      expoVersion: "~54.0.0",
+    });
+
+    expect(expoFiftyThreeCapabilities.has("expo")).toBe(true);
+    expect(expoFiftyThreeCapabilities.has("expo:54")).toBe(false);
+    expect(expoFiftyFourCapabilities.has("expo:54")).toBe(true);
+  });
+
+  it("emits Reanimated 4 only for a parseable v4-or-newer dependency", () => {
+    const reanimatedThreeCapabilities = buildCapabilities({
+      ...baseProject,
+      hasReanimated: true,
+      reanimatedVersion: "^3.19.0",
+    });
+    const reanimatedFourCapabilities = buildCapabilities({
+      ...baseProject,
+      hasReanimated: true,
+      reanimatedVersion: "^4.1.0",
+    });
+    const unknownReanimatedCapabilities = buildCapabilities({
+      ...baseProject,
+      hasReanimated: true,
+      reanimatedVersion: "workspace:*",
+    });
+
+    expect(reanimatedThreeCapabilities.has("reanimated")).toBe(true);
+    expect(reanimatedThreeCapabilities.has("reanimated:4")).toBe(false);
+    expect(reanimatedFourCapabilities.has("reanimated:4")).toBe(true);
+    expect(unknownReanimatedCapabilities.has("reanimated")).toBe(true);
+    expect(unknownReanimatedCapabilities.has("reanimated:4")).toBe(false);
+  });
+
+  it("accepts legacy project snapshots without reanimatedVersion", () => {
+    const legacyProject = { ...baseProject };
+    Reflect.deleteProperty(legacyProject, "reanimatedVersion");
+
+    expect(buildCapabilities(legacyProject).has("reanimated")).toBe(false);
+  });
+
   it("emits the remotion capability without replacing the web framework capability", () => {
     const capabilities = buildCapabilities({
       ...baseProject,
@@ -595,6 +731,38 @@ describe("buildCapabilities", () => {
     );
   });
 
+  it("emits `shadcn` only when the project carries a shadcn components config", () => {
+    expect(buildCapabilities(baseProject).has("shadcn")).toBe(false);
+    expect(buildCapabilities({ ...baseProject, hasShadcnUi: false }).has("shadcn")).toBe(false);
+    expect(buildCapabilities({ ...baseProject, hasShadcnUi: true }).has("shadcn")).toBe(true);
+  });
+
+  it("emits `radix-ui` and `base-ui` only when the headless library is declared", () => {
+    expect(buildCapabilities(baseProject).has("radix-ui")).toBe(false);
+    expect(buildCapabilities(baseProject).has("base-ui")).toBe(false);
+    expect(buildCapabilities({ ...baseProject, hasRadixUi: true }).has("radix-ui")).toBe(true);
+    expect(buildCapabilities({ ...baseProject, hasBaseUi: true }).has("base-ui")).toBe(true);
+  });
+
+  it("emits `react-aria`, `tanstack-table`, and `tanstack-virtual` from their dependencies", () => {
+    expect(buildCapabilities(baseProject).has("react-aria")).toBe(false);
+    expect(buildCapabilities(baseProject).has("tanstack-table")).toBe(false);
+    expect(buildCapabilities(baseProject).has("tanstack-virtual")).toBe(false);
+    expect(
+      buildCapabilities({ ...baseProject, hasReactAriaComponents: true }).has("react-aria"),
+    ).toBe(true);
+    expect(
+      buildCapabilities({ ...baseProject, hasTanstackTable: true }).has("tanstack-table"),
+    ).toBe(true);
+    expect(
+      buildCapabilities({ ...baseProject, hasTanstackVirtual: true }).has("tanstack-virtual"),
+    ).toBe(true);
+    expect(buildCapabilities(baseProject).has("tanstack-form")).toBe(false);
+    expect(buildCapabilities({ ...baseProject, hasTanstackForm: true }).has("tanstack-form")).toBe(
+      true,
+    );
+  });
+
   it("emits `tailwind`, `tailwind:3.4`, and `tailwind:4` for a Tailwind 4 project", () => {
     const capabilities = buildCapabilities({ ...baseProject, tailwindVersion: "^4.0.0" });
     expect(capabilities.has("tailwind")).toBe(true);
@@ -606,6 +774,33 @@ describe("buildCapabilities", () => {
     const capabilities = buildCapabilities({ ...baseProject, tailwindVersion: "^3.4.1" });
     expect(capabilities.has("tailwind:3.4")).toBe(true);
     expect(capabilities.has("tailwind:4")).toBe(false);
+  });
+
+  it("does not enable Tailwind version gates from digits in npm alias package names", () => {
+    for (const tailwindVersion of [
+      "npm:@tailwindcss/postcss7-compat@^2.2.17",
+      "npm:@tailwindcss/postcss7-compat",
+      "npm:@tailwindcss/postcss7-compat@latest",
+      "npm:@tailwindcss/postcss7-compat@next",
+      "npm:@tailwindcss/postcss7-compat@*",
+    ]) {
+      const capabilities = buildCapabilities({
+        ...baseProject,
+        tailwindVersion,
+      });
+      expect(capabilities.has("tailwind")).toBe(true);
+      expect(capabilities.has("tailwind:3.4")).toBe(false);
+      expect(capabilities.has("tailwind:4")).toBe(false);
+    }
+  });
+
+  it("does not enable Tailwind 3.4 for ranges that explicitly cap the version below it", () => {
+    for (const tailwindVersion of ["<3.4", "<=3.3.99"]) {
+      const capabilities = buildCapabilities({ ...baseProject, tailwindVersion });
+      expect(capabilities.has("tailwind")).toBe(true);
+      expect(capabilities.has("tailwind:3.4")).toBe(false);
+      expect(capabilities.has("tailwind:4")).toBe(false);
+    }
   });
 
   it("stays optimistic for `tailwind:3.4` but withholds `tailwind:4` when the version is unparseable", () => {
@@ -679,6 +874,93 @@ describe("buildCapabilities", () => {
     });
     expect(capabilities.has("nextjs")).toBe(true);
     expect(capabilities.has("nextjs:15")).toBe(false);
+  });
+
+  it("emits React Router capability thresholds through the detected version", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      reactRouterVersion: "^7.9.0",
+    });
+    expect(capabilities.has("react-router")).toBe(true);
+    expect(capabilities.has("react-router:6.4")).toBe(true);
+    expect(capabilities.has("react-router:6.19")).toBe(true);
+    expect(capabilities.has("react-router:7.9")).toBe(true);
+    expect(capabilities.has("react-router:7.10")).toBe(false);
+    expect(capabilities.has("react-router:8")).toBe(false);
+  });
+
+  it("does not enable v7 React Router rules for a v6 project", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      reactRouterVersion: "^6.30.1",
+    });
+    expect(capabilities.has("react-router:6.9")).toBe(true);
+    expect(capabilities.has("react-router:7")).toBe(false);
+    expect(
+      shouldEnableRule(
+        ["react-router:7", "react-router-framework"],
+        undefined,
+        capabilities,
+        new Set(),
+      ),
+    ).toBe(false);
+  });
+
+  it("enables stable middleware rules only at v7.9 in Framework mode", () => {
+    const dataModeCapabilities = buildCapabilities({
+      ...baseProject,
+      reactRouterVersion: "^7.9.0",
+    });
+    const frameworkModeCapabilities = buildCapabilities({
+      ...baseProject,
+      reactRouterVersion: "^7.9.0",
+      hasReactRouterFramework: true,
+    });
+    expect(
+      shouldEnableRule(
+        ["react-router:7.9", "react-router-framework"],
+        undefined,
+        dataModeCapabilities,
+        new Set(),
+      ),
+    ).toBe(false);
+    expect(
+      shouldEnableRule(
+        ["react-router:7.9", "react-router-framework"],
+        undefined,
+        frameworkModeCapabilities,
+        new Set(),
+      ),
+    ).toBe(true);
+  });
+
+  it("emits the Framework mode capability independently of the framework bucket", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "vite",
+      reactRouterVersion: "^8.1.0",
+      hasReactRouterFramework: true,
+    });
+    expect(capabilities.has("react-router-framework")).toBe(true);
+    expect(capabilities.has("react-router:7.10")).toBe(true);
+    expect(capabilities.has("react-router:7.15")).toBe(true);
+    expect(capabilities.has("react-router:8")).toBe(true);
+  });
+
+  it("emits only the bare React Router capability for an unparseable version", () => {
+    for (const reactRouterVersion of [
+      "workspace:*",
+      "catalog:router8",
+      "git+https://github.com/acme/router.git#v7.9.0",
+      "acme/router#v7.9.0",
+    ]) {
+      const capabilities = buildCapabilities({
+        ...baseProject,
+        reactRouterVersion,
+      });
+      expect(capabilities.has("react-router")).toBe(true);
+      expect(capabilities.has("react-router:6.4")).toBe(false);
+    }
   });
 
   it("omits `nextjs:15` when the Next.js version is unparseable", () => {

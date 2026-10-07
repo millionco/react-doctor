@@ -10,6 +10,7 @@
  *              children
  *   #581     — fbtee `<fbt>` / `<fbs>` translation tags stay transparent to
  *              the `<Text>` boundary (so raw text inside them isn't flagged)
+ *   #1722    — `<fbt>` content is safe inside verified text wrappers
  *   #76      — maintained Expo packages are not treated as legacy packages
  *   #94      — `MotionConfig reducedMotion="user"` must satisfy the
  *              reduced-motion accessibility check (so the rule doesn't
@@ -276,7 +277,9 @@ describe("rn-no-raw-text resolves imported components across files", () => {
           `export const App = () => (\n` +
           `  <>\n` +
           `    <SafeButton>Safe label</SafeButton>\n` +
+          `    <SafeButton><fbt desc="safe">Safe translated label</fbt></SafeButton>\n` +
           `    <CrashingCard>Crashing text</CrashingCard>\n` +
+          `    <CrashingCard><fbt desc="crash">Crashing translated text</fbt></CrashingCard>\n` +
           `  </>\n` +
           `);\n`,
       },
@@ -293,9 +296,15 @@ describe("rn-no-raw-text resolves imported components across files", () => {
       .filter((diagnostic) => diagnostic.rule === "rn-no-raw-text")
       .map((diagnostic) => diagnostic.message);
 
-    expect(rnRawTextMessages).toHaveLength(1);
-    expect(rnRawTextMessages[0]).toContain("Crashing text");
+    expect(rnRawTextMessages).toHaveLength(2);
+    expect(rnRawTextMessages.some((message) => message.includes("Crashing text"))).toBe(true);
+    expect(rnRawTextMessages.some((message) => message.includes("Crashing translated text"))).toBe(
+      true,
+    );
     expect(rnRawTextMessages.some((message) => message.includes("Safe label"))).toBe(false);
+    expect(rnRawTextMessages.some((message) => message.includes("Safe translated label"))).toBe(
+      false,
+    );
   });
 
   it("follows a wrapper that forwards children through another component in the same module", async () => {
@@ -399,7 +408,7 @@ export const App = () => (
     expect(diagnostics).toHaveLength(0);
   });
 
-  it("still reports raw text when <fbt> is outside <Text>", async () => {
+  it("does not report when a component returns only fbt (issue #1729)", async () => {
     const projectDirectory = buildFbteeProject(
       "issue-581-fbt-outside-text",
       `export const App = () => <fbt desc="Greeting">Welcome</fbt>;
@@ -407,7 +416,7 @@ export const App = () => (
     );
 
     const diagnostics = await getRnNoRawTextDiagnostics(projectDirectory);
-    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics).toHaveLength(0);
   });
 });
 

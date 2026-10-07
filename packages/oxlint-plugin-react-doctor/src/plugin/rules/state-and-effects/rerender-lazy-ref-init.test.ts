@@ -88,7 +88,7 @@ describe("rerender-lazy-ref-init", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("does NOT flag trivial empty-container constructors (lazy-init is net-negative for them)", () => {
+  it("stays quiet for empty built-in registries but flags other constructors", () => {
     const result = runRule(
       rerenderLazyRefInit,
       `
@@ -100,12 +100,17 @@ describe("rerender-lazy-ref-init", () => {
         const weakSeen = useRef(new WeakSet());
         const weakById = useRef(new WeakMap());
         const controller = useRef(new AbortController());
+        const startedAt = useRef(new Date());
       }
     `,
     );
 
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics.map(({ message }) => message)).toEqual([
+      expect.stringContaining("new AbortController()"),
+      expect.stringContaining("new Date()"),
+    ]);
   });
 
   it("flags `new Set(props.items)` — a runtime argument iterates its input on every render", () => {
@@ -163,8 +168,6 @@ describe("rerender-lazy-ref-init", () => {
     `,
     );
 
-    // Hook results are already stable, and the suggested lazy-init fix
-    // would call a hook conditionally — illegal. Don't flag them.
     expect(idResult.diagnostics).toEqual([]);
     expect(contextResult.diagnostics).toEqual([]);
   });

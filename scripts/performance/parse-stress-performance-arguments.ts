@@ -5,6 +5,7 @@ import {
   DEFAULT_STRESS_COMPONENTS_PER_FILE_COUNT,
   DEFAULT_STRESS_CACHE_COHORTS,
   DEFAULT_STRESS_FILE_COUNT,
+  DEFAULT_STRESS_IMPORTS_PER_FILE_COUNT,
   DEFAULT_STRESS_OUTPUT_DIRECTORY,
   STRESS_PROJECT_DIRECTORY_NAME,
 } from "./constants.ts";
@@ -33,6 +34,14 @@ export const parseStressPerformanceArguments = (
       new Option("--components-per-file <count>", "generated components per file")
         .default(DEFAULT_STRESS_COMPONENTS_PER_FILE_COUNT)
         .argParser((value) => parsePositiveInteger("--components-per-file", value, false)),
+    )
+    .addOption(
+      new Option(
+        "--imports-per-file <count>",
+        "shared helper modules each file imports through a barrel (cross-file dependencies)",
+      )
+        .default(DEFAULT_STRESS_IMPORTS_PER_FILE_COUNT)
+        .argParser((value) => parsePositiveInteger("--imports-per-file", value, true)),
     )
     .option(
       "--project <directory>",

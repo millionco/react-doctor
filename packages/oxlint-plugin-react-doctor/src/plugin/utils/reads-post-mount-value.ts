@@ -2,6 +2,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { findProgramRoot } from "./find-program-root.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isPropertyNamePosition } from "./is-property-name-position.js";
 import { walkAst } from "./walk-ast.js";
 
 // DOM/layout reads + globals that are NOT knowable at render time. A value
@@ -14,7 +15,7 @@ import { walkAst } from "./walk-ast.js";
 //
 // Unambiguous DOM API method names: these never appear on plain data objects,
 // so a bare name match is safe.
-export const DOM_QUERY_MEMBER_NAMES: ReadonlySet<string> = new Set([
+const DOM_QUERY_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "getBoundingClientRect",
   "getComputedStyle",
   "getElementById",
@@ -37,6 +38,7 @@ const LAYOUT_MEASUREMENT_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "offsetWidth",
   "scrollHeight",
   "clientHeight",
+  "className",
   "offsetHeight",
   "scrollTop",
   "scrollLeft",
@@ -55,6 +57,7 @@ const POST_MOUNT_GLOBAL_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 const REF_FACTORY_CALLEE_NAMES: ReadonlySet<string> = new Set(["useRef", "createRef"]);
+const DOM_ELEMENT_IDENTIFIER_NAMES: ReadonlySet<string> = new Set(["element", "node"]);
 
 const hasRefLikeName = (name: string): boolean =>
   name === "ref" ||
@@ -164,6 +167,12 @@ const isRefLikeReceiver = (
   return false;
 };
 
+const isClassNameReceiver = (receiver: EsTreeNode): boolean => {
+  if (!isNodeOfType(receiver, "Identifier")) return isRefLikeReceiver(receiver);
+  if (DOM_ELEMENT_IDENTIFIER_NAMES.has(receiver.name)) return true;
+  return resolvesToRefCurrentAlias(receiver, new Set());
+};
+
 // A member read that can only be answered by the live DOM: an unambiguous DOM
 // query API, or `.current` / a layout measure on a ref-like receiver
 // (`viewportRef.current`, `ref.current.offsetWidth`). Plain-data lookalikes
@@ -175,34 +184,8 @@ export const isPostMountMemberRead = (node: EsTreeNode): boolean => {
   const memberName = node.property.name;
   if (DOM_QUERY_MEMBER_NAMES.has(memberName)) return true;
   if (!LAYOUT_MEASUREMENT_MEMBER_NAMES.has(memberName)) return false;
+  if (memberName === "className") return isClassNameReceiver(node.object as EsTreeNode);
   return isRefLikeReceiver(node.object as EsTreeNode);
-};
-
-// A member read that yields a live measurement VALUE. Layout members measure
-// as plain property reads (`ref.current.scrollHeight`), but DOM query members
-// are METHODS — they only measure when invoked (`window.matchMedia("...")`).
-// A bare method reference (`!!window.matchMedia`) is render-time-knowable, so
-// it does not justify deferring state init to a mount effect.
-export const isMeasurementMemberRead = (node: EsTreeNode): boolean => {
-  if (!isPostMountMemberRead(node)) return false;
-  if (!isNodeOfType(node, "MemberExpression") || !isNodeOfType(node.property, "Identifier")) {
-    return false;
-  }
-  if (!DOM_QUERY_MEMBER_NAMES.has(node.property.name)) return true;
-  const parent = node.parent;
-  return Boolean(parent && isNodeOfType(parent, "CallExpression") && parent.callee === node);
-};
-
-const isPropertyNamePosition = (identifier: EsTreeNode): boolean => {
-  const parent = identifier.parent;
-  if (!parent) return false;
-  if (isNodeOfType(parent, "MemberExpression")) {
-    return parent.property === identifier && !parent.computed;
-  }
-  if (isNodeOfType(parent, "Property")) {
-    return parent.key === identifier && !parent.computed;
-  }
-  return false;
 };
 
 // A read of a browser global itself — NOT a same-named property on a data

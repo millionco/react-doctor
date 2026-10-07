@@ -39,7 +39,7 @@ describe("Project.layerOf", () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const project = yield* Project;
-        return yield* project.discover("/anywhere");
+        return yield* project.discover({ directory: "/anywhere" });
       }).pipe(Effect.provide(Project.layerOf(sampleProject))),
     );
     expect(result.projectName).toBe("sample-app");
@@ -50,7 +50,7 @@ describe("Project.layerOf", () => {
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
         const project = yield* Project;
-        return yield* project.discover("/anywhere");
+        return yield* project.discover({ directory: "/anywhere" });
       }).pipe(Effect.provide(Project.layerOf(sampleProject)), Effect.exit),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -62,7 +62,9 @@ describe("Project.layerNode", () => {
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
         const project = yield* Project;
-        return yield* project.discover("/this/path/should/not/exist/abc-project-info-test-12345");
+        return yield* project.discover({
+          directory: "/this/path/should/not/exist/abc-project-info-test-12345",
+        });
       }).pipe(Effect.provide(Project.layerNode), Effect.exit),
     );
     expect(Exit.isFailure(exit)).toBe(true);

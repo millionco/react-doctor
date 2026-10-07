@@ -1,0 +1,283 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 7770d5961defd9b9b46b862d679f9e41c81655d92b7ecfb78146733f6a9182e3
+/**
+ * MALL ROLL — heads-up display.
+ * Original icon set, drawn inline as SVG so it stays crisp at any resolution.
+ */
+
+const NS = "http://www.w3.org/2000/svg";
+
+function svg(paths: string, viewBox = "0 0 32 32", extra = ""): string {
+  return `<svg viewBox="${viewBox}" xmlns="${NS}" ${extra}>${paths}</svg>`;
+}
+
+export const ICONS = {
+  /** Route Arch: a portal with a beam curtain */
+  arch: svg(
+    `<path d="M6 28V14a10 10 0 0 1 20 0v14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+     <path d="M11 28v-13a5 5 0 0 1 10 0v13" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".6"/>
+     <path d="M13 20h6M13 24h6" stroke="currentColor" stroke-width="1.4" opacity=".85" stroke-linecap="round"/>`,
+  ),
+  /** Prize Pylon: faceted obelisk with a core */
+  pylon: svg(
+    `<path d="M16 2 24 12l-3 17h-10L8 12z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+     <circle cx="16" cy="15" r="3.4" fill="currentColor"/>
+     <path d="M6 29h20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>`,
+  ),
+  /** Halo Core */
+  core: svg(
+    `<circle cx="16" cy="16" r="11" fill="none" stroke="currentColor" stroke-width="2.2"/>
+     <path d="M16 5v22M5 16h22" stroke="currentColor" stroke-width="1.1" opacity=".55"/>
+     <circle cx="16" cy="16" r="4.2" fill="currentColor"/>`,
+  ),
+  /** Reboot reserve */
+  reboot: svg(
+    `<path d="M26 16a10 10 0 1 1-3.4-7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+     <path d="M25 3v7h-7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`,
+  ),
+  /** Nova slam */
+  nova: svg(
+    `<path d="M16 3l3.6 8.2L28 14l-8.4 2.8L16 29l-3.6-12.2L4 14l8.4-2.8z" fill="currentColor"/>`,
+  ),
+  /** Speed */
+  speed: svg(
+    `<path d="M4 22a12 12 0 0 1 24 0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+     <path d="M16 22l7-7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+     <circle cx="16" cy="22" r="2.2" fill="currentColor"/>`,
+  ),
+  /** Surface / grip */
+  grip: svg(
+    `<rect x="4" y="19" width="24" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="2.2"/>
+     <path d="M8 19v-4M14 19v-7M20 19v-5M26 19v-9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".75"/>`,
+  ),
+  /** Timer */
+  clock: svg(
+    `<circle cx="16" cy="17" r="11" fill="none" stroke="currentColor" stroke-width="2.4"/>
+     <path d="M16 10v7l5 3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+     <path d="M12 2h8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>`,
+  ),
+  /** Combo chain */
+  combo: svg(
+    `<path d="M13 19l-4 4a4.5 4.5 0 0 1-6.4-6.4l4-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+     <path d="M19 13l4-4a4.5 4.5 0 0 1 6.4 6.4l-4 4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+     <path d="M12 20l8-8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>`,
+  ),
+};
+
+export interface HudState {
+  timeLeft: number;
+  timeLimit: number;
+  speed: number;
+  surface: string;
+  score: number;
+  combo: number;
+  comboTimer: number;
+  gates: boolean[];
+  gatesActiveIndex: number;
+  pylonIntegrity: number;
+  pylonUnlocked: boolean;
+  nova: number;
+  reboots: number;
+  drifters: number;
+}
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private timeEl: HTMLElement;
+  private timeRing: SVGCircleElement;
+  private speedEl: HTMLElement;
+  private surfEl: HTMLElement;
+  private scoreEl: HTMLElement;
+  private comboEl: HTMLElement;
+  private comboBar: HTMLElement;
+  private gateEls: HTMLElement[] = [];
+  private pylonEl: HTMLElement;
+  private pylonBar: HTMLElement;
+  private novaBar: HTMLElement;
+  private novaWrap: HTMLElement;
+  private rebootWrap: HTMLElement;
+  private banner: HTMLElement;
+  private popupLayer: HTMLElement;
+  private overlay: HTMLElement;
+  private vignette: HTMLElement;
+  private driftEl: HTMLElement;
+
+  private bannerTimer = 0;
+
+  constructor(parent: HTMLElement) {
+    const root = document.createElement("div");
+    root.className = "hud";
+    root.innerHTML = `
+      <div class="hud-topleft">
+        <div class="panel time-panel">
+          <svg class="time-ring" viewBox="0 0 60 60">
+            <circle cx="30" cy="30" r="26" class="ring-bg"></circle>
+            <circle cx="30" cy="30" r="26" class="ring-fg"></circle>
+          </svg>
+          <div class="time-inner">
+            <span class="ico">${ICONS.clock}</span>
+            <span class="time-value">150.0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-topcenter">
+        <div class="panel objective-panel">
+          <div class="gates"></div>
+          <div class="sep"></div>
+          <div class="pylon">
+            <span class="ico">${ICONS.pylon}</span>
+            <div class="bar"><i></i></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-topright">
+        <div class="panel score-panel">
+          <div class="score-value">0</div>
+          <div class="score-label">GALLERIA SCORE</div>
+          <div class="combo-row">
+            <span class="ico">${ICONS.combo}</span>
+            <span class="combo-value">x1</span>
+            <div class="combo-bar"><i></i></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-bottomleft">
+        <div class="panel readout">
+          <span class="ico big">${ICONS.speed}</span>
+          <div>
+            <div class="speed-value">0<em>m/s</em></div>
+            <div class="surface-line"><span class="ico small">${ICONS.grip}</span><span class="surface-value">GLASSCRETE</span></div>
+            <div class="drift-line"><span class="ico small">${ICONS.core}</span><span class="drift-value">0 DRIFTERS DOWN</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-bottomcenter">
+        <div class="nova">
+          <span class="ico">${ICONS.nova}</span>
+          <div class="nova-bar"><i></i></div>
+          <span class="nova-label">NOVA SLAM</span>
+        </div>
+      </div>
+
+      <div class="hud-bottomright">
+        <div class="panel reboot-panel">
+          <div class="reboot-label">REBOOTS</div>
+          <div class="reboot-icons"></div>
+        </div>
+      </div>
+
+      <div class="banner"></div>
+      <div class="popups"></div>
+      <div class="vignette"></div>
+      <div class="overlay"></div>
+    `;
+    parent.appendChild(root);
+    this.root = root;
+
+    this.timeEl = root.querySelector(".time-value") as HTMLElement;
+    this.timeRing = root.querySelector(".ring-fg") as unknown as SVGCircleElement;
+    this.speedEl = root.querySelector(".speed-value") as HTMLElement;
+    this.surfEl = root.querySelector(".surface-value") as HTMLElement;
+    this.scoreEl = root.querySelector(".score-value") as HTMLElement;
+    this.comboEl = root.querySelector(".combo-value") as HTMLElement;
+    this.comboBar = root.querySelector(".combo-bar i") as HTMLElement;
+    this.pylonEl = root.querySelector(".pylon") as HTMLElement;
+    this.pylonBar = root.querySelector(".pylon .bar i") as HTMLElement;
+    this.novaBar = root.querySelector(".nova-bar i") as HTMLElement;
+    this.novaWrap = root.querySelector(".nova") as HTMLElement;
+    this.rebootWrap = root.querySelector(".reboot-icons") as HTMLElement;
+    this.banner = root.querySelector(".banner") as HTMLElement;
+    this.popupLayer = root.querySelector(".popups") as HTMLElement;
+    this.overlay = root.querySelector(".overlay") as HTMLElement;
+    this.vignette = root.querySelector(".vignette") as HTMLElement;
+    this.driftEl = root.querySelector(".drift-value") as HTMLElement;
+
+    const gates = root.querySelector(".gates") as HTMLElement;
+    for (let i = 0; i < 3; i++) {
+      const el = document.createElement("div");
+      el.className = "gate";
+      el.innerHTML = `<span class="ico">${ICONS.arch}</span><span class="tag">${i + 1}</span>`;
+      gates.appendChild(el);
+      this.gateEls.push(el);
+    }
+    for (let i = 0; i < 2; i++) {
+      const el = document.createElement("span");
+      el.className = "ico reboot-ico";
+      el.innerHTML = ICONS.reboot;
+      this.rebootWrap.appendChild(el);
+    }
+    const circ = 2 * Math.PI * 26;
+    this.timeRing.style.strokeDasharray = `${circ}`;
+  }
+
+  update(s: HudState, dt: number): void {
+    this.timeEl.textContent = s.timeLeft.toFixed(1);
+    const frac = Math.max(0, Math.min(1, s.timeLeft / s.timeLimit));
+    const circ = 2 * Math.PI * 26;
+    this.timeRing.style.strokeDashoffset = `${circ * (1 - frac)}`;
+    this.timeEl.parentElement?.classList.toggle("urgent", s.timeLeft < 25);
+    this.timeRing.classList.toggle("urgent", s.timeLeft < 25);
+
+    this.speedEl.innerHTML = `${Math.round(s.speed)}<em>m/s</em>`;
+    this.surfEl.textContent = s.surface;
+    this.scoreEl.textContent = s.score.toLocaleString("en-US");
+    this.comboEl.textContent = `x${s.combo}`;
+    this.comboEl.classList.toggle("hot", s.combo >= 4);
+    this.comboBar.style.width = `${Math.max(0, Math.min(1, s.comboTimer)) * 100}%`;
+    this.driftEl.textContent = `${s.drifters} DRIFTERS DOWN`;
+
+    for (let i = 0; i < this.gateEls.length; i++) {
+      const el = this.gateEls[i] as HTMLElement;
+      el.classList.toggle("done", s.gates[i] === true);
+      el.classList.toggle("active", !s.gates[i] && i === s.gatesActiveIndex);
+    }
+    this.pylonEl.classList.toggle("armed", s.pylonUnlocked);
+    this.pylonBar.style.width = `${Math.max(0, s.pylonIntegrity) * 100}%`;
+
+    this.novaBar.style.width = `${Math.max(0, Math.min(1, s.nova)) * 100}%`;
+    this.novaWrap.classList.toggle("ready", s.nova >= 1);
+
+    const icons = this.rebootWrap.children;
+    for (let i = 0; i < icons.length; i++) {
+      (icons[i] as HTMLElement).classList.toggle("spent", i >= s.reboots);
+    }
+
+    if (this.bannerTimer > 0) {
+      this.bannerTimer -= dt;
+      if (this.bannerTimer <= 0) this.banner.classList.remove("show");
+    }
+  }
+
+  setVignette(intensity: number, hue: string): void {
+    this.vignette.style.opacity = `${Math.max(0, Math.min(1, intensity))}`;
+    this.vignette.style.background = `radial-gradient(ellipse at center, transparent 38%, ${hue} 100%)`;
+  }
+
+  showBanner(title: string, sub = "", kind = ""): void {
+    this.banner.className = `banner show ${kind}`;
+    this.banner.innerHTML = `<div class="b-title">${title}</div>${sub ? `<div class="b-sub">${sub}</div>` : ""}`;
+    this.bannerTimer = 2.1;
+  }
+
+  popup(text: string, kind: string, x = 50, y = 46): void {
+    const el = document.createElement("div");
+    el.className = `popup ${kind}`;
+    el.textContent = text;
+    el.style.left = `${x}%`;
+    el.style.top = `${y}%`;
+    this.popupLayer.appendChild(el);
+    window.setTimeout(() => el.remove(), 1200);
+  }
+
+  setOverlay(html: string): void {
+    this.overlay.innerHTML = html;
+    this.overlay.classList.toggle("show", html.length > 0);
+  }
+}

@@ -6,10 +6,16 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
-import { afterAll, describe, expect, it } from "vite-plus/test";
-import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "@react-doctor/core";
+import { afterAll, describe, expect, it, vi } from "vite-plus/test";
+import type {
+  ChangedFileLineRanges,
+  Diagnostic,
+  ProjectInfo,
+  ReactDoctorConfig,
+  SourceFileEntry,
+} from "@react-doctor/core";
 import {
-  DeadCodeAnalysisFailed,
+  MaintainabilityAnalysisFailed,
   GitInvocationFailed,
   NoReactDependency,
   OxlintSpawnFailed,
@@ -33,6 +39,7 @@ import { Project } from "../src/services/project.js";
 import { Reporter, ReporterCapture } from "../src/services/reporter.js";
 import { Score } from "../src/services/score.js";
 import { SupplyChain } from "../src/services/supply-chain.js";
+import { PROJECT_ANALYSIS_WORKER_TIMEOUT_MS } from "../src/constants.js";
 
 const temporaryDirectories: string[] = [];
 afterAll(() => {
@@ -82,12 +89,12 @@ const lintDiagnostic: Diagnostic = {
 };
 
 const deadCodeDiagnostic: Diagnostic = {
-  filePath: "src/Unused.tsx",
-  plugin: "deslop",
-  rule: "unused-file",
+  filePath: "src/Card.tsx",
+  plugin: "react-doctor",
+  rule: "duplicate-jsx-subtree",
   severity: "warning",
-  message: "Unused file",
-  help: "Delete it.",
+  message: "Duplicated JSX structure",
+  help: "Extract a shared component.",
   line: 0,
   column: 0,
   category: "Maintainability",
@@ -126,8 +133,7 @@ const layersOf = (config: {
   reactDoctorConfig?: ReactDoctorConfig | null;
   scoreLayer?: Layer.Layer<Score>;
   // Pins the dead-code/lint overlap mode. Defaults to "off" so emit-order
-  // assertions stay deterministic regardless of the test box's free memory
-  // (the "auto" gate reads `os.freemem()`); overlap tests opt into "on".
+  // assertions stay deterministic; overlap tests opt into "on".
   deadCodeOverlap?: "auto" | "on" | "off";
 }) =>
   Layer.mergeAll(
@@ -177,7 +183,30 @@ describe("runInspect — phase timeouts & overall deadline", () => {
       overrides.refOverrides,
     );
 
-  it("caps the dead-code phase into didDeadCodeFail without sinking the rest of the scan", async () => {
+  it("leaves lint and the overall scan unbounded when no timeout is configured", async () => {
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, runDeadCode: false }).pipe(
+        Effect.provide(
+          baseTimeoutLayers({
+            linter: Layer.mock(Linter, {
+              run: () => Stream.fromEffect(Effect.as(Effect.sleep("50 millis"), lintDiagnostic)),
+            }),
+            deadCode: DeadCode.layerOf([]),
+            refOverrides: Layer.mergeAll(
+              Layer.succeed(LintPhaseTimeoutMs, null),
+              Layer.succeed(DeadCodePhaseTimeoutMs, null),
+              Layer.succeed(ScanDeadlineMs, null),
+            ),
+          }),
+        ),
+      ),
+    );
+
+    expect(output.didLintFail).toBe(false);
+    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toContain("no-derived-state");
+  });
+
+  it("maps a maintainability timeout into the legacy failure fields", async () => {
     const output = await Effect.runPromise(
       runInspect(baseInput).pipe(
         Effect.provide(
@@ -191,7 +220,7 @@ describe("runInspect — phase timeouts & overall deadline", () => {
     );
 
     expect(output.didDeadCodeFail).toBe(true);
-    expect(output.deadCodeFailureReason).toContain("Dead-code analysis exceeded");
+    expect(output.deadCodeFailureReason).toContain("Maintainability analysis exceeded");
     expect(output.deadCodeFailureReason).toContain("skipped");
     // The scan still completed: lint diagnostics came through — but the score
     // is null because the scored set is missing the dead-code findings.
@@ -246,7 +275,9 @@ describe("runInspect — phase timeouts & overall deadline", () => {
 
     expect(output.didDeadCodeFail).toBe(true);
     expect(output.deadCodeFailureReason).toContain("max scan duration reached");
-    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).not.toContain("unused-file");
+    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).not.toContain(
+      "duplicate-jsx-subtree",
+    );
     expect(output.score).toBeNull();
   });
 
@@ -299,6 +330,131 @@ const overlapLayersOf = (config: {
   );
 
 describe("runInspect — happy path", () => {
+  it("forwards a precomputed sized inventory after config file ignores", async () => {
+    let receivedIncludePaths: ReadonlyArray<string> | undefined;
+    let receivedSourceFiles: ReadonlyArray<SourceFileEntry> | undefined;
+    const capturingLinter = Layer.mock(Linter, {
+      run: (input) => {
+        receivedIncludePaths = input.includePaths;
+        receivedSourceFiles = input.precomputedSourceFiles;
+        return Stream.empty;
+      },
+    });
+
+    await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        precomputedSourceFiles: [
+          { path: "src/App.tsx", sizeBytes: 120 },
+          { path: "src/ignored.tsx", sizeBytes: 240 },
+        ],
+        runDeadCode: false,
+      }).pipe(
+        Effect.provide(
+          layersOf({
+            linter: capturingLinter,
+            reactDoctorConfig: { ignore: { files: ["src/ignored.tsx"] } },
+          }),
+        ),
+      ),
+    );
+
+    expect(receivedIncludePaths).toEqual(["src/App.tsx"]);
+    expect(receivedSourceFiles).toEqual([{ path: "src/App.tsx", sizeBytes: 120 }]);
+  });
+
+  it("keeps descendant projects out of ancestor lint and maintainability results", async () => {
+    let lintIncludePaths: ReadonlyArray<string> | undefined;
+    let discoveredSourceFileCount: number | undefined;
+    const descendantSourceFileCount = 2;
+    const sourceFiles = new Map<string, string>([
+      ["/repo/src/root.tsx", "export const Root = null;"],
+    ]);
+    for (
+      let sourceFileIndex = 0;
+      sourceFileIndex < descendantSourceFileCount;
+      sourceFileIndex += 1
+    ) {
+      sourceFiles.set(
+        `/repo/packages/web/src/file-${sourceFileIndex}.tsx`,
+        `export const value${sourceFileIndex} = null;`,
+      );
+    }
+    const layers = Layer.mergeAll(
+      Layer.mock(Project, {
+        warm: () => Effect.void,
+        discover: (input) => {
+          discoveredSourceFileCount = input.sourceFileCount;
+          return Effect.succeed({
+            ...sampleProject,
+            sourceFileCount: input.sourceFileCount ?? 0,
+          });
+        },
+      }),
+      Config.layerOf({
+        config: { rules: { "react-doctor/unused-export": "warn" } },
+        resolvedDirectory: "/repo",
+        configSourceDirectory: null,
+      }),
+      Files.layerInMemory(sourceFiles),
+      Layer.mock(Linter, {
+        run: (input) => {
+          lintIncludePaths = input.includePaths;
+          return Stream.empty;
+        },
+      }),
+      LintPartialFailures.layerLive,
+      Layer.mock(DeadCode, {
+        run: () =>
+          Stream.fromIterable([
+            deadCodeDiagnostic,
+            {
+              ...deadCodeDiagnostic,
+              filePath: "packages/web/src/Card.tsx",
+            },
+            {
+              ...deadCodeDiagnostic,
+              filePath: "packages/web/src/unused.ts",
+              rule: "unused-export",
+            },
+          ]),
+      }),
+      Git.layerOf({}),
+      Score.layerOf({ score: 85, label: "Good" }),
+      SupplyChain.layerOf([]),
+      Progress.layerNoop,
+      Reporter.layerNoop,
+      Layer.succeed(DeadCodeOverlap, "off"),
+    );
+
+    const output = await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        excludedProjectDirectories: ["/repo/packages/web"],
+        suppressScanSummary: true,
+      }).pipe(Effect.provide(layers)),
+    );
+
+    expect(lintIncludePaths).toEqual(["src/root.tsx"]);
+    expect(output.diagnostics.map((diagnostic) => diagnostic.filePath)).toEqual(["src/Card.tsx"]);
+    expect(output.scannedFilePaths).toEqual([path.resolve("/repo/src/root.tsx")]);
+    expect(discoveredSourceFileCount).toBe(1);
+
+    const workspaceOutput = await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        excludedProjectDirectories: ["/repo/packages/web"],
+        retainExcludedProjectDeadCodeDiagnostics: true,
+        suppressScanSummary: true,
+      }).pipe(Effect.provide(layers)),
+    );
+
+    expect(workspaceOutput.diagnostics.map((diagnostic) => diagnostic.filePath)).toEqual([
+      "packages/web/src/Card.tsx",
+      "src/Card.tsx",
+    ]);
+  });
+
   it("collects diagnostics from Linter, DeadCode, and emits them through Reporter", async () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
@@ -314,7 +470,7 @@ describe("runInspect — happy path", () => {
     expect(result.output.diagnostics).toHaveLength(2);
     expect(result.output.diagnostics.map((d) => d.rule)).toEqual([
       "no-derived-state",
-      "unused-file",
+      "duplicate-jsx-subtree",
     ]);
     expect(result.output.didLintFail).toBe(false);
     expect(result.output.didDeadCodeFail).toBe(false);
@@ -332,7 +488,10 @@ describe("runInspect — happy path", () => {
     expect(result.output.resolvedDirectory).toBe("/repo");
     expect(result.output.lintPartialFailures).toEqual([]);
     expect(result.captured).toHaveLength(2);
-    expect(result.captured.map((d) => d.rule)).toEqual(["no-derived-state", "unused-file"]);
+    expect(result.captured.map((d) => d.rule)).toEqual([
+      "no-derived-state",
+      "duplicate-jsx-subtree",
+    ]);
   });
 
   it("returns empty diagnostics when no service emits", async () => {
@@ -557,12 +716,11 @@ describe("runInspect — missing React dependency", () => {
       Reporter.layerNoop,
     );
 
-    // Note: runInspect doesn't currently check reactVersion (that check
-    // happens in the legacy inspect.ts before calling). For PR 5 the api
-    // package adds the boundary check. This test verifies the orchestrator
-    // *would* propagate a tagged error if one came from Project.
+    // Project discovery errors are thrown before runInspect in public entry
+    // points. This pins how the orchestrator propagates a tagged project error.
     const explicitFailLayers = Layer.mergeAll(
       Layer.mock(Project, {
+        warm: () => Effect.void,
         discover: () =>
           Effect.fail(
             new ReactDoctorError({ reason: new NoReactDependency({ directory: "/repo" }) }),
@@ -619,9 +777,8 @@ describe("runInspect — mid-stream lint failure", () => {
       SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
-      // Pin the sequential path so this test doesn't fork dead-code on a
-      // high-memory box (the "auto" gate reads os.freemem()); the fork+interrupt
-      // path is covered by the dedicated overlap test below.
+      // Pin the sequential path; the fork+interrupt path is covered by the
+      // dedicated overlap test below.
       Layer.succeed(DeadCodeOverlap, "off"),
     );
     const output = await Effect.runPromise(runInspect(baseInput).pipe(Effect.provide(layers)));
@@ -633,13 +790,13 @@ describe("runInspect — mid-stream lint failure", () => {
   });
 });
 
-describe("runInspect — dead-code failure", () => {
-  it("folds DeadCode failure without sinking the scan", async () => {
+describe("runInspect — maintainability failure", () => {
+  it("folds Maintainability failure without sinking the scan", async () => {
     const failingDeadCode = Layer.mock(DeadCode, {
       run: () =>
         Stream.fail(
           new ReactDoctorError({
-            reason: new DeadCodeAnalysisFailed({ cause: "synthetic boom" }),
+            reason: new MaintainabilityAnalysisFailed({ cause: "synthetic boom" }),
           }),
         ),
     });
@@ -655,21 +812,54 @@ describe("runInspect — dead-code failure", () => {
       SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
-      // Pin overlap off so the path under test is deterministic regardless of
-      // the box's free memory (the "auto" gate reads os.freemem()).
+      // Pin overlap off so the path under test is deterministic.
       Layer.succeed(DeadCodeOverlap, "off"),
     );
     const output = await Effect.runPromise(runInspect(baseInput).pipe(Effect.provide(layers)));
     expect(output.didDeadCodeFail).toBe(true);
-    expect(output.deadCodeFailureReason).toContain("Dead-code analysis failed");
+    expect(output.deadCodeFailureReason).toContain("Maintainability analysis failed");
     expect(output.didLintFail).toBe(false);
     expect(output.diagnostics).toHaveLength(1);
     expect(output.diagnostics[0].rule).toBe("no-derived-state");
   });
 });
 
-describe("runInspect — dead-code/lint overlap", () => {
-  it("forced on: diagnostics + score identical to sequential, overlap recorded", async () => {
+describe("runInspect — dead-code compatibility fields", () => {
+  it("keeps removed cache outcomes null", async () => {
+    const deadCodeWithCacheCallbacks = Layer.mock(DeadCode, {
+      run: () => Stream.fromIterable([deadCodeDiagnostic]),
+    });
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Project.layerOf(sampleProject),
+            Config.layerOf({
+              config: null,
+              resolvedDirectory: "/repo",
+              configSourceDirectory: null,
+            }),
+            Files.layerInMemory(new Map()),
+            Linter.layerOf([lintDiagnostic]),
+            LintPartialFailures.layerLive,
+            deadCodeWithCacheCallbacks,
+            Git.layerOf({}),
+            Score.layerOf({ score: 85, label: "Good" }),
+            SupplyChain.layerOf([]),
+            Progress.layerNoop,
+            Reporter.layerNoop,
+            Layer.succeed(DeadCodeOverlap, "on"),
+          ),
+        ),
+      ),
+    );
+
+    expect(output.deadCodeCacheHit).toBeNull();
+    expect(output.deadCodeSummaryCacheHits).toBeNull();
+    expect(output.deadCodeSummaryCacheMisses).toBeNull();
+  });
+
+  it("ignores the removed overlap mode while preserving diagnostics", async () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const output = yield* runInspect(baseInput);
@@ -690,16 +880,16 @@ describe("runInspect — dead-code/lint overlap", () => {
     // independent of which fiber finished first — the core overlap invariant.
     expect(result.output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
       "no-derived-state",
-      "unused-file",
+      "duplicate-jsx-subtree",
     ]);
-    expect(result.output.deadCodeOverlapped).toBe(true);
+    expect(result.output.deadCodeOverlapped).toBe(false);
     expect(result.output.didDeadCodeFail).toBe(false);
     expect(result.output.score).toEqual({ score: 85, label: "Good" });
     // Emit order MAY interleave under overlap (the forked fiber emits during
     // lint), so assert the captured SET rather than the sequence. Production
     // uses Reporter.layerNoop, so emit order is unobservable there regardless.
     expect(new Set(result.captured.map((diagnostic) => diagnostic.rule))).toEqual(
-      new Set(["no-derived-state", "unused-file"]),
+      new Set(["no-derived-state", "duplicate-jsx-subtree"]),
     );
   });
 
@@ -717,7 +907,7 @@ describe("runInspect — dead-code/lint overlap", () => {
     );
     expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
       "no-derived-state",
-      "unused-file",
+      "duplicate-jsx-subtree",
     ]);
     expect(output.deadCodeOverlapped).toBe(false);
     expect(output.didDeadCodeFail).toBe(false);
@@ -755,51 +945,6 @@ describe("runInspect — dead-code/lint overlap", () => {
     expect(output.diagnostics).toHaveLength(0);
     expect(output.didDeadCodeFail).toBe(false);
   });
-
-  it("never takes the gated overlap for a concurrent batch member (shared memory budget)", async () => {
-    // The "auto" gate reads this scan's own os.freemem(), blind to sibling
-    // scans in a concurrent batch, so a concurrent member must stay sequential
-    // regardless of how much memory a CI box reports — otherwise N siblings
-    // would each fork an 8 GB worker and sum past the single-scan budget.
-    const output = await Effect.runPromise(
-      runInspect({ ...baseInput, concurrentScan: true }).pipe(
-        Effect.provide(
-          layersOf({
-            diagnostics: [lintDiagnostic],
-            deadCode: [deadCodeDiagnostic],
-            deadCodeOverlap: "auto",
-          }),
-        ),
-      ),
-    );
-    expect(output.deadCodeOverlapped).toBe(false);
-    // Output is unchanged — it just ran sequentially.
-    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
-      "no-derived-state",
-      "unused-file",
-    ]);
-  });
-
-  it("still overlaps a concurrent batch member when overlap is explicitly forced on", async () => {
-    // `"on"` is an operator override ("I own this box"), so it wins over the
-    // concurrent-scan auto-gate guard.
-    const output = await Effect.runPromise(
-      runInspect({ ...baseInput, concurrentScan: true }).pipe(
-        Effect.provide(
-          layersOf({
-            diagnostics: [lintDiagnostic],
-            deadCode: [deadCodeDiagnostic],
-            deadCodeOverlap: "on",
-          }),
-        ),
-      ),
-    );
-    expect(output.deadCodeOverlapped).toBe(true);
-    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
-      "no-derived-state",
-      "unused-file",
-    ]);
-  });
 });
 
 describe("runInspect — hooks fire in order", () => {
@@ -823,7 +968,7 @@ describe("runInspect — hooks fire in order", () => {
 });
 
 describe("runInspect — scan progress phases", () => {
-  it("runs dead-code after lint and labels it as a separate progress phase", async () => {
+  it("runs maintainability after lint and labels it as a separate progress phase", async () => {
     const phaseEvents: string[] = [];
     const trackingLinter = Layer.mock(Linter, {
       run: () =>
@@ -838,7 +983,7 @@ describe("runInspect — scan progress phases", () => {
       run: () =>
         Stream.unwrap(
           Effect.sync(() => {
-            phaseEvents.push("dead-code");
+            phaseEvents.push("maintainability");
             return Stream.fromIterable([deadCodeDiagnostic]);
           }),
         ),
@@ -877,21 +1022,23 @@ describe("runInspect — scan progress phases", () => {
 
     expect(result.output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
       "no-derived-state",
-      "unused-file",
+      "duplicate-jsx-subtree",
     ]);
-    expect(phaseEvents).toEqual(["lint", "afterLint", "dead-code"]);
+    expect(phaseEvents).toEqual(["lint", "afterLint", "maintainability"]);
     const progressTexts = result.progressEvents.map((event) => event.text);
     expect(progressTexts).toContain("Scanning...");
     // The dead-code phase carries the scanned file total so the counter never
     // appears to stall short of N before the handoff (issue #815).
     expect(
-      progressTexts.some((text) => /^Scanned \d+ files?, analyzing dead code\.\.\.$/.test(text)),
-      `dead-code phase should report the scanned file total, got: ${progressTexts.join(" | ")}`,
+      progressTexts.some((text) =>
+        /^Scanned \d+ files?, analyzing maintainability\.\.\.$/.test(text),
+      ),
+      `maintainability phase should report the scanned file total, got: ${progressTexts.join(" | ")}`,
     ).toBe(true);
   });
 });
 
-describe("runInspect — diff mode skips dead-code", () => {
+describe("runInspect — diff mode focuses maintainability", () => {
   it("canonicalizes file coverage before counting completed include paths", async () => {
     const coverageLinter = Layer.mock(Linter, {
       run: (input) =>
@@ -917,15 +1064,178 @@ describe("runInspect — diff mode skips dead-code", () => {
     expect(output.analyzedFiles).toEqual(["src/App.tsx"]);
   });
 
-  it("treats includePaths.length > 0 as diff mode and skips DeadCode.run", async () => {
+  it("runs maintainability in diff mode", async () => {
     const output = await Effect.runPromise(
       runInspect({ ...baseInput, includePaths: ["src/App.tsx"] }).pipe(
         Effect.provide(layersOf({ diagnostics: [lintDiagnostic], deadCode: [deadCodeDiagnostic] })),
       ),
     );
-    // Lint diagnostic flows through; dead-code stream is replaced with empty.
-    expect(output.diagnostics.map((d) => d.rule)).toEqual(["no-derived-state"]);
+    expect(output.diagnostics.map((d) => d.rule)).toEqual([
+      "no-derived-state",
+      "duplicate-jsx-subtree",
+    ]);
     expect(output.didDeadCodeFail).toBe(false);
+  });
+
+  it("forwards changed line ranges to maintainability", async () => {
+    const changedLineRanges: ReadonlyArray<ChangedFileLineRanges> = [
+      { file: "src/App.tsx", ranges: [[4, 8]] },
+    ];
+    let receivedChangedLineRanges: ReadonlyArray<ChangedFileLineRanges> | undefined;
+    const captureMaintainabilityInput = Layer.mock(DeadCode, {
+      run: (input) => {
+        receivedChangedLineRanges = input.changedLineRanges;
+        return Stream.empty;
+      },
+    });
+
+    await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        includePaths: ["src/App.tsx"],
+        changedLineRanges,
+      }).pipe(
+        Effect.provide(
+          Layer.merge(layersOf({ diagnostics: [lintDiagnostic] }), captureMaintainabilityInput),
+        ),
+      ),
+    );
+
+    expect(receivedChangedLineRanges).toEqual(changedLineRanges);
+  });
+
+  it("runs explicitly enabled warning rules when global warnings are hidden", async () => {
+    let receivedRuleIds: ReadonlySet<string> | undefined;
+    const captureMaintainabilityInput = Layer.mock(DeadCode, {
+      run: (input) => {
+        receivedRuleIds = input.enabledProjectRuleIds;
+        return Stream.empty;
+      },
+    });
+
+    await Effect.runPromise(
+      runInspect({ ...baseInput, warnings: false }).pipe(
+        Effect.provide(
+          Layer.merge(
+            layersOf({
+              reactDoctorConfig: {
+                rules: { "react-doctor/unused-export": "warn" },
+              },
+            }),
+            captureMaintainabilityInput,
+          ),
+        ),
+      ),
+    );
+
+    expect([...(receivedRuleIds ?? new Set<string>())]).toEqual(["unused-export"]);
+  });
+
+  it("keeps opt-in graph rules active when duplicate JSX is disabled", async () => {
+    let receivedRuleIds: ReadonlySet<string> | undefined;
+    let receivedIgnorePatterns: ReadonlyArray<string> | undefined;
+    let receivedWorkerTimeoutMs: number | undefined;
+    const runMaintainability = vi.fn((input) => {
+      receivedRuleIds = input.enabledProjectRuleIds;
+      receivedIgnorePatterns = input.ignorePatterns;
+      receivedWorkerTimeoutMs = input.workerTimeoutMs;
+      return Stream.empty;
+    });
+
+    await Effect.runPromise(
+      runInspect({ ...baseInput, runDeadCode: false }).pipe(
+        Effect.provide(
+          Layer.merge(
+            layersOf({
+              reactDoctorConfig: {
+                rules: { "react-doctor/unused-export": "warn" },
+                ignore: { files: ["src/generated/**"] },
+              },
+            }),
+            Layer.mock(DeadCode, { run: runMaintainability }),
+          ),
+        ),
+      ),
+    );
+
+    expect(runMaintainability).toHaveBeenCalledTimes(1);
+    expect([...(receivedRuleIds ?? new Set<string>())]).toEqual(["unused-export"]);
+    expect(receivedIgnorePatterns).toEqual(["src/generated/**"]);
+    expect(receivedWorkerTimeoutMs).toBe(PROJECT_ANALYSIS_WORKER_TIMEOUT_MS);
+  });
+
+  it("skips project analysis when its tag is ignored", async () => {
+    const runMaintainability = vi.fn(() => Stream.fromIterable([deadCodeDiagnostic]));
+
+    await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        ignoredTags: new Set(["project-analysis"]),
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            layersOf({
+              reactDoctorConfig: {
+                rules: { "react-doctor/unused-export": "warn" },
+              },
+            }),
+            Layer.mock(DeadCode, { run: runMaintainability }),
+          ),
+        ),
+      ),
+    );
+
+    expect(runMaintainability).not.toHaveBeenCalled();
+  });
+
+  it("skips project analysis in design-only mode", async () => {
+    const runMaintainability = vi.fn(() => Stream.fromIterable([deadCodeDiagnostic]));
+
+    await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        includedTags: new Set(["design"]),
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            layersOf({
+              reactDoctorConfig: {
+                rules: { "react-doctor/unused-export": "warn" },
+              },
+            }),
+            Layer.mock(DeadCode, { run: runMaintainability }),
+          ),
+        ),
+      ),
+    );
+
+    expect(runMaintainability).not.toHaveBeenCalled();
+  });
+
+  it("skips graph rules in partial scans", async () => {
+    const runMaintainability = vi.fn(() => Stream.empty);
+    const captureMaintainabilityInput = Layer.mock(DeadCode, { run: runMaintainability });
+
+    await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        runDeadCode: false,
+        includePaths: ["src/App.tsx"],
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            layersOf({
+              reactDoctorConfig: {
+                rules: { "react-doctor/unused-export": "warn" },
+              },
+            }),
+            captureMaintainabilityInput,
+          ),
+        ),
+      ),
+    );
+
+    expect(runMaintainability).not.toHaveBeenCalled();
   });
 
   it("passes every supported explicit source file through to the linter", async () => {
@@ -964,6 +1274,7 @@ describe("runInspect — diff mode skips dead-code", () => {
       Effect.gen(function* () {
         const output = yield* runInspect({
           ...baseInput,
+          runDeadCode: false,
           includePaths: ["middleware.ts", "src/proxy.mjs", "src/server.ts", "src/App.tsx"],
         });
         const ref = yield* ReporterCapture;
@@ -1004,6 +1315,19 @@ describe("runInspect — runDeadCode=false short-circuits dead-code", () => {
 });
 
 describe("runInspect — Reporter sees post-filter diagnostics", () => {
+  const projectAnalysisDiagnostics: ReadonlyArray<Diagnostic> = [
+    {
+      ...deadCodeDiagnostic,
+      filePath: "plugins/with-example.ts",
+      rule: "unused-file",
+    },
+    {
+      ...deadCodeDiagnostic,
+      filePath: "package.json",
+      rule: "unused-dependency",
+    },
+  ];
+
   it("filters out a diagnostic on a file ignored by config, then emits remaining", async () => {
     const ignoredDiagnostic: Diagnostic = {
       ...lintDiagnostic,
@@ -1037,6 +1361,47 @@ describe("runInspect — Reporter sees post-filter diagnostics", () => {
     );
     expect(result.output.diagnostics.map((d) => d.filePath)).toEqual(["/repo/src/App.tsx"]);
     expect(result.captured.map((d) => d.filePath)).toEqual(["/repo/src/App.tsx"]);
+  });
+
+  it("applies rule ignores to project-analysis diagnostics", async () => {
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          layersOf({
+            deadCode: projectAnalysisDiagnostics,
+            reactDoctorConfig: {
+              ignore: {
+                rules: ["react-doctor/unused-file", "react-doctor/unused-dependency"],
+              },
+            },
+          }),
+        ),
+      ),
+    );
+
+    expect(output.diagnostics).toEqual([]);
+  });
+
+  it("applies path overrides to project-analysis diagnostics", async () => {
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          layersOf({
+            deadCode: projectAnalysisDiagnostics,
+            reactDoctorConfig: {
+              ignore: {
+                overrides: [
+                  { files: ["plugins/**"], rules: ["react-doctor/unused-file"] },
+                  { files: ["package.json"], rules: ["react-doctor/unused-dependency"] },
+                ],
+              },
+            },
+          }),
+        ),
+      ),
+    );
+
+    expect(output.diagnostics).toEqual([]);
   });
 });
 
@@ -1152,11 +1517,11 @@ describe("runInspect — supply-chain lint overlap", () => {
     // `sortDiagnosticsStable`-ordered by (filePath, line, …) — deterministic
     // regardless of which fiber settled first. filePath order:
     // "/repo/src/App.tsx" (no-derived-state) < "package.json"
-    // (low-supply-chain-score) < "src/Unused.tsx" (unused-file).
+    // (low-supply-chain-score) < "src/Card.tsx" (duplicate-jsx-subtree).
     expect(output.diagnostics.map((d) => d.rule)).toEqual([
       "no-derived-state",
       "low-supply-chain-score",
-      "unused-file",
+      "duplicate-jsx-subtree",
     ]);
     expect(output.supplyChainOverlapTimedOut).toBe(false);
     expect(output.securityScanFailed).toBe(false);
@@ -1197,6 +1562,32 @@ describe("runInspect — supply-chain lint overlap", () => {
     expect(output.supplyChainOverlapTimedOut).toBe(true);
     expect(output.diagnostics.map((d) => d.rule)).toEqual(["no-derived-state"]);
     expect(output.didLintFail).toBe(false);
+  });
+
+  it("caps supply-chain work to the remaining max-duration budget", async () => {
+    let supplyChainTimeoutMs: number | undefined;
+    const hungSupplyChain = Layer.mock(SupplyChain, {
+      run: (input) => {
+        supplyChainTimeoutMs = input.timeoutMs;
+        return Stream.fromEffect(Effect.never);
+      },
+    });
+    const deadlineBudgetMs = 100;
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, deadlineEpochMs: Date.now() + deadlineBudgetMs }).pipe(
+        Effect.provide(
+          overlapLayersOf({
+            supplyChain: hungSupplyChain,
+            overlapTimeoutMs: 5_000,
+            diagnostics: [lintDiagnostic],
+          }),
+        ),
+      ),
+    );
+
+    expect(supplyChainTimeoutMs).toBeLessThanOrEqual(deadlineBudgetMs);
+    expect(output.supplyChainOverlapTimedOut).toBe(true);
+    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual(["no-derived-state"]);
   });
 
   it("does not cut a slow-but-healthy supply-chain run that finishes within budget", async () => {
@@ -1326,6 +1717,11 @@ describe("runInspect — supply-chain lint overlap", () => {
   });
 });
 
+interface PnpmHardeningConfigCase {
+  config: ReactDoctorConfig | null;
+  severity: string | null;
+}
+
 describe("runInspect — security scan rules in the environment-checks phase", () => {
   // Unlike the mocked Linter/DeadCode services, environment checks read
   // the real filesystem at the resolved scan directory, so these tests
@@ -1355,6 +1751,30 @@ describe("runInspect — security scan rules in the environment-checks phase", (
       Progress.layerNoop,
       Reporter.layerNoop,
     );
+
+  it.each([
+    { config: null, severity: null },
+    { config: { categories: { Security: "warn" } }, severity: null },
+    { config: { rules: { "react-doctor/require-pnpm-hardening": "off" } }, severity: null },
+    { config: { rules: { "react-doctor/require-pnpm-hardening": "warn" } }, severity: "warning" },
+    { config: { rules: { "react-doctor/require-pnpm-hardening": "error" } }, severity: "error" },
+  ] satisfies PnpmHardeningConfigCase[])(
+    "runs pnpm hardening only with a rule opt-in: $config",
+    async ({ config, severity }) => {
+      const rootDirectory = makeScanRuleProject();
+      fs.writeFileSync(path.join(rootDirectory, "pnpm-workspace.yaml"), "packages: []\n");
+      const output = await Effect.runPromise(
+        runInspect({ ...baseInput, directory: rootDirectory }).pipe(
+          Effect.provide(scanRuleLayersOf(rootDirectory, config)),
+        ),
+      );
+      const diagnostics = output.diagnostics.filter(
+        (diagnostic) => diagnostic.rule === "require-pnpm-hardening",
+      );
+      expect(diagnostics).toHaveLength(severity === null ? 0 : 2);
+      for (const diagnostic of diagnostics) expect(diagnostic.severity).toBe(severity);
+    },
+  );
 
   it("emits scan-rule diagnostics in a full scan", async () => {
     const rootDirectory = makeScanRuleProject();

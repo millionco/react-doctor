@@ -17,6 +17,7 @@ import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isReactHookName } from "./is-react-hook-name.js";
 import {
   isImportedFromReact,
   isReactApiCall,
@@ -84,7 +85,7 @@ const crossFileScopes = new WeakMap<EsTreeNode, ScopeAnalysis>();
 const crossFileControlFlow = new WeakMap<EsTreeNode, ControlFlowAnalysis>();
 const forwardedFreshDependencyCache = new WeakMap<
   EsTreeNode,
-  Map<string, ForwardedFreshHookDependency[]>
+  Map<ReadonlySet<string>, ForwardedFreshHookDependency[]>
 >();
 
 const getCrossFileScopes = (resolved: { readonly programNode: EsTreeNode }): ScopeAnalysis => {
@@ -129,7 +130,7 @@ const isNodeReachable = (node: EsTreeNode, cfg: ControlFlowAnalysis): boolean =>
 
 const isCustomHookFunction = (functionNode: EsTreeNode, fallbackName?: string): boolean => {
   const displayName = componentOrHookDisplayNameForFunction(functionNode) ?? fallbackName ?? "";
-  return /^use[A-Z0-9]/.test(displayName);
+  return displayName !== "use" && isReactHookName(displayName);
 };
 
 const getImportedHookBinding = (
@@ -155,6 +156,13 @@ const resolveImportedHookFunction = (
   if (!currentFilename) return null;
   const importedBinding = getImportedHookBinding(callee, scopes);
   if (!importedBinding) return null;
+  const localName = isNodeOfType(callee, "Identifier") ? callee.name : "";
+  if (
+    importedBinding.source === "react" ||
+    (!isReactHookName(localName) && !isReactHookName(importedBinding.exportedName))
+  ) {
+    return null;
+  }
   const resolved = resolveCrossFileFunctionExportWithFilePath(
     currentFilename,
     importedBinding.source,
@@ -613,20 +621,19 @@ export const findForwardedFreshHookDependencies = (
   context: RuleContext,
   dependencyHookNames: ReadonlySet<string> = DEPENDENCY_HOOK_NAMES,
 ): ReadonlyArray<ForwardedFreshHookDependency> => {
-  const cacheKey = [...dependencyHookNames].sort().join("\0");
   const cacheForCall = forwardedFreshDependencyCache.get(callExpression);
-  const cached = cacheForCall?.get(cacheKey);
+  const cached = cacheForCall?.get(dependencyHookNames);
   if (cached) return cached;
   const findings: ForwardedFreshHookDependency[] = [];
   if (cacheForCall) {
-    cacheForCall.set(cacheKey, findings);
+    cacheForCall.set(dependencyHookNames, findings);
   } else {
-    forwardedFreshDependencyCache.set(callExpression, new Map([[cacheKey, findings]]));
+    forwardedFreshDependencyCache.set(callExpression, new Map([[dependencyHookNames, findings]]));
   }
-  if (!findRenderPhaseComponentOrHook(callExpression, context.scopes)) return findings;
-  if (!isNodeReachable(callExpression, context.cfg)) return findings;
   const target = resolveHookFunction(callExpression, context.scopes, context.cfg, context.filename);
   if (!target) return findings;
+  if (!findRenderPhaseComponentOrHook(callExpression, context.scopes)) return findings;
+  if (!isNodeReachable(callExpression, context.cfg)) return findings;
 
   for (const parameter of collectParameterBindings(target.functionNode)) {
     const targetSymbol = target.scopes.symbolFor(parameter.bindingIdentifier);

@@ -29,6 +29,19 @@ describe("motion-value-constructor-in-render", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("reports useMemo without a dependency array", () => {
+    const result = runRule(
+      motionValueConstructorInRender,
+      `import { motionValue } from "motion/react";
+       import { useMemo } from "react";
+       const Digit = ({ value }) => {
+         const current = useMemo(() => motionValue(value));
+         return <span>{current.get()}</span>;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("ignores unrelated constructors", () => {
     const result = runRule(
       motionValueConstructorInRender,

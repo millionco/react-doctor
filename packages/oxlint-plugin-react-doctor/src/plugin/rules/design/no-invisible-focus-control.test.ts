@@ -27,6 +27,14 @@ describe("no-invisible-focus-control", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("recognizes arbitrary zero opacity and arbitrary focus restoration", () => {
+    const result = runRule(
+      noInvisibleFocusControl,
+      `const Controls = () => <><select className="opacity-[0]" /><select className="opacity-[0%] focus:opacity-[.5]" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not mistake ring offsets or transparent borders for focus indicators", () => {
     const result = runRule(
       noInvisibleFocusControl,
@@ -35,10 +43,34 @@ describe("no-invisible-focus-control", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
-  it("uses the final base visibility utility", () => {
+  it("abstains when equal-priority base visibility utilities conflict", () => {
     const result = runRule(
       noInvisibleFocusControl,
       `const Controls = () => <><select className="opacity-0 opacity-100" /><select className="invisible visible" /><select className="opacity-100 opacity-0" /><select className="visible invisible" /></>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("honors important base visibility utilities independently of class order", () => {
+    const result = runRule(
+      noInvisibleFocusControl,
+      `const Controls = () => <><select className="opacity-100 !opacity-0" /><select className="!opacity-0 opacity-100" /><select className="opacity-0 !opacity-100" /><select className="!opacity-100 opacity-0" /><select className="visible invisible!" /><select className="invisible! visible" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(4);
+  });
+
+  it("does not accept conflicting focus reveal utilities", () => {
+    const result = runRule(
+      noInvisibleFocusControl,
+      `const Controls = () => <><select className="opacity-0 focus:opacity-100 focus:opacity-0" /><select className="invisible focus:visible focus:invisible" /><select className="opacity-0 focus:!opacity-100 focus:!opacity-0" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("honors important focus reveal utilities independently of class order", () => {
+    const result = runRule(
+      noInvisibleFocusControl,
+      `const Controls = () => <><select className="opacity-0 focus:opacity-100 focus:!opacity-0" /><select className="opacity-0 focus:!opacity-0 focus:opacity-100" /><select className="opacity-0 focus:opacity-0 focus:!opacity-100" /><select className="opacity-0 focus:!opacity-100 focus:opacity-0" /></>;`,
     );
     expect(result.diagnostics).toHaveLength(2);
   });
@@ -55,6 +87,14 @@ describe("no-invisible-focus-control", () => {
     const result = runRule(
       noInvisibleFocusControl,
       `const Controls = () => <><label><input className="opacity-0" /><span className="peer-focus-visible:ring-2">Upload</span></label><label><input className="peer opacity-0" /><span className="peer-focus-visible:ring-0">Upload</span></label></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not accept conflicting ancestor or peer focus indicators", () => {
+    const result = runRule(
+      noInvisibleFocusControl,
+      `const Controls = () => <><label className="focus-within:ring-2 focus-within:ring-0"><input className="opacity-0" /></label><label><input className="peer opacity-0" /><span className="peer-focus:ring-2 peer-focus:ring-0">Upload</span></label></>;`,
     );
     expect(result.diagnostics).toHaveLength(2);
   });

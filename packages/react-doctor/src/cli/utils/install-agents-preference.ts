@@ -1,4 +1,5 @@
-import { isSkillAgentType, type SkillAgentType } from "agent-install";
+import type { SkillAgentType } from "agent-install";
+import { loadAgentInstall } from "./load-agent-install.js";
 import { type CliStateOptions, INSTALL_AGENTS_PREFERENCE_ID } from "./cli-state-store.js";
 import { type Preference, readPreference, writePreference } from "./cli-lifecycle.js";
 
@@ -7,7 +8,7 @@ import { type Preference, readPreference, writePreference } from "./cli-lifecycl
 // per-repo setting — so the next install pre-selects the same picks anywhere.
 // Mirrors the Vercel `skills` CLI's `lastSelectedAgents` lock. The Preference
 // primitive stores one string, so the list is comma-encoded.
-export const INSTALL_AGENTS_PREFERENCE: Preference = {
+const INSTALL_AGENTS_PREFERENCE: Preference = {
   id: INSTALL_AGENTS_PREFERENCE_ID,
   scope: "global",
 };
@@ -21,6 +22,7 @@ const PREFERENCE_SEPARATOR = ",";
 export const readInstallAgents = (options: CliStateOptions = {}): SkillAgentType[] => {
   const stored = readPreference(INSTALL_AGENTS_PREFERENCE, {}, options);
   if (stored === null) return [];
+  const { isSkillAgentType } = loadAgentInstall();
   return stored
     .split(PREFERENCE_SEPARATOR)
     .map((entry) => entry.trim())

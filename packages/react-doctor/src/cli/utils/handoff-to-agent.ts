@@ -1,10 +1,10 @@
 import * as fs from "node:fs";
-import { getSkillAgentConfig } from "agent-install";
+import { loadAgentInstall } from "./load-agent-install.js";
 import type { Diagnostic } from "@react-doctor/core";
 import { highlighter } from "@react-doctor/core";
 import { buildHandoffPayload } from "./build-handoff-payload.js";
 import { cliLogger as logger } from "./cli-logger.js";
-import { detectAvailableAgents } from "./detect-agents.js";
+import { detectLaunchableAgents } from "./detect-launchable-agents.js";
 import { findNearestPackageDirectory } from "./install-doctor-script.js";
 import {
   isReactDoctorWorkflowInstalled,
@@ -20,7 +20,6 @@ import { askAddToGitHubActions } from "./ask-add-to-github-actions.js";
 import { askUpgradeActionVersion } from "./ask-upgrade-action-version.js";
 import { setUpGitHubActions } from "./set-up-github-actions.js";
 import { installReactDoctorSkillForAgent } from "./install-skill-for-agent.js";
-import { isCommandAvailable } from "./is-command-available.js";
 import { METRIC } from "./constants.js";
 import { openWorkflowPullRequest, stageWorkflowFile } from "./open-workflow-pull-request.js";
 import { recordCount } from "./record-metric.js";
@@ -161,17 +160,6 @@ const maybeOfferActionUpgrade = async (projectRoot: string): Promise<void> => {
   if (didApplyUpgrade) recordActionUpgradeDecision(projectRoot, "accepted");
 };
 
-// CLI agents we can launch: detected as installed by `agent-install`
-// (filesystem config dir) AND with their launch binary on PATH (since we
-// hand the prompt to that CLI). `agent-install` has no command-availability
-// check, so `isCommandAvailable` covers the launchability half.
-const detectLaunchableAgents = async (): Promise<CliAgentId[]> => {
-  const detected = new Set(await detectAvailableAgents());
-  return (Object.keys(CLI_AGENT_BINARIES) as CliAgentId[]).filter(
-    (agentId) => detected.has(agentId) && isCommandAvailable(CLI_AGENT_BINARIES[agentId]),
-  );
-};
-
 // Two-phase post-scan handoff: first asks whether to wire up GitHub Actions
 // (skipped when the workflow file is already on disk — that option would be a
 // no-op), then asks where to send the diagnostics for triage. The split keeps
@@ -224,6 +212,7 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
   }
 
   const launchableAgents = await detectLaunchableAgents();
+  const { getSkillAgentConfig } = loadAgentInstall();
   const choices = [
     ...launchableAgents.map((agentId) => ({
       title: getSkillAgentConfig(agentId).displayName,
@@ -298,7 +287,7 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
   }
 
   const agentId = handoffTarget as CliAgentId;
-  const displayName = getSkillAgentConfig(agentId).displayName;
+  const displayName = loadAgentInstall().getSkillAgentConfig(agentId).displayName;
 
   // Install the /react-doctor skill for the agent we're handing off to, so
   // it already knows the triage workflow. Best-effort — never blocks the

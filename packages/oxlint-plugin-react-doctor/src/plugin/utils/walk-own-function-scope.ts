@@ -16,7 +16,13 @@ export const walkOwnFunctionScope = (
   const body = functionNode.body;
   if (!body) return;
   walkAst(body, (child: EsTreeNode) => {
-    if (isFunctionLike(child)) return false;
+    if (
+      child.type === "ArrowFunctionExpression" ||
+      child.type === "FunctionExpression" ||
+      child.type === "FunctionDeclaration"
+    ) {
+      return false;
+    }
     return visitor(child);
   });
 };

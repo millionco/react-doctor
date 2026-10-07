@@ -1,0 +1,4 @@
+interface:
+  display_name: "Benchmark FP/FN Audit"
+  short_description: "Audit React Doctor benchmark false positives and negatives"
+  default_prompt: "Use $benchmark-fp-fn-audit to audit React Doctor against the consolidated ReactBench corpus."

@@ -1,10 +1,10 @@
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
-import { findJsxAttribute } from "../../../utils/find-jsx-attribute.js";
+import { getAuthoritativeJsxAttribute } from "../../../utils/get-authoritative-jsx-attribute.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 
 export const getStringFromClassNameAttr = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "JSXOpeningElement")) return null;
-  const classAttr = findJsxAttribute(node.attributes ?? [], "className");
+  const classAttr = getAuthoritativeJsxAttribute(node.attributes ?? [], "className");
   if (!classAttr?.value) return null;
   if (isNodeOfType(classAttr.value, "Literal") && typeof classAttr.value.value === "string") {
     return classAttr.value.value;

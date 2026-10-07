@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import ts from "typescript";
-import type { ProjectInfo } from "../../types/index.js";
 import { getTypescriptScriptKind } from "../../utils/get-typescript-script-kind.js";
 
 // React Compiler diagnostics fire on `sharedValue.value` reads/writes even
@@ -48,6 +47,10 @@ interface OxlintDiagnosticCandidate {
   code: string;
   filename: string;
   labels: OxlintLabel[];
+}
+
+interface ReanimatedProjectInfo {
+  readonly hasReanimated: boolean;
 }
 
 const getUtf16Offset = (sourceText: string, utf8Offset: number): number =>
@@ -130,7 +133,7 @@ const isOffsetInsideWorklet = (sourceFile: ts.SourceFile, targetOffset: number):
 
 export const shouldSuppressCompilerFindingInWorklet = (
   diagnostic: OxlintDiagnosticCandidate,
-  project: ProjectInfo,
+  project: ReanimatedProjectInfo,
   rootDirectory: string,
 ): boolean => {
   if (!SUPPRESSED_COMPILER_CODES.has(diagnostic.code)) return false;

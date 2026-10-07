@@ -1,5 +1,6 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isAstNode } from "./is-ast-node.js";
+import { pushChildNodesInReverse } from "./push-child-nodes-in-reverse.js";
 import { RUNTIME_VISITOR_KEYS } from "./runtime-visitor-keys.js";
 
 // Visits every AST child of `node` (skipping `parent` back-references and
@@ -36,18 +37,19 @@ export const forEachChildNode = (node: EsTreeNode, visit: (child: EsTreeNode) =>
   }
 };
 
-// HACK: AST is acyclic except for `parent` back-references, which we skip.
+// HACK: The explicit stack avoids overflowing the JavaScript call stack on
+// deeply nested ASTs. AST is acyclic except for `parent` back-references,
+// which we skip.
 // Visitors may return `false` to prune the subtree below `node` (e.g. to
 // stop walking into nested functions when collecting `await` expressions
 // for the enclosing function only). Returning anything else (including
 // `undefined`, the natural value of statements) continues the walk.
 export const walkAst = (node: EsTreeNode, visitor: (child: EsTreeNode) => boolean | void): void => {
-  // Root guard only: bodyless function-likes (`declare function`) surface
-  // as null/undefined bodies on TS-ESLint ASTs via eslint-plugin-react-doctor.
   if (!node || typeof node !== "object") return;
-  const visitNode = (current: EsTreeNode): void => {
-    if (visitor(current) === false) return;
-    forEachChildNode(current, visitNode);
-  };
-  visitNode(node);
+  const pendingNodes: EsTreeNode[] = [node];
+  while (pendingNodes.length > 0) {
+    const currentNode = pendingNodes.pop();
+    if (currentNode === undefined || visitor(currentNode) === false) continue;
+    pushChildNodesInReverse(currentNode, pendingNodes);
+  }
 };

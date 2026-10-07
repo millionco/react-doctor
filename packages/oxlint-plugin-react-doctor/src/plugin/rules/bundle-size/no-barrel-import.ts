@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { createRelativeImportSource } from "../../utils/create-relative-import-source.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -157,6 +158,7 @@ const buildReportMessage = (
 // bundle.
 export const noBarrelImport = defineRule({
   id: "no-barrel-import",
+  defaultEnabled: false,
   title: "Import from a barrel file",
   tags: ["test-noise"],
   severity: "warn",
@@ -169,7 +171,7 @@ export const noBarrelImport = defineRule({
       TYPE_DECLARATION_FILE_PATTERN.test(filename) ||
       SERVER_ONLY_FILE_PATTERN.test(filename)
     ) {
-      return {};
+      return EMPTY_RULE_VISITORS;
     }
 
     const candidates: BarrelImportCandidate[] = [];

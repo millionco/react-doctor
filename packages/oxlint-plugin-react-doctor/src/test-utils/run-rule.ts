@@ -1,18 +1,24 @@
 import { attachParentReferences } from "./attach-parent-references.js";
 import { attachSourceLocations } from "./attach-source-locations.js";
 import { parseFixture } from "./parse-fixture.js";
+import type { ParseFixtureResult } from "./parse-fixture.js";
 import { isAstNode } from "../plugin/utils/is-ast-node.js";
 import type { EsTreeNode } from "../plugin/utils/es-tree-node.js";
 import type { ReportDescriptor } from "../plugin/utils/report-descriptor.js";
 import type { Rule } from "../plugin/utils/rule.js";
 import type { RuleContext } from "../plugin/utils/rule-context.js";
 import type { RuleVisitors } from "../plugin/utils/rule-visitors.js";
+import { getNodeEndIndex } from "../plugin/utils/get-node-end-index.js";
+import { getNodeStartIndex } from "../plugin/utils/get-node-start-index.js";
 import { analyzeScopes } from "../plugin/semantic/scope-analysis.js";
+import type { ScopeAnalysis } from "../plugin/semantic/scope-analysis.js";
 import { analyzeControlFlow } from "../plugin/semantic/control-flow-graph.js";
+import type { ControlFlowAnalysis } from "../plugin/semantic/control-flow-graph.js";
 
 export interface RunRuleOptions {
   filename?: string;
   settings?: Readonly<Record<string, unknown>>;
+  includeLocations?: boolean;
   // Parse the fixture with TSX even when the filename suggests `.js`/`.ts`.
   // Useful for tests that want a non-JSX-friendly extension on the rule
   // context but still need JSX in the source.
@@ -20,6 +26,8 @@ export interface RunRuleOptions {
 }
 
 export interface RuleDiagnostic {
+  column?: number;
+  line?: number;
   message: string;
   nodeType: string;
 }
@@ -28,6 +36,20 @@ export interface RunRuleResult {
   diagnostics: RuleDiagnostic[];
   parseErrors: ReadonlyArray<{ message: string }>;
 }
+
+const withCuratedPortBehavior = (
+  settings: Readonly<Record<string, unknown>> | undefined,
+): Readonly<Record<string, unknown>> => {
+  const reactDoctorSettings = settings?.["react-doctor"];
+  const mergedReactDoctorSettings =
+    typeof reactDoctorSettings === "object" && reactDoctorSettings !== null
+      ? {
+          portedRuleMode: Reflect.get(reactDoctorSettings, "portedRuleMode") ?? "curated",
+          ...reactDoctorSettings,
+        }
+      : { portedRuleMode: "curated" };
+  return { ...settings, "react-doctor": mergedReactDoctorSettings };
+};
 
 const dispatchTreeWalk = (root: EsTreeNode, visitors: RuleVisitors): void => {
   const visit = (node: EsTreeNode): void => {
@@ -58,20 +80,27 @@ const dispatchTreeWalk = (root: EsTreeNode, visitors: RuleVisitors): void => {
 // every `report({...})` call as a `RuleDiagnostic`. Used by every
 // `<rule>.test.ts` to assert pass/fail semantics ported from OXC's
 // `Tester::new(...).pass / .fail`.
-export const runRule = (rule: Rule, code: string, options: RunRuleOptions = {}): RunRuleResult => {
-  const parsed = parseFixture(code, {
-    filename: options.filename,
-    forceJsx: options.forceJsx,
-  });
+export const runRuleOnParsedFixture = (
+  rule: Rule,
+  code: string,
+  parsed: ParseFixtureResult,
+  options: RunRuleOptions = {},
+): RunRuleResult => {
   attachParentReferences(parsed.program);
   attachSourceLocations(parsed.program, code);
 
   const diagnostics: RuleDiagnostic[] = [];
-  const scopes = analyzeScopes(parsed.program);
-  const cfg = analyzeControlFlow(parsed.program);
+  let scopes: ScopeAnalysis | undefined;
+  let controlFlow: ControlFlowAnalysis | undefined;
   const context: RuleContext = {
     report: (descriptor: ReportDescriptor) => {
       diagnostics.push({
+        ...(options.includeLocations
+          ? {
+              column: descriptor.node.loc?.start.column,
+              line: descriptor.node.loc?.start.line,
+            }
+          : {}),
         message: descriptor.message,
         nodeType: descriptor.node.type,
       });
@@ -79,13 +108,36 @@ export const runRule = (rule: Rule, code: string, options: RunRuleOptions = {}):
     // `in` (not `?? "fixture.tsx"`) so a test can pass `{ filename: undefined }`
     // to exercise a host with no filename.
     filename: "filename" in options ? options.filename : "fixture.tsx",
-    settings: options.settings,
-    scopes,
-    cfg,
+    settings: withCuratedPortBehavior(options.settings),
+    sourceCode: {
+      ast: parsed.program,
+      getText: (node) => {
+        if (!node) return code;
+        const startIndex = getNodeStartIndex(node);
+        const endIndex = getNodeEndIndex(node);
+        return startIndex === -1 || endIndex === -1 ? code : code.slice(startIndex, endIndex);
+      },
+    },
+    get scopes() {
+      scopes ??= analyzeScopes(parsed.program);
+      return scopes;
+    },
+    get cfg() {
+      controlFlow ??= analyzeControlFlow(parsed.program);
+      return controlFlow;
+    },
   };
 
   const visitors = rule.create(context);
   dispatchTreeWalk(parsed.program, visitors);
 
   return { diagnostics, parseErrors: parsed.errors };
+};
+
+export const runRule = (rule: Rule, code: string, options: RunRuleOptions = {}): RunRuleResult => {
+  const parsed = parseFixture(code, {
+    filename: options.filename,
+    forceJsx: options.forceJsx,
+  });
+  return runRuleOnParsedFixture(rule, code, parsed, options);
 };

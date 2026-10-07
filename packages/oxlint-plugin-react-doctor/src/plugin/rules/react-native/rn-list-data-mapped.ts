@@ -2,6 +2,7 @@ import {
   REACT_NATIVE_BUILTIN_LIST_COMPONENTS,
   REACT_NATIVE_LIST_MODULE_SOURCES,
 } from "../../constants/react-native.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findDeclaratorForBinding } from "../../utils/find-declarator-for-binding.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
@@ -55,9 +56,10 @@ const isLocalBindingReactNativeList = (node: EsTreeNode, elementName: string): b
 const isVirtualizedList = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
   elementName: string,
+  scopes: ScopeAnalysis,
 ): boolean => {
   if (
-    resolveImportedRecyclerName(node, elementName, {
+    resolveImportedRecyclerName(node, scopes, {
       allowNamespaceMemberAccess: true,
     }) !== null
   )
@@ -151,7 +153,7 @@ export const rnListDataMapped = defineRule({
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
-      if (!elementName || !isVirtualizedList(node, elementName)) return;
+      if (!elementName || !isVirtualizedList(node, elementName, context.scopes)) return;
 
       for (const attr of node.attributes ?? []) {
         if (!isNodeOfType(attr, "JSXAttribute")) continue;

@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/no_autofocus.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/jsx_a11y/no_autofocus.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -93,6 +93,14 @@ export const passCases: ReadonlyArray<OxcFixture> = [
       },
     },
   },
+  { code: `<dialog><div autoFocus /></dialog>` },
+  { code: `<dialog><input autoFocus /></dialog>` },
+  { code: `<div role="dialog"><input autoFocus /></div>` },
+  { code: `<div popover><input autoFocus /></div>` },
+  { code: `<div popover="auto"><input autoFocus /></div>` },
+  { code: `<dialog><div><input autoFocus /></div></dialog>` },
+  { code: `<div role="dialog"><section><div><input autoFocus /></div></section></div>` },
+  { code: `<div popover><section><input autoFocus /></section></div>` },
 ];
 
 export const failCases: ReadonlyArray<OxcFixture> = [
@@ -156,4 +164,8 @@ export const failCases: ReadonlyArray<OxcFixture> = [
       },
     },
   },
+  { code: `<dialog autoFocus />` },
+  { code: `<div role="dialog" autoFocus />` },
+  { code: `<div popover autoFocus />` },
+  { code: `<div popover="auto" autoFocus />` },
 ];

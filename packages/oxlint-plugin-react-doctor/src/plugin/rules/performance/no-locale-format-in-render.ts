@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -835,10 +836,10 @@ export const noLocaleFormatInRender = defineRule({
     "Format locale/timezone-dependent values in a post-mount useEffect + state, or pass an explicit locale and timeZone so the server and the browser render the same text. Only runs on SSR-capable projects.",
   create: (context: RuleContext): RuleVisitors => {
     const isTestlikeFile = isTestlikeFilename(context.filename);
-    if (isTestlikeFile) return {};
+    if (isTestlikeFile) return EMPTY_RULE_VISITORS;
     // React Native has no server-rendered HTML to hydrate; skip files in
     // RN/Expo packages of mixed monorepos.
-    if (classifyReactNativeFileTarget(context) === "react-native") return {};
+    if (classifyReactNativeFileTarget(context) === "react-native") return EMPTY_RULE_VISITORS;
 
     let fileHasUseClientDirective = false;
     let fileIsEmailTemplate = false;

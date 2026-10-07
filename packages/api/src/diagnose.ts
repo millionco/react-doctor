@@ -1,20 +1,24 @@
+import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import {
   buildSkippedChecks,
   Config,
+  createOxlintSpawnSlots,
   DEFAULT_PROJECT_SCAN_CONCURRENCY,
   DEFAULT_SHOW_WARNINGS,
-  DeadCode,
   detectAiTrainingEnvironment,
   Files,
   Git,
   hasReactRuntime,
-  layerOtlp,
+  layerUserOtlp,
   Linter,
   LintPartialFailures,
+  Maintainability,
   mapWithConcurrency,
   mergeReactDoctorConfigs,
+  OxlintConcurrency,
+  OxlintSpawnSlots,
   Progress,
   Project,
   Reporter,
@@ -22,9 +26,12 @@ import {
   restoreLegacyThrow,
   runInspect,
   Score,
+  shouldUseMaintainabilityLayer,
   SupplyChain,
   type InspectOutput,
   type ResolvedScanTarget,
+  type SourceFileEntry,
+  type OxlintSpawnSlotsHandle,
 } from "@react-doctor/core";
 import type {
   DiagnoseOptions,
@@ -36,6 +43,7 @@ import type {
   ReactDoctorConfig,
   ScoreResult,
 } from "@react-doctor/core";
+import { buildDiagnoseProjectPlan } from "./build-diagnose-project-plan.js";
 
 // The CLI carries the richer warning (logger + telemetry); the library only
 // has stdout, so it warns once per process via console.warn when a scan runs
@@ -53,6 +61,8 @@ interface DiagnoseLayerInput {
   readonly config: ReactDoctorConfig | null;
   readonly shouldRunLint: boolean;
   readonly shouldRunDeadCode: boolean;
+  readonly oxlintConcurrency: number;
+  readonly oxlintSpawnSlots: OxlintSpawnSlotsHandle;
   readonly configOverrideTarget?: Pick<
     ResolvedScanTarget,
     "resolvedDirectory" | "configSourceDirectory"
@@ -81,11 +91,18 @@ const buildDiagnoseLayer = (input: DiagnoseLayerInput) => {
   return Layer.mergeAll(
     Project.layerNode,
     configLayer,
-    input.shouldRunDeadCode ? DeadCode.layerNode : DeadCode.layerOf([]),
+    shouldUseMaintainabilityLayer({
+      shouldRunDuplicateJsx: input.shouldRunDeadCode,
+      userConfig: input.config,
+    })
+      ? Maintainability.layerNode
+      : Maintainability.layerOf([]),
     Files.layerNode,
     Git.layerNode,
     input.shouldRunLint ? Linter.layerOxlint : Linter.layerOf([]),
     LintPartialFailures.layerLive,
+    Layer.succeed(OxlintConcurrency, input.oxlintConcurrency),
+    Layer.succeed(OxlintSpawnSlots, input.oxlintSpawnSlots),
     Progress.layerNoop,
     Reporter.layerNoop,
     Score.layerHttp,
@@ -97,6 +114,7 @@ const buildInspectProgram = (
   scanTarget: ResolvedScanTarget,
   options: DiagnoseOptions,
   configOverride?: ReactDoctorConfig,
+  precomputedSourceFiles?: ReadonlyArray<SourceFileEntry>,
 ) => {
   const effectiveConfig = configOverride ?? scanTarget.userConfig;
   const includePaths = options.includePaths ?? [];
@@ -104,6 +122,7 @@ const buildInspectProgram = (
 
   return runInspect({
     directory: scanTarget.resolvedDirectory,
+    precomputedSourceFiles,
     includePaths,
     customRulesOnly: effectiveConfig?.customRulesOnly ?? false,
     respectInlineDisables:
@@ -154,6 +173,8 @@ const diagnoseDirectory = async (
   const program = buildInspectProgram(scanTarget, options);
   const shouldRunLint = resolveShouldRunLint(options, scanTarget.userConfig);
   const shouldRunDeadCode = resolveShouldRunDeadCode(options, scanTarget.userConfig);
+  const oxlintConcurrency = Effect.runSync(OxlintConcurrency);
+  const oxlintSpawnSlots = createOxlintSpawnSlots(oxlintConcurrency);
 
   const output: InspectOutput = await Effect.runPromise(
     restoreLegacyThrow(
@@ -163,9 +184,11 @@ const diagnoseDirectory = async (
             config: scanTarget.userConfig,
             shouldRunLint,
             shouldRunDeadCode,
+            oxlintConcurrency,
+            oxlintSpawnSlots,
           }),
         ),
-        Effect.provide(layerOtlp),
+        Effect.provide(layerUserOtlp),
       ),
     ),
   );
@@ -190,6 +213,9 @@ const diagnoseProject = async (
   projectDefinition: ProjectDefinition,
   baseOptions: DiagnoseOptions,
   batchConfig: ReactDoctorConfig | undefined,
+  oxlintConcurrency: number,
+  oxlintSpawnSlots: OxlintSpawnSlotsHandle,
+  precomputedSourceFiles: ReadonlyArray<SourceFileEntry> | undefined,
 ): Promise<ProjectResult> => {
   const startTime = globalThis.performance.now();
 
@@ -209,7 +235,14 @@ const diagnoseProject = async (
     const shouldRunLint = resolveShouldRunLint(mergedOptions, effectiveConfig);
     const shouldRunDeadCode = resolveShouldRunDeadCode(mergedOptions, effectiveConfig);
 
-    const program = buildInspectProgram(scanTarget, mergedOptions, effectiveConfig ?? undefined);
+    const canReusePrecomputedSourceFiles =
+      path.resolve(projectDefinition.directory) === path.resolve(scanTarget.resolvedDirectory);
+    const program = buildInspectProgram(
+      scanTarget,
+      mergedOptions,
+      effectiveConfig ?? undefined,
+      canReusePrecomputedSourceFiles ? precomputedSourceFiles : undefined,
+    );
     // `plugins` is override-wins in the merge: when a caller layer supplies
     // it, relative entries resolve against the scan root (caller configs
     // have no file location); otherwise the on-disk config's directory.
@@ -220,6 +253,8 @@ const diagnoseProject = async (
           config: effectiveConfig,
           shouldRunLint,
           shouldRunDeadCode,
+          oxlintConcurrency,
+          oxlintSpawnSlots,
           configOverrideTarget: {
             resolvedDirectory: scanTarget.resolvedDirectory,
             configSourceDirectory: didOverridePlugins ? null : scanTarget.configSourceDirectory,
@@ -229,11 +264,13 @@ const diagnoseProject = async (
           config: effectiveConfig,
           shouldRunLint,
           shouldRunDeadCode,
+          oxlintConcurrency,
+          oxlintSpawnSlots,
         };
     const layer = buildDiagnoseLayer(diagnoseLayerInput);
 
     const output: InspectOutput = await Effect.runPromise(
-      restoreLegacyThrow(program.pipe(Effect.provide(layer), Effect.provide(layerOtlp))),
+      restoreLegacyThrow(program.pipe(Effect.provide(layer), Effect.provide(layerUserOtlp))),
     );
 
     return {
@@ -256,14 +293,30 @@ const diagnoseProjectBatch = async (
   warnIfAiTrainingEnvironment();
   const startTime = globalThis.performance.now();
   const { projects, concurrency, config: batchConfig, ...baseOptions } = input;
+  const oxlintConcurrency = Effect.runSync(OxlintConcurrency);
+  const oxlintSpawnSlots = createOxlintSpawnSlots(oxlintConcurrency);
+  const projectPlan = await buildDiagnoseProjectPlan(projects);
 
   // `diagnoseProject` never rejects (failures come back as `ok: false`),
   // so the pool always drains every project.
-  const projectResults = await mapWithConcurrency(
-    projects,
+  const completedProjects = await mapWithConcurrency(
+    projectPlan,
     concurrency ?? DEFAULT_PROJECT_SCAN_CONCURRENCY,
-    (projectDefinition) => diagnoseProject(projectDefinition, baseOptions, batchConfig),
+    async (projectPlanEntry) => ({
+      originalIndex: projectPlanEntry.originalIndex,
+      result: await diagnoseProject(
+        projectPlanEntry.projectDefinition,
+        baseOptions,
+        batchConfig,
+        oxlintConcurrency,
+        oxlintSpawnSlots,
+        projectPlanEntry.precomputedSourceFiles,
+      ),
+    }),
   );
+  const projectResults = completedProjects
+    .toSorted((leftProject, rightProject) => leftProject.originalIndex - rightProject.originalIndex)
+    .map((completedProject) => completedProject.result);
 
   const succeededProjects = projectResults.filter((projectResult) => projectResult.ok);
 

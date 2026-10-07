@@ -1,7 +1,7 @@
 import { FLEX_OR_GRID_DISPLAY_TOKENS, SPACE_AXIS_PATTERN } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { getJsxAttributeStaticString } from "../../utils/get-jsx-attribute-static-string.js";
+import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -27,7 +27,7 @@ export const noSpaceOnFlexChildren = defineRule({
       ) {
         return;
       }
-      const classNameLiteral = getJsxAttributeStaticString(jsxAttribute);
+      const classNameLiteral = getStringLiteralAttributeValue(jsxAttribute);
       if (!classNameLiteral) return;
       // No `space-*` utility means nothing to report — bail before tokenizing.
       if (!classNameLiteral.includes("space-")) return;

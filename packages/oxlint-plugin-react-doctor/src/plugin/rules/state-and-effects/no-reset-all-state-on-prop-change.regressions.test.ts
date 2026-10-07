@@ -3,6 +3,92 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noResetAllStateOnPropChange } from "./no-reset-all-state-on-prop-change.js";
 
 describe("no-reset-all-state-on-prop-change — regressions", () => {
+  it("stays silent when the only state is a media failure latch reset for a new resource", () => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `function AnimatedBackground({ src, mime }) {
+        const [hasFailed, setHasFailed] = useState(false);
+        useEffect(() => {
+          setHasFailed(false);
+        }, [src, mime]);
+        const handleLoadedData = (event) => {
+          event.currentTarget.play()?.catch(() => setHasFailed(true));
+        };
+        return (
+          <video
+            src={src}
+            type={mime}
+            onLoadedData={handleLoadedData}
+            onError={() => setHasFailed(true)}
+          />
+        );
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports when all state includes an ordinary prop-keyed draft reset", () => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `function Editor({ documentId, previewUrl }) {
+        const [draft, setDraft] = useState("");
+        const [previewFailed, setPreviewFailed] = useState(false);
+        useEffect(() => {
+          setDraft("");
+          setPreviewFailed(false);
+        }, [documentId, previewUrl]);
+        return (
+          <>
+            <input value={draft} onChange={(event) => setDraft(event.target.value)} />
+            <img src={previewUrl} onError={() => setPreviewFailed(true)} />
+          </>
+        );
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports when the changed prop does not identify the resource", () => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `function Preview({ userId, previewUrl }) {
+        const [hasFailed, setHasFailed] = useState(false);
+        useEffect(() => {
+          setHasFailed(false);
+        }, [userId]);
+        return <img src={previewUrl} onError={() => setHasFailed(true)} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports an editable value reset despite a resource error writer", () => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `function Editor({ documentId }) {
+        const [draft, setDraft] = useState("");
+        useEffect(() => {
+          setDraft("");
+        }, [documentId]);
+        return (
+          <>
+            <input value={draft} onChange={(event) => setDraft(event.target.value)} />
+            <img src={documentId} onError={() => setDraft("unavailable")} />
+          </>
+        );
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for an extracted async loading lifecycle helper", () => {
     const result = runRule(
       noResetAllStateOnPropChange,

@@ -30,6 +30,68 @@ describe("no-uppercase-mono-label", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when font family, casing, or tracking utilities conflict", () => {
+    const result = runRule(
+      noUppercaseMonoLabel,
+      `const Labels = () => <><span className="font-mono font-sans uppercase tracking-wide">System online</span><span className="font-mono uppercase normal-case tracking-wide">System online</span><span className="font-mono uppercase tracking-wide tracking-normal">System online</span><span className="font-sans font-mono normal-case uppercase tracking-normal tracking-wide">System online</span></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when important utilities conflict", () => {
+    const result = runRule(
+      noUppercaseMonoLabel,
+      `const Labels = () => <><span className="!font-mono !font-sans uppercase tracking-wide">System online</span><span className="font-mono !uppercase !normal-case tracking-wide">System online</span><span className="font-mono uppercase !tracking-wide !tracking-normal">System online</span></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("honors important font family, casing, and tracking precedence", () => {
+    const result = runRule(
+      noUppercaseMonoLabel,
+      `const Labels = () => <>
+        <span className="!font-sans font-mono uppercase tracking-wide">System online</span>
+        <span className="font-sans !font-mono font-sans uppercase tracking-wide">System online</span>
+        <span className="font-mono !normal-case uppercase tracking-wide">System online</span>
+        <span className="font-mono normal-case !uppercase normal-case tracking-wide">System online</span>
+        <span className="font-mono uppercase !tracking-normal tracking-wide">System online</span>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("ignores zero arbitrary tracking", () => {
+    const result = runRule(
+      noUppercaseMonoLabel,
+      `const Label = () => <span className="font-mono uppercase tracking-wide tracking-[0rem]">System online</span>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores spread-overridable rendered styles", () => {
+    const result = runRule(
+      noUppercaseMonoLabel,
+      `const Labels = ({ props }) => <><span {...props} className="font-mono uppercase tracking-wide">System online</span><span className="font-mono uppercase tracking-wide" {...props}>System online</span></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores opaque custom label components", () => {
+    const result = runRule(
+      noUppercaseMonoLabel,
+      `const Label = () => <Text className="font-mono uppercase tracking-wide">System online</Text>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores inline styles that can override the visual claim", () => {
+    const result = runRule(
+      noUppercaseMonoLabel,
+      `const Label = () => <span className="font-mono uppercase tracking-wide" style={{ fontFamily: "sans-serif" }}>System online</span>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("ignores dynamic identifiers without static label text", () => {
     const result = runRule(
       noUppercaseMonoLabel,

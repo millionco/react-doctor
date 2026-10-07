@@ -8,6 +8,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { ControlFlowAnalysis } from "../../semantic/control-flow-graph.js";
@@ -36,6 +37,7 @@ const NESTED_FUNCTION_TYPES: ReadonlySet<string> = new Set([
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
+  shouldUseCuratedBehavior: boolean,
 ): Required<NoUnstableNestedComponentsSettings> => {
   const reactDoctor = settings?.["react-doctor"];
   const ruleSettings =
@@ -49,7 +51,7 @@ const resolveSettings = (
     // tldraw's `components={{HelperButtons: () => ...}}`, etc.) is the
     // canonical React composition pattern. Users who want strict
     // enforcement opt back in via `allowAsProps: false`.
-    allowAsProps: ruleSettings.allowAsProps ?? true,
+    allowAsProps: ruleSettings.allowAsProps ?? shouldUseCuratedBehavior,
     customValidators: ruleSettings.customValidators ?? [],
     propNamePattern: ruleSettings.propNamePattern ?? "render*",
   };
@@ -106,11 +108,26 @@ const isReactClassComponent = (classNode: EsTreeNode, scopes: ScopeAnalysis): bo
   return expressionContainsJsxOrCreateElement(classNode, scopes);
 };
 
+const hasEnclosingFunctionOrClass = (node: EsTreeNode): boolean => {
+  let walker: EsTreeNode | null | undefined = node.parent;
+  while (walker) {
+    if (
+      isFunctionLike(walker) ||
+      isNodeOfType(walker, "ClassDeclaration") ||
+      isNodeOfType(walker, "ClassExpression")
+    ) {
+      return true;
+    }
+    walker = walker.parent ?? null;
+  }
+  return false;
+};
+
 // Walk up to find the FIRST enclosing function/class component.
 const findEnclosingComponent = (
   node: EsTreeNode,
-  scopes: ScopeAnalysis,
-  controlFlow: ControlFlowAnalysis,
+  functionContainsComponentOutput: (functionNode: EsTreeNode) => boolean,
+  classIsReactComponent: (classNode: EsTreeNode) => boolean,
 ): { component: EsTreeNode; name: string | null } | null => {
   let walker: EsTreeNode | null | undefined = node.parent;
   while (walker) {
@@ -119,14 +136,14 @@ const findEnclosingComponent = (
       if (
         componentName &&
         isReactComponentName(componentName) &&
-        functionContainsJsxOrCreateElement(walker, scopes, controlFlow)
+        functionContainsComponentOutput(walker)
       ) {
         return { component: walker, name: componentName };
       }
       // Anonymous default-exported function returning JSX counts too.
       if (
         !componentName &&
-        functionContainsJsxOrCreateElement(walker, scopes, controlFlow) &&
+        functionContainsComponentOutput(walker) &&
         walker.parent &&
         isNodeOfType(walker.parent, "ExportDefaultDeclaration")
       ) {
@@ -134,11 +151,7 @@ const findEnclosingComponent = (
       }
     }
     if (isNodeOfType(walker, "ClassDeclaration") || isNodeOfType(walker, "ClassExpression")) {
-      if (
-        walker.id &&
-        isReactComponentName(walker.id.name) &&
-        isReactClassComponent(walker, scopes)
-      ) {
+      if (walker.id && isReactComponentName(walker.id.name) && classIsReactComponent(walker)) {
         return { component: walker, name: walker.id.name };
       }
     }
@@ -371,10 +384,12 @@ const isReactLazyCall = (
     resolveNamedAliases: true,
   });
 
+const NO_VISITED_SYMBOLS: ReadonlySet<number> = new Set();
+
 const isRenderFlowingReadReference = (
   identifier: EsTreeNode,
   scopes: ScopeAnalysis,
-  visitedSymbols: ReadonlySet<number> = new Set(),
+  visitedSymbols: ReadonlySet<number> = NO_VISITED_SYMBOLS,
 ): boolean => {
   let valueNode: EsTreeNode = identifier;
   let parent: EsTreeNode | null | undefined = valueNode.parent;
@@ -472,7 +487,8 @@ export const noUnstableNestedComponents = defineRule({
   category: "Performance",
   tags: ["react-jsx-only"],
   create: (context) => {
-    const settings = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
+    const settings = resolveSettings(context.settings, shouldUseCuratedBehavior);
     const renderPropRegex = compileGlob(settings.propNamePattern);
 
     // Bindings actually INSTANTIATED as React elements (`<Name/>` or
@@ -491,6 +507,24 @@ export const noUnstableNestedComponents = defineRule({
     // instantiated by their consumer and keep firing as before.
     const instantiatedComponentNames = new Set<string>();
     const instantiatedBindingIdentifiers = new Set<EsTreeNode>();
+    const componentOutputByFunction = new WeakMap<EsTreeNode, boolean>();
+    const reactComponentByClass = new WeakMap<EsTreeNode, boolean>();
+
+    const functionContainsComponentOutput = (functionNode: EsTreeNode): boolean => {
+      const cachedResult = componentOutputByFunction.get(functionNode);
+      if (cachedResult !== undefined) return cachedResult;
+      const result = functionContainsJsxOrCreateElement(functionNode, context.scopes, context.cfg);
+      componentOutputByFunction.set(functionNode, result);
+      return result;
+    };
+
+    const classIsReactComponent = (classNode: EsTreeNode): boolean => {
+      const cachedResult = reactComponentByClass.get(classNode);
+      if (cachedResult !== undefined) return cachedResult;
+      const result = isReactClassComponent(classNode, context.scopes);
+      reactComponentByClass.set(classNode, result);
+      return result;
+    };
 
     const recordInstantiation = (identifier: EsTreeNode, name: string): void => {
       instantiatedComponentNames.add(name);
@@ -544,19 +578,30 @@ export const noUnstableNestedComponents = defineRule({
     }
     const queuedReports: QueuedReport[] = [];
 
+    const shouldSkipCandidate = (
+      candidateNode: EsTreeNode,
+      propInfo: { propName: string } | null,
+    ): boolean => {
+      if (isFirstArgumentOfHocCall(candidateNode)) return true;
+      if (isReturnOfMapCallback(candidateNode)) return true;
+      if (propInfo) {
+        if (propInfo.propName === "children") return true;
+        if (renderPropRegex.test(propInfo.propName)) return true;
+        if (settings.allowAsProps) return true;
+      }
+      return !hasEnclosingFunctionOrClass(candidateNode);
+    };
+
     const enqueueCandidate = (
       candidateNode: EsTreeNode,
       requiredInstantiationName: string | null,
+      propInfo: { propName: string } | null,
     ): void => {
-      if (isFirstArgumentOfHocCall(candidateNode)) return;
-      if (isReturnOfMapCallback(candidateNode)) return;
-      const propInfo = isComponentDeclaredInProp(candidateNode);
-      if (propInfo) {
-        if (propInfo.propName === "children") return;
-        if (renderPropRegex.test(propInfo.propName)) return;
-        if (settings.allowAsProps) return;
-      }
-      const enclosing = findEnclosingComponent(candidateNode, context.scopes, context.cfg);
+      const enclosing = findEnclosingComponent(
+        candidateNode,
+        functionContainsComponentOutput,
+        classIsReactComponent,
+      );
       if (!enclosing) return;
       // A prop / object-callback candidate is instantiated by its
       // consumer, so don't gate it on local instantiation.
@@ -575,18 +620,17 @@ export const noUnstableNestedComponents = defineRule({
         "FunctionDeclaration" | "FunctionExpression" | "ArrowFunctionExpression"
       >,
     ): void => {
-      if (!functionContainsJsxOrCreateElement(node as EsTreeNode, context.scopes, context.cfg)) {
-        return;
-      }
       const inferredName = inferFunctionLikeName(node as EsTreeNode);
       const propInfo = isComponentDeclaredInProp(node as EsTreeNode);
       const isObjectCallback = isObjectCallbackCandidate(node as EsTreeNode);
       const isNameCandidate = inferredName !== null && isReactComponentName(inferredName);
       const isCandidate = isNameCandidate || propInfo !== null || isObjectCallback;
       if (!isCandidate) return;
+      if (shouldSkipCandidate(node as EsTreeNode, propInfo)) return;
+      if (!functionContainsComponentOutput(node as EsTreeNode)) return;
       const requiredInstantiationName =
         isNameCandidate && propInfo === null && !isObjectCallback ? inferredName : null;
-      enqueueCandidate(node as EsTreeNode, requiredInstantiationName);
+      enqueueCandidate(node as EsTreeNode, requiredInstantiationName, propInfo);
     };
 
     return {
@@ -610,19 +654,23 @@ export const noUnstableNestedComponents = defineRule({
       ClassDeclaration(node: EsTreeNodeOfType<"ClassDeclaration">) {
         if (!node.id) return;
         if (!isReactComponentName(node.id.name)) return;
+        const propInfo = isComponentDeclaredInProp(node as EsTreeNode);
+        if (shouldSkipCandidate(node as EsTreeNode, propInfo)) return;
         // Only flag classes that are actually React components — the
         // PascalCase-only check otherwise misidentifies any
         // PascalCase-named class (`class NewRoot extends RootState` in
         // tldraw, `class Tool extends BaseTool`, etc.) as a nested React
         // component candidate.
-        if (!isReactClassComponent(node as EsTreeNode, context.scopes)) return;
-        enqueueCandidate(node as EsTreeNode, null);
+        if (!classIsReactComponent(node as EsTreeNode)) return;
+        enqueueCandidate(node as EsTreeNode, null, propInfo);
       },
       ClassExpression(node: EsTreeNodeOfType<"ClassExpression">) {
         const inferredName = node.id?.name ?? inferFunctionLikeName(node as EsTreeNode);
         if (!inferredName || !isReactComponentName(inferredName)) return;
-        if (!isReactClassComponent(node as EsTreeNode, context.scopes)) return;
-        enqueueCandidate(node as EsTreeNode, null);
+        const propInfo = isComponentDeclaredInProp(node as EsTreeNode);
+        if (shouldSkipCandidate(node as EsTreeNode, propInfo)) return;
+        if (!classIsReactComponent(node as EsTreeNode)) return;
+        enqueueCandidate(node as EsTreeNode, null, propInfo);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (isReactCreateElementCall(node, context.scopes)) {
@@ -635,13 +683,14 @@ export const noUnstableNestedComponents = defineRule({
         }
         const isReactLazy = isReactLazyCall(node, context.scopes);
         if (!isReactLazy && !isHocCallee(node)) return;
-        if (!isReactLazy && !hocCallContainsComponent(node, context.scopes)) {
-          return;
-        }
         const inferredName = inferFunctionLikeName(node as EsTreeNode);
         const propInfo = isComponentDeclaredInProp(node as EsTreeNode);
         if (propInfo === null && (!inferredName || !isReactComponentName(inferredName))) return;
-        enqueueCandidate(node as EsTreeNode, propInfo === null ? inferredName : null);
+        if (shouldSkipCandidate(node as EsTreeNode, propInfo)) return;
+        if (!isReactLazy && !hocCallContainsComponent(node, context.scopes)) {
+          return;
+        }
+        enqueueCandidate(node as EsTreeNode, propInfo === null ? inferredName : null, propInfo);
       },
       "Program:exit"() {
         for (const report of queuedReports) {

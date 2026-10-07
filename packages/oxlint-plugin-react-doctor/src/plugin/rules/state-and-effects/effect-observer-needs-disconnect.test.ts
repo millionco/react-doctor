@@ -1023,6 +1023,32 @@ describe("effect-observer-needs-disconnect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat an observer member as an identity alias", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => {});
+         const unrelated = observer.unrelated;
+         observer.observe(element);
+         return () => unrelated.disconnect();
+       }, [element]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat an unproven useRef call as an identity alias", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observer = new ResizeObserver(() => {});
+         const unrelated = useRef(observer);
+         observer.observe(element);
+         return () => unrelated.disconnect();
+       }, [element]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("matches bound disconnect cleanups through observer aliases", () => {
     const released = runRule(
       effectObserverNeedsDisconnect,

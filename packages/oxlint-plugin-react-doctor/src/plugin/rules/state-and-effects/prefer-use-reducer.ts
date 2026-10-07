@@ -126,6 +126,7 @@ const findLargestCoUpdatedSetterGroup = (
 
 export const preferUseReducer = defineRule({
   id: "prefer-useReducer",
+  defaultEnabled: false,
   title: "Many related useState calls",
   tags: ["test-noise"],
   severity: "warn",

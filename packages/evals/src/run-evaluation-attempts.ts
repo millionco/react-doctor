@@ -1,9 +1,8 @@
-import pLimit from "p-limit";
-
 import { EVALUATION_RETRY_REPOSITORIES_PER_SANDBOX } from "./constants.js";
 import type { CorpusEvaluationRecord, CorpusRepositoryGroup } from "./corpus.js";
 import { groupCorpusRepositories } from "./group-corpus-repositories.js";
 import { partitionRepositoryGroups } from "./utils/partition-repository-groups.js";
+import { createConcurrencyLimit } from "./utils/create-concurrency-limit.js";
 
 export interface EvaluationRetry {
   attemptNumber: number;
@@ -38,7 +37,7 @@ export const runEvaluationAttempts = async ({
 }: RunEvaluationAttemptsInput): Promise<void> => {
   let pendingRepositoryGroups = repositoryGroups;
   for (const [attemptIndex, concurrency] of attemptConcurrencies.entries()) {
-    const limit = pLimit(concurrency);
+    const limit = createConcurrencyLimit(concurrency);
     const repositoryBatchSize =
       attemptIndex === 0 ? repositoriesPerSandbox : EVALUATION_RETRY_REPOSITORIES_PER_SANDBOX;
     const repositoryBatches = partitionRepositoryGroups(

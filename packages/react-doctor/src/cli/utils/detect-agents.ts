@@ -1,4 +1,5 @@
-import { detectInstalledSkillAgents, getSkillAgentTypes, type SkillAgentType } from "agent-install";
+import type { SkillAgentType } from "agent-install";
+import { loadAgentInstall } from "./load-agent-install.js";
 import { isCommandAvailable } from "./is-command-available.js";
 
 // HACK: PATH binaries we use as a *supplementary* detection signal on top
@@ -35,6 +36,7 @@ const detectPathAvailableAgents = (): SkillAgentType[] => {
 // UI; the synthetic "universal" type is filtered out because it isn't a
 // user-facing agent.
 export const detectAvailableAgents = async (): Promise<SkillAgentType[]> => {
+  const { detectInstalledSkillAgents, getSkillAgentTypes } = loadAgentInstall();
   const detected = new Set<SkillAgentType>([
     ...detectPathAvailableAgents(),
     ...(await detectInstalledSkillAgents()),
@@ -50,7 +52,7 @@ export const detectAvailableAgents = async (): Promise<SkillAgentType[]> => {
 // here. Niche tools the user merely has installed somewhere in $HOME stay
 // shown-but-unselected, so a machine full of AI tools doesn't get the skill
 // copied into a dozen project-local directories just by pressing Enter.
-export const DEFAULT_INSTALL_AGENTS: readonly SkillAgentType[] = [
+const DEFAULT_INSTALL_AGENTS: readonly SkillAgentType[] = [
   "claude-code",
   "cursor",
   "codex",

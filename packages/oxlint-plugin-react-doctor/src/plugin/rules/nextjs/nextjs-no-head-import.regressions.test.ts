@@ -55,3 +55,32 @@ describe("nextjs/nextjs-no-head-import — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 });
+
+describe("App Router project-relative boundary", () => {
+  it.each([
+    "pages/app/md.tsx",
+    "src/pages/app/index.tsx",
+    "components/app/head.tsx",
+    "lib/app/view.tsx",
+  ])("keeps next/head valid outside the App Router: %s", (relativePath) => {
+    expect(
+      runRule(nextjsNoHeadImport, HEAD_IMPORT_SOURCE, {
+        filename: `/project/${relativePath}`,
+        settings: { "react-doctor": { rootDirectory: "/project" } },
+      }).diagnostics,
+    ).toHaveLength(0);
+  });
+  it.each([
+    "app/page.tsx",
+    "src/app/page.tsx",
+    "app/pages/app/page.tsx",
+    "src/app/(site)/page.tsx",
+  ])("retains App Router reports: %s", (relativePath) => {
+    expect(
+      runRule(nextjsNoHeadImport, HEAD_IMPORT_SOURCE, {
+        filename: `/project/${relativePath}`,
+        settings: { "react-doctor": { rootDirectory: "/project" } },
+      }).diagnostics,
+    ).toHaveLength(1);
+  });
+});

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -6,6 +6,10 @@ import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-l
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isOutsideBrowserBundle } from "../../utils/is-outside-browser-bundle.js";
+import {
+  BUNDLER_IGNORE_ANNOTATION_PATTERN,
+  readBundlerIgnoreAnnotatedFileText,
+} from "../../utils/read-bundler-ignore-annotated-file-text.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -54,43 +58,12 @@ const targetsPackageManifest = (template: EsTreeNodeOfType<"TemplateLiteral">): 
   return typeof text === "string" && text.endsWith("package.json");
 };
 
-// `import(/* webpackIgnore: true */ /* @vite-ignore */ path)` explicitly
-// opts the import out of bundling — the module is resolved at runtime (a
-// user-configured plugin script), so there is nothing the bundler could ever
-// split and the "stays in the main bundle" premise is void. Comments aren't
-// in the AST, so the annotation is read from the file text inside the
-// expression's span (same disk-read precedent as exhaustive-deps
-// suppression). Only files that actually carry an annotation cache their
-// text; the common no-annotation file caches a flat `false`.
-const BUNDLER_IGNORE_ANNOTATION_PATTERN = /webpackIgnore\s*:\s*true|@vite-ignore/;
-
-const annotatedFileTextCache = new Map<string, string | false>();
-
-const readAnnotatedFileText = (filename: string | undefined): string | null => {
-  if (!filename) return null;
-  const cached = annotatedFileTextCache.get(filename);
-  if (cached !== undefined) return cached === false ? null : cached;
-  let annotatedText: string | false = false;
-  try {
-    const text = readFileSync(filename, "utf8");
-    if (BUNDLER_IGNORE_ANNOTATION_PATTERN.test(text)) annotatedText = text;
-  } catch {
-    annotatedText = false;
-  }
-  annotatedFileTextCache.set(filename, annotatedText);
-  return annotatedText === false ? null : annotatedText;
-};
-
 const hasBundlerIgnoreAnnotation = (node: EsTreeNode, filename: string | undefined): boolean => {
-  const fileText = readAnnotatedFileText(filename);
+  const fileText = readBundlerIgnoreAnnotatedFileText(filename);
   if (fileText === null) return false;
   const range = node.range;
   if (!range) return false;
   return BUNDLER_IGNORE_ANNOTATION_PATTERN.test(fileText.slice(range[0], range[1]));
-};
-
-export const clearBundlerIgnoreAnnotationCache = (): void => {
-  annotatedFileTextCache.clear();
 };
 
 const isUrlCreateObjectUrlCall = (expression: EsTreeNode): boolean =>
@@ -134,7 +107,7 @@ export const noDynamicImportPath = defineRule({
     "Use a plain string path: `import('./feature/heavy.js')` so the bundler can split this into its own chunk.",
   create: (context: RuleContext) => ({
     ImportExpression(node: EsTreeNodeOfType<"ImportExpression">) {
-      const source = node.source;
+      const source = stripParenExpression(node.source);
       if (source && !isNodeOfType(source, "Literal") && !isNodeOfType(source, "TemplateLiteral")) {
         if (isDeliberateStaticIndirection(source)) return;
         if (hasBundlerIgnoreAnnotation(node, context.filename)) return;
@@ -164,10 +137,14 @@ export const noDynamicImportPath = defineRule({
     },
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "require") return;
-      const arg = node.arguments?.[0];
-      if (!arg) return;
-      if (!isNodeOfType(arg, "Literal") && !isNodeOfType(arg, "TemplateLiteral")) {
-        if (isDeliberateStaticIndirection(arg)) return;
+      const argument = node.arguments?.[0];
+      if (!argument) return;
+      const pathExpression = stripParenExpression(argument);
+      if (
+        !isNodeOfType(pathExpression, "Literal") &&
+        !isNodeOfType(pathExpression, "TemplateLiteral")
+      ) {
+        if (isDeliberateStaticIndirection(pathExpression)) return;
         if (isOutsideBrowserBundle(node, context.filename)) return;
         context.report({
           node,
@@ -177,11 +154,11 @@ export const noDynamicImportPath = defineRule({
         return;
       }
       if (
-        isNodeOfType(arg, "TemplateLiteral") &&
-        (arg.expressions?.length ?? 0) > 0 &&
-        !hasStaticDirectoryPrefix(arg) &&
-        !interpolatesOnlyQueryString(arg) &&
-        !targetsPackageManifest(arg)
+        isNodeOfType(pathExpression, "TemplateLiteral") &&
+        (pathExpression.expressions?.length ?? 0) > 0 &&
+        !hasStaticDirectoryPrefix(pathExpression) &&
+        !interpolatesOnlyQueryString(pathExpression) &&
+        !targetsPackageManifest(pathExpression)
       ) {
         if (isOutsideBrowserBundle(node, context.filename)) return;
         context.report({

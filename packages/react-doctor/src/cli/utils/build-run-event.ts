@@ -1,5 +1,8 @@
 import {
+  buildRuleSeverityControls,
+  countOptInProjectRuleSelections,
   filterDiagnosticsForSurface,
+  HTML_FILE_PATTERN,
   isReactDoctorError,
   JSX_FILE_PATTERN,
   resolveGithubActionsScoreMetadata,
@@ -17,17 +20,18 @@ import { isInspectResultComplete } from "./is-inspect-result-complete.js";
 import { ACTION_INPUT_ENVIRONMENT_VARIABLES, detectRunnerOs } from "./is-ci-environment.js";
 import { summarizeRuleFirings } from "./record-scan-metrics.js";
 import { isValidBlockingLevel } from "./resolve-blocking-level.js";
-import { isCacheGloballyDisabled } from "./scan-result-cache.js";
+import { resolveScoreUnavailableReason } from "./resolve-score-unavailable-reason.js";
+import { isCacheGloballyDisabled } from "./is-cache-globally-disabled.js";
 import { shouldBlockCi } from "./should-block-ci.js";
 import { toCategoryKey } from "./to-category-key.js";
 import { toSpanAttributes } from "./to-span-attributes.js";
 import { withNamespace } from "./with-namespace.js";
-import type { SentryRootSpan } from "./with-sentry-run-span.js";
+import type { RunRootSpan } from "./with-run-span.js";
 
-// A tag-like map: `null` denotes an absent signal and is dropped by
-// `toSpanAttributes` so it never becomes a misleading `"null"` attribute.
+// A tag-like map: `null`/`undefined` denote absent signals and are dropped by
+// `toSpanAttributes`.
 interface RunEventAttributes {
-  [attributeName: string]: string | number | boolean | null;
+  [attributeName: string]: string | number | boolean | null | undefined;
 }
 
 /**
@@ -47,8 +51,7 @@ export interface RunEventInput {
   readonly maxDurationMs: number | null;
   readonly lint: boolean;
   readonly deadCode: boolean;
-  // Whether the supply-chain scan is enabled by config/flag (the config analog
-  // of `lint`/`deadCode`) — not whether it ran; diff/staged mode skips it anyway.
+  // Whether the supply-chain scan is enabled by config or flag.
   readonly supplyChain: boolean;
   readonly scoreOnly: boolean;
   readonly noScore: boolean;
@@ -59,7 +62,7 @@ export interface RunEventInput {
   readonly ignoredTagCount: number;
   readonly hasCustomConfig: boolean;
   readonly userConfig: ReactDoctorConfig | null;
-  // Lint / dead-code outcome — only known on the success path. The failure path
+  // Lint and maintainability outcomes are only known on the success path. The failure path
   // (the scan threw) omits these rather than asserting a benign default.
   readonly didLintFail?: boolean;
   readonly lintFailureReasonKind?: string | null;
@@ -90,13 +93,6 @@ export interface RunEventInput {
   // a cache hit reports the healthy `false`; omitted (null) on payloads from
   // before the field and on the failure path.
   readonly securityScanFailed?: boolean;
-  /**
-   * Whether the dead-code pass ran concurrently with lint this scan (gate
-   * opened / overlap forced). Lets a query compare `runInspect` wall-clock
-   * grouped by overlap, and watch for an OOM/timeout regression on
-   * overlapped scans (the kill-metric for the overlap feature).
-   */
-  readonly deadCodeOverlapped?: boolean;
   // A degraded baseline run (no delta computed) skips the CI gate, so the
   // `wouldBlock` prediction must match — never block on its plain-diff findings.
   readonly gateExempt?: boolean;
@@ -110,7 +106,7 @@ export interface RunEventInput {
   readonly suppressedRuleCounts?: ReadonlyArray<SuppressedRuleCount>;
   /**
    * `true` only when this run replayed a whole-repo scan-result payload (the
-   * "turbo" path, where no lint / dead-code / score work ran). The explicit
+   * "turbo" path, where no lint, maintainability, or score work ran). The explicit
    * marker for `cache.temperature = "turbo"` — never inferred from the
    * per-subsystem cache dims being null, which is also what a cache-off run
    * looks like. Omitted on the failure path.
@@ -119,6 +115,25 @@ export interface RunEventInput {
   /** Present only when the scan threw. */
   readonly error?: unknown;
 }
+
+export interface RunEventConfig extends Pick<
+  RunEventInput,
+  | "scope"
+  | "parallel"
+  | "workerCount"
+  | "maxDurationMs"
+  | "lint"
+  | "deadCode"
+  | "supplyChain"
+  | "scoreOnly"
+  | "noScore"
+  | "respectInlineDisables"
+  | "showWarnings"
+  | "usedOutputDir"
+  | "ignoredTagCount"
+  | "hasCustomConfig"
+  | "userConfig"
+> {}
 
 const readEnvBoolean = (name: string): boolean | null => {
   const value = process.env[name];
@@ -134,18 +149,6 @@ const ratioOf = (
 ): number | null =>
   denominator != null && denominator > 0 ? (numerator ?? 0) / denominator : null;
 
-// The dead-code pass's reuse fraction: a whole-result replay is total reuse;
-// a fresh analysis reuses whatever fraction of its file summaries the
-// incremental store served; a consulted-but-missed result cache with no
-// summary stats is zero reuse. `null` when the pass never consulted a cache.
-const resolveDeadCodeReuseRatio = (result: InspectResult): number | null => {
-  if (result.deadCodeCacheHit === true) return 1;
-  const summaryTotal =
-    (result.deadCodeSummaryCacheHits ?? 0) + (result.deadCodeSummaryCacheMisses ?? 0);
-  if (summaryTotal > 0) return (result.deadCodeSummaryCacheHits ?? 0) / summaryTotal;
-  return result.deadCodeCacheHit === false ? 0 : null;
-};
-
 /**
  * One queryable cache temperature per scan, derived from the whole stack:
  *
@@ -153,8 +156,7 @@ const resolveDeadCodeReuseRatio = (result: InspectResult): number | null => {
  *                    `wholeRepoCacheHit` flag from the CLI's cachedPayload
  *                    branch; no scan work ran).
  *   - `"warm"`     — any incremental reuse: per-file lint hits, sidecar
- *                    replays, a dead-code whole-result hit, or dead-code
- *                    summary-cache hits.
+ *                    replays.
  *   - `"disabled"` — zero reuse because the global `REACT_DOCTOR_NO_CACHE`
  *                    off-switch is on. Granular per-cache opt-outs
  *                    (`REACT_DOCTOR_NO_FILE_CACHE`, …) still read warm/cold,
@@ -163,7 +165,7 @@ const resolveDeadCodeReuseRatio = (result: InspectResult): number | null => {
  *
  * `cache.warmth` is the headline reuse magnitude in [0, 1]: the plain mean of
  * the subsystem reuse fractions known this run (lint hit ratio, sidecar
- * replay ratio, dead-code reuse), skipping subsystems that never consulted a
+ * replay ratio), skipping subsystems that never consulted a
  * cache; `1` on turbo, dropped when nothing consulted any cache. Deliberately
  * unweighted — the per-subsystem dims stay the precise signal; warmth is the
  * p50/p90-able summary. Emitted only on the success path.
@@ -177,7 +179,6 @@ const buildCacheAttributes = (input: RunEventInput): RunEventAttributes => {
   const subsystemReuseRatios = [
     ratioOf(result.lintCacheHitFileCount, result.lintCacheTotalFileCount),
     ratioOf(result.lintSidecarReplayedFileCount, result.lintSidecarTotalFileCount),
-    resolveDeadCodeReuseRatio(result),
   ];
   let knownSubsystemCount = 0;
   let reuseRatioSum = 0;
@@ -190,7 +191,7 @@ const buildCacheAttributes = (input: RunEventInput): RunEventAttributes => {
   const temperature =
     warmth !== null && warmth > 0 ? "warm" : isCacheGloballyDisabled() ? "disabled" : "cold";
   return withNamespace("cache", {
-    wholeRepoHit: input.wholeRepoCacheHit ?? null,
+    wholeRepoHit: input.wholeRepoCacheHit,
     temperature,
     warmth,
   });
@@ -380,51 +381,47 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
       value: result.score ? result.score.score : null,
       label: result.score ? result.score.label : null,
       available: result.score !== null,
+      unavailableReason:
+        result.score === null
+          ? resolveScoreUnavailableReason({
+              isScoreDisabled: input.noScore,
+              isAnalysisIncomplete: input.didLintFail === true || input.didDeadCodeFail === true,
+            })
+          : null,
     }),
     ...withNamespace("lint", {
-      failed: input.didLintFail ?? null,
-      failureReasonKind: input.lintFailureReasonKind ?? null,
-      partialFailureCount: input.lintPartialFailureCount ?? null,
-      droppedFileCount: input.lintDroppedFileCount ?? null,
-      deadlineSkippedFileCount: input.lintDeadlineSkippedFileCount ?? null,
+      failed: input.didLintFail,
+      failureReasonKind: input.lintFailureReasonKind,
+      partialFailureCount: input.lintPartialFailureCount,
+      droppedFileCount: input.lintDroppedFileCount,
+      deadlineSkippedFileCount: input.lintDeadlineSkippedFileCount,
       // Per-file lint cache outcome. Numeric so Sentry can `p75(lint.cacheHitRatio)`;
-      // all `null` when the cache was off/bypassed so "no cache" reads distinctly
-      // from a 0% hit rate (`toSpanAttributes` drops the nulls).
-      cacheHitFiles: result.lintCacheHitFileCount ?? null,
-      cacheTotalFiles: result.lintCacheTotalFileCount ?? null,
+      // absent when the cache was off/bypassed so "no cache" reads distinctly
+      // from a 0% hit rate (`toSpanAttributes` drops missing values).
+      cacheHitFiles: result.lintCacheHitFileCount,
+      cacheTotalFiles: result.lintCacheTotalFileCount,
       cacheHitRatio: ratioOf(result.lintCacheHitFileCount, result.lintCacheTotalFileCount),
       // Sidecar lint cache outcome — same shape as the per-file cache dims;
-      // all `null` when the sidecar cache was off/bypassed.
-      sidecarReplayedFiles: result.lintSidecarReplayedFileCount ?? null,
-      sidecarTotalFiles: result.lintSidecarTotalFileCount ?? null,
+      // absent when the sidecar cache was off/bypassed.
+      sidecarReplayedFiles: result.lintSidecarReplayedFileCount,
+      sidecarTotalFiles: result.lintSidecarTotalFileCount,
       sidecarReplayRatio: ratioOf(
         result.lintSidecarReplayedFileCount,
         result.lintSidecarTotalFileCount,
       ),
     }),
-    ...withNamespace("deadCode", {
-      failed: input.didDeadCodeFail ?? null,
-      overlapped: input.deadCodeOverlapped ?? null,
-      // Dead-code result cache outcome; `null` when the pass never consulted
-      // the cache, so "no cache" reads distinctly from a miss.
-      cacheHit: result.deadCodeCacheHit ?? null,
-      // Incremental summary-cache outcome for the analysis that ran (the
-      // kill-criterion metric for the fill overhead: if warm scans are rare,
-      // hits stay near zero). Numeric so Sentry can aggregate; `null` when no
-      // analysis consulted the incremental store (whole-result hit, cache
-      // off, or dead-code skipped).
-      summaryCacheHits: result.deadCodeSummaryCacheHits ?? null,
-      summaryCacheMisses: result.deadCodeSummaryCacheMisses ?? null,
+    ...withNamespace("maintainability", {
+      failed: input.didDeadCodeFail,
     }),
     ...withNamespace("supplyChain", {
-      overlapTimedOut: input.supplyChainOverlapTimedOut ?? null,
+      overlapTimedOut: input.supplyChainOverlapTimedOut,
     }),
     ...withNamespace("securityScan", {
-      failed: input.securityScanFailed ?? null,
+      failed: input.securityScanFailed,
     }),
     ...withNamespace("timing", {
       elapsedMs: result.elapsedMilliseconds,
-      scanMs: result.scanElapsedMilliseconds ?? null,
+      scanMs: result.scanElapsedMilliseconds,
     }),
     ...withNamespace("migration", {
       largestRuleBucketFiles: largestRuleBucket ? largestRuleBucket.fileCount : null,
@@ -445,7 +442,9 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
         new: summary.totalDiagnosticCount,
         fixed: result.baselineDelta.fixedCount,
         baseTotal: result.baselineDelta.baseTotalCount,
-        crossFileMatches: result.baselineDelta.crossFileMatchCount ?? null,
+        crossFileMatches: result.baselineDelta.crossFileMatchCount,
+        source: result.baselineDelta.source ?? "base",
+        ruleCountMatches: result.baselineDelta.ruleCountMatchCount ?? 0,
         degraded: false,
       }),
     );
@@ -458,7 +457,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
 const buildActionAttributes = (): RunEventAttributes => {
   const { githubActorAssociation } = resolveGithubActionsScoreMetadata();
   return withNamespace("action", {
-    actorAssociation: githubActorAssociation ?? null,
+    actorAssociation: githubActorAssociation,
     runnerOs: detectRunnerOs(),
     // Action knobs: present only when the official action forwarded them, so
     // they're `null` (dropped) for any non-action run. The action's `blocking`
@@ -477,10 +476,10 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     mode: input.mode,
     scope: input.scope,
     parallel: input.parallel,
-    workerCount: input.workerCount ?? null,
+    workerCount: input.workerCount,
     maxDurationMs: input.maxDurationMs,
     lint: input.lint,
-    deadCode: input.deadCode,
+    maintainability: input.deadCode,
     supplyChain: input.supplyChain,
     scoreOnly: input.scoreOnly,
     noScore: input.noScore,
@@ -491,16 +490,21 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     hasCustomConfig: input.hasCustomConfig,
     rulesConfigured: ruleKeys.length,
     rulesDisabled: ruleKeys.filter((key) => ruleOverrides[key] === "off").length,
+    projectAnalysisRuleCount: countOptInProjectRuleSelections(
+      buildRuleSeverityControls(input.userConfig),
+    ),
     // Scan extent — how many files this run covered (the denominator for
     // `diag.affectedFiles`). Known only on the success path.
-    fileCount: input.result?.scannedFileCount ?? null,
-    nonJsxFileCount:
-      input.result?.analyzedFiles?.filter((filePath) => !JSX_FILE_PATTERN.test(filePath)).length ??
-      null,
-    multilineDiagnosticCount:
-      input.result?.diagnostics.filter(
-        (diagnostic) => (diagnostic.endLine ?? diagnostic.line) > diagnostic.line,
-      ).length ?? null,
+    fileCount: input.result?.scannedFileCount,
+    nonJsxFileCount: input.result?.analyzedFiles?.filter(
+      (filePath) => !JSX_FILE_PATTERN.test(filePath),
+    ).length,
+    htmlFileCount: input.result?.analyzedFiles?.filter((filePath) =>
+      HTML_FILE_PATTERN.test(filePath),
+    ).length,
+    multilineDiagnosticCount: input.result?.diagnostics.filter(
+      (diagnostic) => (diagnostic.endLine ?? diagnostic.line) > diagnostic.line,
+    ).length,
   });
 };
 
@@ -508,16 +512,16 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
  * Projects a scan into the namespaced attribute set for its root span — the
  * canonical per-scan "wide event". Every attribute carries a dotted namespace
  * that groups it by concept (`scan.*` config, `action.*` CI knobs, `outcome.*`
- * verdict, `diag.*` findings, `score.*`, `lint.*`, `deadCode.*`, `cache.*`,
+ * verdict, `diag.*` findings, `score.*`, `lint.*`, `maintainability.*`, `cache.*`,
  * `supplyChain.*`, `timing.*`, `migration.*`, `baseline.*`) so the attributes
  * tree up in Sentry's attribute browser and stay filter-/group-/aggregate-able
  * in the Spans dataset. Pure and exported so the projection (outcome
  * precedence, rule/category rollups, CI knobs, config shape) is unit-testable
- * without a live Sentry client. `null` values are dropped so absent signals
- * never become misleading `"null"` attributes. The run + project base context
- * (version, command, ci/provider, framework, …) is already on the span from
- * `withSentryRunSpan` / `recordSentryProjectContext`, so this adds only what
- * those don't carry.
+ * without a live Sentry client. `null`/`undefined` values are dropped so absent
+ * signals never become misleading `"null"`/`"undefined"` attributes. The run +
+ * project base context (version, command, ci/provider, framework, …) is already
+ * on the span from `withSentryRunSpan` / `recordSentryProjectContext`, so this
+ * adds only what those don't carry.
  */
 export const buildRunEventAttributes = (
   input: RunEventInput,
@@ -534,9 +538,11 @@ export const buildRunEventAttributes = (
  * when tracing is off (no `rootSpan`) and swallow-on-throw, so telemetry can
  * never break the run.
  */
-export const recordRunEvent = (rootSpan: SentryRootSpan, input: RunEventInput): void => {
+export const recordRunEvent = (rootSpan: RunRootSpan, input: RunEventInput): void => {
   if (!rootSpan) return;
   try {
-    rootSpan.setAttributes(buildRunEventAttributes(input));
+    for (const [key, value] of Object.entries(buildRunEventAttributes(input))) {
+      rootSpan.attribute(key, value);
+    }
   } catch {}
 };

@@ -120,7 +120,7 @@ export async function archiveProject(projectId: string) {
       files: {
         "src/app/actions.ts":
           buildServerActionFile(`export async function deleteAccount(accountId: string) {
-  return { accountId, deleted: true };
+  return db.account.delete({ where: { id: accountId } });
 }`),
       },
     });
@@ -138,7 +138,7 @@ export async function archiveProject(projectId: string) {
 
 export async function trackVisit(visitId: string) {
   const profile = await analytics.getUser();
-  return { visitId, segment: profile.segment };
+  return db.visit.update({ where: { id: visitId }, data: { segment: profile.segment } });
 }`),
       },
     });
@@ -174,7 +174,7 @@ export async function deleteAccount(accountId: string) {
 
 export async function inviteMember(workspaceId: string) {
   const member = await requireWorkspaceMember();
-  return { workspaceId, invitedBy: member.id };
+  return db.invite.create({ data: { workspaceId, invitedBy: member.id } });
 }`),
       },
     });
@@ -212,7 +212,7 @@ export async function publishPost(postId: string) {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
       files: {
         "src/app/actions.ts": buildServerActionFile(`export async function leakData() {
-  return { ok: true };
+  return db.secret.delete({ where: { id: "all" } });
 }`),
       },
     });
@@ -232,7 +232,7 @@ export async function publishPost(postId: string) {
       files: {
         "src/app/actions.ts":
           buildServerActionFile(`export default async function deleteAccount(accountId: string) {
-  return { accountId, deleted: true };
+  return db.account.delete({ where: { id: accountId } });
 }`),
       },
     });
@@ -263,7 +263,7 @@ export default async function deleteAccount(accountId: string) {
       files: {
         "src/app/actions.ts":
           buildServerActionFile(`export default async function (accountId: string) {
-  return { accountId, deleted: true };
+  return db.account.delete({ where: { id: accountId } });
 }`),
       },
     });
@@ -278,7 +278,7 @@ export default async function deleteAccount(accountId: string) {
       files: {
         "src/app/actions.ts":
           buildServerActionFile(`export const deleteAccount = async (accountId: string) => {
-  return { accountId, deleted: true };
+  return db.account.delete({ where: { id: accountId } });
 };`),
       },
     });
@@ -307,9 +307,9 @@ export const deleteAccount = async (accountId: string) => {
     const projectDirectory = setupReactProject(tempRoot, "const-arrow-concise-missing", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
       files: {
-        "src/app/actions.ts": buildServerActionFile(`import { performDelete } from "@/lib/delete";
-
-export const deleteAccount = async (accountId: string) => performDelete(accountId);`),
+        "src/app/actions.ts": buildServerActionFile(
+          `export const deleteAccount = async (accountId: string) => db.account.delete({ where: { id: accountId } });`,
+        ),
       },
     });
     const issues = await collectAuthActionIssues(projectDirectory);
@@ -335,7 +335,7 @@ export const refreshSession = async () => auth();`),
       files: {
         "src/app/actions.ts":
           buildServerActionFile(`export const deleteAccount = async function (accountId: string) {
-  return { accountId, deleted: true };
+  return db.account.delete({ where: { id: accountId } });
 };`),
       },
     });
@@ -354,7 +354,7 @@ export async function deleteAccount(accountId: string) {
   async function unusedHelper() {
     return await auth();
   }
-  return { accountId, deleted: true };
+  return db.account.delete({ where: { id: accountId } });
 }`),
       },
     });
@@ -551,12 +551,12 @@ export async function go() {
     await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
-  it("still flags an action whose module-local function merely shares a revalidation name", async () => {
+  it("follows an invoked module-local function even when it shares a revalidation name", async () => {
     const projectDirectory = setupReactProject(tempRoot, "local-revalidate-name", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
       files: {
         "src/app/actions.ts": buildServerActionFile(`const revalidatePath = (path: string) => {
-  globalThis.databaseHandle.wipe(path);
+  db.cache.delete({ where: { path } });
 };
 
 export async function wipeEverything() {
@@ -600,7 +600,7 @@ export async function refreshDashboard() {
     await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
-  it("still flags a revalidation action that also reads data from a non-parameter source", async () => {
+  it("accepts a revalidation action that also performs a public database read", async () => {
     const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-db-read", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
       files: {
@@ -614,9 +614,7 @@ export async function refresh(userId: string) {
       },
     });
 
-    const issues = await collectAuthActionIssues(projectDirectory);
-    expect(issues).toHaveLength(1);
-    expect(issues[0].message).toContain("refresh");
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
   it("still flags an action that mutates data alongside a cache revalidation", async () => {
@@ -657,7 +655,7 @@ export async function deleteUser(formData: FormData) {
     expect(issues[0].message).toContain("deleteUser");
   });
 
-  it("still flags a constructor side effect next to a revalidation", async () => {
+  it("keeps an unresolved constructor next to a revalidation quiet", async () => {
     const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-new", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
       files: {
@@ -671,9 +669,7 @@ export async function refresh() {
       },
     });
 
-    const issues = await collectAuthActionIssues(projectDirectory);
-    expect(issues).toHaveLength(1);
-    expect(issues[0].message).toContain("refresh");
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
   it("still flags a module-state assignment next to a revalidation", async () => {
@@ -695,7 +691,7 @@ export async function grantAdmin(formData: FormData) {
     expect(issues[0].message).toContain("grantAdmin");
   });
 
-  it("still flags an action that revalidates then returns a referenced value", async () => {
+  it("flags an action that revalidates then returns a module secret", async () => {
     const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-data-return", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
       files: {
@@ -711,7 +707,7 @@ export async function refresh() {
 
     const issues = await collectAuthActionIssues(projectDirectory);
     expect(issues).toHaveLength(1);
-    expect(issues[0].message).toContain("refresh");
+    expect(issues[0].message).toContain("apiSecret");
   });
 
   it("accepts an action that revalidates then returns a plain status literal", async () => {
@@ -730,7 +726,7 @@ export async function refresh() {
     await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
-  it("still flags an action that revalidates then returns an awaited value", async () => {
+  it("accepts an action that revalidates then returns an awaited value", async () => {
     const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-awaited-return", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
       files: {
@@ -744,12 +740,10 @@ export async function refresh() {
       },
     });
 
-    const issues = await collectAuthActionIssues(projectDirectory);
-    expect(issues).toHaveLength(1);
-    expect(issues[0].message).toContain("refresh");
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
-  it("still flags an action that revalidates then returns data nested in an object", async () => {
+  it("flags an action that revalidates then returns a module secret nested in an object", async () => {
     const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-nested-return", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
       files: {
@@ -765,10 +759,10 @@ export async function refresh() {
 
     const issues = await collectAuthActionIssues(projectDirectory);
     expect(issues).toHaveLength(1);
-    expect(issues[0].message).toContain("refresh");
+    expect(issues[0].message).toContain("apiSecret");
   });
 
-  it("still flags an action that revalidates then returns a conditional referencing data", async () => {
+  it("accepts an action that revalidates then returns a conditional referencing data", async () => {
     const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-conditional-return", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
       files: {
@@ -782,9 +776,7 @@ export async function refresh(flag: boolean) {
       },
     });
 
-    const issues = await collectAuthActionIssues(projectDirectory);
-    expect(issues).toHaveLength(1);
-    expect(issues[0].message).toContain("refresh");
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
   it("still flags a `delete` mutation next to a revalidation", async () => {
@@ -806,7 +798,7 @@ export async function evict(key: string) {
     expect(issues[0].message).toContain("evict");
   });
 
-  it("still flags an action that revalidates then throws a referenced value", async () => {
+  it("accepts an action that revalidates then throws a referenced value", async () => {
     const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-data-throw", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
       files: {
@@ -820,9 +812,7 @@ export async function refresh() {
       },
     });
 
-    const issues = await collectAuthActionIssues(projectDirectory);
-    expect(issues).toHaveLength(1);
-    expect(issues[0].message).toContain("refresh");
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
   it("accepts a concise-arrow action whose body is a single revalidation", async () => {
@@ -838,7 +828,7 @@ export const refresh = async () => revalidateTag("posts");`),
     await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
-  it("still flags a concise-arrow action that revalidates then yields data via a sequence", async () => {
+  it("flags a concise-arrow action that yields a module secret via a sequence", async () => {
     const projectDirectory = setupReactProject(tempRoot, "concise-arrow-sequence-leak", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
       files: {
@@ -851,10 +841,10 @@ export const refresh = async () => (revalidateTag("posts"), serverConfig.apiSecr
 
     const issues = await collectAuthActionIssues(projectDirectory);
     expect(issues).toHaveLength(1);
-    expect(issues[0].message).toContain("refresh");
+    expect(issues[0].message).toContain("apiSecret");
   });
 
-  it("does not treat a same-named method call (obj.redirect()) as a safe navigation", async () => {
+  it("keeps an unresolved same-named method call quiet", async () => {
     const projectDirectory = setupReactProject(tempRoot, "member-named-redirect", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
       files: {
@@ -866,12 +856,10 @@ export async function go(payload: string) {
       },
     });
 
-    const issues = await collectAuthActionIssues(projectDirectory);
-    expect(issues).toHaveLength(1);
-    expect(issues[0].message).toContain("go");
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
-  it("still flags actions whose only top-level call is a non-auth helper", async () => {
+  it("keeps actions whose only top-level call is an unresolved helper quiet", async () => {
     const projectDirectory = setupReactProject(tempRoot, "issue-829-non-auth-helper", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
       files: {
@@ -884,8 +872,6 @@ export async function regenerateCache(scope: string) {
       },
     });
 
-    const issues = await collectAuthActionIssues(projectDirectory);
-    expect(issues).toHaveLength(1);
-    expect(issues[0].message).toContain("regenerateCache");
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 });

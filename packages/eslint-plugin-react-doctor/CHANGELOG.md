@@ -1,5 +1,225 @@
 # eslint-plugin-react-doctor
 
+## 0.9.17
+
+### Patch Changes
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.9.17
+
+## 0.9.16
+
+### Patch Changes
+
+- [#1846](https://github.com/millionco/react-doctor/pull/1846) [`6313667`](https://github.com/millionco/react-doctor/commit/631366777e01637f3c36b8a8c2ae8f19ba1060e8) Thanks [@aidenybai](https://github.com/aidenybai)! - Disable `require-pnpm-hardening` by default; enable it explicitly through `rules` when wanted. Describe await parallelization as a conditional opportunity, preserving ordering, resource limits, and error semantics. Recognize local Promise.all/allSettled collectors and stop describing async array callbacks as sequential.
+
+- Updated dependencies [[`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`6313667`](https://github.com/millionco/react-doctor/commit/631366777e01637f3c36b8a8c2ae8f19ba1060e8), [`3242a81`](https://github.com/millionco/react-doctor/commit/3242a81b1596055da3207f735e873b4ce81fae13), [`8a950f0`](https://github.com/millionco/react-doctor/commit/8a950f04477696e1dee1a509b3c25780f2837389), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147)]:
+  - oxlint-plugin-react-doctor@0.9.16
+
+## 0.9.15
+
+### Patch Changes
+
+- [#1814](https://github.com/millionco/react-doctor/pull/1814) [`499a020`](https://github.com/millionco/react-doctor/commit/499a0208fca5c0422b713bdedf2b83fcc8e29d20) Thanks [@aidenybai](https://github.com/aidenybai)! - Stop `no-impure-state-updater` reporting callbacks handed to a helper that merely runs them (`run(async () => setValue("x"))`). Only a wrapper that forwards its parameter into a React setter's updater slot still counts as an updater.
+
+  Stop `nextjs-no-side-effect-in-get-handler` reporting `.set()` on a `Headers` object the helper constructs itself; mutations on stores the helper did not create still report.
+
+  Treat a ternary between static values (`hasHeader ? 0 : 16`) as static spacing in `rn-scrollview-dynamic-padding`, and reword its recommendation to name the matching `contentInset` edge and its iOS-only scope.
+
+  Accept a Zustand `store.setState(awaitedValue)` re-sync as a cache update in `query-mutation-missing-invalidation`; plain UI-state writes and non-store bindings still report.
+
+- Updated dependencies [[`83466a8`](https://github.com/millionco/react-doctor/commit/83466a8faae436c902e8f602e7363ea3e23354d5), [`499a020`](https://github.com/millionco/react-doctor/commit/499a0208fca5c0422b713bdedf2b83fcc8e29d20), [`922616f`](https://github.com/millionco/react-doctor/commit/922616f08db7d48463b1495e4dbdb699fc3d7c34)]:
+  - oxlint-plugin-react-doctor@0.9.15
+
+## 0.9.14
+
+### Patch Changes
+
+- [#1801](https://github.com/millionco/react-doctor/pull/1801) [`fd64d26`](https://github.com/millionco/react-doctor/commit/fd64d2605481e241ada5561b01a635f2cd923b6a) Thanks [@aidenybai](https://github.com/aidenybai)! - Stop reporting local service `.use()` methods as React hooks. Preserve diagnostics for React namespace calls, including aliases and CommonJS imports.
+
+  Only recommend `setAnimationLoop` when a recursive animation frame callback renders through a known Three.js renderer. Leave independent 2D canvas and DOM loops alone, including files that also import Three.js.
+
+- [#1802](https://github.com/millionco/react-doctor/pull/1802) [`c9e3e15`](https://github.com/millionco/react-doctor/commit/c9e3e1590e06ed3b776af5f21dda38a060b9eef9) Thanks [@aidenybai](https://github.com/aidenybai)! - Retire 33 low-value rule IDs while keeping them registered as silent compatibility entries. Make 26 cleanup, migration, performance, and security-review rules opt-in. Existing rule configurations still load; default scans no longer report these recommendations as defects.
+
+- Updated dependencies [[`1239043`](https://github.com/millionco/react-doctor/commit/1239043c65a55c1e1755087536fdb3f3f18c5734), [`ff7dd67`](https://github.com/millionco/react-doctor/commit/ff7dd679e8b9939a7dd8f828a530559a275836f7), [`0fbef9b`](https://github.com/millionco/react-doctor/commit/0fbef9b01162d301167be6ca6b5263714610f4e5), [`6ac8b71`](https://github.com/millionco/react-doctor/commit/6ac8b71985123ce43f7219965e188bdecf11f7b8), [`dfcde10`](https://github.com/millionco/react-doctor/commit/dfcde1035aca34e7bb8fbeea8da78cead7cc20e9), [`fd64d26`](https://github.com/millionco/react-doctor/commit/fd64d2605481e241ada5561b01a635f2cd923b6a), [`576d756`](https://github.com/millionco/react-doctor/commit/576d7563ffc7a6208cd77d3e3ec81d7f91bf6143), [`2e3f6eb`](https://github.com/millionco/react-doctor/commit/2e3f6eb98a0eec411b3adf87d8205d3d654538ac), [`c9e3e15`](https://github.com/millionco/react-doctor/commit/c9e3e1590e06ed3b776af5f21dda38a060b9eef9)]:
+  - oxlint-plugin-react-doctor@0.9.14
+
+## 0.9.13
+
+### Patch Changes
+
+- [#1652](https://github.com/millionco/react-doctor/pull/1652) [`f7efb7d`](https://github.com/millionco/react-doctor/commit/f7efb7d1c4fc564fa647a0dc26c48867da9166c9) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep ESLint presets on React Doctor's curated low-noise rule behavior and honor configured capabilities when a rule declares `disabledWhen`, including suppressing manual-memoization diagnostics for React Compiler projects.
+
+- [#1723](https://github.com/millionco/react-doctor/pull/1723) [`e1d4c51`](https://github.com/millionco/react-doctor/commit/e1d4c51abfd9d15ec96f5001259c3e8f332f7d50) Thanks [@skoshx](https://github.com/skoshx)! - Prevent `rn-no-raw-text` reports for `<fbt>` content passed through verified React Native text wrappers.
+
+- [#1725](https://github.com/millionco/react-doctor/pull/1725) [`0f59a3b`](https://github.com/millionco/react-doctor/commit/0f59a3b84dd5233f6bcf5e4a621da6699c432405) Thanks [@aidenybai](https://github.com/aidenybai)! - Run `test-noise` rules in ambiguous product-named directories such as `tools`, `demo`, and `migrations` when they are below a recognized application source root. Explicit test surfaces and root-level tooling or example directories remain excluded.
+
+- [#1654](https://github.com/millionco/react-doctor/pull/1654) [`6416370`](https://github.com/millionco/react-doctor/commit/6416370836deaa0a09189343a8579fb3f5d13494) Thanks [@aidenybai](https://github.com/aidenybai)! - Add component-composition and correctness rules for shadcn, Radix UI, Base UI, React Aria, TanStack Table, and TanStack Virtual behind six new project capabilities (`shadcn` from `components.json`; the rest from their package dependencies). Dialog surfaces that render no title part and carry no accessible name are reported across all three libraries (shadcn DialogContent/SheetContent/AlertDialogContent/DrawerContent, Radix Dialog.Content and AlertDialog.Content, Base UI Dialog.Popup and AlertDialog.Popup). Icon-sized shadcn Buttons with no accessible name, shadcn FormItem fields wrapping a FormControl without a FormLabel, and Base UI Field.Root controls without a Field.Label are reported as unlabeled. Raw Input, Textarea, and Button controls placed directly inside shadcn InputGroup are reported in favor of its InputGroupInput, InputGroupTextarea, and InputGroupAddon parts, and presence-only `data-[selected]:` / `data-[disabled]:` Tailwind variants on command items are reported because cmdk renders both attributes as `"true"` or `"false"`. TanStack Form submit handlers that call the form's `handleSubmit` without `event.preventDefault()` are reported because the browser still performs a native full-page submission. Tabs triggers provably inside the root without the list part are reported for shadcn, Radix, and Base UI; the existing `shadcn-tabs-trigger-requires-list` rule is now enabled by default for shadcn projects through the capability gate and no longer risks false positives on extracted trigger subcomponents. React Aria Dialogs without a Heading or aria-label are reported as unnamed. TanStack Table `data`/`columns` options that provably get a new array identity every render (inline literals, render-scoped const arrays, fresh `?? []` fallbacks, inline `.filter()`/`.map()` transforms) are reported for rebuilding row and column models each render and looping auto-reset features, and elements measured by TanStack Virtual's `measureElement` without a `data-index` attribute are reported because the virtualizer drops the measurement.
+
+- Updated dependencies [[`ffc2d14`](https://github.com/millionco/react-doctor/commit/ffc2d142545167107b11908f004d764ac4e31399), [`f7efb7d`](https://github.com/millionco/react-doctor/commit/f7efb7d1c4fc564fa647a0dc26c48867da9166c9), [`05ef989`](https://github.com/millionco/react-doctor/commit/05ef98926de787b01e817c8853101d6c31e2071a), [`a04b933`](https://github.com/millionco/react-doctor/commit/a04b933c027f6addf4161ba0df1c11eb8922b879), [`adc3a91`](https://github.com/millionco/react-doctor/commit/adc3a9129190315263a5fa92bda7ea3e3e2ba94a), [`2c4560f`](https://github.com/millionco/react-doctor/commit/2c4560fc0abbf70f1574fe847402d320347d061e), [`e1d4c51`](https://github.com/millionco/react-doctor/commit/e1d4c51abfd9d15ec96f5001259c3e8f332f7d50), [`905607f`](https://github.com/millionco/react-doctor/commit/905607f7fc2240304cbad5f41d3ad496eab06b17), [`17eeeb5`](https://github.com/millionco/react-doctor/commit/17eeeb5367177e6a3ba814ca8d107d009addc9dc), [`afa1780`](https://github.com/millionco/react-doctor/commit/afa1780254bfd72175e6d0025841560582d32ad1), [`025d69d`](https://github.com/millionco/react-doctor/commit/025d69d701581092632caa87ea59e5a719094ab9), [`0f59a3b`](https://github.com/millionco/react-doctor/commit/0f59a3b84dd5233f6bcf5e4a621da6699c432405), [`5bc88ae`](https://github.com/millionco/react-doctor/commit/5bc88ae6a0cd7518ffa8c6348f9176868d00ea77), [`4bf7aff`](https://github.com/millionco/react-doctor/commit/4bf7aff4398383adb6b3dace48f72050dfd195a6), [`bd08406`](https://github.com/millionco/react-doctor/commit/bd08406381618785181aedf8bee956047ad107d3), [`2b0f06e`](https://github.com/millionco/react-doctor/commit/2b0f06ec70943f083d8893f8a1b989eba2ae40c6), [`8c2f03a`](https://github.com/millionco/react-doctor/commit/8c2f03aea9885f24da8f2002e85a32ac186bf5bf), [`6416370`](https://github.com/millionco/react-doctor/commit/6416370836deaa0a09189343a8579fb3f5d13494), [`28d4343`](https://github.com/millionco/react-doctor/commit/28d4343e4d90a8d80c0fdb5eac0173bdd8826866)]:
+  - oxlint-plugin-react-doctor@0.9.13
+
+## 0.9.12
+
+### Patch Changes
+
+- [#1642](https://github.com/millionco/react-doctor/pull/1642) [`7b7bfe7`](https://github.com/millionco/react-doctor/commit/7b7bfe7c1ecc1d31a5fb591756ef34060fd916f1) Thanks [@aidenybai](https://github.com/aidenybai)! - Make every ported React and accessibility rule match its pinned upstream test contract while preserving React Doctor's lower-noise curated defaults.
+
+- [#1644](https://github.com/millionco/react-doctor/pull/1644) [`d908bb1`](https://github.com/millionco/react-doctor/commit/d908bb115210e3b412a83ae66780d8596125f838) Thanks [@aidenybai](https://github.com/aidenybai)! - Trace hydration decisions through imported browser helpers, report passive media-capability branch flicker, preserve committed-DOM state synchronization through local helpers, and exclude test-only dependency stubs from production diagnostics.
+
+- [#1633](https://github.com/millionco/react-doctor/pull/1633) [`bea01b8`](https://github.com/millionco/react-doctor/commit/bea01b8cf5e6d29db7793f86ce6a13f0b3c7823e) Thanks [@aidenybai](https://github.com/aidenybai)! - Add precise Three.js and React Three Fiber diagnostics for missing custom-geometry UVs, normal-mapped geometry without normals, unlit PBR materials, and strongly metallic materials without environment lighting.
+
+- [#1629](https://github.com/millionco/react-doctor/pull/1629) [`8dfb013`](https://github.com/millionco/react-doctor/commit/8dfb01306772760201e75ea1478368390eddf58f) Thanks [@aidenybai](https://github.com/aidenybai)! - Add comprehensive React Three Fiber, Three.js, WebGPU, GLSL, postprocessing, and GPU-computation diagnostics covering scene and camera setup, renderer lifecycle, resize behavior, loading, animation, controls, materials, uniforms, textures, lighting, shadows, render targets, buffer uploads, instancing, cleanup, and GPU-oriented performance patterns.
+
+- Updated dependencies [[`f1899d2`](https://github.com/millionco/react-doctor/commit/f1899d2e57ad35f016323e77592e000dce293439), [`7b7bfe7`](https://github.com/millionco/react-doctor/commit/7b7bfe7c1ecc1d31a5fb591756ef34060fd916f1), [`d908bb1`](https://github.com/millionco/react-doctor/commit/d908bb115210e3b412a83ae66780d8596125f838), [`51e198d`](https://github.com/millionco/react-doctor/commit/51e198db8bcbd61ad896098bb4985376641a0f69), [`0f3995b`](https://github.com/millionco/react-doctor/commit/0f3995b822ad9fdbd355eda05c8568f67643a31c), [`bea01b8`](https://github.com/millionco/react-doctor/commit/bea01b8cf5e6d29db7793f86ce6a13f0b3c7823e), [`8dfb013`](https://github.com/millionco/react-doctor/commit/8dfb01306772760201e75ea1478368390eddf58f), [`b49f499`](https://github.com/millionco/react-doctor/commit/b49f49984055a505b80de2bb1530efe7e7286619)]:
+  - oxlint-plugin-react-doctor@0.9.12
+
+## 0.9.11
+
+### Patch Changes
+
+- Updated dependencies [[`27a39de`](https://github.com/millionco/react-doctor/commit/27a39dede7ae41adb8895aefc589800bc56e6bc9)]:
+  - oxlint-plugin-react-doctor@0.9.11
+
+## 0.9.10
+
+### Patch Changes
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.9.10
+
+## 0.9.9
+
+### Patch Changes
+
+- Updated dependencies [[`7f028ea`](https://github.com/millionco/react-doctor/commit/7f028ea904da08bba8e108b92a0d2bfb84254f2e)]:
+  - oxlint-plugin-react-doctor@0.9.9
+
+## 0.9.8
+
+### Patch Changes
+
+- [#1590](https://github.com/millionco/react-doctor/pull/1590) [`13138a4`](https://github.com/millionco/react-doctor/commit/13138a4af515938a49a2e467d3922d2ef4f35fb4) Thanks [@aidenybai](https://github.com/aidenybai)! - Harden scan orchestration and cache persistence, modernize the Effect runtime, simplify package boundaries and analyzers, share cycle and suppression analysis, keep workflow paths inside the repository, and remove unused internals.
+
+- Updated dependencies [[`f27fd5d`](https://github.com/millionco/react-doctor/commit/f27fd5d136371c8164675ddf52da3742e248f7d8), [`13138a4`](https://github.com/millionco/react-doctor/commit/13138a4af515938a49a2e467d3922d2ef4f35fb4)]:
+  - oxlint-plugin-react-doctor@0.9.8
+
+## 0.9.7
+
+### Patch Changes
+
+- Updated dependencies [[`3299454`](https://github.com/millionco/react-doctor/commit/3299454344b7ad44909a2d758fe1d4352b5e3e73)]:
+  - oxlint-plugin-react-doctor@0.9.7
+
+## 0.9.6
+
+### Patch Changes
+
+- [#1599](https://github.com/millionco/react-doctor/pull/1599) [`a4d2c5c`](https://github.com/millionco/react-doctor/commit/a4d2c5c8bf45c3e38f07e2ffbaae5fe4443f5754) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize browser media capability and playback lifecycles without masking unrelated prop-driven state adjustments, and resolve cross-file helpers with dotted basenames.
+
+- [#1597](https://github.com/millionco/react-doctor/pull/1597) [`4ffeb2c`](https://github.com/millionco/react-doctor/commit/4ffeb2cb71e195d21d3693a7578be7f74ee78d19) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix derived-state detection through render-updated refs and avoid flagging finite timer lifecycle shutdowns as prop-driven state adjustments.
+
+- Updated dependencies [[`a4d2c5c`](https://github.com/millionco/react-doctor/commit/a4d2c5c8bf45c3e38f07e2ffbaae5fe4443f5754), [`4ffeb2c`](https://github.com/millionco/react-doctor/commit/4ffeb2cb71e195d21d3693a7578be7f74ee78d19), [`d62caa5`](https://github.com/millionco/react-doctor/commit/d62caa575f9bcf2abca5933f2899dd907a3d344d)]:
+  - oxlint-plugin-react-doctor@0.9.6
+
+## 0.9.5
+
+### Patch Changes
+
+- [#1579](https://github.com/millionco/react-doctor/pull/1579) [`0efadda`](https://github.com/millionco/react-doctor/commit/0efadda676fb773dad60b311d4d5d46c2f99be71) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve resource-lifecycle resets, controlled state fallbacks, and prop-originated synchronization without hiding genuine child-owned state handoffs.
+
+- Updated dependencies [[`8b97fdc`](https://github.com/millionco/react-doctor/commit/8b97fdcb4014160bb2df916ad6dead9924f10266), [`25dbf6d`](https://github.com/millionco/react-doctor/commit/25dbf6d92524f2495e6f81bdc68b710ce434bc69), [`881ecfe`](https://github.com/millionco/react-doctor/commit/881ecfe674b8ae630953b5f31f418ac1f52730e1), [`0efadda`](https://github.com/millionco/react-doctor/commit/0efadda676fb773dad60b311d4d5d46c2f99be71), [`bafef41`](https://github.com/millionco/react-doctor/commit/bafef41699dec8ec228d89c831ff16c2f09f28a1)]:
+  - oxlint-plugin-react-doctor@0.9.5
+
+## 0.9.4
+
+### Patch Changes
+
+- [#1547](https://github.com/millionco/react-doctor/pull/1547) [`f7dbdfa`](https://github.com/millionco/react-doctor/commit/f7dbdfa399bddb16c5d0e4ba180fb3a1d297448d) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid treating a resource failure latch as an all-state prop reset.
+
+- [#1561](https://github.com/millionco/react-doctor/pull/1561) [`44922d6`](https://github.com/millionco/react-doctor/commit/44922d67821680d6622809be43bc5b951e294a6e) Thanks [@aidenybai](https://github.com/aidenybai)! - Limit missing button type diagnostics to form-owned buttons and report broken literal fragment links.
+
+- [#1562](https://github.com/millionco/react-doctor/pull/1562) [`cc28626`](https://github.com/millionco/react-doctor/commit/cc2862666bf694fe8de84d66f3d276ce023c3c41) Thanks [@aidenybai](https://github.com/aidenybai)! - Add an opt-in diagnostic for effects that let externally controlled selection changes move focus.
+
+- [#1545](https://github.com/millionco/react-doctor/pull/1545) [`b02bc69`](https://github.com/millionco/react-doctor/commit/b02bc694f134fc856ad1e17304a93e0aba3e31a6) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect local state chains isolated from an effect's external resource cleanup path.
+
+- [#1563](https://github.com/millionco/react-doctor/pull/1563) [`85e1052`](https://github.com/millionco/react-doctor/commit/85e1052289a7a9cb7ba09bf5fb6d991415bca979) Thanks [@aidenybai](https://github.com/aidenybai)! - Add an opt-in diagnostic for stale-request guards backed by passively synchronized owner refs.
+
+- [#1556](https://github.com/millionco/react-doctor/pull/1556) [`4c61080`](https://github.com/millionco/react-doctor/commit/4c610803cb5af467776a275a7c27c9e916c08280) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect stale async responses that clear error state owned by a newer request.
+
+- [#987](https://github.com/millionco/react-doctor/pull/987) [`3acb41b`](https://github.com/millionco/react-doctor/commit/3acb41bad67aeac2e3c6da222d67aef7e1aebf4d) Thanks [@cursor](https://github.com/apps/cursor)! - Use canonical rule titles, severity-aware metadata, and working React Doctor documentation URLs.
+
+- [#1568](https://github.com/millionco/react-doctor/pull/1568) [`3466fe1`](https://github.com/millionco/react-doctor/commit/3466fe11d7b2962ec26f9853d573a5d886a6b441) Thanks [@aidenybai](https://github.com/aidenybai)! - Make effect cleanup analysis scale linearly across files with many retained timer and listener callbacks.
+
+- [#1557](https://github.com/millionco/react-doctor/pull/1557) [`4e4740d`](https://github.com/millionco/react-doctor/commit/4e4740dde3bd9c4c62a7efdf5c858293fab7b5eb) Thanks [@aidenybai](https://github.com/aidenybai)! - Ignore TypeScript type-only identifiers when tracing data passed to parent callbacks.
+
+- [#1038](https://github.com/millionco/react-doctor/pull/1038) [`a34d6a1`](https://github.com/millionco/react-doctor/commit/a34d6a159e9eed004ba3d2b1f37b4dc463a08482) Thanks [@cursor](https://github.com/apps/cursor)! - Apply React Native content-container checks to LegendList consistently with FlashList.
+
+- [#1554](https://github.com/millionco/react-doctor/pull/1554) [`91ebe85`](https://github.com/millionco/react-doctor/commit/91ebe85fdc3731219d558f7253cfee7976783c41) Thanks [@aidenybai](https://github.com/aidenybai)! - Report symbol-only controls that lack a meaningful accessible name.
+
+- [#1564](https://github.com/millionco/react-doctor/pull/1564) [`3a93a34`](https://github.com/millionco/react-doctor/commit/3a93a34beb050a4b55a34b5ac3f6f5b23a07be58) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize callable subscription disposers, exhaustive disposer collections, and guarded effect-local timer cleanup paths.
+
+- [#1544](https://github.com/millionco/react-doctor/pull/1544) [`8a22de1`](https://github.com/millionco/react-doctor/commit/8a22de1263826531e7c0c5eeccac860739570b2a) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting `rerender-lazy-ref-init` for empty built-in registry constructors.
+
+- [#1546](https://github.com/millionco/react-doctor/pull/1546) [`7f29eca`](https://github.com/millionco/react-doctor/commit/7f29ecaa32a1b399098d531e4002bb2f666158db) Thanks [@aidenybai](https://github.com/aidenybai)! - Ignore resource-keyed media failure latch resets in no-adjust-state-on-prop-change.
+
+- [#1555](https://github.com/millionco/react-doctor/pull/1555) [`37427c9`](https://github.com/millionco/react-doctor/commit/37427c915ca3d7ae219900f3c17d04e6840a8796) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize observer reconnect helpers that release each replacement and the latest observer on cleanup.
+
+- Updated dependencies [[`f7dbdfa`](https://github.com/millionco/react-doctor/commit/f7dbdfa399bddb16c5d0e4ba180fb3a1d297448d), [`44922d6`](https://github.com/millionco/react-doctor/commit/44922d67821680d6622809be43bc5b951e294a6e), [`cc28626`](https://github.com/millionco/react-doctor/commit/cc2862666bf694fe8de84d66f3d276ce023c3c41), [`b02bc69`](https://github.com/millionco/react-doctor/commit/b02bc694f134fc856ad1e17304a93e0aba3e31a6), [`85e1052`](https://github.com/millionco/react-doctor/commit/85e1052289a7a9cb7ba09bf5fb6d991415bca979), [`4c61080`](https://github.com/millionco/react-doctor/commit/4c610803cb5af467776a275a7c27c9e916c08280), [`02e3188`](https://github.com/millionco/react-doctor/commit/02e3188d4b307c04cc8cbf0395b50fe20755d7c7), [`48ec9a8`](https://github.com/millionco/react-doctor/commit/48ec9a802077749f3ec7534a5cac00397d4dd4df), [`afd60db`](https://github.com/millionco/react-doctor/commit/afd60dbe694a20feeba3b15e594ebf36d15f9af5), [`3466fe1`](https://github.com/millionco/react-doctor/commit/3466fe11d7b2962ec26f9853d573a5d886a6b441), [`4e4740d`](https://github.com/millionco/react-doctor/commit/4e4740dde3bd9c4c62a7efdf5c858293fab7b5eb), [`a34d6a1`](https://github.com/millionco/react-doctor/commit/a34d6a159e9eed004ba3d2b1f37b4dc463a08482), [`91ebe85`](https://github.com/millionco/react-doctor/commit/91ebe85fdc3731219d558f7253cfee7976783c41), [`3a93a34`](https://github.com/millionco/react-doctor/commit/3a93a34beb050a4b55a34b5ac3f6f5b23a07be58), [`8a22de1`](https://github.com/millionco/react-doctor/commit/8a22de1263826531e7c0c5eeccac860739570b2a), [`19f2148`](https://github.com/millionco/react-doctor/commit/19f2148e0004278b31d63863d9116b9a4f1f1c0f), [`7f29eca`](https://github.com/millionco/react-doctor/commit/7f29ecaa32a1b399098d531e4002bb2f666158db), [`37427c9`](https://github.com/millionco/react-doctor/commit/37427c915ca3d7ae219900f3c17d04e6840a8796)]:
+  - oxlint-plugin-react-doctor@0.9.4
+
+## 0.9.3
+
+### Patch Changes
+
+- [#1511](https://github.com/millionco/react-doctor/pull/1511) [`fb5f881`](https://github.com/millionco/react-doctor/commit/fb5f881e74b5793cf9469d7a31dcda57aa1a5086) Thanks [@aidenybai](https://github.com/aidenybai)! - Treat custom Hook calls as opaque in `no-effect-with-fresh-deps`.
+
+- Updated dependencies [[`83f3ff8`](https://github.com/millionco/react-doctor/commit/83f3ff8ac7c231603e9488e322039b021099a85b), [`3d67ca1`](https://github.com/millionco/react-doctor/commit/3d67ca13a209401e90b132529437e453e13cf06e), [`1098b9c`](https://github.com/millionco/react-doctor/commit/1098b9c10ee33403665eac10dd834381b038af63), [`c126684`](https://github.com/millionco/react-doctor/commit/c126684f01b3726745c6fce2b58a61e63691e5e6), [`992205a`](https://github.com/millionco/react-doctor/commit/992205a31b77a7fd6d81273908c349a2d8757bca), [`8402820`](https://github.com/millionco/react-doctor/commit/840282041174b4a95e894e812bddaeb9a7df5cc5), [`de6d280`](https://github.com/millionco/react-doctor/commit/de6d2802c47869fbde38340c3c9716b8ddf3a394), [`0cc5efb`](https://github.com/millionco/react-doctor/commit/0cc5efbf210439d76b7c78a90e826a0ccdb49b08), [`d81eeda`](https://github.com/millionco/react-doctor/commit/d81eedac8e006dec65db8c610ae966c2c5136be9), [`16972ae`](https://github.com/millionco/react-doctor/commit/16972aeb834ed29914ea9d948f0caa6efa23a7e4), [`5f23826`](https://github.com/millionco/react-doctor/commit/5f23826cea5f828e821cec5dd60d7fa94d2c3e5a), [`c6bdd2d`](https://github.com/millionco/react-doctor/commit/c6bdd2d42b8543727696ed53e956224a4adb4bc0), [`57743f8`](https://github.com/millionco/react-doctor/commit/57743f827d17ec5e70fb33d386ea3f7f622c5479), [`1938763`](https://github.com/millionco/react-doctor/commit/19387631f2c49342c51597445459ce621ff4df21), [`29e35d5`](https://github.com/millionco/react-doctor/commit/29e35d59bd1ab5ee50caee836b2c29f06ab6ac08), [`01ca0b3`](https://github.com/millionco/react-doctor/commit/01ca0b3f1ea0222615c9713a3cbf426b18edd44b), [`69d19b5`](https://github.com/millionco/react-doctor/commit/69d19b516fc323aad3e2f0cd4f3fd52a7b949031), [`2db2a97`](https://github.com/millionco/react-doctor/commit/2db2a972833dd2bf618af08be8d7bfb7beaa4f73), [`5268cb4`](https://github.com/millionco/react-doctor/commit/5268cb4c5df8ed9fd69b8d679c026bb0fcf561b7), [`3728102`](https://github.com/millionco/react-doctor/commit/3728102af1143bfae5fbfa6fb3356491ee567289), [`b10cd4c`](https://github.com/millionco/react-doctor/commit/b10cd4c6a198e4af9837354071436dbf22f86578), [`9418a1c`](https://github.com/millionco/react-doctor/commit/9418a1c01f462fd4ac9abae92fb9f2a0e5e26fb6), [`444e177`](https://github.com/millionco/react-doctor/commit/444e177e2fa96816ec75e9f67d01ba524a597180), [`8170ba2`](https://github.com/millionco/react-doctor/commit/8170ba24e8e5e5bbf44c32c2d1ecdd19ee9090b4), [`65539af`](https://github.com/millionco/react-doctor/commit/65539afe9b9bd32967057055c0f07f6117aead9a), [`b07af9d`](https://github.com/millionco/react-doctor/commit/b07af9db5f89175c9637040bab67599ca773d5ad), [`d6f02bb`](https://github.com/millionco/react-doctor/commit/d6f02bbcbf00f472b48761ae22b7efe77f694edc), [`9512488`](https://github.com/millionco/react-doctor/commit/9512488a5e99a6b0354dc6def2acd92494ac6084), [`adcee58`](https://github.com/millionco/react-doctor/commit/adcee586ad407574d98600bd0361efb18be69136), [`1f6e181`](https://github.com/millionco/react-doctor/commit/1f6e181d389e0b731d1b5c3681e48f702e8e6c8e), [`6b64dfa`](https://github.com/millionco/react-doctor/commit/6b64dfaf9e973139d1df2d09f405c9d916e158a3), [`c672551`](https://github.com/millionco/react-doctor/commit/c672551e42ab3634de809a080cbf5ba1a1ebe432), [`a81b3d6`](https://github.com/millionco/react-doctor/commit/a81b3d657314d0d9c21c6a71db6ca12fe3eb949f), [`660200e`](https://github.com/millionco/react-doctor/commit/660200e54a330df587e2a9357aac5f7602f18093), [`8715808`](https://github.com/millionco/react-doctor/commit/8715808c20a3761330cafb0a97ee5419bbfdbcee), [`3a0b9a0`](https://github.com/millionco/react-doctor/commit/3a0b9a0c5e88c2b330bc300342cc5fc91df70ca9), [`2992a03`](https://github.com/millionco/react-doctor/commit/2992a03f2ecb029dad5e5c021404adb8b3c548d8), [`443082a`](https://github.com/millionco/react-doctor/commit/443082ae30224a2b004e9aeaa4784582a60d53c0), [`bf470d5`](https://github.com/millionco/react-doctor/commit/bf470d50fedfd03ddf977018a6a1969b565244ce), [`b479d7d`](https://github.com/millionco/react-doctor/commit/b479d7d7771d59c642849e32c5a6c804197a50c6), [`a9a1f40`](https://github.com/millionco/react-doctor/commit/a9a1f40c8b45aae1e1bb29eecfb62588644f0918), [`5dc936e`](https://github.com/millionco/react-doctor/commit/5dc936e111fda0d77bc7a8a36ece3b1ec6b9bf27), [`fb5f881`](https://github.com/millionco/react-doctor/commit/fb5f881e74b5793cf9469d7a31dcda57aa1a5086), [`a8115b8`](https://github.com/millionco/react-doctor/commit/a8115b8257314356820701c4094823bd945d98bf), [`3bc63ea`](https://github.com/millionco/react-doctor/commit/3bc63ea399ee4d8983364fa97416fa27a89a27aa), [`811a2ff`](https://github.com/millionco/react-doctor/commit/811a2ff33a52b7cdce8ab8d6a51cba5ff9d019d8)]:
+  - oxlint-plugin-react-doctor@0.9.3
+
+## 0.9.2
+
+### Patch Changes
+
+- Updated dependencies [[`4fbab2d`](https://github.com/millionco/react-doctor/commit/4fbab2ddc8a3e808afe90a291325b4da0f7817ab), [`4ebd0a0`](https://github.com/millionco/react-doctor/commit/4ebd0a0706a4014edb62ec5bcfd369bac3a23901), [`49c5c1e`](https://github.com/millionco/react-doctor/commit/49c5c1e8370ed153bc66bb36142e6e20341ae428), [`846c2df`](https://github.com/millionco/react-doctor/commit/846c2df84465d6ebce31ea894669afc5c28ae01f), [`b1b62db`](https://github.com/millionco/react-doctor/commit/b1b62db71d43b6d34ca5108f5598b9e2f6392f91), [`5d2f66d`](https://github.com/millionco/react-doctor/commit/5d2f66d055447e3d91b725564e735fb87c25f8d9)]:
+  - oxlint-plugin-react-doctor@0.9.2
+
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [[`1e67af0`](https://github.com/millionco/react-doctor/commit/1e67af03fec0991aaa9607fdf1b7e8719a63614c), [`707378a`](https://github.com/millionco/react-doctor/commit/707378adbff159480c1182a578f109bc97014624), [`8765ca3`](https://github.com/millionco/react-doctor/commit/8765ca32742e03957957dcc5f12d3c913c46a4bc), [`db9d300`](https://github.com/millionco/react-doctor/commit/db9d30034303d1e1b959441e036df14afc81957d)]:
+  - oxlint-plugin-react-doctor@0.9.1
+
+## 0.9.0
+
+### Patch Changes
+
+- Updated dependencies [[`3d7ea66`](https://github.com/millionco/react-doctor/commit/3d7ea66c3f45fa55828559fce5cc38e879b9907a), [`599e30d`](https://github.com/millionco/react-doctor/commit/599e30d9e1ce4a526e5ba28d801452938f5618c0), [`76263ec`](https://github.com/millionco/react-doctor/commit/76263ecc08496003fd7f8e750cc0b044b427a042)]:
+  - oxlint-plugin-react-doctor@0.9.0
+
+## 0.8.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.8.3
+
+## 0.8.2
+
+### Patch Changes
+
+- [#1402](https://github.com/millionco/react-doctor/pull/1402) [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1) Thanks [@aidenybai](https://github.com/aidenybai)! - Add four async effect safety diagnostics for unguarded async event handlers, loading flags that can remain stuck, unhandled promise side effects in effects, and stale state writes after awaited effect work.
+
+- [#1402](https://github.com/millionco/react-doctor/pull/1402) [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1) Thanks [@aidenybai](https://github.com/aidenybai)! - Add seven resource-lifecycle diagnostics for class teardown, debounced callbacks, listener identity, observers, animation-frame loops, and effect wrappers that discard cleanup returns.
+
+- [#1402](https://github.com/millionco/react-doctor/pull/1402) [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1) Thanks [@aidenybai](https://github.com/aidenybai)! - Add five state-update correctness diagnostics for stale boolean toggles, same-reference mutation, updater side effects, undefined-clobbered defaults, and overbroad props dependencies.
+
+- [#1410](https://github.com/millionco/react-doctor/pull/1410) [`e6a1557`](https://github.com/millionco/react-doctor/commit/e6a155763ee4a1dd23be6dd60e4beecaf7182ae0) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect in-place mutation of proven Zustand state snapshots that can prevent subscriber updates.
+
+- Updated dependencies [[`5b468f8`](https://github.com/millionco/react-doctor/commit/5b468f8a929cd210c93d015f1ba9cb9987e1d7b5), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`b4556e3`](https://github.com/millionco/react-doctor/commit/b4556e31d8804e4c8442ae6a5f198373b94fd378), [`7eca0ee`](https://github.com/millionco/react-doctor/commit/7eca0eebf94abba3e79143cbc08c03bd1da38b1c), [`82c4a12`](https://github.com/millionco/react-doctor/commit/82c4a125c538fd1fd5982c459154fc19388d6ed4), [`f4aa821`](https://github.com/millionco/react-doctor/commit/f4aa8214bfac4b52c5613f25bbad29e68cbeb28d), [`5332cb6`](https://github.com/millionco/react-doctor/commit/5332cb66cf73086cb8c53cbbdbb379d74e5a2e24), [`8c4959b`](https://github.com/millionco/react-doctor/commit/8c4959bb7400a6d5f21cc35a8d54d0ed7faf6971), [`0b0b5ac`](https://github.com/millionco/react-doctor/commit/0b0b5ac52301cbfbb5abdffe4d0d9bf673325a94), [`284b4e4`](https://github.com/millionco/react-doctor/commit/284b4e4e93da7b9ed72f2cbddd72c378737aa0a1), [`6fcd9c9`](https://github.com/millionco/react-doctor/commit/6fcd9c957671b5b7d0b9657260ea1706f73869e2), [`21221c2`](https://github.com/millionco/react-doctor/commit/21221c2d4bc1b9448a32928a582c34ef088236c8), [`fc1b3a3`](https://github.com/millionco/react-doctor/commit/fc1b3a3984e5993c1eb25478cf1c154d3d4ceddc), [`26b4a0c`](https://github.com/millionco/react-doctor/commit/26b4a0ceb1da349ea61073a78f12723e4336c2dc), [`61bf03e`](https://github.com/millionco/react-doctor/commit/61bf03eedcc602b2e21c45e1a5f2e3f012c7201c), [`af33723`](https://github.com/millionco/react-doctor/commit/af337232873fa5c96ec69fac453868f14a9be071), [`8e5ae45`](https://github.com/millionco/react-doctor/commit/8e5ae45dd3e93e6df263b37d0179403da5a9a170), [`3598138`](https://github.com/millionco/react-doctor/commit/3598138c7bdd55dac55bf17bc72ccfef1e4c2efd), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`f5f13b8`](https://github.com/millionco/react-doctor/commit/f5f13b877ab2096312e60d5b3413fc3bcf35f428), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`f5f6a79`](https://github.com/millionco/react-doctor/commit/f5f6a79ba247128ae48493cd58bbca9c1e16c1ff), [`d970055`](https://github.com/millionco/react-doctor/commit/d9700556d14a2c48e644512e70c5affe703cba2a), [`b852961`](https://github.com/millionco/react-doctor/commit/b8529619bdb06251314dd398c650207732ab5024), [`e6a1557`](https://github.com/millionco/react-doctor/commit/e6a155763ee4a1dd23be6dd60e4beecaf7182ae0), [`fe241a9`](https://github.com/millionco/react-doctor/commit/fe241a9723c12673f40d6e3ab42a1fa32e1238b2), [`a4eaedd`](https://github.com/millionco/react-doctor/commit/a4eaeddefecba43688c61edaad3452621ceb73de), [`a667b45`](https://github.com/millionco/react-doctor/commit/a667b4590700c052124994d73ae1aac202655cf0), [`c9f2c4b`](https://github.com/millionco/react-doctor/commit/c9f2c4be53a64dc99bbd2f83ae4e563557add007), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`5774353`](https://github.com/millionco/react-doctor/commit/57743539079f8a8c49fe9d2119822b27603e3a04), [`a2f9bf4`](https://github.com/millionco/react-doctor/commit/a2f9bf42c0dbc012dab41938008d90c0bd2dc77f), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1)]:
+  - oxlint-plugin-react-doctor@0.8.2
+
 ## 0.8.1
 
 ### Patch Changes

@@ -221,6 +221,46 @@ describe("no-promise-then-side-effect-in-effect-without-catch", () => {
     }
   });
 
+  it("does not flag the ReactBench task refresh chain with a terminal catch", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = () => {
+        const [tasks, setTasks] = useState([]);
+        const [, setApiKeys] = useState([]);
+        const latestSuccessfulRefreshIdRef = useRef(0);
+        const updateAlert = (id, isError) => {};
+        useEffect(() => {
+          const refreshId = 1;
+          const triggerIds = [1];
+          fetch("/api/apiKeys")
+            .then((response) => {
+              if (!response.ok) throw new Error("not ok");
+              return response.json();
+            })
+            .then((json) => {
+              setTasks((previous) =>
+                previous.map((task) => ({ ...task, status: "success" })),
+              );
+              if (refreshId > latestSuccessfulRefreshIdRef.current) {
+                latestSuccessfulRefreshIdRef.current = refreshId;
+                setApiKeys(json.apiKeys);
+              }
+              updateAlert(Math.max(...triggerIds), false);
+            })
+            .catch(() => {
+              setTasks((previous) =>
+                previous.map((task) => ({ ...task, status: "error" })),
+              );
+              updateAlert(Math.max(...triggerIds), true);
+            });
+        }, [tasks, updateAlert]);
+      };`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a catch handler that returns a fulfilled promise", () => {
     const result = runRule(
       noPromiseThenSideEffectInEffectWithoutCatch,
@@ -318,6 +358,92 @@ describe("no-promise-then-side-effect-in-effect-without-catch", () => {
       }, [url]);`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a stored chain whose rejection is handled through a stable alias", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const [, setDetail] = useState(null);
+      useEffect(() => {
+        const request = fetch(url).then((data) => { setDetail(data); });
+        const observedRequest = request;
+        observedRequest.catch(() => { setDetail(null); });
+      }, [url]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a stored chain with a stable local state-handler alias", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const [, setDetail] = useState(null);
+      useEffect(() => {
+        const request = fetch(url).then((data) => { setDetail(data); });
+        const recover = (error) => { setDetail(null); };
+        request.catch(recover);
+      }, [url]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag state handlers returning known non-thenable values", () => {
+    const sources = [
+      `const [, setDetail] = useState(null);
+       useEffect(() => {
+         const request = fetch(url).then((data) => { setDetail(data); });
+         request.catch(() => { setDetail(null); return undefined; });
+       }, [url]);`,
+      `const [, setDetail] = useState(null);
+       useEffect(() => {
+         const fallback = null;
+         const request = fetch(url).then((data) => { setDetail(data); });
+         request.catch(() => { setDetail(null); return fallback; });
+       }, [url]);`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
+        0,
+      );
+    }
+  });
+
+  it("does not treat reassigned, shadowed, or custom catch values as rejection handlers", () => {
+    const sources = [
+      `const [, setDetail] = useState(null);
+       useEffect(() => {
+         const request = fetch(url).then((data) => { setDetail(data); });
+         let observedRequest = request;
+         observedRequest = { catch: () => {} };
+         observedRequest.catch(() => {});
+       }, [url]);`,
+      `const [, setDetail] = useState(null);
+       useEffect(() => {
+         const request = fetch(url).then((data) => { setDetail(data); });
+         { const request = { catch: (handler) => handler() }; request.catch(() => {}); }
+       }, [url]);`,
+      `const [, setDetail] = useState(null);
+       useEffect(() => {
+         const request = fetch(url).then((data) => { setDetail(data); });
+         const observer = { catch: (handler) => handler() };
+         observer.catch(() => {});
+       }, [url]);`,
+      `const [, setDetail] = useState(null);
+       const recover = (error) => { setDetail(null); };
+       useEffect(() => {
+         const request = fetch(url).then((data) => { setDetail(data); });
+         { const recover = () => { throw new Error("failed"); }; request.catch(recover); }
+       }, [url]);`,
+      `const [, setDetail] = useState(null);
+       useEffect(() => {
+         const request = fetch(url).then((data) => { setDetail(data); });
+         request.catch((error) => { setDetail(null); return error; });
+       }, [url]);`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
+        1,
+      );
+    }
   });
 
   it("flags a then that receives the state setter directly (fetch-json-setState idiom)", () => {
@@ -546,7 +672,318 @@ useEffect(() => {
 });
 
 describe("no-promise-then-side-effect-in-effect-without-catch audit regressions", () => {
-  it("requires a callable, non-rethrowing rejection handler", () => {
+  it("flags an unhandled chain stored through an assignment", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = () => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          let request;
+          request = fetch("/x").then((value) => setValue(value));
+        }, []);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a singly assigned chain whose rejection is handled later", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = () => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          let request;
+          request = fetch("/x").then((value) => setValue(value));
+          request.catch(() => setValue(null));
+        }, []);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not attach a later catch to an earlier assigned chain", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = () => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          let request;
+          request = fetch("/first").then((value) => setValue(value));
+          request = Promise.resolve(null);
+          request.catch(() => setValue(null));
+        }, []);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat conditional or deferred catch attachment as covering an assignment", () => {
+    const invalidSources = [
+      `const C = ({ shouldObserve }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          let request;
+          request = fetch("/x").then((value) => setValue(value));
+          if (shouldObserve) request.catch(() => setValue(null));
+        }, [shouldObserve]);
+      };`,
+      `const C = () => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          let request;
+          request = fetch("/x").then((value) => setValue(value));
+          queueMicrotask(() => request.catch(() => setValue(null)));
+        }, []);
+      };`,
+      `const C = ({ shouldObserve }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          const request = fetch("/x").then((value) => setValue(value));
+          if (shouldObserve) request.catch(() => setValue(null));
+        }, [shouldObserve]);
+      };`,
+    ];
+    for (const source of invalidSources) {
+      expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
+        1,
+      );
+    }
+  });
+
+  it("does not let one post-loop catch cover promises assigned across iterations", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = ({ urls }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          let request;
+          for (const url of urls) {
+            request = fetch(url).then((value) => setValue(value));
+          }
+          request.catch(() => setValue(null));
+        }, [urls]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts an assigned chain handled during the same loop iteration", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = ({ urls }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          let request;
+          for (const url of urls) {
+            request = fetch(url).then((value) => setValue(value));
+            request.catch(() => setValue(null));
+          }
+        }, [urls]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still requires a then rejection handler to avoid potentially throwing member reads", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue, () => console.log(source.throwingGetter));
+        }, [source]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a terminal block catch that performs state recovery from a member value", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => { setValue(source.throwingGetter); });
+        }, [source]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts terminal block catches that return known non-rejecting values", () => {
+    const validSources = [
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.fallback);
+            return undefined;
+          });
+        }, [source]);
+      };`,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.fallback);
+            return null;
+          });
+        }, [source]);
+      };`,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        const fallback = null;
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.fallback);
+            return fallback;
+          });
+        }, [source]);
+      };`,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.fallback);
+            return Promise.resolve(null);
+          });
+        }, [source]);
+      };`,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        const fallback = undefined;
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.fallback);
+            return Promise.resolve(fallback);
+          });
+        }, [source]);
+      };`,
+    ];
+    for (const source of validSources) {
+      expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
+        0,
+      );
+    }
+  });
+
+  it("continues to flag terminal block catches that may reject", () => {
+    const invalidSources = [
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        const fallback = source.fallback;
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.value);
+            return fallback;
+          });
+        }, [source]);
+      };`,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.value);
+            return Promise.resolve(source.fallback);
+          });
+        }, [source]);
+      };`,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.value);
+            return Promise.reject(null);
+          });
+        }, [source]);
+      };`,
+      `const Promise = { resolve: () => fetch("/fallback") };
+      const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.value);
+            return Promise.resolve(null);
+          });
+        }, [source]);
+      };`,
+    ];
+    for (const source of invalidSources) {
+      expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
+        1,
+      );
+    }
+  });
+
+  it("accepts rejection handlers with simple non-throwing arguments", () => {
+    const validSources = [
+      `const C = () => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue, (error) => console.log(error));
+        }, []);
+      };`,
+      `const C = () => {
+        const [, setValue] = useState();
+        const fallback = "failed";
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => { console.error(fallback); setValue(null); });
+        }, [fallback]);
+      };`,
+      `const C = () => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => Promise.resolve(null));
+        }, []);
+      };`,
+      `const C = () => {
+        const [, setValue] = useState();
+        const startedAt = performance.now();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            console.info(Math.round(performance.now() - startedAt));
+            setValue(null);
+          });
+        }, [startedAt]);
+      };`,
+    ];
+    for (const source of validSources) {
+      expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
+        0,
+      );
+    }
+  });
+
+  it("does not trust dynamic, unknown, or shadowed console rejection handlers", () => {
+    const invalidSources = [
+      `const C = ({ method }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch((error) => console[method](error));
+        }, [method]);
+      };`,
+      `const C = () => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch((error) => console.missing(error));
+        }, []);
+      };`,
+      `const console = { log() { throw new Error("failed"); } };
+      const C = () => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch((error) => console.log(error));
+        }, []);
+      };`,
+    ];
+    for (const source of invalidSources) {
+      expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
+        1,
+      );
+    }
+  });
+
+  it("requires a callable rejection handler that does not explicitly rethrow", () => {
     const invalidSources = [
       `const C = () => { const [, setValue] = useState(); useEffect(() => { fetch("/x").then(setValue).catch(); }, []); };`,
       `const C = () => { const [, setValue] = useState(); useEffect(() => { fetch("/x").then(setValue).catch(undefined); }, []); };`,

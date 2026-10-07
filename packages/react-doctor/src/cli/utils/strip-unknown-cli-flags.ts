@@ -19,6 +19,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
     "--json-compact",
     "--lint",
     "--no-color",
+    "--no-cache",
     "--no-dead-code",
     "--no-lint",
     "--no-parallel",
@@ -37,6 +38,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
   ]),
   longOptionsWithRequiredValues: new Set([
     "--base",
+    "--baseline",
     "--category",
     "--changed-files-from",
     "--blocking",
@@ -128,6 +130,43 @@ const WHY_FLAG_SPEC: CliFlagSpec = {
   shortOptionsWithRequiredValues: new Set(["-c"]),
 };
 
+const RUNTIME_SCAN_FLAG_SPEC: CliFlagSpec = {
+  longOptionsWithoutValues: new Set([
+    "--color",
+    "--debug",
+    "--help",
+    "--no-color",
+    "--no-score",
+    "--no-telemetry",
+  ]),
+  longOptionsWithRequiredValues: new Set(["--cdp", "--format", "--trace-out"]),
+  longOptionsWithOptionalValues: new Set(),
+  shortOptionsWithoutValues: new Set(["-h"]),
+  shortOptionsWithRequiredValues: new Set(["-f"]),
+};
+
+// `experimental-tui [directory]` mirrors the root scan's negatable dead-code,
+// supply-chain, and score knobs plus project selection. Without this entry the
+// pre-parse strip falls back to ROOT_FLAG_SPEC, which drops `-p` and turns its
+// value into the directory positional.
+const EXPERIMENTAL_TUI_FLAG_SPEC: CliFlagSpec = {
+  longOptionsWithoutValues: new Set([
+    "--color",
+    "--help",
+    "--no-cache",
+    "--no-color",
+    "--no-dead-code",
+    "--no-score",
+    "--no-supply-chain",
+    "--score",
+    "--yes",
+  ]),
+  longOptionsWithRequiredValues: new Set(["--blocking", "--max-duration", "--project"]),
+  longOptionsWithOptionalValues: new Set(),
+  shortOptionsWithoutValues: new Set(["-h", "-y"]),
+  shortOptionsWithRequiredValues: new Set(["-p"]),
+};
+
 const COMMAND_FLAG_SPECS = new Map<string, CliFlagSpec>([
   ["design", ROOT_FLAG_SPEC],
   ["install", INSTALL_FLAG_SPEC],
@@ -135,7 +174,9 @@ const COMMAND_FLAG_SPECS = new Map<string, CliFlagSpec>([
   ["version", VERSION_FLAG_SPEC],
   ["rules", RULES_FLAG_SPEC],
   ["ci", CI_FLAG_SPEC],
+  ["scan", RUNTIME_SCAN_FLAG_SPEC],
   ["why", WHY_FLAG_SPEC],
+  ["experimental-tui", EXPERIMENTAL_TUI_FLAG_SPEC],
 ]);
 
 const isFlagLike = (argument: string): boolean => argument.startsWith("-") && argument !== "-";

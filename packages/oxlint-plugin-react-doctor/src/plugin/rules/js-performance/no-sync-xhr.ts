@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -27,7 +28,7 @@ export const noSyncXhr = defineRule({
   recommendation:
     "Never open an XMLHttpRequest synchronously (`async` = `false`). It blocks the main thread. Use `fetch()` or pass `true` and handle the response asynchronously.",
   create: (context: RuleContext): RuleVisitors => {
-    if (PUBLIC_ASSET_PATH_PATTERN.test(context.filename ?? "")) return {};
+    if (PUBLIC_ASSET_PATH_PATTERN.test(context.filename ?? "")) return EMPTY_RULE_VISITORS;
     const methodMutationAnalysis = createMethodMutationAnalysis(context);
     const openCalls: EsTreeNodeOfType<"CallExpression">[] = [];
     const analyzeOpenCall = (node: EsTreeNodeOfType<"CallExpression">): void => {

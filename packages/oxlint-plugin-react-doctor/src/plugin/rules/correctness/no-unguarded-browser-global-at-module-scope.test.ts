@@ -277,6 +277,33 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet in public assets that are served directly instead of imported during SSR", () => {
+    const relativeResult = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `window.VditorI18n = { save: "Save" };`,
+      { filename: "public/vditor/en_US.js" },
+    );
+    const monorepoResult = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `window.analyticsQueue = window.analyticsQueue || [];`,
+      { filename: "/repo/apps/landing/public/static/analytics.js" },
+    );
+    expect(relativeResult.parseErrors).toEqual([]);
+    expect(monorepoResult.parseErrors).toEqual([]);
+    expect(relativeResult.diagnostics).toHaveLength(0);
+    expect(monorepoResult.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a public-prefixed source directory as a static public asset directory", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `const language = navigator.language;`,
+      { filename: "/repo/src/public-api/runtime.js" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat an unrelated cache-dir path as Gatsby browser runtime", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
@@ -742,6 +769,77 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
       `window.PdfViewer = window.PdfViewer || {};`,
       { filename: "src/types/pdfjs.d.ts" },
     );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag type-only property names in interfaces", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `interface TweetSearchCoverageStrategyMetadata {
+         readonly window: { readonly sinceTime: string; readonly untilTime: string } | undefined;
+       }`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag type-only property names in type aliases", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `type Config = {
+         window: number;
+         navigator: string;
+       };`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags runtime window property access", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `interface Config {
+         window: number;
+       }
+       const w = window.innerWidth;`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag type parameters that happen to be named window", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `type MapState<window> = (state: window) => window;`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag type-only intersection/union member keys", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `type Config = { window: number } | { navigator: string } & { localStorage: boolean };`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag method signature return types", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `interface API {
+         getWindow(): window;
+       }
+       type window = { width: number };`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
 });

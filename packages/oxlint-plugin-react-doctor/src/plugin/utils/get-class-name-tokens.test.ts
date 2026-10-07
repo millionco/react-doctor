@@ -17,4 +17,12 @@ describe("getClassNameTokens", () => {
       ),
     ).toEqual(["bg-[color:rgb(0,0,0)]", "bg-[url(http://example.com/a.svg)]", "stroke-red-500"]);
   });
+
+  it("preserves whitespace inside balanced arbitrary syntax", () => {
+    expect(
+      getClassNameTokens(
+        `content-['hello world'] supports-[selector(:has(.a .b))]:grid-cols-[minmax(0, 1fr)_auto]`,
+      ),
+    ).toEqual(["content-['hello world']", "grid-cols-[minmax(0, 1fr)_auto]"]);
+  });
 });

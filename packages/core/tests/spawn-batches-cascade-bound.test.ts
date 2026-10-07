@@ -132,7 +132,7 @@ describe("spawnLintBatches binary-split cascade bound", () => {
 
     expect(diagnostics).toEqual([]);
     // A truncated binary tree spawns at most sum(2^d, d=0..depth) <= 2^(depth+1)
-    // times. Without the cap a 100-file batch would split ~7 levels to single
+    // times. Without the cap this 100-file batch would split ~7 levels to single
     // files, and every re-timeout would wait a full spawn budget.
     expect(spawnState.callCount).toBeGreaterThan(1);
     expect(spawnState.callCount).toBeLessThanOrEqual(2 ** (splitMaxDepth + 1));

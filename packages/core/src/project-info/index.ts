@@ -1,10 +1,13 @@
 export {
   discoverProject,
+  isProjectInfoCached,
   clearProjectCache,
   discoverReactSubprojects,
+  discoverSupportedSubprojects,
   formatFrameworkName,
   listWorkspacePackages,
 } from "./discover-project.js";
+export type { DiscoverProjectOptions } from "./discover-project.js";
 export { clearPackageJsonCache, readPackageJson } from "./package-json.js";
 export { isAnalyzableProject } from "./is-analyzable-project.js";
 export {
@@ -30,6 +33,7 @@ export {
 export { isDirectory, isFile, isPlainObject, readDirectoryEntries } from "./fs-utils.js";
 export {
   GIT_LS_FILES_MAX_BUFFER_BYTES,
+  HTML_FILE_PATTERN,
   IGNORED_DIRECTORIES,
   SOURCE_FILE_PATTERN,
 } from "./constants.js";

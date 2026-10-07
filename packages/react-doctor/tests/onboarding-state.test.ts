@@ -2,14 +2,13 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import * as fs from "node:fs";
+import { getCliStatePath } from "../src/cli/utils/cli-state-store.js";
 import {
-  getOnboardingConfigPath,
   hasCompletedOnboarding,
   markOnboardingComplete,
 } from "../src/cli/utils/onboarding-state.js";
 import {
   disableSetupPrompt,
-  getSetupPromptConfigPath,
   hasDisabledSetupPrompt,
 } from "../src/cli/utils/prompt-install-setup.js";
 
@@ -38,8 +37,8 @@ describe("onboarding state", () => {
 
   it("keeps the first-run timestamp stable across repeated marks", () => {
     const readOnboardingFiredAt = (): unknown =>
-      JSON.parse(fs.readFileSync(getOnboardingConfigPath({ cwd: configRoot }), "utf8")).global
-        ?.events?.onboarding?.firedAt;
+      JSON.parse(fs.readFileSync(getCliStatePath({ cwd: configRoot }), "utf8")).global?.events
+        ?.onboarding?.firedAt;
 
     markOnboardingComplete({ cwd: configRoot });
     const firstStamp = readOnboardingFiredAt();
@@ -56,9 +55,7 @@ describe("onboarding state", () => {
     disableSetupPrompt(projectRoot, { cwd: configRoot });
     markOnboardingComplete({ cwd: configRoot });
 
-    expect(getOnboardingConfigPath({ cwd: configRoot })).toBe(
-      getSetupPromptConfigPath({ cwd: configRoot }),
-    );
+    expect(fs.existsSync(getCliStatePath({ cwd: configRoot }))).toBe(true);
     expect(hasDisabledSetupPrompt(projectRoot, { cwd: configRoot })).toBe(true);
     expect(hasCompletedOnboarding({ cwd: configRoot })).toBe(true);
   });

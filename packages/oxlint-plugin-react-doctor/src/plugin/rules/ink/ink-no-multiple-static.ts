@@ -28,14 +28,16 @@ export const inkNoMultipleStatic = defineRule({
           ancestorNode = ancestorNode.parent;
         }
         if (!renderRoot) return;
-        const previousStaticNodes = staticNodesByRenderRoot.get(renderRoot) ?? [];
-        staticNodesByRenderRoot.set(renderRoot, [...previousStaticNodes, node]);
-        if (isNodeConditionallyExecuted(node, renderRoot)) return;
-        if (
-          !previousStaticNodes.some(
+        const previousStaticNodes = staticNodesByRenderRoot.get(renderRoot);
+        const didFindUnconditionalStatic = Boolean(
+          previousStaticNodes?.some(
             (previousStaticNode) => !isNodeConditionallyExecuted(previousStaticNode, renderRoot),
-          )
-        ) {
+          ),
+        );
+        if (previousStaticNodes) previousStaticNodes.push(node);
+        else staticNodesByRenderRoot.set(renderRoot, [node]);
+        if (isNodeConditionallyExecuted(node, renderRoot)) return;
+        if (!didFindUnconditionalStatic) {
           return;
         }
         context.report({

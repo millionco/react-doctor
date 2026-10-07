@@ -473,4 +473,64 @@ describe("zustand-no-fresh-selector-result", () => {
       2,
     );
   });
+
+  it("does not flag imperative API callbacks from destructuring or alias chains", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useGuidedTourStore = create(() => ({ guidedTours: {} }));
+        const { setState: updateStore, subscribe: listenToStore } = useGuidedTourStore;
+        const updateStoreAlias = updateStore;
+        updateStoreAlias((state) => ({
+          guidedTours: { ...state.guidedTours, foo: "bar" },
+        }));
+        listenToStore((state) => ({ guidedTours: state.guidedTours }));
+      `,
+      0,
+    );
+  });
+
+  it("does not flag setState updater callbacks from property access", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useGuidedTourStore = create(() => ({ guidedTours: {} }));
+        const setMenuState = useGuidedTourStore.setState;
+        setMenuState((state) => ({ guidedTours: state.guidedTours }));
+      `,
+      0,
+    );
+  });
+
+  it("still flags bound stores named like imperative API methods", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const setState = create(() => ({ count: 0 }));
+        const subscribe = create(() => ({ items: [] }));
+        const summary = setState((state) => ({ count: state.count }));
+        const items = subscribe((state) => [...state.items]);
+      `,
+      2,
+    );
+  });
+
+  it("does not flag setState with devtools arguments", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useStore = create(() => ({ filters: [] }));
+        const { setState } = useStore;
+        setState(
+          (state) =>
+            state.filters.includes(value)
+              ? {}
+              : { filters: [...state.filters, value] },
+          false,
+          "addFilter",
+        );
+      `,
+      0,
+    );
+  });
 });

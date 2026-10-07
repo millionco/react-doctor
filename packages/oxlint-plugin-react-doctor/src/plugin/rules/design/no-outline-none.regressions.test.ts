@@ -5,6 +5,13 @@ import { noOutlineNone } from "./no-outline-none.js";
 const run = (code: string) => runRule(noOutlineNone, code, { filename: "fixture.tsx" });
 
 describe("design/no-outline-none — regressions", () => {
+  it("uses the effective duplicate inline outline declaration", () => {
+    const result = run(
+      `<><button style={{ outline: "none", outline: "2px solid red" }}>Safe</button><button style={{ outline: "2px solid red", outline: "none" }}>Unsafe</button></>`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag outline:none paired with a tailwind focus-visible ring", () => {
     const result = run(
       `<button style={{ outline: "none" }} className="focus-visible:ring-2 focus-visible:ring-blue-500" />`,
@@ -55,6 +62,53 @@ describe("design/no-outline-none — regressions", () => {
   it("flags focus:ring-transparent (an invisible ring)", () => {
     const result = run(`<button style={{ outline: "none" }} className="focus:ring-transparent" />`);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("honors important focus ring resets independently of class order", () => {
+    const first = run(
+      `<button style={{ outline: "none" }} className="focus:ring-2 focus:!ring-0" />`,
+    );
+    const second = run(
+      `<button style={{ outline: "none" }} className="focus:!ring-0 focus:ring-2" />`,
+    );
+    expect(first.diagnostics).toHaveLength(1);
+    expect(second.diagnostics).toHaveLength(1);
+  });
+
+  it("honors important focus ring additions independently of class order", () => {
+    const first = run(
+      `<button style={{ outline: "none" }} className="focus:ring-0 focus:!ring-2" />`,
+    );
+    const second = run(
+      `<button style={{ outline: "none" }} className="focus:!ring-2 focus:ring-0" />`,
+    );
+    expect(first.diagnostics).toEqual([]);
+    expect(second.diagnostics).toEqual([]);
+  });
+
+  it("does not accept equal-priority or important focus ring conflicts", () => {
+    const equalPriority = run(
+      `<button style={{ outline: "none" }} className="focus:ring-2 focus:ring-0" />`,
+    );
+    const important = run(
+      `<button style={{ outline: "none" }} className="focus:!ring-2 focus:!ring-0" />`,
+    );
+    expect(equalPriority.diagnostics).toHaveLength(1);
+    expect(important.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts multiple focus utilities that all add a visible style", () => {
+    const result = run(
+      `<button style={{ outline: "none" }} className="focus:ring-2 focus:ring-4 focus:ring-blue-500" />`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts a visible ring when another focus style family is reset", () => {
+    const result = run(
+      `<button style={{ outline: "none" }} className="focus:outline-none focus:ring-2" />`,
+    );
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags group-focus:ring-2 (styles the group's focus, not this element's)", () => {

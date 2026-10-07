@@ -1,8 +1,0 @@
-{
-  "name": "extensionless-script-entry",
-  "scripts": {
-    "build": "tsx ./scripts/build-data",
-    "lint": "node scripts/lint-code",
-    "process": "ts-node ./scripts/process-items"
-  }
-}

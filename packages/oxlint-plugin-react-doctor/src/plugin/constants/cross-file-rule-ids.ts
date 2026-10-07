@@ -25,6 +25,8 @@ import { INK_RULE_IDS } from "./ink.js";
 //     `no-indeterminate-attribute`, `rendering-hydration-mismatch-time`,
 //     `no-locale-format-in-render`, and `no-match-media-in-state-initializer`
 //     read the package-platform classification to skip React Native files;
+//     every React Router rule reads the nearest manifest to gate itself by
+//     the installed package version and Framework/Data/Declarative mode;
 //     `rn-no-legacy-shadow-styles` and `rn-style-prefer-boxshadow` read the
 //     manifest's react-native version plus `android/gradle.properties` and
 //     static Expo app configs (`is-legacy-arch-react-native-file.ts`) to stay
@@ -35,9 +37,13 @@ import { INK_RULE_IDS } from "./ink.js";
 // this set — turning a future silent staleness bug into a failing test. It
 // also forces every rule here into the bounded/unbounded classification in
 // `cross-file-dependencies.ts`.
+import { REACT_ROUTER_RULE_IDS } from "./react-router.js";
+
 export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   ...INK_RULE_IDS,
   "client-passive-event-listeners",
+  "effect-needs-cleanup",
+  "anchor-target-exists",
   "exhaustive-deps",
   "no-barrel-import",
   "nextjs-async-dynamic-api-not-awaited",
@@ -47,16 +53,18 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "no-dynamic-import-path",
   "no-full-lodash-import",
   "no-hydration-branch-on-browser-global",
+  "no-img-without-dimensions",
   "no-indeterminate-attribute",
   "no-loading-flag-reset-outside-finally",
   "no-locale-format-in-render",
   "no-match-media-in-state-initializer",
   "no-create-ref-in-function-component",
+  "no-reset-all-state-on-prop-change",
+  "no-side-effect-in-state-updater-function",
   "no-adjust-state-on-prop-change",
   "no-derived-state",
   "no-derived-state-effect",
   "no-event-handler",
-  "no-effect-with-fresh-deps",
   "no-initialize-state",
   "no-mutating-reducer-state",
   "only-export-components",
@@ -65,6 +73,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "window-open-without-noopener",
   "prefer-dynamic-import",
   "rendering-hydration-mismatch-time",
+  "rendering-hydration-no-flicker",
   "remotion-calculate-metadata-fetch-signal",
   "remotion-deterministic-randomness",
   "remotion-no-css-animation",
@@ -73,8 +82,11 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "remotion-no-native-media-elements",
   "remotion-no-next-image",
   "rerender-memo-with-default-value",
+  "server-sequential-independent-await",
+  "rn-no-deprecated-modules",
   "rn-no-legacy-shadow-styles",
   "rn-no-raw-text",
   "rn-prefer-expo-image",
   "rn-style-prefer-boxshadow",
+  ...REACT_ROUTER_RULE_IDS,
 ]);

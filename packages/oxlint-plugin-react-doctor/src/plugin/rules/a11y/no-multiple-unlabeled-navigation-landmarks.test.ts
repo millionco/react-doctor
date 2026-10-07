@@ -43,6 +43,22 @@ describe("no-multiple-unlabeled-navigation-landmarks", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("reports navigation landmarks that coexist at inherited responsive breakpoints", () => {
+    const result = runRule(
+      noMultipleUnlabeledNavigationLandmarks,
+      `const Page = () => <main><nav className="hidden md:block">Primary</nav><nav className="hidden lg:block">Secondary</nav></main>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("ignores statically hidden Tailwind navigation landmarks", () => {
+    const result = runRule(
+      noMultipleUnlabeledNavigationLandmarks,
+      `const Page = () => <main><nav className="collapse">Collapsed</nav><nav className="[display:none]">Display</nav><nav className="[visibility:hidden]">Visibility</nav><nav>Primary</nav></main>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("skips landmarks separated by opaque component boundaries", () => {
     const result = runRule(
       noMultipleUnlabeledNavigationLandmarks,

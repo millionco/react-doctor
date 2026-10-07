@@ -39,6 +39,23 @@ describe("rn-list-missing-estimated-item-size", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    ["LegendList", "@legendapp/list/react-native"],
+    ["AnimatedLegendList", "@legendapp/list/animated"],
+    ["AnimatedLegendList", "@legendapp/list/reanimated"],
+    ["KeyboardAwareLegendList", "@legendapp/list/keyboard"],
+    ["KeyboardAvoidingLegendList", "@legendapp/list/keyboard-legacy"],
+  ])("does NOT require an estimate for Legend v3 %s from %s", (componentName, packageSource) => {
+    const code = `
+      import { ${componentName} } from "${packageSource}";
+      const Screen = ({ items }) => (
+        <${componentName} data={items} renderItem={renderItem} />
+      );
+    `;
+    const result = runRule(rnListMissingEstimatedItemSize, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags genuinely-aliased import `FlashList as List`", () => {
     // The detector must resolve the LOCAL JSX name back to its
     // originally-exported symbol — aliased local bindings (where the

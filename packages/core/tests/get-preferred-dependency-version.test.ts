@@ -44,4 +44,13 @@ describe("getPreferredDependencyVersion", () => {
 
     expect(version).toBeNull();
   });
+
+  it("ignores malformed non-string dependency versions", () => {
+    const version = getPreferredDependencyVersion({
+      packageJson: JSON.parse('{"dependencies":{"library":6}}'),
+      packageNames: ["library"],
+    });
+
+    expect(version).toBeNull();
+  });
 });

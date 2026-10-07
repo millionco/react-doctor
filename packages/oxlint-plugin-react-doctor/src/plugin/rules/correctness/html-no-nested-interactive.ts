@@ -1,3 +1,4 @@
+import { VALID_ARIA_ROLES } from "../../constants/aria-roles.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -32,10 +33,18 @@ const getRole = (
   scopes: ScopeAnalysis,
 ): string | null => {
   const roleAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "role", false);
-  const explicitRole = roleAttribute
-    ? getStringLiteralAttributeValue(roleAttribute)?.trim().toLowerCase().split(/\s+/)[0]
-    : null;
-  if (roleAttribute) return explicitRole || null;
+  if (roleAttribute) {
+    const staticRoleValue = getStringLiteralAttributeValue(roleAttribute);
+    if (staticRoleValue === null) return null;
+    const explicitRole = staticRoleValue
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .find((roleToken) => VALID_ARIA_ROLES.has(roleToken));
+    return (
+      explicitRole ?? getImplicitRole(openingElement, resolveJsxElementType(openingElement), scopes)
+    );
+  }
   return getImplicitRole(openingElement, resolveJsxElementType(openingElement), scopes);
 };
 
@@ -80,10 +89,15 @@ export const htmlNoNestedInteractive = defineRule({
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementType = resolveJsxElementType(node);
+      if (/^[A-Z]/.test(elementType)) return;
+      const enclosingInteractiveControl = findEnclosingInteractiveControl(node, context.scopes);
+      const isNestedNativeButton =
+        elementType === "button" &&
+        enclosingInteractiveControl !== null &&
+        resolveJsxElementType(enclosingInteractiveControl) === "button";
       if (
-        /^[A-Z]/.test(elementType) ||
-        !isFocusableJsxOpeningElement(node, elementType, true) ||
-        !findEnclosingInteractiveControl(node, context.scopes)
+        !enclosingInteractiveControl ||
+        (!isNestedNativeButton && !isFocusableJsxOpeningElement(node, elementType, true))
       ) {
         return;
       }

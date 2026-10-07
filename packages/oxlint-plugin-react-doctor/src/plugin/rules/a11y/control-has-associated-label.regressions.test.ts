@@ -155,6 +155,15 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports a ref-wired file input whose arbitrary value contains a hidden fragment", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `const Demo = ({ fileInputRef }) => <input ref={fileInputRef} type="file" className="[--state:x hidden y]" />;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts a ref-wired file input with an expression-container string className", () => {
     const result = runRule(
       controlHasAssociatedLabel,
@@ -939,6 +948,105 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toHaveLength(3);
   });
 
+  it("reports controls whose only child text is a symbol or emoji", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Player = ({ playing, onToggle }) => (
+          <nav>
+            <button>×</button>
+            <button>{"＋"}</button>
+            <button>{\`➕\`}</button>
+            <button>{playing ? "Ⅱ" : "▶"}</button>
+            <button>⏮</button>
+            <button role="switch" onClick={onToggle}>🔊</button>
+          </nav>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(6);
+  });
+
+  it("reports nested decorative glyph and repeated-bar labels", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Player = () => (
+          <nav>
+            <button className="sound">⌁<span>×</span></button>
+            <button className="sound"><i /><span>╎╎╎╎╎╎</span></button>
+            <button className="mute">⌁ <span>|||||||</span></button>
+          </nav>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("accepts a button named by an SVG title", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `<button><svg><title>Close</title></svg></button>`,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts concise text, numeric, and explicitly named symbol controls", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Pager = () => (
+          <nav>
+            <button>Close</button>
+            <button>1</button>
+            <button aria-label="Add photo">＋</button>
+            <button title="Previous track">⏮</button>
+          </nav>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts logical fallbacks when either possible child provides label text", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Pager = ({ label }) => (
+          <nav>
+            <button>{"Close" || "×"}</button>
+            <button>{label || "×"}</button>
+            <button>{"Close" ?? "×"}</button>
+            <button>{label ?? "×"}</button>
+          </nav>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports logical fallbacks when neither possible child provides label text", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Pager = () => (
+          <nav>
+            <button>{"" || "×"}</button>
+            <button>{null ?? "×"}</button>
+            <button>{true && "×"}</button>
+          </nav>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
   it("accepts icon buttons carrying either an aria-label or a native title", () => {
     const result = runRule(
       controlHasAssociatedLabel,
@@ -1052,5 +1160,30 @@ describe("a11y/control-has-associated-label regressions", () => {
     );
 
     expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("native label title names", () => {
+  it("accepts a title on associated and wrapping native labels", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `const Rating = () => <>
+      <input id="rating" type="radio" /><label htmlFor="rating" title="Two stars" />
+      <label title={"Three stars"}><input type="radio" /></label>
+    </>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+  it("does not accept empty titles, unrelated labels, or custom title props", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `const Rating = () => <>
+      <input id="empty" type="radio" /><label htmlFor="empty" title=" " />
+      <input id="false" type="radio" /><label htmlFor="false" title={false} />
+      <input id="unrelated" type="radio" /><label htmlFor="other" title="Two stars" />
+      <input id="custom" type="radio" /><Label htmlFor="custom" title="Three stars" />
+    </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(4);
   });
 });

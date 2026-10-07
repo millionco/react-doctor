@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { ProjectDiscoveryFailed, ReactDoctorError } from "@react-doctor/core";
 import {
   formatEnvironmentError,
   isEnvironmentError,
@@ -9,13 +10,37 @@ const systemError = (code: string, extra: Record<string, unknown> = {}): Error =
 
 describe("isEnvironmentError", () => {
   it("recognizes the unactionable filesystem codes", () => {
-    for (const code of ["ENOSPC", "EIO", "EROFS", "EACCES", "EPERM", "ENOTDIR"]) {
+    for (const code of ["EACCES", "EIO", "ENOSPC", "ENOTDIR", "EPERM", "EROFS"]) {
       expect(isEnvironmentError(systemError(code, { syscall: "mkdir" }))).toBe(true);
+    }
+    for (const code of ["EBUSY", "ETIMEDOUT"]) {
+      expect(isEnvironmentError(systemError(code, { syscall: "scandir" }))).toBe(true);
+      expect(isEnvironmentError(systemError(code, { syscall: "spawn tool" }))).toBe(false);
     }
   });
 
   it("treats a spawn ENOENT (missing binary) as an environment error", () => {
     expect(isEnvironmentError(systemError("ENOENT", { syscall: "spawn git" }))).toBe(true);
+    expect(isEnvironmentError(systemError("ENOEXEC", { syscall: "spawn oxlint" }))).toBe(false);
+  });
+
+  it("recognizes filesystem errors wrapped in a ReactDoctorError", () => {
+    const cause = systemError("EPERM", { syscall: "open", path: "/private/project/vite.js" });
+    const error = new ReactDoctorError({
+      reason: new ProjectDiscoveryFailed({ directory: "/private/project", cause }),
+    });
+
+    expect(isEnvironmentError(error)).toBe(true);
+    expect(formatEnvironmentError(error)).toBe(
+      "Permission denied accessing /private/project/vite.js. Check file permissions and try again.",
+    );
+  });
+
+  it("recognizes filesystem-scoped unknown operating system errors", () => {
+    expect(
+      isEnvironmentError(systemError("UNKNOWN", { syscall: "scandir", path: "C:\\project" })),
+    ).toBe(true);
+    expect(isEnvironmentError(systemError("UNKNOWN", { syscall: "spawn tool" }))).toBe(false);
   });
 
   it("does NOT treat a file ENOENT as an environment error (likely our bug)", () => {
@@ -35,7 +60,7 @@ describe("isEnvironmentError", () => {
   });
 
   it("does NOT treat other speculative codes as environment errors", () => {
-    for (const code of ["EINVAL", "ELOOP", "EBUSY", "ESOMETHING"]) {
+    for (const code of ["EINVAL", "ELOOP", "ESOMETHING"]) {
       expect(isEnvironmentError(systemError(code))).toBe(false);
     }
   });

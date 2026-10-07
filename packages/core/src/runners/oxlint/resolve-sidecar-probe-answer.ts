@@ -1,5 +1,5 @@
-import * as fs from "node:fs";
 import * as path from "node:path";
+import { classifyExistenceAnswer } from "../../utils/classify-existence-answer.js";
 import { hashFileContents } from "../../utils/hash-file-contents.js";
 import type { SidecarDependencyProbe } from "./sidecar-lint-cache.js";
 
@@ -37,9 +37,18 @@ export const createSidecarProbeAnswerResolver = (input: {
 }): SidecarProbeAnswerResolver => {
   const contentAnswerByPath = new Map<string, string>();
   const existsAnswerByPath = new Map<string, string>();
+  // The same dependency paths recur across most files' probe sets (a shared
+  // barrel, the tsconfig chain, every node_modules candidate), so the
+  // relative form is computed once per absolute path.
+  const relativePathByAbsolutePath = new Map<string, string>();
 
-  const toRelativePath = (absolutePath: string): string =>
-    path.relative(input.rootDirectory, absolutePath).replaceAll("\\", "/");
+  const toRelativePath = (absolutePath: string): string => {
+    const memoized = relativePathByAbsolutePath.get(absolutePath);
+    if (memoized !== undefined) return memoized;
+    const relativePath = path.relative(input.rootDirectory, absolutePath).replaceAll("\\", "/");
+    relativePathByAbsolutePath.set(absolutePath, relativePath);
+    return relativePath;
+  };
 
   const contentAnswer = (relativePath: string): string => {
     const memoized = contentAnswerByPath.get(relativePath);
@@ -55,13 +64,7 @@ export const createSidecarProbeAnswerResolver = (input: {
   const existsAnswer = (relativePath: string): string => {
     const memoized = existsAnswerByPath.get(relativePath);
     if (memoized !== undefined) return memoized;
-    let answer: string;
-    try {
-      const stat = fs.statSync(path.resolve(input.rootDirectory, relativePath));
-      answer = stat.isFile() ? "file" : stat.isDirectory() ? "dir" : "none";
-    } catch {
-      answer = "none";
-    }
+    const answer = classifyExistenceAnswer(path.resolve(input.rootDirectory, relativePath));
     existsAnswerByPath.set(relativePath, answer);
     return answer;
   };

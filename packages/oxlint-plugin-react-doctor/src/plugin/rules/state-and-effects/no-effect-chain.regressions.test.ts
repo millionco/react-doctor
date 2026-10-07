@@ -609,6 +609,261 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("reports a local state chain isolated from an object URL cleanup branch", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Image({ data, imageError, onError }) {
+        const [error, setError] = useState();
+        const [imageObjectUrl, setImageObjectUrl] = useState();
+        useEffect(() => {
+          if (error) onError(error);
+        }, [error, onError]);
+        useEffect(() => {
+          if (imageError) {
+            setError(imageError);
+            return undefined;
+          }
+          if (!data) return undefined;
+          const objectUrl = URL.createObjectURL(data);
+          setImageObjectUrl(objectUrl);
+          return () => URL.revokeObjectURL(objectUrl);
+        }, [data, imageError]);
+        return imageObjectUrl;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain('changes "error"');
+  });
+
+  it("keeps a state write on the object URL lifecycle path quiet", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Image({ data }) {
+        const [imageObjectUrl, setImageObjectUrl] = useState();
+        const [status, setStatus] = useState("idle");
+        useEffect(() => {
+          if (!data) return undefined;
+          const objectUrl = URL.createObjectURL(data);
+          setImageObjectUrl(objectUrl);
+          return () => URL.revokeObjectURL(objectUrl);
+        }, [data]);
+        useEffect(() => setStatus(imageObjectUrl ? "ready" : "idle"), [imageObjectUrl]);
+        return status;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a stored channel handle on its lifecycle path quiet", () => {
+    const result = runRule(
+      noEffectChain,
+      `function LiveQueries({ controller, perspective }) {
+        const [channel, setChannel] = useState();
+        useEffect((): (() => void) => {
+          if (controller) {
+            const nextChannel = controller.createChannel();
+            setChannel(nextChannel);
+            nextChannel.on("message", receiveMessage);
+            return nextChannel.start();
+          }
+          return () => undefined;
+        }, [controller]);
+        useEffect(() => {
+          if (channel) channel.post("perspective", perspective);
+        }, [channel, perspective]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports through a nested cleanup that only restores React state", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useCallback, useEffect, useState } from "react";
+      function Interaction({ active, source }) {
+        const [mode, setMode] = useState("idle");
+        const [cursor, setCursor] = useState("default");
+        const setModeIfEnabled = useCallback((nextMode) => setMode(nextMode), []);
+        useEffect(() => {
+          if (active) {
+            setModeIfEnabled(source);
+            return () => setModeIfEnabled("idle");
+          }
+        }, [active, source, setModeIfEnabled]);
+        useEffect(() => setCursor(mode === "idle" ? "default" : "pointer"), [mode]);
+        return cursor;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports through cleanup state values computed by ordinary helpers", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useEffect, useState } from "react";
+      const getIdleMode = () => "idle";
+      function Interaction({ active, source }) {
+        const [mode, setMode] = useState("idle");
+        const [cursor, setCursor] = useState("default");
+        useEffect(() => {
+          if (active) {
+            setMode(source);
+            return () => setMode(getIdleMode());
+          }
+        }, [active, source]);
+        useEffect(() => setCursor(mode === "idle" ? "default" : "pointer"), [mode]);
+        return cursor;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps explicit resource work beside cleanup state restoration quiet", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useEffect, useState } from "react";
+      const getIdleMode = () => "idle";
+      function Interaction({ source }) {
+        const [mode, setMode] = useState("idle");
+        const [cursor, setCursor] = useState("default");
+        useEffect(() => {
+          const subscription = source.subscribe();
+          setMode("active");
+          return () => {
+            setMode(getIdleMode());
+            subscription.unsubscribe();
+          };
+        }, [source]);
+        useEffect(() => setCursor(mode === "idle" ? "default" : "pointer"), [mode]);
+        return cursor;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps deferred cleanup work on its lifecycle path quiet", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useEffect, useState } from "react";
+      function Interaction({ source }) {
+        const [mode, setMode] = useState("idle");
+        const [cursor, setCursor] = useState("default");
+        useEffect(() => {
+          setMode(source);
+          return () => setTimeout(() => release(source), 0);
+        }, [source]);
+        useEffect(() => setCursor(mode === "idle" ? "default" : "pointer"), [mode]);
+        return cursor;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat an empty nested cleanup as external synchronization", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Select({ value }) {
+        const [selected, setSelected] = useState(value);
+        const [overflow, setOverflow] = useState(false);
+        useEffect(() => setSelected(value), [value]);
+        useEffect(() => {
+          if (selected) {
+            setOverflow(measure(selected));
+            return () => {};
+          }
+        }, [selected]);
+        return overflow;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a nested resource cleanup on its lifecycle path quiet", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Map({ container }) {
+        const [map, setMap] = useState(null);
+        const [status, setStatus] = useState("idle");
+        useEffect(() => {
+          if (container) {
+            const nextMap = createMap(container);
+            setMap(nextMap);
+            return () => nextMap.destroy();
+          }
+        }, [container]);
+        useEffect(() => setStatus(map ? "ready" : "idle"), [map]);
+        return status;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps scroll position synchronization through a host ref quiet", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Console({ source }) {
+        const consoleRef = useRef(null);
+        const [entries, setEntries] = useState([]);
+        useEffect(() => setEntries(source), [source]);
+        useEffect(() => {
+          if (consoleRef.current) {
+            consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
+          }
+        }, [entries]);
+        return <div ref={consoleRef}>{entries.length}</div>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps scrolling an intrinsic ref registry quiet", () => {
+    const result = runRule(
+      noEffectChain,
+      `function TableOfContents({ source }) {
+        const itemRefs = useRef({});
+        const [activeId, setActiveId] = useState("");
+        useEffect(() => setActiveId(source), [source]);
+        useEffect(() => {
+          itemRefs.current[activeId]?.scrollIntoView({ block: "nearest" });
+        }, [activeId]);
+        return <a ref={(element) => { itemRefs.current.section = element; }}>Section</a>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps canvas drawing through a host ref quiet", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Preview({ source }) {
+        const canvasRef = useRef(null);
+        const [data, setData] = useState(null);
+        useEffect(() => setData(source), [source]);
+        useEffect(() => {
+          if (data) return;
+          const canvas = canvasRef.current;
+          const context = canvas?.getContext("2d");
+          context?.fillRect(0, 0, canvas.width, canvas.height);
+        }, [data]);
+        return <canvas ref={canvasRef} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // Docs-validation r2 docMismatch (Security.jsx): the downstream effect
   // only persists state to localStorage — synchronizing with an external
   // system, which the doc excludes; no re-render chain exists.

@@ -16,6 +16,13 @@ export interface ImportedApiReference {
 const resolveImportSymbol = (symbol: SymbolDescriptor): ImportedApiReference | null => {
   const importDeclaration = getImportDeclarationForSymbol(symbol);
   if (!importDeclaration || typeof importDeclaration.source.value !== "string") return null;
+  if (
+    importDeclaration.importKind === "type" ||
+    (isNodeOfType(symbol.declarationNode, "ImportSpecifier") &&
+      symbol.declarationNode.importKind === "type")
+  ) {
+    return null;
+  }
   if (isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier")) {
     return {
       source: importDeclaration.source.value,

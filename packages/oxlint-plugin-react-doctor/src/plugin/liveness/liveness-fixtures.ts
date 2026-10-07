@@ -1,3 +1,5 @@
+import { REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD } from "../constants/thresholds.js";
+
 // One positive-control fixture per registered rule: a minimal snippet the
 // rule MUST report at least one finding on (see liveness.test.ts). Most
 // snippets are lifted from the rule's own unit tests; the rest are the
@@ -28,6 +30,25 @@ const giantComponentCode = [
   "}",
 ].join("\n");
 
+const complexReactFunctionCode = [
+  "function ComplexComponent({ value }) {",
+  ...Array.from(
+    { length: REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD },
+    (_, branchIndex) => `  if (value === ${branchIndex}) return <p>${branchIndex}</p>;`,
+  ),
+  "  return <p>fallback</p>;",
+  "}",
+].join("\n");
+
+const reactRouterFrameworkSettings = {
+  "react-doctor": { capabilities: ["react-router-framework"] },
+};
+
+const reactRouterFrameworkRouteFixture = {
+  filePath: "/project/app/routes/dashboard.tsx",
+  settings: reactRouterFrameworkSettings,
+};
+
 export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "active-static-asset": {
     code: '<svg xmlns="http://www.w3.org/2000/svg">\n  <script>alert(1)</script>\n</svg>\n',
@@ -56,6 +77,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "anchor-is-valid": {
     code: 'const B = () => <a href="#" onClick={go}>Go</a>;',
+  },
+  "anchor-target-exists": {
+    code: 'const B = () => <a href="#missing">Missing</a>;',
   },
   "aria-activedescendant-has-tabindex": {
     code: '<div contentEditable="false" aria-activedescendant={activeId} />',
@@ -109,7 +133,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     filePath: ".github/workflows/release.yml",
   },
   "button-has-type": {
-    code: "<button type />",
+    code: "<form><button type /></form>",
   },
   "checked-requires-onchange-or-readonly": {
     code: 'const C = ({ checked, locked }) => <input type="checkbox" checked={checked} disabled={locked} />;',
@@ -383,7 +407,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "const result = items.map((item) => item.value).filter(Boolean);",
   },
   "js-hoist-intl": {
-    code: "function fmt(locale, n) { return new Intl.NumberFormat(locale).format(n); }",
+    code: 'function fmt(n) { return new Intl.NumberFormat("en-US").format(n); }',
   },
   "js-hoist-regexp": {
     code: 'for (const line of lines) { const m = new RegExp("\\\\d+", "i"); m.test(line); }',
@@ -460,6 +484,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "jsx-no-script-url": {
     code: 'const A = () => <a href="javascript:void(0)">x</a>;',
+  },
+  "jsx-no-target-blank": {
+    code: 'const A = () => <a href="https://example.com" target="_blank">x</a>;',
+    settings: {
+      "react-doctor": { capabilities: ["target-blank-needs-explicit-protection"] },
+    },
   },
   "jsx-no-undef": {
     code: "\n        interface Foo {}\n        type Bar = {};\n        const App = () => <><Foo /><Bar /></>;\n      ",
@@ -591,7 +621,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'export const Hero = () => <img src="/hero.png" alt="hero" />;',
   },
   "nextjs-no-native-script": {
-    code: 'const Layout = () => (\n        <head>\n          <script src="https://widget.example.com/embed.js" />\n        </head>\n      );',
+    code: 'const Layout = () => (\n        <head>\n          <script async blocking="render" src="https://widget.example.com/embed.js" />\n        </head>\n      );',
   },
   "nextjs-no-polyfill-script": {
     code: 'const El = () => <script src="https://polyfill.io/v3/polyfill.min.js" />;',
@@ -646,6 +676,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-async-event-handler-without-reentry-guard": {
     code: 'import { useState } from "react"; const Form = () => { const [, setDone] = useState(false); return <form onSubmit={async () => { await fetch("/api/reset", { method: "PATCH" }); setDone(true); }} />; };',
+  },
+  "no-auto-scrolling-content": {
+    code: 'import { motion } from "framer-motion";\nconst Logos = () => <motion.div animate={{ x: ["0%", "-50%"] }} transition={{ repeat: Infinity }}>Acme Globex</motion.div>;',
   },
   "no-boolean-toggle-without-functional-update": {
     code: "const Poller=()=>{const[on,setOn]=useState(false);setTimeout(()=>setOn(!on),500)};",
@@ -707,6 +740,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-cramped-container-padding": {
     code: 'const Panel = () => <div className="border rounded p-1">Status</div>;',
   },
+  "no-multi-component-file": {
+    code: "const Foo = () => <div />; const Bar = () => <div />; const Baz = () => <div />;",
+  },
   "no-crushed-letter-spacing": {
     code: 'const Heading = () => <h1 style={{ letterSpacing: "-0.12em" }}>Readable heading</h1>;',
   },
@@ -720,7 +756,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'const Page = () => <main className="min-h-screen bg-stone-50">Content</main>;',
   },
   "no-decorative-grid-background": {
-    code: 'const Hero = () => <section style={{ backgroundImage: "linear-gradient(to right, #aaa 1px, transparent 1px), linear-gradient(to bottom, #aaa 1px, transparent 1px)" }} />;',
+    code: 'const Hero = () => <section style={{ backgroundImage: "linear-gradient(to right, #aaa 1px, transparent 1px), linear-gradient(to bottom, #aaa 1px, transparent 1px)", backgroundSize: "24px 24px" }} />;',
+  },
+  "no-decorative-radial-spotlight": {
+    code: 'const Hero = () => <div style={{ width: 320, height: 180, backgroundImage: "radial-gradient(circle, rgb(37 99 235 / 25%), transparent 70%)" }} />;',
   },
   "no-danger-with-children": {
     code: "const a = <div dangerouslySetInnerHTML={{ __html: html }}>text</div>;",
@@ -805,6 +844,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'const fn = new Function("return 1");',
     filePath: "src/run.ts",
   },
+  "no-path-prefix-containment": {
+    code: 'import path from "node:path";\nconst candidatePath = path.resolve(rootDirectory, requestedPath);\nconst isInside = candidatePath.startsWith(rootDirectory);',
+    filePath: "src/files.ts",
+  },
   "no-event-handler": {
     code: "function Form() {\n        const [submitted, setSubmitted] = useState(false);\n        const [data, setData] = useState(null);\n        useEffect(() => {\n          if (submitted) {\n            submitData(data);\n            window.scrollTo(0, 0);\n          }\n        }, [submitted]);\n        return <button onClick={() => setSubmitted(true)}>go</button>;\n      }",
   },
@@ -847,11 +890,14 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-giant-component": {
     code: giantComponentCode,
   },
+  "no-high-complexity-react-function": {
+    code: complexReactFunctionCode,
+  },
   "no-global-css-variable-animation": {
     code: 'requestAnimationFrame(() => {\n  document.documentElement.style.setProperty("--scroll", String(window.scrollY));\n});',
   },
   "no-gradient-text": {
-    code: 'const El = () => <span className="bg-clip-text bg-gradient-to-r from-pink-500 to-violet-500">Hi</span>;',
+    code: 'const El = () => <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-violet-500">Hi</span>;',
   },
   "no-hairline-border-wide-shadow": {
     code: 'const Card = () => <div className="border shadow-2xl" />;',
@@ -1028,7 +1074,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "const list = Object.keys(response?.data);",
   },
   "no-numbered-section-markers": {
-    code: "const Page = () => <main><span>01</span><h2>Principles</h2><span>02</span><h2>Process</h2><span>03</span><h2>Outcome</h2></main>;",
+    code: 'const Page = () => <main><span className="text-xs font-mono">01</span><h2>Principles</h2><span className="text-xs font-mono">02</span><h2>Process</h2></main>;',
   },
   "no-outline-none": {
     code: 'const T = () => <button style={{ outline: "none" }}>Save</button>;',
@@ -1092,6 +1138,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-pure-black-background": {
     code: 'const El = () => <div className="bg-black" />;',
   },
+  "no-pulsing-status-dot": {
+    code: 'const Header = () => <header><span className="size-2 rounded-full animate-pulse" /></header>;',
+  },
+  "no-radial-halo": {
+    code: 'const Hero = () => <div style={{ backgroundColor: "#050816", backgroundImage: "radial-gradient(circle, rgb(56 189 248 / 80%) 0%, transparent 70%)" }} />;',
+  },
   "no-random-key": {
     code: "\n      function List({ items }) {\n        return (\n          <ul>\n            {items.map((item) => (\n              <li key={Math.random()}>{item}</li>\n            ))}\n          </ul>\n        );\n      }\n    ",
   },
@@ -1114,6 +1166,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-repeating-gradient-decoration": {
     code: 'const Panel = () => <div style={{ backgroundImage: "repeating-linear-gradient(45deg, #fff 0 4px, #eee 4px 8px)" }} />;',
+  },
+  "no-repeated-container-text": {
+    code: 'const Card = () => <article className="rounded-xl border bg-white p-6"><div className="title"><strong>Suspended</strong></div><div className="meta"><span>Suspended</span></div><p className="notice"><em>Suspended</em></p></article>;',
   },
   "no-redundant-roles": {
     code: 'const Nav = () => <nav role="navigation" />;',
@@ -1165,6 +1220,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-side-tab-border": {
     code: 'const C = () => <div className="border-l-4 border-[#ff0000]" />;',
+  },
+  "no-shape-assembled-illustration": {
+    code: 'const Art = () => <svg width="200" height="200"><rect fill="#111" /><rect fill="#222" /><circle fill="#333" /><circle fill="#111" /><ellipse fill="#222" /><polygon fill="#333" /><rect fill="#111" /><circle fill="#222" /></svg>;',
   },
   "no-spread-accumulator-in-reduce": {
     code: "const out = items.reduce((acc, item) => [...acc, item], []);",
@@ -1535,8 +1593,17 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "rn-animation-reaction-as-derived": {
     code: 'import { useAnimatedReaction } from "react-native-reanimated";\nconst C = () => { useAnimatedReaction(() => x.value, (cur) => { sv.value = cur; }); };',
   },
+  "rn-bottom-sheet-no-ignored-scroll-prop": {
+    code: 'import { BottomSheetScrollView } from "@gorhom/bottom-sheet";\nconst Sheet = () => <BottomSheetScrollView scrollEventThrottle={16} />;',
+  },
+  "rn-bottom-sheet-no-state-in-on-animate": {
+    code: 'import BottomSheet from "@gorhom/bottom-sheet";\nimport { useState } from "react";\nconst Sheet = () => { const [, setOpen] = useState(false); return <BottomSheet onAnimate={() => setOpen(true)} />; };',
+  },
   "rn-bottom-sheet-prefer-native": {
     code: 'import ActionSheet from "react-native-actions-sheet";',
+  },
+  "rn-bottom-sheet-use-integrated-scrollable": {
+    code: 'import BottomSheet from "@gorhom/bottom-sheet";\nimport { ScrollView } from "react-native";\nconst Sheet = () => <BottomSheet><ScrollView /></BottomSheet>;',
   },
   "rn-detox-missing-await": {
     code: 'it("x", async () => { element(by.id("submit")).tap(); });',
@@ -1553,13 +1620,13 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: '\n      import { FlashList } from "@shopify/flash-list";\n      const Screen = ({ items }) => (\n        <FlashList data={items} renderItem={renderItem} />\n      );\n    ',
   },
   "rn-list-recyclable-without-types": {
-    code: 'import { FlashList } from "@shopify/flash-list";\nconst C = () => (<FlashList recycleItems data={items} renderItem={r} />);',
+    code: 'import { FlashList } from "@shopify/flash-list";\nconst C = () => (<FlashList recycleItems data={items} renderItem={({ item }) => item.kind === "header" ? <Header /> : <Row />} />);',
   },
   "rn-no-deep-imports": {
     code: 'import { Alert } from "react-native/Libraries/Alert/Alert";',
   },
   "rn-no-deprecated-modules": {
-    code: 'import { SafeAreaView } from "react-native";',
+    code: 'import { WebView } from "react-native";',
   },
   "rn-no-dimensions-get": {
     code: 'import { Dimensions } from "react-native"; export const w = () => Dimensions.get("window");',
@@ -1606,6 +1673,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "rn-no-single-element-style-array": {
     code: "const C = () => <View style={[styles.box]} />;",
   },
+  "rn-platform-shaking-use-direct-import": {
+    code: 'import * as ReactNative from "react-native";\nconst platform = ReactNative.Platform.OS;',
+  },
   "rn-prefer-expo-image": {
     code: 'import { Image } from "react-native";\n',
     filePath: "/liveness-fixture-no-package/src/App.tsx",
@@ -1622,6 +1692,15 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "rn-pressable-shared-value-mutation": {
     code: 'import { Pressable } from "react-native";\nimport { useSharedValue } from "react-native-reanimated";\nconst PressCard = () => {\n  const scale = useSharedValue(1);\n  return <Pressable onPressIn={() => { scale.value = 0.97; }} />;\n};',
+  },
+  "rn-reanimated-4-no-legacy-spring-thresholds": {
+    code: 'import { withSpring } from "react-native-reanimated";\nconst value = withSpring(1, { restSpeedThreshold: 0.1 });',
+  },
+  "rn-reanimated-4-no-removed-api": {
+    code: 'import { useWorkletCallback } from "react-native-reanimated";\nconst callback = useWorkletCallback(() => {});',
+  },
+  "rn-reanimated-4-use-worklets-scheduler": {
+    code: 'import { runOnUI } from "react-native-reanimated";\nrunOnUI(() => {})();',
   },
   "rn-scrollview-dynamic-padding": {
     code: "const C = ({ keyboardHeight }) => <ScrollView contentContainerStyle={{ paddingBottom: keyboardHeight }} />;",
@@ -1728,6 +1807,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "export const Route = createRootRoute({\n  component: () => (\n    <html>\n      <head />\n      <body />\n    </html>\n  ),\n});",
     filePath: "src/routes/__root.tsx",
   },
+  "tanstack-start-missing-scripts": {
+    code: "export const Route = createRootRoute({\n  component: () => (\n    <html>\n      <head />\n      <body />\n    </html>\n  ),\n});",
+    filePath: "src/routes/__root.tsx",
+  },
   "r3f-no-advancing-clock-in-use-frame": {
     code: 'import { useFrame } from "@react-three/fiber"; useFrame((state) => state.clock.getDelta());',
   },
@@ -1752,6 +1835,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-no-duplicate-primitive-object": {
     code: 'import "@react-three/fiber"; const Scene = ({ scene }) => <><primitive object={scene} /><primitive object={scene} /></>;',
   },
+  "r3f-prefer-instanced-mesh": {
+    code: 'import "@react-three/fiber"; const Scene = ({ geometry, material }) => <>{[0, 1].map((index) => <mesh key={index} geometry={geometry} material={material} />)}</>;',
+  },
   "r3f-no-deep-use-three-selector": {
     code: 'import { useThree } from "@react-three/fiber"; const zoom = useThree((state) => state.camera.zoom);',
   },
@@ -1772,6 +1858,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "r3f-no-inline-primitive-object": {
     code: 'import "@react-three/fiber"; const Scene = () => <primitive object={scene.clone()} />;',
+  },
+  "r3f-no-ignored-basic-material-properties": {
+    code: 'import "@react-three/fiber"; const Scene = () => <meshBasicMaterial roughness={0.4} />;',
+  },
+  "r3f-no-shadows-on-unsupported-light": {
+    code: 'import "@react-three/fiber"; const Scene = () => <ambientLight castShadow />;',
   },
   "r3f-no-internal-imports": {
     code: 'import internal from "@react-three/fiber/dist/internal";',
@@ -1803,6 +1895,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-prefer-use-loader": {
     code: 'import "@react-three/fiber"; import { useEffect } from "react"; import { TextureLoader } from "three"; const Scene = ({ url }) => { useEffect(() => { new TextureLoader().load(url, setTexture); }, [url]); return <mesh />; };',
   },
+  "r3f-prefer-gpu-position-animation": {
+    code: 'import { useFrame } from "@react-three/fiber"; const Scene = ({ geometry }) => { const positions = geometry.attributes.position; useFrame(() => { for (let index = 0; index < positions.count; index += 1) positions.setX(index, index); }); return <points geometry={geometry} />; };',
+  },
+  "r3f-prefer-gpu-instanced-animation": {
+    code: 'import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; const Scene = () => { const instances = useRef(null); useFrame(() => { for (const index of indices) instances.current.setMatrixAt(index, matrix); }); return <instancedMesh ref={instances} />; };',
+  },
   "r3f-no-state-in-use-frame": {
     code: 'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [count, setCount] = useState(0); useFrame(() => setCount(count + 1)); };',
   },
@@ -1833,11 +1931,41 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-require-projection-matrix-update": {
     code: 'import { useFrame } from "@react-three/fiber"; useFrame(({ camera }) => { camera.aspect = 2; });',
   },
+  "r3f-require-position-buffer-update": {
+    code: 'import { useFrame } from "@react-three/fiber"; const Scene = ({ geometry }) => { useFrame(() => { for (let index = 0; index < 10; index += 1) geometry.attributes.position.setX(index, index); }); return null; };',
+  },
   "r3f-require-render-with-positive-priority": {
     code: 'import { useFrame } from "@react-three/fiber"; const Scene = () => { useFrame(() => update(), 1); return null; };',
   },
   "r3f-require-root-unmount": {
     code: 'import { createRoot } from "@react-three/fiber"; const Scene = ({ canvas }) => { const root = createRoot(canvas); root.render(<mesh />); return null; };',
+  },
+  "r3f-require-lit-material-normals": {
+    code: 'import "@react-three/fiber"; const Scene = ({ texture }) => <mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial normalMap={texture} /></mesh>;',
+  },
+  "r3f-require-environment-for-metal": {
+    code: 'import { Canvas } from "@react-three/fiber"; const Scene = () => <Canvas><mesh><boxGeometry /><meshStandardMaterial metalness={1} /></mesh></Canvas>;',
+  },
+  "r3f-require-lighting-for-pbr": {
+    code: 'import { Canvas } from "@react-three/fiber"; const Scene = () => <Canvas><mesh><boxGeometry /><meshStandardMaterial /></mesh></Canvas>;',
+  },
+  "r3f-require-uv-for-texture-map": {
+    code: 'import "@react-three/fiber"; const Scene = ({ texture }) => <mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial map={texture} /></mesh>;',
+  },
+  "r3f-require-shadows-enabled": {
+    code: 'import { Canvas } from "@react-three/fiber"; const Scene = () => <Canvas><mesh castShadow /></Canvas>;',
+  },
+  "r3f-valid-pbr-material-properties": {
+    code: 'import "@react-three/fiber"; const Scene = () => <meshStandardMaterial roughness={2} />;',
+  },
+  "r3f-valid-material-opacity": {
+    code: 'import "@react-three/fiber"; const Scene = () => <meshBasicMaterial opacity={2} />;',
+  },
+  "r3f-require-transparent-for-opacity": {
+    code: 'import "@react-three/fiber"; const Scene = () => <meshBasicMaterial opacity={0.5} />;',
+  },
+  "r3f-valid-perspective-camera": {
+    code: 'import "@react-three/fiber"; const Scene = () => <perspectiveCamera near={0} />;',
   },
   "r3f-webgpu-canvas-prop-compatibility": {
     code: 'import { Canvas } from "@react-three/fiber/webgpu"; const Scene = () => <Canvas gl={{ antialias: true }} />;',
@@ -1851,8 +1979,122 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "three-require-controls-cleanup": {
     code: 'import { useMemo } from "react"; import { OrbitControls } from "three/addons/controls/OrbitControls.js"; import "@react-three/fiber"; const Scene = ({ camera, element }) => { const controls = useMemo(() => new OrbitControls(camera, element), [camera, element]); return <primitive object={controls} />; };',
   },
+  "three-cap-device-pixel-ratio": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setPixelRatio(window.devicePixelRatio);',
+  },
+  "three-limit-shadowed-point-lights": {
+    code: 'import { PointLight, Scene } from "three"; const scene = new Scene(); const first = new PointLight(); const second = new PointLight(); const third = new PointLight(); first.castShadow = true; second.castShadow = true; third.castShadow = true; scene.add(first); scene.add(second); scene.add(third);',
+  },
+  "three-no-allocation-in-pointer-move": {
+    code: 'import { Vector2, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.domElement.addEventListener("pointermove", () => new Vector2());',
+  },
+  "three-no-async-animation-loop": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setAnimationLoop(async () => update());',
+  },
+  "three-no-clone-in-animation-loop": {
+    code: 'import { Mesh, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const mesh = new Mesh(); renderer.setAnimationLoop(() => mesh.clone());',
+  },
+  "three-no-new-in-animation-loop": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => new Vector3());',
+  },
+  "three-no-ignored-basic-material-properties": {
+    code: 'import { MeshBasicMaterial } from "three"; new MeshBasicMaterial({ metalness: 1 });',
+  },
+  "three-no-object-construction-in-render": {
+    code: 'import { BoxGeometry } from "three"; const Scene = () => <primitive object={new BoxGeometry()} />;',
+  },
+  "three-no-state-in-animation-loop": {
+    code: 'import { useState } from "react"; import { WebGLRenderer } from "three"; const Scene = () => { const [, setFrame] = useState(0); const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => setFrame((frame) => frame + 1)); };',
+  },
+  "three-no-state-in-pointer-move": {
+    code: 'import { useState } from "react"; import { WebGLRenderer } from "three"; const Scene = () => { const [, setPoint] = useState(null); const renderer = new WebGLRenderer(); renderer.domElement.addEventListener("pointermove", (event) => setPoint(event.clientX)); return null; };',
+  },
+  "three-no-shadows-on-unsupported-light": {
+    code: 'import { AmbientLight } from "three"; const light = new AmbientLight(); light.castShadow = true;',
+  },
+  "three-no-unconditional-renderer-resize-in-animation-loop": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => { renderer.setSize(width, height); renderer.render(scene, camera); });',
+  },
   "three-require-animation-mixer-cleanup": {
     code: 'import { useMemo } from "react"; import { AnimationMixer } from "three"; const Scene = ({ root, clip }) => { const mixer = useMemo(() => new AnimationMixer(root), [root]); mixer.clipAction(clip); return null; };',
+  },
+  "three-require-camera-aspect-on-resize": {
+    code: 'import { PerspectiveCamera, Scene, WebGLRenderer } from "three"; const renderer = new WebGLRenderer({ canvas }); const camera = new PerspectiveCamera(); window.addEventListener("resize", () => renderer.setSize(innerWidth, innerHeight)); renderer.render(new Scene(), camera);',
+  },
+  "three-require-controls-update": {
+    code: 'import { WebGLRenderer } from "three"; import { OrbitControls } from "three/addons/controls/OrbitControls.js"; const renderer = new WebGLRenderer(); const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; renderer.setAnimationLoop(() => renderer.render(scene, camera));',
+  },
+  "three-require-frame-delta": {
+    code: 'import { Mesh, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const mesh = new Mesh(); renderer.setAnimationLoop(() => { mesh.rotation.y += 0.01; });',
+  },
+  "three-require-instanced-buffer-update": {
+    code: 'import { InstancedMesh } from "three"; const mesh = new InstancedMesh(geometry, material, count); const update = () => { mesh.setMatrixAt(0, matrix); };',
+  },
+  "three-require-loader-error-handling": {
+    code: 'import { TextureLoader } from "three"; const loader = new TextureLoader(); loader.load("/texture.png", onLoad);',
+  },
+  "three-require-position-buffer-update": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => { for (let index = 0; index < 10; index += 1) geometry.attributes.position.setX(index, index); renderer.render(scene, camera); });',
+  },
+  "three-prefer-gpu-position-animation": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const positions = geometry.attributes.position; renderer.setAnimationLoop(() => { for (let index = 0; index < positions.count; index += 1) positions.setX(index, index); });',
+  },
+  "three-prefer-gpu-instanced-animation": {
+    code: 'import { InstancedMesh, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const instances = new InstancedMesh(geometry, material, count); renderer.setAnimationLoop(() => { for (const index of indices) instances.setMatrixAt(index, matrix); renderer.render(scene, camera); });',
+  },
+  "three-prefer-instanced-mesh": {
+    code: 'import { Mesh, Scene } from "three"; const scene = new Scene(); scene.add(...[0, 1].map(() => new Mesh(geometry, material)));',
+  },
+  "three-require-owned-geometry-cleanup": {
+    code: 'import { useMemo } from "react"; import { BoxGeometry } from "three"; const Scene = () => { const geometry = useMemo(() => new BoxGeometry(), []); return geometry.name; };',
+  },
+  "three-require-owned-material-cleanup": {
+    code: 'import { useMemo } from "react"; import { MeshBasicMaterial } from "three"; const Scene = () => { const material = useMemo(() => new MeshBasicMaterial(), []); return material.name; };',
+  },
+  "three-require-owned-texture-cleanup": {
+    code: 'import { useMemo } from "react"; import { Texture } from "three"; const Scene = () => { const texture = useMemo(() => new Texture(), []); return texture.name; };',
+  },
+  "three-require-projection-matrix-update": {
+    code: 'import { PerspectiveCamera } from "three"; const camera = new PerspectiveCamera(); const resize = () => { camera.aspect = width / height; };',
+  },
+  "three-require-render-in-animation-loop": {
+    code: 'import { Mesh, WebGLRenderer } from "three"; const renderer = new WebGLRenderer({ canvas }); const mesh = new Mesh(); renderer.setAnimationLoop(() => { mesh.rotation.x += 1; });',
+  },
+  "three-require-renderer-dom-attachment": {
+    code: 'import { PerspectiveCamera, Scene, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.render(new Scene(), new PerspectiveCamera());',
+  },
+  "three-require-renderer-size": {
+    code: 'import { PerspectiveCamera, Scene, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.render(new Scene(), new PerspectiveCamera());',
+  },
+  "three-require-render-target-reset": {
+    code: 'import { WebGLRenderer, WebGLRenderTarget } from "three"; const renderer = new WebGLRenderer(); const target = new WebGLRenderTarget(256, 256); renderer.setRenderTarget(target); renderer.render(scene, camera);',
+  },
+  "three-require-lit-material-normals": {
+    code: 'import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Texture } from "three"; const geometry = new BufferGeometry(); geometry.setAttribute("position", new BufferAttribute(positions, 3)); new Mesh(geometry, new MeshStandardMaterial({ normalMap: new Texture() }));',
+  },
+  "three-require-environment-for-metal": {
+    code: 'import { Mesh, MeshStandardMaterial, Scene, WebGLRenderer } from "three"; const scene = new Scene(); scene.add(new Mesh(geometry, new MeshStandardMaterial({ metalness: 1 }))); new WebGLRenderer().render(scene, camera);',
+  },
+  "three-require-lighting-for-pbr": {
+    code: 'import { Mesh, MeshStandardMaterial, Scene, WebGLRenderer } from "three"; const scene = new Scene(); scene.add(new Mesh(geometry, new MeshStandardMaterial())); new WebGLRenderer().render(scene, camera);',
+  },
+  "three-require-uv-for-texture-map": {
+    code: 'import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Texture } from "three"; const geometry = new BufferGeometry(); geometry.setAttribute("position", new BufferAttribute(positions, 3)); new Mesh(geometry, new MeshStandardMaterial({ map: new Texture() }));',
+  },
+  "three-require-shadows-enabled": {
+    code: 'import { Mesh, PerspectiveCamera, Scene, WebGLRenderer } from "three"; const renderer = new WebGLRenderer({ canvas }); const mesh = new Mesh(); mesh.castShadow = true; renderer.render(new Scene(), new PerspectiveCamera());',
+  },
+  "three-valid-pbr-material-properties": {
+    code: 'import { MeshPhysicalMaterial } from "three"; new MeshPhysicalMaterial({ metalness: -1 });',
+  },
+  "three-valid-material-opacity": {
+    code: 'import { MeshBasicMaterial } from "three"; new MeshBasicMaterial({ opacity: 2 });',
+  },
+  "three-require-transparent-for-opacity": {
+    code: 'import { MeshBasicMaterial } from "three"; new MeshBasicMaterial({ opacity: 0.5 });',
+  },
+  "three-valid-perspective-camera": {
+    code: 'import { PerspectiveCamera } from "three"; new PerspectiveCamera(75, 1, 0, 1000);',
   },
   "r3f-webgpu-no-gl-state": {
     code: 'import { useThree } from "@react-three/fiber/webgpu"; const renderer = useThree((state) => state.gl);',
@@ -1872,6 +2114,81 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "three-require-postprocessing-cleanup": {
     code: 'import { useMemo } from "react"; import "three"; import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js"; const Scene = ({ renderer }) => { const composer = useMemo(() => new EffectComposer(renderer), [renderer]); composer.render(); return null; };',
     settings: { "react-doctor": { capabilities: ["three", "three:145", "three:146"] } },
+  },
+  "three-no-material-recompile-in-animation-loop": {
+    code: 'import { MeshStandardMaterial, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const material = new MeshStandardMaterial(); renderer.setAnimationLoop(() => { material.needsUpdate = true; });',
+  },
+  "three-no-redundant-uniforms-need-update": {
+    code: 'import { ShaderMaterial, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const material = new ShaderMaterial(); renderer.setAnimationLoop(() => { material.uniformsNeedUpdate = true; });',
+  },
+  "three-on-before-compile-require-program-cache-key": {
+    code: 'import { MeshStandardMaterial } from "three"; let mode = "warm"; const material = new MeshStandardMaterial(); material.onBeforeCompile = (shader) => { if (mode === "warm") shader.fragmentShader += " "; };',
+  },
+  "three-raw-shader-require-fragment-float-precision": {
+    code: 'import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "varying vec2 vUv; void main() { gl_FragColor = vec4(vUv, 0.0, 1.0); }" });',
+  },
+  "three-raw-shader-require-glsl3-version": {
+    code: 'import { RawShaderMaterial } from "three"; new RawShaderMaterial({ vertexShader: "in vec3 position; void main() { gl_Position = vec4(position, 1.0); }" });',
+  },
+  "three-shader-no-constant-out-of-bounds-index": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform float values[2]; void main() { gl_FragColor = vec4(values[2]); }" });',
+  },
+  "three-shader-no-derivatives-in-nonuniform-flow": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "varying float value; void main() { if (value > 0.0) gl_FragColor = vec4(fwidth(value)); }" });',
+  },
+  "three-shader-no-invalid-clamp-bounds": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { float x = clamp(value, 1.0, 0.0); }" });',
+  },
+  "three-shader-no-invalid-constant-bit-operations": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { int value = 1 << 32; }" });',
+  },
+  "three-shader-no-invalid-constant-math": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { float value = sqrt(-1.0); }" });',
+  },
+  "three-shader-no-invalid-smoothstep-edges": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { float x = smoothstep(1.0, 0.0, value); }" });',
+  },
+  "three-shader-no-inverse-of-uniform": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "uniform mat4 transform; void main() { gl_Position = inverse(transform) * vec4(0.0); }" });',
+  },
+  "three-shader-no-redeclared-builtins": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "uniform mat4 projectionMatrix; void main() { gl_Position = projectionMatrix * vec4(0.0); }" });',
+  },
+  "three-shader-no-redundant-frag-depth": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { gl_FragDepth = gl_FragCoord.z; gl_FragColor = vec4(1.0); }" });',
+  },
+  "three-shader-no-version-directive": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "#version 300 es\\nvoid main() { gl_Position = vec4(0.0); }" });',
+  },
+  "three-shader-prefer-small-integer-pow": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { float value = pow(inputValue, 2.0); }" });',
+  },
+  "three-shader-prefer-squared-distance-comparison": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { if (distance(first, second) < 2.0) gl_FragColor = vec4(1.0); }" });',
+  },
+  "three-shader-require-matching-uniforms": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "uniform vec3 value; void main() { gl_Position = vec4(value, 1.0); }", fragmentShader: "uniform vec4 value; void main() { gl_FragColor = value; }" });',
+  },
+  "three-shader-require-matching-varyings": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "void main() { gl_Position = vec4(0.0); }", fragmentShader: "varying vec3 missing; void main() { gl_FragColor = vec4(missing, 1.0); }" });',
+  },
+  "three-shader-require-position-on-all-paths": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "void main() { float value = 1.0; }" });',
+  },
+  "three-shader-require-uniform-bindings": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform float time; void main() { gl_FragColor = vec4(time); }" });',
+  },
+  "three-tsl-no-js-uniform-branch": {
+    code: 'import { Fn, uniform } from "three/tsl"; const mode = uniform(0); const shader = Fn(() => { if (mode.value) return red; return blue; });',
+  },
+  "three-webgpu-no-legacy-effect-composer": {
+    code: 'import { WebGPURenderer } from "three/webgpu"; import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js"; const renderer = new WebGPURenderer(); const composer = new EffectComposer(renderer);',
+  },
+  "three-webgpu-no-legacy-material-api": {
+    code: 'import { ShaderMaterial } from "three"; import { WebGPURenderer } from "three/webgpu"; const renderer = new WebGPURenderer(); const material = new ShaderMaterial();',
+  },
+  "webgl-no-sync-readback-in-animation-loop": {
+    code: 'const gl = canvas.getContext("webgl"); const pixels = new Uint8Array(4); const frame = () => { gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels); requestAnimationFrame(frame); }; requestAnimationFrame(frame);',
   },
   "tanstack-start-no-anchor-element": {
     code: 'const C = () => <a href="/dashboard">Go</a>;',
@@ -2065,8 +2382,50 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-ungated-tailwind-animation": {
     code: 'const Spinner = () => <span className="animate-spin" />;',
   },
+  "react-aria-dialog-requires-heading": {
+    code: 'import { Dialog } from "react-aria-components";\nconst Confirm = () => <Dialog><p>Are you sure?</p></Dialog>;',
+  },
+  "tanstack-form-on-submit-requires-prevent-default": {
+    code: 'import { useForm } from "@tanstack/react-form";\nconst View = () => { const form = useForm({ defaultValues: {} }); return <form onSubmit={form.handleSubmit} />; };',
+  },
+  "tanstack-table-no-unstable-data-or-columns": {
+    code: 'import { useReactTable } from "@tanstack/react-table";\nconst Table = () => { useReactTable({ data: [], columns: [] }); return null; };',
+  },
+  "tanstack-virtual-measure-element-requires-data-index": {
+    code: 'import { useVirtualizer } from "@tanstack/react-virtual";\nconst Row = ({ parentRef }) => { const virtualizer = useVirtualizer({ count: 1, getScrollElement: () => parentRef.current, estimateSize: () => 40 }); return <div ref={virtualizer.measureElement}>Row</div>; };',
+  },
+  "radix-dialog-content-requires-title": {
+    code: 'import * as Dialog from "@radix-ui/react-dialog";\nconst Confirm = () => <Dialog.Content><p>Are you sure?</p></Dialog.Content>;',
+  },
+  "radix-tabs-trigger-requires-list": {
+    code: 'import * as Tabs from "@radix-ui/react-tabs";\nconst View = () => <Tabs.Root><Tabs.Trigger value="a" /></Tabs.Root>;',
+  },
+  "base-ui-dialog-popup-requires-title": {
+    code: 'import { Dialog } from "@base-ui/react/dialog";\nconst Confirm = () => <Dialog.Popup><p>Are you sure?</p></Dialog.Popup>;',
+  },
+  "base-ui-tabs-tab-requires-list": {
+    code: 'import { Tabs } from "@base-ui/react/tabs";\nconst View = () => <Tabs.Root><Tabs.Tab value="a" /></Tabs.Root>;',
+  },
+  "base-ui-field-requires-label": {
+    code: 'import { Field } from "@base-ui/react/field";\nconst View = () => <Field.Root><Field.Control /></Field.Root>;',
+  },
   "shadcn-tabs-trigger-requires-list": {
-    code: 'import { TabsTrigger } from "./tabs";\nconst Trigger = () => <TabsTrigger value="a" />;',
+    code: 'import { Tabs, TabsTrigger } from "./tabs";\nconst View = () => <Tabs><TabsTrigger value="a" /></Tabs>;',
+  },
+  "shadcn-command-item-state-variant-requires-value": {
+    code: 'import { CommandItem } from "cmdk";\nconst Item = () => <CommandItem className="data-[selected]:bg-accent" />;',
+  },
+  "shadcn-dialog-content-requires-title": {
+    code: 'import { DialogContent } from "./dialog";\nconst Confirm = () => <DialogContent><p>Are you sure?</p></DialogContent>;',
+  },
+  "shadcn-form-item-requires-label": {
+    code: 'import { FormControl, FormItem } from "./form";\nconst Field = () => <FormItem><FormControl><input /></FormControl></FormItem>;',
+  },
+  "shadcn-icon-button-requires-label": {
+    code: 'import { Button } from "./button";\nconst Remove = () => <Button size="icon"><TrashIcon /></Button>;',
+  },
+  "shadcn-input-group-no-raw-controls": {
+    code: 'import { InputGroup, InputGroupAddon } from "./input-group";\nconst Search = () => <InputGroup><input /><InputGroupAddon>Search</InputGroupAddon></InputGroup>;',
   },
   "data-table-requires-accessible-name": {
     code: "const Results = () => <table><tr><th>Name</th></tr></table>;",
@@ -2209,14 +2568,138 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-focusable-content-in-role-text": {
     code: 'const View = () => <span role="text"><button>Open</button></span>;',
   },
-  "no-multiple-labels-for-control": {
-    code: 'const Form = () => <><label htmlFor="name">Name</label><label htmlFor="name">Required</label><input id="name" /></>;',
-  },
   "no-server-side-image-map": {
     code: 'const Map = () => <img alt="Campus" src="map.png" isMap />;',
   },
   "no-presentation-role-conflict": {
     code: 'const Control = () => <div role="presentation" tabIndex={0} />;',
+  },
+  "react-router-csp-nonce-consistency": {
+    code: 'import { ServerRouter } from "react-router";\nimport { renderToPipeableStream } from "react-dom/server";\nexport const render = (request, context) => renderToPipeableStream(<ServerRouter context={context} url={request.url} nonce={context.nonce} />, {});',
+  },
+  "react-router-descendant-routes-require-splat": {
+    code: 'import { createBrowserRouter, useRoutes } from "react-router";\ncreateBrowserRouter([{ path: "account", Component: () => useRoutes([]) }]);',
+  },
+  "react-router-guard-aborted-handle-error": {
+    code: "export function handleError(error, { request }) { console.error(error); }",
+    filePath: "/project/app/entry.server.tsx",
+    settings: reactRouterFrameworkSettings,
+  },
+  "react-router-internal-route-anchor": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/about", element: <About /> }]);\nexport const Nav = () => <a href="/about">About</a>;',
+  },
+  "react-router-loader-fetch-forwards-signal": {
+    code: 'export async function loader({ request }) { return fetch("/api/profile"); }',
+    ...reactRouterFrameworkRouteFixture,
+  },
+  "react-router-loader-parallel-fetch": {
+    code: 'export async function loader() { const user = await fetch("/api/user"); const teams = await fetch("/api/teams"); return { user, teams }; }',
+    ...reactRouterFrameworkRouteFixture,
+  },
+  "react-router-nested-route-requires-outlet": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ Component: () => <main />, children: [{ path: "child", element: <Child /> }] }]);',
+  },
+  "react-router-no-catch-middleware-next": {
+    code: "export const middleware = [async (_context, next) => { try { return await next(); } catch (error) { report(error); } }];",
+  },
+  "react-router-no-client-module-in-server-render": {
+    code: 'import ClientCard from "./card.client";\nexport default function Route() { return <ClientCard />; }',
+  },
+  "react-router-no-duplicate-route-id": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ id: "root", path: "/" }, { id: "root", path: "/other" }]);',
+  },
+  "react-router-no-empty-leaf-route": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/" }]);',
+  },
+  "react-router-no-invalid-absolute-child-path": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/app", children: [{ path: "/settings", element: <Settings /> }] }]);',
+  },
+  "react-router-no-invalid-lazy-route-properties": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/", lazy: async () => ({ path: "/changed", Component }) }]);',
+  },
+  "react-router-no-invalid-splat-path": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "files*", element: <Files /> }]);',
+  },
+  "react-router-no-loader-request-body": {
+    code: "export async function loader({ request }) { return request.formData(); }",
+    ...reactRouterFrameworkRouteFixture,
+  },
+  "react-router-no-middleware-response-body-consumption": {
+    code: "export const middleware = [async (_context, next) => { const response = await next(); await response.json(); return response; }];",
+  },
+  "react-router-no-multiple-blockers": {
+    code: 'import { useBlocker } from "react-router";\nexport const Form = () => { useBlocker(true); useBlocker(false); return <form />; };',
+    settings: { "react-doctor": { capabilities: ["react-router:6.19"] } },
+  },
+  "react-router-no-multiple-middleware-next": {
+    code: "export const middleware = [async (_context, next) => { await next(); return next(); }];",
+  },
+  "react-router-no-multiple-set-search-params-in-tick": {
+    code: 'import { useSearchParams } from "react-router";\nexport const Filters = () => { const [, setSearchParams] = useSearchParams(); const apply = () => { setSearchParams({ q: "one" }); setSearchParams({ page: "2" }); }; return <button onClick={apply} />; };',
+  },
+  "react-router-no-navigate-in-render": {
+    code: 'import { useNavigate } from "react-router";\nexport const Gate = ({ denied }) => { const navigate = useNavigate(); if (denied) navigate("/login"); return null; };',
+  },
+  "react-router-no-nested-router": {
+    code: 'import { BrowserRouter, MemoryRouter } from "react-router";\nexport const App = () => <BrowserRouter><MemoryRouter><Page /></MemoryRouter></BrowserRouter>;',
+  },
+  "react-router-no-redirect-in-try-catch": {
+    code: 'import { redirect } from "react-router";\nexport async function loader() { try { throw redirect("/login"); } catch (error) { return null; } }',
+    ...reactRouterFrameworkRouteFixture,
+  },
+  "react-router-no-route-module-environment-suffix": {
+    code: "export default function Route() { return null; }",
+    filePath: "/project/app/routes/dashboard.server.tsx",
+  },
+  "react-router-no-router-in-render": {
+    code: 'import { createBrowserRouter } from "react-router";\nexport const App = () => { const router = createBrowserRouter([]); return <RouterProvider router={router} />; };',
+  },
+  "react-router-no-session-mutation-in-loader": {
+    code: 'import { createCookieSessionStorage } from "react-router";\nconst { getSession } = createCookieSessionStorage({ cookie: { name: "session" } });\nexport async function loader({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("notice", "hello"); return null; }',
+    ...reactRouterFrameworkRouteFixture,
+  },
+  "react-router-no-static-cookie-expires": {
+    code: 'import { createCookie } from "react-router";\nexport const cookie = createCookie("session", { expires: new Date(Date.now() + 1000) });',
+  },
+  "react-router-no-unsynchronized-search-params-mutation": {
+    code: 'import { useSearchParams } from "react-router";\nexport const Filters = () => { const [searchParams] = useSearchParams(); searchParams.set("q", "react"); return null; };',
+  },
+  "react-router-no-use-loader-data-in-error-ui": {
+    code: 'import { useLoaderData } from "react-router";\nexport function ErrorBoundary() { const data = useLoaderData(); return <pre>{data.message}</pre>; }',
+    ...reactRouterFrameworkRouteFixture,
+  },
+  "react-router-prefer-route-lazy": {
+    code: 'import { lazy } from "react";\nimport { createBrowserRouter } from "react-router";\nconst Page = lazy(() => import("./page"));\ncreateBrowserRouter([{ path: "/", Component: Page }]);',
+  },
+  "react-router-require-root-error-boundary": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/", element: <App /> }]);',
+  },
+  "react-router-resource-link-requires-reload": {
+    code: 'import { createBrowserRouter, Link } from "react-router";\ncreateBrowserRouter([{ path: "/guide.pdf", loader: loadGuide }]);\nexport const Download = () => <Link to="/guide.pdf">Guide</Link>;',
+  },
+  "react-router-return-navigation-promise-in-transition": {
+    code: 'import { startTransition } from "react";\nimport { RouterProvider, useNavigate } from "react-router";\nexport const App = ({ router }) => <RouterProvider router={router} useTransitions />;\nexport const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => { navigate("/next"); })} />; };',
+    settings: { "react-doctor": { capabilities: ["react-router:7.15"] } },
+  },
+  "react-router-server-middleware-return-response": {
+    code: "export const middleware = [async (_context, next) => { await next(); }];",
+  },
+  "react-router-session-mutation-requires-commit": {
+    code: 'import { createCookieSessionStorage } from "react-router";\nconst { getSession, commitSession } = createCookieSessionStorage({ cookie: { name: "session" } });\nexport async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); return null; }',
+    ...reactRouterFrameworkRouteFixture,
+  },
+  "react-router-v8-no-meta-data-field": {
+    code: 'import { useMatches } from "react-router";\nexport function Breadcrumbs() { const [{ data }] = useMatches(); return data.title; }',
+  },
+  "react-router-v8-no-react-router-dom-import": {
+    code: 'import { Link } from "react-router-dom";\nexport const Home = () => <Link to="/" />;',
+  },
+  "react-router-v8-no-removed-future-flags": {
+    code: "export default { future: { v8_middleware: true } };",
+    filePath: "react-router.config.ts",
+  },
+  "react-router-valid-route-object": {
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ index: true, children: [{ path: "child", element: <Child /> }] }]);',
   },
   "zod-v4-no-deprecated-error-apis": {
     code: '\n      import { z } from "zod";\n      const error = z.ZodError.create([]);\n    ',
@@ -2232,5 +2715,226 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "zustand-no-whole-store-destructure": {
     code: '\n      import { create } from "zustand";\n      const useBearStore = create(() => ({ bears: 0 }));\n      export const BearCounter = () => {\n        const { bears } = useBearStore();\n        return <span>{bears}</span>;\n      };\n    ',
+  },
+  "loading-action-preserves-trigger": {
+    code: 'import { useState } from "react";\nexport const Save = () => { const [pending, setPending] = useState(false); const save = async () => { setPending(true); await fetch("/api/save"); setPending(false); }; return pending ? <span role="status">Saving</span> : <button type="button" onClick={save}>Save</button>; };',
+  },
+  "no-collapse-request-error-to-empty-state": {
+    code: 'import { useState } from "react";\nexport const Search = () => { const [items, setItems] = useState([]); const load = async () => { try { setItems(await (await fetch("/api/items")).json()); } catch { setItems([]); } }; if (!items.length) return <p>No results found</p>; return <ResultList items={items} />; };',
+  },
+  "no-unowned-async-error-clear": {
+    code: 'import { useEffect, useState } from "react";\nexport const Request = ({ currentId, send }) => { const [ownerId, setOwnerId] = useState(null); useEffect(() => { if (ownerId !== currentId) setOwnerId(null); }, [currentId, ownerId]); const respond = async (request) => { await send(request); if (request.failed) setOwnerId(request.requestId); else setOwnerId(null); }; return <button onClick={() => respond({ requestId: currentId })}>Send</button>; };',
+  },
+  "no-controlled-selection-focus-effect": {
+    code: `import { useModernLayoutEffect } from "./use-modern-layout-effect";
+export const useListNavigation = ({ selectedIndex, focusItem }) => {
+  const indexRef = useRef(null);
+  useModernLayoutEffect(() => {
+    indexRef.current = selectedIndex;
+    focusItem(indexRef);
+  }, [focusItem, selectedIndex]);
+};`,
+  },
+  "no-passive-request-owner-ref": {
+    code: "export const History = ({ viewId }) => { const ownerRef = useRef(viewId); const [, setItems] = useState([]); useEffect(() => { ownerRef.current = viewId; }, [viewId]); const refresh = async () => { const items = await load(viewId); if (ownerRef.current !== viewId) return; setItems(items); }; return <button onClick={refresh}>Refresh</button>; };",
+  },
+  "no-focus-in-animation-completion-handler": {
+    code: 'import { useRef } from "react";\nexport const Dialog = () => { const inputRef = useRef(null); return <><input ref={inputRef} /><div onAnimationEnd={() => inputRef.current.focus()} /></>; };',
+  },
+  "no-mixed-animation-owners": {
+    code: 'import { motion } from "motion/react";\nexport const Demo = () => <motion.div animate={{ opacity: 1 }} className="transition-opacity duration-200" />;',
+  },
+  "no-reduced-motion-content-removal": {
+    code: 'export const Status = () => <p className="motion-reduce:hidden">Payment failed</p>;',
+  },
+  "no-responsive-hidden-accessible-name": {
+    code: 'export const Menu = () => <button><span className="md:hidden">Menu</span></button>;',
+  },
+  "no-transitioned-composite-widget-state": {
+    code: 'export const Option = ({ selected }) => <div role="option" aria-selected={selected ? "true" : "false"} className="bg-[#fff] transition-colors aria-selected:bg-[#000]">Value</div>;',
+    settings: { "react-doctor": { capabilities: ["tailwind"] } },
+  },
+  "r3f-no-ignored-linewidth": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><lineBasicMaterial linewidth={4} /></Canvas>;',
+  },
+  "r3f-no-compile-in-use-frame": {
+    code: 'import { useFrame } from "@react-three/fiber"; export const Scene = () => { useFrame(({ gl, scene, camera }) => gl.compile(scene, camera)); return null; };',
+  },
+  "r3f-no-normalized-float-buffer-attribute": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><bufferAttribute args={[new Float32Array(9), 3, true]} /></Canvas>;',
+  },
+  "r3f-valid-buffer-attribute-item-size": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><bufferAttribute args={[new Float32Array(9), 0]} /></Canvas>;',
+  },
+  "r3f-valid-fog-parameters": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><fog args={["white", 10, 5]} /></Canvas>;',
+  },
+  "r3f-valid-orthographic-camera": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><orthographicCamera args={[-1, 1, 1, -1, 10, 5]} /></Canvas>;',
+  },
+  "r3f-valid-physical-material-properties": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><meshPhysicalMaterial clearcoat={2} /></Canvas>;',
+  },
+  "r3f-valid-raycaster-range": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas raycaster={{ near: -1, far: 100 }} />;',
+  },
+  "r3f-valid-shadow-map-size": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas shadows><directionalLight castShadow shadow-mapSize={[1000, 1024]} /></Canvas>;',
+  },
+  "r3f-valid-spot-light-properties": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><spotLight angle={2} /></Canvas>;',
+  },
+  "r3f-valid-texture-color-space": {
+    code: 'import { Canvas } from "@react-three/fiber"; import { NoColorSpace, Texture } from "three"; const texture = new Texture(); texture.colorSpace = NoColorSpace; export const Scene = () => <Canvas><meshStandardMaterial map={texture} /></Canvas>;',
+  },
+  "r3f-require-animation-mixer-update": {
+    code: 'import { useFrame } from "@react-three/fiber"; import { AnimationMixer } from "three"; export const Scene = ({ model, clip }) => { const mixer = new AnimationMixer(model); mixer.clipAction(clip).play(); useFrame(() => {}); return null; };',
+  },
+  "r3f-require-render-target-reset": {
+    code: 'import { useFrame } from "@react-three/fiber"; import { WebGLRenderTarget } from "three"; const target = new WebGLRenderTarget(256, 256); export const Scene = () => { useFrame(({ gl }) => { gl.setRenderTarget(target); gl.render(scene, camera); }); return null; };',
+  },
+  "r3f-texture-repeat-requires-wrapping": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><texture repeat={[2, 2]} /></Canvas>;',
+  },
+  "three-no-compile-in-animation-loop": {
+    code: 'import { WebGLRenderer, Scene, PerspectiveCamera } from "three"; const renderer = new WebGLRenderer(); const scene = new Scene(); const camera = new PerspectiveCamera(); renderer.setAnimationLoop(() => { renderer.compile(scene, camera); renderer.render(scene, camera); });',
+  },
+  "three-no-ignored-linewidth": {
+    code: 'import { LineBasicMaterial } from "three"; new LineBasicMaterial({ linewidth: 4 });',
+  },
+  "three-no-normalized-float-buffer-attribute": {
+    code: 'import { BufferAttribute } from "three"; new BufferAttribute(new Float32Array(9), 3, true);',
+  },
+  "three-no-sync-readback-in-animation-loop": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => renderer.readRenderTargetPixels(target, 0, 0, 1, 1, pixels));',
+  },
+  "three-prefer-set-animation-loop": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.xr.enabled = true; const frame = () => { renderer.render(scene, camera); requestAnimationFrame(frame); }; requestAnimationFrame(frame);',
+  },
+  "three-require-animation-mixer-update": {
+    code: 'import { AnimationMixer, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const mixer = new AnimationMixer(model); mixer.clipAction(clip).play(); renderer.setAnimationLoop(() => renderer.render(scene, camera));',
+  },
+  "three-require-ktx2-detect-support": {
+    code: 'import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js"; const loader = new KTX2Loader(); loader.loadAsync("texture.ktx2");',
+  },
+  "three-require-texture-update-after-wrapping-change": {
+    code: 'import { RepeatWrapping, Texture, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const texture = new Texture(); renderer.setAnimationLoop(() => { renderer.render(scene, camera); texture.wrapS = RepeatWrapping; });',
+  },
+  "three-require-worker-loader-cleanup": {
+    code: 'import { useMemo } from "react"; import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js"; export const Scene = () => { const loader = useMemo(() => new DRACOLoader(), []); loader.load("model.drc", useModel); return null; };',
+  },
+  "three-texture-repeat-requires-wrapping": {
+    code: 'import { Texture } from "three"; const texture = new Texture(); texture.repeat.set(2, 2);',
+  },
+  "three-valid-buffer-attribute-item-size": {
+    code: 'import { BufferAttribute } from "three"; new BufferAttribute(new Float32Array(9), 0);',
+  },
+  "three-valid-fog-parameters": {
+    code: 'import { Fog } from "three"; new Fog("white", 10, 5);',
+  },
+  "three-valid-orthographic-camera": {
+    code: 'import { OrthographicCamera } from "three"; new OrthographicCamera(-1, 1, 1, -1, 10, 5);',
+  },
+  "three-valid-physical-material-properties": {
+    code: 'import { MeshPhysicalMaterial } from "three"; new MeshPhysicalMaterial({ clearcoat: 2 });',
+  },
+  "three-valid-raycaster-range": {
+    code: 'import { Raycaster } from "three"; new Raycaster(origin, direction, -1, 100);',
+  },
+  "three-valid-shadow-map-size": {
+    code: 'import { DirectionalLight } from "three"; const light = new DirectionalLight(); light.shadow.mapSize.set(1000, 1024);',
+  },
+  "three-valid-spot-light-properties": {
+    code: 'import { SpotLight } from "three"; new SpotLight(0xffffff, 1, 0, 2, 0);',
+  },
+  "three-valid-texture-color-space": {
+    code: 'import { MeshStandardMaterial, NoColorSpace, Texture } from "three"; const texture = new Texture(); texture.colorSpace = NoColorSpace; new MeshStandardMaterial({ map: texture });',
+  },
+  "r3f-no-mutate-uniform-prop-source-in-use-frame": {
+    code: 'import { useFrame } from "@react-three/fiber"; const uniforms = { time: { value: 0 } }; export const Scene = () => { useFrame(() => { uniforms.time.value += 1; }); return <shaderMaterial uniforms={uniforms} />; };',
+  },
+  "r3f-no-shader-configuration-mutation-in-use-frame": {
+    code: 'import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; export const Scene = () => { const materialRef = useRef(); useFrame(() => { materialRef.current.fragmentShader = source; }); return <shaderMaterial ref={materialRef} />; };',
+  },
+  "r3f-require-dynamic-buffer-usage": {
+    code: 'import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; export const Points = () => { const attributeRef = useRef(); useFrame(() => { attributeRef.current.needsUpdate = true; }); return <bufferAttribute ref={attributeRef} args={[new Float32Array(9), 3]} />; };',
+  },
+  "r3f-require-data-texture-update": {
+    code: 'import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; export const Texture = () => { const textureRef = useRef(); useFrame(() => { textureRef.current.image.data[0] = 255; }); return <dataTexture ref={textureRef} args={[new Uint8Array(16), 2, 2]} />; };',
+  },
+  "r3f-valid-buffer-attribute-array-length": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><bufferAttribute args={[new Float32Array(8), 3]} /></Canvas>;',
+  },
+  "r3f-webgpu-require-async-init": {
+    code: 'import { Canvas } from "@react-three/fiber"; import { WebGPURenderer } from "three/webgpu"; const scene = <Canvas gl={async () => new WebGPURenderer()} />;',
+  },
+  "r3f-webgpu-no-high-precision-instancing": {
+    code: 'import { Canvas } from "@react-three/fiber"; import { WebGPURenderer } from "three/webgpu"; const scene = <Canvas gl={async () => { const renderer = new WebGPURenderer(); renderer.highPrecision = true; await renderer.init(); return renderer; }}><instancedMesh /></Canvas>;',
+    settings: { capabilities: ["three:181"] },
+  },
+  "three-effect-composer-output-pass-last": {
+    code: 'import { EffectComposer, OutputPass, ShaderPass } from "three/addons"; const composer = new EffectComposer(renderer); composer.addPass(new OutputPass()); composer.addPass(new ShaderPass(shader));',
+  },
+  "three-effect-composer-require-size-on-resize": {
+    code: 'import { WebGLRenderer } from "three"; import { EffectComposer } from "three/addons"; const renderer = new WebGLRenderer(); const composer = new EffectComposer(renderer); window.addEventListener("resize", () => renderer.setSize(innerWidth, innerHeight));',
+  },
+  "three-gpu-computation-handle-init-error": {
+    code: 'import { GPUComputationRenderer } from "three/addons"; const computation = new GPUComputationRenderer(4, 4, renderer); computation.init();',
+  },
+  "three-gpu-computation-require-init-before-compute": {
+    code: 'import { GPUComputationRenderer } from "three/addons"; const computation = new GPUComputationRenderer(4, 4, renderer); computation.compute();',
+  },
+  "three-gpu-computation-valid-variable-name": {
+    code: 'import { GPUComputationRenderer } from "three/addons"; const computation = new GPUComputationRenderer(4, 4, renderer); computation.addVariable("gl_Position", shader, texture);',
+  },
+  "three-require-gpu-computation-cleanup": {
+    code: 'import { useEffect } from "react"; import { GPUComputationRenderer } from "three/addons/misc/GPUComputationRenderer.js"; export const Scene = ({ renderer }) => { useEffect(() => { const computation = new GPUComputationRenderer(4, 4, renderer); computation.init(); }, [renderer]); return null; };',
+  },
+  "three-require-dynamic-buffer-usage": {
+    code: 'import { BufferAttribute, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const attribute = new BufferAttribute(new Float32Array(9), 3); renderer.setAnimationLoop(() => { attribute.needsUpdate = true; renderer.render(scene, camera); });',
+  },
+  "three-require-data-texture-update": {
+    code: 'import { DataTexture, WebGLRenderer } from "three"; const texture = new DataTexture(new Uint8Array(16), 2, 2); const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => { texture.image.data[0] = 255; renderer.render(scene, camera); });',
+  },
+  "three-no-shader-configuration-mutation-in-animation-loop": {
+    code: 'import { ShaderMaterial, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const material = new ShaderMaterial(); renderer.setAnimationLoop(() => { material.fragmentShader = source; renderer.render(scene, camera); });',
+  },
+  "three-shader-no-glsl1-syntax-with-glsl3": {
+    code: 'import { GLSL3, RawShaderMaterial } from "three"; new RawShaderMaterial({ glslVersion: GLSL3, vertexShader: "attribute vec3 position; void main() { gl_Position = vec4(position, 1.0); }" });',
+  },
+  "three-shader-no-reserved-identifiers": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "float user__color; void main() { gl_FragColor = vec4(user__color); }" });',
+  },
+  "three-shader-require-fragment-output-on-all-paths": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { if (enabled) gl_FragColor = vec4(1.0); }" });',
+  },
+  "three-shader-require-compatible-uniform-values": {
+    code: 'import { ShaderMaterial, Vector3 } from "three"; new ShaderMaterial({ uniforms: { time: { value: new Vector3() } }, fragmentShader: "uniform float time; void main() { gl_FragColor = vec4(time); }" });',
+  },
+  "three-shader-valid-global-initializers": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform float time = 1.0; void main() { gl_FragColor = vec4(time); }" });',
+  },
+  "three-shader-valid-uniform-definitions": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ uniforms: { time: 0 }, fragmentShader: "uniform float time; void main() { gl_FragColor = vec4(time); }" });',
+  },
+  "three-valid-buffer-attribute-array-length": {
+    code: 'import { BufferAttribute } from "three"; new BufferAttribute(new Float32Array(8), 3);',
+  },
+  "three-valid-data-texture-data-length": {
+    code: 'import { DataTexture } from "three"; new DataTexture(new Uint8Array(15), 2, 2);',
+  },
+  "three-valid-data-texture-dimensions": {
+    code: 'import { DataTexture } from "three"; new DataTexture(data, 0, 2);',
+  },
+  "three-valid-gpu-computation-dimensions": {
+    code: 'import { GPUComputationRenderer } from "three/addons"; new GPUComputationRenderer(0, 4, renderer);',
+  },
+  "three-webgpu-require-init-before-sync-operation": {
+    code: 'import { WebGPURenderer } from "three/webgpu"; const start = async () => { const renderer = new WebGPURenderer(); renderer.render(scene, camera); };',
+    settings: { capabilities: ["three:181"] },
+  },
+  "three-webgpu-no-high-precision-instancing": {
+    code: 'import { WebGPURenderer, Scene, InstancedMesh } from "three/webgpu"; const renderer = new WebGPURenderer(); renderer.highPrecision = true; const scene = new Scene(); scene.add(new InstancedMesh(geometry, material, 10)); renderer.render(scene, camera);',
+    settings: { capabilities: ["three:181"] },
   },
 };

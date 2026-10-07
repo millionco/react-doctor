@@ -1,0 +1,311 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit c861a1f948aaa6b7941b6e319c7e7d121e190877253f0f356dabfc6d651c8f84
+import * as THREE from "three";
+import { clamp01 } from "../gfx/noise";
+
+/**
+ * DOM heads-up display.
+ *
+ * The HUD's job is to make the spatial systems legible: how much cover you are
+ * behind, how much height advantage you hold, where the next threat is coming
+ * from, and how many recovery charges the run has left.
+ */
+
+export interface WaypointSpec {
+  id: string;
+  position: THREE.Vector3;
+  label: string;
+  color: string;
+  filled: boolean;
+}
+
+export interface HudState {
+  timeLeft: number;
+  encounterIndex: number;
+  encountersDone: number;
+  objective: string;
+  health: number;
+  maxHealth: number;
+  charges: number;
+  maxCharges: number;
+  cover: number;
+  highGround: number;
+  shatter: number;
+  shatterReady: boolean;
+  anchorReady: boolean;
+  threats: { dir: THREE.Vector3; strength: number }[];
+  hurt: number;
+  downed: boolean;
+  downFuse: number;
+  canReform: boolean;
+  waypoints: WaypointSpec[];
+}
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private readonly timer: HTMLElement;
+  private readonly pips: HTMLElement[] = [];
+  private readonly objective: HTMLElement;
+  private readonly healthFill: HTMLElement;
+  private readonly healthGhost: HTMLElement;
+  private readonly chargeEls: HTMLElement[] = [];
+  private readonly coverFill: HTMLElement;
+  private readonly coverVal: HTMLElement;
+  private readonly highFill: HTMLElement;
+  private readonly highVal: HTMLElement;
+  private readonly shatterFill: HTMLElement;
+  private readonly shatterVal: HTMLElement;
+  private readonly reticle: HTMLElement;
+  private readonly ticks: HTMLElement[] = [];
+  private readonly threatLayer: HTMLElement;
+  private readonly threatPool: HTMLElement[] = [];
+  private readonly hurtLayer: HTMLElement;
+  private readonly toast: HTMLElement;
+  private readonly downOverlay: HTMLElement;
+  private readonly downFuse: HTMLElement;
+  private readonly downPrompt: HTMLElement;
+  private readonly panel: HTMLElement;
+  private readonly waypointLayer: HTMLElement;
+  private readonly waypointPool = new Map<string, HTMLElement>();
+  private toastTimer = 0;
+  private ghostHealth = 1;
+
+  constructor(maxCharges: number) {
+    this.root = document.createElement("div");
+    this.root.id = "ui";
+    this.root.innerHTML = `
+      <div id="topbar">
+        <div id="timer" class="mono">5:00</div>
+        <div id="pips"><div class="pip"></div><div class="pip"></div><div class="pip"></div></div>
+        <div id="objective">Standing by</div>
+      </div>
+
+      <div id="status">
+        <div class="label">Integrity</div>
+        <div class="bar"><u id="healthGhost"></u><i id="healthFill"></i></div>
+        <div id="charges"></div>
+        <div class="label">Recovery charges</div>
+      </div>
+
+      <div id="meters">
+        <div class="meter">
+          <div class="row"><span class="label">Cover</span><span class="val mono" id="coverVal">OPEN</span></div>
+          <div class="track"><i id="coverFill"></i></div>
+        </div>
+        <div class="meter">
+          <div class="row"><span class="label">High ground</span><span class="val mono" id="highVal">+0%</span></div>
+          <div class="track"><i id="highFill"></i></div>
+        </div>
+        <div class="meter">
+          <div class="row"><span class="label">Shatter</span><span class="val mono" id="shatterVal">READY</span></div>
+          <div class="track"><i id="shatterFill"></i></div>
+        </div>
+      </div>
+
+      <div id="reticle">
+        <div id="anchorRing"></div>
+        <div class="dot"></div>
+        <div class="tick" style="transform: rotate(0deg)"></div>
+        <div class="tick" style="transform: rotate(90deg)"></div>
+        <div class="tick" style="transform: rotate(180deg)"></div>
+        <div class="tick" style="transform: rotate(270deg)"></div>
+        <div id="anchorHint">SPACE · GRAPPLE</div>
+      </div>
+
+      <div id="threats"></div>
+      <div id="waypoints"></div>
+      <div id="hurt"></div>
+      <div id="toast"></div>
+
+      <div id="downOverlay">
+        <h1>SHATTERED</h1>
+        <div class="prompt" id="downPrompt"><span class="key">SPACE</span> RE-FORM</div>
+        <div class="fuse"><i id="downFuse"></i></div>
+      </div>
+
+      <div id="panel" class="hidden"></div>
+    `;
+    document.body.appendChild(this.root);
+
+    const q = <T extends HTMLElement>(sel: string): T => this.root.querySelector(sel) as T;
+    this.timer = q("#timer");
+    this.objective = q("#objective");
+    this.healthFill = q("#healthFill");
+    this.healthGhost = q("#healthGhost");
+    this.coverFill = q("#coverFill");
+    this.coverVal = q("#coverVal");
+    this.highFill = q("#highFill");
+    this.highVal = q("#highVal");
+    this.shatterFill = q("#shatterFill");
+    this.shatterVal = q("#shatterVal");
+    this.reticle = q("#reticle");
+    this.threatLayer = q("#threats");
+    this.hurtLayer = q("#hurt");
+    this.toast = q("#toast");
+    this.downOverlay = q("#downOverlay");
+    this.downFuse = q("#downFuse");
+    this.downPrompt = q("#downPrompt");
+    this.panel = q("#panel");
+    this.waypointLayer = q("#waypoints");
+
+    this.root.querySelectorAll("#pips .pip").forEach((el) => this.pips.push(el as HTMLElement));
+    this.root.querySelectorAll("#reticle .tick").forEach((el) => this.ticks.push(el as HTMLElement));
+
+    const chargeBox = q("#charges");
+    for (let i = 0; i < maxCharges; i++) {
+      const el = document.createElement("div");
+      el.className = "charge";
+      chargeBox.appendChild(el);
+      this.chargeEls.push(el);
+    }
+  }
+
+  showToast(text: string, sub = "", duration = 2.2): void {
+    this.toast.innerHTML = `${text}${sub ? `<span class="sub">${sub}</span>` : ""}`;
+    this.toast.style.opacity = "1";
+    this.toastTimer = duration;
+  }
+
+  showPanel(html: string): HTMLElement {
+    this.panel.innerHTML = html;
+    this.panel.classList.remove("hidden");
+    return this.panel;
+  }
+
+  hidePanel(): void {
+    this.panel.classList.add("hidden");
+    this.panel.innerHTML = "";
+  }
+
+  get panelVisible(): boolean {
+    return !this.panel.classList.contains("hidden");
+  }
+
+  update(dt: number, s: HudState, camera: THREE.Camera, camYaw: number): void {
+    // --- Timer -------------------------------------------------------------
+    const t = Math.max(0, s.timeLeft);
+    const mm = Math.floor(t / 60);
+    const ss = Math.floor(t % 60);
+    const cs = Math.floor((t % 1) * 10);
+    this.timer.textContent = t < 30 ? `${mm}:${String(ss).padStart(2, "0")}.${cs}` : `${mm}:${String(ss).padStart(2, "0")}`;
+    this.timer.className = `mono${t < 30 ? " crit" : t < 75 ? " warn" : ""}`;
+
+    for (let i = 0; i < this.pips.length; i++) {
+      const pip = this.pips[i]!;
+      pip.className = `pip${i < s.encountersDone ? " done" : i === s.encounterIndex ? " active" : ""}`;
+    }
+    this.objective.textContent = s.objective;
+
+    // --- Health ------------------------------------------------------------
+    const frac = clamp01(s.health / s.maxHealth);
+    this.healthFill.style.width = `${frac * 100}%`;
+    this.healthFill.style.background =
+      frac > 0.5 ? "linear-gradient(90deg,#ff5f86,#ff9ec4)" : frac > 0.25 ? "linear-gradient(90deg,#ff7a3c,#ffc06b)" : "linear-gradient(90deg,#ff2d4d,#ff7f8f)";
+    this.ghostHealth = Math.max(frac, this.ghostHealth - dt * 0.28);
+    this.healthGhost.style.width = `${this.ghostHealth * 100}%`;
+
+    for (let i = 0; i < this.chargeEls.length; i++) {
+      this.chargeEls[i]!.classList.toggle("spent", i >= s.charges);
+    }
+
+    // --- Meters ------------------------------------------------------------
+    const coverAmount = 1 - clamp01(s.cover);
+    this.coverFill.style.width = `${coverAmount * 100}%`;
+    this.coverVal.textContent =
+      coverAmount > 0.95 ? "SEALED" : coverAmount > 0.5 ? `${Math.round(coverAmount * 100)}% BLOCK` : coverAmount > 0.08 ? `${Math.round(coverAmount * 100)}% BLOCK` : "OPEN";
+    this.highFill.style.width = `${clamp01(s.highGround) * 100}%`;
+    this.highVal.textContent = `+${Math.round(clamp01(s.highGround) * 30)}%`;
+    this.shatterFill.style.width = `${clamp01(s.shatter) * 100}%`;
+    this.shatterVal.textContent = s.shatterReady ? (s.shatter > 0.02 ? "CHARGING" : "READY") : "RECYCLING";
+
+    // --- Reticle -----------------------------------------------------------
+    this.reticle.classList.toggle("anchor", s.anchorReady);
+    const spread = 12 + (1 - clamp01(s.cover)) * 0 + s.shatter * 10;
+    for (let i = 0; i < this.ticks.length; i++) {
+      this.ticks[i]!.style.transform = `rotate(${i * 90}deg) translateY(${-spread * 0.35}px)`;
+    }
+
+    // --- Directional threats ----------------------------------------------
+    for (let i = 0; i < Math.max(s.threats.length, this.threatPool.length); i++) {
+      let el = this.threatPool[i];
+      if (!el) {
+        el = document.createElement("div");
+        el.className = "threat";
+        this.threatLayer.appendChild(el);
+        this.threatPool.push(el);
+      }
+      const threat = s.threats[i];
+      if (!threat) {
+        el.style.opacity = "0";
+        continue;
+      }
+      // Angle relative to where the camera is looking.
+      const worldAngle = Math.atan2(threat.dir.x, threat.dir.z);
+      const rel = worldAngle - (camYaw + Math.PI);
+      const radius = 96;
+      const x = Math.sin(rel) * radius;
+      const y = -Math.cos(rel) * radius;
+      el.style.opacity = String(0.35 + threat.strength * 0.65);
+      el.style.transform = `translate(${x}px, ${y}px) rotate(${(rel * 180) / Math.PI}deg)`;
+      el.style.filter = `drop-shadow(0 0 ${4 + threat.strength * 10}px #ff4f6a)`;
+    }
+
+    // --- Waypoints ---------------------------------------------------------
+    const seen = new Set<string>();
+    for (const wp of s.waypoints) {
+      seen.add(wp.id);
+      let el = this.waypointPool.get(wp.id);
+      if (!el) {
+        el = document.createElement("div");
+        el.className = "waypoint";
+        el.innerHTML = `<div class="marker"></div><span></span>`;
+        this.waypointLayer.appendChild(el);
+        this.waypointPool.set(wp.id, el);
+      }
+      _v.copy(wp.position).project(camera);
+      const behind = _v.z > 1;
+      let sx = (_v.x * 0.5 + 0.5) * innerWidth;
+      let sy = (-_v.y * 0.5 + 0.5) * innerHeight;
+      if (behind) {
+        sx = innerWidth - sx;
+        sy = innerHeight * 0.9;
+      }
+      const margin = 54;
+      sx = Math.max(margin, Math.min(innerWidth - margin, sx));
+      sy = Math.max(margin + 40, Math.min(innerHeight - margin, sy));
+      el.style.left = `${sx}px`;
+      el.style.top = `${sy}px`;
+      el.style.color = wp.color;
+      el.style.opacity = behind ? "0.45" : "0.92";
+      const marker = el.firstElementChild as HTMLElement;
+      marker.classList.toggle("filled", wp.filled);
+      (el.lastElementChild as HTMLElement).textContent = wp.label;
+    }
+    for (const [id, el] of this.waypointPool) {
+      if (!seen.has(id)) {
+        el.remove();
+        this.waypointPool.delete(id);
+      }
+    }
+
+    // --- Vignettes and overlays -------------------------------------------
+    this.hurtLayer.style.opacity = String(clamp01(s.hurt) * 0.9);
+    this.downOverlay.classList.toggle("show", s.downed);
+    if (s.downed) {
+      this.downFuse.style.width = `${clamp01(s.downFuse) * 100}%`;
+      this.downPrompt.innerHTML = s.canReform
+        ? `<span class="key">SPACE</span> RE-FORM &nbsp;·&nbsp; ${s.charges} CHARGE${s.charges === 1 ? "" : "S"} LEFT`
+        : `NO CHARGES REMAINING`;
+    }
+
+    if (this.toastTimer > 0) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) this.toast.style.opacity = "0";
+    }
+  }
+}
+
+const _v = new THREE.Vector3();

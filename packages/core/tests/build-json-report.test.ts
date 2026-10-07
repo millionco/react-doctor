@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
+import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { buildJsonReport } from "@react-doctor/core";
 import type { Diagnostic, InspectResult, ProjectInfo } from "@react-doctor/core";
 
@@ -52,6 +54,48 @@ const result = (overrides: Partial<InspectResult> = {}): InspectResult => ({
 });
 
 describe("buildJsonReport", () => {
+  it("preserves each project's source-filter metadata without requiring it for older producers", () => {
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [
+        { directory: "/repo/first", result: result({ sourceFilterConfigHash: "first-hash" }) },
+        { directory: "/repo/second", result: result({ sourceFilterConfigHash: "second-hash" }) },
+        { directory: "/repo/legacy", result: result() },
+      ],
+      totalElapsedMilliseconds: 1200,
+    });
+    expect(report.projects.map((project) => project.sourceFilterConfigHash)).toEqual([
+      "first-hash",
+      "second-hash",
+      undefined,
+    ]);
+    expect(report.projects[2]).not.toHaveProperty("sourceFilterConfigHash");
+  });
+
+  it("lists workspace projects skipped before they started", () => {
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [],
+      skippedProjects: [
+        { directory: "/repo/apps/admin", reason: "max-duration" },
+        { directory: "/repo/apps/web", reason: "max-duration" },
+      ],
+      totalElapsedMilliseconds: 10_000,
+    });
+
+    expect(report.projects).toEqual([]);
+    expect(report.skippedProjects).toEqual([
+      { directory: "/repo/apps/admin", reason: "max-duration" },
+      { directory: "/repo/apps/web", reason: "max-duration" },
+    ]);
+  });
+
   it("emits a v3 report with deterministic diagnostic identity and exact coverage", () => {
     const report = buildJsonReport({
       version: "1.2.3",
@@ -93,6 +137,32 @@ describe("buildJsonReport", () => {
     expect(report.diagnostics[0].tags).toEqual([...report.diagnostics[0].tags].sort());
     expect(report.diagnostics[0]).not.toHaveProperty("ruleId");
     expect(report.diagnostics[0]).not.toHaveProperty("location");
+  });
+
+  it("normalizes a diagnostic file URL without changing the report schema", () => {
+    const fileUrl = pathToFileURL(path.join(projectInfo.rootDirectory, "src", "App.tsx")).href;
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: projectInfo.rootDirectory,
+      mode: "full",
+      diff: null,
+      scans: [
+        {
+          directory: projectInfo.rootDirectory,
+          result: result({ diagnostics: [{ ...errorDiagnostic, filePath: fileUrl }] }),
+        },
+      ],
+      totalElapsedMilliseconds: 1200,
+    });
+
+    expect(report.schemaVersion).toBe(3);
+    expect(report.diagnostics[0]).toMatchObject({
+      filePath: fileUrl,
+      normalizedFilePath: "src/App.tsx",
+      id: expect.stringMatching(
+        /^src\/App\.tsx::12:1::react-doctor\/no-array-index-as-key::[a-f0-9]{64}$/,
+      ),
+    });
   });
 
   it("assigns distinct occurrence identities to same-site findings from one rule", () => {
@@ -283,6 +353,30 @@ describe("buildJsonReport", () => {
     expect(report.diagnostics).toHaveLength(0);
   });
 
+  it("marks reactDetected false for a plain Three.js project", () => {
+    const threeProject: ProjectInfo = {
+      ...projectInfo,
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: null,
+      preactMajorVersion: null,
+      framework: "unknown",
+      hasThree: true,
+      threeVersion: "0.185.1",
+      threeRelease: 185,
+    };
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [{ directory: "/repo", result: result({ diagnostics: [], project: threeProject }) }],
+      totalElapsedMilliseconds: 1200,
+    });
+    expect(report.reactDetected).toBe(false);
+    expect(report.projects[0].project.hasThree).toBe(true);
+  });
+
   it("marks reactDetected true in a workspace where only some roots are React", () => {
     const nonReactProject: ProjectInfo = {
       ...projectInfo,
@@ -323,6 +417,24 @@ describe("buildJsonReport", () => {
       mode: "full",
       diff: null,
       scans: [{ directory: "/repo", result: result({ project: preactProject }) }],
+      totalElapsedMilliseconds: 1200,
+    });
+    expect(report.reactDetected).toBe(true);
+  });
+
+  it("marks reactDetected true for Next.js without a direct React declaration", () => {
+    const nextProject: ProjectInfo = {
+      ...projectInfo,
+      reactVersion: null,
+      reactMajorVersion: null,
+      framework: "nextjs",
+    };
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [{ directory: "/repo", result: result({ project: nextProject }) }],
       totalElapsedMilliseconds: 1200,
     });
     expect(report.reactDetected).toBe(true);

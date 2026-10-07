@@ -5,6 +5,7 @@ import { resolveCrossFileValueExportWithFilePath } from "./resolve-cross-file-fu
 export interface ResolvedCrossFileExport {
   readonly filePath: string;
   readonly node: EsTreeNode;
+  readonly programNode: EsTreeNode;
   readonly kind: "function" | "initializer";
 }
 export const resolveCrossFileExport = (
@@ -21,6 +22,7 @@ export const resolveCrossFileExport = (
   return {
     filePath: resolvedExport.filePath,
     node: resolvedExport.exportedNode,
+    programNode: resolvedExport.programNode,
     kind: isFunctionLike(resolvedExport.exportedNode) ? "function" : "initializer",
   };
 };

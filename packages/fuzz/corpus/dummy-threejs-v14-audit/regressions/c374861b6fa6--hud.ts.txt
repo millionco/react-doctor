@@ -1,0 +1,145 @@
+// rule: dangerous-html-sink
+// file-path: src/game/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit c374861b6fa61a04df31e0482891fca63f4dc557a6e4f9735873a4e501858154
+import { clamp01 } from "../gfx/noise";
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+export interface HudCounts {
+  smashed: number;
+  smashTarget: number;
+  kegs: number;
+  kegTarget: number;
+  goalReady: boolean;
+}
+
+export class Hud {
+  readonly root = el("div");
+  private fuse = el("div", "fuse");
+  private fuseFill = el("div", "fuse-fill");
+  private fuseSpark = el("div", "fuse-spark");
+  private fuseTime = el("b", undefined, "0.0");
+  private objBuild = el("div", "obj");
+  private objKeg = el("div", "obj");
+  private objGoal = el("div", "obj");
+  private objBuildN = el("span", "n");
+  private objKegN = el("span", "n");
+  private objGoalN = el("span", "n");
+  private speed = el("div", "speed");
+  private surface = el("div", "surface");
+  private gripFill = el("i");
+  private mass = el("div", "mass");
+  private toasts = el("div", "toasts");
+  private banner = el("div", "banner");
+  private hint = el("div", "hint");
+  readonly overlay = el("div");
+
+  constructor(parent: HTMLElement) {
+    this.root.id = "hud";
+
+    const head = el("div", "fuse-head");
+    head.append(el("span", undefined, "FUSE"), this.fuseTime, el("span", undefined, "POWDER"));
+    const track = el("div", "fuse-track");
+    track.append(this.fuseFill, this.fuseSpark);
+    this.fuse.append(head, track);
+
+    const objs = el("div", "objectives");
+    this.objBuild.append(this.objBuildN, el("span", undefined, "BUILDINGS DOWN"));
+    this.objKeg.append(this.objKegN, el("span", undefined, "POWDER KEGS"));
+    this.objGoal.append(this.objGoalN, el("span", undefined, "FINAL BLOCK"));
+    objs.append(this.objBuild, this.objKeg, this.objGoal);
+
+    const tel = el("div", "telemetry");
+    this.speed.innerHTML = `0<small>KM/H</small>`;
+    const grip = el("span", "grip");
+    grip.append(this.gripFill);
+    this.surface.append(el("span", undefined, "ASPHALT"), grip);
+    tel.append(this.speed, this.surface, this.mass);
+
+    this.hint.innerHTML = `
+      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows &nbsp;roll<br>
+      <kbd>SPACE</kbd> hold to brake &middot; tap to hop &middot; tap again to SLAM<br>
+      drag to orbit the camera`;
+
+    this.root.append(this.fuse, objs, tel, this.toasts, this.banner, this.hint);
+    this.overlay.id = "overlay";
+    parent.append(this.root, this.overlay);
+  }
+
+  setFuse(seconds: number, max: number) {
+    const f = clamp01(seconds / max);
+    this.fuseFill.style.transform = `scaleX(${f})`;
+    this.fuseSpark.style.left = `${f * 100}%`;
+    this.fuseTime.textContent = seconds.toFixed(1);
+    this.fuse.classList.toggle("low", seconds < 12);
+  }
+
+  setCounts(c: HudCounts) {
+    this.objBuildN.textContent = `${c.smashed}/${c.smashTarget}`;
+    this.objKegN.textContent = `${c.kegs}/${c.kegTarget}`;
+    this.objGoalN.textContent = c.goalReady ? "OPEN" : "LOCKED";
+    this.objBuild.classList.toggle("done", c.smashed >= c.smashTarget);
+    this.objKeg.classList.toggle("done", c.kegs >= c.kegTarget);
+    this.objGoal.classList.toggle("done", c.goalReady);
+  }
+
+  bump(which: "build" | "keg") {
+    const node = which === "build" ? this.objBuild : this.objKeg;
+    node.classList.remove("bump");
+    void node.offsetWidth;
+    node.classList.add("bump");
+    setTimeout(() => node.classList.remove("bump"), 220);
+  }
+
+  setTelemetry(speedKmh: number, surfName: string, grip: number, mass: number) {
+    this.speed.innerHTML = `${Math.round(speedKmh)}<small>KM/H</small>`;
+    const label = this.surface.firstChild;
+    if (label) label.textContent = surfName;
+    this.gripFill.style.transform = `scaleX(${clamp01(grip / 1.6)})`;
+    this.mass.textContent = `CHARGE ×${mass.toFixed(2)}`;
+  }
+
+  toast(text: string, big = false) {
+    const t = el("div", big ? "toast big" : "toast", text);
+    this.toasts.append(t);
+    setTimeout(() => t.remove(), 1600);
+    while (this.toasts.childElementCount > 5) this.toasts.firstElementChild?.remove();
+  }
+
+  setBanner(text: string | null, sub?: string) {
+    if (!text) {
+      this.banner.classList.remove("on");
+      return;
+    }
+    this.banner.innerHTML = `${text}${sub ? `<span class="sub">${sub}</span>` : ""}`;
+    this.banner.classList.add("on");
+  }
+
+  fadeHint(on: boolean) {
+    this.hint.style.opacity = on ? "1" : "0.22";
+  }
+
+  showOverlay(html: string) {
+    this.overlay.innerHTML = html;
+    this.overlay.classList.remove("hidden");
+  }
+
+  hideOverlay() {
+    this.overlay.classList.add("hidden");
+  }
+
+  setHudVisible(v: boolean) {
+    this.root.style.opacity = v ? "1" : "0";
+  }
+}

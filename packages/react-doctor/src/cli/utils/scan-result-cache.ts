@@ -3,76 +3,31 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import {
+  atomicWriteJson,
   computeConfigFingerprint,
   hashFileContents,
   resolveLintBatchOrdering,
   resolveReactDoctorCacheDir,
 } from "@react-doctor/core";
-import type {
-  Diagnostic,
-  InspectOutput,
-  InspectResult,
-  ReactDoctorConfig,
-  ScoreResult,
-  SuppressedRuleCount,
-} from "@react-doctor/core";
+import type { ReactDoctorConfig } from "@react-doctor/core";
 import {
+  HEAD_SHA_GIT_ARGUMENTS,
+  REPOSITORY_ROOT_GIT_ARGUMENTS,
   SCAN_RESULT_CACHE_FILENAME,
   SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT,
   SCAN_RESULT_CACHE_MAX_ENTRY_COUNT,
   SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES,
   SCAN_RESULT_CACHE_SCHEMA_VERSION,
+  TRACKED_FILE_FLAGS_GIT_ARGUMENTS,
+  WORKTREE_STATUS_GIT_ARGUMENTS,
 } from "./constants.js";
-import { getPackageJsonPath, isRecord, runGit } from "./git-hook-shared.js";
-import type { ResolvedInspectOptions } from "../../inspect.js";
+import { getPackageJsonPath, isRecord, runGitAsync } from "./git-hook-shared.js";
+import { isCacheGloballyDisabled } from "./is-cache-globally-disabled.js";
+import { decodeCachedScanPayload, type CachedScanPayload } from "./scan-result-cache-payload.js";
+import type { ResolvedInspectOptions } from "../../inspect-options.js";
 
-export interface CachedScanPayload {
-  readonly diagnostics: ReadonlyArray<Diagnostic>;
-  readonly score: ScoreResult | null;
-  readonly project: InspectResult["project"];
-  readonly userConfig: ReactDoctorConfig | null;
-  readonly didLintFail: boolean;
-  readonly lintFailureReason: string | null;
-  readonly lintPartialFailures: ReadonlyArray<string>;
-  readonly didDeadCodeFail: boolean;
-  readonly deadCodeFailureReason: string | null;
-  readonly deadCodeOverlapped: boolean;
-  readonly directory: string;
-  readonly scannedFileCount: number;
-  readonly scannedFilePaths: ReadonlyArray<string>;
-  readonly analyzedFiles?: ReadonlyArray<string>;
-  readonly scanElapsedMilliseconds: number;
-  readonly baselineDelta: InspectResult["baselineDelta"];
-  readonly lintFailureReasonKind: InspectOutput["lintFailureReasonKind"];
-  /**
-   * Resolved lint worker count (`InspectOutput["scanConcurrency"]`), surfaced
-   * for telemetry. Optional so cache entries persisted before this field
-   * existed still load — a stale hit falls back to the caller's `concurrency`.
-   */
-  readonly scanConcurrency?: number;
-  readonly supplyChainOverlapTimedOut: boolean;
-  /**
-   * `InspectOutput["securityScanFailed"]`, surfaced for telemetry. Optional so
-   * cache entries persisted before this field existed still load; a failed
-   * pass is never cached (`shouldStoreScanPayload`), so a stale hit's
-   * `undefined` reads as the healthy `false`.
-   */
-  readonly securityScanFailed?: boolean;
-  /**
-   * `InspectOutput["suppressedRuleCounts"]` — deterministic for a given
-   * commit + config (part of the cache key), so a cache hit replays the same
-   * suppression telemetry the fresh scan emitted.
-   */
-  readonly suppressedRuleCounts: ReadonlyArray<SuppressedRuleCount>;
-  /**
-   * Content hash of the project's `package.json` when the payload was stored
-   * (`null` when the project has none). Stamped by `store` and re-checked by
-   * `lookup` independently of the cache key, so any keying bug of the
-   * same-path-different-project class surfaces as a miss instead of silently
-   * replaying another project's diagnostics.
-   */
-  readonly manifestContentHash?: string | null;
-}
+export { shouldStoreScanPayload } from "./scan-result-cache-payload.js";
+export type { CachedScanPayload } from "./scan-result-cache-payload.js";
 
 interface PersistedScanResultCacheEntry {
   readonly key: string;
@@ -98,16 +53,39 @@ interface ScanResultCacheKeyInput {
   readonly userConfig: ReactDoctorConfig | null;
   readonly hasConfigOverride: boolean;
   readonly configSourceDirectory: string | null;
+  readonly invocationState: ScanResultCacheInvocationState;
 }
 
-const CACHE_DISABLED_VALUES = new Set(["1", "true"]);
+interface RepositoryCacheIdentity {
+  readonly headSha: string;
+  readonly worktreeFingerprint: ReadonlyArray<WorktreeDirtyEntry>;
+}
+
+export interface ScanResultCacheInvocationState {
+  readonly repositoryIdentityByRoot: Map<string, RepositoryCacheIdentity | null>;
+  /** The first project's identity resolution, awaited by concurrent siblings before they probe. */
+  firstProjectIdentity: Promise<RepositoryCacheIdentity | null> | null;
+}
+
+export const createScanResultCacheInvocationState = (): ScanResultCacheInvocationState => ({
+  repositoryIdentityByRoot: new Map(),
+  firstProjectIdentity: null,
+});
+
 const TOOLCHAIN_PACKAGE_SPECIFIERS = [
   "oxlint/package.json",
   "oxlint-plugin-react-doctor/package.json",
-  "deslop-js/package.json",
   "eslint-plugin-react-hooks/package.json",
 ] as const;
 const bundledRequire = createRequire(import.meta.url);
+const RULE_PLUGIN_CONTENT_FINGERPRINT = (() => {
+  try {
+    const pluginEntryPath = bundledRequire.resolve("oxlint-plugin-react-doctor");
+    return `oxlint-plugin-react-doctor#fingerprint=${hashFileContents(pluginEntryPath) ?? "unreadable"}`;
+  } catch {
+    return "oxlint-plugin-react-doctor#fingerprint=unresolved";
+  }
+})();
 
 interface PackageVersionView {
   readonly version?: unknown;
@@ -150,8 +128,8 @@ const stringifyStableJson = (value: unknown): string | null => {
 
 const hashString = (value: string): string => crypto.createHash("sha1").update(value).digest("hex");
 
-const readHeadSha = (projectDirectory: string): string | null =>
-  runGit(projectDirectory, ["rev-parse", "HEAD"]);
+const readHeadSha = (projectDirectory: string): Promise<string | null> =>
+  runGitAsync(projectDirectory, HEAD_SHA_GIT_ARGUMENTS);
 
 interface WorktreeStatusEntry {
   readonly statusCode: string;
@@ -232,16 +210,9 @@ const buildDirtyPathContentFingerprint = (
 // (git failure, oversized dirty set, unfingerprintable path) — the caller
 // treats null exactly like the old dirty-tree bail: cache off.
 const buildWorktreeFingerprint = (
-  projectDirectory: string,
+  repositoryRoot: string,
+  statusOutput: string | null,
 ): ReadonlyArray<WorktreeDirtyEntry> | null => {
-  const statusOutput = runGit(projectDirectory, [
-    "status",
-    "--porcelain=v1",
-    "-z",
-    // `all` expands untracked directories into their contained files so each
-    // one is content-fingerprinted; the entry-count bound below caps the cost.
-    "--untracked-files=all",
-  ]);
   if (statusOutput === null) return null;
   if (statusOutput.length === 0) return [];
   const statusEntries = parseWorktreeStatusRecords(statusOutput);
@@ -249,8 +220,6 @@ const buildWorktreeFingerprint = (
   if (statusEntries.length > SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT) return null;
   // Porcelain paths are relative to the repository root, not the (possibly
   // nested workspace-member) project directory.
-  const repositoryRoot = runGit(projectDirectory, ["rev-parse", "--show-toplevel"]);
-  if (repositoryRoot === null) return null;
   const dirtyEntries: WorktreeDirtyEntry[] = [];
   for (const statusEntry of statusEntries) {
     const contentFingerprint = buildDirtyPathContentFingerprint(
@@ -267,6 +236,73 @@ const buildWorktreeFingerprint = (
     const secondSortKey = `${secondEntry.path}${secondEntry.statusCode}`;
     return firstSortKey < secondSortKey ? -1 : firstSortKey > secondSortKey ? 1 : 0;
   });
+};
+
+// The four git commands behind the key are independent, so they run
+// concurrently: the trust check and the repository root always, and the
+// status + HEAD probes alongside them for the first project of an invocation
+// (the only one that cannot hit the per-root memo). Later projects of a
+// workspace scan — including ones started while the first is still in
+// flight — wait for that first resolution, resolve their root, and only probe
+// on a memo miss, so sibling members never pay a speculative `git status`.
+const resolveIdentityFromProbes = async (
+  repositoryRoot: string,
+  statusPromise: Promise<string | null>,
+  headShaPromise: Promise<string | null>,
+  invocationState: ScanResultCacheInvocationState,
+): Promise<RepositoryCacheIdentity | null> => {
+  const [statusOutput, headSha] = await Promise.all([statusPromise, headShaPromise]);
+  const worktreeFingerprint = buildWorktreeFingerprint(repositoryRoot, statusOutput);
+  const identity =
+    worktreeFingerprint === null || headSha === null ? null : { headSha, worktreeFingerprint };
+  invocationState.repositoryIdentityByRoot.set(repositoryRoot, identity);
+  return identity;
+};
+
+const resolveSiblingIdentity = async (
+  projectDirectory: string,
+  invocationState: ScanResultCacheInvocationState,
+  repositoryRootPromise: Promise<string | null>,
+  firstProjectIdentity: Promise<RepositoryCacheIdentity | null>,
+): Promise<RepositoryCacheIdentity | null> => {
+  const [repositoryRoot] = await Promise.all([repositoryRootPromise, firstProjectIdentity]);
+  if (repositoryRoot === null) return null;
+  const cachedIdentity = invocationState.repositoryIdentityByRoot.get(repositoryRoot);
+  if (cachedIdentity !== undefined) return cachedIdentity;
+  return resolveIdentityFromProbes(
+    repositoryRoot,
+    runGitAsync(projectDirectory, WORKTREE_STATUS_GIT_ARGUMENTS),
+    readHeadSha(repositoryRoot),
+    invocationState,
+  );
+};
+
+const resolveRepositoryCacheIdentity = (
+  projectDirectory: string,
+  invocationState: ScanResultCacheInvocationState,
+  repositoryRootPromise: Promise<string | null>,
+): Promise<RepositoryCacheIdentity | null> => {
+  if (invocationState.firstProjectIdentity !== null) {
+    return resolveSiblingIdentity(
+      projectDirectory,
+      invocationState,
+      repositoryRootPromise,
+      invocationState.firstProjectIdentity,
+    );
+  }
+  const speculativeStatus = runGitAsync(projectDirectory, WORKTREE_STATUS_GIT_ARGUMENTS);
+  const speculativeHeadSha = readHeadSha(projectDirectory);
+  invocationState.firstProjectIdentity = repositoryRootPromise.then((repositoryRoot) =>
+    repositoryRoot === null
+      ? null
+      : resolveIdentityFromProbes(
+          repositoryRoot,
+          speculativeStatus,
+          speculativeHeadSha,
+          invocationState,
+        ),
+  );
+  return invocationState.firstProjectIdentity;
 };
 
 const DOTENV_FILE_NAME_PATTERN = /^\.env(\.|$)/;
@@ -300,14 +336,14 @@ const resolveDotenvFingerprint = (projectDirectory: string): ReadonlyArray<strin
 // files and different project contents would key identically; a non-"H"
 // entry means assume-unchanged / skip-worktree bits hide tracked-file changes
 // from every fingerprint built on `git status`.
-const isGitIdentityTrustworthy = (projectDirectory: string): boolean => {
-  const output = runGit(projectDirectory, ["ls-files", "-v"]);
+const isGitIdentityTrustworthy = async (projectDirectory: string): Promise<boolean> => {
+  const output = await runGitAsync(projectDirectory, TRACKED_FILE_FLAGS_GIT_ARGUMENTS);
   if (output === null) return false;
   const entryLines = output.split("\n").filter((line) => line.length > 0);
   return entryLines.length > 0 && entryLines.every((line) => line[0] === "H");
 };
 
-// Sits beside the per-file lint / sidecar / dead-code caches under the shared
+// Sits beside the per-file lint and sidecar caches under the shared
 // cache root, so the `REACT_DOCTOR_CACHE_DIR` override the GitHub Action sets
 // (a `${runner.temp}` path persisted by `actions/cache`) carries the whole-repo
 // scan cache across CI runs too — the project-local `node_modules/.cache`
@@ -333,8 +369,9 @@ const readPersistedCache = (cacheFilePath: string): PersistedScanResultCache => 
       ) {
         continue;
       }
-      if (!isRecord(entry.payload) || !Array.isArray(entry.payload.diagnostics)) continue;
-      entries.push(entry as unknown as PersistedScanResultCacheEntry);
+      const payload = decodeCachedScanPayload(entry.payload);
+      if (payload === null) continue;
+      entries.push({ key: entry.key, createdAtMs: entry.createdAtMs, payload });
     }
     return { version: SCAN_RESULT_CACHE_SCHEMA_VERSION, entries };
   } catch {
@@ -342,28 +379,15 @@ const readPersistedCache = (cacheFilePath: string): PersistedScanResultCache => 
   }
 };
 
-const writePersistedCache = (cacheFilePath: string, cache: PersistedScanResultCache): void => {
-  try {
-    fs.mkdirSync(path.dirname(cacheFilePath), { recursive: true });
-    const tempPath = `${cacheFilePath}.${process.pid}.tmp`;
-    fs.writeFileSync(tempPath, JSON.stringify(cache));
-    fs.renameSync(tempPath, cacheFilePath);
-  } catch {
-    return;
-  }
-};
-
 /**
  * The global cache off-switch (`REACT_DOCTOR_NO_CACHE`), which disables every
  * cache subsystem: this whole-repo scan cache plus core's per-file lint,
- * sidecar, and dead-code caches (their `Context.Reference` defaults read the
+ * sidecar caches (their `Context.Reference` defaults read the
  * same variable). Exported for the wide event's `cache.temperature`
  * derivation, which reports `"disabled"` instead of `"cold"` when the switch
  * is on. Granular knobs (`REACT_DOCTOR_NO_FILE_CACHE`, …) are deliberately
  * not consulted — they leave the other subsystems live.
  */
-export const isCacheGloballyDisabled = (): boolean =>
-  CACHE_DISABLED_VALUES.has(process.env.REACT_DOCTOR_NO_CACHE?.toLowerCase() ?? "");
 
 const resolveProjectIdentity = (projectDirectory: string): string => {
   try {
@@ -385,12 +409,9 @@ const fileFingerprint = (filePath: string): string | null => {
   }
 };
 
-// Versioned (not file-fingerprinted) like the lint ruleset hash, so the key
-// survives a restored/re-extracted install in CI — extraction mtimes are an
-// implementation detail of the installer, not toolchain identity. The one
-// exception: a foreign oxlint Node (the nvm fallback) keeps the conservative
-// stat identity rather than paying a version-probe subprocess here.
-const resolveToolchainFingerprint = (nodeBinaryPath: string | null): ReadonlyArray<string> => {
+export const resolveScanResultToolchainFingerprint = (
+  nodeBinaryPath: string | null,
+): ReadonlyArray<string> => {
   const fingerprints: string[] = [];
   if (nodeBinaryPath !== null) {
     fingerprints.push(
@@ -408,27 +429,36 @@ const resolveToolchainFingerprint = (nodeBinaryPath: string | null): ReadonlyArr
       fingerprints.push(`${specifier}=missing`);
     }
   }
+  fingerprints.push(RULE_PLUGIN_CONTENT_FINGERPRINT);
   return fingerprints;
 };
 
-export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string | null => {
-  if (isCacheGloballyDisabled()) return null;
-  if (!isGitIdentityTrustworthy(input.projectDirectory)) return null;
-  const worktreeFingerprint = buildWorktreeFingerprint(input.projectDirectory);
-  if (worktreeFingerprint === null) return null;
-  const headSha = readHeadSha(input.projectDirectory);
-  if (headSha === null) return null;
+export const buildScanResultCacheKey = async (
+  input: ScanResultCacheKeyInput,
+): Promise<string | null> => {
+  if (isCacheGloballyDisabled() || input.options.baselineReport) return null;
+  const isTrustworthyPromise = isGitIdentityTrustworthy(input.projectDirectory);
+  const repositoryIdentityPromise = resolveRepositoryCacheIdentity(
+    input.projectDirectory,
+    input.invocationState,
+    runGitAsync(input.projectDirectory, REPOSITORY_ROOT_GIT_ARGUMENTS),
+  );
+  const [isTrustworthy, repositoryIdentity] = await Promise.all([
+    isTrustworthyPromise,
+    repositoryIdentityPromise,
+  ]);
+  if (!isTrustworthy || repositoryIdentity === null) return null;
   const userConfigJson = stringifyStableJson(input.userConfig);
   if (userConfigJson === null) return null;
   const cacheKeyJson = stringifyStableJson({
     schemaVersion: SCAN_RESULT_CACHE_SCHEMA_VERSION,
     projectIdentity: resolveProjectIdentity(input.projectDirectory),
-    headSha,
-    worktreeFingerprint,
+    headSha: repositoryIdentity.headSha,
+    worktreeFingerprint: repositoryIdentity.worktreeFingerprint,
     dotenvFingerprint: resolveDotenvFingerprint(input.projectDirectory),
     reactDoctorVersion: input.version,
     nodeVersion: process.version,
-    toolchainFingerprint: resolveToolchainFingerprint(input.nodeBinaryPath),
+    toolchainFingerprint: resolveScanResultToolchainFingerprint(input.nodeBinaryPath),
     configFingerprint: computeConfigFingerprint(input.projectDirectory, input.version),
     hasConfigOverride: input.hasConfigOverride,
     configSourceDirectory: input.configSourceDirectory,
@@ -442,6 +472,9 @@ export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string 
       // lookup must not serve a supply-chain-on payload at the same commit.
       supplyChain: input.options.supplyChain,
       includePaths: [...input.options.includePaths].sort(),
+      excludedProjectDirectories: [...(input.options.excludedProjectDirectories ?? [])].sort(),
+      retainExcludedProjectDeadCodeDiagnostics:
+        input.options.retainExcludedProjectDeadCodeDiagnostics ?? false,
       customRulesOnly: input.options.customRulesOnly,
       respectInlineDisables: input.options.respectInlineDisables,
       warnings: input.options.warnings,
@@ -465,7 +498,7 @@ export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string 
       supplyChainManifestChanged: input.options.supplyChainManifestChanged,
       // `maxDurationMs` is deliberately NOT keyed. It only changes the RESULT
       // when the budget is hit, and every such truncated run (lint partial or
-      // dead-code skipped) is barred from the cache by `shouldStoreScanPayload`
+      // maintainability skipped) is barred from the cache by `shouldStoreScanPayload`
       // below. So a stored payload is always COMPLETE, and serving it to a
       // `--max-duration` lookup honors the budget (a cache hit finishes well
       // under any ceiling) with the best possible result. Keying on it would
@@ -483,10 +516,15 @@ export const createScanResultCache = (projectDirectory: string): ScanResultCache
   for (const entry of persistedCache.entries) entries.set(entry.key, entry);
 
   const persist = (): void => {
-    const prunedEntries = [...entries.values()]
+    const mergedEntries = new Map<string, PersistedScanResultCacheEntry>();
+    for (const entry of readPersistedCache(cacheFilePath).entries) {
+      mergedEntries.set(entry.key, entry);
+    }
+    for (const entry of entries.values()) mergedEntries.set(entry.key, entry);
+    const prunedEntries = [...mergedEntries.values()]
       .sort((firstEntry, secondEntry) => secondEntry.createdAtMs - firstEntry.createdAtMs)
       .slice(0, SCAN_RESULT_CACHE_MAX_ENTRY_COUNT);
-    writePersistedCache(cacheFilePath, {
+    atomicWriteJson(cacheFilePath, {
       version: SCAN_RESULT_CACHE_SCHEMA_VERSION,
       entries: prunedEntries,
     });
@@ -515,18 +553,3 @@ export const createScanResultCache = (projectDirectory: string): ScanResultCache
     },
   };
 };
-
-export const shouldStoreScanPayload = (payload: CachedScanPayload): boolean =>
-  !payload.didLintFail &&
-  !payload.didDeadCodeFail &&
-  payload.lintPartialFailures.length === 0 &&
-  // A supply-chain overlap timeout means the cached diagnostics are missing
-  // their supply-chain findings; don't persist a degraded result — re-attempt
-  // the check on the next run instead. This also keeps the timeout kill metric
-  // clean: a stored payload therefore always carries
-  // `supplyChainOverlapTimedOut: false`, so a cache hit never replays a stale
-  // `true`.
-  !payload.supplyChainOverlapTimedOut &&
-  // Same reasoning for a failed (fail-open) security scan: its diagnostics
-  // are missing the whole pass, so the result must not be replayed.
-  payload.securityScanFailed !== true;

@@ -6,6 +6,10 @@ import { isCommandAvailable } from "./is-command-available.js";
 
 const isWindows = process.platform === "win32";
 
+export type CliAgentId = "claude-code" | "codex" | "cursor";
+
+export const CLI_AGENT_IDS: ReadonlyArray<CliAgentId> = ["claude-code", "codex", "cursor"];
+
 // CLI agents we can hand off to by launching their binary with the prompt
 // as the initial argument and inheriting the current terminal — so the
 // agent takes over this TTY and control returns here when it exits. This
@@ -16,9 +20,7 @@ export const CLI_AGENT_BINARIES = {
   "claude-code": "claude",
   codex: "codex",
   cursor: "cursor-agent",
-} as const satisfies Partial<Record<SkillAgentType, string>>;
-
-export type CliAgentId = keyof typeof CLI_AGENT_BINARIES;
+} satisfies Record<CliAgentId, string> & Partial<Record<SkillAgentType, string>>;
 
 // Each agent's "auto-run / skip-approval" flag. We hand off so the agent can
 // FIX the issues end-to-end; stopping to confirm every edit & command would

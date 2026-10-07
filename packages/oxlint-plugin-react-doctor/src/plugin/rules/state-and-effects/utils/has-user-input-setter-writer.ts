@@ -2,10 +2,7 @@ import type { Reference, Variable } from "eslint-scope";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
-import {
-  getFunctionBindingIdentifier,
-  getFunctionBindingName,
-} from "../../../utils/get-function-binding-name.js";
+import { getFunctionBindingIdentifier } from "../../../utils/get-function-binding-name.js";
 import { getJsxAttributeName } from "../../../utils/get-jsx-attribute-name.js";
 import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
@@ -17,8 +14,6 @@ import { getCallExpr } from "./effect/ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
 import { isGenuineReactHookDeclarator } from "./effect/react.js";
 import { isSetterWiredToJsxHandler } from "./is-controlled-prop-mirror.js";
-
-const HANDLER_BINDING_NAME_PATTERN = /^(on|handle)[A-Z_]/;
 
 const isEventHandlerPropertyKey = (property: EsTreeNode): boolean =>
   isNodeOfType(property, "Property") &&
@@ -83,9 +78,9 @@ const isIndependentWriterIdentifier = (
     cursor = cursor.parent ?? null;
   }
   if (!outermostFunctionBelowComponent) return false;
-  const bindingName = getFunctionBindingName(outermostFunctionBelowComponent);
+  const bindingIdentifier = getFunctionBindingIdentifier(outermostFunctionBelowComponent);
+  const bindingName = isNodeOfType(bindingIdentifier, "Identifier") ? bindingIdentifier.name : null;
   if (!bindingName) return false;
-  if (HANDLER_BINDING_NAME_PATTERN.test(bindingName)) return true;
   return isSetterWiredToJsxHandler(componentFunction, bindingName);
 };
 

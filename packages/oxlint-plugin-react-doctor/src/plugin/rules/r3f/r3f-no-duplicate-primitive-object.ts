@@ -1,4 +1,4 @@
-import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -11,11 +11,10 @@ import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { MINIMUM_PROVABLY_REPEATED_ITEM_COUNT } from "./constants.js";
+import { findProvablyRepeatedMapCallsForCallback } from "./utils/find-provably-repeated-map-calls-for-callback.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 
 interface MountGuard {
@@ -198,67 +197,6 @@ const findMountSites = (
   return renderedReferences.length > 0 ? renderedReferences : [node];
 };
 
-const getDirectMapCallsForFunction = (
-  functionNode: EsTreeNode,
-  context: RuleContext,
-): Set<EsTreeNodeOfType<"CallExpression">> => {
-  const mapCalls = new Set<EsTreeNodeOfType<"CallExpression">>();
-  const functionRoot = findTransparentExpressionRoot(functionNode);
-  const directCall = functionRoot.parent;
-  if (isNodeOfType(directCall, "CallExpression") && directCall.arguments[0] === functionRoot) {
-    mapCalls.add(directCall);
-  }
-  const declaration = functionRoot.parent;
-  let bindingIdentifier: EsTreeNodeOfType<"Identifier"> | null = null;
-  if (isNodeOfType(functionNode, "FunctionDeclaration")) {
-    bindingIdentifier = functionNode.id;
-  } else if (
-    isNodeOfType(declaration, "VariableDeclarator") &&
-    declaration.init === functionRoot &&
-    isNodeOfType(declaration.id, "Identifier")
-  ) {
-    bindingIdentifier = declaration.id;
-  }
-  let functionSymbol: SymbolDescriptor | null | undefined;
-  if (bindingIdentifier && isNodeOfType(functionNode, "FunctionDeclaration")) {
-    functionSymbol = context.scopes
-      .scopeFor(functionNode)
-      .symbolsByName.get(bindingIdentifier.name);
-  } else if (bindingIdentifier) {
-    functionSymbol = context.scopes.symbolFor(bindingIdentifier);
-  }
-  if (!functionSymbol) return mapCalls;
-  for (const reference of functionSymbol.references) {
-    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
-    const call = referenceRoot.parent;
-    if (
-      isNodeOfType(call, "CallExpression") &&
-      call.arguments[0] === referenceRoot &&
-      resolveExactLocalFunction(referenceRoot, context.scopes) === functionNode
-    ) {
-      mapCalls.add(call);
-    }
-  }
-  return mapCalls;
-};
-
-const isProvablyRepeatedMapCall = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
-  if (
-    !isNodeOfType(call.callee, "MemberExpression") ||
-    call.callee.computed ||
-    !isNodeOfType(call.callee.property, "Identifier") ||
-    call.callee.property.name !== "map"
-  ) {
-    return false;
-  }
-  const collection = stripParenExpression(call.callee.object);
-  return (
-    isNodeOfType(collection, "ArrayExpression") &&
-    collection.elements.length >= MINIMUM_PROVABLY_REPEATED_ITEM_COUNT &&
-    collection.elements.every((element) => element && !isNodeOfType(element, "SpreadElement"))
-  );
-};
-
 const isInsideProvablyRepeatedMap = (
   node: EsTreeNode,
   objectExpression: EsTreeNode,
@@ -281,10 +219,8 @@ const isInsideProvablyRepeatedMap = (
     if (
       mountsOnEveryIteration &&
       (!rootSymbol || !isAstDescendant(rootSymbol.bindingIdentifier, currentFunction)) &&
-      [...getDirectMapCallsForFunction(currentFunction, context)].some(
-        (mapCall) =>
-          Boolean(findRenderPhaseComponentOrHook(mapCall, context.scopes)) &&
-          isProvablyRepeatedMapCall(mapCall),
+      findProvablyRepeatedMapCallsForCallback(currentFunction, context).some((mapCall) =>
+        Boolean(findRenderPhaseComponentOrHook(mapCall, context.scopes)),
       )
     ) {
       return true;

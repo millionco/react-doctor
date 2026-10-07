@@ -1,6 +1,7 @@
 import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
 import { parseFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
-import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
+import type { ParseFixtureResult } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
+import { runRuleOnParsedFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
 import { runScanRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-scan-rule.js";
 import {
   CORPUS_PROGRAM_PROBABILITY,
@@ -25,8 +26,14 @@ const EFFECT_CALLBACK_ALIAS_RULE_IDS = new Set([
   "no-effect-chain",
   "no-fetch-in-effect",
 ]);
+const CLEANUP_CALL_ALIAS_RULE_IDS = new Set(["effect-needs-cleanup"]);
 
-export type FuzzFindingKind = "crash" | "slow" | "invariant-violation" | "verdict-drop";
+export type FuzzFindingKind =
+  | "crash"
+  | "slow"
+  | "invariant-violation"
+  | "verdict-drop"
+  | "verdict-mismatch";
 
 export interface FuzzFinding {
   ruleId: string;
@@ -45,6 +52,8 @@ export interface FuzzRuleStats {
   firedProgramCount: number;
   executedProgramCount: number;
   skippedParseErrorCount: number;
+  totalElapsedMs: number;
+  maximumElapsedMs: number;
 }
 
 export interface FuzzRuleResult {
@@ -59,37 +68,53 @@ export interface FuzzRuleOptions {
   checkInvariants?: boolean;
   corpus?: ReadonlyArray<FuzzCorpusEntry>;
   priorityCorpusEntry?: FuzzCorpusEntry;
+  settings?: Readonly<Record<string, unknown>>;
 }
 
 interface RunOutcome {
   diagnosticSignature?: string[];
   crashDetail?: string;
   elapsedMs: number;
+  hasParseErrors?: boolean;
 }
 
-// Parseability is checked BEFORE the crash oracle runs — oxlint never runs
-// rules on unparseable files, so a rule throw on one is not a real crash.
-// `forceJsx` mirrors the run below: the rotated filename's extension is for
-// path gating, not lang selection.
-const hasParseErrors = (code: string, filename: string): boolean => {
-  try {
-    return parseFixture(code, { filename, forceJsx: true }).errors.length > 0;
-  } catch {
-    return true;
-  }
-};
-
-const runRuleOnCode = (rule: Rule, code: string, filename: string): RunOutcome => {
-  const startedAt = performance.now();
-  try {
-    if (typeof rule.scan === "function") {
+const runRuleOnCode = (
+  rule: Rule,
+  code: string,
+  filename: string,
+  settings?: Readonly<Record<string, unknown>>,
+): RunOutcome => {
+  if (typeof rule.scan === "function") {
+    const startedAt = performance.now();
+    try {
       const findings = runScanRule(rule, { relativePath: filename, content: code });
       return {
         diagnosticSignature: findings.map((finding) => finding.message).sort(),
         elapsedMs: performance.now() - startedAt,
       };
+    } catch (thrown) {
+      const detail = thrown instanceof Error ? (thrown.stack ?? thrown.message) : String(thrown);
+      return { crashDetail: detail, elapsedMs: performance.now() - startedAt };
     }
-    const result = runRule(rule, code, { filename, forceJsx: true });
+  }
+
+  let parsed: ParseFixtureResult;
+  try {
+    parsed = parseFixture(code, { filename, forceJsx: true });
+  } catch {
+    return { elapsedMs: 0, hasParseErrors: true };
+  }
+  if (parsed.errors.length > 0) {
+    return { elapsedMs: 0, hasParseErrors: true };
+  }
+
+  const startedAt = performance.now();
+  try {
+    const result = runRuleOnParsedFixture(rule, code, parsed, {
+      filename,
+      forceJsx: true,
+      settings,
+    });
     return {
       diagnosticSignature: result.diagnostics
         .map((diagnostic) => `${diagnostic.nodeType}: ${diagnostic.message}`)
@@ -122,11 +147,14 @@ export const fuzzRuleWithStats = (
   const baseSeed = options.seed ?? 1;
   const slowThresholdMs = options.slowThresholdMs ?? SLOW_RULE_THRESHOLD_MS;
   const corpus = options.corpus ?? [];
+  const settings = options.settings;
   const findings: FuzzFinding[] = [];
   const stats: FuzzRuleStats = {
     firedProgramCount: 0,
     executedProgramCount: 0,
     skippedParseErrorCount: 0,
+    totalElapsedMs: 0,
+    maximumElapsedMs: 0,
   };
   const isScanRule = typeof rule.scan === "function";
   const targetFilePrefix = `${ruleId.replaceAll("/", "__")}--`;
@@ -143,12 +171,14 @@ export const fuzzRuleWithStats = (
     iteration: number,
     variantLabel?: string,
   ): RunOutcome | null => {
-    if (!isScanRule && hasParseErrors(code, filename)) {
+    const outcome = runRuleOnCode(rule, code, filename, settings);
+    if (!isScanRule && outcome.hasParseErrors === true) {
       stats.skippedParseErrorCount += 1;
       return null;
     }
-    const outcome = runRuleOnCode(rule, code, filename);
     stats.executedProgramCount += 1;
+    stats.totalElapsedMs += outcome.elapsedMs;
+    stats.maximumElapsedMs = Math.max(stats.maximumElapsedMs, outcome.elapsedMs);
     if (outcome.crashDetail !== undefined) {
       findings.push({
         ruleId,
@@ -169,7 +199,7 @@ export const fuzzRuleWithStats = (
       // slow on every run, while a descheduled one drops to milliseconds.
       let fastestElapsedMs = outcome.elapsedMs;
       for (let retry = 0; retry < SLOW_VERIFY_RERUN_COUNT; retry += 1) {
-        const rerun = runRuleOnCode(rule, code, filename);
+        const rerun = runRuleOnCode(rule, code, filename, settings);
         if (rerun.elapsedMs < fastestElapsedMs) fastestElapsedMs = rerun.elapsedMs;
         if (fastestElapsedMs <= slowThresholdMs) break;
       }
@@ -193,7 +223,7 @@ export const fuzzRuleWithStats = (
     const priorityRandom = createSeededRandom(baseSeed);
     const priorityOutcome = checkProgram(
       priorityCorpusEntry.code,
-      priorityCorpusEntry.relativePath,
+      priorityCorpusEntry.sourcePath ?? priorityCorpusEntry.relativePath,
       baseSeed,
       0,
       "priority corpus seed",
@@ -207,13 +237,37 @@ export const fuzzRuleWithStats = (
         const descendantCode = mutateFuzzProgram(priorityCorpusEntry.code, priorityRandom, 1);
         checkProgram(
           descendantCode,
-          priorityCorpusEntry.relativePath,
+          priorityCorpusEntry.sourcePath ?? priorityCorpusEntry.relativePath,
           baseSeed,
           0,
           `priority corpus descendant ${descendant}`,
         );
       }
     }
+  }
+
+  for (const corpusEntry of corpus) {
+    if (!corpusEntry.verdict || !corpusEntry.ruleIds?.includes(ruleId)) continue;
+    const corpusOutcome = checkProgram(
+      corpusEntry.code,
+      corpusEntry.sourcePath ?? corpusEntry.relativePath,
+      baseSeed,
+      0,
+      "declared corpus verdict",
+    );
+    if (!corpusOutcome || corpusOutcome.crashDetail !== undefined) continue;
+    const didFire = (corpusOutcome.diagnosticSignature?.length ?? 0) > 0;
+    const shouldFire = corpusEntry.verdict === "fail";
+    if (didFire === shouldFire) continue;
+    findings.push({
+      ruleId,
+      kind: "verdict-mismatch",
+      seed: baseSeed,
+      iteration: 0,
+      detail: `${corpusEntry.relativePath} declared ${corpusEntry.verdict} but produced ${corpusOutcome.diagnosticSignature?.length ?? 0} diagnostics`,
+      code: corpusEntry.code,
+      variantLabel: "declared corpus verdict",
+    });
   }
 
   for (let iteration = 0; iteration < iterations; iteration += 1) {
@@ -238,7 +292,7 @@ export const fuzzRuleWithStats = (
         // the file as it really lives; synthetic/crossover programs keep
         // the rotated pool filename for path-gating coverage.
         code = corpusEntry.code;
-        filename = corpusEntry.relativePath;
+        filename = corpusEntry.sourcePath ?? corpusEntry.relativePath;
       }
       sections = undefined;
     }
@@ -277,19 +331,14 @@ export const fuzzRuleWithStats = (
     if (didFire) {
       for (const variant of buildVerdictPreservingVariants(code, filename)) {
         if (!variant.mustPreserveVerdict) continue;
-        const variantOutcome = runRuleOnCode(rule, variant.code, filename);
-        if (variantOutcome.crashDetail !== undefined) {
-          findings.push({
-            ruleId,
-            kind: "crash",
-            seed: iterationSeed,
-            iteration,
-            detail: variantOutcome.crashDetail,
-            code: variant.code,
-            variantLabel: variant.label,
-          });
-          continue;
-        }
+        const variantOutcome = checkProgram(
+          variant.code,
+          filename,
+          iterationSeed,
+          iteration,
+          variant.label,
+        );
+        if (variantOutcome === null || variantOutcome.crashDetail !== undefined) continue;
         if ((variantOutcome.diagnosticSignature?.length ?? 0) === 0) {
           findings.push({
             ruleId,
@@ -306,22 +355,21 @@ export const fuzzRuleWithStats = (
 
     for (const variant of [
       ...buildEquivalentFuzzVariants(code, sections),
-      ...buildAstEquivalentFuzzVariants(code, filename, EFFECT_CALLBACK_ALIAS_RULE_IDS.has(ruleId)),
+      ...buildAstEquivalentFuzzVariants(
+        code,
+        filename,
+        EFFECT_CALLBACK_ALIAS_RULE_IDS.has(ruleId),
+        CLEANUP_CALL_ALIAS_RULE_IDS.has(ruleId),
+      ),
     ]) {
-      if (hasParseErrors(variant.code, filename)) continue;
-      const variantOutcome = runRuleOnCode(rule, variant.code, filename);
-      if (variantOutcome.crashDetail !== undefined) {
-        findings.push({
-          ruleId,
-          kind: "crash",
-          seed: iterationSeed,
-          iteration,
-          detail: variantOutcome.crashDetail,
-          code: variant.code,
-          variantLabel: variant.label,
-        });
-        continue;
-      }
+      const variantOutcome = checkProgram(
+        variant.code,
+        filename,
+        iterationSeed,
+        iteration,
+        variant.label,
+      );
+      if (variantOutcome === null || variantOutcome.crashDetail !== undefined) continue;
       const baseSignature = JSON.stringify(outcome.diagnosticSignature);
       const variantSignature = JSON.stringify(variantOutcome.diagnosticSignature);
       if (baseSignature !== variantSignature) {

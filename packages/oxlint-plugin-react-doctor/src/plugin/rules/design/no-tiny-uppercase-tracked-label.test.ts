@@ -19,10 +19,34 @@ describe("no-tiny-uppercase-tracked-label", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("uses the final size, casing, and tracking utilities", () => {
+  it("stays quiet when size, casing, or tracking utilities conflict", () => {
     const result = runRule(
       noTinyUppercaseTrackedLabel,
       `const Labels = () => <><span className="text-[10px] text-sm uppercase tracking-wide">Recent activity</span><span className="text-[10px] uppercase normal-case tracking-wide">Recent activity</span><span className="text-[10px] uppercase tracking-wide tracking-normal">Recent activity</span><span className="text-sm text-[10px] normal-case uppercase tracking-normal tracking-tight">Recent activity</span></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when important utilities conflict", () => {
+    const result = runRule(
+      noTinyUppercaseTrackedLabel,
+      `const Labels = () => <><span className="!text-[10px] !text-sm uppercase tracking-wide">Size</span><span className="text-[10px] !uppercase !normal-case tracking-wide">Case</span><span className="text-[10px] uppercase !tracking-wide !tracking-normal">Tracking</span></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("honors important size, casing, and tracking precedence", () => {
+    const result = runRule(
+      noTinyUppercaseTrackedLabel,
+      `const Labels = () => <><span className="!text-xs text-[10px] uppercase tracking-wide">Readable important size</span><span className="text-xs !text-[10px] text-xs uppercase tracking-wide">Tiny important size</span><span className="text-[10px] !normal-case uppercase tracking-wide">Normal case</span><span className="text-[10px] normal-case !uppercase normal-case tracking-wide">Uppercase</span><span className="text-[10px] uppercase !tracking-normal tracking-wide">Normal tracking</span></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("supports type-hinted arbitrary font lengths", () => {
+    const result = runRule(
+      noTinyUppercaseTrackedLabel,
+      `const Label = () => <span className="text-[length:10px] uppercase tracking-wide">Recent activity</span>;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -35,10 +59,18 @@ describe("no-tiny-uppercase-tracked-label", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("ignores responsive-only ingredients and zero arbitrary tracking", () => {
+  it("ignores responsive-only ingredients and zero arbitrary tracking in any unit", () => {
     const result = runRule(
       noTinyUppercaseTrackedLabel,
-      `const Labels = () => <><span className="text-[10px] md:uppercase tracking-wide">Recent activity</span><span className="text-[10px] uppercase md:tracking-wide">Recent activity</span><span className="text-[10px] uppercase tracking-[0em]">Recent activity</span></>;`,
+      `const Labels = () => <><span className="text-[10px] md:uppercase tracking-wide">Recent activity</span><span className="text-[10px] uppercase md:tracking-wide">Recent activity</span><span className="text-[10px] uppercase tracking-[0em]">Recent activity</span><span className="text-[10px] uppercase tracking-wide tracking-[0rem]">Recent activity</span></>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores malformed arbitrary font sizes", () => {
+    const result = runRule(
+      noTinyUppercaseTrackedLabel,
+      `const Labels = () => <span className="text-[..px] uppercase tracking-wide">Recent activity</span>;`,
     );
     expect(result.diagnostics).toEqual([]);
   });
@@ -47,6 +79,14 @@ describe("no-tiny-uppercase-tracked-label", () => {
     const result = runRule(
       noTinyUppercaseTrackedLabel,
       `const Label = ({ props }) => <span className="text-[10px] uppercase tracking-wide" {...props}>Recent activity</span>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("skips inline styles that can override the visual claim", () => {
+    const result = runRule(
+      noTinyUppercaseTrackedLabel,
+      `const Label = () => <span className="text-[10px] uppercase tracking-wide" style={{ fontSize: 16 }}>Recent activity</span>;`,
     );
     expect(result.diagnostics).toEqual([]);
   });

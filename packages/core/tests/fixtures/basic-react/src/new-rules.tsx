@@ -35,8 +35,8 @@ export const cachePropertyAccessHotLoop = (items: Item[]): number => {
 export const lengthCheckFirst = (a: number[], b: number[]): boolean =>
   a.every((value, index) => value === b[index]);
 
-export const intlInRender = (amount: number, locale: string): string => {
-  const formatter = new Intl.NumberFormat(locale, { style: "currency", currency: "USD" });
+export const intlInRender = (amount: number): string => {
+  const formatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
   return formatter.format(amount);
 };
 

@@ -1,0 +1,338 @@
+// rule: dangerous-html-sink
+// file-path: src/game/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 2e18828b689a80242d5cc9766b0b80670e9e2f75d65abb96f6785ed3fd54c1d5
+// DOM overlay: timing, sector deltas, boost, and a small circuit map.
+
+import type { Track } from "../world/track";
+import { SECTORS, TOTAL_LAPS, formatDelta, formatShort, formatTime } from "./race";
+import type { Race } from "./race";
+
+export interface HudFrame {
+  speedKph: number;
+  boost: number;
+  boostMax: number;
+  boostActive: boolean;
+  surface: string;
+  gripUse: number;
+  bankAssist: number;
+  cameraName: string;
+  delta: number | null;
+  hasGhost: boolean;
+  carProgress: number;
+  ghostProgress: number | null;
+  lineVisible: boolean;
+}
+
+const el = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] => {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+};
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private lapCounter: HTMLElement;
+  private lapTimer: HTMLElement;
+  private deltaBox: HTMLElement;
+  private deltaValue: HTMLElement;
+  private sectorRows: HTMLElement[] = [];
+  private sectorTimes: HTMLElement[] = [];
+  private sectorDeltas: HTMLElement[] = [];
+  private bestLapValue: HTMLElement;
+  private theoretical: HTMLElement;
+  private speedValue: HTMLElement;
+  private surfaceValue: HTMLElement;
+  private gripFill: HTMLElement;
+  private bankValue: HTMLElement;
+  private boostFill: HTMLElement;
+  private resetValue: HTMLElement;
+  private cameraValue: HTMLElement;
+  private lineValue: HTMLElement;
+  private overlay: HTMLElement;
+  private splitBanner: HTMLElement;
+  private map: HTMLCanvasElement;
+  private mapCtx: CanvasRenderingContext2D | null;
+  private mapPoints: Array<[number, number]> = [];
+  private mapSectorMarks: Array<[number, number]> = [];
+  private hints: HTMLElement;
+
+  constructor(private track: Track) {
+    this.root = el("div", "hud");
+
+    // Top-left: lap and running lap time.
+    const lapPanel = el("div", "panel panel-lap");
+    this.lapCounter = el("div", "lap-counter", `LAP <b>1</b> / ${TOTAL_LAPS}`);
+    this.lapTimer = el("div", "lap-timer", "0:00.000");
+    lapPanel.append(this.lapCounter, this.lapTimer);
+
+    // Top-centre: live delta to the best lap.
+    this.deltaBox = el("div", "delta-box");
+    const deltaLabel = el("div", "delta-label", "VS BEST");
+    this.deltaValue = el("div", "delta-value", "--.---");
+    this.deltaBox.append(deltaLabel, this.deltaValue);
+
+    // Top-right: sector board.
+    const sectorPanel = el("div", "panel panel-sectors");
+    sectorPanel.append(el("div", "panel-title", "SECTORS"));
+    for (let i = 0; i < SECTORS; i++) {
+      const row = el("div", "sector-row");
+      const name = el("span", "sector-name", `S${i + 1}`);
+      const time = el("span", "sector-time", "--.---");
+      const delta = el("span", "sector-delta", "");
+      row.append(name, time, delta);
+      sectorPanel.append(row);
+      this.sectorRows.push(row);
+      this.sectorTimes.push(time);
+      this.sectorDeltas.push(delta);
+    }
+    const bestRow = el("div", "sector-row best-row");
+    bestRow.append(el("span", "sector-name", "BEST"));
+    this.bestLapValue = el("span", "sector-time", "--:--.---");
+    bestRow.append(this.bestLapValue, el("span", "sector-delta", ""));
+    sectorPanel.append(bestRow);
+    const theoRow = el("div", "sector-row theo-row");
+    theoRow.append(el("span", "sector-name", "OPT"));
+    this.theoretical = el("span", "sector-time", "--:--.---");
+    theoRow.append(this.theoretical, el("span", "sector-delta", ""));
+    sectorPanel.append(theoRow);
+
+    // Bottom-left: speed and grip.
+    const speedPanel = el("div", "panel panel-speed");
+    const speedWrap = el("div", "speed-wrap");
+    this.speedValue = el("div", "speed-value", "0");
+    speedWrap.append(this.speedValue, el("div", "speed-unit", "km/h"));
+    speedPanel.append(speedWrap);
+    const gripWrap = el("div", "meter");
+    gripWrap.append(el("span", "meter-label", "GRIP"));
+    const gripTrack = el("div", "meter-track");
+    this.gripFill = el("div", "meter-fill grip-fill");
+    gripTrack.append(this.gripFill);
+    gripWrap.append(gripTrack);
+    speedPanel.append(gripWrap);
+    const info = el("div", "info-row");
+    this.surfaceValue = el("span", "chip", "TARMAC");
+    this.bankValue = el("span", "chip", "BANK 0.0");
+    info.append(this.surfaceValue, this.bankValue);
+    speedPanel.append(info);
+
+    // Bottom-right: boost, resets, camera.
+    const boostPanel = el("div", "panel panel-boost");
+    const boostWrap = el("div", "meter");
+    boostWrap.append(el("span", "meter-label", "BOOST"));
+    const boostTrack = el("div", "meter-track");
+    this.boostFill = el("div", "meter-fill boost-fill");
+    boostTrack.append(this.boostFill);
+    boostWrap.append(boostTrack);
+    boostPanel.append(boostWrap);
+    const boostInfo = el("div", "info-row");
+    this.resetValue = el("span", "chip", "RESET 1");
+    this.cameraValue = el("span", "chip", "CAM CHASE");
+    this.lineValue = el("span", "chip", "LINE ON");
+    boostInfo.append(this.resetValue, this.cameraValue, this.lineValue);
+    boostPanel.append(boostInfo);
+
+    // Circuit map.
+    const mapPanel = el("div", "panel panel-map");
+    this.map = el("canvas", "map-canvas");
+    this.map.width = 190;
+    this.map.height = 190;
+    this.mapCtx = this.map.getContext("2d");
+    mapPanel.append(this.map);
+
+    this.overlay = el("div", "overlay");
+    this.splitBanner = el("div", "split-banner");
+    this.hints = el(
+      "div",
+      "hints",
+      "<b>WASD</b> / arrows drive &nbsp;·&nbsp; <b>Space</b> brake &nbsp;·&nbsp; <b>Shift</b> boost &nbsp;·&nbsp; <b>C</b> recentre camera &nbsp;·&nbsp; <b>V</b> view &nbsp;·&nbsp; <b>L</b> racing line &nbsp;·&nbsp; <b>R</b> restart",
+    );
+
+    this.root.append(
+      lapPanel,
+      this.deltaBox,
+      sectorPanel,
+      speedPanel,
+      boostPanel,
+      mapPanel,
+      this.splitBanner,
+      this.overlay,
+      this.hints,
+    );
+
+    this.buildMapPoints();
+  }
+
+  private buildMapPoints(): void {
+    const smp = this.track.samples;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const s of smp) {
+      minX = Math.min(minX, s.pos.x);
+      maxX = Math.max(maxX, s.pos.x);
+      minZ = Math.min(minZ, s.pos.z);
+      maxZ = Math.max(maxZ, s.pos.z);
+    }
+    const pad = 12;
+    const w = this.map.width - pad * 2;
+    const h = this.map.height - pad * 2;
+    const scale = Math.min(w / (maxX - minX), h / (maxZ - minZ));
+    const ox = pad + (w - (maxX - minX) * scale) / 2;
+    const oz = pad + (h - (maxZ - minZ) * scale) / 2;
+    this.mapProject = (x: number, z: number): [number, number] => [
+      ox + (x - minX) * scale,
+      oz + (z - minZ) * scale,
+    ];
+    for (let i = 0; i < smp.length; i += 3) {
+      const p = smp[i]!.pos;
+      this.mapPoints.push(this.mapProject(p.x, p.z));
+    }
+    for (let k = 0; k < SECTORS; k++) {
+      const p = this.track.sampleAt((this.track.length * k) / SECTORS).pos;
+      this.mapSectorMarks.push(this.mapProject(p.x, p.z));
+    }
+  }
+
+  private mapProject: (x: number, z: number) => [number, number] = () => [0, 0];
+
+  update(race: Race, frame: HudFrame, now: number): void {
+    this.lapCounter.innerHTML = `LAP <b>${Math.min(race.lap + 1, TOTAL_LAPS)}</b> / ${TOTAL_LAPS}`;
+    this.lapTimer.textContent = formatTime(race.phase === "countdown" ? 0 : race.lapTime);
+
+    // Delta.
+    if (frame.delta === null || !frame.hasGhost) {
+      this.deltaBox.classList.add("muted");
+      this.deltaValue.textContent = "--.---";
+      this.deltaValue.className = "delta-value";
+    } else {
+      this.deltaBox.classList.remove("muted");
+      this.deltaValue.textContent = formatDelta(frame.delta);
+      this.deltaValue.className = `delta-value ${frame.delta <= 0 ? "good" : "bad"}`;
+    }
+
+    // Sector board shows the current lap, falling back to the previous one.
+    const lapIdx = Math.min(race.lap, TOTAL_LAPS - 1);
+    const current = race.lapSectors[lapIdx]!;
+    for (let i = 0; i < SECTORS; i++) {
+      const t = current[i];
+      this.sectorTimes[i]!.textContent = formatShort(t ?? null);
+      const best = race.bestSectors[i];
+      if (t !== null && t !== undefined && best !== null && best !== undefined) {
+        const d = t - best;
+        this.sectorDeltas[i]!.textContent = Math.abs(d) < 0.0005 ? "PB" : formatDelta(d);
+        this.sectorDeltas[i]!.className = `sector-delta ${d <= 0.0005 ? "good" : "bad"}`;
+      } else {
+        this.sectorDeltas[i]!.textContent = "";
+        this.sectorDeltas[i]!.className = "sector-delta";
+      }
+      this.sectorRows[i]!.classList.toggle("active", race.phase === "racing" && race.sector === i);
+    }
+    this.bestLapValue.textContent = formatTime(race.bestLap);
+    const optimal = race.bestSectors.every((v) => v !== null)
+      ? race.bestSectors.reduce<number>((acc, v) => acc + (v ?? 0), 0)
+      : null;
+    this.theoretical.textContent = formatTime(optimal);
+
+    // Speed and grip.
+    this.speedValue.textContent = Math.round(frame.speedKph).toString();
+    this.surfaceValue.textContent = frame.surface.toUpperCase();
+    this.surfaceValue.className = `chip ${frame.surface === "tarmac" ? "" : "chip-warn"}`;
+    this.gripFill.style.width = `${Math.min(100, frame.gripUse * 100)}%`;
+    this.gripFill.classList.toggle("over", frame.gripUse > 0.97);
+    const bank = frame.bankAssist;
+    this.bankValue.textContent = `BANK ${Math.abs(bank) < 0.15 ? "FLAT" : `${bank > 0 ? "R" : "L"} ${Math.abs(bank).toFixed(1)}`}`;
+    this.bankValue.className = `chip ${Math.abs(bank) > 0.6 ? "chip-good" : ""}`;
+
+    this.boostFill.style.width = `${(frame.boost / frame.boostMax) * 100}%`;
+    this.boostFill.classList.toggle("active", frame.boostActive);
+    this.resetValue.textContent = `RESET ${race.resetsLeft}`;
+    this.resetValue.className = `chip ${race.resetsLeft > 0 ? "" : "chip-warn"}`;
+    this.cameraValue.textContent = `CAM ${frame.cameraName.toUpperCase()}`;
+    this.lineValue.textContent = `LINE ${frame.lineVisible ? "ON" : "OFF"}`;
+
+    // Split banner.
+    if (race.lastSplit && now < race.splitFlashUntil) {
+      const s = race.lastSplit;
+      this.splitBanner.textContent = `${formatShort(s.time)}${s.delta === null ? "" : `   ${formatDelta(s.delta)}`}`;
+      this.splitBanner.className = `split-banner show ${s.personalBest ? "good" : "bad"}`;
+    } else {
+      this.splitBanner.className = "split-banner";
+    }
+
+    this.drawMap(frame);
+  }
+
+  private drawMap(frame: HudFrame): void {
+    const ctx = this.mapCtx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, this.map.width, this.map.height);
+
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(8,10,16,0.75)";
+    ctx.lineWidth = 8;
+    this.strokePath(ctx);
+    ctx.strokeStyle = "rgba(226,206,178,0.62)";
+    ctx.lineWidth = 3.2;
+    this.strokePath(ctx);
+
+    for (let i = 0; i < this.mapSectorMarks.length; i++) {
+      const [x, y] = this.mapSectorMarks[i]!;
+      ctx.fillStyle = i === 0 ? "#f7d24a" : "rgba(255,255,255,0.72)";
+      ctx.beginPath();
+      ctx.arc(x, y, i === 0 ? 3.6 : 2.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (frame.ghostProgress !== null) {
+      const p = this.track.sampleAt(frame.ghostProgress).pos;
+      const [gx, gy] = this.mapProject(p.x, p.z);
+      ctx.fillStyle = "rgba(110,208,255,0.9)";
+      ctx.beginPath();
+      ctx.arc(gx, gy, 3.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const cp = this.track.sampleAt(frame.carProgress).pos;
+    const [cx, cy] = this.mapProject(cp.x, cp.z);
+    ctx.fillStyle = "#ff8b3d";
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.65)";
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+  }
+
+  private strokePath(ctx: CanvasRenderingContext2D): void {
+    ctx.beginPath();
+    for (let i = 0; i < this.mapPoints.length; i++) {
+      const [x, y] = this.mapPoints[i]!;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  showOverlay(html: string, cls = ""): void {
+    this.overlay.innerHTML = html;
+    this.overlay.className = `overlay show ${cls}`;
+  }
+
+  hideOverlay(): void {
+    this.overlay.className = "overlay";
+  }
+
+  fadeHints(): void {
+    this.hints.classList.add("faded");
+  }
+}

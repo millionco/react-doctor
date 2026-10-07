@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
-import { OXLINT_MAX_FILES_PER_BATCH, SPAWN_ARGS_MAX_LENGTH_CHARS } from "../src/constants.js";
+import {
+  OXLINT_MAX_FILES_PER_BATCH,
+  OXLINT_POOLED_BATCHES_PER_WORKER,
+  OXLINT_POOLED_MIN_FILES_PER_BATCH,
+  SPAWN_ARGS_MAX_LENGTH_CHARS,
+} from "../src/constants.js";
 import { planLintBatches } from "../src/utils/plan-lint-batches.js";
+import { resolvePooledBatchCount } from "../src/utils/resolve-pooled-batch-count.js";
 
 const BASE_ARGS = ["/usr/bin/node", "oxlint", "-c", "oxlintrc.json", "--format", "json"];
+const HEAVY_FILE_COUNT = 4;
 
 const makeFiles = (count: number): string[] =>
   Array.from({ length: count }, (_, index) => `src/file-${String(index).padStart(4, "0")}.ts`);
@@ -26,7 +33,7 @@ describe("planLintBatches", () => {
     expect(batches[0]).toEqual(files);
   });
 
-  it("balances file counts across the mandatory batch count instead of 100-file chunks plus a remainder", () => {
+  it("balances file counts across the mandatory batch count instead of a full chunk plus a remainder", () => {
     const files = makeFiles(617);
     const batches = planLintBatches({
       baseArgs: BASE_ARGS,
@@ -35,8 +42,7 @@ describe("planLintBatches", () => {
     });
     expect(batches).toHaveLength(Math.ceil(files.length / OXLINT_MAX_FILES_PER_BATCH));
     const batchLengths = batches.map((batch) => batch.length);
-    expect(Math.max(...batchLengths)).toBeLessThanOrEqual(89);
-    expect(Math.min(...batchLengths)).toBeGreaterThanOrEqual(87);
+    expect(Math.max(...batchLengths) - Math.min(...batchLengths)).toBeLessThanOrEqual(1);
   });
 
   it("never exceeds the per-batch file-count cliff cap", () => {
@@ -55,23 +61,23 @@ describe("planLintBatches", () => {
   it("spreads the heavy files across batches (LPT) instead of concentrating them", () => {
     const files = makeFiles(400);
     const sizeByFile = new Map(
-      files.map((file, index) => [file, index < 4 ? 1_000_000 : 1_000] as const),
+      files.map((file, index) => [file, index < HEAVY_FILE_COUNT ? 1_000_000 : 1_000] as const),
     );
     const batches = planLintBatches({ baseArgs: BASE_ARGS, files, sizeByFile });
-    expect(batches).toHaveLength(4);
+    expect(batches).toHaveLength(Math.ceil(files.length / OXLINT_MAX_FILES_PER_BATCH));
     for (const batch of batches) {
       const heavyCount = batch.filter((file) => (sizeByFile.get(file) ?? 0) === 1_000_000).length;
-      expect(heavyCount).toBe(1);
+      expect(heavyCount).toBe(HEAVY_FILE_COUNT / batches.length);
     }
   });
 
   it("balances cumulative byte cost, not just file counts", () => {
-    const files = makeFiles(200);
+    const files = makeFiles(400);
     const sizeByFile = new Map(
       files.map((file, index) => [file, index % 2 === 0 ? 50_000 : 100] as const),
     );
     const batches = planLintBatches({ baseArgs: BASE_ARGS, files, sizeByFile });
-    expect(batches).toHaveLength(2);
+    expect(batches).toHaveLength(Math.ceil(files.length / OXLINT_MAX_FILES_PER_BATCH));
     const batchByteTotals = batches.map((batch) =>
       batch.reduce((total, file) => total + (sizeByFile.get(file) ?? 0), 0),
     );
@@ -118,10 +124,63 @@ describe("planLintBatches", () => {
     expect(batches.flat()).toHaveLength(files.length);
   });
 
+  it("splits a scan below the mandatory count across every pooled worker", () => {
+    const files = makeFiles(1_000);
+    const pooledWorkerCount = 10;
+    const batches = planLintBatches({
+      baseArgs: BASE_ARGS,
+      files,
+      sizeByFile: uniformSizes(files, 1_000),
+      pooledWorkerCount,
+    });
+    expect(batches).toHaveLength(pooledWorkerCount * OXLINT_POOLED_BATCHES_PER_WORKER);
+    const batchLengths = batches.map((batch) => batch.length);
+    expect(Math.max(...batchLengths) - Math.min(...batchLengths)).toBeLessThanOrEqual(1);
+    expect(batches.flat().sort()).toEqual([...files].sort());
+  });
+
+  it("keeps the mandatory count when it already exceeds the pooled count", () => {
+    const files = makeFiles(5_000);
+    const batches = planLintBatches({
+      baseArgs: BASE_ARGS,
+      files,
+      sizeByFile: uniformSizes(files, 1_000),
+      pooledWorkerCount: 4,
+    });
+    expect(batches).toHaveLength(Math.ceil(files.length / OXLINT_MAX_FILES_PER_BATCH));
+  });
+
+  it("never plans pooled batches smaller than the per-batch file floor", () => {
+    const files = makeFiles(OXLINT_POOLED_MIN_FILES_PER_BATCH * 3);
+    const batches = planLintBatches({
+      baseArgs: BASE_ARGS,
+      files,
+      sizeByFile: uniformSizes(files, 1_000),
+      pooledWorkerCount: 10,
+    });
+    expect(batches).toHaveLength(3);
+    for (const batch of batches) {
+      expect(batch.length).toBeGreaterThanOrEqual(OXLINT_POOLED_MIN_FILES_PER_BATCH);
+    }
+  });
+
+  it("plans a single pooled batch for a scan under the file floor", () => {
+    expect(resolvePooledBatchCount(OXLINT_POOLED_MIN_FILES_PER_BATCH - 1, 10)).toBe(1);
+    const files = makeFiles(3);
+    expect(
+      planLintBatches({
+        baseArgs: BASE_ARGS,
+        files,
+        sizeByFile: uniformSizes(files, 1_000),
+        pooledWorkerCount: 10,
+      }),
+    ).toEqual([files]);
+  });
+
   it("treats files missing from the size map as zero-cost instead of throwing", () => {
-    const files = makeFiles(160);
+    const files = makeFiles(400);
     const batches = planLintBatches({ baseArgs: BASE_ARGS, files, sizeByFile: new Map() });
-    expect(batches).toHaveLength(2);
+    expect(batches).toHaveLength(Math.ceil(files.length / OXLINT_MAX_FILES_PER_BATCH));
     expect(batches.flat().sort()).toEqual([...files].sort());
   });
 });

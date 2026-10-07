@@ -11,8 +11,8 @@ import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-a
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 
 const BODY_TEXT_ELEMENT_NAMES = new Set(["blockquote", "dd", "figcaption", "li", "p", "td"]);
-const LETTER_PATTERN = /\p{L}/u;
-const LOWERCASE_LETTER_PATTERN = /\p{Ll}/u;
+const CASED_LETTER_PATTERN = /[\p{Lu}\p{Ll}\p{Lt}]/u;
+const UPPERCASE_LETTER_PATTERN = /\p{Lu}/u;
 
 const hasUppercaseStyle = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   const classNameValue = getStringFromClassNameAttr(node);
@@ -44,10 +44,14 @@ export const noAllCapsBodyText = defineRule({
       if (!isNodeOfType(openingElement.name, "JSXIdentifier")) return;
       if (!BODY_TEXT_ELEMENT_NAMES.has(openingElement.name.name)) return;
       const staticText = getStaticJsxText(node).replace(/\s+/g, " ").trim();
-      if (staticText.length < LONG_BODY_TEXT_MIN_CHARACTERS || !LETTER_PATTERN.test(staticText)) {
+      if (
+        staticText.length < LONG_BODY_TEXT_MIN_CHARACTERS ||
+        !CASED_LETTER_PATTERN.test(staticText)
+      ) {
         return;
       }
-      const isLiteralUppercase = !LOWERCASE_LETTER_PATTERN.test(staticText);
+      const isLiteralUppercase =
+        UPPERCASE_LETTER_PATTERN.test(staticText) && staticText === staticText.toUpperCase();
       if (!isLiteralUppercase && !hasUppercaseStyle(openingElement)) return;
       context.report({
         node: openingElement,

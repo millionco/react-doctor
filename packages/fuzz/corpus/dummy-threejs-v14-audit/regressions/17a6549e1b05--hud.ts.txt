@@ -1,0 +1,236 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 17a6549e1b05ed97d5b18eee953ac7570fc3bf65d240605c60a14d66fe1963fb
+import { PRODUCE, PRODUCE_ORDER, type ProduceKind } from "../game/produce";
+import { ROUNDS, TARGET_SCORE, type Session } from "../game/session";
+import type { PrizeInfo } from "../world/prizes";
+
+/**
+ * DOM overlay: score, goal progress, tickets, round pips, ammunition, power
+ * meter, reticle, floating score popups and the phase banner.
+ */
+
+export interface BannerButton {
+  label: string;
+}
+
+export interface BannerContent {
+  title: string;
+  lines?: string[];
+  stats?: Array<[string, string]>;
+  prompt?: string;
+  prizes?: { list: PrizeInfo[]; selected: number; tickets: number };
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+export class Hud {
+  readonly root = el("div");
+  private readonly scoreValue = el("div", "big", "0");
+  private readonly goalFill = el("div", "goalFill");
+  private readonly goalText = el("div", "goalText");
+  private readonly roundPips = el("div");
+  private readonly ticketCount = el("div", "ticketCount", "0");
+  private readonly roundName = el("div");
+  private readonly ammoBar = el("div");
+  private readonly powerFill = el("div");
+  private readonly powerValue = el("div");
+  private readonly reticle = el("div");
+  private readonly banner = el("div", "panel");
+  private readonly comboTag = el("div");
+  private readonly chips = new Map<ProduceKind, { root: HTMLDivElement; count: HTMLDivElement; pips: HTMLDivElement }>();
+
+  constructor(parent: HTMLElement = document.body) {
+    this.root.id = "hud";
+
+    const scorePanel = el("div", "panel");
+    scorePanel.id = "scorePanel";
+    scorePanel.append(el("div", "label", "Score"), this.scoreValue);
+    const track = el("div", "goalTrack");
+    track.append(this.goalFill);
+    scorePanel.append(track, this.goalText);
+    this.roundPips.id = "roundPips";
+    for (let i = 0; i < ROUNDS; i++) this.roundPips.append(el("span"));
+    scorePanel.append(this.roundPips);
+    this.root.append(scorePanel);
+
+    const ticketPanel = el("div", "panel");
+    ticketPanel.id = "ticketPanel";
+    this.ticketCount.id = "ticketCount";
+    this.roundName.id = "roundName";
+    ticketPanel.append(el("div", "label", "Tickets"), this.ticketCount, this.roundName);
+    this.root.append(ticketPanel);
+
+    this.ammoBar.id = "ammoBar";
+    for (let i = 0; i < PRODUCE_ORDER.length; i++) {
+      const kind = PRODUCE_ORDER[i]!;
+      const spec = PRODUCE[kind];
+      const chip = el("div", "ammoChip");
+      chip.style.color = spec.accent;
+      const key = el("div", "key", String(i + 1));
+      const count = el("div", "count", "0");
+      const name = el("div", "name", spec.label);
+      const blurb = el("div", "blurb", spec.blurb);
+      const pips = el("div", "pips");
+      chip.append(key, count, name, blurb, pips);
+      this.ammoBar.append(chip);
+      this.chips.set(kind, { root: chip, count, pips });
+    }
+    this.root.append(this.ammoBar);
+
+    const powerWrap = el("div");
+    powerWrap.id = "powerWrap";
+    const powerLabel = el("div", undefined, "Power");
+    powerLabel.id = "powerLabel";
+    const meter = el("div");
+    meter.id = "powerMeter";
+    this.powerFill.id = "powerFill";
+    this.powerValue.id = "powerValue";
+    meter.append(this.powerFill, this.powerValue);
+    powerWrap.append(powerLabel, meter);
+    this.root.append(powerWrap);
+
+    this.reticle.id = "reticle";
+    const ring = el("div");
+    ring.id = "reticleRing";
+    this.reticle.append(ring);
+    this.root.append(this.reticle);
+
+    this.banner.id = "banner";
+    this.root.append(this.banner);
+
+    this.comboTag.id = "comboTag";
+    this.root.append(this.comboTag);
+
+    const help = el(
+      "div",
+      undefined,
+      [
+        "<b>1 2 3</b> pick produce",
+        "<b>Move</b> aim",
+        "<b>Drag</b> set power",
+        "<b>Space</b> throw",
+        "<b>R</b> restart booth",
+      ].join("<br>"),
+    );
+    help.id = "help";
+    this.root.append(help);
+
+    parent.append(this.root);
+  }
+
+  setReticle(x: number, y: number, charging: boolean, visible: boolean): void {
+    this.reticle.style.left = `${x}px`;
+    this.reticle.style.top = `${y}px`;
+    this.reticle.classList.toggle("charging", charging);
+    this.reticle.style.opacity = visible ? "1" : "0";
+  }
+
+  setPower(power: number): void {
+    this.powerFill.style.height = `${Math.round(power * 100)}%`;
+    this.powerValue.textContent = `${Math.round(power * 100)}`;
+  }
+
+  sync(session: Session): void {
+    this.scoreValue.textContent = session.score.toLocaleString();
+    const pct = Math.min(1, session.score / TARGET_SCORE);
+    this.goalFill.style.width = `${pct * 100}%`;
+    this.goalText.textContent =
+      session.score >= TARGET_SCORE
+        ? `Goal cleared — ${TARGET_SCORE.toLocaleString()} pts`
+        : `${(TARGET_SCORE - session.score).toLocaleString()} to the ${TARGET_SCORE.toLocaleString()} goal`;
+
+    this.ticketCount.textContent = String(session.tickets);
+    const roundIndex = Math.min(session.round, ROUNDS);
+    this.roundName.textContent = `Round ${roundIndex} / ${ROUNDS}`;
+
+    const pips = this.roundPips.children;
+    for (let i = 0; i < pips.length; i++) {
+      const pip = pips[i] as HTMLElement;
+      pip.className = i + 1 < session.round ? "done" : i + 1 === session.round ? "live" : "";
+    }
+
+    for (const kind of PRODUCE_ORDER) {
+      const chip = this.chips.get(kind)!;
+      const left = session.ammo[kind];
+      const max = PRODUCE[kind].ammoPerRound;
+      chip.count.textContent = String(left);
+      chip.root.classList.toggle("active", session.selected === kind);
+      chip.root.classList.toggle("empty", left === 0);
+      if (chip.pips.childElementCount !== max) {
+        chip.pips.replaceChildren();
+        for (let i = 0; i < max; i++) chip.pips.append(el("i"));
+      }
+      const dots = chip.pips.children;
+      for (let i = 0; i < dots.length; i++) {
+        (dots[i] as HTMLElement).className = i < left ? "" : "spent";
+      }
+    }
+
+    const showCombo = session.combo > 1.001;
+    this.comboTag.classList.toggle("on", showCombo);
+    this.comboTag.textContent = showCombo ? `Streak ×${session.combo.toFixed(2)}` : "";
+  }
+
+  popup(x: number, y: number, text: string, small = false): void {
+    const node = el("div", small ? "popup small" : "popup", text);
+    node.style.left = `${x}px`;
+    node.style.top = `${y}px`;
+    this.root.append(node);
+    window.setTimeout(() => node.remove(), 1100);
+  }
+
+  showBanner(content: BannerContent): void {
+    this.banner.replaceChildren();
+    this.banner.append(el("h2", undefined, content.title));
+    for (const line of content.lines ?? []) this.banner.append(el("p", undefined, line));
+
+    if (content.stats?.length) {
+      const stats = el("div", "stats");
+      for (const [label, value] of content.stats) {
+        const cell = el("div");
+        cell.append(el("b", undefined, value), el("div", "label", label));
+        stats.append(cell);
+      }
+      this.banner.append(stats);
+    }
+
+    if (content.prizes) {
+      const list = el("div", "prizeList");
+      content.prizes.list.forEach((prize, i) => {
+        const affordable = content.prizes!.tickets >= prize.cost;
+        const card = el("div", `prizeCard${i === content.prizes!.selected ? " sel" : ""}${affordable ? "" : " poor"}`);
+        card.append(
+          el("div", undefined, `${i + 1} — ${prize.name}`),
+          el("b", undefined, `${prize.cost} tickets`),
+        );
+        list.append(card);
+      });
+      this.banner.append(list);
+    }
+
+    if (content.prompt) this.banner.append(el("div", "prompt", content.prompt));
+    this.banner.classList.add("show");
+  }
+
+  hideBanner(): void {
+    this.banner.classList.remove("show");
+  }
+
+  setPlayVisible(on: boolean): void {
+    this.ammoBar.style.opacity = on ? "1" : "0.25";
+    const powerWrap = document.getElementById("powerWrap");
+    if (powerWrap) powerWrap.style.opacity = on ? "1" : "0.25";
+  }
+}

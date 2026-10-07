@@ -58,15 +58,18 @@ export const STAGED_SNAPSHOT_ADDITIONAL_CONFIG_FILENAMES = [
   "vitest.config.ts",
 ] as const;
 export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
-// Bump on any breaking change to `CachedScanPayload`'s shape so a stale on-disk
-// cache (missing a newly-required field) is discarded wholesale by
-// `readPersistedCache` instead of deserializing into an invalid payload.
+export const BASELINE_SOURCE_COPY_CONCURRENCY = 32;
+// Bump on any breaking change to `CachedScanPayload`'s shape or diagnostic
+// semantics so stale on-disk results are discarded wholesale.
 // Bumped to 2: `CachedScanPayload` gained the required `supplyChainOverlapTimedOut`
 // (supply-chain overlap) and `deadCodeOverlapped` (dead-code overlap) fields.
 // Bumped to 3: gained the required `suppressedRuleCounts` field (suppression telemetry).
 // Bumped to 4: gained the `manifestContentHash` replay guard, which every
 // `lookup` verifies — pre-bump entries without it would never hit again.
-export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 5;
+// Bumped to 6: declaration-file parser diagnostic compatibility filtering
+// changed the cached diagnostic set.
+// Bumped to 7: maintainability diagnostics replace the removed dead-code pass.
+export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 8;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
 export const SCAN_RESULT_CACHE_FILENAME = "scan-cache.json";
 // The dirty-worktree cache-key fingerprint content-hashes every path `git
@@ -87,9 +90,45 @@ export const SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 // still bounding a pathological child.
 export const RUN_GIT_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
+export const HEAD_SHA_GIT_ARGUMENTS: ReadonlyArray<string> = ["rev-parse", "HEAD"];
+export const REPOSITORY_ROOT_GIT_ARGUMENTS: ReadonlyArray<string> = [
+  "rev-parse",
+  "--show-toplevel",
+];
+export const TRACKED_FILE_FLAGS_GIT_ARGUMENTS: ReadonlyArray<string> = ["ls-files", "-v"];
+export const WORKTREE_STATUS_GIT_ARGUMENTS: ReadonlyArray<string> = [
+  "status",
+  "--porcelain=v1",
+  "-z",
+  // `all` expands untracked directories into their contained files so each
+  // one is content-fingerprinted; the scan-result cache bounds the entry count.
+  "--untracked-files=all",
+];
+// Every git command `buildScanResultCacheKey` runs for the first project of an
+// invocation, so the CLI entry can start them before the bundle evaluates.
+export const SCAN_RESULT_CACHE_GIT_ARGUMENTS: ReadonlyArray<ReadonlyArray<string>> = [
+  TRACKED_FILE_FLAGS_GIT_ARGUMENTS,
+  REPOSITORY_ROOT_GIT_ARGUMENTS,
+  WORKTREE_STATUS_GIT_ARGUMENTS,
+  HEAD_SHA_GIT_ARGUMENTS,
+];
+export const CACHE_DISABLED_VALUES: ReadonlySet<string> = new Set(["1", "true"]);
+// argv tokens that mean the invocation is not a plain directory scan, so the
+// preamble spawns nothing: help/version output, and staged scans (they lint a
+// temporary checkout, never the working tree).
+export const SCAN_PREAMBLE_SKIP_FLAGS: ReadonlySet<string> = new Set([
+  "-h",
+  "--help",
+  "-v",
+  "-V",
+  "--version",
+  "--staged",
+]);
+
 export const GIT_HOOK_EXECUTABLE_MODE = 0o755;
 
 export const AGENT_HOOK_TIMEOUT_SECONDS = 120;
+export const AGENT_HOOK_MAX_CONTINUATIONS = 1;
 
 // Hard cap on the `gh repo view` default-branch probe. A healthy gh answers
 // well under a second; a cold gh.exe on Windows CI has taken 30s+, and the
@@ -105,35 +144,68 @@ export const GH_PR_LIST_MAX = 100;
 // compact, passable CLI argument.
 export const HANDOFF_MAX_FILES_PER_RULE = 3;
 
-// Social proof for the "Add to CI" pitch (shown in the post-scan handoff
-// prompt and embedded in the agent-handoff prompt).
+export const TUI_ISSUE_PROMPT_MAX_SITES = 8;
+
+export const TUI_MIN_NODE_MAJOR_VERSION = 22;
+
+export const TUI_LIVE_FEED_MAX_ENTRIES = 25;
+export const TUI_PROGRESS_UPDATE_INTERVAL_MS = 250;
+export const TUI_RECENT_LIVE_DIAGNOSTIC_COUNT = 5;
+export const TUI_DETAIL_INDENT_COLUMNS = 2;
+export const TUI_PROJECT_SELECT_CHROME_ROWS = 3;
+export const TUI_PROJECT_SELECT_MIN_LIST_ROWS = 1;
+export const TUI_PROJECT_SELECT_FILTER_ROWS = 1;
+export const TUI_PROJECT_SELECT_FOOTER_MARGIN_ROWS = 1;
+export const TUI_REPORT_DETAIL_ROWS = 15;
+export const TUI_REPORT_STATUS_ROWS = 3;
+export const TUI_REPORT_DIVIDER_ROWS = 1;
+export const TUI_REPORT_LIST_MARGIN_ROWS = 1;
+export const TUI_REPORT_SECTION_GAP_ROWS = 1;
+export const TUI_REPORT_MIN_LIST_ROWS = 3;
+export const TUI_REPORT_STACKED_MAX_LIST_ROWS = 16;
+export const TUI_REPORT_VIEWPORT_MARGIN_ROWS = 1;
+export const TUI_REPORT_ACTION_MENU_MARGIN_ROWS = 1;
+export const TUI_REPORT_ACTION_MENU_ITEM_GAP_ROWS = 1;
+export const TUI_REPORT_REVEAL_STEP_INCREMENT = 1;
+export const TUI_REPORT_ISSUE_STREAM_VISIBLE_ROWS = 3;
+export const TUI_REPORT_ISSUE_STREAM_MIN_STEPS = 8;
+export const TUI_REPORT_ISSUE_STREAM_MAX_STEPS = 12;
+export const TUI_REPORT_ISSUE_STREAM_FRAME_DELAY_MS = 125;
+export const TUI_REPORT_VIEWER_SCORE_HEADER_ROWS = 4;
+export const TUI_REPORT_COMPACT_STATUS_ROWS = 1;
+export const TUI_REPORT_COMPACT_MAX_ROWS =
+  TUI_REPORT_LIST_MARGIN_ROWS +
+  TUI_REPORT_DIVIDER_ROWS +
+  TUI_REPORT_STATUS_ROWS +
+  TUI_REPORT_DETAIL_ROWS +
+  TUI_REPORT_MIN_LIST_ROWS;
+export const TUI_REPORT_MIN_WIDTH_CHARS = 1;
+export const TUI_REPORT_WIDE_MIN_COLUMNS = 120;
+export const TUI_REPORT_WIDE_MIN_ROWS = 22;
+export const TUI_REPORT_DETAIL_WIDTH_FRACTION = 0.6;
+export const TUI_REPORT_COLUMN_GUTTER_COLUMNS = 3;
+export const TUI_REPORT_MIN_COLUMN_WIDTH_CHARS = 20;
+export const TUI_REPORT_SPLIT_MARGIN_COLUMNS = 1;
+export const TUI_REPORT_SPLIT_PADDING_COLUMNS = 1;
+export const TUI_SCORE_FACE_WIDTH_COLUMNS = 7;
+export const TUI_SCORE_FACE_OFFSET_COLUMNS = 11;
+export const TUI_SCORE_RIGHT_EDGE_SAFETY_COLUMNS = 2;
+export const TUI_HALF_PAGE_DIVISOR = 2;
+export const TUI_DEFAULT_TERMINAL_COLUMNS = 80;
+export const TUI_DEFAULT_TERMINAL_ROWS = 24;
+export const TUI_HORIZONTAL_PADDING_COLUMNS = 2;
+export const TUI_PROJECT_NAME_GAP_COLUMNS = 2;
+export const TUI_PRINTABLE_ASCII_MIN_CODE_POINT = 32;
+export const TUI_FUZZY_CONSECUTIVE_BONUS = 5;
+export const TUI_FUZZY_WORD_BOUNDARY_BONUS = 10;
+export const TUI_FUZZY_LEADING_PENALTY = 1;
+
 export const CI_TRUST_COMPANIES = "PayPal, Rippling, and Alibaba";
 
 export const SCORE_HEADER_ANIMATION_FRAME_COUNT = 40;
 export const SCORE_HEADER_ANIMATION_FRAME_DELAY_MS = 50;
-export const PERFECT_SCORE_RAINBOW_FRAME_COUNT = 16;
-export const PERFECT_SCORE_RAINBOW_FRAME_DELAY_MS = 50;
-
-// First-run onboarding animation cadences: welcome typewriter + holds, the
-// category count-up, and the score projection.
-export const WELCOME_TYPEWRITER_CHAR_DELAY_MS = 16;
-export const WELCOME_INTER_LINE_DELAY_MS = 250;
-export const WELCOME_EXPLANATION_HOLD_MS = 1000;
-// The category breakdown reveals one issue at a time (errors then warnings,
-// category by category). Small/medium breakdowns step by a single unit per
-// frame; `MAX_STEPS` caps the frame budget so a huge repo's reveal stays short
-// (the per-step increment grows instead).
-export const CATEGORY_COUNTUP_MAX_STEPS = 24;
-export const CATEGORY_COUNTUP_FRAME_DELAY_MS = 70;
-// Beat to hold on the settled category tally before the detail blocks reveal,
-// so the at-a-glance breakdown reads before the report scrolls on.
-export const CATEGORY_COUNTUP_SETTLE_HOLD_MS = 1000;
 export const SCORE_PROJECTION_FRAME_COUNT = 16;
 export const SCORE_PROJECTION_FRAME_DELAY_MS = 35;
-// Terminal rows from the cursor (sitting just after the "you could improve"
-// line) up to the score bar, so the projection redraw lands on the bar row:
-// improve line, blank, face-bottom, branding, bar.
-export const SCORE_PROJECTION_BAR_ROWS_ABOVE_CURSOR = 5;
 
 // Floor for the terminal-aware typographic measure (`resolveMeasureWidth`).
 // A terminal narrower than this is pathological; clamp here so prose can't
@@ -144,15 +216,6 @@ export const MIN_MEASURE_WIDTH_CHARS = 24;
 // header clamps it to the columns left of the doctor face). Below this the bar
 // stops conveying the score proportionally, so we let it sit at this width.
 export const SCORE_BAR_MIN_WIDTH_CHARS = 10;
-
-// Keep one column free at the right edge so a full-width line can't trip the
-// terminal's auto-margin into a soft wrap, which breaks the in-place `\r`
-// redraws (the score-bar animation and the welcome typewriter).
-export const RIGHT_EDGE_SAFETY_COLUMNS = 1;
-
-// Visible columns the box border + padding adds around a code frame
-// (`│ ` … ` │` in box-text.ts). Reserved when fitting a box to the terminal.
-export const BOX_BORDER_WIDTH_CHARS = 4;
 
 // Minimum `VTE_VERSION` (GNOME Terminal, Tilix, and other VTE-based emulators)
 // that renders OSC 8 hyperlinks — VTE added support in 0.50 (reported as 5000).
@@ -170,21 +233,34 @@ export const INTERNAL_ERROR_JSON_FALLBACK =
 export const SENTRY_DSN =
   "https://f253d570240a59b8dbd77b7a548ef133@o4510226365743104.ingest.us.sentry.io/4511487817809920";
 
+// Axiom ingest token for first-party CLI telemetry (traces + metrics). Unlike a
+// Sentry DSN, an Axiom API token is a real credential, so this one is minted
+// `ingest:create` only, scoped to exactly the two datasets below, with no
+// expiry and no organization permissions — it can write those datasets and
+// nothing else. It ships inside the published tarball and is therefore
+// extractable; rotation means cutting a release, and an Axiom monitor on
+// anomalous ingest volume is the detection. If abuse ever materializes, the
+// standing alternative is to proxy ingest through `www.react.doctor` (which
+// already hosts the score API) so the token stops shipping at all.
+// Overridable at runtime via `REACT_DOCTOR_AXIOM_TOKEN` for local testing
+// against a scratch dataset.
+export const AXIOM_INGEST_TOKEN = "xaat-31b59107-855d-4917-8fab-6dc29fb459ce";
+
+// Events-type dataset receiving spans (the per-run root span carries the wide
+// event), and the Metrics-type dataset receiving counters and distributions.
+// Axiom types datasets at creation and will not accept metrics into an events
+// dataset, which is why these are separate.
+// Effect span clocks are epoch nanoseconds; `Date.now()` is milliseconds.
+export const NANOSECONDS_PER_MILLISECOND = 1_000_000n;
+
+export const AXIOM_TRACES_DATASET = "react-doctor";
+export const AXIOM_METRICS_DATASET = "react-doctor-metrics";
+
 // Sentry release identifier prefix. Releases are reported as
 // `react-doctor@<version>` so they're globally unique within the Sentry org
 // and so the SDK's `release` matches the value the CI source-map upload
 // associates artifacts with (`scripts/sentry-sourcemaps.mjs`).
 export const SENTRY_RELEASE_PREFIX = "react-doctor";
-
-// Sample every trace (100%). `--debug` forces this for the run so the trace id
-// it prints always points to a delivered trace, even when the env opted down.
-export const FULL_TRACES_SAMPLE_RATE = 1;
-
-// Default Sentry performance-tracing sample rate. Each CLI invocation becomes
-// one transaction; runs are low-frequency (vs. web traffic) so full sampling
-// gives the richest crash-correlated traces. Tunable per-run via the
-// `SENTRY_TRACES_SAMPLE_RATE` env var (set to `0` to disable tracing entirely).
-export const SENTRY_DEFAULT_TRACES_SAMPLE_RATE = FULL_TRACES_SAMPLE_RATE;
 
 // Upper bound on how long the CLI blocks waiting for Sentry to deliver queued
 // events (errors + transactions) before the process exits. The CLI tears down
@@ -192,21 +268,24 @@ export const SENTRY_DEFAULT_TRACES_SAMPLE_RATE = FULL_TRACES_SAMPLE_RATE;
 // telemetry off the machine (see the Sentry CLI/serverless flush contract).
 export const SENTRY_FLUSH_TIMEOUT_MS = 2000;
 
-// OpenTelemetry/Sentry span status codes used by the Effect→Sentry tracer
-// bridge (the SDK enum is 0 = unset, 1 = ok, 2 = error).
-export const SENTRY_SPAN_STATUS_OK = 1;
-export const SENTRY_SPAN_STATUS_ERROR = 2;
+// Bucket boundaries shared by every `recordDistribution` histogram. Effect
+// requires explicit boundaries (unlike Sentry's distributions, which kept raw
+// values and computed percentiles server-side), and the distributions this CLI
+// emits span two very different ranges: small counts and scores (`scan.score`
+// 0-100, `scan.files`, `oxlint.workers`) and millisecond durations
+// (`scan.duration`, `scan.phase_duration`, `scan.feedback_delay`). One
+// roughly-exponential ladder covers both — dense at the low end for scores and
+// counts, reaching ten minutes for the slowest scans. Axiom's metrics store
+// drops bucket metadata and assumes equal-width buckets, so finer per-metric
+// tuning would not survive the trip; the wide event carries exact timings when
+// precision matters.
+export const METRIC_DISTRIBUTION_BOUNDARIES = [
+  0, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 30_000, 60_000, 300_000,
+  600_000,
+];
 
-// OpenTelemetry trace-flags "sampled" bit, used to read/write the sampling
-// decision in a `traceId`/`traceFlags` span context.
-export const TRACE_FLAG_SAMPLED = 1;
-
-// Nanoseconds per second, for converting Effect's epoch-nanosecond span clock
-// into the `[seconds, nanosRemainder]` HrTime tuple Sentry/OTel expect.
-export const NANOSECONDS_PER_SECOND = 1_000_000_000n;
-
-// Sentry Application Metric names. Centralized so emit sites can't drift on a
-// typo'd string and the full counter surface stays greppable in one place.
+// Metric names. Centralized so emit sites can't drift on a typo'd string and
+// the full counter surface stays greppable in one place.
 // Dotted, domain-grouped names (Sentry convention); high-cardinality
 // dimensions (rule id, package manager, ...) go in attributes, never the name.
 export const METRIC = {
@@ -214,20 +293,32 @@ export const METRIC = {
   cliError: "cli.error",
   cliEnvironmentError: "cli.env_error",
   stagedSnapshotDivergence: "staged.snapshot_divergence",
+  // The kill metric for per-package `--staged` scanning: one count per run that
+  // scanned a package instead of the scan root, with how many in an attribute.
+  // If it never fires, no repository points `--staged` at its packages and the
+  // ownership map earns nothing.
+  stagedPerProject: "staged.per_project",
   projectDetected: "project.detected",
   projectPathSelected: "project.path_selected",
   projectConfigSelected: "project.config_selected",
   scanCompleted: "scan.completed",
   scanDuration: "scan.duration",
+  scanFeedbackDelay: "scan.feedback_delay",
   scanPhaseDuration: "scan.phase_duration",
   scanFiles: "scan.files",
   scanScore: "scan.score",
+  scanScoreRetry: "scan.score_retry",
   scanClean: "scan.clean",
   scanCheckSkipped: "scan.check_skipped",
-  // One count per completed scan where no project resolved a React /
-  // Preact runtime — the JSON report's `reactDetected: false` case. The
-  // kill metric for the vacuous-clean-scan signal: if it never fires,
-  // nobody points react-doctor at non-React targets and the surface can go.
+  // Kill metric for queued-project deadline reporting. If this never fires,
+  // the additive JSON/TUI skipped-project surface is not carrying user value.
+  scanProjectSkipped: "scan.project_skipped",
+  // Kill metric for workspace-owned maintainability analysis. If this never fires,
+  // multi-project scans do not include their root and cannot share the pass.
+  scanWorkspaceMaintainabilityShared: "scan.workspace_maintainability_shared",
+  // One count per completed scan where no project resolved a supported
+  // framework or library capability. The kill metric for the
+  // vacuous-clean-scan signal: if it never fires, the warning surface can go.
   scanNoReactDetected: "scan.no_react_detected",
   baselineDegraded: "baseline.degraded",
   ruleFired: "rule.fired",
@@ -239,7 +330,7 @@ export const METRIC = {
   ruleDisabled: "rule.disabled",
   ruleSuppressed: "rule.suppressed",
   lintFailed: "lint.failed",
-  deadCodeFailed: "deadcode.failed",
+  maintainabilityFailed: "maintainability.failed",
   scoreUnavailable: "score.unavailable",
   oxlintWorkers: "oxlint.workers",
   agentHandoff: "agent.handoff",
@@ -259,12 +350,19 @@ export const METRIC = {
   ciConfigured: "ci.configured",
   rulesChanged: "rules.changed",
   rulesQueried: "rules.queried",
-  // Editor language server (`react-doctor experimental-lsp`). Each workspace
-  // scan burst is one wide-event span (op `lsp.scan`) plus these metrics.
-  lspSessionStarted: "lsp.session.started",
-  lspScanCompleted: "lsp.scan.completed",
-  lspScanDuration: "lsp.scan.duration",
-  lspScanDiagnostics: "lsp.scan.diagnostics",
+  runtimeScanUrlPromptShown: "runtime_scan.url_prompt_shown",
+  tuiCompactReportShown: "tui.compact_report_shown",
+  tuiFindingNavigated: "tui.finding_navigated",
+  tuiIssueStreamShown: "tui.issue_stream_shown",
+  tuiProjectPathContextShown: "tui.project_path_context_shown",
+  tuiProjectSelectShown: "tui.project_select_shown",
+  tuiCiRecommendationShown: "tui.ci_recommendation_shown",
+  tuiReportActionSelected: "tui.report_action_selected",
+  tuiCancelled: "tui.cancelled",
+  tuiScanInlineShown: "tui.scan_inline_shown",
+  tuiStackedReportCapped: "tui.stacked_report_capped",
   aiTrainingWarningShown: "ai.training.warning_shown",
   jsonOutUsed: "json.out_used",
 } as const;
+
+export const SCORE_RETRY_MAX_CONCURRENCY = 64;

@@ -27,6 +27,14 @@ describe("security-scan/import-metadata-execution-risk — regressions", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it("stays silent when a fixed local command contains a taint word", () => {
+    const findings = runScanRule(importMetadataExecutionRisk, {
+      relativePath: "src/pipeline.ts",
+      content: `import { execSync } from "node:child_process";\nexecSync(\`ci-agent pipeline upload generated-steps.json\`);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
   it("stays silent when execution keywords only appear in comments", () => {
     const findings = runScanRule(importMetadataExecutionRisk, {
       relativePath: "src/sdk/connection.ts",

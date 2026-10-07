@@ -27,6 +27,17 @@ export interface FindVariableInitializerOptions {
   preferInitializerBeforeReference?: boolean;
 }
 
+interface CachedBindingLookup {
+  defaultResult?: BindingInfo | null;
+  preferredResult?: BindingInfo | null;
+}
+
+interface CachedBindingLookups {
+  readonly primaryBindingName: string;
+  readonly primaryLookup: CachedBindingLookup;
+  additionalLookups?: Map<string, CachedBindingLookup>;
+}
+
 const FUNCTION_LIKE_TYPES = new Set<string>([
   "FunctionDeclaration",
   "FunctionExpression",
@@ -137,86 +148,60 @@ const collectFromBindingPattern = (
 const buildBindingIndex = (root: EsTreeNode): Map<string, BindingInfo[]> => {
   const out = new Map<string, BindingInfo[]>();
   const visit = (node: EsTreeNode): void => {
-    if (isNodeOfType(node, "VariableDeclarator")) {
-      // Honor block scoping for let / const — `{ const App = ... }` at
-      // module level binds App in the block, not the program.
-      const declaration = node.parent;
-      const declarationKind =
-        declaration && isNodeOfType(declaration, "VariableDeclaration")
-          ? declaration.kind
-          : undefined;
-      const scopeOwner = findBlockScopeOwner(node, declarationKind);
-      if (scopeOwner) {
-        collectFromBindingPattern(
-          node.id as EsTreeNode,
-          (node.init as EsTreeNode | null) ?? null,
-          scopeOwner,
-          out,
-        );
+    switch (node.type) {
+      case "VariableDeclarator": {
+        const declaration = node.parent;
+        const declarationKind =
+          declaration?.type === "VariableDeclaration" ? declaration.kind : undefined;
+        const scopeOwner = findBlockScopeOwner(node, declarationKind);
+        if (scopeOwner) {
+          collectFromBindingPattern(
+            node.id as EsTreeNode,
+            (node.init as EsTreeNode | null) ?? null,
+            scopeOwner,
+            out,
+          );
+        }
+        break;
       }
-    }
-    if (
-      (isNodeOfType(node, "FunctionDeclaration") || isNodeOfType(node, "FunctionExpression")) &&
-      node.id
-    ) {
-      // The function is bound in its enclosing scope, NOT in itself —
-      // walk to the parent of the function and find that scope owner.
-      const enclosing = node.parent ? findScopeOwner(node.parent) : null;
-      if (enclosing) {
-        const list = out.get(node.id.name) ?? [];
-        list.push({
-          bindingIdentifier: node.id as EsTreeNode,
-          initializer: node,
-          scopeOwner: enclosing,
-        });
-        out.set(node.id.name, list);
-      }
-    }
-    // Class declarations / expressions create a binding in the
-    // enclosing scope (same shape as FunctionDeclaration). Without
-    // this branch, `class Foo {}` is invisible to lookups — e.g.
-    // `jsx-no-undef` reports `<Foo/>` as undefined even when
-    // `class Foo extends Component {}` sits in the same file.
-    if (
-      (isNodeOfType(node, "ClassDeclaration") || isNodeOfType(node, "ClassExpression")) &&
-      node.id
-    ) {
-      const enclosing = node.parent ? findScopeOwner(node.parent) : null;
-      if (enclosing) {
-        const list = out.get(node.id.name) ?? [];
-        list.push({
-          bindingIdentifier: node.id as EsTreeNode,
-          initializer: node,
-          scopeOwner: enclosing,
-        });
-        out.set(node.id.name, list);
-      }
-    }
-    if (
-      isNodeOfType(node, "FunctionDeclaration") ||
-      isNodeOfType(node, "FunctionExpression") ||
-      isNodeOfType(node, "ArrowFunctionExpression")
-    ) {
-      // Function parameters are bindings local to this function.
-      if (Array.isArray(node.params)) {
-        for (const param of node.params) {
-          if (!param) continue;
-          collectFromBindingPattern(param as EsTreeNode, null, node, out);
-          // `({ x = [] }) =>` — capture the per-binding default.
-          if (isNodeOfType(param as EsTreeNode, "AssignmentPattern")) {
-            collectFromBindingPattern(
-              ((param as { left: EsTreeNode }).left ?? null) as EsTreeNode,
-              ((param as { right: EsTreeNode }).right ?? null) as EsTreeNode,
-              node,
-              out,
-            );
+      case "FunctionDeclaration":
+      case "FunctionExpression":
+      case "ArrowFunctionExpression": {
+        if (node.type !== "ArrowFunctionExpression" && node.id) {
+          const enclosing = node.parent ? findScopeOwner(node.parent) : null;
+          if (enclosing) {
+            const list = out.get(node.id.name) ?? [];
+            list.push({
+              bindingIdentifier: node.id as EsTreeNode,
+              initializer: node,
+              scopeOwner: enclosing,
+            });
+            out.set(node.id.name, list);
           }
         }
+        for (const param of node.params) {
+          collectFromBindingPattern(param as EsTreeNode, null, node, out);
+        }
+        break;
       }
-    }
-    if (isNodeOfType(node, "ImportDeclaration")) {
-      const scopeOwner = findScopeOwner(node);
-      if (scopeOwner && Array.isArray(node.specifiers)) {
+      case "ClassDeclaration":
+      case "ClassExpression": {
+        if (!node.id) break;
+        const enclosing = node.parent ? findScopeOwner(node.parent) : null;
+        if (enclosing) {
+          const list = out.get(node.id.name) ?? [];
+          list.push({
+            bindingIdentifier: node.id as EsTreeNode,
+            initializer: node,
+            scopeOwner: enclosing,
+          });
+          out.set(node.id.name, list);
+        }
+        break;
+      }
+      case "ImportDeclaration": {
+        const scopeOwner = findScopeOwner(node);
+        if (!scopeOwner) break;
         for (const specifier of node.specifiers) {
           const local = (specifier as { local?: EsTreeNode }).local;
           if (local && isNodeOfType(local, "Identifier")) {
@@ -229,22 +214,21 @@ const buildBindingIndex = (root: EsTreeNode): Map<string, BindingInfo[]> => {
             out.set(local.name, list);
           }
         }
+        break;
       }
-    }
-    if (
-      node.type === "TSImportEqualsDeclaration" ||
-      node.type === "TSEnumDeclaration" ||
-      node.type === "TSModuleDeclaration"
-    ) {
-      const idNode = (node as { id?: EsTreeNode }).id;
-      if (idNode && idNode.type === "Identifier") {
-        const idObject = idNode as { name?: string };
-        const scopeOwner = findScopeOwner(node);
-        if (scopeOwner && typeof idObject.name === "string") {
-          const list = out.get(idObject.name) ?? [];
-          list.push({ bindingIdentifier: idNode, initializer: null, scopeOwner });
-          out.set(idObject.name, list);
+      case "TSImportEqualsDeclaration":
+      case "TSEnumDeclaration":
+      case "TSModuleDeclaration": {
+        const identifier = (node as { id?: EsTreeNode }).id;
+        if (identifier?.type === "Identifier") {
+          const scopeOwner = findScopeOwner(node);
+          if (scopeOwner) {
+            const list = out.get(identifier.name) ?? [];
+            list.push({ bindingIdentifier: identifier, initializer: null, scopeOwner });
+            out.set(identifier.name, list);
+          }
         }
+        break;
       }
     }
   };
@@ -253,6 +237,7 @@ const buildBindingIndex = (root: EsTreeNode): Map<string, BindingInfo[]> => {
 };
 
 const programRootCache = new WeakMap<EsTreeNode, Map<string, BindingInfo[]>>();
+const bindingLookupCache = new WeakMap<EsTreeNode, CachedBindingLookups>();
 
 const getBindingIndex = (referenceNode: EsTreeNode): Map<string, BindingInfo[]> | null => {
   const programRoot = findProgramRoot(referenceNode);
@@ -272,70 +257,103 @@ const getBindingIndex = (referenceNode: EsTreeNode): Map<string, BindingInfo[]> 
 // `null` when the name has no declaration anywhere in the file.
 //
 // LIMITATIONS (vs. full semantic analysis):
-//   - Block-scoped bindings (`{ const x = ... }`) are not visible.
-//   - Shadowing is approximated, not exact.
-//   - Imports of the same name from multiple modules are
-//     non-deterministic.
+//   - Catch, switch, class, and static-block scope boundaries are
+//     approximated.
+//   - Same-scope redeclarations use initializer heuristics instead of
+//     full temporal semantics.
 // Sufficient for the rules that previously had "scope analysis"
 // divergences in `oxc-divergences.ts`.
-export const findVariableInitializer = (
+const computeVariableInitializer = (
   referenceNode: EsTreeNode,
   bindingName: string,
-  options: FindVariableInitializerOptions = {},
+  options?: FindVariableInitializerOptions,
 ): BindingInfo | null => {
   const index = getBindingIndex(referenceNode);
   if (!index) return null;
   const candidates = index.get(bindingName);
   if (!candidates || candidates.length === 0) return null;
 
-  const referenceAncestors = new Set<EsTreeNode>();
-  let walker: EsTreeNode | null | undefined = referenceNode;
-  while (walker) {
-    referenceAncestors.add(walker);
-    walker = walker.parent ?? null;
-  }
-  // Pick the candidate whose scopeOwner is in the reference's ancestor
-  // chain AND is the closest one (deepest ancestor). If no candidate's
-  // scope is visible, return null — the binding is not in scope.
-  let best: BindingInfo | null = null;
-  for (const candidate of candidates) {
-    if (!referenceAncestors.has(candidate.scopeOwner)) continue;
-    if (best === null) {
-      best = candidate;
-      continue;
+  const onlyCandidate = candidates[0];
+  if (candidates.length === 1 && onlyCandidate) {
+    let currentAncestor: EsTreeNode | null | undefined = referenceNode;
+    while (currentAncestor) {
+      if (currentAncestor === onlyCandidate.scopeOwner) return onlyCandidate;
+      currentAncestor = currentAncestor.parent ?? null;
     }
-    if (candidate.scopeOwner === best.scopeOwner) {
-      if (options.preferInitializerBeforeReference) {
+    return null;
+  }
+
+  let currentAncestor: EsTreeNode | null | undefined = referenceNode;
+  while (currentAncestor) {
+    let bestInScope: BindingInfo | null = null;
+    for (const candidate of candidates) {
+      if (candidate.scopeOwner !== currentAncestor) continue;
+      if (bestInScope === null) {
+        bestInScope = candidate;
+        continue;
+      }
+      if (options?.preferInitializerBeforeReference) {
         const isCandidateAvailable = Boolean(
           candidate.initializer &&
           (isNodeOfType(candidate.initializer, "FunctionDeclaration") ||
             candidate.bindingIdentifier.range[0] < referenceNode.range[0]),
         );
         const isBestAvailable = Boolean(
-          best.initializer &&
-          (isNodeOfType(best.initializer, "FunctionDeclaration") ||
-            best.bindingIdentifier.range[0] < referenceNode.range[0]),
+          bestInScope.initializer &&
+          (isNodeOfType(bestInScope.initializer, "FunctionDeclaration") ||
+            bestInScope.bindingIdentifier.range[0] < referenceNode.range[0]),
         );
         if (isCandidateAvailable !== isBestAvailable) {
-          if (isCandidateAvailable) best = candidate;
+          if (isCandidateAvailable) bestInScope = candidate;
           continue;
         }
       }
-      if (candidate.initializer !== null || best.initializer === null) best = candidate;
-      continue;
-    }
-    // `candidate.scopeOwner` deeper than `best.scopeOwner` means
-    // candidate is closer to the reference — prefer it.
-    let cursor: EsTreeNode | null | undefined = candidate.scopeOwner;
-    while (cursor) {
-      if (cursor === best.scopeOwner) {
-        best = candidate;
-        break;
+      if (candidate.initializer !== null || bestInScope.initializer === null) {
+        bestInScope = candidate;
       }
-      cursor = cursor.parent ?? null;
+    }
+    if (bestInScope) return bestInScope;
+    currentAncestor = currentAncestor.parent ?? null;
+  }
+  return null;
+};
+
+export const findVariableInitializer = (
+  referenceNode: EsTreeNode,
+  bindingName: string,
+  options?: FindVariableInitializerOptions,
+): BindingInfo | null => {
+  let cachedLookups = bindingLookupCache.get(referenceNode);
+  let cachedLookup: CachedBindingLookup;
+  if (!cachedLookups) {
+    cachedLookup = {};
+    bindingLookupCache.set(referenceNode, {
+      primaryBindingName: bindingName,
+      primaryLookup: cachedLookup,
+    });
+  } else if (cachedLookups.primaryBindingName === bindingName) {
+    cachedLookup = cachedLookups.primaryLookup;
+  } else {
+    let additionalLookups = cachedLookups.additionalLookups;
+    if (!additionalLookups) {
+      additionalLookups = new Map();
+      cachedLookups.additionalLookups = additionalLookups;
+    }
+    const additionalLookup = additionalLookups.get(bindingName);
+    if (additionalLookup) {
+      cachedLookup = additionalLookup;
+    } else {
+      cachedLookup = {};
+      additionalLookups.set(bindingName, cachedLookup);
     }
   }
-  return best;
+
+  const resultKey = options?.preferInitializerBeforeReference ? "preferredResult" : "defaultResult";
+  if (resultKey in cachedLookup) return cachedLookup[resultKey] ?? null;
+
+  const result = computeVariableInitializer(referenceNode, bindingName, options);
+  cachedLookup[resultKey] = result;
+  return result;
 };
 
 export type { BindingInfo };

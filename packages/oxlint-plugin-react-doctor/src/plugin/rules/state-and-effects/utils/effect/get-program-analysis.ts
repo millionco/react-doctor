@@ -9,7 +9,7 @@ export interface ProgramAnalysis {
   programNode: EsTreeNodeOfType<"Program">;
   scopeManager: ScopeManager;
   scopeByNode: WeakMap<EsTreeNode, Scope | null>;
-  referenceByIdentifier: WeakMap<EsTreeNode, Reference | null>;
+  referenceByIdentifier: WeakMap<EsTreeNode, Reference>;
 }
 
 // HACK: WeakMap keyed on the live Program node so all 8 effect rules
@@ -41,12 +41,18 @@ export const getProgramAnalysis = (anyNode: EsTreeNode): ProgramAnalysis | null 
       fallback: getAstChildKeys,
     } as Parameters<typeof analyze>[1],
   );
+  const referenceByIdentifier = new WeakMap<EsTreeNode, Reference>();
+  for (const scope of scopeManager.scopes) {
+    for (const reference of scope.references) {
+      referenceByIdentifier.set(reference.identifier as unknown as EsTreeNode, reference);
+    }
+  }
 
   const analysis: ProgramAnalysis = {
     programNode,
     scopeManager,
     scopeByNode: new WeakMap(),
-    referenceByIdentifier: new WeakMap(),
+    referenceByIdentifier,
   };
   programToAnalysis.set(programNode, analysis);
   return analysis;

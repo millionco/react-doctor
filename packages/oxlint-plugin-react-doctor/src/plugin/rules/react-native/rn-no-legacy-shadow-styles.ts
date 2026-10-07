@@ -1,15 +1,13 @@
 import { LEGACY_SHADOW_STYLE_PROPERTIES } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { isLegacyArchReactNativeFile } from "../../utils/is-legacy-arch-react-native-file.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-
-const EMPTY_VISITORS: RuleVisitors = {};
 
 const reportLegacyShadowProperties = (
   objectExpression: EsTreeNodeOfType<"ObjectExpression">,
@@ -47,7 +45,7 @@ export const rnNoLegacyShadowStyles = defineRule({
     // boxShadow isn't supported, so the platform-specific shadow props are
     // the only option and the rule must stay silent.
     if (context.filename && isLegacyArchReactNativeFile(normalizeFilename(context.filename))) {
-      return EMPTY_VISITORS;
+      return EMPTY_RULE_VISITORS;
     }
     return {
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {

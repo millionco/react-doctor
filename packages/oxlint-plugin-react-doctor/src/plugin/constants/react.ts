@@ -1,4 +1,4 @@
-import { FETCH_CALLEE_NAMES, FETCH_MEMBER_OBJECTS } from "./library.js";
+import { FETCH_CALLEE_NAMES } from "./library.js";
 import { TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES } from "./dom.js";
 
 export const INDEX_PARAMETER_NAMES = new Set(["index", "idx", "i"]);
@@ -27,6 +27,7 @@ export const REACT_RUNTIME_MODULE_SOURCES = new Set([
 // (WebdriverIO's `useBrowser`, DI registries, codegen utilities).
 export const REACT_ECOSYSTEM_PACKAGE_NAMES = new Set([
   "next",
+  "next-themes",
   "@remix-run/react",
   "swr",
   "zustand",
@@ -36,6 +37,7 @@ export const REACT_ECOSYSTEM_PACKAGE_NAMES = new Set([
   "framer-motion",
   "@apollo/client",
   "urql",
+  "usehooks-ts",
 ]);
 
 export const LOADING_STATE_PATTERN = /^(?:isLoading|isPending)$/;
@@ -49,6 +51,10 @@ export const UNARY_LISTENER_HANDLER_ARGUMENT_INDEX = 0;
 export const EVENT_LISTENER_HANDLER_ARGUMENT_INDEX = 1;
 export const WHOLE_RECEIVER_RELEASE_ARGUMENT_COUNT = 0;
 
+export const STATE_UPDATER_INITIAL_PROPERTY_WRITE_RANK = 0;
+export const STATE_UPDATER_INVOCATION_PROPERTY_WRITE_RANK = 1;
+export const STATE_UPDATER_CALL_PROPERTY_WRITE_RANK = 2;
+
 export const TRIVIAL_INITIALIZER_NAMES = new Set([
   "Boolean",
   "String",
@@ -57,51 +63,6 @@ export const TRIVIAL_INITIALIZER_NAMES = new Set([
   "Object",
   "parseInt",
   "parseFloat",
-]);
-
-// Constructing these built-ins WITH NO ARGUMENTS costs about as much
-// as calling the trivial coercion functions — `useState(new Date())` /
-// `useRef(new Map())` are idiomatic cheap initial values, not the
-// expensive-model construction the lazy-init rules target.
-// Recommending the lazy-init pattern for an empty container is
-// net-negative ceremony. Consumed via
-// `utils/is-trivial-built-in-construction.ts` (which also enforces the
-// zero-argument, identifier-callee shape) by `rerender-lazy-state-init`
-// and `rerender-lazy-ref-init`.
-export const TRIVIAL_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
-  "Date",
-  "Map",
-  "Set",
-  "WeakMap",
-  "WeakSet",
-  "WeakRef",
-  "RegExp",
-  "Error",
-  "URL",
-  "URLSearchParams",
-  "AbortController",
-]);
-
-// Used by `noDerivedStateEffect` to decide whether a derived-state
-// expression is "expensive enough" to recommend `useMemo` over plain
-// inline computation. Coercion / parsing / boundary helpers are cheap
-// and should still get the "compute during render" message.
-// MemberExpression callees (e.g. `Math.floor`, `Date.now`) are
-// recognized via BUILTIN_GLOBAL_NAMESPACE_NAMES (the chain root), not
-// here — putting "Math" or "Date" in this set wouldn't match because
-// the expensive-derivation walker reads the *property* name.
-export const TRIVIAL_DERIVATION_CALLEE_NAMES = new Set([
-  "Boolean",
-  "String",
-  "Number",
-  "Array",
-  "Object",
-  "parseInt",
-  "parseFloat",
-  "isNaN",
-  "isFinite",
-  "BigInt",
-  "Symbol",
 ]);
 
 export const SETTER_PATTERN = /^set[A-Z]/;
@@ -263,25 +224,6 @@ export const EXTERNAL_SYNC_MEMBER_METHOD_NAMES = new Set([
   "post",
   "put",
   "patch",
-]);
-
-// HACK: `get`, `head`, `options` are HTTP verbs but ALSO names of
-// universal data-structure methods (`Map.get`, `URLSearchParams.get`,
-// `FormData.get`, `Headers.get`, `WeakMap.get`, `Set.has`, etc.). We
-// only treat them as external-sync calls when the receiver is a
-// recognized HTTP-client-shaped name. Lets the `axios.get(...)`
-// cascade case work without false-classifying `params.get('id')` as
-// external sync.
-//
-// Layered on top of `FETCH_MEMBER_OBJECTS` (the canonical HTTP-client
-// receiver list used by `containsFetchCall`) so adding a new client
-// name in one place propagates to both detectors.
-export const EXTERNAL_SYNC_HTTP_CLIENT_RECEIVERS = new Set([
-  ...FETCH_MEMBER_OBJECTS,
-  "api",
-  "client",
-  "http",
-  "fetcher",
 ]);
 
 export const EXTERNAL_SYNC_AMBIGUOUS_HTTP_METHOD_NAMES = new Set([

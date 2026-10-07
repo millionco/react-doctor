@@ -115,6 +115,7 @@ describe("runOxlint", () => {
     "nextjs rules",
     {
       "nextjs-no-img-element": {
+        expectedCount: 0,
         fixture: "app/page.tsx",
         ruleSource: "rules/nextjs.ts",
         category: "Bugs",
@@ -133,6 +134,7 @@ describe("runOxlint", () => {
         ruleSource: "rules/nextjs.ts",
       },
       "nextjs-no-client-fetch-for-server-data": {
+        expectedCount: 0,
         fixture: "app/layout.tsx",
         ruleSource: "rules/nextjs.ts",
       },
@@ -209,6 +211,7 @@ describe("runOxlint", () => {
         category: "Bugs",
       },
       "server-dedup-props": {
+        expectedCount: 0,
         fixture: "app/users/page.tsx",
         ruleSource: "rules/server.ts",
         category: "Bugs",

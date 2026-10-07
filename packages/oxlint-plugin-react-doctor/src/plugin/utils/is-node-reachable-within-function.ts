@@ -14,6 +14,15 @@ const isInsideStaticallyUnreachableBranch = (node: EsTreeNode): boolean => {
       if (parent.test.value === false && parent.consequent === child) return true;
       if (parent.test.value === true && parent.alternate === child) return true;
     }
+    if (
+      (isNodeOfType(parent, "WhileStatement") || isNodeOfType(parent, "ForStatement")) &&
+      parent.body === child &&
+      parent.test &&
+      isNodeOfType(parent.test, "Literal") &&
+      !parent.test.value
+    ) {
+      return true;
+    }
     if (isNodeOfType(parent, "LogicalExpression") && parent.right === child) {
       if (
         isNodeOfType(parent.left, "Literal") &&

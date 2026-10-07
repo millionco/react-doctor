@@ -1,0 +1,191 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 5080c6cd7628d08bf33fc01da40b5fba145c9fae078c62415dee42bd613e903b
+const el = (tag: string, cls: string, parent?: HTMLElement): HTMLElement => {
+  const n = document.createElement(tag);
+  n.className = cls;
+  (parent ?? document.body).appendChild(n);
+  return n;
+};
+
+export interface HudRoomState {
+  name: string;
+  quarter: number;
+  locked: boolean;
+  lit: boolean;
+  taken: boolean;
+  selected: boolean;
+  hubOpen: boolean;
+  aligned: boolean;
+}
+
+export class Hud {
+  private readonly loading: HTMLElement;
+  private readonly loadingBar: HTMLElement;
+  private readonly loadingLabel: HTMLElement;
+  private readonly root: HTMLElement;
+  private readonly objective: HTMLElement;
+  private readonly sealsRow: HTMLElement;
+  private readonly wardsRow: HTMLElement;
+  private readonly roomList: HTMLElement;
+  private readonly dreadFill: HTMLElement;
+  private readonly dreadLabel: HTMLElement;
+  private readonly prompt: HTMLElement;
+  private readonly toast: HTMLElement;
+  private readonly clue: HTMLElement;
+  private readonly clueTitle: HTMLElement;
+  private readonly clueBody: HTMLElement;
+  private readonly overlay: HTMLElement;
+  private readonly overlayInner: HTMLElement;
+  private toastTimer = 0;
+
+  constructor() {
+    this.loading = el("div", "tw-loading");
+    const box = el("div", "tw-loading-box", this.loading);
+    const title = el("div", "tw-loading-title", box);
+    title.textContent = "Turning Woods";
+    this.loadingLabel = el("div", "tw-loading-label", box);
+    this.loadingLabel.textContent = "waking the woods";
+    const track = el("div", "tw-loading-track", box);
+    this.loadingBar = el("div", "tw-loading-fill", track);
+
+    this.root = el("div", "tw-hud");
+    this.root.style.display = "none";
+
+    const left = el("div", "tw-panel tw-left", this.root);
+    this.objective = el("div", "tw-objective", left);
+    this.sealsRow = el("div", "tw-row", left);
+    this.wardsRow = el("div", "tw-row", left);
+    this.roomList = el("div", "tw-rooms", left);
+
+    const dread = el("div", "tw-dread", this.root);
+    this.dreadLabel = el("div", "tw-dread-label", dread);
+    this.dreadLabel.textContent = "DREAD";
+    const dtrack = el("div", "tw-dread-track", dread);
+    this.dreadFill = el("div", "tw-dread-fill", dtrack);
+
+    const right = el("div", "tw-panel tw-right", this.root);
+    right.innerHTML = `
+      <div class="tw-keys-title">CONTROLS</div>
+      <div class="tw-key"><b>W A S D</b><span>walk</span></div>
+      <div class="tw-key"><b>drag / wheel</b><span>look &amp; zoom</span></div>
+      <div class="tw-key"><b>E</b><span>inspect &middot; take seal</span></div>
+      <div class="tw-key"><b>Q / E</b><span>turn room at a turntable</span></div>
+      <div class="tw-key"><b>Space</b><span>lock layout (ward)</span></div>
+      <div class="tw-key"><b>R</b><span>restart</span></div>`;
+
+    this.prompt = el("div", "tw-prompt", this.root);
+    this.toast = el("div", "tw-toast", this.root);
+
+    this.clue = el("div", "tw-clue", this.root);
+    this.clueTitle = el("div", "tw-clue-title", this.clue);
+    this.clueBody = el("div", "tw-clue-body", this.clue);
+    this.clue.style.display = "none";
+
+    this.overlay = el("div", "tw-overlay");
+    this.overlayInner = el("div", "tw-overlay-inner", this.overlay);
+    this.overlay.style.display = "none";
+  }
+
+  setProgress(frac: number, label: string): void {
+    this.loadingBar.style.width = `${Math.round(frac * 100)}%`;
+    this.loadingLabel.textContent = label;
+  }
+
+  hideLoading(): void {
+    this.loading.style.opacity = "0";
+    setTimeout(() => {
+      this.loading.style.display = "none";
+    }, 700);
+    this.root.style.display = "";
+  }
+
+  setObjective(text: string): void {
+    if (this.objective.textContent !== text) this.objective.textContent = text;
+  }
+
+  setCounts(seals: number, wardsUsed: number, wardsMax: number): void {
+    this.sealsRow.innerHTML = `<span class="tw-tag">SEALS</span>${pips(seals, 3, "seal")}`;
+    this.wardsRow.innerHTML = `<span class="tw-tag">WARDS</span>${pips(wardsUsed, wardsMax, "ward")}`;
+  }
+
+  setRooms(rooms: HudRoomState[]): void {
+    this.roomList.innerHTML = rooms
+      .map((r) => {
+        const marks: string[] = [];
+        marks.push(r.taken ? "sealed" : r.lit ? "lantern lit" : r.aligned ? "in the shaft" : "dark");
+        if (r.locked) marks.push("warded");
+        marks.push(r.hubOpen ? "door open" : "door shut");
+        return `<div class="tw-room${r.selected ? " sel" : ""}">
+            <span class="tw-room-name">${r.name}</span>
+            <span class="tw-room-turn">q${r.quarter}</span>
+            <span class="tw-room-state">${marks.join(" &middot; ")}</span>
+          </div>`;
+      })
+      .join("");
+  }
+
+  setDread(v: number): void {
+    this.dreadFill.style.width = `${Math.round(Math.min(1, v) * 100)}%`;
+    const hot = v > 0.6;
+    this.dreadFill.style.background = hot
+      ? "linear-gradient(90deg,#c2451f,#ff7a3c)"
+      : "linear-gradient(90deg,#2b5f7a,#59a9c9)";
+    this.dreadLabel.style.color = hot ? "#ff9d6b" : "";
+  }
+
+  setPrompt(text: string | null): void {
+    this.prompt.innerHTML = text ?? "";
+    this.prompt.style.opacity = text ? "1" : "0";
+  }
+
+  showClue(title: string, body: string): void {
+    this.clueTitle.textContent = title;
+    this.clueBody.textContent = body;
+    this.clue.style.display = "";
+    this.clue.style.opacity = "1";
+  }
+
+  hideClue(): void {
+    this.clue.style.opacity = "0";
+    this.clue.style.display = "none";
+  }
+
+  get clueVisible(): boolean {
+    return this.clue.style.display !== "none";
+  }
+
+  say(text: string, seconds = 3.4): void {
+    this.toast.textContent = text;
+    this.toast.style.opacity = "1";
+    this.toastTimer = seconds;
+  }
+
+  showOverlay(html: string): void {
+    this.overlayInner.innerHTML = html;
+    this.overlay.style.display = "";
+    requestAnimationFrame(() => {
+      this.overlay.style.opacity = "1";
+    });
+  }
+
+  hideOverlay(): void {
+    this.overlay.style.opacity = "0";
+    this.overlay.style.display = "none";
+  }
+
+  update(dt: number): void {
+    if (this.toastTimer > 0) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) this.toast.style.opacity = "0";
+    }
+  }
+}
+
+function pips(filled: number, total: number, cls: string): string {
+  let s = "";
+  for (let i = 0; i < total; i++) s += `<i class="tw-pip tw-${cls}${i < filled ? " on" : ""}"></i>`;
+  return s;
+}

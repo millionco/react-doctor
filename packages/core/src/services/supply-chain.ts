@@ -9,6 +9,7 @@ import { SupplyChainOverlapTimeoutMs } from "../refs.js";
 interface SupplyChainInput {
   readonly rootDirectory: string;
   readonly userConfig: ReactDoctorConfig | null;
+  readonly timeoutMs?: number;
 }
 
 /**
@@ -24,7 +25,7 @@ interface SupplyChainInput {
  * mode (dependency health is a whole-project property).
  * The underlying `checkSupplyChain` Effect is total/fail-open — per-package
  * timeouts and network failures recover to "skip" — so the stream never
- * fails, mirroring `DeadCode`'s stream shape so the two compose the same way.
+ * fails, mirroring `Maintainability`'s stream shape so the two compose the same way.
  * The orchestrator (`run-inspect.ts`) consumes this stream on a background
  * fiber whose network time overlaps the lint pass, joined under a generous
  * wall-clock budget; a budget expiry is the same fail-open outcome as a Socket
@@ -46,8 +47,12 @@ export class SupplyChain extends Context.Service<
           // the fork-level budget also raises the inner one — otherwise the
           // inner cap stays pinned at the constant and the env var can only
           // ever lower the effective budget.
-          Effect.flatMap(SupplyChainOverlapTimeoutMs, (totalTimeoutMs) =>
-            checkSupplyChain({ ...input, totalTimeoutMs }),
+          Effect.flatMap(SupplyChainOverlapTimeoutMs, (configuredTimeoutMs) =>
+            checkSupplyChain({
+              rootDirectory: input.rootDirectory,
+              userConfig: input.userConfig,
+              totalTimeoutMs: input.timeoutMs ?? configuredTimeoutMs,
+            }),
           ).pipe(
             Effect.map((diagnostics) => Stream.fromIterable(diagnostics)),
             // Surface the whole check as one named span (parent of the

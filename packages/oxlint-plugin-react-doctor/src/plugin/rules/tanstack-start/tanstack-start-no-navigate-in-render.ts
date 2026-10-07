@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import {
   EFFECT_HOOK_NAMES,
   HANDLER_FUNCTION_NAME_PATTERN,
@@ -35,7 +36,7 @@ export const tanstackStartNoNavigateInRender = defineRule({
   recommendation:
     "Use `throw redirect({ to: '/path' })` in `beforeLoad` or `loader`. navigate() during render causes hydration issues.",
   create: (context: RuleContext): RuleVisitors => {
-    if (!isInProjectDirectory(context, "routes")) return {};
+    if (!isInProjectDirectory(context, "routes")) return EMPTY_RULE_VISITORS;
 
     // HACK: only callbacks that React calls LATER are safe scopes for
     // navigate() — useEffect / useLayoutEffect (post-commit), useCallback

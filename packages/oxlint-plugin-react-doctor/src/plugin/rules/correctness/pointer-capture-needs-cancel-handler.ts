@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -21,6 +22,18 @@ const getHandlerExpression = (attribute: EsTreeNode | null): EsTreeNode | null =
     return null;
   }
   return attribute.value.expression;
+};
+
+const resolvePointerDownHandler = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const directHandler = resolveExactLocalFunction(expression, context.scopes);
+  if (directHandler) return directHandler;
+  const useCallbackCall = getReactUseCallbackCall(expression, context.scopes);
+  const wrappedHandler = useCallbackCall?.arguments?.[0];
+  if (!wrappedHandler || isNodeOfType(wrappedHandler, "SpreadElement")) return null;
+  return resolveExactLocalFunction(wrappedHandler, context.scopes);
 };
 
 const handlerCapturesItsPointer = (handler: EsTreeNode, context: RuleContext): boolean => {
@@ -105,7 +118,7 @@ export const pointerCaptureNeedsCancelHandler = defineRule({
       }
       const pointerDownExpression = getHandlerExpression(pointerDownAttribute);
       if (!pointerDownExpression) return;
-      const pointerDownHandler = resolveExactLocalFunction(pointerDownExpression, context.scopes);
+      const pointerDownHandler = resolvePointerDownHandler(pointerDownExpression, context);
       if (!pointerDownHandler || !handlerCapturesItsPointer(pointerDownHandler, context)) return;
 
       context.report({

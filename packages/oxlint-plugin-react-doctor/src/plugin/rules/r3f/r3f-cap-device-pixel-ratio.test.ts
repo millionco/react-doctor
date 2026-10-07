@@ -62,7 +62,7 @@ describe("r3f-cap-device-pixel-ratio", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
-  it("reports proven Three.js renderer setPixelRatio calls", () => {
+  it("leaves direct Three.js renderer setPixelRatio calls to the direct rule", () => {
     const result = runRule(
       r3fCapDevicePixelRatio,
       `
@@ -74,7 +74,7 @@ describe("r3f-cap-device-pixel-ratio", () => {
         new THREE.WebGPURenderer()["setPixelRatio"](globalThis.devicePixelRatio);
       `,
     );
-    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("reports selector and destructured useThree setDpr calls", () => {

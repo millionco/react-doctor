@@ -1,6 +1,5 @@
 import { HTML_TAGS } from "../../constants/html-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
@@ -13,8 +12,9 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { splitTailwindClassName } from "../../utils/split-tailwind-class-name.js";
+import { getEffectiveTailwindClassNameToken } from "./utils/get-effective-tailwind-class-name-token.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
-import { getLastMatchingToken } from "./utils/get-last-matching-token.js";
 
 const POINTER_HANDLER_PATTERN = /^on(?:click|pointer|mouse|touch|drag)/i;
 
@@ -104,8 +104,8 @@ export const noInertPointerAffordance = defineRule({
       if (!HTML_TAGS.has(elementType) || isInteractiveElement(elementType, node)) return;
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
-      const cursorUtility = getLastMatchingToken(
-        getUnvariantClassNameTokens(classNameValue),
+      const cursorUtility = getEffectiveTailwindClassNameToken(
+        splitTailwindClassName(classNameValue),
         (utility) => utility.startsWith("cursor-"),
       );
       if (cursorUtility !== "cursor-pointer") return;

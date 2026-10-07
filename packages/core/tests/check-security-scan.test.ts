@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { checkSecurityScan, checkSecurityScanCooperative } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
 import { REACT_DOCTOR_RULES } from "oxlint-plugin-react-doctor";
@@ -49,6 +49,7 @@ afterEach(() => {
   fs.rmSync(temporaryRoot, { recursive: true, force: true });
   setOrDeleteEnv("GIT_CONFIG_GLOBAL", originalGitConfigGlobal);
   setOrDeleteEnv("GIT_CONFIG_SYSTEM", originalGitConfigSystem);
+  vi.restoreAllMocks();
 });
 
 describe("checkSecurityScan", () => {
@@ -77,12 +78,7 @@ describe("checkSecurityScan", () => {
 
     it("flags Arc and Chattr style Firebase authorization mistakes", () => {
       expect(fixtureRules("eva-arc-chattr-firebase")).toEqual(
-        new Set([
-          "artifact-baas-authority-surface",
-          "firebase-client-owned-authz-field",
-          "firebase-permissive-rules",
-          "firebase-query-filter-as-auth",
-        ]),
+        new Set(["firebase-client-owned-authz-field", "firebase-permissive-rules"]),
       );
     });
 
@@ -166,12 +162,20 @@ describe("checkSecurityScan", () => {
       ).toEqual([]);
     });
 
-    it("flags ported agent, MCP, SQL, NoSQL, and command execution matcher patterns", () => {
-      expect(fixtureRules("ported-agent-mcp-tool-risks")).toEqual(
-        new Set(["agent-tool-capability-risk", "mcp-tool-capability-risk"]),
-      );
+    it("keeps capability inventory optional while reporting database and command risks", () => {
+      expect(fixtureRules("ported-agent-mcp-tool-risks")).toEqual(new Set());
       expect(fixtureRules("ported-database-and-command-risks")).toEqual(
         new Set(["command-execution-input-risk", "nosql-injection-risk", "raw-sql-injection-risk"]),
+      );
+    });
+
+    it("allows an explicit security review to include capability observations", () => {
+      const diagnostics = checkSecurityScan(
+        path.join(FIXTURES_DIRECTORY, "ported-agent-mcp-tool-risks"),
+        { includedTags: new Set(["security-scan"]), includeTagDefaults: true },
+      );
+      expect(rulesOf(diagnostics)).toEqual(
+        new Set(["agent-tool-capability-risk", "mcp-tool-capability-risk"]),
       );
     });
 
@@ -269,6 +273,64 @@ export const databaseUrl = process.env.DATABASE_URL;`,
       await expect(checkSecurityScanCooperative(fixtureDirectory)).resolves.toEqual(
         syncDiagnostics,
       );
+    });
+
+    it("stops before walking files when the shared scan deadline has passed", async () => {
+      const fixtureDirectory = path.join(FIXTURES_DIRECTORY, "eva-mintlify-docs-platform");
+      const onDeadlineExceeded = vi.fn();
+      await expect(
+        checkSecurityScanCooperative(fixtureDirectory, {
+          deadlineEpochMs: Date.now() - 1,
+          onDeadlineExceeded,
+        }),
+      ).resolves.toEqual([]);
+      expect(onDeadlineExceeded).toHaveBeenCalledOnce();
+    });
+
+    it("does not report a deadline when no security rules are enabled", async () => {
+      const fixtureDirectory = path.join(FIXTURES_DIRECTORY, "eva-mintlify-docs-platform");
+      const onDeadlineExceeded = vi.fn();
+      await expect(
+        checkSecurityScanCooperative(fixtureDirectory, {
+          ignoredTags: new Set(["security-scan"]),
+          deadlineEpochMs: Date.now() - 1,
+          onDeadlineExceeded,
+        }),
+      ).resolves.toEqual([]);
+      expect(onDeadlineExceeded).not.toHaveBeenCalled();
+    });
+
+    it("preserves findings collected before the shared scan deadline", async () => {
+      for (let fileIndex = 0; fileIndex < 100; fileIndex += 1) {
+        writeFile(
+          `supabase/migrations/${String(fileIndex).padStart(3, "0")}.sql`,
+          "alter table public.accounts disable row level security;",
+        );
+      }
+      const completeDiagnostics = checkSecurityScan(temporaryRoot);
+      let clockReadCount = 0;
+      vi.spyOn(Date, "now").mockImplementation(() => {
+        clockReadCount += 1;
+        return clockReadCount < 20 ? 0 : 2;
+      });
+      const onDeadlineExceeded = vi.fn();
+
+      const partialDiagnostics = await checkSecurityScanCooperative(temporaryRoot, {
+        deadlineEpochMs: 1,
+        onDeadlineExceeded,
+      });
+
+      expect(partialDiagnostics.length).toBeGreaterThan(0);
+      expect(partialDiagnostics.length).toBeLessThan(completeDiagnostics.length);
+      expect(onDeadlineExceeded).toHaveBeenCalledOnce();
+    });
+
+    it("honors an already-aborted scan signal", async () => {
+      const abortController = new AbortController();
+      abortController.abort();
+      await expect(
+        checkSecurityScanCooperative(temporaryRoot, { signal: abortController.signal }),
+      ).rejects.toThrow();
     });
   });
 
@@ -1081,7 +1143,6 @@ alter table data enable row level security;
         "cors-cookie-trust-risk",
         "firebase-client-owned-authz-field",
         "firebase-permissive-rules",
-        "firebase-query-filter-as-auth",
         "import-metadata-execution-risk",
         "key-lifecycle-risk",
         "local-rpc-native-bridge-risk",
@@ -1095,8 +1156,6 @@ alter table data enable row level security;
         "untrusted-redirect-following",
         "dangerous-html-sink",
         "url-prefilled-privileged-action",
-        "agent-tool-capability-risk",
-        "mcp-tool-capability-risk",
         "raw-sql-injection-risk",
         "nosql-injection-risk",
         "command-execution-input-risk",

@@ -1,6 +1,5 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 export const resolveConstIdentifierAlias = (
@@ -8,25 +7,23 @@ export const resolveConstIdentifierAlias = (
   scopes: ScopeAnalysis,
   allowPatternBinding = false,
 ): SymbolDescriptor | null => {
-  if (!isNodeOfType(identifier, "Identifier") && !isNodeOfType(identifier, "JSXIdentifier")) {
+  if (identifier.type !== "Identifier" && identifier.type !== "JSXIdentifier") {
     return null;
   }
-  const visitedSymbolIds = new Set<number>();
+  let visitedSymbolIds: Set<number> | null = null;
   let symbol = scopes.symbolFor(identifier);
   while (symbol?.kind === "const") {
-    if (
-      visitedSymbolIds.has(symbol.id) ||
-      !symbol.initializer ||
-      !isNodeOfType(symbol.declarationNode, "VariableDeclarator")
-    ) {
+    if (!symbol.initializer || symbol.declarationNode.type !== "VariableDeclarator") {
       return null;
     }
     if (symbol.declarationNode.id !== symbol.bindingIdentifier) {
       return allowPatternBinding ? symbol : null;
     }
-    visitedSymbolIds.add(symbol.id);
     const initializer = stripParenExpression(symbol.initializer);
-    if (!isNodeOfType(initializer, "Identifier")) return symbol;
+    if (initializer.type !== "Identifier") return symbol;
+    if (visitedSymbolIds?.has(symbol.id)) return null;
+    if (!visitedSymbolIds) visitedSymbolIds = new Set();
+    visitedSymbolIds.add(symbol.id);
     symbol = scopes.symbolFor(initializer);
   }
   return symbol;

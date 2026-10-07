@@ -37,4 +37,27 @@ describe("SupplyChain.layerNode", () => {
       }),
     );
   });
+
+  it("prefers the per-run timeout over the configured overlap budget", async () => {
+    const configuredTimeoutMs = 245_000;
+    const runTimeoutMs = 10_000;
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const supplyChain = yield* SupplyChain;
+        yield* Stream.runCollect(
+          supplyChain.run({ rootDirectory: "/repo", userConfig: null, timeoutMs: runTimeoutMs }),
+        );
+      }).pipe(
+        Effect.provide(SupplyChain.layerNode),
+        Effect.provide(Layer.succeed(SupplyChainOverlapTimeoutMs, configuredTimeoutMs)),
+      ),
+    );
+
+    expect(checkSupplyChainSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        rootDirectory: "/repo",
+        totalTimeoutMs: runTimeoutMs,
+      }),
+    );
+  });
 });

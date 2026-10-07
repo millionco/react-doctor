@@ -32,6 +32,89 @@ describe("no-unescaped-dynamic-string-in-regexp", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an unescaped root folder name in an anchored path pattern", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      "const prefix = new RegExp(`^${rootFolderName}/`);",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags the compiled concat form of an unescaped root folder name", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const prefix = new RegExp("^".concat(rootFolderName, "/"));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags semantic path-segment identifier variants in anchored path patterns", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const first = new RegExp(\`^\${topLevelFolderName}/\`);
+      const second = new RegExp(\`^\${rootName}/\`);
+      const third = new RegExp(\`^\${currentRootFolder}/\`);
+      const fourth = new RegExp(\`^\${topLevelName}/\`);
+      const fifth = new RegExp(\`^\${directorySegment}/\`);
+      const sixth = new RegExp(\`^\${resourceFolder}/\`);
+      const seventh = new RegExp(\`^\${PathSource}/\`);`,
+    );
+    expect(result.diagnostics).toHaveLength(7);
+  });
+
+  it("does not flag path-like identifiers outside anchored path-prefix patterns", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const namedPattern = new RegExp(rootName);
+      const exactPattern = new RegExp(\`^\${topLevelName}$\`);
+      const reorderedPattern = new RegExp(\`/\${directorySegment}^\`);
+      const nestedFragments = new RegExp(
+        \`\${makePrefix("^")}\${directorySegment}\${makeSuffix("/")}\`,
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat author-named regex sources as literal path segments", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const first = new RegExp(\`^\${rootPattern}/\`);
+      const second = new RegExp(\`^\${pathRegexSource}/\`);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag escaped folder-root identifiers", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const first = new RegExp(\`^\${escapeRegExp(rootFolderName)}/\`);
+      const escapedRootFolderName = RegExp.escape(rootFolderName);
+      const second = new RegExp(\`^\${escapedRootFolderName}/\`);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags an anchored path alias when one conditional branch is unescaped", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const escapedRootFolder = escapeRegExp(rootFolder);
+      const pathPrefix = shouldEscape ? escapedRootFolder : untrustedValue;
+      const matcher = new RegExp(\`^\${pathPrefix}/\`);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an anchored path alias when every conditional branch is escaped", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const escapedRootFolder = escapeRegExp(rootFolder);
+      const sanitizedFallbackFolder = RegExp.escape(fallbackFolder);
+      const pathPrefix = useFallback ? sanitizedFallbackFolder : escapedRootFolder;
+      const matcher = new RegExp(\`^\${pathPrefix}/\`);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags a highlight prop passed to RegExp without new", () => {
     const result = runRule(noUnescapedDynamicStringInRegexp, `const re = RegExp(highlight, 'gi');`);
     expect(result.diagnostics).toHaveLength(1);

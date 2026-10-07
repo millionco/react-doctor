@@ -39,6 +39,7 @@ const interpretsPastedInput = (handler: EsTreeNode, context: RuleContext): boole
         )
       ) {
         isPasteLogic = true;
+        return false;
       }
     }
     if (
@@ -54,6 +55,7 @@ const interpretsPastedInput = (handler: EsTreeNode, context: RuleContext): boole
         (descendantNode.operator === ">=" && descendantNode.right.value >= 2))
     ) {
       isPasteLogic = true;
+      return false;
     }
   });
   return isPasteLogic;

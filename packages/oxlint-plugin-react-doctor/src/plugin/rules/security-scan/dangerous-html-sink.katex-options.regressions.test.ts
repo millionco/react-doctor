@@ -12,6 +12,8 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
   it.each([
     "katex.renderToString(value, { trust: true })",
     "katex.renderToString(value, { trust: allowTrustedCommand })",
+    "katex.renderToString(value, options)",
+    "katex.renderToString(value, getOptions())",
     "katex.renderToString(value, { ...options })",
     "katex.renderToString(value, { trust: false, ...options })",
   ])("reports unsafe or unknown KaTeX options: %s", (expression) => {
@@ -24,6 +26,253 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
 
     expect(findings).toHaveLength(1);
   });
+
+  it.each([
+    "false && katex.renderToString(value, options)",
+    "true || katex.renderToString(value, options)",
+    'false ? katex.renderToString(value, options) : ""',
+    'true ? "" : katex.renderToString(value, options)',
+    '0 ? katex.renderToString(value, options) : ""',
+    '1 ? "" : katex.renderToString(value, options)',
+    'null ? katex.renderToString(value, options) : ""',
+    '"" ? katex.renderToString(value, options) : ""',
+    '"ready" ? "" : katex.renderToString(value, options)',
+    '(true ? "ready" : katex.renderToString(value, options)) || ""',
+    '(false ? katex.renderToString(value, options) : "ready") || ""',
+    '(true ? "ready" : katex.renderToString(value, options)) ?? ""',
+    '(false ? katex.renderToString(value, options) : "ready") ?? ""',
+  ])("ignores unknown KaTeX options in a statically unreachable branch: %s", (expression) => {
+    const findings = scan(`
+      import katex from "katex";
+      export const MathNode = ({ value, options }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: ${expression} }} />
+      );
+    `);
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it.each([
+    "true && katex.renderToString(value, options)",
+    "false || katex.renderToString(value, options)",
+    'true ? katex.renderToString(value, options) : ""',
+    'false ? "" : katex.renderToString(value, options)',
+    '1 ? katex.renderToString(value, options) : ""',
+    '0 ? "" : katex.renderToString(value, options)',
+    '"ready" ? katex.renderToString(value, options) : ""',
+    '"" ? "" : katex.renderToString(value, options)',
+    '(true ? katex.renderToString(value, options) : "") || ""',
+    '(false ? "" : katex.renderToString(value, options)) ?? ""',
+  ])("reports unknown KaTeX options in a statically reachable branch: %s", (expression) => {
+    const findings = scan(`
+      import katex from "katex";
+      export const MathNode = ({ value, options }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: ${expression} }} />
+      );
+    `);
+
+    expect(findings).toHaveLength(1);
+  });
+
+  it.each([
+    "renderMath(value, { trust: false })",
+    "renderMath(value, { throwOnError: false })",
+    "renderMath(value, undefined)",
+    "renderMath(value)",
+  ])("accepts safe options forwarded through a local helper: %s", (expression) => {
+    const findings = scan(`
+      import katex from "katex";
+      const renderMath = (value: string, options?: object) =>
+        katex.renderToString(value, options);
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: ${expression} }} />
+      );
+    `);
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it.each([
+    "const renderMath = (value: string, options = { trust: false }) => katex.renderToString(value, options);",
+    "const renderMath = (value: string, options = { throwOnError: false }) => katex.renderToString(value, options);",
+  ])("accepts safe local helper options defaults: %s", (helperSource) => {
+    const findings = scan(`
+      import katex from "katex";
+      ${helperSource}
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: renderMath(value) }} />
+      );
+    `);
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it("accepts safe caller options that override an unsafe local helper default", () => {
+    const findings = scan(`
+      import katex from "katex";
+      const renderMath = (value: string, options = { trust: true }) =>
+        katex.renderToString(value, options);
+      export const MathNode = ({ value }: Props) => (
+        <span
+          dangerouslySetInnerHTML={{
+            __html: renderMath(value, { trust: false }),
+          }}
+        />
+      );
+    `);
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it.each([
+    "renderMath(value, { trust: false })",
+    "renderMath(value, { trust: false }, undefined)",
+    "renderMath(value, { trust: false }, void 0)",
+  ])("accepts a safe earlier parameter used by a later options default: %s", (expression) => {
+    const findings = scan(`
+      import katex from "katex";
+      const renderMath = (
+        value: string,
+        baseOptions: object,
+        options: object = baseOptions,
+      ) => katex.renderToString(value, options);
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: ${expression} }} />
+      );
+    `);
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it.each(["renderMath(value, { trust: true })", "renderMath(value, options)"])(
+    "rejects an unsafe earlier parameter used by a later options default: %s",
+    (expression) => {
+      const findings = scan(`
+      import katex from "katex";
+      const renderMath = (
+        value: string,
+        baseOptions: object,
+        options: object = baseOptions,
+      ) => katex.renderToString(value, options);
+      export const MathNode = ({ value, options }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: ${expression} }} />
+      );
+    `);
+
+      expect(findings).toHaveLength(1);
+    },
+  );
+
+  it("preserves nested parameter proofs through a dependent options default", () => {
+    const findings = scan(`
+      import katex from "katex";
+      const renderInner = (value: string, options: object) =>
+        katex.renderToString(value, options);
+      const renderOuter = (
+        value: string,
+        baseOptions: object,
+        options: object = baseOptions,
+      ) => renderInner(value, options);
+      export const MathNode = ({ value }: Props) => (
+        <span
+          dangerouslySetInnerHTML={{
+            __html: renderOuter(value, { trust: false }),
+          }}
+        />
+      );
+    `);
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it.each([
+    "renderMath(value, {})",
+    "renderMath(value, { options: undefined })",
+    "renderMath(value, { options: void 0 })",
+    "renderMath(value, { options: { trust: false } })",
+    "renderMath(value)",
+  ])("accepts safe destructured options defaults and overrides: %s", (expression) => {
+    const findings = scan(`
+      import katex from "katex";
+      const renderMath = (
+        value: string,
+        { options = { trust: false } }: RenderOptions = {},
+      ) => katex.renderToString(value, options);
+      export const MathNode = ({ value }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: ${expression} }} />
+      );
+    `);
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it.each(["renderMath(value, { options: { trust: true } })", "renderMath(value, { options })"])(
+    "rejects unsafe destructured options overrides: %s",
+    (expression) => {
+      const findings = scan(`
+      import katex from "katex";
+      const renderMath = (
+        value: string,
+        { options = { trust: false } }: RenderOptions = {},
+      ) => katex.renderToString(value, options);
+      export const MathNode = ({ value, options }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: ${expression} }} />
+      );
+    `);
+
+      expect(findings).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    ["{ trust: false }", 0],
+    ["{ trust: true }", 1],
+    ["options", 1],
+  ])(
+    "resolves a destructured options default from an earlier parameter: %s",
+    (baseOptions, expectedFindingCount) => {
+      const findings = scan(`
+        import katex from "katex";
+        const renderMath = (
+          value: string,
+          baseOptions: object,
+          { options = baseOptions }: RenderOptions = {},
+        ) => katex.renderToString(value, options);
+        export const MathNode = ({ value, options }: Props) => (
+          <span
+            dangerouslySetInnerHTML={{
+              __html: renderMath(value, ${baseOptions}),
+            }}
+          />
+        );
+      `);
+
+      expect(findings).toHaveLength(expectedFindingCount);
+    },
+  );
+
+  it.each([
+    ["renderMath(value, { trust: true })", "{ trust: false }"],
+    ["renderMath(value, options)", "{ trust: false }"],
+    ["renderMath(value, getOptions())", "{ trust: false }"],
+    ["renderMath(value, undefined)", "{ trust: true }"],
+    ["renderMath(value)", "{ trust: true }"],
+    ["renderMath(value)", "getOptions()"],
+  ])(
+    "reports unsafe or unknown options forwarded through a local helper: %s",
+    (expression, defaultOptions) => {
+      const findings = scan(`
+        import katex from "katex";
+        const renderMath = (value: string, localOptions = ${defaultOptions}) =>
+          katex.renderToString(value, localOptions);
+        export const MathNode = ({ value, options }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: ${expression} }} />
+        );
+      `);
+
+      expect(findings).toHaveLength(1);
+    },
+  );
 
   it("accepts an unknown options spread overridden by trust false", () => {
     const findings = scan(`
@@ -234,6 +483,365 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
         function mutate() { options.trust = true; }
       `),
     ).toHaveLength(1);
+  });
+
+  it("replays only mutations that synchronously reach the original options object", () => {
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const mutate = target => { target = { trust: true }; target.trust = true; };
+        mutate(options);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(0);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: true };
+        const disable = async target => { if (condition) await 0; target.trust = false; };
+        disable(options);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        function* enable(target) { yield; target.trust = true; }
+        [...enable(options)];
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+  });
+
+  it("tracks helper rebinding and suspension boundaries for KaTeX options", () => {
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const enable = async target => { await (target.trust = true); };
+        enable(options);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        function* enable(target) { yield (target.trust = true); }
+        enable(options).next();
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const enable = target => { target = target; target.trust = true; };
+        enable(options);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const enable = target => {
+          if (condition) target = {};
+          target = {};
+          target.trust = true;
+        };
+        enable(options);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(0);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const enable = async target => {
+          if (condition) {
+            await 0;
+            target.trust = true;
+          }
+        };
+        enable(options);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(0);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        function* enable(target) { yield; target.trust = true; }
+        for (const value of enable(options)) {}
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+  });
+
+  it("replays advanced synchronous helper control flow for KaTeX options", () => {
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const enable = async target => { try { await 0; } catch {} target.trust = true; };
+        enable(options);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(0);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        function* enable(target) { yield* []; target.trust = true; }
+        enable(options).next();
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: true };
+        const disable = target => { target = target || {}; target.trust = false; };
+        disable(options);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(0);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: true };
+        function* disable(target) { yield; target.trust = false; }
+        for (const value of disable(options)) {}
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(0);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const enable = (target = options) => { target.trust = true; };
+        enable(void 0);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+  });
+
+  it("keeps uncertain generator and try control flow conservative for KaTeX", () => {
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const enable = async target => {
+          try {
+            if (condition) throw new Error();
+            await 0;
+          } catch {}
+          target.trust = true;
+        };
+        enable(options);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: true };
+        function* disable(target) { yield; target.trust = false; }
+        for (const value of disable(options)) {
+          if (condition) break;
+        }
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const enable = (target = options) => { target.trust = true; };
+        enable(undefined as never);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+  });
+
+  it("distinguishes synchronous try escapes and targeted generator breaks", () => {
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const enable = async target => {
+          try {
+            await maybeThrow();
+          } catch {}
+          target.trust = true;
+        };
+        enable(options);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: true };
+        function* disable(target) { yield; target.trust = false; }
+        for (const value of disable(options)) {
+          if (condition) return null;
+        }
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(0);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: true };
+        function* disable(target) { yield; target.trust = false; }
+        for (const value of disable(options)) {
+          switch (value) {
+            case 1:
+              break;
+          }
+        }
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(0);
+  });
+
+  it("proves only initialized no-throw await operands inside try statements", () => {
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const enable = async target => {
+          try { await missingIdentifier; } catch {}
+          target.trust = true;
+        };
+        enable(options);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const enable = async (target, symbolValue) => {
+          try { await \`\${symbolValue}\`; } catch {}
+          target.trust = true;
+        };
+        enable(options, Symbol());
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const enable = async target => {
+          try { await typeof missingIdentifier; } catch {}
+          target.trust = true;
+        };
+        enable(options);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(0);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: false };
+        const enable = async target => {
+          try { const marker = 1; await []; } catch {}
+          target.trust = true;
+        };
+        enable(options);
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(0);
+    expect(
+      scan(`
+        import katex from "katex";
+        const options = { trust: true };
+        function* disable(target) { yield; target.trust = false; }
+        outer: {
+          for (const value of disable(options)) {
+            if (condition) break outer;
+          }
+        }
+        export const MathNode = ({ value }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+        );
+      `),
+    ).toHaveLength(1);
+  });
+
+  it("ignores labeled generator exits that skip the KaTeX sink", () => {
+    const findings = scan(`
+      import katex from "katex";
+      export const MathNode = ({ value }: Props) => {
+        const options = { trust: true };
+        function* disable(target) { yield; target.trust = false; }
+        outer: {
+          for (const item of disable(options)) {
+            if (condition) break outer;
+          }
+          return (
+            <span dangerouslySetInnerHTML={{ __html: katex.renderToString(value, options) }} />
+          );
+        }
+        return null;
+      };
+    `);
+
+    expect(findings).toHaveLength(0);
   });
 
   it("rejects trusted KaTeX options mutated before use in the same function", () => {

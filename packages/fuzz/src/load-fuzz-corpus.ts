@@ -5,10 +5,41 @@ import { MAX_CORPUS_FILES, MAX_CORPUS_FILE_BYTES } from "./constants.js";
 export interface FuzzCorpusEntry {
   relativePath: string;
   code: string;
+  ruleIds?: string[];
+  sourcePath?: string;
+  verdict?: "pass" | "fail";
 }
 
-const CORPUS_FILE_PATTERN = /\.(tsx|jsx)$/;
+export interface FuzzCorpusLoadOptions {
+  maximumFiles?: number;
+}
+
+const CORPUS_FILE_PATTERN = /\.(tsx|ts|jsx|js)(?:\.txt)?$/;
+const RULE_DIRECTIVE_PATTERN = /^\/\/ rule: (.+)$/m;
+const SOURCE_PATH_DIRECTIVE_PATTERN = /^\/\/ file-path: (.+)$/m;
+const VERDICT_DIRECTIVE_PATTERN = /^\/\/ verdict: (pass|fail)$/m;
 const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git", "dist", "build", "coverage"]);
+
+const isCorpusFileName = (fileName: string): boolean =>
+  CORPUS_FILE_PATTERN.test(fileName) &&
+  !fileName.endsWith(".d.ts") &&
+  !fileName.endsWith(".d.ts.txt");
+
+const readCorpusDirectives = (
+  code: string,
+): Pick<FuzzCorpusEntry, "ruleIds" | "sourcePath" | "verdict"> => {
+  const ruleIds = RULE_DIRECTIVE_PATTERN.exec(code)?.[1]
+    ?.split(",")
+    .map((ruleId) => ruleId.trim())
+    .filter(Boolean);
+  const verdict = VERDICT_DIRECTIVE_PATTERN.exec(code)?.[1];
+  const sourcePath = SOURCE_PATH_DIRECTIVE_PATTERN.exec(code)?.[1]?.trim();
+  const directives: Pick<FuzzCorpusEntry, "ruleIds" | "sourcePath" | "verdict"> = {};
+  if (ruleIds && ruleIds.length > 0) directives.ruleIds = ruleIds;
+  if (sourcePath) directives.sourcePath = sourcePath;
+  if (verdict === "pass" || verdict === "fail") directives.verdict = verdict;
+  return directives;
+};
 
 const collectCorpusFilePaths = (rootDirectory: string, budget: number): string[] => {
   const filePaths: string[] = [];
@@ -33,7 +64,7 @@ const collectCorpusFilePaths = (rootDirectory: string, budget: number): string[]
         if (!SKIPPED_DIRECTORY_NAMES.has(name)) walk(fullPath);
         continue;
       }
-      if (!CORPUS_FILE_PATTERN.test(name)) continue;
+      if (!isCorpusFileName(name)) continue;
       if (stats.size > MAX_CORPUS_FILE_BYTES || stats.size === 0) continue;
       filePaths.push(fullPath);
     }
@@ -48,7 +79,11 @@ const collectCorpusFilePaths = (rootDirectory: string, budget: number): string[]
 // subdirectories so a multi-repo corpus directory contributes files from
 // EVERY repo, not just the alphabetically first one. Deterministic for a
 // fixed directory state.
-export const loadFuzzCorpus = (corpusDirectory: string): FuzzCorpusEntry[] => {
+export const loadFuzzCorpus = (
+  corpusDirectory: string,
+  options: FuzzCorpusLoadOptions = {},
+): FuzzCorpusEntry[] => {
+  const maximumFiles = options.maximumFiles ?? MAX_CORPUS_FILES;
   let topLevelNames: string[];
   try {
     topLevelNames = fs.readdirSync(corpusDirectory).sort();
@@ -67,20 +102,20 @@ export const loadFuzzCorpus = (corpusDirectory: string): FuzzCorpusEntry[] => {
     }
     if (stats.isDirectory()) {
       if (SKIPPED_DIRECTORY_NAMES.has(name)) continue;
-      buckets.push(collectCorpusFilePaths(fullPath, MAX_CORPUS_FILES));
+      buckets.push(collectCorpusFilePaths(fullPath, maximumFiles));
       continue;
     }
-    if (CORPUS_FILE_PATTERN.test(name) && stats.size <= MAX_CORPUS_FILE_BYTES && stats.size > 0) {
+    if (isCorpusFileName(name) && stats.size <= MAX_CORPUS_FILE_BYTES && stats.size > 0) {
       looseFiles.push(fullPath);
     }
   }
   if (looseFiles.length > 0) buckets.push(looseFiles);
 
   const selectedPaths: string[] = [];
-  for (let round = 0; selectedPaths.length < MAX_CORPUS_FILES; round += 1) {
+  for (let round = 0; selectedPaths.length < maximumFiles; round += 1) {
     let didSelect = false;
     for (const bucket of buckets) {
-      if (selectedPaths.length >= MAX_CORPUS_FILES) break;
+      if (selectedPaths.length >= maximumFiles) break;
       const candidate = bucket[round];
       if (candidate === undefined) continue;
       selectedPaths.push(candidate);
@@ -92,9 +127,11 @@ export const loadFuzzCorpus = (corpusDirectory: string): FuzzCorpusEntry[] => {
   const entries: FuzzCorpusEntry[] = [];
   for (const fullPath of selectedPaths) {
     try {
+      const code = fs.readFileSync(fullPath, "utf8");
       entries.push({
-        relativePath: path.relative(corpusDirectory, fullPath),
-        code: fs.readFileSync(fullPath, "utf8"),
+        relativePath: path.relative(corpusDirectory, fullPath).split(path.sep).join("/"),
+        code,
+        ...readCorpusDirectives(code),
       });
     } catch {
       continue;

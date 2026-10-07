@@ -1,10 +1,8 @@
 import { RECYCLABLE_LIST_PACKAGES } from "../../../constants/react-native.js";
-import {
-  getImportedNameFromModule,
-  isNamespaceImportFromModule,
-} from "../../../utils/find-import-source-for-name.js";
-import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
+import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { resolveImportedJsxComponentName } from "../../../utils/resolve-imported-jsx-component-name.js";
 
 interface ResolveImportedRecyclerNameOptions {
   // Also resolve `<FL.FlashList />` when `FL` is a namespace import from an
@@ -12,13 +10,6 @@ interface ResolveImportedRecyclerNameOptions {
   // the namespace-member miss as an accepted tradeoff.
   allowNamespaceMemberAccess?: boolean;
 }
-
-const getJsxMemberObjectName = (node: EsTreeNode): string | null => {
-  if (!isNodeOfType(node, "JSXOpeningElement")) return null;
-  const elementName = node.name;
-  if (!elementName || !isNodeOfType(elementName, "JSXMemberExpression")) return null;
-  return isNodeOfType(elementName.object, "JSXIdentifier") ? elementName.object.name : null;
-};
 
 // Resolve a local JSX name back to the canonical recycler it was really
 // imported as (`FlashList`/`LegendList`), following aliased imports
@@ -29,28 +20,19 @@ const getJsxMemberObjectName = (node: EsTreeNode): string | null => {
 // so a homegrown component sharing the name never masquerades as the
 // Shopify/Legend recycler.
 export const resolveImportedRecyclerName = (
-  node: EsTreeNode,
-  localName: string,
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  scopes: ScopeAnalysis,
   options?: ResolveImportedRecyclerNameOptions,
 ): string | null => {
-  const jsxMemberObjectName = options?.allowNamespaceMemberAccess
-    ? getJsxMemberObjectName(node)
-    : null;
+  if (isNodeOfType(node.name, "JSXMemberExpression") && !options?.allowNamespaceMemberAccess) {
+    return null;
+  }
   for (const [canonicalName, packageSources] of Object.entries(RECYCLABLE_LIST_PACKAGES)) {
-    if (jsxMemberObjectName !== null) {
-      const isNamespaceMemberOfOwner =
-        localName === canonicalName &&
-        packageSources.some((packageSource) =>
-          isNamespaceImportFromModule(node, jsxMemberObjectName, packageSource),
-        );
-      if (isNamespaceMemberOfOwner) return canonicalName;
-      continue;
+    for (const packageSource of packageSources) {
+      if (resolveImportedJsxComponentName(node, packageSource, scopes) === canonicalName) {
+        return canonicalName;
+      }
     }
-    const isImportedFromOwner = packageSources.some(
-      (packageSource) =>
-        getImportedNameFromModule(node, localName, packageSource) === canonicalName,
-    );
-    if (isImportedFromOwner) return canonicalName;
   }
   return null;
 };

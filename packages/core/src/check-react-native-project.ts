@@ -1,4 +1,6 @@
 import type { Diagnostic, ProjectInfo } from "./types/index.js";
+import { checkReactNativeAndroidReleaseShrinking } from "./checks/react-native/check-android-release-shrinking.js";
+import { checkReactNativeBabelPluginOrder } from "./checks/react-native/check-babel-plugin-order.js";
 import { checkReactNativeLibraryDependencies } from "./checks/react-native/check-library-dependencies.js";
 import { checkReactNativeMetroBabelPreset } from "./checks/react-native/check-metro-babel-preset.js";
 
@@ -22,6 +24,8 @@ export const checkReactNativeProject = (
   if (!isReactNativeProject(project)) return [];
   return [
     ...checkReactNativeMetroBabelPreset(rootDirectory),
+    ...checkReactNativeBabelPluginOrder(rootDirectory, project),
+    ...checkReactNativeAndroidReleaseShrinking(rootDirectory),
     ...checkReactNativeLibraryDependencies(rootDirectory),
   ];
 };

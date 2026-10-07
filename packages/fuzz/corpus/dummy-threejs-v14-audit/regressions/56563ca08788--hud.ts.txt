@@ -1,0 +1,283 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 56563ca08788eb3fec590dbabb1f522eb61ae2bc0ba2f3e94848cbf50187e0bb
+/**
+ * DOM overlay: reputation, till, rush progress, the kitchen queue, the tray,
+ * and the contextual action prompt (projected onto the target in the world).
+ */
+import * as THREE from "three";
+import { DISHES, type DishId } from "./dishes";
+import type { HudSnapshot } from "./game";
+
+const hex = (n: number) => `#${n.toString(16).padStart(6, "0")}`;
+
+const CHIP_GLYPH: Record<DishId, string> = {
+  soup: "◠",
+  salad: "❁",
+  pasta: "◉",
+  steak: "▬",
+  cake: "◭",
+};
+
+export class Hud {
+  private readonly root: HTMLDivElement;
+  private el: Record<string, HTMLElement> = {};
+  private flashTimer = 0;
+  private flashTone: "good" | "bad" = "good";
+  private lastKitchenKey = "";
+  private lastTrayKey = "";
+  private lastRepKey = "";
+
+  constructor() {
+    this.root = document.createElement("div");
+    this.root.id = "hud";
+    this.root.innerHTML = /* html */ `
+      <div class="vignette"></div>
+      <div class="flash" data-el="flash"></div>
+
+      <div class="topbar">
+        <div class="panel stats">
+          <div class="rep" data-el="rep"></div>
+          <div class="till"><span class="cur">$</span><span data-el="money">0</span></div>
+        </div>
+        <div class="panel rush">
+          <div class="rush-head"><span data-el="waveLabel">Rush 1</span><span data-el="waveCount" class="dim">0 / 0</span></div>
+          <div class="bar"><i data-el="waveBar"></i></div>
+        </div>
+        <div class="panel kitchen">
+          <div class="ttl">Kitchen line</div>
+          <div class="rows" data-el="kitchen"></div>
+          <div class="ttl ttl2">Ready at the pass</div>
+          <div class="rows" data-el="ready"></div>
+        </div>
+      </div>
+
+      <div class="prompt" data-el="prompt"><b data-el="promptKey">SPACE</b><span data-el="promptLabel"></span><i data-el="promptHint"></i></div>
+
+      <div class="bottombar">
+        <div class="panel tray">
+          <div class="ttl">Tray <span class="dim" data-el="trayCount"></span></div>
+          <div class="slots" data-el="tray"></div>
+          <div class="leading" data-el="leading"></div>
+        </div>
+        <div class="panel legend">
+          <div class="stam"><i data-el="stam"></i></div>
+          <div class="keys">
+            <span><b>WASD</b> move</span><span><b>SPACE</b> act</span><span><b>SHIFT</b> sprint</span>
+            <span><b>TAB</b> overview</span><span><b>Q</b>/<b>E</b> turn</span><span><b>WHEEL</b> zoom</span><span><b>M</b> mute</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="queuebar panel" data-el="queueWrap"><span class="ttl">Waiting</span><div class="qlist" data-el="queue"></div></div>
+
+      <div class="banner" data-el="banner"><h2 data-el="bannerTitle"></h2><p data-el="bannerSub"></p></div>
+
+      <div class="screen" data-el="loading">
+        <div class="card">
+          <h1>Dinner<span>Rush</span></h1>
+          <p class="sub" data-el="loadLabel">warming up the kitchen…</p>
+          <div class="bar wide"><i data-el="loadBar"></i></div>
+        </div>
+      </div>
+
+      <div class="screen hidden" data-el="title">
+        <div class="card">
+          <h1>Dinner<span>Rush</span></h1>
+          <p class="sub">You are the only server on the floor tonight.</p>
+          <ul class="rules">
+            <li><b>Greet</b> at the host stand, then <b>seat</b> the party at a table that fits.</li>
+            <li><b>Take the docket</b>, run it to the <b>pass</b>, then carry plates back out.</li>
+            <li><b>Bus</b> dirty tables so you can seat again. Your tray holds <b>3 things</b> — dockets, plates and dirty stacks all compete.</li>
+            <li>Patience rings run down. Empty ring = a party walks, and that costs reputation.</li>
+          </ul>
+          <button data-el="startBtn">Start the shift</button>
+          <p class="tiny">Tab for the overview · sound is synthesised, headphones recommended</p>
+        </div>
+      </div>
+
+      <div class="screen hidden" data-el="over">
+        <div class="card">
+          <h1 class="bad">Shift over</h1>
+          <p class="sub" data-el="overSub"></p>
+          <div class="tally" data-el="overStats"></div>
+          <button data-el="againBtn">Work another shift</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(this.root);
+    for (const node of Array.from(this.root.querySelectorAll<HTMLElement>("[data-el]"))) {
+      const key = node.dataset.el;
+      if (key) this.el[key] = node;
+    }
+  }
+
+  onStart(cb: () => void) {
+    this.el.startBtn?.addEventListener("click", cb);
+    this.el.againBtn?.addEventListener("click", cb);
+  }
+
+  setLoading(progress: number, label: string) {
+    const bar = this.el.loadBar;
+    if (bar) bar.style.width = `${Math.round(progress * 100)}%`;
+    if (this.el.loadLabel) this.el.loadLabel.textContent = label;
+  }
+
+  hideLoading() {
+    this.el.loading?.classList.add("hidden");
+  }
+
+  showTitle(show: boolean) {
+    this.el.title?.classList.toggle("hidden", !show);
+  }
+
+  showGameOver(show: boolean, sub = "", stats: Array<[string, string]> = []) {
+    this.el.over?.classList.toggle("hidden", !show);
+    if (show) {
+      if (this.el.overSub) this.el.overSub.textContent = sub;
+      if (this.el.overStats) this.el.overStats.innerHTML = stats.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
+    }
+  }
+
+  flash(tone: "good" | "bad") {
+    this.flashTimer = tone === "bad" ? 0.5 : 0.32;
+    this.flashTone = tone;
+  }
+
+  update(s: HudSnapshot, camera: THREE.PerspectiveCamera, dt: number) {
+    // reputation
+    const repKey = `${s.reputation}/${s.maxReputation}`;
+    if (repKey !== this.lastRepKey) {
+      this.lastRepKey = repKey;
+      if (this.el.rep) {
+        let html = "";
+        for (let i = 0; i < s.maxReputation; i++) html += `<i class="${i < s.reputation ? "on" : "off"}"></i>`;
+        this.el.rep.innerHTML = html;
+      }
+    }
+    if (this.el.money) this.el.money.textContent = String(s.money);
+    if (this.el.waveLabel) this.el.waveLabel.textContent = s.phase === "interlude" ? `Rush ${s.wave} cleared` : `Rush ${s.wave}`;
+    if (this.el.waveCount) this.el.waveCount.textContent = `${s.waveServed} / ${s.waveTotal}`;
+    if (this.el.waveBar) this.el.waveBar.style.width = `${Math.round(THREE.MathUtils.clamp(s.waveProgress, 0, 1) * 100)}%`;
+    if (this.el.stam) this.el.stam.style.width = `${Math.round(s.stamina)}%`;
+
+    // kitchen + pass
+    const kKey = s.kitchen.map((k) => `${k.dish}${k.table}${Math.round(k.progress * 12)}`).join("|") + "#" + s.ready.map((r) => `${r.dish}${r.table}${Math.round(r.warmth * 6)}`).join("|");
+    if (kKey !== this.lastKitchenKey) {
+      this.lastKitchenKey = kKey;
+      if (this.el.kitchen) {
+        this.el.kitchen.innerHTML =
+          s.kitchen
+            .map(
+              (k) => `<div class="row"><i style="background:${hex(DISHES[k.dish].color)}">${CHIP_GLYPH[k.dish]}</i>
+                <span>${DISHES[k.dish].short}</span><em>${k.table}</em>
+                <div class="mini"><u style="width:${Math.round(k.progress * 100)}%"></u></div></div>`,
+            )
+            .join("") || `<div class="empty">line is clear</div>`;
+      }
+      if (this.el.ready) {
+        this.el.ready.innerHTML =
+          s.ready
+            .map(
+              (r) => `<div class="row ${r.warmth < 0.55 ? "cold" : ""}"><i style="background:${hex(DISHES[r.dish].color)}">${CHIP_GLYPH[r.dish]}</i>
+                <span>${DISHES[r.dish].short}</span><em>${r.table}</em>
+                <div class="mini warm"><u style="width:${Math.round(r.warmth * 100)}%"></u></div></div>`,
+            )
+            .join("") || `<div class="empty">nothing plated</div>`;
+      }
+    }
+
+    // tray
+    const tKey = s.tray.map((t) => `${t.kind}${t.dish ?? ""}${t.tableId}${Math.round(t.warmth * 6)}`).join("|") + s.traySize;
+    if (tKey !== this.lastTrayKey) {
+      this.lastTrayKey = tKey;
+      if (this.el.tray) {
+        let html = "";
+        for (let i = 0; i < s.traySize; i++) {
+          const item = s.tray[i];
+          if (!item) {
+            html += `<div class="slot empty"></div>`;
+            continue;
+          }
+          if (item.kind === "plate" && item.dish) {
+            html += `<div class="slot" style="--c:${hex(DISHES[item.dish].color)}"><i>${CHIP_GLYPH[item.dish]}</i><span>${DISHES[item.dish].short}</span><em>T${item.tableId + 1}</em>${
+              item.warmth < 0.55 ? '<u class="cold">cold</u>' : ""
+            }</div>`;
+          } else if (item.kind === "docket") {
+            html += `<div class="slot" style="--c:#e8dcb8"><i>✉</i><span>DKT</span><em>T${item.tableId + 1}</em></div>`;
+          } else {
+            html += `<div class="slot" style="--c:#9a8f80"><i>▤</i><span>DIRTY</span><em>T${item.tableId + 1}</em></div>`;
+          }
+        }
+        this.el.tray.innerHTML = html;
+      }
+      if (this.el.trayCount) this.el.trayCount.textContent = `${s.tray.length}/${s.traySize}`;
+    }
+
+    const leadEl = this.el.leading;
+    if (leadEl) {
+      leadEl.classList.toggle("on", s.leading !== null);
+      if (s.leading !== null) leadEl.textContent = `Walking a party of ${s.leading} — pick a table that fits`;
+    }
+
+    // waiting queue
+    if (this.el.queue) {
+      this.el.queueWrap?.classList.toggle("hidden", s.queue.length === 0);
+      this.el.queue.innerHTML = s.queue
+        .map(
+          (q) =>
+            `<div class="q"><b>${q.size}</b><div class="mini"><u style="width:${Math.round(q.patience * 100)}%;background:${
+              q.patience > 0.55 ? "#7ddc7d" : q.patience > 0.28 ? "#ffc24a" : "#ff5a4a"
+            }"></u></div></div>`,
+        )
+        .join("");
+    }
+
+    // contextual prompt, projected onto the target
+    const prompt = this.el.prompt;
+    if (prompt) {
+      if (s.action && !s.overview) {
+        const v = s.action.pos.clone().project(camera);
+        if (v.z < 1) {
+          prompt.classList.add("on");
+          prompt.style.left = `${(v.x * 0.5 + 0.5) * window.innerWidth}px`;
+          prompt.style.top = `${(-v.y * 0.5 + 0.5) * window.innerHeight}px`;
+          if (this.el.promptLabel) this.el.promptLabel.textContent = s.action.label;
+          if (this.el.promptHint) this.el.promptHint.textContent = s.action.hint;
+        } else {
+          prompt.classList.remove("on");
+        }
+      } else {
+        prompt.classList.remove("on");
+      }
+    }
+
+    // banner
+    const banner = this.el.banner;
+    if (banner) {
+      banner.classList.toggle("on", !!s.banner);
+      if (s.banner) {
+        banner.dataset.tone = s.banner.tone;
+        if (this.el.bannerTitle) this.el.bannerTitle.textContent = s.banner.title;
+        if (this.el.bannerSub) this.el.bannerSub.textContent = s.banner.sub;
+      }
+    }
+
+    // flash
+    if (this.flashTimer > 0) {
+      this.flashTimer = Math.max(0, this.flashTimer - dt);
+      const f = this.el.flash;
+      if (f) {
+        f.style.opacity = String(Math.min(1, this.flashTimer * 2.4));
+        f.style.background =
+          this.flashTone === "bad"
+            ? "radial-gradient(ellipse at center, rgba(255,60,40,0) 42%, rgba(220,40,30,0.55) 100%)"
+            : "radial-gradient(ellipse at center, rgba(120,255,150,0) 46%, rgba(90,220,130,0.4) 100%)";
+      }
+    } else if (this.el.flash) {
+      this.el.flash.style.opacity = "0";
+    }
+  }
+}

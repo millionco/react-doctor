@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { functionReturnsCollectionAtPath } from "../../utils/function-returns-collection-at-path.js";
+import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -122,6 +123,8 @@ const resolveZustandStoreCreation = (
   };
 };
 
+const ZUSTAND_STORE_API_METHODS = new Set(["setState", "getState", "subscribe", "getInitialState"]);
+
 const resolveZustandBoundStore = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -134,7 +137,10 @@ const resolveZustandBoundStore = (
     symbol?.kind !== "const" ||
     !symbol.initializer ||
     visitedSymbolIds.has(symbol.id) ||
-    symbol.references.some((reference) => reference.flag !== "read")
+    symbol.references.some((reference) => reference.flag !== "read") ||
+    ZUSTAND_STORE_API_METHODS.has(
+      getDestructuredBindingPropertyName(symbol.bindingIdentifier) ?? "",
+    )
   ) {
     return null;
   }

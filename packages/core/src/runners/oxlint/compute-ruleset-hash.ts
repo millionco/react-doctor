@@ -31,12 +31,17 @@ const ROOT_DIRECTORY_PLACEHOLDER = "<root>";
 // Strips install-location-specific absolute paths so the same ruleset hashes
 // identically across machines and CI checkouts (the file keys are content
 // hashes, which are already portable). `rootDirectory` and the absolute
-// `jsPlugins` specifiers are the only abs paths in a cacheable config —
-// neither changes a within-file rule's verdict, so both are normalized away.
+// `jsPlugins` specifiers and auto-import root aliases are the only abs paths
+// in a cacheable config — none changes a within-file rule's verdict, so all
+// are normalized away.
 const normalizeConfigForHash = (config: RulesetHashInput["config"]): unknown => {
   const clone = JSON.parse(JSON.stringify(config));
   if (clone?.settings?.["react-doctor"]) {
-    clone.settings["react-doctor"].rootDirectory = ROOT_DIRECTORY_PLACEHOLDER;
+    const reactDoctorSettings = clone.settings["react-doctor"];
+    reactDoctorSettings.rootDirectory = ROOT_DIRECTORY_PLACEHOLDER;
+    if (Array.isArray(reactDoctorSettings.unpluginAutoImportRootDirectories)) {
+      reactDoctorSettings.unpluginAutoImportRootDirectories = [ROOT_DIRECTORY_PLACEHOLDER];
+    }
   }
   if (Array.isArray(clone?.jsPlugins)) {
     clone.jsPlugins = clone.jsPlugins.map((_: unknown, index: number) => `<plugin:${index}>`);

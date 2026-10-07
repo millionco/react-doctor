@@ -8,6 +8,7 @@ const REANIMATED_LAYOUT_RULE_ID = "rn-animate-layout-property";
 const CASCADING_SET_STATE_RULE_ID = "no-cascading-set-state";
 const HOOK_IMPORT_RENAME_RULE_ID = "hook-import-rename-loses-use-prefix";
 const IN_HOUSE_A11Y_RULE_IDS = [
+  "anchor-target-exists",
   "data-table-requires-accessible-name",
   "details-requires-summary",
   "fieldset-requires-legend",
@@ -100,6 +101,13 @@ describe("rule registry", () => {
     for (const ruleId of IN_HOUSE_A11Y_RULE_IDS) {
       const registryEntry = reactDoctorRules.find((entry) => entry.id === ruleId);
       expect(registryEntry?.originallyExternal, ruleId).toBe(false);
+    }
+  });
+
+  it("keeps every design rule opt-in by default", () => {
+    for (const [ruleId, rule] of Object.entries(ruleRegistry)) {
+      if (!(rule.tags ?? []).includes("design")) continue;
+      expect(rule.defaultEnabled, `${ruleId} should be opt-in`).toBe(false);
     }
   });
 

@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -644,7 +645,7 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
     "An array index read is typed `T` but is `T | undefined` at runtime, so dereferencing it on an empty list, a non-matching regex, or a short split throws. Add a length/emptiness check or optional chaining before the access.",
   create: (context: RuleContext): RuleVisitors => {
     const filename = context.filename ?? "";
-    if (isNonSourceFilename(filename)) return {};
+    if (isNonSourceFilename(filename)) return EMPTY_RULE_VISITORS;
 
     return {
       MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {

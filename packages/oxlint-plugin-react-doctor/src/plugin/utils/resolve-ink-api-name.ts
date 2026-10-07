@@ -8,6 +8,7 @@ import {
 } from "./find-import-source-for-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { resolveImportedJsxComponentName } from "./resolve-imported-jsx-component-name.js";
 
 export const resolveInkApiName = (node: EsTreeNode, scopes: ScopeAnalysis): string | null => {
   if (isNodeOfType(node, "Identifier")) {
@@ -28,19 +29,4 @@ export const resolveInkApiName = (node: EsTreeNode, scopes: ScopeAnalysis): stri
 export const resolveInkJsxElementName = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
   scopes: ScopeAnalysis,
-): string | null => {
-  const elementName = openingElement.name;
-  if (isNodeOfType(elementName, "JSXIdentifier")) {
-    if (scopes.symbolFor(elementName)?.kind !== "import") return null;
-    return getImportedNameFromModule(openingElement, elementName.name, INK_MODULE);
-  }
-  if (
-    isNodeOfType(elementName, "JSXMemberExpression") &&
-    isNodeOfType(elementName.object, "JSXIdentifier") &&
-    scopes.symbolFor(elementName.object)?.kind === "import" &&
-    isNamespaceImportFromModule(openingElement, elementName.object.name, INK_MODULE)
-  ) {
-    return elementName.property.name;
-  }
-  return null;
-};
+): string | null => resolveImportedJsxComponentName(openingElement, INK_MODULE, scopes);

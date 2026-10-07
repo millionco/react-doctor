@@ -8,6 +8,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { collectRenderStateWriteFacts } from "./utils/collect-render-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { isRenderKnownSelectionRepair } from "./utils/is-render-known-selection-repair.js";
 
 const getStateName = (stateDeclarator: EsTreeNode): string => {
   if (!isNodeOfType(stateDeclarator, "VariableDeclarator")) return "<state>";
@@ -20,6 +21,22 @@ const getStateName = (stateDeclarator: EsTreeNode): string => {
     return setterBinding.name;
   }
   return setterBinding.name[3].toLowerCase() + setterBinding.name.slice(4);
+};
+
+const hasRenderTrackerGuardShape = (componentBody: EsTreeNode): boolean => {
+  if (!isNodeOfType(componentBody, "BlockStatement")) return false;
+  for (const statement of componentBody.body ?? []) {
+    if (
+      isNodeOfType(statement, "IfStatement") &&
+      !statement.alternate &&
+      isNodeOfType(statement.test, "BinaryExpression") &&
+      statement.test.operator === "!==" &&
+      isNodeOfType(statement.consequent, "BlockStatement")
+    ) {
+      return true;
+    }
+  }
+  return false;
 };
 
 export const noDerivedState = defineRule({
@@ -39,7 +56,7 @@ export const noDerivedState = defineRule({
     };
     const componentTracker = createComponentPropStackTracker({
       onComponentEnter: (componentBody) => {
-        if (!componentBody) return;
+        if (!componentBody || !hasRenderTrackerGuardShape(componentBody)) return;
         const analysis = getProgramAnalysis(componentBody);
         if (!analysis) return;
         for (const fact of collectRenderStateWriteFacts(
@@ -63,7 +80,12 @@ export const noDerivedState = defineRule({
           node,
           context.filename,
         )) {
-          if (!fact.isRenderKnownCopy || fact.resetsSourceState) continue;
+          if (
+            (!fact.isRenderKnownCopy || fact.resetsSourceState) &&
+            !isRenderKnownSelectionRepair(analysis, node, fact)
+          ) {
+            continue;
+          }
           reportStateWrite(fact.callExpression, fact.stateDeclarator);
         }
       },

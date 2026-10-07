@@ -2,6 +2,10 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
+export interface ExpressionStructuralEqualityOptions {
+  areIdentifiersEqual?: (firstIdentifier: EsTreeNode, secondIdentifier: EsTreeNode) => boolean;
+}
+
 // HACK: structural equality for "value-shaped" expressions used by
 // detectors that need to assert two reads of the same external value
 // (e.g. `prefer-use-sync-external-store` checks that the
@@ -14,16 +18,19 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 export const areExpressionsStructurallyEqual = (
   a: EsTreeNode | null | undefined,
   b: EsTreeNode | null | undefined,
+  options: ExpressionStructuralEqualityOptions = {},
 ): boolean => {
   if (!a || !b) return a === b;
   const unwrappedA = stripParenExpression(a);
   const unwrappedB = stripParenExpression(b);
   if (unwrappedA !== a || unwrappedB !== b) {
-    return areExpressionsStructurallyEqual(unwrappedA, unwrappedB);
+    return areExpressionsStructurallyEqual(unwrappedA, unwrappedB, options);
   }
   if (a.type !== b.type) return false;
   if (isNodeOfType(a, "ThisExpression")) return true;
-  if (isNodeOfType(a, "Identifier") && isNodeOfType(b, "Identifier")) return a.name === b.name;
+  if (isNodeOfType(a, "Identifier") && isNodeOfType(b, "Identifier")) {
+    return options.areIdentifiersEqual ? options.areIdentifiersEqual(a, b) : a.name === b.name;
+  }
   if (isNodeOfType(a, "PrivateIdentifier") && isNodeOfType(b, "PrivateIdentifier")) {
     return a.name === b.name;
   }
@@ -31,17 +38,17 @@ export const areExpressionsStructurallyEqual = (
   if (isNodeOfType(a, "MemberExpression") && isNodeOfType(b, "MemberExpression")) {
     if (a.computed !== b.computed) return false;
     return (
-      areExpressionsStructurallyEqual(a.object, b.object) &&
-      areExpressionsStructurallyEqual(a.property, b.property)
+      areExpressionsStructurallyEqual(a.object, b.object, options) &&
+      areExpressionsStructurallyEqual(a.property, b.property, a.computed ? options : {})
     );
   }
   if (isNodeOfType(a, "CallExpression") && isNodeOfType(b, "CallExpression")) {
-    if (!areExpressionsStructurallyEqual(a.callee, b.callee)) return false;
+    if (!areExpressionsStructurallyEqual(a.callee, b.callee, options)) return false;
     const argumentsA = a.arguments ?? [];
     const argumentsB = b.arguments ?? [];
     if (argumentsA.length !== argumentsB.length) return false;
     return argumentsA.every((argument, index: number) =>
-      areExpressionsStructurallyEqual(argument, argumentsB[index]),
+      areExpressionsStructurallyEqual(argument, argumentsB[index], options),
     );
   }
   return false;

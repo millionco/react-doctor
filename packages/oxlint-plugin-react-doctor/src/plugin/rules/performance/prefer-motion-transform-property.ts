@@ -40,6 +40,7 @@ export const preferMotionTransformProperty = defineRule({
       let firstIndividualTransformProperty: EsTreeNode | null = null;
 
       for (const animationPropertyName of MOTION_ANIMATE_PROPS) {
+        if (animationPropertyName === "initial") continue;
         const animationObject = getStaticMotionPropObject(
           node,
           animationPropertyName,
@@ -72,7 +73,7 @@ export const preferMotionTransformProperty = defineRule({
       if (!firstIndividualTransformProperty) return;
       context.report({
         node: firstIndividualTransformProperty,
-        message: `Motion implements ${[...individualTransformPropertyNames].join(", ")} through individual transform variables. Use a single transform string when compositor acceleration is important.`,
+        message: `Motion's individual ${[...individualTransformPropertyNames].join(", ")} transform keys can keep this animation on the main thread. Use a single transform string when compositor acceleration is important.`,
       });
     },
   }),

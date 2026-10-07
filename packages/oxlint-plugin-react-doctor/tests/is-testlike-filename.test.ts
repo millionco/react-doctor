@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { isTestlikeFilename } from "../src/plugin/utils/is-testlike-filename.js";
+import {
+  isTestlikeFilename,
+  isTestlikeFilenameIgnoringPathSegments,
+} from "../src/plugin/utils/is-testlike-filename.js";
 
 describe("isTestlikeFilename", () => {
   it("recognizes .dumi docs paths even when they wrap source-root segments", () => {
@@ -34,5 +37,26 @@ describe("isTestlikeFilename", () => {
 
   it("keeps fixture-project source roots as production despite outer test wrappers", () => {
     expect(isTestlikeFilename("monorepo/tests/fixtures/proj/src/app/page.tsx")).toBe(false);
+  });
+});
+
+describe("isTestlikeFilenameIgnoringPathSegments", () => {
+  it("can ignore one ambiguous directory marker", () => {
+    expect(
+      isTestlikeFilenameIgnoringPathSegments("app/ai_sdk/tools/action.ts", new Set(["/tools/"])),
+    ).toBe(false);
+  });
+
+  it("still honors suffixes and other non-production directories", () => {
+    const ignoredPathSegments = new Set(["/tools/"]);
+    expect(
+      isTestlikeFilenameIgnoringPathSegments(
+        "app/ai_sdk/tools/action.test.ts",
+        ignoredPathSegments,
+      ),
+    ).toBe(true);
+    expect(
+      isTestlikeFilenameIgnoringPathSegments("app/__tests__/tools/action.ts", ignoredPathSegments),
+    ).toBe(true);
   });
 });

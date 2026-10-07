@@ -1,41 +1,23 @@
 import {
-  ROOT_FONT_SIZE_PX,
   SHORT_DECORATIVE_LABEL_MAX_CHARACTERS,
-  TAILWIND_TEXT_SIZE_PX,
   TINY_UPPERCASE_TRACKED_LABEL_MAX_PX,
 } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getStaticJsxText } from "../../utils/get-static-jsx-text.js";
-import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
+import { getUnvariantClassNameTokensWithImportantModifiers } from "../../utils/get-unvariant-class-name-tokens-with-important-modifiers.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
-import { getLastMatchingToken } from "./utils/get-last-matching-token.js";
+import { getEffectiveNonzeroTailwindTracking } from "./utils/get-effective-nonzero-tailwind-tracking.js";
+import { getEffectiveTailwindClassNameToken } from "./utils/get-effective-tailwind-class-name-token.js";
+import { getStaticTailwindFontSize } from "./utils/get-static-tailwind-font-size.js";
 import { isTechnicalLabelText } from "./utils/is-technical-label-text.js";
 
 const PREFORMATTED_ELEMENT_NAMES = new Set(["code", "kbd", "pre", "samp", "var"]);
 const CASE_TOKENS = new Set(["capitalize", "lowercase", "normal-case", "uppercase"]);
-const ARBITRARY_FONT_SIZE_PATTERN = /^text-\[([\d.]+)(px|rem)\](?:\/.+)?$/;
-const ZERO_TRACKING_PATTERN = /^tracking-\[(?:0|0\.0+)(?:em|px)\]$/;
-
-const getEffectiveFontSizePx = (tokens: string[]): number | null => {
-  let fontSizePx: number | null = null;
-  for (const token of tokens) {
-    const standardSizePx = TAILWIND_TEXT_SIZE_PX.get(token);
-    if (standardSizePx !== undefined) {
-      fontSizePx = standardSizePx;
-      continue;
-    }
-    const arbitrarySizeMatch = token.match(ARBITRARY_FONT_SIZE_PATTERN);
-    if (!arbitrarySizeMatch) continue;
-    const value = Number.parseFloat(arbitrarySizeMatch[1]);
-    fontSizePx = arbitrarySizeMatch[2] === "rem" ? value * ROOT_FONT_SIZE_PX : value;
-  }
-  return fontSizePx;
-};
-
 export const noTinyUppercaseTrackedLabel = defineRule({
   id: "no-tiny-uppercase-tracked-label",
   title: "Tiny label combines uppercase text and decorative tracking",
@@ -52,6 +34,7 @@ export const noTinyUppercaseTrackedLabel = defineRule({
         node.openingElement.name.name !== node.openingElement.name.name.toLowerCase() ||
         PREFORMATTED_ELEMENT_NAMES.has(node.openingElement.name.name) ||
         hasJsxSpreadAttribute(node.openingElement.attributes) ||
+        getAuthoritativeJsxAttribute(node.openingElement.attributes, "style") ||
         node.children.some((childNode) => isNodeOfType(childNode, "JSXExpressionContainer"))
       ) {
         return;
@@ -66,8 +49,8 @@ export const noTinyUppercaseTrackedLabel = defineRule({
       }
       const classNameValue = getStringFromClassNameAttr(node.openingElement);
       if (!classNameValue) return;
-      const tokens = getUnvariantClassNameTokens(classNameValue);
-      const fontSizePx = getEffectiveFontSizePx(tokens);
+      const tokens = getUnvariantClassNameTokensWithImportantModifiers(classNameValue);
+      const fontSizePx = getStaticTailwindFontSize(classNameValue);
       if (
         fontSizePx === null ||
         fontSizePx <= 0 ||
@@ -75,18 +58,11 @@ export const noTinyUppercaseTrackedLabel = defineRule({
       ) {
         return;
       }
-      const effectiveCase = getLastMatchingToken(tokens, (token) => CASE_TOKENS.has(token));
-      if (effectiveCase !== "uppercase") return;
-      const effectiveTracking = getLastMatchingToken(tokens, (token) =>
-        token.startsWith("tracking-"),
+      const effectiveCase = getEffectiveTailwindClassNameToken(tokens, (utility) =>
+        CASE_TOKENS.has(utility),
       );
-      if (
-        !effectiveTracking ||
-        effectiveTracking === "tracking-normal" ||
-        ZERO_TRACKING_PATTERN.test(effectiveTracking)
-      ) {
-        return;
-      }
+      if (effectiveCase !== "uppercase") return;
+      if (!getEffectiveNonzeroTailwindTracking(tokens)) return;
       context.report({
         node: node.openingElement,
         message:

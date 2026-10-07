@@ -12,6 +12,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isLocalTestScaffoldJsx } from "../../utils/is-local-test-scaffold-jsx.js";
 import { isAriaPropertySupportedByRole } from "../../utils/is-aria-property-supported-by-role.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const buildMessageDefault = (roles: ReadonlyArray<string>, propName: string): string => {
   const roleList = roles.map((role) => `\`${role}\``).join(" / ");
@@ -20,6 +21,15 @@ const buildMessageDefault = (roles: ReadonlyArray<string>, propName: string): st
 
 const buildMessageImplicit = (role: string, propName: string, elementType: string): string =>
   `Screen reader users get no help from \`${propName}\` because \`${elementType}\` has role \`${role}\`, which ignores it, so remove \`${propName}\` or change the element.`;
+
+const UPSTREAM_UNSUPPORTED_ARIA_PROPERTIES: Readonly<Record<string, ReadonlySet<string>>> = {
+  button: new Set(["aria-invalid"]),
+  checkbox: new Set(["aria-haspopup"]),
+  link: new Set(["aria-invalid"]),
+  menuitem: new Set(["aria-invalid"]),
+  radio: new Set(["aria-haspopup", "aria-invalid"]),
+  toolbar: new Set(["aria-haspopup", "aria-invalid"]),
+};
 
 // Port of `oxc_linter::rules::jsx_a11y::role_supports_aria_props`.
 // Reports `aria-*` props that aren't supported by the element's
@@ -31,61 +41,77 @@ export const roleSupportsAriaProps = defineRule({
   severity: "warn",
   recommendation: "Only use `aria-*` attributes that the element's role supports.",
   category: "Accessibility",
-  create: (context) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (isLocalTestScaffoldJsx(node, context)) return;
-      let ariaAttributes: Array<{ attribute: EsTreeNode; propName: string }> | null = null;
-      for (const attribute of node.attributes) {
-        if (!isNodeOfType(attribute as EsTreeNode, "JSXAttribute")) continue;
-        const attributeNode = attribute as EsTreeNodeOfType<"JSXAttribute">;
-        if (!isNodeOfType(attributeNode.name as EsTreeNode, "JSXIdentifier")) continue;
-        const propRawName = getJsxAttributeName(
-          attributeNode.name as EsTreeNodeOfType<"JSXIdentifier">,
-        );
-        if (!propRawName) continue;
-        const propName = propRawName.toLowerCase();
-        if (!propName.startsWith("aria-")) continue;
-        if (!ARIA_PROPERTIES.has(propName)) continue;
-        // `aria-x={undefined}` / `{null}` renders no attribute at all, so
-        // there is nothing for the role to ignore (oxc `is_nullish_value`).
-        const attributeValue = attributeNode.value;
-        if (
-          attributeValue &&
-          isNodeOfType(attributeValue, "JSXExpressionContainer") &&
-          isNullishExpression(attributeValue.expression as EsTreeNode)
-        ) {
-          continue;
-        }
-        (ariaAttributes ??= []).push({ attribute: attribute as EsTreeNode, propName });
-      }
-      if (!ariaAttributes) return;
-
-      const elementType = getElementType(node, context.settings);
-      const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
-      // Static resolution covers `role={cond ? "row" : "gridcell"}` and
-      // const-bound roles, not just the literal. The diagnostic claims the
-      // prop is ignored, so it must hold for EVERY candidate: all resolved
-      // roles have to be known and all have to lack support for the prop.
-      const roleCandidates = roleAttribute
-        ? getJsxPropStaticStringValues(roleAttribute, context.scopes)
-        : [getImplicitRole(node, elementType, context.scopes)].filter(
-            (role): role is string => role !== null,
+  create: (context) => {
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
+    return {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (shouldUseCuratedBehavior && isLocalTestScaffoldJsx(node, context)) return;
+        let ariaAttributes: Array<{ attribute: EsTreeNode; propName: string }> | null = null;
+        for (const attribute of node.attributes) {
+          if (!isNodeOfType(attribute as EsTreeNode, "JSXAttribute")) continue;
+          const attributeNode = attribute as EsTreeNodeOfType<"JSXAttribute">;
+          if (!isNodeOfType(attributeNode.name as EsTreeNode, "JSXIdentifier")) continue;
+          const propRawName = getJsxAttributeName(
+            attributeNode.name as EsTreeNodeOfType<"JSXIdentifier">,
           );
-      if (roleCandidates === null || roleCandidates.length === 0) return;
-      for (const role of roleCandidates) {
-        if (!VALID_ARIA_ROLES.has(role)) return;
-      }
-      const isImplicit = !roleAttribute;
+          if (!propRawName) continue;
+          const propName = propRawName.toLowerCase();
+          if (!propName.startsWith("aria-")) continue;
+          if (!ARIA_PROPERTIES.has(propName)) continue;
+          // `aria-x={undefined}` / `{null}` renders no attribute at all, so
+          // there is nothing for the role to ignore (oxc `is_nullish_value`).
+          const attributeValue = attributeNode.value;
+          if (
+            attributeValue &&
+            isNodeOfType(attributeValue, "JSXExpressionContainer") &&
+            isNullishExpression(attributeValue.expression as EsTreeNode)
+          ) {
+            continue;
+          }
+          (ariaAttributes ??= []).push({ attribute: attribute as EsTreeNode, propName });
+        }
+        if (!ariaAttributes) return;
 
-      for (const { attribute, propName } of ariaAttributes) {
-        if (roleCandidates.some((role) => isAriaPropertySupportedByRole(role, propName))) continue;
-        context.report({
-          node: attribute,
-          message: isImplicit
-            ? buildMessageImplicit(roleCandidates[0], propName, elementType)
-            : buildMessageDefault(roleCandidates, propName),
-        });
-      }
-    },
-  }),
+        const elementType = getElementType(node, context.settings);
+        const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
+        // Static resolution covers `role={cond ? "row" : "gridcell"}` and
+        // const-bound roles, not just the literal. The diagnostic claims the
+        // prop is ignored, so it must hold for EVERY candidate: all resolved
+        // roles have to be known and all have to lack support for the prop.
+        const roleCandidates = roleAttribute
+          ? getJsxPropStaticStringValues(roleAttribute, context.scopes)
+          : [getImplicitRole(node, elementType, context.scopes)].filter(
+              (role): role is string => role !== null,
+            );
+        if (roleCandidates === null || roleCandidates.length === 0) return;
+        for (const role of roleCandidates) {
+          if (!VALID_ARIA_ROLES.has(role)) return;
+        }
+        const isImplicit = !roleAttribute;
+
+        for (const { attribute, propName } of ariaAttributes) {
+          if (
+            !shouldUseCuratedBehavior &&
+            roleCandidates.some((role) => UPSTREAM_UNSUPPORTED_ARIA_PROPERTIES[role]?.has(propName))
+          ) {
+            context.report({
+              node: attribute,
+              message: isImplicit
+                ? buildMessageImplicit(roleCandidates[0], propName, elementType)
+                : buildMessageDefault(roleCandidates, propName),
+            });
+            continue;
+          }
+          if (roleCandidates.some((role) => isAriaPropertySupportedByRole(role, propName)))
+            continue;
+          context.report({
+            node: attribute,
+            message: isImplicit
+              ? buildMessageImplicit(roleCandidates[0], propName, elementType)
+              : buildMessageDefault(roleCandidates, propName),
+          });
+        }
+      },
+    };
+  },
 });

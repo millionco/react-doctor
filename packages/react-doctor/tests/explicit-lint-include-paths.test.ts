@@ -6,7 +6,7 @@ describe("computeExplicitLintIncludePaths", () => {
     expect(computeExplicitLintIncludePaths([])).toBeUndefined();
   });
 
-  it("keeps every supported JS and TS source extension", () => {
+  it("keeps every supported JS, TS, and HTML source extension", () => {
     const paths = [
       "src/app.tsx",
       "src/utils.ts",
@@ -14,6 +14,7 @@ describe("computeExplicitLintIncludePaths", () => {
       "src/config.js",
       "src/hooks.mts",
       "src/runtime.mjs",
+      "public/index.html",
       "src/legacy.cts",
       "src/legacy.cjs",
       "src/styles.css",
@@ -26,6 +27,7 @@ describe("computeExplicitLintIncludePaths", () => {
       "src/config.js",
       "src/hooks.mts",
       "src/runtime.mjs",
+      "public/index.html",
     ]);
   });
 

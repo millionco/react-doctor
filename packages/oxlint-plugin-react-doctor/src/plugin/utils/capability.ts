@@ -10,6 +10,7 @@
 // the two cannot drift.
 export const FRAMEWORK_TOKENS = [
   "nextjs",
+  "astro",
   "vite",
   "cra",
   "remix",
@@ -35,12 +36,20 @@ export type Capability =
   | "server-actions"
   | "ssr"
   | "client-only"
+  | "expo:54"
   | "nextjs:static-export"
   | "nextjs:15"
   | "nextjs:16"
   | "tailwind"
   | "tailwind:3.4"
   | "tailwind:4"
+  | "shadcn"
+  | "radix-ui"
+  | "base-ui"
+  | "react-aria"
+  | "tanstack-table"
+  | "tanstack-virtual"
+  | "tanstack-form"
   | "zod"
   | "zod:4"
   | "mobx"
@@ -55,6 +64,8 @@ export type Capability =
   | "zustand"
   | "typescript"
   | "react-compiler"
+  | "reanimated"
+  | "reanimated:4"
   | "tanstack-query"
   | "valtio"
   | "i18n"
@@ -62,7 +73,21 @@ export type Capability =
   | "styled-components:6"
   | "three"
   | "r3f"
+  | "react-router"
+  | "react-router-framework"
+  | "react-router:6.4"
+  | "react-router:6.7"
+  | "react-router:6.9"
+  | "react-router:6.19"
+  | "react-router:7"
+  | "react-router:7.8"
+  | "react-router:7.9"
+  | "react-router:7.10"
+  | "react-router:7.15"
+  | "react-router:8"
   | "pre-es2023"
+  | "target-blank-needs-explicit-protection"
+  | "target-blank-needs-noreferrer"
   // Major-version ladders (`react:17`…) plus minor-versioned gates like
   // `react:19.2` — both parse as numeric template members. Bounds live in
   // core's constants (`EARLIEST_GATED_*` / `LATEST_*`).

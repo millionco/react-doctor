@@ -1,13 +1,18 @@
-import { parseSync } from "oxc-parser";
+import { resolvePackageVersion } from "./utils/resolve-package-version.js";
 import type { StaticImport } from "oxc-parser";
 import { analyzeScopes } from "./semantic/scope-analysis.js";
+import { awaitedStatementsMayShareWork } from "./utils/awaited-statements-may-share-work.js";
 import {
   INTERNAL_PAGE_PATH_PATTERN,
   PAGE_FILE_PATTERN,
   PAGE_OR_LAYOUT_FILE_PATTERN,
 } from "./constants/nextjs.js";
-import { CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH } from "./constants/thresholds.js";
+import {
+  CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
+  DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH,
+} from "./constants/thresholds.js";
 import { INK_RULE_IDS } from "./constants/ink.js";
+import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
 import { collectImportedJsxComponentDependencies } from "./utils/collect-imported-jsx-component-dependencies.js";
 import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
@@ -16,20 +21,25 @@ import type { EsTreeNode } from "./utils/es-tree-node.js";
 import { attachParentReferences } from "./utils/attach-parent-references.js";
 import { hasAncestorMetadataLayout } from "./utils/find-ancestor-metadata-layout.js";
 import { hasAncestorSuspenseLayout } from "./utils/find-ancestor-suspense-layout.js";
+import { getRuntimeStaticDependencySource } from "./utils/get-runtime-static-dependency-source.js";
+import { getStaticPropertyName } from "./utils/get-static-property-name.js";
 import { isBarrelIndexModule } from "./utils/is-barrel-index-module.js";
 import { isLegacyArchReactNativeFile } from "./utils/is-legacy-arch-react-native-file.js";
+import { isFunctionLike } from "./utils/is-function-like.js";
 import { resolveInkVersion } from "./utils/resolve-ink-version.js";
 import { isNodeOfType } from "./utils/is-node-of-type.js";
 import { isReactApiCall } from "./utils/is-react-api-call.js";
 import { normalizeFilename } from "./utils/normalize-filename.js";
-import { resolveLang } from "./utils/parse-source-file.js";
+import { parseCrossFileSource, parseSourceFile } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
 import { resolveCrossFileExport } from "./utils/resolve-cross-file-export.js";
 import {
   resolveCrossFileFunctionExport,
   resolveCrossFileValueExportWithFilePath,
 } from "./utils/resolve-cross-file-function-export.js";
+import type { ResolvedCrossFileValueExport } from "./utils/resolve-cross-file-function-export.js";
 import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.js";
+import { resolveModulePath } from "./utils/resolve-module-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
 import { isCreateRefResultWriteOnly } from "./rules/react-builtins/is-create-ref-result-write-only.js";
@@ -78,8 +88,8 @@ interface CrossFileDependencyCollectorInput {
   readonly sourceText: string;
   /** oxc module record — the file's static import declarations. */
   readonly staticImports: ReadonlyArray<StaticImport>;
-  /** Parsed program (no parent references attached). */
-  readonly program: EsTreeNode;
+  /** Lazily materialized program (no parent references attached). */
+  readonly getProgram: () => EsTreeNode;
 }
 
 type CrossFileDependencyCollector = (input: CrossFileDependencyCollectorInput) => void;
@@ -185,6 +195,67 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   }
 };
 
+const collectImportedValueDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+}) => {
+  for (const entry of flattenImportEntries(staticImports)) {
+    resolveCrossFileValueExportWithFilePath(absoluteFilePath, entry.source, entry.exportedName);
+  }
+};
+
+const collectRuntimeStaticDependencyGraph = (
+  program: EsTreeNode,
+  filePath: string,
+  minimumDepthByFilePath: Map<string, number>,
+  depth: number,
+): void => {
+  const previousDepth = minimumDepthByFilePath.get(filePath);
+  if (previousDepth !== undefined && previousDepth <= depth) return;
+  minimumDepthByFilePath.set(filePath, depth);
+  for (const statement of (program as { body?: ReadonlyArray<EsTreeNode> }).body ?? []) {
+    const dependencySource = getRuntimeStaticDependencySource(statement);
+    if (!dependencySource) continue;
+    const dependencyFilePath = resolveModulePath(filePath, dependencySource);
+    if (!dependencyFilePath) continue;
+    if (depth >= DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH) continue;
+    const dependencyDepth = depth + 1;
+    const previousDependencyDepth = minimumDepthByFilePath.get(dependencyFilePath);
+    if (previousDependencyDepth !== undefined && previousDependencyDepth <= dependencyDepth) {
+      continue;
+    }
+    const dependencyProgram = parseSourceFile(dependencyFilePath);
+    if (!dependencyProgram) {
+      minimumDepthByFilePath.set(dependencyFilePath, dependencyDepth);
+      continue;
+    }
+    collectRuntimeStaticDependencyGraph(
+      dependencyProgram,
+      dependencyFilePath,
+      minimumDepthByFilePath,
+      dependencyDepth,
+    );
+  }
+};
+
+// The Day.js mutability proof can follow a full factory-wrapper chain, then a
+// fresh full configuration chain from every wrapper it reaches.
+const collectStateUpdaterDependencies: CrossFileDependencyCollector = (input) => {
+  collectImportedValueDependencies(input);
+  const program = input.getProgram();
+  let mayUseDayjsImmutableMethod = false;
+  walkAst(program, (node) => {
+    if (mayUseDayjsImmutableMethod) return false;
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callee = stripParenExpression(node.callee);
+    if (!isNodeOfType(callee, "MemberExpression")) return;
+    const methodName = getStaticPropertyName(callee);
+    mayUseDayjsImmutableMethod = methodName === "add" || methodName === "set";
+  });
+  if (!mayUseDayjsImmutableMethod) return;
+  collectRuntimeStaticDependencyGraph(program, input.absoluteFilePath, new Map(), 0);
+};
+
 const collectBrowserGuardDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   staticImports,
@@ -219,10 +290,12 @@ const flattenProgramImportEntries = (program: EsTreeNode): ImportEntryName[] => 
   return entries;
 };
 
-const collectForwardedHookDependencies: CrossFileDependencyCollector = ({
-  absoluteFilePath,
-  staticImports,
-}) => {
+const collectFunctionExportDependencies = (
+  { absoluteFilePath, staticImports }: CrossFileDependencyCollectorInput,
+  maximumForwardDepth: number,
+  shouldTraverseResolvedExport: (resolved: ResolvedCrossFileValueExport) => boolean = () => true,
+  shouldTraverseFilePath: (filePath: string) => boolean = () => true,
+): void => {
   const greatestTraversedDepthByFilePath = new Map<string, number>();
 
   const collectProgramDependencies = (
@@ -240,7 +313,14 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = ({
         entry.source,
         entry.exportedName,
       );
-      if (!resolved || remainingDepth === 0) continue;
+      if (
+        !resolved ||
+        remainingDepth === 0 ||
+        !shouldTraverseResolvedExport(resolved) ||
+        !shouldTraverseFilePath(resolved.filePath)
+      ) {
+        continue;
+      }
       collectProgramDependencies(resolved.filePath, resolved.programNode, remainingDepth - 1);
     }
   };
@@ -251,19 +331,46 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = ({
       entry.source,
       entry.exportedName,
     );
-    if (!resolved) continue;
-    collectProgramDependencies(
-      resolved.filePath,
-      resolved.programNode,
-      CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
-    );
+    if (
+      !resolved ||
+      !shouldTraverseResolvedExport(resolved) ||
+      !shouldTraverseFilePath(resolved.filePath)
+    ) {
+      continue;
+    }
+    collectProgramDependencies(resolved.filePath, resolved.programNode, maximumForwardDepth);
   }
+};
+
+const collectSequentialAwaitDependencies: CrossFileDependencyCollector = (input) => {
+  const program = input.getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "BlockStatement")) return;
+    for (const [index, statement] of node.body.entries()) {
+      const next = node.body[index + 1];
+      if (
+        !isNodeOfType(statement, "VariableDeclaration") ||
+        !isNodeOfType(next, "VariableDeclaration")
+      )
+        continue;
+      awaitedStatementsMayShareWork(statement, next, scopes, input.absoluteFilePath);
+    }
+  });
+};
+
+const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) => {
+  collectFunctionExportDependencies(input, CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH);
 };
 
 const collectCreateRefDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
-  program,
+  sourceText,
+  getProgram,
 }) => {
+  if (!sourceText.includes("createRef") && !sourceText.includes("\\u")) return;
+  const program = getProgram();
   attachParentReferences(program);
   const scopes = analyzeScopes(program);
   walkAst(program, (node) => {
@@ -295,7 +402,7 @@ const collectMutatingReducerDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   sourceText,
   staticImports,
-  program,
+  getProgram,
 }) => {
   const namedUseReducerLocals = new Set<string>();
   const reactObjectLocals = new Set<string>();
@@ -315,6 +422,7 @@ const collectMutatingReducerDependencies: CrossFileDependencyCollector = ({
     (reactObjectLocals.size > 0 &&
       (sourceText.includes("useReducer") || sourceText.includes("\\u")));
   if (!mayCallUseReducer) return;
+  const program = getProgram();
 
   const identifierName = (node: EsTreeNode | null | undefined): string | null => {
     if (node?.type !== "Identifier") return null;
@@ -375,10 +483,14 @@ const collectMutatingReducerDependencies: CrossFileDependencyCollector = ({
 const collectRnNoRawTextDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   staticImports,
-  program,
+  getProgram,
 }) => {
   classifyPackagePlatform(absoluteFilePath);
-  collectImportedJsxComponentDependencies({ absoluteFilePath, staticImports, program });
+  collectImportedJsxComponentDependencies({
+    absoluteFilePath,
+    staticImports,
+    program: getProgram(),
+  });
 };
 
 // no-dynamic-import-path / no-full-lodash-import (`is-inside-node-cli-package`),
@@ -387,12 +499,28 @@ const collectRnNoRawTextDependencies: CrossFileDependencyCollector = ({
 // no-locale-format-in-render / no-match-media-in-state-initializer
 // (`classifyReactNativeFileTarget`), and
 // rn-prefer-expo-image (`isExpoManagedFileActive` + the `wrapReactNativeRule`
-// gate) all read only the nearest manifest: the same ancestor package.json
+// gate) and the React Router version/mode gate all read only the nearest
+// manifest: the same ancestor package.json
 // existence walk plus that one manifest's content. `classifyPackagePlatform`
 // records exactly that probe set, and the rules gate the read on in-file
 // conditions the collector deliberately skips (probing more is always safe).
 const collectNearestManifestDependencies: CrossFileDependencyCollector = ({ absoluteFilePath }) => {
   classifyPackagePlatform(absoluteFilePath);
+};
+
+const collectHydrationBrowserGuardDependencies: CrossFileDependencyCollector = (input) => {
+  collectNearestManifestDependencies(input);
+  collectBrowserGuardDependencies(input);
+};
+
+const collectBrowserRenderGuardDependencies: CrossFileDependencyCollector = (input) => {
+  collectNearestManifestDependencies(input);
+  collectFunctionExportDependencies(
+    input,
+    Number.POSITIVE_INFINITY,
+    (resolved) => isFunctionLike(resolved.exportedNode),
+    (filePath) => !filePath.split(/[\\/]/).includes("node_modules"),
+  );
 };
 
 // rn-no-legacy-shadow-styles / rn-style-prefer-boxshadow gate on
@@ -404,6 +532,12 @@ const collectLegacyArchDependencies: CrossFileDependencyCollector = ({ absoluteF
   isLegacyArchReactNativeFile(absoluteFilePath);
 };
 
+const collectReactNativeVersionDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+}) => {
+  resolvePackageVersion(absoluteFilePath, "react-native");
+};
+
 const collectInkVersionDependencies: CrossFileDependencyCollector = ({ absoluteFilePath }) => {
   resolveInkVersion(absoluteFilePath);
 };
@@ -412,7 +546,11 @@ const collectInkVersionDependencies: CrossFileDependencyCollector = ({ absoluteF
 // every imported JSX name is a safe superset of the wrappers the rule follows.
 const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) => {
   collectInkVersionDependencies(input);
-  collectImportedJsxComponentDependencies(input);
+  collectImportedJsxComponentDependencies({
+    absoluteFilePath: input.absoluteFilePath,
+    staticImports: input.staticImports,
+    program: input.getProgram(),
+  });
 };
 
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
@@ -423,13 +561,15 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ]),
     ["ink-no-raw-text", collectInkNoRawTextDependencies],
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
+    ["effect-needs-cleanup", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
+    ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],
     ["no-dynamic-import-path", collectNearestManifestDependencies],
     ["no-full-lodash-import", collectNearestManifestDependencies],
-    ["no-hydration-branch-on-browser-global", collectNearestManifestDependencies],
+    ["no-hydration-branch-on-browser-global", collectHydrationBrowserGuardDependencies],
     ["no-indeterminate-attribute", collectNearestManifestDependencies],
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
@@ -438,18 +578,26 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-derived-state", collectEffectValueHelperDependencies],
     ["no-derived-state-effect", collectEffectValueHelperDependencies],
     ["no-event-handler", collectEffectValueHelperDependencies],
-    ["no-effect-with-fresh-deps", collectForwardedHookDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],
+    ["no-reset-all-state-on-prop-change", collectEffectValueHelperDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
+    ["no-side-effect-in-state-updater-function", collectStateUpdaterDependencies],
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],
-    ["no-unguarded-browser-global-in-render-or-hook-init", collectNearestManifestDependencies],
+    ["no-unguarded-browser-global-in-render-or-hook-init", collectBrowserRenderGuardDependencies],
     ["prefer-dynamic-import", collectNearestManifestDependencies],
     ["rendering-hydration-mismatch-time", collectNearestManifestDependencies],
+    ["rendering-hydration-no-flicker", collectEffectValueHelperDependencies],
     ["rerender-memo-with-default-value", collectForwardedHookDependencies],
+    ["server-sequential-independent-await", collectSequentialAwaitDependencies],
+    ["rn-no-deprecated-modules", collectReactNativeVersionDependencies],
     ["rn-no-legacy-shadow-styles", collectLegacyArchDependencies],
     ["rn-no-raw-text", collectRnNoRawTextDependencies],
     ["rn-prefer-expo-image", collectNearestManifestDependencies],
     ["rn-style-prefer-boxshadow", collectLegacyArchDependencies],
+    ...REACT_ROUTER_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
+      ruleId,
+      collectNearestManifestDependencies,
+    ]),
   ]);
 
 /**
@@ -460,8 +608,9 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
  * partition), forcing a conscious classification.
  */
 export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
-  "nextjs-async-dynamic-api-not-awaited",
+  "anchor-target-exists",
   "nextjs-no-img-element",
+  "no-img-without-dimensions",
   "no-loading-flag-reset-outside-finally",
   "only-export-components",
   "remotion-calculate-metadata-fetch-signal",
@@ -487,24 +636,25 @@ export const collectCrossFileDependencyProbes = (input: {
   sourceText: string;
   ruleIds: ReadonlyArray<string>;
 }): CrossFileProbeTrace | null => {
-  const collectors: CrossFileDependencyCollector[] = [];
+  const collectors = new Set<CrossFileDependencyCollector>();
   for (const ruleId of input.ruleIds) {
     const collector = CROSS_FILE_DEPENDENCY_COLLECTORS.get(ruleId);
     if (!collector) return null;
-    collectors.push(collector);
+    collectors.add(collector);
   }
 
   const absoluteFilePath = normalizeFilename(input.absoluteFilePath);
   let staticImports: ReadonlyArray<StaticImport>;
-  let program: EsTreeNode;
+  let getProgram: () => EsTreeNode;
   try {
-    const parseResult = parseSync(absoluteFilePath, input.sourceText, {
-      astType: "ts",
-      lang: resolveLang(absoluteFilePath),
-    });
+    const parseResult = parseCrossFileSource(absoluteFilePath, input.sourceText);
     if (parseResult.errors.some((parseError) => parseError.severity === "Error")) return null;
     staticImports = parseResult.module.staticImports;
-    program = parseResult.program as unknown as EsTreeNode;
+    let program: EsTreeNode | undefined;
+    getProgram = () => {
+      program ??= parseResult.program as unknown as EsTreeNode;
+      return program;
+    };
   } catch {
     return null;
   }
@@ -513,7 +663,7 @@ export const collectCrossFileDependencyProbes = (input: {
     absoluteFilePath,
     sourceText: input.sourceText,
     staticImports,
-    program,
+    getProgram,
   };
   return collectCrossFileProbes(() => {
     for (const collector of collectors) collector(collectorInput);

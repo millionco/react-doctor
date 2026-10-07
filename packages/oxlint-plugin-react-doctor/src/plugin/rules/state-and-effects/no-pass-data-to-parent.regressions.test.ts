@@ -5,6 +5,94 @@ import { noPassDataToParent } from "./no-pass-data-to-parent.js";
 const DEEP_REGISTER_ALIAS_CHAIN_LENGTH = 2_000;
 
 describe("no-pass-data-to-parent — regressions", () => {
+  it("stays silent when a required pending-change callback receives the parent-supplied value", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `import { useEffect } from "react";
+interface SelectOptionValue {
+  id: string;
+}
+interface MultiSelectFieldProperties<Value extends SelectOptionValue> {
+  onPendingChange?: (values: Value[]) => void;
+  values?: Value[];
+}
+const EMPTY_VALUES: SelectOptionValue[] = [];
+export const MultiSelectField = <Value extends SelectOptionValue>({ onPendingChange, values: valuesProp }: MultiSelectFieldProperties<Value>) => {
+  const values = (valuesProp ?? (EMPTY_VALUES as Value[])) as Value[];
+  useEffect(() => {
+    onPendingChange?.(values);
+  }, [onPendingChange, values]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags child-produced hook data wrapped in a TypeScript cast", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `import { useEffect } from "react";
+export const MultiSelectField = <Value,>({ onPendingChange }) => {
+  const values = useSelectedValues() as Value[];
+  useEffect(() => {
+    onPendingChange(values);
+  }, [onPendingChange, values]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags child-produced hook data wrapped in an angle-bracket assertion", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `import { useEffect } from "react";
+export const MultiSelectField = ({ onPendingChange }) => {
+  const values = <string[]>useSelectedValues();
+  useEffect(() => {
+    onPendingChange(values);
+  }, [onPendingChange, values]);
+  return null;
+};`,
+      { filename: "fixture.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags child-produced call data mixed with a prop fallback", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `import { useEffect } from "react";
+const Child = ({ categories, onChange }) => {
+  useEffect(() => {
+    const savedValue = readSavedValue();
+    onChange(savedValue || categories[0].id);
+  }, [categories, onChange]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags global mutable data indexed by a prop", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `import { useEffect } from "react";
+const Child = ({ animationId, onFrame }) => {
+  useEffect(() => {
+    onFrame(window.ANIMATION_DATA[animationId]);
+  }, [animationId, onFrame]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when a callback parameter is passed through a parent callback", () => {
     const result = runRule(
       noPassDataToParent,
@@ -119,6 +207,34 @@ describe("no-pass-data-to-parent — regressions", () => {
           const broken = useMatchMedia("(max-width: 768px)");
           useEffect(() => {
             onBreakPoint(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when an imported media-query snapshot is copied into a comparison ref", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import React from "react";
+        import { useMediaQuery } from "../hooks/useMediaQuery";
+
+        const Sidebar = ({ breakPoint, onBreakPoint }) => {
+          const broken = useMediaQuery(\`(max-width: \${breakPoint})\`);
+          const previousBrokenRef = React.useRef(broken);
+          const hasReportedRef = React.useRef(false);
+
+          React.useEffect(() => {
+            if (previousBrokenRef.current === broken) return;
+            previousBrokenRef.current = broken;
+            if (!hasReportedRef.current) {
+              hasReportedRef.current = true;
+              if (broken) onBreakPoint?.(true);
+              return;
+            }
+            onBreakPoint?.(broken);
           }, [broken, onBreakPoint]);
           return null;
         };`,

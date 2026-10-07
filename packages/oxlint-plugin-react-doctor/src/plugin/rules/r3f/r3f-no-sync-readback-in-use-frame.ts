@@ -3,28 +3,17 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isCpuTypedArray } from "../../utils/is-cpu-typed-array.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isWebglContextReference } from "../../utils/is-webgl-context-reference.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { WEBGL_READ_PIXELS_DESTINATION_ARGUMENT_INDEX } from "../webgl/constants.js";
 import { isR3fCallbackStateProperty } from "./utils/is-r3f-callback-state-property.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
-const CPU_TYPED_ARRAY_CONSTRUCTORS = new Set([
-  "BigInt64Array",
-  "BigUint64Array",
-  "Float32Array",
-  "Float64Array",
-  "Int8Array",
-  "Int16Array",
-  "Int32Array",
-  "Uint8Array",
-  "Uint8ClampedArray",
-  "Uint16Array",
-  "Uint32Array",
-]);
 const CANVAS_2D_CONTEXT_NAMES = new Set(["2d"]);
-const WEBGL_CONTEXT_NAMES = new Set(["experimental-webgl", "webgl", "webgl2"]);
 
 const isContextFromGetContext = (
   expression: EsTreeNode,
@@ -63,34 +52,6 @@ const isContextFromGetContext = (
   );
 };
 
-const isCpuTypedArray = (
-  expression: EsTreeNode,
-  scopes: ScopeAnalysis,
-  visitedSymbolIds: Set<number> = new Set(),
-): boolean => {
-  const candidate = stripParenExpression(expression);
-  if (isNodeOfType(candidate, "Identifier")) {
-    const symbol = scopes.symbolFor(candidate);
-    if (
-      symbol?.kind !== "const" ||
-      !symbol.initializer ||
-      visitedSymbolIds.has(symbol.id) ||
-      symbol.references.some((reference) => reference.flag !== "read")
-    ) {
-      return false;
-    }
-    visitedSymbolIds.add(symbol.id);
-    return isCpuTypedArray(symbol.initializer, scopes, visitedSymbolIds);
-  }
-  if (!isNodeOfType(candidate, "NewExpression")) return false;
-  const callee = stripParenExpression(candidate.callee);
-  return (
-    isNodeOfType(callee, "Identifier") &&
-    CPU_TYPED_ARRAY_CONSTRUCTORS.has(callee.name) &&
-    scopes.isGlobalReference(callee)
-  );
-};
-
 const getReadbackKind = (
   node: EsTreeNodeOfType<"CallExpression">,
   callback: EsTreeNode,
@@ -111,11 +72,8 @@ const getReadbackKind = (
   ) {
     return "canvas";
   }
-  if (
-    methodName === "readPixels" &&
-    isContextFromGetContext(node.callee.object, WEBGL_CONTEXT_NAMES, context.scopes)
-  ) {
-    const destination = node.arguments[6];
+  if (methodName === "readPixels" && isWebglContextReference(node.callee.object, context.scopes)) {
+    const destination = node.arguments[WEBGL_READ_PIXELS_DESTINATION_ARGUMENT_INDEX];
     return destination &&
       !isNodeOfType(destination, "SpreadElement") &&
       isCpuTypedArray(destination, context.scopes)

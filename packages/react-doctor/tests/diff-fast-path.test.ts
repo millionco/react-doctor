@@ -5,18 +5,10 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { diagnose } from "../src/index.js";
 import { setupReactProject } from "./regressions/_helpers.js";
 
-// The GitHub Action's PR fast path forwards `--scope changed
-// --changed-files-from <file>`, which the CLI turns into a diff-mode scan
-// (`includePaths` non-empty) that SKIPS dead-code + supply-chain — the two
-// phases that dominate full scans. That skip is why PR runs are engine-fast
-// (~1-3s) and install-bound (see plan 09). It's load-bearing for CI speed and
-// easy to regress (e.g. a change that drops the `!isDiffMode` gate in
-// run-inspect), so lock it behaviorally: the dead-code diagnostic a full scan
-// surfaces must be ABSENT from a diff-mode scan of the same project.
-const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-diff-fast-path-"));
+const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-diff-fast-path-"));
 
 afterAll(() => {
-  fs.rmSync(tempRoot, { recursive: true, force: true });
+  fs.rmSync(temporaryRoot, { recursive: true, force: true });
 });
 
 afterEach(() => {
@@ -35,40 +27,50 @@ const stubOfflineScore = () =>
     ),
   );
 
-const orphanFixture = (caseId: string): string =>
-  setupReactProject(tempRoot, caseId, {
+const duplicatedJsxFixture = (caseIdentifier: string): string =>
+  setupReactProject(temporaryRoot, caseIdentifier, {
     packageJsonExtras: { type: "module" },
     files: {
-      "src/index.ts": "export const used = 1;\n",
-      "src/orphan.ts": "export const orphan = 1;\n",
+      "src/index.ts": "export const version = 1;\n",
+      "src/account.tsx": `export const Account = ({ value }: { value: string }) => (
+  <AccountScreen><Page><section><header><Title /></header><main><Value value={value} /></main><footer><Button /></footer></section></Page></AccountScreen>
+);\n`,
+      "src/user.tsx": `export const User = ({ name }: { name: string }) => (
+  <UserScreen><Page><section><header><Title /></header><main><Value value={name} /></main><footer><Button /></footer></section></Page></UserScreen>
+);\n`,
     },
   });
 
-describe("diff fast path (CI scope: changed)", () => {
-  it("a full scan surfaces the orphan dead-code diagnostic (baseline)", async () => {
+describe("diff maintainability focus", () => {
+  it("compares a changed file with unchanged duplicate counterparts", async () => {
     stubOfflineScore();
-    const projectDir = orphanFixture("full");
-    const result = await diagnose(projectDir, { lint: false, deadCode: true, warnings: true });
-    const orphan = result.diagnostics.find(
-      (diagnostic) =>
-        diagnostic.rule === "unused-file" && diagnostic.filePath.endsWith("orphan.ts"),
+    const projectDirectory = duplicatedJsxFixture("changed-duplicate");
+    const result = await diagnose(projectDirectory, {
+      lint: false,
+      deadCode: true,
+      warnings: true,
+      includePaths: ["src/user.tsx"],
+    });
+
+    const diagnostic = result.diagnostics.find(
+      (candidate) => candidate.rule === "duplicate-jsx-subtree",
     );
-    expect(orphan).toBeDefined();
+    expect(diagnostic?.filePath).toBe("src/user.tsx");
+    expect(diagnostic?.relatedLocations?.[0].filePath).toBe("src/account.tsx");
   });
 
-  it("a diff-mode scan (changed files only) skips dead-code — no unused-file diagnostic", async () => {
+  it("does not report duplicate families untouched by the diff", async () => {
     stubOfflineScore();
-    const projectDir = orphanFixture("diff");
-    // `includePaths` non-empty ⇒ diff mode. run-inspect gates BOTH dead-code
-    // (`shouldRunDeadCode`) and supply-chain (`shouldRunSupplyChain`) on
-    // `!isDiffMode`, so neither runs — the orphan unused-file the full scan
-    // above found must not appear.
-    const result = await diagnose(projectDir, {
+    const projectDirectory = duplicatedJsxFixture("unrelated-change");
+    const result = await diagnose(projectDirectory, {
       lint: false,
       deadCode: true,
       warnings: true,
       includePaths: ["src/index.ts"],
     });
-    expect(result.diagnostics.some((diagnostic) => diagnostic.rule === "unused-file")).toBe(false);
+
+    expect(result.diagnostics.some((candidate) => candidate.rule === "duplicate-jsx-subtree")).toBe(
+      false,
+    );
   });
 });

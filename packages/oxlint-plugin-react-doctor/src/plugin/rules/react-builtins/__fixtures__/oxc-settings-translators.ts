@@ -144,6 +144,11 @@ const checkedRequiresTranslator = (fixture: OxcFixtureLike): Record<string, unkn
 const stylePropObjectTranslator = (fixture: OxcFixtureLike): Record<string, unknown> | null =>
   wrapForReactDoctor("stylePropObject", passthroughTopLevelObject(fixture.oxcOptions));
 
+const reactPerfTranslator =
+  (settingsKey: string) =>
+  (fixture: OxcFixtureLike): Record<string, unknown> | null =>
+    wrapForReactDoctor(settingsKey, passthroughTopLevelObject(fixture.oxcOptions));
+
 const hookUseStateTranslator = (fixture: OxcFixtureLike): Record<string, unknown> | null =>
   wrapForReactDoctor("hookUseState", passthroughTopLevelObject(fixture.oxcOptions));
 
@@ -257,6 +262,10 @@ export const TRANSLATORS: Record<
   "jsx-key": jsxKeyTranslator,
   "rules-of-hooks": rulesOfHooksTranslator,
   "jsx-max-depth": jsxMaxDepthTranslator,
+  "jsx-no-jsx-as-prop": reactPerfTranslator("jsxNoJsxAsProp"),
+  "jsx-no-new-array-as-prop": reactPerfTranslator("jsxNoNewArrayAsProp"),
+  "jsx-no-new-function-as-prop": reactPerfTranslator("jsxNoNewFunctionAsProp"),
+  "jsx-no-new-object-as-prop": reactPerfTranslator("jsxNoNewObjectAsProp"),
   "jsx-no-script-url": jsxNoScriptUrlTranslator,
   "jsx-no-useless-fragment": jsxNoUselessFragmentTranslator,
   "jsx-pascal-case": jsxPascalCaseTranslator,
@@ -265,8 +274,17 @@ export const TRANSLATORS: Record<
   "no-did-update-set-state": noDidUpdateSetStateTranslator,
   "no-string-refs": noStringRefsTranslator,
   "no-this-in-sfc": noThisInSfcTranslator,
-  "no-multi-comp": (fixture: OxcFixtureLike) =>
-    wrapForReactDoctor("noMultiComp", passthroughTopLevelObject(fixture.oxcOptions)),
+  "jsx-no-target-blank": (fixture: OxcFixtureLike) => {
+    const result: Record<string, unknown> = {};
+    const reactDoctor = wrapForReactDoctor(
+      "jsxNoTargetBlank",
+      passthroughTopLevelObject(fixture.oxcOptions),
+    );
+    if (reactDoctor) Object.assign(result, reactDoctor);
+    const reactBlock = oxcSettingsReactBlock(fixture.oxcSettings);
+    if (reactBlock) result.react = reactBlock;
+    return Object.keys(result).length > 0 ? result : null;
+  },
   "prefer-function-component": (fixture: OxcFixtureLike) =>
     wrapForReactDoctor("preferFunctionComponent", passthroughTopLevelObject(fixture.oxcOptions)),
   "display-name": displayNameTranslator,

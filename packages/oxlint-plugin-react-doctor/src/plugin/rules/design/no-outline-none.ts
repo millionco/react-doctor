@@ -4,12 +4,15 @@ import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { parseJsxValue } from "../../utils/parse-jsx-value.js";
+import { parseTailwindClassNameToken } from "../../utils/parse-tailwind-class-name-token.js";
+import { splitTailwindClassName } from "../../utils/split-tailwind-class-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveTailwindClassNameToken } from "./utils/get-effective-tailwind-class-name-token.js";
+import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
-import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -35,17 +38,41 @@ const isFocusStyleAddingUtility = (utility: string): boolean => {
 // `focus-visible:`) — `group-focus:` / `peer-focus:` / `focus-within:`
 // style on an ancestor's or sibling's focus, so this element's keyboard
 // focus stays invisible.
-const hasOwnFocusRingClass = (className: string): boolean =>
-  className.split(/\s+/).some((token) => {
-    const segments = token.split(":");
-    if (segments.length < 2) return false;
-    const variants = segments.slice(0, -1);
-    if (!variants.some((variant) => variant === "focus" || variant === "focus-visible"))
-      return false;
-    const rawUtility = segments[segments.length - 1];
-    const utility = rawUtility.startsWith("!") ? rawUtility.slice(1) : rawUtility;
-    return isFocusStyleAddingUtility(utility);
-  });
+const getFocusStyleFamily = (utility: string): string | null => {
+  if (utility === "ring" || (utility.startsWith("ring-") && !utility.startsWith("ring-offset"))) {
+    return "ring";
+  }
+  if (utility === "outline" || utility.startsWith("outline-")) return "outline";
+  if (utility === "shadow" || utility.startsWith("shadow-")) return "shadow";
+  return null;
+};
+
+const hasOwnFocusRingClass = (className: string): boolean => {
+  const normalizedUtilitiesByScope = new Map<string, string[]>();
+  for (const rawToken of splitTailwindClassName(className)) {
+    const parsedToken = parseTailwindClassNameToken(rawToken);
+    if (
+      !parsedToken.variants.some((variant) => variant === "focus" || variant === "focus-visible")
+    ) {
+      continue;
+    }
+    const focusStyleFamily = getFocusStyleFamily(parsedToken.utility);
+    if (!focusStyleFamily) continue;
+    const variantScope = [...parsedToken.variants].sort().join(":");
+    const normalizedUtilities = normalizedUtilitiesByScope.get(variantScope) ?? [];
+    const effect = isFocusStyleAddingUtility(parsedToken.utility) ? "add" : "remove";
+    normalizedUtilities.push(`${parsedToken.isImportant ? "!" : ""}${focusStyleFamily}-${effect}`);
+    normalizedUtilitiesByScope.set(variantScope, normalizedUtilities);
+  }
+  return [...normalizedUtilitiesByScope.values()].some((normalizedUtilities) =>
+    ["ring", "outline", "shadow"].some(
+      (focusStyleFamily) =>
+        getEffectiveTailwindClassNameToken(normalizedUtilities, (utility) =>
+          utility.startsWith(`${focusStyleFamily}-`),
+        ) === `${focusStyleFamily}-add`,
+    ),
+  );
+};
 
 const parseNumericExpression = (expression: EsTreeNode): number | null => {
   if (isNodeOfType(expression, "Literal")) {
@@ -181,28 +208,17 @@ export const noOutlineNone = defineRule({
       if (isSkipNavComponent(node)) return;
       if (rendersFocusManagerInSameFunction(node)) return;
 
-      let hasOutlineNone = false;
-      let outlineProperty: EsTreeNode | null = null;
-
-      for (const property of expression.properties ?? []) {
-        const key = getStylePropertyKey(property);
-        if (key !== "outline") continue;
-
-        const strValue = getStylePropertyStringValue(property);
-        const numValue = getStylePropertyNumberValue(property);
-
-        if (strValue === "none" || strValue === "0" || numValue === 0) {
-          hasOutlineNone = true;
-          outlineProperty = property;
-        }
+      const outlineProperty = getEffectiveStyleProperty(expression.properties, "outline");
+      if (!outlineProperty) return;
+      const outlineStringValue = getStylePropertyStringValue(outlineProperty);
+      const outlineNumberValue = getStylePropertyNumberValue(outlineProperty);
+      if (outlineStringValue !== "none" && outlineStringValue !== "0" && outlineNumberValue !== 0) {
+        return;
       }
 
-      if (!hasOutlineNone || !outlineProperty) return;
-
-      const hasInlineBoxShadowRing = expression.properties?.some((property: EsTreeNode) => {
-        const key = getStylePropertyKey(property);
-        return key === "boxShadow";
-      });
+      const hasInlineBoxShadowRing = Boolean(
+        getEffectiveStyleProperty(expression.properties, "boxShadow"),
+      );
       const className = node.parent ? getStringFromClassNameAttr(node.parent) : null;
       const hasClassNameFocusRing = Boolean(className && hasOwnFocusRingClass(className));
       const hasCustomFocusRing = hasInlineBoxShadowRing || hasClassNameFocusRing;

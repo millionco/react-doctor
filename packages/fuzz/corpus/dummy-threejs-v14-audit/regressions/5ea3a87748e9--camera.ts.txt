@@ -1,0 +1,104 @@
+// rule: js-cache-property-access
+// file-path: src/game/camera.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 5ea3a87748e94f18643dc43f266d22045eb848521e4fea809a8a6313c9ef7e08
+import * as THREE from "three";
+
+/** Damped orbit rig that can be frozen so pointer drags belong to charge placement. */
+export class OrbitRig {
+  target = new THREE.Vector3(-5.5, 5.0, 0);
+  private desiredTarget = this.target.clone();
+  yaw = -0.62;
+  pitch = 0.28;
+  distance = 30;
+  private desiredYaw = this.yaw;
+  private desiredPitch = this.pitch;
+  private desiredDistance = this.distance;
+  frozen = false;
+  minDistance = 8;
+  maxDistance = 62;
+
+  constructor(readonly camera: THREE.PerspectiveCamera) {
+    this.apply(1);
+  }
+
+  /** Freezing locks the view exactly where it is, so drags belong to the charges. */
+  setFrozen(v: boolean): void {
+    this.frozen = v;
+    if (v) {
+      this.desiredYaw = this.yaw;
+      this.desiredPitch = this.pitch;
+      this.desiredDistance = this.distance;
+      this.desiredTarget.copy(this.target);
+    }
+  }
+
+  orbit(dx: number, dy: number): void {
+    if (this.frozen) return;
+    this.desiredYaw -= dx * 0.0055;
+    this.desiredPitch = THREE.MathUtils.clamp(this.desiredPitch + dy * 0.0042, -0.12, 1.28);
+  }
+
+  pan(dx: number, dy: number): void {
+    if (this.frozen) return;
+    const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+    const k = this.distance * 0.0012;
+    this.desiredTarget.addScaledVector(right, -dx * k);
+    this.desiredTarget.addScaledVector(fwd, -dy * k * 0.6);
+    this.desiredTarget.y = THREE.MathUtils.clamp(this.desiredTarget.y + dy * k * 0.55, 0.5, 20);
+    this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -22, 18);
+    this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -16, 18);
+  }
+
+  zoom(delta: number): void {
+    if (this.frozen) return;
+    this.desiredDistance = THREE.MathUtils.clamp(this.desiredDistance * (1 + delta * 0.0011), this.minDistance, this.maxDistance);
+  }
+
+  focus(target: THREE.Vector3, distance: number): void {
+    this.desiredTarget.copy(target);
+    this.desiredDistance = THREE.MathUtils.clamp(distance, this.minDistance, this.maxDistance);
+  }
+
+  /** Solid volumes the eye must stay out of. */
+  blockers: Array<{ min: THREE.Vector3; max: THREE.Vector3 }> = [];
+  groundY: (x: number, z: number) => number = () => 0;
+
+  private pushOutOfBlockers(): void {
+    const p = this.camera.position;
+    for (const b of this.blockers) {
+      if (p.x < b.min.x || p.x > b.max.x || p.y < b.min.y || p.y > b.max.y || p.z < b.min.z || p.z > b.max.z) continue;
+      // shove the eye out through the nearest face
+      const cands: Array<[number, () => void]> = [
+        [p.x - b.min.x, () => (p.x = b.min.x - 0.4)],
+        [b.max.x - p.x, () => (p.x = b.max.x + 0.4)],
+        [b.max.y - p.y, () => (p.y = b.max.y + 0.4)],
+        [p.z - b.min.z, () => (p.z = b.min.z - 0.4)],
+        [b.max.z - p.z, () => (p.z = b.max.z + 0.4)],
+      ];
+      cands.sort((a, c) => a[0] - c[0]);
+      cands[0]![1]();
+    }
+  }
+
+  apply(alpha: number): void {
+    const k = 1 - Math.pow(0.0016, alpha);
+    this.yaw += (this.desiredYaw - this.yaw) * k;
+    this.pitch += (this.desiredPitch - this.pitch) * k;
+    this.distance += (this.desiredDistance - this.distance) * k;
+    this.target.lerp(this.desiredTarget, k);
+
+    const cp = Math.cos(this.pitch);
+    this.camera.position.set(
+      this.target.x + Math.sin(this.yaw) * cp * this.distance,
+      this.target.y + Math.sin(this.pitch) * this.distance,
+      this.target.z + Math.cos(this.yaw) * cp * this.distance,
+    );
+    const floor = this.groundY(this.camera.position.x, this.camera.position.z) + 0.9;
+    if (this.camera.position.y < floor) this.camera.position.y = floor;
+    this.pushOutOfBlockers();
+    this.camera.lookAt(this.target);
+  }
+}

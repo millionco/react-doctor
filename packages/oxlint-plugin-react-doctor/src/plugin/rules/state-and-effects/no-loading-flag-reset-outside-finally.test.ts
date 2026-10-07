@@ -40,6 +40,25 @@ describe("no-loading-flag-reset-outside-finally", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when a non-rethrowing catch performs opaque error reporting before a trailing reset", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const handleUpload = async () => {
+        setIsUploading(true);
+        try {
+          const response = await upload();
+          if (response.ok) onSuccess();
+          else toast.show({ variant: "danger", label: "Upload failed" });
+        } catch {
+          toast.show({ variant: "danger", label: "Upload failed" });
+        }
+        setIsUploading(false);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags a trailing reset when the catch rethrows, so rejection still skips it", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
@@ -179,6 +198,802 @@ describe("no-loading-flag-reset-outside-finally", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet for a sibling effect cleanup lifecycle guard in finally", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useCallback, useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const mountedRef = useRef(true);
+         useEffect(() => {
+           mountedRef.current = true;
+           return () => { mountedRef.current = false; };
+         }, []);
+         const load = useCallback(async () => {
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally { if (mountedRef.current) setIsLoading(false); }
+         }, []);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when only the latest async operation owns the final reset", () => {
+    const sources = [
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const requestIdRef = useRef(0);
+         const requestSequenceRef = useRef(0);
+         const load = async () => {
+           const requestId = ++requestSequenceRef.current;
+           requestIdRef.current = requestId;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (requestIdRef.current === requestId) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const requestIdRef = useRef(0);
+         const requestSequenceRef = useRef(0);
+         const attemptRef = useRef(0);
+         const load = async () => {
+           const requestId = ++requestSequenceRef.current;
+           requestIdRef.current = requestId;
+           const attempt = ++attemptRef.current;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (requestIdRef.current === requestId && attemptRef.current === attempt) {
+               setIsLoading(false);
+             }
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const latestStartedRef = useRef(0);
+         const requestSequenceRef = useRef(0);
+         const load = async () => {
+           const requestId = ++requestSequenceRef.current;
+           latestStartedRef.current = requestId;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (requestId >= latestStartedRef.current) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(null);
+         const load = async () => {
+           const token = {};
+           ownerRef.current = token;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+    ];
+    for (const [sourceIndex, source] of sources.entries()) {
+      expect(
+        runRule(noLoadingFlagResetOutsideFinally, source).diagnostics,
+        `source ${sourceIndex}`,
+      ).toHaveLength(0);
+    }
+  });
+
+  it("accepts an outer render identity claimed by a ref", () => {
+    const sources = [
+      `import { useCallback, useRef, useState } from "react";
+       const Preview = ({ requestId }) => {
+         const [, setDeliveryPending] = useState(false);
+         const requestIdRef = useRef(requestId);
+         requestIdRef.current = requestId;
+         const deliver = useCallback(async () => {
+           const attemptedRequestId = requestId;
+           setDeliveryPending(true);
+           try { await send(); }
+           finally {
+             if (requestIdRef.current === attemptedRequestId) setDeliveryPending(false);
+           }
+         }, [requestId]);
+       };`,
+      `import { useCallback, useRef, useState } from "react";
+       const Preview = ({ requestId }) => {
+         const [, setIsSending] = useState(false);
+         const activeRequestRef = useRef(requestId);
+         activeRequestRef.current = requestId;
+         const deliver = useCallback(async (request) => {
+           setIsSending(true);
+           try { await send(request); }
+           finally {
+             if (activeRequestRef.current === request.requestId) setIsSending(false);
+           }
+         }, []);
+       };`,
+    ];
+    for (const [sourceIndex, source] of sources.entries()) {
+      expect(
+        runRule(noLoadingFlagResetOutsideFinally, source).diagnostics,
+        `source ${sourceIndex}`,
+      ).toHaveLength(0);
+    }
+  });
+
+  it("accepts stale-owner exits when success and catch both clear", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const flightRef = useRef(0);
+         const load = async () => {
+           const flight = ++flightRef.current;
+           setIsLoading(true);
+           try {
+             await fetchFeed();
+             if (flight !== flightRef.current) return;
+             setIsLoading(false);
+           } catch {
+             if (flight !== flightRef.current) return;
+             setIsLoading(false);
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts react-hook-form setValue before a mirrored catch reset", () => {
+    const runSetValueCase = (importSource: string) =>
+      runRule(
+        noLoadingFlagResetOutsideFinally,
+        `import { useForm } from "${importSource}";
+         import { useRef, useState } from "react";
+         const Preview = () => {
+           const form = useForm();
+           const [, setIsLoading] = useState(false);
+           const loadRef = useRef(0);
+           const load = async () => {
+             const load = ++loadRef.current;
+             setIsLoading(true);
+             try {
+               await readFile();
+               if (load !== loadRef.current) return;
+               setIsLoading(false);
+             } catch {
+               if (load !== loadRef.current) return;
+               form.setValue("private_key", "");
+               setIsLoading(false);
+             }
+           };
+         };`,
+      );
+    expect(runSetValueCase("react-hook-form").diagnostics).toHaveLength(0);
+    expect(runSetValueCase("userland-form").diagnostics).toHaveLength(1);
+  });
+
+  it("accepts independent generation-guarded loaders sharing a ref", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useCallback, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setRefreshPending] = useState(false);
+         const generationRef = useRef(0);
+         const loadFirst = useCallback(async () => {
+           const generation = ++generationRef.current;
+           setRefreshPending(true);
+           try { await fetchFirst(); }
+           finally {
+             if (generation === generationRef.current) setRefreshPending(false);
+           }
+         }, []);
+         const loadSecond = useCallback(async () => {
+           const generation = ++generationRef.current;
+           setRefreshPending(true);
+           try { await fetchSecond(); }
+           finally {
+             if (generation === generationRef.current) setRefreshPending(false);
+           }
+         }, []);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("requires a proven current-operation ownership guard around a final reset", () => {
+    const sources = [
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const latestStartedRef = useRef(0);
+         const load = async (requestId) => {
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (requestId <= latestStartedRef.current) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const statusRef = useRef("ready");
+         const load = async () => {
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (statusRef.current === "ready") setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useState } from "react";
+       const useRef = (value) => ({ current: value });
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const requestRef = useRef("");
+         const load = async (requestId) => {
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (requestRef.current === requestId) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const requestRef = useRef("");
+         const load = async () => {
+           let requestId = "first";
+           setIsLoading(true);
+           await fetchFeed();
+           requestId = "second";
+           try { await fetchMore(); }
+           finally {
+             if (requestRef.current === requestId) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef("different");
+         const load = async () => {
+           const token = "never";
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef("");
+         const load = async (token) => {
+           ownerRef.current = token;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const latestStartedRef = useRef(0);
+         const load = async (requestId) => {
+           latestStartedRef.current = requestId;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (requestId >= latestStartedRef.current) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef("");
+         const load = async (token) => {
+           setIsLoading(true);
+           try {
+             await fetchFeed();
+             ownerRef.current = token;
+           } finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef("");
+         const load = async (token) => {
+           const claim = () => { ownerRef.current = token; };
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef("");
+         const load = async (token, shouldClaim) => {
+           if (shouldClaim) ownerRef.current = token;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(0);
+         const sequenceRef = useRef(0);
+         const overwriteOwner = () => { ownerRef.current = 0; };
+         const load = async () => {
+           const token = ++sequenceRef.current;
+           ownerRef.current = token;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(0);
+         const sequenceRef = useRef(0);
+         const load = async () => {
+           const token = ++sequenceRef.current;
+           ownerRef.current = token;
+           mightThrow();
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+    ];
+    for (const [sourceIndex, source] of sources.entries()) {
+      expect(
+        runRule(noLoadingFlagResetOutsideFinally, source).diagnostics,
+        `source ${sourceIndex}`,
+      ).toHaveLength(1);
+    }
+  });
+
+  it("requires an ownership claim to execute before the loading setter", () => {
+    const sources = [
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(null);
+         const load = async () => {
+           const token = {};
+           setIsLoading(true);
+           ownerRef.current = token;
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const latestStartedRef = useRef(0);
+         const load = async () => {
+           setIsLoading(true);
+           const requestId = ++latestStartedRef.current;
+           try { await fetchFeed(); }
+           finally {
+             if (requestId >= latestStartedRef.current) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(null);
+         const load = async () => {
+           const token = {};
+           ownerRef.current = (setIsLoading(true), token);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("does not treat a ref snapshot as an ownership claim", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(0);
+         const load = async () => {
+           const token = ownerRef.current;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a ref snapshot backed by a synchronous single-flight claim", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(0);
+         const inFlightRef = useRef(false);
+         const load = async () => {
+           if (inFlightRef.current) return;
+           inFlightRef.current = true;
+           const token = ownerRef.current;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) {
+               inFlightRef.current = false;
+               setIsLoading(false);
+             }
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts an ownership claim aligned with the loading path", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(0);
+         const sequenceRef = useRef(0);
+         const load = async (shouldLoad) => {
+           if (shouldLoad) {
+             const token = ++sequenceRef.current;
+             ownerRef.current = token;
+             setIsLoading(true);
+             try { await fetchFeed(); }
+             finally {
+               if (ownerRef.current === token) setIsLoading(false);
+             }
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts unrelated writes to a separate ownership token sequence", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(0);
+         const sequenceRef = useRef(0);
+         const reserveSequence = () => { sequenceRef.current += 1; };
+         const load = async () => {
+           const token = ++sequenceRef.current;
+           ownerRef.current = token;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a guarded finalizer before a later risky await", () => {
+    const sources = [
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(null);
+         const load = async () => {
+           const token = {};
+           ownerRef.current = token;
+           setIsLoading(true);
+           try { prepareFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+           await fetchMore();
+         };
+       };`,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const mountedRef = useRef(true);
+         useEffect(() => () => { mountedRef.current = false; }, []);
+         const load = async () => {
+           setIsLoading(true);
+           try { prepareFeed(); }
+           finally {
+             if (mountedRef.current) setIsLoading(false);
+           }
+           await fetchMore();
+         };
+       };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("rejects ordered guards that stay true for stale operations", () => {
+    const sources = [
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const latestStartedRef = useRef(0);
+         const sequenceRef = useRef(0);
+         const load = async () => {
+           const requestId = ++sequenceRef.current;
+           latestStartedRef.current = requestId;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (requestId <= latestStartedRef.current) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const latestStartedRef = useRef(0);
+         const sequenceRef = useRef(0);
+         const load = async () => {
+           const requestId = ++sequenceRef.current;
+           latestStartedRef.current = requestId;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (latestStartedRef.current >= requestId) setIsLoading(false);
+           }
+         };
+       };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("checks ownership writes outside an enclosing effect callback", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(null);
+         const cancel = () => { ownerRef.current = null; };
+         useEffect(() => {
+           const load = async () => {
+             const token = {};
+             ownerRef.current = token;
+             setIsLoading(true);
+             try { await fetchFeed(); }
+             finally {
+               if (ownerRef.current === token) setIsLoading(false);
+             }
+           };
+           void load();
+         }, []);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a committed effect invalidation paired with the same reset", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = ({ requestId }) => {
+         const [, setIsLoading] = useState(false);
+         const attemptRef = useRef(0);
+         useEffect(() => {
+           attemptRef.current += 1;
+           setIsLoading(false);
+         }, [requestId]);
+         const load = async () => {
+           const attempt = ++attemptRef.current;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (attemptRef.current === attempt) setIsLoading(false);
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects an effect invalidation that is not paired with the same reset", () => {
+    const sources = [
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = ({ requestId }) => {
+         const [, setIsLoading] = useState(false);
+         const attemptRef = useRef(0);
+         useEffect(() => {
+           attemptRef.current += 1;
+         }, [requestId]);
+         const load = async () => {
+           const attempt = ++attemptRef.current;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (attemptRef.current === attempt) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = ({ requestId, shouldReset }) => {
+         const [, setIsLoading] = useState(false);
+         const attemptRef = useRef(0);
+         useEffect(() => {
+           attemptRef.current += 1;
+           if (shouldReset) setIsLoading(false);
+         }, [requestId, shouldReset]);
+         const load = async () => {
+           const attempt = ++attemptRef.current;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (attemptRef.current === attempt) setIsLoading(false);
+           }
+         };
+       };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("composes lifecycle and claimed-ownership finalizer guards", () => {
+    const sources = [
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const mountedRef = useRef(true);
+         const ownerRef = useRef(0);
+         const sequenceRef = useRef(0);
+         useEffect(() => () => { mountedRef.current = false; }, []);
+         const load = async () => {
+           const token = ++sequenceRef.current;
+           ownerRef.current = token;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (mountedRef.current && ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const mountedRef = useRef(true);
+         const ownerRef = useRef(0);
+         const sequenceRef = useRef(0);
+         useEffect(() => () => { mountedRef.current = false; }, []);
+         const load = async () => {
+           const token = ++sequenceRef.current;
+           ownerRef.current = token;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (!mountedRef.current) return;
+             if (ownerRef.current !== token) return;
+             setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const mountedRef = useRef(true);
+         const ownerRef = useRef(0);
+         const sequenceRef = useRef(0);
+         useEffect(() => () => { mountedRef.current = false; }, []);
+         const load = async () => {
+           const token = ++sequenceRef.current;
+           ownerRef.current = token;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (!mountedRef.current || ownerRef.current !== token) return;
+             setIsLoading(false);
+           }
+         };
+       };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("rejects unknown finalizer guard conjuncts and exits", () => {
+    const sources = [
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(0);
+         const sequenceRef = useRef(0);
+         const load = async (shouldReset) => {
+           const token = ++sequenceRef.current;
+           ownerRef.current = token;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token && shouldReset) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(0);
+         const sequenceRef = useRef(0);
+         const load = async (shouldSkip) => {
+           const token = ++sequenceRef.current;
+           ownerRef.current = token;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (shouldSkip) return;
+             if (ownerRef.current !== token) return;
+             setIsLoading(false);
+           }
+         };
+       };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(1);
+    }
+  });
+
   it("flags a conditional finally reset without a matching effect cleanup guard", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
@@ -282,6 +1097,30 @@ describe("no-loading-flag-reset-outside-finally", () => {
            return () => { mountedRef.current = false; };
          }, []);
        };`,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const mountedRef = useRef(true);
+         useEffect(() => () => { mountedRef.current = false; }, []);
+         mountedRef.current = false;
+         const load = async () => {
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally { if (mountedRef.current) setIsLoading(false); }
+         };
+       };`,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const mountedRef = useRef(true);
+         useEffect(() => () => { mountedRef.current = false; }, []);
+         const disable = () => { mountedRef.current = false; };
+         const load = async () => {
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally { if (mountedRef.current) setIsLoading(false); }
+         };
+       };`,
     ];
     for (const source of sources) {
       expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(1);
@@ -342,6 +1181,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
       `const loadAll = async () => {
+        const requests = [];
         setLoading(true);
         const results = await Promise.allSettled(requests);
         setItems(results);
@@ -816,7 +1656,7 @@ const SaveButton = () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: useCallback-wrapped same-file helper whose awaits are all .catch-guarded", () => {
+  it("flags a guarded same-file helper with opaque synchronous calls", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
       `const TasteTab = () => {
@@ -839,7 +1679,7 @@ const SaveButton = () => {
       };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags an await of a same-file helper whose own await is unguarded", () => {
@@ -873,7 +1713,7 @@ const SaveButton = () => {
     expect(functionHelper.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: same-file helper awaiting Promise.all over an array populated with dispatch pushes", () => {
+  it("flags Promise-array setup performed through an opaque iterator call", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
       `const ShareInviteDialog = (props) => {
@@ -895,7 +1735,28 @@ const SaveButton = () => {
       };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["opaque member call", `risk.run();`],
+    ["setter-like call", `setDangerous();`],
+    ["dispatch-like call", `dangerousDispatch();`],
+    ["invalid queueMicrotask call", `queueMicrotask();`],
+  ])("flags a guarded helper containing an unproven %s", (_shape, statement) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const guarded = async () => {
+        ${statement}
+        try { await request(); } catch {}
+      };
+      const load = async () => {
+        setLoading(true);
+        await guarded();
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags Promise.all over an array populated with unguarded request pushes", () => {
@@ -1378,6 +2239,55 @@ describe("no-loading-flag-reset-outside-finally cross-file helpers", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("still flags a non-async resolve-only helper imported through a directory barrel", () => {
+    writeFile(
+      "src/util/helpers.ts",
+      `export const timeout = (milliseconds) =>
+        new Promise((resolve) => setTimeout(resolve, milliseconds));`,
+    );
+    writeFile("src/util/index.ts", `export { timeout } from "./helpers";`);
+    const source = `import { timeout } from "./util";
+      const Demo = () => {
+        const process = async () => {
+          setProcessing(true);
+          await timeout(2_000);
+          setProcessing(false);
+        };
+      };`;
+    const consumerFilename = writeFile("src/Demo.tsx", source);
+    const result = runRule(noLoadingFlagResetOutsideFinally, source, {
+      filename: consumerFilename,
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["throws synchronously", `export const wait = () => { throw new Error("failed"); };`],
+    ["calls an unknown function", `export const wait = () => request();`],
+    [
+      "calls an unknown function before returning",
+      `export const wait = () => { recordAttempt(); return Promise.resolve(); };`,
+    ],
+    ["returns a rejected promise", `export const wait = () => Promise.reject(new Error());`],
+  ])("still flags when a non-async imported helper %s", (_description, helperSource) => {
+    writeFile("src/wait.ts", helperSource);
+    const source = `import { wait } from "./wait";
+      const Demo = () => {
+        const process = async () => {
+          setProcessing(true);
+          await wait();
+          setProcessing(false);
+        };
+      };`;
+    const consumerFilename = writeFile("src/Demo.tsx", source);
+    const result = runRule(noLoadingFlagResetOutsideFinally, source, {
+      filename: consumerFilename,
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("resolves a foreign const initializer wrapping useCallback", () => {
     writeFile(
       "src/utils/file-upload.ts",
@@ -1512,6 +2422,173 @@ describe("no-loading-flag-reset-outside-finally cross-file helpers", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not trust a reassigned imported helper", () => {
+    writeFile(
+      "src/wait.ts",
+      `export let wait = async () => { try { await safe(); } catch {} };
+      wait = async () => risky();`,
+    );
+    const consumer = `import { wait } from "./wait";
+      const run = async () => {
+        setLoading(true);
+        await wait();
+        setLoading(false);
+      };`;
+    const consumerFilename = writeFile("src/consumer.tsx", consumer);
+    const result = runRule(noLoadingFlagResetOutsideFinally, consumer, {
+      filename: consumerFilename,
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust reassigned exported declarations or useCallback bindings", () => {
+    writeFile(
+      "src/function-helper.ts",
+      `export async function wait() { try { await safe(); } catch {} }
+      wait = async () => risky();`,
+    );
+    writeFile(
+      "src/callback-helper.ts",
+      `import { useCallback } from "react";
+      export let wait = useCallback(async () => { try { await safe(); } catch {} }, []);
+      wait = async () => risky();`,
+    );
+    const functionConsumer = `import { wait } from "./function-helper";
+      const run = async () => { setLoading(true); await wait(); setLoading(false); };`;
+    const callbackConsumer = `import { wait } from "./callback-helper";
+      const run = async () => { setLoading(true); await wait(); setLoading(false); };`;
+    const functionFilename = writeFile("src/function-consumer.tsx", functionConsumer);
+    const callbackFilename = writeFile("src/callback-consumer.tsx", callbackConsumer);
+    const functionResult = runRule(noLoadingFlagResetOutsideFinally, functionConsumer, {
+      filename: functionFilename,
+    });
+    const callbackResult = runRule(noLoadingFlagResetOutsideFinally, callbackConsumer, {
+      filename: callbackFilename,
+    });
+    expect(functionResult.diagnostics).toHaveLength(1);
+    expect(callbackResult.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a mutable function returned by an imported hook", () => {
+    writeFile(
+      "src/use-media-annotations.ts",
+      `export const useMediaAnnotations = () => {
+        const safe = async () => { try { await persist(); } catch {} };
+        let annotate = safe;
+        annotate = async () => persist();
+        return { annotate };
+      };`,
+    );
+    const consumerFilename = writeFile("src/Editor.tsx", hookConsumerCode);
+    const result = runRule(noLoadingFlagResetOutsideFinally, hookConsumerCode, {
+      filename: consumerFilename,
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a mutable imported-hook consumer binding", () => {
+    writeFile(
+      "src/use-safe-action.ts",
+      `export const useSafeAction = () => {
+        const save = async () => { try { await persist(); } catch {} };
+        return { save };
+      };`,
+    );
+    const consumer = `import { useSafeAction } from "./use-safe-action";
+      const run = async () => {
+        let { save } = useSafeAction();
+        save = risky;
+        setLoading(true);
+        await save();
+        setLoading(false);
+      };`;
+    const consumerFilename = writeFile("src/mutable-consumer.tsx", consumer);
+    const result = runRule(noLoadingFlagResetOutsideFinally, consumer, {
+      filename: consumerFilename,
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("requires foreign useCallback and useMemo wrappers to come from React", () => {
+    writeFile(
+      "src/shadowed-callback.ts",
+      `const useCallback = (callback) => risky(callback);
+      export const save = useCallback(async () => { try { await persist(); } catch {} });`,
+    );
+    writeFile(
+      "src/shadowed-memo.ts",
+      `const useMemo = (factory) => risky(factory);
+      export const useSafeAction = () => {
+        const save = async () => { try { await persist(); } catch {} };
+        return useMemo(() => ({ save }));
+      };`,
+    );
+    const callbackConsumer = `import { save } from "./shadowed-callback";
+      const run = async () => { setLoading(true); await save(); setLoading(false); };`;
+    const memoConsumer = `import { useSafeAction } from "./shadowed-memo";
+      const run = async () => {
+        const { save } = useSafeAction();
+        setLoading(true);
+        await save();
+        setLoading(false);
+      };`;
+    const callbackFilename = writeFile("src/shadowed-callback-consumer.tsx", callbackConsumer);
+    const memoFilename = writeFile("src/shadowed-memo-consumer.tsx", memoConsumer);
+    expect(
+      runRule(noLoadingFlagResetOutsideFinally, callbackConsumer, {
+        filename: callbackFilename,
+      }).diagnostics,
+    ).toHaveLength(1);
+    expect(
+      runRule(noLoadingFlagResetOutsideFinally, memoConsumer, {
+        filename: memoFilename,
+      }).diagnostics,
+    ).toHaveLength(1);
+  });
+
+  it("does not let a shadowed Promise make a foreign helper rejection-proof", () => {
+    writeFile(
+      "src/wait.ts",
+      `const Promise = { resolve: () => risky() };
+      export const wait = async () => Promise.resolve();`,
+    );
+    const consumer = `import { wait } from "./wait";
+      const run = async () => {
+        setLoading(true);
+        await wait();
+        setLoading(false);
+      };`;
+    const consumerFilename = writeFile("src/consumer.tsx", consumer);
+    const result = runRule(noLoadingFlagResetOutsideFinally, consumer, {
+      filename: consumerFilename,
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("budgets cross-file parsing by module rather than exported name", () => {
+    writeFile(
+      "src/waits.ts",
+      `export const waitOne = async () => { try { await first(); } catch {} };
+      export const waitTwo = async () => { try { await second(); } catch {} };
+      export const waitThree = async () => { try { await third(); } catch {} };
+      export const waitFour = async () => { try { await fourth(); } catch {} };`,
+    );
+    const consumer = `import { waitOne, waitTwo, waitThree, waitFour } from "./waits";
+      const run = async () => {
+        setLoading(true);
+        await waitOne();
+        await waitTwo();
+        await waitThree();
+        await waitFour();
+        setLoading(false);
+      };`;
+    const consumerFilename = writeFile("src/consumer.tsx", consumer);
+    const result = runRule(noLoadingFlagResetOutsideFinally, consumer, {
+      filename: consumerFilename,
+    });
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });
 
 describe("no-loading-flag-reset-outside-finally audit regressions", () => {
@@ -1560,6 +2637,19 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays bounded when an async helper calls itself recursively", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `async function visit(entry) {
+        if (entry.isDirectory()) {
+          await visit(entry.child);
+        }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not treat Promise.resolve as rejection absorption for a rejecting argument", () => {
@@ -1801,12 +2891,173 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     );
     const iterableAllSettledInput = runRule(
       noLoadingFlagResetOutsideFinally,
-      `import { useState } from "react"; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); await Promise.allSettled({ *[Symbol.iterator]() { yield fetch("/value"); } }); setLoading(false); }; };`,
+      `import { useState } from "react"; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); await Promise.allSettled({ *[Symbol.iterator]() { yield 1; } }); setLoading(false); }; };`,
     );
     expect(executorCall.diagnostics).toHaveLength(1);
     expect(asyncHelperCall.diagnostics).toHaveLength(1);
     expect(invalidAllSettledInput.diagnostics).toHaveLength(1);
     expect(iterableAllSettledInput.diagnostics).toHaveLength(0);
+  });
+
+  it("flags Promise.allSettled when producing the iterable can throw synchronously", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const Component = () => {
+        const [, setLoading] = useState(false);
+        const run = async () => {
+          setLoading(true);
+          await Promise.allSettled(getTasks());
+          setLoading(false);
+        };
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["opaque call", "getTask()"],
+    ["member read", "taskSource.current"],
+    ["iterable spread", "...tasks"],
+  ])("flags Promise.allSettled when an array element %s can throw", (_shape, element) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        await Promise.allSettled([${element}]);
+        setLoading(false);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags Promise.allSettled when an unresolved iterable binding can hide a throwing iterator", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        await Promise.allSettled(tasks);
+        setLoading(false);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags Promise.allSettled when its custom iterator throws", () => {
+    const throwingIterator = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const Component = () => {
+        const [, setLoading] = useState(false);
+        const run = async () => {
+          setLoading(true);
+          await Promise.allSettled({
+            [Symbol.iterator]() {
+              throw new Error("iterator failed");
+            },
+          });
+          setLoading(false);
+        };
+      };`,
+    );
+    const opaqueIterator = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        await Promise.allSettled({
+          *[Symbol.iterator]() {
+            prepareIteration();
+            yield 1;
+          },
+        });
+        setLoading(false);
+      };`,
+    );
+    const getterIterator = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const source = { get value() { throw new Error("getter failed"); } };
+      const run = async () => {
+        setLoading(true);
+        await Promise.allSettled({
+          *[Symbol.iterator]() {
+            yield source.value;
+          },
+        });
+        setLoading(false);
+      };`,
+    );
+    expect(throwingIterator.parseErrors).toEqual([]);
+    expect(throwingIterator.diagnostics).toHaveLength(1);
+    expect(opaqueIterator.diagnostics).toHaveLength(1);
+    expect(getterIterator.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps Promise.allSettled safe for precomputed iterables and non-throwing custom iterators", () => {
+    const precomputedIterable = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        const tasks = [];
+        setLoading(true);
+        await Promise.allSettled(tasks);
+        setLoading(false);
+      };`,
+    );
+    const customIterable = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        await Promise.allSettled({
+          *[Symbol.iterator]() {
+            yield 1;
+          },
+        });
+        setLoading(false);
+      };`,
+    );
+    expect(precomputedIterable.diagnostics).toHaveLength(0);
+    expect(customIterable.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps Promise.allSettled safe for an exact non-throwing local array factory", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const getTasks = () => [];
+      const run = async () => {
+        setLoading(true);
+        await Promise.allSettled(getTasks());
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps Promise.allSettled safe for literal array elements and stable references", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const stableTask = 1;
+      const run = async () => {
+        setLoading(true);
+        await Promise.allSettled([, null, "ready", 42, stableTask]);
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a local array factory whose elements require opaque evaluation", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const getTasks = () => [getTask()];
+      const run = async () => {
+        setLoading(true);
+        await Promise.allSettled(getTasks());
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("recognizes an unconditional call to a known-throwing catch helper", () => {
@@ -1864,7 +3115,7 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
   it("keeps catch-path analysis bounded across many conditional branches", () => {
     const conditionalStatements = Array.from(
       { length: STRESS_SITE_COUNT },
-      (_, conditionIndex) => `if (conditions[${conditionIndex}]) report(${conditionIndex});`,
+      (_, conditionIndex) => `if (conditions[${conditionIndex}]) status = ${conditionIndex};`,
     ).join("\n");
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
@@ -1881,5 +3132,449 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reuses throw coverage across repeated local catch helper calls", () => {
+    const helperCalls = Array.from(
+      { length: STRESS_SITE_COUNT },
+      (_, callIndex) => `observe(${callIndex});`,
+    ).join("\n");
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const C = () => {
+        const [, setLoading] = useState(false);
+        const observe = (value) => console.info(value);
+        const run = async () => {
+          setLoading(true);
+          try { await fetch("/value"); }
+          catch { ${helperCalls} }
+          setLoading(false);
+        };
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("groups stable setter aliases by binding identity", () => {
+    const aliasedReset = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const C = () => {
+        const [, setLoading] = useState(false);
+        const clear = setLoading;
+        const run = async () => {
+          setLoading(true);
+          await load();
+          clear(false);
+        };
+      };`,
+    );
+    const aliasedStart = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const C = () => {
+        const [, setLoading] = useState(false);
+        const start = setLoading;
+        const run = async () => {
+          start(true);
+          await load();
+          setLoading(false);
+        };
+      };`,
+    );
+    expect(aliasedReset.diagnostics).toHaveLength(1);
+    expect(aliasedStart.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let a helper clearing another setter binding protect the hook setter", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const clear = () => setLoading(false);
+      const C = () => {
+        const [, setLoading] = useState(false);
+        const run = async () => {
+          setLoading(true);
+          try { await load(); } catch { clear(); return; }
+          setLoading(false);
+        };
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust sync helpers or unguarded sync calls inside async helpers", () => {
+    const syncHelper = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const wait = () => { mayThrow(); return Promise.resolve(); };
+      const run = async () => {
+        setLoading(true);
+        await wait();
+        setLoading(false);
+      };`,
+    );
+    const asyncHelper = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const wait = async () => {
+        try { await fetch("/safe"); } catch {}
+        mayThrow();
+      };
+      const run = async () => {
+        setLoading(true);
+        await wait();
+        setLoading(false);
+      };`,
+    );
+    expect(syncHelper.diagnostics).toHaveLength(1);
+    expect(asyncHelper.diagnostics).toHaveLength(1);
+  });
+
+  it("tracks aliases and indexed writes to Promise.all arrays", () => {
+    const aliasPush = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const requests = [];
+        const pending = requests;
+        pending.push(fetch("/bad"));
+        await Promise.all(requests);
+        setLoading(false);
+      };`,
+    );
+    const indexedWrite = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const requests = [];
+        requests[0] = fetch("/bad");
+        await Promise.all(requests);
+        setLoading(false);
+      };`,
+    );
+    expect(aliasPush.diagnostics).toHaveLength(1);
+    expect(indexedWrite.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores deferred and shadowed Promise array mutations", () => {
+    const deferredMutation = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const requests = [];
+        const mutateLater = () => requests.push(fetch("/bad"));
+        await Promise.all(requests);
+        setLoading(false);
+      };`,
+    );
+    const shadowedMutation = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const requests = [];
+        const mutateLater = () => {
+          const requests = [];
+          requests.push(fetch("/bad"));
+        };
+        await Promise.all(requests);
+        setLoading(false);
+      };`,
+    );
+    const mutationAfterAwait = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const requests = [];
+        await Promise.all(requests);
+        requests.push(fetch("/later"));
+        setLoading(false);
+      };`,
+    );
+    expect(deferredMutation.diagnostics).toHaveLength(0);
+    expect(shadowedMutation.diagnostics).toHaveLength(0);
+    expect(mutationAfterAwait.diagnostics).toHaveLength(0);
+  });
+
+  it("proves stable class helpers and rejects mutable class helpers", () => {
+    const stable = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `class Loader {
+        async safe() { try { await fetch("/value"); } catch {} }
+        async run() { setLoading(true); await this.safe(); setLoading(false); }
+      }`,
+    );
+    const mutable = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `class Loader {
+        async safe() { try { await fetch("/value"); } catch {} }
+        replace() { this.safe = risky; }
+        async run() { setLoading(true); await this.safe(); setLoading(false); }
+      }`,
+    );
+    expect(stable.diagnostics).toHaveLength(0);
+    expect(mutable.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts definitely non-thenable Promise.all values, holes, bindings, and indexed writes", () => {
+    const literalValues = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const value = 1;
+        await Promise.all([, null, "ready", value]);
+        setLoading(false);
+      };`,
+    );
+    const indexedValues = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const value = 1;
+        const requests = [];
+        requests[0] = value;
+        await Promise.all(requests);
+        setLoading(false);
+      };`,
+    );
+    expect(literalValues.diagnostics).toHaveLength(0);
+    expect(indexedValues.diagnostics).toHaveLength(0);
+  });
+
+  it.each(["42", "null", `"ready"`, "`ready`", "[]", "({})"])(
+    "accepts a direct await of the definitely non-thenable value %s",
+    (awaitedValue) => {
+      const result = runRule(
+        noLoadingFlagResetOutsideFinally,
+        `const run = async () => {
+          setLoading(true);
+          await ${awaitedValue};
+          setLoading(false);
+        };`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ["constructor", `new Risky();`],
+    ["known getter", `const value = source.result;`],
+    ["mutated array push", `requests.push = risky; requests.push(Promise.resolve());`],
+    ["opaque array callback", `[].forEach(() => risky());`],
+  ])("rejects a helper containing a synchronous %s", (_shape, statement) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const source = { get result() { throw new Error("failed"); } };
+      const safe = async () => {
+        const requests = [];
+        ${statement}
+        try { await fetch("/value"); } catch {}
+      };
+      const run = async () => { setLoading(true); await safe(); setLoading(false); };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows a proven React state setter inside a guarded helper", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const Component = () => {
+        const [, setValue] = useState(null);
+        const safe = async () => {
+          setValue("ready");
+          try { await fetch("/value"); } catch {}
+        };
+        const run = async () => { setLoading(true); await safe(); setLoading(false); };
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not accept .catch on an arbitrary non-promise object", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const cache = { catch: () => null };
+      const run = async () => {
+        setLoading(true);
+        await cache.catch(() => null);
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a synchronously throwing catch handler as rejection-absorbing", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const fail = () => { throw new Error("failed"); };
+      const run = async () => {
+        setLoading(true);
+        await fetch("/value").catch(() => { fail(); return null; });
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["catch", `fetch("/value").catch(() => { mayThrow(); return null; })`],
+    [
+      "then rejection handler",
+      `fetch("/value").then(undefined, () => { mayThrow(); return null; })`,
+    ],
+  ])("does not trust an opaque call in a %s", (_shape, awaitedExpression) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        await ${awaitedExpression};
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("distinguishes opaque calls before and after catch and finally resets", () => {
+    const catchBefore = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => { setLoading(true); try { await load(); } catch { risky(); setLoading(false); } };`,
+    );
+    const catchAfter = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => { setLoading(true); try { await load(); } catch { setLoading(false); risky(); } };`,
+    );
+    const finallyBefore = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => { setLoading(true); try { await load(); } finally { risky(); setLoading(false); } };`,
+    );
+    const finallyAfter = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => { setLoading(true); try { await load(); } finally { setLoading(false); risky(); } };`,
+    );
+    expect(catchBefore.diagnostics).toHaveLength(1);
+    expect(catchAfter.diagnostics).toHaveLength(0);
+    expect(finallyBefore.diagnostics).toHaveLength(0);
+    expect(finallyAfter.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a latest-request guard in finally", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const mounted = useRef(true);
+         const requestId = useRef(0);
+         useEffect(() => () => { mounted.current = false; }, []);
+         const load = async () => {
+           const id = ++requestId.current;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (mounted.current && id === requestId.current) setIsLoading(false);
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag the reported formatting calls from issue #1421", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `async function run() {
+        setLoading(true);
+        const start = performance.now();
+        try {
+          const res = await fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" });
+          const text = await res.text();
+          let body = text;
+          try {
+            body = JSON.stringify(JSON.parse(text), null, 2);
+          } catch {
+          }
+          setResult({ status: res.status, ok: res.ok, body, timeMs: Math.round(performance.now() - start) });
+        } catch (error) {
+          setResult({
+            status: 0,
+            ok: false,
+            body: error instanceof Error ? error.message : String(error),
+            timeMs: Math.round(performance.now() - start),
+          });
+        }
+        setLoading(false);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("supports transparent wrappers and static computed spellings for issue #1421", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `async function run() {
+        setLoading(true);
+        const start = (performance["now"]() as number);
+        try {
+          await load();
+        } catch (error) {
+          setResult((String)(error));
+          setDuration(Math["round"](performance?.now() - start));
+        }
+        setLoading(false);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts proven non-throwing formatting wrapped in an exact local helper", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `async function run() {
+        setLoading(true);
+        const start = performance.now();
+        const formatDuration = () => Math.round(performance.now() - start);
+        try {
+          await load();
+        } catch (error) {
+          console.info(error);
+          setDuration(formatDuration());
+        }
+        setLoading(false);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("distinguishes opaque catch calls from provably throwing local implementations", () => {
+    const catchCases: ReadonlyArray<[string, number]> = [
+      ['JSON.parse("invalid")', 0],
+      ["Date.parse(Symbol())", 0],
+      ['Object.defineProperty(null, "value", {})', 0],
+      ["Math.round(1n)", 0],
+      ["Math.round(formatDuration())", 0],
+      ["Math.round(performance.now() - start); const start = performance.now()", 0],
+      ['String({ toString() { throw new Error("failed") } })', 0],
+      ['const method = "round"; Math[method](1)', 0],
+      ['const method = "log"; console[method](error)', 0],
+      ["console.missing(error)", 0],
+      ['const console = { log() { throw new Error("failed") } }; console.log(error)', 1],
+      ['const performance = { now() { throw new Error("failed") } }; performance.now()', 1],
+      ['const String = () => { throw new Error("failed") }; String(error)', 1],
+    ];
+    for (const [catchBody, expectedDiagnosticCount] of catchCases) {
+      const result = runRule(
+        noLoadingFlagResetOutsideFinally,
+        `async function run() {
+          setLoading(true);
+          try {
+            await load();
+          } catch (error) {
+            ${catchBody};
+          }
+          setLoading(false);
+        }`,
+      );
+      expect(result.diagnostics, catchBody).toHaveLength(expectedDiagnosticCount);
+    }
   });
 });

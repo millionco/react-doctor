@@ -27,12 +27,15 @@ const writePackageJson = (projectDirectory: string, packageJson: PackageJson): v
 };
 
 const writeFile = (projectDirectory: string, fileName: string, contents: string): void => {
-  fs.writeFileSync(path.join(projectDirectory, fileName), contents);
+  const filePath = path.join(projectDirectory, fileName);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, contents);
 };
 
 const buildRnProject = (
   rootDirectory: string,
   framework: ProjectInfo["framework"] = "react-native",
+  overrides: Partial<ProjectInfo> = {},
 ): ProjectInfo => ({
   rootDirectory,
   projectName: "rn-app",
@@ -55,10 +58,12 @@ const buildRnProject = (
   shopifyFlashListVersion: null,
   shopifyFlashListMajorVersion: null,
   hasReanimated: false,
+  reanimatedVersion: null,
   isPreES2023Target: false,
   preactVersion: null,
   preactMajorVersion: null,
   sourceFileCount: 10,
+  ...overrides,
 });
 
 const rulesOf = (diagnostics: ReadonlyArray<Diagnostic>): string[] =>
@@ -437,5 +442,462 @@ describe("checkReactNativeProject — library react in dependencies", () => {
     expect(
       rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
     ).not.toContain("rn-library-react-in-dependencies");
+  });
+});
+
+describe("checkReactNativeProject — Babel plugin order", () => {
+  it("flags the removed Reanimated plugin in a Reanimated 4 project", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0", "react-native-reanimated": "^4.0.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { plugins: ['react-native-reanimated/plugin'] };`,
+    );
+    const project = buildRnProject(projectDirectory, "react-native", {
+      hasReanimated: true,
+      reanimatedVersion: "^4.0.0",
+    });
+
+    expect(rulesOf(checkReactNativeProject(projectDirectory, project))).toContain(
+      "rn-reanimated-worklets-plugin-last",
+    );
+  });
+
+  it("flags both migration and ordering when legacy Reanimated and misplaced Worklets plugins coexist", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0", "react-native-reanimated": "^4.0.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { plugins: ['react-native-reanimated/plugin', 'react-native-worklets/plugin', 'other-plugin'] };`,
+    );
+    const project = buildRnProject(projectDirectory, "react-native", {
+      hasReanimated: true,
+      reanimatedVersion: "^4.0.0",
+    });
+
+    const diagnostics = checkReactNativeProject(projectDirectory, project).filter(
+      (diagnostic) => diagnostic.rule === "rn-reanimated-worklets-plugin-last",
+    );
+    expect(diagnostics).toHaveLength(2);
+    expect(diagnostics.map((diagnostic) => diagnostic.message)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("still uses `react-native-reanimated/plugin`"),
+        expect.stringContaining("`react-native-worklets/plugin` is not last"),
+      ]),
+    );
+  });
+
+  it("only flags migration when legacy Reanimated and final Worklets plugins coexist", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0", "react-native-reanimated": "^4.0.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { plugins: ['react-native-reanimated/plugin', 'react-native-worklets/plugin'] };`,
+    );
+    const project = buildRnProject(projectDirectory, "react-native", {
+      hasReanimated: true,
+      reanimatedVersion: "^4.0.0",
+    });
+
+    const diagnostics = checkReactNativeProject(projectDirectory, project).filter(
+      (diagnostic) => diagnostic.rule === "rn-reanimated-worklets-plugin-last",
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.message).toContain("still uses `react-native-reanimated/plugin`");
+  });
+
+  it("does NOT flag the Reanimated plugin in a Reanimated 3 project", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0", "react-native-reanimated": "^3.16.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { plugins: ['react-native-reanimated/plugin'] };`,
+    );
+    const project = buildRnProject(projectDirectory, "react-native", {
+      hasReanimated: true,
+      reanimatedVersion: "^3.16.0",
+    });
+
+    expect(rulesOf(checkReactNativeProject(projectDirectory, project))).not.toContain(
+      "rn-reanimated-worklets-plugin-last",
+    );
+  });
+
+  it("does NOT fail when a legacy ProjectInfo omits reanimatedVersion", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { plugins: ['react-native-reanimated/plugin'] };`,
+    );
+    const project = buildRnProject(projectDirectory);
+    Reflect.deleteProperty(project, "reanimatedVersion");
+
+    expect(rulesOf(checkReactNativeProject(projectDirectory, project))).not.toContain(
+      "rn-reanimated-worklets-plugin-last",
+    );
+  });
+
+  it("flags the Worklets plugin when it is not last", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0", "react-native-reanimated": "4.1.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { plugins: ['react-native-worklets/plugin', 'other-plugin'] };`,
+    );
+    const project = buildRnProject(projectDirectory, "react-native", {
+      hasReanimated: true,
+      reanimatedVersion: "4.1.0",
+    });
+
+    expect(rulesOf(checkReactNativeProject(projectDirectory, project))).toContain(
+      "rn-reanimated-worklets-plugin-last",
+    );
+  });
+
+  it("does NOT flag the Worklets plugin when it is last", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0", "react-native-reanimated": "4.1.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { plugins: ['other-plugin', ['react-native-worklets/plugin', {}]] };`,
+    );
+    const project = buildRnProject(projectDirectory, "react-native", {
+      hasReanimated: true,
+      reanimatedVersion: "4.1.0",
+    });
+
+    expect(rulesOf(checkReactNativeProject(projectDirectory, project))).not.toContain(
+      "rn-reanimated-worklets-plugin-last",
+    );
+  });
+
+  it.each([
+    {
+      title: "does NOT flag a final duplicate Worklets entry",
+      plugins: ["react-native-worklets/plugin", "other-plugin", "react-native-worklets/plugin"],
+      shouldReport: false,
+    },
+    {
+      title: "flags a plugin after the last duplicate Worklets entry",
+      plugins: [
+        "react-native-worklets/plugin",
+        "other-plugin",
+        "react-native-worklets/plugin",
+        "final-plugin",
+      ],
+      shouldReport: true,
+    },
+  ])("$title", ({ plugins, shouldReport }) => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0", "react-native-reanimated": "4.1.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { plugins: ${JSON.stringify(plugins)} };`,
+    );
+    const project = buildRnProject(projectDirectory, "react-native", {
+      hasReanimated: true,
+      reanimatedVersion: "4.1.0",
+    });
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, project)).includes(
+        "rn-reanimated-worklets-plugin-last",
+      ),
+    ).toBe(shouldReport);
+  });
+
+  it("flags an explicitly configured React Compiler plugin that is not first", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+      devDependencies: { "babel-plugin-react-compiler": "1.0.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.mjs",
+      `export default { plugins: ['other-plugin', ['babel-plugin-react-compiler', {}]] };`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).toContain("rn-react-compiler-plugin-first");
+  });
+
+  it("does NOT flag the React Compiler plugin when it is first", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { plugins: ['babel-plugin-react-compiler', 'other-plugin'] };`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-react-compiler-plugin-first");
+  });
+
+  it("flags compiler ordering in a static package.json Babel config", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+      babel: { plugins: ["other-plugin", "babel-plugin-react-compiler"] },
+    });
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).toContain("rn-react-compiler-plugin-first");
+  });
+
+  it("does NOT infer plugin order from a dynamic plugin array", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0", "react-native-reanimated": "4.1.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `const plugins = ['other-plugin']; module.exports = { plugins: [...plugins, 'babel-plugin-react-compiler', 'react-native-worklets/plugin'] };`,
+    );
+    const project = buildRnProject(projectDirectory, "react-native", {
+      hasReanimated: true,
+      reanimatedVersion: "4.1.0",
+    });
+    const rules = rulesOf(checkReactNativeProject(projectDirectory, project));
+
+    expect(rules).not.toContain("rn-react-compiler-plugin-first");
+    expect(rules).not.toContain("rn-reanimated-worklets-plugin-last");
+  });
+
+  it("does NOT flag an Expo preset that configures the compiler automatically", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "expo-app",
+      dependencies: { expo: "^54.0.0", "react-native": "0.81.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: [['babel-preset-expo', { 'react-compiler': true }]] };`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory, "expo"))),
+    ).not.toContain("rn-react-compiler-plugin-first");
+  });
+});
+
+describe("checkReactNativeProject — Android release shrinking", () => {
+  it("flags literal false values in a Groovy release block", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "android/app/build.gradle",
+      `android { buildTypes { release { minifyEnabled false\nshrinkResources false } } }`,
+    );
+
+    const diagnostic = checkReactNativeProject(
+      projectDirectory,
+      buildRnProject(projectDirectory),
+    ).find((candidate) => candidate.rule === "rn-android-release-shrinking-disabled");
+    expect(diagnostic?.message).toContain("code minification and resource shrinking");
+    expect(diagnostic?.help).toContain("release code minification and resource shrinking");
+    expect(diagnostic?.help).not.toContain("R8");
+  });
+
+  it("flags literal false values in a Kotlin release block", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "android/app/build.gradle.kts",
+      `android { buildTypes { getByName("release") { isMinifyEnabled = false\nisShrinkResources = true } } }`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).toContain("rn-android-release-shrinking-disabled");
+  });
+
+  it("does NOT flag an optimized release build", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "android/app/build.gradle",
+      `android { buildTypes { release { minifyEnabled true\nshrinkResources true } } }`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-android-release-shrinking-disabled");
+  });
+
+  it("does NOT flag dynamic release settings", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "android/app/build.gradle",
+      `android { buildTypes { release { minifyEnabled enableProguardInReleaseBuilds\nshrinkResources shouldShrink } } }`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-android-release-shrinking-disabled");
+  });
+
+  it("does NOT treat a compound expression beginning with false as statically disabled", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "android/app/build.gradle.kts",
+      `android { buildTypes { release { isMinifyEnabled = false || shouldMinify } } }`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-android-release-shrinking-disabled");
+  });
+
+  it("does NOT flag comments or debug-only settings", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "android/app/build.gradle",
+      `android { buildTypes { debug { minifyEnabled false } release { // minifyEnabled false\nminifyEnabled true\n/* shrinkResources false */\nshrinkResources true } } }`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-android-release-shrinking-disabled");
+  });
+
+  it("does NOT flag Gradle string contents", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "android/app/build.gradle",
+      `android { buildTypes { release { println("minifyEnabled false")\nminifyEnabled true } } }`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-android-release-shrinking-disabled");
+  });
+
+  it("does NOT parse a release block written inside a Gradle string", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "android/app/build.gradle",
+      `println("buildTypes { release { minifyEnabled false } }")`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-android-release-shrinking-disabled");
+  });
+
+  it("uses the final literal assignment in the release block", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "android/app/build.gradle.kts",
+      `android { buildTypes { release { isMinifyEnabled = false\nisMinifyEnabled = true } } }`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-android-release-shrinking-disabled");
+  });
+
+  it("does NOT infer precedence across multiple release configuration blocks", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "android/app/build.gradle.kts",
+      `android { buildTypes { release { isMinifyEnabled = false } getByName("release") { isMinifyEnabled = true } } }`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-android-release-shrinking-disabled");
   });
 });

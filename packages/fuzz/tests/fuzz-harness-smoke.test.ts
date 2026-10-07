@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
@@ -7,7 +8,11 @@ import { loadFuzzCorpus } from "../src/load-fuzz-corpus.js";
 import { createSeededRandom } from "../src/seeded-random.js";
 import { buildAstEquivalentFuzzVariants } from "../src/ast-equivalent-fuzz-variants.js";
 import { buildVerdictPreservingVariants } from "../src/verdict-preserving-variants.js";
+import { MAX_CORPUS_FILES } from "../src/constants.js";
+import { livenessFixtures } from "../../oxlint-plugin-react-doctor/src/plugin/liveness/liveness-fixtures.js";
+import { reactDoctorRules } from "../../oxlint-plugin-react-doctor/src/plugin/rule-registry.js";
 import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
+import { runScanRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-scan-rule.js";
 import { isNodeOfType } from "../../oxlint-plugin-react-doctor/src/plugin/utils/is-node-of-type.js";
 import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
 
@@ -39,18 +44,81 @@ describe("fuzz harness oracles", () => {
 
   // The corpus holds confirmed false positives (regressions/) and confirmed
   // true positives (true-positives/) — every seed must parse (a broken seed
-  // would silently stop exercising its weakness class). Firing expectations
-  // live in each rule's unit suite, never here.
+  // would silently stop exercising its weakness class).
   it("loads a corpus whose every seed parses cleanly", () => {
     const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    const corpus = loadFuzzCorpus(path.join(packageRoot, "corpus"));
-    expect(corpus.length).toBeGreaterThan(0);
+    const corpusDirectory = path.join(packageRoot, "corpus");
+    const corpus = loadFuzzCorpus(corpusDirectory, {
+      maximumFiles: Number.POSITIVE_INFINITY,
+    });
+    const seedRelativePaths = fs
+      .readdirSync(corpusDirectory, { encoding: "utf8", recursive: true })
+      .filter(
+        (relativePath) =>
+          /\.(tsx|ts|jsx|js)(?:\.txt)?$/.test(relativePath) &&
+          !relativePath.endsWith(".d.ts") &&
+          !relativePath.endsWith(".d.ts.txt"),
+      )
+      .map((relativePath) => relativePath.split(path.sep).join("/"))
+      .sort();
+    expect(corpus.length).toBeGreaterThan(MAX_CORPUS_FILES);
+    expect(corpus.map((entry) => entry.relativePath).sort()).toEqual(seedRelativePaths);
     const unparseable = corpus.filter(
       (entry) =>
         runRule(NOOP_RULE, entry.code, { filename: entry.relativePath, forceJsx: true }).parseErrors
           .length > 0,
     );
     expect(unparseable.map((entry) => entry.relativePath)).toEqual([]);
+  });
+
+  it("preserves every declared corpus verdict", () => {
+    const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const corpus = loadFuzzCorpus(path.join(packageRoot, "corpus"), {
+      maximumFiles: Number.POSITIVE_INFINITY,
+    });
+    const rulesById = new Map<string, Rule>();
+    for (const entry of reactDoctorRules) rulesById.set(entry.id, entry.rule);
+    const livenessFixturesById = new Map(Object.entries(livenessFixtures));
+    const verdictFailures: string[] = [];
+    let declaredVerdictCount = 0;
+
+    for (const entry of corpus) {
+      const ruleIds = entry.ruleIds;
+      const verdict = entry.verdict;
+      if (!verdict) continue;
+      declaredVerdictCount += 1;
+      if (!ruleIds?.length) {
+        verdictFailures.push(`${entry.relativePath}: missing rule`);
+        continue;
+      }
+      for (const ruleId of ruleIds) {
+        const rule = rulesById.get(ruleId);
+        if (!rule) {
+          verdictFailures.push(`${entry.relativePath}: unknown rule ${ruleId}`);
+          continue;
+        }
+        const diagnosticCount =
+          typeof rule.scan === "function"
+            ? runScanRule(rule, {
+                relativePath: entry.sourcePath ?? entry.relativePath,
+                content: entry.code,
+              }).length
+            : runRule(rule, entry.code, {
+                filename: entry.sourcePath ?? entry.relativePath,
+                settings: livenessFixturesById.get(ruleId)?.settings,
+                forceJsx: true,
+              }).diagnostics.length;
+        const didFire = diagnosticCount > 0;
+        if ((verdict === "fail") !== didFire) {
+          verdictFailures.push(
+            `${entry.relativePath} (${ruleId}): expected ${verdict}, received ${diagnosticCount} diagnostics`,
+          );
+        }
+      }
+    }
+
+    expect(declaredVerdictCount).toBeGreaterThan(0);
+    expect(verdictFailures).toEqual([]);
   });
 
   it("catches a rule that crashes on JSX", () => {
@@ -130,6 +198,21 @@ describe("fuzz harness oracles", () => {
     expect(castReceiver?.mustPreserveVerdict).toBe(true);
   });
 
+  it("keeps receiver wrappers from joining semicolonless statements", () => {
+    const variants = buildVerdictPreservingVariants(
+      `const state = React.useState(false)
+React.useEffect(() => {
+  setTimeout(() => {}, 100)
+}, [])`,
+      "fixture.tsx",
+    );
+    for (const variant of variants.filter((candidate) =>
+      candidate.label.endsWith("call receivers"),
+    )) {
+      expect(variant.code).toContain("\n;(React");
+    }
+  });
+
   it("catches a rule that keys off incidental source shape", () => {
     const commentSensitiveRule: Rule = {
       id: "fuzz-smoke-invariant",
@@ -173,5 +256,54 @@ describe("fuzz harness oracles", () => {
       "useInsertionEffect(__reactDoctorFuzzEffectCallback2, []);",
     );
     expect(runRule(NOOP_RULE, aliasVariant?.code ?? "").parseErrors).toEqual([]);
+  });
+
+  it("extracts effect cleanup calls to local helpers", () => {
+    const variants = buildAstEquivalentFuzzVariants(
+      `const Widget = ({ delay }) => {
+  useEffect(() => {
+    const timerId = setTimeout(refresh, delay);
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [delay]);
+  return null;
+};`,
+      "fixture.tsx",
+      false,
+      true,
+    );
+    const helperVariant = variants.find(
+      (variant) => variant.label === "effect cleanup calls extracted to local helpers",
+    );
+    expect(helperVariant?.code).toContain(
+      "const __reactDoctorFuzzCleanupCall0 = () => clearTimeout(timerId);",
+    );
+    expect(helperVariant?.code).toContain("__reactDoctorFuzzCleanupCall0();");
+    expect(runRule(NOOP_RULE, helperVariant?.code ?? "").parseErrors).toEqual([]);
+  });
+
+  it("does not hoist calls that depend on cleanup-local bindings", () => {
+    const variants = buildAstEquivalentFuzzVariants(
+      `const Widget = ({ delay }) => {
+  useEffect(() => {
+    const timerRef = { current: setTimeout(refresh, delay) };
+    return () => {
+      const timerId = timerRef.current;
+      clearTimeout(timerId);
+    };
+  }, [delay]);
+  return null;
+};`,
+      "fixture.tsx",
+      false,
+      true,
+    );
+
+    expect(
+      variants.some(
+        (variant) => variant.label === "effect cleanup calls extracted to local helpers",
+      ),
+    ).toBe(false);
   });
 });

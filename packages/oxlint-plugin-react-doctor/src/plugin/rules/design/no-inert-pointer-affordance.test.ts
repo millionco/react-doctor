@@ -90,12 +90,20 @@ describe("no-inert-pointer-affordance", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("uses the final unvariant cursor utility", () => {
+  it("abstains when equal-priority cursor utilities conflict", () => {
     const result = runRule(
       noInertPointerAffordance,
       `const Content = () => <><div className="cursor-pointer cursor-default" /><div className="cursor-default cursor-pointer" /></>;`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("honors important cursor utilities independently of class order", () => {
+    const result = runRule(
+      noInertPointerAffordance,
+      `const Content = () => <><div className="cursor-default !cursor-pointer" /><div className="!cursor-pointer cursor-default" /><div className="cursor-pointer cursor-default!" /><div className="cursor-default! cursor-pointer" /><div className="!cursor-default !cursor-pointer" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("abstains inside opaque component children and JSX value props", () => {

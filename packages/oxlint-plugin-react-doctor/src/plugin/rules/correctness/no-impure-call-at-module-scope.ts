@@ -199,6 +199,7 @@ const isModuleScopeEvaluation = (impureNode: EsTreeNode, context: RuleContext): 
 
 export const noImpureCallAtModuleScope = defineRule({
   id: "no-impure-call-at-module-scope",
+  defaultEnabled: false,
   title: "Nondeterministic built-in at module scope",
   severity: "warn",
   requires: ["ssr"],

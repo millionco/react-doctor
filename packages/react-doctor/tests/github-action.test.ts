@@ -347,7 +347,7 @@ describe("GitHub Action contract", () => {
     // prefix on a published version and runs the local binary, falling back to
     // npx for a local-path spec.
     expect(resolveStep).toContain("scripts/resolve-package-spec.mjs");
-    expect(actionYaml).toMatch(/actions\/cache@(?:v4\b|[0-9a-f]{40} # v4\b)/);
+    expect(actionYaml).toMatch(/actions\/cache@(?:v6\.1\.0\b|[0-9a-f]{40} # v6\.1\.0\b)/);
     expect(actionYaml).toContain("react-doctor-toolchain");
     expect(actionYaml).toContain("react-doctor-scan-cache-");
     expect(scanStep).toContain('npm install --prefix "$TOOLCHAIN_DIR"');

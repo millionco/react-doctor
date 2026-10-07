@@ -1,21 +1,13 @@
-import { ROOT_FONT_SIZE_PX, TAILWIND_TEXT_SIZE_PX } from "../../../constants/design.js";
-import { getUnvariantClassNameTokens } from "../../../utils/get-unvariant-class-name-tokens.js";
-
-const ARBITRARY_FONT_SIZE_PATTERN = /^text-\[([\d.]+)(px|rem)\]$/;
+import { getUnvariantClassNameTokensWithImportantModifiers } from "../../../utils/get-unvariant-class-name-tokens-with-important-modifiers.js";
+import { getEffectiveTailwindClassNameToken } from "./get-effective-tailwind-class-name-token.js";
+import { parseStaticTailwindFontSize } from "./parse-static-tailwind-font-size.js";
 
 export const getStaticTailwindFontSize = (className: string | null): number | null => {
   if (!className) return null;
-  let fontSizePx: number | null = null;
-  for (const token of getUnvariantClassNameTokens(className)) {
-    const standardSizePx = TAILWIND_TEXT_SIZE_PX.get(token);
-    if (standardSizePx !== undefined) {
-      fontSizePx = standardSizePx;
-      continue;
-    }
-    const arbitrarySize = token.match(ARBITRARY_FONT_SIZE_PATTERN);
-    if (!arbitrarySize) continue;
-    const value = Number.parseFloat(arbitrarySize[1]);
-    fontSizePx = arbitrarySize[2] === "rem" ? value * ROOT_FONT_SIZE_PX : value;
-  }
-  return fontSizePx;
+  const effectiveFontSize = getEffectiveTailwindClassNameToken(
+    getUnvariantClassNameTokensWithImportantModifiers(className),
+    (utility) => parseStaticTailwindFontSize(utility) !== null,
+  );
+  if (!effectiveFontSize) return null;
+  return parseStaticTailwindFontSize(effectiveFontSize);
 };

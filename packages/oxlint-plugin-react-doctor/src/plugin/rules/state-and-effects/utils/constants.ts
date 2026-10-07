@@ -1,0 +1,1 @@
+export const MAX_RETURNED_SETTER_EXPRESSIONS = 64;

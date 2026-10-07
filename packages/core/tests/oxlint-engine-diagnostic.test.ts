@@ -14,6 +14,13 @@ const HEALTHY_DIAGNOSTIC = {
   related: [],
 };
 
+const TYPESCRIPT_DECLARATION_DIAGNOSTIC = {
+  ...HEALTHY_DIAGNOSTIC,
+  message: "Statements are not allowed in ambient contexts.",
+  code: "TS(1036)",
+  filename: "src/global.d.ts",
+};
+
 const buildOutput = (diagnostics: unknown[]): string =>
   JSON.stringify({
     diagnostics,
@@ -37,6 +44,15 @@ describe("parseOxlintOutput engine diagnostics", () => {
       {
         message: "Error running JS plugin.",
         severity: "error",
+        labels: [],
+      },
+    ],
+    [
+      "plugin runtime error attributed to a file",
+      {
+        message: "Error running JS plugin.\nFile path: /project/src/App.tsx",
+        severity: "error",
+        filename: "src/App.tsx",
         labels: [],
       },
     ],
@@ -117,4 +133,52 @@ describe("parseOxlintOutput engine diagnostics", () => {
       expect(diagnostics[0].rule).toBe("no-array-index-as-key");
     },
   );
+
+  it.each(["TS(1036)", "TS(1038)", "TS(1183)", "TS(1319)"])(
+    "drops newly introduced ambient declaration diagnostic %s",
+    (code) => {
+      expect(
+        parseOxlintOutput(
+          buildOutput([{ ...TYPESCRIPT_DECLARATION_DIAGNOSTIC, code }]),
+          buildProject(),
+          TEST_ROOT_DIRECTORY,
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it.each(["src/global.d.mts", "src/global.d.cts"])(
+    "drops ambient declaration diagnostics from %s",
+    (filename) => {
+      expect(
+        parseOxlintOutput(
+          buildOutput([{ ...TYPESCRIPT_DECLARATION_DIAGNOSTIC, filename }]),
+          buildProject(),
+          TEST_ROOT_DIRECTORY,
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it("keeps the same TypeScript diagnostic in an ordinary source file", () => {
+    const diagnostics = parseOxlintOutput(
+      buildOutput([{ ...TYPESCRIPT_DECLARATION_DIAGNOSTIC, filename: "src/global.ts" }]),
+      buildProject(),
+      TEST_ROOT_DIRECTORY,
+    );
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({ plugin: "TS", rule: "1036" });
+  });
+
+  it("keeps established TypeScript diagnostics in declaration files", () => {
+    const diagnostics = parseOxlintOutput(
+      buildOutput([{ ...TYPESCRIPT_DECLARATION_DIAGNOSTIC, code: "TS(1039)" }]),
+      buildProject(),
+      TEST_ROOT_DIRECTORY,
+    );
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({ plugin: "TS", rule: "1039" });
+  });
 });

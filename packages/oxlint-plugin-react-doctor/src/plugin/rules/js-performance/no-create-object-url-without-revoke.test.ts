@@ -246,13 +246,13 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("stays quiet in a demo file", () => {
+  it("reports in application demo directories", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
       `export default () => <a href={URL.createObjectURL(blob)}>download</a>;`,
       { filename: "/src/demos/index.tsx" },
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays quiet when URL is a local binding, not the DOM global", () => {
@@ -1753,6 +1753,19 @@ describe("no-create-object-url-without-revoke", () => {
          URL.revokeObjectURL(url);
          link.remove();
        }, 1000);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a revoke scheduled through the global window", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const download = (blob) => {
+         const url = URL.createObjectURL(blob);
+         link.href = url;
+         link.click();
+         window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+       };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

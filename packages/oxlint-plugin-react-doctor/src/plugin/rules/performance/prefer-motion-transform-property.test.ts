@@ -54,6 +54,25 @@ describe("prefer-motion-transform-property", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("accepts individual transforms used only as an initial visual state", () => {
+    const result = runRule(
+      preferMotionTransformProperty,
+      `import { motion } from "motion/react";
+       const Static = () => <motion.div initial={{ x: 100, scale: 0.95 }} />;
+       const OpacityOnly = () => <motion.div initial={{ y: 20 }} animate={{ opacity: 1 }} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports an initial transform paired with an individual transform target", () => {
+    const result = runRule(
+      preferMotionTransformProperty,
+      `import { motion } from "motion/react";
+       const Card = () => <motion.div initial={{ x: 100 }} animate={{ x: 0 }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("skips object spreads and non-Motion components", () => {
     const result = runRule(
       preferMotionTransformProperty,

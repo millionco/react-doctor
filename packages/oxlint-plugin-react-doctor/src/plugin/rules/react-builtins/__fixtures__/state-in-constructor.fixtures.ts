@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/state_in_constructor.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/react/state_in_constructor.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -143,6 +143,20 @@ export const passCases: ReadonlyArray<OxcFixture> = [
     code: `
                     function Foo () {
                       return <div>Foo</div>
+                    }
+                  `,
+    oxcOptions: ["never"],
+  },
+  {
+    code: `
+                    class Foo extends React.Component {
+                      constructor(props) {
+                        class Bar {
+                          method() {
+                            this.state = { bar: 0 }
+                          }
+                        }
+                      }
                     }
                   `,
     oxcOptions: ["never"],

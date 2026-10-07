@@ -7,7 +7,7 @@ describe("OXLINT_MAX_FILES_PER_BATCH (perf cliff guard)", () => {
   // the now-natively-ported `react-doctor/no-derived-state` family)
   // hits the 5-min oxlint spawn timeout at batch=500 on supabase/studio's
   // ~3500 source files (returns 0 diagnostics, marks lint as skipped),
-  // but completes in ~30s with batch=100. If a future bump pushes this
+  // but completes with batch=200. If a future bump pushes this
   // back above ~250, large-monorepo scans regress to silent timeout.
   it("stays small enough to keep js-evaluated plugins tractable", () => {
     expect(OXLINT_MAX_FILES_PER_BATCH).toBeLessThanOrEqual(250);

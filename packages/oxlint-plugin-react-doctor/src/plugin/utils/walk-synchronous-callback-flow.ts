@@ -6,6 +6,7 @@ import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { forEachChildNode, walkAst } from "./walk-ast.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 
 const SYNCHRONOUS_CALLBACK_METHOD_NAMES = new Set([
   "every",
@@ -37,6 +38,11 @@ const getConstLocalHelperBindingIdentifier = (functionNode: EsTreeNode): EsTreeN
 export const walkSynchronousCallbackFlow = (
   functionBody: EsTreeNode,
   visit: (node: EsTreeNode) => void,
+  isProvenSynchronousIteratorCall?: (
+    callExpression: EsTreeNodeOfType<"CallExpression">,
+    callbackArgument: EsTreeNode,
+  ) => boolean,
+  shouldTraverseFunction?: (functionNode: EsTreeNode) => boolean,
 ): void => {
   const activeBodies = new Set<EsTreeNode>();
   const walkBody = (body: EsTreeNode, helpersInScope: Map<EsTreeNode, EsTreeNode>): void => {
@@ -47,7 +53,11 @@ export const walkSynchronousCallbackFlow = (
     walkAst(body, (child: EsTreeNode) => {
       if (child !== body && isFunctionLike(child)) {
         const helperBindingIdentifier = getConstLocalHelperBindingIdentifier(child);
-        if (helperBindingIdentifier && child.body) {
+        if (
+          helperBindingIdentifier &&
+          child.body &&
+          (!shouldTraverseFunction || shouldTraverseFunction(child))
+        ) {
           helperBodies.set(helperBindingIdentifier, child.body);
         }
         return false;
@@ -91,6 +101,12 @@ export const walkSynchronousCallbackFlow = (
       forEachChildNode(node, (child) => walkNode(child));
       if (!isNodeOfType(node, "CallExpression")) return;
       const callee = stripParenExpression(node.callee);
+      if (isFunctionLike(callee)) {
+        if (callee.body && (!shouldTraverseFunction || shouldTraverseFunction(callee))) {
+          walkBody(callee.body, helperBodies);
+        }
+        return;
+      }
       if (isNodeOfType(callee, "Identifier")) {
         const calleeBindingIdentifier = findVariableInitializer(
           callee,
@@ -109,9 +125,14 @@ export const walkSynchronousCallbackFlow = (
         return;
       }
       for (const argument of node.arguments ?? []) {
+        if (isProvenSynchronousIteratorCall && !isProvenSynchronousIteratorCall(node, argument)) {
+          continue;
+        }
         const callback = stripParenExpression(argument);
         if (isFunctionLike(callback)) {
-          if (callback.body) walkBody(callback.body, helperBodies);
+          if (callback.body && (!shouldTraverseFunction || shouldTraverseFunction(callback))) {
+            walkBody(callback.body, helperBodies);
+          }
         } else if (isNodeOfType(callback, "Identifier")) {
           const callbackBindingIdentifier = findVariableInitializer(
             callback,

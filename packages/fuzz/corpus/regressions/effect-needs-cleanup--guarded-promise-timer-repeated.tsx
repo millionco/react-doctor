@@ -1,6 +1,7 @@
 // rule: effect-needs-cleanup
 // weakness: async-lifecycle-provenance
 // source: issue #1241 adversarial review
+// verdict: fail
 import { useEffect } from "react";
 
 export const RepeatedReminder = ({ syncReminder }: { syncReminder: () => Promise<void> }) => {

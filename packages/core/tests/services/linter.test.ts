@@ -79,11 +79,11 @@ describe("Linter.layerOf", () => {
 
 describe("Linter.layerComposite", () => {
   it("concatenates streams from every backend in order", async () => {
-    const backendA = Linter.of({
-      run: () => Stream.fromIterable([{ ...sampleDiagnostic, rule: "rule-from-a" }]),
+    const firstBackend = Linter.of({
+      run: () => Stream.fromIterable([{ ...sampleDiagnostic, rule: "rule-from-first" }]),
     });
-    const backendB = Linter.of({
-      run: () => Stream.fromIterable([{ ...sampleDiagnostic, rule: "rule-from-b" }]),
+    const secondBackend = Linter.of({
+      run: () => Stream.fromIterable([{ ...sampleDiagnostic, rule: "rule-from-second" }]),
     });
     const collected = await Effect.runPromise(
       Effect.gen(function* () {
@@ -92,17 +92,19 @@ describe("Linter.layerComposite", () => {
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
-            Linter.layerComposite([backendA, backendB]),
+            Linter.layerComposite([firstBackend, secondBackend]),
             LintPartialFailures.layerLive,
           ),
         ),
       ),
     );
-    const rules = Array.from(collected).map((diagnostic) => diagnostic.rule);
-    expect(rules).toEqual(["rule-from-a", "rule-from-b"]);
+    expect(Array.from(collected).map((diagnostic) => diagnostic.rule)).toEqual([
+      "rule-from-first",
+      "rule-from-second",
+    ]);
   });
 
-  it("emits empty stream when constructed with []", async () => {
+  it("emits an empty stream without backends", async () => {
     const collected = await Effect.runPromise(
       Effect.gen(function* () {
         const linter = yield* Linter;
@@ -114,42 +116,33 @@ describe("Linter.layerComposite", () => {
     expect(Array.from(collected)).toEqual([]);
   });
 
-  it("shares the same LintPartialFailures Ref across all backends", async () => {
-    const backendA = Linter.of({
-      run: () =>
-        Stream.unwrap(
-          Effect.gen(function* () {
-            const ref = yield* LintPartialFailures;
-            yield* Ref.update(ref, (existing) => [...existing, "from-a"]);
-            return Stream.empty;
-          }),
-        ),
-    });
-    const backendB = Linter.of({
-      run: () =>
-        Stream.unwrap(
-          Effect.gen(function* () {
-            const ref = yield* LintPartialFailures;
-            yield* Ref.update(ref, (existing) => [...existing, "from-b"]);
-            return Stream.empty;
-          }),
-        ),
-    });
+  it("shares partial failures across backends", async () => {
+    const createBackend = (failure: string): Linter["Service"] =>
+      Linter.of({
+        run: () =>
+          Stream.unwrap(
+            Effect.gen(function* () {
+              const partialFailures = yield* LintPartialFailures;
+              yield* Ref.update(partialFailures, (existing) => [...existing, failure]);
+              return Stream.empty;
+            }),
+          ),
+      });
     const failures = await Effect.runPromise(
       Effect.gen(function* () {
         const linter = yield* Linter;
         yield* Stream.runCollect(linter.run(lintInput));
-        const ref = yield* LintPartialFailures;
-        return yield* Ref.get(ref);
+        const partialFailures = yield* LintPartialFailures;
+        return yield* Ref.get(partialFailures);
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
-            Linter.layerComposite([backendA, backendB]),
+            Linter.layerComposite([createBackend("first"), createBackend("second")]),
             LintPartialFailures.layerLive,
           ),
         ),
       ),
     );
-    expect(failures).toEqual(["from-a", "from-b"]);
+    expect(failures).toEqual(["first", "second"]);
   });
 });

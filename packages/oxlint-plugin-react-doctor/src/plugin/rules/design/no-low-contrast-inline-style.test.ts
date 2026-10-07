@@ -59,8 +59,121 @@ describe("no-low-contrast-inline-style", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does NOT flag when a `background` shorthand gradient/image is present", () => {
-    const code = `const A = () => <span style={{ color: "#999999", background: "linear-gradient(#000,#fff)" }}>x</span>;`;
+  it("flags a low-contrast stop in a static backgroundImage gradient", () => {
+    const code = `const A = () => <span style={{ color: "#000", backgroundImage: "linear-gradient(to right, #fff 0%, #555 100%)", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("2.82:1");
+  });
+
+  it("accepts signed and unsigned unitless-zero stop positions", () => {
+    const code = `
+      const A = () => <>
+        <span style={{ color: "#000", backgroundImage: "linear-gradient(#fff 0, #555 100%)", fontSize: 16 }}>a</span>
+        <span style={{ color: "#000", backgroundImage: "linear-gradient(#fff -0 +0, #555 100%)", fontSize: 16 }}>b</span>
+      </>;
+    `;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does NOT accept unitless nonzero stop positions", () => {
+    const code = `const A = () => <span style={{ color: "#999", backgroundImage: "linear-gradient(#eee 1, #fff 2)", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a low-contrast stop in a static background shorthand gradient", () => {
+    const code = `const A = () => <span style={{ color: "white", background: "radial-gradient(circle at center, hsl(0 0% 60%) 0%, rgb(30 30 30) 100%)", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag when every opaque gradient stop passes", () => {
+    const code = `const A = () => <span style={{ color: "#000", backgroundImage: "conic-gradient(from 45deg, #777 0deg, white 180deg, #888 360deg)", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag gradients containing an alpha stop", () => {
+    const code = `
+      const A = () => <>
+        <span style={{ color: "#999", backgroundImage: "linear-gradient(rgba(255, 255, 255, 0.8), #fff)", fontSize: 16 }}>a</span>
+        <span style={{ color: "#999", backgroundImage: "linear-gradient(#ffffffcc, #fff)", fontSize: 16 }}>b</span>
+        <span style={{ color: "#999", backgroundImage: "linear-gradient(transparent, #fff)", fontSize: 16 }}>c</span>
+      </>;
+    `;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag gradients containing CSS variables or unparseable stops", () => {
+    const code = `
+      const A = () => <>
+        <span style={{ color: "#999", backgroundImage: "linear-gradient(var(--surface), #fff)", fontSize: 16 }}>a</span>
+        <span style={{ color: "#999", backgroundImage: "linear-gradient(red, #fff)", fontSize: 16 }}>b</span>
+        <span style={{ color: "#999", backgroundImage: "linear-gradient(#eee, 50%, #fff)", fontSize: 16 }}>c</span>
+      </>;
+    `;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag multiple background layers or image backgrounds", () => {
+    const code = `
+      const A = () => <>
+        <span style={{ color: "#999", backgroundImage: "linear-gradient(#eee, #fff), linear-gradient(#ddd, #fff)", fontSize: 16 }}>a</span>
+        <span style={{ color: "#999", backgroundImage: "url('/surface.png')", backgroundColor: "#fff", fontSize: 16 }}>b</span>
+        <span style={{ color: "#999", background: "linear-gradient(#eee, #fff), url('/texture.png')", fontSize: 16 }}>c</span>
+      </>;
+    `;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag repeating gradients", () => {
+    const code = `
+      const A = () => <>
+        <span style={{ color: "#999", backgroundImage: "repeating-linear-gradient(#eee 0 10px, #fff 10px 20px)", fontSize: 16 }}>a</span>
+        <span style={{ color: "#999", backgroundImage: "repeating-radial-gradient(#eee 0 10px, #fff 10px 20px)", fontSize: 16 }}>b</span>
+        <span style={{ color: "#999", backgroundImage: "repeating-conic-gradient(#eee 0deg 20deg, #fff 20deg 40deg)", fontSize: 16 }}>c</span>
+      </>;
+    `;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag dynamic gradient values", () => {
+    const code = `const A = ({ gradient }) => <span style={{ color: "#999", backgroundImage: gradient, backgroundColor: "#fff", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag gradient-clipped text", () => {
+    const code = `
+      const A = () => <>
+        <span style={{ color: "#999", backgroundImage: "linear-gradient(#eee, #fff)", backgroundClip: "text", fontSize: 16 }}>a</span>
+        <span style={{ color: "#999", background: "linear-gradient(#eee, #fff)", WebkitBackgroundClip: "text", fontSize: 16 }}>b</span>
+      </>;
+    `;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag a gradient when its backgroundImage is explicitly none", () => {
+    const code = `const A = () => <span style={{ color: "#999", background: "linear-gradient(#eee, #fff)", backgroundImage: "none", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves solid background shorthand evaluation with backgroundImage none", () => {
+    const code = `const A = () => <span style={{ color: "#9ca3af", background: "#fff", backgroundImage: "none", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag a gradient with a dynamic background clip", () => {
+    const code = `const A = ({ clip }) => <span style={{ color: "#999", backgroundImage: "linear-gradient(#eee, #fff)", backgroundClip: clip, fontSize: 16 }}>x</span>;`;
     const result = runRule(noLowContrastInlineStyle, code);
     expect(result.diagnostics).toHaveLength(0);
   });

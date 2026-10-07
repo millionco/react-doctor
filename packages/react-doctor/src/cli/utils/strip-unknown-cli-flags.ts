@@ -38,6 +38,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
   ]),
   longOptionsWithRequiredValues: new Set([
     "--base",
+    "--baseline",
     "--category",
     "--changed-files-from",
     "--blocking",
@@ -157,6 +158,7 @@ const EXPERIMENTAL_TUI_FLAG_SPEC: CliFlagSpec = {
     "--no-dead-code",
     "--no-score",
     "--no-supply-chain",
+    "--score",
     "--yes",
   ]),
   longOptionsWithRequiredValues: new Set(["--blocking", "--max-duration", "--project"]),

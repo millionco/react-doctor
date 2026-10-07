@@ -18,6 +18,7 @@ import {
 import { hasPossibleStaticMemberCallWrite } from "../../utils/has-static-property-write-before.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isLocalPromiseCollector } from "../../utils/is-local-promise-collector.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestLibraryImportSource } from "../../utils/is-test-library-import-source.js";
@@ -1250,7 +1251,7 @@ const isBindingCombinedWithPromiseConcurrency = (
   return isCombined;
 };
 
-const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode): boolean => {
+const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode, context: RuleContext): boolean => {
   const flowNode = resolvePromiseFlowNode(mapCall);
   const parent = flowNode.parent;
   if (
@@ -1260,6 +1261,11 @@ const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode): boolean => {
   ) {
     return true;
   }
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    isLocalPromiseCollector(parent, flowNode, context.scopes)
+  )
+    return true;
   let bindingName: string | null = null;
   if (
     isNodeOfType(parent, "VariableDeclarator") &&
@@ -1313,7 +1319,7 @@ export const asyncAwaitInLoop = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Collect the items, then use `await Promise.all(items.map(...))` so independent work runs at the same time",
+    "Consider concurrent calls only for independent asynchronous work. Shared queues or synchronous work may not benefit. Preserve resource limits, transaction ordering, and failure/cancellation semantics; observe all callback promises.",
   create: (context: RuleContext) => {
     let hasTestLibraryImport = false;
     const inspectLoop = (
@@ -1345,7 +1351,7 @@ export const asyncAwaitInLoop = defineRule({
       if (firstAwait) {
         context.report({
           node: firstAwait,
-          message: `This makes the ${label} slow because each await runs one after another, so collect the independent calls & run them together with \`await Promise.all(items.map(...))\``,
+          message: `This ${label} waits before starting the next iteration. If iterations perform independent asynchronous work, consider bounded concurrency; await syntax alone does not establish a speedup.`,
         });
       }
     };
@@ -1374,9 +1380,6 @@ export const asyncAwaitInLoop = defineRule({
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (hasTestLibraryImport) return;
-        // arr.forEach(async item => { await fn(item); }) — sequential
-        // because forEach doesn't await; even worse, the awaits are
-        // dropped on the floor (forEach ignores return values).
         if (!isNodeOfType(node.callee, "MemberExpression")) return;
         if (!isNodeOfType(node.callee.property, "Identifier")) return;
         const methodName = node.callee.property.name;
@@ -1390,7 +1393,7 @@ export const asyncAwaitInLoop = defineRule({
 
         if (
           (methodName === "map" || methodName === "flatMap") &&
-          isWrappedInPromiseConcurrency(node)
+          isWrappedInPromiseConcurrency(node, context)
         ) {
           return;
         }
@@ -1398,8 +1401,8 @@ export const asyncAwaitInLoop = defineRule({
         if (firstAwait) {
           const message =
             methodName === "forEach"
-              ? "Async callback in .forEach silently drops every await, so the work never finishes before the loop moves on. Use a `for…of` loop, or `await Promise.all(items.map(async (item) => {...}))`"
-              : `Async callback in .${methodName} runs the awaits one after another, so it is slow. Use \`await Promise.all(items.map(async (item) => {...}))\` to run them at the same time`;
+              ? "Async callback in .forEach returns a promise that .forEach ignores. Use a `for…of` loop to await each operation, or collect and observe promises when concurrent work is safe."
+              : `Async callback in .${methodName} returns a promise that the array method does not await. Check that its consumer observes completion and handles rejections; callbacks may already overlap.`;
           context.report({ node: firstAwait, message });
         }
       },

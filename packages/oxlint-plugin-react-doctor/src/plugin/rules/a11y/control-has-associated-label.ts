@@ -552,6 +552,7 @@ const getAttributeMatchKeys = (
 };
 
 interface CheckChildContext {
+  scopes: ScopeAnalysis;
   depth: number;
   customAttributes: ReadonlyArray<string>;
   controlComponents: ReadonlyArray<string>;
@@ -657,6 +658,16 @@ const hasAccessibleLabelText = (
 ): boolean => {
   if (
     hasLabellingProp(element.openingElement.attributes as EsTreeNode[], context.customAttributes)
+  ) {
+    return true;
+  }
+  if (
+    isNodeOfType(element.openingElement.name, "JSXIdentifier") &&
+    element.openingElement.name.name === LABEL_ELEMENT &&
+    hasNonEmptyNativeTitle(
+      hasJsxPropIgnoreCase(element.openingElement.attributes, "title"),
+      context.scopes,
+    )
   ) {
     return true;
   }
@@ -857,6 +868,7 @@ export const controlHasAssociatedLabel = defineRule({
     const labelEmbeddedNames = new Set<string>();
     const deferredCandidates: DeferredControlCandidate[] = [];
     const checkContext: CheckChildContext = {
+      scopes: context.scopes,
       depth: settings.depth,
       customAttributes: settings.labelAttributes,
       controlComponents: settings.controlComponents,

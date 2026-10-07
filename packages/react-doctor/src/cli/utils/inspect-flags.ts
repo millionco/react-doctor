@@ -31,6 +31,7 @@ export interface InspectFlags {
   project?: string;
   scope?: string;
   base?: string;
+  baseline?: string;
   // Working-tree-only opt-in: fold ordinary (non-ignored) untracked files into
   // the files/changed/lines scopes so brand-new, unstaged files get scanned.
   includeUntracked?: boolean;

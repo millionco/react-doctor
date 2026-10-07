@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseEvaluationArguments } from "../src/parse-evaluation-arguments.js";
 
 describe("parseEvaluationArguments", () => {
-  it("defaults to the 2,000-repository bounded Daytona profile", () => {
+  it("defaults to the 2,000-repository bounded Vercel profile", () => {
     expect(parseEvaluationArguments([])).toEqual({
       repositoriesSources: ["./repositories.json"],
       repositoryLimit: 2_000,

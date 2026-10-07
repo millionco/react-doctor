@@ -5,6 +5,7 @@ export interface HasUnlintedSurvivingBaseFileInput {
   readonly baseLintPaths: ReadonlyArray<string>;
   readonly headFiles: ReadonlySet<string>;
   readonly analyzedBaseFiles: ReadonlyArray<string>;
+  readonly renamedFiles?: Readonly<Record<string, string>>;
 }
 
 // A base file deleted at head has no counterpart to compare against, so only an
@@ -12,6 +13,8 @@ export interface HasUnlintedSurvivingBaseFileInput {
 export const hasUnlintedSurvivingBaseFile = (input: HasUnlintedSurvivingBaseFileInput): boolean => {
   const analyzedBaseFiles = new Set(input.analyzedBaseFiles.map(toForwardSlashes));
   return filterSourceFiles(input.baseLintPaths.map(toForwardSlashes)).some(
-    (filePath) => input.headFiles.has(filePath) && !analyzedBaseFiles.has(filePath),
+    (filePath) =>
+      input.headFiles.has(input.renamedFiles?.[filePath] ?? filePath) &&
+      !analyzedBaseFiles.has(filePath),
   );
 };

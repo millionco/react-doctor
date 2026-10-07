@@ -1626,7 +1626,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { Alert } from "react-native/Libraries/Alert/Alert";',
   },
   "rn-no-deprecated-modules": {
-    code: 'import { SafeAreaView } from "react-native";',
+    code: 'import { WebView } from "react-native";',
   },
   "rn-no-dimensions-get": {
     code: 'import { Dimensions } from "react-native"; export const w = () => Dimensions.get("window");',

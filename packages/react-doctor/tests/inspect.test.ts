@@ -401,7 +401,7 @@ module.exports = {
     }
   });
 
-  it("surfaces a structurally different duplicate family with the same summary", async () => {
+  it("matches an edited duplicate family when its finding count stays the same", async () => {
     clearConfigCache();
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-baseline-jsx-change-"));
@@ -434,7 +434,7 @@ module.exports = {
 
       expect(
         result.diagnostics.filter((diagnostic) => diagnostic.rule === "duplicate-jsx-subtree"),
-      ).toHaveLength(1);
+      ).toHaveLength(0);
     } finally {
       consoleSpy.mockRestore();
       fs.rmSync(projectRoot, { recursive: true, force: true });

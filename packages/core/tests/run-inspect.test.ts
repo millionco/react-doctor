@@ -1717,6 +1717,11 @@ describe("runInspect — supply-chain lint overlap", () => {
   });
 });
 
+interface PnpmHardeningConfigCase {
+  config: ReactDoctorConfig | null;
+  severity: string | null;
+}
+
 describe("runInspect — security scan rules in the environment-checks phase", () => {
   // Unlike the mocked Linter/DeadCode services, environment checks read
   // the real filesystem at the resolved scan directory, so these tests
@@ -1746,6 +1751,30 @@ describe("runInspect — security scan rules in the environment-checks phase", (
       Progress.layerNoop,
       Reporter.layerNoop,
     );
+
+  it.each([
+    { config: null, severity: null },
+    { config: { categories: { Security: "warn" } }, severity: null },
+    { config: { rules: { "react-doctor/require-pnpm-hardening": "off" } }, severity: null },
+    { config: { rules: { "react-doctor/require-pnpm-hardening": "warn" } }, severity: "warning" },
+    { config: { rules: { "react-doctor/require-pnpm-hardening": "error" } }, severity: "error" },
+  ] satisfies PnpmHardeningConfigCase[])(
+    "runs pnpm hardening only with a rule opt-in: $config",
+    async ({ config, severity }) => {
+      const rootDirectory = makeScanRuleProject();
+      fs.writeFileSync(path.join(rootDirectory, "pnpm-workspace.yaml"), "packages: []\n");
+      const output = await Effect.runPromise(
+        runInspect({ ...baseInput, directory: rootDirectory }).pipe(
+          Effect.provide(scanRuleLayersOf(rootDirectory, config)),
+        ),
+      );
+      const diagnostics = output.diagnostics.filter(
+        (diagnostic) => diagnostic.rule === "require-pnpm-hardening",
+      );
+      expect(diagnostics).toHaveLength(severity === null ? 0 : 2);
+      for (const diagnostic of diagnostics) expect(diagnostic.severity).toBe(severity);
+    },
+  );
 
   it("emits scan-rule diagnostics in a full scan", async () => {
     const rootDirectory = makeScanRuleProject();

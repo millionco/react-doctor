@@ -13,6 +13,7 @@ import { isPathInsideDirectory } from "./utils/is-path-inside-directory.js";
 import { scrubSensitivePaths } from "./utils/scrub-sensitive-paths.js";
 import { sortDiagnosticsStable } from "./utils/sort-diagnostics-stable.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
+import { resolveRuleSeverityOverride } from "./resolve-rule-severity-override.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { checkExpoProject } from "./check-expo-project.js";
 import { checkPnpmHardening } from "./check-pnpm-hardening.js";
@@ -370,11 +371,17 @@ export const runInspect = <HooksR = never>(
     // ── Phase: environment checks ──────────────────────────────────
     // The project-shape checks below are sub-millisecond; the security scan
     // (whole-tree content pass) is heavy and forks separately just below.
+    const pnpmHardeningSeverity = resolveRuleSeverityOverride(
+      { ruleKey: "react-doctor/require-pnpm-hardening" },
+      buildRuleSeverityControls(resolvedConfig.config),
+    );
     const environmentDiagnostics: ReadonlyArray<Diagnostic> = isDiffMode
       ? []
       : [
           ...checkReducedMotion(scanDirectory),
-          ...checkPnpmHardening(scanDirectory),
+          ...(pnpmHardeningSeverity === "warn" || pnpmHardeningSeverity === "error"
+            ? checkPnpmHardening(scanDirectory)
+            : []),
           ...checkReactServerComponentsAdvisory(
             scanDirectory,
             project,

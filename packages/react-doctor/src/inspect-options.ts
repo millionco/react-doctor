@@ -55,6 +55,7 @@ export interface ResolvedInspectOptions {
   concurrentScan: boolean;
   concurrency: number | undefined;
   maxDurationMs: number | null;
+  baselineReport: InspectOptions["baselineReport"] | null;
   baseline: {
     ref: string;
     baseFiles?: ReadonlyArray<string>;

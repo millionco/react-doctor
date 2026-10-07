@@ -1162,3 +1162,28 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("native label title names", () => {
+  it("accepts a title on associated and wrapping native labels", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `const Rating = () => <>
+      <input id="rating" type="radio" /><label htmlFor="rating" title="Two stars" />
+      <label title={"Three stars"}><input type="radio" /></label>
+    </>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+  it("does not accept empty titles, unrelated labels, or custom title props", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `const Rating = () => <>
+      <input id="empty" type="radio" /><label htmlFor="empty" title=" " />
+      <input id="false" type="radio" /><label htmlFor="false" title={false} />
+      <input id="unrelated" type="radio" /><label htmlFor="other" title="Two stars" />
+      <input id="custom" type="radio" /><Label htmlFor="custom" title="Three stars" />
+    </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(4);
+  });
+});

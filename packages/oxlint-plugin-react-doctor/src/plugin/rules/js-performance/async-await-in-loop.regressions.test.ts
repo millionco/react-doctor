@@ -872,3 +872,64 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 });
+
+describe("async-await-in-loop — promise consumers and advice", () => {
+  it.each([
+    "const waitForAll = async (operations) => { const settled = await Promise.allSettled(operations); for (const result of settled) { if (result.status === 'rejected') throw result.reason; } return settled; };",
+    "function waitForAll(operations) { return Promise.allSettled(operations); }",
+    "const collect = (operations) => Promise.all(operations); const waitForAll = collect;",
+    "const waitForAll = async (operations) => { await Promise['allSettled']((operations)); };",
+  ])("accepts a local promise collector: %s", (collectorSource) => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `${collectorSource} async function run(items) { await waitForAll(items.map(async item => { await operation(item); })); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "const waitForAll = (operations) => { Promise.allSettled(operations); };",
+    "const waitForAll = async (operations) => { if (enabled) await Promise.allSettled(operations); };",
+    "const waitForAll = async (operations) => { const nested = async () => await Promise.allSettled(operations); };",
+    "const waitForAll = async (operations) => { operations = []; return Promise.allSettled(operations); };",
+    "const waitForAll = async (operations) => { return Promise.allSettled(otherOperations); };",
+    "const Promise = { allSettled: () => [] }; const waitForAll = operations => Promise.allSettled(operations);",
+    "let waitForAll = operations => Promise.allSettled(operations); waitForAll = () => undefined;",
+    "import { waitForAll } from './opaque';",
+  ])(
+    "keeps unproven consumers visible without claiming sequential callbacks: %s",
+    (collectorSource) => {
+      const result = runRule(
+        asyncAwaitInLoop,
+        `${collectorSource} async function run(items) { await waitForAll(items.map(async item => { await operation(item); })); }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("consumer observes completion");
+      expect(result.diagnostics[0].message).not.toContain("one after another");
+    },
+  );
+
+  it("does not confuse a shadowed wrapper with the collector", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const waitForAll = operations => Promise.allSettled(operations); async function run(items, waitForAll) { await waitForAll(items.map(async item => { await operation(item); })); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "async function run(repository, items) { for (const item of items) { await repository.runAsync(item); } }",
+    "const files = new Set(); const cache = { exists: async path => files.has(path) }; async function run(paths) { for (const path of paths) { await cache.exists(path); } }",
+  ])("does not promise a speedup for queued or synchronous work", (source) => {
+    const result = runRule(asyncAwaitInLoop, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics[0].message).toContain(
+      "If iterations perform independent asynchronous work",
+    );
+    expect(asyncAwaitInLoop.recommendation).toContain("transaction ordering");
+  });
+});

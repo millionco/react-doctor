@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -40,6 +41,7 @@ describe("baseline pure renames", () => {
       initGitRepo(directory);
       const baseRef = commitAll(directory, "base");
       fs.renameSync(oldPath, newPath);
+      execFileSync("git", ["add", "-A"], { cwd: directory });
       writeFile(path.join(directory, "src/unrelated-untracked.tsx"), "export const value = 1;\n");
 
       const result = await inspect(directory, {

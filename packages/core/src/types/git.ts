@@ -52,6 +52,7 @@ export interface GitDiffRange {
 }
 
 export interface GitBaselineDiffPlan {
+  readonly renamedFiles?: Readonly<Record<string, string>>;
   readonly baseFiles: ReadonlyArray<string>;
   readonly headFiles: ReadonlyArray<string>;
   readonly untrackedFiles: ReadonlyArray<string>;

@@ -3,6 +3,32 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noHoverOnlyReveal } from "./no-hover-only-reveal.js";
 
 describe("no-hover-only-reveal", () => {
+  it("allows focus on an opaque control to replace a grouped hover reveal", () => {
+    const result = runRule(
+      noHoverOnlyReveal,
+      `const Actions = () => <>
+      <button className="opacity-0 group-hover:opacity-100 focus:opacity-100">Edit</button>
+      <Button className="opacity-0 group-hover/item:opacity-100 focus-visible:opacity-100">Open</Button>
+      <button className="dark:opacity-0 dark:group-hover/item:opacity-100 focus:opacity-100">Copy</button>
+    </>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("requires grouped hover alternatives to be reachable and cover the same scope", () => {
+    const result = runRule(
+      noHoverOnlyReveal,
+      `const Actions = () => <>
+      <div className="opacity-0 group-hover:opacity-100 focus:opacity-100">Edit</div>
+      <button className="hidden group-hover:block focus:block">Open</button>
+      <button className="invisible group-hover:visible focus:visible">Copy</button>
+      <button className="dark:opacity-0 dark:group-hover:opacity-100 light:focus:opacity-100">Move</button>
+      <button className="opacity-0 group-hover:opacity-100 focus:opacity-100 focus:!opacity-0">Delete</button>
+    </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(5);
+  });
+
   it("reports direct and grouped hover-only reveals", () => {
     const result = runRule(
       noHoverOnlyReveal,

@@ -217,6 +217,7 @@ const program = new Command()
     "--scope <value>",
     "how much supported JS/TS and inline HTML script source to scan/report: full (default), files, changed (only new issues vs base), or lines (issues whose source spans touch changed lines)",
   )
+  .option("--baseline <report.json>", "report only new issues compared with a saved JSON report")
   .option("--base <ref>", "base git ref for files/changed/lines scope (auto-detected when omitted)")
   .option(
     "--include-untracked",

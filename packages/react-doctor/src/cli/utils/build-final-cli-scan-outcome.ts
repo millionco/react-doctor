@@ -14,6 +14,9 @@ export interface CompletedScan {
 }
 
 export interface AggregatedBaselineDelta {
+  readonly source?: "base" | "baseline";
+  readonly baselineFile?: string;
+  readonly matchedCount?: number;
   readonly baseRef: string;
   readonly fixedCount: number;
   readonly baseTotalCount: number;
@@ -24,6 +27,7 @@ export interface BuildFinalCliScanOutcomeInput {
   readonly skippedProjects: ReadonlyArray<JsonReportSkippedProject>;
   readonly mode: JsonReportMode;
   readonly baselineIntended: boolean;
+  readonly emptyComparison?: InspectResult["baselineDelta"];
   readonly categoryFilters: ReadonlySet<string>;
 }
 
@@ -57,17 +61,30 @@ export const buildFinalCliScanOutcome = (
   );
   const baselineComputed =
     input.skippedProjects.length === 0 &&
-    input.completedScans.length > 0 &&
+    (input.completedScans.length > 0 || input.emptyComparison !== undefined) &&
     input.completedScans.every((scan) => scan.result.baselineDelta !== undefined);
   const baselineDegraded = input.baselineIntended && !baselineComputed;
-  const baseline =
-    baselineComputed && baselineDeltas.length > 0
-      ? {
-          baseRef: baselineDeltas[0].baseRef,
-          fixedCount: baselineDeltas.reduce((total, delta) => total + delta.fixedCount, 0),
-          baseTotalCount: baselineDeltas.reduce((total, delta) => total + delta.baseTotalCount, 0),
-        }
-      : undefined;
+  let baseline: AggregatedBaselineDelta | undefined;
+  if (baselineComputed) {
+    baseline =
+      baselineDeltas.length > 0
+        ? {
+            baseRef: baselineDeltas[0].baseRef,
+            source: baselineDeltas[0].source,
+            baselineFile: baselineDeltas[0].baselineFile,
+            matchedCount: baselineDeltas.reduce(
+              (total, delta) =>
+                total + (delta.matchedCount ?? delta.baseTotalCount - delta.fixedCount),
+              0,
+            ),
+            fixedCount: baselineDeltas.reduce((total, delta) => total + delta.fixedCount, 0),
+            baseTotalCount: baselineDeltas.reduce(
+              (total, delta) => total + delta.baseTotalCount,
+              0,
+            ),
+          }
+        : input.emptyComparison;
+  }
 
   return {
     baseline,

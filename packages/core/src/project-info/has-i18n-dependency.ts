@@ -1,4 +1,5 @@
 import type { PackageJson } from "../types/index.js";
+import { hasAnyDependency } from "./has-any-dependency.js";
 
 // The mainstream React internationalization stacks. Declaring one is the
 // package.json signal that the app is localized — and therefore that
@@ -19,11 +20,5 @@ const I18N_PACKAGES = [
 ];
 
 export const hasI18nDependency = (packageJson: PackageJson): boolean => {
-  const allDependencies = {
-    ...packageJson.peerDependencies,
-    ...packageJson.dependencies,
-    ...packageJson.devDependencies,
-    ...packageJson.optionalDependencies,
-  };
-  return I18N_PACKAGES.some((packageName) => allDependencies[packageName] !== undefined);
+  return hasAnyDependency(packageJson, I18N_PACKAGES);
 };

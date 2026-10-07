@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
 
-import { DaytonaNotFoundError } from "@daytona/sdk";
-import type { Daytona, Sandbox } from "@daytona/sdk";
+import { Sandbox } from "@vercel/sandbox";
+import type { SandboxCredentials } from "./utils/get-sandbox-credentials.js";
+import { isSandboxNotFoundError } from "./utils/is-sandbox-not-found-error.js";
+import { readSandboxFile } from "./utils/read-sandbox-file.js";
 
 import {
-  DAYTONA_RUN_NAME,
+  EVALUATION_RUN_NAME,
   EVALUATION_SCHEMA_VERSION,
   PAIRED_SANDBOX_SCAN_TIMEOUT_SECONDS,
   RESOLVE_MATRIX_TARGET_REPOSITORY_REF_COMMAND,
   SANDBOX_DELETE_TIMEOUT_SECONDS,
+  MILLISECONDS_PER_SECOND,
   SANDBOX_REPORT_DOWNLOAD_TIMEOUT_SECONDS,
   SANDBOX_SETUP_TIMEOUT_SECONDS,
   SETUP_MATRIX_TARGET_REPOSITORY_COMMAND,
@@ -35,7 +38,7 @@ export interface MatrixEvaluationFailure {
 }
 
 export interface EvaluateMatrixRepositoryBatchInput {
-  daytona: Daytona;
+  credentials: SandboxCredentials;
   createSandbox: (sandboxName: string, deadlineMilliseconds: number) => Promise<Sandbox>;
   repositoryGroups: ReadonlyArray<CorpusRepositoryGroup>;
   lanes: ReadonlyArray<MatrixEvaluationLane>;
@@ -71,7 +74,7 @@ const partitionLanes = (
 };
 
 export const evaluateMatrixRepositoryBatch = async ({
-  daytona,
+  credentials,
   createSandbox,
   repositoryGroups,
   lanes,
@@ -80,7 +83,7 @@ export const evaluateMatrixRepositoryBatch = async ({
   evaluatorSourceHash,
   onLaneRecord,
 }: EvaluateMatrixRepositoryBatchInput): Promise<ReadonlyArray<MatrixEvaluationFailure>> => {
-  const sandboxName = `${DAYTONA_RUN_NAME}-${randomUUID()}`;
+  const sandboxName = `${EVALUATION_RUN_NAME}-${randomUUID()}`;
   let sandbox: Sandbox | undefined;
   let shouldRecoverSandbox = true;
   try {
@@ -93,7 +96,8 @@ export const evaluateMatrixRepositoryBatch = async ({
     const activeSandbox = sandbox;
     const provenanceResults = await Promise.allSettled(
       lanes.map(async (lane) => {
-        const contents = await activeSandbox.fs.downloadFile(
+        const contents = await readSandboxFile(
+          activeSandbox,
           lane.provenancePath,
           getEvaluationTimeoutSeconds({
             deadlineMilliseconds: evaluationDeadlineMilliseconds,
@@ -214,14 +218,14 @@ export const evaluateMatrixRepositoryBatch = async ({
     if (!sandboxToDelete && shouldRecoverSandbox) {
       try {
         sandboxToDelete = await runBeforeDeadline({
-          operation: () => daytona.get(sandboxName),
+          operation: () => Sandbox.get({ ...credentials, name: sandboxName }),
           deadlineMilliseconds: evaluationDeadlineMilliseconds,
-          timeoutMessage: `Timed out recovering Daytona sandbox ${sandboxName}`,
+          timeoutMessage: `Timed out recovering Vercel sandbox ${sandboxName}`,
         });
       } catch (error) {
-        if (!(error instanceof DaytonaNotFoundError)) {
+        if (!isSandboxNotFoundError(error)) {
           process.stderr.write(
-            `Failed to recover Daytona sandbox ${sandboxName}: ${toErrorMessage(error)}\n`,
+            `Failed to recover Vercel sandbox ${sandboxName}: ${toErrorMessage(error)}\n`,
           );
         }
       }
@@ -229,13 +233,16 @@ export const evaluateMatrixRepositoryBatch = async ({
     if (sandboxToDelete) {
       try {
         await runBeforeDeadline({
-          operation: () => daytona.delete(sandboxToDelete, SANDBOX_DELETE_TIMEOUT_SECONDS),
+          operation: () =>
+            sandboxToDelete.delete({
+              signal: AbortSignal.timeout(SANDBOX_DELETE_TIMEOUT_SECONDS * MILLISECONDS_PER_SECOND),
+            }),
           deadlineMilliseconds: evaluationDeadlineMilliseconds,
-          timeoutMessage: `Timed out deleting Daytona sandbox ${sandboxToDelete.id}`,
+          timeoutMessage: `Timed out deleting Vercel sandbox ${sandboxToDelete.name}`,
         });
       } catch (error) {
         process.stderr.write(
-          `Failed to delete Daytona sandbox ${sandboxToDelete.id}: ${toErrorMessage(error)}\n`,
+          `Failed to delete Vercel sandbox ${sandboxToDelete.name}: ${toErrorMessage(error)}\n`,
         );
       }
     }

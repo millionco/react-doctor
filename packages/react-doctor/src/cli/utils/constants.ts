@@ -69,7 +69,7 @@ export const BASELINE_SOURCE_COPY_CONCURRENCY = 32;
 // Bumped to 6: declaration-file parser diagnostic compatibility filtering
 // changed the cached diagnostic set.
 // Bumped to 7: maintainability diagnostics replace the removed dead-code pass.
-export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 7;
+export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 8;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
 export const SCAN_RESULT_CACHE_FILENAME = "scan-cache.json";
 // The dirty-worktree cache-key fingerprint content-hashes every path `git

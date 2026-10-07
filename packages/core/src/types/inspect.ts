@@ -4,6 +4,7 @@ import type { ProjectInfo } from "./project-info.js";
 import type { ScoreResult } from "./score.js";
 
 export interface InspectResult {
+  sourceFilterConfigHash?: string;
   diagnostics: Diagnostic[];
   score: ScoreResult | null;
   skippedChecks: string[];
@@ -74,14 +75,18 @@ export interface InspectResult {
    * carries the comparison totals for Codecov-style delta reporting.
    */
   baselineDelta?: {
-    /** The commit the base content was read from (resolved merge-base). */
+    /** Git ref or saved report path used for comparison. */
     baseRef: string;
+    source?: "base" | "baseline";
+    baselineFile?: string;
+    matchedCount?: number;
     /** Findings present at base but gone at head — resolved by the change. */
     fixedCount: number;
     /** Total findings at base (over the same files), for context. */
     baseTotalCount: number;
     /** Pre-existing findings matched after moving to a different file. */
     crossFileMatchCount?: number;
+    ruleCountMatchCount?: number;
   };
 }
 
@@ -150,6 +155,13 @@ export interface InspectOptions {
     ref: string;
     baseFiles?: ReadonlyArray<string>;
     headFiles?: ReadonlyArray<string>;
+  };
+  baselineReport?: {
+    file: string;
+    sourceRevision?: string;
+    sourceFilterConfigHash?: string;
+    diagnostics: ReadonlyArray<Diagnostic>;
+    renamedFiles?: Readonly<Record<string, string>>;
   };
   /**
    * Restrict reported diagnostics to those whose source spans intersect the
@@ -281,7 +293,10 @@ export interface DiffInfo {
 export type JsonReportMode = "full" | "diff" | "staged" | "baseline";
 
 export interface JsonReportBaselineInfo {
-  /** Resolved base commit (merge-base) the head was compared against. */
+  source?: "base" | "baseline";
+  baselineFile?: string;
+  matchedCount?: number;
+  /** Git ref or saved report path used for comparison. */
   baseRef: string;
   /** Count of introduced findings (equals `summary.totalDiagnosticCount`). */
   newCount: number;
@@ -332,6 +347,7 @@ export interface JsonReportDiagnosticV3 extends Diagnostic {
 }
 
 export interface JsonReportProjectEntryV3 {
+  sourceFilterConfigHash?: string;
   directory: string;
   packageRoot: string;
   framework: ProjectInfo["framework"];
@@ -418,6 +434,7 @@ export interface JsonReportV3 extends Omit<
   "schemaVersion" | "projects" | "diagnostics"
 > {
   schemaVersion: 3;
+  sourceRevision?: string;
   baseline?: JsonReportBaselineInfo;
   projects: JsonReportProjectEntryV3[];
   diagnostics: JsonReportDiagnosticV3[];

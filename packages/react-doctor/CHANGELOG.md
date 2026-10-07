@@ -1,5 +1,48 @@
 # react-doctor
 
+## 0.9.17
+
+### Patch Changes
+
+- [#1864](https://github.com/millionco/react-doctor/pull/1864) [`fcfb6ea`](https://github.com/millionco/react-doctor/commit/fcfb6ea06717886c210bac1c93cf1c154076af76) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix false new findings in `--baseline` and `--scope changed` after formatting or editing existing flagged code. Compare finding counts per file and rule, then use fingerprints, messages, and Git line shifts to identify added findings. Skip location matching when counts do not increase. Apply portable config filters to saved baseline findings and reject reports with missing or incompatible source-dependent filter settings; regenerate those base reports with the current version and settings.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.9.17
+
+## 0.9.16
+
+### Patch Changes
+
+- [#1860](https://github.com/millionco/react-doctor/pull/1860) [`8ed70df`](https://github.com/millionco/react-doctor/commit/8ed70df0fee3be3f7a2cf75e0cbb9f12ae930f6f) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix changed-scope scans to compare findings for uncommitted changes and use flagged source spans instead of whole lines. Match duplicate findings by count and limit cross-file matches to Git renames.
+
+  Add `--baseline <report.json>` to reuse a saved scan. JSON reports now include stable finding fingerprints, the source revision, the comparison source, and the number of matched base findings. Gates and summary counts use only new findings.
+
+- [#1846](https://github.com/millionco/react-doctor/pull/1846) [`6313667`](https://github.com/millionco/react-doctor/commit/631366777e01637f3c36b8a8c2ae8f19ba1060e8) Thanks [@aidenybai](https://github.com/aidenybai)! - Disable `require-pnpm-hardening` by default; enable it explicitly through `rules` when wanted. Describe await parallelization as a conditional opportunity, preserving ordering, resource limits, and error semantics. Recognize local Promise.all/allSettled collectors and stop describing async array callbacks as sequential.
+
+- [#1832](https://github.com/millionco/react-doctor/pull/1832) [`8a950f0`](https://github.com/millionco/react-doctor/commit/8a950f04477696e1dee1a509b3c25780f2837389) Thanks [@skoshx](https://github.com/skoshx)! - Fix `effect-needs-cleanup` false positive for React 19 callback ref cleanup returns. React 19 callback refs can return cleanup functions with the signature `(node: T | null) => void | (() => void)`. The rule now correctly handles cases where cleanup is only returned after resource usage (e.g., after `ResizeObserver.observe()`), allowing `void` returns on the null branch.
+
+- Updated dependencies [[`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`6313667`](https://github.com/millionco/react-doctor/commit/631366777e01637f3c36b8a8c2ae8f19ba1060e8), [`3242a81`](https://github.com/millionco/react-doctor/commit/3242a81b1596055da3207f735e873b4ce81fae13), [`8a950f0`](https://github.com/millionco/react-doctor/commit/8a950f04477696e1dee1a509b3c25780f2837389), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147)]:
+  - oxlint-plugin-react-doctor@0.9.16
+
+## 0.9.15
+
+### Patch Changes
+
+- [#1819](https://github.com/millionco/react-doctor/pull/1819) [`260b448`](https://github.com/millionco/react-doctor/commit/260b448cdd742e9e62d7029a8d69b0410732ee52) Thanks [@aidenybai](https://github.com/aidenybai)! - Prevent Bun scans from crashing when its child-process IPC channel omits Node's `ref` and `unref` methods.
+
+- [#1814](https://github.com/millionco/react-doctor/pull/1814) [`499a020`](https://github.com/millionco/react-doctor/commit/499a0208fca5c0422b713bdedf2b83fcc8e29d20) Thanks [@aidenybai](https://github.com/aidenybai)! - Stop `no-impure-state-updater` reporting callbacks handed to a helper that merely runs them (`run(async () => setValue("x"))`). Only a wrapper that forwards its parameter into a React setter's updater slot still counts as an updater.
+
+  Stop `nextjs-no-side-effect-in-get-handler` reporting `.set()` on a `Headers` object the helper constructs itself; mutations on stores the helper did not create still report.
+
+  Treat a ternary between static values (`hasHeader ? 0 : 16`) as static spacing in `rn-scrollview-dynamic-padding`, and reword its recommendation to name the matching `contentInset` edge and its iOS-only scope.
+
+  Accept a Zustand `store.setState(awaitedValue)` re-sync as a cache update in `query-mutation-missing-invalidation`; plain UI-state writes and non-store bindings still report.
+
+- [#1803](https://github.com/millionco/react-doctor/pull/1803) [`922616f`](https://github.com/millionco/react-doctor/commit/922616f08db7d48463b1495e4dbdb699fc3d7c34) Thanks [@aidenybai](https://github.com/aidenybai)! - Speed up scans without changing any diagnostic: lint batches are planned for every pooled oxlint worker, sidecar cache probes are interned into a per-bucket table (a 27 MB cache file becomes about 2.5 MB) and collected by the idle pool workers instead of the parent thread, source files are listed once per scan and shared with the duplicate-JSX pass, workers import the rule plugin while they boot, cross-file targets are parsed with oxc raw transfer, the whole-repo cache identity resolves its git calls concurrently, and TypeScript, conf, prompts and agent-install load on first use instead of at startup. The CLI now also starts the scan's git commands, the oxlint worker processes, and a React Compiler detection worker thread before its bundle finishes loading (only when no whole-repo cache can replay), parses tsconfig files as JSONC, and skips parsing build configs that cannot reference unplugin-auto-import, so the TypeScript compiler stays off the main thread's path to the first lint batch.
+
+- Updated dependencies [[`83466a8`](https://github.com/millionco/react-doctor/commit/83466a8faae436c902e8f602e7363ea3e23354d5), [`499a020`](https://github.com/millionco/react-doctor/commit/499a0208fca5c0422b713bdedf2b83fcc8e29d20), [`922616f`](https://github.com/millionco/react-doctor/commit/922616f08db7d48463b1495e4dbdb699fc3d7c34)]:
+  - oxlint-plugin-react-doctor@0.9.15
+
 ## 0.9.14
 
 ### Patch Changes

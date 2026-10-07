@@ -18,7 +18,7 @@ const failedRecord: CorpusEvaluationRecord = {
     ref: "HEAD",
     rootDir: "packages/web",
   },
-  error: "Daytona capacity exhausted",
+  error: "Vercel capacity exhausted",
 };
 
 describe("runEvaluationAttempts", () => {
@@ -157,7 +157,7 @@ describe("runEvaluationAttempts", () => {
   });
 
   it("continues retrying when cleanup fails", async () => {
-    const cleanupError = new Error("Daytona list failed");
+    const cleanupError = new Error("Vercel list failed");
     const evaluatedGroups: CorpusRepositoryGroup[] = [];
     const onBeforeRetryFailure = vi.fn();
     const onFinalFailure = vi.fn(async () => undefined);

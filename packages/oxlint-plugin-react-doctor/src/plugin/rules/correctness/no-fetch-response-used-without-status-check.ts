@@ -262,13 +262,13 @@ const makeExpressionGuaranteesStatusCheck = (
     expression: EsTreeNode,
     branchRunsWhenTruthy: boolean,
   ): boolean => {
-    const inner = stripGroupingParens(expression);
+    const inner = stripParenExpression(expression);
     const resultIndex = branchRunsWhenTruthy ? 1 : 0;
     const cachedResults = resultsByPolarity.get(inner);
     const cachedResult = cachedResults?.[resultIndex];
     if (cachedResult !== undefined) return cachedResult;
     const references = referencesToCheck
-      .map(stripGroupingParens)
+      .map(stripParenExpression)
       .filter((reference) => isAstDescendant(reference, inner));
     let result = false;
     if (references.some((reference) => reference === inner)) {

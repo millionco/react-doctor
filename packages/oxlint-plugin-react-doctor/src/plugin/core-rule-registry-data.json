@@ -310,7 +310,7 @@
       "id": "async-await-in-loop",
       "title": "await inside a loop",
       "severity": "warn",
-      "recommendation": "Collect the items, then use `await Promise.all(items.map(...))` so independent work runs at the same time",
+      "recommendation": "Consider concurrent calls only for independent asynchronous work. Shared queues or synchronous work may not benefit. Preserve resource limits, transaction ordering, and failure/cancellation semantics; observe all callback promises.",
       "category": "Performance",
       "framework": "global",
       "tags": ["test-noise"],
@@ -2209,6 +2209,7 @@
       "category": "Maintainability",
       "framework": "global",
       "requires": ["react"],
+      "tags": ["react-jsx-only"],
       "defaultEnabled": false,
       "isScanRule": false
     }
@@ -7869,6 +7870,7 @@
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],
+      "tags": ["react-jsx-only"],
       "isScanRule": false
     }
   },
@@ -8395,7 +8397,7 @@
       "category": "Maintainability",
       "framework": "global",
       "disabledWhen": ["react-compiler"],
-      "tags": ["test-noise"],
+      "tags": ["test-noise", "react-jsx-only"],
       "defaultEnabled": false,
       "isScanRule": false
     }
@@ -12388,7 +12390,7 @@
       "id": "server-sequential-independent-await",
       "title": "Sequential independent awaits",
       "severity": "warn",
-      "recommendation": "These two awaits don't depend on each other. Wrap them in `Promise.all([...])` so they run at the same time.",
+      "recommendation": "Consider `Promise.all([...])` only for independent asynchronous work. Shared queues or synchronous work may not benefit. Preserve resource limits, transaction ordering, and failure/cancellation semantics.",
       "category": "Bugs",
       "framework": "global",
       "tags": ["server-action", "test-noise"],

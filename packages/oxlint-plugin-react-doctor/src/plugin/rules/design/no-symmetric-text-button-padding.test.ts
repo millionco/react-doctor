@@ -35,3 +35,27 @@ describe("no-symmetric-text-button-padding", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("screen-reader-only button names", () => {
+  it("allows square padding on icons with hidden accessible names", () => {
+    const result = runRule(
+      noSymmetricTextButtonPadding,
+      `const Actions = () => <>
+      <button className="p-2"><span className="sr-only">Filter</span><FilterIcon /></button>
+      <button className="p-2"><span><span className="sr-only">Search</span><SearchIcon /></span></button>
+    </>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+  it("still checks visible text and labels revealed at a breakpoint", () => {
+    const result = runRule(
+      noSymmetricTextButtonPadding,
+      `const Actions = () => <>
+      <button className="p-2"><span className="sr-only">Filter</span>Apply</button>
+      <button className="p-2"><span className="sr-only sm:not-sr-only">Search</span><SearchIcon /></button>
+      <button className="p-2"><span className="sm:sr-only">Open</span><OpenIcon /></button>
+    </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+});

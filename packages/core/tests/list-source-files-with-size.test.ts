@@ -34,9 +34,10 @@ describe("listSourceFilesWithSize", () => {
     const entries = listSourceFilesWithSize(temporaryDirectory);
     const appEntry = entries.find((entry) => entry.path === "App.tsx");
 
-    expect(appEntry).toBeDefined();
-    expect(appEntry!.path).toBe("App.tsx");
-    expect(appEntry!.sizeBytes).toBe(fs.statSync(absolutePath).size);
+    expect(appEntry).toEqual({
+      path: "App.tsx",
+      sizeBytes: fs.statSync(absolutePath).size,
+    });
   });
 
   it("excludes a large minified bundle (parity with listSourceFiles)", () => {

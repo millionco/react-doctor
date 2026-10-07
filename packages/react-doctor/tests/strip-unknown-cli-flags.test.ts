@@ -134,6 +134,14 @@ describe("stripUnknownCliFlags", () => {
     ]);
   });
 
+  it("keeps the explicit score opt-in on the experimental TUI command", () => {
+    expect(stripUserArguments(["experimental-tui", ".", "--score"])).toEqual([
+      "experimental-tui",
+      ".",
+      "--score",
+    ]);
+  });
+
   it("keeps the --no-telemetry alias for --no-score", () => {
     expect(stripUserArguments([".", "--no-telemetry"])).toEqual([".", "--no-telemetry"]);
   });

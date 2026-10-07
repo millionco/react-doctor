@@ -533,4 +533,72 @@ describe("performance/async-defer-await — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it.each([
+    ["plain parameters", "query: string, requestId: number"],
+    ["default parameters", "query = '', requestId = 0"],
+    ["destructured parameters", "{ query, requestId }: { query: string; requestId: number }"],
+  ])("stays silent on compound freshness guards with %s", (_label, parameters) => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string[]>;
+      declare let latestQuery: string;
+      declare const latestRequest: { value: number };
+      export const run = async (${parameters}) => {
+        const rows = await load();
+        if (latestQuery !== query && requestId !== latestRequest.value) return [];
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["literal comparison", "query === ''"],
+    ["invariant parameter", "enabled"],
+    ["parameter comparison", "query === expectedQuery"],
+  ])("still flags a parameter freshness guard mixed with an unrelated %s", (_label, guardTest) => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const load: () => Promise<string[]>;
+      declare const latestRequest: { value: number };
+      export const run = async (query: string, requestId: number, enabled: boolean, expectedQuery: string) => {
+        const rows = await load();
+        if (requestId !== latestRequest.value || ${guardTest}) return [];
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on compound parameter-based freshness guards (issue #1895)", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      import { useRef, useState } from 'react';
+
+      export function useLatestSearch(fetchResult: (query: string) => Promise<string>) {
+        const requestId = useRef(0);
+        const latest = useRef({ query: '' });
+        const [value, setValue] = useState('');
+
+        async function lookup(query: string, id: number) {
+          const result = await fetchResult(query);
+          if (id !== requestId.current || latest.current.query !== query) return;
+          setValue(result);
+        }
+
+        return { value };
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

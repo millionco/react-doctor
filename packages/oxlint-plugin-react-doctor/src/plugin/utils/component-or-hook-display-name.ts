@@ -1,25 +1,38 @@
 import { COMPONENT_HOC_WRAPPER_NAMES } from "../constants/react.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
+import { getFinalSequenceExpressionValue } from "./get-final-sequence-expression-value.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactComponentOrHookName } from "./is-react-component-or-hook-name.js";
 
-const hocWrapperCalleeName = (callee: EsTreeNode): string | null => {
-  if (isNodeOfType(callee, "Identifier")) return callee.name;
-  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
-    return callee.property.name;
+const hocWrapperCalleeName = (
+  callee: EsTreeNode,
+  allowSequenceExpressionHocCallee: boolean,
+): string | null => {
+  const resolvedCallee = allowSequenceExpressionHocCallee
+    ? getFinalSequenceExpressionValue(callee)
+    : callee;
+  if (isNodeOfType(resolvedCallee, "Identifier")) return resolvedCallee.name;
+  if (
+    isNodeOfType(resolvedCallee, "MemberExpression") &&
+    isNodeOfType(resolvedCallee.property, "Identifier")
+  ) {
+    return resolvedCallee.property.name;
   }
   return null;
 };
 
-export const findComponentHocExpressionRoot = (functionNode: EsTreeNode): EsTreeNode => {
+export const findComponentHocExpressionRoot = (
+  functionNode: EsTreeNode,
+  allowSequenceExpressionHocCallee = false,
+): EsTreeNode => {
   let current = findTransparentExpressionRoot(functionNode);
   for (;;) {
     const parent = current.parent;
     if (!parent || !isNodeOfType(parent, "CallExpression") || parent.arguments?.[0] !== current) {
       return current;
     }
-    const calleeName = hocWrapperCalleeName(parent.callee);
+    const calleeName = hocWrapperCalleeName(parent.callee, allowSequenceExpressionHocCallee);
     if (!calleeName || !COMPONENT_HOC_WRAPPER_NAMES.has(calleeName)) return current;
     current = findTransparentExpressionRoot(parent);
   }
@@ -32,8 +45,11 @@ export const findComponentHocExpressionRoot = (functionNode: EsTreeNode): EsTree
 //   const App = memo(() => {})
 //   const Input = forwardRef((props, ref) => {})
 //   const App = memo(forwardRef(() => {}))
-const displayNameFromFunctionBinding = (functionNode: EsTreeNode): string | null => {
-  const current = findComponentHocExpressionRoot(functionNode);
+const displayNameFromFunctionBinding = (
+  functionNode: EsTreeNode,
+  allowSequenceExpressionHocCallee: boolean,
+): string | null => {
+  const current = findComponentHocExpressionRoot(functionNode, allowSequenceExpressionHocCallee);
   const binding = current.parent;
   if (
     binding &&
@@ -51,7 +67,10 @@ const displayNameFromFunctionBinding = (functionNode: EsTreeNode): string | null
 // component/hook. Handles named declarations / expressions
 // (`function App()`, `memo(function App(){})`) and anonymous functions
 // bound to a name directly or through a HOC wrapper.
-export const componentOrHookDisplayNameForFunction = (functionNode: EsTreeNode): string | null => {
+export const componentOrHookDisplayNameForFunction = (
+  functionNode: EsTreeNode,
+  allowSequenceExpressionHocCallee = false,
+): string | null => {
   if (
     (isNodeOfType(functionNode, "FunctionDeclaration") ||
       isNodeOfType(functionNode, "FunctionExpression")) &&
@@ -59,5 +78,5 @@ export const componentOrHookDisplayNameForFunction = (functionNode: EsTreeNode):
   ) {
     return isReactComponentOrHookName(functionNode.id.name) ? functionNode.id.name : null;
   }
-  return displayNameFromFunctionBinding(functionNode);
+  return displayNameFromFunctionBinding(functionNode, allowSequenceExpressionHocCallee);
 };

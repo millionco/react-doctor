@@ -5,6 +5,17 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { getProjectRelativeFilenameFromRoots } from "../../utils/get-project-relative-filename-from-roots.js";
+import {
+  getReactDoctorStringArraySetting,
+  getReactDoctorStringSetting,
+} from "../../utils/get-react-doctor-setting.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+
+interface UnpluginAutoImportGlobalScope {
+  readonly directory: string;
+  readonly names: ReadonlySet<string>;
+}
 
 const buildMessage = (name: string): string =>
   `\`${name}\` crashes at runtime because it isn't defined here.`;
@@ -84,6 +95,60 @@ const getRootIdentifier = (elementName: EsTreeNode): string | null => {
   return null;
 };
 
+const resolveUnpluginAutoImportGlobalScopes = (
+  settings: RuleContext["settings"],
+): ReadonlyArray<UnpluginAutoImportGlobalScope> => {
+  const reactDoctorSettings = settings?.["react-doctor"];
+  if (
+    typeof reactDoctorSettings !== "object" ||
+    reactDoctorSettings === null ||
+    Array.isArray(reactDoctorSettings)
+  ) {
+    return [];
+  }
+
+  const rawScopes = Object.getOwnPropertyDescriptor(
+    reactDoctorSettings,
+    "unpluginAutoImportGlobalScopes",
+  )?.value;
+  if (!Array.isArray(rawScopes)) return [];
+
+  const scopes: UnpluginAutoImportGlobalScope[] = [];
+  for (const rawScope of rawScopes) {
+    if (typeof rawScope !== "object" || rawScope === null || Array.isArray(rawScope)) continue;
+    const directory = Object.getOwnPropertyDescriptor(rawScope, "directory")?.value;
+    const names = Object.getOwnPropertyDescriptor(rawScope, "names")?.value;
+    if (typeof directory !== "string" || !Array.isArray(names)) continue;
+    const validNames = names.filter(
+      (name): name is string => typeof name === "string" && name.length > 0,
+    );
+    scopes.push({ directory, names: new Set(validNames) });
+  }
+  return scopes;
+};
+
+const isInjectedRuntimeGlobal = (
+  name: string,
+  relativeFilename: string | null,
+  configuredRuntimeGlobals: ReadonlySet<string>,
+  scopes: ReadonlyArray<UnpluginAutoImportGlobalScope>,
+): boolean => {
+  if (configuredRuntimeGlobals.has(name)) return true;
+  if (relativeFilename === null) return false;
+  let nearestScope: UnpluginAutoImportGlobalScope | null = null;
+  for (const scope of scopes) {
+    const isInsideScope =
+      scope.directory.length === 0 || relativeFilename.startsWith(`${scope.directory}/`);
+    if (
+      isInsideScope &&
+      (!nearestScope || scope.directory.length > nearestScope.directory.length)
+    ) {
+      nearestScope = scope;
+    }
+  }
+  return nearestScope?.names.has(name) ?? false;
+};
+
 // Port of `oxc_linter::rules::react::jsx_no_undef`. Reports JSX usages
 // of an identifier (or root of a member expression) that has no
 // binding visible from the JSX site.
@@ -106,19 +171,49 @@ export const jsxNoUndef = defineRule({
   severity: "error",
   recommendation:
     "Import the component or fix the typo so React can resolve the JSX identifier at runtime.",
-  create: (context) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      const rootIdentifier = getRootIdentifier(node.name as EsTreeNode);
-      if (!rootIdentifier) return;
-      if (KNOWN_GLOBALS.has(rootIdentifier)) return;
-      const programRoot = findProgramRoot(node);
-      if (!programRoot) return;
-      if (isReactLiveStyleScript(programRoot)) return;
-      // Scope-aware lookup first — finds bindings whose scope owner is
-      // an ancestor of the JSX site (respects let/const block scoping
-      // AND TS declarations like enum / type / interface / module).
-      if (findVariableInitializer(node, rootIdentifier)) return;
-      context.report({ node: node.name, message: buildMessage(rootIdentifier) });
-    },
-  }),
+  create: (context) => {
+    const autoImportGlobalScopes = resolveUnpluginAutoImportGlobalScopes(context.settings);
+    const configuredRuntimeGlobals = new Set(
+      getReactDoctorStringArraySetting(context.settings, "runtimeGlobals"),
+    );
+    const configuredAutoImportRootDirectories = getReactDoctorStringArraySetting(
+      context.settings,
+      "unpluginAutoImportRootDirectories",
+    );
+    const rootDirectory = getReactDoctorStringSetting(context.settings, "rootDirectory");
+    const fallbackAutoImportRootDirectories = rootDirectory ? [rootDirectory] : [];
+    const autoImportRootDirectories =
+      configuredAutoImportRootDirectories.length > 0
+        ? configuredAutoImportRootDirectories
+        : fallbackAutoImportRootDirectories;
+    const relativeFilename = getProjectRelativeFilenameFromRoots(
+      context.filename ?? "",
+      autoImportRootDirectories,
+    );
+    return {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        const rootIdentifier = getRootIdentifier(node.name as EsTreeNode);
+        if (!rootIdentifier) return;
+        if (KNOWN_GLOBALS.has(rootIdentifier)) return;
+        if (
+          isInjectedRuntimeGlobal(
+            rootIdentifier,
+            relativeFilename,
+            configuredRuntimeGlobals,
+            autoImportGlobalScopes,
+          )
+        ) {
+          return;
+        }
+        const programRoot = findProgramRoot(node);
+        if (!programRoot) return;
+        if (isReactLiveStyleScript(programRoot)) return;
+        // Scope-aware lookup first — finds bindings whose scope owner is
+        // an ancestor of the JSX site (respects let/const block scoping
+        // AND TS declarations like enum / type / interface / module).
+        if (findVariableInitializer(node, rootIdentifier)) return;
+        context.report({ node: node.name, message: buildMessage(rootIdentifier) });
+      },
+    };
+  },
 });

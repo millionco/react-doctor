@@ -1,17 +1,20 @@
 import * as fs from "node:fs";
-import reactDoctorPlugin, {
+import {
   CROSS_FILE_RULE_IDS,
   REACT_COMPILER_RULES,
   REACT_DOCTOR_RULES,
-} from "oxlint-plugin-react-doctor";
-import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor";
+  REACT_DOCTOR_RULE_REGISTRY,
+} from "oxlint-plugin-react-doctor/core";
+import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor/core";
 import type { ProjectInfo, RuleSeverityControls } from "../../types/index.js";
+import type { AdoptedLintConfigSettings } from "../../read-adopted-lint-config-settings.js";
 import { resolveRuleSeverityOverride } from "../../resolve-rule-severity-override.js";
 import { COMPILER_CLEANUP_BUCKET, COMPILER_CLEANUP_RULE_KEYS } from "../../constants.js";
 import { getCapabilities, shouldEnableRule } from "../../project-info/capabilities.js";
 import { filterRulesToAvailable, resolveReactHooksJsPlugin } from "./plugin-resolution.js";
 import type { JsPluginEntry, ResolvedUserPlugin } from "./plugin-resolution.js";
 import { shouldEnableRuleByDefaultStatus } from "../../utils/should-enable-rule-by-default-status.js";
+import type { UnpluginAutoImportGlobalScope } from "./collect-unplugin-auto-import-global-scopes.js";
 
 export interface OxlintConfigOptions {
   pluginPath: string;
@@ -21,8 +24,12 @@ export interface OxlintConfigOptions {
   ignoredTags?: ReadonlySet<string>;
   includedTags?: ReadonlySet<string>;
   includeTagDefaults?: boolean;
+  runtimeGlobals?: ReadonlyArray<string>;
+  unpluginAutoImportGlobalScopes?: ReadonlyArray<UnpluginAutoImportGlobalScope>;
   serverAuthFunctionNames?: ReadonlyArray<string>;
+  projectIndexModuleSources?: ReadonlyArray<string>;
   severityControls?: RuleSeverityControls;
+  adoptedSettings?: AdoptedLintConfigSettings;
   /**
    * User-declared plugins from `react-doctor.config.json`'s
    * `plugins: [...]`, already resolved + introspected via
@@ -124,8 +131,12 @@ export const createOxlintConfig = ({
   ignoredTags = new Set<string>(),
   includedTags = new Set<string>(),
   includeTagDefaults = false,
+  runtimeGlobals,
+  unpluginAutoImportGlobalScopes,
   serverAuthFunctionNames,
+  projectIndexModuleSources,
   severityControls,
+  adoptedSettings = {},
   userPlugins = [],
   disableReactHooksJsPlugin = false,
   ruleSelection,
@@ -156,10 +167,21 @@ export const createOxlintConfig = ({
   if (reactHooksJsPlugin) jsPlugins.push(reactHooksJsPlugin.entry);
 
   const capabilities = getCapabilities(project);
+  const settingsRootDirectory = resolveSettingsRootDirectory(project.rootDirectory);
+  const noMultiCompOverride = resolveRuleSeverityOverride(
+    { ruleKey: "react-doctor/no-multi-comp" },
+    severityControls,
+  );
+  const multiComponentFileOverride = resolveRuleSeverityOverride(
+    { ruleKey: "react-doctor/no-multi-component-file" },
+    severityControls,
+  );
+  const shouldUseExplicitNoMultiCompPolicy =
+    noMultiCompOverride !== undefined && multiComponentFileOverride === undefined;
 
   const enabledReactDoctorRules: Record<string, OxlintRuleSeverity> = {};
   for (const registryEntry of REACT_DOCTOR_RULES) {
-    const rule = reactDoctorPlugin.rules[registryEntry.id];
+    const rule = REACT_DOCTOR_RULE_REGISTRY[registryEntry.id];
     if (!rule) continue;
     // Per-file-cache partition: the cacheable config drops the cross-file
     // rules (they run always-fresh in the sidecar); the sidecar config keeps
@@ -175,7 +197,9 @@ export const createOxlintConfig = ({
     }
     // Scan rules run via core's check-security-scan environment
     // check, not oxlint — registering them would only add dead visitors.
-    if (rule.scan !== undefined) continue;
+    if (rule.isScanRule || rule.isProjectRule === true) continue;
+    if (registryEntry.id === "no-multi-component-file" && shouldUseExplicitNoMultiCompPolicy)
+      continue;
     // `customRulesOnly` mirrors the historical behavior of the pre-port
     // builtin-react / builtin-a11y gate — skip everything ported 1:1
     // from upstream OXC plugins.
@@ -242,6 +266,7 @@ export const createOxlintConfig = ({
 
   return {
     ...(extendsPaths.length > 0 ? { extends: extendsPaths } : {}),
+    options: { typeAware: false },
     categories: {
       correctness: "off",
       suspicious: "off",
@@ -260,18 +285,37 @@ export const createOxlintConfig = ({
     plugins: [],
     jsPlugins: [...jsPlugins, pluginPath],
     settings: {
+      ...adoptedSettings,
       "react-doctor": {
+        portedRuleMode: "curated",
         framework: project.framework,
-        rootDirectory: resolveSettingsRootDirectory(project.rootDirectory),
+        rootDirectory: settingsRootDirectory,
         // The framework-capability vocabulary, available to any rule via
         // `hasCapability`. Sorted so equivalent projects hash identically
         // (this bag feeds the ruleset cache key).
         capabilities: [...capabilities].sort(),
+        ...(runtimeGlobals && runtimeGlobals.length > 0
+          ? { runtimeGlobals: [...runtimeGlobals] }
+          : {}),
+        ...(unpluginAutoImportGlobalScopes && unpluginAutoImportGlobalScopes.length > 0
+          ? {
+              unpluginAutoImportRootDirectories: [
+                ...new Set([settingsRootDirectory, project.rootDirectory]),
+              ],
+              unpluginAutoImportGlobalScopes: unpluginAutoImportGlobalScopes.map((scope) => ({
+                directory: scope.directory,
+                names: [...scope.names],
+              })),
+            }
+          : {}),
         ...(project.shopifyFlashListMajorVersion !== null
           ? { shopifyFlashListMajorVersion: project.shopifyFlashListMajorVersion }
           : {}),
         ...(serverAuthFunctionNames && serverAuthFunctionNames.length > 0
           ? { serverAuthFunctionNames: [...serverAuthFunctionNames] }
+          : {}),
+        ...(projectIndexModuleSources !== undefined
+          ? { projectIndexModuleSources: [...projectIndexModuleSources] }
           : {}),
       },
     },

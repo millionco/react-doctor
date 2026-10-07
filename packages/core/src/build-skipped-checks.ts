@@ -6,6 +6,7 @@ export interface SkippedCheckInput {
   readonly deadCodeFailureReason: string | null;
   readonly supplyChainOverlapTimedOut?: boolean;
   readonly securityScanFailed?: boolean;
+  readonly securityScanFailureReason?: string | null;
 }
 
 export interface SkippedCheckSummary {
@@ -40,7 +41,8 @@ export const buildSkippedChecks = (input: SkippedCheckInput): SkippedCheckSummar
     skippedCheckReasons["supply-chain"] = "Supply-chain analysis timed out and was skipped.";
   }
   if (input.securityScanFailed) {
-    skippedCheckReasons["security-scan"] = "Security scan failed and was skipped.";
+    skippedCheckReasons["security-scan"] =
+      input.securityScanFailureReason ?? "Security scan failed and was skipped.";
   }
 
   return { skippedChecks, skippedCheckReasons };

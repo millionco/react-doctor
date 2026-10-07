@@ -1,6 +1,11 @@
 import * as path from "node:path";
 import { COMPARISON_REGRESSION_MIN_MS, COMPARISON_REGRESSION_RATIO } from "./constants.ts";
-import type { BenchmarkComparison, BenchmarkComparisonSeries, BenchmarkSeries } from "./types.ts";
+import type {
+  BenchmarkComparison,
+  BenchmarkComparisonSeries,
+  BenchmarkSeries,
+  BuildBenchmarkComparisonsOptions,
+} from "./types.ts";
 
 const seriesKey = (series: BenchmarkComparisonSeries): string =>
   [
@@ -17,6 +22,7 @@ const seriesKey = (series: BenchmarkComparisonSeries): string =>
 export const buildBenchmarkComparisons = (
   currentSeries: BenchmarkSeries[],
   baselineSeries: BenchmarkComparisonSeries[] | null,
+  options: BuildBenchmarkComparisonsOptions = {},
 ): BenchmarkComparison[] => {
   if (baselineSeries === null) return [];
   const baselineByKey = new Map<string, BenchmarkComparisonSeries>();
@@ -35,7 +41,8 @@ export const buildBenchmarkComparisons = (
     if (matchingBaseline === undefined) {
       throw new Error(`Performance baseline has no matching series for ${key}`);
     }
-    if (matchingBaseline.diagnosticHash !== series.diagnosticHash) {
+    const diagnosticsMatch = matchingBaseline.diagnosticHash === series.diagnosticHash;
+    if (!diagnosticsMatch && !options.allowDiagnosticMismatch) {
       throw new Error(`Diagnostic output changed from the baseline for ${key}`);
     }
     const baselineMedianMilliseconds = matchingBaseline.wallMilliseconds.median;
@@ -43,9 +50,13 @@ export const buildBenchmarkComparisons = (
     const deltaMilliseconds = currentMedianMilliseconds - baselineMedianMilliseconds;
     const deltaRatio =
       baselineMedianMilliseconds === 0 ? 0 : deltaMilliseconds / baselineMedianMilliseconds;
+    const speedupRatio =
+      currentMedianMilliseconds === 0 ? 0 : baselineMedianMilliseconds / currentMedianMilliseconds;
     const isMaterial = Math.abs(deltaMilliseconds) >= COMPARISON_REGRESSION_MIN_MS;
     let classification: BenchmarkComparison["classification"] = "stable";
-    if (isMaterial && deltaRatio >= COMPARISON_REGRESSION_RATIO) {
+    if (!diagnosticsMatch) {
+      classification = "diagnostics-mismatch";
+    } else if (isMaterial && deltaRatio >= COMPARISON_REGRESSION_RATIO) {
       classification = "regressed";
     } else if (isMaterial && deltaRatio <= -COMPARISON_REGRESSION_RATIO) {
       classification = "improved";
@@ -56,6 +67,8 @@ export const buildBenchmarkComparisons = (
       currentMedianMilliseconds,
       deltaMilliseconds,
       deltaRatio,
+      speedupRatio,
+      diagnosticsMatch,
       classification,
     });
   }

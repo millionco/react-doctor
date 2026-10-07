@@ -22,7 +22,7 @@ export const parseStagedSnapshotDivergences = (statusOutput: string): ReadonlyAr
     const sourcePath = hasRenameOrCopySource ? statusEntries[entryIndex + 1] : undefined;
     const worktreePaths =
       worktreeStatus === "R" || worktreeStatus === "C" ? [filePath, sourcePath] : [filePath];
-    if (worktreeStatus !== " ") {
+    if (worktreeStatus !== " " && worktreeStatus !== "!") {
       for (const worktreePath of worktreePaths) {
         if (worktreePath && SNAPSHOT_CONFIG_FILENAMES.has(path.basename(worktreePath))) {
           divergentConfigFiles.add(worktreePath);

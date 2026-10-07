@@ -1,8 +1,0 @@
-{
-  "name": "workspace-path-alias-no-tsconfig",
-  "private": true,
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ]
-}

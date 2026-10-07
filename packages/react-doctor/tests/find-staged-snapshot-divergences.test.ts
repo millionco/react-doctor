@@ -74,7 +74,7 @@ describe("findStagedSnapshotDivergences", () => {
     ]);
   });
 
-  it("reports ordinary and ignored untracked configuration", () => {
+  it("reports ordinary untracked configuration but ignores ignored configuration", () => {
     const directory = createRepository();
     fs.writeFileSync(path.join(directory, ".gitignore"), "next.config.mjs\n");
     execFileSync("git", ["add", ".gitignore"], { cwd: directory });
@@ -82,10 +82,18 @@ describe("findStagedSnapshotDivergences", () => {
     fs.writeFileSync(path.join(directory, "eslint.config.mjs"), "export default [];\n");
     fs.writeFileSync(path.join(directory, "next.config.mjs"), "export default {};\n");
 
-    expect(findStagedSnapshotDivergences(directory)).toEqual([
-      "eslint.config.mjs",
-      "next.config.mjs",
-    ]);
+    expect(findStagedSnapshotDivergences(directory)).toEqual(["eslint.config.mjs"]);
+  });
+
+  it("ignores a nested package manifest excluded by a local gitignore", () => {
+    const directory = createRepository();
+    fs.mkdirSync(path.join(directory, ".opencode"), { recursive: true });
+    fs.writeFileSync(path.join(directory, ".opencode/.gitignore"), "package.json\nnode_modules\n");
+    execFileSync("git", ["add", ".opencode/.gitignore"], { cwd: directory });
+    execFileSync("git", ["commit", "-q", "-m", "ignore local plugin files"], { cwd: directory });
+    fs.writeFileSync(path.join(directory, ".opencode/package.json"), '{"private":true}\n');
+
+    expect(findStagedSnapshotDivergences(directory)).toEqual([]);
   });
 
   it("returns null outside a Git worktree", () => {
@@ -133,5 +141,9 @@ describe("findStagedSnapshotDivergences", () => {
     expect(parseStagedSnapshotDivergences(" M react-doctor.config.json\0")).toEqual([
       "react-doctor.config.json",
     ]);
+  });
+
+  it("ignores an ignored configuration status entry", () => {
+    expect(parseStagedSnapshotDivergences("!! .opencode/package.json\0")).toEqual([]);
   });
 });

@@ -180,6 +180,27 @@ describe("r3f-no-recursive-raf-with-use-frame", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("supports CommonJS and TypeScript import-equals module references", () => {
+    for (const moduleBinding of [
+      `const Fiber = require("@react-three/fiber");`,
+      `import Fiber = require("@react-three/fiber");`,
+    ]) {
+      const result = runRule(
+        r3fNoRecursiveRafWithUseFrame,
+        `
+          const Scene = () => {
+            Fiber.useFrame(() => updateScene());
+            const animate = () => requestAnimationFrame(animate);
+            requestAnimationFrame(animate);
+            return null;
+          };
+          ${moduleBinding}
+        `,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
   it("allows one-shot animation frames including demand invalidation", () => {
     const result = runRule(
       r3fNoRecursiveRafWithUseFrame,

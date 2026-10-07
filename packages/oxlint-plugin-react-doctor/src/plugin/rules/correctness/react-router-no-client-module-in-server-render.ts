@@ -1,17 +1,16 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
 const CLIENT_MODULE_PATTERN = /(?:^|\/)[^/]+\.client(?:\.[^/]*)?$/;
 const CLIENT_ENTRY_PATTERN = /(?:^|\/)entry\.client\.[cm]?[jt]sx?$/;
 const CLIENT_ONLY_FILE_PATTERN = /\.client\.[cm]?[jt]sx?$/;
 const CLIENT_ONLY_BOUNDARY_MODULE_PATTERN = /(?:^|\/)client-only(?:\.[^/]*)?$/;
-const EMPTY_VISITORS: RuleVisitors = {};
 
 const isInsideImportedClientOnlyRenderProp = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
@@ -54,7 +53,7 @@ export const reactRouterNoClientModuleInServerRender = wrapReactRouterRule(
         (CLIENT_ENTRY_PATTERN.test(context.filename) ||
           CLIENT_ONLY_FILE_PATTERN.test(context.filename))
       ) {
-        return EMPTY_VISITORS;
+        return EMPTY_RULE_VISITORS;
       }
       return {
         JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

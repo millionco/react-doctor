@@ -16,12 +16,15 @@ import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-tran
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { Reference } from "eslint-scope";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import {
   getCallExpr,
   getDownstreamRefs,
   getEventualCallRefsTo,
+  getRef,
   getUpstreamRefs,
   isSynchronous,
   resolveToFunction,
@@ -36,8 +39,12 @@ import {
   isState,
   isWholePropsObjectReference,
 } from "./utils/effect/react.js";
-import { getParentCallbackPropNames } from "./utils/resolve-parent-callback-provenance.js";
+import {
+  getParentCallbackPropNames,
+  isProvenReactRefCurrentSnapshotExpression,
+} from "./utils/resolve-parent-callback-provenance.js";
 import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
+import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
 const SETTER_NAMED_CALLBACK_PATTERN = /^set[A-Z]/;
 const DATA_FETCHING_CALLBACK_PATTERN = /^(fetch|refetch|load|query|request)([A-Z_]|$)/;
@@ -63,10 +70,13 @@ const getCallCalleeName = (callExpr: EsTreeNode): string | null => {
 // prop as a pure transform whose result stays local — a read, not a
 // notification. The value may flow through conditional / logical branches
 // (`el.textContent = isMixed ? 'Mixed' : formatDisplay(v)`) or be returned
-// from a helper (`return formatValue(v)`) — the caller consumes it either
-// way. Bare statements, guarded calls (`onSync && onSync(x)`), if-test
-// reads and concise arrow bodies all remain notifications.
-const isCallResultCapturedToLocal = (callExpr: EsTreeNode): boolean => {
+// from a helper whose result the caller consumes (`return formatValue(v)`).
+// Bare statements, guarded calls (`onSync && onSync(x)`), if-test reads and
+// concise arrow bodies all remain notifications.
+const isCallResultCapturedToLocal = (
+  callExpr: EsTreeNode,
+  discardedHelperFunction: EsTreeNode | null = null,
+): boolean => {
   let current: EsTreeNode = callExpr;
   let parent = (current as unknown as { parent?: EsTreeNode | null }).parent;
   while (
@@ -89,7 +99,10 @@ const isCallResultCapturedToLocal = (callExpr: EsTreeNode): boolean => {
   if (isNodeOfType(parent, "AssignmentExpression")) {
     return parent.right === (current as unknown as typeof parent.right);
   }
-  return isNodeOfType(parent, "ReturnStatement");
+  return (
+    isNodeOfType(parent, "ReturnStatement") &&
+    (!discardedHelperFunction || findEnclosingFunction(parent) !== discardedHelperFunction)
+  );
 };
 
 // A prop-callback invocation that actually NOTIFIES the parent: it carries
@@ -97,12 +110,74 @@ const isCallResultCapturedToLocal = (callExpr: EsTreeNode): boolean => {
 // discarded rather than captured locally (a captured result is a transform
 // read), and it isn't a data-fetching API (`fetchNextPage(state)` pulls data
 // in, it doesn't mirror state up).
-const isParentNotificationCallbackRef = (analysis: ProgramAnalysis, ref: Reference): boolean => {
+const isParentNotificationCallbackRef = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+  context: RuleContext,
+  discardedHelperFunction: EsTreeNode | null,
+): boolean => {
   if (!isPropCallbackInvocationRef(analysis, ref)) return false;
   const callExpr = getCallExpr(ref);
   if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) return false;
+  const hasUnresolvedCurrentSnapshot = Boolean(
+    ref.resolved?.defs.some((definition) => {
+      const definitionNode = definition.node as unknown as EsTreeNode;
+      return (
+        isNodeOfType(definitionNode, "VariableDeclarator") &&
+        getStaticMemberPropertyName(definitionNode.init as EsTreeNode) === "current"
+      );
+    }),
+  );
+  const hasWholePropsDestructuringDefinition = Boolean(
+    ref.resolved?.defs.some((definition) => {
+      const definitionNode = definition.node as unknown as EsTreeNode;
+      if (
+        !isNodeOfType(definitionNode, "VariableDeclarator") ||
+        !isNodeOfType(definitionNode.id, "ObjectPattern") ||
+        !definitionNode.init
+      ) {
+        return false;
+      }
+      const initializer = stripParenExpression(definitionNode.init as EsTreeNode);
+      if (!isNodeOfType(initializer, "Identifier")) return false;
+      const receiverReference = getRef(analysis, initializer);
+      return Boolean(receiverReference && isWholePropsObjectReference(analysis, receiverReference));
+    }),
+  );
+  const hasPropObjectMemberDefinition = Boolean(
+    ref.resolved?.defs.some((definition) => {
+      const definitionNode = definition.node as unknown as EsTreeNode;
+      if (!isNodeOfType(definitionNode, "VariableDeclarator") || !definitionNode.init) {
+        return false;
+      }
+      const initializer = stripParenExpression(definitionNode.init as EsTreeNode);
+      if (
+        !isNodeOfType(initializer, "MemberExpression") ||
+        !getStaticMemberPropertyName(initializer)
+      ) {
+        return false;
+      }
+      const receiver = stripParenExpression(initializer.object as EsTreeNode);
+      if (!isNodeOfType(receiver, "Identifier")) return false;
+      const receiverReference = getRef(analysis, receiver);
+      return Boolean(receiverReference && isProp(analysis, receiverReference));
+    }),
+  );
+  if (
+    !isProp(analysis, ref) &&
+    !hasUnresolvedCurrentSnapshot &&
+    !hasWholePropsDestructuringDefinition &&
+    !hasPropObjectMemberDefinition &&
+    !getParentCallbackPropNames({
+      analysis,
+      expression: callExpr.callee as EsTreeNode,
+      scopes: context.scopes,
+    })
+  ) {
+    return false;
+  }
   if ((callExpr.arguments ?? []).length === 0) return false;
-  if (isCallResultCapturedToLocal(callExpr)) return false;
+  if (isCallResultCapturedToLocal(callExpr, discardedHelperFunction)) return false;
   const calleeName = getCallCalleeName(callExpr);
   if (calleeName && DATA_FETCHING_CALLBACK_PATTERN.test(calleeName)) return false;
   return true;
@@ -129,6 +204,7 @@ const collectUpstreamStateRefs = (
   ref: Reference,
   stateRefs: Reference[],
   visited: Set<Reference>,
+  scopes: RuleContext["scopes"],
 ): void => {
   if (visited.has(ref)) return;
   visited.add(ref);
@@ -136,7 +212,7 @@ const collectUpstreamStateRefs = (
     stateRefs.push(ref);
     return;
   }
-  if (isCustomHookStateResultReference(analysis, ref)) {
+  if (isCustomHookStateResultReference(analysis, ref, scopes)) {
     stateRefs.push(ref);
     return;
   }
@@ -160,7 +236,7 @@ const collectUpstreamStateRefs = (
       if (isInsideSpreadElement(innerRef.identifier as unknown as EsTreeNode, initializer)) {
         continue;
       }
-      collectUpstreamStateRefs(analysis, innerRef, stateRefs, visited);
+      collectUpstreamStateRefs(analysis, innerRef, stateRefs, visited, scopes);
     }
   }
 };
@@ -176,6 +252,7 @@ const collectPropCallbackBoundStateRefs = (
   analysis: ProgramAnalysis,
   ref: Reference,
   isPropCallbackRef: (innerRef: Reference) => boolean,
+  scopes: RuleContext["scopes"],
 ): Reference[] => {
   const stateRefs: Reference[] = [];
   for (const upRef of getUpstreamRefs(analysis, ref)) {
@@ -188,7 +265,7 @@ const collectPropCallbackBoundStateRefs = (
       if (isFunctionLike(argument as EsTreeNode)) continue;
       for (const argRef of getDownstreamRefs(analysis, argument as EsTreeNode)) {
         if (resolveToFunction(argRef)) continue;
-        collectUpstreamStateRefs(analysis, argRef, stateRefs, new Set());
+        collectUpstreamStateRefs(analysis, argRef, stateRefs, new Set(), scopes);
       }
     }
   }
@@ -198,13 +275,14 @@ const collectPropCallbackBoundStateRefs = (
 const collectDirectCallStateRefs = (
   analysis: ProgramAnalysis,
   callExpression: EsTreeNodeOfType<"CallExpression">,
+  scopes: RuleContext["scopes"],
 ): Reference[] => {
   const stateReferences: Reference[] = [];
   for (const argument of callExpression.arguments) {
     if (isFunctionLike(argument as EsTreeNode)) continue;
     for (const argumentReference of getDownstreamRefs(analysis, argument as EsTreeNode)) {
       if (resolveToFunction(argumentReference)) continue;
-      collectUpstreamStateRefs(analysis, argumentReference, stateReferences, new Set());
+      collectUpstreamStateRefs(analysis, argumentReference, stateReferences, new Set(), scopes);
     }
   }
   return stateReferences;
@@ -214,6 +292,7 @@ const getTransparentWrapperPropReference = (
   analysis: ProgramAnalysis,
   reference: Reference,
   context: RuleContext,
+  discardedHelperFunction: EsTreeNode | null,
 ): Reference | null => {
   for (const definition of reference.resolved?.defs ?? []) {
     const declarator = definition.node as unknown as EsTreeNode;
@@ -233,7 +312,12 @@ const getTransparentWrapperPropReference = (
     if (!callbackArgument) continue;
     const callbackReferences = getDownstreamRefs(analysis, callbackArgument);
     const callbackReference = callbackReferences.find((candidateReference) =>
-      isPropCallbackInvocationRef(analysis, candidateReference),
+      isParentNotificationCallbackRef(
+        analysis,
+        candidateReference,
+        context,
+        discardedHelperFunction,
+      ),
     );
     if (callbackReference) return callbackReference;
     const propReference = callbackReferences.find(
@@ -339,10 +423,24 @@ const getDirectLocalEffectHelper = (
   effectFunction: EsTreeNode,
   context: RuleContext,
 ): EsTreeNode | null => {
-  const helperFunction = resolveExactLocalFunction(
+  const exactHelperFunction = resolveExactLocalFunction(
     callExpression.callee as EsTreeNode,
     context.scopes,
   );
+  const callee = stripParenExpression(callExpression.callee as EsTreeNode);
+  const binding = isNodeOfType(callee, "Identifier")
+    ? findVariableInitializer(callExpression, callee.name)
+    : null;
+  const wrappedCallback = binding?.initializer
+    ? getTransparentReactCallbackWrapperArgument(
+        binding.initializer,
+        context.scopes.symbolFor(callee),
+        context.scopes,
+      )
+    : null;
+  const helperFunction =
+    exactHelperFunction ??
+    (wrappedCallback && isFunctionLike(wrappedCallback) ? wrappedCallback : null);
   if (!helperFunction) return null;
   let ancestor = callExpression.parent as EsTreeNode | null | undefined;
   while (ancestor && ancestor !== effectFunction) {
@@ -379,6 +477,10 @@ export const noPassLiveStateToParent = defineRule({
         const callExpr = getCallExpr(ref);
         if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
         const directLocalEffectHelper = getDirectLocalEffectHelper(callExpr, effectFn, context);
+        const discardedDirectLocalEffectHelper =
+          directLocalEffectHelper && !isCallResultCapturedToLocal(callExpr)
+            ? directLocalEffectHelper
+            : null;
         const callGraphReferences = directLocalEffectHelper
           ? [ref, ...getDownstreamRefs(analysis, directLocalEffectHelper)]
           : [ref];
@@ -387,6 +489,16 @@ export const noPassLiveStateToParent = defineRule({
           expression: callExpr.callee as EsTreeNode,
           scopes: context.scopes,
         });
+        if (
+          !resolvedCallbackPropNames &&
+          isProvenReactRefCurrentSnapshotExpression({
+            analysis,
+            expression: callExpr.callee as EsTreeNode,
+            scopes: context.scopes,
+          })
+        ) {
+          continue;
+        }
         const callExpressionRoot = findTransparentExpressionRoot(callExpr);
         const resolvedCallbackIsNotification = Boolean(
           resolvedCallbackPropNames &&
@@ -411,12 +523,22 @@ export const noPassLiveStateToParent = defineRule({
         // state up.
         const propCallbackRefs = callGraphReferences.flatMap((callGraphReference) =>
           getEventualCallRefsTo(analysis, callGraphReference, (innerRef) =>
-            isParentNotificationCallbackRef(analysis, innerRef),
+            isParentNotificationCallbackRef(
+              analysis,
+              innerRef,
+              context,
+              discardedDirectLocalEffectHelper,
+            ),
           ),
         );
         const transparentPropReference =
           propCallbackRefs.length === 0
-            ? getTransparentWrapperPropReference(analysis, ref, context)
+            ? getTransparentWrapperPropReference(
+                analysis,
+                ref,
+                context,
+                discardedDirectLocalEffectHelper,
+              )
             : null;
         if (
           propCallbackRefs.length === 0 &&
@@ -469,10 +591,19 @@ export const noPassLiveStateToParent = defineRule({
 
         const stateArgRefs =
           transparentPropReference || notificationCallbackPropNames
-            ? collectDirectCallStateRefs(analysis, callExpr)
+            ? collectDirectCallStateRefs(analysis, callExpr, context.scopes)
             : callGraphReferences.flatMap((callGraphReference) =>
-                collectPropCallbackBoundStateRefs(analysis, callGraphReference, (innerRef) =>
-                  isParentNotificationCallbackRef(analysis, innerRef),
+                collectPropCallbackBoundStateRefs(
+                  analysis,
+                  callGraphReference,
+                  (innerRef) =>
+                    isParentNotificationCallbackRef(
+                      analysis,
+                      innerRef,
+                      context,
+                      discardedDirectLocalEffectHelper,
+                    ),
+                  context.scopes,
                 ),
               );
         const handsSetterNamedCallbackData = propCallbackRefs.some(

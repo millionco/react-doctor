@@ -250,6 +250,41 @@ describe("mergeAndFilterDiagnostics — ignore rules / files / overrides", () =>
     ).toBe(true);
   });
 
+  it("ignore.overrides matches legacy rule aliases", () => {
+    const diagnostics = [
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "jsx-key",
+        filePath: "components/legacy/List.tsx",
+      }),
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "jsx-key",
+        filePath: "components/current/List.tsx",
+      }),
+    ];
+    const config: ReactDoctorConfig = {
+      ignore: {
+        overrides: [
+          {
+            files: ["components/legacy/**"],
+            rules: ["react/jsx-key"],
+          },
+        ],
+      },
+    };
+
+    const filtered = filterIgnoredDiagnostics(
+      diagnostics,
+      config,
+      TEST_ROOT_DIRECTORY,
+      testReadFileLines,
+    );
+
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].filePath).toBe("components/current/List.tsx");
+  });
+
   it("ignore.overrides with no rules list suppresses every rule for the matched files", () => {
     const diagnostics = [
       createDiagnostic({ plugin: "react", rule: "no-danger", filePath: "src/legacy/A.tsx" }),

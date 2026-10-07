@@ -78,7 +78,7 @@ const isNoOpInlineHandlerRemoval = (
   );
 };
 
-export const isReleaseLikeCall = (
+const isReleaseLikeCall = (
   node: EsTreeNode,
   knownCleanupFunctionNames: ReadonlySet<string>,
   knownBoundSubscriptionNames: ReadonlySet<string>,
@@ -131,7 +131,7 @@ const isIteratorCallbackArgument = (node: EsTreeNode): boolean => {
   );
 };
 
-export const containsReleaseLikeCall = (
+const containsReleaseLikeCall = (
   node: EsTreeNode,
   knownCleanupFunctionNames: ReadonlySet<string>,
   knownBoundSubscriptionNames: ReadonlySet<string>,
@@ -150,7 +150,7 @@ export const containsReleaseLikeCall = (
   return didFindRelease;
 };
 
-export const isCleanupFunctionLike = (
+const isCleanupFunctionLike = (
   node: EsTreeNode,
   knownCleanupFunctionNames: ReadonlySet<string>,
   knownBoundSubscriptionNames: ReadonlySet<string>,

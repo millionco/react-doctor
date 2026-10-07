@@ -1,3 +1,4 @@
+import path from "node:path";
 import { render } from "ink-testing-library";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { WorkspacePackage } from "@react-doctor/core";
@@ -8,7 +9,6 @@ const PACKAGES: WorkspacePackage[] = [
   { name: "docs", directory: "/repo/apps/docs" },
 ];
 
-// ink-testing-library needs a tick for effects (useInput wiring) to flush.
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 20));
 
 const DOWN_ARROW = "\u001b[B";
@@ -16,6 +16,22 @@ const ENTER = "\r";
 const ESC = "\u001b";
 
 describe("ProjectSelect", () => {
+  it("omits a relative directory that duplicates the project name", async () => {
+    const rootDirectory = path.resolve("repo");
+    const packages = [
+      { name: "same-next", directory: path.join(rootDirectory, "same-next") },
+      { name: "web", directory: path.join(rootDirectory, "apps", "web") },
+    ];
+    const { lastFrame, unmount } = render(
+      <ProjectSelect packages={packages} rootDirectory={rootDirectory} onSubmit={vi.fn()} />,
+    );
+    await flush();
+
+    expect(lastFrame()?.match(/same-next/g)).toHaveLength(1);
+    expect(lastFrame()).toContain(path.join("apps", "web"));
+    unmount();
+  });
+
   it("scans only the highlighted project when Enter is pressed with nothing checked", async () => {
     const onSubmit = vi.fn();
     const { stdin, unmount } = render(
@@ -143,13 +159,11 @@ describe("ProjectSelect", () => {
     );
     await flush();
 
-    // Outside search mode, letters are commands — typing "doc" doesn't filter.
     stdin.write("doc");
     await flush();
     expect(lastFrame()).toContain("web");
     expect(lastFrame()).toContain("docs");
 
-    // Enter search, filter to "doc", confirm, then scan the surviving match.
     stdin.write("/");
     await flush();
     stdin.write("doc");
@@ -177,13 +191,11 @@ describe("ProjectSelect", () => {
     await flush();
     expect(lastFrame()).toContain("2/2");
 
-    // First Esc clears the selection (no cancel yet)...
     stdin.write(ESC);
     await flush();
     expect(onSubmit).not.toHaveBeenCalled();
     expect(lastFrame()).toContain("0/2");
 
-    // ...a second Esc cancels.
     stdin.write(ESC);
     await flush();
     expect(onSubmit).toHaveBeenCalledWith([]);
@@ -204,6 +216,33 @@ describe("ProjectSelect", () => {
     stdout.emit("resize");
     await flush();
 
+    expect(lastFrame()?.split("\n")).toHaveLength(5);
+    unmount();
+  });
+
+  it("keeps the highlighted project visible when the terminal shrinks", async () => {
+    const onSubmit = vi.fn();
+    const packages = Array.from({ length: 25 }, (_, packageIndex) => ({
+      name: `package-${String(packageIndex).padStart(2, "0")}`,
+      directory: `/repo/packages/package-${String(packageIndex).padStart(2, "0")}`,
+    }));
+    const { stdin, stdout, lastFrame, unmount } = render(
+      <ProjectSelect packages={packages} rootDirectory="/repo" onSubmit={onSubmit} />,
+    );
+    Object.defineProperty(stdout, "rows", { get: () => 30, configurable: true });
+    stdout.emit("resize");
+    await flush();
+    for (let packageIndex = 0; packageIndex < 15; packageIndex += 1) {
+      stdin.write("j");
+      await flush();
+    }
+
+    Object.defineProperty(stdout, "rows", { get: () => 5, configurable: true });
+    stdout.emit("resize");
+    await flush();
+
+    expect(lastFrame()).toContain("package-15");
+    expect(lastFrame()).toMatch(/[›❯>] (?:◯|\( \)) package-15/);
     expect(lastFrame()?.split("\n")).toHaveLength(5);
     unmount();
   });

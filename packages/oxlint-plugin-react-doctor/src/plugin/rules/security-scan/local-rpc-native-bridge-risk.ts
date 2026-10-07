@@ -13,7 +13,7 @@ export const localRpcNativeBridgeRisk = defineRule({
   scan: scanByPattern({
     shouldScan: (file) => isProductionSourcePath(file.relativePath),
     pattern:
-      /\b(?:127\.0\.0\.1|localhost|Access-Control-Allow-Origin|websocket|WebSocket)\b[\s\S]{0,700}(?:\b(?:UpdateApp|InstallApp|child_process)\b|(?<![.\w$])(?:exec(?:File)?(?:Sync)?|spawn(?:Sync)?)\s*\()/i,
+      /\b(?:Access-Control-Allow-Origin|websocket|WebSocket|(?:127\.0\.0\.1|localhost)(?=[\s\S]{0,700}\b(?:UpdateApp|InstallApp)\b)|(?:127\.0\.0\.1|localhost)[\s\S]{0,350}\b(?:onmessage|message|request|req)\b)\b[\s\S]{0,700}(?:\b(?:UpdateApp|InstallApp|child_process)\b|(?<![.\w$])(?:exec(?:File)?(?:Sync)?|spawn(?:Sync)?)\s*\()/i,
     message:
       "Code appears to bridge browser code to localhost/native capabilities with weak origin or update/install checks.",
   }),

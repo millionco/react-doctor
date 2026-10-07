@@ -8,6 +8,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const MESSAGE =
   "Your styles don't render because you passed the `style` prop a string instead of an object.";
@@ -151,30 +152,38 @@ export const stylePropObject = defineRule({
   category: "Correctness",
   create: (context) => {
     const { allow } = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const allowSet = new Set(allow);
-    let fileIsProvenSolidJsx = false;
+    let programNode: EsTreeNodeOfType<"Program"> | null = null;
+    let fileIsProvenSolidJsx: boolean | null = null;
+
+    const isFileProvenSolidJsx = (): boolean => {
+      if (fileIsProvenSolidJsx !== null) return fileIsProvenSolidJsx;
+      if (!programNode) return false;
+      const runtimeImports = collectJsxRuntimeImports(programNode);
+      let hasSolidSyntaxMarker = false;
+      if (!runtimeImports.hasReactRuntime && !runtimeImports.hasSolidRuntime) {
+        walkAst(programNode, (descendantNode) => {
+          if (
+            isNodeOfType(descendantNode, "JSXOpeningElement") &&
+            hasObjectValuedClassList(descendantNode)
+          ) {
+            hasSolidSyntaxMarker = true;
+            return false;
+          }
+        });
+      }
+      fileIsProvenSolidJsx =
+        !runtimeImports.hasReactRuntime && (runtimeImports.hasSolidRuntime || hasSolidSyntaxMarker);
+      return fileIsProvenSolidJsx;
+    };
 
     return {
       Program: (node: EsTreeNodeOfType<"Program">) => {
-        const runtimeImports = collectJsxRuntimeImports(node);
-        let hasSolidSyntaxMarker = false;
-        if (!runtimeImports.hasReactRuntime && !runtimeImports.hasSolidRuntime) {
-          walkAst(node, (descendantNode) => {
-            if (
-              isNodeOfType(descendantNode, "JSXOpeningElement") &&
-              hasObjectValuedClassList(descendantNode)
-            ) {
-              hasSolidSyntaxMarker = true;
-              return false;
-            }
-          });
-        }
-        fileIsProvenSolidJsx =
-          !runtimeImports.hasReactRuntime &&
-          (runtimeImports.hasSolidRuntime || hasSolidSyntaxMarker);
+        programNode = node;
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (fileIsProvenSolidJsx) return;
+        if (isFileProvenSolidJsx()) return;
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
         const elementName = resolveJsxElementType(node);
         if (elementName && allowSet.has(elementName)) return;
@@ -187,7 +196,7 @@ export const stylePropObject = defineRule({
         if (elementName) {
           const firstCharCode = elementName.charCodeAt(0);
           const isIntrinsic = firstCharCode >= 97 && firstCharCode <= 122;
-          if (!isIntrinsic) return;
+          if (shouldUseCuratedBehavior && !isIntrinsic) return;
         }
         for (const attribute of node.attributes) {
           if (!isNodeOfType(attribute, "JSXAttribute")) continue;
@@ -212,8 +221,8 @@ export const stylePropObject = defineRule({
         }
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (fileIsProvenSolidJsx) return;
         if (!isCreateElementCall(node)) return;
+        if (isFileProvenSolidJsx()) return;
         const firstArgument = node.arguments[0];
         if (!firstArgument) return;
         let elementName: string | null = null;

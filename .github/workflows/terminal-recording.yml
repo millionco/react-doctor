@@ -1,0 +1,109 @@
+name: Terminal Recording
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terminal-recording-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  record:
+    name: Record interactive CLI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      artifact-url: ${{ steps.upload.outputs.artifact-url }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+
+      - name: Install package runner
+        run: npm install --global @antfu/ni@30.3.0
+
+      - name: Install dependencies
+        run: ni --frozen-lockfile --prefer-offline
+
+      - name: Build packages
+        run: nr build
+
+      - name: Install Terminal Control runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+          ni --global @kitlangton/terminal-control-linux-x64-gnu@0.6.0
+          termctrl --version
+
+      - name: Run interactive terminal E2E
+        run: bash scripts/terminal-e2e.sh
+
+      - name: Upload recording artifact
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: terminal-recording-${{ github.event.pull_request.number }}
+          path: |
+            artifacts/react-doctor-terminal.mp4
+            artifacts/react-doctor-terminal.png
+          if-no-files-found: error
+          retention-days: 7
+
+  comment:
+    name: Post recording to PR
+    needs: record
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Upsert terminal recording comment
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          ARTIFACT_URL: ${{ needs.record.outputs.artifact-url }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        with:
+          script: |
+            const marker = "<!-- react-doctor:terminal-recording -->";
+            const body = [
+              marker,
+              "## Interactive terminal E2E",
+              "",
+              `Terminal Control verified the built CLI at \`${process.env.COMMIT_SHA.slice(0, 7)}\` in a real PTY:`,
+              "",
+              "- selected a project interactively and observed `Scanning...` before the three-second Git delay completed",
+              "- waited for the clean result and exercised the compact report",
+              "- opened copy context and the GitHub Actions confirmation, then cancelled safely",
+              "",
+              `[Download the edited MP4 and PNG evidence](${process.env.ARTIFACT_URL})`,
+            ].join("\n");
+            const { owner, repo } = context.repo;
+            const issueNumber = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: issueNumber,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            try {
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+              }
+            } catch (error) {
+              core.warning(`Could not upsert the terminal recording comment: ${error.message}`);
+            }

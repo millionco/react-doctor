@@ -169,7 +169,7 @@ describe("resolveEffectiveRuleSeverity", () => {
     expect(result).toEqual({ value: "warn", source: "rule" });
   });
 
-  it("applies a compiler-cleanup bucket override below rules and categories", () => {
+  it("keeps retired compiler advice off unless its ID is explicitly configured", () => {
     const bucketEntry = findRuleInCatalog(
       catalog,
       "react-doctor/react-compiler-no-manual-memoization",
@@ -177,7 +177,7 @@ describe("resolveEffectiveRuleSeverity", () => {
     if (!bucketEntry) throw new Error("Expected the compiler-cleanup rule in the catalog");
     expect(
       resolveEffectiveRuleSeverity({ buckets: { "compiler-cleanup": "off" } }, bucketEntry),
-    ).toEqual({ value: "off", source: "bucket" });
+    ).toEqual({ value: "off", source: "default" });
     // A per-rule override still wins over the bucket.
     expect(
       resolveEffectiveRuleSeverity(

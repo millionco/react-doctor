@@ -1,0 +1,411 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit b800aea94cd5a840e3761ec5a5343fe6232b5b7e904050d1f25265e9c2662998
+/**
+ * DOM heads-up display and the replay-loop overlays.
+ *
+ * The HUD's job is to make the deterministic simulation legible: what the risk
+ * is here, what it will be in each direction next tick, which pylon is about to
+ * surge, how much of the carved tunnel is left, and how far the run is from
+ * finishing.
+ */
+
+import { MAX_INTEGRITY, type Forecast, type GameState } from "../game/state";
+import { ticksUntilSurge } from "../game/field";
+import { clamp01, mix } from "../core/rng";
+
+export interface ChipSpec {
+  key: string;
+  label: string;
+  /** DIRS index, or -1 for hold. */
+  dir: number;
+}
+
+export const CHIPS: ChipSpec[] = [
+  { key: "W", label: "FWD", dir: -10 },
+  { key: "S", label: "BACK", dir: -11 },
+  { key: "A", label: "LEFT", dir: -12 },
+  { key: "D", label: "RIGHT", dir: -13 },
+  { key: "E", label: "UP", dir: 2 },
+  { key: "Q", label: "DOWN", dir: 3 },
+  { key: "␣", label: "HOLD", dir: -1 },
+];
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+function riskColor(threat: number): string {
+  const t = clamp01(threat / 0.85);
+  if (t < 0.5) {
+    const k = t / 0.5;
+    return `rgb(${Math.round(mix(84, 255, k))}, ${Math.round(mix(255, 210, k))}, ${Math.round(
+      mix(178, 74, k),
+    )})`;
+  }
+  const k = (t - 0.5) / 0.5;
+  return `rgb(${Math.round(mix(255, 255, k))}, ${Math.round(mix(210, 90, k))}, ${Math.round(
+    mix(74, 69, k),
+  )})`;
+}
+
+export class Hud {
+  root: HTMLElement;
+  private integrityFill: HTMLElement;
+  private integrityGhost: HTMLElement;
+  private integrityText: HTMLElement;
+  private tunnelFill: HTMLElement;
+  private riskFill: HTMLElement;
+  private shelterText: HTMLElement;
+  private progressFill: HTMLElement;
+  private riskText: HTMLElement;
+  private pulseText: HTMLElement;
+  private tickText: HTMLElement;
+  private objLabel: HTMLElement;
+  private objDist: HTMLElement;
+  private pips: HTMLElement;
+  private alerts: HTMLElement;
+  private surgeList: HTMLElement;
+  private chips: Array<{ root: HTMLElement; gauge: HTMLElement; val: HTMLElement }> = [];
+  private overlay: HTMLElement;
+  private overlayTitle: HTMLElement;
+  private overlayTag: HTMLElement;
+  private overlayBody: HTMLElement;
+  private overlayStats: HTMLElement;
+  private overlayActions: HTMLElement;
+  private loader: HTMLElement;
+  private muteBtn: HTMLButtonElement;
+  private ghostIntegrity = MAX_INTEGRITY;
+
+  onPrimary: () => void = () => {};
+  onSecondary: () => void = () => {};
+  onToggleMute: () => void = () => {};
+  onChipClick: (dir: number) => void = () => {};
+
+  constructor() {
+    this.root = el("div");
+    this.root.id = "hud";
+
+    /* brand */
+    const topLeft = el("div", "hud-row top-left");
+    const brand = el("div", "panel");
+    brand.id = "brand";
+    brand.innerHTML = `<div class="name">SAFE CORE</div><div class="sub">VOLUMETRIC THREAT LATTICE</div>`;
+    const vitals = el("div", "panel");
+    vitals.id = "vitals";
+    vitals.innerHTML = `
+      <div class="meter-label"><span>CORE INTEGRITY</span><b id="integrityText">100</b></div>
+      <div class="bar"><i id="integrityGhost"></i><i id="integrityFill"></i></div>
+      <div class="meter-label" style="margin-top:9px"><span>LOCAL RISK</span><b id="riskText">0.00</b></div>
+      <div class="bar"><i id="riskFill"></i></div>
+      <div class="meter-label" style="margin-top:9px"><span>TUNNEL SHELTER</span><b id="shelterText">100%</b></div>
+      <div class="bar"><i id="tunnelFill"></i></div>
+      <div class="meter-label" style="margin-top:9px"><span>RUN PROGRESS</span><b id="tickText">0/0</b></div>
+      <div class="bar"><i id="progressFill"></i></div>
+      <div class="substat"><span>OVERLOAD <b id="pulseText">3</b></span><span id="seedText">SEED —</span></div>
+    `;
+    topLeft.append(brand, vitals);
+
+    /* objective */
+    const topCenter = el("div", "hud-row top-center");
+    const objective = el("div", "panel");
+    objective.id = "objective";
+    objective.innerHTML = `
+      <div class="pips" id="pips"></div>
+      <div><div class="label" id="objLabel">NEAREST ANCHOR</div><div class="dist" id="objDist">— CELLS</div></div>
+    `;
+    const alerts = el("div");
+    alerts.id = "alerts";
+    topCenter.append(objective, alerts);
+
+    /* surges + mute */
+    const topRight = el("div", "hud-row top-right");
+    const surges = el("div", "panel");
+    surges.id = "surges";
+    surges.innerHTML = `<div class="title">PYLON SCHEDULE</div><div id="surgeList"></div>`;
+    this.muteBtn = el("button", "btn") as HTMLButtonElement;
+    this.muteBtn.textContent = "SOUND ON";
+    this.muteBtn.addEventListener("click", () => this.onToggleMute());
+    topRight.append(surges, this.muteBtn);
+
+    /* forecast */
+    const bottomCenter = el("div", "hud-row bottom-center");
+    const forecast = el("div", "panel");
+    forecast.id = "forecast";
+    for (const spec of CHIPS) {
+      const chip = el("div", "chip");
+      chip.innerHTML = `<div class="key">${spec.key}</div><div class="dir">${spec.label}</div><div class="gauge"><i></i></div><div class="val">—</div>`;
+      chip.style.pointerEvents = "auto";
+      chip.style.cursor = "pointer";
+      chip.addEventListener("click", () => this.onChipClick(spec.dir));
+      forecast.append(chip);
+      this.chips.push({
+        root: chip,
+        gauge: chip.querySelector(".gauge i") as HTMLElement,
+        val: chip.querySelector(".val") as HTMLElement,
+      });
+    }
+    bottomCenter.append(forecast);
+
+    /* legend */
+    const bottomLeft = el("div", "hud-row bottom-left");
+    const legend = el("div", "panel");
+    legend.id = "legend";
+    legend.innerHTML = `
+      <div><span class="k">W</span><span class="k">A</span><span class="k">S</span><span class="k">D</span> move (camera relative)</div>
+      <div><span class="k">E</span>/<span class="k">Q</span> ascend / descend &nbsp; <span class="k">␣</span> hold</div>
+      <div><span class="k">F</span> overload pulse &nbsp; <span class="k">R</span> restart</div>
+      <div>drag orbit &nbsp; wheel zoom &nbsp; click a probe</div>
+    `;
+    bottomLeft.append(legend);
+
+    this.root.append(topLeft, topCenter, topRight, bottomCenter, bottomLeft);
+
+    /* overlay */
+    this.overlay = el("div");
+    this.overlay.id = "overlay";
+    const card = el("div", "panel card");
+    this.overlayTitle = el("h1");
+    this.overlayTag = el("div", "tag");
+    this.overlayBody = el("p");
+    this.overlayStats = el("div", "stats");
+    this.overlayActions = el("div", "actions");
+    const keys = el("div", "keys", "ENTER / CLICK TO CONFIRM &nbsp;·&nbsp; R TO RESTART");
+    card.append(this.overlayTitle, this.overlayTag, this.overlayBody, this.overlayStats, this.overlayActions, keys);
+    this.overlay.append(card);
+
+    this.loader = el("div");
+    this.loader.id = "loader";
+    this.loader.innerHTML =
+      `<div class="ring"></div><div id="loaderLabel">AUTHORING SURFACES</div>` +
+      `<div class="bar" style="width:190px"><i id="loaderFill" style="background:linear-gradient(90deg,#2a8ea8,#6fe8ff)"></i></div>`;
+
+    document.body.append(this.root, this.overlay, this.loader);
+
+    this.integrityFill = document.getElementById("integrityFill")!;
+    this.integrityGhost = document.getElementById("integrityGhost")!;
+    this.integrityText = document.getElementById("integrityText")!;
+    this.tunnelFill = document.getElementById("tunnelFill")!;
+    this.riskFill = document.getElementById("riskFill")!;
+    this.shelterText = document.getElementById("shelterText")!;
+    this.progressFill = document.getElementById("progressFill")!;
+    this.riskText = document.getElementById("riskText")!;
+    this.pulseText = document.getElementById("pulseText")!;
+    this.tickText = document.getElementById("tickText")!;
+    this.objLabel = document.getElementById("objLabel")!;
+    this.objDist = document.getElementById("objDist")!;
+    this.pips = document.getElementById("pips")!;
+    this.alerts = alerts;
+    this.surgeList = document.getElementById("surgeList")!;
+  }
+
+  /** Report procedural-generation progress on the loading screen. */
+  setLoaderStep(label: string, done: number, total: number): void {
+    const text = document.getElementById("loaderLabel");
+    const fill = document.getElementById("loaderFill");
+    if (text) text.textContent = label;
+    if (fill) fill.style.width = `${Math.round((done / Math.max(1, total)) * 100)}%`;
+  }
+
+  hideLoader(): void {
+    if (!this.loader.isConnected) return;
+    this.loader.classList.add("hide");
+    const drop = () => this.loader.remove();
+    this.loader.addEventListener("transitionend", drop, { once: true });
+    window.setTimeout(drop, 900);
+  }
+
+  setMuteLabel(muted: boolean): void {
+    this.muteBtn.textContent = muted ? "SOUND OFF" : "SOUND ON";
+  }
+
+  private alertTimers = new Set<number>();
+
+  alert(message: string, kind: "bad" | "good" | "warn" = "bad", ms = 2200): void {
+    const node = el("div", `alert ${kind === "bad" ? "" : kind}`.trim(), message);
+    this.alerts.append(node);
+    const timer = window.setTimeout(() => {
+      node.style.transition = "opacity .35s ease";
+      node.style.opacity = "0";
+      window.setTimeout(() => node.remove(), 400);
+      this.alertTimers.delete(timer);
+    }, ms);
+    this.alertTimers.add(timer);
+    while (this.alerts.children.length > 3) this.alerts.firstElementChild?.remove();
+  }
+
+  /** Rebuild the anchor pips when a new run starts. */
+  setAnchorCount(n: number): void {
+    this.pips.innerHTML = "";
+    for (let i = 0; i < n; i++) this.pips.append(el("div", "pip"));
+  }
+
+  setSeed(seed: number): void {
+    const node = document.getElementById("seedText");
+    if (node) node.textContent = `SEED ${seed.toString(36).toUpperCase().slice(-5)}`;
+  }
+
+  update(state: GameState, chipForecasts: Array<Forecast | null>, activeChip: number, dt: number): void {
+    const pct = clamp01(state.integrity / MAX_INTEGRITY) * 100;
+    this.integrityFill.style.width = `${pct}%`;
+    this.ghostIntegrity += (state.integrity - this.ghostIntegrity) * Math.min(1, dt * 1.6);
+    this.integrityGhost.style.width = `${clamp01(this.ghostIntegrity / MAX_INTEGRITY) * 100}%`;
+    this.integrityText.textContent = String(Math.max(0, Math.round(state.integrity)));
+    this.integrityFill.style.background =
+      pct > 55
+        ? "linear-gradient(90deg,#35f0c0,#7ff4ff)"
+        : pct > 25
+          ? "linear-gradient(90deg,#ffb03a,#ffe08a)"
+          : "linear-gradient(90deg,#ff4a35,#ff9a7a)";
+
+    const risk = state.threatAtCore();
+    this.riskFill.style.width = `${Math.min(100, (risk / 0.9) * 100)}%`;
+    this.riskFill.style.background = riskColor(risk);
+    this.riskText.textContent = risk.toFixed(2);
+    this.riskText.style.color = riskColor(risk);
+
+    const shelter = clamp01(state.tunnelIntegrity());
+    this.tunnelFill.style.width = `${shelter * 100}%`;
+    this.shelterText.textContent = `${Math.round(shelter * 100)}%`;
+
+    const progress = clamp01(state.ticks / Math.max(1, state.level.par));
+    this.progressFill.style.width = `${progress * 100}%`;
+    this.tickText.textContent = `${state.ticks}/${state.level.par}`;
+
+    this.pulseText.textContent = String(state.pulses);
+
+    const obj = state.objective();
+    this.objLabel.textContent = obj.label;
+    this.objDist.textContent = `${obj.distance} CELLS · ${state.anchorsRemaining} ANCHOR${
+      state.anchorsRemaining === 1 ? "" : "S"
+    } LEFT`;
+    const pipNodes = this.pips.children;
+    for (let i = 0; i < pipNodes.length; i++) {
+      pipNodes[i]!.classList.toggle("on", !!state.anchorsTaken[i]);
+    }
+
+    for (let i = 0; i < this.chips.length; i++) {
+      const chip = this.chips[i]!;
+      const f = chipForecasts[i];
+      const legal = !!f && f.legal;
+      chip.root.classList.toggle("illegal", !legal);
+      chip.root.classList.toggle("active", activeChip === i);
+      if (!f) {
+        chip.gauge.style.width = "0%";
+        chip.val.textContent = "—";
+        continue;
+      }
+      if (!legal) {
+        chip.gauge.style.width = "0%";
+        chip.val.textContent = "SOLID";
+        continue;
+      }
+      const g = clamp01(f.threat / 0.9);
+      chip.gauge.style.width = `${Math.max(4, g * 100)}%`;
+      chip.gauge.style.background = riskColor(f.threat);
+      chip.val.textContent = f.damage > 0.05 ? `-${f.damage.toFixed(0)}` : "SAFE";
+      chip.val.style.color = f.damage > 0.05 ? riskColor(f.threat) : "var(--safe)";
+    }
+
+    // pylon surge schedule
+    const pylons = state.level.grid.pylons;
+    if (this.surgeList.children.length !== pylons.length) {
+      this.surgeList.innerHTML = "";
+      pylons.forEach(() => {
+        const row = el("div", "surge");
+        row.innerHTML = `<div class="dot"></div><div class="track"><i></i></div><span class="t">—</span>`;
+        this.surgeList.append(row);
+      });
+    }
+    pylons.forEach((p, i) => {
+      const row = this.surgeList.children[i] as HTMLElement;
+      const until = ticksUntilSurge(p, state.field.tick);
+      const charge = 1 - clamp01(until / p.period);
+      row.className = `surge ${until === 0 ? "now" : until <= 1 ? "soon" : ""}`.trim();
+      (row.querySelector(".track i") as HTMLElement).style.width = `${charge * 100}%`;
+      (row.querySelector(".t") as HTMLElement).textContent = until === 0 ? "FIRING" : `T-${until}`;
+    });
+  }
+
+  showTitle(state: GameState, onStart: () => void): void {
+    this.onPrimary = onStart;
+    this.overlayTitle.className = "";
+    this.overlayTitle.textContent = "SAFE CORE";
+    this.overlayTag.textContent = "STABILISE THE LATTICE · EXTRACT THE CORE";
+    this.overlayBody.innerHTML = `
+      A vulnerable core drifts inside a <b>volumetric threat field</b>. Risk diffuses between cells,
+      settles downward under its own weight, and surges from the pylons on a fixed, readable schedule.
+      <br><br>
+      Every cell you occupy is <b>suppressed</b> — you carve a temporary safe tunnel behind you. That
+      shelter decays each tick, and the risk it displaces is pushed into the surrounding cells, so a
+      corridor makes its own walls more dangerous.
+      <br><br>
+      The simulation is deterministic, so the six probes around the core show the <b>exact</b> risk each
+      move will produce. Stabilise all <b>${state.level.anchors.length} anchors</b>, then reach the extraction gate.
+    `;
+    this.overlayStats.innerHTML = "";
+    this.overlayActions.innerHTML = "";
+    const btn = el("button", "btn", "BEGIN RUN");
+    btn.addEventListener("click", () => this.onPrimary());
+    this.overlayActions.append(btn);
+    this.overlay.classList.add("show");
+  }
+
+  showResult(state: GameState, won: boolean, onRestart: () => void, onNewLattice: () => void): void {
+    this.onPrimary = onRestart;
+    this.onSecondary = onNewLattice;
+    this.overlayTitle.className = won ? "won" : "lost";
+    this.overlayTitle.textContent = won ? "EXTRACTED" : "CORE LOST";
+    this.overlayTag.textContent = won
+      ? "THE LATTICE IS STABLE"
+      : "INTEGRITY REACHED ZERO INSIDE THE FIELD";
+    this.overlayBody.innerHTML = won
+      ? `The core cleared the lattice with <b>${Math.round(state.integrity)}</b> integrity intact after
+         <b>${state.ticks}</b> ticks against a par of <b>${state.level.par}</b>.`
+      : `The field closed faster than the tunnel could be carved. Overload pulses buy space when a
+         surge is inbound — and the probes always tell the truth about the next tick.`;
+    this.overlayStats.innerHTML = "";
+    const stats: Array<[string, string]> = won
+      ? [
+          [state.rating(), "RATING"],
+          [String(state.ticks), "TICKS"],
+          [String(Math.round(state.integrity)), "INTEGRITY"],
+          [state.peakThreat.toFixed(2), "PEAK RISK"],
+        ]
+      : [
+          [`${state.anchorsTaken.filter(Boolean).length}/${state.level.anchors.length}`, "ANCHORS"],
+          [String(state.ticks), "TICKS"],
+          [String(Math.round(state.damageTaken)), "DAMAGE"],
+          [state.peakThreat.toFixed(2), "PEAK RISK"],
+        ];
+    for (const [v, l] of stats) {
+      const node = el("div", "stat");
+      node.innerHTML = `<div class="v">${v}</div><div class="l">${l}</div>`;
+      this.overlayStats.append(node);
+    }
+    this.overlayActions.innerHTML = "";
+    const again = el("button", "btn", "RETRY LATTICE");
+    again.addEventListener("click", () => this.onPrimary());
+    const fresh = el("button", "btn", "NEW LATTICE");
+    fresh.addEventListener("click", () => this.onSecondary());
+    this.overlayActions.append(again, fresh);
+    this.overlay.classList.add("show");
+  }
+
+  hideOverlay(): void {
+    this.overlay.classList.remove("show");
+  }
+
+  get overlayVisible(): boolean {
+    return this.overlay.classList.contains("show");
+  }
+}

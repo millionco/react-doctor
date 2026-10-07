@@ -15,7 +15,7 @@ import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import { isNodeOnUnconditionalPath } from "../../utils/has-static-property-write-before.js";
+import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
 import { getSymbolWriteExecutionPathsBefore } from "../../utils/has-symbol-write-before.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isContextProviderJsxName } from "../../utils/is-context-provider-jsx-name.js";
@@ -23,7 +23,6 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
-import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -364,7 +363,6 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
   recommendation:
     "Memoize the context value in component scope so consumers do not redraw every render. For mapped providers, extract each item into a child component and memoize there.",
   create: (context: RuleContext) => {
-    const isTestlikeFile = isTestlikeFilename(context.filename);
     const isProvenSynchronousNode = (node: EsTreeNode): boolean =>
       context.cfg.isUnconditionalFromEntry(node) && isNodeReachableWithinFunction(node, context);
     let contextBindings: ReadonlySet<number> = new Set<number>();
@@ -373,7 +371,6 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
         contextBindings = collectContextBindings(node, context.scopes);
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (isTestlikeFile) return;
         if (!isContextProviderJsxName(node.name, contextBindings, context.scopes)) return;
         const renderFunction = findEnclosingFunction(node);
         if (!renderFunction) return;

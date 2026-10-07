@@ -73,11 +73,6 @@ const resolveTanstackHookNameFromInitializer = (
   return resolveTanstackHookName(resolvedInitializer, scopes, hookNames);
 };
 
-export const resolveTanstackQueryHookName = (
-  callExpression: EsTreeNodeOfType<"CallExpression">,
-  scopes: ScopeAnalysis,
-): string | null => resolveTanstackHookName(callExpression, scopes, TANSTACK_QUERY_HOOKS);
-
 export const resolveTanstackQueryHookNameFromInitializer = (
   initializer: EsTreeNode,
   scopes: ScopeAnalysis,

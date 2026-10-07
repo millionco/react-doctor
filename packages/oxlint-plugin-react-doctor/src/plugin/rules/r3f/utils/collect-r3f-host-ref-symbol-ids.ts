@@ -9,10 +9,17 @@ import { isR3fHostIntrinsic } from "./is-r3f-host-intrinsic.js";
 export const collectR3fHostRefSymbolIds = (
   program: EsTreeNodeOfType<"Program">,
   scopes: ScopeAnalysis,
+  shouldCollect: (node: EsTreeNodeOfType<"JSXOpeningElement">) => boolean = () => true,
 ): ReadonlySet<number> => {
   const refSymbolIds = new Set<number>();
   walkAst(program, (candidate) => {
-    if (!isNodeOfType(candidate, "JSXOpeningElement") || !isR3fHostIntrinsic(candidate)) return;
+    if (
+      !isNodeOfType(candidate, "JSXOpeningElement") ||
+      !isR3fHostIntrinsic(candidate) ||
+      !shouldCollect(candidate)
+    ) {
+      return;
+    }
     const refAttribute = getAuthoritativeJsxAttribute(candidate.attributes, "ref");
     if (
       !refAttribute?.value ||

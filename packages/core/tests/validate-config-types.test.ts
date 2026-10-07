@@ -64,13 +64,39 @@ describe("validateConfigTypes", () => {
     expect(stderrSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("does not touch non-boolean fields like ignore.rules", () => {
+  it("preserves valid ignore fields", () => {
     const input: ReactDoctorConfig = {
-      ignore: { rules: ["react/no-danger"] },
+      ignore: {
+        rules: ["react/no-danger"],
+        files: ["dist/**"],
+        tags: ["design"],
+        overrides: [{ files: ["legacy/**"], rules: ["react/no-danger"] }],
+      },
       textComponents: ["MyText"],
     };
     expect(validateConfigTypes(input)).toEqual(input);
     expect(stderrSpy).not.toHaveBeenCalled();
+  });
+
+  it("strips malformed ignore fields and override entries", () => {
+    const result = validateConfigTypes({
+      ignore: {
+        rules: "react/no-danger",
+        files: ["dist/**", 42],
+        tags: null,
+        overrides: [
+          { files: ["legacy/**", false], rules: ["react/no-danger", null] },
+          { files: "generated/**" },
+          "invalid",
+        ],
+      } as unknown as NonNullable<ReactDoctorConfig["ignore"]>,
+    });
+
+    expect(result.ignore).toEqual({
+      files: ["dist/**"],
+      overrides: [{ files: ["legacy/**"], rules: ["react/no-danger"] }],
+    });
+    expect(stderrSpy).toHaveBeenCalled();
   });
 
   describe("surfaces", () => {

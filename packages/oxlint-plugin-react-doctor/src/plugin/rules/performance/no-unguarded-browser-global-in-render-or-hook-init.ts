@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -276,8 +277,8 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
   recommendation:
     "Move browser-only reads into an effect or event, guard them behind a client-only render path, or use useSyncExternalStore with a stable server snapshot.",
   create: (context: RuleContext): RuleVisitors => {
-    if (isTestlikeFilename(context.filename)) return {};
-    if (classifyReactNativeFileTarget(context) === "react-native") return {};
+    if (isTestlikeFilename(context.filename)) return EMPTY_RULE_VISITORS;
+    if (classifyReactNativeFileTarget(context) === "react-native") return EMPTY_RULE_VISITORS;
     let fileIsEmailTemplate = false;
     let moduleExitsOnServer = false;
     let clientOnlyDynamicTargets: ReadonlySet<EsTreeNode> = new Set();

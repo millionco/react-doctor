@@ -19,12 +19,21 @@ export const TRANSPARENT_EXPRESSION_WRAPPER_TYPES: ReadonlySet<string> = new Set
 
 export const stripParenExpression = (node: EsTreeNode): EsTreeNode => {
   let current = node;
-  while (
-    TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(current.type) &&
-    "expression" in current &&
-    current.expression
-  ) {
-    current = current.expression as EsTreeNode;
+  while (true) {
+    const currentType: string = current.type;
+    switch (currentType) {
+      case "ParenthesizedExpression":
+      case "TSAsExpression":
+      case "TSSatisfiesExpression":
+      case "TSTypeAssertion":
+      case "TSNonNullExpression":
+      case "TSInstantiationExpression":
+      case "ChainExpression":
+        if (!("expression" in current) || !current.expression) return current;
+        current = current.expression as EsTreeNode;
+        break;
+      default:
+        return current;
+    }
   }
-  return current;
 };

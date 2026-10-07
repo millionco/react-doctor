@@ -10,7 +10,7 @@ export const getStaticNumber = (
 ): number | null => {
   const candidate = stripParenExpression(expression);
   if (isNodeOfType(candidate, "Literal") && typeof candidate.value === "number") {
-    return candidate.value;
+    return Number.isFinite(candidate.value) ? candidate.value : null;
   }
   if (
     isNodeOfType(candidate, "UnaryExpression") &&
@@ -20,17 +20,28 @@ export const getStaticNumber = (
     if (operand === null) return null;
     return candidate.operator === "-" ? -operand : operand;
   }
-  if (!isNodeOfType(candidate, "Identifier")) return null;
-  const symbol = scopes.symbolFor(candidate);
-  if (
-    symbol?.kind !== "const" ||
-    !symbol.initializer ||
-    visitedSymbolIds.has(symbol.id) ||
-    !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
-    symbol.declarationNode.id !== symbol.bindingIdentifier
-  ) {
-    return null;
+  if (isNodeOfType(candidate, "Identifier")) {
+    const symbol = scopes.symbolFor(candidate);
+    if (
+      symbol?.kind !== "const" ||
+      !symbol.initializer ||
+      visitedSymbolIds.has(symbol.id) ||
+      symbol.references.some((reference) => reference.flag !== "read")
+    ) {
+      return null;
+    }
+    visitedSymbolIds.add(symbol.id);
+    return getStaticNumber(symbol.initializer, scopes, visitedSymbolIds);
   }
-  visitedSymbolIds.add(symbol.id);
-  return getStaticNumber(symbol.initializer, scopes, visitedSymbolIds);
+  if (!isNodeOfType(candidate, "BinaryExpression")) return null;
+  const left = getStaticNumber(candidate.left, scopes, new Set(visitedSymbolIds));
+  const right = getStaticNumber(candidate.right, scopes, new Set(visitedSymbolIds));
+  if (left === null || right === null) return null;
+  let result: number | null = null;
+  if (candidate.operator === "+") result = left + right;
+  if (candidate.operator === "-") result = left - right;
+  if (candidate.operator === "*") result = left * right;
+  if (candidate.operator === "/") result = left / right;
+  if (candidate.operator === "**") result = left ** right;
+  return result !== null && Number.isFinite(result) ? result : null;
 };

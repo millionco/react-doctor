@@ -16,8 +16,8 @@ export type BlockingLevel = "error" | "warning" | "none";
  * CLI `--scope` flag, the GitHub Action `scope` input, and this config field
  * all share. Ordered widest to narrowest:
  *
- * - `"full"` — whole project, every issue (the default). Whole-project checks
- *   (dead-code, environment, supply-chain) run only at this scope.
+ * - `"full"` — whole project, every issue (the default). Environment and
+ *   supply-chain checks run only at this scope.
  * - `"files"` — only the files changed vs the base, with ALL issues in them
  *   (no compare-to-main). What `--staged` and an uncommitted `--diff` do today.
  * - `"changed"` — only issues the change INTRODUCED vs the base (the baseline
@@ -175,8 +175,7 @@ export interface SupplyChainConfig {
   /**
    * Whether to run the Socket supply-chain score check. Default: `true`.
    * Set to `false` to opt out — the check performs one network request per
-   * direct dependency. It is always skipped in `--diff` / `--staged` mode
-   * and in editor scans regardless of this setting.
+   * direct dependency. It is always skipped in `--diff` / `--staged` mode.
    */
   enabled?: boolean;
   /**
@@ -211,11 +210,8 @@ export interface ReactDoctorConfig {
    */
   supplyChain?: SupplyChainConfig;
   /**
-   * Whether to run dead-code analysis (via `deslop-js`) alongside lint.
-   * Reports unused files, unused exports, unused dependencies, and
-   * circular imports under the "Maintainability" category. Default: `true`.
-   * Always skipped in `--diff` / `--staged` modes because reachability
-   * is a whole-project property.
+   * Compatibility switch for React maintainability analysis. Default: `true`.
+   * @deprecated React maintainability checks are part of React Doctor.
    */
   deadCode?: boolean;
   verbose?: boolean;
@@ -296,11 +292,17 @@ export interface ReactDoctorConfig {
    * Entries resolve exactly like `--project` values: workspace package
    * names (or directory basenames) first, then directory paths relative to
    * the scanned root. `"*"` selects every discovered workspace project.
-   * Invalid entries fail the run with the same error as the flag.
+   * Invalid entries fail the run with the same error as the flag — except
+   * under `--staged`, where they warn and fall back to a single scan at the
+   * root, because `--staged` runs in a commit hook and a stale entry there
+   * would block every commit.
    *
    * Precedence: an explicit `--project` flag overrides this list. Only the
    * config at the invocation root is consulted — `projects` inside a
-   * module's own config is ignored (modules can't redirect the scan).
+   * module's own config is ignored (modules can't redirect the scan). Under
+   * `--staged` this list applies only when you invoke react-doctor from the
+   * directory that declared it, so a per-package or positional run does not
+   * resolve an ancestor's entries against the package.
    */
   projects?: string[];
   textComponents?: string[];

@@ -231,6 +231,1191 @@ describe("no-set-state-after-await-in-effect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag cleanup-backed compound stale-request guards", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const C = ({ userId }) => {
+        const [user, setUser] = useState(null);
+        const activeUserIdRef = useRef(userId);
+        activeUserIdRef.current = userId;
+        useEffect(() => {
+          let cancelled = false;
+          const requestUserId = userId;
+          const run = async () => {
+            const loadedUser = await load(requestUserId);
+            if (cancelled || activeUserIdRef.current !== requestUserId) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [userId]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not require cleanup on effect paths that return before starting async work", () => {
+    const directResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          if (!enabled) return;
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    const nestedResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          if (!enabled) return;
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => run();
+          start();
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    expect(directResult.diagnostics).toHaveLength(0);
+    expect(nestedResult.diagnostics).toHaveLength(0);
+  });
+
+  it("resolves unreassigned let and var async helpers invoked by an effect", () => {
+    const letResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+          run();
+        }, [userId]);
+      };`,
+    );
+    const varResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          var run = async function () {
+            const user = await load(userId);
+            setUser(user);
+          };
+          run();
+        }, [userId]);
+      };`,
+    );
+    expect(letResult.diagnostics).toHaveLength(1);
+    expect(varResult.diagnostics).toHaveLength(1);
+  });
+
+  it("does not attribute a call to a let-bound helper replaced before invocation", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+          run = () => {};
+          run();
+        }, [userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("requires a mutable helper initializer to execute before invocation", () => {
+    const letResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          run();
+          let run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+        }, [userId]);
+      };`,
+    );
+    const varResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          run();
+          var run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+        }, [userId]);
+      };`,
+    );
+    expect(letResult.diagnostics).toHaveLength(0);
+    expect(varResult.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps reassigned mutable helpers outside the initialized-helper contract", () => {
+    const laterWriteResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+          run();
+          run = () => {};
+        }, [userId]);
+      };`,
+    );
+    const unreachableWriteResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+          const replace = () => {
+            run = () => {};
+          };
+          run();
+        }, [userId]);
+      };`,
+    );
+    expect(laterWriteResult.diagnostics).toHaveLength(0);
+    expect(unreachableWriteResult.diagnostics).toHaveLength(0);
+  });
+
+  it("tracks mutable helpers through wrappers and component scope", () => {
+    const sources = [
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => { await load(userId); setUser(userId); };
+          const start = () => run();
+          start();
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        let run = async () => { await load(userId); setUser(userId); };
+        useEffect(() => { run(); }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => { run(); }, [userId]);
+        var run = async () => { await load(userId); setUser(userId); };
+      };`,
+    ];
+    expect(
+      sources.map((source) => runRule(noSetStateAfterAwaitInEffect, source).diagnostics.length),
+    ).toEqual([1, 1, 1]);
+  });
+
+  it("requires nested mutable helpers to initialize before their wrapper declaration", () => {
+    const sources = [
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          const start = () => run();
+          start();
+          let run = async () => { await load(userId); setUser(userId); };
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          const start = () => run();
+          let run = async () => { await load(userId); setUser(userId); };
+          start();
+        }, [userId]);
+      };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noSetStateAfterAwaitInEffect, source).diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("keeps assigned mutable helpers outside the initialized-helper contract", () => {
+    const sources = [
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run;
+          run = async () => { await load(userId); setUser(userId); };
+          run();
+        }, [userId]);
+      };`,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run;
+          if (enabled) run = async () => { await load(userId); setUser(userId); };
+          run();
+        }, [enabled, userId]);
+      };`,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => { await load(userId); setUser(userId); };
+          if (enabled) run = () => {};
+          run();
+        }, [enabled, userId]);
+      };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noSetStateAfterAwaitInEffect, source).diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("tracks initialized mutable helpers through const aliases but not assignment IIFEs", () => {
+    const aliasResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => { await load(userId); setUser(userId); };
+          const start = run;
+          start();
+        }, [userId]);
+      };`,
+    );
+    const assignmentIifeResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run;
+          (run = async () => { await load(userId); setUser(userId); })();
+        }, [userId]);
+      };`,
+    );
+    expect(aliasResult.diagnostics).toHaveLength(1);
+    expect(assignmentIifeResult.diagnostics).toHaveLength(0);
+  });
+
+  it("bounds initialized mutable helper discovery across wide wrapper graphs", () => {
+    const helpers = Array.from(
+      { length: 400 },
+      (_, helperIndex) => `
+        let run${helperIndex} = async () => {
+          await load(userId);
+          setUser(userId);
+        };
+        const start${helperIndex} = () => run${helperIndex}();
+        start${helperIndex}();`,
+    ).join("\n");
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          ${helpers}
+        }, [userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet when a wrapper conditionally starts the guarded async work", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => {
+            if (enabled) run();
+          };
+          start();
+          if (!enabled) return;
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves conditional gates across nested wrappers", () => {
+    const safeResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const innerStart = () => run();
+          const start = () => {
+            if (enabled) innerStart();
+          };
+          start();
+          if (!enabled) return;
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    const bypassResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, skipCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const innerStart = () => run();
+          const start = () => {
+            if (enabled) innerStart();
+          };
+          start();
+          if (enabled && skipCleanup) return;
+          return () => { cancelled = true; };
+        }, [enabled, skipCleanup, userId]);
+      };`,
+    );
+    expect(safeResult.diagnostics).toHaveLength(0);
+    expect(bypassResult.diagnostics).toHaveLength(1);
+  });
+
+  it("correlates direct and wrapped conditional effect call sites with cleanup exits", () => {
+    const directResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          if (enabled) run();
+          if (!enabled) return;
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    const wrappedResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => run();
+          if (enabled) start();
+          if (!enabled) return;
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    const bypassResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, skipCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          if (enabled) run();
+          if (enabled && skipCleanup) return;
+          return () => { cancelled = true; };
+        }, [enabled, skipCleanup, userId]);
+      };`,
+    );
+    expect(directResult.diagnostics).toHaveLength(0);
+    expect(wrappedResult.diagnostics).toHaveLength(0);
+    expect(bypassResult.diagnostics).toHaveLength(1);
+  });
+
+  it("bounds conditional invocation analysis on diamond wrapper graphs", () => {
+    const diamondDepth = 30;
+    const wrapperDeclarations = Array.from({ length: diamondDepth }, (_, wrapperIndex) =>
+      wrapperIndex === 0
+        ? "const start0 = () => run();"
+        : `const start${wrapperIndex} = () => {
+            if (enabled) start${wrapperIndex - 1}();
+            if (enabled) start${wrapperIndex - 1}();
+          };`,
+    ).join("\n");
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          ${wrapperDeclarations}
+          start${diamondDepth - 1}();
+          if (!enabled) return;
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not cache incomplete reachability across recursive wrapper cycles", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const a = (depth) => {
+            if (depth > 0) b(depth - 1);
+            else run();
+          };
+          const b = (depth) => a(depth);
+          if (enabled) {
+            a(0);
+            return () => { cancelled = true; };
+          }
+          b(0);
+          return;
+        }, [enabled, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports conditionally invoked async work without a matching cleanup guard", () => {
+    const conditionalResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          const run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+          const start = () => {
+            if (enabled) run();
+          };
+          start();
+        }, [enabled, userId]);
+      };`,
+    );
+    const unrelatedCleanupResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          const run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+          const start = () => {
+            if (enabled) run();
+          };
+          start();
+          return () => recordCleanup();
+        }, [enabled, userId]);
+      };`,
+    );
+    const uncoveredGuardResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, skipCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => {
+            if (enabled) run();
+          };
+          start();
+          if (enabled && skipCleanup) return;
+          return () => { cancelled = true; };
+        }, [enabled, skipCleanup, userId]);
+      };`,
+    );
+    expect(conditionalResult.diagnostics).toHaveLength(1);
+    expect(unrelatedCleanupResult.diagnostics).toHaveLength(1);
+    expect(uncoveredGuardResult.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let a conditional invocation suppress an unsafe unconditional invocation", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, skipCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => {
+            if (enabled) run();
+          };
+          start();
+          run();
+          if (skipCleanup) return;
+          return () => { cancelled = true; };
+        }, [enabled, skipCleanup, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("requires cleanup for conditional starts before a guarded unconditional start", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => {
+            if (enabled) run();
+          };
+          start();
+          if (enabled) return;
+          run();
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not require cleanup before a guarded async promise callback is registered", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          if (!enabled) return;
+          let cancelled = false;
+          loadRequest(userId).then(async (request) => {
+            const user = await request.read();
+            if (cancelled) return;
+            setUser(user);
+          });
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores cleanup functions returned before async work starts", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ cached, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          if (cached) return () => recordCacheHit();
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [cached, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still requires cleanup on every path after async work starts", () => {
+    const directResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ skipCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          run();
+          if (skipCleanup) return;
+          return () => { cancelled = true; };
+        }, [skipCleanup, userId]);
+      };`,
+    );
+    const nestedResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ skipCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => run();
+          start();
+          if (skipCleanup) return;
+          return () => { cancelled = true; };
+        }, [skipCleanup, userId]);
+      };`,
+    );
+    expect(directResult.diagnostics).toHaveLength(1);
+    expect(nestedResult.diagnostics).toHaveLength(1);
+  });
+
+  it("still requires cleanup after every invocation site", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ startWithoutCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          if (startWithoutCleanup) {
+            run();
+            return;
+          }
+          run();
+          return () => { cancelled = true; };
+        }, [startWithoutCleanup, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag cleanup-backed local request predicates", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const C = ({ userId }) => {
+        const [user, setUser] = useState(null);
+        const activeUserIdRef = useRef(userId);
+        activeUserIdRef.current = userId;
+        useEffect(() => {
+          let cancelled = false;
+          const requestUserId = userId;
+          const isCurrentRequest = () =>
+            !cancelled && activeUserIdRef.current === requestUserId;
+          const run = async () => {
+            const loadedUser = await load(requestUserId);
+            if (isCurrentRequest()) setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [userId]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a setter reached before a cleanup-backed stale-request guard", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const C = ({ userId }) => {
+        const [user, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            if (!loadedUser) {
+              setUser(null);
+              return;
+            }
+            if (cancelled) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [userId]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags compound conditions that cleanup cannot force", () => {
+    const invalidSources = [
+      `const C = ({ userId, isWrongUser }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            if (cancelled && isWrongUser) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [isWrongUser, userId]);
+      };`,
+      `const C = ({ userId, isCurrentUser }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            if (!cancelled || isCurrentUser) setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [isCurrentUser, userId]);
+      };`,
+    ];
+    for (const source of invalidSources) {
+      expect(runRule(noSetStateAfterAwaitInEffect, source).diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("still flags unsound local and sequence guard lookalikes", () => {
+    const invalidSources = [
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          function* isCurrentRequest() {
+            return !cancelled;
+          }
+          const run = async () => {
+            const loadedUser = await load(userId);
+            if (isCurrentRequest()) setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        const requestIdRef = useRef(0);
+        useEffect(() => {
+          const requestId = ++requestIdRef.current;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            const requestId = requestIdRef.current;
+            if (requestId === requestIdRef.current) setUser(loadedUser);
+          };
+          run();
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const isCurrentRequest = () => !cancelled;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            cancelled = false;
+            if (isCurrentRequest()) setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const resetCancellation = () => {
+            cancelled = false;
+            return false;
+          };
+          const run = async () => {
+            const loadedUser = await load(userId);
+            if (resetCancellation() || cancelled) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const resetCancellation = () => {
+            cancelled = false;
+            return true;
+          };
+          const run = async () => {
+            const loadedUser = await load(userId);
+            if (resetCancellation() && !cancelled) setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const disruptCancellation = {
+            get current() {
+              cancelled = false;
+              return false;
+            },
+          };
+          const run = async () => {
+            const loadedUser = await load(userId);
+            if (disruptCancellation.current || cancelled) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const resetCancellation = () => {
+            cancelled = false;
+          };
+          const run = async () => {
+            const loadedUser = await load(userId);
+            resetCancellation();
+            if (cancelled) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        const requestIdRef = useRef(0);
+        useEffect(() => {
+          const requestId = ++requestIdRef.current;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            requestIdRef.current = requestId;
+            if (requestId !== requestIdRef.current) return;
+            setUser(loadedUser);
+          };
+          run();
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        const requestIdRef = useRef(0);
+        useEffect(() => {
+          const requestId = ++requestIdRef.current;
+          const resetRequestId = () => {
+            requestIdRef.current = requestId;
+          };
+          const run = async () => {
+            const loadedUser = await load(userId);
+            resetRequestId();
+            if (requestId !== requestIdRef.current) return;
+            setUser(loadedUser);
+          };
+          run();
+        }, [userId]);
+      };`,
+      `const C = ({ userId, mode }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            if (cancelled) return;
+            setUser(loadedUser);
+          };
+          run();
+          if (mode) return () => { cancelled = false; };
+          return () => { cancelled = true; };
+        }, [mode, userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            [cancelled] = [false];
+            if (cancelled) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        const requestIdRef = useRef(0);
+        useEffect(() => {
+          const requestId = ++requestIdRef.current;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            [requestIdRef.current] = [requestId];
+            if (requestId !== requestIdRef.current) return;
+            setUser(loadedUser);
+          };
+          run();
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            [loadedUser].forEach(() => {
+              cancelled = false;
+            });
+            if (cancelled) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [userId]);
+      };`,
+      `const C = ({ mode, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            if (cancelled) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => {
+            if (mode) return;
+            cancelled = true;
+          };
+        }, [mode, userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            for (cancelled of [false]) {}
+            if (cancelled) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        const requestIdRef = useRef(0);
+        useEffect(() => {
+          const requestId = ++requestIdRef.current;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            for (requestIdRef.current of [requestId]) {}
+            if (requestId !== requestIdRef.current) return;
+            setUser(loadedUser);
+          };
+          run();
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        const cancelledRef = useRef(false);
+        useEffect(() => {
+          const run = async () => {
+            const loadedUser = await load(userId);
+            delete cancelledRef.current;
+            if (cancelledRef.current) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => { cancelledRef.current = true; };
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        const cancelledRef = useRef(false);
+        useEffect(() => {
+          const run = async () => {
+            const loadedUser = await load(userId);
+            Object.assign(cancelledRef, { current: false });
+            if (cancelledRef.current) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => { cancelledRef.current = true; };
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        const cancelledRef = useRef(false);
+        useEffect(() => {
+          const run = async () => {
+            const loadedUser = await load(userId);
+            Reflect.set(cancelledRef, "current", false);
+            if (cancelledRef.current) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => { cancelledRef.current = true; };
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        const cancelledRef = useRef(false);
+        const cancellationAlias = cancelledRef;
+        useEffect(() => {
+          const run = async () => {
+            const loadedUser = await load(userId);
+            cancellationAlias.current = false;
+            if (cancelledRef.current) return;
+            setUser(loadedUser);
+          };
+          run();
+          return () => { cancelledRef.current = true; };
+        }, [cancellationAlias, cancelledRef, userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        const requestIdRef = useRef(0);
+        const requestAlias = requestIdRef;
+        useEffect(() => {
+          const requestId = ++requestIdRef.current;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            requestAlias.current = requestId;
+            if (requestId !== requestIdRef.current) return;
+            setUser(loadedUser);
+          };
+          run();
+        }, [requestAlias, requestIdRef, userId]);
+      };`,
+    ];
+    for (const source of invalidSources) {
+      expect(runRule(noSetStateAfterAwaitInEffect, source).diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("does not flag compound sequence guards", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const C = ({ userId, open }) => {
+        const [user, setUser] = useState(null);
+        const requestIdRef = useRef(0);
+        const openRef = useRef(open);
+        openRef.current = open;
+        useEffect(() => {
+          const requestId = ++requestIdRef.current;
+          const run = async () => {
+            const loadedUser = await load(userId);
+            if (requestId !== requestIdRef.current || !openRef.current) return;
+            setUser(loadedUser);
+          };
+          run();
+        }, [userId]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag compound sequence guards that use loose equality", () => {
+    const mismatchResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `let sequence = 0;
+       const C = ({ id }) => {
+         const [, setValue] = useState();
+         const isClosedRef = useRef(false);
+         useEffect(() => {
+           const requestSequence = ++sequence;
+           const run = async () => {
+             const value = await load(id);
+             if (requestSequence != sequence || isClosedRef.current) return;
+             setValue(value);
+           };
+           run();
+         }, [id]);
+       };`,
+    );
+    const currentResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `let sequence = 0;
+       const C = ({ id }) => {
+         const [, setValue] = useState();
+         const isOpenRef = useRef(true);
+         useEffect(() => {
+           const requestSequence = ++sequence;
+           const run = async () => {
+             const value = await load(id);
+             if (isOpenRef.current && requestSequence == sequence) setValue(value);
+           };
+           run();
+         }, [id]);
+       };`,
+    );
+    expect(mismatchResult.diagnostics).toHaveLength(0);
+    expect(currentResult.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a setter that is not bound to useState/useReducer", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
@@ -348,6 +1533,208 @@ describe("no-set-state-after-await-in-effect", () => {
       `,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags when AbortController cleanup is conditional", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const C = ({ url, shouldAbort }) => {
+        const [data, setData] = useState(null);
+        useEffect(() => {
+          const controller = new AbortController();
+          const run = async () => {
+            const res = await fetch(url, { signal: controller.signal });
+            setData(res);
+          };
+          run();
+          return () => {
+            if (shouldAbort) controller.abort();
+          };
+        }, [shouldAbort, url]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not stop before cancellation actions after cleanup try statements", () => {
+    const guardedState = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ id }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            await load(id);
+            if (cancelled) return;
+            setValue(id);
+          };
+          run();
+          return () => {
+            try {
+              logCleanup(id);
+            } catch {}
+            cancelled = true;
+          };
+        }, [id]);
+      };`,
+    );
+    const abortedRequest = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ url }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          const controller = new AbortController();
+          const run = async () => {
+            const value = await load(url, { signal: controller.signal });
+            setValue(value);
+          };
+          run();
+          return () => {
+            try {
+              logCleanup(url);
+            } finally {
+              recordCleanup(url);
+            }
+            controller.abort();
+          };
+        }, [url]);
+      };`,
+    );
+    expect(guardedState.diagnostics).toHaveLength(0);
+    expect(abortedRequest.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat cleanup actions after abrupt try exits as unconditional", () => {
+    const returned = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ id, skip }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            await load(id);
+            if (cancelled) return;
+            setValue(id);
+          };
+          run();
+          return () => {
+            try {
+              if (skip) return;
+            } finally {
+              recordCleanup(id);
+            }
+            cancelled = true;
+          };
+        }, [id, skip]);
+      };`,
+    );
+    const thrown = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ url, fail }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          const controller = new AbortController();
+          const run = async () => {
+            const value = await load(url, { signal: controller.signal });
+            setValue(value);
+          };
+          run();
+          return () => {
+            try {
+              if (fail) throw new Error("cleanup failed");
+            } finally {
+              recordCleanup(url);
+            }
+            controller.abort();
+          };
+        }, [fail, url]);
+      };`,
+    );
+    expect(returned.diagnostics).toHaveLength(1);
+    expect(thrown.diagnostics).toHaveLength(1);
+  });
+
+  it("flags when only one possible cleanup aborts the request", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const C = ({ mode, url }) => {
+        const [data, setData] = useState(null);
+        useEffect(() => {
+          const controller = new AbortController();
+          const run = async () => {
+            const res = await fetch(url, { signal: controller.signal });
+            setData(res);
+          };
+          run();
+          if (mode) return () => {};
+          return () => controller.abort();
+        }, [mode, url]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts equivalent cancellation writes from every cleanup return", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const ImageViewer = ({ filePath, reloadKey }) => {
+        const [, setImage] = useState();
+        useEffect(() => {
+          let cancelled = false;
+          if (readCache(filePath) && reloadKey === 0) {
+            return () => {
+              cancelled = true;
+            };
+          }
+          const load = async () => {
+            try {
+              const loaded = await preloadImage(filePath);
+              if (cancelled) return;
+              setImage(loaded);
+            } catch (error) {
+              if (cancelled) return;
+              setImage(null);
+            }
+          };
+          load();
+          return () => {
+            cancelled = true;
+          };
+        }, [filePath, reloadKey]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("requires every cleanup return to write the cancellation guard", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const ImageViewer = ({ filePath, reloadKey }) => {
+        const [, setImage] = useState();
+        useEffect(() => {
+          let cancelled = false;
+          const load = async () => {
+            const loaded = await preloadImage(filePath);
+            if (cancelled) return;
+            setImage(loaded);
+          };
+          load();
+          if (readCache(filePath) && reloadKey === 0) {
+            return () => {
+              recordCacheHit();
+            };
+          }
+          return () => {
+            cancelled = true;
+          };
+        }, [filePath, reloadKey]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags an external-store dependency without a cancellation guard", () => {

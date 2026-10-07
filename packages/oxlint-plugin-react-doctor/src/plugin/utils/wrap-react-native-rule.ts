@@ -1,8 +1,6 @@
+import { EMPTY_RULE_VISITORS } from "./empty-rule-visitors.js";
 import { isReactNativeFileActive } from "./is-react-native-file.js";
 import type { Rule } from "./rule.js";
-import type { RuleVisitors } from "./rule-visitors.js";
-
-const EMPTY_VISITORS: RuleVisitors = {};
 
 // Wraps a rule whose `create` should only run on files that belong to a
 // React Native or Expo package.
@@ -26,7 +24,7 @@ export const wrapReactNativeRule = (rule: Rule): Rule => {
   return {
     ...rule,
     create: (context) => {
-      if (!isReactNativeFileActive(context)) return EMPTY_VISITORS;
+      if (!isReactNativeFileActive(context)) return EMPTY_RULE_VISITORS;
       return innerCreate(context);
     },
   };

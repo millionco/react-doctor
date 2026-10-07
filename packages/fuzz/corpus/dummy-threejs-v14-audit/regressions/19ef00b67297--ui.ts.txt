@@ -1,0 +1,463 @@
+// rule: dangerous-html-sink
+// file-path: src/ui.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 19ef00b67297e83e85e69ebbdd7d682dfd0fcc0e51bd3f5e98bb4dbcbb656de9
+import {
+  ENCOUNTERS,
+  MAX_CHARGES,
+  TARGET_CHARGES,
+  TARGET_TIME,
+  UPGRADES,
+  formatTime,
+  maxTier,
+  tierDescribe,
+  tierLabel,
+  upgradeCost,
+  type Progress,
+  type UpgradeOption,
+} from "./game/state";
+import { PROFILES, type Enemy, type EnemyKind } from "./game/enemy";
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+export interface ForgeOptions {
+  title: string;
+  heading: string;
+  lede: string;
+  progress: Progress;
+  primaryLabel: string;
+  onPrimary: () => void;
+  onBuy: (u: UpgradeOption) => void;
+  failure?: boolean;
+  stats?: string;
+}
+
+/**
+ * All of the two-dimensional furniture: run clock, vitals, opponent dossier,
+ * cover readout, and the forge / failure screens. Kept deliberately sparse so
+ * the arena stays the thing you are reading.
+ */
+export class Ui {
+  private readonly root = el("div");
+  private readonly hud = el("div");
+  private readonly overlay = el("div");
+  private readonly panelHost = el("div", "panel");
+
+  private readonly clock = el("div", "run-clock mono", "0:00.00");
+  private readonly pips: HTMLElement[] = [];
+  private readonly runNote = el("div", "run-note caps", "Encounter I");
+
+  private readonly hpFill = el("i", "fill");
+  private readonly hpLag = el("i", "lag");
+  private readonly hpText = el("span", "mono", "100 / 100");
+  private readonly chargeRow = el("div", "charges");
+  private readonly chargeNote = el("span", "charge-note caps", "");
+
+  private readonly foeCard = el("div", "foe-card");
+  private readonly foeName = el("div", "foe-name", "");
+  private readonly foeEpithet = el("div", "foe-epithet caps", "");
+  private readonly foeFill = el("i", "fill");
+  private readonly foeLag = el("i", "lag");
+  private readonly foeStats = el("div", "foe-stats");
+  private readonly studyFill = el("i");
+
+  private readonly cover = el("div", "cover-readout");
+  private readonly reticle = el("div", "reticle");
+  private readonly hurtVignette = el("div", "hurt-vignette");
+  private readonly failWash = el("div", "fail-wash");
+  private readonly dangerVignette = el("div", "danger-vignette");
+  private readonly dirArrow = el("div", "dir-arrow");
+  private readonly toastEl = el("div", "toast");
+  private readonly hint = el("div", "hint caps", "");
+
+  private readonly loading = el("div");
+  private readonly loadingBar = el("i");
+  private readonly loadingWhat = el("div", "what caps", "");
+
+  private toastTimer = 0;
+  private hurtTimer = 0;
+
+  constructor() {
+    this.root.id = "ui";
+    this.hud.id = "hud";
+    this.overlay.id = "overlay";
+
+    // --- run bar
+    const runBar = el("div", "run-bar");
+    const pipRow = el("div", "pips");
+    for (let i = 0; i < ENCOUNTERS.length; i++) {
+      const p = el("div", "pip");
+      this.pips.push(p);
+      pipRow.appendChild(p);
+    }
+    runBar.append(this.clock, pipRow, this.runNote);
+
+    // --- vitals
+    const vitals = el("div", "vitals");
+    const nameRow = el("div", "name-row");
+    nameRow.append(el("span", "caps", "The Condemned"), this.hpText);
+    const hpBar = el("div", "bar hp");
+    hpBar.append(this.hpLag, this.hpFill, el("div", "ticks"));
+    vitals.append(nameRow, hpBar, this.chargeRow);
+    this.chargeRow.appendChild(this.chargeNote);
+
+    // --- opponent
+    const foeBar = el("div", "bar foe");
+    foeBar.append(this.foeLag, this.foeFill, el("div", "ticks"));
+    const studyWrap = el("div", "study");
+    const studyBar = el("div", "study-bar");
+    studyBar.appendChild(this.studyFill);
+    studyWrap.append(studyBar);
+    this.foeCard.append(this.foeName, this.foeEpithet, foeBar, this.foeStats, studyWrap);
+
+    this.root.appendChild(this.failWash);
+    this.hud.append(
+      this.dangerVignette,
+      this.hurtVignette,
+      runBar,
+      vitals,
+      this.foeCard,
+      this.cover,
+      this.reticle,
+      this.dirArrow,
+      this.toastEl,
+      this.hint,
+    );
+    this.dirArrow.appendChild(el("i"));
+
+    this.overlay.appendChild(this.panelHost);
+    this.root.append(this.hud, this.overlay);
+    document.body.appendChild(this.root);
+
+    // --- loading
+    this.loading.id = "loading";
+    const track = el("div", "track");
+    track.appendChild(this.loadingBar);
+    this.loading.append(
+      el("div", "title caps", "Return to the Pit"),
+      track,
+      this.loadingWhat,
+    );
+    document.body.appendChild(this.loading);
+
+    this.setHp(1, 1);
+  }
+
+  // ------------------------------------------------------------- loading
+  setLoading(done: number, total: number, label: string): void {
+    this.loadingBar.style.width = `${Math.round((done / total) * 100)}%`;
+    this.loadingWhat.textContent = `forging ${label}`;
+  }
+
+  finishLoading(): void {
+    this.loadingBar.style.width = "100%";
+    this.loading.classList.add("done");
+    setTimeout(() => this.loading.remove(), 800);
+  }
+
+  // ----------------------------------------------------------------- hud
+  showHud(on: boolean): void {
+    this.hud.classList.toggle("on", on);
+  }
+
+  setHint(text: string): void {
+    this.hint.textContent = text;
+  }
+
+  setHp(hp: number, maxHp: number): void {
+    const k = maxHp > 0 ? Math.max(0, hp / maxHp) : 0;
+    this.hpFill.style.transform = `scaleX(${k})`;
+    this.hpLag.style.transform = `scaleX(${k})`;
+    this.hpText.textContent = `${Math.ceil(hp)} / ${Math.round(maxHp)}`;
+  }
+
+  setCharges(remaining: number, used: number): void {
+    while (this.chargeRow.childNodes.length > 1) {
+      const first = this.chargeRow.firstChild;
+      if (first) this.chargeRow.removeChild(first);
+    }
+    for (let i = 0; i < MAX_CHARGES; i++) {
+      const c = el("div", i < remaining ? "charge" : "charge spent");
+      this.chargeRow.insertBefore(c, this.chargeNote);
+    }
+    const over = used > TARGET_CHARGES;
+    this.chargeNote.textContent = over
+      ? `${used} spent · over the mark`
+      : `${used}/${TARGET_CHARGES} spent`;
+    this.chargeNote.classList.toggle("warn", over);
+  }
+
+  setRun(encounter: number, elapsed: number): void {
+    this.clock.textContent = formatTime(elapsed);
+    this.clock.classList.toggle("over", elapsed > TARGET_TIME);
+    for (let i = 0; i < this.pips.length; i++) {
+      const p = this.pips[i]!;
+      p.classList.toggle("done", i < encounter);
+      p.classList.toggle("live", i === encounter);
+    }
+    this.runNote.textContent = `Encounter ${["I", "II", "III"][encounter] ?? "—"}`;
+  }
+
+  setFoe(enemy: Enemy | null): void {
+    this.foeCard.classList.toggle("on", !!enemy && enemy.alive);
+    if (!enemy) return;
+    const p = enemy.profile;
+    this.foeName.textContent = p.name;
+    this.foeEpithet.textContent = p.epithet;
+    const k = Math.max(0, enemy.hp / enemy.maxHp);
+    this.foeFill.style.transform = `scaleX(${k})`;
+    this.foeLag.style.transform = `scaleX(${k})`;
+
+    const study = enemy.study;
+    const reachText =
+      study >= 0.8
+        ? `${enemy.maxReach.toFixed(2)} m`
+        : study >= 0.4
+          ? `~${enemy.maxReach.toFixed(1)} m`
+          : "unknown";
+    const attack = enemy.currentAttack;
+    const tell = attack && study >= 0.5 ? attack.label : attack ? "committing…" : "—";
+    this.foeStats.innerHTML =
+      `<span>reach <b>${reachText}</b></span>` +
+      `<span>tell <b>${tell}</b></span>` +
+      `<span>studied <b>${Math.round(study * 100)}%</b></span>`;
+    this.studyFill.style.transform = `scaleX(${study})`;
+  }
+
+  setCover(fraction: number | null): void {
+    const on = fraction !== null && fraction > 0.04;
+    this.cover.classList.toggle("on", on);
+    if (!on || fraction === null) return;
+    this.cover.innerHTML =
+      `<div class="caps">cover between you</div>` +
+      `<div class="big mono">${Math.round(fraction * 100)}%</div>` +
+      `<div class="caps">incoming shots blunted</div>`;
+  }
+
+  setReticle(inReach: boolean): void {
+    this.reticle.classList.toggle("in-reach", inReach);
+  }
+
+  /** 0..1 wash that carries the eye from the killing blow to the forge. */
+  setFalling(amount: number): void {
+    this.failWash.style.opacity = String(Math.min(1, amount));
+  }
+
+  setDanger(level: number): void {
+    this.dangerVignette.style.opacity = String(Math.min(1, level));
+  }
+
+  hurt(intensity: number, screenAngle: number): void {
+    this.hurtTimer = 0.7;
+    this.hurtVignette.style.opacity = String(Math.min(0.95, 0.35 + intensity));
+    this.dirArrow.style.transform = `rotate(${screenAngle}rad)`;
+    this.dirArrow.style.opacity = "1";
+  }
+
+  toast(big: string, small = "", duration = 2.2): void {
+    this.toastEl.innerHTML = `<div class="big caps">${big}</div>${
+      small ? `<div class="small caps">${small}</div>` : ""
+    }`;
+    this.toastEl.style.opacity = "1";
+    this.toastTimer = duration;
+  }
+
+  tick(dt: number): void {
+    if (this.toastTimer > 0) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) this.toastEl.style.opacity = "0";
+    }
+    if (this.hurtTimer > 0) {
+      this.hurtTimer -= dt;
+      const k = Math.max(0, this.hurtTimer / 0.7);
+      this.hurtVignette.style.opacity = String(k * 0.7);
+      this.dirArrow.style.opacity = String(k);
+    }
+  }
+
+  // ------------------------------------------------------------- screens
+  hidePanel(): void {
+    this.overlay.classList.remove("on", "fail");
+  }
+
+  private show(failure: boolean): void {
+    this.overlay.classList.add("on");
+    this.overlay.classList.toggle("fail", failure);
+  }
+
+  showTitle(progress: Progress, onStart: () => void): void {
+    this.panelHost.innerHTML = "";
+    const dossier = el("div", "dossier");
+    for (const kind of ENCOUNTERS) {
+      const p = PROFILES[kind];
+      const study = progress.study[kind] ?? 0;
+      const row = el("div", "foe-row");
+      row.innerHTML =
+        `<div class="n">${p.name}</div>` +
+        `<div class="s caps">${p.epithet}</div>` +
+        `<div class="study-bar"><i style="transform:scaleX(${study})"></i></div>` +
+        `<div class="s">reach ${study >= 0.4 ? `${maxReachOf(kind).toFixed(2)} m` : "unstudied"}</div>`;
+      dossier.appendChild(row);
+    }
+
+    const head = el(
+      "div",
+      undefined,
+      `<h2 class="caps">A three-encounter run</h2>
+       <h1 class="caps">Return to the Pit</h1>
+       <p class="lede">You are condemned, not employed. Three opponents wait beyond the gate, and
+       the pit does not reset between them. Fight until you fall, come back to the forge, bolt on
+       whatever the slag will buy — and learn exactly how far each of them can reach, because that
+       knowledge is the only thing you keep for free.</p>`,
+    );
+
+    const goal = el(
+      "div",
+      "goal",
+      `<span>Clear all three in <b>under ${TARGET_TIME / 60}:00</b></span>
+       <span>Spend <b>no more than ${TARGET_CHARGES}</b> mend charges</span>
+       ${progress.bestTime !== null ? `<span>best <b>${formatTime(progress.bestTime)}</b> on <b>${progress.bestCharges}</b> charges</span>` : ""}`,
+    );
+
+    const keys = el(
+      "div",
+      "keys",
+      `<div><b>W A S D</b> move</div>
+       <div><b>Mouse</b> aim</div>
+       <div><b>Left</b> quick strike</div>
+       <div><b>Right</b> heavy lunge</div>
+       <div><b>Space</b> roll (i-frames)</div>
+       <div><b>Q</b> mend charge</div>
+       <div><b>Esc</b> release cursor</div>
+       <div><b>Scroll</b> camera boom</div>`,
+    );
+
+    const actions = el("div", "actions");
+    const start = el("button", "btn", "Enter the pit");
+    start.addEventListener("click", onStart);
+    actions.append(start);
+    if (progress.slag > 0) {
+      actions.append(el("div", "slag", `slag <b>${progress.slag}</b>`));
+    }
+
+    this.panelHost.append(
+      head,
+      goal,
+      el("div", "rule"),
+      el("h2", "caps", "Known occupants"),
+      dossier,
+      el("div", "rule"),
+      el("h2", "caps", "Controls"),
+      keys,
+      actions,
+    );
+    this.show(false);
+  }
+
+  showForge(opts: ForgeOptions): void {
+    this.panelHost.innerHTML = "";
+    const head = el(
+      "div",
+      undefined,
+      `<h2 class="caps">${opts.heading}</h2>
+       <h1 class="caps">${opts.title}</h1>
+       <p class="lede">${opts.lede}</p>
+       ${opts.stats ? `<div class="goal">${opts.stats}</div>` : ""}`,
+    );
+
+    const grid = el("div", "grid");
+    for (const u of UPGRADES) {
+      const tier = opts.progress[u.track] as number;
+      const cost = upgradeCost(u, opts.progress);
+      const max = maxTier(u);
+      const affordable = cost !== null && opts.progress.slag >= cost;
+      const card = el("div", `card${affordable ? " buyable" : cost === null ? " locked" : ""}`);
+
+      const pipCount = max - u.min + 1;
+      let pipHtml = '<div class="pips">';
+      for (let i = 0; i < pipCount; i++) {
+        pipHtml += `<div class="pip${u.min + i <= tier ? " done" : ""}"></div>`;
+      }
+      pipHtml += "</div>";
+
+      card.innerHTML =
+        `<div class="track caps">${u.name}</div>` +
+        `<div class="tier">${tierLabel(u, tier)}</div>` +
+        `<div class="desc">${tierDescribe(u, tier)}</div>` +
+        pipHtml +
+        `<div class="buy${affordable ? "" : " cant"}">` +
+        (cost === null
+          ? `<span class="caps">mastered</span>`
+          : `<span class="caps">${tierLabel(u, tier + 1)}</span><span class="mono">${cost} slag</span>`) +
+        `</div>`;
+
+      if (affordable) card.addEventListener("click", () => opts.onBuy(u));
+      grid.appendChild(card);
+    }
+
+    const actions = el("div", "actions");
+    const go = el("button", "btn", opts.primaryLabel);
+    go.addEventListener("click", opts.onPrimary);
+    actions.append(go, el("div", "slag", `slag <b>${opts.progress.slag}</b>`));
+
+    this.panelHost.append(head, grid, actions);
+    this.show(opts.failure ?? false);
+  }
+
+  showVictory(
+    progress: Progress,
+    time: number,
+    charges: number,
+    onAgain: () => void,
+    onForge: () => void,
+  ): void {
+    this.panelHost.innerHTML = "";
+    const met = time <= TARGET_TIME && charges <= TARGET_CHARGES;
+    const head = el(
+      "div",
+      undefined,
+      `<h2 class="caps">${met ? "The mark is met" : "The run is finished"}</h2>
+       <h1 class="caps">${met ? "Pit Cleared" : "Three Down"}</h1>
+       <p class="lede">${
+         met
+           ? "Three encounters, one breath, and the sand still holds. The gate stays open behind you — the pit will simply find someone else to condemn."
+           : "All three are down, but the clock or the draughts ran past the mark. The pit remembers the difference."
+       }</p>`,
+    );
+    const goal = el(
+      "div",
+      "goal",
+      `<span>time <b>${formatTime(time)}</b> ${time <= TARGET_TIME ? "✓" : `(over ${formatTime(TARGET_TIME)})`}</span>
+       <span>charges spent <b>${charges}</b> ${charges <= TARGET_CHARGES ? "✓" : `(over ${TARGET_CHARGES})`}</span>
+       <span>best <b>${progress.bestTime !== null ? formatTime(progress.bestTime) : "—"}</b></span>
+       <span>clears <b>${progress.clears}</b></span>`,
+    );
+    const actions = el("div", "actions");
+    const again = el("button", "btn", "Run it again");
+    again.addEventListener("click", onAgain);
+    const forge = el("button", "btn ghost", "To the forge");
+    forge.addEventListener("click", onForge);
+    actions.append(again, forge, el("div", "slag", `slag <b>${progress.slag}</b>`));
+    this.panelHost.append(head, goal, actions);
+    this.show(false);
+  }
+}
+
+function maxReachOf(kind: EnemyKind): number {
+  let r = 0;
+  for (const a of PROFILES[kind].attacks) {
+    if (a.ranged || a.rush) continue;
+    r = Math.max(r, a.reach);
+  }
+  return r || 2;
+}

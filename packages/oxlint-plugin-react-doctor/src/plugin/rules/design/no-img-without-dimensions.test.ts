@@ -1,6 +1,28 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noImgWithoutDimensions } from "./no-img-without-dimensions.js";
+
+const runRuleWithSiblingCss = (
+  code: string,
+  css: string,
+  shouldImportStylesheet = true,
+  siblingSource: string | null = null,
+) => {
+  const directoryPath = fs.mkdtempSync(path.join(os.tmpdir(), "rd-img-css-"));
+  const filename = path.join(directoryPath, "app.tsx");
+  const source = `${shouldImportStylesheet ? 'import "./styles.css";\n' : ""}${code}`;
+  fs.writeFileSync(filename, source);
+  fs.writeFileSync(path.join(directoryPath, "styles.css"), css);
+  if (siblingSource) fs.writeFileSync(path.join(directoryPath, "sibling.tsx"), siblingSource);
+  try {
+    return runRule(noImgWithoutDimensions, source, { filename });
+  } finally {
+    fs.rmSync(directoryPath, { force: true, recursive: true });
+  }
+};
 
 describe("no-img-without-dimensions", () => {
   it("respects important Tailwind box sizing over inline dimensions", () => {
@@ -56,6 +78,285 @@ describe("no-img-without-dimensions", () => {
        const E = () => <img src="/photo.jpg" alt="" className="w-[640px] h-[50vh]" />;`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows definite image boxes from a sibling stylesheet", () => {
+    const fixedDimensions = runRuleWithSiblingCss(
+      `const Feed = () => <section className="feed"><img src="/place.jpg" alt="" /></section>;`,
+      `.feed img { width: 100%; height: 178px; object-fit: cover; }`,
+    );
+    const aspectRatio = runRuleWithSiblingCss(
+      `const Hero = () => <main><img src="/hero.jpg" alt="" /></main>;`,
+      `main > img { width: 100%; aspect-ratio: 16 / 9; }`,
+    );
+    const positionSpecificDimensions = runRuleWithSiblingCss(
+      `const Gallery = () => <div className="grid"><img src="/one.jpg" alt="" /><img src="/two.jpg" alt="" /></div>;`,
+      `.grid img { width: 100%; } .grid img:nth-child(1), .grid img:nth-child(2) { height: 245px; }`,
+    );
+    expect(fixedDimensions.diagnostics).toHaveLength(0);
+    expect(aspectRatio.diagnostics).toHaveLength(0);
+    expect(positionSpecificDimensions.diagnostics).toHaveLength(0);
+  });
+
+  it("composes non-sizing and partial inline styles with imported CSS", () => {
+    const nonSizingInlineStyle = runRuleWithSiblingCss(
+      `const Feed = () => <img src="/place.jpg" alt="" style={{ objectFit: "cover" }} />;`,
+      `img { width: 100%; height: 178px; }`,
+    );
+    const partialInlineStyle = runRuleWithSiblingCss(
+      `const Feed = () => <img src="/place.jpg" alt="" style={{ width: "100%" }} />;`,
+      `img { height: 178px; }`,
+    );
+    const inlineOverride = runRuleWithSiblingCss(
+      `const Feed = () => <img src="/place.jpg" alt="" style={{ height: "auto" }} />;`,
+      `img { width: 100%; height: 178px; }`,
+    );
+    expect(nonSizingInlineStyle.diagnostics).toHaveLength(0);
+    expect(partialInlineStyle.diagnostics).toHaveLength(0);
+    expect(inlineOverride.diagnostics).toHaveLength(1);
+  });
+
+  it("composes non-sizing and empty classes with imported CSS", () => {
+    const nonSizingClasses = runRuleWithSiblingCss(
+      `const Feed = () => <section className="feed"><img className="object-cover rounded-lg" src="/place.jpg" alt="" /></section>;`,
+      `.feed img { width: 100%; height: 178px; }`,
+    );
+    const emptyClass = runRuleWithSiblingCss(
+      `const Feed = () => <img className="" src="/place.jpg" alt="" />;`,
+      `img { width: 100%; height: 178px; }`,
+    );
+    expect(nonSizingClasses.diagnostics).toHaveLength(0);
+    expect(emptyClass.diagnostics).toHaveLength(0);
+  });
+
+  it("composes partial Tailwind sizing with imported CSS", () => {
+    const widthClass = runRuleWithSiblingCss(
+      `const Feed = () => <img className="w-full object-cover" src="/place.jpg" alt="" />;`,
+      `img { height: 178px; }`,
+    );
+    const heightClass = runRuleWithSiblingCss(
+      `const Feed = () => <img className="h-44 object-cover" src="/place.jpg" alt="" />;`,
+      `img { width: 100%; }`,
+    );
+    const aspectClass = runRuleWithSiblingCss(
+      `const Feed = () => <img className="aspect-video object-cover" src="/place.jpg" alt="" />;`,
+      `img { width: 100%; }`,
+    );
+    expect(widthClass.diagnostics).toHaveLength(0);
+    expect(heightClass.diagnostics).toHaveLength(0);
+    expect(aspectClass.diagnostics).toHaveLength(0);
+  });
+
+  it("does not let imported CSS override explicit auto-sizing utilities", () => {
+    const result = runRuleWithSiblingCss(
+      `const Feed = () => <img className="w-full h-auto object-cover" src="/place.jpg" alt="" />;`,
+      `img { width: 100%; height: 178px; }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("uses unconditional layer sizing without trusting conditional at-rules", () => {
+    const layered = runRuleWithSiblingCss(
+      `const Feed = () => <section><img className="object-cover" src="/place.jpg" alt="" /></section>;`,
+      `@layer components { section img { width: 100%; height: 178px; } }`,
+    );
+    const conditional = runRuleWithSiblingCss(
+      `const Feed = () => <section><img className="object-cover" src="/place.jpg" alt="" /></section>;`,
+      `@media (min-width: 900px) { section img { width: 100%; height: 178px; } }`,
+    );
+    expect(layered.diagnostics).toHaveLength(0);
+    expect(conditional.diagnostics).toHaveLength(1);
+  });
+
+  it("applies source order within the same cascade layer", () => {
+    const definiteDimensions = runRuleWithSiblingCss(
+      `const Feed = () => <section><img src="/place.jpg" alt="" /></section>;`,
+      `@layer components { section img { width: 100%; height: 178px; } }
+       @layer components { section img { height: 200px; } }`,
+    );
+    const autoOverride = runRuleWithSiblingCss(
+      `const Feed = () => <section><img src="/place.jpg" alt="" /></section>;`,
+      `@layer components { section img { width: 100%; height: 178px; } }
+       @layer components { section img { height: auto; } }`,
+    );
+    expect(definiteDimensions.diagnostics).toHaveLength(0);
+    expect(autoOverride.diagnostics).toHaveLength(1);
+  });
+
+  it("does not apply interaction-state sizing to the initial image layout", () => {
+    const result = runRuleWithSiblingCss(
+      `const Feed = () => <section className="feed"><img src="/place.jpg" alt="" /></section>;`,
+      `.feed img { width: 100%; height: 178px; }
+       .feed:hover img { height: auto; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("expands static is selector branches", () => {
+    const result = runRuleWithSiblingCss(
+      `const Feed = () => <section className="feed"><img src="/place.jpg" alt="" /></section>;`,
+      `:is(.gallery, .feed) img { width: 100%; height: 178px; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("expands static where selector branches", () => {
+    const result = runRuleWithSiblingCss(
+      `const Hero = () => <section><img src="/hero.jpg" alt="" /></section>;`,
+      `:where(main, section) > img { width: 100%; aspect-ratio: 16 / 9; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("resolves native nested selectors", () => {
+    const result = runRuleWithSiblingCss(
+      `const Feed = () => <section className="feed"><img src="/place.jpg" alt="" /></section>;`,
+      `.feed { img { width: 100%; height: 178px; } }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("applies CSS cascade precedence to matching dimensions", () => {
+    const higherSpecificity = runRuleWithSiblingCss(
+      `const Feed = () => <section><img src="/place.jpg" alt="" /></section>;`,
+      `section img { width: 100%; height: 178px; }
+       img { height: auto; }`,
+    );
+    const laterSourceOrder = runRuleWithSiblingCss(
+      `const Feed = () => <section><img src="/place.jpg" alt="" /></section>;`,
+      `section img { width: 100%; height: 178px; }
+       section img { height: auto; }`,
+    );
+    const importantDeclaration = runRuleWithSiblingCss(
+      `const Feed = () => <section><img src="/place.jpg" alt="" /></section>;`,
+      `img { width: 100%; height: auto !important; }
+       section img { height: 178px; }`,
+    );
+    expect(higherSpecificity.diagnostics).toHaveLength(0);
+    expect(laterSourceOrder.diagnostics).toHaveLength(1);
+    expect(importantDeclaration.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat interaction-only is branches as initial layout", () => {
+    const result = runRuleWithSiblingCss(
+      `const Feed = () => <section><img src="/place.jpg" alt="" /></section>;`,
+      `:is(section:hover) img { width: 100%; height: 178px; }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows a full-size image in a definitively stretched flex item", () => {
+    const result = runRuleWithSiblingCss(
+      `const Map = () => <main><div className="body"><section /><aside><img src="/map.jpg" alt="" /></aside></div></main>;`,
+      `main { width: 100vw; height: 100vh; }
+       .body { display: flex; height: calc(100vh - 48px); }
+       aside { flex: 1; }
+       aside > img { width: 100%; height: 100%; object-fit: cover; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("models row and column axes for flex and inline-flex containers", () => {
+    const result = runRuleWithSiblingCss(
+      `const Gallery = () => <main><div className="row"><aside><img src="/row.jpg" alt="" /></aside></div><div className="column"><aside><img src="/column.jpg" alt="" /></aside></div></main>;`,
+      `main { width: 100vw; height: 100vh; }
+       .row { display: inline-flex; width: 100%; height: 50%; }
+       .column { display: flex; flex-direction: column; width: 100%; height: 50%; }
+       aside { flex: 1; }
+       aside > img { width: 100%; height: 100%; object-fit: cover; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps external parent sizing when inline styles do not override layout", () => {
+    const result = runRuleWithSiblingCss(
+      `const Map = () => <main><div className="body" style={{ color: "red" }}><aside style={{ color: "blue" }}><img src="/map.jpg" alt="" /></aside></div></main>;`,
+      `main { width: 100vw; height: 100vh; }
+       .body { display: flex; height: calc(100vh - 48px); }
+       aside { flex: 1; }
+       aside > img { width: 100%; height: 100%; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows a full-size image through a definite React root height chain", () => {
+    const result = runRuleWithSiblingCss(
+      `const Map = () => <main><div className="content"><section /><aside><img src="/map.jpg" alt="" /></aside></div></main>;`,
+      `html, body, #root { height: 100%; }
+       main { width: 100%; height: 100%; }
+       .content { display: flex; height: calc(100% - 49px); }
+       aside { width: 37%; height: 100%; }
+       aside img { width: 100%; height: 100%; object-fit: cover; }
+       @media (max-width: 600px) { section { width: 64%; } }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports sibling CSS that does not reserve image height", () => {
+    const autoHeight = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: auto; }`,
+    );
+    const widthOnly = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 100%; object-fit: cover; }`,
+    );
+    const indefiniteParentHeight = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 100%; height: 100%; }`,
+    );
+    const unusedStylesheet = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: 400px; }`,
+      false,
+    );
+    const importedByAnotherModule = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: 400px; }`,
+      false,
+      `import "./styles.css"; export const Other = () => null;`,
+    );
+    expect(autoHeight.diagnostics).toHaveLength(1);
+    expect(widthOnly.diagnostics).toHaveLength(1);
+    expect(indefiniteParentHeight.diagnostics).toHaveLength(1);
+    expect(unusedStylesheet.diagnostics).toHaveLength(1);
+    expect(importedByAnotherModule.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps unsupported selector ambiguity scoped to possible matches", () => {
+    const result = runRuleWithSiblingCss(
+      `const Gallery = () => <img src="/photo.jpg" alt="" />;`,
+      `img { width: 768px; height: 400px; }
+       .unrelated:not(.framed) { height: auto; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports when conditional or higher-specificity CSS can remove the reservation", () => {
+    const conditionalOverride = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: 400px; }
+       @media (max-width: 600px) { section img { height: auto; } }`,
+    );
+    const zeroSpecificityOverride = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: 400px; }
+       :where(section img) { height: auto; }`,
+    );
+    const negatedClassOverride = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: 400px; }
+       section img:not(.framed) { height: auto; }`,
+    );
+    const attributeOverride = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img data-fluid src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: 400px; }
+       section img[data-fluid] { height: auto; }`,
+    );
+    expect(conditionalOverride.diagnostics).toHaveLength(1);
+    expect(zeroSpecificityOverride.diagnostics).toHaveLength(0);
+    expect(negatedClassOverride.diagnostics).toHaveLength(1);
+    expect(attributeOverride.diagnostics).toHaveLength(1);
   });
 
   it("allows an image inside a reserved wrapper", () => {

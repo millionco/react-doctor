@@ -109,6 +109,8 @@ const checkExpressionContainer = (
   context: Parameters<Rule["create"]>[0],
   settings: Required<JsxCurlyBracePresenceSettings>,
 ): void => {
+  const containerSource = context.sourceCode?.getText?.(container) ?? "";
+  if (containerSource.includes("/*") || containerSource.includes("//")) return;
   const expression = container.expression as EsTreeNode;
   if (expression.type === "JSXEmptyExpression") return;
   const allowed = parentIsAttribute ? settings.props : settings.children;

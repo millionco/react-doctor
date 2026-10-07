@@ -1,15 +1,15 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import * as fs from "node:fs";
 import * as path from "node:path";
-import { parseJSON5 } from "confbox";
 import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
 import type { Jiti } from "jiti";
 import type { ReactDoctorConfig } from "./types/index.js";
 import { isFile, isPlainObject } from "./project-info/index.js";
+import { importDefaultExport } from "./utils/import-default-export.js";
 import { isProjectBoundary } from "./utils/is-project-boundary.js";
 import { messageFromUnknown } from "./utils/message-from-unknown.js";
+import { readJson5File } from "./utils/read-json5-file.js";
 import { validateConfigTypes } from "./validate-config-types.js";
 
 const warn = (message: string): void => {
@@ -55,11 +55,6 @@ interface DirectoryConfigResult {
 
 // One jiti instance, reused across loads so its transform cache is warm.
 const jiti = createJiti(import.meta.url);
-
-const importDefaultExport = async (jitiInstance: Jiti, filePath: string): Promise<unknown> => {
-  const imported = await jitiInstance.import<{ default?: unknown }>(filePath);
-  return imported?.default ?? imported;
-};
 
 // Config files authored against the published package import `defineConfig`
 // from `react-doctor/api` at runtime. When the scanned repo has no
@@ -133,12 +128,6 @@ const loadModuleConfig = async (filePath: string): Promise<unknown> => {
   }
 };
 
-// JSON5 is a strict superset of JSON: it allows comments and trailing
-// commas (the "JSONC" features), but still throws on genuinely malformed
-// input so a broken config is detected rather than silently recovered.
-const readDataConfig = (filePath: string): unknown =>
-  parseJSON5(fs.readFileSync(filePath, "utf-8"));
-
 // Reads the `reactDoctor` config object embedded in a directory's
 // package.json, or null when it's absent or malformed. A malformed
 // package.json is not ours to police, so it reads as "no embedded config".
@@ -146,7 +135,7 @@ const readEmbeddedPackageJsonConfig = (directory: string): Record<string, unknow
   const packageJsonPath = path.join(directory, PACKAGE_JSON_FILENAME);
   if (!isFile(packageJsonPath)) return null;
   try {
-    const packageJson = parseJSON5(fs.readFileSync(packageJsonPath, "utf-8"));
+    const packageJson = readJson5File(packageJsonPath);
     if (isPlainObject(packageJson)) {
       const embeddedConfig = packageJson[PACKAGE_JSON_CONFIG_KEY];
       if (isPlainObject(embeddedConfig)) return embeddedConfig;
@@ -180,7 +169,7 @@ const loadLegacyConfig = (directory: string): DirectoryConfigResult => {
   const legacyFilePath = path.join(directory, LEGACY_CONFIG_FILENAME);
   if (!isFile(legacyFilePath)) return { status: "absent", loaded: null };
   try {
-    const parsed = readDataConfig(legacyFilePath);
+    const parsed = readJson5File(legacyFilePath);
     if (isPlainObject(parsed)) {
       warn(
         `${LEGACY_CONFIG_FILENAME} is deprecated — rename it to ${CONFIG_BASENAME}.json (or author a ${CONFIG_BASENAME}.ts). It is still read for now.`,
@@ -209,7 +198,7 @@ const loadConfigFromDirectory = async (directory: string): Promise<DirectoryConf
     if (!isFile(filePath)) continue;
     const isDataFile = DATA_CONFIG_EXTENSIONS.has(extension);
     try {
-      const parsed = isDataFile ? readDataConfig(filePath) : await loadModuleConfig(filePath);
+      const parsed = isDataFile ? readJson5File(filePath) : await loadModuleConfig(filePath);
       if (isPlainObject(parsed)) {
         return {
           status: "found",

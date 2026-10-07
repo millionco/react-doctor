@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import {
   AUTH_CHECK_LOOKAHEAD_STATEMENTS,
   AUTH_FUNCTION_NAMES,
@@ -1499,13 +1500,92 @@ const CREDENTIAL_OPERATION_NAMES: ReadonlySet<string> = new Set([
   "magiclink",
 ]);
 
+const CREDENTIAL_OPERATION_PREFIX_NAMES: ReadonlySet<string> = new Set([
+  ...CREDENTIAL_OPERATION_NAMES,
+  "createaccount",
+  "emailverification",
+  "handleoauthcallback",
+  "passwordreset",
+  "verifyauthcode",
+]);
+
+const CREDENTIAL_ACTION_NAME_SEPARATOR_PATTERN = /[_$]+/g;
+
+const CREDENTIAL_ESTABLISHING_AUTH_SDK_METHODS: ReadonlySet<string> = new Set([
+  "signUp",
+  "signup",
+  "signIn",
+  "signin",
+  "signInWithPassword",
+  "signInWithOtp",
+  "signInWithOAuth",
+  "signInWithEmail",
+  "signInWithPhone",
+  "signInAnonymously",
+  "verifyOtp",
+  "verifyEmail",
+  "confirmOtp",
+  "resetPasswordForEmail",
+  "sendPasswordResetEmail",
+  "handleOAuthCallback",
+  "handleCallback",
+  "exchangeCodeForSession",
+]);
+
 // A credential-establishing action (login, signup, OAuth callback, OTP /
 // email verify, password reset) legitimately runs for anonymous callers —
 // no prior session can exist, so demanding an auth() gate on it is wrong.
 const isCredentialEstablishingActionName = (actionName: string): boolean => {
-  const tokens = mergeCredentialPhraseTokens(tokenizeIdentifierWords(actionName));
+  const tokens = mergeCredentialPhraseTokens(
+    tokenizeIdentifierWords(actionName.replace(CREDENTIAL_ACTION_NAME_SEPARATOR_PATTERN, " ")),
+  );
   const operationTokens = tokens.at(-1) === "action" ? tokens.slice(0, -1) : tokens;
   return CREDENTIAL_OPERATION_NAMES.has(operationTokens.join(""));
+};
+
+const hasCredentialEstablishingActionNameSignal = (actionName: string): boolean => {
+  const tokens = mergeCredentialPhraseTokens(
+    tokenizeIdentifierWords(actionName.replace(CREDENTIAL_ACTION_NAME_SEPARATOR_PATTERN, " ")),
+  );
+  const operationTokens = tokens.at(-1) === "action" ? tokens.slice(0, -1) : tokens;
+  for (let prefixLength = operationTokens.length; prefixLength > 0; prefixLength -= 1) {
+    const prefix = operationTokens.slice(0, prefixLength).join("");
+    if (CREDENTIAL_OPERATION_PREFIX_NAMES.has(prefix)) return true;
+  }
+  return false;
+};
+
+const containsCredentialEstablishingAuthCall = (
+  executionGraph: ExecutedFunctionGraph,
+  context: RuleContext,
+): boolean => {
+  for (const executedBody of executionGraph.bodies) {
+    let foundCredentialCall = false;
+    walkExecutedServerActionNodes(executedBody, context, (node) => {
+      if (foundCredentialCall) return false;
+      if (!isNodeOfType(node, "CallExpression")) return;
+      const callee = unwrapTypeWrappedCallee(node.callee);
+      if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
+      const methodName = getStaticPropertyName(callee);
+      if (!methodName || !CREDENTIAL_ESTABLISHING_AUTH_SDK_METHODS.has(methodName)) return;
+      const authReceiver = unwrapTypeWrappedCallee(callee.object);
+      let providerSource: string;
+      if (isNodeOfType(authReceiver, "Identifier")) {
+        providerSource = authReceiver.name;
+      } else if (isNodeOfType(authReceiver, "MemberExpression") && !authReceiver.computed) {
+        const receiverProperty = getStaticPropertyName(authReceiver);
+        if (receiverProperty !== "auth") return;
+        providerSource = buildDottedReceiverSource(authReceiver.object);
+      } else {
+        return;
+      }
+      if (!AUTH_OBJECT_PATTERN.test(providerSource)) return;
+      foundCredentialCall = true;
+      return false;
+    });
+    if (foundCredentialCall) return true;
+  }
+  return false;
 };
 
 // Naming an exported action "public" (`getPostPublicAction`) declares the
@@ -1529,6 +1609,14 @@ const inspectServerAction = (
   if (hasPublicNameToken(candidate.displayName)) return;
 
   const executionGraph = collectExecutedFunctionBodies(candidate.functionNode, context);
+
+  if (
+    hasCredentialEstablishingActionNameSignal(candidate.displayName) &&
+    containsCredentialEstablishingAuthCall(executionGraph, context)
+  ) {
+    return;
+  }
+
   const rootNodes = collectAuthScanRoots(candidate.functionNode, context);
   if (
     containsAuthCheck(
@@ -1636,7 +1724,7 @@ export const serverAuthActions = defineRule({
         )
       : isTestlikeFilename(context.filename);
     if (isNonProductionFile) {
-      return {};
+      return EMPTY_RULE_VISITORS;
     }
     const shouldSkipTestAppSource = Boolean(
       context.filename && TEST_APP_SOURCE_PATH_PATTERN.test(context.filename),

@@ -3,6 +3,10 @@
 // without a positive-control fixture in `liveness-fixtures.ts` fails
 // `liveness.test.ts` unless the rule is deliberately listed here.
 export const KNOWN_UNCOVERED: Readonly<Record<string, string>> = {
+  "circular-dependency":
+    "project rule: requires the core whole-project import graph, which the in-memory lint harness does not build",
+  "duplicate-jsx-subtree":
+    "project rule: requires the core whole-project JSX index, which the in-memory lint harness does not build",
   "no-cascading-set-state":
     "retired rule: synchronous effect setters share a React commit, so setter count does not prove redraw count",
   "nextjs-no-use-search-params-without-suspense":
@@ -11,6 +15,16 @@ export const KNOWN_UNCOVERED: Readonly<Record<string, string>> = {
     "resolves the imported barrel module on the real filesystem to count its re-exports, which the in-memory liveness harness cannot fake",
   "rn-animate-layout-property": "retired rule: create() intentionally never reports",
   "rn-prefer-content-inset-adjustment": "retired rule: create() intentionally never reports",
+  "unused-dependency":
+    "project rule: requires the core whole-project dependency graph, which the in-memory lint harness does not build",
+  "unused-dev-dependency":
+    "project rule: requires the core whole-project dependency graph, which the in-memory lint harness does not build",
+  "unused-export":
+    "project rule: requires the core whole-project import graph, which the in-memory lint harness does not build",
+  "unused-file":
+    "project rule: requires the core whole-project import graph, which the in-memory lint harness does not build",
+  "unused-type":
+    "project rule: requires the core whole-project import graph, which the in-memory lint harness does not build",
   "ink-newline-inside-text": "retired rule: Ink supports Newline as a standalone text node",
   "ink-suspense-requires-concurrent":
     "retired rule: Ink supports Suspense fallback rendering without concurrent mode",

@@ -1,23 +1,83 @@
 import { INTENTIONAL_SEQUENCING_CALLEE_NAMES, LOOP_TYPES } from "../../constants/js.js";
+import type {
+  ScopeAnalysis,
+  ScopeDescriptor,
+  SymbolDescriptor,
+} from "../../semantic/scope-analysis.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { containsDirectAwait } from "../../utils/contains-direct-await.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
-import { getOrderIndependentLocalFunction } from "../../utils/get-order-independent-local-function.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import {
+  getOrderIndependentLocalFunction,
+  resolveStaticLocalCallFunction,
+} from "../../utils/get-order-independent-local-function.js";
 import { hasPossibleStaticMemberCallWrite } from "../../utils/has-static-property-write-before.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isLocalPromiseCollector } from "../../utils/is-local-promise-collector.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTestLibraryImportSource } from "../../utils/is-test-library-import-source.js";
+import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
+import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const LOOP_STATEMENT_TYPES: ReadonlySet<string> = new Set(LOOP_TYPES);
+const ORDERED_OUTPUT_INSERTION_METHOD_NAMES = new Set(["push", "unshift"]);
+const HOST_YIELD_SCHEDULER_NAMES: ReadonlySet<string> = new Set([
+  "queueMicrotask",
+  "requestAnimationFrame",
+  "requestIdleCallback",
+  "setImmediate",
+  "setTimeout",
+]);
+const OPAQUE_PACING_CALLEE_NAMES: ReadonlySet<string> = new Set([
+  "yieldNow",
+  "yieldTo",
+  "yieldToBrowser",
+  "slice",
+  "sliceYield",
+  "nextFrame",
+  "breathe",
+  "onYield",
+  "onProgress",
+  "progress",
+  "onStep",
+  "step",
+  "runStage",
+]);
+
+const getCalleeName = (callee: EsTreeNode | null | undefined): string | null => {
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return callee.property.name;
+  }
+  return null;
+};
+
+const getLoopBody = (loopNode: EsTreeNode): EsTreeNode | null => {
+  if (
+    isNodeOfType(loopNode, "ForStatement") ||
+    isNodeOfType(loopNode, "ForInStatement") ||
+    isNodeOfType(loopNode, "ForOfStatement") ||
+    isNodeOfType(loopNode, "WhileStatement") ||
+    isNodeOfType(loopNode, "DoWhileStatement")
+  ) {
+    return loopNode.body;
+  }
+  return null;
+};
 
 const findFirstAwaitOutsideNestedFunctions = (
   block: EsTreeNode,
   skipNestedLoops = false,
+  shouldSkipAwait?: (awaitNode: EsTreeNode) => boolean,
 ): EsTreeNode | null => {
   let firstAwait: EsTreeNode | null = null;
   walkAst(block, (child: EsTreeNode): boolean | void => {
@@ -33,7 +93,7 @@ const findFirstAwaitOutsideNestedFunctions = (
     // exemptions — attributing their awaits to the outer loop both
     // double-reports and bypasses those exemptions.
     if (skipNestedLoops && child !== block && LOOP_STATEMENT_TYPES.has(child.type)) return false;
-    if (isNodeOfType(child, "AwaitExpression")) {
+    if (isNodeOfType(child, "AwaitExpression") && !shouldSkipAwait?.(child)) {
       firstAwait = child;
     }
   });
@@ -53,9 +113,95 @@ const isIntentionalSequencingCallee = (callee: EsTreeNode | null | undefined): b
     return INTENTIONAL_SEQUENCING_CALLEE_NAMES.has(callee.name);
   }
   if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    const receiver = stripParenExpression(callee.object);
+    if (
+      callee.property.name === "check" &&
+      isNodeOfType(receiver, "Identifier") &&
+      /sched(?:uler)?/i.test(receiver.name)
+    ) {
+      return true;
+    }
     return INTENTIONAL_SEQUENCING_CALLEE_NAMES.has(callee.property.name);
   }
   return false;
+};
+
+const isGlobalHostSchedulerCall = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  if (
+    isNodeOfType(callExpression.callee, "Identifier") &&
+    HOST_YIELD_SCHEDULER_NAMES.has(callExpression.callee.name) &&
+    context.scopes.isGlobalReference(callExpression.callee)
+  ) {
+    return true;
+  }
+  if (
+    !isNodeOfType(callExpression.callee, "MemberExpression") ||
+    !isNodeOfType(callExpression.callee.property, "Identifier") ||
+    !HOST_YIELD_SCHEDULER_NAMES.has(callExpression.callee.property.name)
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(callExpression.callee.object);
+  return (
+    isNodeOfType(receiver, "Identifier") &&
+    (receiver.name === "globalThis" || receiver.name === "window") &&
+    context.scopes.isGlobalReference(receiver)
+  );
+};
+
+const doesLocalFunctionYieldToHost = (
+  localFunction: EsTreeNode,
+  context: RuleContext,
+  visitedFunctions: Set<EsTreeNode> = new Set(),
+): boolean => {
+  if (!isFunctionLike(localFunction) || visitedFunctions.has(localFunction)) return false;
+  visitedFunctions.add(localFunction);
+  let hasDirectHostYieldPromise = false;
+  let hasNestedPacingCall = false;
+  walkAst(localFunction.body, (child: EsTreeNode): boolean | void => {
+    if (child !== localFunction.body && isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "NewExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      child.callee.name === "Promise" &&
+      context.scopes.isGlobalReference(child.callee)
+    ) {
+      const promiseRoot = findTransparentExpressionRoot(child);
+      const promiseParent = promiseRoot.parent;
+      const producesFunctionResult =
+        (isNodeOfType(promiseParent, "ReturnStatement") &&
+          promiseParent.argument === promiseRoot) ||
+        (isNodeOfType(promiseParent, "AwaitExpression") &&
+          promiseParent.argument === promiseRoot) ||
+        (isFunctionLike(promiseParent) && promiseParent.body === promiseRoot);
+      const executor = child.arguments[0];
+      if (producesFunctionResult && isFunctionLike(executor)) {
+        walkAst(executor.body, (executorChild: EsTreeNode): boolean | void => {
+          if (executorChild !== executor.body && isFunctionLike(executorChild)) return false;
+          if (
+            isNodeOfType(executorChild, "CallExpression") &&
+            isGlobalHostSchedulerCall(executorChild, context)
+          ) {
+            hasDirectHostYieldPromise = true;
+          }
+        });
+      }
+    }
+    if (!isNodeOfType(child, "CallExpression")) return;
+    if (isGlobalHostSchedulerCall(child, context)) return;
+    const nestedLocalFunction = resolveStaticLocalCallFunction(child, context.scopes);
+    if (nestedLocalFunction !== null) {
+      if (doesLocalFunctionYieldToHost(nestedLocalFunction, context, visitedFunctions)) {
+        hasNestedPacingCall = true;
+      }
+      return;
+    }
+    if (isIntentionalSequencingCallee(child.callee)) hasNestedPacingCall = true;
+  });
+  return hasDirectHostYieldPromise || hasNestedPacingCall;
 };
 
 const isAwaitingSleepLikeCall = (awaitNode: EsTreeNode, context: RuleContext): boolean => {
@@ -63,7 +209,24 @@ const isAwaitingSleepLikeCall = (awaitNode: EsTreeNode, context: RuleContext): b
   const argument = awaitNode.argument;
   if (!argument) return false;
   if (!isNodeOfType(argument, "CallExpression")) return false;
+  if (
+    argument.arguments.some((callArgument) => {
+      if (isNodeOfType(callArgument, "SpreadElement")) return false;
+      const pacingArgument = stripParenExpression(callArgument);
+      return (
+        isNodeOfType(pacingArgument, "Identifier") && /sched(?:uler)?/i.test(pacingArgument.name)
+      );
+    })
+  ) {
+    return true;
+  }
+  const localFunction = resolveStaticLocalCallFunction(argument, context.scopes);
+  if (localFunction !== null && doesLocalFunctionYieldToHost(localFunction, context)) return true;
   if (getOrderIndependentLocalFunction(argument, context.scopes) !== null) return false;
+  const calleeName = getCalleeName(argument.callee);
+  if (localFunction !== null && calleeName && OPAQUE_PACING_CALLEE_NAMES.has(calleeName)) {
+    return false;
+  }
   return isIntentionalSequencingCallee(argument.callee);
 };
 
@@ -138,11 +301,499 @@ const isAwaitingManualPromiseWait = (awaitNode: EsTreeNode): boolean => {
   return isWaitLike;
 };
 
+const getRootObjectIdentifierName = (node: EsTreeNode | null | undefined): string | null => {
+  let current: EsTreeNode | null | undefined = node;
+  while (isNodeOfType(current, "MemberExpression")) {
+    current = current.object;
+  }
+  return isNodeOfType(current, "Identifier") ? current.name : null;
+};
+
+const isScopeWithinFunction = (
+  candidateScope: ScopeDescriptor,
+  functionScope: ScopeDescriptor,
+): boolean => {
+  let currentScope: typeof candidateScope | null = candidateScope;
+  while (currentScope) {
+    if (currentScope === functionScope) return true;
+    currentScope = currentScope.parent;
+  }
+  return false;
+};
+
+const isSymbolDirectlyReturned = (
+  symbol: SymbolDescriptor,
+  callerFunction: EsTreeNode | null,
+): boolean =>
+  Boolean(callerFunction) &&
+  symbol.references.some((reference) => {
+    const expressionRoot = findTransparentExpressionRoot(reference.identifier);
+    const parent = expressionRoot.parent;
+    return (
+      isNodeOfType(parent, "ReturnStatement") &&
+      parent.argument === expressionRoot &&
+      findEnclosingFunction(parent) === callerFunction
+    );
+  });
+
+const collectPatternBindingSymbolIds = (
+  pattern: EsTreeNode,
+  scopes: ScopeAnalysis,
+  target: Set<number>,
+): void => {
+  if (isNodeOfType(pattern, "Identifier")) {
+    const symbol = scopes.symbolFor(pattern);
+    if (symbol) target.add(symbol.id);
+    return;
+  }
+  if (isNodeOfType(pattern, "ObjectPattern")) {
+    for (const property of pattern.properties ?? []) {
+      if (isNodeOfType(property, "Property") && property.value) {
+        collectPatternBindingSymbolIds(property.value, scopes, target);
+      } else if (isNodeOfType(property, "RestElement") && property.argument) {
+        collectPatternBindingSymbolIds(property.argument, scopes, target);
+      }
+    }
+    return;
+  }
+  if (isNodeOfType(pattern, "ArrayPattern")) {
+    for (const element of pattern.elements ?? []) {
+      if (element) collectPatternBindingSymbolIds(element, scopes, target);
+    }
+    return;
+  }
+  if (isNodeOfType(pattern, "AssignmentPattern") && pattern.left) {
+    collectPatternBindingSymbolIds(pattern.left, scopes, target);
+  }
+};
+
+const collectReferencedSymbolIds = (expression: EsTreeNode, scopes: ScopeAnalysis): Set<number> => {
+  const referencedSymbolIds = new Set<number>();
+  walkAst(expression, (child: EsTreeNode): boolean | void => {
+    if (child !== expression && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "Identifier")) return;
+    const symbol = scopes.symbolFor(child);
+    if (symbol) referencedSymbolIds.add(symbol.id);
+  });
+  return referencedSymbolIds;
+};
+
+const collectLoopIterationSymbolIds = (
+  loopNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): Set<number> => {
+  const iterationSymbolIds = new Set<number>();
+  if (isNodeOfType(loopNode, "ForOfStatement") || isNodeOfType(loopNode, "ForInStatement")) {
+    if (isNodeOfType(loopNode.left, "VariableDeclaration")) {
+      for (const declaration of loopNode.left.declarations) {
+        collectPatternBindingSymbolIds(declaration.id, scopes, iterationSymbolIds);
+      }
+    } else {
+      collectPatternBindingSymbolIds(loopNode.left, scopes, iterationSymbolIds);
+    }
+  }
+  return iterationSymbolIds;
+};
+
+const collectAwaitDerivedSymbolIds = (
+  block: EsTreeNode,
+  scopes: ScopeAnalysis,
+  sourceAwait: EsTreeNode | null = null,
+): Set<number> => {
+  const awaitDerivedSymbolIds = new Set<number>();
+  const bindingDependencies: Array<{
+    declaredSymbolId: number;
+    referencedSymbolIds: Set<number>;
+  }> = [];
+  walkAst(block, (child: EsTreeNode): boolean | void => {
+    if (child !== block && isFunctionLike(child)) return false;
+    if (isNodeOfType(child, "VariableDeclarator") && child.id && child.init) {
+      const declaredSymbolIds = new Set<number>();
+      collectPatternBindingSymbolIds(child.id, scopes, declaredSymbolIds);
+      if (
+        (sourceAwait && isAstDescendant(sourceAwait, child.init)) ||
+        (!sourceAwait && containsDirectAwait(child.init))
+      ) {
+        for (const symbolId of declaredSymbolIds) awaitDerivedSymbolIds.add(symbolId);
+      }
+      const referencedSymbolIds = collectReferencedSymbolIds(child.init, scopes);
+      for (const declaredSymbolId of declaredSymbolIds) {
+        bindingDependencies.push({ declaredSymbolId, referencedSymbolIds });
+      }
+      return;
+    }
+    if (isNodeOfType(child, "AssignmentExpression") && child.left) {
+      const assignedSymbolIds = new Set<number>();
+      collectPatternBindingSymbolIds(child.left, scopes, assignedSymbolIds);
+      if (
+        (sourceAwait && isAstDescendant(sourceAwait, child.right)) ||
+        (!sourceAwait && containsDirectAwait(child.right))
+      ) {
+        for (const symbolId of assignedSymbolIds) awaitDerivedSymbolIds.add(symbolId);
+      }
+      const referencedSymbolIds = collectReferencedSymbolIds(child.right, scopes);
+      for (const assignedSymbolId of assignedSymbolIds) {
+        bindingDependencies.push({
+          declaredSymbolId: assignedSymbolId,
+          referencedSymbolIds,
+        });
+      }
+    }
+  });
+  let didGrow = true;
+  while (didGrow) {
+    didGrow = false;
+    for (const { declaredSymbolId, referencedSymbolIds } of bindingDependencies) {
+      if (awaitDerivedSymbolIds.has(declaredSymbolId)) continue;
+      for (const referencedSymbolId of referencedSymbolIds) {
+        if (!awaitDerivedSymbolIds.has(referencedSymbolId)) continue;
+        awaitDerivedSymbolIds.add(declaredSymbolId);
+        didGrow = true;
+        break;
+      }
+    }
+  }
+  return awaitDerivedSymbolIds;
+};
+
+const getSimpleParameterIdentifier = (parameter: EsTreeNode): EsTreeNode | null => {
+  if (isNodeOfType(parameter, "Identifier")) return parameter;
+  if (isNodeOfType(parameter, "AssignmentPattern") && isNodeOfType(parameter.left, "Identifier")) {
+    return parameter.left;
+  }
+  return null;
+};
+
+const doesAwaitedLocalCallInsertAwaitDerivedOutput = (
+  awaitNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(awaitNode, "AwaitExpression")) return false;
+  const callExpression = awaitNode.argument;
+  if (!isNodeOfType(callExpression, "CallExpression")) return false;
+  const localFunction = resolveStaticLocalCallFunction(callExpression, context.scopes);
+  if (!isFunctionLike(localFunction)) return false;
+  const callerFunction = findEnclosingFunction(callExpression);
+  const functionScope = context.scopes.ownScopeFor(localFunction);
+  if (!functionScope) return false;
+  const awaitDerivedSymbolIds = collectAwaitDerivedSymbolIds(localFunction.body, context.scopes);
+  const externallyReachableParameterSymbolIds = new Set<number>();
+  for (const [parameterIndex, parameter] of localFunction.params.entries()) {
+    const parameterIdentifier = getSimpleParameterIdentifier(parameter);
+    if (!parameterIdentifier) continue;
+    const argument = callExpression.arguments[parameterIndex];
+    if (!isNodeOfType(argument, "Identifier")) continue;
+    const parameterSymbol = context.scopes.symbolFor(parameterIdentifier);
+    const argumentSymbol = context.scopes.symbolFor(argument);
+    if (
+      parameterSymbol &&
+      argumentSymbol &&
+      (isSymbolDirectlyReturned(argumentSymbol, callerFunction) ||
+        argumentSymbol.id === parameterSymbol.id)
+    ) {
+      externallyReachableParameterSymbolIds.add(parameterSymbol.id);
+    }
+  }
+  let doesInsertAwaitDerivedOutput = false;
+  walkAst(localFunction.body, (child: EsTreeNode): boolean | void => {
+    if (doesInsertAwaitDerivedOutput) return false;
+    if (child !== localFunction.body && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = child.callee;
+    if (
+      !isNodeOfType(callee, "MemberExpression") ||
+      callee.computed ||
+      !isNodeOfType(callee.property, "Identifier") ||
+      !ORDERED_OUTPUT_INSERTION_METHOD_NAMES.has(callee.property.name)
+    ) {
+      return;
+    }
+    let doesMutationConsumeAwaitedValue = false;
+    for (const mutationArgument of child.arguments ?? []) {
+      if (containsDirectAwait(mutationArgument)) {
+        doesMutationConsumeAwaitedValue = true;
+        break;
+      }
+      const referencedSymbolIds = collectReferencedSymbolIds(mutationArgument, context.scopes);
+      for (const referencedSymbolId of referencedSymbolIds) {
+        if (awaitDerivedSymbolIds.has(referencedSymbolId)) {
+          doesMutationConsumeAwaitedValue = true;
+          break;
+        }
+      }
+      if (doesMutationConsumeAwaitedValue) break;
+    }
+    if (!doesMutationConsumeAwaitedValue) return;
+    let receiverIdentifier: EsTreeNode | null = callee.object;
+    while (isNodeOfType(receiverIdentifier, "MemberExpression")) {
+      receiverIdentifier = receiverIdentifier.object;
+    }
+    if (!isNodeOfType(receiverIdentifier, "Identifier")) return;
+    const receiverSymbol = context.scopes.symbolFor(receiverIdentifier);
+    if (
+      receiverSymbol &&
+      (externallyReachableParameterSymbolIds.has(receiverSymbol.id) ||
+        (!isScopeWithinFunction(receiverSymbol.scope, functionScope) &&
+          isSymbolDirectlyReturned(receiverSymbol, callerFunction)))
+    ) {
+      doesInsertAwaitDerivedOutput = true;
+      return false;
+    }
+  });
+  return doesInsertAwaitDerivedOutput;
+};
+
+const getAwaitedMemberCall = (awaitNode: EsTreeNode): EsTreeNode | null => {
+  if (!isNodeOfType(awaitNode, "AwaitExpression")) return null;
+  const callExpression = stripParenExpression(awaitNode.argument);
+  if (!isNodeOfType(callExpression, "CallExpression")) return null;
+  return isNodeOfType(stripParenExpression(callExpression.callee), "MemberExpression")
+    ? callExpression
+    : null;
+};
+
+const doesAwaitedCallReadIterationBinding = (
+  callExpression: EsTreeNode,
+  loopNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(callExpression, "CallExpression")) return false;
+  const iterationSymbolIds = collectLoopIterationSymbolIds(loopNode, context.scopes);
+  if (iterationSymbolIds.size === 0) return false;
+  for (const argument of callExpression.arguments) {
+    const referencedSymbolIds = collectReferencedSymbolIds(argument, context.scopes);
+    for (const referencedSymbolId of referencedSymbolIds) {
+      if (iterationSymbolIds.has(referencedSymbolId)) return true;
+    }
+  }
+  return false;
+};
+
+const getMemberCallReceiver = (callExpression: EsTreeNode): EsTreeNode | null => {
+  if (!isNodeOfType(callExpression, "CallExpression")) return null;
+  const callee = stripParenExpression(callExpression.callee);
+  return isNodeOfType(callee, "MemberExpression") ? callee.object : null;
+};
+
+const getReceiverRoot = (receiver: EsTreeNode): EsTreeNode => {
+  let root = stripParenExpression(receiver);
+  while (isNodeOfType(root, "MemberExpression")) {
+    root = stripParenExpression(root.object);
+  }
+  return root;
+};
+
+const isStableOutsideLoopReceiver = (
+  receiver: EsTreeNode,
+  receiverKey: string,
+  loopNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const loopBody = getLoopBody(loopNode);
+  if (!loopBody) return false;
+  const receiverRoot = getReceiverRoot(receiver);
+  if (isNodeOfType(receiverRoot, "Identifier")) {
+    const receiverSymbol = context.scopes.symbolFor(receiverRoot);
+    if (!receiverSymbol || isAstDescendant(receiverSymbol.bindingIdentifier, loopNode))
+      return false;
+  } else if (!isNodeOfType(receiverRoot, "ThisExpression")) {
+    return false;
+  }
+  let isReceiverReassigned = false;
+  walkAst(loopBody, (child: EsTreeNode): boolean | void => {
+    if (isReceiverReassigned) return false;
+    if (child !== loopBody && isFunctionLike(child)) return false;
+    let writtenExpression: EsTreeNode | null = null;
+    if (isNodeOfType(child, "AssignmentExpression")) {
+      writtenExpression = child.left;
+    } else if (isNodeOfType(child, "UpdateExpression")) {
+      writtenExpression = child.argument;
+    } else if (isNodeOfType(child, "UnaryExpression") && child.operator === "delete") {
+      writtenExpression = child.argument;
+    }
+    if (writtenExpression && resolveExpressionKey(writtenExpression, context) === receiverKey) {
+      isReceiverReassigned = true;
+      return false;
+    }
+  });
+  return !isReceiverReassigned;
+};
+
+const isObservedMemberCallOnReceiver = (
+  candidate: EsTreeNode,
+  receiverKey: string,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(candidate, "CallExpression")) return false;
+  const candidateReceiver = getMemberCallReceiver(candidate);
+  if (!candidateReceiver || resolveExpressionKey(candidateReceiver, context) !== receiverKey) {
+    return false;
+  }
+  return !isNodeOfType(findTransparentExpressionRoot(candidate).parent, "ExpressionStatement");
+};
+
+const doesAwaitBridgeReceiverSnapshots = (
+  awaitNode: EsTreeNode,
+  loopNode: EsTreeNode,
+  receiverKey: string,
+  context: RuleContext,
+): boolean => {
+  const loopBody = getLoopBody(loopNode);
+  if (!loopBody) return false;
+  let hasDominatingObservation = false;
+  let hasDominatedObservation = false;
+  walkAst(loopBody, (child: EsTreeNode): boolean | void => {
+    if (hasDominatingObservation && hasDominatedObservation) return false;
+    if (child !== loopBody && isFunctionLike(child)) return false;
+    if (isAstDescendant(child, awaitNode)) return;
+    if (!isObservedMemberCallOnReceiver(child, receiverKey, context)) return;
+    if (nodeDominatesNode(child, awaitNode, context)) {
+      hasDominatingObservation = true;
+    }
+    if (nodeDominatesNode(awaitNode, child, context)) {
+      hasDominatedObservation = true;
+    }
+  });
+  return hasDominatingObservation && hasDominatedObservation;
+};
+
+const isOutputPassedToOwnerCallAfterLoop = (
+  symbol: SymbolDescriptor,
+  loopNode: EsTreeNode,
+): boolean => {
+  const enclosingFunction = findEnclosingFunction(loopNode);
+  return symbol.references.some((reference) => {
+    if (
+      reference.identifier.range[0] <= loopNode.range[1] ||
+      findEnclosingFunction(reference.identifier) !== enclosingFunction
+    ) {
+      return false;
+    }
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const parent = referenceRoot.parent;
+    if (
+      !isNodeOfType(parent, "CallExpression") ||
+      !parent.arguments.some((argument) => argument === referenceRoot)
+    ) {
+      return false;
+    }
+    const callee = stripParenExpression(parent.callee);
+    if (!isNodeOfType(callee, "MemberExpression")) return false;
+    return isNodeOfType(getReceiverRoot(callee.object), "ThisExpression");
+  });
+};
+
+const collectDirectAwaitResultSymbolIds = (
+  awaitNode: EsTreeNode,
+  loopBody: EsTreeNode,
+  context: RuleContext,
+): Set<number> => {
+  const resultSymbolIds = new Set<number>();
+  walkAst(loopBody, (child: EsTreeNode): boolean | void => {
+    if (child !== loopBody && isFunctionLike(child)) return false;
+    let bindingPattern: EsTreeNode | null = null;
+    let assignedExpression: EsTreeNode | null = null;
+    if (isNodeOfType(child, "VariableDeclarator") && child.init) {
+      bindingPattern = child.id;
+      assignedExpression = child.init;
+    } else if (isNodeOfType(child, "AssignmentExpression")) {
+      bindingPattern = child.left;
+      assignedExpression = child.right;
+    }
+    if (!bindingPattern || !assignedExpression || !isAstDescendant(awaitNode, assignedExpression)) {
+      return;
+    }
+    collectPatternBindingSymbolIds(bindingPattern, context.scopes, resultSymbolIds);
+  });
+  return resultSymbolIds;
+};
+
+const isDirectAwaitResultProperty = (
+  expression: EsTreeNode,
+  resultSymbolIds: ReadonlySet<number>,
+  context: RuleContext,
+): boolean => {
+  const unwrappedExpression = stripParenExpression(expression);
+  if (!isNodeOfType(unwrappedExpression, "MemberExpression")) return false;
+  const resultRoot = getReceiverRoot(unwrappedExpression);
+  if (!isNodeOfType(resultRoot, "Identifier")) return false;
+  const resultSymbol = context.scopes.symbolFor(resultRoot);
+  return Boolean(resultSymbol && resultSymbolIds.has(resultSymbol.id));
+};
+
+const doesAwaitProduceOwnerObservedResultProperty = (
+  awaitNode: EsTreeNode,
+  loopNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const loopBody = getLoopBody(loopNode);
+  if (!loopBody) return false;
+  const resultSymbolIds = collectDirectAwaitResultSymbolIds(awaitNode, loopBody, context);
+  if (resultSymbolIds.size === 0) return false;
+  let doesProduceObservedOrderedOutput = false;
+  walkAst(loopBody, (child: EsTreeNode): boolean | void => {
+    if (doesProduceObservedOrderedOutput) return false;
+    if (child !== loopBody && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "CallExpression") || !nodeDominatesNode(awaitNode, child, context)) {
+      return;
+    }
+    const callee = child.callee;
+    if (
+      !isNodeOfType(callee, "MemberExpression") ||
+      callee.computed ||
+      !isNodeOfType(callee.property, "Identifier") ||
+      !ORDERED_OUTPUT_INSERTION_METHOD_NAMES.has(callee.property.name)
+    ) {
+      return;
+    }
+    const outputRoot = getReceiverRoot(callee.object);
+    if (!isNodeOfType(outputRoot, "Identifier")) return;
+    const outputSymbol = context.scopes.symbolFor(outputRoot);
+    if (
+      !outputSymbol ||
+      isAstDescendant(outputSymbol.bindingIdentifier, loopNode) ||
+      !isOutputPassedToOwnerCallAfterLoop(outputSymbol, loopNode)
+    ) {
+      return;
+    }
+    for (const insertionArgument of child.arguments) {
+      if (!isDirectAwaitResultProperty(insertionArgument, resultSymbolIds, context)) continue;
+      doesProduceObservedOrderedOutput = true;
+      return false;
+    }
+  });
+  return doesProduceObservedOrderedOutput;
+};
+
+const isOrderedSharedReceiverAwait = (
+  awaitNode: EsTreeNode,
+  loopNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const callExpression = getAwaitedMemberCall(awaitNode);
+  if (!callExpression || !doesAwaitedCallReadIterationBinding(callExpression, loopNode, context)) {
+    return false;
+  }
+  const receiver = getMemberCallReceiver(callExpression);
+  if (!receiver) return false;
+  const receiverKey = resolveExpressionKey(receiver, context);
+  if (!receiverKey || !isStableOutsideLoopReceiver(receiver, receiverKey, loopNode, context)) {
+    return false;
+  }
+  return (
+    doesAwaitBridgeReceiverSnapshots(awaitNode, loopNode, receiverKey, context) ||
+    (isNodeOfType(getReceiverRoot(receiver), "ThisExpression") &&
+      isNodeOfType(stripParenExpression(receiver), "MemberExpression") &&
+      doesAwaitProduceOwnerObservedResultProperty(awaitNode, loopNode, context))
+  );
+};
+
 const isIntentionallySequentialAwait = (awaitNode: EsTreeNode, context: RuleContext): boolean =>
   isAwaitingPossiblyMutatedMemberCall(awaitNode, context) ||
   isAwaitingSleepLikeCall(awaitNode, context) ||
   isAwaitingPromiseConcurrencyCall(awaitNode) ||
-  isAwaitingManualPromiseWait(awaitNode);
+  isAwaitingManualPromiseWait(awaitNode) ||
+  doesAwaitedLocalCallInsertAwaitDerivedOutput(awaitNode, context);
 
 const collectPatternIdentifiers = (pattern: EsTreeNode, target: Set<string>): void => {
   if (isNodeOfType(pattern, "Identifier")) {
@@ -429,14 +1080,6 @@ const loopBodyHasAwaitDependentEarlyExit = (
   return hasAwaitDependentExit;
 };
 
-const getRootObjectIdentifierName = (node: EsTreeNode | null | undefined): string | null => {
-  let current: EsTreeNode | null | undefined = node;
-  while (isNodeOfType(current, "MemberExpression")) {
-    current = current.object;
-  }
-  return isNodeOfType(current, "Identifier") ? current.name : null;
-};
-
 const MUTATING_ARRAY_METHOD_NAMES = new Set([...ARRAY_MUTATION_METHOD_NAMES, "pop", "shift"]);
 
 const collectBodyWrittenBindingNames = (block: EsTreeNode): Set<string> => {
@@ -608,7 +1251,7 @@ const isBindingCombinedWithPromiseConcurrency = (
   return isCombined;
 };
 
-const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode): boolean => {
+const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode, context: RuleContext): boolean => {
   const flowNode = resolvePromiseFlowNode(mapCall);
   const parent = flowNode.parent;
   if (
@@ -618,6 +1261,11 @@ const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode): boolean => {
   ) {
     return true;
   }
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    isLocalPromiseCollector(parent, flowNode, context.scopes)
+  )
+    return true;
   let bindingName: string | null = null;
   if (
     isNodeOfType(parent, "VariableDeclarator") &&
@@ -671,8 +1319,9 @@ export const asyncAwaitInLoop = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Collect the items, then use `await Promise.all(items.map(...))` so independent work runs at the same time",
+    "Consider concurrent calls only for independent asynchronous work. Shared queues or synchronous work may not benefit. Preserve resource limits, transaction ordering, and failure/cancellation semantics; observe all callback promises.",
   create: (context: RuleContext) => {
+    let hasTestLibraryImport = false;
     const inspectLoop = (
       loopNode:
         | EsTreeNodeOfType<"ForStatement">
@@ -682,8 +1331,10 @@ export const asyncAwaitInLoop = defineRule({
         | EsTreeNodeOfType<"DoWhileStatement">,
       label: string,
     ): void => {
+      if (hasTestLibraryImport) return;
       const loopBody = loopNode.body;
       if (!loopBody) return;
+      if (!findFirstAwaitOutsideNestedFunctions(loopBody, true)) return;
       if (loopBodyHasIntentionallySequentialAwait(loopBody, context)) return;
       if (
         (isNodeOfType(loopNode, "WhileStatement") || isNodeOfType(loopNode, "DoWhileStatement")) &&
@@ -694,16 +1345,21 @@ export const asyncAwaitInLoop = defineRule({
       if (hasLoopCarriedDependency(loopBody)) return;
       if (loopBodyHasAwaitDependentEarlyExit(loopBody, getLoopLabelName(loopNode))) return;
       if (isLoopInsideWorkerPoolFunction(loopNode)) return;
-      const firstAwait = findFirstAwaitOutsideNestedFunctions(loopBody, true);
+      const firstAwait = findFirstAwaitOutsideNestedFunctions(loopBody, true, (awaitNode) =>
+        isOrderedSharedReceiverAwait(awaitNode, loopNode, context),
+      );
       if (firstAwait) {
         context.report({
           node: firstAwait,
-          message: `This makes the ${label} slow because each await runs one after another, so collect the independent calls & run them together with \`await Promise.all(items.map(...))\``,
+          message: `This ${label} waits before starting the next iteration. If iterations perform independent asynchronous work, consider bounded concurrency; await syntax alone does not establish a speedup.`,
         });
       }
     };
 
     return {
+      ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
+        if (isTestLibraryImportSource(node.source?.value)) hasTestLibraryImport = true;
+      },
       ForStatement(node: EsTreeNodeOfType<"ForStatement">) {
         inspectLoop(node, "for-loop");
       },
@@ -723,9 +1379,7 @@ export const asyncAwaitInLoop = defineRule({
         inspectLoop(node, "do-while loop");
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        // arr.forEach(async item => { await fn(item); }) — sequential
-        // because forEach doesn't await; even worse, the awaits are
-        // dropped on the floor (forEach ignores return values).
+        if (hasTestLibraryImport) return;
         if (!isNodeOfType(node.callee, "MemberExpression")) return;
         if (!isNodeOfType(node.callee.property, "Identifier")) return;
         const methodName = node.callee.property.name;
@@ -739,7 +1393,7 @@ export const asyncAwaitInLoop = defineRule({
 
         if (
           (methodName === "map" || methodName === "flatMap") &&
-          isWrappedInPromiseConcurrency(node)
+          isWrappedInPromiseConcurrency(node, context)
         ) {
           return;
         }
@@ -747,8 +1401,8 @@ export const asyncAwaitInLoop = defineRule({
         if (firstAwait) {
           const message =
             methodName === "forEach"
-              ? "Async callback in .forEach silently drops every await, so the work never finishes before the loop moves on. Use a `for…of` loop, or `await Promise.all(items.map(async (item) => {...}))`"
-              : `Async callback in .${methodName} runs the awaits one after another, so it is slow. Use \`await Promise.all(items.map(async (item) => {...}))\` to run them at the same time`;
+              ? "Async callback in .forEach returns a promise that .forEach ignores. Use a `for…of` loop to await each operation, or collect and observe promises when concurrent work is safe."
+              : `Async callback in .${methodName} returns a promise that the array method does not await. Check that its consumer observes completion and handles rejections; callbacks may already overlap.`;
           context.report({ node: firstAwait, message });
         }
       },

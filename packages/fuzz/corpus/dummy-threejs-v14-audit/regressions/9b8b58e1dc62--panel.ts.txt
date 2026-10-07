@@ -1,0 +1,536 @@
+// rule: js-set-map-lookups
+// file-path: src/ui/panel.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 9b8b58e1dc62868e13a3f9f8865197b4625bc34c87cc32b7980bfebd49790a0c
+/**
+ * Control and readout panel.
+ *
+ * Left column carries the things a planner sets: archetype, path variants,
+ * active inputs and filters. Right column carries everything derived: resource
+ * state, dependent consequences, invalid-input reasons, standing assumptions
+ * and the current selection. Every control has a keyboard equivalent, listed
+ * in the shortcut strip.
+ */
+import {
+  CHOICE_GROUPS, CRANE_LABELS, GROUND_LABELS, NODE_BY_ID, PHASES, PROJECTS, TRACKS, WIND_LABELS,
+  type NodeClass, type ProjectId, type TrackId,
+} from "../data/atlas";
+import type { AtlasState, Evaluation } from "../core/model";
+import { componentsOf, assemblyEnvelope } from "../render/assembly";
+
+export type ActionName = "focus" | "trace" | "expand" | "clear" | "reset" | "compare" | "help";
+
+export interface PanelCallbacks {
+  onProject(id: ProjectId): void;
+  onCompare(id: ProjectId | null): void;
+  onChoice(group: string, nodeId: string): void;
+  onInput(key: string, value: number | boolean): void;
+  onToggleClass(cls: NodeClass): void;
+  onToggleTrack(track: TrackId): void;
+  onTogglePhase(phase: number): void;
+  onFlag(name: "reusableOnly" | "craneFree" | "isolate", value: boolean): void;
+  onMaxLead(value: number | null): void;
+  onAction(name: ActionName): void;
+  onPickNode(id: string): void;
+  onHoverNode(id: string | null): void;
+}
+
+const SLIDERS: { key: string; label: string; min: number; max: number; step: number; unit: string }[] = [
+  { key: "crew", label: "Crew booked", min: 6, max: 140, step: 2, unit: "" },
+  { key: "leadDays", label: "Window", min: 2, max: 540, step: 2, unit: " d" },
+  { key: "budget", label: "Budget cap", min: 40, max: 26000, step: 20, unit: "k" },
+  { key: "reuseTarget", label: "Reuse target", min: 0, max: 100, step: 5, unit: "%" },
+];
+
+const STEPPERS: { key: string; label: string; labels: readonly string[] }[] = [
+  { key: "crane", label: "Lifting", labels: CRANE_LABELS },
+  { key: "ground", label: "Ground", labels: GROUND_LABELS },
+  { key: "wind", label: "Wind zone", labels: WIND_LABELS },
+];
+
+const LEAD_OPTIONS: { label: string; value: number | null }[] = [
+  { label: "any", value: null },
+  { label: "≤14 d", value: 14 },
+  { label: "≤30 d", value: 30 },
+  { label: "≤75 d", value: 75 },
+];
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function section(title: string, note?: string): HTMLDivElement {
+  const s = el("div", "sec");
+  const h = el("div", "sec-h");
+  h.appendChild(el("span", "sec-t", title));
+  if (note) h.appendChild(el("span", "sec-n", note));
+  s.appendChild(h);
+  return s;
+}
+
+export class Panel {
+  readonly root: HTMLDivElement;
+  readonly labelRoot: HTMLDivElement;
+  private readonly projectRow: HTMLDivElement;
+  private readonly compareRow: HTMLDivElement;
+  private readonly choiceBox: HTMLDivElement;
+  private readonly sliderBox: HTMLDivElement;
+  private readonly stepperBox: HTMLDivElement;
+  private readonly filterBox: HTMLDivElement;
+  private readonly gaugeBox: HTMLDivElement;
+  private readonly consBox: HTMLDivElement;
+  private readonly invalidBox: HTMLDivElement;
+  private readonly assumeBox: HTMLDivElement;
+  private readonly selBox: HTMLDivElement;
+  private readonly statusBar: HTMLDivElement;
+  private readonly help: HTMLDivElement;
+  private helpOpen = false;
+
+  constructor(private readonly cb: PanelCallbacks) {
+    this.root = el("div", "ui");
+    this.labelRoot = el("div", "labels");
+    this.root.appendChild(this.labelRoot);
+
+    /* ------------------------------- left ------------------------------- */
+    const left = el("aside", "col left");
+    const head = el("div", "brand");
+    head.appendChild(el("h1", undefined, "Structure Lifecycle Atlas"));
+    head.appendChild(el("p", undefined, "Rapid-construction archetypes compared as one dependency network — temporary venue through permanent building."));
+    left.appendChild(head);
+
+    const projSec = section("Archetype", "1 – 5");
+    this.projectRow = el("div", "chips");
+    projSec.appendChild(this.projectRow);
+    for (const p of PROJECTS) {
+      const b = el("button", "chip");
+      b.innerHTML = `<b>${p.short}</b><i>${p.capacity.toLocaleString()} cap</i>`;
+      b.addEventListener("click", () => this.cb.onProject(p.id));
+      b.dataset.id = p.id;
+      this.projectRow.appendChild(b);
+    }
+    left.appendChild(projSec);
+
+    const cmpSec = section("Compare against", "C");
+    this.compareRow = el("div", "chips");
+    const none = el("button", "chip sm");
+    none.textContent = "off";
+    none.dataset.id = "";
+    none.addEventListener("click", () => this.cb.onCompare(null));
+    this.compareRow.appendChild(none);
+    for (const p of PROJECTS) {
+      const b = el("button", "chip sm");
+      b.textContent = p.short;
+      b.dataset.id = p.id;
+      b.addEventListener("click", () => this.cb.onCompare(p.id));
+      this.compareRow.appendChild(b);
+    }
+    cmpSec.appendChild(this.compareRow);
+    left.appendChild(cmpSec);
+
+    const choiceSec = section("Path choice", "V cycles");
+    this.choiceBox = el("div", "choices");
+    choiceSec.appendChild(this.choiceBox);
+    left.appendChild(choiceSec);
+
+    const inputSec = section("Active inputs");
+    this.sliderBox = el("div", "sliders");
+    for (const s of SLIDERS) {
+      const row = el("label", "slider");
+      row.innerHTML = `<span class="s-l">${s.label}</span><span class="s-v" data-v="${s.key}"></span>`;
+      const input = el("input");
+      input.type = "range";
+      input.min = String(s.min);
+      input.max = String(s.max);
+      input.step = String(s.step);
+      input.dataset.k = s.key;
+      input.addEventListener("input", () => this.cb.onInput(s.key, Number(input.value)));
+      row.appendChild(input);
+      this.sliderBox.appendChild(row);
+    }
+    inputSec.appendChild(this.sliderBox);
+
+    this.stepperBox = el("div", "steppers");
+    for (const s of STEPPERS) {
+      const row = el("div", "stepper");
+      row.innerHTML = `<span class="s-l">${s.label}</span>`;
+      const group = el("div", "seg");
+      const start = s.labels[0] === "" ? 1 : 0;
+      for (let i = start; i < s.labels.length; i++) {
+        const b = el("button", "seg-b");
+        b.textContent = s.labels[i]!.replace(/^Zone \d /, "").slice(0, 11);
+        b.title = s.labels[i]!;
+        b.dataset.k = s.key;
+        b.dataset.v = String(i);
+        b.addEventListener("click", () => this.cb.onInput(s.key, i));
+        group.appendChild(b);
+      }
+      row.appendChild(group);
+      this.stepperBox.appendChild(row);
+    }
+    const permitRow = el("div", "stepper");
+    permitRow.innerHTML = `<span class="s-l">Consent</span>`;
+    const permitSeg = el("div", "seg");
+    for (const [label, val] of [["not secured", false], ["secured", true]] as const) {
+      const b = el("button", "seg-b");
+      b.textContent = label;
+      b.dataset.k = "permits";
+      b.dataset.v = String(val);
+      b.addEventListener("click", () => this.cb.onInput("permits", val));
+      permitSeg.appendChild(b);
+    }
+    permitRow.appendChild(permitSeg);
+    this.stepperBox.appendChild(permitRow);
+    inputSec.appendChild(this.stepperBox);
+    left.appendChild(inputSec);
+
+    const filterSec = section("Filters", "network restructures");
+    this.filterBox = el("div", "filters");
+    const classRow = el("div", "chips tight");
+    for (const c of ["deployable", "modular", "permanent"] as NodeClass[]) {
+      const b = el("button", `chip sm k-${c}`);
+      b.textContent = c;
+      b.dataset.cls = c;
+      b.addEventListener("click", () => this.cb.onToggleClass(c));
+      classRow.appendChild(b);
+    }
+    this.filterBox.appendChild(classRow);
+
+    const trackRow = el("div", "chips tight");
+    for (const t of TRACKS) {
+      const b = el("button", "chip sm");
+      b.textContent = t.label;
+      b.dataset.track = t.id;
+      b.addEventListener("click", () => this.cb.onToggleTrack(t.id));
+      trackRow.appendChild(b);
+    }
+    this.filterBox.appendChild(trackRow);
+
+    const phaseRow = el("div", "chips tight");
+    for (let i = 0; i < PHASES.length; i++) {
+      const b = el("button", "chip xs");
+      b.textContent = PHASES[i]!.short;
+      b.dataset.phase = String(i);
+      b.addEventListener("click", () => this.cb.onTogglePhase(i));
+      phaseRow.appendChild(b);
+    }
+    this.filterBox.appendChild(phaseRow);
+
+    const flagRow = el("div", "chips tight");
+    for (const [key, label] of [["reusableOnly", "reusable only"], ["craneFree", "crane-free only"], ["isolate", "isolate archetype"]] as const) {
+      const b = el("button", "chip sm");
+      b.textContent = label;
+      b.dataset.flag = key;
+      b.addEventListener("click", () => {
+        const on = b.classList.contains("on");
+        this.cb.onFlag(key, !on);
+      });
+      flagRow.appendChild(b);
+    }
+    this.filterBox.appendChild(flagRow);
+
+    const leadRow = el("div", "chips tight");
+    leadRow.appendChild(el("span", "chips-l", "lead time"));
+    for (const o of LEAD_OPTIONS) {
+      const b = el("button", "chip xs");
+      b.textContent = o.label;
+      b.dataset.lead = String(o.value);
+      b.addEventListener("click", () => this.cb.onMaxLead(o.value));
+      leadRow.appendChild(b);
+    }
+    this.filterBox.appendChild(leadRow);
+    filterSec.appendChild(this.filterBox);
+    left.appendChild(filterSec);
+
+    const actionSec = section("Actions");
+    const actions = el("div", "chips tight");
+    for (const [name, label, key] of [
+      ["focus", "Focus", "F"], ["trace", "Trace", "T"], ["expand", "Expand", "E"],
+      ["clear", "Clear", "X"], ["reset", "Reset", "R"], ["help", "Keys", "?"],
+    ] as const) {
+      const b = el("button", "chip sm act");
+      b.innerHTML = `${label}<kbd>${key}</kbd>`;
+      b.dataset.act = name;
+      b.addEventListener("click", () => this.cb.onAction(name));
+      actions.appendChild(b);
+    }
+    actionSec.appendChild(actions);
+    left.appendChild(actionSec);
+    this.root.appendChild(left);
+
+    /* ------------------------------- right ------------------------------ */
+    const right = el("aside", "col right");
+
+    const resSec = section("Resource state", "demand vs capacity");
+    this.gaugeBox = el("div", "gauges");
+    resSec.appendChild(this.gaugeBox);
+    right.appendChild(resSec);
+
+    const consSec = section("Dependent consequences");
+    this.consBox = el("div", "cons");
+    consSec.appendChild(this.consBox);
+    right.appendChild(consSec);
+
+    const invSec = section("Invalid inputs", "why the plan will not stand");
+    this.invalidBox = el("div", "invalid");
+    invSec.appendChild(this.invalidBox);
+    right.appendChild(invSec);
+
+    const selSec = section("Selection");
+    this.selBox = el("div", "sel");
+    selSec.appendChild(this.selBox);
+    right.appendChild(selSec);
+
+    const asmSec = section("Assumptions", "held constant");
+    this.assumeBox = el("div", "assume");
+    asmSec.appendChild(this.assumeBox);
+    right.appendChild(asmSec);
+
+    this.root.appendChild(right);
+
+    this.statusBar = el("div", "status");
+    this.root.appendChild(this.statusBar);
+
+    this.help = el("div", "help");
+    this.help.innerHTML = `
+      <h2>Input map</h2>
+      <div class="help-grid">
+        <div><b>Drag</b><span>orbit</span></div>
+        <div><b>Shift-drag / right-drag</b><span>pan</span></div>
+        <div><b>Wheel</b><span>dolly</span></div>
+        <div><b>Click</b><span>select package</span></div>
+        <div><b>Double click</b><span>expand assembly</span></div>
+        <div><b>Arrows / WASD</b><span>orbit</span></div>
+        <div><b>Shift + arrows</b><span>pan</span></div>
+        <div><b>+ / −</b><span>dolly</span></div>
+        <div><b>F</b><span>focus selection</span></div>
+        <div><b>T</b><span>trace dependencies</span></div>
+        <div><b>E</b><span>expand / collapse assembly</span></div>
+        <div><b>C</b><span>compare with next archetype</span></div>
+        <div><b>V</b><span>cycle the variant of the selected group</span></div>
+        <div><b>1 – 5</b><span>choose archetype</span></div>
+        <div><b>[ ]</b><span>isolate previous / next phase</span></div>
+        <div><b>\\</b><span>clear phase isolation</span></div>
+        <div><b>Tab</b><span>step through path packages</span></div>
+        <div><b>L</b><span>labels on / off</span></div>
+        <div><b>X</b><span>clear selection, trace and compare</span></div>
+        <div><b>R</b><span>reset everything</span></div>
+      </div>
+      <p>Close with <b>?</b> or <b>Esc</b>.</p>`;
+    this.help.style.display = "none";
+    this.root.appendChild(this.help);
+  }
+
+  toggleHelp(force?: boolean): void {
+    this.helpOpen = force ?? !this.helpOpen;
+    this.help.style.display = this.helpOpen ? "block" : "none";
+  }
+
+  setStatus(text: string): void {
+    this.statusBar.textContent = text;
+  }
+
+  /* ------------------------------------------------------------- render */
+
+  render(state: AtlasState, evaluation: Evaluation): void {
+    for (const b of Array.from(this.projectRow.children) as HTMLElement[]) {
+      b.classList.toggle("on", b.dataset.id === state.project);
+    }
+    for (const b of Array.from(this.compareRow.children) as HTMLElement[]) {
+      b.classList.toggle("on", (b.dataset.id || null) === state.compare);
+    }
+
+    this.renderChoices(state, evaluation);
+    this.renderInputs(state);
+    this.renderFilters(state);
+    this.renderGauges(evaluation);
+    this.renderConsequences(evaluation);
+    this.renderInvalid(evaluation);
+    this.renderSelection(state, evaluation);
+
+    if (this.assumeBox.childElementCount !== evaluation.assumptions.length) {
+      this.assumeBox.replaceChildren(...evaluation.assumptions.map((a) => el("p", undefined, a)));
+    } else {
+      const kids = Array.from(this.assumeBox.children);
+      evaluation.assumptions.forEach((a, i) => { (kids[i] as HTMLElement).textContent = a; });
+    }
+  }
+
+  private renderChoices(state: AtlasState, evaluation: Evaluation): void {
+    const choices = state.choices[state.project] ?? {};
+    this.choiceBox.replaceChildren();
+    for (const g of CHOICE_GROUPS) {
+      const row = el("div", "choice");
+      row.appendChild(el("span", "choice-l", g.label));
+      const seg = el("div", "seg wide");
+      for (const optId of g.options) {
+        const n = NODE_BY_ID.get(optId)!;
+        const usable = n.projects.includes(state.project);
+        const ev = evaluation.nodes.get(optId);
+        const b = el("button", "seg-b");
+        b.textContent = n.short;
+        b.title = `${n.label} — ${n.note}`;
+        b.classList.toggle("on", choices[g.id] === optId);
+        b.classList.toggle("dead", !usable);
+        b.classList.toggle("bad", !!ev?.blocked && choices[g.id] === optId);
+        if (usable) b.addEventListener("click", () => this.cb.onChoice(g.id, optId));
+        else b.addEventListener("click", () => this.cb.onPickNode(optId));
+        b.addEventListener("pointerenter", () => this.cb.onHoverNode(optId));
+        b.addEventListener("pointerleave", () => this.cb.onHoverNode(null));
+        seg.appendChild(b);
+      }
+      row.appendChild(seg);
+      this.choiceBox.appendChild(row);
+    }
+  }
+
+  private renderInputs(state: AtlasState): void {
+    const i = state.inputs as unknown as Record<string, number | boolean>;
+    for (const s of SLIDERS) {
+      const input = this.sliderBox.querySelector<HTMLInputElement>(`input[data-k="${s.key}"]`);
+      const out = this.sliderBox.querySelector<HTMLElement>(`[data-v="${s.key}"]`);
+      const v = Number(i[s.key]);
+      if (input && document.activeElement !== input) input.value = String(v);
+      if (out) out.textContent = `${v.toLocaleString()}${s.unit}`;
+    }
+    for (const b of Array.from(this.stepperBox.querySelectorAll<HTMLElement>(".seg-b"))) {
+      const k = b.dataset.k!;
+      const raw = b.dataset.v!;
+      const cur = i[k];
+      const on = k === "permits" ? String(cur) === raw : Number(cur) === Number(raw);
+      b.classList.toggle("on", on);
+    }
+  }
+
+  private renderFilters(state: AtlasState): void {
+    const f = state.filters;
+    for (const b of Array.from(this.filterBox.querySelectorAll<HTMLElement>("[data-cls]"))) {
+      b.classList.toggle("on", f.classes.has(b.dataset.cls as NodeClass));
+    }
+    for (const b of Array.from(this.filterBox.querySelectorAll<HTMLElement>("[data-track]"))) {
+      b.classList.toggle("on", f.tracks.has(b.dataset.track as TrackId));
+    }
+    for (const b of Array.from(this.filterBox.querySelectorAll<HTMLElement>("[data-phase]"))) {
+      const idx = Number(b.dataset.phase);
+      b.classList.toggle("on", f.phases.size === 0 || f.phases.has(idx));
+      b.classList.toggle("solo", f.phases.has(idx));
+    }
+    for (const b of Array.from(this.filterBox.querySelectorAll<HTMLElement>("[data-flag]"))) {
+      const k = b.dataset.flag as "reusableOnly" | "craneFree" | "isolate";
+      b.classList.toggle("on", f[k]);
+    }
+    for (const b of Array.from(this.filterBox.querySelectorAll<HTMLElement>("[data-lead]"))) {
+      b.classList.toggle("on", String(f.maxLead) === b.dataset.lead);
+    }
+  }
+
+  private renderGauges(evaluation: Evaluation): void {
+    this.gaugeBox.replaceChildren();
+    for (const g of evaluation.gauges) {
+      const row = el("div", "gauge");
+      row.classList.toggle("over", g.over);
+      const ratio = g.capacity > 0 ? g.value / g.capacity : 0;
+      const pct = Math.max(0, Math.min(1.25, ratio));
+      const fmt = (v: number) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : `${Math.round(v)}`);
+      row.innerHTML = `
+        <div class="g-top"><span>${g.label}</span><span class="g-num">${fmt(g.value)}${g.unit} / ${fmt(g.capacity)}${g.unit}</span></div>
+        <div class="g-bar"><i style="width:${(Math.min(pct, 1) * 100).toFixed(1)}%"></i>${pct > 1 ? `<u style="width:${((pct - 1) * 80).toFixed(1)}%"></u>` : ""}</div>
+        <div class="g-sub">${g.detail}</div>`;
+      this.gaugeBox.appendChild(row);
+    }
+  }
+
+  private renderConsequences(evaluation: Evaluation): void {
+    this.consBox.replaceChildren();
+    for (const c of evaluation.consequences) {
+      const row = el("div", `con ${c.tone}`);
+      row.innerHTML = `<div class="c-top"><span>${c.label}</span><b>${c.value}</b></div><div class="c-sub">${c.detail}</div>`;
+      this.consBox.appendChild(row);
+    }
+  }
+
+  private renderInvalid(evaluation: Evaluation): void {
+    this.invalidBox.replaceChildren();
+    if (evaluation.invalid.length === 0) {
+      this.invalidBox.appendChild(el("p", "ok", "All inputs satisfied — every package on the path can be built as specified."));
+      return;
+    }
+    for (const inv of evaluation.invalid) {
+      const row = el("div", `inv ${inv.scope}`);
+      row.textContent = inv.text;
+      if (inv.nodeId) {
+        row.classList.add("clickable");
+        row.addEventListener("click", () => this.cb.onPickNode(inv.nodeId!));
+        row.addEventListener("pointerenter", () => this.cb.onHoverNode(inv.nodeId!));
+        row.addEventListener("pointerleave", () => this.cb.onHoverNode(null));
+      }
+      this.invalidBox.appendChild(row);
+    }
+  }
+
+  private renderSelection(state: AtlasState, evaluation: Evaluation): void {
+    this.selBox.replaceChildren();
+    if (!state.selected) {
+      const p = evaluation.totalsB;
+      if (p && state.compare) {
+        const t = evaluation.totals;
+        const rows: [string, string, string][] = [
+          ["Outturn", `${Math.round(t.cost)}k`, `${Math.round(p.cost)}k`],
+          ["Programme", `${t.programme} d`, `${p.programme} d`],
+          ["Reuse", `${Math.round(t.reuseFraction * 100)}%`, `${Math.round(p.reuseFraction * 100)}%`],
+          ["Carbon", `${Math.round(t.carbon)} t`, `${Math.round(p.carbon)} t`],
+          ["Mass", `${Math.round(t.mass)} t`, `${Math.round(p.mass)} t`],
+        ];
+        const table = el("div", "cmp");
+        table.innerHTML = `<div class="cmp-h"><span></span><b>${state.project}</b><b class="b">${state.compare}</b></div>` +
+          rows.map(([k, a, b]) => `<div class="cmp-r"><span>${k}</span><b>${a}</b><b class="b">${b}</b></div>`).join("");
+        this.selBox.appendChild(table);
+        return;
+      }
+      this.selBox.appendChild(el("p", "muted", "Click a package to inspect it, or press T to trace its dependencies."));
+      return;
+    }
+    const ev = evaluation.nodes.get(state.selected);
+    if (!ev) return;
+    const n = ev.node;
+    const env = assemblyEnvelope(n);
+    const comps = componentsOf(n);
+    let upstream = 0;
+    let downstream = 0;
+    let bypassed = 0;
+    for (const r of evaluation.routes) {
+      if (r.to === n.id) upstream++;
+      if (r.from === n.id) downstream++;
+      if (r.bypass && (r.from === n.id || r.to === n.id)) bypassed++;
+    }
+    const wrap = el("div", "detail");
+    const status = ev.blocked ? "blocked" : ev.onPath ? "on path" : ev.visible ? "off path" : "filtered out";
+    wrap.innerHTML = `
+      <h3>${n.label}</h3>
+      <div class="tags"><span class="k-${n.cls}">${n.cls}</span><span>${PHASES[n.phase]!.short}</span><span>${n.track}</span><span class="st ${ev.blocked ? "bad" : ev.onPath ? "good" : ""}">${status}</span></div>
+      <p class="note">${n.note}</p>
+      <div class="kv">
+        <div><span>Effort</span><b>${n.crewDays} cd</b></div>
+        <div><span>Crane</span><b>${n.craneHours} h</b></div>
+        <div><span>Cost</span><b>${n.costK}k</b></div>
+        <div><span>Lead</span><b>${n.leadDays} d</b></div>
+        <div><span>On site</span><b>${n.durationDays} d</b></div>
+        <div><span>Mass</span><b>${n.massT} t</b></div>
+        <div><span>Reuse</span><b>${n.reuseCycles > 0 ? `${n.reuseCycles} cycles` : "single use"}</b></div>
+        <div><span>Envelope</span><b>${env.span.toFixed(1)}×${env.height.toFixed(1)} m</b></div>
+        <div><span>Scheduled</span><b>d${Math.round(ev.start)}–${Math.round(ev.finish)}</b></div>
+        <div><span>Critical</span><b>${ev.critical ? "yes" : "no"}</b></div>
+        <div><span>Depends on</span><b>${upstream}</b></div>
+        <div><span>Feeds</span><b>${downstream}</b></div>
+        ${bypassed > 0 ? `<div><span>Bypassed</span><b>${bypassed}</b></div>` : ""}
+      </div>
+      ${ev.reasons.length ? `<div class="why">${ev.reasons.map((r) => `<span>${r}</span>`).join("")}</div>` : ""}
+      <div class="comp"><span class="comp-h">Components — press E to expand</span>${comps
+        .map((c) => `<div><b>${c.name}</b><i>×${c.count} · ${c.unitMass.toFixed(2)} t · ${c.reuse > 0 ? `${c.reuse} cycles` : "single use"}</i></div>`)
+        .join("")}</div>`;
+    this.selBox.appendChild(wrap);
+  }
+}

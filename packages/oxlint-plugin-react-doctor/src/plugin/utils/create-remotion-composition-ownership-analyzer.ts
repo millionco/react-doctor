@@ -6,7 +6,10 @@ import { findJsxAttribute } from "./find-jsx-attribute.js";
 import { findProgramRoot } from "./find-program-root.js";
 import { getImportBindingForName } from "./find-import-source-for-name.js";
 import { getFunctionExportNames } from "./get-function-export-names.js";
-import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
+import {
+  getReactDoctorOptionalStringArraySetting,
+  getReactDoctorStringSetting,
+} from "./get-react-doctor-setting.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { normalizeFilename } from "./normalize-filename.js";
@@ -95,12 +98,17 @@ const collectCompositionAttributeFunctionKeys = (
     return null;
   }
 
-  const projectIndex = buildSourceProjectIndex(
+  const projectIndex = buildSourceProjectIndex({
     rootDirectory,
-    filename,
-    currentProgram,
-    context.scopes,
-  );
+    currentFilePath: filename,
+    currentProgramNode: currentProgram,
+    currentScopes: context.scopes,
+    requiredModuleSources: ["remotion"],
+    knownModuleSources: getReactDoctorOptionalStringArraySetting(
+      context.settings,
+      "projectIndexModuleSources",
+    ),
+  });
   if (!projectIndex) return null;
 
   const functionKeys = new Set<string>();

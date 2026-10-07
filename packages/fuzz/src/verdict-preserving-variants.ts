@@ -1,6 +1,8 @@
 import { parseFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
+import { attachParentReferences } from "../../oxlint-plugin-react-doctor/src/test-utils/attach-parent-references.js";
 import { walkAst } from "../../oxlint-plugin-react-doctor/src/plugin/utils/walk-ast.js";
 import { isNodeOfType } from "../../oxlint-plugin-react-doctor/src/plugin/utils/is-node-of-type.js";
+import { findTransparentExpressionRoot } from "../../oxlint-plugin-react-doctor/src/plugin/utils/find-transparent-expression-root.js";
 import type { EsTreeNode } from "../../oxlint-plugin-react-doctor/src/plugin/utils/es-tree-node.js";
 import { MAX_VERDICT_VARIANT_ANCHORS } from "./constants.js";
 
@@ -36,6 +38,10 @@ interface SpannedNode {
   readonly end: number;
 }
 
+interface CallReceiverSpan extends SpannedNode {
+  readonly needsLeadingSemicolon: boolean;
+}
+
 const hasSpan = (node: EsTreeNode | null | undefined): node is EsTreeNode & SpannedNode =>
   Boolean(node) &&
   typeof (node as unknown as SpannedNode).start === "number" &&
@@ -55,7 +61,9 @@ const applyEdits = (code: string, edits: ReadonlyArray<SpanEdit>): string => {
 const parseProgram = (code: string, filename: string): EsTreeNode | null => {
   try {
     const { program, errors } = parseFixture(code, { filename, forceJsx: true });
-    return errors.length > 0 ? null : program;
+    if (errors.length > 0) return null;
+    attachParentReferences(program);
+    return program;
   } catch {
     return null;
   }
@@ -64,8 +72,8 @@ const parseProgram = (code: string, filename: string): EsTreeNode | null => {
 // Anchors: `obj` in every `obj.method(...)` call — the receiver position
 // rules most often match structurally. `super` cannot be parenthesized and
 // JSX member callees don't exist, so only plain expression objects anchor.
-const collectCallReceiverSpans = (program: EsTreeNode): SpannedNode[] => {
-  const spans: SpannedNode[] = [];
+const collectCallReceiverSpans = (program: EsTreeNode): CallReceiverSpan[] => {
+  const spans: CallReceiverSpan[] = [];
   walkAst(program, (node: EsTreeNode) => {
     if (spans.length >= MAX_VERDICT_VARIANT_ANCHORS) return false;
     if (!isNodeOfType(node, "CallExpression")) return;
@@ -75,7 +83,15 @@ const collectCallReceiverSpans = (program: EsTreeNode): SpannedNode[] => {
     const receiver = callee.object;
     if (!hasSpan(receiver)) return;
     if (isNodeOfType(receiver, "Super")) return;
-    spans.push({ start: receiver.start, end: receiver.end });
+    const expressionRoot = findTransparentExpressionRoot(node);
+    const expressionStatement = expressionRoot.parent;
+    const statementParent = expressionStatement?.parent;
+    const needsLeadingSemicolon =
+      isNodeOfType(expressionStatement, "ExpressionStatement") &&
+      (isNodeOfType(statementParent, "Program") ||
+        isNodeOfType(statementParent, "BlockStatement") ||
+        isNodeOfType(statementParent, "SwitchCase"));
+    spans.push({ start: receiver.start, end: receiver.end, needsLeadingSemicolon });
   });
   return spans;
 };
@@ -181,7 +197,7 @@ const buildComputedMemberVariantCode = (
 
 const buildReceiverWrapVariant = (
   code: string,
-  spans: ReadonlyArray<SpannedNode>,
+  spans: ReadonlyArray<CallReceiverSpan>,
   label: string,
   open: string,
   close: string,
@@ -190,7 +206,10 @@ const buildReceiverWrapVariant = (
   if (spans.length === 0) return null;
   const edits: SpanEdit[] = [];
   for (const span of spans) {
-    edits.push({ position: span.start, insertText: open });
+    edits.push({
+      position: span.start,
+      insertText: span.needsLeadingSemicolon ? `;${open}` : open,
+    });
     edits.push({ position: span.end, insertText: close });
   }
   return { label, code: applyEdits(code, edits), mustPreserveVerdict };

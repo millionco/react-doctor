@@ -69,6 +69,233 @@ describe("server/server-auth-actions — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag Supabase signUp actions (credential-establishing SDK call)", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      import { createClient } from "@/lib/supabase/server";
+      export async function signUpPhoneOnlyAction(input) {
+        const supabase = await createClient();
+        const { data, error } = await supabase.auth.signUp({
+          phone: input.phone,
+          password: input.password,
+        });
+        if (error) return { error: error.message };
+        await supabase.from("profiles").update({ phone: input.phone }).eq("id", data.user.id);
+        return { success: true };
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag Supabase signIn actions (credential-establishing SDK call)", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      import { createClient } from "@/lib/supabase/server";
+      export async function loginWithEmailAction(input) {
+        const supabase = await createClient();
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: input.email,
+          password: input.password,
+        });
+        if (error) return { error: error.message };
+        return { success: true, user: data.user };
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag extended Supabase verifyOtp actions (credential-establishing SDK call)", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      import { createClient } from "@/lib/supabase/server";
+      export async function verifyOtpPhoneAction(input) {
+        const supabase = await createClient();
+        const { data, error } = await supabase.auth.verifyOtp({
+          phone: input.phone,
+          token: input.token,
+          type: "sms",
+        });
+        if (error) return { error: error.message };
+        return { success: true, session: data.session };
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag extended OAuth callback actions", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      export async function handleOAuthCallbackAction(input) {
+        await auth.handleOAuthCallback(input.code);
+        await database.sessions.update(input.session);
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("recognizes documented leading credential aliases", () => {
+    const sources = [
+      `"use server";
+       export async function verifyAuthCodePhoneAction(input) {
+         await auth.verifyOtp(input.code);
+         await database.sessions.update(input.session);
+       }`,
+      `"use server";
+       export async function emailVerificationAction(input) {
+         await auth.verifyEmail(input.token);
+         await database.sessions.update(input.session);
+       }`,
+      `"use server";
+       export async function passwordResetAction(input) {
+         await auth.resetPasswordForEmail(input.email);
+         await database.sessions.update(input.session);
+       }`,
+      `"use server";
+       export async function SIGN_UP_PHONE_ONLY_ACTION(input) {
+         await authClient.signUp(input);
+         await database.sessions.update(input.session);
+       }`,
+    ];
+    for (const source of sources) {
+      const result = runRule(serverAuthActions, source, { filename: "app/actions/auth.ts" });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
+  it("uses the executed auth SDK call when the action name is neutral", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      export async function createAccountAction(input) {
+        const supabase = await createClient();
+        const { data, error } = await supabase.auth.signUp(input);
+        if (error) return { error: error.message };
+        await supabase.from("profiles").update({ ready: true }).eq("id", data.user.id);
+        return { success: true };
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("recognizes credential calls on direct auth namespaces", () => {
+    const sources = [
+      `"use server";
+       export async function createAccountAction(input) {
+         await auth.signUp(input);
+         await database.users.update(input.profile);
+       }`,
+      `"use server";
+       export async function createAccountAction(input) {
+         await authClient.resetPasswordForEmail(input.email);
+         await database.users.update(input.profile);
+       }`,
+    ];
+    for (const source of sources) {
+      const result = runRule(serverAuthActions, source, { filename: "app/actions/auth.ts" });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
+  it("still flags unrelated auth methods", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      export async function deleteAccountAction(input) {
+        const supabase = await createClient();
+        await supabase.auth.signOut();
+        await supabase.from("profiles").delete().eq("id", input.id);
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags unrelated actions that happen to establish credentials", () => {
+    const sources = [
+      `"use server";
+       export async function purgeDataAction(input) {
+         const supabase = await createClient();
+         await supabase.auth.signUp(input);
+         await database.users.delete(input.userId);
+       }`,
+      `"use server";
+       export async function deleteAccountAfterSignupAction(input) {
+         const supabase = await createClient();
+         await supabase.auth.signUp(input);
+         await database.users.delete(input.userId);
+       }`,
+      `"use server";
+       export async function syncProfileForRegistrationAction(input) {
+         const supabase = await createClient();
+         await supabase.auth.signUp(input);
+         await database.users.delete(input.userId);
+       }`,
+      `"use server";
+       export async function DELETE_ACCOUNT_AFTER_SIGN_UP_ACTION(input) {
+         await authClient.signUp(input);
+         await database.users.delete(input.userId);
+       }`,
+    ];
+    for (const source of sources) {
+      const result = runRule(serverAuthActions, source, { filename: "app/actions/admin.ts" });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("still flags credential calls hidden in uncalled helpers", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      export async function updateAccountAction(input) {
+        const establishCredentials = async () => {
+          await supabase.auth.signUp(input);
+        };
+        await supabase.from("profiles").update(input.profile).eq("id", input.id);
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags credential lookalikes outside a known auth provider", () => {
+    const sources = [
+      `"use server";
+       export async function updateAccountAction(input) {
+         await marketing.signUp(input.email);
+         await database.users.update(input.profile);
+       }`,
+      `"use server";
+       export async function updateAccountAction(input) {
+         await analytics.auth.signUp({ event: "campaign" });
+         await database.users.update(input.profile);
+       }`,
+    ];
+    for (const source of sources) {
+      const result = runRule(serverAuthActions, source, { filename: "app/actions/auth.ts" });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
   it("still flags a privileged ungated action", () => {
     const result = runRule(
       serverAuthActions,

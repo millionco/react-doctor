@@ -5,7 +5,7 @@ import { type Preference, readPreference, writePreference } from "./cli-lifecycl
 // clipboard", or "skip"). Remembered globally — the preferred handoff is a
 // personal habit, not a per-repo setting — so every scan defaults to whatever
 // the user chose last, anywhere. A new value just overwrites the old one.
-export const HANDOFF_TARGET_PREFERENCE: Preference = {
+const HANDOFF_TARGET_PREFERENCE: Preference = {
   id: HANDOFF_TARGET_PREFERENCE_ID,
   scope: "global",
 };

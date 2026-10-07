@@ -1,0 +1,280 @@
+// rule: dangerous-html-sink
+// file-path: src/game/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 43a98220c8bae15e1d7cd3a400dd3c81f42ee5a3b1645412f9cdd94f6b91310b
+import { ORBITS } from "../world/beacons";
+import { CAPTURE_SPEED } from "./sim";
+
+export type BeaconView = {
+  orbit: number;
+  polarity: number;
+  transferring: boolean;
+  selected: boolean;
+};
+
+export type OverlayKind = "title" | "brief" | "win" | "lose" | "complete" | "paused";
+
+export type OverlayData = {
+  eyebrow?: string;
+  title?: string;
+  body?: string;
+  rows?: Array<[string, string]>;
+  button?: string;
+  tone?: "good" | "bad" | "";
+  showKeys?: boolean;
+};
+
+const SPEED_MAX = 10;
+
+/**
+ * All two-dimensional feedback: mission state, the polar progress meter, the
+ * capture-speed window, beacon cards and the full-screen overlays that carry
+ * the replay loop.
+ */
+export class Hud {
+  readonly root: HTMLDivElement;
+  onAction: (kind: OverlayKind) => void = () => {};
+  onSelect: (i: number) => void = () => {};
+  onTransfer: (i: number, orbit: number) => void = () => {};
+  onFlip: (i: number) => void = () => {};
+  onOverview: () => void = () => {};
+  onMute: () => void = () => {};
+  onPause: () => void = () => {};
+
+  private roundName: HTMLElement;
+  private objective: HTMLElement;
+  private timerVal: HTMLElement;
+  private timerFill: HTMLElement;
+  private fuelVal: HTMLElement;
+  private fuelFill: HTMLElement;
+  private scoreVal: HTMLElement;
+  private polarBall: HTMLElement;
+  private speedFill: HTMLElement;
+  private speedVal: HTMLElement;
+  private speedWindow: HTMLElement;
+  private cards: HTMLElement[] = [];
+  private overlay: HTMLElement;
+  private card: HTMLElement;
+  private toasts: HTMLElement;
+  private overviewBtn: HTMLButtonElement;
+  private muteBtn: HTMLButtonElement;
+  private currentKind: OverlayKind = "title";
+
+  constructor(parent: HTMLElement) {
+    this.root = document.createElement("div");
+    this.root.id = "hud";
+    this.root.innerHTML = TEMPLATE;
+    parent.appendChild(this.root);
+
+    const q = <T extends HTMLElement>(sel: string): T => this.root.querySelector(sel) as T;
+    this.roundName = q("#round-name");
+    this.objective = q("#objective");
+    this.timerVal = q("#timer-val");
+    this.timerFill = q("#timer-fill");
+    this.fuelVal = q("#fuel-val");
+    this.fuelFill = q("#fuel-fill");
+    this.scoreVal = q("#score-val");
+    this.polarBall = q("#polar-ball");
+    this.speedFill = q("#speed-fill");
+    this.speedVal = q("#speed-val");
+    this.speedWindow = q("#speed-window");
+    this.overlay = q("#overlay");
+    this.card = q("#card");
+    this.toasts = q("#toasts");
+    this.overviewBtn = q("#btn-overview");
+    this.muteBtn = q("#btn-mute");
+
+    const lo = (1 - CAPTURE_SPEED / SPEED_MAX) * 100;
+    this.speedWindow.style.top = `${lo}%`;
+    this.speedWindow.style.bottom = "0";
+
+    this.buildBeaconCards(q("#beacons"));
+
+    this.overviewBtn.addEventListener("click", () => this.onOverview());
+    this.muteBtn.addEventListener("click", () => this.onMute());
+    q<HTMLButtonElement>("#btn-pause").addEventListener("click", () => this.onPause());
+    this.card.addEventListener("click", (e) => {
+      const t = e.target as HTMLElement;
+      if (t.tagName === "BUTTON") this.onAction(this.currentKind);
+    });
+  }
+
+  private buildBeaconCards(host: HTMLElement): void {
+    for (let i = 0; i < 3; i++) {
+      const el = document.createElement("div");
+      el.className = "beacon";
+      el.innerHTML = `
+        <div class="beacon-head"><b>BEACON ${i + 1}</b><span class="pol">ATTRACT</span></div>
+        <div class="orbit-row">
+          <button data-o="0">LOW</button><button data-o="1">MID</button><button data-o="2">HIGH</button>
+        </div>
+        <small></small>
+        <button class="flip">FLIP POLARITY</button>`;
+      el.addEventListener("click", (e) => {
+        const t = e.target as HTMLElement;
+        this.onSelect(i);
+        if (t.dataset.o !== undefined) this.onTransfer(i, Number(t.dataset.o));
+        else if (t.classList.contains("flip")) this.onFlip(i);
+      });
+      host.appendChild(el);
+      this.cards.push(el);
+    }
+  }
+
+  setRound(index: number, total: number, name: string, objective: string): void {
+    this.roundName.textContent = `ROUND ${index}/${total} — ${name}`;
+    this.objective.textContent = objective;
+  }
+
+  setTimer(remaining: number, total: number): void {
+    const k = Math.max(0, Math.min(1, remaining / total));
+    this.timerVal.textContent = `${Math.max(0, remaining).toFixed(1)}s`;
+    (this.timerFill.firstElementChild as HTMLElement).style.transform = `scaleX(${k})`;
+    this.timerFill.classList.toggle("low", remaining < 12);
+  }
+
+  setFuel(fuel: number, total: number): void {
+    const k = Math.max(0, Math.min(1, fuel / total));
+    this.fuelVal.textContent = `${Math.round(fuel)}`;
+    (this.fuelFill.firstElementChild as HTMLElement).style.transform = `scaleX(${k})`;
+  }
+
+  setScore(score: number): void {
+    this.scoreVal.textContent = String(Math.round(score));
+  }
+
+  /** `lat` in radians, +PI/2 at the goal cup. */
+  setLatitude(lat: number): void {
+    const k = 1 - (lat / Math.PI + 0.5);
+    this.polarBall.style.top = `${Math.max(0, Math.min(1, k)) * 100}%`;
+  }
+
+  setSpeed(speed: number): void {
+    const k = Math.max(0, Math.min(1, speed / SPEED_MAX));
+    this.speedFill.style.height = `${k * 100}%`;
+    this.speedFill.classList.toggle("hot", speed > CAPTURE_SPEED);
+    this.speedVal.textContent = speed.toFixed(1);
+  }
+
+  setBeacon(i: number, v: BeaconView): void {
+    const el = this.cards[i];
+    if (!el) return;
+    el.classList.toggle("sel", v.selected);
+    el.classList.toggle("repel", v.polarity < 0);
+    el.querySelector(".pol")!.textContent = v.polarity > 0 ? "ATTRACT" : "REPEL";
+    el.querySelectorAll<HTMLButtonElement>(".orbit-row button").forEach((b, idx) => {
+      b.classList.toggle("on", idx === v.orbit && !v.transferring);
+      b.disabled = v.transferring;
+    });
+    const info = el.querySelector("small")!;
+    info.textContent = v.transferring ? "TRANSFER BURN — field offline" : ORBITS[v.orbit]!.name;
+  }
+
+  setOverviewActive(on: boolean): void {
+    this.overviewBtn.classList.toggle("on", on);
+  }
+
+  setMuted(on: boolean): void {
+    this.muteBtn.classList.toggle("on", on);
+    this.muteBtn.textContent = on ? "SOUND OFF" : "SOUND ON";
+  }
+
+  toast(message: string, tone: "" | "warn" | "bad" = ""): void {
+    const el = document.createElement("div");
+    el.className = `toast ${tone}`;
+    el.textContent = message;
+    this.toasts.appendChild(el);
+    setTimeout(() => el.remove(), 2700);
+  }
+
+  showOverlay(kind: OverlayKind, data: OverlayData): void {
+    this.currentKind = kind;
+    const rows = (data.rows ?? []).map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
+    this.card.innerHTML = `
+      <div class="eyebrow">${data.eyebrow ?? ""}</div>
+      <h2 class="${data.tone ?? ""}">${data.title ?? ""}</h2>
+      <p>${data.body ?? ""}</p>
+      ${rows ? `<div class="rows">${rows}</div>` : ""}
+      ${data.showKeys ? KEYS : ""}
+      <button>${data.button ?? "CONTINUE"}</button>
+      <div class="note">Science here is a playful learning metaphor for orbital shepherding — evocative, not validated instruction.</div>`;
+    this.overlay.classList.add("show");
+  }
+
+  hideOverlay(): void {
+    this.overlay.classList.remove("show");
+  }
+
+  get overlayVisible(): boolean {
+    return this.overlay.classList.contains("show");
+  }
+}
+
+const KEYS = `
+  <div class="keys">
+    <div>Drag left mouse — spin the moon</div>
+    <div>Drag right mouse — orbit camera</div>
+    <div>W A S D — spin the moon</div>
+    <div>Scroll — zoom (bounded)</div>
+    <div>1 2 3 — select a beacon</div>
+    <div>Q / E — move it down / up an orbit</div>
+    <div>F — flip that beacon's polarity</div>
+    <div>V overview · P pause · R restart</div>
+  </div>`;
+
+const TEMPLATE = `
+  <div class="panel" id="mission">
+    <div class="label">Lunar Shepherd Program</div>
+    <h1>POLAR<span> CUP</span></h1>
+    <div id="round-name">ROUND 1/3</div>
+    <div id="objective"></div>
+  </div>
+
+  <div class="panel" id="status">
+    <div class="stat"><span class="label">Orbital window</span><b id="timer-val">0.0s</b></div>
+    <div class="bar" id="timer-fill"><i></i></div>
+    <div class="stat"><span class="label">Transfer fuel</span><b id="fuel-val">0</b></div>
+    <div class="bar" id="fuel-fill"><i></i></div>
+    <div class="stat"><span class="label">Score</span><b id="score-val">0</b></div>
+  </div>
+
+  <div class="panel" id="polar">
+    <div class="label" style="text-align:center">Latitude</div>
+    <div id="polar-track">
+      <div class="zone north"></div>
+      <div class="zone south"></div>
+      <div id="polar-ball" style="top:50%"></div>
+    </div>
+    <div id="polar-legend"><span>N cup</span><span>S sink</span></div>
+  </div>
+
+  <div class="panel" id="speed">
+    <div class="label" style="text-align:center">Speed</div>
+    <div id="speed-track">
+      <div id="speed-window"></div>
+      <div id="speed-fill" style="height:0%"></div>
+    </div>
+    <div id="speed-val">0.0</div>
+  </div>
+
+  <div id="beacons"></div>
+
+  <div class="panel" id="legend">
+    <div><kbd>LMB</kbd> spin moon &nbsp; <kbd>RMB</kbd> orbit camera</div>
+    <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> spin &nbsp; <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> beacon</div>
+    <div><kbd>Q</kbd><kbd>E</kbd> orbit down / up &nbsp; <kbd>F</kbd> polarity</div>
+    <div><kbd>V</kbd> overview &nbsp; <kbd>P</kbd> pause &nbsp; <kbd>R</kbd> restart</div>
+  </div>
+
+  <div class="panel" id="sidebar">
+    <div class="btns">
+      <button id="btn-overview">OVERVIEW</button>
+      <button id="btn-mute">SOUND ON</button>
+      <button id="btn-pause">PAUSE</button>
+    </div>
+    <div id="disclaimer">Playful physics metaphor for learning, not validated science instruction.</div>
+  </div>
+
+  <div id="toasts"></div>
+  <div id="overlay"><div id="card"></div></div>`;

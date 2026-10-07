@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "./empty-rule-visitors.js";
 import { isTestlikeFilename } from "./is-testlike-filename.js";
 import type { RuleContext } from "./rule-context.js";
 import type { RuleVisitors } from "./rule-visitors.js";
@@ -9,6 +10,6 @@ import type { RuleVisitors } from "./rule-visitors.js";
 // `new Function` / a token in web storage is not a real vulnerability in test
 // scaffolding that never reaches a browser.
 export const skipNonProductionFiles =
-  (create: (context: RuleContext) => RuleVisitors) =>
+  (create: (context: RuleContext) => RuleVisitors, isNonProductionFilename = isTestlikeFilename) =>
   (context: RuleContext): RuleVisitors =>
-    isTestlikeFilename(context.filename) ? {} : create(context);
+    isNonProductionFilename(context.filename) ? EMPTY_RULE_VISITORS : create(context);

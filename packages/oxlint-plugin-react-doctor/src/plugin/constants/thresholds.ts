@@ -1,5 +1,6 @@
 export const GIANT_COMPONENT_LINE_THRESHOLD = 300;
-export const CASCADING_SET_STATE_THRESHOLD = 3;
+export const REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD = 15;
+export const REACT_FUNCTION_COGNITIVE_COMPLEXITY_THRESHOLD = 15;
 export const RELATED_USE_STATE_THRESHOLD = 5;
 export const DEEP_NESTING_THRESHOLD = 3;
 export const DUPLICATE_STORAGE_READ_THRESHOLD = 2;
@@ -13,7 +14,12 @@ export const RENDER_PROP_PROLIFERATION_THRESHOLD = 3;
 // `isMobile ? <Mobile /> : <Desktop />` switch is legitimate and stays quiet.
 export const BOOLEAN_PROP_VARIANT_BRANCH_THRESHOLD = 2;
 export const GET_HANDLER_BINDING_RESOLUTION_DEPTH = 3;
+// Same-file wrapper hops `no-impure-state-updater` follows from a call
+// site to the React setter that receives the forwarded updater
+// (`update(fn)` → `(updater) => setCount(updater)`).
+export const UPDATER_WRAPPER_RESOLUTION_DEPTH = 3;
 export const SYNCHRONOUS_THROW_RESOLUTION_DEPTH = 3;
+export const FUNCTION_RESOLUTION_MAX_DEPTH = 15;
 // How many identifier→initializer hops jsx-key follows when proving a
 // `{...spread}` after an explicit `key` cannot carry a `key` of its own
 // (`const tokenProps = { ... }` chains). Bounded so a pathological
@@ -25,6 +31,9 @@ export const SPREAD_KEY_RESOLUTION_DEPTH = 3;
 // or-fewer literals twice is trivial cost, the rewrite is pure
 // ceremony at this scale.
 export const SMALL_LITERAL_ARRAY_MAX_ELEMENTS = 8;
+// A nine-column UI schema remains a fixed tiny input where fusing
+// iterations adds ceremony without a material runtime benefit.
+export const JS_COMBINE_ITERATIONS_SMALL_LITERAL_ARRAY_MAX_ELEMENTS = 9;
 // `Math.min(...array)` passes one call argument per element and engines
 // cap argument counts (the smallest common limits are in the tens of
 // thousands); 1024 keeps the suggested rewrite far under any of them.
@@ -45,7 +54,10 @@ export const MIN_OVERPRECISE_SVG_TOKEN_OCCURRENCES = 2;
 // caps how many re-export hops the barrel resolver chases before
 // giving up.
 export const CROSS_FILE_PARSE_MAX_BYTES = 2_000_000;
+// Most parsed Programs a worker keeps alive at once (see parse-source-file.ts).
+export const CROSS_FILE_PARSE_CACHE_MAX_ENTRIES = 256;
 export const CROSS_FILE_BARREL_FOLLOW_DEPTH = 4;
+export const DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH = CROSS_FILE_BARREL_FOLLOW_DEPTH * 2;
 export const KATEX_CROSS_FILE_PROOF_MAX_DEPTH = 2;
 export const CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH = 4;
 export const CREATE_REF_PROP_FLOW_MAX_DEPTH = 12;
@@ -67,3 +79,5 @@ export const TSCONFIG_EXTENDS_MAX_DEPTH = 8;
 export const REDUCER_PATH_STATE_LIMIT = 1000;
 export const MAX_MEMO_COMPARATOR_SYMBOLIC_ATOM_COUNT = 8;
 export const LARGE_TEXT_OPTIMIZATION_THRESHOLD_CHARS = 1000;
+export const STATIC_STRING_VALUE_LIMIT = 32;
+export const INERT_REF_ONE_SHOT_TIMER_MAX_DELAY_MS = 300;

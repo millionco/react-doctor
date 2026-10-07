@@ -1,0 +1,47 @@
+{
+  "targets": [
+    {
+      "name": "tldraw",
+      "repository": "tldraw/tldraw",
+      "sha": "92e4896ce1a73300ad87637f450af06be124bb5f",
+      "fileCount": 2800
+    },
+    {
+      "name": "tldraw-package",
+      "repository": "tldraw/tldraw",
+      "sha": "92e4896ce1a73300ad87637f450af06be124bb5f",
+      "subdirectory": "packages/tldraw",
+      "fileCount": 550
+    },
+    {
+      "name": "refine",
+      "repository": "refinedev/refine",
+      "sha": "779d52a20e29b0307ac0df04d135beba434370dc",
+      "fileCount": 6776
+    },
+    {
+      "name": "mantine",
+      "repository": "mantinedev/mantine",
+      "sha": "3862b09668c4523161a5b635666e0d68a3fe347b",
+      "fileCount": 5500
+    },
+    {
+      "name": "grafana",
+      "repository": "grafana/grafana",
+      "sha": "0fa4d48cc192f97e49a4821e67b99904c9a72111",
+      "fileCount": 9355
+    },
+    {
+      "name": "blocknote",
+      "repository": "TypeCellOS/BlockNote",
+      "sha": "63c2389e34be417bd4c03d7e047d304f5bfd6555",
+      "fileCount": 1897
+    },
+    {
+      "name": "tanstack-query",
+      "repository": "TanStack/query",
+      "sha": "50680b98c4dc5ac4d97f7762014fa83f09a41d9a",
+      "fileCount": 1132
+    }
+  ]
+}

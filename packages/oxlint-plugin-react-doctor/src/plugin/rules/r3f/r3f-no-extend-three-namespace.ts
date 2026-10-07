@@ -1,17 +1,16 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { getModuleNamespaceSource } from "./utils/get-module-namespace-source.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
 
 const TREE_SHAKING_UNSAFE_NAMESPACE_MODULES = new Set(["three"]);
-const EMPTY_VISITORS: RuleVisitors = {};
 
 const containsThreeNamespaceSpread = (
   expression: EsTreeNode,
@@ -50,7 +49,7 @@ export const r3fNoExtendThreeNamespace = defineRule({
   recommendation:
     "Pass extend an object containing only the Three.js constructors used by JSX so bundlers can tree-shake the rest of the namespace",
   create: (context: RuleContext) => {
-    if (isTestlikeFilename(context.filename)) return EMPTY_VISITORS;
+    if (isTestlikeFilename(context.filename)) return EMPTY_RULE_VISITORS;
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isR3fApiCall(node, "extend", context.scopes)) return;

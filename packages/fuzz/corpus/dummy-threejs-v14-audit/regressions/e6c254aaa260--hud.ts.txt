@@ -1,0 +1,404 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit e6c254aaa26083c0920577ddf22b46cbe204da41e4cac43696cd386293acd71e
+import { DECK_SIZE, SCHOOL_COLOUR, type Card, type CardDef } from "../game/cards";
+import { AP_PER_ROUND, FINAL_DEPTH, type Enemy, type Game } from "../game/state";
+import type { Tile } from "../game/board";
+
+export interface HudCallbacks {
+  onCardPointerDown(card: Card, event: PointerEvent, element: HTMLElement): void;
+  onCardHover(card: Card | null): void;
+  onEndRound(): void;
+  onDraw(): void;
+  onRestart(): void;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
+}
+
+function cardMarkup(def: CardDef): string {
+  return `
+    <div class="cost">${def.cost}</div>
+    <div class="school" style="color:${SCHOOL_COLOUR[def.school]}">${def.school}</div>
+    <div class="name">${escapeHtml(def.name)}</div>
+    <div class="rules">${escapeHtml(def.rules)}</div>
+    <div class="flavour">${escapeHtml(def.flavour)}</div>
+  `;
+}
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private topbar: HTMLDivElement;
+  private handEl: HTMLDivElement;
+  private inspectEl: HTMLDivElement;
+  private logEl: HTMLDivElement;
+  private overlay: HTMLDivElement;
+  private loading: HTMLDivElement;
+  private loadingBar: HTMLElement;
+  private loadingTask: HTMLElement;
+  private telegraphLayer: HTMLDivElement;
+  private floaterLayer: HTMLDivElement;
+  private hintEl: HTMLDivElement;
+  private compassEl: HTMLDivElement;
+  private ghost: HTMLDivElement;
+  private endButton: HTMLButtonElement;
+  private drawButton: HTMLButtonElement;
+  private telegraphNodes = new Map<number, HTMLDivElement>();
+  private lastVersion = -1;
+  /** True while the panel shows something the player asked about. */
+  private sticky = false;
+  /** True when that something is only being hovered, not clicked. */
+  private hoverOwned = false;
+
+  constructor(private callbacks: HudCallbacks) {
+    this.root = el("div");
+    this.root.id = "ui";
+
+    this.topbar = el("div");
+    this.topbar.id = "topbar";
+    this.root.appendChild(this.topbar);
+
+    this.inspectEl = el("div", "panel");
+    this.inspectEl.id = "inspect";
+    this.root.appendChild(this.inspectEl);
+
+    this.logEl = el("div", "panel");
+    this.logEl.id = "log";
+    this.root.appendChild(this.logEl);
+
+    this.compassEl = el("div");
+    this.compassEl.id = "compass";
+    this.root.appendChild(this.compassEl);
+
+    this.telegraphLayer = el("div");
+    this.telegraphLayer.style.position = "absolute";
+    this.telegraphLayer.style.inset = "0";
+    this.root.appendChild(this.telegraphLayer);
+
+    this.floaterLayer = el("div");
+    this.floaterLayer.style.position = "absolute";
+    this.floaterLayer.style.inset = "0";
+    this.root.appendChild(this.floaterLayer);
+
+    this.hintEl = el("div");
+    this.hintEl.id = "hint";
+    this.root.appendChild(this.hintEl);
+
+    this.handEl = el("div");
+    this.handEl.id = "hand";
+    this.root.appendChild(this.handEl);
+
+    const actions = el("div");
+    actions.id = "actions";
+    this.drawButton = el("button", "act", "Draw · 1");
+    this.drawButton.addEventListener("click", () => this.callbacks.onDraw());
+    this.endButton = el("button", "act", "End round");
+    this.endButton.addEventListener("click", () => this.callbacks.onEndRound());
+    actions.appendChild(this.drawButton);
+    actions.appendChild(this.endButton);
+    this.root.appendChild(actions);
+
+    this.ghost = el("div");
+    this.ghost.id = "drag-ghost";
+    this.root.appendChild(this.ghost);
+
+    this.overlay = el("div", "hidden");
+    this.overlay.id = "overlay";
+    this.root.appendChild(this.overlay);
+
+    this.loading = el("div");
+    this.loading.id = "loading";
+    this.loading.innerHTML = `
+      <div class="inner">
+        <h1>CARDS BELOW</h1>
+        <div class="task">opening the trapdoor</div>
+        <div class="track"><i></i></div>
+      </div>`;
+    this.root.appendChild(this.loading);
+    this.loadingBar = this.loading.querySelector(".track i") as HTMLElement;
+    this.loadingTask = this.loading.querySelector(".task") as HTMLElement;
+
+    document.body.appendChild(this.root);
+  }
+
+  /* ------------------------------------------------------------------ */
+
+  setLoading(progress: number, task: string): void {
+    this.loadingBar.style.width = `${Math.round(progress * 100)}%`;
+    this.loadingTask.textContent = task;
+  }
+
+  hideLoading(): void {
+    this.loading.classList.add("hidden");
+  }
+
+  setHint(text: string): void {
+    this.hintEl.textContent = text;
+    this.hintEl.classList.toggle("hidden", text.length === 0);
+  }
+
+  setCompass(angleDeg: number): void {
+    const dirs = ["North", "East", "South", "West"];
+    const idx = ((Math.round(angleDeg / 90) % 4) + 4) % 4;
+    this.compassEl.textContent = `Board facing · ${dirs[idx]} · Q / E to turn`;
+  }
+
+  /* ------------------------------------------------------------------ */
+
+  render(game: Game, force = false): void {
+    if (!force && game.version === this.lastVersion) return;
+    this.lastVersion = game.version;
+    this.renderTop(game);
+    this.renderHand(game);
+    this.renderLog(game);
+    if (!this.sticky) this.showDefaultInspect(game);
+    this.endButton.disabled = game.phase !== "player";
+    this.drawButton.disabled = game.phase !== "player" || game.ap < 1 || game.deck.length === 0;
+  }
+
+  private renderTop(game: Game): void {
+    const hpPct = (game.hero.hp / game.hero.maxHp) * 100;
+    const deckPct = (game.deck.length / DECK_SIZE) * 100;
+    const pips = Array.from({ length: AP_PER_ROUND }, (_, i) => `<div class="pip${i < game.ap ? " on" : ""}"></div>`).join("");
+    const block = game.hero.block > 0 ? `<div class="block-badge">Block <b>${game.hero.block}</b></div>` : "";
+
+    this.topbar.innerHTML = `
+      <div class="panel stat">
+        <div class="label">Floor</div>
+        <div class="value">${game.depth} <small>/ ${FINAL_DEPTH}</small></div>
+        <div class="label" style="margin-top:6px">Round ${game.round}</div>
+      </div>
+      <div class="panel stat" style="min-width:132px">
+        <div class="label">Vitality</div>
+        <div class="value">${game.hero.hp} <small>/ ${game.hero.maxHp}</small></div>
+        <div class="bar hp"><i style="width:${hpPct}%"></i></div>
+        ${block}
+      </div>
+      <div class="panel stat" style="min-width:126px">
+        <div class="label">Actions</div>
+        <div class="pips">${pips}</div>
+        <div class="label" style="margin-top:8px">Deck</div>
+        <div class="bar deck"><i style="width:${deckPct}%"></i></div>
+        <div class="label" style="margin-top:3px;letter-spacing:0.08em">${game.deck.length} cards left</div>
+      </div>`;
+  }
+
+  private renderHand(game: Game): void {
+    this.handEl.innerHTML = "";
+    this.handEl.classList.toggle("crowded", game.hand.length > 4);
+    for (const card of game.hand) {
+      const node = el("div", "card");
+      node.innerHTML = cardMarkup(card.def);
+      if (card.def.cost > game.ap || game.phase !== "player") node.classList.add("unaffordable");
+      node.dataset.uid = String(card.uid);
+      node.addEventListener("pointerdown", (e) => this.callbacks.onCardPointerDown(card, e, node));
+      node.addEventListener("pointerenter", () => this.callbacks.onCardHover(card));
+      node.addEventListener("pointerleave", () => this.callbacks.onCardHover(null));
+      this.handEl.appendChild(node);
+    }
+  }
+
+  private renderLog(game: Game): void {
+    this.logEl.innerHTML = game.log
+      .slice(0, 9)
+      .map((line) => `<div>${escapeHtml(line)}</div>`)
+      .join("");
+  }
+
+  /* ------------------------------------------------------------------ */
+
+  setDragGhost(def: CardDef | null, x = 0, y = 0): void {
+    if (!def) {
+      this.ghost.style.display = "none";
+      this.ghost.innerHTML = "";
+      return;
+    }
+    if (this.ghost.style.display !== "block") {
+      this.ghost.innerHTML = `<div class="card" style="pointer-events:none">${cardMarkup(def)}</div>`;
+      this.ghost.style.display = "block";
+    }
+    this.ghost.style.left = `${x - 80}px`;
+    this.ghost.style.top = `${y - 150}px`;
+  }
+
+  /* ------------------------------------------------------------------ */
+
+  /** Called when the pointer leaves a card, so hovering does not stick. */
+  releaseHoverInspect(game: Game): void {
+    if (!this.hoverOwned) return;
+    this.showDefaultInspect(game);
+  }
+
+  showCardInspect(def: CardDef, fromHover = false): void {
+    this.sticky = true;
+    this.hoverOwned = fromHover;
+    this.inspectEl.innerHTML = `
+      <div class="kicker" style="color:${SCHOOL_COLOUR[def.school]}">${def.school} · ${def.cost} action${def.cost === 1 ? "" : "s"}</div>
+      <h2>${escapeHtml(def.name)}</h2>
+      <p>${escapeHtml(def.rules)}</p>
+      <dl>
+        ${def.range > 0 ? `<dt>Range</dt><dd>${def.range} tile${def.range === 1 ? "" : "s"}</dd>` : ""}
+        ${def.climb ? `<dt>Climb</dt><dd>${def.climb} level${def.climb === 1 ? "" : "s"} per step</dd>` : ""}
+        ${def.damage ? `<dt>Damage</dt><dd>${def.damage}</dd>` : ""}
+        ${def.block ? `<dt>Block</dt><dd>${def.block}</dd>` : ""}
+        ${def.heal ? `<dt>Heal</dt><dd>${def.heal}</dd>` : ""}
+      </dl>
+      <p class="flavour">${escapeHtml(def.flavour)}</p>
+      <hr>
+      <p style="font-size:12px;color:rgba(232,221,200,0.5)">Drag the card onto a lit tile to play it. Click anywhere on the board to inspect it instead.</p>`;
+  }
+
+  showEnemyInspect(enemy: Enemy): void {
+    this.sticky = true;
+    this.hoverOwned = false;
+    const tg = enemy.telegraph;
+    this.inspectEl.innerHTML = `
+      <div class="kicker">Adversary</div>
+      <h2>${escapeHtml(enemy.name)}</h2>
+      <dl>
+        <dt>Health</dt><dd>${enemy.hp} / ${enemy.maxHp}</dd>
+        ${enemy.armour > 0 ? `<dt>Armour</dt><dd>${enemy.armour}</dd>` : ""}
+        <dt>Tile</dt><dd>column ${enemy.x + 1}, row ${7 - enemy.z}</dd>
+      </dl>
+      <p>${escapeHtml(enemy.blurb)}</p>
+      <hr>
+      <div class="kicker">Next action</div>
+      <h2 style="font-size:14px">${tg ? escapeHtml(tg.label) : "Stunned"}</h2>
+      <p>${tg ? escapeHtml(tg.detail) : "It lost its footing and has no plan this round."}</p>
+      ${tg && tg.damage > 0 ? `<p style="color:#ff9d6d">It will strike the marked tiles for ${tg.damage}.</p>` : ""}`;
+  }
+
+  showTileInspect(tile: Tile, extra: string): void {
+    this.sticky = true;
+    this.hoverOwned = false;
+    const kindName =
+      tile.kind === "wall" ? "Wall" : tile.kind === "void" ? "Open shaft" : tile.kind === "stair" ? "Stair" : "Floor";
+    this.inspectEl.innerHTML = `
+      <div class="kicker">Terrain</div>
+      <h2>${kindName}</h2>
+      <dl>
+        <dt>Tile</dt><dd>column ${tile.x + 1}, row ${7 - tile.z}</dd>
+        <dt>Height</dt><dd>${tile.kind === "wall" ? "impassable" : `level ${tile.level}`}</dd>
+        ${tile.sigil ? `<dt>Rune</dt><dd>armed</dd>` : ""}
+      </dl>
+      <p>${extra}</p>`;
+  }
+
+  showDefaultInspect(game: Game): void {
+    this.sticky = false;
+    this.hoverOwned = false;
+    const danger = game.dangerTiles().size;
+    this.inspectEl.innerHTML = `
+      <div class="kicker">Floor ${game.depth} of ${FINAL_DEPTH}</div>
+      <h2>${game.stairSealed ? "The stair is sealed" : "Find the stair"}</h2>
+      <p>${
+        game.stairSealed
+          ? "A portcullis holds the last stair. The Undermason keeps the key in its chest cavity."
+          : "Reach the lit stairwell to drop a floor. You do not have to kill anything on the way — but the deck only holds so many answers."
+      }</p>
+      <dl>
+        <dt>Enemies</dt><dd>${game.enemies.length}</dd>
+        <dt>Marked tiles</dt><dd>${danger}</dd>
+        <dt>Cards left</dt><dd>${game.deck.length}</dd>
+      </dl>
+      <hr>
+      <p style="font-size:12px;color:rgba(232,221,200,0.5)">Click a card, an enemy or a tile to read its rules here.</p>`;
+  }
+
+  /* ------------------------------------------------------------------ */
+
+  syncTelegraphs(entries: { id: number; x: number; y: number; label: string; damage: number; hp: number; maxHp: number; visible: boolean }[]): void {
+    const seen = new Set<number>();
+    for (const e of entries) {
+      seen.add(e.id);
+      let node = this.telegraphNodes.get(e.id);
+      if (!node) {
+        node = el("div", "telegraph");
+        this.telegraphLayer.appendChild(node);
+        this.telegraphNodes.set(e.id, node);
+      }
+      node.className = `telegraph${e.damage > 0 ? "" : " idle"}${e.visible ? "" : " hidden"}`;
+      const pct = Math.max(0, (e.hp / e.maxHp) * 100);
+      node.innerHTML = `${escapeHtml(e.label)}${e.damage > 0 ? ` <b>${e.damage}</b>` : ""}<span class="hpbar"><i style="width:${pct}%"></i></span>`;
+      node.style.left = `${e.x}px`;
+      node.style.top = `${e.y}px`;
+    }
+    for (const [id, node] of this.telegraphNodes) {
+      if (!seen.has(id)) {
+        node.remove();
+        this.telegraphNodes.delete(id);
+      }
+    }
+  }
+
+  popFloater(x: number, y: number, text: string, kind: "hurt" | "hit" | "heal" | "block"): void {
+    const node = el("div", `floater ${kind}`, escapeHtml(text));
+    node.style.left = `${x}px`;
+    node.style.top = `${y}px`;
+    this.floaterLayer.appendChild(node);
+    setTimeout(() => node.remove(), 1100);
+  }
+
+  /* ------------------------------------------------------------------ */
+
+  showTitle(): void {
+    this.overlay.classList.remove("hidden");
+    this.overlay.innerHTML = `
+      <div class="panel sheet">
+        <h1>Cards Below</h1>
+        <div class="sub">Five floors · one deck · no way back up</div>
+        <p>You are somewhere under a city that has forgotten it has a cellar. Each floor deals you three cards and five actions. Spend them moving, striking, bracing, or rearranging the room itself, then reach the stair before your deck runs out. On the fifth floor the Undermason is waiting, and the stair behind it is barred until it falls.</p>
+        <p>Everything down here announces itself. Read the tag over each enemy: it tells you exactly what it will do when your actions run out, and exactly which tiles it will do it to. Standing one tile higher makes your bolts bite harder; standing behind a wall makes their bolts miss entirely.</p>
+        <p>You walk along the four compass directions, one height level at a time. You strike in all eight, provided the ground between you does not stand taller than both of you.</p>
+        <div class="keys">
+          <b>Drag a card</b><span>Onto a lit tile or enemy to play it.</span>
+          <b>Drag the hero</b><span>To walk, spending the cheapest movement card in hand.</span>
+          <b>Click</b><span>A card, enemy or tile to read its rules.</span>
+          <b>Q / E</b><span>Turn the board to see behind the stonework.</span>
+          <b>Space</b><span>End the round and let the floor answer.</span>
+        </div>
+        <button class="act" id="begin">Take the first stair</button>
+      </div>`;
+    const button = this.overlay.querySelector("#begin") as HTMLButtonElement;
+    button.addEventListener("click", () => this.hideOverlay());
+  }
+
+  showEnd(won: boolean, title: string, body: string, depth: number, cardsLeft: number): void {
+    this.overlay.classList.remove("hidden");
+    this.overlay.innerHTML = `
+      <div class="panel sheet">
+        <h1>${escapeHtml(title)}</h1>
+        <div class="sub">${won ? "The deck held" : "The deck did not hold"}</div>
+        <p>${escapeHtml(body)}</p>
+        <div class="keys">
+          <b>Deepest floor</b><span>${depth} of ${FINAL_DEPTH}</span>
+          <b>Cards remaining</b><span>${cardsLeft}</span>
+        </div>
+        <button class="act" id="again">Shuffle and descend again</button>
+      </div>`;
+    const button = this.overlay.querySelector("#again") as HTMLButtonElement;
+    button.addEventListener("click", () => this.callbacks.onRestart());
+  }
+
+  hideOverlay(): void {
+    this.overlay.classList.add("hidden");
+  }
+
+  get overlayVisible(): boolean {
+    return !this.overlay.classList.contains("hidden");
+  }
+}

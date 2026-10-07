@@ -263,11 +263,6 @@ export const hasVisibleTailwindFillOrEdge = (tokens: string[]): boolean =>
   hasVisibleTailwindRing(tokens) ||
   hasVisibleTailwindBackground(tokens);
 
-export const hasVisibleTailwindClosedSurface = (tokens: string[]): boolean =>
-  hasVisibleTailwindClosedBorder(tokens) ||
-  hasVisibleTailwindRing(tokens) ||
-  hasVisibleTailwindBackground(tokens);
-
 export const hasVisibleTailwindBoundary = (tokens: string[]): boolean =>
   hasVisibleTailwindBorder(tokens) ||
   hasVisibleTailwindRing(tokens) ||

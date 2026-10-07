@@ -1,8 +1,0 @@
-{
-  "name": "webpack-resolve",
-  "version": "1.0.0",
-  "main": "src/index.ts",
-  "devDependencies": {
-    "webpack": "^5.0.0"
-  }
-}

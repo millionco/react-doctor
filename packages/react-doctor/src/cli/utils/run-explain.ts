@@ -32,7 +32,7 @@ const resolveExplainTargetDirectory = async (
     if (matchedDirectories.length === 0) return context.resolvedDirectory;
     if (matchedDirectories.length > 1) {
       throw new Error(
-        `--explain takes a single project; --project resolved to ${matchedDirectories.length} projects.`,
+        `why takes a single project; --project resolved to ${matchedDirectories.length} projects.`,
       );
     }
     return matchedDirectories[0];

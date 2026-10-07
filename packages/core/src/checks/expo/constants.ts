@@ -1,0 +1,1 @@
+export const EXPO_METRO_CONFIG_MAX_MODULE_COUNT = 100;

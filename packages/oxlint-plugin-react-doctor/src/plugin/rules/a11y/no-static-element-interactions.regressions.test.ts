@@ -35,6 +35,127 @@ describe("a11y/no-static-element-interactions regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not flag a conditional wrapper that only forwards focus to its nested control", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const Autocomplete = ({ forLabel, isInline }) => {
+        const focusInput = (event) => {
+          if (event.target.closest(".chip")) return;
+          const input = document.querySelector(\`#\${forLabel}\`);
+          input?.focus();
+        };
+        return (
+          <div onClick={isInline ? focusInput : undefined}>
+            <input id={forLabel} />
+          </div>
+        );
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a conditional propagation shield without focus forwarding", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `class ActionBar extends React.Component {
+        render() {
+          return (
+            <div
+              onClick={this.handleClick ? function (event) {
+                event.stopPropagation();
+              } : undefined}
+            />
+          );
+        }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an inline wrapper that focuses a control by id", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const Autocomplete = ({ forLabel }) => (
+        <div onClick={() => {
+          document.getElementById(forLabel)?.focus();
+        }}>
+          <input id={forLabel} />
+        </div>
+      );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag an unchanged let handler that only forwards focus", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const Autocomplete = ({ inputRef }) => {
+        let focusInput = () => inputRef.current?.focus();
+        return <div onClick={focusInput}><input ref={inputRef} /></div>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a reassigned focus-forwarding handler", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const Autocomplete = ({ inputRef, activate }) => {
+        let focusInput = () => inputRef.current?.focus();
+        focusInput = activate;
+        return <div onClick={focusInput}><input ref={inputRef} /></div>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a focus-forwarding wrapper that also performs an action", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const Autocomplete = ({ forLabel, selectOption }) => (
+        <div onClick={() => {
+          selectOption();
+          document.getElementById(forLabel)?.focus();
+        }}>
+          <input id={forLabel} />
+        </div>
+      );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a wrapper that forwards a click instead of focus", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const FilePicker = ({ inputRef }) => (
+        <div onClick={() => inputRef.current?.click()}>
+          <input ref={inputRef} type="file" hidden />
+        </div>
+      );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a focus-forwarding wrapper with another interactive handler", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const Autocomplete = ({ inputRef, startDrag }) => (
+        <div onClick={() => inputRef.current?.focus()} onMouseDown={startDrag}>
+          <input ref={inputRef} />
+        </div>
+      );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag the Marigold wrapper with an equivalent accessible edit Button", () => {
     const result = runRule(
       noStaticElementInteractions,

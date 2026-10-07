@@ -1,3 +1,0 @@
-@import "tailwindcss";
-@plugin "tailwindcss-animate";
-@source not "../lib/edit/utils.ts";

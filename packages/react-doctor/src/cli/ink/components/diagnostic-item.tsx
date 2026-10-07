@@ -10,13 +10,18 @@ export interface DiagnosticItemProps {
 
 export const DiagnosticItem = ({ row, isSelected, isRead }: DiagnosticItemProps) => {
   const variant = severityVariant(row.severity);
+  const shouldHighlightSeverity = isSelected || !isRead;
+  let marker = "• ";
+  if (isRead) marker = "  ";
+  if (isSelected) marker = "› ";
+  let markerColor = shouldHighlightSeverity ? variant.color : undefined;
+  if (isSelected) markerColor = "cyan";
 
   return (
-    <Text wrap="truncate-end" dimColor={isRead}>
-      <Text color={isSelected ? variant.color : undefined}>{isSelected ? "›" : " "}</Text>
-      <Text color={isRead ? undefined : variant.color}>{isRead ? "  " : " •"}</Text>
-      <Text color={isRead ? undefined : variant.color}>{` ${variant.icon} `}</Text>
-      <Text color={isRead ? undefined : variant.color} bold={isSelected}>
+    <Text wrap="truncate-end" dimColor={isRead && !isSelected}>
+      <Text color={markerColor}>{marker}</Text>
+      <Text color={shouldHighlightSeverity ? variant.color : undefined}>{`${variant.icon} `}</Text>
+      <Text color={shouldHighlightSeverity ? variant.color : undefined} bold={isSelected}>
         {row.title}
       </Text>
       {row.siteCount > 1 ? <Text dimColor> ×{row.siteCount}</Text> : null}

@@ -62,6 +62,13 @@ const getStaticExpressionResultBranches = (
 ): ReadonlyArray<StaticExpressionResultBranch> => {
   const finalExpression = getFinalSequenceExpressionValue(expression);
   if (isNodeOfType(finalExpression, "ConditionalExpression")) {
+    const testBranches = getStaticExpressionResultBranches(finalExpression.test);
+    if (testBranches.every((branch) => branch.truthiness === "truthy")) {
+      return getStaticExpressionResultBranches(finalExpression.consequent);
+    }
+    if (testBranches.every((branch) => branch.truthiness === "falsy")) {
+      return getStaticExpressionResultBranches(finalExpression.alternate);
+    }
     return deduplicateResultBranches([
       ...getStaticExpressionResultBranches(finalExpression.consequent),
       ...getStaticExpressionResultBranches(finalExpression.alternate),

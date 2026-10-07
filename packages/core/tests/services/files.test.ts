@@ -64,6 +64,36 @@ describe("Files.layerInMemory", () => {
     expect([...result].toSorted()).toEqual(["src/foo.ts", "src/index.ts"]);
   });
 
+  it("listSourceFilesCooperative returns relative paths under the root", async () => {
+    const result = await runWithLayer(
+      Files.layerInMemory(tree),
+      Effect.gen(function* () {
+        const files = yield* Files;
+        return yield* files.listSourceFilesCooperative({ rootDirectory: "/repo" });
+      }),
+    );
+    expect([...result].toSorted()).toEqual(["src/foo.ts", "src/index.ts"]);
+  });
+
+  it("listSourceFilesWithSizeCooperative pairs each relative path with its byte size", async () => {
+    const result = await runWithLayer(
+      Files.layerInMemory(tree),
+      Effect.gen(function* () {
+        const files = yield* Files;
+        return yield* files.listSourceFilesWithSizeCooperative({ rootDirectory: "/repo" });
+      }),
+    );
+    const expected = [...tree]
+      .filter(([absolute]) => absolute.startsWith("/repo/"))
+      .map(([absolute, content]) => ({
+        path: absolute.slice("/repo/".length),
+        sizeBytes: Buffer.byteLength(content),
+      }));
+    expect([...result].toSorted((left, right) => left.path.localeCompare(right.path))).toEqual(
+      expected.toSorted((left, right) => left.path.localeCompare(right.path)),
+    );
+  });
+
   it("isFile returns true only for present paths", async () => {
     const present = await runWithLayer(
       Files.layerInMemory(tree),

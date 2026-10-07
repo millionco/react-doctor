@@ -9,12 +9,6 @@ export interface FuzzyMatchResult {
   readonly matchedIndices: ReadonlyArray<number>;
 }
 
-const isWordBoundaryBefore = (target: string, index: number): boolean => {
-  if (index === 0) return true;
-  const previous = target[index - 1];
-  return previous === "-" || previous === "_" || previous === "/" || previous === " ";
-};
-
 export const fuzzyMatch = (query: string, target: string): FuzzyMatchResult | null => {
   if (query.length === 0) return { score: 0, matchedIndices: [] };
 
@@ -33,7 +27,14 @@ export const fuzzyMatch = (query: string, target: string): FuzzyMatchResult | nu
     if (lowerTarget[targetIndex] !== lowerQuery[queryIndex]) continue;
     matchedIndices.push(targetIndex);
     if (targetIndex === previousMatchIndex + 1) score += TUI_FUZZY_CONSECUTIVE_BONUS;
-    if (isWordBoundaryBefore(target, targetIndex)) score += TUI_FUZZY_WORD_BOUNDARY_BONUS;
+    const previousCharacter = target[targetIndex - 1];
+    const isWordBoundary =
+      targetIndex === 0 ||
+      previousCharacter === "-" ||
+      previousCharacter === "_" ||
+      previousCharacter === "/" ||
+      previousCharacter === " ";
+    if (isWordBoundary) score += TUI_FUZZY_WORD_BOUNDARY_BONUS;
     previousMatchIndex = targetIndex;
     queryIndex++;
   }

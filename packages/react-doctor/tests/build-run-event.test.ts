@@ -129,38 +129,32 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["scan.multilineDiagnosticCount"]).toBe(1);
   });
 
-  it("records whether the dead-code pass overlapped lint, and drops it on the failure path", () => {
+  it("classifies why a score is unavailable", () => {
     expect(
-      buildRunEventAttributes(baseInput({ result: buildResult(), deadCodeOverlapped: true }))[
-        "deadCode.overlapped"
+      buildRunEventAttributes(baseInput({ result: buildResult() }))["score.unavailableReason"],
+    ).toBe("api-unavailable");
+    expect(
+      buildRunEventAttributes(baseInput({ result: buildResult(), didDeadCodeFail: true }))[
+        "score.unavailableReason"
       ],
-    ).toBe(true);
-    // A false dimension is still emitted (toSpanAttributes only drops null), so
-    // overlap-adoption rate is queryable across all scans.
+    ).toBe("analysis-incomplete");
     expect(
-      buildRunEventAttributes(baseInput({ result: buildResult(), deadCodeOverlapped: false }))[
-        "deadCode.overlapped"
+      buildRunEventAttributes(baseInput({ result: buildResult(), noScore: true }))[
+        "score.unavailableReason"
       ],
-    ).toBe(false);
-    // Failure path (no result) carries no outcome dimensions, so it's dropped.
+    ).toBe("disabled");
     expect(
-      buildRunEventAttributes(baseInput({ error: new Error("boom") }))["deadCode.overlapped"],
+      buildRunEventAttributes(
+        baseInput({ result: buildResult({ score: { score: 90, label: "Great" } }) }),
+      )["score.unavailableReason"],
     ).toBeUndefined();
   });
 
-  it("records the incremental summary-cache outcome, and drops it when no analysis consulted it", () => {
+  it("records maintainability failure under the first-class namespace", () => {
     const attributes = buildRunEventAttributes(
-      baseInput({
-        result: buildResult({ deadCodeSummaryCacheHits: 8900, deadCodeSummaryCacheMisses: 3 }),
-      }),
+      baseInput({ result: buildResult(), didDeadCodeFail: true }),
     );
-    expect(attributes["deadCode.summaryCacheHits"]).toBe(8900);
-    expect(attributes["deadCode.summaryCacheMisses"]).toBe(3);
-    // Whole-result hit / cache off / dead-code skipped: absent, so "no cache"
-    // reads distinctly from a 0% hit rate.
-    const absentAttributes = buildRunEventAttributes(baseInput({ result: buildResult() }));
-    expect(absentAttributes["deadCode.summaryCacheHits"]).toBeUndefined();
-    expect(absentAttributes["deadCode.summaryCacheMisses"]).toBeUndefined();
+    expect(attributes["maintainability.failed"]).toBe(true);
   });
 
   it("marks a finding-free run clean and drops absent CI signals", () => {
@@ -473,6 +467,7 @@ describe("buildRunEventAttributes", () => {
         fixedCount: 3,
         baseTotalCount: 7,
         crossFileMatchCount: 2,
+        ruleCountMatchCount: 4,
       },
     });
     const attributes = buildRunEventAttributes(baseInput({ result, mode: "baseline" }));
@@ -480,6 +475,7 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["baseline.fixed"]).toBe(3);
     expect(attributes["baseline.baseTotal"]).toBe(7);
     expect(attributes["baseline.crossFileMatches"]).toBe(2);
+    expect(attributes["baseline.ruleCountMatches"]).toBe(4);
     expect(attributes["baseline.degraded"]).toBe(false);
   });
 
@@ -560,7 +556,7 @@ describe("buildRunEventAttributes", () => {
 
   it("marks a whole-repo replay turbo with full warmth and no subsystem dims", () => {
     // The cachedPayload branch passes the explicit flag and none of the
-    // execution dims (no lint / dead-code ran), so the subsystem dims stay
+    // execution dims (no lint or maintainability analysis ran), so the subsystem dims stay
     // absent while the temperature is still unambiguous.
     const attributes = buildRunEventAttributes(
       baseInput({ result: buildResult(), wholeRepoCacheHit: true }),
@@ -570,8 +566,6 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["cache.wholeRepoHit"]).toBe(true);
     expect(attributes["lint.cacheHitRatio"]).toBeUndefined();
     expect(attributes["lint.sidecarReplayRatio"]).toBeUndefined();
-    expect(attributes["deadCode.cacheHit"]).toBeUndefined();
-    expect(attributes["deadCode.summaryCacheHits"]).toBeUndefined();
   });
 
   it("marks a fresh scan with zero reuse cold, with warmth 0", () => {
@@ -613,11 +607,6 @@ describe("buildRunEventAttributes", () => {
         overrides: { lintSidecarReplayedFileCount: 5, lintSidecarTotalFileCount: 10 },
         expectedWarmth: 0.5,
       },
-      { overrides: { deadCodeCacheHit: true }, expectedWarmth: 1 },
-      {
-        overrides: { deadCodeSummaryCacheHits: 8, deadCodeSummaryCacheMisses: 2 },
-        expectedWarmth: 0.8,
-      },
     ];
     for (const { overrides, expectedWarmth } of warmScenarios) {
       const attributes = buildRunEventAttributes(
@@ -629,37 +618,19 @@ describe("buildRunEventAttributes", () => {
   });
 
   it("computes warmth as the mean of the known subsystem ratios, skipping absent ones", () => {
-    // Sidecar dims absent -> skipped, not counted as 0: (0.5 + 0.8) / 2.
     const attributes = buildRunEventAttributes(
       baseInput({
         result: buildResult({
           lintCacheHitFileCount: 50,
           lintCacheTotalFileCount: 100,
-          deadCodeSummaryCacheHits: 8,
-          deadCodeSummaryCacheMisses: 2,
+          lintSidecarReplayedFileCount: 8,
+          lintSidecarTotalFileCount: 10,
         }),
         wholeRepoCacheHit: false,
       }),
     );
     expect(attributes["cache.temperature"]).toBe("warm");
     expect(attributes["cache.warmth"]).toBeCloseTo(0.65, 10);
-  });
-
-  it("counts a consulted-but-missed dead-code result cache as zero reuse", () => {
-    // deadCodeCacheHit false with no summary stats means the analysis ran
-    // fully fresh: (1.0 + 0) / 2, still warm because lint reused everything.
-    const attributes = buildRunEventAttributes(
-      baseInput({
-        result: buildResult({
-          lintCacheHitFileCount: 100,
-          lintCacheTotalFileCount: 100,
-          deadCodeCacheHit: false,
-        }),
-        wholeRepoCacheHit: false,
-      }),
-    );
-    expect(attributes["cache.temperature"]).toBe("warm");
-    expect(attributes["cache.warmth"]).toBeCloseTo(0.5, 10);
   });
 
   it("reads the legacy no-dims shape as cold and drops warmth and the flag", () => {
@@ -692,11 +663,28 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["scan.mode"]).toBe("full");
     expect(attributes["scan.rulesConfigured"]).toBe(2);
     expect(attributes["scan.rulesDisabled"]).toBe(1);
+    expect(attributes["scan.projectAnalysisRuleCount"]).toBe(0);
     expect(attributes["scan.ignoredTagCount"]).toBe(2);
     expect(attributes["scan.hasCustomConfig"]).toBe(true);
     expect(attributes["scan.workerCount"]).toBeUndefined();
     expect(attributes["scan.fileCount"]).toBeUndefined();
     expect(attributes["timing.scanMs"]).toBeUndefined();
+  });
+
+  it("counts explicitly enabled project graph rules", () => {
+    const attributes = buildRunEventAttributes(
+      baseInput({
+        userConfig: {
+          categories: { Maintainability: "error" },
+          rules: {
+            "deslop/unused-export": "warn",
+            "react-doctor/unused-dependency": "error",
+            "react-doctor/unused-type": "off",
+          },
+        },
+      }),
+    );
+    expect(attributes["scan.projectAnalysisRuleCount"]).toBe(2);
   });
 
   it("counts analyzed non-JSX source files for partial-scan coverage telemetry", () => {
@@ -727,14 +715,14 @@ describe("buildRunEventAttributes", () => {
   it("records each scan phase's enabled state, including supply-chain", () => {
     const enabled = buildRunEventAttributes(baseInput());
     expect(enabled["scan.lint"]).toBe(true);
-    expect(enabled["scan.deadCode"]).toBe(true);
+    expect(enabled["scan.maintainability"]).toBe(true);
     expect(enabled["scan.supplyChain"]).toBe(true);
 
     const disabled = buildRunEventAttributes(
       baseInput({ lint: false, deadCode: false, supplyChain: false }),
     );
     expect(disabled["scan.lint"]).toBe(false);
-    expect(disabled["scan.deadCode"]).toBe(false);
+    expect(disabled["scan.maintainability"]).toBe(false);
     expect(disabled["scan.supplyChain"]).toBe(false);
   });
 });

@@ -73,8 +73,9 @@ const hasComponentLocalCaptures = (
 //     to detect any binding from inside the component's body scope.
 export const preferModuleScopePureFunction = defineRule({
   id: "prefer-module-scope-pure-function",
+  defaultEnabled: false,
   title: "Pure function rebuilt every render",
-  tags: ["test-noise"],
+  tags: ["test-noise", "react-jsx-only"],
   severity: "warn",
   category: "Architecture",
   // React Compiler caches per-render function allocations itself, so both
@@ -99,7 +100,11 @@ export const preferModuleScopePureFunction = defineRule({
     // helper. No further memo-call check needed here.
     const checkNamedFunction = (functionNode: EsTreeNode, bindingName: string): void => {
       if (isAssignedToComponentMember(functionNode)) return;
-      const component = enclosingComponentOrHookScope(functionNode, context.scopes.ownScopeFor);
+      const component = enclosingComponentOrHookScope(
+        functionNode,
+        context.scopes.ownScopeFor,
+        true,
+      );
       if (!component) return;
       const ownScope = context.scopes.ownScopeFor(functionNode);
       if (!ownScope) return;

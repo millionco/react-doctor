@@ -1,0 +1,167 @@
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+vi.mock("../src/cli/commands/inspect.js", () => ({
+  inspectAction: vi.fn(async () => {}),
+}));
+
+vi.mock("../src/cli/utils/cli-migrations.js", () => ({
+  runProjectMigrations: vi.fn(async () => []),
+}));
+
+vi.mock("../src/cli/ink/run-scan-app.js", () => ({
+  runScanApp: vi.fn(async () => ({ shouldFail: false })),
+}));
+
+vi.mock("../src/cli/utils/is-non-interactive-environment.js", () => ({
+  isNonInteractiveEnvironment: vi.fn(() => false),
+}));
+
+vi.mock("../src/cli/utils/record-metric.js", () => ({
+  recordCount: vi.fn(),
+}));
+
+vi.mock("../src/cli/utils/resolve-cli-inspect-options.js", () => ({
+  resolveCliInspectOptions: vi.fn(() => ({ noScore: true })),
+}));
+
+vi.mock("../src/cli/utils/should-use-tui.js", () => ({
+  shouldUseTui: vi.fn(() => true),
+}));
+
+vi.mock("../src/cli/utils/resolve-scope.js", () => ({
+  warnDeprecatedDiff: vi.fn(),
+}));
+
+vi.mock("../src/cli/utils/validate-mode-flags.js", () => ({
+  validateFilePathSelectionFlags: vi.fn(),
+  validateModeFlags: vi.fn(),
+}));
+
+vi.mock("../src/cli/utils/warn-deprecated-fail-on.js", () => ({
+  warnDeprecatedFailOn: vi.fn(),
+}));
+
+vi.mock("@react-doctor/core", () => ({
+  resolveScanTarget: vi.fn(async (directory: string) => ({
+    resolvedDirectory: directory,
+    requestedDirectory: directory,
+    userConfig: null,
+    configSourceDirectory: null,
+    didRedirectViaRootDir: false,
+  })),
+}));
+
+import { resolveScanTarget } from "@react-doctor/core";
+import { inspectAction } from "../src/cli/commands/inspect.js";
+import { runScanCommand } from "../src/cli/commands/scan.js";
+import { runScanApp } from "../src/cli/ink/run-scan-app.js";
+import { runProjectMigrations } from "../src/cli/utils/cli-migrations.js";
+import { METRIC } from "../src/cli/utils/constants.js";
+import { recordCount } from "../src/cli/utils/record-metric.js";
+import { resolveCliInspectOptions } from "../src/cli/utils/resolve-cli-inspect-options.js";
+import { warnDeprecatedDiff } from "../src/cli/utils/resolve-scope.js";
+import { shouldUseTui } from "../src/cli/utils/should-use-tui.js";
+import { validateModeFlags } from "../src/cli/utils/validate-mode-flags.js";
+import { warnDeprecatedFailOn } from "../src/cli/utils/warn-deprecated-fail-on.js";
+
+describe("runScanCommand", () => {
+  const previousExitCode = process.exitCode;
+  const previousNoCache = process.env.REACT_DOCTOR_NO_CACHE;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(shouldUseTui).mockReturnValue(true);
+    vi.mocked(runScanApp).mockResolvedValue({ shouldFail: false });
+    process.exitCode = undefined;
+  });
+
+  afterEach(() => {
+    process.exitCode = previousExitCode;
+    if (previousNoCache === undefined) delete process.env.REACT_DOCTOR_NO_CACHE;
+    else process.env.REACT_DOCTOR_NO_CACHE = previousNoCache;
+  });
+
+  it("runs the interactive report with the root scan flags", async () => {
+    const flags = {
+      blocking: undefined,
+      diff: false,
+      failOn: "warning",
+      project: "app",
+      score: false,
+      scope: "full",
+      yes: true,
+    };
+
+    await runScanCommand({ directory: "/tmp/project", flags, invocationCommand: "inspect" });
+
+    expect(resolveCliInspectOptions).toHaveBeenCalledWith(flags, null);
+    expect(runScanApp).toHaveBeenCalledWith({
+      directory: "/tmp/project",
+      scanTarget: {
+        resolvedDirectory: "/tmp/project",
+        requestedDirectory: "/tmp/project",
+        userConfig: null,
+        configSourceDirectory: null,
+        didRedirectViaRootDir: false,
+      },
+      options: { noScore: true },
+      projectFlag: "app",
+      skipPrompts: true,
+      blocking: "warning",
+      flags,
+    });
+    expect(recordCount).toHaveBeenCalledWith(METRIC.cliInvoked, 1, { command: "inspect" });
+    expect(resolveScanTarget).toHaveBeenCalledWith("/tmp/project", { allowAmbiguous: true });
+    expect(runProjectMigrations).toHaveBeenCalledWith(path.resolve("/tmp/project"));
+    expect(validateModeFlags).toHaveBeenCalledWith(flags);
+    expect(warnDeprecatedFailOn).toHaveBeenCalledWith(flags, null);
+    expect(warnDeprecatedDiff).toHaveBeenCalledWith(flags, null);
+    expect(inspectAction).not.toHaveBeenCalled();
+  });
+
+  it("uses headless output when the TUI gate rejects the environment or flags", async () => {
+    vi.mocked(shouldUseTui).mockReturnValue(false);
+    const flags = { json: true };
+
+    await runScanCommand({ directory: "/tmp/project", flags, invocationCommand: "inspect" });
+
+    expect(inspectAction).toHaveBeenCalledWith("/tmp/project", flags, "inspect");
+    expect(runScanApp).not.toHaveBeenCalled();
+    expect(runProjectMigrations).not.toHaveBeenCalled();
+    expect(recordCount).not.toHaveBeenCalled();
+  });
+
+  it("uses headless output for an explicit file selection", async () => {
+    const flags = { scope: "files" };
+    const filePaths = ["src/a.tsx", "src/b.tsx"];
+
+    await runScanCommand({
+      directory: "/tmp/project",
+      filePaths,
+      flags,
+      invocationCommand: "inspect",
+    });
+
+    expect(inspectAction).toHaveBeenCalledWith("/tmp/project", flags, "inspect", filePaths);
+    expect(runScanApp).not.toHaveBeenCalled();
+  });
+
+  it("preserves the TUI scan exit code", async () => {
+    vi.mocked(runScanApp).mockResolvedValue({ shouldFail: true });
+
+    await runScanCommand({ directory: "/tmp/project", flags: {}, invocationCommand: "inspect" });
+
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("disables every scan cache when requested", async () => {
+    await runScanCommand({
+      directory: "/tmp/project",
+      flags: { cache: false },
+      invocationCommand: "inspect",
+    });
+
+    expect(process.env.REACT_DOCTOR_NO_CACHE).toBe("1");
+  });
+});

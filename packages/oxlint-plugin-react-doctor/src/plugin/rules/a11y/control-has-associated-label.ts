@@ -8,6 +8,7 @@ import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-l
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { hasLetterOrDecimalDigit } from "../../utils/has-letter-or-decimal-digit.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isInteractiveElement } from "../../utils/is-interactive-element.js";
 import { isInteractiveRole } from "../../utils/is-interactive-role.js";
@@ -18,9 +19,10 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { splitTailwindClassName } from "../../utils/split-tailwind-class-name.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const MESSAGE =
-  "Blind users can't tell what this control does because screen readers find no label, so add visible text, `aria-label`, or `aria-labelledby`.";
+  "Blind users can't tell what this control does because its name is missing or only a symbol, so add visible text, `aria-label`, or `aria-labelledby`.";
 
 interface ControlHasAssociatedLabelSettings {
   depth?: number;
@@ -550,6 +552,7 @@ const getAttributeMatchKeys = (
 };
 
 interface CheckChildContext {
+  scopes: ScopeAnalysis;
   depth: number;
   customAttributes: ReadonlyArray<string>;
   controlComponents: ReadonlyArray<string>;
@@ -582,9 +585,13 @@ const expressionProvidesLabel = (
   const expression = stripParenExpression(rawExpression);
   if (isNodeOfType(expression, "JSXEmptyExpression")) return false;
   if (isNodeOfType(expression, "Literal")) {
-    if (typeof expression.value === "string") return expression.value.trim().length > 0;
+    if (typeof expression.value === "string") return hasLetterOrDecimalDigit(expression.value);
     if (typeof expression.value === "number") return true;
     return false;
+  }
+  if (isNodeOfType(expression, "TemplateLiteral")) {
+    const staticValue = getStaticTemplateLiteralValue(expression);
+    return staticValue === null || hasLetterOrDecimalDigit(staticValue);
   }
   if (isNodeOfType(expression, "ConditionalExpression")) {
     return (
@@ -593,8 +600,13 @@ const expressionProvidesLabel = (
     );
   }
   if (isNodeOfType(expression, "LogicalExpression")) {
-    // Only the right side of `guard && <content/>` renders as content.
-    return expressionProvidesLabel(expression.right as EsTreeNode, currentDepth, context);
+    if (expression.operator === "&&") {
+      return expressionProvidesLabel(expression.right, currentDepth, context);
+    }
+    return (
+      expressionProvidesLabel(expression.left, currentDepth, context) ||
+      expressionProvidesLabel(expression.right, currentDepth, context)
+    );
   }
   if (isNodeOfType(expression, "JSXElement") || isNodeOfType(expression, "JSXFragment")) {
     return checkChildForLabel(expression, currentDepth, context);
@@ -611,7 +623,7 @@ const checkChildForLabel = (
   if (isNodeOfType(child, "JSXExpressionContainer")) {
     return expressionProvidesLabel(child.expression as EsTreeNode, currentDepth, context);
   }
-  if (isNodeOfType(child, "JSXText")) return child.value.trim().length > 0;
+  if (isNodeOfType(child, "JSXText")) return hasLetterOrDecimalDigit(child.value);
   if (isNodeOfType(child, "JSXFragment")) {
     return child.children.some((nestedChild) =>
       checkChildForLabel(nestedChild as EsTreeNode, currentDepth + 1, context),
@@ -646,6 +658,16 @@ const hasAccessibleLabelText = (
 ): boolean => {
   if (
     hasLabellingProp(element.openingElement.attributes as EsTreeNode[], context.customAttributes)
+  ) {
+    return true;
+  }
+  if (
+    isNodeOfType(element.openingElement.name, "JSXIdentifier") &&
+    element.openingElement.name.name === LABEL_ELEMENT &&
+    hasNonEmptyNativeTitle(
+      hasJsxPropIgnoreCase(element.openingElement.attributes, "title"),
+      context.scopes,
+    )
   ) {
     return true;
   }
@@ -837,6 +859,7 @@ export const controlHasAssociatedLabel = defineRule({
   recommendation: "Give every interactive control a label screen readers can read.",
   category: "Accessibility",
   create: (context) => {
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const settings = resolveSettings(context.settings);
     const isTestlikeFile = isTestlikeFilename(context.filename);
     const iconComponentNames = new Set<string>();
@@ -845,6 +868,7 @@ export const controlHasAssociatedLabel = defineRule({
     const labelEmbeddedNames = new Set<string>();
     const deferredCandidates: DeferredControlCandidate[] = [];
     const checkContext: CheckChildContext = {
+      scopes: context.scopes,
       depth: settings.depth,
       customAttributes: settings.labelAttributes,
       controlComponents: settings.controlComponents,
@@ -901,9 +925,12 @@ export const controlHasAssociatedLabel = defineRule({
 
         const isDomElement = HTML_TAGS.has(tagName);
         const isInteractiveEl =
-          !NON_OPERABLE_ELEMENTS.has(tagName) && isInteractiveElement(tagName, opening);
+          (!shouldUseCuratedBehavior || !NON_OPERABLE_ELEMENTS.has(tagName)) &&
+          isInteractiveElement(tagName, opening);
         const isNonFocusableSeparator =
-          role === SEPARATOR_ROLE && !hasJsxPropIgnoreCase(opening.attributes, "tabIndex");
+          shouldUseCuratedBehavior &&
+          role === SEPARATOR_ROLE &&
+          !hasJsxPropIgnoreCase(opening.attributes, "tabIndex");
         const isInteractiveRoleEl =
           role !== null && isInteractiveRole(role) && !isNonFocusableSeparator;
         const isControlComponent = settings.controlComponents.includes(tagName);

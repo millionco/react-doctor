@@ -1,9 +1,6 @@
-import * as Effect from "effect/Effect";
 import { isCiEnvironment } from "./is-ci-environment.js";
 import { isGitHookEnvironment } from "./is-git-hook-environment.js";
 
-// Each scan-report section waits this long before printing, so a first human
-// run reads as a guided reveal rather than one painted frame.
 export const ONBOARDING_SECTION_DELAY_MS = 850;
 
 // Internal escape hatch: force the first-run onboarding on any run, bypassing
@@ -16,10 +13,6 @@ export const isOnboardingForced = (environment: NodeJS.ProcessEnv = process.env)
   const value = environment[FORCE_ONBOARDING_ENV_VAR];
   return value !== undefined && !FALSY_FLAG_VALUES.has(value.toLowerCase());
 };
-
-// The beat to `yield*` before a section: a sleep when pacing, else a no-op.
-export const onboardingSectionPause = (shouldPace: boolean): Effect.Effect<void> =>
-  shouldPace ? Effect.sleep(ONBOARDING_SECTION_DELAY_MS) : Effect.void;
 
 export interface OnboardingRecordInput {
   // Section pacing was enabled for this run (so the reveal actually showed).

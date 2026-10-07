@@ -2,7 +2,7 @@ import * as path from "node:path";
 import { IGNORED_DIRECTORIES } from "./constants.js";
 import type { PackageJson, WorkspacePackage } from "../types/index.js";
 import { isDirectory, isFile, readDirectoryEntries } from "./fs-utils.js";
-import { hasReactDependency } from "./dependencies.js";
+import { hasSupportedProjectDependency } from "./dependencies.js";
 import { readPackageJson } from "./package-json.js";
 import {
   getNxWorkspaceDirectories,
@@ -11,7 +11,7 @@ import {
   resolveWorkspaceDirectories,
 } from "./workspaces.js";
 
-const toReactWorkspacePackages = (directories: string[]): WorkspacePackage[] => {
+const toSupportedWorkspacePackages = (directories: string[]): WorkspacePackage[] => {
   const packages: WorkspacePackage[] = [];
 
   for (const directory of directories) {
@@ -19,7 +19,7 @@ const toReactWorkspacePackages = (directories: string[]): WorkspacePackage[] => 
     if (!isFile(packageJsonPath)) continue;
 
     const packageJson: PackageJson = readPackageJson(packageJsonPath);
-    if (!hasReactDependency(packageJson)) continue;
+    if (!hasSupportedProjectDependency(packageJson)) continue;
 
     const name = packageJson.name ?? path.basename(directory);
     packages.push({ name, directory });
@@ -38,7 +38,7 @@ const listManifestWorkspacePackages = (rootDirectory: string): WorkspacePackage[
     resolveWorkspaceDirectories(rootDirectory, pattern),
   );
 
-  return toReactWorkspacePackages(directories);
+  return toSupportedWorkspacePackages(directories);
 };
 
 // Directory names that hold OS- or editor-managed installs rather than user
@@ -59,7 +59,7 @@ const NON_PROJECT_DIRECTORIES = new Set([
 // from descending deep into vendored installs that escape the name list above.
 const MAX_SCAN_DEPTH = 6;
 
-const discoverReactSubprojectsByFilesystem = (rootDirectory: string): WorkspacePackage[] => {
+const discoverSupportedSubprojectsByFilesystem = (rootDirectory: string): WorkspacePackage[] => {
   const packages: WorkspacePackage[] = [];
   // HACK: stack + .pop() rather than queue + .shift() because Array.shift()
   // is O(n), which degraded this walk to O(n^2) on large trees. Sibling
@@ -79,7 +79,7 @@ const discoverReactSubprojectsByFilesystem = (rootDirectory: string): WorkspaceP
     const packageJsonPath = path.join(currentDirectory, "package.json");
     if (isFile(packageJsonPath)) {
       const packageJson = readPackageJson(packageJsonPath);
-      if (hasReactDependency(packageJson)) {
+      if (hasSupportedProjectDependency(packageJson)) {
         const name = packageJson.name ?? path.basename(currentDirectory);
         packages.push({ name, directory: currentDirectory });
       }
@@ -111,11 +111,13 @@ const discoverReactSubprojectsByFilesystem = (rootDirectory: string): WorkspaceP
   return packages;
 };
 
-export const discoverReactSubprojects = (rootDirectory: string): WorkspacePackage[] => {
+export const discoverSupportedSubprojects = (rootDirectory: string): WorkspacePackage[] => {
   if (!isDirectory(rootDirectory)) return [];
 
   const manifestPackages = listManifestWorkspacePackages(rootDirectory);
   if (manifestPackages.length > 0) return manifestPackages;
 
-  return discoverReactSubprojectsByFilesystem(rootDirectory);
+  return discoverSupportedSubprojectsByFilesystem(rootDirectory);
 };
+
+export const discoverReactSubprojects = discoverSupportedSubprojects;

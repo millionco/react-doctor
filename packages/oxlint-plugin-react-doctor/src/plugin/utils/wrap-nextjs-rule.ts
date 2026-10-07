@@ -1,8 +1,6 @@
+import { EMPTY_RULE_VISITORS } from "./empty-rule-visitors.js";
 import { isNextFileActive } from "./is-next-file.js";
 import type { Rule } from "./rule.js";
-import type { RuleVisitors } from "./rule-visitors.js";
-
-const EMPTY_VISITORS: RuleVisitors = {};
 
 // Wraps a rule whose `create` should only run on files that belong to a
 // package depending on Next.js. Mirrors `wrapReactNativeRule`: the
@@ -18,7 +16,7 @@ export const wrapNextjsRule = (rule: Rule): Rule => {
   return {
     ...rule,
     create: (context) => {
-      if (!isNextFileActive(context)) return EMPTY_VISITORS;
+      if (!isNextFileActive(context)) return EMPTY_RULE_VISITORS;
       return innerCreate(context);
     },
   };

@@ -85,7 +85,7 @@ const crossFileScopes = new WeakMap<EsTreeNode, ScopeAnalysis>();
 const crossFileControlFlow = new WeakMap<EsTreeNode, ControlFlowAnalysis>();
 const forwardedFreshDependencyCache = new WeakMap<
   EsTreeNode,
-  Map<string, ForwardedFreshHookDependency[]>
+  Map<ReadonlySet<string>, ForwardedFreshHookDependency[]>
 >();
 
 const getCrossFileScopes = (resolved: { readonly programNode: EsTreeNode }): ScopeAnalysis => {
@@ -621,15 +621,14 @@ export const findForwardedFreshHookDependencies = (
   context: RuleContext,
   dependencyHookNames: ReadonlySet<string> = DEPENDENCY_HOOK_NAMES,
 ): ReadonlyArray<ForwardedFreshHookDependency> => {
-  const cacheKey = [...dependencyHookNames].sort().join("\0");
   const cacheForCall = forwardedFreshDependencyCache.get(callExpression);
-  const cached = cacheForCall?.get(cacheKey);
+  const cached = cacheForCall?.get(dependencyHookNames);
   if (cached) return cached;
   const findings: ForwardedFreshHookDependency[] = [];
   if (cacheForCall) {
-    cacheForCall.set(cacheKey, findings);
+    cacheForCall.set(dependencyHookNames, findings);
   } else {
-    forwardedFreshDependencyCache.set(callExpression, new Map([[cacheKey, findings]]));
+    forwardedFreshDependencyCache.set(callExpression, new Map([[dependencyHookNames, findings]]));
   }
   const target = resolveHookFunction(callExpression, context.scopes, context.cfg, context.filename);
   if (!target) return findings;

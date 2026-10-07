@@ -15,10 +15,6 @@ export interface HandoffPayloadInput {
   readonly outputDirectory?: string | null;
 }
 
-// A focused prompt for the chosen agent: solve the TOP-N issues this pass,
-// with the full set of findings written to disk (diagnostics.json + a .txt
-// per rule) for follow-up. Keeps the first pass small & high-signal rather
-// than dumping every issue inline.
 export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
   const topGroups = buildSortedRuleGroups(input.diagnostics).slice(0, TOP_ERRORS_DISPLAY_COUNT);
   const migrationScaleBuckets = new Map(
@@ -31,15 +27,13 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
   } catch {}
 
   const lines: string[] = [
-    `Fix the top ${topGroups.length} React Doctor ${topGroups.length === 1 ? "issue" : "issues"} in ${input.projectName} on this pass — leave the rest for a follow-up.`,
+    `Review and fix the top ${topGroups.length} React Doctor ${topGroups.length === 1 ? "finding" : "findings"} in ${input.projectName}. Leave the rest for a follow-up.`,
     "",
   ];
 
   topGroups.forEach(([ruleKey, ruleDiagnostics], index) => {
     const representative = ruleDiagnostics[0]!;
     const severityLabel = representative.severity === "error" ? "ERROR" : "WARN";
-    // A rule group whose sites all share one root-cause fix is ONE task — say
-    // "one fix · N sites" so it isn't read as N separate issues to schedule.
     const sharedFixSiteCount = getSharedFixSiteCount(ruleDiagnostics);
     const countBadge =
       sharedFixSiteCount > 0
@@ -86,9 +80,6 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
     "",
   );
 
-  // Migration-scale rules that fall outside the shown top-N still carry the
-  // sample-first warning, so the agent doesn't blindly sweep them when it works
-  // through "the rest" — the per-rule note above only reaches the shown groups.
   const shownRuleKeys = new Set(topGroups.map(([ruleKey]) => ruleKey));
   const deferredMigrationBuckets = [...migrationScaleBuckets.values()].filter(
     (bucket) => !shownRuleKeys.has(bucket.ruleKey),
@@ -103,7 +94,7 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
     );
   }
 
-  lines.push("Then work through the rest from the full results above.");
+  lines.push("Stop after this pass. Summarize the remaining findings for a follow-up.");
 
   return lines.join("\n");
 };

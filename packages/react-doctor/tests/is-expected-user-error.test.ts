@@ -7,6 +7,7 @@ import {
   NotADirectoryError,
   OxlintSpawnFailed,
   PackageJsonNotFoundError,
+  ProjectDiscoveryFailed,
   ProjectNotFoundError,
   ReactDoctorError,
 } from "@react-doctor/core";
@@ -92,6 +93,30 @@ describe("isExpectedUserError", () => {
         Object.assign(new Error("EROFS: read-only file system"), { code: "EROFS" }),
       ),
     ).toBe(true);
+    expect(
+      isExpectedUserError(
+        new ReactDoctorError({
+          reason: new ProjectDiscoveryFailed({
+            directory: "/cloud/project",
+            cause: Object.assign(new Error("ETIMEDOUT: scandir"), {
+              code: "ETIMEDOUT",
+              syscall: "scandir",
+            }),
+          }),
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("classifies incomplete npx installs as expected user errors", () => {
+    const cacheError = Object.assign(new Error("Cannot find module './meta/unevaluated.json'"), {
+      code: "MODULE_NOT_FOUND",
+      requireStack: [
+        "/home/user/.npm/_npx/81e833f6d16d6127/node_modules/ajv/dist/refs/json-schema-2020-12/index.js",
+      ],
+    });
+
+    expect(isExpectedUserError(cacheError)).toBe(true);
   });
 
   it("does not mask genuine bugs (those stay reportable)", () => {

@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -24,7 +25,7 @@ export const noAccessKey = defineRule({
   recommendation: "Do not use `accessKey`. It conflicts with assistive tech shortcuts.",
   category: "Accessibility",
   create: (context): RuleVisitors => {
-    if (isTestlikeFilename(context.filename)) return {};
+    if (isTestlikeFilename(context.filename)) return EMPTY_RULE_VISITORS;
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         const accessKey = hasJsxPropIgnoreCase(node.attributes, "accessKey");

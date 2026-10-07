@@ -1,0 +1,260 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 7db141abd1c00a07db1c28a9f1dfd218732b36d48d7c79c5e25bd69c4f397065
+import { HOLES, PAR_TOTAL } from "./world";
+
+// ---------------------------------------------------------------------------
+// DOM overlay. Kept deliberately thin: the 3D scene carries the state, the HUD
+// just names it.
+// ---------------------------------------------------------------------------
+
+export type BannerKind = "good" | "bad" | "shift" | "";
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+export class Hud {
+  private readonly root = el("div");
+  private readonly holeIdx: HTMLElement;
+  private readonly holeName: HTMLElement;
+  private readonly strokes: HTMLElement;
+  private readonly parCell: HTMLElement;
+  private readonly total: HTMLElement;
+  private readonly totalCell: HTMLElement;
+  private readonly brief: HTMLElement;
+  private readonly seamCount: HTMLElement;
+  private readonly banner: HTMLElement;
+  private readonly bannerMain: HTMLElement;
+  private readonly bannerSub: HTMLElement;
+  private readonly seamPrompt: HTMLElement;
+  private readonly seamText: HTMLElement;
+  private readonly power: HTMLElement;
+  private readonly powerFill: HTMLElement;
+  private readonly powerValue: HTMLElement;
+  private readonly stateChip: HTMLElement;
+  private readonly stateText: HTMLElement;
+  private readonly stateDot: HTMLElement;
+  private readonly intro: HTMLElement;
+  private readonly result: HTMLElement;
+  private readonly resultCard: HTMLElement;
+  private bannerTimer = 0;
+
+  constructor() {
+    this.root.id = "hud";
+
+    // --- scorecard
+    const scorecard = el("div", "panel scorecard");
+    const holeLine = el("div", "hole-line");
+    this.holeIdx = el("span", "hole-idx", "HOLE 1 / 3");
+    this.holeName = el("span", "hole-name", "");
+    holeLine.append(this.holeIdx, this.holeName);
+
+    const stats = el("div", "stats");
+    const mkStat = (value: string, label: string) => {
+      const cell = el("div", "stat");
+      const b = el("b", undefined, value);
+      const span = el("span", undefined, label);
+      cell.append(b, span);
+      return { cell, b };
+    };
+    const s1 = mkStat("0", "STROKES");
+    const s2 = mkStat("3", "PAR");
+    const s3 = mkStat("0", "TOTAL");
+    const s4 = mkStat(String(PAR_TOTAL), "ROUND PAR");
+    this.strokes = s1.b;
+    this.parCell = s2.b;
+    this.total = s3.b;
+    this.totalCell = s3.cell;
+    stats.append(s1.cell, s2.cell, s3.cell, s4.cell);
+
+    this.brief = el("div", "brief", "");
+    this.seamCount = el("div", "seam-count", "GRAVITY SEAMS CROSSED · 0");
+    scorecard.append(holeLine, stats, this.brief, this.seamCount);
+
+    // --- controls
+    const controls = el("div", "panel controls");
+    controls.append(el("h3", undefined, "CONTROLS"));
+    const dl = el("dl");
+    const rows: [string, string][] = [
+      ["DRAG", "pull back from the ball to aim &amp; charge"],
+      ["RELEASE", "putt"],
+      ["G", "preview the next gravity face at a seam"],
+      ["RIGHT-DRAG", "orbit"],
+      ["WHEEL", "zoom"],
+      ["R", "replay the round"],
+    ];
+    for (const [k, v] of rows) {
+      dl.append(el("dt", undefined, k), el("dd", undefined, v));
+    }
+    controls.append(dl);
+
+    // --- banner
+    this.banner = el("div", "banner");
+    this.bannerMain = el("div", "main", "");
+    this.bannerSub = el("div", "sub", "");
+    this.banner.append(this.bannerMain, this.bannerSub);
+
+    // --- seam prompt
+    this.seamPrompt = el("div", "seam-prompt");
+    this.seamText = el("span", undefined, "");
+    this.seamPrompt.append(el("span", "key", "G"), this.seamText);
+
+    // --- power meter
+    this.power = el("div", "power");
+    const track = el("div", "power-track");
+    this.powerFill = el("div", "power-fill");
+    track.append(this.powerFill);
+    const label = el("div", "power-label");
+    const left = el("span", undefined, "POWER");
+    this.powerValue = el("span", undefined, "0%");
+    label.append(left, this.powerValue);
+    this.power.append(track, label);
+
+    // --- state chip
+    this.stateChip = el("div", "state-chip");
+    this.stateDot = el("span", "state-dot");
+    this.stateText = el("span", undefined, "READY");
+    this.stateChip.append(this.stateDot, this.stateText);
+
+    // --- intro
+    this.intro = el("div", "overlay show");
+    const introCard = el("div", "card");
+    introCard.innerHTML = `
+      <h2>GRAVITY PAR</h2>
+      <h1>Three faces. One ball. Twelve strokes.</h1>
+      <p>You are putting on the surface of the Core. Gravity always points into the
+      ground beneath you, so every face is its own green &mdash; and the rounded
+      edges between them are <b>gravity seams</b>, where down rotates a quarter turn
+      under the ball as it rolls across.</p>
+      <ul>
+        <li><b>Drag back</b> from the ball to aim and charge, <b>release</b> to putt.</li>
+        <li>At a marked seam, press <b>G</b> to preview the next gravity face before committing.</li>
+        <li>Sand drags, water costs a stroke &mdash; and the ball is recovered to safety.</li>
+        <li>Finish all three holes in <b>${PAR_TOTAL} strokes or fewer</b>.</li>
+      </ul>
+      <div class="cta">CLICK ANYWHERE TO TEE OFF</div>
+    `;
+    this.intro.append(introCard);
+
+    // --- result
+    this.result = el("div", "overlay");
+    this.resultCard = el("div", "card");
+    this.result.append(this.resultCard);
+
+    this.root.append(
+      scorecard,
+      controls,
+      this.banner,
+      this.seamPrompt,
+      this.power,
+      this.stateChip,
+      this.intro,
+      this.result,
+    );
+    document.body.append(this.root);
+  }
+
+  setHole(index: number, strokes: number, total: number) {
+    const hole = HOLES[index] ?? (HOLES[HOLES.length - 1] as (typeof HOLES)[number]);
+    this.holeIdx.textContent = `HOLE ${hole.index} / ${HOLES.length}`;
+    this.holeName.textContent = hole.name;
+    this.strokes.textContent = String(strokes);
+    this.parCell.textContent = String(hole.par);
+    this.total.textContent = String(total);
+    this.brief.textContent = hole.brief;
+    const playedPar = HOLES.slice(0, index).reduce((s, h) => s + h.par, 0) + hole.par;
+    this.totalCell.classList.toggle("over", total > playedPar);
+    this.totalCell.classList.toggle("under", total < playedPar);
+  }
+
+  setSeamsCrossed(count: number) {
+    this.seamCount.textContent = `GRAVITY SEAMS CROSSED · ${count}`;
+  }
+
+  showBanner(main: string, sub: string, kind: BannerKind, seconds = 2.2) {
+    this.bannerMain.textContent = main;
+    this.bannerSub.textContent = sub;
+    this.banner.className = `banner show ${kind}`;
+    this.bannerTimer = seconds;
+  }
+
+  setSeamPrompt(text: string | null, armed: boolean) {
+    if (text) {
+      this.seamText.textContent = text;
+      this.seamPrompt.className = `seam-prompt show${armed ? " armed" : ""}`;
+    } else {
+      this.seamPrompt.className = "seam-prompt";
+      this.seamText.textContent = "";
+    }
+  }
+
+  setPower(power: number, visible: boolean) {
+    this.power.classList.toggle("show", visible);
+    this.powerFill.style.width = `${Math.round(power * 100)}%`;
+    this.powerValue.textContent = `${Math.round(power * 100)}%`;
+  }
+
+  setState(text: string, colour: string) {
+    this.stateText.textContent = text;
+    this.stateDot.style.color = colour;
+    this.stateDot.style.background = colour;
+  }
+
+  hideIntro() {
+    this.intro.classList.remove("show");
+  }
+
+  showResult(
+    total: number,
+    perHole: number[],
+    seams: number,
+    penalties: number,
+  ) {
+    const made = total <= PAR_TOTAL;
+    const diff = total - PAR_TOTAL;
+    const cells = perHole
+      .map((s, i) => {
+        const hole = HOLES[i] as (typeof HOLES)[number];
+        const cls = s < hole.par ? "under" : s > hole.par ? "over" : "";
+        return `<div class="cell ${cls}"><b>${s}</b><span>HOLE ${hole.index} · PAR ${hole.par}</span></div>`;
+      })
+      .join("");
+    this.resultCard.innerHTML = `
+      <h2>ROUND COMPLETE</h2>
+      <h1>${made ? "You made par." : "Over par."}</h1>
+      <div class="verdict ${made ? "good" : "bad"}">
+        ${total} STROKES &middot; ${diff === 0 ? "LEVEL PAR" : diff > 0 ? `+${diff}` : diff}
+      </div>
+      <div class="scoreline">${cells}</div>
+      <p>Gravity seams crossed: <b>${seams}</b> &middot; Penalty strokes: <b>${penalties}</b></p>
+      <p>${
+        made
+          ? "Twelve or fewer, all three faces, and at least one quarter turn of gravity. Clean round."
+          : "The target is twelve. Take the seam on a softer roll and keep out of the Tidewall lake."
+      }</p>
+      <div class="cta">PRESS R TO PLAY AGAIN</div>
+    `;
+    this.result.classList.add("show");
+  }
+
+  hideResult() {
+    this.result.classList.remove("show");
+  }
+
+  update(dt: number) {
+    if (this.bannerTimer > 0) {
+      this.bannerTimer -= dt;
+      if (this.bannerTimer <= 0) this.banner.className = "banner";
+    }
+  }
+}

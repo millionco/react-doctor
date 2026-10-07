@@ -1,10 +1,10 @@
 import * as fs from "node:fs";
-import { codeFrameColumns } from "@babel/code-frame";
 import {
   CODE_FRAME_LINES_ABOVE,
   CODE_FRAME_LINES_BELOW,
   CODE_FRAME_MAX_LINE_LENGTH_CHARS,
 } from "@react-doctor/core";
+import { renderCodeFrame } from "./render-code-frame.js";
 import { resolveAbsolutePath } from "./resolve-absolute-path.js";
 
 interface CodeFrameInput {
@@ -16,8 +16,7 @@ interface CodeFrameInput {
   // `line`..`endLine` range — used to batch several same-file sites of one
   // rule into a single spanning frame instead of near-duplicate boxes.
   readonly endLine?: number;
-  // Short label rendered inline at the caret (e.g. the rule title). Keep
-  // it brief — babel prints it right after the `^`.
+  // Short label rendered inline at the caret (e.g. the rule title).
   readonly message?: string;
 }
 
@@ -40,23 +39,15 @@ export const buildCodeFrame = (input: CodeFrameInput): string | null => {
     return null;
   }
 
-  // A single huge line (minified output, a giant inline data literal)
-  // only renders an unreadable wall of text, so skip the frame and let
-  // the caller fall back to the bare `file:line` reference.
-  const offendingLine = source.split("\n", input.line)[input.line - 1] ?? "";
-  if (offendingLine.length > CODE_FRAME_MAX_LINE_LENGTH_CHARS) return null;
-
-  // A spanning frame marks every line in the range and has no single
-  // caret column; a single-site frame points the caret at the column.
-  const isRange = input.endLine != null && input.endLine > input.line;
-  const location = isRange
-    ? { start: { line: input.line }, end: { line: input.endLine! } }
-    : { start: { line: input.line, column: input.column > 0 ? input.column : undefined } };
-
-  return codeFrameColumns(source, location, {
-    highlightCode: true,
+  const endLine = input.endLine != null && input.endLine > input.line ? input.endLine : undefined;
+  return renderCodeFrame({
+    source,
+    line: input.line,
+    column: endLine === undefined && input.column > 0 ? input.column : undefined,
+    endLine,
+    message: input.message,
     linesAbove: CODE_FRAME_LINES_ABOVE,
     linesBelow: CODE_FRAME_LINES_BELOW,
-    ...(input.message ? { message: input.message } : {}),
+    maximumLineLength: CODE_FRAME_MAX_LINE_LENGTH_CHARS,
   });
 };

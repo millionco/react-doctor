@@ -11,102 +11,8 @@ afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
-// `react-compiler-destructure-method` is currently un-registered in
-// `rule-registry.ts` — the React-Compiler memoization premise didn't
-// hold up for the canonical hooks it targeted (`useRouter`,
-// `useSearchParams`, `useNavigation`), all of which return stable
-// references. The rule implementation and these regression suites are
-// kept intact so re-registering the rule re-enables coverage in one
-// diff; switch this back to `describe(...)` when that happens.
-describe.skip("react-compiler-destructure-method", () => {
-  it("does not flag React Navigation methods", async () => {
-    const projectDir = setupReactProject(tempRoot, "react-navigation-methods", {
-      files: {
-        "src/Screen.tsx": `import { useNavigation } from "@react-navigation/native";
-
-declare function useRouter(): {
-  push: (path: string) => void;
-};
-
-declare module "@react-navigation/native" {
-  export function useNavigation(): {
-    navigate: (screen: string, params?: { sessionId: string }) => void;
-  };
-}
-
-export const WebRouteButton = () => {
-  const router = useRouter();
-  return <button onClick={() => router.push("/home")}>Go home</button>;
-};
-
-export const NativeRouteButton = () => {
-  const navigation = useNavigation();
-  return (
-    <button onClick={() => navigation.navigate("Chat", { sessionId: "abc" })}>
-      Open chat
-    </button>
-  );
-};
-`,
-      },
-    });
-
-    const hits = await collectRuleHits(projectDir, "react-compiler-destructure-method");
-    expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("useRouter");
-    expect(hits[0].message).not.toContain("useNavigation");
-  });
-
-  it("does not flag React Navigation core methods", async () => {
-    const projectDir = setupReactProject(tempRoot, "react-navigation-core-methods", {
-      files: {
-        "src/Screen.tsx": `import { useNavigation } from "@react-navigation/core";
-
-declare module "@react-navigation/core" {
-  export function useNavigation(): {
-    dispatch: (action: { type: string }) => void;
-  };
-}
-
-export const NativeRouteButton = () => {
-  const navigation = useNavigation();
-  return <button onClick={() => navigation.dispatch({ type: "GO_BACK" })}>Back</button>;
-};
-`,
-      },
-    });
-
-    const hits = await collectRuleHits(projectDir, "react-compiler-destructure-method");
-    expect(hits).toHaveLength(0);
-  });
-
-  it("still flags non-React-Navigation useNavigation hooks", async () => {
-    const projectDir = setupReactProject(tempRoot, "custom-use-navigation-methods", {
-      files: {
-        "src/Screen.tsx": `declare function useNavigation(): {
-  navigate: (screen: string, params?: { sessionId: string }) => void;
-};
-
-export const RouteButton = () => {
-  const navigation = useNavigation();
-  return (
-    <button onClick={() => navigation.navigate("Chat", { sessionId: "abc" })}>
-      Open chat
-    </button>
-  );
-};
-`,
-      },
-    });
-
-    const hits = await collectRuleHits(projectDir, "react-compiler-destructure-method");
-    expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("useNavigation");
-  });
-});
-
 describe("react-compiler-no-manual-memoization", () => {
-  it("flags useMemo, useCallback, and memo when React Compiler is enabled", async () => {
+  it("keeps retired memoization advice quiet with React Compiler", async () => {
     const projectDir = setupReactProject(tempRoot, "manual-memoization-with-compiler", {
       files: {
         "src/Widget.tsx": `import { memo, useCallback, useMemo } from "react";
@@ -136,14 +42,10 @@ export const Widget = memo(({ items, onSelect }: WidgetProps) => {
     const hits = await collectRuleHits(projectDir, "react-compiler-no-manual-memoization", {
       hasReactCompiler: true,
     });
-    const messages = hits.map((hit) => hit.message);
-    expect(messages).toHaveLength(3);
-    expect(messages.some((message) => message.includes("useMemo"))).toBe(true);
-    expect(messages.some((message) => message.includes("useCallback"))).toBe(true);
-    expect(messages.some((message) => message.includes("memo()"))).toBe(true);
+    expect(hits).toHaveLength(0);
   });
 
-  it("matches React.useMemo / React.useCallback / React.memo namespace calls", async () => {
+  it("keeps retired memoization advice quiet for namespace calls", async () => {
     const projectDir = setupReactProject(tempRoot, "manual-memoization-namespaced", {
       files: {
         "src/Counter.tsx": `import * as React from "react";
@@ -164,7 +66,7 @@ export const Counter = React.memo(({ initial }: CounterProps) => {
     const hits = await collectRuleHits(projectDir, "react-compiler-no-manual-memoization", {
       hasReactCompiler: true,
     });
-    expect(hits).toHaveLength(3);
+    expect(hits).toHaveLength(0);
   });
 
   it("does not flag manual memoization when React Compiler is disabled", async () => {

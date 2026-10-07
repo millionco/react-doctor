@@ -1534,3 +1534,45 @@ export const api = axios.create({
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("proven local component factories", () => {
+  it("accepts exported icons made by a local React wrapper factory", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+      import { forwardRef } from "react";
+      const createIcon = (name) => {
+        const Icon = forwardRef((props, ref) => <svg ref={ref} {...props} />);
+        Icon.displayName = name;
+        return Icon;
+      };
+      export const Arrow = createIcon("Arrow");
+      export const Panel = () => <main />;
+    `,
+      { filename: "src/icons.tsx" },
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `const createIcon = async () => forwardRef(() => <svg />);`,
+    `const createIcon = async function () { return forwardRef(() => <svg />); };`,
+    `const createIcon = function* () { return forwardRef(() => <svg />); };`,
+    `const createIcon = (name) => { if (!name) return {}; return forwardRef(() => <svg />); };`,
+    `const createIcon = (name) => { if (name) return forwardRef(() => <svg />); };`,
+    `let createIcon = () => forwardRef(() => <svg />); createIcon = externalFactory;`,
+    `const createIcon = () => { let Icon = forwardRef(() => <svg />); Icon = {}; return Icon; };`,
+  ])("keeps warnings for factories without a proven component result: %s", (factory) => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+      import { forwardRef } from "react";
+      ${factory}
+      export const Arrow = createIcon("Arrow");
+      export const Panel = () => <main />;
+    `,
+      { filename: "src/icons.tsx" },
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});

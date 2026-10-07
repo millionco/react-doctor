@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -11,10 +12,13 @@ import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
+import { walkAst } from "../../utils/walk-ast.js";
+import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 
 const BODY_CONSUMER_METHODS = new Set(["json", "text", "blob", "arrayBuffer", "formData"]);
 const STATUS_CHECK_PROPERTIES = new Set(["ok", "status"]);
@@ -258,13 +262,13 @@ const makeExpressionGuaranteesStatusCheck = (
     expression: EsTreeNode,
     branchRunsWhenTruthy: boolean,
   ): boolean => {
-    const inner = stripGroupingParens(expression);
+    const inner = stripParenExpression(expression);
     const resultIndex = branchRunsWhenTruthy ? 1 : 0;
     const cachedResults = resultsByPolarity.get(inner);
     const cachedResult = cachedResults?.[resultIndex];
     if (cachedResult !== undefined) return cachedResult;
     const references = referencesToCheck
-      .map(stripGroupingParens)
+      .map(stripParenExpression)
       .filter((reference) => isAstDescendant(reference, inner));
     let result = false;
     if (references.some((reference) => reference === inner)) {
@@ -425,6 +429,134 @@ const statusCheckGuardsNode = (statusReferences: EsTreeNode[], target: EsTreeNod
     ancestor = ancestor.parent ?? null;
   }
   return false;
+};
+
+const expressionReadsStatusProperty = (
+  expression: EsTreeNode,
+  parameterSymbolId: number,
+  context: RuleContext,
+): boolean => {
+  let readsStatusProperty = false;
+  walkAst(expression, (child) => {
+    if (readsStatusProperty) return false;
+    if (!isNodeOfType(child, "MemberExpression")) return;
+    const receiver = stripGroupingParens(child.object as EsTreeNode);
+    if (
+      isNodeOfType(receiver, "Identifier") &&
+      context.scopes.symbolFor(receiver)?.id === parameterSymbolId &&
+      STATUS_CHECK_PROPERTIES.has(getStaticPropertyName(child) ?? "")
+    ) {
+      readsStatusProperty = true;
+      return false;
+    }
+  });
+  return readsStatusProperty;
+};
+
+const localValidatorChecksResponseStatus = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  responseReference: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const responseArgumentIndex = call.arguments.findIndex(
+    (argument) => argument === responseReference,
+  );
+  if (responseArgumentIndex < 0) return false;
+  const validator = resolveExactLocalFunction(call.callee, context.scopes);
+  if (!validator || !isFunctionLike(validator)) return false;
+  const parameter = validator.params[responseArgumentIndex];
+  if (!parameter || !isNodeOfType(parameter, "Identifier")) return false;
+  const parameterSymbol = context.scopes.symbolFor(parameter);
+  if (!parameterSymbol) return false;
+  const hasResponseShapeGuard =
+    isNodeOfType(validator.body, "BlockStatement") &&
+    validator.body.body.some((statement) => {
+      if (!isNodeOfType(statement, "IfStatement") || !isEarlyExitStatement(statement.consequent)) {
+        return false;
+      }
+      let hasTypedStatusProperty = false;
+      walkAst(statement.test, (child) => {
+        if (
+          hasTypedStatusProperty ||
+          !isNodeOfType(child, "BinaryExpression") ||
+          !["==", "==="].includes(child.operator)
+        ) {
+          return hasTypedStatusProperty ? false : undefined;
+        }
+        const typeofExpression = isNodeOfType(child.left, "UnaryExpression")
+          ? child.left
+          : isNodeOfType(child.right, "UnaryExpression")
+            ? child.right
+            : null;
+        const typeLiteral = typeofExpression === child.left ? child.right : child.left;
+        if (
+          !typeofExpression ||
+          typeofExpression.operator !== "typeof" ||
+          !isNodeOfType(typeLiteral, "Literal") ||
+          typeof typeLiteral.value !== "string" ||
+          !isNodeOfType(typeofExpression.argument, "MemberExpression")
+        ) {
+          return;
+        }
+        const receiver = stripGroupingParens(typeofExpression.argument.object as EsTreeNode);
+        const propertyName = getStaticPropertyName(typeofExpression.argument);
+        if (
+          isNodeOfType(receiver, "Identifier") &&
+          context.scopes.symbolFor(receiver)?.id === parameterSymbol.id &&
+          ((propertyName === "ok" && typeLiteral.value === "boolean") ||
+            (propertyName === "status" && typeLiteral.value === "number"))
+        ) {
+          hasTypedStatusProperty = true;
+          return false;
+        }
+      });
+      return (
+        hasTypedStatusProperty &&
+        expressionReadsStatusProperty(statement.consequent, parameterSymbol.id, context)
+      );
+    });
+  const returnedExpressions: EsTreeNode[] = [];
+  if (!isNodeOfType(validator.body, "BlockStatement")) {
+    returnedExpressions.push(validator.body);
+  } else {
+    walkOwnFunctionScope(validator, (child) => {
+      if (isNodeOfType(child, "ReturnStatement") && child.argument) {
+        returnedExpressions.push(child.argument);
+      }
+    });
+  }
+  const statusAwareReturns = returnedExpressions.filter((returnedExpression) =>
+    expressionReadsStatusProperty(returnedExpression, parameterSymbol.id, context),
+  );
+  const booleanReturnIsStatusGuarded = (returnedExpression: EsTreeNode): boolean => {
+    const fallback = stripGroupingParens(returnedExpression);
+    if (!isNodeOfType(fallback, "Literal") || typeof fallback.value !== "boolean") return false;
+    let ancestor = fallback.parent;
+    while (ancestor && ancestor !== validator) {
+      if (
+        isNodeOfType(ancestor, "IfStatement") &&
+        isAstDescendant(fallback, ancestor.consequent) &&
+        expressionReadsStatusProperty(ancestor.test, parameterSymbol.id, context)
+      ) {
+        return true;
+      }
+      ancestor = ancestor.parent ?? null;
+    }
+    return false;
+  };
+  return (
+    statusAwareReturns.length > 0 &&
+    returnedExpressions.every((returnedExpression) => {
+      if (statusAwareReturns.includes(returnedExpression)) return true;
+      const fallback = stripGroupingParens(returnedExpression);
+      return (
+        booleanReturnIsStatusGuarded(returnedExpression) ||
+        (hasResponseShapeGuard &&
+          isNodeOfType(fallback, "Literal") &&
+          typeof fallback.value === "boolean")
+      );
+    })
+  );
 };
 
 const outermostPromiseChainCall = (fetchCall: EsTreeNode): EsTreeNode => {
@@ -609,6 +741,17 @@ const reportUnguarded = ({
     return [member];
   });
 
+  const allDirectStatusReferences = responseReferences.flatMap((reference) => {
+    const receiver = findTransparentExpressionRoot(reference.identifier);
+    const member = receiver.parent;
+    return member &&
+      isNodeOfType(member, "MemberExpression") &&
+      member.object === receiver &&
+      STATUS_CHECK_PROPERTIES.has(getStaticPropertyName(member) ?? "")
+      ? [member]
+      : [];
+  });
+
   const destructuredStatusReferences = responseReferences.flatMap((reference) => {
     const declarator = reference.identifier.parent;
     if (
@@ -641,6 +784,100 @@ const reportUnguarded = ({
     });
   });
 
+  const consumptionResultIsGuardedBeforeUse = (
+    consumption: EsTreeNode,
+    statusReferences: EsTreeNode[],
+  ): boolean => {
+    let resultExpression = findTransparentExpressionRoot(consumption);
+    if (
+      resultExpression.parent &&
+      isNodeOfType(resultExpression.parent, "AwaitExpression") &&
+      resultExpression.parent.argument === resultExpression
+    ) {
+      resultExpression = findTransparentExpressionRoot(resultExpression.parent);
+    }
+    const getAssignedBinding = (expression: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
+      const parent = expression.parent;
+      if (
+        parent &&
+        isNodeOfType(parent, "VariableDeclarator") &&
+        parent.init === expression &&
+        isNodeOfType(parent.id, "Identifier")
+      ) {
+        return parent.id;
+      }
+      if (
+        parent &&
+        isNodeOfType(parent, "AssignmentExpression") &&
+        parent.operator === "=" &&
+        parent.right === expression &&
+        isNodeOfType(parent.left, "Identifier")
+      ) {
+        return parent.left;
+      }
+      return null;
+    };
+    const getDerivedBinding = (reference: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
+      let current = findTransparentExpressionRoot(reference);
+      while (current.parent && !isFunctionLike(current.parent)) {
+        const parent = current.parent;
+        const assignedBinding = getAssignedBinding(current);
+        if (assignedBinding) return assignedBinding;
+        if (
+          (isNodeOfType(parent, "MemberExpression") && parent.object === current) ||
+          (isNodeOfType(parent, "CallExpression") &&
+            parent.arguments.some((argument) => argument === current))
+        ) {
+          current = findTransparentExpressionRoot(parent);
+          continue;
+        }
+        return null;
+      }
+      return null;
+    };
+    const binding = getAssignedBinding(resultExpression);
+    const resultSymbol = binding ? context.scopes.symbolFor(binding) : null;
+    if (!resultSymbol) return false;
+    const symbolsById = new Map<number, typeof resultSymbol>();
+    const collectReachableSymbol = (symbol: typeof resultSymbol): void => {
+      if (symbolsById.has(symbol.id)) return;
+      symbolsById.set(symbol.id, symbol);
+      for (const reference of symbol.references) {
+        if (reference.flag !== "read") continue;
+        const derivedBinding = getDerivedBinding(reference.identifier);
+        const derivedSymbol = derivedBinding ? context.scopes.symbolFor(derivedBinding) : null;
+        if (derivedSymbol) collectReachableSymbol(derivedSymbol);
+      }
+    };
+    collectReachableSymbol(resultSymbol);
+    const guardedResultBySymbolId = new Map<number, boolean>();
+    const pendingSymbolIds = new Set<number>();
+    const usesAreGuarded = (symbolId: number): boolean => {
+      const cachedResult = guardedResultBySymbolId.get(symbolId);
+      if (cachedResult !== undefined) return cachedResult;
+      if (pendingSymbolIds.has(symbolId)) return false;
+      pendingSymbolIds.add(symbolId);
+      const symbol = symbolsById.get(symbolId);
+      if (!symbol) {
+        pendingSymbolIds.delete(symbolId);
+        return false;
+      }
+      const readReferences = symbol.references.filter((reference) => reference.flag === "read");
+      const result =
+        readReferences.length > 0 &&
+        readReferences.every((reference) => {
+          if (statusCheckGuardsNode(statusReferences, reference.identifier)) return true;
+          const derivedBinding = getDerivedBinding(reference.identifier);
+          const derivedSymbol = derivedBinding ? context.scopes.symbolFor(derivedBinding) : null;
+          return Boolean(derivedSymbol && usesAreGuarded(derivedSymbol.id));
+        });
+      pendingSymbolIds.delete(symbolId);
+      guardedResultBySymbolId.set(symbolId, result);
+      return result;
+    };
+    return usesAreGuarded(resultSymbol.id);
+  };
+
   const everyConsumptionIsGuarded = consumptions.every((consumption) => {
     if (
       directStatusReferences.length > 0 &&
@@ -651,6 +888,40 @@ const reportUnguarded = ({
     if (
       destructuredStatusReferences.length > 0 &&
       statusCheckGuardsNode(destructuredStatusReferences, consumption)
+    ) {
+      return true;
+    }
+    const allStatusReferences = [...directStatusReferences, ...destructuredStatusReferences];
+    if (
+      allStatusReferences.length > 0 &&
+      consumptionResultIsGuardedBeforeUse(consumption, allStatusReferences)
+    ) {
+      return true;
+    }
+    const consumptionRoot = findTransparentExpressionRoot(consumption);
+    const awaitedConsumption =
+      consumptionRoot.parent &&
+      isNodeOfType(consumptionRoot.parent, "AwaitExpression") &&
+      consumptionRoot.parent.argument === consumptionRoot
+        ? findTransparentExpressionRoot(consumptionRoot.parent)
+        : consumptionRoot;
+    if (
+      isNodeOfType(awaitedConsumption.parent, "ExpressionStatement") &&
+      allDirectStatusReferences.some((statusReference) => {
+        if (statusReference.range[0] <= consumption.range[1]) return false;
+        let ancestor = statusReference.parent;
+        while (ancestor && !isFunctionLike(ancestor)) {
+          if (
+            isNodeOfType(ancestor, "DoWhileStatement") &&
+            isAstDescendant(consumption, ancestor.body) &&
+            isAstDescendant(statusReference, ancestor.test)
+          ) {
+            return false;
+          }
+          ancestor = ancestor.parent ?? null;
+        }
+        return true;
+      })
     ) {
       return true;
     }
@@ -668,10 +939,13 @@ const reportUnguarded = ({
       ) {
         validatorName = callee.property.name;
       }
-      return Boolean(
-        validatorName &&
-        /^(?:assert|check|ensure|require|throw|validate)/i.test(validatorName) &&
-        nodeDominatesNode(parent, consumption, context),
+      const isKnownValidatorName = Boolean(
+        validatorName && /^(?:assert|check|ensure|require|throw|validate)/i.test(validatorName),
+      );
+      return (
+        (isKnownValidatorName ||
+          localValidatorChecksResponseStatus(parent, reference.identifier, context)) &&
+        nodeDominatesNode(parent, consumption, context)
       );
     });
   });
@@ -699,7 +973,7 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
   create: (context: RuleContext): RuleVisitors => {
     const normalizedFilename = (context.filename ?? "").replaceAll("\\", "/");
     const basename = normalizedFilename.slice(normalizedFilename.lastIndexOf("/") + 1);
-    if (BUILD_SCRIPT_BASENAME_PATTERN.test(basename)) return {};
+    if (BUILD_SCRIPT_BASENAME_PATTERN.test(basename)) return EMPTY_RULE_VISITORS;
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isGlobalFetchCall(node, context)) return;

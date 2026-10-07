@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import type { Diagnostic } from "@react-doctor/core";
 import { buildSortedRuleGroups } from "./diagnostic-grouping.js";
-import { formatRuleSummary } from "./render-diagnostics.js";
+import { formatRuleSummary } from "./format-rule-summary.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 

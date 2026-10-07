@@ -1,50 +1,26 @@
-import * as Sentry from "@sentry/node";
+import type * as SentryModule from "@sentry/node";
 import { buildSentryScope } from "./cli/utils/build-sentry-scope.js";
-import {
-  FULL_TRACES_SAMPLE_RATE,
-  SENTRY_DSN,
-  SENTRY_FLUSH_TIMEOUT_MS,
-} from "./cli/utils/constants.js";
-import { isDebugFlagEnabled } from "./cli/utils/is-debug-flag.js";
+import { SENTRY_DSN, SENTRY_FLUSH_TIMEOUT_MS } from "./cli/utils/constants.js";
+import { isEnvFlagEnabled } from "./cli/utils/is-env-flag-enabled.js";
+import { isExpectedUserError } from "./cli/utils/is-expected-user-error.js";
+import { isTelemetryEnabled } from "./cli/utils/is-telemetry-enabled.js";
 import { scrubSentryEvent } from "./cli/utils/scrub-sentry-event.js";
-import { scrubSentryMetric } from "./cli/utils/scrub-sentry-metric.js";
-import {
-  resolveSentryEnvironment,
-  resolveSentryRelease,
-  resolveTracesSampleRate,
-} from "./cli/utils/sentry-config.js";
+import { resolveSentryEnvironment, resolveSentryRelease } from "./cli/utils/sentry-config.js";
 
-// Re-exported for back-compat: these resolvers moved to `sentry-config.ts` so
-// the editor LSP can reuse them without importing this CLI-only module.
-export { resolveSentryEnvironment, resolveSentryRelease, resolveTracesSampleRate };
+// Re-exported for back-compat after these resolvers moved to `sentry-config.ts`.
+export { resolveSentryEnvironment, resolveSentryRelease };
 
-let isInitialized = false;
-// Cached at init so `isSentryTracingEnabled()` (read on hot paths in
-// inspect.ts) doesn't re-parse the environment on every call and always
-// agrees with the rate handed to `Sentry.init`.
-let resolvedTracesSampleRate = 0;
-
-const shouldEnableSentry = (): boolean => {
-  // `--no-score` (and its `--no-telemetry` alias) opts out of crash
-  // reporting. Read from raw argv because Sentry initializes before
-  // Commander parses.
-  if (process.argv.includes("--no-score") || process.argv.includes("--no-telemetry")) return false;
-  // Never phone home from this repo's own test runs (the e2e suite
-  // spawns the built CLI as a subprocess, which inherits VITEST).
-  if (process.env.VITEST || process.env.NODE_ENV === "test") return false;
-  return true;
-};
-
-const isEnvFlagEnabled = (value: string | undefined): boolean =>
-  value === "1" || value?.toLowerCase() === "true";
+let sentryPromise: Promise<typeof SentryModule | null> | null = null;
 
 /**
- * Whether performance traces will actually be recorded — Sentry is live and the
- * resolved sample rate is above zero. Used to gate the per-run root span and
- * the Effect→Sentry tracer bridge so they're true no-ops when tracing is off.
+ * Resolves the initialized Sentry SDK, or `null` when Sentry was never
+ * initialized (`--no-score`, tests, a missing DSN) or failed to load. Every
+ * Sentry consumer goes through here so the SDK's module graph (hundreds of
+ * `@sentry/*` + `@opentelemetry/*` files) is loaded off the CLI's critical
+ * startup path.
  */
-export const isSentryTracingEnabled = (): boolean =>
-  Sentry.isInitialized() && resolvedTracesSampleRate > 0;
+export const getSentry = (): Promise<typeof SentryModule | null> =>
+  sentryPromise ?? Promise.resolve(null);
 
 /**
  * Flushes queued Sentry events (errors + transactions) before the CLI exits, so
@@ -53,17 +29,56 @@ export const isSentryTracingEnabled = (): boolean =>
  * the user's result.
  */
 export const flushSentry = async (): Promise<void> => {
-  if (!Sentry.isInitialized()) return;
+  const Sentry = await getSentry();
+  if (!Sentry?.isInitialized()) return;
   try {
     await Sentry.flush(SENTRY_FLUSH_TIMEOUT_MS);
   } catch {}
 };
 
+const initializeSentryModule = (Sentry: typeof SentryModule): typeof SentryModule => {
+  const { tags, contexts } = buildSentryScope();
+  try {
+    Sentry.init({
+      dsn: process.env.SENTRY_DSN || SENTRY_DSN,
+      release: resolveSentryRelease(),
+      environment: resolveSentryEnvironment(),
+      // Anonymized telemetry: never attach the user's IP address.
+      sendDefaultPii: false,
+      // Spans go to Axiom; Sentry captures exceptions only.
+      tracesSampleRate: 0,
+      // No spans means no ESM instrumentation to install, so skip the
+      // import-in-the-middle loader hook (it spawns a worker thread and routes
+      // every later `import()` through a synchronous round-trip to it).
+      registerEsmLoaderHooks: false,
+      debug: isEnvFlagEnabled(process.env.SENTRY_DEBUG),
+      // Seed the scope so the run snapshot rides along with every event.
+      // (Only `run` exists at init; the scanned `project` context is added later
+      // once a scan discovers it.)
+      initialScope: { tags, contexts },
+      // Anonymize every outgoing event: strip hostname/IP/device identity, drop
+      // captured local variables, and scrub home-directory paths and known
+      // secrets from all remaining strings. Returns `null` to drop the event if
+      // scrubbing fails, so un-anonymized data is never sent.
+      beforeSend: (event, hint) =>
+        isExpectedUserError(hint.originalException) ? null : scrubSentryEvent(event),
+    });
+  } catch {}
+  return Sentry;
+};
+
 /**
- * Initializes the Sentry Node SDK for CLI crash reporting and performance
- * tracing. Invoked as the first statement of the CLI entry (`cli/index.ts`) so
- * the SDK's global `uncaughtException` / `unhandledRejection` handlers and OTel
- * auto-instrumentation are armed before any command runs.
+ * Initializes the Sentry Node SDK for CLI crash reporting. Invoked as the first
+ * statement of the CLI entry (`cli/index.ts`); the SDK is imported dynamically
+ * so its module graph loads in the background while the command starts, and the
+ * SDK's global `uncaughtException` / `unhandledRejection` handlers arm as soon
+ * as it lands. Consumers await `getSentry()` and so observe the initialized SDK.
+ *
+ * Performance tracing is off: spans are exported to Axiom instead (see
+ * `telemetry-runtime.ts`), and Effect has a single `Tracer` reference, so the
+ * two backends are mutually exclusive. Sentry keeps what it is good at —
+ * symbolicated stack traces, issue grouping, and a quotable event id — while
+ * crashes carry the Axiom trace id as a tag so an issue pivots into its trace.
  *
  * Exported as a function rather than a bare side-effecting import because the
  * package declares `"sideEffects": false`, which lets the bundler tree-shake
@@ -75,44 +90,9 @@ export const flushSentry = async (): Promise<void> => {
  * app can't hijack their telemetry.
  *
  * Configuration is environment-overridable for self-hosting and tuning:
- * `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`,
- * `SENTRY_TRACES_SAMPLE_RATE` (`0` disables tracing), and `SENTRY_DEBUG`.
+ * `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, and `SENTRY_DEBUG`.
  */
 export const initializeSentry = (): void => {
-  if (isInitialized || !shouldEnableSentry()) return;
-  isInitialized = true;
-  // `--debug` forces full sampling so the trace id it prints at the end of the
-  // run always resolves to a delivered trace, overriding a downsampled env.
-  resolvedTracesSampleRate = isDebugFlagEnabled()
-    ? FULL_TRACES_SAMPLE_RATE
-    : resolveTracesSampleRate();
-  const { tags, contexts } = buildSentryScope();
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN || SENTRY_DSN,
-    release: resolveSentryRelease(),
-    environment: resolveSentryEnvironment(),
-    // Anonymized telemetry: never attach the user's IP address.
-    sendDefaultPii: false,
-    tracesSampleRate: resolvedTracesSampleRate,
-    debug: isEnvFlagEnabled(process.env.SENTRY_DEBUG),
-    // Seed the scope so the run snapshot rides along with *every* event,
-    // including performance transactions — not just captured exceptions.
-    // (Only `run` exists at init; the scanned `project` context is added later
-    // once a scan discovers it.)
-    initialScope: { tags, contexts },
-    // Anonymize every outgoing event/transaction: strip hostname/IP/device
-    // identity, drop captured local variables, and scrub home-directory paths
-    // and known secrets from all remaining strings. Returns `null` to drop the
-    // event if scrubbing fails, so un-anonymized data is never sent.
-    beforeSend: (event) => scrubSentryEvent(event),
-    beforeSendTransaction: (event) => scrubSentryEvent(event),
-    // Same anonymization contract for Application Metrics (counters/distributions):
-    // drop the `server.address` hostname attribute and scrub paths/secrets from
-    // attribute values, dropping the metric on failure. Metrics are enabled by
-    // default and flow independently of `tracesSampleRate`. The run + project
-    // snapshot is merged onto each metric at emit time (see `record-metric.ts`),
-    // mirroring how `buildSentryScope` rebuilds event tags, so metrics track
-    // runtime state instead of a stale init-time snapshot.
-    beforeSendMetric: (metric) => scrubSentryMetric(metric),
-  });
+  if (sentryPromise !== null || !isTelemetryEnabled()) return;
+  sentryPromise = import("@sentry/node").then(initializeSentryModule, () => null);
 };

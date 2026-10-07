@@ -32,6 +32,8 @@ import {
   isState,
   isSyncStateSetterCall,
 } from "./utils/effect/react.js";
+import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
+import { hasSynchronousResourceLifecycleTransition } from "./utils/has-synchronous-resource-lifecycle-transition.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
 // 1:1 port of upstream `src/rules/no-reset-all-state-on-prop-change.js`.
@@ -1247,6 +1249,21 @@ const findPropUsedToResetAllState = (
     isSetStateToInitialValue(analysis, context, ref),
   );
   if (!allResetToInitial) return null;
+  if (hasSynchronousResourceLifecycleTransition(effectFn, context.scopes)) return null;
+  if (
+    stateSetterRefs.every((setterReference) =>
+      hasResourceLifecycleSetterWriter(
+        analysis,
+        context,
+        setterReference,
+        useEffectNode,
+        depsRefs,
+        true,
+      ),
+    )
+  ) {
+    return null;
+  }
 
   // The sync reset is the loading phase of a fetch lifecycle when the SAME
   // state is set again from an async continuation inside this effect (the

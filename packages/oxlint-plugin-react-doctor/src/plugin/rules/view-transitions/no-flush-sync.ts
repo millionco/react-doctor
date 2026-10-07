@@ -15,6 +15,13 @@ import { walkAst } from "../../utils/walk-ast.js";
 const IMPERATIVE_DOM_LIBRARY_SOURCE_PATTERN =
   /^(?:@floating-ui\/|@popperjs\/|react-popper$|popper\.js$|shaka-player)/;
 
+const AWARENESS_LIBRARY_SOURCE_PATTERN = /^@softmaple\/awareness\/(?:hooks|mapping)$/;
+
+const AWARENESS_SELECTION_SIGNAL_NAMES: ReadonlySet<string> = new Set([
+  "remoteOperations",
+  "restoreSelection",
+]);
+
 // DOM reads that only make sense against a committed tree. `flushSync`
 // followed by (or wrapped around) one of these is the documented
 // exemption: a third-party/imperative consumer measuring fresh layout.
@@ -234,15 +241,56 @@ const findProgram = (node: EsTreeNode): EsTreeNode | null => {
   return null;
 };
 
-const importsImperativeDomLibrary = (program: EsTreeNode): boolean => {
-  for (const stmt of (program as { body?: EsTreeNode[] }).body ?? []) {
-    if (!isNodeOfType(stmt, "ImportDeclaration")) continue;
-    const source = stmt.source?.value;
-    if (typeof source === "string" && IMPERATIVE_DOM_LIBRARY_SOURCE_PATTERN.test(source)) {
+const importsLibraryMatching = (program: EsTreeNode, sourcePattern: RegExp): boolean => {
+  for (const statement of (program as { body?: EsTreeNode[] }).body ?? []) {
+    if (!isNodeOfType(statement, "ImportDeclaration")) continue;
+    const source = statement.source?.value;
+    if (typeof source === "string" && sourcePattern.test(source)) {
       return true;
     }
   }
   return false;
+};
+
+const subtreeUsesAwarenessSelection = (root: EsTreeNode | null | undefined): boolean => {
+  if (!root) return false;
+  let found = false;
+  walkAst(root, (child: EsTreeNode) => {
+    if (isNodeOfType(child, "Identifier") && AWARENESS_SELECTION_SIGNAL_NAMES.has(child.name)) {
+      found = true;
+      return false;
+    }
+  });
+  return found;
+};
+
+const enclosingFunctionUsesAwarenessSelection = (node: EsTreeNode): boolean => {
+  let cursor: EsTreeNode | null | undefined = node.parent;
+  while (cursor) {
+    if (isFunctionLike(cursor)) {
+      const body = (cursor as { body?: EsTreeNode | null }).body;
+      return subtreeUsesAwarenessSelection(body);
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
+const hasAwarenessSelectionFlushSyncCall = (program: EsTreeNode, localName: string): boolean => {
+  if (!importsLibraryMatching(program, AWARENESS_LIBRARY_SOURCE_PATTERN)) return false;
+  let found = false;
+  walkAst(program, (child: EsTreeNode) => {
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      child.callee.name === localName &&
+      enclosingFunctionUsesAwarenessSelection(child)
+    ) {
+      found = true;
+      return false;
+    }
+  });
+  return found;
 };
 
 // A justified call keeps the import regardless of the file's other call
@@ -301,10 +349,11 @@ export const noFlushSync = defineRule({
 
         const program = findProgram(node as EsTreeNode);
         if (program) {
-          if (importsImperativeDomLibrary(program)) return;
+          if (importsLibraryMatching(program, IMPERATIVE_DOM_LIBRARY_SOURCE_PATTERN)) return;
           const localName = isNodeOfType(specifier.local, "Identifier")
             ? specifier.local.name
             : "flushSync";
+          if (hasAwarenessSelectionFlushSyncCall(program, localName)) return;
           if (hasExemptFlushSyncCall(program, localName)) return;
         }
 

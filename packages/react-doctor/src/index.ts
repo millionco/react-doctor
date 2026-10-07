@@ -1,7 +1,6 @@
 import {
   buildJsonReport,
   buildJsonReportError,
-  clearAutoSuppressionCaches,
   clearConfigCache,
   clearIgnorePatternsCache,
   clearMinifiedFileCache,
@@ -21,6 +20,7 @@ import type {
   JsonReportError,
   JsonReportMode,
   JsonReportProjectEntry,
+  JsonReportSkippedProject,
   JsonReportSummary,
   ProjectDefinition,
   ProjectInfo,
@@ -43,6 +43,7 @@ export type {
   JsonReportError,
   JsonReportMode,
   JsonReportProjectEntry,
+  JsonReportSkippedProject,
   JsonReportSummary,
   ProjectDefinition,
   ProjectInfo,
@@ -90,7 +91,6 @@ export const clearCaches = (): void => {
   clearPackageJsonCache();
   clearIgnorePatternsCache();
   clearPackageRoleCache();
-  clearAutoSuppressionCaches();
   clearMinifiedFileCache();
 };
 

@@ -4,11 +4,21 @@ import * as Layer from "effect/Layer";
 import * as path from "node:path";
 import { isDirectory as isDirectoryNode, isFile as isFileNode } from "../project-info/index.js";
 import { createNodeReadFileLinesSync } from "../read-file-lines-node.js";
-import { listSourceFiles as listSourceFilesNode } from "../utils/list-source-files.js";
+import type { SourceFileEntry } from "../types/index.js";
+import {
+  listSourceFiles as listSourceFilesNode,
+  listSourceFilesCooperative as listSourceFilesCooperativeNode,
+  listSourceFilesWithSizeCooperative as listSourceFilesWithSizeCooperativeNode,
+} from "../utils/list-source-files.js";
 
 interface ReadLinesInput {
   readonly filePath: string;
   readonly rootDirectory: string;
+}
+
+interface ListSourceFilesInput {
+  readonly rootDirectory: string;
+  readonly signal?: AbortSignal;
 }
 
 export class Files extends Context.Service<
@@ -16,6 +26,12 @@ export class Files extends Context.Service<
   {
     readonly readLines: (input: ReadLinesInput) => Effect.Effect<ReadonlyArray<string> | null>;
     readonly listSourceFiles: (rootDirectory: string) => Effect.Effect<ReadonlyArray<string>>;
+    readonly listSourceFilesCooperative: (
+      input: ListSourceFilesInput,
+    ) => Effect.Effect<ReadonlyArray<string>>;
+    readonly listSourceFilesWithSizeCooperative: (
+      input: ListSourceFilesInput,
+    ) => Effect.Effect<ReadonlyArray<SourceFileEntry>>;
     readonly isFile: (filePath: string) => Effect.Effect<boolean>;
     readonly isDirectory: (filePath: string) => Effect.Effect<boolean>;
   }
@@ -26,6 +42,12 @@ export class Files extends Context.Service<
       readLines: (input) =>
         Effect.sync(() => createNodeReadFileLinesSync(input.rootDirectory)(input.filePath)),
       listSourceFiles: (rootDirectory) => Effect.sync(() => listSourceFilesNode(rootDirectory)),
+      listSourceFilesCooperative: (input) =>
+        Effect.promise(() => listSourceFilesCooperativeNode(input.rootDirectory, input.signal)),
+      listSourceFilesWithSizeCooperative: (input) =>
+        Effect.promise(() =>
+          listSourceFilesWithSizeCooperativeNode(input.rootDirectory, input.signal),
+        ),
       isFile: (filePath) => Effect.sync(() => isFileNode(filePath)),
       isDirectory: (filePath) => Effect.sync(() => isDirectoryNode(filePath)),
     }),
@@ -41,6 +63,19 @@ export class Files extends Context.Service<
     const resolveAbsolute = (filePath: string, rootDirectory: string): string =>
       path.isAbsolute(filePath) ? filePath : `${rootDirectory}/${filePath}`;
 
+    const listEntriesUnderRoot = (rootDirectory: string): SourceFileEntry[] => {
+      const prefix = rootDirectory.endsWith("/") ? rootDirectory : `${rootDirectory}/`;
+      const entries: SourceFileEntry[] = [];
+      for (const [absolute, content] of tree) {
+        if (!absolute.startsWith(prefix)) continue;
+        entries.push({
+          path: absolute.slice(prefix.length),
+          sizeBytes: Buffer.byteLength(content),
+        });
+      }
+      return entries;
+    };
+
     return Layer.succeed(
       Files,
       Files.of({
@@ -51,15 +86,11 @@ export class Files extends Context.Service<
             return content === undefined ? null : content.split("\n");
           }),
         listSourceFiles: (rootDirectory) =>
-          Effect.sync(() => {
-            const prefix = rootDirectory.endsWith("/") ? rootDirectory : `${rootDirectory}/`;
-            const files: string[] = [];
-            for (const absolute of tree.keys()) {
-              if (!absolute.startsWith(prefix)) continue;
-              files.push(absolute.slice(prefix.length));
-            }
-            return files;
-          }),
+          Effect.sync(() => listEntriesUnderRoot(rootDirectory).map((entry) => entry.path)),
+        listSourceFilesCooperative: (input) =>
+          Effect.sync(() => listEntriesUnderRoot(input.rootDirectory).map((entry) => entry.path)),
+        listSourceFilesWithSizeCooperative: (input) =>
+          Effect.sync(() => listEntriesUnderRoot(input.rootDirectory)),
         isFile: (filePath) => Effect.sync(() => tree.has(filePath)),
         isDirectory: (filePath) =>
           Effect.sync(() => {

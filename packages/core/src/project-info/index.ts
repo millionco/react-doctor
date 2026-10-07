@@ -1,10 +1,13 @@
 export {
   discoverProject,
+  isProjectInfoCached,
   clearProjectCache,
   discoverReactSubprojects,
+  discoverSupportedSubprojects,
   formatFrameworkName,
   listWorkspacePackages,
 } from "./discover-project.js";
+export type { DiscoverProjectOptions } from "./discover-project.js";
 export { clearPackageJsonCache, readPackageJson } from "./package-json.js";
 export { isAnalyzableProject } from "./is-analyzable-project.js";
 export {

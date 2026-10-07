@@ -9,6 +9,24 @@ import { noSelfUpdatingEffect } from "./no-self-updating-effect.js";
 // instructs reviewers to suppress these; the rule now does it structurally.
 
 describe("no-self-updating-effect — accepted converging updaters stay quiet", () => {
+  it("stays silent when aliased comparisons become false after the effect writes", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `function CountryField({ value, defaultCountry }) {
+        const [previousProps, setPreviousProps] = useState({ value: null, defaultCountry: null });
+        const valueChanged = previousProps.value !== value;
+        const defaultCountryChanged = previousProps.defaultCountry !== defaultCountry;
+        useEffect(() => {
+          if (!valueChanged && !defaultCountryChanged) return;
+          setPreviousProps({ value, defaultCountry });
+        }, [value, defaultCountry, previousProps, valueChanged, defaultCountryChanged]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on a queue-worker .map updater behind pre-write early returns (portos VideoGen)", () => {
     const result = runRule(
       noSelfUpdatingEffect,

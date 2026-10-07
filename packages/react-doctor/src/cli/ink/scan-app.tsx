@@ -10,24 +10,32 @@ import type { ScanStore, TuiHandoffRequest } from "./scan-store.js";
 
 export interface ScanAppProps {
   readonly store: ScanStore;
+  readonly displayMode?: "scan" | "report";
   readonly launchableAgents?: ReadonlyArray<CliAgentId>;
   readonly onHandoff?: (request: TuiHandoffRequest) => void;
   readonly canAddToCi?: boolean;
   readonly onAddToCi?: () => void;
+  readonly onQuit?: () => void;
 }
 
 export const ScanApp = ({
   store,
+  displayMode = "report",
   launchableAgents,
   onHandoff,
   canAddToCi,
   onAddToCi,
+  onQuit,
 }: ScanAppProps) => {
   const snapshot = useScanStore(store);
   const { exit } = useApp();
-  useExitOnCtrlC();
+  useExitOnCtrlC(onQuit);
+  const handleQuit = (): void => {
+    onQuit?.();
+    exit();
+  };
 
-  if (snapshot.phase === "summary" && snapshot.summary) {
+  if (displayMode === "report" && snapshot.phase === "summary") {
     return (
       <Summary
         summary={snapshot.summary}
@@ -35,12 +43,13 @@ export const ScanApp = ({
         onHandoff={onHandoff}
         canAddToCi={canAddToCi}
         onAddToCi={onAddToCi}
-        onExit={() => exit()}
+        onExit={exit}
+        onQuit={handleQuit}
       />
     );
   }
 
-  if (snapshot.phase === "report" && snapshot.report) {
+  if (displayMode === "report" && snapshot.phase === "report") {
     return (
       <Report
         report={snapshot.report}
@@ -48,7 +57,8 @@ export const ScanApp = ({
         onHandoff={onHandoff}
         canAddToCi={canAddToCi}
         onAddToCi={onAddToCi}
-        onExit={() => exit()}
+        onExit={exit}
+        onQuit={handleQuit}
       />
     );
   }
@@ -56,7 +66,6 @@ export const ScanApp = ({
   return (
     <Scanning
       progressText={snapshot.progress}
-      liveCount={snapshot.liveCount}
       recent={snapshot.liveDiagnostics.slice(-TUI_RECENT_LIVE_DIAGNOSTIC_COUNT)}
     />
   );

@@ -25,6 +25,23 @@ export const findExportedValue = (
   };
 
   for (const statement of programRoot.body ?? []) {
+    if (isNodeOfType(statement, "ImportDeclaration")) {
+      if (statement.importKind === "type") continue;
+      for (const specifier of statement.specifiers ?? []) {
+        if (isNodeOfType(specifier, "ImportSpecifier") && specifier.importKind === "type") {
+          continue;
+        }
+        if (
+          (isNodeOfType(specifier, "ImportDefaultSpecifier") ||
+            isNodeOfType(specifier, "ImportNamespaceSpecifier") ||
+            isNodeOfType(specifier, "ImportSpecifier")) &&
+          isNodeOfType(specifier.local, "Identifier")
+        ) {
+          localBindings.set(specifier.local.name, specifier.local);
+        }
+      }
+      continue;
+    }
     if (isNodeOfType(statement, "VariableDeclaration")) {
       recordVariableDeclaration(statement);
       continue;

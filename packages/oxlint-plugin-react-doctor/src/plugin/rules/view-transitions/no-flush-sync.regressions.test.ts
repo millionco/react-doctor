@@ -66,6 +66,86 @@ const useShakaControl = () => {
     );
   });
 
+  it("stays silent when an awareness hook restores a committed selection", () => {
+    expectPass(
+      `import { useTextareaSelectionSync } from "@softmaple/awareness/hooks";
+import { flushSync } from "react-dom";
+const runReplicaChange = (localSync, localSelection) => {
+  flushSync(() => {
+    setLocalText(localReplica.getText());
+    localSync.restoreSelection(localSelection);
+  });
+};`,
+    );
+  });
+
+  it("stays silent when awareness operations cross a committed render boundary", () => {
+    expectPass(
+      `import type { PositionOperation } from "@softmaple/awareness/mapping";
+import { flushSync } from "react-dom";
+const applyRemoteEvents = (operations: PositionOperation[]) => {
+  flushSync(() => {
+    setSynced({
+      text: replica.getText(),
+      remoteOperations: operations,
+    });
+  });
+};`,
+    );
+  });
+
+  it("stays silent when awareness restores a selection after commit guards", () => {
+    expectPass(
+      `import { useTextareaSelectionSync } from "@softmaple/awareness/hooks";
+import { flushSync } from "react-dom";
+const commitRemoteOperations = (selectionSync, selectionBefore, operations) => {
+  const mergedText = replica.getText();
+  flushSync(() => {
+    setText(mergedText);
+  });
+  if (!selectionBefore || operations.length === 0) {
+    return;
+  }
+  const textarea = textareaRef.current;
+  if (!textarea || textarea.value !== mergedText) {
+    return;
+  }
+  selectionSync.restoreSelection(
+    mapSelectionThroughOperations(selectionBefore, operations),
+  );
+};`,
+    );
+  });
+
+  it("still flags synchronous loading state before async work", () => {
+    expectFail(
+      `import { flushSync } from "react-dom";
+const confirmDelete = async () => {
+  flushSync(() => setDeleteInProgress(true));
+  try {
+    await deleteDecision();
+  } finally {
+    setDeleteInProgress(false);
+  }
+};`,
+    );
+  });
+
+  it("still flags loading state in a file that only imports awareness types", () => {
+    expectFail(
+      `import type { PositionOperation } from "@softmaple/awareness/mapping";
+import { flushSync } from "react-dom";
+const confirmDelete = async (operations: PositionOperation[]) => {
+  flushSync(() => setDeleteInProgress(true));
+  try {
+    await deleteDecision(operations);
+  } finally {
+    setDeleteInProgress(false);
+  }
+};`,
+    );
+  });
+
   // FP anchor (marigold ToastProvider): flushSync inside
   // startViewTransition is the sanctioned pairing — it doesn't skip the
   // transition, it drives it.

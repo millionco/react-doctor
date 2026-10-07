@@ -15,6 +15,7 @@ const JS_BOTTOM_SHEET_PACKAGES = new Set([
 
 export const rnBottomSheetPreferNative = defineRule({
   id: "rn-bottom-sheet-prefer-native",
+  defaultEnabled: false,
   title: "JS bottom sheet misses native sheet behavior",
   tags: ["test-noise"],
   requires: ["react-native"],

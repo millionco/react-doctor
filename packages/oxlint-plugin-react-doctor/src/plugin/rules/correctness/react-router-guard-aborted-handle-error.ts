@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
@@ -9,7 +10,6 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactRouterRouteFunction } from "../../utils/is-react-router-route-function.js";
 import { isRouteRequestExpression } from "../../utils/is-route-request-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
@@ -22,7 +22,6 @@ const ERROR_REPORTING_EXPORT_NAMES = new Set([
 ]);
 const ERROR_REPORTING_MODULE_PATTERN = /^(?:@sentry\/|sentry$)/;
 const SERVER_ENTRY_PATTERN = /(?:^|\/)entry\.server\.[cm]?[jt]sx?$/;
-const EMPTY_VISITORS: RuleVisitors = {};
 
 const isAbortCheck = (
   context: RuleContext,
@@ -140,7 +139,8 @@ export const reactRouterGuardAbortedHandleError = wrapReactRouterRule(
     recommendation:
       "Return early when request.signal.aborted before reporting the error from handleError.",
     create: (context: RuleContext) => {
-      if (context.filename && !SERVER_ENTRY_PATTERN.test(context.filename)) return EMPTY_VISITORS;
+      if (context.filename && !SERVER_ENTRY_PATTERN.test(context.filename))
+        return EMPTY_RULE_VISITORS;
       const inspectFunction = (functionNode: EsTreeNode): void => {
         if (
           !isFunctionLike(functionNode) ||

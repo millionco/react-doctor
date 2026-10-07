@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { parseOxlintOutput } from "../src/runners/oxlint/parse-output.js";
-import { prepareHtmlLintSources } from "../src/utils/prepare-html-lint-sources.js";
+import { prepareLintSources } from "../src/utils/prepare-lint-sources.js";
 import { buildProject } from "./helpers/oxlint-parse-harness.js";
 
 const temporaryDirectories: string[] = [];
@@ -15,6 +15,59 @@ afterEach(() => {
 });
 
 describe("HTML diagnostic mapping", () => {
+  it("drops a code-less Astro diagnostic without crashing", () => {
+    const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-astro-map-"));
+    temporaryDirectories.push(rootDirectory);
+    fs.mkdirSync(path.join(rootDirectory, "src"));
+    fs.writeFileSync(path.join(rootDirectory, "src", "page.astro"), "<main>Hello</main>");
+    const preparedSources = prepareLintSources(rootDirectory, path.join(rootDirectory, "tmp"), [
+      "src/page.astro",
+    ]);
+    const lintPath = preparedSources.lintFiles.find((filePath) => filePath.endsWith(".tsx"));
+    if (lintPath === undefined) throw new Error("Expected a virtual Astro lint source");
+    const stdout = JSON.stringify({
+      diagnostics: [
+        {
+          message: "Unexpected token",
+          severity: "error",
+          filename: lintPath,
+          labels: [],
+        },
+      ],
+      number_of_files: 1,
+      number_of_rules: 1,
+    });
+
+    expect(
+      parseOxlintOutput(
+        stdout,
+        buildProject({ rootDirectory }),
+        rootDirectory,
+        preparedSources.sourcePathByLintPath,
+        preparedSources.sourceMapByLintPath,
+      ),
+    ).toEqual([]);
+  });
+
+  it("skips HTML and Astro candidates with no file behind them", () => {
+    const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-missing-html-"));
+    temporaryDirectories.push(rootDirectory);
+    fs.mkdirSync(path.join(rootDirectory, "src"));
+    fs.writeFileSync(
+      path.join(rootDirectory, "src", "app.tsx"),
+      "export const App = () => null;\n",
+    );
+
+    const preparedSources = prepareLintSources(rootDirectory, path.join(rootDirectory, "tmp"), [
+      "index.html",
+      "src/page.astro",
+      "src/app.tsx",
+    ]);
+
+    expect(preparedSources.lintFiles).toEqual(["src/app.tsx"]);
+    expect(preparedSources.sourcePathByLintPath.size).toBe(0);
+  });
+
   it("maps a virtual script diagnostic back to the HTML path and source position", () => {
     const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-html-map-"));
     temporaryDirectories.push(rootDirectory);
@@ -27,9 +80,7 @@ describe("HTML diagnostic mapping", () => {
     ].join("\n");
     fs.writeFileSync(htmlPath, html);
     const temporaryDirectory = path.join(rootDirectory, "tmp");
-    const preparedSources = prepareHtmlLintSources(rootDirectory, temporaryDirectory, [
-      "index.html",
-    ]);
+    const preparedSources = prepareLintSources(rootDirectory, temporaryDirectory, ["index.html"]);
     expect(preparedSources.lintFiles).toHaveLength(1);
     const [lintPath] = preparedSources.lintFiles;
     if (lintPath === undefined) throw new Error("Expected a virtual HTML lint source");
@@ -90,12 +141,10 @@ describe("HTML diagnostic mapping", () => {
       '<script type="module">import "three";</script>',
     );
 
-    const inertSources = prepareHtmlLintSources(
-      rootDirectory,
-      path.join(rootDirectory, "tmp-inert"),
-      ["inert.html"],
-    );
-    const activeSources = prepareHtmlLintSources(
+    const inertSources = prepareLintSources(rootDirectory, path.join(rootDirectory, "tmp-inert"), [
+      "inert.html",
+    ]);
+    const activeSources = prepareLintSources(
       rootDirectory,
       path.join(rootDirectory, "tmp-active"),
       ["active.html"],

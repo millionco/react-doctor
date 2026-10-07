@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/jsx_no_new_array_as_prop.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/react_perf/jsx_no_new_array_as_prop.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -23,6 +23,8 @@ export const passCases: ReadonlyArray<OxcFixture> = [
   { code: `const Foo = () => <Item list={this.props.list} />` },
   { code: `const x = []; const Foo = () => <Item list={x} />` },
   { code: `const DEFAULT_X = []; const Foo = ({ x = DEFAULT_X }) => <Item list={x} />` },
+  { code: `const Foo = () => <div list={[]} />`, oxcOptions: [{ nativeAllowList: "all" }] },
+  { code: `const Foo = () => <div list={[]} />`, oxcOptions: [{ nativeAllowList: ["list"] }] },
 ];
 
 export const failCases: ReadonlyArray<OxcFixture> = [
@@ -39,4 +41,5 @@ export const failCases: ReadonlyArray<OxcFixture> = [
   },
   { code: `const Foo = () => { let x = []; return <Item list={x} /> }` },
   { code: `const Foo = ({ x = [] }) => <Item list={x} />` },
+  { code: `const Foo = () => <div list={[]} />`, oxcOptions: [{ nativeAllowList: ["style"] }] },
 ];

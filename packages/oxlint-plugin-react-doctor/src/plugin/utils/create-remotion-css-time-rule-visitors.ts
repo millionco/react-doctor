@@ -1,6 +1,7 @@
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { createRemotionRenderEvidenceChecker } from "./create-remotion-render-evidence-checker.js";
 import { findRenderPhaseComponentOrHook } from "./find-render-phase-component-or-hook.js";
+import { getStaticStringExpression } from "./get-static-string-expression.js";
 import { getStringLiteralAttributeValue } from "./get-string-literal-attribute-value.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -37,6 +38,7 @@ export const createRemotionCssTimeRuleVisitors = (
       ) {
         return;
       }
+      if (getStaticStringExpression(node.value)?.trim().toLowerCase() === "none") return;
       const renderFunction = findRenderPhaseComponentOrHook(node, context.scopes);
       if (!renderFunction || !renderEvidence.functionHasEvidence(renderFunction)) return;
       context.report({ node, message: options.styleMessage });

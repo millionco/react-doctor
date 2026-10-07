@@ -11,6 +11,7 @@ import { getDirectUnreassignedInitializer } from "../../../utils/get-direct-unre
 import { getEffectCallback } from "../../../utils/get-effect-callback.js";
 import { getFinalSequenceExpressionValue } from "../../../utils/get-final-sequence-expression-value.js";
 import { getFunctionBindingIdentifier } from "../../../utils/get-function-binding-name.js";
+import { getProgramBrowserGlobalSyntax } from "../../../utils/get-program-browser-global-syntax.js";
 import { getRangeStart } from "../../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
 import { isEventHandlerAttribute } from "../../../utils/is-event-handler-attribute.js";
@@ -178,8 +179,7 @@ const bindingReadsExactGlobalLocationSnapshot = (
     : getDirectUnreassignedInitializer(symbol);
   if (!initializer) return false;
 
-  const nextVisitedSymbolIds = new Set(visitedSymbolIds);
-  nextVisitedSymbolIds.add(symbol.id);
+  visitedSymbolIds.add(symbol.id);
   if (containsGlobalLocationSnapshotRead(initializer, scopes)) return true;
 
   let didFindAliasedLocationSnapshotRead = false;
@@ -193,7 +193,7 @@ const bindingReadsExactGlobalLocationSnapshot = (
       return false;
     }
     if (!isNodeOfType(child, "Identifier")) return;
-    if (bindingReadsExactGlobalLocationSnapshot(child, scopes, nextVisitedSymbolIds)) {
+    if (bindingReadsExactGlobalLocationSnapshot(child, scopes, visitedSymbolIds)) {
       didFindAliasedLocationSnapshotRead = true;
       return false;
     }
@@ -1398,6 +1398,7 @@ export const createExternalLocationInvalidationChecker = ({
   renderReachableExpressions,
 }: ExternalLocationInvalidationCheckerOptions): ExternalLocationInvalidationChecker => {
   if (
+    !getProgramBrowserGlobalSyntax(componentBody).mayContainLocationReference ||
     !hasRenderReachableLocationSnapshotRead(
       componentBody,
       renderReachableExpressions,

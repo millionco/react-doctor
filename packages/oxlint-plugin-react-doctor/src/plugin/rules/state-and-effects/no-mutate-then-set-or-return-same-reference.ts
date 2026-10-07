@@ -1,6 +1,7 @@
 import type { FunctionCfg } from "../../semantic/control-flow-graph.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { MUTATING_ARRAY_METHODS, MUTATING_COLLECTION_METHODS } from "../../constants/js.js";
+import { canNodeReachNode } from "../../utils/can-node-reach-node.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -43,8 +44,6 @@ const FRESH_ARRAY_METHOD_NAMES = new Set([
   "toSpliced",
   "with",
 ]);
-
-const reachableBlockIdsByCfg = new WeakMap<FunctionCfg, Map<number, ReadonlySet<number>>>();
 
 interface MutationFact {
   readonly node: EsTreeNode;
@@ -89,30 +88,11 @@ const nodePrecedesOnReachablePath = (
   functionCfg: FunctionCfg,
   context: RuleContext,
 ): boolean => {
-  if (!nodesCanCoExecute(sourceNode, targetNode, context)) return false;
-  const sourceBlock = functionCfg.blockOf(sourceNode);
-  const targetBlock = functionCfg.blockOf(targetNode);
-  if (!sourceBlock || !targetBlock) return false;
-  if (sourceBlock === targetBlock) {
-    return (sourceNode.range?.[0] ?? 0) < (targetNode.range?.[0] ?? 0);
-  }
-  const reachableBlockIdsBySource = reachableBlockIdsByCfg.get(functionCfg) ?? new Map();
-  reachableBlockIdsByCfg.set(functionCfg, reachableBlockIdsBySource);
-  const cachedReachableBlockIds = reachableBlockIdsBySource.get(sourceBlock.id);
-  if (cachedReachableBlockIds) return cachedReachableBlockIds.has(targetBlock.id);
-  const pendingBlocks = [sourceBlock];
-  const visitedBlockIds = new Set([sourceBlock.id]);
-  while (pendingBlocks.length > 0) {
-    const block = pendingBlocks.pop();
-    if (!block) break;
-    for (const edge of block.successors) {
-      if (visitedBlockIds.has(edge.to.id)) continue;
-      visitedBlockIds.add(edge.to.id);
-      pendingBlocks.push(edge.to);
-    }
-  }
-  reachableBlockIdsBySource.set(sourceBlock.id, visitedBlockIds);
-  return visitedBlockIds.has(targetBlock.id);
+  return (
+    sourceNode !== targetNode &&
+    nodesCanCoExecute(sourceNode, targetNode, context) &&
+    canNodeReachNode(sourceNode, targetNode, functionCfg)
+  );
 };
 
 const expressionIsDefinitelyFreshReference = (

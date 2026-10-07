@@ -4,6 +4,7 @@ import { scanByPattern } from "./utils/scan-by-pattern.js";
 
 export const firebaseQueryFilterAsAuth = defineRule({
   id: "firebase-query-filter-as-auth",
+  defaultEnabled: false,
   title: "Firestore query filter used as authorization",
   severity: "warn",
   recommendation:

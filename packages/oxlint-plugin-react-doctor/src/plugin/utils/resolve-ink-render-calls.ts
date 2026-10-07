@@ -1,7 +1,9 @@
+import { INK_MODULE } from "../constants/ink.js";
 import { componentOrHookDisplayNameForFunction } from "./component-or-hook-display-name.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
+import { hasImportFromModules } from "./find-import-source-for-name.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { isNodeReachableWithinFunction } from "./is-node-reachable-within-function.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -13,6 +15,8 @@ interface InkRenderCall {
   node: EsTreeNodeOfType<"CallExpression">;
   renderedComponentName: string | null;
 }
+
+const INK_MODULE_SOURCES = [INK_MODULE];
 
 const getRenderedComponentName = (
   renderCall: EsTreeNodeOfType<"CallExpression">,
@@ -95,6 +99,7 @@ export const collectInkRenderCalls = (
   context: RuleContext,
   apiName: "render" | "renderToString" = "render",
 ): ReadonlyArray<InkRenderCall> => {
+  if (!hasImportFromModules(program, INK_MODULE_SOURCES)) return [];
   const renderCalls: InkRenderCall[] = [];
   walkAst(program, (descendantNode) => {
     if (

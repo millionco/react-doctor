@@ -3,10 +3,73 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { buttonHasType } from "./button-has-type.js";
 
 describe("react-builtins/button-has-type — regressions", () => {
+  it("stays silent for a button without a form owner", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Outside = () => <main><button>Open menu</button></main>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a button without a type inside an intrinsic form", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Inside = () => <form><button>Save</button></form>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a button with a literal associated form", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Associated = () => <><form id="settings" /><button form="settings">Save</button></>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not invent a form owner from a custom component", () => {
+    const result = runRule(
+      buttonHasType,
+      `const InsideCustom = () => <Form><button>Save</button></Form>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("requires a statically nonempty associated form id", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Buttons = ({ formId }) => <><button form="">Empty</button><button form={formId}>Dynamic</button></>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("applies form ownership to createElement buttons", () => {
+    const outsideResult = runRule(buttonHasType, `React.createElement("button", null, "Open");`);
+    const nestedResult = runRule(
+      buttonHasType,
+      `React.createElement("form", null, React.createElement("button", null, "Save"));`,
+    );
+    const associatedResult = runRule(
+      buttonHasType,
+      `React.createElement("button", { form: "settings" }, "Save");`,
+    );
+    expect(outsideResult.parseErrors).toEqual([]);
+    expect(outsideResult.diagnostics).toEqual([]);
+    expect(nestedResult.parseErrors).toEqual([]);
+    expect(nestedResult.diagnostics).toHaveLength(1);
+    expect(associatedResult.parseErrors).toEqual([]);
+    expect(associatedResult.diagnostics).toHaveLength(1);
+  });
+
   it("treats an exact const string JSX alias as a button", () => {
     const invalidResult = runRule(
       buttonHasType,
-      'const ButtonTag = "button" as const; const Save = () => <ButtonTag>Save</ButtonTag>;',
+      'const ButtonTag = "button" as const; const Save = () => <form><ButtonTag>Save</ButtonTag></form>;',
     );
     const validResult = runRule(
       buttonHasType,
@@ -221,7 +284,7 @@ describe("react-builtins/button-has-type — regressions", () => {
   });
 
   it("still flags createElement('button', {}) with no type and no spread", () => {
-    const result = runRule(buttonHasType, `React.createElement("button", {});`);
+    const result = runRule(buttonHasType, `React.createElement("button", { form: "settings" });`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
@@ -229,13 +292,19 @@ describe("react-builtins/button-has-type — regressions", () => {
   // Bugbot: nullish props (undefined / void 0) carry no type, like an explicit
   // null — they must still report missing, not be treated as an opaque bag.
   it("still flags createElement('button', undefined)", () => {
-    const result = runRule(buttonHasType, `React.createElement("button", undefined);`);
+    const result = runRule(
+      buttonHasType,
+      `React.createElement("form", null, React.createElement("button", undefined));`,
+    );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
   it("still flags createElement('button', void 0)", () => {
-    const result = runRule(buttonHasType, `React.createElement("button", void 0);`);
+    const result = runRule(
+      buttonHasType,
+      `React.createElement("form", null, React.createElement("button", void 0));`,
+    );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
@@ -343,7 +412,7 @@ describe("react-builtins/button-has-type — regressions", () => {
        import { usePress } from "react-aria";
        export const UnstyledPressButton = forwardRef((props, ref) => {
          const { pressProps } = usePress(props);
-         return <button {...pressProps} ref={ref} className={pressProps.className} />;
+         return <form><button {...pressProps} ref={ref} className={pressProps.className} /></form>;
        });`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -360,7 +429,7 @@ describe("react-builtins/button-has-type — regressions", () => {
        import { mergeProps, useFocus, useHover } from "react-aria";
        export function CopyButton({ text }) {
          const { tooltipState, triggerProps } = useCopyButtonTooltipState();
-         return <button className="x" onClick={() => {}} {...triggerProps}>copy</button>;
+         return <form><button className="x" onClick={() => {}} {...triggerProps}>copy</button></form>;
        }
        function useCopyButtonTooltipState() {
          const tooltipState = { open() {}, close() {} };
@@ -378,7 +447,7 @@ describe("react-builtins/button-has-type — regressions", () => {
       buttonHasType,
       `const Button = ({ onClick }) => {
         const handlers = { onClick };
-        return <button {...handlers}>x</button>;
+        return <form><button {...handlers}>x</button></form>;
       };`,
     );
     expect(result.parseErrors).toEqual([]);

@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/forbid_dom_props.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/react/forbid_dom_props.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -94,6 +94,52 @@ export const passCases: ReadonlyArray<OxcFixture> = [
                   `,
     oxcOptions: [{ forbid: [{ propName: "otherProp", disallowedFor: ["span"] }] }],
   },
+  {
+    code: `
+                    const First = (props) => (
+                      <div someProp="someValue" />
+                    );
+                  `,
+    oxcOptions: [{ forbid: [{ propName: "someProp", disallowedValues: [] }] }],
+  },
+  {
+    code: `
+                    const First = (props) => (
+                      <Foo someProp="someValue" />
+                    );
+                  `,
+    oxcOptions: [{ forbid: [{ propName: "someProp", disallowedValues: ["someValue"] }] }],
+  },
+  {
+    code: `
+                    const First = (props) => (
+                      <div someProp="value" />
+                    );
+                  `,
+    oxcOptions: [{ forbid: [{ propName: "someProp", disallowedValues: ["someValue"] }] }],
+  },
+  {
+    code: `
+                    const First = (props) => (
+                      <div someProp={\`some\${value}\`} />
+                    );
+                  `,
+    oxcOptions: [{ forbid: [{ propName: "someProp", disallowedValues: ["someValue"] }] }],
+  },
+  {
+    code: `
+                    const First = (props) => (
+                      <div someProp="someValue" />
+                    );
+                  `,
+    oxcOptions: [
+      {
+        forbid: [
+          { propName: "someProp", disallowedValues: ["someValue"], disallowedFor: ["span"] },
+        ],
+      },
+    ],
+  },
 ];
 
 export const failCases: ReadonlyArray<OxcFixture> = [
@@ -135,6 +181,38 @@ export const failCases: ReadonlyArray<OxcFixture> = [
     oxcOptions: [
       { forbid: [{ propName: "className", message: "Please use class instead of ClassName" }] },
     ],
+  },
+  {
+    code: `
+                    const First = (props) => (
+                      <span otherProp="bar" />
+                    );
+                  `,
+    oxcOptions: [{ forbid: [{ propName: "otherProp", disallowedFor: ["span"] }] }],
+  },
+  {
+    code: `
+                    const First = (props) => (
+                      <div someProp="someValue" />
+                    );
+                  `,
+    oxcOptions: [{ forbid: [{ propName: "someProp", disallowedValues: ["someValue"] }] }],
+  },
+  {
+    code: `
+                    const First = (props) => (
+                      <div someProp={"someValue"} />
+                    );
+                  `,
+    oxcOptions: [{ forbid: [{ propName: "someProp", disallowedValues: ["someValue"] }] }],
+  },
+  {
+    code: `
+                    const First = (props) => (
+                      <div someProp={\`someValue\`} />
+                    );
+                  `,
+    oxcOptions: [{ forbid: [{ propName: "someProp", disallowedValues: ["someValue"] }] }],
   },
   {
     code: `
@@ -197,7 +275,7 @@ export const failCases: ReadonlyArray<OxcFixture> = [
                       <div className="foo">
                         <input className="boo" />
                         <span className="foobar">Foobar</span>
-                        <div otherProp="bar" className="forbiddenClassname" />
+                        <div otherProp="bar" />
                       </div>
                     );
                   `,
@@ -210,6 +288,39 @@ export const failCases: ReadonlyArray<OxcFixture> = [
             message: "Please use class instead of ClassName",
           },
           { propName: "otherProp", message: "Avoid using otherProp" },
+        ],
+      },
+    ],
+  },
+  {
+    code: `
+                    const First = (props) => (
+                      <div className="foo">
+                        <input className="boo" />
+                        <span className="foobar">Foobar</span>
+                        <div otherProp="bar" />
+                        <p thirdProp="foo" />
+                        <div thirdProp="baz" />
+                        <p thirdProp="bar" />
+                        <p thirdProp="baz" />
+                      </div>
+                    );
+                  `,
+    oxcOptions: [
+      {
+        forbid: [
+          {
+            propName: "className",
+            disallowedFor: ["div", "span"],
+            message: "Please use class instead of ClassName",
+          },
+          { propName: "otherProp", message: "Avoid using otherProp" },
+          {
+            propName: "thirdProp",
+            disallowedFor: ["p"],
+            disallowedValues: ["bar", "baz"],
+            message: "Do not use thirdProp with values bar and baz on p",
+          },
         ],
       },
     ],

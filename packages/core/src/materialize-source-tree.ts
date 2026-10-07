@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { STAGED_FILES_PROJECT_CONFIG_FILENAMES } from "./constants.js";
 import type { ReactDoctorError } from "./errors.js";
+import { isFile } from "./project-info/fs-utils.js";
+import { isPathInsideDirectory } from "./utils/is-path-inside-directory.js";
 
 export interface MaterializedTree {
   readonly tempDirectory: string;
@@ -10,17 +12,6 @@ export interface MaterializedTree {
   readonly unmaterializedFiles: ReadonlyArray<string>;
   readonly cleanup: () => void;
 }
-
-/**
- * Zip-Slip defense: relative paths come from git (`diff --name-only`), which
- * normalizes during ordinary adds, but a crafted index/pack/symlinked tree can
- * smuggle `..` segments that escape the temp root. Resolve against the temp dir
- * and reject anything that lands outside before writing.
- */
-const isPathInsideDirectory = (childAbsolutePath: string, parentAbsolutePath: string): boolean => {
-  const relative = path.relative(parentAbsolutePath, childAbsolutePath);
-  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
-};
 
 /**
  * Writes a set of source files (supplied by `readContent` — e.g.
@@ -37,6 +28,12 @@ export const materializeSourceTree = (input: {
   readonly files: ReadonlyArray<string>;
   readonly tempDirectory: string;
   readonly readContent: (relativePath: string) => Effect.Effect<string | null, ReactDoctorError>;
+  /**
+   * Tree-relative subdirectories that are themselves project roots (a
+   * monorepo's packages). Their config files are copied too, so each one
+   * resolves its own React version, tsconfig, and lint config.
+   */
+  readonly configSubdirectories?: ReadonlyArray<string>;
 }): Effect.Effect<MaterializedTree, ReactDoctorError> =>
   Effect.gen(function* () {
     const materializedFiles: string[] = [];
@@ -60,11 +57,15 @@ export const materializeSourceTree = (input: {
       materializedFiles.push(relativePath);
     }
     yield* Effect.sync(() => {
-      for (const configFilename of STAGED_FILES_PROJECT_CONFIG_FILENAMES) {
-        const sourcePath = path.join(input.directory, configFilename);
-        const targetPath = path.join(resolvedTempDirectory, configFilename);
-        if (fs.existsSync(sourcePath) && !fs.existsSync(targetPath)) {
-          fs.cpSync(sourcePath, targetPath);
+      for (const subdirectory of ["", ...(input.configSubdirectories ?? [])]) {
+        for (const configFilename of STAGED_FILES_PROJECT_CONFIG_FILENAMES) {
+          const sourcePath = path.join(input.directory, subdirectory, configFilename);
+          const targetPath = path.resolve(resolvedTempDirectory, subdirectory, configFilename);
+          if (!isPathInsideDirectory(targetPath, resolvedTempDirectory)) continue;
+          if (isFile(sourcePath) && !fs.existsSync(targetPath)) {
+            fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+            fs.cpSync(sourcePath, targetPath);
+          }
         }
       }
     });

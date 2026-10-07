@@ -1,0 +1,359 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit b5a4ca1ffbacd0b75027b941cad42d6d10ac897f50547ca331b2e98e8be7cae1
+import type { Sightline } from "../game/sight";
+import { Cooking, type Recipe } from "../game/cooking";
+import { INGREDIENTS } from "../world/props";
+
+export interface JournalEntry {
+  heading: string;
+  body: string;
+}
+
+export interface Task {
+  text: string;
+  done: boolean;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+/**
+ * All of the game's readable surface. Plain DOM over the canvas — it keeps the
+ * text crisp at any resolution and costs the software rasteriser nothing.
+ */
+export class Hud {
+  private root = el("div");
+  private loading = el("div");
+  private bar = el("i");
+  private loadLabel = el("div");
+  private title = el("div");
+  private slate = el("div", "panel");
+  private slateList = el("div");
+  private reader = el("div", "panel");
+  private readerList = el("div");
+  private readerNote = el("div");
+  private satchel = el("div", "panel");
+  private chips = el("div", "chips");
+  private prompt = el("div", "panel");
+  private dot = el("div");
+  private hearth = el("div", "panel");
+  private heatFill = el("div", "fill");
+  private heatGauge = el("div", "gauge");
+  private progFill = el("div", "fill");
+  private hearthMsg = el("div");
+  private banner = el("div", "panel");
+  private bannerHead = el("div", "head");
+  private bannerBody = el("div", "body");
+  private recovery = el("div", "panel");
+  private recoveryFill = el("div", "fill");
+  private inspect = el("div", "panel");
+  private inspectTitle = el("h2");
+  private inspectKind = el("div", "kind");
+  private inspectBody = el("p");
+  private journal = el("div", "panel");
+  private journalBody = el("div");
+  private ending = el("div");
+  private endingBody = el("div", "inner");
+  private vignette = el("div");
+
+  private bannerTimer = 0;
+
+  constructor() {
+    this.root.id = "ui";
+
+    // --- loading gate -------------------------------------------------------
+    this.loading.id = "loading";
+    const lt = el("h1", undefined, "Field Suppers");
+    const ls = el(
+      "p",
+      "sub",
+      "A season's fieldwork in one valley: gather what grows, cook what is wanted, and write down what each animal actually needs.",
+    );
+    const barWrap = el("div");
+    barWrap.id = "bar";
+    barWrap.appendChild(this.bar);
+    this.loadLabel.id = "loadlabel";
+    this.loading.append(lt, ls, barWrap, this.loadLabel);
+    document.body.appendChild(this.loading);
+
+    // --- title card ---------------------------------------------------------
+    this.title.id = "title";
+    this.title.append(
+      el("h1", undefined, "Field Suppers"),
+      el("p", undefined, "Valley of the Leaning Arch — the ninth week"),
+      el("div", "hint", "Click to look around · WASD to walk · E to inspect"),
+    );
+
+    // --- the slate (objectives) --------------------------------------------
+    this.slate.id = "slate";
+    this.slate.append(el("h2", undefined, "Field Slate"), this.slateList);
+
+    // --- sightline reader ---------------------------------------------------
+    this.reader.id = "reader";
+    this.readerNote.id = "readerNote";
+    this.reader.append(el("h2", undefined, "Sightlines"), this.readerList, this.readerNote);
+
+    // --- satchel ------------------------------------------------------------
+    this.satchel.id = "satchel";
+    this.satchel.append(el("h2", undefined, "Satchel"), this.chips);
+
+    // --- interaction prompt -------------------------------------------------
+    this.prompt.id = "prompt";
+    this.dot.id = "dot";
+
+    // --- hearth gauge -------------------------------------------------------
+    this.hearth.id = "hearth";
+    this.heatGauge.className = "gauge";
+    const band = el("div", "band");
+    band.style.left = `${Cooking.SWEET_LOW * 100}%`;
+    band.style.width = `${(Cooking.SWEET_HIGH - Cooking.SWEET_LOW) * 100}%`;
+    this.heatGauge.append(band, this.heatFill);
+    const progGauge = el("div", "gauge prog");
+    progGauge.appendChild(this.progFill);
+    this.hearthMsg.id = "hearthMsg";
+    this.hearth.append(el("h2", undefined, "The Pot"), this.heatGauge, progGauge, this.hearthMsg);
+
+    // --- banner -------------------------------------------------------------
+    this.banner.id = "banner";
+    this.banner.append(this.bannerHead, this.bannerBody);
+
+    // --- recovery meter -----------------------------------------------------
+    this.recovery.id = "recovery";
+    const recGauge = el("div", "gauge");
+    recGauge.appendChild(this.recoveryFill);
+    this.recovery.append(el("div", "label", "Settling — stay low, stay still"), recGauge);
+
+    // --- inspector ----------------------------------------------------------
+    this.inspect.id = "inspect";
+    this.inspect.append(
+      this.inspectKind,
+      this.inspectTitle,
+      this.inspectBody,
+      el("div", "close", "E or Esc to step back"),
+    );
+
+    // --- journal ------------------------------------------------------------
+    this.journal.id = "journal";
+    this.journal.append(
+      el("h1", undefined, "Field Journal"),
+      el("div", "meta", "J to close"),
+      this.journalBody,
+    );
+
+    // --- ending -------------------------------------------------------------
+    this.ending.id = "ending";
+    this.ending.appendChild(this.endingBody);
+
+    this.vignette.id = "vignette";
+
+    const keys = el("div");
+    keys.id = "keys";
+    keys.innerHTML =
+      "<span><b>WASD</b> walk</span><span><b>Shift</b> jog</span><span><b>C</b> kneel</span>" +
+      "<span><b>E</b> inspect · talk · gather</span><span><b>Q</b> gourd</span>" +
+      "<span><b>J</b> journal</span><span><b>V</b> view</span>";
+
+    this.root.append(
+      this.vignette,
+      this.title,
+      this.slate,
+      this.reader,
+      this.satchel,
+      this.prompt,
+      this.dot,
+      this.hearth,
+      this.banner,
+      this.recovery,
+      this.inspect,
+      this.journal,
+      keys,
+    );
+    document.body.append(this.root, this.ending);
+  }
+
+  // --- loading ---------------------------------------------------------------
+
+  setProgress(label: string, done: number, total: number): void {
+    this.bar.style.width = `${Math.round((done / total) * 100)}%`;
+    this.loadLabel.textContent = label;
+  }
+
+  finishLoading(): void {
+    this.loading.classList.add("done");
+    setTimeout(() => this.loading.remove(), 1100);
+  }
+
+  hideTitle(): void {
+    this.title.style.opacity = "0";
+  }
+
+  // --- objectives ------------------------------------------------------------
+
+  setTasks(tasks: Task[]): void {
+    this.slateList.replaceChildren(
+      ...tasks.map((t) => {
+        const row = el("div", `task${t.done ? " done" : ""}`);
+        row.append(el("span", "mark", t.done ? "[x]" : "[ ]"), el("span", undefined, t.text));
+        return row;
+      }),
+    );
+  }
+
+  // --- sightlines ------------------------------------------------------------
+
+  setSightlines(lines: Sightline[], note: string): void {
+    this.readerList.replaceChildren(
+      ...lines.map((l) => {
+        const row = el("div", `sight${l.visible ? " ok" : ""}`);
+        row.append(el("span", "dot"));
+        row.append(el("span", undefined, l.landmark.name.replace(/^The /, "")));
+        if (!l.visible && l.blockedBy) {
+          row.append(el("span", "why", `· behind ${l.blockedBy}`));
+        } else if (l.visible) {
+          row.append(el("span", "why", `· ${Math.round(l.distance)}m`));
+        }
+        return row;
+      }),
+    );
+    this.readerNote.textContent = note;
+    this.readerNote.style.display = note ? "" : "none";
+  }
+
+  // --- satchel ---------------------------------------------------------------
+
+  setSatchel(counts: Map<string, number>, dishes: Array<{ id: string; name: string }>): void {
+    const items: HTMLElement[] = [];
+    for (const [id, n] of counts) {
+      if (n <= 0) continue;
+      const def = INGREDIENTS[id];
+      items.push(el("span", "chip", `${def ? def.name : id} ×${n}`));
+    }
+    for (const d of dishes) items.push(el("span", "chip dish", d.name));
+    if (items.length === 0) items.push(el("span", "chip empty", "empty"));
+    this.chips.replaceChildren(...items);
+  }
+
+  // --- prompt ----------------------------------------------------------------
+
+  setPrompt(key: string | null, text: string): void {
+    if (!key) {
+      this.prompt.classList.remove("show");
+      this.dot.classList.remove("hot");
+      return;
+    }
+    this.prompt.replaceChildren(el("kbd", undefined, key), el("span", undefined, text));
+    this.prompt.classList.add("show");
+    this.dot.classList.add("hot");
+  }
+
+  // --- hearth ----------------------------------------------------------------
+
+  setHearth(visible: boolean, heat: number, progress: number, message: string, danger: boolean): void {
+    this.hearth.classList.toggle("show", visible);
+    if (!visible) return;
+    this.heatFill.style.width = `${Math.min(100, heat * 100)}%`;
+    this.heatGauge.classList.toggle("danger", danger);
+    this.progFill.style.width = `${progress * 100}%`;
+    this.hearthMsg.textContent = message;
+  }
+
+  // --- banners ---------------------------------------------------------------
+
+  showBanner(kind: "alarm" | "good" | "note", head: string, body: string, seconds = 5): void {
+    this.bannerHead.textContent = head;
+    this.bannerBody.textContent = body;
+    this.banner.className = `panel ${kind} show`;
+    this.bannerTimer = seconds;
+    this.vignette.classList.toggle("alarm", kind === "alarm");
+  }
+
+  tickBanner(dt: number): void {
+    if (this.bannerTimer > 0) {
+      this.bannerTimer -= dt;
+      if (this.bannerTimer <= 0) {
+        this.banner.classList.remove("show");
+        this.vignette.classList.remove("alarm");
+      }
+    }
+  }
+
+  setRecovery(visible: boolean, t: number): void {
+    this.recovery.classList.toggle("show", visible);
+    if (visible) this.recoveryFill.style.width = `${Math.min(100, t * 100)}%`;
+  }
+
+  // --- inspector -------------------------------------------------------------
+
+  showInspect(kind: string, title: string, body: string): void {
+    this.inspectKind.textContent = kind;
+    this.inspectTitle.textContent = title;
+    this.inspectBody.textContent = body;
+    this.inspect.classList.add("show");
+  }
+
+  hideInspect(): void {
+    this.inspect.classList.remove("show");
+  }
+
+  // --- journal ---------------------------------------------------------------
+
+  setJournal(entries: JournalEntry[]): void {
+    if (entries.length === 0) {
+      this.journalBody.replaceChildren(el("p", "empty", "Nothing written down yet."));
+      return;
+    }
+    this.journalBody.replaceChildren(
+      ...entries.map((e) => {
+        const s = el("section");
+        s.append(el("h3", undefined, e.heading), el("p", undefined, e.body));
+        return s;
+      }),
+    );
+  }
+
+  toggleJournal(): boolean {
+    const on = this.journal.classList.toggle("show");
+    return on;
+  }
+
+  get journalOpen(): boolean {
+    return this.journal.classList.contains("show");
+  }
+
+  closeJournal(): void {
+    this.journal.classList.remove("show");
+  }
+
+  // --- ending ----------------------------------------------------------------
+
+  showEnding(lines: string[]): void {
+    this.endingBody.replaceChildren(
+      el("h1", undefined, "The season's record is complete"),
+      ...lines.map((l) => el("p", undefined, l)),
+      el("div", "hint", "J to reread the journal"),
+    );
+    this.ending.classList.add("show");
+  }
+
+  hideEnding(): void {
+    this.ending.classList.remove("show");
+  }
+
+  /** Recipe list for the hearth prompt. */
+  static recipeSummary(r: Recipe): string {
+    return `${r.name} — ${r.ingredients
+      .map((i) => INGREDIENTS[i]?.name ?? i)
+      .join(", ")}`;
+  }
+}

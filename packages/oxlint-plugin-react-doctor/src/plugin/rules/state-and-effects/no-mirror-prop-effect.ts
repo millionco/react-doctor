@@ -147,7 +147,11 @@ export const noMirrorPropEffect = defineRule({
         const bodyStatements = getCallbackStatements(callback);
         if (bodyStatements.length !== 1) continue;
         const onlyStatement = bodyStatements[0];
-        const expression = unwrapDiscardedExpression(onlyStatement);
+        const expressionNode =
+          isNodeOfType(onlyStatement, "ReturnStatement") && onlyStatement.argument
+            ? onlyStatement.argument
+            : onlyStatement;
+        const expression = unwrapDiscardedExpression(expressionNode);
         if (!isNodeOfType(expression, "CallExpression")) continue;
         if (!isNodeOfType(expression.callee, "Identifier")) continue;
         if (!isSetterIdentifier(expression.callee.name)) continue;

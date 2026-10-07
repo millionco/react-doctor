@@ -1,16 +1,15 @@
 import { REACT_ROUTER_V8_REMOVED_FUTURE_FLAG_NAMES } from "../../constants/react-router.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findExportedValue } from "../../utils/find-exported-value.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
 const REACT_ROUTER_CONFIG_PATTERN = /(?:^|\/)react-router\.config\.[cm]?[jt]s$/;
-const EMPTY_VISITORS: RuleVisitors = {};
 
 export const reactRouterV8NoRemovedFutureFlags = wrapReactRouterRule(
   defineRule({
@@ -24,7 +23,7 @@ export const reactRouterV8NoRemovedFutureFlags = wrapReactRouterRule(
       "Remove v8 future flags; move v8_splitRouteModules to the top-level splitRouteModules option.",
     create: (context: RuleContext) => {
       if (context.filename && !REACT_ROUTER_CONFIG_PATTERN.test(context.filename)) {
-        return EMPTY_VISITORS;
+        return EMPTY_RULE_VISITORS;
       }
       return {
         "Program:exit"(node: EsTreeNodeOfType<"Program">) {

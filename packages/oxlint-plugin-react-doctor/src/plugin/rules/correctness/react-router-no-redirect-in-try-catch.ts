@@ -1,3 +1,4 @@
+import { REACT_ROUTER_RESOURCE_HANDLER_PROPERTY_NAMES } from "../../constants/react-router.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -7,8 +8,6 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactRouterRouteFunction } from "../../utils/is-react-router-route-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
-
-const REDIRECT_ROUTE_FUNCTION_NAMES = ["action", "clientAction", "clientLoader", "loader"];
 
 export const reactRouterNoRedirectInTryCatch = wrapReactRouterRule(
   defineRule({
@@ -32,7 +31,7 @@ export const reactRouterNoRedirectInTryCatch = wrapReactRouterRule(
         const routeFunction = findEnclosingFunction(node);
         if (
           routeFunction === null ||
-          !REDIRECT_ROUTE_FUNCTION_NAMES.some((name) =>
+          !REACT_ROUTER_RESOURCE_HANDLER_PROPERTY_NAMES.some((name) =>
             isReactRouterRouteFunction(context, routeFunction, name),
           )
         ) {

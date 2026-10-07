@@ -3,6 +3,72 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noDerivedState } from "./no-derived-state.js";
 
 describe("no-derived-state — ref value provenance", () => {
+  it("detects selection repair guarded by state copied through a ref", () => {
+    const result = runRule(
+      noDerivedState,
+      `function DocumentHistoryModal({ initialVersions }) {
+        const [versions] = useState(initialVersions);
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        const selectedVersionIdRef = useRef(selectedVersionId);
+        selectedVersionIdRef.current = selectedVersionId;
+        const visibleVersions = useMemo(() => [...versions], [versions]);
+        useEffect(() => {
+          if (visibleVersions.length === 0) {
+            if (selectedVersionIdRef.current) {
+              setSelectedVersionId("");
+            }
+            return;
+          }
+          if (!visibleVersions.some(
+            (version) => version.versionId === selectedVersionIdRef.current
+          )) {
+            setSelectedVersionId(visibleVersions[0].versionId);
+          }
+        }, [visibleVersions]);
+        return (
+          <VersionList
+            versions={visibleVersions}
+            selected={selectedVersionId}
+            onSelect={setSelectedVersionId}
+          />
+        );
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps selection repair quiet when the guard ref can hold an external value", () => {
+    const result = runRule(
+      noDerivedState,
+      `function DocumentHistoryModal({ initialVersions }) {
+        const [versions] = useState(initialVersions);
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        const selectedVersionIdRef = useRef(selectedVersionId);
+        selectedVersionIdRef.current = readExternalSelection();
+        const visibleVersions = useMemo(() => [...versions], [versions]);
+        useEffect(() => {
+          if (!visibleVersions.some(
+            (version) => version.versionId === selectedVersionIdRef.current
+          )) {
+            setSelectedVersionId(visibleVersions[0].versionId);
+          }
+        }, [visibleVersions]);
+        return (
+          <VersionList
+            versions={visibleVersions}
+            selected={selectedVersionId}
+            onSelect={setSelectedVersionId}
+          />
+        );
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("detects prop-derived state copied through a ref", () => {
     const result = runRule(
       noDerivedState,

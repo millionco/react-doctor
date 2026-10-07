@@ -15,11 +15,13 @@ import {
   DEFAULT_FUZZ_SEED,
   DEFAULT_FUZZ_TEST_TIMEOUT_MS,
   FUZZ_ITERATION_TIMEOUT_BUDGET_MS,
+  SLOW_RULE_THRESHOLD_MS,
 } from "../src/constants.js";
 
 const isFuzzEnabled = process.env.REACT_DOCTOR_FUZZ === "1";
 const isStrict = process.env.FUZZ_STRICT === "1";
 const shouldCheckInvariants = isStrict || process.env.FUZZ_INVARIANTS === "1";
+const shouldRequireFire = process.env.FUZZ_REQUIRE_FIRE === "1";
 const shouldPrintStats = process.env.FUZZ_PRINT_STATS === "1";
 const ruleFilter = process.env.FUZZ_RULE;
 const tagFilter = process.env.FUZZ_TAG;
@@ -39,6 +41,7 @@ const readPositiveIntegerEnv = (name: string, defaultValue: number): number => {
 };
 const iterations = readPositiveIntegerEnv("FUZZ_ITERATIONS", DEFAULT_FUZZ_ITERATIONS);
 const seed = readPositiveIntegerEnv("FUZZ_SEED", DEFAULT_FUZZ_SEED);
+const slowThresholdMs = readPositiveIntegerEnv("FUZZ_SLOW_THRESHOLD_MS", SLOW_RULE_THRESHOLD_MS);
 const fuzzTestTimeoutMs = Math.max(
   DEFAULT_FUZZ_TEST_TIMEOUT_MS,
   iterations * FUZZ_ITERATION_TIMEOUT_BUDGET_MS,
@@ -154,9 +157,7 @@ describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
       () => {
         const livenessFixture = livenessFixtures[entry.id];
         const priorityCorpusEntry =
-          livenessFixture &&
-          livenessFixture.settings === undefined &&
-          livenessFixture.isGeneratedBundle === undefined
+          livenessFixture && livenessFixture.isGeneratedBundle === undefined
             ? {
                 code: livenessFixture.code,
                 relativePath: livenessFixture.filePath ?? "fixture.tsx",
@@ -168,10 +169,12 @@ describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
           checkInvariants: shouldCheckInvariants,
           corpus,
           priorityCorpusEntry,
+          settings: livenessFixture?.settings,
+          slowThresholdMs,
         });
         if (shouldPrintStats) {
           console.info(
-            `fuzz stats: ${entry.id} executed=${stats.executedProgramCount} fired=${stats.firedProgramCount} skipped-parse=${stats.skippedParseErrorCount}`,
+            `fuzz stats: ${entry.id} executed=${stats.executedProgramCount} fired=${stats.firedProgramCount} skipped-parse=${stats.skippedParseErrorCount} total=${stats.totalElapsedMs.toFixed(1)}ms max=${stats.maximumElapsedMs.toFixed(1)}ms`,
           );
         }
         // A rule with crash/slow findings was definitely exercised past its
@@ -193,6 +196,11 @@ describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
             .map((finding) => formatFinding(finding, writeReproducer(finding)))
             .join("\n\n");
           expect.fail(`${blockingFindings.length} fuzz finding(s):\n\n${summary}`);
+        }
+        if (shouldRequireFire && stats.firedProgramCount === 0) {
+          expect.fail(
+            `${entry.id} produced no diagnostics during fuzzing; its analysis path was not exercised`,
+          );
         }
       },
       fuzzTestTimeoutMs,

@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/exhaustive_deps.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/react/exhaustive_deps.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -1314,6 +1314,39 @@ export const useTest = () => {
 
     console.log(state);
 }`,
+  },
+  {
+    code: `const Component = () => {
+  const DATA = 'test' as const;
+  const data = useMemo(() => DATA, []);
+  return <div>{data}</div>;
+};`,
+  },
+  {
+    code: `const ReactActual = jest.requireActual('react');
+const Component = ({ filter }) => {
+    const [data, setData] = ReactActual.useState(filter);
+    ReactActual.useEffect(() => {
+        setData(filter);
+    }, [filter]);
+
+    return <div>test</div>;
+};`,
+  },
+  {
+    code: `const Component = () => {
+          const setRef = React.useRef<(value: string) => void | null>(
+            null,
+          ) as React.MutableRefObject<(value: string) => void | null>;
+
+          React.useEffect(() => {
+            if (setRef.current) {
+              console.log(setRef.current);
+            }
+          }, []);
+
+          return <div>test</div>;
+        };`,
   },
 ];
 

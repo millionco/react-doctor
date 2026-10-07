@@ -141,6 +141,55 @@ const SCENARIO_POOL: ReadonlyArray<SnippetBuilder> = [
       `}, []);`,
     ].join("\n  ");
   },
+  (random) => {
+    const allocationBody = random.pick([
+      `if (fuzzTimer != null) return;\n    fuzzTimer = setTimeout(handle, 250);`,
+      `if (fuzzTimer != null) clearTimeout(fuzzTimer);\n    fuzzTimer = setTimeout(handle, 250);`,
+      `clearTimeout(fuzzTimer);\n    fuzzTimer = setTimeout(handle, 250);`,
+      `if (condition) clearTimeout(fuzzTimer);\n    fuzzTimer = setTimeout(handle, 250);`,
+      `fuzzTimer = setTimeout(handle, 250);`,
+    ]);
+    const invocationKind = random.pick(["direct", "listener", "promise"]);
+    let invocationBody = `Promise.resolve().then(fuzzArm);`;
+    if (invocationKind === "direct") {
+      invocationBody = `fuzzArm(); fuzzArm();`;
+    } else if (invocationKind === "listener") {
+      invocationBody = `const fuzzUnsubscribe = config.addListener("change", fuzzArm);`;
+    }
+    const listenerCleanup = invocationKind === "listener" ? ` fuzzUnsubscribe();` : "";
+    return [
+      `useEffect(() => {`,
+      `  let fuzzTimer = null;`,
+      `  const fuzzArm = () => {`,
+      `    ${allocationBody}`,
+      `  };`,
+      `  ${invocationBody}`,
+      `  return () => { clearTimeout(fuzzTimer);${listenerCleanup} };`,
+      `}, [config]);`,
+    ].join("\n  ");
+  },
+  (random) => {
+    const storageBody = random.pick([
+      `const fuzzOwnedDisposers = items.map((item) => config.addListener(item, handle));`,
+      `const fuzzDisposers = items.map((item) => config.addListener(item, handle)); const fuzzOwnedDisposers = fuzzDisposers.slice();`,
+      `const fuzzDisposers = items.map((item) => config.addListener(item, handle)); const fuzzOwnedDisposers = [...fuzzDisposers];`,
+      `const fuzzDisposers = items.map((item) => config.addListener(item, handle)); const fuzzOwnedDisposers = Array.from(fuzzDisposers);`,
+      `const fuzzDisposers = items.map((item) => config.addListener(item, handle)); const fuzzOwnedDisposers = fuzzDisposers.slice(); fuzzDisposers.length = 0;`,
+      `const fuzzDisposers = items.map((item) => config.addListener(item, handle)); fuzzDisposers.length = 0; const fuzzOwnedDisposers = fuzzDisposers.slice();`,
+      `const fuzzDisposers = items.map((item) => config.addListener(item, handle)); const fuzzOwnedDisposers = fuzzDisposers.slice(); fuzzOwnedDisposers.length = 0;`,
+      `const fuzzDisposers = items.map((item) => config.addListener(item, handle)); const fuzzOwnedDisposers = fuzzDisposers.filter(Boolean);`,
+      `const fuzzOwnedDisposers = items.map((item) => config.addListener(item, handle)); register(fuzzOwnedDisposers);`,
+    ]);
+    const cleanupBody = random.chance(0.5)
+      ? `fuzzOwnedDisposers.forEach((dispose) => dispose());`
+      : `for (const dispose of fuzzOwnedDisposers) { dispose(); if (condition) continue; }`;
+    return [
+      `useEffect(() => {`,
+      `  ${storageBody}`,
+      `  return () => { ${cleanupBody} };`,
+      `}, [condition, config, items]);`,
+    ].join("\n  ");
+  },
   (random) =>
     [
       `const response = await fetch(url);`,

@@ -148,6 +148,17 @@ const bindingIsUnmodifiedBeforeCurrentOpen = (identifier: EsTreeNode): boolean =
     ),
   );
 
+const mayBeWindowOpenCallee = (callee: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const unwrappedCallee = stripParenExpression(callee);
+  if (isNodeOfType(unwrappedCallee, "MemberExpression")) {
+    return getStaticPropertyName(unwrappedCallee) === "open";
+  }
+  if (!isNodeOfType(unwrappedCallee, "Identifier")) return false;
+  const symbol = scopes.symbolFor(unwrappedCallee);
+  if (!symbol) return unwrappedCallee.name === "open";
+  return symbol.kind === "const" && !(symbol.initializer && isFunctionLike(symbol.initializer));
+};
+
 // Matches the browser-global open method through bare/global references
 // and the top, parent, and frames WindowProxy namespaces.
 const isWindowOpenCallee = (callee: EsTreeNode, scopes: ScopeAnalysis): boolean => {
@@ -3255,6 +3266,7 @@ export const windowOpenWithoutNoopener = defineRule({
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         currentScopes = context.scopes;
+        if (!mayBeWindowOpenCallee(node.callee, context.scopes)) return;
         if (!isWindowOpenCallee(node.callee, context.scopes)) return;
         const previousWindowOpenCall = currentWindowOpenCall;
         const previousDestinationCoercionReference = currentDestinationCoercionReference;

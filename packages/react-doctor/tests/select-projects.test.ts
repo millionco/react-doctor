@@ -253,6 +253,22 @@ describe("selectProjects", () => {
     expect(cliLogger.log).toHaveBeenCalledWith(expect.stringContaining("mobile"));
   });
 
+  it("discovers nested standalone Three.js projects", async () => {
+    const tempDirectory = createTempDirectory();
+    const gameDirectory = path.join(tempDirectory, "results", "viewer");
+    fs.mkdirSync(gameDirectory, { recursive: true });
+    writeJson(path.join(gameDirectory, "package.json"), {
+      name: "viewer",
+      dependencies: { three: "^0.180.0" },
+    });
+
+    const selectedDirectories = await selectProjects(tempDirectory, undefined, true);
+
+    expect(selectedDirectories).toEqual([gameDirectory]);
+    expect(prompts).not.toHaveBeenCalled();
+    expect(cliLogger.log).toHaveBeenCalledWith(expect.stringContaining("viewer"));
+  });
+
   it("resolves --project to the current directory when the name matches the directory basename", async () => {
     const tempDirectory = createTempDirectory();
     writeJson(path.join(tempDirectory, "package.json"), {

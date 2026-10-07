@@ -43,7 +43,7 @@ describe("Git.baselineDiffPlan", () => {
     fs.rmSync(directory, { recursive: true, force: true });
   });
 
-  it("represents a rename as a base deletion and head addition", async () => {
+  it("records the old and new paths of a Git rename", async () => {
     writeFile(directory, "src/old-name.tsx", "export const value = 1;\n");
     const baseRef = commitAll(directory, "base");
     fs.renameSync(
@@ -55,6 +55,7 @@ describe("Git.baselineDiffPlan", () => {
     await expect(readPlan(directory, baseRef)).resolves.toEqual({
       baseFiles: ["src/old-name.tsx"],
       headFiles: ["src/new-name.tsx"],
+      renamedFiles: { "src/old-name.tsx": "src/new-name.tsx" },
       untrackedFiles: [],
     });
   });

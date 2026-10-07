@@ -8,20 +8,13 @@ import {
 import { isMaterializableGitSource } from "./is-materializable-git-source.js";
 
 export interface BaselineMaterializedTree extends MaterializedTree {
+  readonly renamedFiles?: Readonly<Record<string, string>>;
   readonly baseFiles: ReadonlyArray<string>;
   readonly headFiles: ReadonlyArray<string>;
   readonly isComplete: boolean;
   readonly untrackedFiles: ReadonlyArray<string>;
 }
 
-/**
- * Materializes the base side of the `ref` → worktree diff into
- * `tempDirectory`, mirroring the project layout plus head's config files so
- * both sides lint under the same rules. Git rename heuristics are disabled by
- * the diff planner, so an old path is retained as a base deletion while its
- * new path is a head addition. Missing head-only additions are expected;
- * missing paths that the plan says must exist at base make `isComplete` false.
- */
 export const materializeBaselineFiles = (input: {
   directory: string;
   ref: string;
@@ -61,11 +54,17 @@ export const materializeBaselineFiles = (input: {
             ),
       });
       const materializedFiles = new Set(tree.materializedFiles);
+      const headFileSet = new Set(headFiles);
       return {
         ...tree,
+        renamedFiles: diffPlan?.renamedFiles,
         baseFiles,
         headFiles,
-        isComplete: baseFiles.every((filePath) => materializedFiles.has(filePath)),
+        isComplete: baseFiles.every(
+          (filePath) =>
+            materializedFiles.has(filePath) ||
+            !headFileSet.has(diffPlan?.renamedFiles?.[filePath] ?? filePath),
+        ),
         untrackedFiles,
       } satisfies BaselineMaterializedTree;
     }).pipe(Effect.provide(Git.layerNode)),

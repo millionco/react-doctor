@@ -1,0 +1,403 @@
+// rule: js-set-map-lookups
+// file-path: src/world/trials.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 6624f6ae7dbfaa2d5b860625906ef36ef5e891505d167c8d5e9be1de0131ee5c
+import * as THREE from "three";
+import { damp, saturate, TAU } from "../core/util";
+import { glyphUv, type Library } from "../gfx/library";
+import { applySurface } from "../gfx/texgen";
+
+/**
+ * Light trials.  A trial never uses a word: the spire shows a phrase by
+ * lighting its pylons in order, each with its own pitch, and the koi answers
+ * by swimming through the same pylons in the same order.  A wrong answer
+ * simply dims and repeats the phrase — patience, not punishment.
+ */
+
+export type TrialPhase = "dormant" | "listen" | "answer" | "solved";
+
+export interface TrialEvents {
+  onTone(position: THREE.Vector3, note: number, strength: number): void;
+  onSolved(trial: Trial): void;
+  onProgress(trial: Trial, correct: boolean): void;
+}
+
+export interface Pylon {
+  group: THREE.Group;
+  center: THREE.Vector3;
+  axis: THREE.Vector3;
+  radius: number;
+  glow: THREE.Mesh;
+  glyph: THREE.Mesh;
+  ringMesh: THREE.Mesh;
+  lit: number;
+  note: number;
+  cooldown: number;
+}
+
+export interface Trial {
+  index: number;
+  group: THREE.Group;
+  center: THREE.Vector3;
+  pylons: Pylon[];
+  sequence: number[];
+  phase: TrialPhase;
+  step: number;
+  timer: number;
+  demoIndex: number;
+  solved: boolean;
+  spireGlow: THREE.Mesh;
+  aura: THREE.Mesh;
+  proximity: number;
+}
+
+export interface Trials {
+  group: THREE.Group;
+  list: Trial[];
+  solvedCount: number;
+  update(t: number, dt: number, prev: THREE.Vector3, pos: THREE.Vector3, events: TrialEvents): void;
+}
+
+export interface TrialSpec {
+  position: THREE.Vector3;
+  radius: number;
+  count: number;
+  sequenceLength: number;
+  seed: number;
+}
+
+const NOTES = [0, 2, 4, 7, 9, 11, 12];
+
+function spireGeometry(): THREE.BufferGeometry {
+  const nu = 7;
+  const nv = 20;
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const idx: number[] = [];
+  for (let j = 0; j <= nv; j++) {
+    const v = j / nv;
+    const y = v * 15;
+    const r = 2.1 * Math.pow(1 - v, 0.72) * (1 + 0.18 * Math.sin(v * 9)) + 0.14;
+    for (let i = 0; i <= nu; i++) {
+      const u = i / nu;
+      const a = u * TAU + v * 0.5;
+      pos.push(Math.cos(a) * r, y - 7.5, Math.sin(a) * r);
+      uv.push(u * 2, v * 4);
+    }
+  }
+  const stride = nu + 1;
+  for (let j = 0; j < nv; j++) {
+    for (let i = 0; i < nu; i++) {
+      const p = j * stride + i;
+      idx.push(p, p + stride, p + 1, p + 1, p + stride, p + stride + 1);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+export function createTrials(lib: Library, specs: TrialSpec[]): Trials {
+  const group = new THREE.Group();
+  const list: Trial[] = [];
+
+  const stoneMat = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, envMapIntensity: 0.8 });
+  applySurface(stoneMat, lib.stone, 1.6, 1.4);
+
+  const spireGeo = spireGeometry();
+
+  specs.forEach((spec, index) => {
+    const g = new THREE.Group();
+    g.position.copy(spec.position);
+
+    const spire = new THREE.Mesh(spireGeo, stoneMat);
+    spire.castShadow = true;
+    spire.receiveShadow = true;
+    g.add(spire);
+
+    // A hard sphere reads as a white ball up close; a soft billboard plus a
+    // small core keeps the spire's light glowing at every range.
+    const spireGlow = new THREE.Mesh(
+      new THREE.PlaneGeometry(14, 14),
+      new THREE.MeshBasicMaterial({
+        map: lib.mote,
+        color: new THREE.Color(0.6, 0.86, 1.0),
+        transparent: true,
+        opacity: 0.35,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      }),
+    );
+    spireGlow.position.y = 8.4;
+    g.add(spireGlow);
+
+    const spireCore = new THREE.Mesh(
+      new THREE.SphereGeometry(0.62, 14, 10),
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color(0.86, 0.96, 1.0),
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    );
+    spireCore.position.y = 8.4;
+    g.add(spireCore);
+    g.userData.spireCore = spireCore;
+
+    const aura = new THREE.Mesh(
+      new THREE.SphereGeometry(spec.radius * 1.5, 32, 20),
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color(0.24, 0.48, 0.58),
+        transparent: true,
+        opacity: 0.03,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.BackSide,
+        toneMapped: false,
+      }),
+    );
+    g.add(aura);
+
+    const pylons: Pylon[] = [];
+    for (let i = 0; i < spec.count; i++) {
+      const a = (i / spec.count) * TAU + spec.seed * 0.4;
+      const px = Math.cos(a) * spec.radius;
+      const pz = Math.sin(a) * spec.radius;
+
+      const pg = new THREE.Group();
+      pg.position.set(px, 0, pz);
+      pg.rotation.y = -a;
+
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.85, 4.4, 12, 3), stoneMat);
+      post.position.y = -3.0;
+      post.castShadow = true;
+      pg.add(post);
+
+      const collar = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.22, 8, 20), stoneMat);
+      collar.rotation.x = Math.PI / 2;
+      collar.position.y = -0.85;
+      pg.add(collar);
+
+      const ringMesh = new THREE.Mesh(new THREE.TorusGeometry(4.0, 0.42, 12, 48), stoneMat);
+      ringMesh.rotation.y = Math.PI / 2;
+      ringMesh.position.y = 2.6;
+      ringMesh.castShadow = true;
+      pg.add(ringMesh);
+
+      const glow = new THREE.Mesh(
+        new THREE.TorusGeometry(4.0, 0.72, 10, 48),
+        new THREE.MeshBasicMaterial({
+          color: new THREE.Color(0.3, 0.5, 0.6),
+          transparent: true,
+          opacity: 0.2,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          toneMapped: false,
+        }),
+      );
+      glow.rotation.y = Math.PI / 2;
+      glow.position.y = 2.6;
+      pg.add(glow);
+
+      const { offset, repeat } = glyphUv(8 + ((index * 3 + i) % 8));
+      const gtex = lib.glyphs.clone();
+      gtex.offset.copy(offset);
+      gtex.repeat.copy(repeat);
+      gtex.needsUpdate = true;
+      const glyph = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.4, 3.4),
+        new THREE.MeshBasicMaterial({
+          map: gtex,
+          color: new THREE.Color(0.3, 0.45, 0.5),
+          transparent: true,
+          opacity: 0.5,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          toneMapped: false,
+        }),
+      );
+      glyph.position.set(0, 2.6, 0);
+      glyph.rotation.y = Math.PI / 2;
+      pg.add(glyph);
+
+      g.add(pg);
+
+      const center = new THREE.Vector3(spec.position.x + px, spec.position.y + 2.6, spec.position.z + pz);
+      const axis = new THREE.Vector3(Math.cos(a), 0, Math.sin(a)).normalize();
+
+      pylons.push({
+        group: pg,
+        center,
+        axis,
+        radius: 4.0,
+        glow,
+        glyph,
+        ringMesh,
+        lit: 0,
+        note: NOTES[i % NOTES.length] as number,
+        cooldown: 0,
+      });
+    }
+
+    group.add(g);
+
+    const sequence: number[] = [];
+    let s = spec.seed * 7919;
+    for (let i = 0; i < spec.sequenceLength; i++) {
+      s = (s * 1103515245 + 12345) & 0x7fffffff;
+      let pick = s % spec.count;
+      if (i > 0 && pick === sequence[i - 1]) pick = (pick + 1) % spec.count;
+      sequence.push(pick);
+    }
+
+    list.push({
+      index,
+      group: g,
+      center: spec.position.clone(),
+      pylons,
+      sequence,
+      phase: "dormant",
+      step: 0,
+      timer: 0,
+      demoIndex: -1,
+      solved: false,
+      spireGlow,
+      aura,
+      proximity: 0,
+    });
+  });
+
+  const rel = new THREE.Vector3();
+  const relNext = new THREE.Vector3();
+
+  function crossed(p: Pylon, prev: THREE.Vector3, next: THREE.Vector3): boolean {
+    rel.copy(prev).sub(p.center);
+    relNext.copy(next).sub(p.center);
+    const d0 = rel.dot(p.axis);
+    const d1 = relNext.dot(p.axis);
+    if (d0 === d1 || d0 * d1 > 0) return false;
+    const s = d0 / (d0 - d1);
+    const px = rel.x + (relNext.x - rel.x) * s;
+    const py = rel.y + (relNext.y - rel.y) * s;
+    const pz = rel.z + (relNext.z - rel.z) * s;
+    const along = px * p.axis.x + py * p.axis.y + pz * p.axis.z;
+    const radial = Math.hypot(px - p.axis.x * along, py - p.axis.y * along, pz - p.axis.z * along);
+    return radial < p.radius * 1.4;
+  }
+
+  const api: Trials = {
+    group,
+    list,
+    solvedCount: 0,
+    update(t: number, dt: number, prev: THREE.Vector3, pos: THREE.Vector3, events: TrialEvents) {
+      for (const tr of list) {
+        const dist = pos.distanceTo(tr.center);
+        tr.proximity = damp(tr.proximity, saturate(1 - (dist - 30) / 70), 3, dt);
+        (tr.aura.material as THREE.MeshBasicMaterial).opacity = 0.012 + tr.proximity * 0.05;
+
+        if (!tr.solved) {
+          if (tr.phase === "dormant" && dist < 78) {
+            tr.phase = "listen";
+            tr.demoIndex = -1;
+            tr.timer = 0.5;
+            tr.step = 0;
+          } else if (tr.phase !== "dormant" && dist > 150) {
+            tr.phase = "dormant";
+            tr.step = 0;
+            for (const p of tr.pylons) p.lit = 0;
+          }
+        }
+
+        if (tr.phase === "listen") {
+          tr.timer -= dt;
+          if (tr.timer <= 0) {
+            tr.demoIndex++;
+            if (tr.demoIndex >= tr.sequence.length) {
+              tr.phase = "answer";
+              tr.step = 0;
+              tr.demoIndex = -1;
+            } else {
+              const p = tr.pylons[tr.sequence[tr.demoIndex] as number]!;
+              p.lit = 1.35;
+              events.onTone(p.center, p.note, 0.75);
+              tr.timer = 0.62;
+            }
+          }
+        } else if (tr.phase === "answer") {
+          for (let i = 0; i < tr.pylons.length; i++) {
+            const p = tr.pylons[i]!;
+            p.cooldown = Math.max(0, p.cooldown - dt);
+            if (p.cooldown > 0) continue;
+            if (!crossed(p, prev, pos)) continue;
+            p.cooldown = 0.6;
+            const expected = tr.sequence[tr.step] as number;
+            if (i === expected) {
+              p.lit = 1.5;
+              events.onTone(p.center, p.note, 1);
+              events.onProgress(tr, true);
+              tr.step++;
+              if (tr.step >= tr.sequence.length) {
+                tr.phase = "solved";
+                tr.solved = true;
+                api.solvedCount++;
+                for (const q of tr.pylons) q.lit = 1.8;
+                events.onSolved(tr);
+              }
+            } else {
+              p.lit = 1.2;
+              events.onTone(p.center, -6, 0.9);
+              events.onProgress(tr, false);
+              tr.step = 0;
+              tr.phase = "listen";
+              tr.timer = 0.9;
+              tr.demoIndex = -1;
+              for (const q of tr.pylons) q.lit = Math.max(q.lit, 0.0);
+            }
+            break;
+          }
+        }
+
+        // --- visual state ---------------------------------------------
+        const answered = tr.phase === "answer" ? tr.step : 0;
+        for (let i = 0; i < tr.pylons.length; i++) {
+          const p = tr.pylons[i]!;
+          p.lit = damp(p.lit, tr.solved ? 1.15 : 0, tr.solved ? 1.5 : 3.2, dt);
+          const locked = tr.phase === "answer" && tr.sequence.slice(0, answered).includes(i) ? 0.55 : 0;
+          const listening = tr.phase === "answer" ? 0.18 : 0;
+          const pulse = 0.5 + 0.5 * Math.sin(t * 2.4 + i * 1.1);
+          const v = p.lit + locked + listening * pulse;
+          const gm = p.glow.material as THREE.MeshBasicMaterial;
+          gm.opacity = 0.10 + v * 0.5;
+          gm.color.setRGB(0.28 + v * 0.7, 0.46 + v * 0.44, 0.58 + v * 0.2);
+          const glm = p.glyph.material as THREE.MeshBasicMaterial;
+          glm.opacity = 0.32 + v * 0.7;
+          glm.color.setRGB(0.32 + v * 0.75, 0.48 + v * 0.42, 0.56 + v * 0.24);
+          p.glyph.scale.setScalar(1 + v * 0.16);
+        }
+
+        const sg = tr.spireGlow.material as THREE.MeshBasicMaterial;
+        const base = tr.solved ? 0.85 : tr.phase === "listen" ? 0.4 : tr.phase === "answer" ? 0.3 : 0.16;
+        sg.opacity = base + 0.12 * Math.sin(t * (tr.solved ? 1.2 : 2.6));
+        sg.color.setRGB(tr.solved ? 1.0 : 0.55, tr.solved ? 0.86 : 0.8, tr.solved ? 0.6 : 1.0);
+        tr.spireGlow.scale.setScalar(1 + (tr.solved ? 0.5 : 0) + 0.08 * Math.sin(t * 1.7));
+        tr.spireGlow.lookAt(pos);
+        const core = tr.group.userData.spireCore as THREE.Mesh;
+        const cm = core.material as THREE.MeshBasicMaterial;
+        cm.opacity = 0.5 + base * 0.5;
+        cm.color.copy(sg.color);
+        core.scale.setScalar(0.9 + 0.14 * Math.sin(t * 2.3) + (tr.solved ? 0.6 : 0));
+      }
+    },
+  };
+
+  return api;
+}

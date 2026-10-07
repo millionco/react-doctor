@@ -4,12 +4,14 @@ import {
 } from "../../../constants/mutation-methods.js";
 import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { getPropertyDescriptorValue } from "../../../utils/get-property-descriptor-value.js";
+import { getStaticObjectPropertyValue } from "../../../utils/get-static-object-property-value.js";
 import { getStaticPropertyKeyName } from "../../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
-import { getSymbolMutationInspector } from "./get-symbol-mutation-inspector.js";
+import { getSymbolMutationInspector } from "../../../utils/get-symbol-mutation-inspector.js";
 
 export interface KatexOptionsProof {
   readonly isSafe: boolean;
@@ -28,35 +30,6 @@ const isStaticallyDisabledTrustValue = (node: EsTreeNode, scopes: ScopeAnalysis)
     return expression.name === "undefined" && scopes.isGlobalReference(expression);
   }
   return isNodeOfType(expression, "Literal") && !expression.value;
-};
-
-const getStaticObjectPropertyValue = (
-  node: EsTreeNode,
-  expectedPropertyName: string,
-): EsTreeNode | null | undefined => {
-  const expression = stripParenExpression(node);
-  if (!isNodeOfType(expression, "ObjectExpression")) return null;
-  let propertyValue: EsTreeNode | undefined;
-  for (const property of expression.properties) {
-    if (!isNodeOfType(property, "Property")) return null;
-    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
-    if (propertyName === null) return null;
-    if (propertyName !== expectedPropertyName) continue;
-    if (property.kind !== "init") return null;
-    propertyValue = property.value;
-  }
-  return propertyValue;
-};
-
-const getPropertyDescriptorValue = (node: EsTreeNode): EsTreeNode | null | undefined => {
-  const expression = stripParenExpression(node);
-  if (!isNodeOfType(expression, "ObjectExpression")) return null;
-  for (const property of expression.properties) {
-    if (!isNodeOfType(property, "Property")) return null;
-    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
-    if (propertyName === null || propertyName === "get" || propertyName === "set") return null;
-  }
-  return getStaticObjectPropertyValue(expression, "value");
 };
 
 const getTrustStateAfterPropertyDescriptor = (

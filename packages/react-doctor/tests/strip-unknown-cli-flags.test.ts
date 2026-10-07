@@ -117,6 +117,15 @@ describe("stripUnknownCliFlags", () => {
     ]);
   });
 
+  it("keeps the max-duration budget on the experimental TUI command", () => {
+    expect(stripUserArguments(["experimental-tui", ".", "--max-duration", "30"])).toEqual([
+      "experimental-tui",
+      ".",
+      "--max-duration",
+      "30",
+    ]);
+  });
+
   it("keeps the supply-chain opt-out on the experimental TUI command", () => {
     expect(stripUserArguments(["experimental-tui", ".", "--no-supply-chain"])).toEqual([
       "experimental-tui",
@@ -125,8 +134,25 @@ describe("stripUnknownCliFlags", () => {
     ]);
   });
 
+  it("keeps the explicit score opt-in on the experimental TUI command", () => {
+    expect(stripUserArguments(["experimental-tui", ".", "--score"])).toEqual([
+      "experimental-tui",
+      ".",
+      "--score",
+    ]);
+  });
+
   it("keeps the --no-telemetry alias for --no-score", () => {
     expect(stripUserArguments([".", "--no-telemetry"])).toEqual([".", "--no-telemetry"]);
+  });
+
+  it("keeps the global cache opt-out", () => {
+    expect(stripUserArguments([".", "--no-cache"])).toEqual([".", "--no-cache"]);
+    expect(stripUserArguments(["experimental-tui", ".", "--no-cache"])).toEqual([
+      "experimental-tui",
+      ".",
+      "--no-cache",
+    ]);
   });
 
   it("keeps the phase opt-out flags so Commander can toggle each scan phase", () => {
@@ -170,6 +196,31 @@ describe("stripUnknownCliFlags", () => {
     expect(stripUserArguments(["why", "src/App.tsx:42", "--offline"])).toEqual([
       "why",
       "src/App.tsx:42",
+    ]);
+  });
+
+  it("keeps runtime scan options and their values", () => {
+    expect(
+      stripUserArguments([
+        "scan",
+        "http://localhost:3000",
+        "--format",
+        "jsonl",
+        "--cdp",
+        "http://127.0.0.1:9222",
+        "--trace-out",
+        "/tmp/runtime.json.gz",
+        "--offline",
+      ]),
+    ).toEqual([
+      "scan",
+      "http://localhost:3000",
+      "--format",
+      "jsonl",
+      "--cdp",
+      "http://127.0.0.1:9222",
+      "--trace-out",
+      "/tmp/runtime.json.gz",
     ]);
   });
 

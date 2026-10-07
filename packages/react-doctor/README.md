@@ -9,11 +9,9 @@
 
 Your agent writes bad React, this catches it.
 
-React Doctor deterministically scans your codebase and finds issues across state & effects, performance, architecture, security, and accessibility.
+React Doctor deterministically scans your codebase and finds issues across state and effects, performance, architecture, security, accessibility, and maintainability. It highlights overly complex React functions and repeated JSX trees that are good candidates for composition.
 
-Works for all React frameworks and libraries - Next.js, Vite, TanStack, React Native, Expo, you name it.
-
-Scans JavaScript and TypeScript source files plus JavaScript in standard inline `<script>` blocks in `.html` files.
+Works across React frameworks and React-enabled sites - Next.js, Vite, Astro, TanStack, React Native, Expo, you name it.
 
 [Website →](https://react.doctor/docs)
 
@@ -25,6 +23,12 @@ Run this at your project root to get an audit.
 
 ```bash
 npx react-doctor@latest
+```
+
+Pass file paths to scan only the files that another CI step selected.
+
+```bash
+npx react-doctor@latest src/a.tsx src/b.tsx
 ```
 
 https://github.com/user-attachments/assets/07cc88d9-9589-44c3-aa73-5d603cb1c570
@@ -55,7 +59,59 @@ This adds the workflow, scans every pull request, and posts a summary comment. C
 
 You can configure which rules to run and how to run them in `doctor.config.ts`.
 
+The pnpm hardening check is off by default. To enable it, set
+`rules: { "react-doctor/require-pnpm-hardening": "warn" }` in your config.
+
 [Learn more →](https://react.doctor/docs/configuration/config-files)
+
+## Runtime performance traces
+
+Record a Chrome DevTools performance trace while you interact with a running React app:
+
+```bash
+npx react-doctor@latest scan http://localhost:3000
+```
+
+React Doctor opens system Chrome in a temporary isolated profile, records until you press Enter
+(up to five minutes), and flashes purple outlines with component names as React renders. It then
+returns a readable summary plus the path to a compressed DevTools trace. Use `--format json` or
+`--format jsonl` for coding agents. In an interactive terminal, you can run `react-doctor scan`
+without a URL and choose a detected localhost app or enter another URL; coding agents and CI must
+pass the URL explicitly.
+
+An already-open normal browser is left alone. To reuse an authenticated session, start a dedicated
+Chrome profile with remote debugging, sign in, close its non-blank tabs, and pass its endpoint:
+
+```bash
+npx react-doctor@latest scan https://app.example.com --cdp http://127.0.0.1:9222
+```
+
+Chrome performance tracing is browser-wide, so React Doctor rejects attached profiles with open
+pages. It closes blank startup tabs before tracing and closes its scan tab afterward; the attached
+browser stays open. The trace is stored locally and is never uploaded, but it can contain page
+URLs, source paths, and React profiling details. Treat it as sensitive application data.
+
+## Scan scope
+
+`--scope changed --base <ref>` reports only new findings in files touched by the diff. It scans those files at the base and in the current tree. Uncommitted changes use `HEAD` when the base is the current branch.
+
+Findings are grouped by file path (following Git renames) and rule ID. Only the increase in each group's finding count is new: two findings at base and three now produce one new finding; two at base and two now produce none. Formatting, variable renames, edits inside flagged code, and line shifts do not create new findings when the count stays the same. Groups with no count increase need no location matching. When the count increases, exact fingerprint and message matches are paired first. Message similarity and line distance adjusted for Git diff shifts then select the most likely added findings. This is a count gate: fixing one issue and adding another under the same rule in the same file produces no increase. Current rule, severity, tag, and ignore settings apply before matching.
+
+New files have no base findings. Add `--include-untracked` to scan untracked files too. Deleted files and removed findings are not reported. `--blocking`, the exit code, and summary counts use only the unmatched current findings. The score still describes the current scan.
+
+Use `--scope lines` to report findings on changed lines, or `--scope files` to report all findings in changed files. The default `--scope full` scans the full project.
+
+Save a full scan once, then reuse it as the comparison base:
+
+```bash
+react-doctor --json --blocking none > base-report.json
+react-doctor --baseline base-report.json --blocking warning
+react-doctor --scope changed --baseline base-report.json --blocking warning
+```
+
+`--baseline` uses the same matching rules and skips the base scan. Use the same React Doctor version, rules, and scan options for both scans. The saved report must be a complete scan with fingerprints, not a previous comparison result. Saved reports record each project's source-dependent filter settings (`textComponents`, `rawTextWrapperComponents`, and `respectInlineDisables`). A mismatch requires a new base report with the current settings, or a Git comparison. Reports cannot recover findings that the original scan suppressed. Regenerate older reports that lack fingerprints or filter settings. Without Git, a saved report still works; rename matching requires Git history for the report's `sourceRevision`. With `--scope changed`, Git limits the scan to changed files when available; otherwise the full current tree is compared.
+
+JSON reports keep schema version 3 and add optional diagnostic `fingerprint`, report `sourceRevision`, and per-project `sourceFilterConfigHash` fields. The `baseline` block records `source` (`"base"` or `"baseline"`), `baseRef`, `baselineFile` for saved reports, and `matchedCount`. `newCount` equals the summary finding count.
 
 ## Telemetry
 

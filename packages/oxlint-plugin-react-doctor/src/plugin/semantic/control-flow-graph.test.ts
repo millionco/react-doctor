@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@voidzero-dev/vite-plus-test";
+import { describe, expect, it } from "vite-plus/test";
 import { analyzeControlFlow } from "./control-flow-graph.js";
 import { attachParentReferences } from "../../test-utils/attach-parent-references.js";
 import { parseFixture } from "../../test-utils/parse-fixture.js";

@@ -1,3 +1,4 @@
+import { GORHOM_BOTTOM_SHEET_MODULE_NAME } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -8,7 +9,6 @@ import { resolveImportedJsxComponentName } from "../../utils/resolve-imported-js
 import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 
-const GORHOM_BOTTOM_SHEET_MODULE = "@gorhom/bottom-sheet";
 const BOTTOM_SHEET_CONTAINER_NAMES: ReadonlySet<string> = new Set([
   "BottomSheet",
   "BottomSheetModal",
@@ -26,7 +26,7 @@ export const rnBottomSheetNoStateInOnAnimate = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const componentName = resolveImportedJsxComponentName(
         node,
-        GORHOM_BOTTOM_SHEET_MODULE,
+        GORHOM_BOTTOM_SHEET_MODULE_NAME,
         context.scopes,
       );
       if (!componentName || !BOTTOM_SHEET_CONTAINER_NAMES.has(componentName)) return;

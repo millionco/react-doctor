@@ -1,13 +1,13 @@
 import { MUTATING_ARRAY_METHODS } from "../../constants/js.js";
-import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
-import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -165,158 +165,47 @@ interface SetterValueObservations {
 }
 
 const collectSetterValueObservations = (
-  componentBody: EsTreeNode,
-  setterNames: ReadonlySet<string>,
+  bindings: ReturnType<typeof collectUseStateBindings>,
+  scopes: ScopeAnalysis,
 ): SetterValueObservations => {
   const plainFedSetterNames = new Set<string>();
   const opaqueFedSetterNames = new Set<string>();
   const callbackRefSetterNames = new Set<string>();
-  // Shadow-respecting walk: a nested function whose param or local re-binds
-  // the setter name calls its OWN function, so its argument shapes are not
-  // evidence about the state binding.
-  walkComponentRespectingShadows(
-    componentBody,
-    new Set(),
-    (node: EsTreeNode, currentlyShadowed: ReadonlySet<string>): void => {
-      if (isNodeOfType(node, "JSXAttribute")) {
-        const attributeName = node.name;
+  for (const binding of bindings) {
+    if (!isNodeOfType(binding.declarator.id, "ArrayPattern")) continue;
+    const setterIdentifier = binding.declarator.id.elements?.[1];
+    if (!isNodeOfType(setterIdentifier, "Identifier")) continue;
+    const setterSymbol = scopes.symbolFor(setterIdentifier);
+    if (!setterSymbol) continue;
+    for (const reference of setterSymbol.references) {
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const parent = referenceRoot.parent;
+      if (isNodeOfType(parent, "JSXExpressionContainer")) {
+        const attribute = parent.parent;
         if (
-          isNodeOfType(attributeName, "JSXIdentifier") &&
-          attributeName.name === "ref" &&
-          node.value &&
-          isNodeOfType(node.value, "JSXExpressionContainer")
+          isNodeOfType(attribute, "JSXAttribute") &&
+          isNodeOfType(attribute.name, "JSXIdentifier") &&
+          attribute.name.name === "ref"
         ) {
-          const expression = stripParenExpression(node.value.expression);
-          if (isNodeOfType(expression, "Identifier") && setterNames.has(expression.name)) {
-            callbackRefSetterNames.add(expression.name);
-          }
+          callbackRefSetterNames.add(binding.setterName);
         }
-        return;
+        continue;
       }
-      if (!isNodeOfType(node, "CallExpression")) return;
-      if (!isNodeOfType(node.callee, "Identifier")) return;
-      const setterName = node.callee.name;
-      if (!setterNames.has(setterName) || currentlyShadowed.has(setterName)) return;
-      const argument = node.arguments?.[0];
-      if (!argument) return;
-      const unwrapped = stripParenExpression(argument as EsTreeNode);
-      if (isNullOrUndefinedExpression(unwrapped)) return;
+      if (!isNodeOfType(parent, "CallExpression") || parent.callee !== referenceRoot) continue;
+      const argument = parent.arguments?.[0];
+      if (!argument || isNodeOfType(argument, "SpreadElement")) continue;
+      const unwrapped = stripParenExpression(argument);
+      if (isNullOrUndefinedExpression(unwrapped)) continue;
       if (producesPlainStateValue(unwrapped)) {
-        plainFedSetterNames.add(setterName);
-        return;
+        plainFedSetterNames.add(binding.setterName);
+        continue;
       }
       if (producesOpaqueInstanceValue(unwrapped)) {
-        opaqueFedSetterNames.add(setterName);
+        opaqueFedSetterNames.add(binding.setterName);
       }
-    },
-    true,
-  );
+    }
+  }
   return { plainFedSetterNames, opaqueFedSetterNames, callbackRefSetterNames };
-};
-
-const collectFunctionLocalBindings = (functionNode: EsTreeNode): Set<string> => {
-  const localBindings = new Set<string>();
-  if (
-    !isNodeOfType(functionNode, "FunctionDeclaration") &&
-    !isNodeOfType(functionNode, "FunctionExpression") &&
-    !isNodeOfType(functionNode, "ArrowFunctionExpression")
-  ) {
-    return localBindings;
-  }
-  for (const param of functionNode.params ?? []) {
-    collectPatternNames(param, localBindings);
-  }
-  if (isNodeOfType(functionNode.body, "BlockStatement")) {
-    for (const statement of functionNode.body.body ?? []) {
-      if (!isNodeOfType(statement, "VariableDeclaration")) continue;
-      for (const declarator of statement.declarations ?? []) {
-        collectPatternNames(declarator.id, localBindings);
-      }
-    }
-  }
-  return localBindings;
-};
-
-// `const books = []` inside a `for`/`if` block (or a `for (const book of
-// ...)` binding) shadows the state name for everything nested in that
-// block, exactly like a function-body declaration does.
-const collectBlockScopedBindings = (node: EsTreeNode): Set<string> | null => {
-  if (isNodeOfType(node, "BlockStatement")) {
-    const blockBindings = new Set<string>();
-    for (const statement of node.body ?? []) {
-      if (!isNodeOfType(statement, "VariableDeclaration")) continue;
-      for (const declarator of statement.declarations ?? []) {
-        collectPatternNames(declarator.id, blockBindings);
-      }
-    }
-    return blockBindings;
-  }
-  if (isNodeOfType(node, "ForStatement") && isNodeOfType(node.init, "VariableDeclaration")) {
-    const blockBindings = new Set<string>();
-    for (const declarator of node.init.declarations ?? []) {
-      collectPatternNames(declarator.id, blockBindings);
-    }
-    return blockBindings;
-  }
-  if (
-    (isNodeOfType(node, "ForOfStatement") || isNodeOfType(node, "ForInStatement")) &&
-    isNodeOfType(node.left, "VariableDeclaration")
-  ) {
-    const blockBindings = new Set<string>();
-    for (const declarator of node.left.declarations ?? []) {
-      collectPatternNames(declarator.id, blockBindings);
-    }
-    return blockBindings;
-  }
-  return null;
-};
-
-// HACK: walks the component AST while tracking which state names are
-// SHADOWED in the current scope by a nested function's params or
-// var/let/const declarations. Without this, a handler that locally
-// re-binds the state name (e.g. `const items = raw.split(",")` then
-// `items.push(x)`) gets falsely flagged. We don't do real scope
-// analysis (would need eslint-utils' ScopeManager) — just lexical
-// param + per-block binding collection, which covers the >99% of
-// real-world shadowing cases without false positives.
-const walkComponentRespectingShadows = (
-  node: EsTreeNode,
-  shadowedStateNames: ReadonlySet<string>,
-  visit: (child: EsTreeNode, currentlyShadowed: ReadonlySet<string>) => void,
-  isComponentBodyRoot = false,
-): void => {
-  if (!node || typeof node !== "object") return;
-
-  let nextShadowedStateNames = shadowedStateNames;
-  // The component body's own declarations ARE the state bindings, not
-  // shadows of them — only nested blocks/functions can shadow.
-  const localBindings = isComponentBodyRoot
-    ? null
-    : isFunctionLike(node)
-      ? collectFunctionLocalBindings(node)
-      : collectBlockScopedBindings(node);
-  if (localBindings && localBindings.size > 0) {
-    const merged = new Set(shadowedStateNames);
-    for (const localName of localBindings) merged.add(localName);
-    nextShadowedStateNames = merged;
-  }
-
-  visit(node, shadowedStateNames);
-
-  const nodeRecord = node as unknown as Record<string, unknown>;
-  for (const key of Object.keys(nodeRecord)) {
-    if (key === "parent") continue;
-    const child = nodeRecord[key];
-    if (Array.isArray(child)) {
-      for (const item of child) {
-        if (item && typeof item === "object" && "type" in item) {
-          walkComponentRespectingShadows(item as EsTreeNode, nextShadowedStateNames, visit);
-        }
-      }
-    } else if (child && typeof child === "object" && "type" in child) {
-      walkComponentRespectingShadows(child as EsTreeNode, nextShadowedStateNames, visit);
-    }
-  }
 };
 
 export const noDirectStateMutation = defineRule({
@@ -328,22 +217,16 @@ export const noDirectStateMutation = defineRule({
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
-      const bindings = collectUseStateBindings(componentBody, context.scopes);
+      const scopes = context.scopes;
+      const bindings = collectUseStateBindings(componentBody, scopes);
       if (bindings.length === 0) return;
-
-      const stateValueToSetter = new Map<string, string>(
-        bindings.map((binding) => [binding.valueName, binding.setterName] as const),
-      );
 
       // A `x.y = ...` assignment or a `x.push(...)` mutating-method call
       // is only React-owned-state mutation when the state plausibly holds
       // React-managed data — see `initializerMarksPlainState` for the exact
       // boundary between plain data and opaque third-party instances.
-      const setterValueObservations = collectSetterValueObservations(
-        componentBody,
-        new Set(bindings.map((binding) => binding.setterName)),
-      );
-      const plainObjectStateValueNames = new Set<string>();
+      const setterValueObservations = collectSetterValueObservations(bindings, scopes);
+      const plainStateValueNames = new Set<string>();
       for (const binding of bindings) {
         if (setterValueObservations.callbackRefSetterNames.has(binding.setterName)) continue;
         if (!isNodeOfType(binding.declarator.init, "CallExpression")) continue;
@@ -359,44 +242,52 @@ export const noDirectStateMutation = defineRule({
         ) {
           continue;
         }
-        plainObjectStateValueNames.add(binding.valueName);
+        plainStateValueNames.add(binding.valueName);
       }
 
-      const visitMutationCandidate = (
-        child: EsTreeNode,
-        currentlyShadowed: ReadonlySet<string>,
-      ): void => {
-        if (isNodeOfType(child, "AssignmentExpression")) {
-          if (!isNodeOfType(child.left, "MemberExpression")) return;
-          const rootName = getRootIdentifierName(child.left);
-          if (!rootName || !stateValueToSetter.has(rootName)) return;
-          if (!plainObjectStateValueNames.has(rootName)) return;
-          if (currentlyShadowed.has(rootName)) return;
+      for (const binding of bindings) {
+        if (!plainStateValueNames.has(binding.valueName)) continue;
+        if (!isNodeOfType(binding.declarator.id, "ArrayPattern")) continue;
+        const stateIdentifier = binding.declarator.id.elements?.[0];
+        if (!isNodeOfType(stateIdentifier, "Identifier")) continue;
+        const stateSymbol = scopes.symbolFor(stateIdentifier);
+        if (!stateSymbol) continue;
+        for (const reference of stateSymbol.references) {
+          let expressionRoot = findTransparentExpressionRoot(reference.identifier);
+          while (
+            isNodeOfType(expressionRoot.parent, "MemberExpression") &&
+            expressionRoot.parent.object === expressionRoot
+          ) {
+            expressionRoot = findTransparentExpressionRoot(expressionRoot.parent);
+          }
+          const parent = expressionRoot.parent;
+          if (
+            isNodeOfType(parent, "AssignmentExpression") &&
+            parent.left === expressionRoot &&
+            isNodeOfType(expressionRoot, "MemberExpression")
+          ) {
+            context.report({
+              node: parent,
+              message: `React can't tell you changed "${binding.valueName}" in place, so this update can be skipped or lost.`,
+            });
+            continue;
+          }
+          if (
+            !isNodeOfType(parent, "CallExpression") ||
+            parent.callee !== expressionRoot ||
+            !isNodeOfType(expressionRoot, "MemberExpression") ||
+            !isNodeOfType(expressionRoot.property, "Identifier")
+          ) {
+            continue;
+          }
+          const methodName = expressionRoot.property.name;
+          if (!MUTATING_ARRAY_METHODS.has(methodName)) continue;
           context.report({
-            node: child,
-            message: `React can't tell you changed "${rootName}" in place, so this update can be skipped or lost.`,
-          });
-          return;
-        }
-
-        if (isNodeOfType(child, "CallExpression")) {
-          const callee = child.callee;
-          if (!isNodeOfType(callee, "MemberExpression")) return;
-          if (!isNodeOfType(callee.property, "Identifier")) return;
-          const methodName = callee.property.name;
-          if (!MUTATING_ARRAY_METHODS.has(methodName)) return;
-          const rootName = getRootIdentifierName(callee.object);
-          if (!rootName || !stateValueToSetter.has(rootName)) return;
-          if (!plainObjectStateValueNames.has(rootName)) return;
-          if (currentlyShadowed.has(rootName)) return;
-          context.report({
-            node: child,
-            message: `React can't tell .${methodName}() changed "${rootName}" in place, so this update can be skipped or lost.`,
+            node: parent,
+            message: `React can't tell .${methodName}() changed "${binding.valueName}" in place, so this update can be skipped or lost.`,
           });
         }
-      };
-
-      walkComponentRespectingShadows(componentBody, new Set(), visitMutationCandidate, true);
+      }
     };
 
     return {

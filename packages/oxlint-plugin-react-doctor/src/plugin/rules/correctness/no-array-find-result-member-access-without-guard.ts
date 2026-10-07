@@ -1,3 +1,4 @@
+import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -11,6 +12,7 @@ import {
 } from "../../utils/strip-paren-expression.js";
 import { unwrapNegativeGuardForm } from "../../utils/unwrap-negative-guard-form.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const MESSAGE =
@@ -94,16 +96,6 @@ const hasArrayCallbackFirstArgument = (
   return !(initializer && isNodeOfType(initializer, "ObjectExpression"));
 };
 
-const hasInlineArrayCallbackFirstArgument = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
-  const firstArgument = node.arguments?.[0];
-  if (!firstArgument) return false;
-  const callback = stripParenExpression(firstArgument as EsTreeNode);
-  return (
-    isNodeOfType(callback, "ArrowFunctionExpression") ||
-    isNodeOfType(callback, "FunctionExpression")
-  );
-};
-
 // `_.chain(users).filter(...).find(cb)` returns a LodashWrapper (unwrapped
 // later by `.value()`), never `undefined` — a `.find` whose receiver chain
 // roots in a `chain(...)` call is not Array.prototype.find.
@@ -171,13 +163,24 @@ const isArrayFindCall = (
   }
   if (receiverChainContainsChainCall(receiver)) return false;
   const resultMember = node.parent;
+  const resultMethod = isNodeOfType(resultMember, "MemberExpression")
+    ? getStaticPropertyName(resultMember)
+    : null;
+  const predicate = node.arguments[0];
+  const hasKnownPredicate = Boolean(
+    predicate &&
+    (resolveExactLocalFunction(predicate, context.scopes) ||
+      (isNodeOfType(predicate, "Identifier") &&
+        KNOWN_GLOBAL_PREDICATE_NAMES.has(predicate.name) &&
+        context.scopes.isGlobalReference(predicate))),
+  );
   if (
     isNodeOfType(resultMember, "MemberExpression") &&
-    getStaticPropertyName(resultMember) === "exec" &&
+    (resultMethod === "exec" || PROMISE_SETTLE_METHODS.has(resultMethod ?? "")) &&
     isNodeOfType(resultMember.parent, "CallExpression") &&
     resultMember.parent.callee === resultMember &&
     !isNodeOfType(resolvedReceiver, "ArrayExpression") &&
-    !hasInlineArrayCallbackFirstArgument(node)
+    !hasKnownPredicate
   ) {
     return false;
   }

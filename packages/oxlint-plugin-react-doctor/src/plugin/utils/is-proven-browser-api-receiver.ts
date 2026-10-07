@@ -445,6 +445,24 @@ export const isProvenBrowserApiReceiver = (
       ),
     );
   }
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    const branches = [expression.consequent, expression.alternate];
+    const nonNullishBranches = branches.filter(
+      (branch) =>
+        !(isNodeOfType(branch, "Literal") && branch.value === null) &&
+        !(
+          isNodeOfType(branch, "Identifier") &&
+          branch.name === "undefined" &&
+          scopes.isGlobalReference(branch)
+        ),
+    );
+    return (
+      nonNullishBranches.length > 0 &&
+      nonNullishBranches.every((branch) =>
+        isProvenBrowserApiReceiver(branch, receiverKind, scopes, new Set(visitedSymbolIds)),
+      )
+    );
+  }
   if (!isNodeOfType(expression, "MemberExpression")) return false;
   const classMember = getClassMemberDefinition(expression);
   if (classMember && isNodeOfType(classMember, "PropertyDefinition")) {

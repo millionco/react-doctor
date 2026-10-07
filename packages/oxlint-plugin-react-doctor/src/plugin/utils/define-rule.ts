@@ -1,32 +1,41 @@
 import type { FileScan } from "./file-scan.js";
+import { EMPTY_RULE_VISITORS } from "./empty-rule-visitors.js";
 import {
   collectJsxRuntimeImports,
   jsxAttributeIsNonReactDialectMarker,
 } from "./non-react-jsx-dialect.js";
+import { isTestNoiseFilename } from "./is-testlike-filename.js";
 import { skipNonProductionFiles } from "./skip-non-production-files.js";
+import { shouldCreateRuleVisitors } from "./should-create-rule-visitors.js";
 import type { Rule } from "./rule.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 
 // A rule definition has exactly one execution mode. An AST rule provides
-// `create` (per-file visitors, hosted by oxlint/ESLint); a scan rule
-// provides `scan` (a project-level file scan, executed by
-// @react-doctor/core's check-security-scan environment check) and gets an
-// inert visitor factory injected for host compatibility. Metadata,
-// registration, tags, and severity flow identically either way.
-export type RuleDefinition = Rule | (Omit<Rule, "create"> & { scan: FileScan });
+// `create` (per-file visitors, hosted by oxlint/ESLint); a scan rule provides
+// `scan`; and a project rule carries `execution: "project"` for a core-owned
+// whole-project analyzer. Non-AST modes get an inert visitor factory for host
+// compatibility while sharing the same metadata and configuration surface.
+export type RuleDefinition =
+  | Rule
+  | (Omit<Rule, "create" | "execution"> & { scan: FileScan })
+  | (Omit<Rule, "create" | "scan"> & { execution: "project" });
 
 // Rules tagged `"react-jsx-only"` apply React-flavoured semantics
 // (a11y semantics tuned for React's synthetic-event listener naming,
 // React-cased prop names, etc.) and should pass through for files
 // authored in non-React JSX dialects: Solid.js, Qwik, Voby, Vidode.
-// Detection happens lazily — we snapshot the dialect status from the
-// program's import declarations on the Program visit, then short-
-// circuit every other visitor when the file is Solid/Qwik. A late
-// `classList=` / `class:` / `bind:` marker upgrades the dialect mid-
-// file (some files import Solid via re-export and don't have an
-// obvious `solid-js` import).
-const VISITOR_NODE_NAME_PATTERN = /^[A-Z]/;
+// Detection snapshots imports and dialect-specific JSX markers on the
+// Program visit, then short-circuits every other visitor when the file is
+// Solid/Qwik. The JSXOpeningElement guard preserves the same behavior for
+// hosts that invoke visitors without a Program pass.
 type GenericVisitors = Record<string, unknown>;
+
+const wrapCreateForCapabilities =
+  (create: Rule["create"], disabledWhen: Rule["disabledWhen"]): Rule["create"] =>
+  (context) =>
+    shouldCreateRuleVisitors(context.settings, disabledWhen)
+      ? create(context)
+      : EMPTY_RULE_VISITORS;
 
 const wrapCreateForReactJsxOnly = <
   CreateFn extends (context: { filename?: string }) => GenericVisitors,
@@ -41,12 +50,15 @@ const wrapCreateForReactJsxOnly = <
     // JSX visitor fires. If the original rule already declared one,
     // wrap it; otherwise inject a fresh one.
     const wrappedVisitors: GenericVisitors = {};
-    for (const [key, visitor] of Object.entries(innerVisitors)) {
+    for (const key in innerVisitors) {
+      if (!Object.hasOwn(innerVisitors, key)) continue;
+      const visitor = innerVisitors[key];
       if (typeof visitor !== "function") {
         wrappedVisitors[key] = visitor;
         continue;
       }
-      if (!VISITOR_NODE_NAME_PATTERN.test(key)) {
+      const firstCharacter = key.charAt(0);
+      if (firstCharacter < "A" || firstCharacter > "Z") {
         // Lifecycle hooks etc. — pass through unwrapped.
         wrappedVisitors[key] = visitor;
         continue;
@@ -55,7 +67,10 @@ const wrapCreateForReactJsxOnly = <
         wrappedVisitors.Program = (node: EsTreeNodeOfType<"Program">) => {
           const runtimeImports = collectJsxRuntimeImports(node);
           fileImportsReactRuntime = runtimeImports.hasReactRuntime;
-          fileIsNonReactJsx = runtimeImports.hasNonReactRuntime && !runtimeImports.hasReactRuntime;
+          fileIsNonReactJsx =
+            !runtimeImports.hasReactRuntime &&
+            (runtimeImports.hasNonReactRuntime || runtimeImports.hasNonReactMarker);
+          if (fileIsNonReactJsx) return;
           (visitor as (n: EsTreeNodeOfType<"Program">) => void)(node);
         };
         continue;
@@ -74,16 +89,18 @@ const wrapCreateForReactJsxOnly = <
         };
         continue;
       }
-      wrappedVisitors[key] = (...args: unknown[]) => {
+      wrappedVisitors[key] = (node: unknown) => {
         if (fileIsNonReactJsx) return;
-        (visitor as (...a: unknown[]) => unknown)(...args);
+        (visitor as (visitedNode: unknown) => unknown)(node);
       };
     }
     if (!("Program" in wrappedVisitors)) {
       wrappedVisitors.Program = (node: EsTreeNodeOfType<"Program">) => {
         const runtimeImports = collectJsxRuntimeImports(node);
         fileImportsReactRuntime = runtimeImports.hasReactRuntime;
-        fileIsNonReactJsx = runtimeImports.hasNonReactRuntime && !runtimeImports.hasReactRuntime;
+        fileIsNonReactJsx =
+          !runtimeImports.hasReactRuntime &&
+          (runtimeImports.hasNonReactRuntime || runtimeImports.hasNonReactMarker);
       };
     }
     return wrappedVisitors;
@@ -91,7 +108,7 @@ const wrapCreateForReactJsxOnly = <
 
 export const defineRule = (rule: RuleDefinition): Rule => {
   if (!("create" in rule)) {
-    return { ...rule, create: () => ({}) };
+    return { ...rule, create: () => EMPTY_RULE_VISITORS };
   }
   const tags = rule.tags;
   let wrappedCreate = rule.create;
@@ -102,11 +119,14 @@ export const defineRule = (rule: RuleDefinition): Rule => {
   // (`react-dom/test-utils` imports, legacy lifecycle methods in test fixtures),
   // so a rule carrying both tags keeps firing there.
   const honorsTestNoise = tags?.includes("test-noise") && !tags?.includes("migration-hint");
-  if (honorsTestNoise) {
-    wrappedCreate = skipNonProductionFiles(wrappedCreate);
-  }
   if (tags?.includes("react-jsx-only")) {
     wrappedCreate = wrapCreateForReactJsxOnly(wrappedCreate as never) as never;
+  }
+  if (honorsTestNoise) {
+    wrappedCreate = skipNonProductionFiles(wrappedCreate, isTestNoiseFilename);
+  }
+  if (rule.disabledWhen) {
+    wrappedCreate = wrapCreateForCapabilities(wrappedCreate, rule.disabledWhen);
   }
   if (wrappedCreate === rule.create) return rule;
   return {

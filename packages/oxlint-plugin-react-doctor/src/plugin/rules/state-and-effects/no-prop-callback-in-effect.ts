@@ -1,4 +1,5 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -8,6 +9,7 @@ import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { Reference } from "eslint-scope";
@@ -16,10 +18,15 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getRef, getUpstreamRefs } from "./utils/effect/ast.js";
+import {
+  getDownstreamRefs,
+  getRef,
+  getUpstreamRefs,
+  resolveToFunction,
+} from "./utils/effect/ast.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import { isProp, isState } from "./utils/effect/react.js";
+import { isReducerState, isState, isStateSetterCall } from "./utils/effect/react.js";
 import { getParentCallbackPropNames } from "./utils/resolve-parent-callback-provenance.js";
 import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
 
@@ -86,21 +93,111 @@ const hasPreviousValueDep = (
   return false;
 };
 
-const isStateLikeDependency = (
+const getStateDependencyReferences = (
   analysis: ProgramAnalysis | null,
   element: EsTreeNode,
   isPropName: (name: string) => boolean,
-): boolean => {
-  if (!isNodeOfType(element, "Identifier") || isPropName(element.name)) return false;
-  if (!analysis) return true;
+): Reference[] => {
+  if (!isNodeOfType(element, "Identifier") || isPropName(element.name) || !analysis) return [];
   const reference = getRef(analysis, element);
-  if (!reference) return true;
-  if (isCustomHookStateResultReference(analysis, reference)) return true;
+  if (!reference) return [];
   const upstreamReferences = getUpstreamRefs(analysis, reference);
-  if (upstreamReferences.some((upstreamReference) => isState(analysis, upstreamReference))) {
-    return true;
+  return [reference, ...upstreamReferences];
+};
+
+const isReactStateDependency = (
+  analysis: ProgramAnalysis | null,
+  element: EsTreeNode,
+  isPropName: (name: string) => boolean,
+): boolean =>
+  Boolean(
+    analysis &&
+    getStateDependencyReferences(analysis, element, isPropName).some(
+      (reference) => isState(analysis, reference) || isReducerState(analysis, reference),
+    ),
+  );
+
+const isCustomHookStateDependency = (
+  analysis: ProgramAnalysis | null,
+  element: EsTreeNode,
+  isPropName: (name: string) => boolean,
+  scopes: RuleContext["scopes"],
+): boolean =>
+  Boolean(
+    analysis &&
+    getStateDependencyReferences(analysis, element, isPropName).some((reference) =>
+      isCustomHookStateResultReference(analysis, reference, scopes),
+    ),
+  );
+
+const isSameReference = (left: Reference, right: Reference): boolean =>
+  left.resolved && right.resolved
+    ? left.resolved === right.resolved
+    : left.identifier === right.identifier;
+
+const doesCallUseStateDependency = (
+  analysis: ProgramAnalysis,
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  dependencyReferences: readonly Reference[],
+): boolean =>
+  (callExpression.arguments ?? []).some((argument) => {
+    const argumentExpression = stripParenExpression(argument as EsTreeNode);
+    if (isFunctionLike(argumentExpression)) return false;
+    return getDownstreamRefs(analysis, argumentExpression).some(
+      (argumentReference) =>
+        !resolveToFunction(argumentReference) &&
+        [argumentReference, ...getUpstreamRefs(analysis, argumentReference)].some(
+          (upstreamReference) =>
+            dependencyReferences.some((dependencyReference) =>
+              isSameReference(upstreamReference, dependencyReference),
+            ),
+        ),
+    );
+  });
+
+const areEquivalentPayloadExpressions = (
+  analysis: ProgramAnalysis,
+  left: EsTreeNode,
+  right: EsTreeNode,
+): boolean => {
+  const leftCandidate = stripParenExpression(left);
+  const rightCandidate = stripParenExpression(right);
+  if (isNodeOfType(leftCandidate, "Literal") && isNodeOfType(rightCandidate, "Literal")) {
+    return Object.is(leftCandidate.value, rightCandidate.value);
   }
-  return !upstreamReferences.some((upstreamReference) => isProp(analysis, upstreamReference));
+  if (!isNodeOfType(leftCandidate, "Identifier") || !isNodeOfType(rightCandidate, "Identifier")) {
+    return false;
+  }
+  const leftReference = getRef(analysis, leftCandidate);
+  const rightReference = getRef(analysis, rightCandidate);
+  return Boolean(
+    leftReference?.resolved &&
+    rightReference?.resolved &&
+    leftReference.resolved === rightReference.resolved,
+  );
+};
+
+const hasMatchingLocalStateWrite = (
+  analysis: ProgramAnalysis,
+  effectBody: EsTreeNode,
+  callbackCall: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  const callbackPayload = callbackCall.arguments[0];
+  if (!callbackPayload || isNodeOfType(callbackPayload, "SpreadElement")) return false;
+  let didFindMatchingWrite = false;
+  walkInsideStatementBlocks(effectBody, (child: EsTreeNode) => {
+    if (didFindMatchingWrite || !isNodeOfType(child, "CallExpression")) return;
+    const callee = stripParenExpression(child.callee);
+    if (!isNodeOfType(callee, "Identifier")) return;
+    const setterReference = getRef(analysis, callee);
+    if (!setterReference || !isStateSetterCall(analysis, setterReference)) return;
+    const writtenValue = child.arguments[0];
+    if (!writtenValue || isNodeOfType(writtenValue, "SpreadElement")) return;
+    if (areEquivalentPayloadExpressions(analysis, callbackPayload, writtenValue)) {
+      didFindMatchingWrite = true;
+    }
+  });
+  return didFindMatchingWrite;
 };
 
 const getRefHeldPropCallbackName = (
@@ -189,18 +286,40 @@ export const noPropCallbackInEffect = defineRule({
         if (!isNodeOfType(depsNode, "ArrayExpression") || !depsNode.elements?.length) return;
         const analysis = getProgramAnalysis(node);
 
-        // Only flag if at least one dep is a non-prop (state-shape)
-        // identifier — otherwise the effect is just adapting to prop
-        // changes (legit pattern).
-        const stateLikeDeps = (depsNode.elements ?? []).filter(
-          (element) =>
-            element &&
-            isStateLikeDependency(analysis, element as EsTreeNode, propStackTracker.isPropName),
+        const dependencyElements = (depsNode.elements ?? []).flatMap((element) =>
+          element ? [element] : [],
         );
+        const reactStateDeps = dependencyElements.filter((element) =>
+          isReactStateDependency(analysis, element, propStackTracker.isPropName),
+        );
+        const customHookStateDeps = dependencyElements.filter(
+          (element) =>
+            !reactStateDeps.includes(element) &&
+            isCustomHookStateDependency(
+              analysis,
+              element,
+              propStackTracker.isPropName,
+              context.scopes,
+            ),
+        );
+        const reactStateDependencyReferences = analysis
+          ? reactStateDeps.flatMap((element) =>
+              getStateDependencyReferences(analysis, element, propStackTracker.isPropName),
+            )
+          : [];
+        const stateDependencyReferences = analysis
+          ? [
+              ...reactStateDependencyReferences,
+              ...customHookStateDeps.flatMap((element) =>
+                getStateDependencyReferences(analysis, element, propStackTracker.isPropName),
+              ),
+            ]
+          : [];
+        const stateLikeDeps = [...reactStateDeps, ...customHookStateDeps];
         if (stateLikeDeps.length === 0) return;
 
         if (isRefLatchGuardedEffect(callback.body as EsTreeNode)) return;
-        if (hasPreviousValueDep(node, (depsNode.elements ?? []) as readonly EsTreeNode[])) return;
+        if (hasPreviousValueDep(node, dependencyElements)) return;
 
         // When every state-shape dep is driven by a timer / listener /
         // observer / subscription, the parent callback bridges an imperative
@@ -226,10 +345,10 @@ export const noPropCallbackInEffect = defineRule({
         // with the top-level `onChange(state)` shape — those belong to
         // `prefer-use-effect-event` (sub-handler reads), not this rule
         // (lift state via callback).
-        const reportedNodes = new Set<EsTreeNode>();
-        walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
-          if (!isNodeOfType(child, "CallExpression")) return;
-          const directCallee = stripParenExpression(child.callee as EsTreeNode);
+        const getPropCallbackName = (
+          callExpression: EsTreeNodeOfType<"CallExpression">,
+        ): string | null => {
+          const directCallee = stripParenExpression(callExpression.callee as EsTreeNode);
           const resolvedCallbackPropNames =
             analysis && propStackTracker.getCurrentPropNames().size > 0
               ? getParentCallbackPropNames({
@@ -243,9 +362,55 @@ export const noPropCallbackInEffect = defineRule({
             (isNodeOfType(directCallee, "Identifier") &&
               propStackTracker.isPropName(directCallee.name) &&
               directCallee.name) ||
-            (!analysis && getRefHeldPropCallbackName(child, propStackTracker.isPropName)) ||
-            getTransparentWrappedPropCallbackName(child, context, propStackTracker.isPropName);
+            (!analysis &&
+              getRefHeldPropCallbackName(callExpression, propStackTracker.isPropName)) ||
+            getTransparentWrappedPropCallbackName(
+              callExpression,
+              context,
+              propStackTracker.isPropName,
+            );
+          return calleeName || null;
+        };
+        const cleanupPropCallbackNames = new Set<string>();
+        for (const cleanupFunction of collectReturnedCleanupFunctions(callback, context.scopes)) {
+          if (!isFunctionLike(cleanupFunction)) continue;
+          const cleanupBody = cleanupFunction.body;
+          if (isNodeOfType(cleanupBody, "CallExpression")) {
+            const cleanupCalleeName = getPropCallbackName(cleanupBody);
+            if (cleanupCalleeName) cleanupPropCallbackNames.add(cleanupCalleeName);
+          }
+          walkInsideStatementBlocks(cleanupBody, (cleanupChild: EsTreeNode) => {
+            if (!isNodeOfType(cleanupChild, "CallExpression")) return;
+            const cleanupCalleeName = getPropCallbackName(cleanupChild);
+            if (cleanupCalleeName) cleanupPropCallbackNames.add(cleanupCalleeName);
+          });
+        }
+
+        const reportedNodes = new Set<EsTreeNode>();
+        walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
+          if (!isNodeOfType(child, "CallExpression")) return;
+          const calleeName = getPropCallbackName(child);
           if (!calleeName) return;
+          if (analysis) {
+            const doesUseStateDependency = doesCallUseStateDependency(
+              analysis,
+              child,
+              stateDependencyReferences,
+            );
+            const doesUseReactStateDependency = doesCallUseStateDependency(
+              analysis,
+              child,
+              reactStateDependencyReferences,
+            );
+            if (cleanupPropCallbackNames.has(calleeName) && !doesUseReactStateDependency) return;
+            if (
+              !doesUseStateDependency &&
+              (reactStateDeps.length === 0 ||
+                hasMatchingLocalStateWrite(analysis, callback.body, child))
+            ) {
+              return;
+            }
+          }
           // Only the "lift state up" hand-back fires: a discarded
           // `onChange(state)`. When the prop call's result flows somewhere
           // (`setError(validate(value))`) the prop is a pure transform consumed

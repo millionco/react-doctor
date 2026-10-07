@@ -1,10 +1,11 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import { afterAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, describe, expect, it, vi } from "vite-plus/test";
 import { getCapabilities } from "../src/project-info/capabilities.js";
 import {
   detectTargetBlankOpenerProtection,
+  clearTargetBlankOpenerProtectionCache,
   isBrowserVersionAtLeast,
 } from "../src/project-info/detect-target-blank-opener-protection.js";
 import { clearProjectCache, discoverProject } from "../src/project-info/discover-project.js";
@@ -24,6 +25,31 @@ const setupProject = (caseName: string, packageJson: PackageJson): string => {
 };
 
 describe("detectTargetBlankOpenerProtection", () => {
+  it("suppresses bundled database maintenance warnings and restores the environment", () => {
+    const packageJson: PackageJson = {
+      name: "quiet-old-browser-data",
+      browserslist: ["chrome 80"],
+    };
+    const projectDirectory = setupProject("quiet-old-browser-data", packageJson);
+    const previousIgnoreOldData = process.env.BROWSERSLIST_IGNORE_OLD_DATA;
+    delete process.env.BROWSERSLIST_IGNORE_OLD_DATA;
+    clearTargetBlankOpenerProtectionCache();
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      expect(detectTargetBlankOpenerProtection(projectDirectory, packageJson)).toBe("noopener");
+      expect(consoleWarn).not.toHaveBeenCalled();
+      expect(process.env.BROWSERSLIST_IGNORE_OLD_DATA).toBeUndefined();
+    } finally {
+      consoleWarn.mockRestore();
+      if (previousIgnoreOldData === undefined) {
+        delete process.env.BROWSERSLIST_IGNORE_OLD_DATA;
+      } else {
+        process.env.BROWSERSLIST_IGNORE_OLD_DATA = previousIgnoreOldData;
+      }
+    }
+  });
+
   it("compares dotted browser versions by numeric segment", () => {
     expect(isBrowserVersionAtLeast("15.10", 15.5)).toBe(true);
     expect(isBrowserVersionAtLeast("15.4", 15.5)).toBe(false);
@@ -188,6 +214,40 @@ describe("detectTargetBlankOpenerProtection", () => {
     expect(capabilities.has("target-blank-needs-explicit-protection")).toBe(true);
     expect(capabilities.has("target-blank-needs-noreferrer")).toBe(true);
   });
+
+  it.each([
+    [
+      "nested-browser-target",
+      {
+        name: "nested-browser-target",
+        dependencies: { react: "^18.0.0" },
+        browserslist: ["chrome 80"],
+      },
+      false,
+    ],
+    [
+      "nested-electron-target",
+      {
+        name: "nested-electron-target",
+        dependencies: { react: "^18.0.0" },
+        devDependencies: { electron: "^0.36.0" },
+      },
+      true,
+    ],
+  ])(
+    "inherits target-blank policy from the enclosing package for %s",
+    (caseName, packageJson, needsNoreferrer) => {
+      const projectDirectory = setupProject(caseName, packageJson);
+      const nestedDirectory = path.join(projectDirectory, "src", "components");
+      fs.mkdirSync(nestedDirectory, { recursive: true });
+      fs.writeFileSync(path.join(nestedDirectory, "button.tsx"), "export const Button = null;\n");
+
+      const capabilities = getCapabilities(discoverProject(nestedDirectory));
+
+      expect(capabilities.has("target-blank-needs-explicit-protection")).toBe(true);
+      expect(capabilities.has("target-blank-needs-noreferrer")).toBe(needsNoreferrer);
+    },
+  );
 
   it("requires noopener once Electron adopted Chromium 49", () => {
     const packageJson: PackageJson = {

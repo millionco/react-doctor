@@ -46,6 +46,7 @@ const jsxReferencesLocalScope = (jsxNode: EsTreeNode, scopes: ScopeAnalysis): bo
 
 export const renderingHoistJsx = defineRule({
   id: "rendering-hoist-jsx",
+  defaultEnabled: false,
   title: "Constant JSX rebuilt each render",
   tags: ["test-noise"],
   severity: "warn",

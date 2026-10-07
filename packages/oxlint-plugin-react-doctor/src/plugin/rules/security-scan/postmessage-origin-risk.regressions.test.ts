@@ -18,6 +18,14 @@ describe("security-scan/postmessage-origin-risk — regressions", () => {
     expect(findings[0]?.title).toBeUndefined();
   });
 
+  it("flags a message listener whose event name contains a Unicode escape", () => {
+    const findings = runScanRule(postmessageOriginRisk, {
+      relativePath: "src/widget.ts",
+      content: `window.addEventListener("mess\\u0061ge", (event) => {\n  handleCommand(event.data);\n});\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("stays silent when the handler validates event.origin before reading event.data", () => {
     const findings = runScanRule(postmessageOriginRisk, {
       relativePath: "src/widget.ts",
@@ -129,6 +137,15 @@ describe("security-scan/postmessage-origin-risk — regressions", () => {
     const findings = runScanRule(postmessageOriginRisk, {
       relativePath: "src/lib/highlight-runtime.js",
       content: `let g = new Worker(n.filename);\ng.onmessage = function (e) {\n  u.highlightedCode = e.data;\n};\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on a short receiver with an explicit Worker parameter type", () => {
+    const findings = runScanRule(postmessageOriginRisk, {
+      relativePath: "src/textures.ts",
+      content:
+        "const connect = (w: Worker) => {\n  w.onmessage = (event) => applyTexture(event.data);\n};\n",
     });
     expect(findings).toHaveLength(0);
   });

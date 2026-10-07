@@ -1,3 +1,7 @@
+import {
+  REACT_ROUTER_RENDER_PROPERTY_NAMES,
+  REACT_ROUTER_RESOURCE_HANDLER_PROPERTY_NAMES,
+} from "../../constants/react-router.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticRouteProperty } from "../../utils/get-static-route-property.js";
@@ -5,9 +9,6 @@ import { hasActiveRouteProperty } from "../../utils/has-active-route-property.js
 import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-router-route-object.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
-
-const LEAF_CONTENT_PROPERTY_NAMES = ["Component", "element", "lazy"];
-const RESOURCE_ROUTE_PROPERTY_NAMES = ["action", "clientAction", "clientLoader", "loader"];
 
 export const reactRouterNoEmptyLeafRoute = wrapReactRouterRule(
   defineRule({
@@ -29,12 +30,16 @@ export const reactRouterNoEmptyLeafRoute = wrapReactRouterRule(
           return;
         }
         if (
-          LEAF_CONTENT_PROPERTY_NAMES.some((name) => hasActiveRouteProperty(context, node, name))
+          REACT_ROUTER_RENDER_PROPERTY_NAMES.some((name) =>
+            hasActiveRouteProperty(context, node, name),
+          )
         ) {
           return;
         }
         if (
-          RESOURCE_ROUTE_PROPERTY_NAMES.some((name) => hasActiveRouteProperty(context, node, name))
+          REACT_ROUTER_RESOURCE_HANDLER_PROPERTY_NAMES.some((name) =>
+            hasActiveRouteProperty(context, node, name),
+          )
         ) {
           return;
         }

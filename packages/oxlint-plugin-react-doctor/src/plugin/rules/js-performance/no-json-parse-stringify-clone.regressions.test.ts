@@ -15,6 +15,16 @@ const expectPass = (code: string): void => {
 };
 
 describe("js-performance/no-json-parse-stringify-clone — regressions", () => {
+  it("stays silent inside an explicitly named JSON-safe conversion helper", () => {
+    expectPass(`function asJsonSafe(value) {
+      return JSON.parse(JSON.stringify(value));
+    }`);
+  });
+
+  it("still flags a clone-named helper", () => {
+    expectFail(`const cloneValue = (value) => JSON.parse(JSON.stringify(value));`);
+  });
+
   it("stays silent when round-tripping a caught error before postMessage", () => {
     expectPass(`addEventListener('message', async () => {
       try {

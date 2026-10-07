@@ -115,6 +115,108 @@ describe("js-performance/js-combine-iterations — regressions", () => {
     `);
   });
 
+  it("does not flag a nine-element readonly const array literal chain", () => {
+    expectPass(`
+      export const COLUMNS = [
+        { key: 'one' },
+        { key: 'two' },
+        { key: 'three' },
+        { key: 'four' },
+        { key: 'five' },
+        { key: 'six' },
+        { key: 'seven' },
+        { key: 'eight' },
+        { key: 'nine' },
+      ] as const;
+      const keys = COLUMNS.filter(column => column.key !== 'nine').map(column => column.key);
+    `);
+  });
+
+  it("does not flag a single-use local var initialized with a small literal", () => {
+    expectPass(`
+      const selectSides = (value) => {
+        var sides = ['top', 'right', 'bottom', 'left', 'horizontal', 'vertical'];
+        return sides.filter(side => value[side]).map(side => side + '-' + value[side]);
+      };
+    `);
+  });
+
+  it("still flags an object-destructured prop with a small literal default", () => {
+    expectFail(`
+      const getLabels = (props) => {
+        const { items = ['one', 'two', 'three'] } = props;
+        return items.filter(item => item !== 'two').map(item => item.toUpperCase());
+      };
+    `);
+  });
+
+  it("still flags an array-destructured value with a small literal default", () => {
+    expectFail(`
+      const getLabels = (values) => {
+        const [items = ['one', 'two', 'three']] = values;
+        return items.filter(item => item !== 'two').map(item => item.toUpperCase());
+      };
+    `);
+  });
+
+  it("still flags a local var that is mutated before the chain", () => {
+    expectFail(`
+      const selectSides = (value) => {
+        var sides = ['top', 'right', 'bottom', 'left'];
+        sides.push(value.extraSide);
+        return sides.filter(side => value[side]).map(side => side + '-' + value[side]);
+      };
+    `);
+  });
+
+  it("still flags a const array that is mutated before the chain", () => {
+    expectFail(`
+      const sides = ['top', 'right', 'bottom', 'left'];
+      sides.push(extraSide);
+      const labels = sides.filter(side => selected[side]).map(side => side.toUpperCase());
+    `);
+  });
+
+  it("still flags a local var that escapes before the chain", () => {
+    expectFail(`
+      const selectSides = (value) => {
+        var sides = ['top', 'right', 'bottom', 'left'];
+        extendSides(sides);
+        return sides.filter(side => value[side]).map(side => side + '-' + value[side]);
+      };
+    `);
+  });
+
+  it("still flags a const array that escapes before the chain", () => {
+    expectFail(`
+      const sides = ['top', 'right', 'bottom', 'left'];
+      extendSides(sides);
+      const labels = sides.filter(side => selected[side]).map(side => side.toUpperCase());
+    `);
+  });
+
+  it("still flags a reassigned transpiled var", () => {
+    expectFail(`
+      var sides = ['top', 'right', 'bottom', 'left'];
+      sides = loadSides();
+      const labels = sides.filter(side => selected[side]).map(side => side.toUpperCase());
+    `);
+  });
+
+  it("does not flag a fixed small literal with a hole", () => {
+    expectPass(`
+      const slots = ['header', , 'content', 'footer'];
+      const labels = slots.filter(slot => slot !== 'footer').map(slot => String(slot));
+    `);
+  });
+
+  it("still flags a dynamically sized computed array", () => {
+    expectFail(`
+      const slots = Array.from({ length: slotCount }, (_, index) => index);
+      const labels = slots.filter(slot => slot > 0).map(slot => String(slot));
+    `);
+  });
+
   it("still flags a chain rooted at a large module-scope const array literal", () => {
     expectFail(`
       const ROWS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];

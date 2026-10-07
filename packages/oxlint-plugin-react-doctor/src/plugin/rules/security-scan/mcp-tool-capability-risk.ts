@@ -21,6 +21,7 @@ const MCP_TOOL_SURFACE_PREFILTER_PATTERN = /\b(?:tool|registerTool|setRequestHan
 
 export const mcpToolCapabilityRisk = defineRule({
   id: "mcp-tool-capability-risk",
+  defaultEnabled: false,
   title: "MCP tool exposes dangerous capability",
   severity: "warn",
   recommendation:

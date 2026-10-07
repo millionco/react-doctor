@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import reactDoctorPlugin from "oxlint-plugin-react-doctor";
+import { REACT_DOCTOR_RULE_REGISTRY } from "oxlint-plugin-react-doctor/core";
+import type { Capability } from "oxlint-plugin-react-doctor/core";
 import type {
   CleanedDiagnostic,
   Diagnostic,
@@ -23,6 +24,8 @@ import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
 import { getCapabilities } from "../../project-info/capabilities.js";
 import { appendReanimatedSharedValueHint } from "../../utils/append-reanimated-shared-value-hint.js";
 import { columnOfUtf8Offset } from "../../utils/column-of-utf8-offset.js";
+import { mapPreparedSourceLabels } from "../../utils/map-prepared-source-labels.js";
+import type { PreparedSourceMap } from "../../utils/prepare-lint-sources.js";
 import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
 import { shouldSuppressCompilerFindingInWorklet } from "./should-suppress-compiler-finding-in-worklet.js";
@@ -115,11 +118,11 @@ const lookupOwnString = (record: Record<string, string>, key: string): string | 
 // public-env prefix); everything else renders the static `recommendation`.
 // Core carries no rule-specific prose or rule-name matches here.
 const getRuleRecommendation = (ruleName: string, project: ProjectInfo): string | undefined => {
-  const rule = reactDoctorPlugin.rules[ruleName];
+  const rule = REACT_DOCTOR_RULE_REGISTRY[ruleName];
   if (!rule) return undefined;
   if (rule.recommendationFor) {
     const capabilities = getCapabilities(project);
-    const conditionalRecommendation = rule.recommendationFor((capability) =>
+    const conditionalRecommendation = rule.recommendationFor((capability: Capability) =>
       capabilities.has(capability),
     );
     if (conditionalRecommendation !== undefined) return conditionalRecommendation;
@@ -132,13 +135,13 @@ const getRuleRecommendation = (ruleName: string, project: ProjectInfo): string |
 // scan summary. Used by `resolveDiagnosticCategory` below and by
 // `validateRuleRegistration` to assert per-rule metadata coverage.
 export const getRuleCategory = (ruleName: string): string | undefined =>
-  reactDoctorPlugin.rules[ruleName]?.category;
+  REACT_DOCTOR_RULE_REGISTRY[ruleName]?.category;
 
 // Short human headline for a rule (e.g. "Array index used as a key").
 // Only react-doctor rules carry one; adopted third-party rules return
 // undefined and renderers fall back to the `plugin/rule` id.
 const getRuleTitle = (ruleName: string): string | undefined =>
-  reactDoctorPlugin.rules[ruleName]?.title;
+  REACT_DOCTOR_RULE_REGISTRY[ruleName]?.title;
 
 // react-doctor rules carry their own `title`; adopted React Compiler
 // diagnostics get a fixed human headline instead of their bare id.
@@ -234,7 +237,10 @@ const resolveCleanedDiagnostic = (
   };
 };
 
-const parseRuleCode = (code: string): { plugin: string; rule: string } => {
+const parseRuleCode = (code: unknown): { plugin: string; rule: string } => {
+  if (typeof code !== "string" || code.length === 0) {
+    return { plugin: "unknown", rule: "unknown" };
+  }
   const match = code.match(/^(.+)\((.+)\)$/);
   if (!match) return { plugin: "unknown", rule: code };
   return { plugin: match[1].replace(/^eslint-plugin-/, ""), rule: match[2] };
@@ -255,7 +261,7 @@ const resolveDiagnosticCategory = (plugin: string, rule: string): string => {
 // rules in other categories opt in via their `matchByOccurrence` flag.
 const resolveMatchByOccurrence = (rule: string, category: string): boolean =>
   OCCURRENCE_MATCHED_CATEGORIES.has(category) ||
-  Boolean(reactDoctorPlugin.rules[rule]?.matchByOccurrence);
+  Boolean(REACT_DOCTOR_RULE_REGISTRY[rule]?.matchByOccurrence);
 
 /**
  * Maps oxlint's non-primary labels (`labels[1..]`) into related source
@@ -311,13 +317,19 @@ const isMappableOxlintDiagnostic = (value: unknown): boolean =>
   Array.isArray(value.labels) &&
   value.labels.every(isOxlintLabel);
 
-// oxlint attributes every routine diagnostic — including code-less parse
-// errors and unused-directive warnings — to a file. A diagnostic without a
-// filename is the engine reporting its own failure (e.g. "Error running JS
-// plugin." from a throwing configured plugin), which means the lint results
-// are incomplete and a clean report would be a false clean.
+// Oxlint 1.78 attributes JS-plugin runtime failures to the file being linted,
+// but unlike routine diagnostics the failure has no rule code or source label.
+// Older releases omitted the filename. Both shapes mean the lint results are
+// incomplete and a clean report would be a false clean.
 const isEngineFailureDiagnostic = (value: unknown): boolean =>
-  !isRecord(value) || typeof value.filename !== "string" || value.filename.length === 0;
+  !isRecord(value) ||
+  typeof value.filename !== "string" ||
+  value.filename.length === 0 ||
+  (typeof value.message === "string" &&
+    value.message.startsWith("Error running JS plugin.") &&
+    (typeof value.code !== "string" || value.code.length === 0) &&
+    Array.isArray(value.labels) &&
+    value.labels.length === 0);
 
 const isOxlintOutput = (value: unknown): value is OxlintOutput =>
   isRecord(value) && Array.isArray(value.diagnostics);
@@ -334,6 +346,7 @@ export const parseOxlintOutput = (
   project: ProjectInfo,
   rootDirectory: string,
   sourcePathByLintPath?: ReadonlyMap<string, string>,
+  sourceMapByLintPath?: ReadonlyMap<string, PreparedSourceMap>,
 ): Diagnostic[] => {
   if (!stdout) return [];
 
@@ -396,6 +409,8 @@ export const parseOxlintOutput = (
     path.isAbsolute(filename) ? filename : path.resolve(rootDirectory || ".", filename);
   const resolveMappedSourceFilename = (filename: string): string | undefined =>
     sourcePathByLintPath?.get(path.normalize(resolveAbsolutePath(filename)));
+  const resolvePreparedSourceMap = (filename: string): PreparedSourceMap | undefined =>
+    sourceMapByLintPath?.get(path.normalize(resolveAbsolutePath(filename)));
   const resolveSourceFilename = (filename: string): string =>
     resolveMappedSourceFilename(filename) ?? filename;
   const readSourceBuffer = (filename: string): Buffer | null => {
@@ -429,7 +444,24 @@ export const parseOxlintOutput = (
     return minified;
   };
 
-  const mappedDiagnostics = parsed.diagnostics
+  const sourceMappedDiagnostics = parsed.diagnostics.flatMap((diagnostic) => {
+    const preparedSourceMap = resolvePreparedSourceMap(diagnostic.filename);
+    if (preparedSourceMap === undefined) return [diagnostic];
+    const { plugin, rule } = parseRuleCode(diagnostic.code);
+    // HACK: Astro's canonical TSX conversion adds wrapper fragments and keeps
+    // HTML attribute names. Only design-tagged rules consume this shadow;
+    // native Astro linting still handles scripts and every other rule.
+    if (plugin !== "react-doctor" || !REACT_DOCTOR_RULE_REGISTRY[rule]?.tags?.includes("design")) {
+      return [];
+    }
+    const labels = mapPreparedSourceLabels(diagnostic.labels, preparedSourceMap);
+    const sourceFilename = resolveMappedSourceFilename(diagnostic.filename);
+    return labels === null || sourceFilename === undefined
+      ? []
+      : [{ ...diagnostic, filename: sourceFilename, labels }];
+  });
+
+  const mappedDiagnostics = sourceMappedDiagnostics
     .filter(
       (diagnostic) =>
         isMappableOxlintDiagnostic(diagnostic) &&
@@ -457,10 +489,9 @@ export const parseOxlintOutput = (
         "\\",
         "/",
       );
-      // Carry oxlint's UTF-8 byte span through to the Diagnostic so
-      // editor integrations (LSP) can resolve a precise range from the
-      // in-memory document. `line` / `column` stay the source of truth
-      // for everything else; offset / length are additive.
+      // Carry oxlint's UTF-8 byte span through to the Diagnostic so consumers
+      // can resolve a precise range. `line` / `column` stay the source of truth;
+      // offset / length are additive.
       const primarySpan = primaryLabel?.span;
       const sourceBuffer = primarySpan ? readSourceBuffer(diagnostic.filename) : null;
       const relatedLocations = buildRelatedLocations(

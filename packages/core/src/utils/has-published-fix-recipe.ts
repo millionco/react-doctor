@@ -1,4 +1,4 @@
-import reactDoctorPlugin from "oxlint-plugin-react-doctor";
+import { REACT_DOCTOR_RULE_REGISTRY } from "oxlint-plugin-react-doctor/core";
 import type { Diagnostic } from "../types/index.js";
 
 /**
@@ -6,9 +6,9 @@ import type { Diagnostic } from "../types/index.js";
  * `${DOCS_RULES_BASE_URL}/react-doctor/<rule>`
  * (see `buildRuleDocsUrl`).
  *
- * Recipes are generated from react-doctor's own engine rules, so only
- * those resolve. Dead-code (`deslop`), the synthetic environment and
- * supply-chain checks (`require-reduced-motion`, `require-pnpm-hardening`,
+ * Recipes are generated from React Doctor's registered rules. Synthetic
+ * environment and supply-chain checks
+ * (`require-reduced-motion`, `require-pnpm-hardening`,
  * `no-vulnerable-react-server-components` — `react-doctor`-namespaced but not
  * engine rules), and adopted
  * third-party plugins (`eslint`, `unicorn`, `react-hooks-js`, …) have no
@@ -16,4 +16,5 @@ import type { Diagnostic } from "../types/index.js";
  * a 404. Gate the directive on this predicate.
  */
 export const hasPublishedFixRecipe = (diagnostic: Pick<Diagnostic, "plugin" | "rule">): boolean =>
-  diagnostic.plugin === "react-doctor" && Object.hasOwn(reactDoctorPlugin.rules, diagnostic.rule);
+  diagnostic.plugin === "react-doctor" &&
+  Object.hasOwn(REACT_DOCTOR_RULE_REGISTRY, diagnostic.rule);

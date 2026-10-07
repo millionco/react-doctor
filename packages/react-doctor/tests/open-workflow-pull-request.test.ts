@@ -1,5 +1,11 @@
+import * as fs from "node:fs";
+import os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { openWorkflowPullRequest } from "../src/cli/utils/open-workflow-pull-request.js";
+import {
+  openWorkflowPullRequest,
+  stageWorkflowFile,
+} from "../src/cli/utils/open-workflow-pull-request.js";
 import type { CommandRunner, RunCommandResult } from "../src/cli/utils/run-command.js";
 
 const succeed = (stdout = ""): RunCommandResult => ({ success: true, stdout, stderr: "" });
@@ -206,5 +212,64 @@ describe("openWorkflowPullRequest", () => {
     });
     expect(result).toEqual({ status: "not-attempted", reason: "gh-not-installed" });
     expect(invocations).not.toContain(GH_PR_LIST);
+  });
+
+  it("rejects a workflow path outside the detected repository", async () => {
+    const { run, invocations } = recordingRunner(cleanRepoResponses());
+    const result = await openWorkflowPullRequest({
+      workflowPath: "/outside/react-doctor.yml",
+      baseBranch: "main",
+      run,
+      checkCommandAvailable: () => true,
+    });
+
+    expect(result).toEqual({
+      status: "not-attempted",
+      reason: "workflow-outside-repository",
+    });
+    expect(invocations).toEqual([TOPLEVEL]);
+  });
+
+  it("does not stage a workflow path outside the detected repository", async () => {
+    const { run, invocations } = recordingRunner(cleanRepoResponses());
+
+    expect(await stageWorkflowFile({ workflowPath: "/outside/react-doctor.yml", run })).toBe(false);
+    expect(invocations).toEqual([TOPLEVEL]);
+  });
+
+  it("accepts a workflow path through a symlinked checkout", async () => {
+    const temporaryDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "react-doctor-workflow-path-"),
+    );
+    const physicalRepository = path.join(temporaryDirectory, "repository");
+    const repositoryAlias = path.join(temporaryDirectory, "repository-alias");
+    const physicalWorkflowPath = path.join(physicalRepository, WORKFLOW_RELATIVE);
+    const aliasedWorkflowPath = path.join(repositoryAlias, WORKFLOW_RELATIVE);
+    fs.mkdirSync(path.dirname(physicalWorkflowPath), { recursive: true });
+    fs.writeFileSync(physicalWorkflowPath, "");
+    fs.symlinkSync(
+      physicalRepository,
+      repositoryAlias,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    try {
+      const openRunner = recordingRunner({ [TOPLEVEL]: succeed(physicalRepository) });
+      expect(
+        await openWorkflowPullRequest({
+          workflowPath: aliasedWorkflowPath,
+          run: openRunner.run,
+          checkCommandAvailable: () => false,
+        }),
+      ).toEqual({ status: "not-attempted", reason: "gh-not-installed" });
+
+      const stageRunner = recordingRunner({ [TOPLEVEL]: succeed(physicalRepository) });
+      expect(
+        await stageWorkflowFile({ workflowPath: aliasedWorkflowPath, run: stageRunner.run }),
+      ).toBe(true);
+      expect(stageRunner.invocations).toContain(`git add -- ${WORKFLOW_RELATIVE}`);
+    } finally {
+      fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
   });
 });

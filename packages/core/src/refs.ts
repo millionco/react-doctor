@@ -1,17 +1,14 @@
 import * as Context from "effect/Context";
 import {
-  DEAD_CODE_PHASE_TIMEOUT_MS,
-  LINT_PHASE_TIMEOUT_MS,
-  MIN_SCAN_CONCURRENCY,
   OXLINT_OUTPUT_MAX_BYTES,
   OXLINT_SPAWN_TIMEOUT_MS,
-  SCAN_TOTAL_DEADLINE_MS,
   SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS,
 } from "./constants.js";
 import { readPositiveEnvMs } from "./utils/read-positive-env-ms.js";
-import { resolveAutoScanConcurrency } from "./utils/resolve-auto-scan-concurrency.js";
+import { resolveConfiguredScanConcurrency } from "./utils/resolve-configured-scan-concurrency.js";
 import { resolveLintBatchOrdering } from "./utils/resolve-lint-batch-ordering.js";
-import { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
+import type { OxlintSpawnSlotsHandle } from "./utils/create-oxlint-spawn-slots.js";
+import type { InvocationCachesHandle } from "./utils/create-invocation-caches.js";
 
 /**
  * Per-batch oxlint wall-clock budget. Reads from the env var on
@@ -28,40 +25,35 @@ export class OxlintSpawnTimeoutMs extends Context.Reference<number>(
 ) {}
 
 /**
- * Effect-side cap on the lint phase. The env var lets CI / eval runners
- * raise the phase budget for slow large repos without recompiling.
+ * Optional Effect-side cap on the lint phase. Unbounded unless explicitly
+ * configured through the env var or a test layer.
  * Tests override via `Layer.succeed(LintPhaseTimeoutMs, ...)`.
  */
-export class LintPhaseTimeoutMs extends Context.Reference<number>(
+export class LintPhaseTimeoutMs extends Context.Reference<number | null>(
   "react-doctor/LintPhaseTimeoutMs",
   {
-    defaultValue: () =>
-      readPositiveEnvMs("REACT_DOCTOR_LINT_PHASE_TIMEOUT_MS", LINT_PHASE_TIMEOUT_MS),
+    defaultValue: () => readPositiveEnvMs("REACT_DOCTOR_LINT_PHASE_TIMEOUT_MS", null),
   },
 ) {}
 
-/**
- * Effect-side cap on the dead-code phase, sitting above the in-worker
- * timeout as a runtime-independent backstop. The env var raises it for
- * type-heavy projects; tests override via
- * `Layer.succeed(DeadCodePhaseTimeoutMs, ...)`.
- */
-export class DeadCodePhaseTimeoutMs extends Context.Reference<number>(
+/** @deprecated Compatibility-named timeout for the maintainability phase. */
+export class DeadCodePhaseTimeoutMs extends Context.Reference<number | null>(
   "react-doctor/DeadCodePhaseTimeoutMs",
   {
-    defaultValue: () =>
-      readPositiveEnvMs("REACT_DOCTOR_DEAD_CODE_PHASE_TIMEOUT_MS", DEAD_CODE_PHASE_TIMEOUT_MS),
+    defaultValue: () => readPositiveEnvMs("REACT_DOCTOR_DEAD_CODE_PHASE_TIMEOUT_MS", null),
   },
 ) {}
 
 /**
- * Overall scan deadline backstop, bounding everything the per-phase
- * timeouts don't (wedged git / IO). The env var raises it for very
- * large repos; tests override via `Layer.succeed(ScanDeadlineMs, ...)`.
+ * Optional overall scan deadline. Unbounded unless explicitly configured
+ * through the env var or a test layer.
  */
-export class ScanDeadlineMs extends Context.Reference<number>("react-doctor/ScanDeadlineMs", {
-  defaultValue: () => readPositiveEnvMs("REACT_DOCTOR_SCAN_DEADLINE_MS", SCAN_TOTAL_DEADLINE_MS),
-}) {}
+export class ScanDeadlineMs extends Context.Reference<number | null>(
+  "react-doctor/ScanDeadlineMs",
+  {
+    defaultValue: () => readPositiveEnvMs("REACT_DOCTOR_SCAN_DEADLINE_MS", null),
+  },
+) {}
 
 /**
  * Wall-clock budget for the supply-chain check when it runs on a background
@@ -111,40 +103,24 @@ export class OxlintOutputMaxBytes extends Context.Reference<number>(
  * `[MIN_SCAN_CONCURRENCY, HARD_MAX_SCAN_CONCURRENCY]`.
  */
 export class OxlintConcurrency extends Context.Reference<number>("react-doctor/OxlintConcurrency", {
-  defaultValue: () => {
-    const raw = process.env["REACT_DOCTOR_PARALLEL"];
-    if (raw === undefined) return resolveAutoScanConcurrency();
-    const normalized = raw.trim().toLowerCase();
-    if (normalized === "0" || normalized === "false" || normalized === "off") {
-      return MIN_SCAN_CONCURRENCY;
-    }
-    const parsed = Number.parseInt(normalized, 10);
-    // A positive integer pins the worker count; everything else (empty,
-    // `auto`/`true`/`on`, or unparseable) takes the parallel default.
-    if (Number.isInteger(parsed) && parsed > 0) return resolveScanConcurrency(parsed);
-    return resolveAutoScanConcurrency();
-  },
+  defaultValue: resolveConfiguredScanConcurrency,
 }) {}
 
-/**
- * Three-state control for overlapping the dead-code pass with the lint pass —
- * forking dead-code as a child fiber that runs DURING lint instead of strictly
- * after it.
- *
- *   - `"auto"` (default) / `"off"` → strictly SEQUENTIAL: dead-code runs after
- *     lint with the full core budget. Both deslop's parse pool and the oxlint
- *     pool are CPU-bound and each size themselves to all cores, so overlapping
- *     them only oversubscribes (~2x the cores) and starves the parse pass past
- *     its timeout — for no wall-clock win, since there are no spare cores to
- *     absorb the second pass. Sequential is both faster per-phase and safe.
- *   - `"on"` → force the overlap anyway. The orchestrator then SPLITS the core
- *     budget (`DEAD_CODE_OVERLAP_PARSE_SHARE`): deslop's parse pool is capped
- *     and lint shrinks to the remainder, so the two sum to the cores instead of
- *     doubling them, and the dead-code timeout scales up for the reduced share.
- *
- * Seeded from `REACT_DOCTOR_DEAD_CODE_OVERLAP` so operators get a redeploy-free
- * switch; tests pin it via `Layer.succeed(DeadCodeOverlap, ...)`.
- */
+export class OxlintSpawnSlots extends Context.Reference<OxlintSpawnSlotsHandle | null>(
+  "react-doctor/OxlintSpawnSlots",
+  {
+    defaultValue: () => null,
+  },
+) {}
+
+export class InvocationCaches extends Context.Reference<InvocationCachesHandle | null>(
+  "react-doctor/InvocationCaches",
+  {
+    defaultValue: () => null,
+  },
+) {}
+
+/** @deprecated Retained for configuration compatibility and ignored by scans. */
 export class DeadCodeOverlap extends Context.Reference<"auto" | "on" | "off">(
   "react-doctor/DeadCodeOverlap",
   {
@@ -160,14 +136,14 @@ export class DeadCodeOverlap extends Context.Reference<"auto" | "on" | "off">(
 /**
  * How the full-scan lint pass plans its file batches. `"cost"` (the default)
  * builds size-balanced LPT batches (`planLintBatches`): the same mandatory
- * batch count as greedy chunking (`ceil(files / 100)`), but every batch gets
- * an even share of files AND bytes, so no 100-file chunk is a straggler while
+ * batch count as greedy chunking, but every batch gets an even share of files
+ * AND bytes, so no full chunk is a straggler while
  * the remainder-batch worker idles — and the heavy files are SPREAD across
  * batches, the precondition the old sort-desc-then-chunk-100 `cost` mode
  * lacked (it packed the heaviest files into one wave-1 straggler batch,
  * measurably regressing size-skewed repos, which is why it never earned the
  * default). `"arrival"` (`REACT_DOCTOR_LINT_BATCH_ORDERING=arrival`) is the
- * rollback hatch to plain greedy 100-file chunking in discovery order. Tests
+ * rollback hatch to plain greedy fixed-size chunking in discovery order. Tests
  * override via `Layer.succeed(LintBatchOrdering, ...)`. Diff / staged scans
  * never reach this — they pass user-scoped `includePaths` that skip discovery
  * and stay in arrival order; only the full-scan branch reads it.
@@ -232,31 +208,6 @@ export class SidecarLintCacheEnabled extends Context.Reference<boolean>(
       const noSidecarCache = process.env["REACT_DOCTOR_NO_SIDECAR_CACHE"]?.toLowerCase() ?? "";
       if (CACHE_DISABLED_VALUES.has(noCache)) return false;
       if (CACHE_DISABLED_VALUES.has(noSidecarCache)) return false;
-      return true;
-    },
-  },
-) {}
-
-/**
- * Whether the whole-project dead-code result cache
- * (`dead-code/dead-code-result-cache.ts`) is active. Defaults ON — a rescan
- * whose inputs (source tree, manifests, configs, analyzer version) are
- * unchanged replays the stored diagnostics instead of re-running the
- * analysis worker. Opt-OUT, two knobs (matching the per-file lint cache):
- *
- *   - `REACT_DOCTOR_NO_CACHE` — the global off-switch.
- *   - `REACT_DOCTOR_NO_DEAD_CODE_CACHE` — granular: bust only this cache.
- *
- * Tests override via `Layer.succeed(DeadCodeResultCacheEnabled, false)`.
- */
-export class DeadCodeResultCacheEnabled extends Context.Reference<boolean>(
-  "react-doctor/DeadCodeResultCacheEnabled",
-  {
-    defaultValue: () => {
-      const noCache = process.env["REACT_DOCTOR_NO_CACHE"]?.toLowerCase() ?? "";
-      const noDeadCodeCache = process.env["REACT_DOCTOR_NO_DEAD_CODE_CACHE"]?.toLowerCase() ?? "";
-      if (CACHE_DISABLED_VALUES.has(noCache)) return false;
-      if (CACHE_DISABLED_VALUES.has(noDeadCodeCache)) return false;
       return true;
     },
   },

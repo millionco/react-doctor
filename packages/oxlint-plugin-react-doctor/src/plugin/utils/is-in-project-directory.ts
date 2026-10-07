@@ -21,6 +21,9 @@ export const isInProjectDirectory = (
   const rootDirectory = getReactDoctorStringSetting(context.settings, "rootDirectory");
   const relativeFilename = getProjectRelativeFilename(filename, rootDirectory);
   if (relativeFilename !== filename) {
+    if (directoryPath === "app") {
+      return relativeFilename.startsWith("app/") || relativeFilename.startsWith("src/app/");
+    }
     return (
       relativeFilename.startsWith(`${directoryPath}/`) ||
       relativeFilename.includes(directorySegment)

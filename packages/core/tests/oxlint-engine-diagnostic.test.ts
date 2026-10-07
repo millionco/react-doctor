@@ -47,6 +47,15 @@ describe("parseOxlintOutput engine diagnostics", () => {
         labels: [],
       },
     ],
+    [
+      "plugin runtime error attributed to a file",
+      {
+        message: "Error running JS plugin.\nFile path: /project/src/App.tsx",
+        severity: "error",
+        filename: "src/App.tsx",
+        labels: [],
+      },
+    ],
     ["malformed record", null],
   ])(
     "hard-fails on an engine-level diagnostic even next to healthy findings: %s",

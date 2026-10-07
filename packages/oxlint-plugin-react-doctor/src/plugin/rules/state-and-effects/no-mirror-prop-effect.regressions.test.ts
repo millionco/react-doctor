@@ -111,4 +111,17 @@ describe("no-mirror-prop-effect — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("value");
   });
+
+  it("still flags a prop mirror returned from a block callback", () => {
+    const result = runRule(
+      noMirrorPropEffect,
+      `function Form({ value }) {
+        const [draft, setDraft] = useState(value);
+        useEffect(() => { return setDraft(value); }, [value]);
+        return <span>{draft}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -54,8 +54,8 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
   };
 });
 
-vi.mock("../src/inspect.js", () => ({
-  inspect: vi.fn(
+vi.mock("../src/inspect.js", () => {
+  const inspect = vi.fn(
     async (directory: string): Promise<InspectResult> => ({
       diagnostics: [],
       score: null,
@@ -89,10 +89,15 @@ vi.mock("../src/inspect.js", () => ({
       },
       elapsedMilliseconds: 1,
     }),
-  ),
-}));
+  );
+  return {
+    inspect,
+    createInvocationInspect: () => inspect,
+  };
+});
 
 vi.mock("../src/cli/utils/select-projects.js", () => ({
+  discoverWorkspacePackages: vi.fn(() => []),
   selectProjects: vi.fn(async () => mockState.projectDirectories),
 }));
 
@@ -119,10 +124,10 @@ vi.mock("../src/cli/utils/should-skip-prompts.js", () => ({
   shouldSkipPrompts: vi.fn(() => false),
 }));
 
-vi.mock("../src/cli/utils/render-multi-project-summary.js", async () => {
+vi.mock("../src/cli/utils/print-completed-scans-headless.js", async () => {
   const Effect = await import("effect/Effect");
   return {
-    printMultiProjectSummary: vi.fn(() => Effect.void),
+    printCompletedScansHeadless: vi.fn(() => Effect.void),
   };
 });
 
@@ -234,6 +239,39 @@ describe("inspectAction setup prompt", () => {
       expect.objectContaining({
         includePaths: ["src/Dashboard.tsx"],
       }),
+    );
+  });
+
+  it("scans positional file paths without resolving a Git diff", async () => {
+    const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-file-paths-"));
+    tempDirectories.push(rootDirectory);
+    const webDirectory = path.join(rootDirectory, "apps", "web");
+    const adminDirectory = path.join(rootDirectory, "apps", "admin");
+    writePackageJson(rootDirectory, {
+      name: "monorepo",
+      workspaces: ["apps/*"],
+      scripts: {},
+    });
+    writePackageJson(webDirectory, { name: "web", scripts: {} });
+    writePackageJson(adminDirectory, { name: "admin", scripts: {} });
+    mockState.projectDirectories = [webDirectory, adminDirectory];
+
+    await inspectAction(rootDirectory, { lint: false }, "inspect", [
+      "apps/web/src/App.tsx",
+      "apps/admin/src/Dashboard.tsx",
+    ]);
+
+    expect(mockState.lifecycleEvents).not.toContain("diff");
+    expect(inspect).toHaveBeenCalledTimes(2);
+    expect(inspect).toHaveBeenNthCalledWith(
+      1,
+      webDirectory,
+      expect.objectContaining({ includePaths: ["src/App.tsx"] }),
+    );
+    expect(inspect).toHaveBeenNthCalledWith(
+      2,
+      adminDirectory,
+      expect.objectContaining({ includePaths: ["src/Dashboard.tsx"] }),
     );
   });
 

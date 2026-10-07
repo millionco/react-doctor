@@ -939,6 +939,19 @@ describe("performance/rendering-hydration-no-flicker — regressions", () => {
     `);
   });
 
+  it("still flags a media capability branch replaced by a passive effect", () => {
+    expectFail(`
+      import { useEffect, useState } from "react";
+      const Background = ({ mime, src }) => {
+        const [isPlayableVideo, setIsPlayableVideo] = useState(false);
+        useEffect(() => {
+          setIsPlayableVideo(document.createElement("video").canPlayType(mime) !== "");
+        }, [mime]);
+        return isPlayableVideo ? <video src={src} /> : <img src={src} alt="" />;
+      };
+    `);
+  });
+
   it("still flags a setter feeding visible content", () => {
     expectFail(`
       const NoteForm = () => {

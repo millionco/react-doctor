@@ -10,6 +10,11 @@ import { Git } from "./git.js";
 export interface StagedSnapshot {
   readonly tempDirectory: string;
   readonly stagedFiles: ReadonlyArray<string>;
+  /**
+   * Staged paths that never made it into the snapshot — unreadable from the
+   * index, or refused for resolving outside the temp tree.
+   */
+  readonly unmaterializedFiles: ReadonlyArray<string>;
   readonly cleanup: () => void;
 }
 
@@ -31,10 +36,11 @@ export class StagedFiles extends Context.Service<
     /**
      * Discovers source files staged for commit (lintable staged paths
      * from `git diff --cached` — JS/TS/HTML minus generated bundles).
+     * `null` when git could not read the index; `[]` when nothing is staged.
      */
     readonly discoverSourceFiles: (
       directory: string,
-    ) => Effect.Effect<ReadonlyArray<string>, ReactDoctorError>;
+    ) => Effect.Effect<ReadonlyArray<string> | null, ReactDoctorError>;
     /**
      * Materializes the supplied staged files into `tempDirectory`,
      * preserving the project layout and the well-known project config
@@ -46,6 +52,7 @@ export class StagedFiles extends Context.Service<
       readonly directory: string;
       readonly stagedFiles: ReadonlyArray<string>;
       readonly tempDirectory: string;
+      readonly configSubdirectories?: ReadonlyArray<string>;
     }) => Effect.Effect<StagedSnapshot, ReactDoctorError>;
   }
 >()("react-doctor/StagedFiles") {
@@ -56,10 +63,12 @@ export class StagedFiles extends Context.Service<
       return StagedFiles.of({
         discoverSourceFiles: (directory) =>
           git.stagedFilePaths(directory).pipe(
-            Effect.map((entries) => entries.filter(isLintableSourceFile)),
+            Effect.map((entries) =>
+              entries === null ? null : entries.filter(isLintableSourceFile),
+            ),
             Effect.withSpan("StagedFiles.discoverSourceFiles"),
           ),
-        materialize: ({ directory, stagedFiles, tempDirectory }) =>
+        materialize: ({ directory, stagedFiles, tempDirectory, configSubdirectories }) =>
           // Per-file git failures (missing binary, buffer overflow, spawn
           // errors) must NOT sink the whole snapshot — `materializeSourceTree`
           // folds each read failure to `null` and skips that path, so the
@@ -68,6 +77,7 @@ export class StagedFiles extends Context.Service<
             directory,
             files: stagedFiles,
             tempDirectory,
+            configSubdirectories,
             readContent: (relativePath) =>
               git.showStagedContent(directory, relativePath, {
                 maxBufferBytes: GIT_SHOW_MAX_BUFFER_BYTES,
@@ -78,6 +88,7 @@ export class StagedFiles extends Context.Service<
                 ({
                   tempDirectory: tree.tempDirectory,
                   stagedFiles: tree.materializedFiles,
+                  unmaterializedFiles: tree.unmaterializedFiles,
                   cleanup: tree.cleanup,
                 }) satisfies StagedSnapshot,
             ),
@@ -104,6 +115,7 @@ export class StagedFiles extends Context.Service<
           Effect.succeed({
             tempDirectory,
             stagedFiles: snapshot.materializedFiles ?? snapshot.sourceFiles ?? [],
+            unmaterializedFiles: [],
             cleanup: () => {
               /* test snapshot does not own any disk state */
             },

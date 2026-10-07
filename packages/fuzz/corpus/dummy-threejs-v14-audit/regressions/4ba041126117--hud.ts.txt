@@ -1,0 +1,289 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 4ba04112611711489956d9f69dda085123bd0442f30e0bc5877ce1800e6f028f
+/**
+ * DOM heads-up display. Built in code so the markup stays next to the state it
+ * reflects. Everything the player needs to make the anchor decision lives in
+ * the right-hand readout: what the shadow is touching, how steep it is, and how
+ * long the window stays open.
+ */
+
+import { clamp01 } from "./mathx";
+
+export type SurfaceLabel = "SHELF" | "CLIFF" | "RIVER" | "VOID";
+
+export interface ReadoutState {
+  surface: SurfaceLabel;
+  slopeDeg: number;
+  maxSlopeDeg: number;
+  dropSeconds: number;
+  offset: number;
+  anchor: "none" | "risky" | "ready";
+  centering: number;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html !== undefined) n.innerHTML = html;
+  return n;
+}
+
+export class Hud {
+  readonly root = el("div");
+  private readonly spanBig: HTMLElement;
+  private readonly scoreBig: HTMLElement;
+  private readonly bestSub: HTMLElement;
+  private readonly pips: HTMLElement[] = [];
+  private readonly readout: HTMLElement;
+  private readonly surfVal: HTMLElement;
+  private readonly slopeVal: HTMLElement;
+  private readonly slopeFill: HTMLElement;
+  private readonly slopeMark: HTMLElement;
+  private readonly dropVal: HTMLElement;
+  private readonly offsetVal: HTMLElement;
+  private readonly anchorFlag: HTMLElement;
+  private readonly poiseWrap: HTMLElement;
+  private readonly poiseFill: HTMLElement;
+  private readonly chargeWrap: HTMLElement;
+  private readonly chargeFill: HTMLElement;
+  private readonly chargeBand: HTMLElement;
+  private readonly promptEl: HTMLElement;
+  private readonly toast: HTMLElement;
+  private readonly toastLine: HTMLElement;
+  private readonly toastSub: HTMLElement;
+  private readonly overlay: HTMLElement;
+  private toastTimer = 0;
+
+  constructor(spanCount: number) {
+    this.root.id = "hud";
+
+    /* top bar */
+    const topbar = el("div");
+    topbar.id = "topbar";
+    const spanStat = el("div", "panel stat");
+    this.spanBig = el("div", "big", "0");
+    spanStat.append(this.spanBig, el("div", "sub", `/ ${spanCount} SPANS`));
+    const pipBox = el("div", "panel");
+    pipBox.id = "pips";
+    for (let i = 0; i < spanCount; i++) {
+      const p = el("div", "pip");
+      this.pips.push(p);
+      pipBox.append(p);
+    }
+    const scoreStat = el("div", "panel stat");
+    this.scoreBig = el("div", "big", "0");
+    this.bestSub = el("div", "sub", "BEST 0");
+    scoreStat.append(this.scoreBig, this.bestSub);
+    topbar.append(spanStat, pipBox, scoreStat);
+
+    /* shadow readout */
+    this.readout = el("div", "panel");
+    this.readout.id = "readout";
+    this.surfVal = el("div", "v", "—");
+    this.slopeVal = el("div", "v", "—");
+    this.dropVal = el("div", "v", "—");
+    this.offsetVal = el("div", "v", "—");
+    const rowSurf = el("div", "row");
+    rowSurf.append(el("span", "k", "SHADOW ON"), this.surfVal);
+    const rowSlope = el("div", "row");
+    rowSlope.append(el("span", "k", "LANDING NORMAL"), this.slopeVal);
+    const slopeBar = el("div", "bar");
+    this.slopeFill = el("i");
+    this.slopeMark = el("b");
+    slopeBar.append(this.slopeFill, this.slopeMark);
+    const rowDrop = el("div", "row");
+    rowDrop.append(el("span", "k", "ANCHOR WINDOW"), this.dropVal);
+    const rowOff = el("div", "row");
+    rowOff.append(el("span", "k", "SHADOW LEAD"), this.offsetVal);
+    this.anchorFlag = el("div", undefined, "NO ANCHOR");
+    this.anchorFlag.id = "anchorFlag";
+    this.readout.append(
+      el("div", "title", "SHADOW TELEMETRY"),
+      rowSurf,
+      rowSlope,
+      slopeBar,
+      rowOff,
+      rowDrop,
+      this.anchorFlag,
+    );
+
+    /* poise */
+    this.poiseWrap = el("div", "panel");
+    this.poiseWrap.id = "poiseWrap";
+    const poiseBar = el("div");
+    poiseBar.id = "poiseBar";
+    this.poiseFill = el("i");
+    poiseBar.append(this.poiseFill);
+    this.poiseWrap.append(el("div", "k", "POISE"), poiseBar);
+
+    /* charge */
+    this.chargeWrap = el("div", "panel");
+    this.chargeWrap.id = "chargeWrap";
+    const track = el("div");
+    track.id = "chargeTrack";
+    this.chargeBand = el("div");
+    this.chargeBand.id = "chargeBand";
+    this.chargeFill = el("div");
+    this.chargeFill.id = "chargeFill";
+    track.append(this.chargeBand, this.chargeFill);
+    const legend = el("div", "legend");
+    legend.append(el("span", undefined, "SHORT"), el("span", undefined, "LEAP CHARGE"), el("span", undefined, "LONG"));
+    this.chargeWrap.append(track, legend);
+
+    /* prompt + toast */
+    this.promptEl = el("div");
+    this.promptEl.id = "prompt";
+    this.toast = el("div");
+    this.toast.id = "toast";
+    this.toastLine = el("div", "line");
+    this.toastSub = el("div", "sub");
+    this.toast.append(this.toastLine, this.toastSub);
+
+    /* overlay */
+    this.overlay = el("div");
+    this.overlay.id = "overlay";
+
+    const hint = el("div");
+    hint.id = "hint";
+    hint.innerHTML = "A / D · STEER SHADOW<br>W / S · FLOAT / DIVE<br>SPACE · CHARGE &amp; ANCHOR<br>R · RESTART &nbsp; M · MUTE";
+
+    this.root.append(topbar, this.readout, this.poiseWrap, this.chargeWrap, this.promptEl, this.toast, this.overlay, hint);
+    document.body.append(this.root);
+  }
+
+  setSpan(done: number, total: number, active: number): void {
+    this.spanBig.textContent = String(done);
+    for (let i = 0; i < this.pips.length; i++) {
+      const p = this.pips[i]!;
+      p.classList.toggle("done", i < done);
+      p.classList.toggle("active", i === active);
+    }
+    void total;
+  }
+
+  setScore(score: number, best: number): void {
+    this.scoreBig.textContent = String(Math.round(score));
+    this.bestSub.textContent = `BEST ${Math.round(best)}`;
+  }
+
+  setReadout(s: ReadoutState | null): void {
+    if (!s) {
+      this.readout.style.opacity = "0.32";
+      this.surfVal.textContent = "—";
+      this.slopeVal.textContent = "—";
+      this.dropVal.textContent = "—";
+      this.offsetVal.textContent = "—";
+      this.slopeFill.style.width = "0%";
+      this.anchorFlag.textContent = "NO ANCHOR";
+      this.anchorFlag.className = "";
+      return;
+    }
+    this.readout.style.opacity = "1";
+    this.surfVal.textContent = s.surface;
+    this.surfVal.style.color =
+      s.surface === "SHELF" ? "var(--good)" : s.surface === "VOID" ? "var(--bad)" : "var(--warn)";
+
+    const onShelf = s.surface === "SHELF";
+    const deg = Math.round(s.slopeDeg);
+    this.slopeVal.textContent = onShelf ? `${deg}° / ${Math.round(s.maxSlopeDeg)}°` : "—";
+    const frac = onShelf ? clamp01(s.slopeDeg / (s.maxSlopeDeg * 1.9)) : 0;
+    this.slopeFill.style.width = `${frac * 100}%`;
+    this.slopeFill.style.background =
+      s.slopeDeg > s.maxSlopeDeg ? "var(--bad)" : s.slopeDeg > s.maxSlopeDeg * 0.72 ? "var(--warn)" : "var(--good)";
+    this.slopeMark.style.left = `${clamp01(1 / 1.9) * 100}%`;
+
+    this.offsetVal.textContent = `${s.offset.toFixed(0)} m`;
+    this.dropVal.textContent = s.dropSeconds >= 0 ? `${s.dropSeconds.toFixed(1)} s` : "CLOSED";
+
+    if (s.anchor === "ready") {
+      this.anchorFlag.textContent = "ANCHOR ▸ SPACE";
+      this.anchorFlag.className = "ready";
+    } else if (s.anchor === "risky") {
+      this.anchorFlag.textContent = "STEEP — RISKY";
+      this.anchorFlag.className = "risky";
+    } else {
+      this.anchorFlag.textContent = "NO ANCHOR";
+      this.anchorFlag.className = "";
+    }
+  }
+
+  setPoise(v: number): void {
+    this.poiseFill.style.height = `${clamp01(v) * 100}%`;
+    this.poiseWrap.classList.toggle("low", v < 0.26);
+  }
+
+  setCharge(visible: boolean, value: number, bandLo: number, bandHi: number): void {
+    this.chargeWrap.classList.toggle("on", visible);
+    this.chargeFill.style.width = `${clamp01(value) * 100}%`;
+    this.chargeBand.style.left = `${clamp01(bandLo) * 100}%`;
+    this.chargeBand.style.width = `${clamp01(bandHi - bandLo) * 100}%`;
+  }
+
+  setPrompt(html: string): void {
+    this.promptEl.innerHTML = html;
+  }
+
+  showToast(line: string, sub: string, color?: string): void {
+    this.toastLine.textContent = line;
+    this.toastSub.textContent = sub;
+    if (color) this.toastLine.style.color = color;
+    else this.toastLine.style.color = "var(--amber)";
+    this.toast.classList.remove("show");
+    // Force reflow so the animation restarts cleanly.
+    void this.toast.offsetWidth;
+    this.toast.classList.add("show");
+    window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => this.toast.classList.remove("show"), 1700);
+  }
+
+  showOverlay(html: string): void {
+    this.overlay.innerHTML = html;
+    this.overlay.classList.add("on");
+  }
+
+  hideOverlay(): void {
+    this.overlay.classList.remove("on");
+  }
+
+  setGameplayVisible(v: boolean): void {
+    this.readout.classList.toggle("hidden", !v);
+    this.poiseWrap.classList.toggle("hidden", !v);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Loading screen                                                      */
+/* ------------------------------------------------------------------ */
+
+export class Loader {
+  private readonly root = el("div");
+  private readonly fill: HTMLElement;
+  private readonly step: HTMLElement;
+
+  constructor() {
+    this.root.id = "loader";
+    const track = el("div", "track");
+    this.fill = el("i");
+    track.append(this.fill);
+    this.step = el("div", "step", "PREPARING");
+    this.root.append(el("div", "name", "SHADOW LANDING"), track, this.step);
+    document.body.append(this.root);
+  }
+
+  set(progress: number, label: string): void {
+    this.fill.style.width = `${clamp01(progress) * 100}%`;
+    this.step.textContent = label;
+  }
+
+  done(): void {
+    this.root.classList.add("gone");
+    window.setTimeout(() => this.root.remove(), 900);
+  }
+}

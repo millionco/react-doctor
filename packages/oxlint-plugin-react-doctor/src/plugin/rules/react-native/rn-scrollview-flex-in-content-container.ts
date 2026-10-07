@@ -4,7 +4,7 @@ import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
-import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
+import { isContentContainerStyleScrollContainer } from "./utils/scrollview-names.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -16,8 +16,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // devices, even though the same code looks right on larger ones. The
 // documented fix is `flexGrow: 1`, which keeps the "fill remaining
 // space" semantics without the basis: 0 collapse.
-
-const VIRTUALIZED_LIST_NAMES = new Set(["FlashList", "LegendList"]);
 
 const getStaticMemberKeyName = (
   expression: EsTreeNodeOfType<"MemberExpression">,
@@ -147,7 +145,7 @@ export const rnScrollviewFlexInContentContainer = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
       if (!elementName) return;
-      if (!SCROLLVIEW_NAMES.has(elementName) && !VIRTUALIZED_LIST_NAMES.has(elementName)) return;
+      if (!isContentContainerStyleScrollContainer(elementName)) return;
 
       for (const attribute of node.attributes ?? []) {
         if (!isNodeOfType(attribute, "JSXAttribute")) continue;

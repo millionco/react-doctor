@@ -87,6 +87,7 @@ export const inkCtrlCHandlerRequiresExitOption = defineRule({
   create: (context) => ({
     Program(node: EsTreeNodeOfType<"Program">) {
       const renderCalls = collectInkRenderCalls(node, context);
+      if (renderCalls.length === 0) return;
       walkAst(node, (descendantNode) => {
         if (
           !isNodeOfType(descendantNode, "CallExpression") ||

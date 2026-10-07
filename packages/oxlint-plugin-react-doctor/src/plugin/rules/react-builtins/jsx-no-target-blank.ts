@@ -8,6 +8,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const NOREFERRER_MESSAGE =
   '`target="_blank"` without `rel="noreferrer"` lets the linked page hijack your tab to a phishing site.';
@@ -208,6 +209,23 @@ const resolveConditionalPredicate = (
       visitedSymbolIds,
     );
     return predicate ? { ...predicate, isNegated: !predicate.isNegated } : null;
+  }
+  if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
+    const leftPredicate = resolveConditionalPredicate(
+      unwrappedExpression.left,
+      scopes,
+      visitedSymbolIds,
+    );
+    const rightPredicate = resolveConditionalPredicate(
+      unwrappedExpression.right,
+      scopes,
+      visitedSymbolIds,
+    );
+    if (!leftPredicate || !rightPredicate) return null;
+    return {
+      isNegated: false,
+      key: `logical:${unwrappedExpression.operator}:${leftPredicate.key}:${String(leftPredicate.isNegated)}:${rightPredicate.key}:${String(rightPredicate.isNegated)}`,
+    };
   }
   if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
   const symbol = scopes.symbolFor(unwrappedExpression);
@@ -492,6 +510,7 @@ export const jsxNoTargetBlank = defineRule({
   requires: ["target-blank-needs-explicit-protection"],
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const isLink = (tagName: string): boolean => {
       if (!settings.links) return false;
       if (tagName === "a") return true;
@@ -560,7 +579,7 @@ export const jsxNoTargetBlank = defineRule({
               ? checkTarget(propertyValue, context.scopes)
               : { ...emptyBranchTuple(), isComplete: true };
             targetReportNode = propertyNode;
-            if (targetTuple.isComplete && !targetTuple.combined) {
+            if (shouldUseCuratedBehavior && targetTuple.isComplete && !targetTuple.combined) {
               warnSpread = false;
               spreadReportNode = null;
             }

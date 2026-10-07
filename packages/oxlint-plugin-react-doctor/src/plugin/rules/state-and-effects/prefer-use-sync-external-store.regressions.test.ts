@@ -348,3 +348,156 @@ export function usePushSubscription() {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("prefer-use-sync-external-store — URLSearchParams location snapshot", () => {
+  it("flags a popstate mirror that reconstructs URLSearchParams", () => {
+    const result = run(
+      `import { useEffect, useState } from "react";
+export const EditorialHealthPanel = () => {
+  const [searchParams, setSearchParams] = useState(
+    () => new URLSearchParams(window.location.search),
+  );
+  useEffect(() => {
+    const syncSearchParams = () => {
+      setSearchParams(new URLSearchParams(window.location.search));
+    };
+    window.addEventListener("popstate", syncSearchParams);
+    return () => window.removeEventListener("popstate", syncSearchParams);
+  }, []);
+  return <span>{searchParams.get("filter")}</span>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags the direct initializer and expression-bodied handler variant", () => {
+    const result = run(
+      `import { useEffect, useState } from "react";
+export function BrowserBreakdownFilterProvider() {
+  const [filterParams, setFilterParams] = useState(
+    new URLSearchParams(window.location.search),
+  );
+  useEffect(() => {
+    const sync = () => setFilterParams(new URLSearchParams(window.location.search));
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  return filterParams;
+}`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent for a locally shadowed URLSearchParams constructor", () => {
+    const result = run(
+      `import { useEffect, useState } from "react";
+export const LocalParser = ({ URLSearchParams }) => {
+  const [params, setParams] = useState(() => new URLSearchParams(window.location.search));
+  useEffect(() => {
+    const sync = () => setParams(new URLSearchParams(window.location.search));
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  return params;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the reconstructed URLSearchParams input differs", () => {
+    const result = run(
+      `import { useEffect, useState } from "react";
+export const HashMirror = () => {
+  const [params, setParams] = useState(() => new URLSearchParams(window.location.search));
+  useEffect(() => {
+    const sync = () => setParams(new URLSearchParams(window.location.hash));
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  return params;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a different reconstructed value", () => {
+    const result = run(
+      `import { useEffect, useState } from "react";
+export const LocationMirror = () => {
+  const [locationValue, setLocationValue] = useState(() => new URL(window.location.href));
+  useEffect(() => {
+    const sync = () => setLocationValue(new URL(window.location.href));
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  return locationValue;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent without cleanup", () => {
+    const result = run(
+      `import { useEffect, useState } from "react";
+export const LeakingMirror = () => {
+  const [params, setParams] = useState(() => new URLSearchParams(window.location.search));
+  useEffect(() => {
+    const sync = () => setParams(new URLSearchParams(window.location.search));
+    window.addEventListener("popstate", sync);
+  }, []);
+  return params;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when cleanup removes a different event", () => {
+    const result = run(
+      `import { useEffect, useState } from "react";
+export const WrongEventCleanup = () => {
+  const [params, setParams] = useState(() => new URLSearchParams(window.location.search));
+  useEffect(() => {
+    const sync = () => setParams(new URLSearchParams(window.location.search));
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+  return params;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when cleanup removes a different handler", () => {
+    const result = run(
+      `import { useEffect, useState } from "react";
+export const WrongHandlerCleanup = () => {
+  const [params, setParams] = useState(() => new URLSearchParams(window.location.search));
+  useEffect(() => {
+    const sync = () => setParams(new URLSearchParams(window.location.search));
+    const otherSync = () => setParams(new URLSearchParams(window.location.search));
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", otherSync);
+  }, []);
+  return params;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the effect depends on a routing input", () => {
+    const result = run(
+      `import { useEffect, useState } from "react";
+export const ScopedMirror = ({ route }) => {
+  const [params, setParams] = useState(() => new URLSearchParams(window.location.search));
+  useEffect(() => {
+    const sync = () => setParams(new URLSearchParams(window.location.search));
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, [route]);
+  return params;
+};`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+});

@@ -1,6 +1,6 @@
-import { REACT_DOCTOR_RULES } from "oxlint-plugin-react-doctor";
+import { REACT_DOCTOR_RULES } from "oxlint-plugin-react-doctor/core";
 import { isSameRuleKey } from "@react-doctor/core";
-import type { RuleSeverity } from "oxlint-plugin-react-doctor";
+import type { RuleSeverity } from "oxlint-plugin-react-doctor/core";
 
 export interface RuleCatalogEntry {
   /** Fully-qualified rule key, e.g. `react-doctor/no-array-index-as-key`. */

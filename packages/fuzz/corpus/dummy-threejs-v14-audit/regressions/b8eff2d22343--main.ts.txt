@@ -1,0 +1,188 @@
+// rule: js-set-map-lookups
+// file-path: src/main.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit b8eff2d22343066c3da714484ebe563d69a8f877e7b25326c4c12916ad45059b
+import "./style.css";
+import * as THREE from "three";
+import { Engine } from "./core/engine";
+import { InputState } from "./core/input";
+import { BEAR, RESISTANCE, WORLD } from "./config";
+import { Bear } from "./entities/bear";
+import { HunterField } from "./entities/hunter";
+import { Level } from "./world/level";
+import { DebrisField } from "./world/debris";
+import { ParticleField } from "./gfx/dust";
+import { AudioDirector } from "./audio/audio";
+import { CameraRig } from "./systems/cameraRig";
+import { GameDirector } from "./systems/gameState";
+import { resolveAgainstFootprints, querySmashTargets } from "./systems/collision";
+import { Hud } from "./ui/hud";
+
+const canvas = document.querySelector<HTMLCanvasElement>("#view");
+if (!canvas) throw new Error("#view missing");
+
+const engine = new Engine(canvas);
+const { scene, camera } = engine;
+
+// ---- lighting: supportive, not depth-creating (maps/AO carry the relief) ----
+const hemi = new THREE.HemisphereLight(0xcfd9e8, 0x2b241a, 0.55);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffdfa8, 1.0);
+sun.position.set(-30, 42, 18);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.left = -70;
+sun.shadow.camera.right = 70;
+sun.shadow.camera.top = 70;
+sun.shadow.camera.bottom = -70;
+sun.shadow.camera.far = 160;
+sun.shadow.bias = -0.0015;
+scene.add(sun);
+const fill = new THREE.AmbientLight(0x6a7a8c, 0.18);
+scene.add(fill);
+
+const debris = new DebrisField(scene);
+const dust = new ParticleField(scene);
+const audio = new AudioDirector();
+
+const level = new Level(scene, debris, dust, audio);
+
+const bear = new Bear(scene);
+bear.position.set(0, 0, -2);
+bear.yaw = Math.PI;
+
+const hunterField = new HunterField(scene, level.hunterSpawnPoints);
+
+const cameraRig = new CameraRig(camera);
+cameraRig.beginOverheadPreview();
+
+const gameDirector = new GameDirector(bear, audio);
+const hud = new Hud();
+
+const input = new InputState(canvas);
+let audioStarted = false;
+function startAudioOnce(): void {
+  if (audioStarted) return;
+  audioStarted = true;
+  audio.ensureStarted();
+}
+window.addEventListener("keydown", startAudioOnce, { once: true });
+window.addEventListener("pointerdown", startAudioOnce, { once: true });
+
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const raycaster = new THREE.Raycaster();
+const townCenter = new THREE.Vector3(0, 0, 0);
+
+function computeAimYaw(): number | null {
+  if (!input.pointerActive) return null;
+  raycaster.setFromCamera(input.pointerNdc, camera);
+  const hit = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(groundPlane, hit)) return null;
+  const dx = hit.x - bear.position.x;
+  const dz = hit.z - bear.position.z;
+  if (dx * dx + dz * dz < 0.01) return null;
+  return Math.atan2(dx, dz);
+}
+
+function nearbyBuildingHeight(): number {
+  let maxH = 0;
+  for (const b of level.buildings) {
+    if (b.destroyed) continue;
+    const d = b.group.position.distanceTo(bear.position);
+    if (d < 26) maxH = Math.max(maxH, b.heightHint);
+  }
+  return maxH;
+}
+
+function resolveCombat(): void {
+  const atk = bear.consumeAttack();
+  if (!atk) return;
+  audio.smashWhoosh();
+  const targets = level.raycastTargets();
+  const hits = querySmashTargets(atk.origin, atk.direction, atk.range, atk.arc, targets);
+  for (const obj of hits) {
+    const building = level.buildingForMesh(obj);
+    if (!building) continue;
+    const isGlass = building.getGlassMeshes().includes(obj);
+    const result = isGlass ? building.breakGlass(obj) : building.applyDamage(obj, 1, atk.direction);
+    if (result.hit) {
+      gameDirector.registerDestructionHit();
+      if (result.collapsed) gameDirector.registerStructureDestroyed();
+    }
+  }
+  hunterField.tryKnockNearest(atk.origin, atk.direction, atk.range, atk.arc);
+}
+
+function frame(): void {
+  const dt = Math.min(0.05, engine.clock.getDelta());
+  const active = gameDirector.phase === "playing" || gameDirector.phase === "stagger" || gameDirector.phase === "recovering";
+
+  if (active) {
+    const aimYaw = computeAimYaw();
+    const move = input.moveAxis();
+    bear.update(dt, move.x, move.z, aimYaw);
+
+    const bound = WORLD.groundSize / 2 - 2;
+    bear.position.x = THREE.MathUtils.clamp(bear.position.x, -bound, bound);
+    bear.position.z = THREE.MathUtils.clamp(bear.position.z, -bound, bound);
+    resolveAgainstFootprints(bear.position, 0.85, level.footprints());
+
+    if (input.consumeSmash() && gameDirector.phase === "playing") {
+      bear.triggerSmash();
+    }
+    if (gameDirector.phase === "playing") resolveCombat();
+    else bear.consumeAttack();
+
+    const retaliations = hunterField.update(dt, bear.position, gameDirector.alarmLevel, level.footprints());
+    for (const event of retaliations) {
+      gameDirector.applyResistanceDamage(RESISTANCE.hunterHitDamage);
+      dust.dustPlume(event.position.clone().setY(1.2), 0xbdb4a4, 0.4);
+      audio.materialImpact("masonry");
+    }
+  } else {
+    input.consumeSmash();
+  }
+
+  gameDirector.update(dt);
+  level.update(dt);
+  const corridorChange = level.updateCorridors();
+  if (corridorChange.northJustOpened) {
+    gameDirector.registerCorridorOpen("north");
+    audio.corridorChime();
+    hud.showBanner(`${WORLD.corridorNorthLabel.toUpperCase()} OPEN`, "recover");
+  }
+  if (corridorChange.southJustOpened) {
+    gameDirector.registerCorridorOpen("south");
+    audio.corridorChime();
+    hud.showBanner(`${WORLD.corridorSouthLabel.toUpperCase()} OPEN`, "recover");
+  }
+
+  debris.update(dt);
+  dust.update(dt);
+
+  const finishedPreview = cameraRig.update(
+    dt,
+    { bearPos: bear.position, bearForward: bear.forward(), bearSize: BEAR.bodyHeight, nearbyBuildingHeight: nearbyBuildingHeight() },
+    townCenter,
+  );
+  if (finishedPreview && gameDirector.phase === "preview") {
+    gameDirector.beginPlaying();
+    hud.hideIntro();
+  }
+
+  const nearestHunter = hunterField.nearestTo(bear.position);
+  if (nearestHunter) {
+    const to = new THREE.Vector3().subVectors(nearestHunter, bear.position);
+    const relative = Math.atan2(to.x, to.z) - bear.yaw;
+    hud.setCompassAngle(Math.atan2(Math.sin(relative), Math.cos(relative)));
+  } else {
+    hud.setCompassAngle(null);
+  }
+  hud.update(dt, gameDirector.snapshot());
+
+  engine.render();
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);

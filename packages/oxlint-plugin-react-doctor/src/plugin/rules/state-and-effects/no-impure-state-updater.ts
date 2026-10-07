@@ -1,8 +1,11 @@
+import type { Reference } from "eslint-scope";
+import { UPDATER_WRAPPER_RESOLUTION_DEPTH } from "../../constants/thresholds.js";
 import { isDescendantScope } from "../../semantic/scope-analysis.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -10,11 +13,17 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { hasReactRefCurrentOrigin } from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { someAst } from "../../utils/some-ast.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getRef, resolveToFunction } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import { getUseStateDecl, isStateSetterCall } from "./utils/effect/react.js";
+import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import {
+  getUseStateDecl,
+  isStateSetterCall,
+  resolveStateSetterReference,
+} from "./utils/effect/react.js";
 
 interface MemberCall {
   methodName: string;
@@ -200,6 +209,7 @@ const getExternalAssignmentDescription = (
   const symbol = scopes.symbolFor(rootIdentifier);
   if (!symbol) return `the external value "${rootIdentifier.name}"`;
   if (symbol.kind === "parameter" && symbol.scope === updaterScope) {
+    if (isNodeOfType(stripParenExpression(assignmentTarget), "Identifier")) return null;
     return `the updater argument "${rootIdentifier.name}"`;
   }
   return isDescendantScope(symbol.scope, updaterScope)
@@ -248,6 +258,40 @@ const isDefinitelySynchronousCallback = (callback: EsTreeNode, scopes: ScopeAnal
   );
 };
 
+// `run(async () => setValue("x"))` eventually calls `setBusy`, but `run`
+// invokes the callback itself — React never replays it as an updater. A
+// wrapper only counts when it hands its first parameter straight into a
+// setter's updater slot (`const update = (updater) => setCount(updater)`).
+const isUpdaterConsumingSetterCall = (
+  analysis: ProgramAnalysis,
+  scopes: ScopeAnalysis,
+  calleeReference: Reference,
+  remainingDepth = UPDATER_WRAPPER_RESOLUTION_DEPTH,
+): boolean => {
+  if (resolveStateSetterReference(analysis, calleeReference)) return true;
+  if (remainingDepth <= 0) return false;
+  const updaterParameter = resolveToFunction(calleeReference)?.params[0];
+  if (!updaterParameter || !isNodeOfType(updaterParameter, "Identifier")) return false;
+  const parameterSymbol = scopes.symbolFor(updaterParameter);
+  return Boolean(
+    parameterSymbol?.references.some((reference) => {
+      const forwardingCall = reference.identifier.parent;
+      if (
+        !isNodeOfType(forwardingCall, "CallExpression") ||
+        forwardingCall.arguments[0] !== reference.identifier ||
+        !isNodeOfType(forwardingCall.callee, "Identifier")
+      ) {
+        return false;
+      }
+      const forwardedCalleeReference = getRef(analysis, forwardingCall.callee);
+      return (
+        forwardedCalleeReference !== null &&
+        isUpdaterConsumingSetterCall(analysis, scopes, forwardedCalleeReference, remainingDepth - 1)
+      );
+    }),
+  );
+};
+
 const findImpureUpdaterOperation = (updater: EsTreeNode, scopes: ScopeAnalysis): string | null => {
   const analysis = getProgramAnalysis(updater);
   let operation: string | null = null;
@@ -292,38 +336,67 @@ export const noImpureStateUpdater = defineRule({
   severity: "error",
   recommendation:
     "Keep state updater callbacks pure and return only the next state. Move notifications, storage, timers, ref writes, and other external work into the event or effect that queues the update.",
-  create: (context) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const updaterArgument = node.arguments?.[0];
-      if (!updaterArgument) return;
-      const analysis = getProgramAnalysis(node);
-      if (!analysis || !isNodeOfType(node.callee, "Identifier")) return;
-      const calleeReference = getRef(analysis, node.callee);
-      if (!calleeReference || !isStateSetterCall(analysis, calleeReference)) return;
-      const stateDeclarator = getUseStateDecl(analysis, calleeReference);
-      if (
-        !isNodeOfType(stateDeclarator, "VariableDeclarator") ||
-        !isNodeOfType(stateDeclarator.init, "CallExpression") ||
-        !isReactApiCall(stateDeclarator.init, "useState", context.scopes, {
-          allowGlobalReactNamespace: true,
-        })
-      ) {
-        return;
-      }
-      let updater: EsTreeNode | null = null;
-      if (isFunctionLike(updaterArgument)) {
-        updater = updaterArgument;
-      } else if (isNodeOfType(updaterArgument, "Identifier")) {
-        const updaterReference = getRef(analysis, updaterArgument);
-        if (updaterReference) updater = resolveToFunction(updaterReference);
-      }
-      if (!updater) return;
-      const operation = findImpureUpdaterOperation(updater, context.scopes);
-      if (!operation) return;
-      context.report({
-        node: updaterArgument,
-        message: `This state updater performs ${operation}. React may run updater functions more than once, so side effects here can repeat or observe inconsistent external state.`,
-      });
-    },
-  }),
+  create: (context) => {
+    let programHasUseStateCall: boolean | undefined;
+    const programContainsUseStateCall = (node: EsTreeNode): boolean => {
+      if (programHasUseStateCall !== undefined) return programHasUseStateCall;
+      const program = findProgramRoot(node);
+      programHasUseStateCall = Boolean(
+        program &&
+        someAst(
+          program,
+          (child) =>
+            isNodeOfType(child, "CallExpression") &&
+            isReactApiCall(child, "useState", context.scopes, {
+              allowGlobalReactNamespace: true,
+            }),
+        ),
+      );
+      return programHasUseStateCall;
+    };
+
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        const updaterArgument = node.arguments?.[0];
+        if (!updaterArgument || !isNodeOfType(node.callee, "Identifier")) return;
+        if (!isFunctionLike(updaterArgument) && !isNodeOfType(updaterArgument, "Identifier")) {
+          return;
+        }
+        if (!programContainsUseStateCall(node)) return;
+        const analysis = getProgramAnalysis(node);
+        if (!analysis) return;
+        const calleeReference = getRef(analysis, node.callee);
+        if (
+          !calleeReference ||
+          !isUpdaterConsumingSetterCall(analysis, context.scopes, calleeReference)
+        ) {
+          return;
+        }
+        const stateDeclarator = getUseStateDecl(analysis, calleeReference);
+        if (
+          !isNodeOfType(stateDeclarator, "VariableDeclarator") ||
+          !isNodeOfType(stateDeclarator.init, "CallExpression") ||
+          !isReactApiCall(stateDeclarator.init, "useState", context.scopes, {
+            allowGlobalReactNamespace: true,
+          })
+        ) {
+          return;
+        }
+        let updater: EsTreeNode | null = null;
+        if (isFunctionLike(updaterArgument)) {
+          updater = updaterArgument;
+        } else if (isNodeOfType(updaterArgument, "Identifier")) {
+          const updaterReference = getRef(analysis, updaterArgument);
+          if (updaterReference) updater = resolveToFunction(updaterReference);
+        }
+        if (!updater) return;
+        const operation = findImpureUpdaterOperation(updater, context.scopes);
+        if (!operation) return;
+        context.report({
+          node: updaterArgument,
+          message: `This state updater performs ${operation}. React may run updater functions more than once, so side effects here can repeat or observe inconsistent external state.`,
+        });
+      },
+    };
+  },
 });

@@ -1,12 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import type { RuleVisitors } from "../../utils/rule-visitors.js";
-
-const EMPTY_VISITORS: RuleVisitors = {};
 
 // Node/build-time and server files legitimately read `process.env`
 // dynamically (they run in Node, not the bundled client, so Metro never
@@ -55,7 +53,7 @@ export const expoNoNonInlinedEnv = defineRule({
     "Read env vars with static dotted access (`process.env.EXPO_PUBLIC_NAME`). Computed access and destructuring aren't inlined by babel-preset-expo and resolve to `undefined` at runtime.",
   create: (context: RuleContext) => {
     const filename = normalizeFilename(context.filename ?? "");
-    if (filename && NODE_OR_BUILD_FILE.test(filename)) return EMPTY_VISITORS;
+    if (filename && NODE_OR_BUILD_FILE.test(filename)) return EMPTY_RULE_VISITORS;
 
     return {
       MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {

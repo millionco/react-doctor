@@ -6,11 +6,10 @@ import { severityVariant } from "../lib/severity-variants.js";
 
 export interface ScanningProps {
   readonly progressText: string | null;
-  readonly liveCount: number;
   readonly recent: ReadonlyArray<LiveDiagnostic>;
 }
 
-export const Scanning = ({ progressText, liveCount, recent }: ScanningProps) => {
+export const Scanning = ({ progressText, recent }: ScanningProps) => {
   return (
     <Box flexDirection="column">
       <Text wrap="truncate-end">
@@ -18,12 +17,6 @@ export const Scanning = ({ progressText, liveCount, recent }: ScanningProps) => 
           <Spinner type="dots" />
         </Text>
         <Text> {progressText ?? "Scanning…"}</Text>
-        {liveCount > 0 ? (
-          <Text dimColor>
-            {"  ·  "}
-            {liveCount} found
-          </Text>
-        ) : null}
       </Text>
       {recent.map((diagnostic, diagnosticIndex) => {
         const variant = severityVariant(diagnostic.severity === "error" ? "error" : "warning");

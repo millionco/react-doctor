@@ -4,10 +4,15 @@ import * as Layer from "effect/Layer";
 import {
   AmbiguousProjectError,
   discoverProject as discoverProjectSync,
+  isProjectInfoCached,
   NoReactDependencyError,
   PackageJsonNotFoundError,
   ProjectNotFoundError,
 } from "../project-info/index.js";
+import {
+  takeReactCompilerDetection,
+  warmReactCompilerDetection,
+} from "../project-info/react-compiler-detection-client.js";
 import type { ProjectInfo } from "../types/index.js";
 import {
   AmbiguousProject,
@@ -38,26 +43,41 @@ const translateProjectInfoError = (cause: unknown, directory: string): ReactDoct
   return new ReactDoctorError({ reason: new ProjectDiscoveryFailed({ directory, cause }) });
 };
 
+export interface ProjectDiscoveryInput {
+  readonly directory: string;
+  readonly sourceFileCount?: number;
+}
+
 export class Project extends Context.Service<
   Project,
   {
-    readonly discover: (directory: string) => Effect.Effect<ProjectInfo, ReactDoctorError>;
+    readonly warm: (directory: string) => Effect.Effect<void>;
+    readonly discover: (
+      input: ProjectDiscoveryInput,
+    ) => Effect.Effect<ProjectInfo, ReactDoctorError>;
   }
 >()("react-doctor/Project") {
   static readonly layerNode = Layer.succeed(
     Project,
     Project.of({
-      // `Effect.fn("Project.discover")` adds an OTel-compatible span
-      // name to every invocation. Canonical eval pattern from
-      // `react-doctor-evals/src/Runner.ts` / `ReactDoctorV2.ts` —
-      // free observability with zero runtime cost when no tracer
-      // layer is provided.
-      discover: Effect.fn("Project.discover")(function* (directory: string) {
-        return yield* Effect.try({
-          try: () => discoverProjectSync(directory),
-          catch: (cause) => translateProjectInfoError(cause, directory),
-        });
-      }),
+      warm: (directory) => Effect.sync(() => warmReactCompilerDetection(directory)),
+      discover: Effect.fn("Project.discover")((input: ProjectDiscoveryInput) =>
+        Effect.gen(function* () {
+          const pendingDetection = takeReactCompilerDetection(input.directory);
+          const hasReactCompiler =
+            pendingDetection === null || isProjectInfoCached(input.directory)
+              ? undefined
+              : ((yield* Effect.promise(() => pendingDetection)) ?? undefined);
+          return yield* Effect.try({
+            try: () =>
+              discoverProjectSync(input.directory, {
+                sourceFileCount: input.sourceFileCount,
+                hasReactCompiler,
+              }),
+            catch: (cause) => translateProjectInfoError(cause, input.directory),
+          });
+        }),
+      ),
     }),
   );
 
@@ -65,6 +85,7 @@ export class Project extends Context.Service<
     Layer.succeed(
       Project,
       Project.of({
+        warm: () => Effect.void,
         discover: () => Effect.succeed(projectInfo),
       }),
     );

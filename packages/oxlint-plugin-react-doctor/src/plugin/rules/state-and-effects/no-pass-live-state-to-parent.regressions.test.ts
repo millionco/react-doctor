@@ -600,6 +600,94 @@ describe("no-pass-live-state-to-parent — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when a local lifecycle helper receives state but only pings a parent without data", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function Animation({ easing, onEnd }) {
+        const [frame, setFrame] = useState({ progress: 0 });
+        const timer = useTimer();
+        const ease = easingTable[formatName(easing)];
+        const traverseQueue = (startFrame) => {
+          timer.subscribe(() => setFrame(advance(ease(startFrame.progress))));
+          if (isQueueEmpty()) onEnd();
+        };
+        useEffect(() => {
+          traverseQueue(frame);
+        }, [frame]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a local helper that forwards state to a parent callback", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function Editor({ onChange }) {
+        const [value, setValue] = useState("");
+        const notifyParent = (nextValue) => onChange(nextValue);
+        useEffect(() => {
+          notifyParent(value);
+        }, [value]);
+        return <input onChange={(event) => setValue(event.target.value)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a callback destructured from a whole props object after state setup", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function Editor(props) {
+        const [value] = useState("");
+        const { onChange } = props;
+        useEffect(() => {
+          onChange(value);
+        }, [onChange, value]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a callback destructured from a TypeScript-wrapped props object", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `interface EditorProps {
+        onChange: (value: string) => void;
+      }
+      function Editor(props: EditorProps) {
+        const [value] = useState("");
+        const { onChange } = props as EditorProps;
+        useEffect(() => {
+          onChange(value);
+        }, [onChange, value]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a callback aliased from a prop handler bag", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function Editor({ handlers }) {
+        const [value] = useState("");
+        const onChange = handlers.onChange;
+        useEffect(() => {
+          onChange(value);
+        }, [onChange, value]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   // cloudscape use-app-layout: closeFirstDrawer is a stable callback that
   // calls onActiveDrawerChange — a binding destructured from useDrawers(...)
   // whose ARGUMENTS include state. Hook inputs are not provenance of hook

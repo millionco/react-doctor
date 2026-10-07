@@ -3,8 +3,8 @@ import * as path from "node:path";
 import {
   classifySecurityScanFile,
   shouldReadSecurityScanContent,
-} from "oxlint-plugin-react-doctor";
-import type { ScannedFile } from "oxlint-plugin-react-doctor";
+} from "oxlint-plugin-react-doctor/core";
+import type { ScannedFile } from "oxlint-plugin-react-doctor/core";
 import { readDirectoryEntries } from "../../project-info/fs-utils.js";
 import { isLargeMinifiedFile } from "../../utils/is-large-minified-file.js";
 import {
@@ -70,6 +70,7 @@ const readScannedFile = (candidate: SecurityScanCandidate): ScannedFile | null =
 // checkpoints. Drivers that don't pace themselves just skip them.
 export function* collectSecurityScanFiles(
   rootDirectory: string,
+  excludedDirectories: ReadonlySet<string> = new Set(),
 ): Generator<ScannedFile | null, void, void> {
   const priorityCandidates: SecurityScanCandidate[] = [];
   const artifactCandidates: SecurityScanCandidate[] = [];
@@ -84,7 +85,10 @@ export function* collectSecurityScanFiles(
     for (const entry of readDirectoryEntries(current.absolutePath)) {
       const absolutePath = path.join(current.absolutePath, entry.name);
       if (entry.isDirectory()) {
-        if (!SKIPPED_DIRECTORY_NAMES.has(entry.name)) {
+        if (
+          !SKIPPED_DIRECTORY_NAMES.has(entry.name) &&
+          !excludedDirectories.has(path.resolve(absolutePath))
+        ) {
           stack.push({ absolutePath, depth: current.depth + 1 });
         }
         continue;

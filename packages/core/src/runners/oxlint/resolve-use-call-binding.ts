@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { getImportModuleSource } from "../../utils/get-import-module-source.js";
 import { getTypescriptScriptKind } from "../../utils/get-typescript-script-kind.js";
 import { unwrapTypescriptExpression } from "../../utils/unwrap-typescript-expression.js";
 
@@ -92,17 +93,6 @@ const isReactRequireCall = (expression: ts.Expression): boolean => {
     ts.isStringLiteral(unwrappedExpression.arguments[0]) &&
     unwrappedExpression.arguments[0].text === REACT_MODULE_SOURCE
   );
-};
-
-const getModuleSource = (node: ts.Node): string | null => {
-  let currentNode: ts.Node | undefined = node;
-  while (currentNode) {
-    if (ts.isImportDeclaration(currentNode) && ts.isStringLiteral(currentNode.moduleSpecifier)) {
-      return currentNode.moduleSpecifier.text;
-    }
-    currentNode = currentNode.parent;
-  }
-  return null;
 };
 
 const getImportedName = (importSpecifier: ts.ImportSpecifier): string =>
@@ -392,17 +382,18 @@ const getVariableDeclarationResolution = (
 
 const getImportResolution = (node: ts.Node, identifierName: string): BindingResolution | null => {
   if (ts.isImportSpecifier(node) && node.name.text === identifierName) {
-    return getModuleSource(node) === REACT_MODULE_SOURCE && getImportedName(node) === USE_IDENTIFIER
+    return getImportModuleSource(node) === REACT_MODULE_SOURCE &&
+      getImportedName(node) === USE_IDENTIFIER
       ? REACT_USE_BINDING_RESOLUTION
       : LOCAL_BINDING_RESOLUTION;
   }
   if (ts.isNamespaceImport(node) && node.name.text === identifierName) {
-    return getModuleSource(node) === REACT_MODULE_SOURCE
+    return getImportModuleSource(node) === REACT_MODULE_SOURCE
       ? REACT_NAMESPACE_BINDING_RESOLUTION
       : LOCAL_BINDING_RESOLUTION;
   }
   if (ts.isImportClause(node) && node.name?.text === identifierName) {
-    return getModuleSource(node) === REACT_MODULE_SOURCE
+    return getImportModuleSource(node) === REACT_MODULE_SOURCE
       ? REACT_NAMESPACE_BINDING_RESOLUTION
       : LOCAL_BINDING_RESOLUTION;
   }

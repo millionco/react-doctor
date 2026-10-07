@@ -159,18 +159,36 @@ interface CacheEntry {
   readonly probedChainPaths: ReadonlyArray<string>;
 }
 
-const configByFilePath = new Map<string, CacheEntry>();
+interface TsconfigLookup {
+  readonly config: ResolvedTsconfig | null;
+  readonly probedContentPaths: ReadonlySet<string>;
+}
 
-const loadTsconfigCached = (configFilePath: string): ResolvedTsconfig | null => {
+interface CachedTsconfigLookup extends TsconfigLookup {
+  readonly directoryCount: number;
+}
+
+interface DirectoryTsconfigProbes {
+  readonly directory: string;
+  readonly probedContentPaths: ReadonlySet<string>;
+}
+
+const configByFilePath = new Map<string, CacheEntry>();
+const nearestTsconfigByDirectory = new Map<string, CachedTsconfigLookup>();
+
+const loadTsconfigCached = (configFilePath: string): TsconfigLookup => {
   // A missing entry config resolves to null without reading anything else,
   // so the entry path itself is always a content dependency (its answer is
   // "absent" when the statSync throws).
   recordContentProbe(configFilePath);
-  let fileStat: fs.Stats;
+  let fileStat: fs.Stats | undefined;
   try {
-    fileStat = fs.statSync(configFilePath);
+    fileStat = fs.statSync(configFilePath, { throwIfNoEntry: false });
   } catch {
-    return null;
+    fileStat = undefined;
+  }
+  if (fileStat === undefined) {
+    return { config: null, probedContentPaths: new Set([configFilePath]) };
   }
   // The resolved config depends on the whole `extends` CHAIN, not just this
   // entry file, so each entry remembers the chain paths it read and replays
@@ -180,7 +198,10 @@ const loadTsconfigCached = (configFilePath: string): ResolvedTsconfig | null => 
   const cached = configByFilePath.get(configFilePath);
   if (cached && cached.mtimeMs === fileStat.mtimeMs) {
     for (const probedPath of cached.probedChainPaths) recordContentProbe(probedPath);
-    return cached.config;
+    return {
+      config: cached.config,
+      probedContentPaths: new Set(cached.probedChainPaths),
+    };
   }
 
   const probedChainPaths: string[] = [];
@@ -190,26 +211,109 @@ const loadTsconfigCached = (configFilePath: string): ResolvedTsconfig | null => 
     config,
     probedChainPaths,
   });
-  return config;
+  return { config, probedContentPaths: new Set(probedChainPaths) };
 };
 
-// Walks up from `fromDirectory` for the nearest tsconfig/jsconfig. The
-// walk itself is NOT cached by directory — only parsed configs are
-// (mtime-keyed in `loadTsconfigCached`) — so a long-lived process (the
-// language server) picks up tsconfig edits and newly-added configs
-// instead of serving a stale result. The per-call statSyncs are cheap
-// and bounded by CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS.
+const cacheVisitedTsconfigDirectories = (
+  visitedDirectories: ReadonlyArray<DirectoryTsconfigProbes>,
+  resolvedLookup: TsconfigLookup,
+  resolvedDirectoryCount: number,
+): void => {
+  const inheritedContentPaths = new Set(resolvedLookup.probedContentPaths);
+  let directoryCount = resolvedDirectoryCount;
+  for (let index = visitedDirectories.length - 1; index >= 0; index--) {
+    const visitedDirectory = visitedDirectories[index];
+    directoryCount++;
+    for (const probedContentPath of visitedDirectory.probedContentPaths) {
+      inheritedContentPaths.add(probedContentPath);
+    }
+    nearestTsconfigByDirectory.set(visitedDirectory.directory, {
+      config: resolvedLookup.config,
+      directoryCount,
+      probedContentPaths: new Set(inheritedContentPaths),
+    });
+  }
+};
+
+// Walks up from `fromDirectory` for the nearest tsconfig/jsconfig. Core clears
+// the path-compressed directory results at each scan boundary.
 const findNearestTsconfig = (fromDirectory: string): ResolvedTsconfig | null => {
+  const cached = nearestTsconfigByDirectory.get(fromDirectory);
+  if (cached !== undefined) {
+    for (const probedContentPath of cached.probedContentPaths) {
+      recordContentProbe(probedContentPath);
+    }
+    return cached.config;
+  }
+
+  const visitedDirectories: DirectoryTsconfigProbes[] = [];
   let currentDirectory = fromDirectory;
   for (let level = 0; level < CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS; level++) {
-    for (const fileName of TSCONFIG_FILE_NAMES) {
-      const candidate = loadTsconfigCached(path.join(currentDirectory, fileName));
-      if (candidate) return candidate;
+    const cachedAncestor = nearestTsconfigByDirectory.get(currentDirectory);
+    const remainingDirectoryCount = CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS - level;
+    if (cachedAncestor !== undefined && cachedAncestor.directoryCount <= remainingDirectoryCount) {
+      for (const probedContentPath of cachedAncestor.probedContentPaths) {
+        recordContentProbe(probedContentPath);
+      }
+      cacheVisitedTsconfigDirectories(
+        visitedDirectories,
+        cachedAncestor,
+        cachedAncestor.directoryCount,
+      );
+      return cachedAncestor.config;
     }
+
+    const directoryContentPaths = new Set<string>();
+    for (const fileName of TSCONFIG_FILE_NAMES) {
+      const lookup = loadTsconfigCached(path.join(currentDirectory, fileName));
+      for (const probedContentPath of lookup.probedContentPaths) {
+        directoryContentPaths.add(probedContentPath);
+      }
+      if (lookup.config) {
+        visitedDirectories.push({
+          directory: currentDirectory,
+          probedContentPaths: directoryContentPaths,
+        });
+        cacheVisitedTsconfigDirectories(
+          visitedDirectories,
+          {
+            config: lookup.config,
+            probedContentPaths: new Set(),
+          },
+          0,
+        );
+        return lookup.config;
+      }
+    }
+    visitedDirectories.push({
+      directory: currentDirectory,
+      probedContentPaths: directoryContentPaths,
+    });
     const parentDirectory = path.dirname(currentDirectory);
-    if (parentDirectory === currentDirectory) break;
+    if (parentDirectory === currentDirectory) {
+      cacheVisitedTsconfigDirectories(
+        visitedDirectories,
+        {
+          config: null,
+          probedContentPaths: new Set(),
+        },
+        0,
+      );
+      return null;
+    }
     currentDirectory = parentDirectory;
   }
+  const probedContentPaths = new Set<string>();
+  for (const visitedDirectory of visitedDirectories) {
+    for (const probedContentPath of visitedDirectory.probedContentPaths) {
+      probedContentPaths.add(probedContentPath);
+    }
+  }
+  nearestTsconfigByDirectory.set(fromDirectory, {
+    config: null,
+    directoryCount: visitedDirectories.length,
+    probedContentPaths,
+  });
   return null;
 };
 
@@ -272,7 +376,7 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
   return null;
 };
 
-// Exposed for tests; production callers rely on mtime-based invalidation.
-export const __clearTsconfigAliasCacheForTests = (): void => {
+export const resetTsconfigAliasCaches = (): void => {
   configByFilePath.clear();
+  nearestTsconfigByDirectory.clear();
 };

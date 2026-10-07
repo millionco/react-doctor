@@ -4,13 +4,18 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
+import { getStaticStringExpression } from "../../utils/get-static-string-expression.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
+import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { Rule } from "../../utils/rule.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -458,6 +463,45 @@ const reportInvalid = (context: Parameters<Rule["create"]>[0], reportNode: EsTre
   context.report({ node: reportNode, message: INVALID_MESSAGE });
 };
 
+const jsxButtonHasAssociatedForm = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  const formAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "form", false);
+  return Boolean(formAttribute && getStringLiteralAttributeValue(formAttribute)?.trim());
+};
+
+const createElementButtonHasAssociatedForm = (
+  propsArgument: EsTreeNode | null | undefined,
+): boolean => {
+  const formPropertyValue = propsArgument
+    ? getStaticObjectPropertyValue(propsArgument, "form")
+    : undefined;
+  return Boolean(getStaticStringExpression(formPropertyValue)?.trim());
+};
+
+const isFormCreateElementCall = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression") || !isCreateElementCall(node)) return false;
+  const elementType = node.arguments[0];
+  return Boolean(
+    elementType && isNodeOfType(elementType, "Literal") && elementType.value === "form",
+  );
+};
+
+const hasStaticFormAncestor = (node: EsTreeNode): boolean => {
+  let ancestor = node.parent;
+  while (ancestor) {
+    if (
+      isNodeOfType(ancestor, "JSXElement") &&
+      resolveJsxElementType(ancestor.openingElement) === "form"
+    ) {
+      return true;
+    }
+    if (isFormCreateElementCall(ancestor)) return true;
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
 // Port of `oxc_linter::rules::react::button_has_type`. Flags
 //   - `<button>` without a `type` attribute,
 //   - `<button type="foo">` outside the allowed set,
@@ -472,6 +516,7 @@ export const buttonHasType = defineRule({
     'Set an explicit button `type` so plain buttons do not submit forms by accident: `type="button"`, `"submit"`, or `"reset"`.',
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     // Storybook stories and tests routinely render bare `<button>` without
     // a `type` attribute — the buttons aren't inside a real form so the
     // implicit `submit` behaviour is irrelevant. Skip these.
@@ -479,10 +524,17 @@ export const buttonHasType = defineRule({
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         if (resolveJsxElementType(node) !== "button") return;
         const typeAttr = hasJsxPropIgnoreCase(node.attributes, "type");
         if (!typeAttr) {
+          if (
+            shouldUseCuratedBehavior &&
+            !jsxButtonHasAssociatedForm(node) &&
+            !hasStaticFormAncestor(node)
+          ) {
+            return;
+          }
           // A spread (`<button {...props} />`) can forward `type` at
           // runtime, so the absence of an explicit attribute isn't proof —
           // unless every spread provably cannot carry a `type` key (e.g.
@@ -519,7 +571,7 @@ export const buttonHasType = defineRule({
         }
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (isTestlikeFile) return;
+        if (shouldUseCuratedBehavior && isTestlikeFile) return;
         if (!isCreateElementCall(node)) return;
         const firstArgument = node.arguments[0];
         if (
@@ -530,10 +582,13 @@ export const buttonHasType = defineRule({
           return;
         }
         const propsArgument = node.arguments[1];
+        const hasFormOwner =
+          createElementButtonHasAssociatedForm(propsArgument) || hasStaticFormAncestor(node);
         // No props (`createElement("button")`) or explicitly nullish props
         // (`…, null)`, `…, undefined)`, `…, void 0)`) carry no `type` — unlike
         // an opaque bag, which may forward one at runtime → missing.
         if (!propsArgument || isNullishExpression(propsArgument)) {
+          if (shouldUseCuratedBehavior && !hasFormOwner) return;
           context.report({ node, message: MISSING_MESSAGE });
           return;
         }
@@ -559,6 +614,7 @@ export const buttonHasType = defineRule({
           }
         }
         if (!typeProp) {
+          if (shouldUseCuratedBehavior && !hasFormOwner) return;
           // `{ ...props }` may supply `type` at runtime, just like a JSX
           // spread — unless every spread provably cannot carry `type`.
           if (hasSpread) {

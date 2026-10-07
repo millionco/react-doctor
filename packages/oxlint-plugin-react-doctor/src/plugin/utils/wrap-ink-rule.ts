@@ -1,8 +1,6 @@
+import { EMPTY_RULE_VISITORS } from "./empty-rule-visitors.js";
 import { isInkVersionAtLeast } from "./resolve-ink-version.js";
 import type { Rule } from "./rule.js";
-import type { RuleVisitors } from "./rule-visitors.js";
-
-const EMPTY_VISITORS: RuleVisitors = {};
 
 export const wrapInkRule = (rule: Rule): Rule => {
   const innerCreate = rule.create.bind(rule);
@@ -13,7 +11,7 @@ export const wrapInkRule = (rule: Rule): Rule => {
         !rule.minimumInkVersion ||
         !isInkVersionAtLeast(context.filename, rule.minimumInkVersion)
       ) {
-        return EMPTY_VISITORS;
+        return EMPTY_RULE_VISITORS;
       }
       return innerCreate(context);
     },

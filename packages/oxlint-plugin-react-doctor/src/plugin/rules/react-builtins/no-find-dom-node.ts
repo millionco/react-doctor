@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isImportedFromModule } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const ALLOWED_NAMESPACES = new Set(["React", "ReactDOM", "ReactDom"]);
 const MESSAGE = "`findDOMNode` crashes your app in React 19 because it was removed.";
@@ -20,7 +21,10 @@ export const noFindDomNode = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callee = node.callee;
       if (isNodeOfType(callee, "Identifier") && callee.name === "findDOMNode") {
-        if (isImportedFromModule(node, callee.name, "react-dom")) {
+        if (
+          !shouldUseCuratedPortBehavior(context.settings) ||
+          isImportedFromModule(node, callee.name, "react-dom")
+        ) {
           context.report({ node: callee, message: MESSAGE });
         }
         return;

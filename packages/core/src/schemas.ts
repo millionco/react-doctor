@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { FRAMEWORK_TOKENS } from "oxlint-plugin-react-doctor";
+import { FRAMEWORK_TOKENS } from "oxlint-plugin-react-doctor/core";
 import * as Schema from "effect/Schema";
 
 export const Severity = Schema.Literals(["error", "warning"]);
@@ -34,6 +34,7 @@ export class Diagnostic extends Schema.Class<Diagnostic>("Diagnostic")({
   endLine: Schema.optional(Schema.Number),
   endColumn: Schema.optional(Schema.Number),
   category: Schema.String,
+  fingerprint: Schema.optional(Schema.String),
   matchByOccurrence: Schema.optional(Schema.Boolean),
   fileContext: Schema.optional(Schema.Literals(["test", "story"])),
   suppressionHint: Schema.optional(Schema.String),
@@ -62,6 +63,7 @@ export class JsonReportDiagnosticV3 extends Schema.Class<JsonReportDiagnosticV3>
   endLine: Schema.optional(Schema.Number),
   endColumn: Schema.optional(Schema.Number),
   category: Schema.String,
+  fingerprint: Schema.optional(Schema.String),
   matchByOccurrence: Schema.optional(Schema.Boolean),
   fileContext: Schema.optional(Schema.Literals(["test", "story"])),
   suppressionHint: Schema.optional(Schema.String),
@@ -141,6 +143,7 @@ export class JsonReportProjectEntryV3 extends Schema.Class<JsonReportProjectEntr
 )({
   directory: Schema.String,
   packageRoot: Schema.String,
+  sourceFilterConfigHash: Schema.optional(Schema.String),
   framework: Framework,
   project: Schema.Unknown,
   diagnostics: Schema.Array(JsonReportDiagnosticV3),
@@ -152,6 +155,13 @@ export class JsonReportProjectEntryV3 extends Schema.Class<JsonReportProjectEntr
   complete: Schema.Boolean,
   scannedFileCount: Schema.optional(Schema.Number),
   elapsedMilliseconds: Schema.Number,
+}) {}
+
+export class JsonReportSkippedProject extends Schema.Class<JsonReportSkippedProject>(
+  "JsonReportSkippedProject",
+)({
+  directory: Schema.String,
+  reason: Schema.Literal("max-duration"),
 }) {}
 
 /** Original full, diff, and staged report contract. */
@@ -171,17 +181,18 @@ export class JsonReportV1 extends Schema.Class<JsonReportV1>("JsonReportV1")({
    */
   baselineDegraded: Schema.optional(Schema.Boolean),
   /**
-   * Whether any scanned project resolved a React-compatible runtime (React
-   * or Preact). `false` means every React-runtime rule family was gated off,
-   * so an empty `diagnostics` array is vacuous — NOT the same as a clean
-   * React scan. Consumers gating on the report (CI, verifiers, hooks) should
-   * treat `reactDetected === false` as "wrong scan target", not "all clear".
+   * Whether any scanned project resolved a React-compatible runtime directly
+   * or through a React-backed framework. `false` means every React-runtime
+   * rule family was gated off, not that the scan target was unsupported:
+   * other detected framework and library rule families still run, as do
+   * framework-neutral rules on any analyzable project.
    * Absent when nothing was scanned (`projects` is empty), on error reports,
    * and on reports from older CLI versions.
    */
   reactDetected: Schema.optional(Schema.Boolean),
   diff: Schema.NullOr(JsonReportDiffInfo),
   projects: Schema.Array(JsonReportProjectEntry),
+  skippedProjects: Schema.optional(Schema.Array(JsonReportSkippedProject)),
   diagnostics: Schema.Array(Diagnostic),
   summary: JsonReportSummary,
   elapsedMilliseconds: Schema.Number,
@@ -190,6 +201,9 @@ export class JsonReportV1 extends Schema.Class<JsonReportV1>("JsonReportV1")({
 
 export class JsonReportBaseline extends Schema.Class<JsonReportBaseline>("JsonReportBaseline")({
   baseRef: Schema.String,
+  source: Schema.optional(Schema.Literals(["base", "baseline"])),
+  baselineFile: Schema.optional(Schema.String),
+  matchedCount: Schema.optional(Schema.Number),
   newCount: Schema.Number,
   fixedCount: Schema.Number,
   baseTotalCount: Schema.Number,
@@ -212,6 +226,7 @@ export class JsonReportV2 extends Schema.Class<JsonReportV2>("JsonReportV2")({
   diff: Schema.NullOr(JsonReportDiffInfo),
   baseline: JsonReportBaseline,
   projects: Schema.Array(JsonReportProjectEntry),
+  skippedProjects: Schema.optional(Schema.Array(JsonReportSkippedProject)),
   diagnostics: Schema.Array(Diagnostic),
   summary: JsonReportSummary,
   elapsedMilliseconds: Schema.Number,
@@ -220,6 +235,7 @@ export class JsonReportV2 extends Schema.Class<JsonReportV2>("JsonReportV2")({
 
 export class JsonReportV3 extends Schema.Class<JsonReportV3>("JsonReportV3")({
   schemaVersion: Schema.Literal(3),
+  sourceRevision: Schema.optional(Schema.String),
   version: Schema.String,
   ok: Schema.Boolean,
   directory: Schema.String,
@@ -229,6 +245,7 @@ export class JsonReportV3 extends Schema.Class<JsonReportV3>("JsonReportV3")({
   diff: Schema.NullOr(JsonReportDiffInfo),
   baseline: Schema.optional(JsonReportBaseline),
   projects: Schema.Array(JsonReportProjectEntryV3),
+  skippedProjects: Schema.optional(Schema.Array(JsonReportSkippedProject)),
   diagnostics: Schema.Array(JsonReportDiagnosticV3),
   summary: JsonReportSummary,
   elapsedMilliseconds: Schema.Number,

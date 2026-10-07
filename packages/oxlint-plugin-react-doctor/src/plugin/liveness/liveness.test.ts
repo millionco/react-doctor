@@ -12,6 +12,7 @@ const INTRINSIC_STRING_ALIAS_RULE_IDS: ReadonlyArray<string> = [
   "anchor-ambiguous-text",
   "anchor-has-content",
   "anchor-is-valid",
+  "anchor-target-exists",
   "aria-activedescendant-has-tabindex",
   "aria-role",
   "aria-unsupported-elements",
@@ -189,6 +190,13 @@ describe("rule liveness", () => {
             `rule genuinely cannot run in the in-memory harness — add it to KNOWN_UNCOVERED ` +
             `with a reason.`,
         ).toBeDefined();
+      });
+      continue;
+    }
+
+    if (rule.lifecycle === "retired") {
+      it(`${ruleId} stays quiet on its former positive control`, () => {
+        expect(countFindings(rule, fixture)).toBe(0);
       });
       continue;
     }

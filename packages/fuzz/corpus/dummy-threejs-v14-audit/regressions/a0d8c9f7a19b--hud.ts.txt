@@ -1,0 +1,360 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit a0d8c9f7a19b320e22e5b3987244c5a7a55a5679470ce318196472883f00f57f
+// DOM heads-up display: mission progress, station power, suit vitals, module
+// board, lock status, world-space target marker, toasts and the overlay cards
+// that open and close the replay loop.
+
+export type Phase = "title" | "playing" | "won" | "lost";
+
+export interface ModuleHudState {
+  name: string;
+  integrity: number;
+  state: "ok" | "fault" | "offline";
+  locked: boolean;
+}
+
+export interface HudState {
+  orbit: number;
+  orbitTotal: number;
+  orbitFraction: number;
+  power: number;
+  suit: number;
+  fuel: number;
+  repaired: number;
+  modules: ModuleHudState[];
+  statusMain: string;
+  statusSub: string;
+  statusColor: string;
+  lockProgress: number;
+}
+
+const svgNS = "http://www.w3.org/2000/svg";
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  attrs: Record<string, string> = {},
+  html = "",
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  if (html) node.innerHTML = html;
+  return node;
+}
+
+function svg(markup: string, attrs: Record<string, string>): SVGSVGElement {
+  const node = document.createElementNS(svgNS, "svg");
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  node.innerHTML = markup;
+  return node;
+}
+
+const DIAL_R = 22;
+const DIAL_C = 2 * Math.PI * DIAL_R;
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private readonly overlay: HTMLDivElement;
+  private readonly card: HTMLDivElement;
+  private readonly damageFlash: HTMLDivElement;
+
+  private readonly orbitArc: SVGCircleElement;
+  private readonly orbitText: SVGTextElement;
+  private readonly orbitLabel: HTMLElement;
+  private readonly powerPanel: HTMLDivElement;
+  private readonly powerValue: HTMLElement;
+  private readonly powerFill: HTMLElement;
+  private readonly suitFill: HTMLElement;
+  private readonly suitValue: HTMLElement;
+  private readonly fuelFill: HTMLElement;
+  private readonly fuelValue: HTMLElement;
+  private readonly cells: { root: HTMLDivElement; fill: HTMLElement }[] = [];
+  private readonly statusMain: HTMLDivElement;
+  private readonly statusSub: HTMLSpanElement;
+  private readonly toasts: HTMLDivElement;
+  private readonly marker: SVGSVGElement;
+  private readonly markerArrow: SVGGElement;
+  private readonly markerBrackets: SVGGElement;
+  private readonly markerDist: SVGTextElement;
+  private readonly lockArc: SVGCircleElement;
+  private readonly hint: HTMLDivElement;
+  private readonly scrim: HTMLDivElement;
+  private readonly vignette: HTMLDivElement;
+
+  private flash = 0;
+  onStart: () => void = () => {};
+
+  constructor(moduleNames: string[]) {
+    this.root = el("div", { id: "hud" });
+
+    // --- mission dial -------------------------------------------------------
+    const mission = el("div", { id: "mission", class: "panel" });
+    const dial = svg(
+      `<circle class="track" cx="27" cy="27" r="${DIAL_R}"/>
+       <circle class="arc" cx="27" cy="27" r="${DIAL_R}" transform="rotate(-90 27 27)"
+               stroke-dasharray="${DIAL_C}" stroke-dashoffset="${DIAL_C}"/>
+       <text x="27" y="32">0</text>`,
+      { id: "orbitDial", viewBox: "0 0 54 54" },
+    );
+    this.orbitArc = dial.querySelector(".arc") as SVGCircleElement;
+    this.orbitText = dial.querySelector("text") as SVGTextElement;
+    mission.appendChild(dial);
+    const missionText = el("div", {}, `<div class="label">Shift progress</div><div class="value" id="orbitLabel">ORBIT 0 / 5</div>`);
+    mission.appendChild(missionText);
+    this.orbitLabel = missionText.querySelector("#orbitLabel") as HTMLElement;
+    this.root.appendChild(mission);
+
+    // --- station power ------------------------------------------------------
+    this.powerPanel = el(
+      "div",
+      { id: "power", class: "panel" },
+      `<div class="row"><span class="label">Station power</span><span class="value" id="powerValue">100%</span></div>
+       <div class="bar wide"><i id="powerFill"></i></div>`,
+    );
+    this.powerValue = this.powerPanel.querySelector("#powerValue") as HTMLElement;
+    this.powerFill = this.powerPanel.querySelector("#powerFill") as HTMLElement;
+    this.root.appendChild(this.powerPanel);
+
+    // --- suit ---------------------------------------------------------------
+    const suit = el(
+      "div",
+      { id: "suit", class: "panel" },
+      `<div class="stat"><div class="row" style="display:flex;justify-content:space-between">
+          <span class="label">Suit</span><span class="value" id="suitValue">100%</span></div>
+        <div class="bar"><i id="suitFill"></i></div></div>
+       <div class="stat"><div class="row" style="display:flex;justify-content:space-between">
+          <span class="label">EVA fuel</span><span class="value" id="fuelValue">100%</span></div>
+        <div class="bar"><i id="fuelFill"></i></div></div>`,
+    );
+    this.suitFill = suit.querySelector("#suitFill") as HTMLElement;
+    this.suitValue = suit.querySelector("#suitValue") as HTMLElement;
+    this.fuelFill = suit.querySelector("#fuelFill") as HTMLElement;
+    this.fuelValue = suit.querySelector("#fuelValue") as HTMLElement;
+    this.root.appendChild(suit);
+
+    // --- module board -------------------------------------------------------
+    const modules = el("div", { id: "modules", class: "panel" }, `<div class="label">Module integrity</div>`);
+    const grid = el("div", { id: "moduleGrid" });
+    for (const name of moduleNames) {
+      const cell = el("div", { class: "cell" }, `<b>${name}</b><span class="pct">100</span><span class="fill"></span>`);
+      grid.appendChild(cell);
+      this.cells.push({ root: cell, fill: cell.querySelector(".fill") as HTMLElement });
+    }
+    modules.appendChild(grid);
+    this.root.appendChild(modules);
+
+    // --- status -------------------------------------------------------------
+    this.statusMain = el("div", { id: "status" }, `<span id="statusMain">Standby</span><span class="sub" id="statusSub"></span>`);
+    this.statusSub = this.statusMain.querySelector("#statusSub") as HTMLSpanElement;
+    this.root.appendChild(this.statusMain);
+
+    // --- reticle ------------------------------------------------------------
+    const reticle = svg(
+      `<circle class="ring" cx="23" cy="23" r="7"/>
+       <path class="ring" d="M23 0 V6 M23 40 V46 M0 23 H6 M40 23 H46"/>`,
+      { id: "reticle", viewBox: "0 0 46 46" },
+    );
+    this.root.appendChild(reticle);
+
+    // --- world target marker ------------------------------------------------
+    this.marker = svg(
+      `<g class="brackets">
+         <path d="M14 26 V14 H26"/><path d="M62 26 V14 H50"/>
+         <path d="M14 50 V62 H26"/><path d="M62 50 V62 H50"/>
+       </g>
+       <circle class="lock" cx="38" cy="38" r="27" transform="rotate(-90 38 38)"/>
+       <g class="arrowGroup"><path class="arrow" d="M38 2 l8 15 h-16 z"/></g>
+       <text class="dist" x="38" y="74">0 M</text>`,
+      { id: "marker", viewBox: "0 0 76 76" },
+    );
+    this.lockArc = this.marker.querySelector(".lock") as SVGCircleElement;
+    this.markerArrow = this.marker.querySelector(".arrowGroup") as SVGGElement;
+    this.markerBrackets = this.marker.querySelector(".brackets") as SVGGElement;
+    this.markerDist = this.marker.querySelector(".dist") as SVGTextElement;
+    this.root.appendChild(this.marker);
+
+    this.toasts = el("div", { id: "toasts" });
+    this.root.appendChild(this.toasts);
+
+    this.hint = el(
+        "div",
+        { id: "hint" },
+        `W / S · radial out &amp; in<br/>A / D · retro &amp; prograde<br/>E / Q · raise &amp; lower<br/>Drag · look &nbsp;·&nbsp; Wheel · zoom`,
+      );
+    this.root.appendChild(this.hint);
+
+    document.body.appendChild(this.root);
+
+    this.scrim = el("div", { id: "scrim" });
+    document.body.appendChild(this.scrim);
+    this.vignette = el("div", { id: "vignette" });
+    document.body.appendChild(this.vignette);
+    this.damageFlash = el("div", { id: "damageFlash" });
+    document.body.appendChild(this.damageFlash);
+
+    // --- overlay ------------------------------------------------------------
+    this.overlay = el("div", { id: "overlay" });
+    this.card = el("div", { id: "card" });
+    this.overlay.appendChild(this.card);
+    document.body.appendChild(this.overlay);
+    this.showTitle();
+  }
+
+  private bindStart(): void {
+    const button = this.card.querySelector("#start");
+    button?.addEventListener("click", () => this.onStart());
+  }
+
+  showTitle(): void {
+    this.card.innerHTML = `
+      <h1>ORBITWRIGHT</h1>
+      <div class="tag">Kestrel Anchor · solo maintenance shift</div>
+      <p>You are the only wright aboard. The station's modules fail faster than they can be
+         nursed, and the reactor bleeds power for every hour one stays broken.</p>
+      <p>Your repair beam needs <em>range and a clear line of sight</em>. Sun-tracking solar
+         wings sweep across your approach, spoke trusses cut the inner lane, and the far side
+         of the hull is simply dark to you. <em>Where you fly is the whole game.</em></p>
+      <p>Lower orbits are faster but crowded; high orbits are safe but slow. Ride the
+         <em>docking bay</em> for fuel. Survive <em>five orbits</em> with the lights on.</p>
+      <div class="keys">
+        <div><b>W / S</b> radial out / in</div>
+        <div><b>A / D</b> retro / prograde</div>
+        <div><b>E / Q</b> plane up / down</div>
+        <div><b>Drag</b> look · <b>Wheel</b> zoom</div>
+      </div>
+      <button id="start">Begin shift</button>`;
+    this.bindStart();
+    this.overlay.classList.remove("hidden");
+  }
+
+  showResult(won: boolean, stats: { orbits: number; repaired: number; power: number; time: number }): void {
+    const mm = Math.floor(stats.time / 60);
+    const ss = Math.floor(stats.time % 60).toString().padStart(2, "0");
+    this.card.innerHTML = `
+      <h1>${won ? "SHIFT COMPLETE" : "STATION LOST"}</h1>
+      <div class="tag">${won ? "All five orbits flown · Kestrel Anchor holds" : "Reserve exhausted · the lights went out"}</div>
+      <div class="stats">
+        <div><span class="label">Orbits flown</span><span class="value">${stats.orbits} / 5</span></div>
+        <div><span class="label">Modules restored</span><span class="value">${stats.repaired}</span></div>
+        <div><span class="label">Power left</span><span class="value">${Math.round(stats.power)}%</span></div>
+        <div><span class="label">Shift time</span><span class="value">${mm}:${ss}</span></div>
+      </div>
+      <p>${
+        won
+          ? "The reactor holds steady. Every module answers its ping. Somewhere below, the gas giant keeps turning."
+          : "Without power the ring goes cold. Fly tighter lanes, keep sight lines open, and do not let two modules fail at once."
+      }</p>
+      <button id="start">${won ? "Fly it again" : "Retry shift"}</button>`;
+    this.bindStart();
+    this.overlay.classList.remove("hidden");
+  }
+
+  hideOverlay(): void {
+    this.overlay.classList.add("hidden");
+  }
+
+  toast(text: string, color = "#cfe4f2"): void {
+    const node = el("div", { class: "toast" }, text);
+    node.style.color = color;
+    node.style.borderColor = color;
+    this.toasts.appendChild(node);
+    setTimeout(() => node.classList.add("fade"), 1500);
+    setTimeout(() => node.remove(), 2000);
+  }
+
+  hit(strength: number): void {
+    this.flash = Math.min(1, this.flash + strength);
+  }
+
+  setMarker(
+    visible: boolean,
+    x: number,
+    y: number,
+    offscreen: boolean,
+    angle: number,
+    distance: number,
+    color: string,
+  ): void {
+    this.marker.style.opacity = visible ? "1" : "0";
+    if (!visible) return;
+    this.marker.style.left = `${x}px`;
+    this.marker.style.top = `${y}px`;
+    this.marker.style.color = color;
+    this.markerArrow.setAttribute("transform", `rotate(${(angle * 180) / Math.PI} 38 38)`);
+    this.markerArrow.style.display = offscreen ? "" : "none";
+    this.markerBrackets.style.display = offscreen ? "none" : "";
+    this.markerDist.textContent = `${distance.toFixed(0)} M`;
+  }
+
+  update(state: HudState, dt: number): void {
+    const frac = (state.orbit + state.orbitFraction) / state.orbitTotal;
+    this.orbitArc.setAttribute("stroke-dashoffset", `${DIAL_C * (1 - Math.min(1, frac))}`);
+    this.orbitText.textContent = `${state.orbit}`;
+    this.orbitLabel.textContent = `ORBIT ${state.orbit} / ${state.orbitTotal}`;
+
+    const powerColor = state.power > 55 ? "#3df0aa" : state.power > 25 ? "#ffb03a" : "#ff4a54";
+    this.powerFill.style.width = `${state.power}%`;
+    this.powerFill.style.color = powerColor;
+    this.powerValue.textContent = `${Math.round(state.power)}%`;
+    this.powerValue.style.color = powerColor;
+    this.powerPanel.classList.toggle("critical", state.power < 30);
+
+    const suitColor = state.suit > 55 ? "#8fd6ff" : state.suit > 25 ? "#ffb03a" : "#ff4a54";
+    this.suitFill.style.width = `${state.suit}%`;
+    this.suitFill.style.color = suitColor;
+    this.suitValue.textContent = `${Math.round(state.suit)}%`;
+    this.fuelFill.style.width = `${state.fuel}%`;
+    this.fuelFill.style.color = state.fuel > 25 ? "#c9a6ff" : "#ff4a54";
+    this.fuelValue.textContent = `${Math.round(state.fuel)}%`;
+
+    for (let i = 0; i < this.cells.length; i++) {
+      const m = state.modules[i];
+      const cell = this.cells[i]!;
+      if (!m) continue;
+      cell.root.classList.toggle("fault", m.state === "fault");
+      cell.root.classList.toggle("offline", m.state === "offline");
+      cell.root.classList.toggle("locked", m.locked);
+      const pct = Math.round(m.integrity * 100);
+      const pctNode = cell.root.querySelector(".pct");
+      if (pctNode) pctNode.textContent = `${pct}`;
+      cell.fill.style.width = `${pct}%`;
+      cell.fill.style.color = m.state === "offline" ? "#ff4a54" : m.state === "fault" ? "#ffb03a" : "#3df0aa";
+    }
+
+    const mainNode = this.statusMain.querySelector("#statusMain") as HTMLElement | null;
+    if (mainNode) {
+      mainNode.textContent = state.statusMain;
+      mainNode.style.color = state.statusColor;
+    }
+    this.statusSub.textContent = state.statusSub;
+
+    const lockLen = 2 * Math.PI * 27;
+    this.lockArc.setAttribute("stroke-dasharray", `${lockLen}`);
+    this.lockArc.setAttribute("stroke-dashoffset", `${lockLen * (1 - state.lockProgress)}`);
+    this.lockArc.style.opacity = state.lockProgress > 0.001 ? "1" : "0";
+
+    if (this.flash > 0) {
+      this.flash = Math.max(0, this.flash - dt * 1.9);
+      this.damageFlash.style.opacity = `${this.flash}`;
+    }
+  }
+
+  setHintVisible(visible: boolean): void {
+    this.hint.style.opacity = visible ? "1" : "0";
+  }
+
+  setPlaying(playing: boolean): void {
+    this.root.style.opacity = playing ? "1" : "0";
+    this.root.style.transition = "opacity 0.4s ease";
+  }
+
+  dispose(): void {
+    this.vignette.remove();
+    this.scrim.remove();
+    this.root.remove();
+    this.overlay.remove();
+    this.damageFlash.remove();
+  }
+}

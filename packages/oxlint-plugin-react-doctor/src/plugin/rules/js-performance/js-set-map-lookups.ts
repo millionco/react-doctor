@@ -1,9 +1,11 @@
 import { LOOP_TYPES } from "../../constants/js.js";
 import { SMALL_LITERAL_ARRAY_MAX_ELEMENTS } from "../../constants/thresholds.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
@@ -97,6 +99,7 @@ const STRING_TYPED_PROPERTY_NAMES: ReadonlySet<string> = new Set([
   "label",
   "slug",
   "prefix",
+  "__html",
 ]);
 
 // Identifier suffix conventions whose binding is overwhelmingly a
@@ -130,6 +133,7 @@ const STRING_TYPED_IDENTIFIER_SUFFIXES: ReadonlyArray<string> = [
   "Line",
   "Filename",
   "Filepath",
+  "Message",
 ];
 
 const hasStringTypedSuffix = (name: string): boolean => {
@@ -237,16 +241,32 @@ const STRING_TYPED_IDENTIFIER_NAMES: ReadonlySet<string> = new Set([
 
 const STRING_RETURNING_CALLEE_PREFIX_PATTERN = /^(?:normalize|format|stringify|serialize)/;
 
+const FRESH_ARRAY_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "concat",
+  "filter",
+  "flat",
+  "flatMap",
+  "map",
+  "slice",
+  "split",
+]);
+
 // HACK: returns true when the receiver of `.includes()` / `.indexOf()`
 // is obviously a string, so the Set rewrite suggestion doesn't apply.
-const isLikelyStringReceiver = (receiver: EsTreeNode | null | undefined): boolean => {
+const isLikelyStringReceiver = (
+  receiver: EsTreeNode | null | undefined,
+  scopes: ScopeAnalysis,
+): boolean => {
   if (!receiver) return false;
+  const unwrappedReceiver = stripParenExpression(receiver);
+  if (unwrappedReceiver !== receiver) return isLikelyStringReceiver(unwrappedReceiver, scopes);
   if (isNodeOfType(receiver, "Literal") && typeof receiver.value === "string") return true;
   if (isNodeOfType(receiver, "TemplateLiteral")) return true;
   if (
     isNodeOfType(receiver, "CallExpression") &&
     isNodeOfType(receiver.callee, "Identifier") &&
-    receiver.callee.name === "String"
+    receiver.callee.name === "String" &&
+    scopes.isGlobalReference(receiver.callee)
   ) {
     return true;
   }
@@ -267,13 +287,22 @@ const isLikelyStringReceiver = (receiver: EsTreeNode | null | undefined): boolea
   ) {
     return true;
   }
+  if (
+    isNodeOfType(receiver, "CallExpression") &&
+    isNodeOfType(receiver.callee, "MemberExpression") &&
+    isNodeOfType(receiver.callee.property, "Identifier") &&
+    (receiver.callee.property.name === "concat" || receiver.callee.property.name === "slice") &&
+    isLikelyStringReceiver(receiver.callee.object, scopes)
+  ) {
+    return true;
+  }
   if (isNodeOfType(receiver, "MemberExpression") && isNodeOfType(receiver.property, "Identifier")) {
     if (STRING_TYPED_PROPERTY_NAMES.has(receiver.property.name)) return true;
   }
   if (
     isNodeOfType(receiver, "ChainExpression") &&
     receiver.expression &&
-    isLikelyStringReceiver(receiver.expression)
+    isLikelyStringReceiver(receiver.expression, scopes)
   ) {
     return true;
   }
@@ -297,14 +326,94 @@ const isLikelyStringReceiver = (receiver: EsTreeNode | null | undefined): boolea
   }
   // `a + ':' + b` — string concatenation yields a string.
   if (isNodeOfType(receiver, "BinaryExpression") && receiver.operator === "+") {
-    return isLikelyStringReceiver(receiver.left) || isLikelyStringReceiver(receiver.right);
+    return (
+      isLikelyStringReceiver(receiver.left, scopes) ||
+      isLikelyStringReceiver(receiver.right, scopes)
+    );
   }
   if (isNodeOfType(receiver, "ConditionalExpression")) {
     return (
-      isLikelyStringReceiver(receiver.consequent) && isLikelyStringReceiver(receiver.alternate)
+      isLikelyStringReceiver(receiver.consequent, scopes) &&
+      isLikelyStringReceiver(receiver.alternate, scopes)
+    );
+  }
+  if (isNodeOfType(receiver, "LogicalExpression")) {
+    return (
+      isLikelyStringReceiver(receiver.left, scopes) &&
+      isLikelyStringReceiver(receiver.right, scopes)
     );
   }
   return false;
+};
+
+const isFreshArrayReceiver = (receiver: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const unwrappedReceiver = stripParenExpression(receiver);
+  if (unwrappedReceiver !== receiver) return isFreshArrayReceiver(unwrappedReceiver, scopes);
+  if (
+    !isNodeOfType(receiver, "CallExpression") ||
+    !isNodeOfType(receiver.callee, "MemberExpression") ||
+    !isNodeOfType(receiver.callee.property, "Identifier")
+  ) {
+    return false;
+  }
+  if (!FRESH_ARRAY_METHOD_NAMES.has(receiver.callee.property.name)) return false;
+  if (receiver.callee.property.name === "split") {
+    return isLikelyStringReceiver(receiver.callee.object, scopes);
+  }
+  if (receiver.callee.property.name === "slice") return true;
+  const sourceReceiver = stripParenExpression(receiver.callee.object);
+  return isKnownNativeArrayReceiver(sourceReceiver) || isFreshArrayReceiver(sourceReceiver, scopes);
+};
+
+const isSmallRestHelperOmissionList = (node: EsTreeNode | undefined): boolean => {
+  if (!node) return false;
+  const candidate = stripParenExpression(node);
+  if (!isNodeOfType(candidate, "ArrayExpression")) return false;
+  const elements = candidate.elements ?? [];
+  return (
+    elements.length <= SMALL_LITERAL_ARRAY_MAX_ELEMENTS &&
+    elements.every((element) => element === null || !isNodeOfType(element, "SpreadElement"))
+  );
+};
+
+const isTypeScriptRestHelperLookup = (
+  lookupCall: EsTreeNode,
+  receiver: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const enclosingFunction = findEnclosingFunction(lookupCall);
+  if (
+    !isNodeOfType(enclosingFunction, "FunctionExpression") ||
+    !isNodeOfType(enclosingFunction.params?.[1], "Identifier") ||
+    enclosingFunction.params[1].name !== receiver.name
+  ) {
+    return false;
+  }
+  let bindingIdentifier: EsTreeNode | null = null;
+  let ancestor: EsTreeNode | null | undefined = enclosingFunction.parent;
+  while (ancestor && !isFunctionLike(ancestor)) {
+    if (
+      isNodeOfType(ancestor, "VariableDeclarator") &&
+      isNodeOfType(ancestor.id, "Identifier") &&
+      ancestor.id.name === "__rest"
+    ) {
+      bindingIdentifier = ancestor.id;
+      break;
+    }
+    ancestor = ancestor.parent;
+  }
+  if (!bindingIdentifier) return false;
+  const helperSymbol = scopes.symbolFor(bindingIdentifier);
+  if (!helperSymbol || helperSymbol.references.length === 0) return false;
+  return helperSymbol.references.every((reference) => {
+    const callExpression = reference.identifier.parent;
+    return (
+      isNodeOfType(callExpression, "CallExpression") &&
+      callExpression.callee === reference.identifier &&
+      isSmallRestHelperOmissionList(callExpression.arguments?.[1])
+    );
+  });
 };
 
 // `lines[i]` / `tokens[cursor]` — indexing into an array by a numeric
@@ -672,7 +781,11 @@ const getArrayElementType = (typeNode: EsTreeNode | null): EsTreeNode | null => 
     return typeNode.typeArguments?.params?.[0] ?? null;
   }
   if (isNodeOfType(typeNode, "TSUnionType")) {
-    const arrayElementTypes = typeNode.types.map(getArrayElementType).filter(Boolean);
+    const arrayElementTypes: EsTreeNode[] = [];
+    for (const unionMemberType of typeNode.types) {
+      const arrayElementType = getArrayElementType(unionMemberType);
+      if (arrayElementType) arrayElementTypes.push(arrayElementType);
+    }
     return arrayElementTypes.length === 1 ? arrayElementTypes[0] : null;
   }
   return null;
@@ -763,6 +876,21 @@ const getIdentifierDeclaredType = (
   }
   return null;
 };
+
+const isStringType = (typeNode: EsTreeNode | null): boolean => {
+  if (!typeNode) return false;
+  if (isNodeOfType(typeNode, "TSStringKeyword")) return true;
+  if (isNodeOfType(typeNode, "TSLiteralType")) {
+    return isNodeOfType(typeNode.literal, "Literal") && typeof typeNode.literal.value === "string";
+  }
+  if (isNodeOfType(typeNode, "TSUnionType")) {
+    return typeNode.types.length > 0 && typeNode.types.every(isStringType);
+  }
+  return false;
+};
+
+const isDeclaredStringReceiver = (receiver: EsTreeNode): boolean =>
+  isNodeOfType(receiver, "Identifier") && isStringType(getIdentifierDeclaredType(receiver));
 
 const isNativeIterationIndex = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
   const binding = findVariableInitializer(identifier, identifier.name);
@@ -1434,15 +1562,16 @@ const findNearestLoopContext = (node: EsTreeNode): EsTreeNode | null => {
 // pass — converting it to a Set each iteration costs more than the scan,
 // so hoisting advice does not apply.
 const isReceiverDeclaredInNearestLoop = (receiver: EsTreeNode, lookupCall: EsTreeNode): boolean => {
-  if (!isNodeOfType(receiver, "Identifier")) return false;
-  const binding = findVariableInitializer(receiver, receiver.name);
-  if (!binding || !binding.initializer) return false;
   const nearestLoop = findNearestLoopContext(lookupCall);
   if (!nearestLoop) return false;
-  let ancestor: EsTreeNode | null | undefined = binding.bindingIdentifier;
-  while (ancestor) {
-    if (ancestor === nearestLoop) return true;
-    ancestor = ancestor.parent;
+  for (const dependencyName of collectReceiverDependencyNames(receiver)) {
+    const binding = findVariableInitializer(receiver, dependencyName);
+    if (!binding?.initializer) continue;
+    let ancestor: EsTreeNode | null | undefined = binding.bindingIdentifier;
+    while (ancestor) {
+      if (ancestor === nearestLoop) return true;
+      ancestor = ancestor.parent;
+    }
   }
   return false;
 };
@@ -1457,6 +1586,14 @@ const collectEnclosingLoopIterationBindingNames = (lookupCall: EsTreeNode): Set<
   const iterationNames = new Set<string>();
   let ancestor: EsTreeNode | null | undefined = lookupCall.parent;
   while (ancestor) {
+    if (isNodeOfType(ancestor, "ForStatement")) {
+      const initializer = ancestor.init;
+      if (isNodeOfType(initializer, "VariableDeclaration")) {
+        for (const declarator of initializer.declarations ?? []) {
+          if (declarator.id) collectPatternNames(declarator.id, iterationNames);
+        }
+      }
+    }
     if (isNodeOfType(ancestor, "ForOfStatement") || isNodeOfType(ancestor, "ForInStatement")) {
       const left = ancestor.left;
       if (isNodeOfType(left, "VariableDeclaration")) {
@@ -1484,14 +1621,22 @@ const collectEnclosingLoopIterationBindingNames = (lookupCall: EsTreeNode): Set<
 // chain: `BACKEND_URLS[key]` depends on both `BACKEND_URLS` and `key`.
 const collectReceiverDependencyNames = (receiver: EsTreeNode): Set<string> => {
   const dependencyNames = new Set<string>();
-  let current = stripParenExpression(receiver);
-  while (isNodeOfType(current, "MemberExpression")) {
-    if (current.computed && isNodeOfType(current.property, "Identifier")) {
-      dependencyNames.add(current.property.name);
+  const collectFromExpression = (expression: EsTreeNode): void => {
+    const current = stripParenExpression(expression);
+    if (isNodeOfType(current, "Identifier")) {
+      dependencyNames.add(current.name);
+      return;
     }
-    current = stripParenExpression(current.object);
-  }
-  if (isNodeOfType(current, "Identifier")) dependencyNames.add(current.name);
+    if (isNodeOfType(current, "MemberExpression")) {
+      collectFromExpression(current.object);
+      if (current.computed) collectFromExpression(current.property);
+      return;
+    }
+    if (isNodeOfType(current, "CallExpression")) {
+      collectFromExpression(current.callee);
+    }
+  };
+  collectFromExpression(receiver);
   return dependencyNames;
 };
 
@@ -1605,7 +1750,10 @@ export const jsSetMapLookups = defineRule({
       ) {
         return;
       }
-      if (isLikelyStringReceiver(receiver)) return;
+      if (isLikelyStringReceiver(receiver, context.scopes)) return;
+      if (isDeclaredStringReceiver(receiver)) return;
+      if (isFreshArrayReceiver(receiver, context.scopes)) return;
+      if (isTypeScriptRestHelperLookup(node, receiver, context.scopes)) return;
       if (isSmallInlineLiteralArray(receiver)) return;
       if (isScreamingSnakeCaseConstantReceiver(receiver)) return;
       if (isSmallFixedListMember(receiver)) return;
@@ -1613,7 +1761,7 @@ export const jsSetMapLookups = defineRule({
       if (isIndexedArrayElementWithStringArgument(receiver, query)) return;
       const resolvedInitializer = getResolvedInitializer(receiver);
       if (resolvedInitializer) {
-        if (isLikelyStringReceiver(resolvedInitializer.initializer)) return;
+        if (isLikelyStringReceiver(resolvedInitializer.initializer, context.scopes)) return;
         if (
           !resolvedInitializer.isDefault &&
           isSmallInlineLiteralArray(resolvedInitializer.initializer)

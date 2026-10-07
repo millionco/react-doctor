@@ -302,6 +302,78 @@ describe("no-effect-with-fresh-deps", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does NOT trace fresh callback arguments into a custom Hook", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useCallback, useEffect, useRef } from "react";
+
+      const useStableCallback = (fn) => {
+        const callbackRef = useRef(fn);
+        useEffect(() => {
+          callbackRef.current = fn;
+        }, [fn]);
+        return useCallback((...args) => callbackRef.current(...args), []);
+      };
+
+      function Component({ send, retry }) {
+        useStableCallback(() => send("one"));
+        useStableCallback(() => send("two"));
+        useStableCallback(() => retry());
+        useStableCallback(async () => send("three"));
+        useStableCallback((value) => send(value));
+        return null;
+      }
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT trace fresh options into a custom Hook that copies them into a ref", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useEffect, useRef } from "react";
+
+      const useSubscription = (options) => {
+        const optionsRef = useRef(options);
+        useEffect(() => {
+          optionsRef.current = options;
+        }, [options]);
+        useEffect(() => subscribe(() => optionsRef.current.onValue()), []);
+      };
+
+      function Component({ onValue }) {
+        useSubscription({ onValue });
+        return null;
+      }
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags direct fresh dependencies inside a custom Hook", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useEffect } from "react";
+
+      const useSubscription = (value) => {
+        const options = { value };
+        useEffect(() => subscribe(options), [options]);
+      };
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("options");
+  });
+
   it("does NOT flag a destructured prop with an array default", () => {
     const result = runRule(
       noEffectWithFreshDeps,

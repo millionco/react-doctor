@@ -1,4 +1,4 @@
-import reactDoctorPlugin from "oxlint-plugin-react-doctor";
+import { REACT_DOCTOR_RULE_REGISTRY } from "oxlint-plugin-react-doctor/core";
 import type { Diagnostic } from "./types/index.js";
 
 export interface DiagnosticRuleIdentity {
@@ -26,6 +26,6 @@ export const getDiagnosticRuleIdentity = (diagnostic: Diagnostic): DiagnosticRul
   category: diagnostic.category,
   tags:
     diagnostic.plugin === "react-doctor"
-      ? (reactDoctorPlugin.rules[diagnostic.rule]?.tags ?? [])
+      ? (REACT_DOCTOR_RULE_REGISTRY[diagnostic.rule]?.tags ?? [])
       : [],
 });

@@ -1,4 +1,0 @@
-{
-  "plugins": ["@trivago/prettier-plugin-sort-imports"],
-  "importOrder": ["^@core/(.*)$", "^[./]"]
-}

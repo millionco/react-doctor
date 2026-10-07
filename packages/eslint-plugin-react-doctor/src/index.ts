@@ -17,7 +17,9 @@ interface EslintRuleContext {
   getFilename?: () => string | undefined;
 }
 
-interface WrappedRule {
+interface EslintAdapterRule {
+  title?: string;
+  severity: "error" | "warn";
   create: (context: EslintRuleContext) => RuleVisitors;
 }
 
@@ -40,6 +42,11 @@ interface EslintFlatConfig {
   name: string;
   plugins: Record<string, EslintPlugin>;
   rules: Record<string, OxlintRuleSeverity>;
+  settings: {
+    "react-doctor": {
+      portedRuleMode: "curated";
+    };
+  };
 }
 
 interface EslintPlugin {
@@ -57,23 +64,25 @@ interface EslintPlugin {
 }
 
 const PLUGIN_NAMESPACE = "react-doctor";
-const RULE_DOCS_BASE_URL = "https://react.doctor/rules";
+const RULE_DOCS_BASE_URL = "https://react.doctor/docs/rules";
 
 const recommendedRuleKeys = new Set(Object.keys(RECOMMENDED_RULES));
 
-const wrapAsEslintRule = (ruleName: string, ruleImpl: WrappedRule): EslintRule => ({
+const wrapAsEslintRule = (ruleName: string, ruleImpl: EslintAdapterRule): EslintRule => ({
   meta: {
-    type: "problem",
+    type: ruleImpl.severity === "warn" ? "suggestion" : "problem",
     docs: {
-      description: ruleName
-        .replaceAll("-", " ")
-        .replace(/\b\w/g, (innerChar) => innerChar.toUpperCase()),
-      url: `${RULE_DOCS_BASE_URL}/${ruleName}`,
+      description:
+        ruleImpl.title ??
+        ruleName
+          .replaceAll("-", " ")
+          .replace(/\b\w/g, (innerCharacter) => innerCharacter.toUpperCase()),
+      url: `${RULE_DOCS_BASE_URL}/${PLUGIN_NAMESPACE}/${ruleName}`,
       recommended: recommendedRuleKeys.has(`${PLUGIN_NAMESPACE}/${ruleName}`),
     },
     schema: [],
   },
-  create: (context: EslintRuleContext) => ruleImpl.create(context),
+  create: ruleImpl.create,
 });
 
 const eslintShapedRules: Record<string, EslintRule> = Object.fromEntries(
@@ -90,6 +99,7 @@ const buildFlatConfig = (
   name: `react-doctor/${configName}`,
   plugins: {},
   rules: { ...ruleSet },
+  settings: { "react-doctor": { portedRuleMode: "curated" } },
 });
 
 const eslintPlugin: EslintPlugin = {

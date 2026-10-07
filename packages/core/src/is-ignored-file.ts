@@ -1,6 +1,6 @@
 import type { ReactDoctorConfig } from "./types/index.js";
 import { compileGlobPatternsLenient } from "./utils/match-glob-pattern.js";
-import { toRelativePath } from "./utils/to-relative-path.js";
+import { toNormalizedRelativePath } from "./utils/to-normalized-relative-path.js";
 import { warnConfigIssue } from "./utils/warn-config-issue.js";
 
 export const compileIgnoredFilePatterns = (userConfig: ReactDoctorConfig | null): RegExp[] => {
@@ -18,6 +18,6 @@ export const isFileIgnoredByPatterns = (
   patterns: RegExp[],
 ): boolean => {
   if (patterns.length === 0) return false;
-  const relativePath = toRelativePath(filePath, rootDirectory);
+  const relativePath = toNormalizedRelativePath(filePath, rootDirectory);
   return patterns.some((pattern) => pattern.test(relativePath));
 };

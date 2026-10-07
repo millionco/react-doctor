@@ -1,0 +1,512 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit ea581aea5e94218852ef3fa9d31e85f0c43156eaf2dac538f0d192994dba4e8a
+/**
+ * DOM head-up display: purse, day tracker, contextual prompt, toasts and the
+ * title / pause / results overlays. Kept entirely out of WebGL so text stays
+ * crisp at any resolution.
+ */
+
+export interface PromptOption {
+  key: string;
+  name: string;
+  price?: string;
+  afford: boolean;
+}
+
+export interface PromptStat {
+  label: string;
+  value: string;
+  tone?: "good" | "bad";
+}
+
+export interface PromptModel {
+  title: string;
+  tag?: string;
+  desc?: string;
+  meter?: { value: number; full: boolean };
+  stats?: PromptStat[];
+  options?: PromptOption[];
+  actions?: PromptOption[];
+}
+
+export interface GameSettings {
+  sensitivity: number;
+  fov: number;
+  volume: number;
+  invertY: boolean;
+  ambientOcclusion: boolean;
+  bloom: boolean;
+}
+
+export interface EndStats {
+  won: boolean;
+  headline: string;
+  detail: string;
+  rows: Array<[string, string]>;
+}
+
+const STORAGE_KEY = "spellmarket.settings.v1";
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  attrs: Record<string, string> = {},
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+function esc(text: string): string {
+  return text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+}
+
+export class Hud {
+  readonly settings: GameSettings = {
+    sensitivity: 1,
+    fov: 72,
+    volume: 0.75,
+    invertY: false,
+    ambientOcclusion: true,
+    bloom: true,
+  };
+
+  onStart: (() => void) | null = null;
+  onResume: (() => void) | null = null;
+  onRestart: (() => void) | null = null;
+  onSettingsChanged: ((s: GameSettings) => void) | null = null;
+
+  private readonly root: HTMLDivElement;
+  private readonly coinValue: HTMLElement;
+  private readonly purseSub: HTMLElement;
+  private readonly incomeFlash: HTMLElement;
+  private readonly dayHead: HTMLElement;
+  private readonly dayPhase: HTMLElement;
+  private readonly trackShade: HTMLElement;
+  private readonly trackMarker: HTMLElement;
+  private readonly rentRow: HTMLElement;
+  private readonly crosshair: HTMLElement;
+  private readonly prompt: HTMLElement;
+  private readonly toasts: HTMLElement;
+  private readonly vignette: HTMLElement;
+  private readonly gloomVignette: HTMLElement;
+
+  private readonly loadingOverlay: HTMLElement;
+  private readonly loadingBar: HTMLElement;
+  private readonly loadingLabel: HTMLElement;
+  private readonly titleOverlay: HTMLElement;
+  private readonly pauseOverlay: HTMLElement;
+  private readonly endOverlay: HTMLElement;
+  private readonly endCard: HTMLElement;
+
+  private promptSignature = "";
+  private promptMeter: HTMLElement | null = null;
+  private shownCoin = 0;
+  private targetCoin = 0;
+
+  constructor() {
+    this.root = el("div", { id: "ui" });
+    document.body.appendChild(this.root);
+
+    this.vignette = el("div", { id: "vignette" });
+    this.gloomVignette = el("div", { id: "gloom-vignette" });
+    this.root.append(this.gloomVignette, this.vignette);
+
+    // -- purse --------------------------------------------------------------
+    const purse = el("div", { id: "purse", class: "panel" });
+    purse.innerHTML = `
+      <div class="coin-row"><span class="coin-dot"></span><span id="coin-value">0</span></div>
+      <div class="sub" id="purse-sub"><span>Stalls <b>0</b></span><span>Earned <b>0</b></span></div>`;
+    this.root.appendChild(purse);
+    this.coinValue = purse.querySelector("#coin-value") as HTMLElement;
+    this.purseSub = purse.querySelector("#purse-sub") as HTMLElement;
+
+    this.incomeFlash = el("div", { id: "income-flash" });
+    this.root.appendChild(this.incomeFlash);
+
+    // -- day tracker --------------------------------------------------------
+    const daybar = el("div", { id: "daybar", class: "panel" });
+    daybar.innerHTML = `
+      <div class="head"><span id="day-head">Day 1 of 8</span><span class="phase" id="day-phase">Morning trade</span></div>
+      <div id="track"><div id="track-shade"></div><div id="track-marker"></div></div>
+      <div id="rent-row"><span>Rent due at dawn</span><b id="rent-value">0</b></div>`;
+    this.root.appendChild(daybar);
+    this.dayHead = daybar.querySelector("#day-head") as HTMLElement;
+    this.dayPhase = daybar.querySelector("#day-phase") as HTMLElement;
+    this.trackShade = daybar.querySelector("#track-shade") as HTMLElement;
+    this.trackMarker = daybar.querySelector("#track-marker") as HTMLElement;
+    this.rentRow = daybar.querySelector("#rent-row") as HTMLElement;
+
+    this.crosshair = el("div", { id: "crosshair" });
+    this.root.appendChild(this.crosshair);
+
+    this.prompt = el("div", { id: "prompt", class: "panel" });
+    this.root.appendChild(this.prompt);
+
+    this.toasts = el("div", { id: "toasts" });
+    this.root.appendChild(this.toasts);
+
+    // -- overlays -----------------------------------------------------------
+    this.loadingOverlay = this.buildLoading();
+    this.titleOverlay = this.buildTitle();
+    this.pauseOverlay = this.buildPause();
+    const end = this.buildEnd();
+    this.endOverlay = end.overlay;
+    this.endCard = end.card;
+    this.root.append(this.loadingOverlay, this.titleOverlay, this.pauseOverlay, this.endOverlay);
+    this.loadingBar = this.loadingOverlay.querySelector(".bar i") as HTMLElement;
+    this.loadingLabel = this.loadingOverlay.querySelector(".label") as HTMLElement;
+
+    this.titleOverlay.classList.add("hidden");
+    this.pauseOverlay.classList.add("hidden");
+    this.endOverlay.classList.add("hidden");
+
+    this.loadSettings();
+  }
+
+  // -------------------------------------------------------------- overlays
+
+  private buildLoading(): HTMLElement {
+    const overlay = el("div", { id: "loading", class: "overlay" });
+    const card = el("div", { class: "card panel" });
+    card.innerHTML = `
+      <h1>Spellmarket<span class="sub">Raising the lane</span></h1>
+      <div class="bar"><i></i></div>
+      <div class="label">Preparing</div>`;
+    overlay.appendChild(card);
+    return overlay;
+  }
+
+  private buildTitle(): HTMLElement {
+    const overlay = el("div", { class: "overlay" });
+    const card = el("div", { class: "card panel" });
+    card.innerHTML = `
+      <h1>Spellmarket<span class="sub">Eight days to make the rent</span></h1>
+      <p>You have the lease on one crooked lane and a purse of <b>240 coin</b>. Raise stalls on the
+      empty pitches, walk the lane to <b>collect what they take</b>, and pay the Guild at every dawn.
+      The rent climbs faster than you will like.</p>
+      <h2>The lane decides your profit</h2>
+      <p>Pitches near the gate catch the most footfall; the far end is quiet and, after dark, the
+      <b>gloom</b> rolls up from the shrine and shutters everything it touches. Paired trades placed
+      <b>side by side</b> lift each other, and a <b>street lamp</b> both draws custom and holds the
+      gloom back. Where you build matters as much as what.</p>
+      <h2>Mind the counter</h2>
+      <p>A stall only holds so much coin before trade stalls out. You cannot be everywhere — plan a
+      round and walk it.</p>
+      <h2>Controls</h2>
+      <div class="keys">
+        <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Walk</div>
+        <div><kbd>Shift</kbd> Hurry</div>
+        <div><kbd>Mouse</kbd> Look</div>
+        <div><kbd>E</kbd> Collect / raise lamp</div>
+        <div><kbd>1</kbd>–<kbd>4</kbd> Build a stall</div>
+        <div><kbd>F</kbd> Improve a stall</div>
+        <div><kbd>Esc</kbd> Pause &amp; settings</div>
+      </div>
+      <button class="primary" type="button">Open the market</button>`;
+    (card.querySelector("button") as HTMLButtonElement).addEventListener("click", () => this.onStart?.());
+    overlay.appendChild(card);
+    return overlay;
+  }
+
+  private buildPause(): HTMLElement {
+    const overlay = el("div", { class: "overlay" });
+    const card = el("div", { class: "card panel" });
+    card.innerHTML = `<h1>Paused<span class="sub">The lane waits</span></h1><h2>Settings</h2>`;
+    const settingsHost = el("div");
+    card.appendChild(settingsHost);
+
+    const slider = (
+      label: string,
+      min: number,
+      max: number,
+      step: number,
+      get: () => number,
+      set: (v: number) => void,
+      fmt: (v: number) => string,
+    ): void => {
+      const row = el("div", { class: "setting" });
+      const input = el("input", {
+        type: "range",
+        min: String(min),
+        max: String(max),
+        step: String(step),
+        value: String(get()),
+      }) as HTMLInputElement;
+      const val = el("span", { class: "val" }, fmt(get()));
+      input.addEventListener("input", () => {
+        const v = Number(input.value);
+        set(v);
+        val.textContent = fmt(v);
+        this.emitSettings();
+      });
+      row.append(el("span", {}, label), input, val);
+      settingsHost.appendChild(row);
+    };
+
+    const toggle = (label: string, get: () => boolean, set: (v: boolean) => void): void => {
+      const row = el("div", { class: "setting" });
+      const btn = el("button", { class: `toggle${get() ? " on" : ""}`, type: "button" }, get() ? "On" : "Off");
+      btn.addEventListener("click", () => {
+        set(!get());
+        btn.className = `toggle${get() ? " on" : ""}`;
+        btn.textContent = get() ? "On" : "Off";
+        this.emitSettings();
+      });
+      row.append(el("span", {}, label), btn, el("span", { class: "val" }, ""));
+      settingsHost.appendChild(row);
+    };
+
+    slider("Look sensitivity", 0.2, 3, 0.05, () => this.settings.sensitivity, (v) => (this.settings.sensitivity = v), (v) => v.toFixed(2));
+    slider("Field of view", 60, 100, 1, () => this.settings.fov, (v) => (this.settings.fov = v), (v) => `${v.toFixed(0)}°`);
+    slider("Volume", 0, 1, 0.02, () => this.settings.volume, (v) => (this.settings.volume = v), (v) => `${Math.round(v * 100)}%`);
+    toggle("Invert vertical look", () => this.settings.invertY, (v) => (this.settings.invertY = v));
+    toggle("Ambient occlusion", () => this.settings.ambientOcclusion, (v) => (this.settings.ambientOcclusion = v));
+    toggle("Magical bloom", () => this.settings.bloom, (v) => (this.settings.bloom = v));
+
+    const resume = el("button", { class: "primary", type: "button" }, "Back to the lane");
+    resume.addEventListener("click", () => this.onResume?.());
+    const restart = el("button", { class: "ghost", type: "button" }, "Abandon and start over");
+    restart.addEventListener("click", () => this.onRestart?.());
+    card.append(resume, restart);
+    overlay.appendChild(card);
+    return overlay;
+  }
+
+  private buildEnd(): { overlay: HTMLElement; card: HTMLElement } {
+    const overlay = el("div", { class: "overlay" });
+    const card = el("div", { class: "card panel" });
+    overlay.appendChild(card);
+    return { overlay, card };
+  }
+
+  // -------------------------------------------------------------- settings
+
+  private emitSettings(): void {
+    this.saveSettings();
+    this.onSettingsChanged?.(this.settings);
+  }
+
+  private saveSettings(): void {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.settings));
+    } catch {
+      /* storage may be unavailable; settings simply do not persist. */
+    }
+  }
+
+  private loadSettings(): void {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<GameSettings>;
+      if (typeof parsed.sensitivity === "number") this.settings.sensitivity = parsed.sensitivity;
+      if (typeof parsed.fov === "number") this.settings.fov = parsed.fov;
+      if (typeof parsed.volume === "number") this.settings.volume = parsed.volume;
+      if (typeof parsed.invertY === "boolean") this.settings.invertY = parsed.invertY;
+      if (typeof parsed.ambientOcclusion === "boolean") this.settings.ambientOcclusion = parsed.ambientOcclusion;
+      if (typeof parsed.bloom === "boolean") this.settings.bloom = parsed.bloom;
+      // Reflect the loaded values in the already-built controls.
+      const rows = this.pauseOverlay.querySelectorAll<HTMLInputElement>('input[type="range"]');
+      const values = [this.settings.sensitivity, this.settings.fov, this.settings.volume];
+      const fmts = [(v: number) => v.toFixed(2), (v: number) => `${v.toFixed(0)}°`, (v: number) => `${Math.round(v * 100)}%`];
+      rows.forEach((input, i) => {
+        const v = values[i];
+        if (v === undefined) return;
+        input.value = String(v);
+        const val = input.parentElement?.querySelector(".val");
+        if (val) val.textContent = fmts[i]?.(v) ?? String(v);
+      });
+      const toggles = this.pauseOverlay.querySelectorAll<HTMLButtonElement>(".toggle");
+      const flags = [this.settings.invertY, this.settings.ambientOcclusion, this.settings.bloom];
+      toggles.forEach((btn, i) => {
+        const on = flags[i] ?? false;
+        btn.className = `toggle${on ? " on" : ""}`;
+        btn.textContent = on ? "On" : "Off";
+      });
+    } catch {
+      /* ignore malformed saved settings */
+    }
+  }
+
+  // ------------------------------------------------------------------ state
+
+  setLoading(label: string, fraction: number): void {
+    this.loadingLabel.textContent = label;
+    this.loadingBar.style.width = `${Math.round(fraction * 100)}%`;
+  }
+
+  hideLoading(): void {
+    this.loadingOverlay.classList.add("hidden");
+  }
+
+  showTitle(): void {
+    this.titleOverlay.classList.remove("hidden");
+  }
+
+  hideTitle(): void {
+    this.titleOverlay.classList.add("hidden");
+  }
+
+  showPause(): void {
+    this.pauseOverlay.classList.remove("hidden");
+  }
+
+  hidePause(): void {
+    this.pauseOverlay.classList.add("hidden");
+  }
+
+  get isPauseVisible(): boolean {
+    return !this.pauseOverlay.classList.contains("hidden");
+  }
+
+  showEnd(stats: EndStats): void {
+    const rows = stats.rows.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
+    this.endCard.innerHTML = `
+      <h1>${esc(stats.won ? "Market Made" : "Evicted")}<span class="sub">${esc(stats.headline)}</span></h1>
+      <p>${esc(stats.detail)}</p>
+      <h2>The ledger</h2>
+      <div class="results">${rows}</div>`;
+    const again = el("button", { class: "primary", type: "button" }, "Take another lease");
+    again.addEventListener("click", () => this.onRestart?.());
+    this.endCard.appendChild(again);
+    this.endOverlay.classList.remove("hidden");
+  }
+
+  hideEnd(): void {
+    this.endOverlay.classList.add("hidden");
+  }
+
+  setCoin(value: number, instant = false): void {
+    this.targetCoin = value;
+    if (instant) this.shownCoin = value;
+  }
+
+  setPurseSub(stalls: number, total: number, earned: number): void {
+    this.purseSub.innerHTML = `<span>Stalls <b>${stalls}/${total}</b></span><span>Earned <b>${Math.round(earned)}</b></span>`;
+  }
+
+  flashIncome(amount: number, tone: "good" | "bad"): void {
+    this.incomeFlash.textContent = `${amount >= 0 ? "+" : "−"}${Math.abs(Math.round(amount))}`;
+    this.incomeFlash.style.color = tone === "good" ? "var(--good)" : "var(--danger)";
+    this.incomeFlash.classList.remove("show");
+    void this.incomeFlash.offsetWidth;
+    this.incomeFlash.classList.add("show");
+  }
+
+  setDay(day: number, total: number, progress: number, phase: string): void {
+    this.dayHead.textContent = `Day ${day} of ${total}`;
+    this.dayPhase.textContent = phase;
+    this.trackShade.style.transform = `scaleX(${1 - progress})`;
+    this.trackMarker.style.left = `${progress * 100}%`;
+  }
+
+  setRent(amount: number, atRisk: boolean): void {
+    const value = this.rentRow.querySelector("b");
+    if (value) value.textContent = String(Math.round(amount));
+    this.rentRow.classList.toggle("risk", atRisk);
+  }
+
+  setCrosshair(visible: boolean, active: boolean): void {
+    this.crosshair.classList.toggle("visible", visible);
+    this.crosshair.classList.toggle("active", active);
+  }
+
+  setVignette(danger: number, gloom: number): void {
+    this.vignette.style.opacity = String(danger);
+    this.gloomVignette.style.opacity = String(gloom);
+  }
+
+  setPrompt(model: PromptModel | null): void {
+    if (!model) {
+      this.prompt.classList.remove("show");
+      this.promptSignature = "";
+      this.promptMeter = null;
+      return;
+    }
+    const sig = JSON.stringify([
+      model.title,
+      model.tag,
+      model.desc,
+      model.stats,
+      model.options,
+      model.actions,
+      model.meter?.full,
+      model.meter !== undefined,
+    ]);
+    if (sig !== this.promptSignature) {
+      this.promptSignature = sig;
+      let html = `<div class="title"><span>${esc(model.title)}</span>${
+        model.tag ? `<span class="tag">${esc(model.tag)}</span>` : ""
+      }</div>`;
+      if (model.desc) html += `<div class="desc">${esc(model.desc)}</div>`;
+      if (model.meter) html += `<div class="meter${model.meter.full ? " full" : ""}"><i></i></div>`;
+      if (model.stats?.length) {
+        html += `<div class="stat-row">${model.stats
+          .map((s) => `<span class="${s.tone ?? ""}">${esc(s.label)} <b>${esc(s.value)}</b></span>`)
+          .join("")}</div>`;
+      }
+      if (model.options?.length) {
+        html += `<div class="options">${model.options
+          .map(
+            (o) =>
+              `<div class="opt ${o.afford ? "afford" : "poor"}"><span class="key">${esc(o.key)}</span>` +
+              `<span class="name">${esc(o.name)}</span>` +
+              (o.price ? `<span class="price">${esc(o.price)}</span>` : "") +
+              `</div>`,
+          )
+          .join("")}</div>`;
+      }
+      if (model.actions?.length) {
+        html += `<div class="actions">${model.actions
+          .map(
+            (a) =>
+              `<div class="action ${a.afford ? "" : "dim"}"><span class="key">${esc(a.key)}</span>` +
+              `<span>${esc(a.name)}</span>` +
+              (a.price ? `<span class="price">${esc(a.price)}</span>` : "") +
+              `</div>`,
+          )
+          .join("")}</div>`;
+      }
+      this.prompt.innerHTML = html;
+      this.promptMeter = this.prompt.querySelector(".meter i");
+    }
+    if (model.meter && this.promptMeter) {
+      this.promptMeter.style.width = `${Math.max(0, Math.min(1, model.meter.value)) * 100}%`;
+    }
+    this.prompt.classList.add("show");
+  }
+
+  toast(text: string, kind: "good" | "bad" | "magic" | "" = "", ttl = 2600): void {
+    const node = el("div", { class: `toast ${kind}` }, esc(text));
+    this.toasts.appendChild(node);
+    while (this.toasts.childElementCount > 4) this.toasts.firstElementChild?.remove();
+    setTimeout(() => {
+      node.classList.add("fade");
+      setTimeout(() => node.remove(), 420);
+    }, ttl);
+  }
+
+  clearToasts(): void {
+    this.toasts.innerHTML = "";
+  }
+
+  /** Smooth the purse counter so collections feel like they land. */
+  tick(dt: number): void {
+    if (this.shownCoin !== this.targetCoin) {
+      const diff = this.targetCoin - this.shownCoin;
+      const step = Math.max(Math.abs(diff) * Math.min(1, dt * 9), Math.min(Math.abs(diff), 24 * dt * 60 * 0.02));
+      this.shownCoin += Math.sign(diff) * Math.min(Math.abs(diff), step);
+      if (Math.abs(this.targetCoin - this.shownCoin) < 0.6) this.shownCoin = this.targetCoin;
+      this.coinValue.textContent = String(Math.round(this.shownCoin));
+    }
+  }
+
+  setCanvasLocked(canvas: HTMLCanvasElement, locked: boolean): void {
+    canvas.classList.toggle("locked", locked);
+  }
+}

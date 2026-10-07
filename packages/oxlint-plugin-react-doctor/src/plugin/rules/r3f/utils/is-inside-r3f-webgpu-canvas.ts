@@ -11,7 +11,10 @@ import { R3F_PUBLIC_MODULES } from "./r3f-public-modules.js";
 import { R3F_WEBGPU_MODULES } from "./r3f-webgpu-modules.js";
 import { resolveLocalReactCallback } from "./resolve-local-react-callback.js";
 
-const isWebGpuRendererExpression = (expression: EsTreeNode, context: RuleContext): boolean => {
+export const isWebGpuRendererExpression = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): boolean => {
   const candidate = stripParenExpression(expression);
   if (!isNodeOfType(candidate, "NewExpression")) return false;
   const provenance = getApiReferenceProvenance(candidate.callee, context.scopes);
@@ -46,7 +49,7 @@ const canvasCreatesWebGpuRenderer = (canvas: EsTreeNode, context: RuleContext): 
   );
 };
 
-export const isR3fWebgpuCanvasElement = (node: EsTreeNode, context: RuleContext): boolean => {
+const isR3fWebgpuCanvasElement = (node: EsTreeNode, context: RuleContext): boolean => {
   if (!isNodeOfType(node, "JSXElement")) return false;
   const moduleSource = getApiReferenceModuleSource(
     node.openingElement.name,

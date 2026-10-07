@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -120,7 +121,7 @@ export const renderingHydrationMismatchTime = defineRule({
     // React Native has no server-rendered HTML to hydrate; skip files in
     // RN/Expo packages of mixed monorepos (the project-level capability
     // gate alone can't reach those).
-    if (classifyReactNativeFileTarget(context) === "react-native") return {};
+    if (classifyReactNativeFileTarget(context) === "react-native") return EMPTY_RULE_VISITORS;
     return {
       JSXExpressionContainer(node: EsTreeNodeOfType<"JSXExpressionContainer">) {
         if (isTestlikeFile) return;

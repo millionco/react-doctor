@@ -1,10 +1,11 @@
 import { getCategoryImpact } from "@react-doctor/core";
 import { Box, Text } from "ink";
-import { useMemo } from "react";
 import { buildCodeFrame } from "../../utils/build-code-frame.js";
-import { TUI_DETAIL_INDENT_COLUMNS } from "../../utils/constants.js";
+import { TUI_DETAIL_INDENT_COLUMNS, TUI_REPORT_SECTION_GAP_ROWS } from "../../utils/constants.js";
 import type { DiagnosticRow } from "../lib/diagnostic-rows.js";
+import { useMemo } from "../react-runtime.js";
 import { severityVariant } from "../lib/severity-variants.js";
+import { TuiLink } from "./tui-link.js";
 
 export interface DiagnosticDetailProps {
   readonly row: DiagnosticRow | null;
@@ -40,30 +41,39 @@ export const DiagnosticDetail = ({ row, rootDirectory }: DiagnosticDetailProps) 
       <Box flexDirection="column" paddingLeft={TUI_DETAIL_INDENT_COLUMNS}>
         <Text dimColor wrap="truncate-end">
           {row.category} · {variant.label} · {row.location}
+          {representative.fileContext ? ` · ${representative.fileContext} file` : ""}
         </Text>
         {impact ? (
-          <Text dimColor wrap="wrap">
-            {impact}
-          </Text>
+          <Box marginTop={TUI_REPORT_SECTION_GAP_ROWS}>
+            <Text wrap="wrap">
+              <Text color="cyan">Impact </Text>
+              {impact}
+            </Text>
+          </Box>
         ) : null}
-        <Text wrap="wrap">{representative.message}</Text>
+        <Box marginTop={TUI_REPORT_SECTION_GAP_ROWS}>
+          <Text wrap="wrap">
+            <Text color="cyan">Why </Text>
+            {representative.message}
+          </Text>
+        </Box>
         {codeFrame ? (
-          <Box marginTop={1}>
+          <Box marginTop={TUI_REPORT_SECTION_GAP_ROWS}>
             <Text>{codeFrame}</Text>
           </Box>
         ) : null}
         {representative.help ? (
-          <Box marginTop={1}>
+          <Box marginTop={TUI_REPORT_SECTION_GAP_ROWS}>
             <Text wrap="wrap">
               <Text color="cyan">Fix </Text>
               {representative.help}
             </Text>
           </Box>
         ) : null}
-        {row.learnMore ? (
-          <Box marginTop={1}>
+        {row.ruleGuideUrl ? (
+          <Box marginTop={TUI_REPORT_SECTION_GAP_ROWS}>
             <Text color="blue" wrap="truncate-end">
-              {row.learnMore}
+              <TuiLink url={row.ruleGuideUrl}>Rule guide: {row.ruleGuideUrl}</TuiLink>
             </Text>
           </Box>
         ) : null}

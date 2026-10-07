@@ -1,3 +1,4 @@
+import { isDefaultImportFromModule } from "../../utils/find-import-source-for-name.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -32,6 +33,16 @@ export const nextjsNoAElement = defineRule({
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (resolveJsxElementType(node) !== "a") return;
+      const parentElement = node.parent?.parent;
+      if (isNodeOfType(parentElement, "JSXElement")) {
+        const parentName = parentElement.openingElement.name;
+        if (
+          isNodeOfType(parentName, "JSXIdentifier") &&
+          context.scopes.symbolFor(parentName)?.kind === "import" &&
+          isDefaultImportFromModule(parentName, parentName.name, "next/link")
+        )
+          return;
+      }
 
       const attributes = node.attributes ?? [];
 

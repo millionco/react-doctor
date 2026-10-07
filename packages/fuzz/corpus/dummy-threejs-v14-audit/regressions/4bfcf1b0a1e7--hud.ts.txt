@@ -1,0 +1,459 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 4bfcf1b0a1e76d720968b988493ae0a9da04661521221f0558e0f7f7a8e0dc89
+import { CORE_FAIL_THRESHOLD, DEFENSES, DEFENSE_ORDER, RING_COSTS, type DefenseKind } from "../game/config";
+import { RING_NAMES } from "../game/grid";
+
+/** The DOM layer: readouts, palette, ring ledger, breach markers, overlays. */
+
+export interface HudCallbacks {
+  onPick: (kind: DefenseKind) => void;
+  onReshape: (ringIndex: number) => void;
+  onUpgrade: () => void;
+  onDemolish: () => void;
+  onOverlayAction: (action: string) => void;
+}
+
+export interface SelectionInfo {
+  name: string;
+  level: number;
+  rows: [string, string][];
+  upgradeCost: number | null;
+  refund: number;
+  canAfford: boolean;
+}
+
+export interface MarkerInfo {
+  id: string;
+  /** Normalised device coords of the tracked point. */
+  ndcX: number;
+  ndcY: number;
+  behind: boolean;
+  label: string;
+  colour: string;
+  severity: number;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+export class Hud {
+  private readonly root: HTMLDivElement;
+  private readonly cards = new Map<DefenseKind, HTMLElement>();
+  private readonly ringRows: HTMLElement[] = [];
+  private readonly markers = new Map<string, HTMLElement>();
+
+  private readonly waveValue: HTMLElement;
+  private readonly phaseValue: HTMLElement;
+  private readonly powerValue: HTMLElement;
+  private readonly integrityValue: HTMLElement;
+  private readonly integrityFill: HTMLElement;
+  private readonly blurb: HTMLElement;
+  private readonly hint: HTMLElement;
+  private readonly toasts: HTMLElement;
+  private readonly selection: HTMLElement;
+  private readonly selName: HTMLElement;
+  private readonly selLevel: HTMLElement;
+  private readonly selStats: HTMLElement;
+  private readonly upgradeBtn: HTMLButtonElement;
+  private readonly demolishBtn: HTMLButtonElement;
+  private readonly overlay: HTMLElement;
+  private readonly overlayKicker: HTMLElement;
+  private readonly overlayTitle: HTMLElement;
+  private readonly overlayBody: HTMLElement;
+  private readonly overlayActions: HTMLElement;
+  private readonly modeChip: HTMLElement;
+  private readonly markerLayer: HTMLElement;
+  private readonly damageFlash: HTMLElement;
+
+  private flashTimer = 0;
+
+  constructor(private readonly cb: HudCallbacks) {
+    this.root = el("div");
+    this.root.id = "ui";
+    document.body.appendChild(this.root);
+
+    this.root.appendChild(el("div")).id = "vignette";
+    this.damageFlash = this.root.appendChild(el("div"));
+    this.damageFlash.id = "damage-flash";
+
+    // --- top bar ---
+    const top = el("div", "panel");
+    top.id = "topbar";
+    const mkStat = (label: string, initial: string, cls = "") => {
+      const s = el("div", `stat ${cls}`);
+      s.appendChild(el("div", "label", label));
+      const v = el("div", "value", initial);
+      s.appendChild(v);
+      top.appendChild(s);
+      return { stat: s, value: v };
+    };
+    this.waveValue = mkStat("Assault", "— / 3").value;
+    this.phaseValue = mkStat("Phase", "Dormant").value;
+    this.powerValue = mkStat("Power", "0", "power").value;
+
+    const integrityStat = el("div", "stat wide");
+    integrityStat.appendChild(el("div", "label", "Throne Core Integrity"));
+    const intRow = el("div");
+    intRow.style.display = "flex";
+    intRow.style.justifyContent = "space-between";
+    intRow.style.alignItems = "baseline";
+    this.integrityValue = el("div", "value", "100%");
+    intRow.appendChild(this.integrityValue);
+    intRow.appendChild(el("div", "", `<span id="threshold-note">hold above ${CORE_FAIL_THRESHOLD}%</span>`));
+    integrityStat.appendChild(intRow);
+    const track = el("div");
+    track.id = "integrity-track";
+    this.integrityFill = el("div");
+    this.integrityFill.id = "integrity-fill";
+    track.appendChild(this.integrityFill);
+    const marker = el("div");
+    marker.id = "integrity-threshold";
+    marker.style.left = `${CORE_FAIL_THRESHOLD}%`;
+    track.appendChild(marker);
+    integrityStat.appendChild(track);
+    top.appendChild(integrityStat);
+    this.root.appendChild(top);
+
+    // --- palette ---
+    const palette = el("div", "panel");
+    palette.id = "palette";
+    palette.appendChild(el("div", "section-title", "Works of the Deep"));
+    for (const kind of DEFENSE_ORDER) {
+      const def = DEFENSES[kind];
+      const card = el("div", "card");
+      card.appendChild(el("div", "key", def.hotkey));
+      const mid = el("div");
+      mid.appendChild(el("div", "name", def.name));
+      mid.appendChild(el("div", "sub", def.epithet));
+      card.appendChild(mid);
+      card.appendChild(el("div", "cost", String(def.cost)));
+      card.addEventListener("click", () => this.cb.onPick(kind));
+      card.addEventListener("mouseenter", () => {
+        this.blurb.textContent = def.blurb;
+      });
+      palette.appendChild(card);
+      this.cards.set(kind, card);
+    }
+    this.blurb = el("div");
+    this.blurb.id = "palette-blurb";
+    this.blurb.textContent = DEFENSES.barricade.blurb;
+    palette.appendChild(this.blurb);
+    this.root.appendChild(palette);
+
+    // --- rings ---
+    const rings = el("div", "panel");
+    rings.id = "rings";
+    rings.appendChild(el("div", "section-title", "Reshape the Chambers"));
+    for (let k = 0; k < 3; k++) {
+      const row = el("div", "ring-row");
+      const left = el("div");
+      left.appendChild(el("div", "ring-name", RING_NAMES[k + 1] ?? "Ring"));
+      const pips = el("div", "pips");
+      for (let p = 0; p < 3; p++) pips.appendChild(el("div", "pip"));
+      left.appendChild(pips);
+      row.appendChild(left);
+      row.appendChild(el("div", "ring-cost", String(RING_COSTS[0])));
+      row.addEventListener("click", () => this.cb.onReshape(k));
+      rings.appendChild(row);
+      this.ringRows.push(row);
+    }
+    this.root.appendChild(rings);
+
+    // --- selection ---
+    const sel = el("div", "panel");
+    sel.id = "selection";
+    this.selName = el("div");
+    this.selName.id = "sel-name";
+    sel.appendChild(this.selName);
+    this.selLevel = el("div");
+    this.selLevel.id = "sel-level";
+    sel.appendChild(this.selLevel);
+    this.selStats = el("div");
+    sel.appendChild(this.selStats);
+    const actions = el("div", "actions");
+    this.upgradeBtn = el("button", "act") as HTMLButtonElement;
+    this.upgradeBtn.textContent = "Empower (U)";
+    this.upgradeBtn.addEventListener("click", () => this.cb.onUpgrade());
+    this.demolishBtn = el("button", "act danger") as HTMLButtonElement;
+    this.demolishBtn.textContent = "Unmake (X)";
+    this.demolishBtn.addEventListener("click", () => this.cb.onDemolish());
+    actions.appendChild(this.upgradeBtn);
+    actions.appendChild(this.demolishBtn);
+    sel.appendChild(actions);
+    this.root.appendChild(sel);
+    this.selection = sel;
+
+    // --- bottom hint ---
+    const bottom = el("div", "panel");
+    bottom.id = "bottom";
+    this.hint = el("div");
+    this.hint.id = "hint";
+    bottom.appendChild(this.hint);
+    this.root.appendChild(bottom);
+
+    // --- key legend ---
+    const keys = el("div", "panel");
+    keys.id = "keys";
+    const legend: [string, string][] = [
+      ["Left click", "place / select"],
+      ["Right drag", "rotate camera"],
+      ["Wheel", "zoom"],
+      ["Q / E", "turn work / cycle work"],
+      ["W A S D", "pan · move on ground"],
+      ["V", "ground inspection view"],
+      ["F", "focus next breach"],
+      ["U / X", "empower / unmake"],
+      ["Space", "begin the assault"],
+    ];
+    for (const [k, v] of legend) {
+      const line = el("div", "keyline");
+      line.appendChild(el("b", "", k));
+      line.appendChild(el("span", "", v));
+      keys.appendChild(line);
+    }
+    this.root.appendChild(keys);
+
+    // --- toasts / markers ---
+    this.toasts = el("div");
+    this.toasts.id = "toasts";
+    this.root.appendChild(this.toasts);
+
+    this.markerLayer = el("div");
+    this.markerLayer.style.position = "absolute";
+    this.markerLayer.style.inset = "0";
+    this.markerLayer.style.pointerEvents = "none";
+    this.root.appendChild(this.markerLayer);
+
+    this.modeChip = el("div");
+    this.modeChip.id = "mode-chip";
+    this.modeChip.textContent = "Tactical View";
+    this.root.appendChild(this.modeChip);
+
+    // --- overlay ---
+    this.overlay = el("div");
+    this.overlay.id = "overlay";
+    const card = el("div");
+    card.id = "overlay-card";
+    this.overlayKicker = el("div");
+    this.overlayKicker.id = "overlay-kicker";
+    card.appendChild(this.overlayKicker);
+    this.overlayTitle = el("h1");
+    this.overlayTitle.id = "overlay-title";
+    card.appendChild(this.overlayTitle);
+    this.overlayBody = el("div");
+    this.overlayBody.id = "overlay-body";
+    card.appendChild(this.overlayBody);
+    this.overlayActions = el("div");
+    this.overlayActions.id = "overlay-actions";
+    card.appendChild(this.overlayActions);
+    this.overlay.appendChild(card);
+    this.root.appendChild(this.overlay);
+  }
+
+  // -------------------------------------------------------------------------
+
+  setStats(wave: number, totalWaves: number, phase: string, power: number, integrity: number): void {
+    this.waveValue.textContent = `${wave} / ${totalWaves}`;
+    this.phaseValue.textContent = phase;
+    this.powerValue.textContent = String(Math.floor(power));
+    const pct = Math.max(0, integrity);
+    this.integrityValue.textContent = `${pct.toFixed(0)}%`;
+    this.integrityFill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    this.integrityFill.classList.toggle("warn", pct <= 62 && pct > CORE_FAIL_THRESHOLD + 12);
+    this.integrityFill.classList.toggle("danger", pct <= CORE_FAIL_THRESHOLD + 12);
+  }
+
+  setPalette(selected: DefenseKind, power: number): void {
+    for (const [kind, card] of this.cards) {
+      card.classList.toggle("active", kind === selected);
+      card.classList.toggle("poor", DEFENSES[kind].cost > power);
+    }
+  }
+
+  setBlurb(kind: DefenseKind): void {
+    this.blurb.textContent = DEFENSES[kind].blurb;
+  }
+
+  setRings(levels: number[], power: number): void {
+    for (let k = 0; k < this.ringRows.length; k++) {
+      const row = this.ringRows[k]!;
+      const level = levels[k] ?? 0;
+      const pips = row.querySelectorAll<HTMLElement>(".pip");
+      pips.forEach((pip, idx) => pip.classList.toggle("on", idx < level));
+      const costEl = row.querySelector<HTMLElement>(".ring-cost")!;
+      if (level >= 3) {
+        costEl.textContent = "MAX";
+        row.classList.add("maxed");
+        row.classList.remove("poor");
+      } else {
+        const cost = RING_COSTS[level] ?? 0;
+        costEl.textContent = String(cost);
+        row.classList.remove("maxed");
+        row.classList.toggle("poor", cost > power);
+      }
+    }
+  }
+
+  setSelection(info: SelectionInfo | null): void {
+    if (!info) {
+      this.selection.classList.remove("show");
+      return;
+    }
+    this.selection.classList.add("show");
+    this.selName.textContent = info.name;
+    this.selLevel.textContent = `Tier ${info.level} of 3`;
+    this.selStats.innerHTML = "";
+    for (const [k, v] of info.rows) {
+      const row = el("div", "stat-row");
+      row.appendChild(el("span", "", k));
+      row.appendChild(el("span", "", v));
+      this.selStats.appendChild(row);
+    }
+    if (info.upgradeCost === null) {
+      this.upgradeBtn.textContent = "Fully Empowered";
+      this.upgradeBtn.disabled = true;
+    } else {
+      this.upgradeBtn.textContent = `Empower · ${info.upgradeCost} (U)`;
+      this.upgradeBtn.disabled = !info.canAfford;
+    }
+    this.demolishBtn.textContent = `Unmake · +${info.refund} (X)`;
+  }
+
+  setHint(html: string): void {
+    this.hint.innerHTML = html;
+  }
+
+  setMode(ground: boolean): void {
+    this.modeChip.textContent = ground ? "Ground Inspection — V to rise" : "Tactical View";
+    this.modeChip.classList.toggle("ground", ground);
+  }
+
+  toast(text: string, kind: "info" | "warn" | "bad" | "good" = "info"): void {
+    const t = el("div", `toast ${kind === "info" ? "" : kind}`, text);
+    this.toasts.appendChild(t);
+    setTimeout(() => {
+      t.style.transition = "opacity 0.4s, transform 0.4s";
+      t.style.opacity = "0";
+      t.style.transform = "translateY(-6px)";
+      setTimeout(() => t.remove(), 420);
+    }, 2600);
+    while (this.toasts.children.length > 5) this.toasts.firstElementChild?.remove();
+  }
+
+  flashDamage(): void {
+    this.flashTimer = 0.34;
+    this.damageFlash.style.opacity = "1";
+  }
+
+  updateTimers(dt: number): void {
+    if (this.flashTimer > 0) {
+      this.flashTimer -= dt;
+      if (this.flashTimer <= 0) this.damageFlash.style.opacity = "0";
+    }
+  }
+
+  /**
+   * Directional breach warnings. Anything tracked off-screen is pinned to the
+   * edge with an arrow pointing at it; on-screen threats get a small caret.
+   */
+  setMarkers(list: MarkerInfo[]): void {
+    const seen = new Set<string>();
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    // Keep edge arrows inside the ring of panels rather than under them.
+    const padX = Math.min(288, w * 0.26);
+    const padY = Math.min(108, h * 0.18);
+
+    for (const m of list) {
+      seen.add(m.id);
+      let node = this.markers.get(m.id);
+      if (!node) {
+        node = el("div", "marker");
+        node.appendChild(el("div", "arrow"));
+        node.appendChild(el("div", "cap"));
+        this.markerLayer.appendChild(node);
+        this.markers.set(m.id, node);
+      }
+
+      let x = (m.ndcX * 0.5 + 0.5) * w;
+      let y = (-m.ndcY * 0.5 + 0.5) * h;
+      let onEdge = false;
+
+      if (m.behind) {
+        x = w - x;
+        y = h - y;
+        onEdge = true;
+      }
+      if (x < padX || x > w - padX || y < padY || y > h - padY) onEdge = true;
+
+      let angle = 0;
+      if (onEdge) {
+        const cx = w / 2;
+        const cy = h / 2;
+        const dx = x - cx;
+        const dy = y - cy;
+        const len = Math.hypot(dx, dy) || 1;
+        const sx = (w / 2 - padX) / Math.abs(dx || 1e-6);
+        const sy = (h / 2 - padY) / Math.abs(dy || 1e-6);
+        const s = Math.min(sx, sy);
+        x = cx + dx * s;
+        y = cy + dy * s;
+        angle = Math.atan2(dy, dx) * (180 / Math.PI) - 90;
+      }
+
+      node.className = `marker${onEdge ? " edge" : ""}`;
+      node.style.color = m.colour;
+      node.style.left = `${x}px`;
+      node.style.top = `${y}px`;
+      node.style.opacity = String(0.45 + m.severity * 0.55);
+      const arrow = node.firstElementChild as HTMLElement;
+      arrow.style.transform = onEdge ? `rotate(${angle + 180}deg)` : "rotate(180deg) scale(0.7)";
+      (node.lastElementChild as HTMLElement).textContent = m.label;
+    }
+
+    for (const [id, node] of this.markers) {
+      if (!seen.has(id)) {
+        node.remove();
+        this.markers.delete(id);
+      }
+    }
+  }
+
+  showOverlay(
+    kicker: string,
+    title: string,
+    body: string,
+    actions: { id: string; label: string }[],
+    tone: "" | "fail" | "win" = "",
+  ): void {
+    this.overlayKicker.textContent = kicker;
+    this.overlayTitle.textContent = title;
+    this.overlayBody.innerHTML = body;
+    this.overlayActions.innerHTML = "";
+    for (const a of actions) {
+      const b = el("button", "", a.label);
+      b.addEventListener("click", () => this.cb.onOverlayAction(a.id));
+      this.overlayActions.appendChild(b);
+    }
+    this.overlay.className = `show ${tone}`.trim();
+  }
+
+  hideOverlay(): void {
+    this.overlay.className = "";
+  }
+
+  get overlayVisible(): boolean {
+    return this.overlay.classList.contains("show");
+  }
+}

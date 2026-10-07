@@ -4,7 +4,6 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { getImportedName } from "./get-imported-name.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
-import { isNodeOfType } from "./is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
@@ -15,19 +14,38 @@ export interface ReactApiCallOptions {
   resolveNamedAliases?: boolean;
 }
 
+interface ReactImportDescriptor {
+  importedName: string | undefined;
+  isReactImport: boolean;
+}
+
+const DEFAULT_REACT_API_CALL_OPTIONS: ReactApiCallOptions = {};
+const reactImportDescriptorBySymbol = new WeakMap<SymbolDescriptor, ReactImportDescriptor>();
+
 const includesApiName = (apiNames: string | ReadonlySet<string>, apiName: string): boolean =>
   typeof apiNames === "string" ? apiNames === apiName : apiNames.has(apiName);
 
-export const isImportedFromReact = (symbol: SymbolDescriptor): boolean => {
-  if (symbol.kind !== "import") return false;
+const getReactImportDescriptor = (symbol: SymbolDescriptor): ReactImportDescriptor => {
+  const cachedDescriptor = reactImportDescriptorBySymbol.get(symbol);
+  if (cachedDescriptor) return cachedDescriptor;
   const importDeclaration = symbol.declarationNode.parent;
-  return Boolean(
+  const isReactImport = Boolean(
+    symbol.kind === "import" &&
     importDeclaration &&
-    isNodeOfType(importDeclaration, "ImportDeclaration") &&
+    importDeclaration.type === "ImportDeclaration" &&
     typeof importDeclaration.source.value === "string" &&
     REACT_RUNTIME_MODULE_SOURCES.has(importDeclaration.source.value),
   );
+  const descriptor: ReactImportDescriptor = {
+    importedName: isReactImport ? getImportedName(symbol.declarationNode) : undefined,
+    isReactImport,
+  };
+  reactImportDescriptorBySymbol.set(symbol, descriptor);
+  return descriptor;
 };
+
+export const isImportedFromReact = (symbol: SymbolDescriptor): boolean =>
+  getReactImportDescriptor(symbol).isReactImport;
 
 const isNamedReactApiImport = (
   identifier: EsTreeNode,
@@ -35,22 +53,28 @@ const isNamedReactApiImport = (
   scopes: ScopeAnalysis,
   resolveAliases: boolean,
 ): boolean => {
-  if (!isNodeOfType(identifier, "Identifier")) return false;
+  if (identifier.type !== "Identifier") return false;
   const symbol = resolveAliases
     ? resolveConstIdentifierAlias(identifier, scopes)
     : scopes.symbolFor(identifier);
-  if (!symbol || !isImportedFromReact(symbol)) return false;
-  const importedName = getImportedName(symbol.declarationNode);
-  return Boolean(importedName && includesApiName(apiNames, importedName));
+  if (!symbol) return false;
+  const descriptor = getReactImportDescriptor(symbol);
+  return Boolean(
+    descriptor.isReactImport &&
+    descriptor.importedName &&
+    includesApiName(apiNames, descriptor.importedName),
+  );
 };
 
 export const isReactNamespaceImport = (identifier: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const symbol = resolveConstIdentifierAlias(identifier, scopes);
-  if (!symbol || !isImportedFromReact(symbol)) return false;
+  if (!symbol) return false;
+  const descriptor = getReactImportDescriptor(symbol);
+  if (!descriptor.isReactImport) return false;
   return (
-    isNodeOfType(symbol.declarationNode, "ImportDefaultSpecifier") ||
-    isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier") ||
-    getImportedName(symbol.declarationNode) === "default"
+    symbol.declarationNode.type === "ImportDefaultSpecifier" ||
+    symbol.declarationNode.type === "ImportNamespaceSpecifier" ||
+    descriptor.importedName === "default"
   );
 };
 
@@ -59,7 +83,7 @@ const isReactNamespaceReceiver = (
   scopes: ScopeAnalysis,
   options: ReactApiCallOptions,
 ): boolean => {
-  if (!isNodeOfType(receiver, "Identifier")) return false;
+  if (receiver.type !== "Identifier") return false;
   if (isReactNamespaceImport(receiver, scopes)) return true;
   return Boolean(
     options.allowGlobalReactNamespace &&
@@ -79,14 +103,14 @@ const isDestructuredReactApiBinding = (
     !symbol ||
     symbol.kind !== "const" ||
     !symbol.initializer ||
-    !isNodeOfType(symbol.declarationNode, "VariableDeclarator")
+    symbol.declarationNode.type !== "VariableDeclarator"
   ) {
     return false;
   }
   const pattern = symbol.declarationNode.id;
-  if (!isNodeOfType(pattern, "ObjectPattern")) return false;
+  if (pattern.type !== "ObjectPattern") return false;
   for (const property of pattern.properties) {
-    if (!isNodeOfType(property, "Property") || property.value !== symbol.bindingIdentifier) {
+    if (property.type !== "Property" || property.value !== symbol.bindingIdentifier) {
       continue;
     }
     const propertyName = getStaticPropertyKeyName(property);
@@ -103,10 +127,10 @@ export const isReactApiCall = (
   node: EsTreeNode,
   apiNames: string | ReadonlySet<string>,
   scopes: ScopeAnalysis,
-  options: ReactApiCallOptions = {},
+  options: ReactApiCallOptions = DEFAULT_REACT_API_CALL_OPTIONS,
 ): boolean => {
-  if (!isNodeOfType(node, "CallExpression")) return false;
-  return isReactApiCallee(node.callee, apiNames, scopes, options, new Set());
+  if (node.type !== "CallExpression") return false;
+  return isReactApiCallee(node.callee, apiNames, scopes, options);
 };
 
 const isReactApiCallee = (
@@ -114,16 +138,16 @@ const isReactApiCallee = (
   apiNames: string | ReadonlySet<string>,
   scopes: ScopeAnalysis,
   options: ReactApiCallOptions,
-  visitedSymbolIds: Set<number>,
+  visitedSymbolIds?: Set<number>,
 ): boolean => {
   const callee = stripParenExpression(rawCallee);
-  if (options.resolveConditionalAliases && isNodeOfType(callee, "ConditionalExpression")) {
+  if (options.resolveConditionalAliases && callee.type === "ConditionalExpression") {
     return (
       isReactApiCallee(callee.consequent, apiNames, scopes, options, new Set(visitedSymbolIds)) &&
       isReactApiCallee(callee.alternate, apiNames, scopes, options, new Set(visitedSymbolIds))
     );
   }
-  if (isNodeOfType(callee, "Identifier")) {
+  if (callee.type === "Identifier") {
     if (isNamedReactApiImport(callee, apiNames, scopes, Boolean(options.resolveNamedAliases))) {
       return true;
     }
@@ -135,9 +159,16 @@ const isReactApiCallee = (
     }
     if (options.resolveConditionalAliases) {
       const symbol = scopes.symbolFor(callee);
-      if (symbol?.kind === "const" && symbol.initializer && !visitedSymbolIds.has(symbol.id)) {
-        visitedSymbolIds.add(symbol.id);
-        return isReactApiCallee(symbol.initializer, apiNames, scopes, options, visitedSymbolIds);
+      if (symbol?.kind === "const" && symbol.initializer && !visitedSymbolIds?.has(symbol.id)) {
+        const nextVisitedSymbolIds = visitedSymbolIds ?? new Set<number>();
+        nextVisitedSymbolIds.add(symbol.id);
+        return isReactApiCallee(
+          symbol.initializer,
+          apiNames,
+          scopes,
+          options,
+          nextVisitedSymbolIds,
+        );
       }
     }
     return Boolean(
@@ -147,7 +178,7 @@ const isReactApiCallee = (
     );
   }
   if (
-    !isNodeOfType(callee, "MemberExpression") ||
+    callee.type !== "MemberExpression" ||
     !includesApiName(apiNames, getStaticPropertyName(callee) ?? "")
   ) {
     return false;

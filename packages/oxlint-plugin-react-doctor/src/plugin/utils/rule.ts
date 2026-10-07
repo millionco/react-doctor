@@ -5,6 +5,8 @@ import type { RuleVisitors } from "./rule-visitors.js";
 
 export type RuleSeverity = "error" | "warn";
 
+export type RuleExecution = "project";
+
 // `global` rules are enabled on every project; the other buckets only
 // activate when the project actually uses that framework (detected by
 // `detectProject`). The framework name doubles as the ESLint flat-config
@@ -82,6 +84,10 @@ export interface Rule {
   // Retired rules stay registered only so legacy configs and docs tooling
   // can resolve the id. They intentionally never report diagnostics.
   lifecycle?: "retired";
+  // Project rules are registered for metadata, configuration, documentation,
+  // and reporting but execute in a whole-project @react-doctor/core analyzer
+  // instead of an oxlint / ESLint file visitor.
+  execution?: RuleExecution;
   // Project-level file scan. Rules with `scan` are registered for
   // metadata/tags/severity like any rule, but are EXCLUDED from the
   // generated oxlint config and executed by @react-doctor/core's
@@ -97,8 +103,8 @@ export interface Rule {
   // Capability-conditioned override of `recommendation`, evaluated by
   // @react-doctor/core's diagnostic pipeline where the scanned project's
   // capability set is known. Return `undefined` to fall back to the static
-  // `recommendation` (which stays the project-agnostic prose that docs,
-  // the rule catalog, and LSP hover render).
+  // `recommendation` (which stays the project-agnostic prose used by docs and
+  // the rule catalog).
   recommendationFor?: (hasCapability: CapabilityQuery) => string | undefined;
   create: (context: RuleContext) => RuleVisitors;
 }

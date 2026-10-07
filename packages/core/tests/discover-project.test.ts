@@ -22,6 +22,22 @@ interface ReactCompilerDetectionCase {
 }
 
 describe("discoverProject", () => {
+  it("uses a precomputed source-file count", () => {
+    const projectDirectory = path.join(tempDirectory, "precomputed-source-count");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "precomputed-source-count", dependencies: { react: "^19.0.0" } }),
+    );
+
+    expect(discoverProject(projectDirectory, { sourceFileCount: 12_345 }).sourceFileCount).toBe(
+      12_345,
+    );
+    expect(discoverProject(projectDirectory, { sourceFileCount: 54_321 }).sourceFileCount).toBe(
+      54_321,
+    );
+  });
+
   it("detects React version from package.json", () => {
     const projectInfo = discoverProject(path.join(FIXTURES_DIRECTORY, "basic-react"));
     expect(projectInfo.reactVersion).toBe("^19.0.0");
@@ -1837,6 +1853,12 @@ describe("discoverProject", () => {
       expected: false,
     },
     {
+      name: "property-before-circular-config-spread",
+      config:
+        "const first = { plugins: [], ...second }; const second = { ...first }; export default first;",
+      expected: false,
+    },
+    {
       name: "shadowed-function-declaration",
       config:
         "import compiler from 'babel-plugin-react-compiler'; const makeConfig = () => { function compiler() {} return { plugins: [compiler] }; }; export default makeConfig();",
@@ -2551,28 +2573,376 @@ describe("discoverProject", () => {
     expect(projectInfo.hasReactCompilerLintPlugin).toBe(true);
   });
 
-  it("detects the Vite 6 React Compiler preset", () => {
-    const projectDirectory = path.join(tempDirectory, "vite-react-compiler-preset");
-    fs.mkdirSync(projectDirectory, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectDirectory, "package.json"),
-      JSON.stringify({
-        name: "vite-react-compiler-preset",
-        dependencies: { react: "^19.0.0" },
-        devDependencies: {
-          "@rolldown/plugin-babel": "^0.2.0",
-          "@vitejs/plugin-react": "^6.0.0",
-        },
-      }),
-    );
-    fs.writeFileSync(
-      path.join(projectDirectory, "vite.config.ts"),
-      "import react, { reactCompilerPreset } from '@vitejs/plugin-react';\nimport babel from '@rolldown/plugin-babel';\nexport default { plugins: [react(), babel({ presets: [reactCompilerPreset()] })] };\n",
-    );
+  it.each([
+    {
+      configurationName: "preset",
+      compilerImports: "import react, { reactCompilerPreset } from '@vitejs/plugin-react';",
+      babelOptions: "presets: [reactCompilerPreset()]",
+    },
+    {
+      configurationName: "direct-plugin",
+      compilerImports:
+        "import jsxSyntax from '@babel/plugin-syntax-jsx';\nimport react from '@vitejs/plugin-react';\nimport reactCompiler from 'babel-plugin-react-compiler';",
+      babelOptions: "plugins: [jsxSyntax, reactCompiler]",
+    },
+  ])(
+    "detects the official Vite 8 React Compiler $configurationName through installed config wrappers",
+    ({ configurationName, compilerImports, babelOptions }) => {
+      const projectDirectory = path.join(tempDirectory, `vite-react-compiler-${configurationName}`);
+      const viteDirectory = path.join(projectDirectory, "node_modules", "vite");
+      const viteChunksDirectory = path.join(viteDirectory, "chunks");
+      const rolldownBabelDirectory = path.join(
+        projectDirectory,
+        "node_modules",
+        "@rolldown",
+        "plugin-babel",
+      );
+      fs.mkdirSync(viteChunksDirectory, { recursive: true });
+      fs.mkdirSync(rolldownBabelDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({
+          name: `vite-react-compiler-${configurationName}`,
+          dependencies: { react: "^19.0.0" },
+          devDependencies: {
+            "@babel/plugin-syntax-jsx": "^7.0.0",
+            "@rolldown/plugin-babel": "^0.2.0",
+            "@vitejs/plugin-react": "^6.0.0",
+            "babel-plugin-react-compiler": "^1.0.0",
+            vite: "^8.1.0",
+          },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(viteDirectory, "package.json"),
+        JSON.stringify({
+          name: "vite",
+          type: "module",
+          exports: "./index.js",
+        }),
+      );
+      fs.writeFileSync(
+        path.join(viteDirectory, "index.js"),
+        "import { d as defineConfig } from './chunks/config.js';\nexport { defineConfig };\n",
+      );
+      fs.writeFileSync(
+        path.join(viteChunksDirectory, "config.js"),
+        "const defineConfig = (config) => config;\nexport { defineConfig as d };\n",
+      );
+      fs.writeFileSync(
+        path.join(rolldownBabelDirectory, "package.json"),
+        JSON.stringify({
+          name: "@rolldown/plugin-babel",
+          type: "module",
+          exports: "./index.js",
+        }),
+      );
+      fs.writeFileSync(
+        path.join(rolldownBabelDirectory, "index.js"),
+        "const babelPlugin = async (rawOptions) => ({ name: '@rolldown/plugin-babel', transform() { return rawOptions; } });\nexport { babelPlugin as default };\n",
+      );
+      fs.writeFileSync(
+        path.join(projectDirectory, "vite.config.ts"),
+        `import { defineConfig } from 'vite';\n${compilerImports}\nimport babel from '@rolldown/plugin-babel';\nexport default defineConfig({ plugins: [react(), babel({ ${babelOptions} })] });\n`,
+      );
 
-    const projectInfo = discoverProject(projectDirectory);
-    expect(projectInfo.hasReactCompiler).toBe(true);
-  });
+      const projectInfo = discoverProject(projectDirectory);
+      expect(projectInfo.hasReactCompiler).toBe(true);
+    },
+  );
+
+  it.each([
+    { wrapperName: "withNextConfig", argument: "nextConfig", expected: true },
+    { wrapperName: "selectNextConfig", argument: "{ config: nextConfig }", expected: true },
+    { wrapperName: "withoutNextConfig", argument: "nextConfig", expected: false },
+  ])(
+    "preserves caller imports through bundled Next.js wrappers: $wrapperName",
+    ({ wrapperName, argument, expected }) => {
+      const projectDirectory = path.join(tempDirectory, `nextjs-bundled-wrapper-${wrapperName}`);
+      const wrapperDirectory = path.join(
+        projectDirectory,
+        "node_modules",
+        "@fixture",
+        "next-wrapper",
+      );
+      const wrapperChunksDirectory = path.join(wrapperDirectory, "chunks");
+      fs.mkdirSync(wrapperChunksDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({
+          name: `nextjs-bundled-wrapper-${wrapperName}`,
+          dependencies: { next: "^16.0.0", react: "^19.0.0" },
+          devDependencies: { "@fixture/next-wrapper": "workspace:*" },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(wrapperDirectory, "package.json"),
+        JSON.stringify({
+          name: "@fixture/next-wrapper",
+          type: "module",
+          exports: "./index.js",
+        }),
+      );
+      fs.writeFileSync(
+        path.join(wrapperDirectory, "index.js"),
+        "import { a as withNextConfig, b as selectNextConfig, c as withoutNextConfig } from './chunks/config.js';\nexport { withNextConfig, selectNextConfig, withoutNextConfig };\n",
+      );
+      fs.writeFileSync(
+        path.join(wrapperChunksDirectory, "config.js"),
+        "const withNextConfig = (config) => config;\nconst selectNextConfig = (options) => options.config;\nconst withoutNextConfig = () => ({ turbopack: {} });\nexport { withNextConfig as a, selectNextConfig as b, withoutNextConfig as c };\n",
+      );
+      fs.writeFileSync(
+        path.join(projectDirectory, "compiler-config.ts"),
+        "export default { reactCompiler: { compilationMode: 'annotation' }, turbopack: { rules: {} } };\n",
+      );
+      fs.writeFileSync(
+        path.join(projectDirectory, "next.config.ts"),
+        `import { ${wrapperName} } from '@fixture/next-wrapper';\nimport nextConfig from './compiler-config';\nexport default ${wrapperName}(${argument});\n`,
+      );
+
+      expect(discoverProject(projectDirectory).hasReactCompiler).toBe(expected);
+    },
+  );
+
+  it.each([
+    {
+      name: "named-import",
+      config:
+        "import { withSentryConfig } from '@sentry/nextjs'; const nextConfig = { reactCompiler: true }; export default withSentryConfig(nextConfig, { org: 'x' });",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "namespace-import",
+      config:
+        "import * as Sentry from '@sentry/nextjs'; const nextConfig = { reactCompiler: true }; export default Sentry.withSentryConfig(nextConfig, { org: 'x' });",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "commonjs-require",
+      config:
+        "const Sentry = require('@sentry/nextjs'); const nextConfig = { reactCompiler: true }; module.exports = Sentry.withSentryConfig(nextConfig, { org: 'x' });",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "local-wrapper",
+      config:
+        "import { wrap } from './wrapper'; const nextConfig = { reactCompiler: true }; export default wrap(nextConfig);",
+      helper:
+        "import { withSentryConfig } from '@sentry/nextjs'; export const wrap = (config) => withSentryConfig(config, { org: 'x' });",
+      expected: true,
+    },
+    {
+      name: "compiler-only-in-options",
+      config:
+        "import { withSentryConfig } from '@sentry/nextjs'; export default withSentryConfig({ reactCompiler: false }, { reactCompiler: true });",
+      helper: null,
+      expected: false,
+    },
+  ])(
+    "detects React Compiler through Sentry config wrappers: $name",
+    ({ name, config, helper, expected }) => {
+      const projectDirectory = path.join(tempDirectory, `nextjs-sentry-wrapper-${name}`);
+      const wrapperDirectory = path.join(projectDirectory, "node_modules", "@sentry", "nextjs");
+      fs.mkdirSync(wrapperDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({
+          name: `nextjs-sentry-wrapper-${name}`,
+          dependencies: { next: "^16.0.0", react: "^19.0.0", "@sentry/nextjs": "^10.0.0" },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(wrapperDirectory, "package.json"),
+        JSON.stringify({
+          name: "@sentry/nextjs",
+          type: "module",
+          exports: "./index.js",
+        }),
+      );
+      fs.writeFileSync(
+        path.join(wrapperDirectory, "index.js"),
+        "export const withSentryConfig = (_config, _options) => ({ sentry: true });\n",
+      );
+      fs.writeFileSync(path.join(projectDirectory, "next.config.ts"), config);
+      if (helper) fs.writeFileSync(path.join(projectDirectory, "wrapper.ts"), helper);
+
+      expect(discoverProject(projectDirectory).hasReactCompiler).toBe(expected);
+    },
+  );
+
+  it.each([
+    {
+      name: "default-import-boolean",
+      config:
+        "import react from '@vitejs/plugin-react'; export default { plugins: [react({ compiler: true })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "default-import-options-object",
+      config:
+        "import react from '@vitejs/plugin-react'; export default { plugins: [react({ compiler: { compilationMode: 'annotation' } })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "aliased-default-import",
+      config:
+        "import viteReact from '@vitejs/plugin-react'; export default { plugins: [viteReact({ compiler: true })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "namespace-import",
+      config:
+        "import * as viteReact from '@vitejs/plugin-react'; export default { plugins: [viteReact.default({ compiler: true })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "commonjs-require",
+      config:
+        "const react = require('@vitejs/plugin-react'); module.exports = { plugins: [react({ compiler: true })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "inline-require",
+      config:
+        "module.exports = { plugins: [require('@vitejs/plugin-react')({ compiler: true })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "inline-require-default",
+      config:
+        "module.exports = { plugins: [require('@vitejs/plugin-react').default({ compiler: true })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "options-variable",
+      config:
+        "import react from '@vitejs/plugin-react'; const reactOptions = { compiler: true }; export default { plugins: [react(reactOptions)] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "spread-options",
+      config:
+        "import react from '@vitejs/plugin-react'; const shared = { compiler: {} }; export default { plugins: [react({ jsxRuntime: 'automatic', ...shared })] };",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "define-config-lazy-plugins",
+      config:
+        "import { defineConfig, lazyPlugins } from 'vite-plus'; import react from '@vitejs/plugin-react'; export default defineConfig({ plugins: lazyPlugins(() => [react({ compiler: true })]) });",
+      helper: null,
+      expected: true,
+    },
+    {
+      name: "local-plugin-factory",
+      config:
+        "import { createPlugins } from './plugins'; export default { plugins: createPlugins() };",
+      helper:
+        "import react from '@vitejs/plugin-react'; export const createPlugins = () => [react({ compiler: true })];",
+      expected: true,
+    },
+    {
+      name: "disabled-option",
+      config:
+        "import react from '@vitejs/plugin-react'; export default { plugins: [react({ compiler: false })] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "later-disabled-option",
+      config:
+        "import react from '@vitejs/plugin-react'; const shared = { compiler: true }; export default { plugins: [react({ ...shared, compiler: false })] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "statically-disabled-binding",
+      config:
+        "import react from '@vitejs/plugin-react'; const useCompiler = false; export default { plugins: [react({ compiler: useCompiler })] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "missing-option",
+      config:
+        "import react from '@vitejs/plugin-react'; export default { plugins: [react({ jsxRuntime: 'automatic' })] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "no-arguments",
+      config: "import react from '@vitejs/plugin-react'; export default { plugins: [react()] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "unrelated-plugin-option",
+      config:
+        "import react from '@vitejs/plugin-react'; import other from 'other-plugin'; export default { plugins: [react(), other({ compiler: true })] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "unrelated-config-property",
+      config:
+        "import react from '@vitejs/plugin-react'; export default { compiler: true, plugins: [react()] };",
+      helper: null,
+      expected: false,
+    },
+    {
+      name: "shadowed-import",
+      config:
+        "import react from '@vitejs/plugin-react'; const make = (react) => ({ plugins: [react({ compiler: true })] }); export default make(other);",
+      helper: null,
+      expected: false,
+    },
+  ])(
+    "detects React Compiler through the @vitejs/plugin-react compiler option: $name",
+    ({ name, config, helper, expected }) => {
+      const projectDirectory = path.join(
+        tempDirectory,
+        `vite-plugin-react-compiler-option-${name}`,
+      );
+      const pluginDirectory = path.join(
+        projectDirectory,
+        "node_modules",
+        "@vitejs",
+        "plugin-react",
+      );
+      fs.mkdirSync(pluginDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({
+          name: `vite-plugin-react-compiler-option-${name}`,
+          dependencies: { react: "^19.0.0" },
+          devDependencies: { "@vitejs/plugin-react": "^6.1.0", "oxc-transform-react": "^0.145.0" },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(pluginDirectory, "package.json"),
+        JSON.stringify({ name: "@vitejs/plugin-react", type: "module", exports: "./index.js" }),
+      );
+      fs.writeFileSync(
+        path.join(pluginDirectory, "index.js"),
+        "export default (_options) => [{ name: 'vite:react' }];\nexport const reactCompilerPreset = () => ({});\n",
+      );
+      fs.writeFileSync(path.join(projectDirectory, "vite.config.ts"), config);
+      if (helper) fs.writeFileSync(path.join(projectDirectory, "plugins.ts"), helper);
+
+      expect(discoverProject(projectDirectory).hasReactCompiler).toBe(expected);
+    },
+  );
 
   it("detects the Vite 6 React Compiler preset with defineConfig wrapper (issue #1468)", () => {
     const projectDirectory = path.join(tempDirectory, "vite-react-compiler-preset-defineconfig");
@@ -2694,6 +3064,94 @@ describe("discoverProject", () => {
 });
 
 describe("listWorkspacePackages", () => {
+  it("includes packages that declare supported framework and ecosystem dependencies", () => {
+    const rootDirectory = path.join(tempDirectory, "supported-dependency-workspace");
+    const supportedDependencyNames = [
+      "react-dom",
+      "expo",
+      "expo-router",
+      "gatsby",
+      "@remix-run/react",
+      "@tanstack/react-start",
+      "react-scripts",
+      "@astrojs/react",
+      "remotion",
+      "@react-three/rapier",
+      "@react-three/postprocessing",
+      "@react-three/xr",
+      "@react-three/cannon",
+    ];
+    fs.mkdirSync(rootDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "workspace", workspaces: ["packages/*"] }),
+    );
+
+    for (const [packageIndex, dependencyName] of supportedDependencyNames.entries()) {
+      const packageDirectory = path.join(rootDirectory, "packages", `package-${packageIndex}`);
+      fs.mkdirSync(packageDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(packageDirectory, "package.json"),
+        JSON.stringify({ name: dependencyName, dependencies: { [dependencyName]: "1.0.0" } }),
+      );
+    }
+
+    expect(
+      listWorkspacePackages(rootDirectory)
+        .map((workspacePackage) => workspacePackage.name)
+        .toSorted(),
+    ).toEqual(supportedDependencyNames.toSorted());
+  });
+
+  it("excludes dependencies without supported runtime capabilities", () => {
+    const rootDirectory = path.join(tempDirectory, "unsupported-dependency-workspace");
+    const unsupportedDependencyNames = [
+      "vite",
+      "astro",
+      "@types/three",
+      "threewright",
+      "three-tester",
+      "phaser",
+      "@babylonjs/core",
+      "pixi.js",
+      "playcanvas",
+    ];
+    fs.mkdirSync(rootDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "workspace", workspaces: ["packages/*"] }),
+    );
+
+    for (const [packageIndex, dependencyName] of unsupportedDependencyNames.entries()) {
+      const packageDirectory = path.join(rootDirectory, "packages", `package-${packageIndex}`);
+      fs.mkdirSync(packageDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(packageDirectory, "package.json"),
+        JSON.stringify({ name: dependencyName, dependencies: { [dependencyName]: "1.0.0" } }),
+      );
+    }
+
+    expect(listWorkspacePackages(rootDirectory)).toEqual([]);
+  });
+
+  it("includes standalone Three.js workspace packages", () => {
+    const rootDirectory = path.join(tempDirectory, "three-workspace");
+    const gameDirectory = path.join(rootDirectory, "games", "viewer");
+    fs.mkdirSync(gameDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "workspace", workspaces: ["games/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(gameDirectory, "package.json"),
+      JSON.stringify({ name: "viewer", dependencies: { three: "^0.180.0" } }),
+    );
+
+    expect(listWorkspacePackages(rootDirectory)).toEqual([
+      { name: "viewer", directory: gameDirectory },
+    ]);
+  });
+
   it("resolves nested workspace patterns like apps/*/ClientApp", () => {
     const packages = listWorkspacePackages(path.join(FIXTURES_DIRECTORY, "nested-workspaces"));
     const packageNames = packages.map((workspacePackage) => workspacePackage.name);
@@ -2828,6 +3286,22 @@ describe("listWorkspacePackages", () => {
 
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.framework, "the framework package outranks its bundler").toBe("gatsby");
+  });
+
+  it("classifies an Astro app that also lists Vite as `astro`, not `vite`", () => {
+    const projectDirectory = path.join(tempDirectory, "astro-with-vite");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "astro-with-vite",
+        dependencies: { astro: "^7.1.5", react: "^19.2.0" },
+        devDependencies: { vite: "^7.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework, "the framework package outranks its bundler").toBe("astro");
   });
 
   it("flags a web-rooted monorepo with an Expo workspace as an Expo project", () => {
@@ -3174,7 +3648,61 @@ describe("discoverProject without a package.json", () => {
   });
 });
 
+describe("supported ecosystem dependencies", () => {
+  it("derives project facts from framework and runtime packages", () => {
+    const rootDirectory = path.join(tempDirectory, "ecosystem-capabilities");
+    const expoDirectory = path.join(rootDirectory, "expo");
+    const astroDirectory = path.join(rootDirectory, "astro");
+    const remotionDirectory = path.join(rootDirectory, "remotion");
+    const reactThreeFiberDirectory = path.join(rootDirectory, "r3f");
+    for (const directory of [
+      expoDirectory,
+      astroDirectory,
+      remotionDirectory,
+      reactThreeFiberDirectory,
+    ]) {
+      fs.mkdirSync(directory, { recursive: true });
+    }
+    fs.writeFileSync(
+      path.join(expoDirectory, "package.json"),
+      JSON.stringify({ dependencies: { "expo-router": "1.0.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(astroDirectory, "package.json"),
+      JSON.stringify({ dependencies: { "@astrojs/react": "1.0.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(remotionDirectory, "package.json"),
+      JSON.stringify({ dependencies: { remotion: "4.0.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(reactThreeFiberDirectory, "package.json"),
+      JSON.stringify({ dependencies: { "@react-three/rapier": "2.0.0" } }),
+    );
+
+    expect(discoverProject(expoDirectory).framework).toBe("expo");
+    expect(discoverProject(astroDirectory).framework).toBe("astro");
+    expect(discoverProject(remotionDirectory).hasRemotion).toBe(true);
+    expect(discoverProject(reactThreeFiberDirectory).hasReactThreeFiber).toBe(true);
+  });
+});
+
 describe("discoverReactSubprojects", () => {
+  it("includes nested standalone Three.js packages", () => {
+    const rootDirectory = path.join(tempDirectory, "three-wrapper");
+    const gameDirectory = path.join(rootDirectory, "results", "viewer");
+    fs.mkdirSync(gameDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(gameDirectory, "package.json"),
+      JSON.stringify({ name: "viewer", dependencies: { three: "^0.180.0" } }),
+    );
+
+    expect(discoverReactSubprojects(rootDirectory)).toContainEqual({
+      name: "viewer",
+      directory: gameDirectory,
+    });
+  });
+
   it("skips subdirectories where package.json is a directory (EISDIR)", () => {
     const rootDirectory = path.join(tempDirectory, "eisdir-package-json");
     const subdirectory = path.join(rootDirectory, "broken-sub");
@@ -4453,6 +4981,7 @@ describe("discoverProject — Zustand", () => {
 describe("formatFrameworkName", () => {
   it("formats known frameworks", () => {
     expect(formatFrameworkName("nextjs")).toBe("Next.js");
+    expect(formatFrameworkName("astro")).toBe("Astro");
     expect(formatFrameworkName("vite")).toBe("Vite");
     expect(formatFrameworkName("cra")).toBe("Create React App");
     expect(formatFrameworkName("remix")).toBe("Remix");

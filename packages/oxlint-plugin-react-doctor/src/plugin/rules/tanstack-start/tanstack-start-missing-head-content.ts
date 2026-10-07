@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { TANSTACK_ROOT_ROUTE_FILE_PATTERN } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -75,7 +76,7 @@ export const tanstackStartMissingHeadContent = defineRule({
   create: (context: RuleContext): RuleVisitors => {
     // The pattern anchors on the separator-free `__root.<ext>` basename, so
     // testing the raw filename equals testing the backslash-normalized one.
-    if (!TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(context.filename ?? "")) return {};
+    if (!TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(context.filename ?? "")) return EMPTY_RULE_VISITORS;
 
     let hasHeadContentElement = false;
     let hasDocumentHeadElement = false;

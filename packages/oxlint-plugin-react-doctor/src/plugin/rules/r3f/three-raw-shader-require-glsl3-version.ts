@@ -1,15 +1,12 @@
 import { visit } from "@shaderfrog/glsl-parser/ast/index.js";
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectGlslGlobalDeclarations } from "./utils/collect-glsl-global-declarations.js";
-import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { getGlslFunctionCallName } from "./utils/get-glsl-function-call-name.js";
 import { hasGlslFunctionDeclaration } from "./utils/has-glsl-function-declaration.js";
 import { hasGlslFunctionLikeMacro } from "./utils/has-glsl-function-like-macro.js";
-import { isThreeModuleSource } from "./utils/is-three-module-source.js";
+import { readThreeGlslVersion } from "./utils/read-three-glsl-version.js";
 import {
   resolveStaticThreeShaderMaterial,
   type StaticThreeShaderStage,
@@ -141,19 +138,6 @@ const shaderUsesGlsl3Syntax = (shader: StaticThreeShaderStage): boolean => {
   return usesGlsl3Syntax;
 };
 
-const getGlsl3Configuration = (
-  expression: EsTreeNode | undefined,
-  context: RuleContext,
-): boolean | null => {
-  if (!expression) return false;
-  if (isNodeOfType(expression, "Literal")) {
-    return expression.value === "300 es";
-  }
-  const provenance = getApiReferenceProvenance(expression, context.scopes);
-  if (!provenance || !isThreeModuleSource(provenance.moduleSource)) return null;
-  return provenance.apiName === "GLSL3";
-};
-
 export const threeRawShaderRequireGlsl3Version = defineRule({
   id: "three-raw-shader-require-glsl3-version",
   title: "Raw shader uses GLSL 3 syntax without GLSL3",
@@ -164,11 +148,8 @@ export const threeRawShaderRequireGlsl3Version = defineRule({
     NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
       const material = resolveStaticThreeShaderMaterial(node, context);
       if (material?.constructorName !== "RawShaderMaterial") return;
-      const glsl3Configuration = getGlsl3Configuration(
-        material.properties.get("glslVersion"),
-        context,
-      );
-      if (glsl3Configuration !== false) return;
+      const glslVersion = readThreeGlslVersion(material.properties.get("glslVersion"), context);
+      if (glslVersion !== "glsl1") return;
       const incompatibleShader = [material.vertexShader, material.fragmentShader].find(
         (shader): shader is StaticThreeShaderStage =>
           Boolean(shader && shaderUsesGlsl3Syntax(shader)),

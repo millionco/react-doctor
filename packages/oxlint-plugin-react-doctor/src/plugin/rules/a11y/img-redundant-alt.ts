@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -92,7 +93,7 @@ export const imgRedundantAlt = defineRule({
   recommendation: "Do not put 'image' or 'photo' in alt text. Describe what is shown.",
   category: "Accessibility",
   create: (context): RuleVisitors => {
-    if (isGeneratedImageRenderContext(context)) return {};
+    if (isGeneratedImageRenderContext(context)) return EMPTY_RULE_VISITORS;
     const settings = resolveSettings(context.settings);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

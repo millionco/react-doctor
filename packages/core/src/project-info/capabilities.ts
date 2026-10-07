@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import type { Capability } from "oxlint-plugin-react-doctor";
+import type { Capability } from "oxlint-plugin-react-doctor/core";
 import type { Framework, ProjectInfo } from "../types/index.js";
 import {
   EARLIEST_GATED_MOBX_MAJOR,
@@ -29,6 +29,7 @@ import {
   REACT_ROUTER_CAPABILITY_THRESHOLDS,
   REANIMATED_WORKLETS_MINIMUM_MAJOR_VERSION,
 } from "../constants.js";
+import { hasReactRuntime } from "../utils/has-react-runtime.js";
 import {
   getLowestDependencyMajor,
   isMajorMinorAtLeast,
@@ -37,6 +38,8 @@ import {
   parseTailwindMajorMinor,
 } from "./version.js";
 import { detectTargetBlankOpenerProtection } from "./detect-target-blank-opener-protection.js";
+import { findNearestAncestorPackageJson } from "./find-nearest-ancestor-package-json.js";
+import { isFile } from "./fs-utils.js";
 import { readPackageJson } from "./package-json.js";
 
 // SPA / mobile frameworks with no server-side form handler at all —
@@ -86,9 +89,10 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
 
   capabilities.add(project.framework);
   // `react` gates every React-runtime rule family (hooks, JSX, a11y, render
-  // performance) so they stay off on a plain TS/JS project. Preact satisfies
-  // it too (same hooks + JSX model).
-  if (project.reactVersion !== null || project.preactVersion !== null) {
+  // performance) so they stay off on a plain TS/JS project. Preact and
+  // React-backed frameworks satisfy it even when the leaf manifest omits a
+  // direct runtime dependency.
+  if (hasReactRuntime(project)) {
     capabilities.add("react");
   }
   // `hasReactNativeWorkspace` / `expoVersion` cover the inverted case the
@@ -179,6 +183,13 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
       capabilities.add("tailwind:4");
     }
   }
+  if (project.hasShadcnUi === true) capabilities.add("shadcn");
+  if (project.hasRadixUi === true) capabilities.add("radix-ui");
+  if (project.hasBaseUi === true) capabilities.add("base-ui");
+  if (project.hasReactAriaComponents === true) capabilities.add("react-aria");
+  if (project.hasTanstackTable === true) capabilities.add("tanstack-table");
+  if (project.hasTanstackVirtual === true) capabilities.add("tanstack-virtual");
+  if (project.hasTanstackForm === true) capabilities.add("tanstack-form");
   if (project.zodVersion !== null) capabilities.add("zod");
   if (project.zodMajorVersion !== null && project.zodMajorVersion >= 4) capabilities.add("zod:4");
   if (
@@ -351,9 +362,13 @@ export const getCapabilities = (project: ProjectInfo): ReadonlySet<Capability> =
   const cached = capabilitiesByProject.get(project);
   if (cached !== undefined) return cached;
   const capabilities = new Set(buildCapabilities(project));
-  const packageJson = readPackageJson(path.join(project.rootDirectory, "package.json"));
+  const packageJsonPath = path.join(project.rootDirectory, "package.json");
+  const capabilityRootDirectory = isFile(packageJsonPath)
+    ? project.rootDirectory
+    : (findNearestAncestorPackageJson(project.rootDirectory) ?? project.rootDirectory);
+  const packageJson = readPackageJson(path.join(capabilityRootDirectory, "package.json"));
   const targetBlankOpenerProtection = detectTargetBlankOpenerProtection(
-    project.rootDirectory,
+    capabilityRootDirectory,
     packageJson,
   );
   if (targetBlankOpenerProtection !== undefined) {

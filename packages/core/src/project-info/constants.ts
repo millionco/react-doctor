@@ -1,5 +1,5 @@
 export const HTML_FILE_PATTERN = /\.html$/i;
-export const SOURCE_FILE_PATTERN = /\.(?:tsx?|jsx?|mts|mjs|[hH][tT][mM][lL])$/;
+export const SOURCE_FILE_PATTERN = /\.(?:astro|tsx?|jsx?|mts|mjs|[hH][tT][mM][lL])$/;
 
 // Bundler output — IIFE / UMD / global builds and explicitly-minified
 // drops (e.g. tsup/rollup emitting `widget.iife.js`, `sdk.umd.js`,
@@ -11,9 +11,6 @@ export const SOURCE_FILE_PATTERN = /\.(?:tsx?|jsx?|mts|mjs|[hH][tT][mM][lL])$/;
 // bundles, and `.cjs` isn't part of the scanner's source-file set.
 export const GENERATED_BUNDLE_FILE_PATTERN = /\.(iife|umd|global|min)\.m?js$/i;
 
-// Codegen output directories (`src/__generated__/form.stories.tsx`): the
-// generator, not the file, owns any fix, so diagnostics there are never
-// actionable and linters conventionally exclude them.
 export const GENERATED_SOURCE_DIRECTORY_PATTERN = /(?:^|\/)__generated__\//;
 
 export const TAILWIND_POSTCSS7_COMPAT_ALIAS = "npm:@tailwindcss/postcss7-compat";
@@ -47,6 +44,14 @@ export const MINIFIED_SNIFF_BYTES = 65_536;
 export const MINIFIED_MIN_SIZE_BYTES = 20_000;
 
 export const GIT_LS_FILES_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
+export const GIT_SOURCE_LISTING_ARGUMENTS: ReadonlyArray<string> = [
+  "ls-files",
+  "-z",
+  "--stage",
+  "--others",
+  "--exclude-standard",
+];
+export const GIT_CHECK_ATTR_MAX_BUFFER_BYTES = GIT_LS_FILES_MAX_BUFFER_BYTES;
 
 // Hidden (dot-)directories are excluded from source discovery by default:
 // they hold tool state and agent/editor tooling (`.codex`, `.claude`,

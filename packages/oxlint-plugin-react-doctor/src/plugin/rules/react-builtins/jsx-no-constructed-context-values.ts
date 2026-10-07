@@ -59,6 +59,7 @@ export const jsxNoConstructedContextValues = defineRule({
     let contextBindings: ReadonlySet<number> = new Set<number>();
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
+        if (isTestlikeFile) return;
         contextBindings = collectContextBindings(node, context.scopes);
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

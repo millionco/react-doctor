@@ -21,12 +21,14 @@ describe("line-scoped multiline diagnostics", () => {
       files: {
         "src/App.tsx": [
           "export const App = () => (",
-          "  <button",
-          '    className="primary"',
-          "    disabled",
-          "  >",
-          "    Save",
-          "  </button>",
+          "  <form>",
+          "    <button",
+          '      className="primary"',
+          "      disabled",
+          "    >",
+          "      Save",
+          "    </button>",
+          "  </form>",
           ");",
         ].join("\n"),
       },
@@ -38,8 +40,8 @@ describe("line-scoped multiline diagnostics", () => {
     });
 
     expect(diagnostics.find((diagnostic) => diagnostic.rule === "button-has-type")).toMatchObject({
-      line: 2,
-      endLine: 5,
+      line: 3,
+      endLine: 6,
     });
   });
 });

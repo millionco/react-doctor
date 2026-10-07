@@ -37,7 +37,7 @@ const collectRenderReachableNamesFromStatements = (
   scopes: ScopeAnalysis,
   eventHandlerReferenceNames: Set<string> = new Set(),
 ): boolean => {
-  let hasReturn = false;
+  let hasRenderExit = false;
   for (const statement of statements ?? []) {
     if (
       collectRenderReachableNamesFromStatement(
@@ -48,12 +48,12 @@ const collectRenderReachableNamesFromStatements = (
         eventHandlerReferenceNames,
       )
     ) {
-      hasReturn = true;
+      hasRenderExit = true;
     } else {
       addDeclarationBindings(statement, scope);
     }
   }
-  return hasReturn;
+  return hasRenderExit;
 };
 
 const collectRenderReachableNamesFromStatement = (
@@ -63,7 +63,7 @@ const collectRenderReachableNamesFromStatement = (
   scopes: ScopeAnalysis,
   eventHandlerReferenceNames: Set<string>,
 ): boolean => {
-  if (isNodeOfType(statement, "ReturnStatement")) {
+  if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
     if (statement.argument) {
       addNames(
         names,
@@ -105,14 +105,14 @@ const collectRenderReachableNamesFromStatement = (
   }
 
   if (isNodeOfType(statement, "IfStatement")) {
-    const consequentHasReturn = collectRenderReachableNamesFromStatement(
+    const consequentHasRenderExit = collectRenderReachableNamesFromStatement(
       statement.consequent,
       names,
       scope,
       scopes,
       eventHandlerReferenceNames,
     );
-    const alternateHasReturn = statement.alternate
+    const alternateHasRenderExit = statement.alternate
       ? collectRenderReachableNamesFromStatement(
           statement.alternate,
           names,
@@ -121,28 +121,28 @@ const collectRenderReachableNamesFromStatement = (
           eventHandlerReferenceNames,
         )
       : false;
-    if (consequentHasReturn || alternateHasReturn) {
+    if (consequentHasRenderExit || alternateHasRenderExit) {
       addNames(
         names,
         collectScopedReferenceNames(statement.test, scope, eventHandlerReferenceNames),
       );
     }
-    return consequentHasReturn || alternateHasReturn;
+    return consequentHasRenderExit || alternateHasRenderExit;
   }
 
   if (isNodeOfType(statement, "SwitchStatement")) {
-    let hasReturn = false;
+    let hasRenderExit = false;
     for (const switchCase of statement.cases ?? []) {
       const caseScope = createBlockBindingScope(scope);
-      const caseHasReturn = collectRenderReachableNamesFromStatements(
+      const caseHasRenderExit = collectRenderReachableNamesFromStatements(
         switchCase.consequent,
         names,
         caseScope,
         scopes,
         eventHandlerReferenceNames,
       );
-      if (!caseHasReturn) continue;
-      hasReturn = true;
+      if (!caseHasRenderExit) continue;
+      hasRenderExit = true;
       if (switchCase.test) {
         addNames(
           names,
@@ -150,24 +150,24 @@ const collectRenderReachableNamesFromStatement = (
         );
       }
     }
-    if (hasReturn) {
+    if (hasRenderExit) {
       addNames(
         names,
         collectScopedReferenceNames(statement.discriminant, scope, eventHandlerReferenceNames),
       );
     }
-    return hasReturn;
+    return hasRenderExit;
   }
 
   if (isNodeOfType(statement, "TryStatement")) {
-    const blockHasReturn = collectRenderReachableNamesFromStatement(
+    const blockHasRenderExit = collectRenderReachableNamesFromStatement(
       statement.block,
       names,
       scope,
       scopes,
       eventHandlerReferenceNames,
     );
-    const handlerHasReturn = statement.handler
+    const handlerHasRenderExit = statement.handler
       ? collectRenderReachableNamesFromStatement(
           statement.handler,
           names,
@@ -176,7 +176,7 @@ const collectRenderReachableNamesFromStatement = (
           eventHandlerReferenceNames,
         )
       : false;
-    const finalizerHasReturn = statement.finalizer
+    const finalizerHasRenderExit = statement.finalizer
       ? collectRenderReachableNamesFromStatement(
           statement.finalizer,
           names,
@@ -185,7 +185,7 @@ const collectRenderReachableNamesFromStatement = (
           eventHandlerReferenceNames,
         )
       : false;
-    return blockHasReturn || handlerHasReturn || finalizerHasReturn;
+    return blockHasRenderExit || handlerHasRenderExit || finalizerHasRenderExit;
   }
 
   if (isNodeOfType(statement, "CatchClause")) {
@@ -201,33 +201,33 @@ const collectRenderReachableNamesFromStatement = (
   }
 
   if (isNodeOfType(statement, "WhileStatement") || isNodeOfType(statement, "DoWhileStatement")) {
-    const bodyHasReturn = collectRenderReachableNamesFromStatement(
+    const bodyHasRenderExit = collectRenderReachableNamesFromStatement(
       statement.body,
       names,
       scope,
       scopes,
       eventHandlerReferenceNames,
     );
-    if (bodyHasReturn) {
+    if (bodyHasRenderExit) {
       addNames(
         names,
         collectScopedReferenceNames(statement.test, scope, eventHandlerReferenceNames),
       );
     }
-    return bodyHasReturn;
+    return bodyHasRenderExit;
   }
 
   if (isNodeOfType(statement, "ForStatement")) {
     const loopScope = createBlockBindingScope(scope);
     if (statement.init) addDeclarationBindings(statement.init, loopScope);
-    const bodyHasReturn = collectRenderReachableNamesFromStatement(
+    const bodyHasRenderExit = collectRenderReachableNamesFromStatement(
       statement.body,
       names,
       loopScope,
       scopes,
       eventHandlerReferenceNames,
     );
-    if (!bodyHasReturn) return false;
+    if (!bodyHasRenderExit) return false;
     if (statement.init) {
       addNames(
         names,
@@ -259,14 +259,14 @@ const collectRenderReachableNamesFromStatement = (
     if (isNodeOfType(statement.left, "VariableDeclaration")) {
       addDeclarationBindings(statement.left, loopScope);
     }
-    const bodyHasReturn = collectRenderReachableNamesFromStatement(
+    const bodyHasRenderExit = collectRenderReachableNamesFromStatement(
       statement.body,
       names,
       loopScope,
       scopes,
       eventHandlerReferenceNames,
     );
-    if (!bodyHasReturn) return false;
+    if (!bodyHasRenderExit) return false;
     addNames(names, rightNames);
     return true;
   }
@@ -282,20 +282,20 @@ const collectRenderReachableNamesFromStatement = (
   }
 
   if (isNodeOfType(statement, "WithStatement")) {
-    const bodyHasReturn = collectRenderReachableNamesFromStatement(
+    const bodyHasRenderExit = collectRenderReachableNamesFromStatement(
       statement.body,
       names,
       scope,
       scopes,
       eventHandlerReferenceNames,
     );
-    if (bodyHasReturn) {
+    if (bodyHasRenderExit) {
       addNames(
         names,
         collectScopedReferenceNames(statement.object, scope, eventHandlerReferenceNames),
       );
     }
-    return bodyHasReturn;
+    return bodyHasRenderExit;
   }
 
   return false;

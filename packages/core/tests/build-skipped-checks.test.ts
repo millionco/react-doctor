@@ -20,4 +20,36 @@ describe("buildSkippedChecks", () => {
       "security-scan": "Security scan failed and was skipped.",
     });
   });
+
+  it("uses the security scan's partial deadline explanation", () => {
+    const securityScanFailureReason =
+      "Security scan reached the max scan duration; findings collected before the deadline were preserved.";
+    const result = buildSkippedChecks({
+      didLintFail: false,
+      lintFailureReason: null,
+      lintPartialFailures: [],
+      didDeadCodeFail: false,
+      deadCodeFailureReason: null,
+      securityScanFailed: true,
+      securityScanFailureReason,
+    });
+
+    expect(result.skippedCheckReasons["security-scan"]).toBe(securityScanFailureReason);
+  });
+
+  it("preserves the dead-code compatibility key for maintainability failures", () => {
+    const failureReason = "Maintainability analysis was incomplete.";
+    const result = buildSkippedChecks({
+      didLintFail: false,
+      lintFailureReason: null,
+      lintPartialFailures: [],
+      didDeadCodeFail: true,
+      deadCodeFailureReason: failureReason,
+      supplyChainOverlapTimedOut: false,
+      securityScanFailed: false,
+    });
+
+    expect(result.skippedChecks).toEqual(["dead-code"]);
+    expect(result.skippedCheckReasons["dead-code"]).toBe(failureReason);
+  });
 });

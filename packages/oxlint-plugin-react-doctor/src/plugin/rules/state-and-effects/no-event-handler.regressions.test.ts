@@ -792,6 +792,227 @@ describe("no-event-handler — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when error state schedules focus after the dismiss control mounts", () => {
+    const result = runRule(
+      noEventHandler,
+      `function DeleteDialog() {
+        const [deleteError, setDeleteError] = useState(null);
+        const dismissRef = useRef(null);
+        useEffect(() => {
+          if (deleteError) {
+            setTimeout(() => dismissRef.current?.focus(), 0);
+          }
+        }, [deleteError]);
+        return (
+          <form onSubmit={() => setDeleteError(new Error("failed"))}>
+            {deleteError && <button ref={dismissRef}>Dismiss</button>}
+          </form>
+        );
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a pending ref gates requestAnimationFrame focus synchronization", () => {
+    const result = runRule(
+      noEventHandler,
+      `function DeleteDialog() {
+        const [errorInfo, setErrorInfo] = useState(null);
+        const focusPendingRef = useRef(false);
+        const dismissRef = useRef(null);
+        useEffect(() => {
+          if (errorInfo && focusPendingRef.current) {
+            focusPendingRef.current = false;
+            requestAnimationFrame(() => dismissRef.current?.focus());
+          }
+        }, [errorInfo]);
+        return (
+          <button onClick={() => {
+            focusPendingRef.current = true;
+            setErrorInfo({ message: "failed" });
+          }}>
+            Delete
+          </button>
+        );
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when focus waits for both an error and pending work to settle", () => {
+    const result = runRule(
+      noEventHandler,
+      `function AddDialog() {
+        const [errorInfo, setErrorInfo] = useState(null);
+        const [isPending, setIsPending] = useState(false);
+        const dismissRef = useRef(null);
+        useEffect(() => {
+          if (errorInfo) {
+            if (!isPending) {
+              requestAnimationFrame(() => dismissRef.current?.focus());
+            }
+          }
+        }, [errorInfo, isPending]);
+        return (
+          <button onClick={() => {
+            setIsPending(false);
+            setErrorInfo({ message: "failed" });
+          }}>
+            Add
+          </button>
+        );
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when separate modal error state schedules focus after commit", () => {
+    const result = runRule(
+      noEventHandler,
+      `function DecisionDialogs() {
+        const [deleteErrorInfo, setDeleteErrorInfo] = useState(null);
+        const [addErrorInfo, setAddErrorInfo] = useState(null);
+        const deleteDismissRef = useRef(null);
+        const addDismissRef = useRef(null);
+        useEffect(() => {
+          if (deleteErrorInfo) {
+            requestAnimationFrame(() => deleteDismissRef.current?.focus());
+          }
+        }, [deleteErrorInfo]);
+        useEffect(() => {
+          if (addErrorInfo) {
+            requestAnimationFrame(() => addDismissRef.current?.focus());
+          }
+        }, [addErrorInfo]);
+        return (
+          <>
+            <button onClick={() => setDeleteErrorInfo({ message: "delete failed" })}>Delete</button>
+            <button onClick={() => setAddErrorInfo({ message: "add failed" })}>Add</button>
+          </>
+        );
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when handler-written state synchronizes a Map held by a ref", () => {
+    const result = runRule(
+      noEventHandler,
+      `function FeedbackList() {
+        const [messages, setMessages] = useState([]);
+        const feedbackStateRef = useRef(new Map());
+        useEffect(() => {
+          for (const message of messages) {
+            if (feedbackStateRef.current.has(message.id)) continue;
+            feedbackStateRef.current.set(message.id, { pending: new Map() });
+          }
+          for (const id of feedbackStateRef.current.keys()) {
+            if (!messages.some((message) => message.id === id)) {
+              feedbackStateRef.current.delete(id);
+            }
+          }
+        }, [messages]);
+        return <button onClick={() => setMessages([{ id: 1 }])}>Load</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports a deferred prop callback instead of treating every timer as focus sync", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Toast({ onShow }) {
+        const [visible, setVisible] = useState(false);
+        useEffect(() => {
+          if (visible) setTimeout(() => onShow(), 0);
+        }, [visible, onShow]);
+        return <button onClick={() => setVisible(true)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports mixed scheduled focus and event work", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Form() {
+        const [submitted, setSubmitted] = useState(false);
+        const statusRef = useRef(null);
+        useEffect(() => {
+          if (submitted) {
+            setTimeout(() => {
+              statusRef.current?.focus();
+              post("/submit");
+            }, 0);
+          }
+        }, [submitted]);
+        return <button onClick={() => setSubmitted(true)}>Submit</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports mixed scheduled focus and non-call work", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Form() {
+        const [submitted, setSubmitted] = useState(false);
+        const statusRef = useRef(null);
+        useEffect(() => {
+          if (submitted) {
+            setTimeout(() => {
+              statusRef.current?.focus();
+              document.title = "Submitted";
+            }, 0);
+          }
+        }, [submitted]);
+        return <button onClick={() => setSubmitted(true)}>Submit</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports delete calls on opaque clients stored in refs", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Resource({ apiClient }) {
+        const [shouldDelete, setShouldDelete] = useState(false);
+        const apiClientRef = useRef(apiClient);
+        useEffect(() => {
+          if (shouldDelete) apiClientRef.current.delete("/resource");
+        }, [shouldDelete]);
+        return <button onClick={() => setShouldDelete(true)}>Delete</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports collection mutations when useRef is shadowed", () => {
+    const result = runRule(
+      noEventHandler,
+      `const useRef = (value) => ({ current: value });
+      function Selection() {
+        const [shouldClear, setShouldClear] = useState(false);
+        const selected = useRef(new Set());
+        useEffect(() => {
+          if (shouldClear) selected.current.delete("active");
+        }, [shouldClear]);
+        return <button onClick={() => setShouldClear(true)}>Clear</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent on a window.scrollTo consequent", () => {
     const result = runRule(
       noEventHandler,

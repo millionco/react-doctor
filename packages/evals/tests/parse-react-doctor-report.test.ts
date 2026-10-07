@@ -62,6 +62,13 @@ describe("parseReactDoctorReport", () => {
     expect(parseReactDoctorReport(JSON.stringify(report))).toEqual(report);
   });
 
+  it("accepts Astro reports", () => {
+    const report = buildReport();
+    report.projects[0].framework = "astro";
+
+    expect(parseReactDoctorReport(JSON.stringify(report))).toEqual(report);
+  });
+
   it("accepts complete legacy reports", () => {
     const legacyDiagnostic = {
       filePath: "src/app.tsx",

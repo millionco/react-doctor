@@ -3001,6 +3001,96 @@ export const useResizableColumns = () => {
 });
 
 describe("effect-needs-cleanup adversarial edge cases (observers / connections / retained functions)", () => {
+  it("accepts an observer replaced by a self-reconnecting helper with unmount cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element }) => {
+  useLayoutEffect(() => {
+    let observer;
+    const refresh = () => {
+      observer?.disconnect();
+      observer = new MutationObserver(refresh);
+      for (let node = element; node; node = node.parentElement) {
+        observer.observe(node, { attributes: true, childList: true });
+      }
+    };
+    refresh();
+    return () => observer?.disconnect();
+  }, [element]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a reconnect helper that replaces the observer without releasing the previous one", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element }) => {
+  useLayoutEffect(() => {
+    let observer;
+    const refresh = () => {
+      observer = new MutationObserver(refresh);
+      observer.observe(element, { attributes: true });
+    };
+    refresh();
+    return () => observer?.disconnect();
+  }, [element]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags reconnect cleanup that is conditional on an unrelated value", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element, shouldDisconnect }) => {
+  useLayoutEffect(() => {
+    let observer;
+    const refresh = () => {
+      if (shouldDisconnect) observer?.disconnect();
+      observer = new MutationObserver(refresh);
+      observer.observe(element, { attributes: true });
+    };
+    refresh();
+    return () => observer?.disconnect();
+  }, [element, shouldDisconnect]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a reconnect helper also retained by an unrelated external owner", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element, scheduler }) => {
+  useLayoutEffect(() => {
+    let observer;
+    const refresh = () => {
+      observer?.disconnect();
+      observer = new MutationObserver(refresh);
+      observer.observe(element, { attributes: true });
+    };
+    refresh();
+    scheduler.register(refresh);
+    return () => observer?.disconnect();
+  }, [element, scheduler]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags an observer registered through a nested helper with no cleanup", () => {
     const result = runRule(
       effectNeedsCleanup,
@@ -4152,7 +4242,7 @@ export const Pollers = ({ items, previousTimerIds }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("rejects the wrong clear verb for a mapped interval collection", () => {
+  it("accepts either clear verb for a mapped interval collection", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useEffect } from "react";
@@ -4168,7 +4258,7 @@ export const Pollers = ({ items }) => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("rejects a local mapped timer that is not returned", () => {
@@ -8766,6 +8856,202 @@ export const Viewport = ({ onWheel }) => {
     if (node) node.addEventListener("wheel", onWheel, { passive: false });
   }, [onWheel]);
   return <button ref={viewportRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
+describe("effect-needs-cleanup Supabase Realtime patterns (#1539)", () => {
+  it("does not flag Supabase channel with removeChannel cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase, roomId }) => {
+  useEffect(() => {
+    const channel = supabase
+      .channel(\`messages:\${roomId}\`)
+      .on("postgres_changes", { event: "INSERT" }, () => {})
+      .on("postgres_changes", { event: "UPDATE" }, () => {})
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [roomId, supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag Supabase channel with removeAllChannels cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase }) => {
+  useEffect(() => {
+    const channel = supabase.channel("test").subscribe();
+    return () => {
+      supabase.removeAllChannels();
+    };
+  }, [supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag Supabase channel with channel.unsubscribe() cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase, roomId }) => {
+  useEffect(() => {
+    const channel = supabase
+      .channel(\`messages:\${roomId}\`)
+      .on("postgres_changes", { event: "INSERT" }, () => {})
+      .subscribe();
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [roomId, supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag Supabase channel without .on() using removeChannel", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase }) => {
+  useEffect(() => {
+    const channel = supabase.channel("test").subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag removeChannel cleanup through an immutable channel alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase }) => {
+  useEffect(() => {
+    const channel = supabase
+      .channel("messages")
+      .on("postgres_changes", { event: "INSERT" }, () => {})
+      .subscribe();
+    const ownedChannel = channel;
+    return () => {
+      supabase.removeChannel(ownedChannel);
+    };
+  }, [supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "different client removeChannel",
+      cleanup: "otherSupabase.removeChannel(channel)",
+    },
+    {
+      name: "different channel removeChannel",
+      cleanup: "supabase.removeChannel(otherChannel)",
+    },
+    {
+      name: "different client removeAllChannels",
+      cleanup: "otherSupabase.removeAllChannels()",
+    },
+  ])("flags a Supabase channel with $name cleanup", ({ cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase, otherSupabase, otherChannel }) => {
+  useEffect(() => {
+    const channel = supabase
+      .channel("messages")
+      .on("postgres_changes", { event: "INSERT" }, () => {})
+      .subscribe();
+    return () => {
+      ${cleanup};
+    };
+  }, [otherChannel, otherSupabase, supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat unrelated removeAllChannels calls as emitter cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = ({ emitter, supabase, handler }) => {
+  useEffect(() => {
+    emitter.on("message", handler);
+    return () => {
+      supabase.removeAllChannels();
+    };
+  }, [emitter, handler, supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags Supabase channel with no cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase, roomId }) => {
+  useEffect(() => {
+    const channel = supabase
+      .channel(\`messages:\${roomId}\`)
+      .on("postgres_changes", { event: "INSERT" }, () => {})
+      .subscribe();
+  }, [roomId, supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("subscription");
+  });
+});
+
+describe("effect-needs-cleanup Jitsi dispose pattern (#1539)", () => {
+  it("does not flag Jitsi API with dispose cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const JitsiMeeting = ({ api }) => {
+  useEffect(() => {
+    api.addListener("videoConferenceJoined", () => {
+      console.log("joined");
+    });
+    return () => {
+      api.dispose();
+    };
+  }, [api]);
+  return null;
 };`,
     );
     expect(result.parseErrors).toEqual([]);

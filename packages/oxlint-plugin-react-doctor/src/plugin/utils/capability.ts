@@ -10,6 +10,7 @@
 // the two cannot drift.
 export const FRAMEWORK_TOKENS = [
   "nextjs",
+  "astro",
   "vite",
   "cra",
   "remix",
@@ -42,6 +43,13 @@ export type Capability =
   | "tailwind"
   | "tailwind:3.4"
   | "tailwind:4"
+  | "shadcn"
+  | "radix-ui"
+  | "base-ui"
+  | "react-aria"
+  | "tanstack-table"
+  | "tanstack-virtual"
+  | "tanstack-form"
   | "zod"
   | "zod:4"
   | "mobx"

@@ -204,7 +204,12 @@ export const noChainStateUpdates = defineRule({
         const callExpr = getCallExpr(ref);
         if (!callExpr) continue;
         if (!isReachableFromStateTrigger(callExpr)) continue;
-        if (!readsPostMountValueThroughLocals(callExpr, effectFn, { ignoreBareRefCurrent: true })) {
+        if (
+          !readsPostMountValueThroughLocals(callExpr, effectFn, {
+            ignoreBareRefCurrent: true,
+            scopes: context.scopes,
+          })
+        ) {
           continue;
         }
         const declarator = getUseStateDeclarator(resolveStateSetterReference(analysis, ref) ?? ref);

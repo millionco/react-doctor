@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -32,7 +33,7 @@ export const tanstackStartNoAnchorElement = defineRule({
   recommendation:
     "Use `Link` from `@tanstack/react-router` so internal navigation keeps client state, preloading, and typed routes.",
   create: (context: RuleContext): RuleVisitors => {
-    if (!isInProjectDirectory(context, "routes")) return {};
+    if (!isInProjectDirectory(context, "routes")) return EMPTY_RULE_VISITORS;
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (resolveJsxElementType(node) !== "a") return;

@@ -13,12 +13,21 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { format } from "oxfmt";
 
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
 const PLUGIN_RULES_ROOT = path.join(PACKAGE_ROOT, "src/plugin/rules");
+const CORE_REGISTRY_DATA_OUTPUT = path.join(
+  PACKAGE_ROOT,
+  "src/plugin/core-rule-registry-data.json",
+);
 const REGISTRY_OUTPUT = path.join(PACKAGE_ROOT, "src/plugin/rule-registry.ts");
+const SECURITY_SCAN_REGISTRY_OUTPUT = path.join(
+  PACKAGE_ROOT,
+  "src/plugin/security-scan-rule-registry.ts",
+);
 const GENERATED_LINE_WIDTH = 100;
 
 // Bucket directory → framework (each rule's `framework` field is derived,
@@ -93,6 +102,7 @@ const getRequiredCapabilities = (bucketName, ruleId) => {
 const BUCKET_TO_AUTO_TAGS = {
   design: ["design"],
   ink: ["ink"],
+  project: ["project-analysis"],
   "react-native": ["react-native"],
   r3f: ["r3f", "webgl"],
   webgl: ["webgl"],
@@ -132,6 +142,7 @@ const EFFECT_RULES_PORTED_FROM_EXTERNAL = new Set([
 // `customRulesOnly`. Without this list every new in-house rule we drop
 // into `a11y/` would silently disappear for users who narrow scope.
 const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
+  "anchor-target-exists",
   "data-table-requires-accessible-name",
   "details-requires-summary",
   "fieldset-requires-legend",
@@ -152,32 +163,22 @@ const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "no-skipped-heading-level",
   "no-static-motion-config-never",
   "no-ungated-tailwind-animation",
+  "shadcn-dialog-content-requires-title",
+  "shadcn-form-item-requires-label",
+  "shadcn-icon-button-requires-label",
+  "radix-dialog-content-requires-title",
+  "base-ui-dialog-popup-requires-title",
+  "base-ui-field-requires-label",
+  "react-aria-dialog-requires-heading",
   "no-uninformative-aria-label",
   "dialog-has-accessible-name",
   "no-create-ref-in-function-component",
+  "no-multi-component-file",
   "no-call-component-as-function",
   "no-string-false-on-boolean-attribute",
   "hook-import-rename-loses-use-prefix",
   "no-invalid-progress-range",
   "role-button-requires-complete-keyboard-activation",
-]);
-
-// Rule ids whose source files are kept on disk but intentionally NOT
-// registered. Use sparingly — the canonical way to retire a rule is to
-// delete its file (and its tests, fixture references, etc.). This
-// skiplist exists for rules we want to stop shipping right away while
-// preserving their implementation, tests, and regression fixtures so
-// re-enabling is a one-line change. Add a brief justification next to
-// every entry.
-const RULE_IDS_TO_SKIP_REGISTRATION = new Set([
-  // The React-Compiler memoization premise didn't hold: the three
-  // canonical hooks it targeted (`useRouter`, `useSearchParams`,
-  // `useNavigation`) all return stable references, so destructuring
-  // their methods produces no measurable compiler win — and on Pages
-  // Router (`next/router`) destructuring `push` captures a stale
-  // reference. Implementation + regression suite + fixture lines kept
-  // in place; remove this entry to re-enable.
-  "react-compiler-destructure-method",
 ]);
 
 // Fine-grained category → the clear, user-facing bucket the scan output
@@ -224,6 +225,7 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   nextjs: "Next.js",
   performance: "Performance",
   preact: "Preact",
+  project: "Architecture",
   "react-builtins": "Correctness",
   "react-native": "React Native",
   r3f: "Performance",
@@ -300,7 +302,6 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
       process.exit(1);
     }
     const ruleId = idMatch[1];
-    if (RULE_IDS_TO_SKIP_REGISTRATION.has(ruleId)) continue;
     const category = toBucket(categoryMatch ? categoryMatch[1] : defaultCategory);
     const severity = severityMatch[1];
     // Force POSIX separators — `path.relative()` returns backslashes on
@@ -320,6 +321,7 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
     ruleEntries.push({
       ruleId,
       identifier,
+      filePath,
       relativeImport,
       framework,
       category,
@@ -344,6 +346,17 @@ for (const entry of ruleEntries) {
   seenRuleIds.add(entry.ruleId);
 }
 
+await Promise.all(
+  ruleEntries.map(async (entry) => {
+    const ruleModule = await import(pathToFileURL(entry.filePath).href);
+    const sourceRule = ruleModule[entry.identifier];
+    if (typeof sourceRule !== "object" || sourceRule === null) {
+      throw new Error(`Rule export not found: ${entry.identifier} in ${entry.filePath}`);
+    }
+    entry.sourceRule = sourceRule;
+  }),
+);
+
 const importLines = ruleEntries
   .map((entry) => `import { ${entry.identifier} } from "${entry.relativeImport}";`)
   .join("\n");
@@ -359,10 +372,18 @@ const formatAutoTagsLine = (entry) => {
   const autoTagLiteral = entry.autoTags.map((tag) => `"${tag}"`).join(", ");
   const tagsLine = `      tags: [...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])])],`;
   if (tagsLine.length <= GENERATED_LINE_WIDTH) return `${tagsLine}\n`;
-  return `      tags: [
-        ...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])]),
-      ],
-`;
+  const wrappedSetLine = `        ...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])]),`;
+  if (wrappedSetLine.length <= GENERATED_LINE_WIDTH) {
+    return `      tags: [\n${wrappedSetLine}\n      ],\n`;
+  }
+  return (
+    `      tags: [\n` +
+    `        ...new Set([\n` +
+    entry.autoTags.map((tag) => `          "${tag}",\n`).join("") +
+    `          ...(${entry.identifier}.tags ?? []),\n` +
+    `        ]),\n` +
+    `      ],\n`
+  );
 };
 
 // Merge bucket-synthesized capabilities with any rule-authored `requires`
@@ -381,9 +402,9 @@ const formatRequiresLine = (entry) => {
   // identifiers — e.g. `noNoninteractiveElementToInteractiveRole` — to spill
   // past the limit).
   const singleLine = `      requires: [...new Set<Capability>([${requiredCapabilities}, ...(${entry.identifier}.requires ?? [])])],`;
-  if (singleLine.length <= 100) return `${singleLine}\n`;
+  if (singleLine.length <= GENERATED_LINE_WIDTH) return `${singleLine}\n`;
   const wrappedSetLine = `        ...new Set<Capability>([${requiredCapabilities}, ...(${entry.identifier}.requires ?? [])]),`;
-  if (wrappedSetLine.length <= 100) {
+  if (wrappedSetLine.length <= GENERATED_LINE_WIDTH) {
     return `      requires: [\n${wrappedSetLine}\n      ],\n`;
   }
   return (
@@ -404,25 +425,28 @@ const formatRequiresLine = (entry) => {
 // `entry.rule.framework` / `.category` / `.severity` so we don't ship
 // the same value twice per entry. Saves ~3 lines × N rules on the
 // generated file and on the published bundle.
-const ruleLines = ruleEntries
-  .map(
-    (entry) =>
-      `  {\n` +
-      `    key: "react-doctor/${entry.ruleId}",\n` +
-      `    id: "${entry.ruleId}",\n` +
-      `    source: "react-doctor",\n` +
-      `    originallyExternal: ${entry.originallyExternal},\n` +
-      `    rule: {\n` +
-      `      ...${entry.identifier},\n` +
-      `      framework: "${entry.framework}",\n` +
-      `      category: "${entry.category}",\n` +
-      (entry.shouldSynthesizeDefaultDisabled ? `      defaultEnabled: false,\n` : "") +
-      formatAutoTagsLine(entry) +
-      formatRequiresLine(entry) +
-      `    },\n` +
-      `  },`,
-  )
-  .join("\n");
+const formatRuleLines = (entries) =>
+  entries
+    .map(
+      (entry) =>
+        `  {\n` +
+        `    key: "react-doctor/${entry.ruleId}",\n` +
+        `    id: "${entry.ruleId}",\n` +
+        `    source: "react-doctor",\n` +
+        `    originallyExternal: ${entry.originallyExternal},\n` +
+        `    rule: {\n` +
+        `      ...${entry.identifier},\n` +
+        `      framework: "${entry.framework}",\n` +
+        `      category: "${entry.category}",\n` +
+        (entry.shouldSynthesizeDefaultDisabled ? `      defaultEnabled: false,\n` : "") +
+        formatAutoTagsLine(entry) +
+        formatRequiresLine(entry) +
+        `    },\n` +
+        `  },`,
+    )
+    .join("\n");
+
+const ruleLines = formatRuleLines(ruleEntries);
 
 const generatedSource = `// GENERATED FILE — do not edit by hand. Run \`pnpm gen\` to regenerate.
 // Source of truth: every \`export const <name> = defineRule({ id: "...", ... })\`
@@ -447,4 +471,79 @@ export const ruleRegistry: Record<string, Rule> = Object.fromEntries(
 `;
 
 fs.writeFileSync(REGISTRY_OUTPUT, generatedSource);
+
+const recommendationOverrideByRuleId = {
+  "nextjs-no-client-side-redirect": "static-export-redirect",
+  "no-secrets-in-client-code": "client-secret",
+};
+
+const coreRuleEntries = ruleEntries.map((entry) => {
+  const sourceRule = entry.sourceRule;
+  const recommendationOverride = recommendationOverrideByRuleId[entry.ruleId];
+  if (typeof sourceRule.recommendationFor === "function" && recommendationOverride === undefined) {
+    throw new Error(`Missing core recommendation override for rule: ${entry.ruleId}`);
+  }
+  const tags = [...new Set([...entry.autoTags, ...(sourceRule.tags ?? [])])];
+  const requires = [...new Set([...entry.requiredCapabilities, ...(sourceRule.requires ?? [])])];
+  return {
+    key: `react-doctor/${entry.ruleId}`,
+    id: entry.ruleId,
+    source: "react-doctor",
+    originallyExternal: entry.originallyExternal,
+    rule: {
+      id: entry.ruleId,
+      title: sourceRule.title,
+      severity: entry.severity,
+      recommendation: sourceRule.recommendation,
+      recommendationOverride,
+      category: entry.category,
+      framework: entry.framework,
+      requires: requires.length > 0 ? requires : undefined,
+      disabledWhen: sourceRule.disabledWhen,
+      tags: tags.length > 0 ? tags : undefined,
+      defaultEnabled:
+        entry.shouldSynthesizeDefaultDisabled || sourceRule.defaultEnabled === false
+          ? false
+          : undefined,
+      matchByOccurrence: sourceRule.matchByOccurrence,
+      isScanRule: typeof sourceRule.scan === "function",
+      isProjectRule: sourceRule.execution === "project" ? true : undefined,
+    },
+  };
+});
+
+const coreRegistryData = await format(
+  CORE_REGISTRY_DATA_OUTPUT,
+  `${JSON.stringify(coreRuleEntries, null, 2)}\n`,
+  { printWidth: GENERATED_LINE_WIDTH },
+);
+fs.writeFileSync(CORE_REGISTRY_DATA_OUTPUT, coreRegistryData.code);
+
+const securityScanEntries = ruleEntries.filter(
+  (entry) => typeof entry.sourceRule.scan === "function",
+);
+const securityScanImportLines = securityScanEntries
+  .map((entry) => `import { ${entry.identifier} } from "${entry.relativeImport}";`)
+  .join("\n");
+const securityScanCapabilityImport = securityScanEntries.some(
+  (entry) => entry.requiredCapabilities.length > 0,
+)
+  ? `import type { Capability } from "./utils/capability.js";`
+  : "";
+const securityScanGeneratedSource = `// GENERATED FILE — do not edit by hand. Run \`pnpm gen\` to regenerate.
+
+${[securityScanCapabilityImport, securityScanImportLines].filter(Boolean).join("\n\n")}
+
+export const reactDoctorScanRules = [
+${formatRuleLines(securityScanEntries)}
+] as const;
+`;
+fs.writeFileSync(SECURITY_SCAN_REGISTRY_OUTPUT, securityScanGeneratedSource);
+
 console.log(`Wrote ${path.relative(PACKAGE_ROOT, REGISTRY_OUTPUT)} (${ruleEntries.length} rules)`);
+console.log(
+  `Wrote ${path.relative(PACKAGE_ROOT, CORE_REGISTRY_DATA_OUTPUT)} (${coreRuleEntries.length} rules)`,
+);
+console.log(
+  `Wrote ${path.relative(PACKAGE_ROOT, SECURITY_SCAN_REGISTRY_OUTPUT)} (${securityScanEntries.length} rules)`,
+);

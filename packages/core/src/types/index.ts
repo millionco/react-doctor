@@ -40,11 +40,13 @@ export type {
   JsonReportMode,
   JsonReportProjectEntry,
   JsonReportProjectEntryV3,
+  JsonReportSkippedProject,
   JsonReportSummary,
   JsonReportV1,
   JsonReportV2,
   JsonReportV3,
 } from "./inspect.js";
+export type { AxiomTelemetryOptions } from "./observability.js";
 export type {
   DependencyInfo,
   Framework,
@@ -62,4 +64,12 @@ export type { PromptMultiselectChoiceState, PromptMultiselectContext } from "./p
 // `core/src/project-info/rn-metadata.ts`;
 // rule-side consumers import from the plugin package directly.
 // See that file for the duplication rationale.
-export type { ScoreResult, RulePriority, RuleTier } from "./score.js";
+export type {
+  CalculateScoreOptions,
+  ScoreRequestMetadata,
+  ScoreResult,
+  RulePriority,
+  RuleTier,
+} from "./score.js";
+export type { GitCommandRequest } from "./git-command-request.js";
+export type { OxlintWorkerSpawnSpec } from "./oxlint-worker-spawn-spec.js";

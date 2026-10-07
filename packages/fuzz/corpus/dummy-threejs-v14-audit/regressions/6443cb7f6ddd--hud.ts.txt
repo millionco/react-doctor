@@ -1,0 +1,413 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 6443cb7f6dddd0f303ba8ac1eb890e88a466bcd18b427ed51ea0b9f69f59a0bf
+/**
+ * DOM overlay: status, rotation charges, capture trays, move log, the full
+ * cross-layer rule text, and the AI fixture panel.
+ *
+ * The rules are shown verbatim from core/rules.ts and the AI panel is generated
+ * from ai/fixtures.ts, so what the player reads is exactly what the engine and
+ * the opponent are running.
+ */
+
+import { RULE_TEXT } from "../core/rules";
+import { AI_FIXTURES, type AiFixture } from "../ai/fixtures";
+import {
+  LAYER_LONG,
+  LAYER_NAMES,
+  PIECE_NAMES,
+  ROTATION_CHARGES,
+  SIDE_NAMES,
+  type GameResult,
+  type PieceType,
+  type Side,
+} from "../core/types";
+
+export interface HudCallbacks {
+  onUndo(): void;
+  onRestart(): void;
+  onTogglePause(): void;
+  onFixture(id: string): void;
+  onCamera(cmd: "home" | "fit" | "all" | 0 | 1 | 2): void;
+  onRotate(layer: number, dir: 1 | -1): void;
+  onRotatePreview(layer: number | null): void;
+  onToggleThreats(): void;
+}
+
+export interface HudState {
+  status: string;
+  /** Transient explanation of a refused action, or null. */
+  notice: string | null;
+  sideToMove: Side;
+  check: boolean;
+  result: GameResult;
+  charges: [number, number];
+  captured: Array<{ side: Side; type: PieceType }>;
+  log: Array<{ mover: Side; notation: string }>;
+  isolated: number | null;
+  selection: string | null;
+  selectionMoves: number;
+  paused: boolean;
+  thinking: boolean;
+  showThreats: boolean;
+  fixture: AiFixture;
+  aiReport: string | null;
+}
+
+const glyphFor: Record<PieceType, string> = {
+  P: "♙",
+  N: "♘",
+  B: "♗",
+  R: "♖",
+  Q: "♕",
+  K: "♔",
+};
+
+const CONTROLS: Array<[string, string]> = [
+  ["Drag / click a piece", "pick it up, drop it on a lit square"],
+  ["Right-click or Esc", "cancel the selection"],
+  ["1 2 3", "isolate the Lower / Middle / Upper board"],
+  ["0", "show all three boards"],
+  ["[ ]", "step the isolated plane down / up"],
+  ["F  /  H", "fit the whole stack  /  return home"],
+  ["Q  /  E", "rotate the focused board ccw / cw (costs a charge)"],
+  ["T", "show the squares Crimson attacks"],
+  ["U", "undo your last move (takes back Crimson's reply too)"],
+  ["P", "pause  •  R restart"],
+  ["? ", "rules panel  •  I AI panel"],
+];
+
+export class Hud {
+  private readonly root: HTMLDivElement;
+  private readonly el: Record<string, HTMLElement> = {};
+  private rulesOpen = false;
+  private aiOpen = false;
+
+  constructor(private readonly cb: HudCallbacks) {
+    this.root = document.createElement("div");
+    this.root.className = "hud";
+    this.root.innerHTML = this.template();
+    document.body.appendChild(this.root);
+
+    const pick = (id: string): HTMLElement => {
+      const e = this.root.querySelector<HTMLElement>(`#${id}`);
+      if (!e) throw new Error(`hud: missing #${id}`);
+      return e;
+    };
+    for (const id of [
+      "status",
+      "turnDot",
+      "chargesA",
+      "chargesC",
+      "trayA",
+      "trayC",
+      "log",
+      "selection",
+      "planeChips",
+      "rulesPanel",
+      "aiPanel",
+      "aiReport",
+      "aiList",
+      "overlay",
+      "overlayTitle",
+      "overlayBody",
+      "threatBtn",
+      "thinking",
+      "notice",
+    ]) {
+      this.el[id] = pick(id);
+    }
+
+    this.wire();
+    this.renderRules();
+    this.renderFixtureList();
+  }
+
+  private template(): string {
+    return `
+<div class="panel panel-tl">
+  <div class="title">TRIAD<span>CHESS</span></div>
+  <div class="statusrow"><span id="turnDot" class="dot"></span><span id="status">…</span></div>
+  <div id="thinking" class="thinking">Crimson is thinking…</div>
+  <div id="notice" class="notice"></div>
+  <div class="charges">
+    <div class="chargeline"><b>Azure</b> rotations <span id="chargesA"></span></div>
+    <div class="chargeline"><b>Crimson</b> rotations <span id="chargesC"></span></div>
+  </div>
+  <div class="trays">
+    <div class="tray"><span class="traylabel">taken by Azure</span><span id="trayA" class="traypips"></span></div>
+    <div class="tray"><span class="traylabel">taken by Crimson</span><span id="trayC" class="traypips"></span></div>
+  </div>
+  <div id="selection" class="selection"></div>
+</div>
+
+<div class="panel panel-tr">
+  <div class="panelhead">View</div>
+  <div class="chips">
+    <button data-cam="home" class="chip">Home</button>
+    <button data-cam="fit" class="chip">Fit</button>
+  </div>
+  <div class="panelhead">Isolate plane</div>
+  <div class="chips" id="planeChips">
+    <button data-cam="all" class="chip">All</button>
+    <button data-cam="0" class="chip">L</button>
+    <button data-cam="1" class="chip">M</button>
+    <button data-cam="2" class="chip">U</button>
+  </div>
+  <div class="panelhead">Rotate a board</div>
+  <div class="chips rot">
+    ${[0, 1, 2]
+      .map(
+        (l) => `<span class="rotgroup" data-rotlayer="${l}">
+        <button class="chip tiny" data-rot="${l}:-1">↺</button>
+        <b>${LAYER_NAMES[l]}</b>
+        <button class="chip tiny" data-rot="${l}:1">↻</button></span>`,
+      )
+      .join("")}
+  </div>
+  <div class="chips">
+    <button id="threatBtn" class="chip">Crimson threats</button>
+  </div>
+  <div class="chips">
+    <button data-act="undo" class="chip">Undo</button>
+    <button data-act="pause" class="chip">Pause</button>
+    <button data-act="restart" class="chip">Restart</button>
+  </div>
+</div>
+
+<div class="panel panel-bl">
+  <div class="panelhead">Move log</div>
+  <ol id="log" class="log"></ol>
+  <div class="tabs">
+    <button data-tab="rules" class="chip">Rules (?)</button>
+    <button data-tab="ai" class="chip">AI fixtures (I)</button>
+  </div>
+</div>
+
+<div class="panel panel-br">
+  <div class="panelhead">Controls</div>
+  <dl class="controls">
+    ${CONTROLS.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}
+  </dl>
+</div>
+
+<aside id="rulesPanel" class="sheet"></aside>
+<aside id="aiPanel" class="sheet">
+  <h2>Opponent — documented fixtures</h2>
+  <p class="lead">Crimson is a local alpha-beta search. There is no inference
+  service in this build: every choice comes from the fixture data below, plus a
+  fixed tie-break seed, so a fixture always plays the same move in the same
+  position.</p>
+  <div id="aiList"></div>
+  <h3>Last decision</h3>
+  <pre id="aiReport" class="report">—</pre>
+</aside>
+
+<div id="overlay" class="overlay hidden">
+  <div class="overlaycard">
+    <h1 id="overlayTitle"></h1>
+    <div id="overlayBody"></div>
+  </div>
+</div>`;
+  }
+
+  private wire(): void {
+    this.root.addEventListener("click", (ev) => {
+      const t = ev.target as HTMLElement;
+      const cam = t.dataset.cam;
+      if (cam) {
+        this.cb.onCamera(
+          cam === "home" || cam === "fit" || cam === "all"
+            ? cam
+            : (Number(cam) as 0 | 1 | 2),
+        );
+        return;
+      }
+      const rot = t.dataset.rot;
+      if (rot) {
+        const [l, d] = rot.split(":");
+        this.cb.onRotate(Number(l), Number(d) as 1 | -1);
+        return;
+      }
+      const act = t.dataset.act;
+      if (act === "undo") this.cb.onUndo();
+      if (act === "restart") this.cb.onRestart();
+      if (act === "pause") this.cb.onTogglePause();
+      const tab = t.dataset.tab;
+      if (tab === "rules") this.toggleRules();
+      if (tab === "ai") this.toggleAi();
+      if (t.id === "threatBtn") this.cb.onToggleThreats();
+      const fx = t.dataset.fixture;
+      if (fx) this.cb.onFixture(fx);
+    });
+
+    // Hovering a rotate button previews which squares would swing round.
+    this.root.querySelectorAll<HTMLElement>("[data-rotlayer]").forEach((g) => {
+      const layer = Number(g.dataset.rotlayer);
+      g.addEventListener("pointerenter", () => this.cb.onRotatePreview(layer));
+      g.addEventListener("pointerleave", () => this.cb.onRotatePreview(null));
+    });
+  }
+
+  private renderRules(): void {
+    const el = this.el.rulesPanel;
+    if (!el) return;
+    el.innerHTML = `<h2>Triad Chess — the rules in full</h2>${RULE_TEXT.map(
+      (s) =>
+        `<section><h3>${s.title}</h3><ul>${s.lines
+          .map((l) => `<li>${l}</li>`)
+          .join("")}</ul></section>`,
+    ).join("")}
+    <section><h3>Reading the board</h3><ul>
+      <li>The three panes are labelled in raised brass on the near-left rail: <b>L</b>, <b>M</b>, <b>U</b>.</li>
+      <li>Select a piece and every square it can reach lights up as a volume, on all three boards at once, joined to the piece by a thread.</li>
+      <li><span class="sw sw-move"></span> quiet move &nbsp; <span class="sw sw-cap"></span> capture &nbsp; <span class="sw sw-threat"></span> attacked by Crimson &nbsp; <span class="sw sw-rot"></span> rotation preview</li>
+    </ul></section>`;
+  }
+
+  private renderFixtureList(): void {
+    const el = this.el.aiList;
+    if (!el) return;
+    el.innerHTML = AI_FIXTURES.map(
+      (f) => `
+      <div class="fixture" data-fixid="${f.id}">
+        <button class="chip fixbtn" data-fixture="${f.id}">${f.name}</button>
+        <p class="summary">${f.summary}</p>
+        <ul>${f.behaviour.map((b) => `<li>${b}</li>`).join("")}</ul>
+        <table class="weights">
+          <tr><th>depth</th><td>${f.depth} plies</td><th>budget</th><td>${f.timeBudgetMs} ms</td></tr>
+          <tr><th>seed</th><td>0x${f.seed.toString(16)}</td><th>mobility</th><td>${f.weights.mobility}</td></tr>
+          <tr><th>upper board</th><td>${f.weights.upperBoard}</td><th>pawn climb</th><td>${f.weights.pawnClimb}</td></tr>
+          <tr><th>king ring</th><td>${f.weights.kingRing}</td><th>check</th><td>${f.weights.check}</td></tr>
+          <tr><th>centre</th><td>${f.weights.centre}</td><th>rotation bias</th><td>${f.weights.rotationBias}</td></tr>
+          <tr><th>material</th><td colspan="3">${(
+            Object.keys(f.weights.material) as PieceType[]
+          )
+            .filter((k) => k !== "K")
+            .map((k) => `${PIECE_NAMES[k]} ${f.weights.material[k]}`)
+            .join(" · ")}</td></tr>
+        </table>
+        <div class="booklabel">Opening book (${f.book.length} lines)</div>
+        <ul class="book">${f.book
+          .map(
+            (b) =>
+              `<li><code>${b.after || "start"}</code> → <code>${b.reply}</code><br><span>${b.note}</span></li>`,
+          )
+          .join("")}</ul>
+      </div>`,
+    ).join("");
+  }
+
+  toggleRules(force?: boolean): void {
+    this.rulesOpen = force ?? !this.rulesOpen;
+    if (this.rulesOpen) this.aiOpen = false;
+    this.el.rulesPanel?.classList.toggle("open", this.rulesOpen);
+    this.el.aiPanel?.classList.toggle("open", this.aiOpen);
+  }
+
+  toggleAi(force?: boolean): void {
+    this.aiOpen = force ?? !this.aiOpen;
+    if (this.aiOpen) this.rulesOpen = false;
+    this.el.rulesPanel?.classList.toggle("open", this.rulesOpen);
+    this.el.aiPanel?.classList.toggle("open", this.aiOpen);
+  }
+
+  update(s: HudState): void {
+    const set = (id: string, html: string) => {
+      const e = this.el[id];
+      if (e && e.innerHTML !== html) e.innerHTML = html;
+    };
+
+    set("status", s.status);
+    this.el.turnDot?.setAttribute(
+      "class",
+      `dot ${s.sideToMove === 0 ? "azure" : "crimson"}${s.check ? " check" : ""}`,
+    );
+    this.el.thinking?.classList.toggle("on", s.thinking);
+    set("notice", s.notice ?? "");
+    this.el.notice?.classList.toggle("on", s.notice !== null);
+
+    const pips = (n: number): string =>
+      Array.from({ length: ROTATION_CHARGES }, (_, i) =>
+        `<i class="${i < n ? "on" : ""}"></i>`,
+      ).join("");
+    set("chargesA", pips(s.charges[0]));
+    set("chargesC", pips(s.charges[1]));
+
+    const tray = (owner: Side): string =>
+      s.captured
+        .filter((c) => c.side !== owner)
+        .map(
+          (c) =>
+            `<span class="pip ${c.side === 0 ? "azure" : "crimson"}">${glyphFor[c.type]}</span>`,
+        )
+        .join("") || "<span class='none'>—</span>";
+    set("trayA", tray(0));
+    set("trayC", tray(1));
+
+    set(
+      "log",
+      s.log
+        .slice(-14)
+        .map(
+          (m, i) =>
+            `<li class="${m.mover === 0 ? "azure" : "crimson"}"><span>${
+              s.log.length - Math.min(14, s.log.length) + i + 1
+            }</span>${m.notation}</li>`,
+        )
+        .join("") || "<li class='none'>no moves yet</li>",
+    );
+
+    set(
+      "selection",
+      s.selection
+        ? `<b>${s.selection}</b> — ${s.selectionMoves} legal ${
+            s.selectionMoves === 1 ? "move" : "moves"
+          }`
+        : "<span class='none'>nothing selected</span>",
+    );
+
+    this.root.querySelectorAll<HTMLElement>("#planeChips .chip").forEach((c) => {
+      const v = c.dataset.cam;
+      const active = v === "all" ? s.isolated === null : Number(v) === s.isolated;
+      c.classList.toggle("active", active);
+    });
+    this.el.threatBtn?.classList.toggle("active", s.showThreats);
+
+    this.root.querySelectorAll<HTMLElement>(".fixture").forEach((f) => {
+      f.classList.toggle("active", f.dataset.fixid === s.fixture.id);
+    });
+    set("aiReport", s.aiReport ?? "—");
+
+    const ov = this.el.overlay;
+    if (!ov) return;
+    if (s.paused) {
+      ov.classList.remove("hidden");
+      set("overlayTitle", "Paused");
+      set(
+        "overlayBody",
+        `<p>Press <kbd>P</kbd> to resume.</p><p class="muted">Isolated plane: ${
+          s.isolated === null ? "none" : LAYER_LONG[s.isolated]
+        }</p>`,
+      );
+    } else if (s.result.kind !== "ongoing") {
+      ov.classList.remove("hidden");
+      const title =
+        s.result.kind === "checkmate"
+          ? `${SIDE_NAMES[s.result.winner]} wins`
+          : s.result.kind === "stalemate"
+            ? "Stalemate"
+            : "Draw";
+      set("overlayTitle", title);
+      set(
+        "overlayBody",
+        `<p>${s.status}</p><p><button class="chip" data-act="restart">Play again</button>
+         <button class="chip" data-act="undo">Take back</button></p>`,
+      );
+    } else {
+      ov.classList.add("hidden");
+    }
+  }
+}

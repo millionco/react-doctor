@@ -12,21 +12,13 @@ import { MAX_CORPUS_FILES } from "../src/constants.js";
 import { livenessFixtures } from "../../oxlint-plugin-react-doctor/src/plugin/liveness/liveness-fixtures.js";
 import { reactDoctorRules } from "../../oxlint-plugin-react-doctor/src/plugin/rule-registry.js";
 import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
+import { runScanRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-scan-rule.js";
 import { isNodeOfType } from "../../oxlint-plugin-react-doctor/src/plugin/utils/is-node-of-type.js";
 import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
 
 const NOOP_RULE: Rule = { id: "fuzz-smoke-noop", severity: "warn", create: () => ({}) };
-const RULE_DIRECTIVE_PATTERN = /^\/\/ rule: ([^\r\n]+)$/m;
-const VERDICT_DIRECTIVE_PATTERN = /^\/\/ verdict: (pass|fail)$/m;
 
 describe("fuzz harness oracles", () => {
-  it("reads corpus directives from CRLF files", () => {
-    const code = "// rule: example-rule\r\n// verdict: fail\r\n";
-
-    expect(RULE_DIRECTIVE_PATTERN.exec(code)?.[1]).toBe("example-rule");
-    expect(VERDICT_DIRECTIVE_PATTERN.exec(code)?.[1]).toBe("fail");
-  });
-
   // Generator health: every unmutated program must parse — a snippet-pool
   // typo would otherwise silently turn iterations into parse-error skips.
   it("generates programs that all parse cleanly", () => {
@@ -61,7 +53,13 @@ describe("fuzz harness oracles", () => {
     });
     const seedRelativePaths = fs
       .readdirSync(corpusDirectory, { encoding: "utf8", recursive: true })
-      .filter((relativePath) => /\.(tsx|jsx)$/.test(relativePath))
+      .filter(
+        (relativePath) =>
+          /\.(tsx|ts|jsx|js)(?:\.txt)?$/.test(relativePath) &&
+          !relativePath.endsWith(".d.ts") &&
+          !relativePath.endsWith(".d.ts.txt"),
+      )
+      .map((relativePath) => relativePath.split(path.sep).join("/"))
       .sort();
     expect(corpus.length).toBeGreaterThan(MAX_CORPUS_FILES);
     expect(corpus.map((entry) => entry.relativePath).sort()).toEqual(seedRelativePaths);
@@ -85,29 +83,37 @@ describe("fuzz harness oracles", () => {
     let declaredVerdictCount = 0;
 
     for (const entry of corpus) {
-      const ruleId = RULE_DIRECTIVE_PATTERN.exec(entry.code)?.[1];
-      const verdict = VERDICT_DIRECTIVE_PATTERN.exec(entry.code)?.[1];
+      const ruleIds = entry.ruleIds;
+      const verdict = entry.verdict;
       if (!verdict) continue;
       declaredVerdictCount += 1;
-      if (!ruleId) {
+      if (!ruleIds?.length) {
         verdictFailures.push(`${entry.relativePath}: missing rule`);
         continue;
       }
-      const rule = rulesById.get(ruleId);
-      if (!rule) {
-        verdictFailures.push(`${entry.relativePath}: unknown rule ${ruleId}`);
-        continue;
-      }
-      const result = runRule(rule, entry.code, {
-        filename: entry.relativePath,
-        settings: livenessFixturesById.get(ruleId)?.settings,
-        forceJsx: true,
-      });
-      const didFire = result.diagnostics.length > 0;
-      if ((verdict === "fail") !== didFire) {
-        verdictFailures.push(
-          `${entry.relativePath}: expected ${verdict}, received ${result.diagnostics.length} diagnostics`,
-        );
+      for (const ruleId of ruleIds) {
+        const rule = rulesById.get(ruleId);
+        if (!rule) {
+          verdictFailures.push(`${entry.relativePath}: unknown rule ${ruleId}`);
+          continue;
+        }
+        const diagnosticCount =
+          typeof rule.scan === "function"
+            ? runScanRule(rule, {
+                relativePath: entry.sourcePath ?? entry.relativePath,
+                content: entry.code,
+              }).length
+            : runRule(rule, entry.code, {
+                filename: entry.sourcePath ?? entry.relativePath,
+                settings: livenessFixturesById.get(ruleId)?.settings,
+                forceJsx: true,
+              }).diagnostics.length;
+        const didFire = diagnosticCount > 0;
+        if ((verdict === "fail") !== didFire) {
+          verdictFailures.push(
+            `${entry.relativePath} (${ruleId}): expected ${verdict}, received ${diagnosticCount} diagnostics`,
+          );
+        }
       }
     }
 
@@ -192,6 +198,21 @@ describe("fuzz harness oracles", () => {
     expect(castReceiver?.mustPreserveVerdict).toBe(true);
   });
 
+  it("keeps receiver wrappers from joining semicolonless statements", () => {
+    const variants = buildVerdictPreservingVariants(
+      `const state = React.useState(false)
+React.useEffect(() => {
+  setTimeout(() => {}, 100)
+}, [])`,
+      "fixture.tsx",
+    );
+    for (const variant of variants.filter((candidate) =>
+      candidate.label.endsWith("call receivers"),
+    )) {
+      expect(variant.code).toContain("\n;(React");
+    }
+  });
+
   it("catches a rule that keys off incidental source shape", () => {
     const commentSensitiveRule: Rule = {
       id: "fuzz-smoke-invariant",
@@ -235,5 +256,54 @@ describe("fuzz harness oracles", () => {
       "useInsertionEffect(__reactDoctorFuzzEffectCallback2, []);",
     );
     expect(runRule(NOOP_RULE, aliasVariant?.code ?? "").parseErrors).toEqual([]);
+  });
+
+  it("extracts effect cleanup calls to local helpers", () => {
+    const variants = buildAstEquivalentFuzzVariants(
+      `const Widget = ({ delay }) => {
+  useEffect(() => {
+    const timerId = setTimeout(refresh, delay);
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [delay]);
+  return null;
+};`,
+      "fixture.tsx",
+      false,
+      true,
+    );
+    const helperVariant = variants.find(
+      (variant) => variant.label === "effect cleanup calls extracted to local helpers",
+    );
+    expect(helperVariant?.code).toContain(
+      "const __reactDoctorFuzzCleanupCall0 = () => clearTimeout(timerId);",
+    );
+    expect(helperVariant?.code).toContain("__reactDoctorFuzzCleanupCall0();");
+    expect(runRule(NOOP_RULE, helperVariant?.code ?? "").parseErrors).toEqual([]);
+  });
+
+  it("does not hoist calls that depend on cleanup-local bindings", () => {
+    const variants = buildAstEquivalentFuzzVariants(
+      `const Widget = ({ delay }) => {
+  useEffect(() => {
+    const timerRef = { current: setTimeout(refresh, delay) };
+    return () => {
+      const timerId = timerRef.current;
+      clearTimeout(timerId);
+    };
+  }, [delay]);
+  return null;
+};`,
+      "fixture.tsx",
+      false,
+      true,
+    );
+
+    expect(
+      variants.some(
+        (variant) => variant.label === "effect cleanup calls extracted to local helpers",
+      ),
+    ).toBe(false);
   });
 });

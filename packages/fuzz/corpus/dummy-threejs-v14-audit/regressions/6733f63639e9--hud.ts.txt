@@ -1,0 +1,169 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 6733f63639e962ec26dec44f97791badeb21c85135fcc7f1874a7adf35601fb1
+/**
+ * DOM heads-up display. Kept out of the render loop's way: everything is written
+ * only when the value it shows actually changes.
+ */
+
+export interface GoalView {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+export class Hud {
+  private root: HTMLDivElement;
+  private countEl: HTMLElement;
+  private sizeEl: HTMLElement;
+  private barEl: HTMLElement;
+  private goalsEl: HTMLElement;
+  private hintEl: HTMLElement;
+  private toastEl: HTMLElement;
+  private pickupEl: HTMLElement;
+  private endingEl: HTMLElement;
+  private endTitle: HTMLElement;
+  private endBody: HTMLElement;
+  private loadingEl: HTMLElement;
+  private loadBar: HTMLElement;
+  private loadNote: HTMLElement;
+
+  private lastCount = -1;
+  private lastSize = -1;
+  private lastHint = "";
+  private goalState = new Map<string, boolean>();
+  private toastTimer = 0;
+  private pickupTimer = 0;
+
+  constructor() {
+    this.loadingEl = el("div", { id: "loading" });
+    this.loadingEl.innerHTML = `
+      <h1>Basketbound</h1>
+      <p id="loadnote">weaving the basket&hellip;</p>
+      <div id="loadbar"><i></i></div>`;
+    document.body.append(this.loadingEl);
+    this.loadBar = this.loadingEl.querySelector("#loadbar > i") as HTMLElement;
+    this.loadNote = this.loadingEl.querySelector("#loadnote") as HTMLElement;
+
+    this.root = el("div", { id: "hud" });
+    this.root.innerHTML = `
+      <div class="panel" id="stats">
+        <div id="title">Thistledown Farm</div>
+        <div class="row"><span>Gathered</span><b id="count">0 / 20</b></div>
+        <div class="row"><span>Basket</span><b id="size">0.34 m</b></div>
+        <div class="bar"><i id="bar"></i></div>
+      </div>
+      <div class="panel" id="goals"></div>
+      <div class="panel" id="hint"></div>
+      <div id="toast"></div>
+      <div id="pickup"></div>
+      <div id="ending"><h2></h2><p></p></div>
+      <div id="credit">
+        Vegetation and landscape dressing: Kenney Nature Kit (CC0 1.0)<br />
+        Everything else modelled and textured for this game
+      </div>`;
+    document.body.append(this.root);
+
+    this.countEl = this.q("#count");
+    this.sizeEl = this.q("#size");
+    this.barEl = this.q("#bar");
+    this.goalsEl = this.q("#goals");
+    this.hintEl = this.q("#hint");
+    this.toastEl = this.q("#toast");
+    this.pickupEl = this.q("#pickup");
+    this.endingEl = this.q("#ending");
+    this.endTitle = this.endingEl.querySelector("h2") as HTMLElement;
+    this.endBody = this.endingEl.querySelector("p") as HTMLElement;
+  }
+
+  private q(sel: string): HTMLElement {
+    return this.root.querySelector(sel) as HTMLElement;
+  }
+
+  setLoading(fraction: number, note?: string): void {
+    this.loadBar.style.width = `${Math.round(fraction * 100)}%`;
+    if (note) this.loadNote.textContent = note;
+  }
+
+  finishLoading(): void {
+    this.loadingEl.classList.add("gone");
+    setTimeout(() => this.loadingEl.remove(), 900);
+  }
+
+  setProgress(collected: number, target: number, radius: number): void {
+    if (collected !== this.lastCount) {
+      this.lastCount = collected;
+      this.countEl.textContent = `${collected} / ${target}`;
+      this.barEl.style.right = `${Math.max(0, 100 - (collected / target) * 100)}%`;
+    }
+    const rounded = Math.round(radius * 100) / 100;
+    if (rounded !== this.lastSize) {
+      this.lastSize = rounded;
+      this.sizeEl.textContent = `${rounded.toFixed(2)} m`;
+    }
+  }
+
+  setGoals(goals: GoalView[]): void {
+    let changed = this.goalsEl.childElementCount !== goals.length;
+    for (const g of goals) {
+      if (this.goalState.get(g.id) !== g.done) changed = true;
+      this.goalState.set(g.id, g.done);
+    }
+    if (!changed) return;
+    this.goalsEl.innerHTML = goals
+      .map(
+        (g) =>
+          `<div class="goal${g.done ? " done" : ""}"><span class="tick">${
+            g.done ? "&check;" : ""
+          }</span><span>${g.text}</span></div>`,
+      )
+      .join("");
+  }
+
+  setHint(html: string): void {
+    if (html === this.lastHint) return;
+    this.lastHint = html;
+    this.hintEl.innerHTML = html;
+    this.hintEl.style.display = html ? "" : "none";
+  }
+
+  toast(text: string, seconds = 2.4): void {
+    this.toastEl.textContent = text;
+    this.toastEl.classList.add("show");
+    this.toastTimer = seconds;
+  }
+
+  pickup(text: string): void {
+    this.pickupEl.textContent = text;
+    this.pickupEl.classList.add("show");
+    this.pickupTimer = 1.5;
+  }
+
+  ending(title: string, body: string): void {
+    this.endTitle.textContent = title;
+    this.endBody.textContent = body;
+    this.endingEl.classList.add("show");
+  }
+
+  update(dt: number): void {
+    if (this.toastTimer > 0) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) this.toastEl.classList.remove("show");
+    }
+    if (this.pickupTimer > 0) {
+      this.pickupTimer -= dt;
+      if (this.pickupTimer <= 0) this.pickupEl.classList.remove("show");
+    }
+  }
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  attrs: Record<string, string>,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  return node;
+}

@@ -50,6 +50,17 @@ const tailwindViteWebProject = buildProject({
 });
 
 describe("createOxlintConfig settings", () => {
+  it("uses curated behavior for faithfully ported rules", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+    });
+
+    expect(config.settings).toMatchObject({
+      "react-doctor": { portedRuleMode: "curated" },
+    });
+  });
+
   it("enables the Valtio rule only when the project declares Valtio", () => {
     const withoutValtio = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
@@ -226,6 +237,19 @@ describe("createOxlintConfig settings", () => {
     expect(config.settings["react-doctor"]).not.toHaveProperty("shopifyFlashListMajorVersion");
   });
 
+  it("forwards the module sources detected before spawning lint workers", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      projectIndexModuleSources: ["next/og", "remotion"],
+    });
+
+    expect(config.settings["react-doctor"].projectIndexModuleSources).toEqual([
+      "next/og",
+      "remotion",
+    ]);
+  });
+
   it("forwards configured and generated runtime globals to plugin rules", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
@@ -243,6 +267,31 @@ describe("createOxlintConfig settings", () => {
         { directory: "apps/storefront", names: ["Route", "Routes"] },
       ],
     });
+  });
+
+  it("merges adopted settings without replacing react-doctor settings", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: tailwindViteWebProject,
+      runtimeGlobals: ["DatePicker"],
+      adoptedSettings: {
+        tailwindcss: {
+          entryPoint: "src/styles.css",
+        },
+        "other-plugin": {
+          option: "value",
+        },
+      },
+    });
+
+    expect(config.settings.tailwindcss).toEqual({
+      entryPoint: "src/styles.css",
+    });
+    expect(config.settings["other-plugin"]).toEqual({
+      option: "value",
+    });
+    expect(config.settings["react-doctor"].framework).toBe("vite");
+    expect(config.settings["react-doctor"].runtimeGlobals).toEqual(["DatePicker"]);
   });
 
   it("never registers security scan rules (they run as a core environment check)", () => {
@@ -335,6 +384,22 @@ describe("createOxlintConfig settings", () => {
     expect(config.rules).not.toHaveProperty("react-doctor/no-all-caps-body-text");
   });
 
+  it("keeps project rules out of the generated oxlint config", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: {
+        rules: {
+          "react-doctor/duplicate-jsx-subtree": "warn",
+          "react-doctor/unused-export": "error",
+        },
+      },
+    });
+
+    expect(config.rules).not.toHaveProperty("react-doctor/duplicate-jsx-subtree");
+    expect(config.rules).not.toHaveProperty("react-doctor/unused-export");
+  });
+
   it("runs only an explicitly included tag and activates that tag's opt-in rules", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
@@ -380,7 +445,47 @@ describe("createOxlintConfig settings", () => {
       severityControls: { categories: { Maintainability: "error" } },
     });
 
+    expect(config.rules["react-doctor/no-react19-deprecated-apis"]).toBe("error");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-component-file");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-comp");
+  });
+
+  it("accepts the retired no-multi-comp ID through its upstream alias", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: { rules: { "react/no-multi-comp": "error" } },
+    });
+
     expect(config.rules["react-doctor/no-multi-comp"]).toBe("error");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-component-file");
+  });
+
+  it("preserves no-multi-comp off overrides for the curated replacement", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: { rules: { "react-doctor/no-multi-comp": "off" } },
+    });
+
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-comp");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-component-file");
+  });
+
+  it("allows both component-file policies when both are explicit", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: {
+        rules: {
+          "react/no-multi-comp": "error",
+          "react-doctor/no-multi-component-file": "warn",
+        },
+      },
+    });
+
+    expect(config.rules["react-doctor/no-multi-comp"]).toBe("error");
+    expect(config.rules["react-doctor/no-multi-component-file"]).toBe("warn");
   });
 
   it("a per-rule severity opts a default-disabled rule in", () => {

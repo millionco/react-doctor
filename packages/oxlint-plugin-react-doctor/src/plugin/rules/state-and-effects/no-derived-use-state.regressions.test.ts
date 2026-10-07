@@ -202,6 +202,118 @@ describe("no-derived-useState — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on a user-editable fallback behind a controlled prop", () => {
+    const result = runRule(
+      noDerivedUseState,
+      `function AccessibleTree({ tree, activeId: controlledActiveId }) {
+        const [internalActiveId, setInternalActiveId] = useState(tree.id);
+        const isControlled = controlledActiveId !== undefined;
+        const activeId = isControlled
+          ? (controlledActiveId as string)
+          : (internalActiveId satisfies string);
+        const selectItem = useCallback((item) => {
+          if (!isControlled) setInternalActiveId(item.id);
+        }, [isControlled]);
+        return <Tree activeId={activeId} onSelect={selectItem} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a nullish controlled prop with a user-editable local fallback", () => {
+    const result = runRule(
+      noDerivedUseState,
+      `function Select({ sourceValue, value: controlledValue }) {
+        const [internalValue, setInternalValue] = useState(sourceValue);
+        const value = controlledValue ?? internalValue;
+        return <input value={value} onChange={(event) => setInternalValue(event.target.value)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a conditional prop copy that is only updated by a non-handler hook", () => {
+    const result = runRule(
+      noDerivedUseState,
+      `function Profile({ name, preferredName, usePreferredName }) {
+        const [displayName, setDisplayName] = useState(name);
+        const visibleName = usePreferredName ? preferredName : displayName;
+        useInterval(() => setDisplayName(name), 1000);
+        return <span>{visibleName}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not infer uncontrolled intent from an unrelated conditional alone", () => {
+    const result = runRule(
+      noDerivedUseState,
+      `function Profile({ name, nickname, showNickname }) {
+        const [displayName, setDisplayName] = useState(name);
+        const visibleName = showNickname ? nickname : displayName;
+        return (
+          <input
+            value={visibleName}
+            onChange={(event) => setDisplayName(event.target.value)}
+          />
+        );
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a wrapped prop re-seed as a user edit", () => {
+    const result = runRule(
+      noDerivedUseState,
+      `function Profile({ name, value: controlledValue }) {
+        const [internalValue, setInternalValue] = useState(name);
+        const value = controlledValue ?? internalValue;
+        const reset = () => setInternalValue(name as string);
+        return <button onClick={reset}>{value}</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not infer a controlled fallback from inside a nested handler", () => {
+    const result = runRule(
+      noDerivedUseState,
+      `function Profile({ name, value: controlledValue }) {
+        const [internalValue, setInternalValue] = useState(name);
+        const logValue = () => console.log(controlledValue ?? internalValue);
+        return (
+          <input
+            value={internalValue}
+            onClick={logValue}
+            onChange={(event) => setInternalValue(event.target.value)}
+          />
+        );
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a shadowed state name as the controlled fallback", () => {
+    const result = runRule(
+      noDerivedUseState,
+      `function Profile({ name, preferredName, usePreferredName }) {
+        const [displayName, setDisplayName] = useState(name);
+        const renderValue = (displayName) =>
+          usePreferredName ? preferredName : displayName;
+        const onChange = (event) => setDisplayName(event.target.value);
+        return <input value={renderValue('preview')} onChange={onChange} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent on snapshot-named state (previous / preserved / debounced)", () => {
     const result = runRule(
       noDerivedUseState,

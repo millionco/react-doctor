@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
-import { detectPreES2023Target } from "../src/project-info/detectors.js";
+import { detectPreES2023Target } from "../src/project-info/detect-pre-es2023-target.js";
 import { discoverProject } from "../src/project-info/discover-project.js";
 import { buildCapabilities } from "../src/project-info/capabilities.js";
 

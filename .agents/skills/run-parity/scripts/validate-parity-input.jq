@@ -44,7 +44,7 @@ def is_project($schema_version):
   (
     if $schema_version == 3 then
       (.packageRoot | type) == "string" and
-      (.framework as $framework | ["nextjs", "vite", "cra", "remix", "gatsby", "expo", "react-native", "tanstack-start", "preact", "unknown"] | index($framework)) != null and
+      (.framework as $framework | ["nextjs", "vite", "cra", "remix", "gatsby", "expo", "react-native", "tanstack-start", "preact", "astro", "unknown"] | index($framework)) != null and
       .complete == true and
       (.skippedChecks | length) == 0 and
       ((.skippedCheckReasons // {}) | length) == 0 and

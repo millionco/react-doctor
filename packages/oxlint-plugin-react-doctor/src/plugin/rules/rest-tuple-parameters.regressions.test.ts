@@ -8,17 +8,17 @@ import { noPassDataToParent } from "./state-and-effects/no-pass-data-to-parent.j
 import { noPassLiveStateToParent } from "./state-and-effects/no-pass-live-state-to-parent.js";
 
 describe("single rest-tuple parameter regressions", () => {
-  it("preserves no-many-boolean-props diagnostics", () => {
+  it("keeps retired no-many-boolean-props quiet", () => {
     const result = runRule(
       noManyBooleanProps,
       `const Toggle = (...[{ isOpen, isLoading, hasIcon, canEdit }]: [Props]) => <div />;`,
       { filename: "fixture.tsx" },
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("preserves prefer-explicit-variants diagnostics", () => {
+  it("keeps retired prefer-explicit-variants quiet", () => {
     const result = runRule(
       preferExplicitVariants,
       `const Composer = (...[{ isThread, isEditing }]: [Props]) => (
@@ -30,7 +30,7 @@ describe("single rest-tuple parameter regressions", () => {
       { filename: "fixture.tsx" },
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("preserves rerender-memo-with-default-value diagnostics", () => {

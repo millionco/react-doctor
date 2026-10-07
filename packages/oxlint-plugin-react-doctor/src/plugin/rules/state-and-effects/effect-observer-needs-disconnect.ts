@@ -6,6 +6,7 @@ import {
 } from "../../utils/collect-returned-cleanup-functions.js";
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { doesEffectInvokeStoredDisposer } from "../../utils/does-effect-invoke-stored-disposer.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
@@ -676,6 +677,39 @@ const doesReturnedCleanupDisconnectCollection = (
   );
 };
 
+const doesEffectInvokeStoredObserverDisposer = (
+  callback: EsTreeNode,
+  tracked: TrackedObserver,
+  context: RuleContext,
+): boolean => {
+  const doesFunctionDisconnectObserver = (functionNode: EsTreeNode): boolean => {
+    if (!isFunctionLike(functionNode)) return false;
+    const disconnectCalls: EsTreeNode[] = [];
+    walkAst(functionNode.body, (child: EsTreeNode) => {
+      if (child !== functionNode.body && isFunctionLike(child)) return false;
+      const callNode = isNodeOfType(child, "ChainExpression") ? child.expression : child;
+      const callee = isNodeOfType(callNode, "CallExpression")
+        ? stripParenExpression(callNode.callee)
+        : null;
+      if (
+        isNodeOfType(callNode, "CallExpression") &&
+        isNodeOfType(callee, "MemberExpression") &&
+        getStaticPropertyName(callee) === "disconnect" &&
+        isTrackedObserverReference(callee.object, tracked.bindingIdentifiers)
+      ) {
+        disconnectCalls.push(child);
+      }
+    });
+    return doNodesCoverEveryPathFromFunctionEntry(functionNode, disconnectCalls, context);
+  };
+  return doesEffectInvokeStoredDisposer({
+    context,
+    effectCallback: callback,
+    resourceNode: tracked.construction,
+    doesFunctionReleaseResource: doesFunctionDisconnectObserver,
+  });
+};
+
 export const effectObserverNeedsDisconnect = defineRule({
   id: "effect-observer-needs-disconnect",
   title: "Observer created in an effect never disconnected",
@@ -812,7 +846,8 @@ export const effectObserverNeedsDisconnect = defineRule({
           !tracked.didObserve ||
           tracked.didReleaseAll ||
           tracked.didReleaseAllViaCallbackParameter ||
-          didReleaseEveryActiveTarget
+          didReleaseEveryActiveTarget ||
+          doesEffectInvokeStoredObserverDisposer(callback, tracked, context)
         ) {
           continue;
         }

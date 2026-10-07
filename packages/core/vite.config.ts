@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
+import { requireTypescriptPlugin } from "../../scripts/require-typescript-plugin.js";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 
@@ -12,19 +13,28 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.j
 export default defineConfig({
   pack: [
     {
-      entry: { index: "./src/index.ts", schemas: "./src/schemas.ts" },
+      entry: {
+        index: "./src/index.ts",
+        "project-analysis-worker": "./src/project-analysis-worker.ts",
+        "oxlint-worker": "./src/oxlint-worker.ts",
+        "duplicate-jsx-worker": "./src/duplicate-jsx-worker.ts",
+        schemas: "./src/schemas.ts",
+        "scan-preamble": "./src/scan-preamble.ts",
+        "react-compiler-detection-worker": "./src/react-compiler-detection-worker.ts",
+      },
       deps: {
+        alwaysBundle: ["typescript"],
         neverBundle: [
+          "@astrojs/compiler",
           "@effect/platform-node-shared",
-          "deslop-js",
           "effect",
           "oxc-parser",
           "oxc-resolver",
           "oxlint",
           "oxlint-plugin-react-doctor",
-          "typescript",
         ],
       },
+      plugins: [requireTypescriptPlugin()],
       dts: true,
       target: "node20",
       platform: "node",
@@ -43,6 +53,14 @@ export default defineConfig({
       {
         find: /^@react-doctor\/core\/schemas$/,
         replacement: path.join(packageRoot, "src/schemas.ts"),
+      },
+      {
+        find: /^@react-doctor\/core\/scan-preamble$/,
+        replacement: path.join(packageRoot, "src/scan-preamble.ts"),
+      },
+      {
+        find: /^oxlint-plugin-react-doctor\/core$/,
+        replacement: path.join(packageRoot, "../oxlint-plugin-react-doctor/src/core.ts"),
       },
       {
         find: /^oxlint-plugin-react-doctor$/,

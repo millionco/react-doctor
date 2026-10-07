@@ -135,6 +135,53 @@ describe("security-scan/dangerous-html-sink — cross-file KaTeX provenance", ()
     }
   });
 
+  it("follows a safe KaTeX HTML field returned across a helper boundary", () => {
+    const directory = mkdtempSync(join(tmpdir(), "react-doctor-katex-result-"));
+    try {
+      writeFileSync(
+        join(directory, "render-math.ts"),
+        `import katex from "katex";
+         export const renderMath = (value: string, displayMode: boolean) => ({
+           displayMode,
+           html: katex.renderToString(value, { displayMode, throwOnError: false }),
+         });`,
+      );
+      writeFileSync(
+        join(directory, "render-unsafe-math.ts"),
+        `import katex from "katex";
+         export const renderMath = (value: string) => ({
+           html: katex.renderToString(value, { trust: true }),
+         });`,
+      );
+      const safeFindings =
+        dangerousHtmlSink.scan?.({
+          absolutePath: join(directory, "math.tsx"),
+          relativePath: "src/math.tsx",
+          content: `import { renderMath } from "./render-math";
+            export const Math = ({ value, displayMode }: Props) => {
+              const renderedMath = renderMath(value, displayMode);
+              return <span dangerouslySetInnerHTML={{ __html: renderedMath.html }} />;
+            };`,
+          isGeneratedBundle: false,
+        }) ?? [];
+      const unsafeFindings =
+        dangerousHtmlSink.scan?.({
+          absolutePath: join(directory, "unsafe-math.tsx"),
+          relativePath: "src/unsafe-math.tsx",
+          content: `import { renderMath } from "./render-unsafe-math";
+            export const Math = ({ value }: Props) => {
+              const renderedMath = renderMath(value);
+              return <span dangerouslySetInnerHTML={{ __html: renderedMath.html }} />;
+            };`,
+          isGeneratedBundle: false,
+        }) ?? [];
+      expect(safeFindings).toHaveLength(0);
+      expect(unsafeFindings).toHaveLength(1);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("resolves dependent and destructured defaults across a KaTeX helper boundary", () => {
     const directory = mkdtempSync(join(tmpdir(), "react-doctor-katex-defaults-"));
     try {
@@ -178,6 +225,115 @@ describe("security-scan/dangerous-html-sink — cross-file KaTeX provenance", ()
         runCrossFileScan("renderWithDestructuredDefault", ", { options: { trust: true } }"),
       ).toHaveLength(1);
       expect(runCrossFileScan("renderWithDestructuredDefault", ", { options }")).toHaveLength(1);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("proves bounded KaTeX caches with safe exclusive writes", () => {
+    const directory = mkdtempSync(join(tmpdir(), "react-doctor-katex-cache-"));
+    try {
+      writeFileSync(
+        join(directory, "render-math.ts"),
+        `import katex from "katex";
+         const cache = new Map<string, string>();
+         export const renderMath = (value: string) => {
+           const cached = cache.get(value);
+           if (cached !== undefined) return cached;
+           const html = katex.renderToString(value, { throwOnError: false });
+           const oldestKey = cache.keys().next().value;
+           if (oldestKey !== undefined) cache.delete(oldestKey);
+           cache.set(value, html);
+           return html;
+         };`,
+      );
+      writeFileSync(
+        join(directory, "render-unsafe-math.ts"),
+        `import katex from "katex";
+         const cache = new Map<string, string>();
+         export const renderMath = (value: string, rawHtml: string) => {
+           cache.set(value, rawHtml);
+           return cache.get(value) ?? katex.renderToString(value);
+         };`,
+      );
+      const runCacheScan = (helperName: string, argumentsSource: string) =>
+        dangerousHtmlSink.scan?.({
+          absolutePath: join(directory, "math.tsx"),
+          relativePath: "src/math.tsx",
+          content: `import { useMemo } from "react";
+            import { renderMath } from "./${helperName}";
+            export const Math = ({ value, rawHtml }: Props) => {
+              const html = useMemo(() => renderMath(value${argumentsSource}), [value, rawHtml]);
+              return <span dangerouslySetInnerHTML={{ __html: html }} />;
+            };`,
+          isGeneratedBundle: false,
+        }) ?? [];
+
+      expect(runCacheScan("render-math", "")).toHaveLength(0);
+      expect(runCacheScan("render-unsafe-math", ", rawHtml")).toHaveLength(1);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("proves KaTeX assigned through a local with a static fallback", () => {
+    const directory = mkdtempSync(join(tmpdir(), "react-doctor-katex-local-"));
+    try {
+      const runMutableLocalScan = (fallback: string) => {
+        writeFileSync(
+          join(directory, "render-math.ts"),
+          `import katex from "katex";
+           export const renderMath = (value: string, rawHtml: string) => {
+             let html = "";
+             try { html = katex.renderToString(value, { trust: false }); }
+             catch { html = ${fallback}; }
+             return html;
+           };`,
+        );
+        return (
+          dangerousHtmlSink.scan?.({
+            absolutePath: join(directory, "math.tsx"),
+            relativePath: "src/math.tsx",
+            content: `import { renderMath } from "./render-math";
+              export const Math = ({ value, rawHtml }: Props) => (
+                <span dangerouslySetInnerHTML={{ __html: renderMath(value, rawHtml) }} />
+              );`,
+            isGeneratedBundle: false,
+          }) ?? []
+        );
+      };
+
+      expect(runMutableLocalScan('""')).toHaveLength(0);
+      expect(runMutableLocalScan("rawHtml")).toHaveLength(1);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("follows a cross-file KaTeX property through useMemo", () => {
+    const directory = mkdtempSync(join(tmpdir(), "react-doctor-katex-memo-property-"));
+    try {
+      writeFileSync(
+        join(directory, "render-math.ts"),
+        `import katex from "katex";
+         export const renderMath = (value: string) => ({
+           html: katex.renderToString(value, { throwOnError: false }),
+           displayMode: false,
+         });`,
+      );
+      const findings =
+        dangerousHtmlSink.scan?.({
+          absolutePath: join(directory, "math.tsx"),
+          relativePath: "src/math.tsx",
+          content: `import { useMemo } from "react";
+            import { renderMath } from "./render-math";
+            export const Math = ({ value }: Props) => {
+              const result = useMemo(() => renderMath(value), [value]);
+              return <span dangerouslySetInnerHTML={{ __html: result.html }} />;
+            };`,
+          isGeneratedBundle: false,
+        }) ?? [];
+      expect(findings).toHaveLength(0);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

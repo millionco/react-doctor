@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import * as path from "node:path";
-import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor";
+import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor/core";
 import { messageFromUnknown } from "../../utils/message-from-unknown.js";
 import { warnConfigIssue } from "../../utils/warn-config-issue.js";
 

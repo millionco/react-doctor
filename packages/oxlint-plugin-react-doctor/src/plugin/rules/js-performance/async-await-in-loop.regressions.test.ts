@@ -23,6 +23,89 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     }
   });
 
+  it.each([
+    "yieldNow",
+    "yieldToBrowser",
+    "sliceYield",
+    "nextFrame",
+    "breathe",
+    "onYield",
+    "onProgress",
+    "progress",
+    "onStep",
+    "step",
+    "runStage",
+  ])("keeps opaque pacing helper %s sequential", (helperName) => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function build(items) { for (const item of items) { await ${helperName}(item); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a scheduler check sequential without trusting arbitrary check methods", () => {
+    const paced = runRule(
+      asyncAwaitInLoop,
+      `async function build(scheduler, items) { for (const item of items) { await scheduler.check(item.progress); } }`,
+    );
+    const independent = runRule(
+      asyncAwaitInLoop,
+      `async function build(api, items) { for (const item of items) { results.push(await api.check(item)); } }`,
+    );
+    expect(paced.parseErrors).toEqual([]);
+    expect(paced.diagnostics).toEqual([]);
+    expect(independent.parseErrors).toEqual([]);
+    expect(independent.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("follows local wrappers to a host-yielding Promise", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const nextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
+       const sliceYield = () => nextTask();
+       async function build(items) { for (const item of items) { consume(item); await sliceYield(); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not mistake an unrelated scheduled Promise for the awaited result", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const load = async (item) => { void new Promise((resolve) => setTimeout(resolve, 0)); return fetch(item); };
+       async function build(items) { for (const item of items) { results.push(await load(item)); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("keeps work paced by an explicit scheduler argument sequential", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function build(jobs, scheduler) { for (const job of jobs) { results.push(await job(scheduler)); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("skips ordered browser-automation driver loops", () => {
+    const browserDriver = runRule(
+      asyncAwaitInLoop,
+      `import { chromium } from "playwright";
+       async function drive(page, steps) { for (const step of steps) { await page.evaluate(step); } }`,
+      { filename: "dev/capture.mjs" },
+    );
+    const production = runRule(
+      asyncAwaitInLoop,
+      `async function load(api, items) { for (const item of items) { results.push(await api.read(item)); } }`,
+    );
+    expect(browserDriver.parseErrors).toEqual([]);
+    expect(browserDriver.diagnostics).toEqual([]);
+    expect(production.parseErrors).toEqual([]);
+    expect(production.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it.each(["query", "execute", "wait"])(
     "flags the pure local %s spelling without trusting its name",
     (helperName) => {
@@ -131,6 +214,285 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when each awaited result becomes the next member-call receiver", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function descend(root, parts) { let directory = root; for (const part of parts) directory = await directory.getDirectoryHandle(part); return directory; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an awaited shared receiver call bridges ordered state snapshots", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { for (const event of events) { const before = replica.getText(); const result = await replica.apply(event); const after = replica.getText(); consume(result, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an owner-scoped receiver contributes a result property to owner-observed output", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `class Room { async replay(events) { const operations = []; for (const event of events) { const result = await this.api.processRemoteEvent(event); if (result.operation) operations.push(result.operation); } this.notify(operations); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags generic awaited reads collected before Promise.all", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function restore(payload, products) { const updates = []; for (const product of products) { const original = await payload.findByID(product.id); updates.push(payload.update({ id: product.id, data: original })); } await Promise.all(updates); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a parameter receiver whose result property is passed to a free observer", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { const operations = []; for (const event of events) { const result = await replica.processRemoteEvent(event); if (result.operation) operations.push(result.operation); } notify(operations); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags an owner method when the whole awaited result is collected", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `class Analyzer { async analyze(items) { const results = []; for (const item of items) { const result = await this.worker.analyze(item); results.push(result); } this.notify(results); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a direct owner receiver whose result property is collected", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `class Analyzer { async analyze(items) { const results = []; for (const item of items) { const result = await this.analyzeItem(item); results.push(result.value); } this.notify(results); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("follows a stable receiver alias when proving ordered state snapshots", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(events) { const replica = this.api; for (const event of events) { const before = replica.getText(); const result = await replica.apply(event); const after = replica.getText(); consume(result, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("follows transparent TypeScript wrappers around a stable receiver", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `interface Replica { apply: (event: unknown) => Promise<unknown>; getText: () => string; } async function replay(replica: Replica, events: unknown[]) { for (const event of events) { const before = (replica as Replica).getText(); const result = await (replica as Replica).apply(event); const after = (replica as Replica).getText(); consume(result, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a bare awaited method whose name only suggests mutation", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { for (const event of events) { await replica.applyRemoteEvent(event); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags state snapshots around work that does not read the iteration binding", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { for (const event of events) { const before = replica.getText(); await replica.refresh(); const after = replica.getText(); consume(event, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags snapshots taken from different receivers", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(beforeReplica, replica, afterReplica, events) { for (const event of events) { const before = beforeReplica.getText(); const result = await replica.apply(event); const after = afterReplica.getText(); consume(result, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags when only the observation before the await uses the same receiver", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, otherReplica, events) { for (const event of events) { const before = replica.getText(); const result = await replica.apply(event); const after = otherReplica.getText(); consume(result, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags ordered output unrelated to the awaited result", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { const operations = []; for (const event of events) { await replica.processRemoteEvent(event); operations.push(event); } notify(operations); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags await-derived output that is not observed after the loop", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { const operations = []; for (const event of events) { const result = await replica.processRemoteEvent(event); operations.push(result.operation); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags output that can be reached without executing the await", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events, enabled) { const operations = []; for (const event of events) { let result = event; if (enabled) result = await replica.processRemoteEvent(event); operations.push(result); } notify(operations); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a receiver created independently inside each iteration", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(events) { for (const event of events) { const replica = createReplica(event); const before = replica.getText(); const result = await replica.apply(event); const after = replica.getText(); consume(result, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when an awaited local helper appends to a passed output array", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { files.push(await read(entry)); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a later assignment carries the awaited value into the ordered output", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { let copy; const file = await read(entry); copy = file; files.push(copy); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an awaited local helper appends through a defaulted output parameter", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files = []) => { files.push(await read(entry)); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an awaited local helper appends to a captured output array", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function load(entries) { const files = []; const collect = async (entry) => { files.push(await read(entry)); }; for (const entry of entries) { await collect(entry); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an awaited helper when its caller-local output has no order-observing escape", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { files.push(await read(entry)); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } consumeAsSet(files); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags when the only return of the output is inside a nested callback", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { files.push(await read(entry)); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } consume(files.map(() => { return files; })); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a captured output array with no order-observing escape", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function load(entries) { const files = []; const collect = async (entry) => { files.push(await read(entry)); }; for (const entry of entries) { await collect(entry); } consumeAsSet(files); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags an append that reads a shadowing binding instead of the awaited value", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { const file = await read(entry); { const file = entry; files.push(file); } }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when a recursive awaited helper appends an await-derived file in traversal order", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { if (entry.isFile) { const file = await read(entry); files.push(withPath(file)); return; } for (const child of entry.children) { await collect(child, files); } }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a helper that pushes before awaiting independent work", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { files.push(entry); await send(entry); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a helper that sets distinct map keys after awaiting", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { const file = await read(entry); files.set(entry.id, file); }; async function load(entries) { const files = new Map(); for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags an external append unrelated to the awaited result", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { await send(entry); files.push(entry); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags an awaited local helper that only appends to its own local array", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry) => { const files = []; files.push(await read(entry)); return files; }; async function load(entries) { for (const entry of entries) { await collect(entry); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags an awaited local helper that only reads a passed output array", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => read(entry, files.length); async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
   it("still flags independent awaits in a loop", () => {
@@ -465,6 +827,24 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("does not use an ordered nested loop to exempt an outer sibling await", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events, batches) { for (const event of events) { await upload(event); for (const batch of batches) { const before = replica.getText(); const result = await replica.apply(event, batch); const after = replica.getText(); consume(result, before, after); } } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("does not use one ordered shared receiver await to exempt a sibling await", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { for (const event of events) { const before = replica.getText(); const result = await replica.apply(event); const after = replica.getText(); consume(result, before, after); await upload(event); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags .map(async) whose promises are never collected", () => {
     const result = runRule(
       asyncAwaitInLoop,
@@ -472,5 +852,84 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on resolved helpers that deliberately yield to the browser", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); async function load(steps) { for (const step of steps) { build(step); await nextFrame(); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags local helpers whose names imply waiting but whose work is independent", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const nextFrame = async (item) => Promise.resolve(item * 2); async function load(items) { for (const item of items) { await nextFrame(item); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+describe("async-await-in-loop — promise consumers and advice", () => {
+  it.each([
+    "const waitForAll = async (operations) => { const settled = await Promise.allSettled(operations); for (const result of settled) { if (result.status === 'rejected') throw result.reason; } return settled; };",
+    "function waitForAll(operations) { return Promise.allSettled(operations); }",
+    "const collect = (operations) => Promise.all(operations); const waitForAll = collect;",
+    "const waitForAll = async (operations) => { await Promise['allSettled']((operations)); };",
+  ])("accepts a local promise collector: %s", (collectorSource) => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `${collectorSource} async function run(items) { await waitForAll(items.map(async item => { await operation(item); })); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "const waitForAll = (operations) => { Promise.allSettled(operations); };",
+    "const waitForAll = async (operations) => { if (enabled) await Promise.allSettled(operations); };",
+    "const waitForAll = async (operations) => { const nested = async () => await Promise.allSettled(operations); };",
+    "const waitForAll = async (operations) => { operations = []; return Promise.allSettled(operations); };",
+    "const waitForAll = async (operations) => { return Promise.allSettled(otherOperations); };",
+    "const Promise = { allSettled: () => [] }; const waitForAll = operations => Promise.allSettled(operations);",
+    "let waitForAll = operations => Promise.allSettled(operations); waitForAll = () => undefined;",
+    "import { waitForAll } from './opaque';",
+  ])(
+    "keeps unproven consumers visible without claiming sequential callbacks: %s",
+    (collectorSource) => {
+      const result = runRule(
+        asyncAwaitInLoop,
+        `${collectorSource} async function run(items) { await waitForAll(items.map(async item => { await operation(item); })); }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("consumer observes completion");
+      expect(result.diagnostics[0].message).not.toContain("one after another");
+    },
+  );
+
+  it("does not confuse a shadowed wrapper with the collector", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const waitForAll = operations => Promise.allSettled(operations); async function run(items, waitForAll) { await waitForAll(items.map(async item => { await operation(item); })); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "async function run(repository, items) { for (const item of items) { await repository.runAsync(item); } }",
+    "const files = new Set(); const cache = { exists: async path => files.has(path) }; async function run(paths) { for (const path of paths) { await cache.exists(path); } }",
+  ])("does not promise a speedup for queued or synchronous work", (source) => {
+    const result = runRule(asyncAwaitInLoop, source);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics[0].message).toContain(
+      "If iterations perform independent asynchronous work",
+    );
+    expect(asyncAwaitInLoop.recommendation).toContain("transaction ordering");
   });
 });

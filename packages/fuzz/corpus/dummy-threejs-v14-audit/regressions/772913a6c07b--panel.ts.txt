@@ -1,0 +1,410 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/panel.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 772913a6c07baf00c67f431775ed805690db2b73189ef232ce1c3807a9afb6ec
+/**
+ * The 2-D overlay: readouts, legend, layer switches, camera and section
+ * controls, the pin register, the timeline transport, and the notes drawer
+ * that documents every simplifying assumption.
+ *
+ * The overlay never invents a number. Everything it shows comes from the same
+ * `RECORDS` table and the same synthetic field the 3-D scene reads, and the
+ * legend gradient is generated from the identical colour ramp the shaders use.
+ */
+
+import { anomalyRamp, ANOMALY_RANGE, rgbToCss } from "../core/palette";
+import { ASSUMPTIONS, GLOBAL_RANGE, RECORDS, type YearRecord } from "../data/climate";
+import { SECTION_AXES, SECTION_RANGE, type SectionAxis } from "../scene/sections";
+
+export type LayerKey = "terrain" | "ocean" | "atmosphere" | "graticule" | "marks" | "record";
+
+export interface PinView {
+  id: string;
+  name: string;
+  colour: string;
+  value: string;
+}
+
+export interface UICallbacks {
+  onScrub(t: number): void;
+  onPlayToggle(): void;
+  onStep(delta: number): void;
+  onLayer(layer: LayerKey, on: boolean): void;
+  onCompare(on: boolean): void;
+  onReference(index: number): void;
+  onOrthographic(on: boolean): void;
+  onFit(what: "scene" | "globe" | "record"): void;
+  onSection(axis: SectionAxis, change: { enabled?: boolean; offset?: number; flipped?: boolean }): void;
+  onClearSections(): void;
+  onRemovePin(id: string): void;
+  onClearPins(): void;
+}
+
+const LAYERS: Array<{ key: LayerKey; label: string; on: boolean }> = [
+  { key: "marks", label: "Marks", on: true },
+  { key: "record", label: "Year ring", on: true },
+  { key: "terrain", label: "Relief", on: true },
+  { key: "ocean", label: "Sea", on: true },
+  { key: "atmosphere", label: "Air", on: true },
+  { key: "graticule", label: "Graticule", on: true },
+];
+
+function rampGradient(from = 0, to = 1): string {
+  const stops: string[] = [];
+  for (let i = 0; i <= 24; i++) {
+    const k = i / 24;
+    stops.push(`${rgbToCss(anomalyRamp(from + (to - from) * k))} ${(k * 100).toFixed(1)}%`);
+  }
+  return `linear-gradient(90deg, ${stops.join(", ")})`;
+}
+
+function template(): string {
+  const years = RECORDS.map((r) => r.year);
+  const sectionRows = SECTION_AXES.map(
+    (axis) => `
+      <div class="section-row" data-axis="${axis}">
+        <div class="axis" data-role="axis">${axis.toUpperCase()}</div>
+        <input type="range" data-role="offset" min="${-SECTION_RANGE}" max="${SECTION_RANGE}" step="0.01" value="0" />
+        <button class="flip" data-role="flip" title="Flip which side is kept">&#8644;</button>
+      </div>`,
+  ).join("");
+
+  const notes = ASSUMPTIONS.map(
+    (a) => `<div class="note"><h3>${a.title}</h3><p>${a.body}</p></div>`,
+  ).join("");
+
+  return `
+  <div id="masthead" class="panel">
+    <h1>Climate Years</h1>
+    <p>Scrub 2010 to the present, pin regions, compare any two years.</p>
+    <span class="badge">Demonstration &mdash; illustrative data</span>
+  </div>
+
+  <div id="rail-left">
+    <div class="card panel">
+      <h2>Selected year</h2>
+      <div id="headline">
+        <span class="year" data-role="year">2025</span>
+        <span class="anomaly" data-role="anomaly">+1.19 &deg;C</span>
+      </div>
+      <div class="readout"><span class="label">Global anomaly</span><span class="value" data-role="v-anom">&mdash;<span class="unit">&deg;C</span></span></div>
+      <div class="readout"><span class="label">CO&#8322;</span><span class="value" data-role="v-co2">&mdash;<span class="unit">ppm</span></span></div>
+      <div class="readout"><span class="label">Sea level</span><span class="value" data-role="v-sl">&mdash;<span class="unit">mm</span></span></div>
+      <div class="readout"><span class="label">Sept. Arctic ice</span><span class="value" data-role="v-ice">&mdash;<span class="unit">M km&#178;</span></span></div>
+      <div class="readout"><span class="label">Ocean heat 0&ndash;2000 m</span><span class="value" data-role="v-ohc">&mdash;<span class="unit">ZJ</span></span></div>
+      <div class="readout"><span class="label">ENSO index</span><span class="value" data-role="v-enso">&mdash;</span></div>
+      <div id="provisional">Provisional. Published annual values are revised after first release.</div>
+    </div>
+
+    <div class="card panel">
+      <h2>Scales</h2>
+      <div class="scale-label">Regional &mdash; marks &amp; cores</div>
+      <div id="ramp" class="ramp"></div>
+      <div class="ramp-scale"><span>${ANOMALY_RANGE.min.toFixed(1)}</span><span>0</span><span>+${ANOMALY_RANGE.max.toFixed(1)} &deg;C</span></div>
+      <div class="scale-label" style="margin-top:9px">Global &mdash; year blocks &amp; rings</div>
+      <div id="ramp-global" class="ramp"></div>
+      <div class="ramp-scale"><span>+${GLOBAL_RANGE.min.toFixed(2)}</span><span>+${GLOBAL_RANGE.max.toFixed(2)} &deg;C</span></div>
+      <p class="legend-note">One ramp, two stretches. Never compare a mark to a year block.</p>
+    </div>
+
+    <div class="card panel">
+      <h2>Layers</h2>
+      <div class="toggle-list" data-role="layers">
+        ${LAYERS.map(
+          (l) =>
+            `<div class="toggle ${l.on ? "on" : ""}" data-layer="${l.key}"><span class="box"></span><span>${l.label}</span></div>`,
+        ).join("")}
+      </div>
+    </div>
+  </div>
+
+  <div id="rail-right">
+    <div class="card panel">
+      <h2>Camera</h2>
+      <div class="row">
+        <button data-role="ortho">Orthographic</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button data-role="fit-scene">Fit all</button>
+        <button data-role="fit-globe">Globe</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button data-role="fit-record">Fit record ring</button>
+      </div>
+      <p class="legend-note">Drag to orbit, right-drag to pan, scroll to zoom.</p>
+    </div>
+
+    <div class="card panel">
+      <h2>Sections</h2>
+      ${sectionRows}
+      <div class="row" style="margin-top:6px"><button data-role="clear-sections">Clear sections</button></div>
+      <p class="legend-note">Sections cut the globe only. The cut face exposes the annual record as concentric rings.</p>
+    </div>
+
+    <div class="card panel">
+      <h2>Pinned regions</h2>
+      <div id="pin-list"></div>
+      <div class="row" style="margin-top:8px"><button data-role="clear-pins">Clear pins</button></div>
+    </div>
+
+    <div class="card panel">
+      <h2>Keys</h2>
+      <div class="keys">
+        <kbd>Space</kbd><span>play / pause</span>
+        <kbd>&larr; &rarr;</kbd><span>step a year</span>
+        <kbd>O</kbd><span>orthographic</span>
+        <kbd>F</kbd><span>fit</span>
+        <kbd>X Y Z</kbd><span>section axes</span>
+        <kbd>C</kbd><span>compare</span>
+        <kbd>Esc</kbd><span>clear sections</span>
+      </div>
+      <div class="row" style="margin-top:9px"><button data-role="open-notes">Notes &amp; assumptions</button></div>
+    </div>
+  </div>
+
+  <div id="timeline" class="panel">
+    <div id="transport">
+      <button data-role="prev" title="Previous year">&#9664;</button>
+      <button data-role="play" title="Play">&#9654;</button>
+      <button data-role="next" title="Next year">&#9654;&#9654;</button>
+    </div>
+    <div id="scrub-wrap">
+      <input type="range" data-role="scrub" min="0" max="${RECORDS.length - 1}" step="0.01" value="${RECORDS.length - 1}" />
+      <div id="ticks">${years.map((y) => `<span data-year="${y}">${String(y).slice(2)}</span>`).join("")}</div>
+    </div>
+    <div id="compare-block">
+      <button data-role="compare-toggle" title="Show the difference between two years. Shift-click a year block to set the reference.">Compare</button>
+      <span class="value" data-role="ref-year">2010</span>
+      <input type="range" data-role="reference" min="0" max="${RECORDS.length - 1}" step="1" value="0" />
+      <div id="compare-readout" data-role="compare-readout">reference year</div>
+    </div>
+  </div>
+
+  <div id="tooltip"></div>
+
+  <div id="notes">
+    <div id="notes-inner" class="panel">
+      <h2>Notes &amp; assumptions</h2>
+      <p class="lede">Climate Years is a teaching demonstration. Read this before treating anything on screen as a fact.</p>
+      ${notes}
+      <div class="row"><button id="notes-close">Close</button></div>
+    </div>
+  </div>
+
+  <div id="loading">
+    <div class="title">Climate Years</div>
+    <div class="sub" data-role="loading-status">generating surfaces&hellip;</div>
+  </div>`;
+}
+
+export class UI {
+  private readonly root: HTMLElement;
+  private readonly cb: UICallbacks;
+  private readonly q: <T extends HTMLElement>(role: string) => T;
+  private compareOn = false;
+
+  constructor(root: HTMLElement, callbacks: UICallbacks) {
+    this.root = root;
+    this.cb = callbacks;
+    root.innerHTML = template();
+    this.q = <T extends HTMLElement>(role: string): T =>
+      root.querySelector(`[data-role="${role}"]`) as T;
+
+    (root.querySelector("#ramp") as HTMLElement).style.background = rampGradient();
+    // Matches globalSeriesColor: the warm slice of the same ramp.
+    (root.querySelector("#ramp-global") as HTMLElement).style.background = rampGradient(0.34, 0.92);
+
+    this.wireTransport();
+    this.wireLayers();
+    this.wireCompare();
+    this.wireCamera();
+    this.wireSections();
+    this.wireNotes();
+    this.setPins([]);
+  }
+
+  /* ---------------- wiring ---------------- */
+
+  private wireTransport(): void {
+    const scrub = this.q<HTMLInputElement>("scrub");
+    scrub.addEventListener("input", () => this.cb.onScrub(Number(scrub.value)));
+    this.q<HTMLButtonElement>("play").addEventListener("click", () => this.cb.onPlayToggle());
+    this.q<HTMLButtonElement>("prev").addEventListener("click", () => this.cb.onStep(-1));
+    this.q<HTMLButtonElement>("next").addEventListener("click", () => this.cb.onStep(1));
+  }
+
+  private wireLayers(): void {
+    const list = this.q<HTMLElement>("layers");
+    list.querySelectorAll<HTMLElement>(".toggle").forEach((node) => {
+      node.addEventListener("click", () => {
+        const on = !node.classList.contains("on");
+        node.classList.toggle("on", on);
+        this.cb.onLayer(node.dataset.layer as LayerKey, on);
+      });
+    });
+  }
+
+  private wireCompare(): void {
+    const toggle = this.q<HTMLButtonElement>("compare-toggle");
+    toggle.addEventListener("click", () => {
+      this.compareOn = !this.compareOn;
+      toggle.classList.toggle("on", this.compareOn);
+      this.cb.onCompare(this.compareOn);
+    });
+    const reference = this.q<HTMLInputElement>("reference");
+    reference.addEventListener("input", () => this.cb.onReference(Number(reference.value)));
+  }
+
+  private wireCamera(): void {
+    const ortho = this.q<HTMLButtonElement>("ortho");
+    ortho.addEventListener("click", () => this.cb.onOrthographic(!ortho.classList.contains("on")));
+    this.q<HTMLButtonElement>("fit-scene").addEventListener("click", () => this.cb.onFit("scene"));
+    this.q<HTMLButtonElement>("fit-globe").addEventListener("click", () => this.cb.onFit("globe"));
+    this.q<HTMLButtonElement>("fit-record").addEventListener("click", () => this.cb.onFit("record"));
+  }
+
+  private wireSections(): void {
+    this.root.querySelectorAll<HTMLElement>(".section-row").forEach((row) => {
+      const axis = row.dataset.axis as SectionAxis;
+      const button = row.querySelector('[data-role="axis"]') as HTMLElement;
+      const slider = row.querySelector('[data-role="offset"]') as HTMLInputElement;
+      const flip = row.querySelector('[data-role="flip"]') as HTMLElement;
+      button.addEventListener("click", () =>
+        this.cb.onSection(axis, { enabled: !button.classList.contains("on") }),
+      );
+      slider.addEventListener("input", () =>
+        this.cb.onSection(axis, { offset: Number(slider.value), enabled: true }),
+      );
+      flip.addEventListener("click", () => this.cb.onSection(axis, { flipped: true, enabled: true }));
+    });
+    this.q<HTMLButtonElement>("clear-sections").addEventListener("click", () => this.cb.onClearSections());
+    this.q<HTMLButtonElement>("clear-pins").addEventListener("click", () => this.cb.onClearPins());
+  }
+
+  private wireNotes(): void {
+    const notes = this.root.querySelector("#notes") as HTMLElement;
+    this.q<HTMLButtonElement>("open-notes").addEventListener("click", () => notes.classList.add("on"));
+    (this.root.querySelector("#notes-close") as HTMLElement).addEventListener("click", () =>
+      notes.classList.remove("on"),
+    );
+    notes.addEventListener("click", (event) => {
+      if (event.target === notes) notes.classList.remove("on");
+    });
+  }
+
+  /* ---------------- state in ---------------- */
+
+  setYear(t: number, record: YearRecord, snapped: number): void {
+    const scrub = this.q<HTMLInputElement>("scrub");
+    if (document.activeElement !== scrub) scrub.value = String(t);
+
+    const sign = (v: number, digits = 2) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(digits);
+    this.q<HTMLElement>("year").textContent = String(record.year);
+    this.q<HTMLElement>("anomaly").textContent = `${sign(record.anomalyC)} °C`;
+    this.q<HTMLElement>("v-anom").innerHTML = `${sign(record.anomalyC)}<span class="unit">&deg;C</span>`;
+    this.q<HTMLElement>("v-co2").innerHTML = `${record.co2ppm.toFixed(1)}<span class="unit">ppm</span>`;
+    this.q<HTMLElement>("v-sl").innerHTML = `${record.seaLevelMm.toFixed(0)}<span class="unit">mm</span>`;
+    this.q<HTMLElement>("v-ice").innerHTML = `${record.seaIceMkm2.toFixed(2)}<span class="unit">M km&#178;</span>`;
+    this.q<HTMLElement>("v-ohc").innerHTML = `${record.ohcZJ.toFixed(0)}<span class="unit">ZJ</span>`;
+    this.q<HTMLElement>("v-enso").textContent = sign(record.enso, 1);
+
+    (this.root.querySelector("#provisional") as HTMLElement).classList.toggle(
+      "on",
+      record.provisional === true,
+    );
+
+    this.root.querySelectorAll<HTMLElement>("#ticks span").forEach((node, i) => {
+      node.classList.toggle("on", i === snapped);
+    });
+  }
+
+  setCompare(on: boolean, referenceIndex: number, delta: number | null): void {
+    this.compareOn = on;
+    this.q<HTMLButtonElement>("compare-toggle").classList.toggle("on", on);
+    const reference = this.q<HTMLInputElement>("reference");
+    reference.value = String(referenceIndex);
+    const record = RECORDS[referenceIndex] as YearRecord;
+    this.q<HTMLElement>("ref-year").textContent = String(record.year);
+
+    const readout = this.q<HTMLElement>("compare-readout");
+    if (on && delta !== null) {
+      const sign = delta >= 0 ? "+" : "−";
+      readout.textContent = `Δ vs ${record.year}  ${sign}${Math.abs(delta).toFixed(2)} °C global`;
+    } else {
+      readout.textContent = "reference year";
+    }
+  }
+
+  setPlaying(playing: boolean): void {
+    const play = this.q<HTMLButtonElement>("play");
+    play.innerHTML = playing ? "&#10073;&#10073;" : "&#9654;";
+    play.classList.toggle("on", playing);
+  }
+
+  setOrthographic(on: boolean): void {
+    this.q<HTMLButtonElement>("ortho").classList.toggle("on", on);
+  }
+
+  setSectionState(axis: SectionAxis, enabled: boolean, offset: number): void {
+    const row = this.root.querySelector(`.section-row[data-axis="${axis}"]`) as HTMLElement;
+    (row.querySelector('[data-role="axis"]') as HTMLElement).classList.toggle("on", enabled);
+    const slider = row.querySelector('[data-role="offset"]') as HTMLInputElement;
+    if (document.activeElement !== slider) slider.value = String(offset);
+  }
+
+  setPins(pins: PinView[]): void {
+    const list = this.root.querySelector("#pin-list") as HTMLElement;
+    if (pins.length === 0) {
+      list.innerHTML =
+        '<p class="empty">Click anywhere on the globe to pin a region. Its whole record rises as a core on the plinth. Six slots.</p>';
+      return;
+    }
+    list.innerHTML = pins
+      .map(
+        (p) => `<div class="pin" data-id="${p.id}">
+          <span class="swatch" style="background:${p.colour}"></span>
+          <span class="name" title="${p.name}">${p.name}</span>
+          <span class="val">${p.value}</span>
+          <button class="drop" title="Remove">&times;</button>
+        </div>`,
+      )
+      .join("");
+    list.querySelectorAll<HTMLElement>(".pin").forEach((node) => {
+      (node.querySelector(".drop") as HTMLElement).addEventListener("click", () =>
+        this.cb.onRemovePin(node.dataset.id as string),
+      );
+    });
+  }
+
+  setTooltip(html: string | null, x = 0, y = 0): void {
+    const tip = this.root.querySelector("#tooltip") as HTMLElement;
+    if (!html) {
+      tip.style.display = "none";
+      return;
+    }
+    tip.innerHTML = html;
+    tip.style.display = "block";
+    const rect = tip.getBoundingClientRect();
+    tip.style.left = `${Math.min(x + 14, innerWidth - rect.width - 8)}px`;
+    tip.style.top = `${Math.min(y + 16, innerHeight - rect.height - 8)}px`;
+  }
+
+  setLoadingStatus(text: string): void {
+    this.q<HTMLElement>("loading-status").textContent = text;
+  }
+
+  hideLoading(): void {
+    const loading = this.root.querySelector("#loading") as HTMLElement;
+    loading.classList.add("done");
+    window.setTimeout(() => loading.remove(), 700);
+  }
+
+  notesOpen(): boolean {
+    return (this.root.querySelector("#notes") as HTMLElement).classList.contains("on");
+  }
+
+  closeNotes(): void {
+    (this.root.querySelector("#notes") as HTMLElement).classList.remove("on");
+  }
+}

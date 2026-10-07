@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { DependencyInfo, PackageJson } from "../types/index.js";
-import { detectFramework } from "./detectors.js";
+import { detectFramework } from "./detect-framework.js";
 import { isFile, isPlainObject } from "./fs-utils.js";
 import { findMonorepoRoot } from "./monorepo-root.js";
 import { readPackageJson } from "./package-json.js";
@@ -10,7 +10,7 @@ import { isConcreteDependencyVersion, isTailwindPostcss7CompatAlias } from "./ve
 export const isCatalogReference = (version: unknown): version is string =>
   typeof version === "string" && version.startsWith("catalog:");
 
-export const extractCatalogName = (version: unknown): string | null => {
+const extractCatalogName = (version: unknown): string | null => {
   if (!isCatalogReference(version)) return null;
   const name = version.slice("catalog:".length).trim();
   return name.length > 0 ? name : null;
@@ -340,7 +340,30 @@ export const getDependencyDeclaration = ({
   };
 };
 
-const REACT_DEPENDENCY_NAMES = new Set(["react", "react-native", "next", "preact"]);
+const REACT_PROJECT_DEPENDENCY_NAMES = new Set([
+  "react",
+  "react-dom",
+  "react-native",
+  "next",
+  "preact",
+  "expo",
+  "expo-router",
+  "gatsby",
+  "@remix-run/react",
+  "@tanstack/react-start",
+  "react-scripts",
+  "@astrojs/react",
+]);
+export const REACT_THREE_FIBER_DEPENDENCY_NAMES = ["@react-three/fiber", "react-three-fiber"];
+export const REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES = [
+  ...REACT_THREE_FIBER_DEPENDENCY_NAMES,
+  "@react-three/drei",
+  "@react-three/rapier",
+  "@react-three/postprocessing",
+  "@react-three/xr",
+  "@react-three/cannon",
+];
+export const THREE_DEPENDENCY_NAMES = ["three", ...REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES];
 
 export const hasReactDependency = (packageJson: PackageJson): boolean => {
   const allDependencies = {
@@ -349,18 +372,19 @@ export const hasReactDependency = (packageJson: PackageJson): boolean => {
     ...packageJson.devDependencies,
   };
   return Object.keys(allDependencies).some((packageName) =>
-    REACT_DEPENDENCY_NAMES.has(packageName),
+    REACT_PROJECT_DEPENDENCY_NAMES.has(packageName),
   );
 };
 
-export const getPreactVersion = (packageJson: PackageJson): string | null => {
-  const allDependencies = {
-    ...packageJson.peerDependencies,
-    ...packageJson.dependencies,
-    ...packageJson.devDependencies,
-  };
-  return allDependencies.preact ?? null;
-};
+export const hasSupportedProjectDependency = (packageJson: PackageJson): boolean =>
+  hasReactDependency(packageJson) ||
+  getDependencySpec(packageJson, "remotion") !== null ||
+  THREE_DEPENDENCY_NAMES.some(
+    (packageName) => getDependencySpec(packageJson, packageName) !== null,
+  );
+
+export const getPreactVersion = (packageJson: PackageJson): string | null =>
+  getDependencySpec(packageJson, "preact");
 
 interface ResolveCatalogBackedDependencyVersionOptions {
   rootDirectory: string;

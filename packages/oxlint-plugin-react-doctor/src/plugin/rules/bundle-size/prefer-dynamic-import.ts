@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { HEAVY_LIBRARIES } from "../../constants/library.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isImportAbsentFromClientBundle } from "../../utils/is-import-absent-from-client-bundle.js";
@@ -17,7 +18,7 @@ export const preferDynamicImport = defineRule({
   create: (context: RuleContext): RuleVisitors => {
     // A published component library that wraps the heavy dependency loads it
     // eagerly by design; code-splitting is the consuming app's decision.
-    if (isPublishedLibraryPackage(context.filename)) return {};
+    if (isPublishedLibraryPackage(context.filename)) return EMPTY_RULE_VISITORS;
     return {
       ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
         const source = node.source?.value;

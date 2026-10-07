@@ -86,6 +86,7 @@ const IMPORTED_CLEANUP_EFFECT_WRAPPER_NAMES = new Set([
   "useIsomorphicEffect",
   "useIsomorphicLayoutEffect",
   "useModernLayoutEffect",
+  "useFocusEffect",
 ]);
 const CALLABLE_ADD_EVENT_LISTENER_MODULE_NAMES: ReadonlySet<string> = new Set([
   "@react-native-community/netinfo",
@@ -10837,6 +10838,25 @@ export const effectNeedsCleanup = defineRule({
         if (isReactHookCall(node, "useCallback", context.scopes)) {
           const retainedCallback = getEffectCallback(node);
           if (retainedCallback && !isInlineRetainedHandlerFunction(retainedCallback, context)) {
+            const callbackRoot = findTransparentExpressionRoot(node);
+            const parentCall = callbackRoot.parent;
+            const isPassedToEffectHook =
+              isNodeOfType(parentCall, "CallExpression") &&
+              parentCall.arguments?.[0] === callbackRoot &&
+              isCleanupEffectHookCall(parentCall, context);
+            if (isPassedToEffectHook) {
+              return;
+            }
+            const returnsCleanupFunction =
+              isFunctionLike(retainedCallback) &&
+              functionReturnsMatchingExpression(
+                retainedCallback,
+                context.scopes,
+                (returnValue) => isFunctionLike(stripParenExpression(returnValue)),
+              );
+            if (returnsCleanupFunction) {
+              return;
+            }
             reportRetainedLeak(retainedCallback);
           }
           return;

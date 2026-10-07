@@ -2,6 +2,7 @@ import {
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
   SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP,
   TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
+  TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES,
   TIMER_CLEANUP_CALLEE_NAMES,
 } from "../../constants/dom.js";
 import {
@@ -22,6 +23,7 @@ import { resolveImportedExportName } from "../../utils/find-exported-function-bo
 import {
   collectEffectInvokedFunctions,
   collectSynchronouslyEffectInvokedFunctions,
+  collectSynchronouslyInvokedLocalFunctions,
   getPromiseChainCallForCallback,
 } from "../../utils/collect-effect-invoked-functions.js";
 import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
@@ -6387,6 +6389,113 @@ const oneShotTimerHasUnmountGuard = (usage: SubscribeLikeUsage, context: RuleCon
   return hasUnmountInvalidation;
 };
 
+const doesFunctionEscapeAsCallback = (
+  targetFunction: EsTreeNode,
+  effectCallback: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const targetSymbol = isFunctionLike(targetFunction)
+    ? (() => {
+      const parent = targetFunction.parent;
+      if (
+        isNodeOfType(parent, "VariableDeclarator") &&
+        isNodeOfType(parent.id, "Identifier") &&
+        parent.init === targetFunction
+      ) {
+        return context.scopes.symbolFor(parent.id);
+      }
+      if (isNodeOfType(targetFunction, "FunctionDeclaration") && targetFunction.id) {
+        return context.scopes.symbolFor(targetFunction.id);
+      }
+      return null;
+    })()
+    : null;
+  if (!targetSymbol) return false;
+  let escaped = false;
+  walkAst(effectCallback, (node: EsTreeNode) => {
+    if (node !== effectCallback && isFunctionLike(node) && node !== targetFunction) return false;
+    if (!isNodeOfType(node, "CallExpression") && !isNodeOfType(node, "NewExpression")) return;
+    const callee = isNodeOfType(node, "CallExpression") ? stripParenExpression(node.callee) : null;
+    const isTimerCall =
+      callee &&
+      isNodeOfType(callee, "Identifier") &&
+      TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES.has(callee.name) &&
+      context.scopes.isGlobalReference(callee);
+    if (isTimerCall) {
+      return;
+    }
+    const args = node.arguments ?? [];
+    for (const argument of args) {
+      const argumentValue = stripParenExpression(argument);
+      if (
+        isNodeOfType(argumentValue, "Identifier") &&
+        context.scopes.symbolFor(argumentValue) === targetSymbol
+      ) {
+        escaped = true;
+        return false;
+      }
+    }
+  });
+  return escaped;
+};
+
+const hasReturnedObserverDisconnectInEffectBody = (
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  const usageFunction = findEnclosingFunction(usage.node);
+  if (
+    usage.kind !== "subscribe" ||
+    usage.registrationVerbName !== "observe" ||
+    usage.receiverKey === null ||
+    !isFunctionLike(callback) ||
+    !isNodeOfType(callback.body, "BlockStatement")
+  ) {
+    return false;
+  }
+  if (usageFunction !== callback) {
+    const syncInvokedFunctions = collectSynchronouslyInvokedLocalFunctions(callback, context.scopes);
+    if (!usageFunction || !syncInvokedFunctions.has(usageFunction)) {
+      return false;
+    }
+    if (doesFunctionEscapeAsCallback(usageFunction, callback, context)) {
+      return false;
+    }
+  }
+  const matchingCleanupReturns: EsTreeNode[] = [];
+  walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "ReturnStatement") || !child.argument) return;
+    const returnedValue = stripParenExpression(child.argument);
+    const cleanupFunction = resolveStableValue(returnedValue, context);
+    if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return;
+    const disconnectCalls: EsTreeNode[] = [];
+    walkAst(cleanupFunction.body, (cleanupChild: EsTreeNode) => {
+      if (cleanupChild !== cleanupFunction.body && isFunctionLike(cleanupChild)) return false;
+      const cleanupCall = isNodeOfType(cleanupChild, "ChainExpression")
+        ? cleanupChild.expression
+        : cleanupChild;
+      const cleanupCallee = isNodeOfType(cleanupCall, "CallExpression")
+        ? stripParenExpression(cleanupCall.callee)
+        : null;
+      if (
+        isNodeOfType(cleanupCall, "CallExpression") &&
+        isNodeOfType(cleanupCallee, "MemberExpression") &&
+        !cleanupCallee.computed &&
+        isNodeOfType(cleanupCallee.property, "Identifier") &&
+        (cleanupCallee.property.name === "disconnect" || cleanupCallee.property.name === "unobserve") &&
+        resolveExpressionKey(cleanupCallee.object, context) === usage.receiverKey
+      ) {
+        disconnectCalls.push(cleanupChild);
+      }
+    });
+    if (doNodesCoverEveryPathFromFunctionEntry(cleanupFunction, disconnectCalls, context)) {
+      matchingCleanupReturns.push(child);
+    }
+  });
+  return matchingCleanupReturns.length > 0;
+};
+
 const hasReturnedObserverDisconnectAfterSynchronousIteration = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -6465,6 +6574,7 @@ const effectHasCleanupForUsage = (
   if (
     cleanupRegistryReleasesUsage(callback, usage, context) ||
     symmetricForEachListenerCleanupReleasesUsage(callback, usage, context) ||
+    hasReturnedObserverDisconnectInEffectBody(callback, usage, context) ||
     hasReturnedObserverDisconnectAfterSynchronousIteration(callback, usage, context) ||
     hasEffectLocalStoredDisposerCleanup(callback, usage, context) ||
     oneShotTimerHasUnmountGuard(usage, context) ||

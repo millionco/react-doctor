@@ -54,6 +54,27 @@ const result = (overrides: Partial<InspectResult> = {}): InspectResult => ({
 });
 
 describe("buildJsonReport", () => {
+  it("preserves each project's source-filter metadata without requiring it for older producers", () => {
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [
+        { directory: "/repo/first", result: result({ sourceFilterConfigHash: "first-hash" }) },
+        { directory: "/repo/second", result: result({ sourceFilterConfigHash: "second-hash" }) },
+        { directory: "/repo/legacy", result: result() },
+      ],
+      totalElapsedMilliseconds: 1200,
+    });
+    expect(report.projects.map((project) => project.sourceFilterConfigHash)).toEqual([
+      "first-hash",
+      "second-hash",
+      undefined,
+    ]);
+    expect(report.projects[2]).not.toHaveProperty("sourceFilterConfigHash");
+  });
+
   it("lists workspace projects skipped before they started", () => {
     const report = buildJsonReport({
       version: "1.2.3",

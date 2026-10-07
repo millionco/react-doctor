@@ -209,6 +209,7 @@ const getExternalAssignmentDescription = (
   const symbol = scopes.symbolFor(rootIdentifier);
   if (!symbol) return `the external value "${rootIdentifier.name}"`;
   if (symbol.kind === "parameter" && symbol.scope === updaterScope) {
+    if (isNodeOfType(stripParenExpression(assignmentTarget), "Identifier")) return null;
     return `the updater argument "${rootIdentifier.name}"`;
   }
   return isDescendantScope(symbol.scope, updaterScope)

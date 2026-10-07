@@ -65,7 +65,9 @@ export const createScanResultCacheLifecycle = async (
       recordCount(METRIC.projectDetected, 1);
       const isDiffMode = input.options.includePaths.length > 0;
       const baselineDegraded =
-        Boolean(input.options.baseline) && isDiffMode && cachedPayload.baselineDelta === undefined;
+        (Boolean(input.options.baselineReport) ||
+          (Boolean(input.options.baseline) && isDiffMode)) &&
+        cachedPayload.baselineDelta === undefined;
       return renderAndRecordScan({
         payload: cachedPayload,
         options: input.options,

@@ -4,27 +4,28 @@ import { readFile, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { Daytona, DaytonaNotFoundError, Image } from "@daytona/sdk";
+import type { Snapshot } from "@vercel/sandbox";
+import { createEvaluationSandbox } from "./utils/create-evaluation-sandbox.js";
+
+import { createEvaluationSnapshot } from "./utils/create-evaluation-snapshot.js";
+import type { EvaluationSnapshotBuild } from "./utils/create-evaluation-snapshot.js";
+import { getSandboxCredentials } from "./utils/get-sandbox-credentials.js";
+import { isSandboxNotFoundError } from "./utils/is-sandbox-not-found-error.js";
 
 import { buildMatrixEvaluationPlan } from "./build-matrix-evaluation-plan.js";
 import type { MatrixEvaluationLane } from "./build-matrix-evaluation-plan.js";
 import { cleanupEvaluationSandboxes } from "./cleanup-evaluation-sandboxes.js";
 import {
-  DAYTONA_RUN_NAME,
+  EVALUATION_RUN_NAME,
   EVALUATION_CLEANUP_RESERVE_MINUTES,
   EVALUATION_CONFIG_CONTRACT,
   EVALUATION_RETRY_CONCURRENCIES,
   MATERIALIZE_REACT_DOCTOR_EVALUATION_PROVENANCE_COMMAND,
   MATRIX_LOCAL_COMMAND_TIMEOUT_SECONDS,
   MATRIX_PROVENANCE_DIRECTORY,
-  MATRIX_REACT_DOCTOR_DIRECTORY,
   MILLISECONDS_PER_MINUTE,
   MILLISECONDS_PER_SECOND,
-  SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
   SANDBOX_CREATE_CONCURRENCY,
-  SANDBOX_CREATE_TIMEOUT_SECONDS,
-  SANDBOX_IMAGE,
-  SANDBOX_SETUP_TIMEOUT_SECONDS,
 } from "./constants.js";
 import type { CorpusEvaluationRecord, EvaluationProvenance } from "./corpus.js";
 import { evaluateMatrixRepositoryBatch } from "./evaluate-matrix-repository-batch.js";
@@ -38,13 +39,13 @@ import { assertMatrixBaseRecord } from "./utils/assert-matrix-base-record.js";
 import { createMatrixBaseArtifactBinding } from "./utils/matrix-base-artifact-binding.js";
 import { createConcurrencyLimit } from "./utils/create-concurrency-limit.js";
 import type { MatrixBaseArtifactBinding } from "./utils/matrix-base-artifact-binding.js";
-import { deleteDaytonaSnapshotBeforeDeadline } from "./utils/delete-daytona-snapshot-before-deadline.js";
+import { deleteVercelSnapshotBeforeDeadline } from "./utils/delete-vercel-snapshot-before-deadline.js";
 import { getEvaluationAttemptDeadlineMilliseconds } from "./utils/get-evaluation-attempt-deadline-milliseconds.js";
 import { getEvaluationTimeoutSeconds } from "./utils/get-evaluation-timeout-seconds.js";
 import { getEvaluatorSourceHash } from "./utils/get-evaluator-source-hash.js";
 import { parseMatrixCorpusManifest } from "./utils/parse-matrix-corpus-manifest.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
-import { verifyMatrixResourcesClean } from "./utils/verify-matrix-resources-clean.js";
+import { verifyEvaluationResourcesClean } from "./utils/verify-evaluation-resources-clean.js";
 import { hashMatrixCorpusProjectSet, loadMatrixTreatments } from "./matrix-treatment-descriptor.js";
 import type { MatrixBaselineArtifactVerification } from "./verify-matrix-baseline-cache.js";
 import {
@@ -57,10 +58,12 @@ const executeFile = promisify(execFile);
 
 const hashBytes = (contents: Buffer): string => createHash("sha256").update(contents).digest("hex");
 
-const buildMatrixSnapshotImage = (lanes: ReadonlyArray<MatrixEvaluationLane>): Image => {
+const buildMatrixSnapshotImage = (
+  lanes: ReadonlyArray<MatrixEvaluationLane>,
+): EvaluationSnapshotBuild => {
   const environment: Record<string, string> = {};
   const prepareCommands: string[] = [];
-  const buildCommands: string[] = ["corepack enable"];
+  const buildCommands: string[] = ["sudo corepack enable"];
   for (const [laneIndex, lane] of lanes.entries()) {
     const repositoryVariable = `MATRIX_LANE_${laneIndex}_REPOSITORY`;
     const refVariable = `MATRIX_LANE_${laneIndex}_REF`;
@@ -79,11 +82,7 @@ const buildMatrixSnapshotImage = (lanes: ReadonlyArray<MatrixEvaluationLane>): I
       `REACT_DOCTOR_WORK_DIRECTORY="${lane.reactDoctorWorkDirectory}" REACT_DOCTOR_REPOSITORY="$${repositoryVariable}" REACT_DOCTOR_RULE_KEYS='${JSON.stringify(lane.ruleKeys)}' REACT_DOCTOR_EVALUATION_PROVENANCE_PATH="${lane.provenancePath}" ${MATERIALIZE_REACT_DOCTOR_EVALUATION_PROVENANCE_COMMAND}`,
     );
   }
-  return Image.base(SANDBOX_IMAGE)
-    .env(environment)
-    .runCommands(...prepareCommands)
-    .runCommands(...buildCommands)
-    .workdir(MATRIX_REACT_DOCTOR_DIRECTORY);
+  return { environment, commands: [...prepareCommands, ...buildCommands] };
 };
 
 const createFullBaselineProvenance = async ({
@@ -237,8 +236,9 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
   }
   const failedRecordCounts = new Map(plan.lanes.map((lane) => [lane.id, 0]));
   const completedRecordCounts = new Map(plan.lanes.map((lane) => [lane.id, 0]));
-  const daytona = new Daytona();
-  const snapshotName = `${DAYTONA_RUN_NAME}-snapshot-${evaluationId}`;
+  const credentials = getSandboxCredentials();
+  const snapshotName = `${EVALUATION_RUN_NAME}-snapshot-${evaluationId}`;
+  let snapshot: Snapshot | undefined;
   let didCompleteEvaluation = false;
   let evaluationError: unknown;
   let cleanupError: unknown;
@@ -247,18 +247,15 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
     process.stderr.write(
       `Evaluating ${projectCount} projects across ${plan.lanes.length} active lanes in waves of ${plan.waveWidth}\n`,
     );
-    await daytona.snapshot.create(
+    snapshot = await createEvaluationSnapshot(
       {
         name: snapshotName,
-        image: buildMatrixSnapshotImage(plan.lanes),
+        evaluationId,
+        credentials,
+        build: buildMatrixSnapshotImage(plan.lanes),
         resources: plan.resources,
       },
-      {
-        timeout: getEvaluationTimeoutSeconds({
-          deadlineMilliseconds: evaluationDeadlineMilliseconds,
-          maximumTimeoutSeconds: SANDBOX_SETUP_TIMEOUT_SECONDS,
-        }),
-      },
+      evaluationDeadlineMilliseconds,
     );
     const attemptConcurrencies = [
       options.concurrency,
@@ -269,28 +266,17 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
     const limitSandboxCreation = createConcurrencyLimit(
       Math.min(options.concurrency, SANDBOX_CREATE_CONCURRENCY),
     );
+    const snapshotId = snapshot.snapshotId;
     const createSandbox = (sandboxName: string, deadlineMilliseconds: number) =>
       limitSandboxCreation(() =>
-        daytona.create(
-          {
-            name: sandboxName,
-            snapshot: snapshotName,
-            ephemeral: true,
-            autoStopInterval: SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
-            labels: {
-              evaluation: evaluationId,
-              project: DAYTONA_RUN_NAME,
-              purpose: "eval-repository-matrix",
-              run: DAYTONA_RUN_NAME,
-            },
-          },
-          {
-            timeout: getEvaluationTimeoutSeconds({
-              deadlineMilliseconds,
-              maximumTimeoutSeconds: SANDBOX_CREATE_TIMEOUT_SECONDS,
-            }),
-          },
-        ),
+        createEvaluationSandbox({
+          credentials,
+          name: sandboxName,
+          snapshotId,
+          evaluationId,
+          cpuCores: plan.resources.cpu,
+          deadlineMilliseconds,
+        }),
       );
     const recordLaneEvaluation = async (
       laneId: string,
@@ -320,7 +306,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
       attemptConcurrencies,
       evaluateRepositoryBatch: (repositoryBatch, lanes, attemptIndex) =>
         evaluateMatrixRepositoryBatch({
-          daytona,
+          credentials,
           createSandbox,
           repositoryGroups: repositoryBatch,
           lanes,
@@ -335,7 +321,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
         }),
       beforeRetry: () =>
         cleanupEvaluationSandboxes({
-          daytona,
+          credentials,
           evaluationId,
           deadlineMilliseconds: evaluationDeadlineMilliseconds,
         }),
@@ -358,7 +344,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
     const cleanupDeadlineMilliseconds = wholeRunDeadlineMilliseconds;
     try {
       await cleanupEvaluationSandboxes({
-        daytona,
+        credentials,
         evaluationId,
         deadlineMilliseconds: cleanupDeadlineMilliseconds,
       });
@@ -366,30 +352,32 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
       cleanupError = error;
     } finally {
       try {
-        await deleteDaytonaSnapshotBeforeDeadline({
-          snapshotClient: daytona.snapshot,
+        await deleteVercelSnapshotBeforeDeadline({
+          snapshot,
+          credentials,
           snapshotName,
           deadlineMilliseconds: cleanupDeadlineMilliseconds,
         });
       } catch (error) {
-        if (!(error instanceof DaytonaNotFoundError)) {
+        if (!isSandboxNotFoundError(error)) {
           process.stderr.write(
-            `Failed to delete Daytona snapshot ${snapshotName}: ${toErrorMessage(error)}\n`,
+            `Failed to delete Vercel snapshot ${snapshotName}: ${toErrorMessage(error)}\n`,
           );
           cleanupError ??= error;
         }
       }
       try {
-        await verifyMatrixResourcesClean({
-          daytona,
+        await verifyEvaluationResourcesClean({
+          credentials,
           evaluationId,
+          snapshotId: snapshot?.snapshotId,
           snapshotName,
           deadlineMilliseconds: cleanupDeadlineMilliseconds,
         });
         cleanupError = undefined;
       } catch (error) {
         cleanupError = cleanupError
-          ? new AggregateError([cleanupError, error], "Matrix Daytona cleanup was not verified")
+          ? new AggregateError([cleanupError, error], "Matrix Vercel cleanup was not verified")
           : error;
       }
     }

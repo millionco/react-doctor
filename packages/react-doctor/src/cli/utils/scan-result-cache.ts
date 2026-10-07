@@ -436,7 +436,7 @@ export const resolveScanResultToolchainFingerprint = (
 export const buildScanResultCacheKey = async (
   input: ScanResultCacheKeyInput,
 ): Promise<string | null> => {
-  if (isCacheGloballyDisabled()) return null;
+  if (isCacheGloballyDisabled() || input.options.baselineReport) return null;
   const isTrustworthyPromise = isGitIdentityTrustworthy(input.projectDirectory);
   const repositoryIdentityPromise = resolveRepositoryCacheIdentity(
     input.projectDirectory,

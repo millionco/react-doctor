@@ -10,6 +10,7 @@ import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-n
 import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxKeyAttribute } from "../../utils/has-jsx-key-attribute.js";
+import { isArrayReturnedByUnreferencedObjectFactory } from "../../utils/is-array-returned-by-unreferenced-object-factory.js";
 import { isComponentFunction } from "../../utils/is-component-function.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -319,6 +320,7 @@ const findEnclosingIteratorContext = (
     } else if (isNodeOfType(parent, "ArrayExpression")) {
       if (isOutsideContainingFunction) return null;
       if (isArrayNestedInObjectProperty(parent)) return null;
+      if (isArrayReturnedByUnreferencedObjectFactory(parent, scopes)) return null;
       if (isArrayPassedToNonRenderingCall(parent, scopes)) return null;
       // Config arrays — `description: [<>...</>]`, `messages: [<Foo />]`,
       // `tooltip: [...]`, Map entry tuples `[[key, <X />], ...]` — aren't

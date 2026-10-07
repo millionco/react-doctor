@@ -135,3 +135,5 @@ export * from "./runners/oxlint/config.js";
 export * from "./runners/oxlint/plugin-resolution.js";
 export { warmOxlintWorkerPool } from "./runners/oxlint/run-oxlint-job.js";
 export { warmDuplicateJsxWorker } from "./react-cleanup/run-duplicate-jsx-detection.js";
+
+export * from "./utils/fingerprint-diagnostic-evidence.js";

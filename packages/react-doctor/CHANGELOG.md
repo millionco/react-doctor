@@ -1,5 +1,29 @@
 # react-doctor
 
+## 0.9.17
+
+### Patch Changes
+
+- [#1864](https://github.com/millionco/react-doctor/pull/1864) [`fcfb6ea`](https://github.com/millionco/react-doctor/commit/fcfb6ea06717886c210bac1c93cf1c154076af76) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix false new findings in `--baseline` and `--scope changed` after formatting or editing existing flagged code. Compare finding counts per file and rule, then use fingerprints, messages, and Git line shifts to identify added findings. Skip location matching when counts do not increase. Apply portable config filters to saved baseline findings and reject reports with missing or incompatible source-dependent filter settings; regenerate those base reports with the current version and settings.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.9.17
+
+## 0.9.16
+
+### Patch Changes
+
+- [#1860](https://github.com/millionco/react-doctor/pull/1860) [`8ed70df`](https://github.com/millionco/react-doctor/commit/8ed70df0fee3be3f7a2cf75e0cbb9f12ae930f6f) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix changed-scope scans to compare findings for uncommitted changes and use flagged source spans instead of whole lines. Match duplicate findings by count and limit cross-file matches to Git renames.
+
+  Add `--baseline <report.json>` to reuse a saved scan. JSON reports now include stable finding fingerprints, the source revision, the comparison source, and the number of matched base findings. Gates and summary counts use only new findings.
+
+- [#1846](https://github.com/millionco/react-doctor/pull/1846) [`6313667`](https://github.com/millionco/react-doctor/commit/631366777e01637f3c36b8a8c2ae8f19ba1060e8) Thanks [@aidenybai](https://github.com/aidenybai)! - Disable `require-pnpm-hardening` by default; enable it explicitly through `rules` when wanted. Describe await parallelization as a conditional opportunity, preserving ordering, resource limits, and error semantics. Recognize local Promise.all/allSettled collectors and stop describing async array callbacks as sequential.
+
+- [#1832](https://github.com/millionco/react-doctor/pull/1832) [`8a950f0`](https://github.com/millionco/react-doctor/commit/8a950f04477696e1dee1a509b3c25780f2837389) Thanks [@skoshx](https://github.com/skoshx)! - Fix `effect-needs-cleanup` false positive for React 19 callback ref cleanup returns. React 19 callback refs can return cleanup functions with the signature `(node: T | null) => void | (() => void)`. The rule now correctly handles cases where cleanup is only returned after resource usage (e.g., after `ResizeObserver.observe()`), allowing `void` returns on the null branch.
+
+- Updated dependencies [[`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`6313667`](https://github.com/millionco/react-doctor/commit/631366777e01637f3c36b8a8c2ae8f19ba1060e8), [`3242a81`](https://github.com/millionco/react-doctor/commit/3242a81b1596055da3207f735e873b4ce81fae13), [`8a950f0`](https://github.com/millionco/react-doctor/commit/8a950f04477696e1dee1a509b3c25780f2837389), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147), [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147)]:
+  - oxlint-plugin-react-doctor@0.9.16
+
 ## 0.9.15
 
 ### Patch Changes

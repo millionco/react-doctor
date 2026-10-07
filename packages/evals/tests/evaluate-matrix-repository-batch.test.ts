@@ -1,5 +1,5 @@
-import { Daytona, Sandbox } from "@daytona/sdk";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { Sandbox } from "@vercel/sandbox";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { MatrixEvaluationLane } from "../src/build-matrix-evaluation-plan.js";
 import {
@@ -11,6 +11,8 @@ import {
 import { evaluateMatrixRepositoryBatch } from "../src/evaluate-matrix-repository-batch.js";
 
 const MATRIX_SCAN_DELAY_MS = 5;
+afterEach(() => vi.restoreAllMocks());
+
 const CONTROL_PLANE_TEST_TIMEOUT_MS = 5;
 
 const buildLane = (id: string, index: number): MatrixEvaluationLane => ({
@@ -113,16 +115,30 @@ describe("evaluateMatrixRepositoryBatch", () => {
     });
     const sandbox = Object.create(Sandbox.prototype);
     Object.defineProperties(sandbox, {
-      id: { value: "sandbox-id" },
-      process: { value: { executeCommand } },
-      fs: { value: { downloadFile } },
+      name: { value: "sandbox-id" },
+      runCommand: {
+        value: async (options: { args: string[]; env: Record<string, string> }) => {
+          const response = await Reflect.apply(executeCommand, undefined, [
+            options.args[4],
+            undefined,
+            options.env,
+            Number.parseInt(options.args[1]),
+          ]);
+          return {
+            exitCode: response.exitCode,
+            stdout: async () => response.result,
+            stderr: async () => "",
+          };
+        },
+      },
+      readFileToBuffer: { value: ({ path }: { path: string }) => downloadFile(path) },
     });
-    const daytona = new Daytona({ apiKey: "test" });
-    Object.defineProperty(daytona, "delete", { value: vi.fn(async () => undefined) });
+
+    Object.defineProperty(sandbox, "delete", { value: vi.fn(async () => undefined) });
     const records = new Map<string, unknown>();
 
     const failures = await evaluateMatrixRepositoryBatch({
-      daytona,
+      credentials: {},
       createSandbox: async () => sandbox,
       repositoryGroups: [
         {
@@ -174,13 +190,11 @@ describe("evaluateMatrixRepositoryBatch", () => {
 
   it("does not hang when failed sandbox creation recovery never settles", async () => {
     const lane = buildLane("pr-1", 0);
-    const daytona = new Daytona({ apiKey: "test" });
-    Object.defineProperty(daytona, "get", {
-      value: vi.fn(() => new Promise<never>(() => undefined)),
-    });
+
+    vi.spyOn(Sandbox, "get").mockImplementation(() => new Promise<never>(() => undefined));
 
     const failures = await evaluateMatrixRepositoryBatch({
-      daytona,
+      credentials: {},
       createSandbox: async () => {
         throw new Error("create response lost");
       },

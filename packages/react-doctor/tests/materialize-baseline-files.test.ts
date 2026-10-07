@@ -105,6 +105,27 @@ describe("materializeBaselineFiles", () => {
     snapshot?.cleanup();
   });
 
+  it("degrades when a renamed base source cannot be materialized", async () => {
+    const basePath = "src/old-name.tsx";
+    const headPath = "src/new-name.tsx";
+    fs.mkdirSync(path.join(directory, "src"));
+    fs.writeFileSync(
+      path.join(directory, basePath),
+      "version https://git-lfs.github.com/spec/v1\noid sha256:0123456789\nsize 10\n",
+    );
+    const baseRef = commitAll(directory, "base");
+    runGit(directory, ["mv", basePath, headPath]);
+    const snapshot = await materializeBaselineFiles({
+      directory,
+      ref: baseRef,
+      files: [headPath],
+      tempDirectory,
+    });
+    expect(snapshot?.renamedFiles).toEqual({ [basePath]: headPath });
+    expect(snapshot?.isComplete).toBe(false);
+    snapshot?.cleanup();
+  });
+
   it("materializes a deleted base source alongside the modified files", async () => {
     const deletedPath = path.join(directory, "src/components/footer.tsx");
     const modifiedPath = path.join(directory, "src/components/header.tsx");

@@ -6,7 +6,7 @@ const CREATE_CLASS = "createReactClass";
 
 // Port of `oxc_linter::utils::react::is_es5_component`. Returns true when
 // `node` is a `CallExpression` invoking either `createReactClass(...)` or
-// `React.createReactClass(...)` — the legacy createReactClass factory pattern.
+// `React.createReactClass(...)` or the original `React.createClass(...)` factory.
 export const isEs5Component = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
   const callee = node.callee;
@@ -16,7 +16,7 @@ export const isEs5Component = (node: EsTreeNode): boolean => {
       isNodeOfType(callee.object, "Identifier") &&
       callee.object.name === PRAGMA &&
       isNodeOfType(callee.property, "Identifier") &&
-      callee.property.name === CREATE_CLASS
+      (callee.property.name === CREATE_CLASS || callee.property.name === "createClass")
     ) {
       return true;
     }

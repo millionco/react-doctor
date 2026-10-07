@@ -71,6 +71,7 @@ describe("buildFinalCliScanOutcome", () => {
       baseRef: "abc123",
       fixedCount: 5,
       baseTotalCount: 12,
+      matchedCount: 7,
     });
   });
 

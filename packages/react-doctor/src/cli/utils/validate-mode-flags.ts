@@ -49,6 +49,11 @@ export const validateFilePathSelectionFlags = (flags: InspectFlags): void => {
 };
 
 export const validateModeFlags = (flags: InspectFlags): void => {
+  if (flags.baseline && (flags.staged || flags.scope === "lines" || flags.scope === "files")) {
+    throw new CliInputError(
+      "--baseline requires a full or changed scan; it cannot be combined with --staged.",
+    );
+  }
   if (usedScope(flags) && usedDiffAlias(flags)) {
     throw new CliInputError("Cannot combine --scope and --diff; --diff is the deprecated alias.");
   }

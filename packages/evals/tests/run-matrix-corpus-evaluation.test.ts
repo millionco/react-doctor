@@ -18,7 +18,7 @@ import type { LoadedMatrixTreatment } from "../src/matrix-treatment-descriptor.j
 import type { MatrixBaselineCacheVerification } from "../src/verify-matrix-baseline-cache.js";
 
 const matrixMocks = vi.hoisted(() => ({
-  DaytonaNotFoundError: class extends Error {},
+  VercelNotFoundError: class extends Error {},
   cleanupEvaluationSandboxes: vi.fn<(input: CleanupEvaluationSandboxesInput) => Promise<void>>(
     async () => undefined,
   ),
@@ -30,7 +30,7 @@ const matrixMocks = vi.hoisted(() => ({
     matrixMocks.snapshotDeleted = true;
   }),
   snapshotGet: vi.fn(async () => {
-    if (matrixMocks.snapshotDeleted) throw new matrixMocks.DaytonaNotFoundError();
+    if (matrixMocks.snapshotDeleted) throw new matrixMocks.VercelNotFoundError();
     return { name: "snapshot" };
   }),
   verifyMatrixBaselineCache: vi.fn<() => Promise<MatrixBaselineCacheVerification>>(async () => ({
@@ -89,25 +89,20 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   };
 });
 
-vi.mock("@daytona/sdk", () => {
-  const image = {
-    env: vi.fn(() => image),
-    runCommands: vi.fn(() => image),
-    workdir: vi.fn(() => image),
-  };
-  return {
-    Daytona: class {
-      list = async function* () {};
-      snapshot = {
-        create: matrixMocks.snapshotCreate,
-        delete: matrixMocks.snapshotDelete,
-        get: matrixMocks.snapshotGet,
-      };
-    },
-    DaytonaNotFoundError: matrixMocks.DaytonaNotFoundError,
-    Image: { base: vi.fn(() => image) },
-  };
-});
+vi.mock("@vercel/sandbox", () => ({
+  Sandbox: { list: vi.fn(async () => ({ async *[Symbol.asyncIterator]() {} })) },
+  Snapshot: { get: matrixMocks.snapshotGet },
+}));
+vi.mock("../src/utils/get-sandbox-credentials.js", () => ({ getSandboxCredentials: () => ({}) }));
+vi.mock("../src/utils/is-sandbox-not-found-error.js", () => ({
+  isSandboxNotFoundError: (error: unknown) => error instanceof matrixMocks.VercelNotFoundError,
+}));
+vi.mock("../src/utils/create-evaluation-snapshot.js", () => ({
+  createEvaluationSnapshot: async (...args: unknown[]) => {
+    await Reflect.apply(matrixMocks.snapshotCreate, undefined, args);
+    return { snapshotId: "snapshot", delete: matrixMocks.snapshotDelete };
+  },
+}));
 
 vi.mock("../src/cleanup-evaluation-sandboxes.js", () => ({
   cleanupEvaluationSandboxes: matrixMocks.cleanupEvaluationSandboxes,
@@ -204,7 +199,7 @@ afterEach(() => {
     matrixMocks.snapshotDeleted = true;
   });
   matrixMocks.snapshotGet.mockImplementation(async () => {
-    if (matrixMocks.snapshotDeleted) throw new matrixMocks.DaytonaNotFoundError();
+    if (matrixMocks.snapshotDeleted) throw new matrixMocks.VercelNotFoundError();
     return { name: "snapshot" };
   });
   for (const temporaryDirectory of temporaryDirectories.splice(0)) {
@@ -619,7 +614,7 @@ describe("runMatrixCorpusEvaluation", () => {
     ).toMatchObject({ laneId: "pr-1", status: "blocked" });
   });
 
-  it("rejects an uppercase corpus ref before creating Daytona resources", async () => {
+  it("rejects an uppercase corpus ref before creating Vercel resources", async () => {
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-uppercase-corpus-"));
     temporaryDirectories.push(temporaryDirectory);
     const repository = { org: "example", name: "repository", ref: "F".repeat(40), rootDir: "." };
@@ -785,7 +780,7 @@ describe("runMatrixCorpusEvaluation", () => {
         ruleKeys: [],
         matrix: { treatmentDescriptorPaths: [secondTreatment.descriptorPath], waveWidth: 1 },
       }),
-    ).rejects.toThrow("Matrix Daytona cleanup was not verified");
+    ).rejects.toThrow("Matrix Vercel cleanup was not verified");
     expect(
       JSON.parse(
         fs.readFileSync(

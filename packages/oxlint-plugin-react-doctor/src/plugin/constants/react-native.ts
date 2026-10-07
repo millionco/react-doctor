@@ -75,7 +75,6 @@ export const DEPRECATED_RN_MODULE_REPLACEMENTS = new Map<string, string>([
   ["DatePickerAndroid", "@react-native-community/datetimepicker"],
   ["ProgressBarAndroid", "a community alternative"],
   ["ProgressViewIOS", "a community alternative"],
-  ["SafeAreaView", "react-native-safe-area-context"],
   ["Slider", "@react-native-community/slider"],
   ["ViewPagerAndroid", "react-native-pager-view"],
   ["WebView", "react-native-webview"],
@@ -177,3 +176,11 @@ export const LEGACY_SHADOW_STYLE_PROPERTIES = new Set([
   "shadowRadius",
   "elevation",
 ]);
+
+export const REACT_NATIVE_MODULE_REMOVAL_MINOR: ReadonlyMap<string, number> = new Map([
+  ["WebView", 60],
+  ["AsyncStorage", 71],
+]);
+
+export const REACT_NATIVE_SINGLE_MINOR_RANGE_PATTERN =
+  /^[~^=v]?\s*0\.\d+(?:\.(?:\d+|[xX*]))?(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;

@@ -111,7 +111,7 @@ describe("runMatrixEvaluationAttempts", () => {
             ref: repositoryGroup.ref,
             rootDir,
           },
-          error: "Daytona capacity exhausted",
+          error: "Vercel capacity exhausted",
         },
       })),
     );

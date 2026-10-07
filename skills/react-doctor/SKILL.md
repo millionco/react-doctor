@@ -60,3 +60,7 @@ npx react-doctor@latest --verbose --scope changed
 | `--scope lines`   | Only report issues on the changed lines                          |
 | `--score`         | Output only the numeric score                                    |
 | `design`          | Run only the focused UI design diagnostics                       |
+
+### Reuse a base scan
+
+Save a complete `--json` scan, then pass `--baseline base-report.json` to report only new findings. This also works with `--scope changed`. Use the same version and rules for both scans. Findings are grouped by rule and file path, following Git renames. Only increases in each group's count are reported; groups without an increase skip location matching. Fingerprints, message similarity, and Git-adjusted line distance select the added findings. Formatting and edits that keep the same counts report no new findings. Saved reports must use the same `textComponents`, `rawTextWrapperComponents`, and `respectInlineDisables` settings. Regenerate the base report after changing these settings, or use a Git comparison. Older reports without fingerprints or `sourceFilterConfigHash` must be regenerated.

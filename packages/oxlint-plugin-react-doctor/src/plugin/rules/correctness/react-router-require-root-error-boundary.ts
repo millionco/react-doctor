@@ -1,3 +1,4 @@
+import { getImportedNameFromReactRouter } from "../../utils/get-imported-name-from-react-router.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { hasActiveRouteProperty } from "../../utils/has-active-route-property.js";
@@ -21,6 +22,12 @@ export const reactRouterRequireRootErrorBoundary = wrapReactRouterRule(
         const routeArray = node.parent;
         if (!isNodeOfType(routeArray, "ArrayExpression")) return;
         if (!isNodeOfType(routeArray.parent, "CallExpression")) return;
+        const routeFactory = routeArray.parent.callee;
+        if (
+          isNodeOfType(routeFactory, "Identifier") &&
+          getImportedNameFromReactRouter(context, routeFactory, routeFactory.name) === "useRoutes"
+        )
+          return;
         if (hasActiveRouteProperty(context, node, "ErrorBoundary")) return;
         if (hasActiveRouteProperty(context, node, "errorElement")) return;
         if (hasActiveRouteProperty(context, node, "lazy")) return;

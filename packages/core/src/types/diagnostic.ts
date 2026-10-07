@@ -51,6 +51,7 @@ export interface DiagnosticRelatedLocation {
 export type DiagnosticFileContext = "test" | "story" | "production";
 
 export interface Diagnostic {
+  fingerprint?: string;
   filePath: string;
   plugin: string;
   rule: string;

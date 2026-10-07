@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "dependencies": {
+    "react-native": "0.55.4"
+  }
+}

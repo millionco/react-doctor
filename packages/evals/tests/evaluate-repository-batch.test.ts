@@ -1,5 +1,5 @@
-import { Daytona, Sandbox } from "@daytona/sdk";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { Sandbox } from "@vercel/sandbox";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   BASE_REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
@@ -18,6 +18,8 @@ import {
   TREATMENT_TARGET_WORK_DIRECTORY,
 } from "../src/constants.js";
 import { evaluateRepositoryBatch } from "../src/evaluate-repository-batch.js";
+
+afterEach(() => vi.restoreAllMocks());
 
 const PAIRED_SCAN_DELAY_MS = 5;
 
@@ -80,16 +82,30 @@ describe("evaluateRepositoryBatch", () => {
     );
     const sandbox = Object.create(Sandbox.prototype);
     Object.defineProperties(sandbox, {
-      id: { value: "sandbox-id" },
-      process: { value: { executeCommand } },
-      fs: { value: { downloadFile } },
+      name: { value: "sandbox-id" },
+      runCommand: {
+        value: async (options: { args: string[]; env: Record<string, string> }) => {
+          const response = await Reflect.apply(executeCommand, undefined, [
+            options.args[4],
+            undefined,
+            options.env,
+            Number.parseInt(options.args[1]),
+          ]);
+          return {
+            exitCode: response.exitCode,
+            stdout: async () => response.result,
+            stderr: async () => "",
+          };
+        },
+      },
+      readFileToBuffer: { value: ({ path }: { path: string }) => downloadFile(path) },
     });
-    const daytona = new Daytona({ apiKey: "test" });
-    Object.defineProperty(daytona, "delete", { value: vi.fn(async () => undefined) });
+
+    Object.defineProperty(sandbox, "delete", { value: vi.fn(async () => undefined) });
     const records: unknown[] = [];
 
     const failedRecords = await evaluateRepositoryBatch({
-      daytona,
+      credentials: {},
       createSandbox: async () => sandbox,
       repositoryGroups: [
         {
@@ -107,11 +123,8 @@ describe("evaluateRepositoryBatch", () => {
     });
 
     expect(failedRecords).toEqual([]);
-    expect(downloadFile).toHaveBeenCalledWith(SANDBOX_REPORT_PATH, expect.any(Number));
-    expect(downloadFile).not.toHaveBeenCalledWith(
-      BASE_REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
-      expect.any(Number),
-    );
+    expect(downloadFile).toHaveBeenCalledWith(SANDBOX_REPORT_PATH);
+    expect(downloadFile).not.toHaveBeenCalledWith(BASE_REACT_DOCTOR_EVALUATION_PROVENANCE_PATH);
     expect(records).toEqual([
       {
         schemaVersion: 1,
@@ -128,11 +141,8 @@ describe("evaluateRepositoryBatch", () => {
         report,
       },
     ]);
-    expect(downloadFile).toHaveBeenCalledWith(
-      REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
-      expect.any(Number),
-    );
-    expect(downloadFile).toHaveBeenCalledWith(SANDBOX_REPORT_PATH, expect.any(Number));
+    expect(downloadFile).toHaveBeenCalledWith(REACT_DOCTOR_EVALUATION_PROVENANCE_PATH);
+    expect(downloadFile).toHaveBeenCalledWith(SANDBOX_REPORT_PATH);
   });
 
   it.each([
@@ -193,17 +203,31 @@ describe("evaluateRepositoryBatch", () => {
       });
       const sandbox = Object.create(Sandbox.prototype);
       Object.defineProperties(sandbox, {
-        id: { value: "sandbox-id" },
-        process: { value: { executeCommand } },
-        fs: { value: { downloadFile } },
+        name: { value: "sandbox-id" },
+        runCommand: {
+          value: async (options: { args: string[]; env: Record<string, string> }) => {
+            const response = await Reflect.apply(executeCommand, undefined, [
+              options.args[4],
+              undefined,
+              options.env,
+              Number.parseInt(options.args[1]),
+            ]);
+            return {
+              exitCode: response.exitCode,
+              stdout: async () => response.result,
+              stderr: async () => "",
+            };
+          },
+        },
+        readFileToBuffer: { value: ({ path }: { path: string }) => downloadFile(path) },
       });
-      const daytona = new Daytona({ apiKey: "test" });
-      Object.defineProperty(daytona, "delete", { value: vi.fn(async () => undefined) });
+
+      Object.defineProperty(sandbox, "delete", { value: vi.fn(async () => undefined) });
       const baselineRecords: unknown[] = [];
       const treatmentRecords: unknown[] = [];
 
       const failedRecords = await evaluateRepositoryBatch({
-        daytona,
+        credentials: {},
         createSandbox: async () => sandbox,
         repositoryGroups: [
           {
@@ -312,12 +336,26 @@ describe("evaluateRepositoryBatch", () => {
     });
     const sandbox = Object.create(Sandbox.prototype);
     Object.defineProperties(sandbox, {
-      id: { value: "sandbox-id" },
-      process: { value: { executeCommand } },
-      fs: { value: { downloadFile } },
+      name: { value: "sandbox-id" },
+      runCommand: {
+        value: async (options: { args: string[]; env: Record<string, string> }) => {
+          const response = await Reflect.apply(executeCommand, undefined, [
+            options.args[4],
+            undefined,
+            options.env,
+            Number.parseInt(options.args[1]),
+          ]);
+          return {
+            exitCode: response.exitCode,
+            stdout: async () => response.result,
+            stderr: async () => "",
+          };
+        },
+      },
+      readFileToBuffer: { value: ({ path }: { path: string }) => downloadFile(path) },
     });
-    const daytona = new Daytona({ apiKey: "test" });
-    Object.defineProperty(daytona, "delete", {
+
+    Object.defineProperty(sandbox, "delete", {
       value: vi.fn(async () => {
         expect(didBaselineScanSettle).toBe(true);
       }),
@@ -326,7 +364,7 @@ describe("evaluateRepositoryBatch", () => {
     const onPairedRecords = vi.fn(async () => undefined);
 
     const failedRecords = await evaluateRepositoryBatch({
-      daytona,
+      credentials: {},
       createSandbox: async () => sandbox,
       repositoryGroups: [
         {
@@ -394,20 +432,34 @@ describe("evaluateRepositoryBatch", () => {
     });
     const sandbox = Object.create(Sandbox.prototype);
     Object.defineProperties(sandbox, {
-      id: { value: "sandbox-id" },
-      process: { value: { executeCommand } },
-      fs: { value: { downloadFile } },
+      name: { value: "sandbox-id" },
+      runCommand: {
+        value: async (options: { args: string[]; env: Record<string, string> }) => {
+          const response = await Reflect.apply(executeCommand, undefined, [
+            options.args[4],
+            undefined,
+            options.env,
+            Number.parseInt(options.args[1]),
+          ]);
+          return {
+            exitCode: response.exitCode,
+            stdout: async () => response.result,
+            stderr: async () => "",
+          };
+        },
+      },
+      readFileToBuffer: { value: ({ path }: { path: string }) => downloadFile(path) },
     });
-    const daytona = new Daytona({ apiKey: "test" });
+
     const deleteSandbox = vi.fn(async () => undefined);
-    Object.defineProperty(daytona, "delete", { value: deleteSandbox });
+    Object.defineProperty(sandbox, "delete", { value: deleteSandbox });
     const onPairedRecords = vi.fn(async () => {
       throw new Error("artifact sink failed");
     });
 
     await expect(
       evaluateRepositoryBatch({
-        daytona,
+        credentials: {},
         createSandbox: async () => sandbox,
         repositoryGroups: [
           {

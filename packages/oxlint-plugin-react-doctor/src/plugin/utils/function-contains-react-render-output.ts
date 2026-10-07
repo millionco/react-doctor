@@ -120,7 +120,7 @@ const isProvenArrayMapCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean 
   );
 };
 
-const isRenderPreservingCallArgumentFunction = (
+export const isRenderPreservingCallArgumentFunction = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean => {

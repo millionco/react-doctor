@@ -25,6 +25,18 @@ describe("hasUnlintedSurvivingBaseFile", () => {
     ).toBe(true);
   });
 
+  it("flags a skipped base file that survives under a new name", () => {
+    const input = {
+      baseLintPaths: ["src/old.tsx"],
+      headFiles: new Set(["src/new.tsx"]),
+      renamedFiles: { "src/old.tsx": "src/new.tsx" },
+    };
+    expect(hasUnlintedSurvivingBaseFile({ ...input, analyzedBaseFiles: [] })).toBe(true);
+    expect(hasUnlintedSurvivingBaseFile({ ...input, analyzedBaseFiles: ["src/old.tsx"] })).toBe(
+      false,
+    );
+  });
+
   it("normalizes Windows separators before matching", () => {
     expect(
       hasUnlintedSurvivingBaseFile({

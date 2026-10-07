@@ -3103,8 +3103,6 @@ const isDirectExhaustiveTimerCollectionCleanup = (
   const cleanupCallback = isNodeOfType(cleanupCall, "CallExpression")
     ? cleanupCall.arguments[0]
     : null;
-  const expectedCleanupName =
-    usage.registrationVerbName === "setInterval" ? "clearInterval" : "clearTimeout";
   const retainedCollectionKey = findContainingCollectionKey(usage.node, context);
   if (
     !isNodeOfType(cleanupCall, "CallExpression") ||
@@ -3113,7 +3111,7 @@ const isDirectExhaustiveTimerCollectionCleanup = (
     !isNodeOfType(cleanupCallee.property, "Identifier") ||
     cleanupCallee.property.name !== "forEach" ||
     !isNodeOfType(cleanupCallback, "Identifier") ||
-    cleanupCallback.name !== expectedCleanupName ||
+    !TIMER_CLEANUP_CALLEE_NAMES.has(cleanupCallback.name) ||
     !context.scopes.isGlobalReference(cleanupCallback) ||
     retainedCollectionKey === null ||
     retainedCollectionKey !== resolveExpressionKey(cleanupCallee.object, context)
@@ -5184,6 +5182,29 @@ const hasOnlySafeHandleStorageAssignments = (
     ) {
       return true;
     }
+    if (assignedTimerUsage && assignmentOwner === currentUsageOwner) {
+      const assignmentStatement = findTransparentExpressionRoot(assignment).parent;
+      const assignmentBlock = assignmentStatement?.parent;
+      if (
+        !isNodeOfType(assignmentStatement, "ExpressionStatement") ||
+        !isNodeOfType(assignmentBlock, "BlockStatement")
+      ) {
+        return false;
+      }
+      const previousStatement =
+        assignmentBlock.body[
+          assignmentBlock.body.findIndex((statement) => statement === assignmentStatement) - 1
+        ];
+      const releaseCall = isNodeOfType(previousStatement, "ExpressionStatement")
+        ? stripParenExpression(previousStatement.expression)
+        : null;
+      return Boolean(
+        isNodeOfType(releaseCall, "CallExpression") &&
+        isNodeOfType(releaseCall.callee, "Identifier") &&
+        context.scopes.isGlobalReference(releaseCall.callee) &&
+        doesReleaseCallMatchUsage(releaseCall, usage, context),
+      );
+    }
     const isNullishReset =
       (isNodeOfType(assignedValue, "Literal") && assignedValue.value === null) ||
       (isNodeOfType(assignedValue, "Identifier") &&
@@ -5338,12 +5359,15 @@ const hasEffectOwnedNestedTimerCleanup = (
   );
   return functionSymbol.references.every((reference) => {
     const referenceKey = resolveExpressionKey(reference.identifier, context);
+    const referenceParent = findTransparentExpressionRoot(reference.identifier).parent;
     if (selfSchedulingReferences.some((candidate) => candidate === reference)) return true;
     const callbackOwnerUsage = allUsages.find(
       (candidateUsage) =>
         candidateUsage !== usage &&
         referenceKey !== null &&
-        getUsageCallbackKey(candidateUsage, context) === referenceKey,
+        getUsageCallbackKey(candidateUsage, context) === referenceKey &&
+        (isAstDescendant(reference.identifier, candidateUsage.node) ||
+          (referenceParent && doesReleaseCallMatchUsage(referenceParent, candidateUsage, context))),
     );
     const callbackOwnerArgument = callbackOwnerUsage
       ? getSubscribeUsageCallbackArgument(callbackOwnerUsage)
@@ -5614,6 +5638,7 @@ const hasGuardedDeferredCleanup = (
     (handleAssignment) =>
       findTransparentExpressionRoot(handleAssignment.identifier).parent === usageAssignment,
   );
+  const timerArguments = usage.node.arguments;
   const hasUnsafeHandleAssignment = handleAssignments.some((handleAssignment) => {
     const assignmentTarget = findTransparentExpressionRoot(handleAssignment.identifier);
     const assignment = assignmentTarget.parent;
@@ -5632,6 +5657,15 @@ const hasGuardedDeferredCleanup = (
         assignedValue.name === "undefined" &&
         context.scopes.isGlobalReference(assignedValue));
     if (!isNullishReset) return true;
+    const assignmentFunction = findEnclosingFunction(assignment);
+    const isResetInOwnCallback =
+      assignmentFunction &&
+      isFunctionLike(assignmentFunction) &&
+      timerArguments.some((argument) => {
+        const callback = stripParenExpression(argument);
+        return isFunctionLike(callback) && callback === assignmentFunction;
+      });
+    if (isResetInOwnCallback) return false;
     const cleanupFunction = findEnclosingFunction(assignment);
     const globalReleaseProofs = cleanupFunction
       ? globalReleaseProofsByCleanup.get(cleanupFunction)
@@ -6460,13 +6494,14 @@ const effectHasCleanupForUsage = (
       : null;
   const requiresDirectReleasePathCoverage =
     usage.kind === "timer" &&
-    findEnclosingFunction(usage.node) !== callback &&
-    Boolean(
-      assignedHandleSymbol &&
-      (assignedHandleSymbol.kind === "let" || assignedHandleSymbol.kind === "var") &&
-      isNodeOfType(assignedHandleSymbol.declarationNode, "VariableDeclarator") &&
-      findEnclosingFunction(assignedHandleSymbol.declarationNode) === callback,
-    );
+    ((findEnclosingFunction(usage.node) === callback &&
+      isNodeOfType(usageAssignment, "VariableDeclarator")) ||
+      Boolean(
+        assignedHandleSymbol &&
+        (assignedHandleSymbol.kind === "let" || assignedHandleSymbol.kind === "var") &&
+        isNodeOfType(assignedHandleSymbol.declarationNode, "VariableDeclarator") &&
+        findEnclosingFunction(assignedHandleSymbol.declarationNode) === callback,
+      ));
   const matchingCleanupReturns: EsTreeNode[] = [];
   walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "ReturnStatement")) return;
@@ -7602,12 +7637,10 @@ const doesReleaseCallMatchUsage = (
   const callee = stripParenExpression(callNode.callee);
 
   if (usage.kind === "timer") {
-    const expectedCleanupName =
-      usage.registrationVerbName === "setInterval" ? "clearInterval" : "clearTimeout";
     if (
       !isNodeOfType(callee, "Identifier") ||
       !TIMER_CLEANUP_CALLEE_NAMES.has(callee.name) ||
-      callee.name !== expectedCleanupName
+      !context.scopes.isGlobalReference(callee)
     ) {
       return false;
     }
@@ -8375,9 +8408,9 @@ const fileContainsReleaseForUsage = (usage: SubscribeLikeUsage, context: RuleCon
   }
   let candidates: ReadonlyArray<EsTreeNode>;
   if (usage.kind === "timer") {
-    const expectedCleanupName =
-      usage.registrationVerbName === "setInterval" ? "clearInterval" : "clearTimeout";
-    candidates = releaseCallIndex.identifierCallsByName.get(expectedCleanupName) ?? [];
+    candidates = [...TIMER_CLEANUP_CALLEE_NAMES].flatMap(
+      (cleanupName) => releaseCallIndex.identifierCallsByName.get(cleanupName) ?? [],
+    );
   } else {
     candidates = releaseCallIndex.potentialNonTimerCalls;
   }

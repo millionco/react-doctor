@@ -3,18 +3,8 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../test-utils/run-rule.js";
-import { nextjsNoHeadImport } from "../rules/nextjs/nextjs-no-head-import.js";
 import { wrapNextjsRule } from "./wrap-nextjs-rule.js";
 import type { Rule } from "./rule.js";
-
-const wrappedNoHeadImport = wrapNextjsRule(nextjsNoHeadImport);
-
-const headImportCode = `import Head from "next/head";
-
-export default function Page() {
-  return <Head><title>Title</title></Head>;
-}
-`;
 
 const probeRule: Rule = {
   id: "nextjs-gate-probe",
@@ -32,7 +22,7 @@ describe("wrap-nextjs-rule", () => {
   let temporaryDirectory = "";
 
   beforeEach(() => {
-    temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-nextjs-gate-"));
+    temporaryDirectory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "rd-nextjs-gate-")));
   });
 
   afterEach(() => {
@@ -50,7 +40,7 @@ describe("wrap-nextjs-rule", () => {
   });
 
   it("fires in a package that declares next in dependencies", () => {
-    const result = runRule(wrappedNoHeadImport, headImportCode, {
+    const result = runRule(wrappedProbe, "export {};", {
       filename: createPackageFilename({ dependencies: { next: "15.0.0" } }),
       settings: rootDirectorySettings(),
     });
@@ -60,7 +50,7 @@ describe("wrap-nextjs-rule", () => {
   });
 
   it("fires when next is only a devDependency", () => {
-    const result = runRule(wrappedNoHeadImport, headImportCode, {
+    const result = runRule(wrappedProbe, "export {};", {
       filename: createPackageFilename({ devDependencies: { next: "15.0.0" } }),
       settings: rootDirectorySettings(),
     });
@@ -70,7 +60,7 @@ describe("wrap-nextjs-rule", () => {
   });
 
   it("stays silent in a nested workspace package that never depends on next", () => {
-    const result = runRule(wrappedNoHeadImport, headImportCode, {
+    const result = runRule(wrappedProbe, "export {};", {
       filename: createPackageFilename({ dependencies: { react: "19.0.0", vite: "6.0.0" } }),
       settings: rootDirectorySettings(),
     });
@@ -80,7 +70,7 @@ describe("wrap-nextjs-rule", () => {
   });
 
   it("fires in a non-next package when no project root is provided", () => {
-    const result = runRule(wrappedNoHeadImport, headImportCode, {
+    const result = runRule(wrappedProbe, "export {};", {
       filename: createPackageFilename({ dependencies: { react: "19.0.0" } }),
     });
 
@@ -89,7 +79,7 @@ describe("wrap-nextjs-rule", () => {
   });
 
   it("fires below the root when the nearest manifest is a marker without dependencies", () => {
-    const result = runRule(wrappedNoHeadImport, headImportCode, {
+    const result = runRule(wrappedProbe, "export {};", {
       filename: createPackageFilename({ type: "module" }),
       settings: rootDirectorySettings(),
     });
@@ -99,7 +89,7 @@ describe("wrap-nextjs-rule", () => {
   });
 
   it("fires when there is no discoverable package manifest", () => {
-    const result = runRule(wrappedNoHeadImport, headImportCode, {
+    const result = runRule(wrappedProbe, "export {};", {
       filename: path.join(temporaryDirectory, "standalone", "app", "page.tsx"),
       settings: rootDirectorySettings(),
     });

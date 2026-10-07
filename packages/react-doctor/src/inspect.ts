@@ -3,6 +3,9 @@ import { performance } from "node:perf_hooks";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
+  computeDiagnosticDelta,
+  mergeAndFilterDiagnostics,
+  getRuleMetadata,
   createInvocationCaches,
   createOxlintSpawnSlots,
   type Diagnostic,
@@ -18,6 +21,8 @@ import {
   warmOxlintWorkerPool,
   yieldToEventLoop,
 } from "@react-doctor/core";
+import { CliInputError } from "./cli/utils/cli-input-error.js";
+import { computeSourceFilterConfigHash } from "./cli/utils/compute-source-filter-config-hash.js";
 import { activeScanAbortRegistry } from "./cli/utils/active-scan-abort-registry.js";
 import { applyObservability } from "./cli/utils/apply-observability.js";
 import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
@@ -46,6 +51,8 @@ import { createScanResultCacheLifecycle } from "./cli/utils/scan-result-cache-li
 import type { CachedScanPayload } from "./cli/utils/scan-result-cache-payload.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
+import { readBaselineLineMap } from "./cli/utils/read-baseline-line-map.js";
+import { withDiagnosticFingerprints } from "./cli/utils/with-diagnostic-fingerprints.js";
 import type { ReactDoctorInspectOptions, ResolvedInspectOptions } from "./inspect-options.js";
 import type { OxlintInvocationRuntime } from "./inspect-runtime.js";
 
@@ -120,6 +127,21 @@ const inspectWithOxlintRuntime = async (
     userConfig,
   );
 
+  const sourceFilterConfigHash = computeSourceFilterConfigHash({
+    userConfig,
+    respectInlineDisables: options.respectInlineDisables,
+  });
+  if (
+    options.baselineReport &&
+    (options.baselineReport.sourceFilterConfigHash !== undefined ||
+      options.baselineReport.diagnostics.length > 0) &&
+    options.baselineReport.sourceFilterConfigHash !== sourceFilterConfigHash
+  ) {
+    throw new CliInputError(
+      "The baseline uses different or unknown source-dependent filters. Regenerate the base --json report with the current textComponents, rawTextWrapperComponents, and respectInlineDisables settings, or use --scope changed --base <ref>.",
+    );
+  }
+
   // HACK: spinner.ts still has module-level silent state for imperative CLI
   // helpers. Concurrent batch members never touch the shared flag — overlapping
   // save/restore pairs would race — so the pool owner (the CLI) silences
@@ -167,7 +189,7 @@ const inspectWithOxlintRuntime = async (
     // link the crash before the process exits. Concurrent batch members never
     // wrote this state, so they have nothing to clear.
     if (!isConcurrentScan) resetSentryRunState();
-    return result;
+    return { ...result, sourceFilterConfigHash };
   } finally {
     if (ownsSpinnerSilence) setSpinnerSilent(wasSpinnerSilent);
   }
@@ -382,12 +404,53 @@ const runInspectWithRuntime = async (
   // the full head findings visible and emit no delta. The CLI then reports
   // `mode: "diff"` and skips the gate rather than hiding real findings or
   // blaming the PR for pre-existing ones.
-  let inspectDiagnostics: ReadonlyArray<Diagnostic> = output.diagnostics;
+  const headDiagnostics = withDiagnosticFingerprints(directory, output.diagnostics);
+  let inspectDiagnostics: ReadonlyArray<Diagnostic> = headDiagnostics;
   let baselineDelta: InspectResult["baselineDelta"];
   // A head lint that dropped or deadline-skipped files is incomplete, so the
   // delta would silently miss findings in the unlinted files — degrade to a
   // plain diff exactly like a failed head lint.
   if (
+    options.baselineReport &&
+    !didLintFail &&
+    !output.didDeadCodeFail &&
+    countIncompleteLintFiles(output.lintPartialFailures) === 0
+  ) {
+    const baseDiagnostics = mergeAndFilterDiagnostics(
+      options.baselineReport.diagnostics.filter((diagnostic) => {
+        const metadata = getRuleMetadata(diagnostic.plugin, diagnostic.rule);
+        if (!metadata) return true;
+        if (metadata.tags.some((tag) => options.ignoredTags.has(tag))) return false;
+        return (
+          options.includedTags.size === 0 ||
+          metadata.tags.some((tag) => options.includedTags.has(tag))
+        );
+      }),
+      directory,
+      userConfig,
+      () => null,
+      { respectInlineDisables: false, warnings: options.warnings },
+    );
+    const delta = computeDiagnosticDelta({
+      headDiagnostics,
+      baseDiagnostics,
+      renamedFiles: options.baselineReport.renamedFiles ?? {},
+      mapBaseLine: readBaselineLineMap(directory, options.baselineReport.sourceRevision),
+      readHeadLine: () => null,
+      readBaseLine: () => null,
+    });
+    inspectDiagnostics = delta.newDiagnostics;
+    baselineDelta = {
+      baseRef: options.baselineReport.file,
+      source: "baseline",
+      baselineFile: options.baselineReport.file,
+      matchedCount: baseDiagnostics.length - delta.fixedCount,
+      baseTotalCount: baseDiagnostics.length,
+      fixedCount: delta.fixedCount,
+      crossFileMatchCount: delta.crossFileMatchCount,
+      ruleCountMatchCount: delta.ruleCountMatchCount,
+    };
+  } else if (
     options.baseline &&
     isDiffMode &&
     !didLintFail &&
@@ -400,7 +463,7 @@ const runInspectWithRuntime = async (
       userConfig,
       configSourceDirectory,
       headProjectInfo: output.project,
-      headDiagnostics: output.diagnostics,
+      headDiagnostics,
       resolvedNodeBinaryPath,
       baselineRef: options.baseline.ref,
       baseFiles: options.baseline.baseFiles,
@@ -420,13 +483,15 @@ const runInspectWithRuntime = async (
     // comments all narrow together.
     inspectDiagnostics = filterDiagnosticsByChangedLines({
       directory,
-      diagnostics: output.diagnostics,
+      diagnostics: headDiagnostics,
       changedLineRanges: options.changedLineRanges,
     });
   }
   // Baseline was requested but no delta was produced (head/base lint failed) —
   // the run degrades to a plain diff and must not gate on the full head set.
-  const baselineDegraded = Boolean(options.baseline) && isDiffMode && baselineDelta === undefined;
+  const baselineDegraded =
+    (Boolean(options.baselineReport) || (Boolean(options.baseline) && isDiffMode)) &&
+    baselineDelta === undefined;
   // The orchestrator already surface-filters scoring input through
   // `scoreSurface: "score"` and computes the real score in-band, so
   // we just consume `output.score`. `--no-score` opts out before the

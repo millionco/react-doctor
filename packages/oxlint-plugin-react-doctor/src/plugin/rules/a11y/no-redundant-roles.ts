@@ -8,12 +8,14 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isLocalTestScaffoldJsx } from "../../utils/is-local-test-scaffold-jsx.js";
 import { getElementImplicitRoles } from "../../constants/aria-element-roles.js";
 import { getImplicitRole } from "../../utils/get-implicit-role.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 interface NoRedundantRolesSettings {
   // Per-element overrides: a tag can specify additional non-redundant
   // roles (e.g. `nav: ["navigation"]` flags `<nav role="navigation">`).
   // The OXC port supports user-provided overrides.
   exceptions?: Readonly<Record<string, ReadonlyArray<string>>>;
+  [elementName: string]: unknown;
 }
 
 const buildMessage = (tag: string, role: string): string =>
@@ -100,6 +102,117 @@ const resolveSettings = (
   return { exceptions: ruleSettings.exceptions ?? {} };
 };
 
+const resolveUpstreamExceptions = (
+  settings: Readonly<Record<string, unknown>> | undefined,
+): Readonly<Record<string, ReadonlyArray<string>>> => {
+  const reactDoctorSettings = settings?.["react-doctor"];
+  if (typeof reactDoctorSettings !== "object" || reactDoctorSettings === null) return {};
+  const ruleSettings = Reflect.get(reactDoctorSettings, "noRedundantRoles");
+  if (typeof ruleSettings !== "object" || ruleSettings === null) return {};
+  const exceptions: Record<string, ReadonlyArray<string>> = {};
+  for (const [elementName, value] of Object.entries(ruleSettings)) {
+    if (Array.isArray(value) && value.every((role) => typeof role === "string")) {
+      exceptions[elementName] = value;
+    }
+  }
+  return exceptions;
+};
+
+const getTruthyAttributeValue = (
+  attribute: EsTreeNodeOfType<"JSXAttribute"> | undefined,
+): boolean => {
+  if (!attribute) return false;
+  if (!attribute.value) return true;
+  const value = attribute.value;
+  if (isNodeOfType(value, "Literal")) return Boolean(value.value);
+  if (!isNodeOfType(value, "JSXExpressionContainer")) return false;
+  return isNodeOfType(value.expression, "Literal") ? Boolean(value.expression.value) : false;
+};
+
+const getStaticAttributePrimitive = (
+  attribute: EsTreeNodeOfType<"JSXAttribute"> | undefined,
+): string | number | boolean | null => {
+  if (!attribute?.value) return null;
+  if (isNodeOfType(attribute.value, "Literal")) {
+    const value = attribute.value.value;
+    return typeof value === "bigint" || value instanceof RegExp ? null : value;
+  }
+  if (
+    isNodeOfType(attribute.value, "JSXExpressionContainer") &&
+    isNodeOfType(attribute.value.expression, "Literal")
+  ) {
+    const value = attribute.value.expression.value;
+    return typeof value === "bigint" || value instanceof RegExp ? null : value;
+  }
+  return null;
+};
+
+const getUpstreamInputImplicitRole = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  explicitRole: string,
+): string | null => {
+  const typeAttribute = hasJsxPropIgnoreCase(node.attributes, "type");
+  const inputType = getStaticAttributePrimitive(typeAttribute) ?? "text";
+  if (typeof inputType !== "string") return null;
+  const normalizedInputType = inputType.toLowerCase();
+  const hasList = Boolean(hasJsxPropIgnoreCase(node.attributes, "list"));
+  if (["button", "image", "reset", "submit"].includes(normalizedInputType)) {
+    return explicitRole.toLowerCase() === "button" ? "button" : null;
+  }
+  if (normalizedInputType === "checkbox") {
+    return explicitRole.toLowerCase() === "checkbox" ? "checkbox" : null;
+  }
+  if (normalizedInputType === "radio") {
+    return explicitRole.toLowerCase() === "radio" ? "radio" : null;
+  }
+  if (normalizedInputType === "range") {
+    return explicitRole.toLowerCase() === "slider" ? "slider" : null;
+  }
+  if (normalizedInputType === "number") {
+    return explicitRole.toLowerCase() === "spinbutton" ? "spinbutton" : null;
+  }
+  if (normalizedInputType === "search") {
+    if (explicitRole.toLowerCase() === "searchbox") return "searchbox";
+    return hasList && explicitRole.toLowerCase() === "combobox" ? "combobox" : null;
+  }
+  if (["email", "tel", "url", "text", ""].includes(normalizedInputType)) {
+    if (explicitRole.toLowerCase() === "textbox") return "textbox";
+    return hasList && explicitRole.toLowerCase() === "combobox" ? "combobox" : null;
+  }
+  return null;
+};
+
+const getUpstreamImplicitRole = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  tag: string,
+  explicitRole: string,
+): string | null => {
+  const normalizedRole = explicitRole.toLowerCase();
+  if (["header", "footer", "main", "address"].includes(tag)) return null;
+  if (tag === "body") return normalizedRole === "document" ? "document" : null;
+  if (tag === "img") {
+    const altAttribute = hasJsxPropIgnoreCase(node.attributes, "alt");
+    if (altAttribute && getJsxPropStringValue(altAttribute) === "") return null;
+    const sourceAttribute = hasJsxPropIgnoreCase(node.attributes, "src");
+    if (sourceAttribute && getJsxPropStringValue(sourceAttribute)?.includes(".svg")) return null;
+    return normalizedRole === "img" ? "img" : null;
+  }
+  if (tag === "input") return getUpstreamInputImplicitRole(node, explicitRole);
+  if (tag === "select") {
+    const multipleAttribute = hasJsxPropIgnoreCase(node.attributes, "multiple");
+    const sizeAttribute = hasJsxPropIgnoreCase(node.attributes, "size");
+    const sizeValue = Number(getStaticAttributePrimitive(sizeAttribute) ?? 0);
+    const implicitRole =
+      getTruthyAttributeValue(multipleAttribute) || sizeValue > 1 ? "listbox" : "combobox";
+    return normalizedRole === implicitRole ? implicitRole : null;
+  }
+  return (
+    getElementImplicitRoles(tag).find(
+      (implicitRole) => implicitRole.toLowerCase() === normalizedRole,
+    ) ?? null
+  );
+};
+
 // Port of `oxc_linter::rules::jsx_a11y::no_redundant_roles`. Reports a
 // `role` attribute that matches the element's implicit role.
 export const noRedundantRoles = defineRule({
@@ -112,19 +225,39 @@ export const noRedundantRoles = defineRule({
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const upstreamExceptions = resolveUpstreamExceptions(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (isLocalTestScaffoldJsx(node, context)) return;
+        if (shouldUseCuratedBehavior && isLocalTestScaffoldJsx(node, context)) return;
         const roleAttr = hasJsxPropIgnoreCase(node.attributes, "role");
         if (!roleAttr) return;
         // react-aria's table pattern (marked by `data-rac`) re-applies
         // explicit roles because CSS-restyled tables lose implicit semantics
         // in some ATs — the doc's carve-out for roles kept to work around AT
         // misreporting.
-        if (hasJsxPropIgnoreCase(node.attributes, "data-rac")) return;
+        if (shouldUseCuratedBehavior && hasJsxPropIgnoreCase(node.attributes, "data-rac")) return;
         const role = getJsxPropStringValue(roleAttr);
         if (role === null) return;
         const tag = getElementType(node, context.settings);
+        if (!shouldUseCuratedBehavior) {
+          for (const explicitRole of role.split(/\s+/)) {
+            if (!explicitRole) continue;
+            const implicitRole = getUpstreamImplicitRole(node, tag, explicitRole);
+            if (!implicitRole) continue;
+            const hasExplicitException = Object.hasOwn(upstreamExceptions, tag);
+            const allowedRoles = hasExplicitException
+              ? (upstreamExceptions[tag] ?? [])
+              : tag === "nav"
+                ? ["navigation"]
+                : [];
+            if (!allowedRoles.includes(implicitRole)) {
+              context.report({ node: roleAttr, message: buildMessage(tag, implicitRole) });
+              return;
+            }
+          }
+          return;
+        }
         // The static table lists every role a tag *can* take, but
         // attribute-dependent tags have exactly ONE effective role given
         // their attributes (e.g. `<input type="text">` → textbox, bare

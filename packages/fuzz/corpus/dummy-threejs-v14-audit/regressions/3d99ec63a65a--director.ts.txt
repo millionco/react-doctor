@@ -1,0 +1,779 @@
+// rule: js-set-map-lookups
+// file-path: src/game/director.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 3d99ec63a65a315ba7d38f307fbf577f1a7588e98e2938b140f7a3916004a5d4
+/**
+ * The director runs the match: it owns the rules state, the scene objects that
+ * represent it, the input handling and the beat-by-beat staging.
+ */
+import * as THREE from "three";
+import type { Stage } from "../core/stage";
+import type { SurfaceLibrary } from "../core/materials";
+import type { LightRig } from "../world/lighting";
+import type { TableHandles } from "../world/table";
+import { TABLE, seatAngle } from "../world/table";
+import { Bomb } from "../world/bomb";
+import { Card, buildCardArt, type CardArt } from "../world/cards";
+import { LOOKS, buildCharacter, type Character } from "../world/characters";
+import {
+  contactShadowTexture,
+  damp,
+  mesh,
+  plainMaterial,
+  surfaceMaterial,
+} from "../world/common";
+import { Hud, type Phase } from "../ui/hud";
+import { Sound } from "../audio";
+import { TEMPERAMENTS, decide, tell } from "./ai";
+import {
+  type Choice,
+  type GameState,
+  type Intent,
+  type Resolution,
+  createGame,
+  eliminate,
+  fuseFraction,
+  isLive,
+  lightFuse,
+  refillHands,
+  resolveBeat,
+  survivors,
+  tension,
+} from "./rules";
+import { mulberry32 } from "../core/noise";
+
+const SEAT_NAMES = ["YOU", "MARLOW", "ASH", "VEX"];
+
+const HAND_X = 0.42;
+const PLAY_Z = 0.72;
+const HAND_Z = 1.0;
+
+interface SeatRig {
+  anchor: THREE.Group;
+  hand: Card[];
+  /** Index into `hand` of the card being played this beat, or -1. */
+  playing: number;
+}
+
+function bombRest(seat: number): THREE.Vector3 {
+  const a = seatAngle(seat);
+  const r = 0.52;
+  return new THREE.Vector3(Math.sin(a) * r, TABLE.top + 0.142, Math.cos(a) * r);
+}
+
+export class Director {
+  private state: GameState;
+  private stage: Stage;
+  private lights: LightRig;
+  private table: TableHandles;
+  private hud: Hud;
+  private sound = new Sound();
+
+  private bomb: Bomb;
+  private art: CardArt;
+  private seats: SeatRig[] = [];
+  private characters: Character[] = [];
+  private aimRing: THREE.Mesh;
+  private aimRingMat: THREE.MeshStandardMaterial;
+  private scorch: THREE.Mesh[] = [];
+
+  private phase: Phase = "choose";
+  private phaseTime = 0;
+  private chooseLimit = 9;
+  private choices: (Choice | null)[] = [null, null, null, null];
+  private resolution: Resolution | null = null;
+  private travelIndex = 0;
+
+  private selectedCard = 0;
+  private intent: Intent | null = null;
+  private locked = false;
+
+  private bombFrom = new THREE.Vector3();
+  private bombTo = new THREE.Vector3();
+  private bombT = 1;
+  private bombSpin = new THREE.Vector3();
+
+  private shake = 0;
+  private flash = 0;
+  private camBase = new THREE.Vector3(0, 2.86, 4.12);
+  private camLook = new THREE.Vector3(0, 0.94, -0.06);
+  private camPush = 0;
+  private chevronPulse = 0;
+  private raycaster = new THREE.Raycaster();
+  private pointer = new THREE.Vector2();
+  private cardPicks = new Map<THREE.Object3D, number>();
+  private gameOver = false;
+
+  constructor(
+    stage: Stage,
+    lib: SurfaceLibrary,
+    table: TableHandles,
+    lights: LightRig,
+    hud: Hud,
+  ) {
+    this.stage = stage;
+    this.table = table;
+    this.lights = lights;
+    this.hud = hud;
+
+    this.state = createGame(SEAT_NAMES, mulberry32(0x9e3779b9 ^ Math.floor(Math.random() * 1e9)));
+
+    this.bomb = new Bomb(lib);
+    stage.scene.add(this.bomb.group);
+    this.bomb.setDangerBand(0, this.state.band);
+
+    this.art = buildCardArt(lib);
+
+    for (let s = 0; s < 4; s++) {
+      const anchor = new THREE.Group();
+      anchor.rotation.y = seatAngle(s);
+      stage.scene.add(anchor);
+      const hand: Card[] = [];
+      for (let i = 0; i < 2; i++) {
+        const card = new Card(this.art, this.state.players[s]!.hand[i] ?? "SHOVE");
+        anchor.add(card.group);
+        hand.push(card);
+        if (s === 0) {
+          this.cardPicks.set(card.group.children[0]!, i);
+        }
+      }
+      this.seats.push({ anchor, hand, playing: -1 });
+
+      const look = LOOKS[s]!;
+      const character = buildCharacter(lib, s, look, s === 0);
+      stage.scene.add(character.group);
+      this.characters.push(character);
+
+      // Scorch mark burned into the baize when a seat is knocked out. The
+      // radial falloff texture keeps it a smudge rather than a hole.
+      const mark = mesh(
+        new THREE.CircleGeometry(0.34, 28),
+        plainMaterial({
+          color: 0x241609,
+          map: contactShadowTexture(128, 1.5, 0.05),
+          roughness: 1,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+        }),
+        { cast: false },
+      );
+      mark.rotation.x = -Math.PI / 2;
+      mark.position.set(0, TABLE.top + 0.003, 0.55);
+      mark.renderOrder = 3;
+      anchor.add(mark);
+      this.scorch.push(mark);
+    }
+
+    this.aimRingMat = surfaceMaterial(lib.brass, { repeat: [4, 1] });
+    this.aimRingMat.emissive = new THREE.Color(0xffb060);
+    this.aimRingMat.emissiveIntensity = 1.4;
+    this.aimRing = mesh(new THREE.TorusGeometry(0.145, 0.007, 8, 40), this.aimRingMat, { cast: false });
+    this.aimRing.rotation.x = Math.PI / 2;
+    this.aimRing.visible = false;
+    stage.scene.add(this.aimRing);
+
+    this.hud.buildSeats(this.state);
+    this.layoutHands(true);
+    this.placeBombInstantly();
+    this.hud.log(`Charge lit. It sits with <b>${SEAT_NAMES[this.state.bombSeat]}</b>.`);
+    this.hud.banners("PASS THE HEAT", "the dial's red band is the only warning you get", 3.4);
+
+    this.bindInput();
+  }
+
+  /* ---------------------------------------------------------------- input */
+
+  private bindInput(): void {
+    const canvas = this.stage.renderer.domElement;
+    canvas.addEventListener("pointerdown", (e) => {
+      this.sound.enable();
+      this.pointer.set(
+        (e.clientX / window.innerWidth) * 2 - 1,
+        -(e.clientY / window.innerHeight) * 2 + 1,
+      );
+      this.pickCard();
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      this.pointer.set(
+        (e.clientX / window.innerWidth) * 2 - 1,
+        -(e.clientY / window.innerHeight) * 2 + 1,
+      );
+    });
+    window.addEventListener("keydown", (e) => {
+      this.sound.enable();
+      switch (e.key) {
+        case "ArrowLeft":
+          this.setIntent("LEFT");
+          break;
+        case "ArrowRight":
+          this.setIntent("RIGHT");
+          break;
+        case "ArrowDown":
+          this.setIntent("HOLD");
+          break;
+        case "ArrowUp":
+          this.setIntent("REVERSE");
+          break;
+        case " ":
+          e.preventDefault();
+          this.confirm();
+          break;
+        case "h":
+        case "H":
+          this.hud.toggleRules();
+          break;
+        case "1":
+          this.selectCard(0);
+          break;
+        case "2":
+          this.selectCard(1);
+          break;
+        case "r":
+        case "R":
+          if (this.gameOver) this.restart();
+          break;
+        default:
+          break;
+      }
+      if (e.key.startsWith("Arrow") || e.key === " ") e.preventDefault();
+    });
+  }
+
+  private pickCard(): void {
+    if (this.phase !== "choose" || this.locked) return;
+    this.raycaster.setFromCamera(this.pointer, this.stage.camera);
+    const targets = this.seats[0]!.hand.map((c) => c.group);
+    const hits = this.raycaster.intersectObjects(targets, true);
+    const first = hits[0];
+    if (!first) return;
+    let node: THREE.Object3D | null = first.object;
+    while (node && !this.cardPicks.has(node)) node = node.parent;
+    // Fall back to whichever hand group the hit belongs to.
+    const idx = node ? this.cardPicks.get(node) : undefined;
+    if (idx !== undefined) {
+      this.selectCard(idx);
+      return;
+    }
+    for (let i = 0; i < targets.length; i++) {
+      if (first.object === targets[i] || targets[i]!.children.includes(first.object)) {
+        this.selectCard(i);
+        return;
+      }
+    }
+  }
+
+  private selectCard(i: number): void {
+    if (this.phase !== "choose" || this.locked) return;
+    if (i < 0 || i >= this.seats[0]!.hand.length) return;
+    if (this.selectedCard !== i) this.sound.select();
+    this.selectedCard = i;
+    this.syncChoiceHud();
+  }
+
+  private setIntent(intent: Intent): void {
+    if (this.phase !== "choose" || this.locked) return;
+    if (this.intent !== intent) this.sound.aim();
+    this.intent = intent;
+    this.syncChoiceHud();
+  }
+
+  private syncChoiceHud(): void {
+    const card = this.seats[0]!.hand[this.selectedCard]?.type ?? null;
+    this.hud.setChoice(card, this.intent, this.locked);
+  }
+
+  private confirm(): void {
+    if (this.gameOver) {
+      this.restart();
+      return;
+    }
+    if (this.phase !== "choose" || this.locked) return;
+    if (!this.intent) {
+      this.hud.banners("PICK AN AIM", "← pass left · → pass right · ↓ hold · ↑ reverse", 1.4);
+      return;
+    }
+    this.sound.confirm();
+    this.lockIn();
+  }
+
+  /* ---------------------------------------------------------------- beats */
+
+  private lockIn(): void {
+    const hand = this.seats[0]!.hand;
+    const card = hand[this.selectedCard]?.type ?? hand[0]?.type ?? "SHOVE";
+    const intent: Intent = this.intent ?? "HOLD";
+    this.choices[0] = this.state.players[0]!.alive ? { intent, card } : null;
+
+    for (let s = 1; s < 4; s++) {
+      if (!this.state.players[s]!.alive) {
+        this.choices[s] = null;
+        continue;
+      }
+      const choice = decide(this.state, s, TEMPERAMENTS[s]!);
+      this.choices[s] = choice;
+      this.characters[s]!.setTension(
+        Math.min(1, tell(this.state, TEMPERAMENTS[s]!, choice) * 0.7 + tension(this.state) * 0.6),
+      );
+    }
+
+    // Slide the played card of every live seat into its slot, face down.
+    for (let s = 0; s < 4; s++) {
+      const choice = this.choices[s];
+      const rig = this.seats[s]!;
+      if (!choice) {
+        rig.playing = -1;
+        continue;
+      }
+      let idx = s === 0 ? this.selectedCard : rig.hand.findIndex((c) => c.type === choice.card);
+      if (idx < 0) idx = 0;
+      rig.playing = idx;
+    }
+
+    this.locked = true;
+    this.setPhase("locked");
+    this.layoutHands(false);
+    this.sound.flip();
+    this.syncChoiceHud();
+  }
+
+  private setPhase(phase: Phase): void {
+    this.phase = phase;
+    this.phaseTime = 0;
+  }
+
+  private doReveal(): void {
+    this.setPhase("reveal");
+    this.sound.flip();
+    this.layoutHands(false);
+    const names: string[] = [];
+    for (let s = 0; s < 4; s++) {
+      const c = this.choices[s];
+      if (!c) continue;
+      names.push(`${SEAT_NAMES[s]}: ${c.intent === "HOLD" ? "HOLD" : c.intent} / ${c.card}`);
+    }
+    this.hud.banners("REVEAL", names.join("   ·   "), 1.5);
+  }
+
+  private doResolve(): void {
+    const before = this.state.bombSeat;
+    const res = resolveBeat(this.state, this.choices);
+    this.resolution = res;
+    this.travelIndex = 0;
+    this.setPhase("resolve");
+
+    if (res.flipped) {
+      this.chevronPulse = 1;
+      this.orientChevrons();
+    }
+    this.hud.log(`<b>${res.headline}.</b> ${res.detail}`);
+
+    if (res.held) {
+      this.sound.thud();
+      this.characters[before]!.flinch(0.5);
+    } else {
+      this.sound.whoosh();
+    }
+
+    // Everyone reacts to what just came out.
+    for (let s = 0; s < 4; s++) {
+      if (!this.state.players[s]!.alive) continue;
+      if (res.deflected.includes(s)) this.characters[s]!.flinch(1);
+      if (s === res.finalSeat) this.characters[s]!.flinch(0.8);
+    }
+  }
+
+  private settleBeat(): void {
+    const res = this.resolution;
+    if (!res) return;
+    this.state.bombSeat = res.finalSeat;
+    refillHands(this.state, this.choices, res);
+    this.state.beat++;
+    this.state.drain += 0.055;
+    this.chooseLimit = Math.max(4.6, 9 - this.state.beat * 0.32);
+
+    for (let s = 0; s < 4; s++) {
+      const rig = this.seats[s]!;
+      rig.playing = -1;
+      const hand = this.state.players[s]!.hand;
+      for (let i = 0; i < rig.hand.length; i++) rig.hand[i]!.setType(hand[i] ?? "SHOVE");
+    }
+
+    this.choices = [null, null, null, null];
+    this.resolution = null;
+    this.intent = null;
+    this.selectedCard = 0;
+    this.locked = false;
+    this.setPhase("choose");
+    this.layoutHands(false);
+    this.syncChoiceHud();
+  }
+
+  private detonate(): void {
+    const seat = this.state.bombSeat;
+    this.setPhase("boom");
+    this.shake = 1;
+    this.flash = 1;
+    this.sound.boom();
+    this.lights.blastLight.intensity = 40;
+    this.bomb.setVisible(false);
+    eliminate(this.state, seat);
+    this.characters[seat]!.setEliminated(true);
+    this.characters[seat]!.setTension(0);
+    for (let s = 0; s < 4; s++) if (s !== seat) this.characters[s]!.flinch(1.4);
+    const mark = this.scorch[seat];
+    if (mark) (mark.material as THREE.MeshStandardMaterial).opacity = 0.9;
+
+    this.hud.log(`<b>${SEAT_NAMES[seat]} is out.</b> The dial never says exactly when.`);
+    const alive = survivors(this.state);
+    if (alive.length <= 1) {
+      this.gameOver = true;
+      const winner = alive[0];
+      const youWon = winner?.id === 0;
+      this.hud.persistentBanner(
+        youWon ? "YOU WALK OUT" : `${winner ? winner.name : "NOBODY"} WALKS OUT`,
+        youWon ? "press R for another round" : "press R for another round",
+      );
+      this.sound.sting(youWon);
+    } else {
+      this.hud.banners("BOOM", `${SEAT_NAMES[seat]} took it. ${alive.length} left.`, 2.2);
+    }
+  }
+
+  private relight(): void {
+    const alive = survivors(this.state);
+    if (alive.length <= 1) return;
+    const seconds = Math.max(14, 30 - this.state.beat * 0.6);
+    const band = Math.min(0.34, 0.22 + this.state.beat * 0.006);
+    lightFuse(this.state, seconds, band);
+    this.state.drain = 1 + this.state.beat * 0.02;
+    this.bomb.setDangerBand(0, band);
+    this.bomb.setVisible(true);
+    // Hand it to whoever is nearest the vacated seat, going with the flow.
+    let seat = this.state.bombSeat;
+    for (let i = 0; i < 4 && !this.state.players[seat]!.alive; i++) {
+      seat = (seat + this.state.flow + 4) % 4;
+    }
+    this.state.bombSeat = seat;
+    this.placeBombInstantly();
+    this.hud.log(`New charge. It starts with <b>${SEAT_NAMES[seat]}</b>.`);
+    this.choices = [null, null, null, null];
+    this.resolution = null;
+    this.intent = null;
+    this.selectedCard = 0;
+    this.locked = false;
+    for (let s = 0; s < 4; s++) {
+      const rig = this.seats[s]!;
+      rig.playing = -1;
+      const hand = this.state.players[s]!.hand;
+      for (let i = 0; i < rig.hand.length; i++) rig.hand[i]!.setType(hand[i] ?? "SHOVE");
+    }
+    this.setPhase("choose");
+    this.layoutHands(false);
+    this.syncChoiceHud();
+  }
+
+  restart(): void {
+    this.state = createGame(SEAT_NAMES, mulberry32(Math.floor(Math.random() * 1e9)));
+    this.gameOver = false;
+    this.hud.clearLog();
+    this.hud.hideBanner();
+    this.hud.buildSeats(this.state);
+    for (let s = 0; s < 4; s++) {
+      this.characters[s]!.setEliminated(false);
+      const mark = this.scorch[s];
+      if (mark) (mark.material as THREE.MeshStandardMaterial).opacity = 0;
+      const rig = this.seats[s]!;
+      rig.playing = -1;
+      const hand = this.state.players[s]!.hand;
+      for (let i = 0; i < rig.hand.length; i++) rig.hand[i]!.setType(hand[i] ?? "SHOVE");
+    }
+    this.bomb.setVisible(true);
+    this.bomb.setDangerBand(0, this.state.band);
+    this.chooseLimit = 9;
+    this.intent = null;
+    this.selectedCard = 0;
+    this.locked = false;
+    this.choices = [null, null, null, null];
+    this.resolution = null;
+    this.placeBombInstantly();
+    this.orientChevrons();
+    this.setPhase("choose");
+    this.layoutHands(true);
+    this.syncChoiceHud();
+    this.hud.log("Fresh deck. Fresh charge.");
+  }
+
+  /* ------------------------------------------------------------- staging */
+
+  private layoutHands(instant: boolean): void {
+    for (let s = 0; s < 4; s++) {
+      const rig = this.seats[s]!;
+      const alive = this.state.players[s]!.alive;
+      for (let i = 0; i < rig.hand.length; i++) {
+        const card = rig.hand[i]!;
+        const played = rig.playing === i;
+        const t = card.target;
+        card.group.visible = alive;
+
+        if (played) {
+          const faceUp = this.phase === "reveal" || this.phase === "resolve";
+          // Face-up cards tip toward the camera so the table can be read at a
+          // glance instead of being four white rectangles.
+          t.position.set(0, TABLE.top + (faceUp ? 0.055 : 0.004), PLAY_Z - (faceUp ? 0.02 : 0));
+          t.rotation.set(-Math.PI / 2 + (faceUp ? 0.42 : 0), faceUp ? 0 : Math.PI, 0);
+          t.scale = faceUp ? 1.25 : 1;
+          card.setHighlight(faceUp ? 0.3 : 0.12);
+        } else if (s === 0) {
+          // The player's own hand: held up over the rail, facing the camera.
+          const chosen = i === this.selectedCard && !this.locked;
+          const x = (i === 0 ? -1 : 1) * HAND_X;
+          t.position.set(
+            x * (chosen ? 0.92 : 1),
+            TABLE.top + (chosen ? 0.2 : 0.13),
+            HAND_Z + (chosen ? 0.44 : 0.5),
+          );
+          t.rotation.set(
+            -0.86 + (chosen ? -0.14 : 0),
+            (i === 0 ? 1 : -1) * 0.3,
+            (i === 0 ? 1 : -1) * -0.07,
+          );
+          t.scale = chosen ? 1.92 : 1.72;
+              card.setHighlight(chosen ? 0.46 : 0.24);
+        } else {
+          const x = (i === 0 ? -1 : 1) * 0.105;
+          t.position.set(x, TABLE.top + 0.003 + i * 0.0006, HAND_Z - 0.06);
+          t.rotation.set(-Math.PI / 2, Math.PI, (i === 0 ? 1 : -1) * 0.12);
+          t.scale = 0.92;
+        }
+
+        if (instant) {
+          card.group.position.copy(t.position);
+          card.group.rotation.copy(t.rotation);
+          card.group.scale.setScalar(t.scale);
+        }
+      }
+    }
+  }
+
+  private orientChevrons(): void {
+    for (const c of this.table.chevrons) {
+      c.rotation.z = this.state.flow === 1 ? 0 : Math.PI;
+    }
+  }
+
+  private placeBombInstantly(): void {
+    const p = bombRest(this.state.bombSeat);
+    this.bomb.group.position.copy(p);
+    this.bombFrom.copy(p);
+    this.bombTo.copy(p);
+    this.bombT = 1;
+  }
+
+  private updateAimRing(): void {
+    const show = this.phase === "choose" && this.intent !== null && this.state.players[0]!.alive;
+    this.aimRing.visible = show;
+    if (!show || !this.intent) return;
+    if (this.intent === "REVERSE") {
+      this.aimRing.position.set(0, TABLE.top + 0.006, 0);
+      this.aimRing.scale.setScalar(2.9);
+      this.aimRingMat.emissive.setHex(0x8ab4ff);
+    } else {
+      let seat = 0;
+      if (this.intent === "LEFT") seat = 3;
+      else if (this.intent === "RIGHT") seat = 1;
+      const a = seatAngle(seat);
+      const r = 0.72;
+      this.aimRing.position.set(Math.sin(a) * r, TABLE.top + 0.006, Math.cos(a) * r);
+      this.aimRing.scale.setScalar(1);
+      this.aimRingMat.emissive.setHex(this.intent === "HOLD" ? 0xff7a3a : 0xffb060);
+    }
+  }
+
+  /* -------------------------------------------------------------- update */
+
+  update(dt: number, elapsed: number): void {
+    const state = this.state;
+    const alive = survivors(state);
+
+    /* --------------------------------------------------------- the fuse */
+    const burning =
+      !this.gameOver &&
+      this.phase !== "boom" &&
+      alive.length > 1;
+    if (burning) {
+      state.fuse -= dt * state.drain * this.beatFuseMultiplier();
+      if (!isLive(state)) {
+        state.fuse = Math.max(0, state.detonateAt);
+        this.detonate();
+      }
+    }
+
+    const heat = tension(state);
+    this.sound.tick(dt, 1.4 + heat * 7);
+
+    /* ------------------------------------------------------ phase clock */
+    this.phaseTime += dt;
+    switch (this.phase) {
+      case "choose":
+        if (this.phaseTime > this.chooseLimit && state.players[0]!.alive) {
+          this.intent = this.intent ?? (["LEFT", "RIGHT", "HOLD"] as Intent[])[
+            Math.floor(state.rng() * 3)
+          ]!;
+          this.hud.banners("TIME", "the table waits for nobody", 1.1);
+          this.lockIn();
+        } else if (!state.players[0]!.alive && this.phaseTime > 0.9) {
+          this.intent = "HOLD";
+          this.lockIn();
+        }
+        break;
+      case "locked":
+        if (this.phaseTime > 0.72) this.doReveal();
+        break;
+      case "reveal":
+        if (this.phaseTime > 1.35) this.doResolve();
+        break;
+      case "resolve":
+        this.advanceTravel();
+        break;
+      case "boom":
+        if (this.phaseTime > 2.6) {
+          if (this.gameOver) this.setPhase("over");
+          else this.relight();
+        }
+        break;
+      case "over":
+        break;
+    }
+
+    /* ------------------------------------------------------ bomb motion */
+    if (this.bombT < 1) {
+      this.bombT = Math.min(1, this.bombT + dt * 2.1);
+      const t = this.bombT;
+      const ease = t * t * (3 - 2 * t);
+      this.bomb.group.position.lerpVectors(this.bombFrom, this.bombTo, ease);
+      this.bomb.group.position.y += Math.sin(ease * Math.PI) * 0.42;
+      this.bomb.group.rotation.x += this.bombSpin.x * dt;
+      this.bomb.group.rotation.y += this.bombSpin.y * dt;
+      this.bomb.group.rotation.z += this.bombSpin.z * dt;
+    } else {
+      this.bomb.group.rotation.x = damp(this.bomb.group.rotation.x, 0, 4, dt);
+      this.bomb.group.rotation.z = damp(this.bomb.group.rotation.z, 0, 4, dt);
+      this.bomb.group.rotation.y += dt * 0.12;
+      const rest = bombRest(state.bombSeat);
+      this.bomb.group.position.x = damp(this.bomb.group.position.x, rest.x, 8, dt);
+      this.bomb.group.position.z = damp(this.bomb.group.position.z, rest.z, 8, dt);
+      this.bomb.group.position.y = damp(
+        this.bomb.group.position.y,
+        rest.y + Math.sin(elapsed * 2.1) * 0.004,
+        8,
+        dt,
+      );
+    }
+    this.bomb.update(dt, fuseFraction(state), heat, elapsed);
+
+    /* ------------------------------------------------------------ lights */
+    this.lights.fuseLight.position.copy(this.bomb.group.position);
+    this.lights.fuseLight.position.y += 0.24;
+    this.lights.fuseLight.intensity = (0.7 + heat * 3.4) * (this.phase === "boom" ? 0 : 1);
+    this.lights.blastLight.intensity = damp(this.lights.blastLight.intensity, 0, 3.2, dt);
+    if (this.lights.blastLight.intensity > 0.02) {
+      this.lights.blastLight.position.copy(this.bomb.group.position);
+    }
+    this.lights.lamp.intensity = 26 * (1 + Math.sin(elapsed * 7.3) * 0.012) - heat * 3;
+
+    /* ------------------------------------------------------- characters */
+    for (let s = 0; s < 4; s++) {
+      const c = this.characters[s]!;
+      if (this.phase === "choose" || this.phase === "locked") {
+        const holding = state.bombSeat === s && state.players[s]!.alive;
+        c.setTension(holding ? 0.35 + heat * 0.65 : heat * 0.28);
+      }
+      c.update(dt, elapsed);
+    }
+
+    /* ------------------------------------------------------------- cards */
+    for (const rig of this.seats) for (const card of rig.hand) card.update(dt);
+
+    /* -------------------------------------------------------- chevrons */
+    this.chevronPulse = damp(this.chevronPulse, 0, 2.2, dt);
+    const travel = (elapsed * (0.35 + heat * 0.5) * state.flow) % 1;
+    for (let i = 0; i < this.table.chevrons.length; i++) {
+      const phase = i / this.table.chevrons.length;
+      const d = Math.abs(((phase - travel + 1.5) % 1) - 0.5) * 2;
+      const glow = Math.pow(1 - d, 6);
+      this.table.chevrons[i]!.position.y = TABLE.top + 0.004 + glow * 0.002;
+    }
+    this.table.chevronMaterial.emissiveIntensity = 0.16 + heat * 0.4 + this.chevronPulse * 1.4;
+
+    this.updateAimRing();
+    if (this.aimRing.visible) {
+      this.aimRingMat.emissiveIntensity = 1.1 + Math.sin(elapsed * 5.5) * 0.45;
+    }
+
+    /* ---------------------------------------------------------- camera */
+    this.shake = damp(this.shake, 0, 2.6, dt);
+    this.flash = damp(this.flash, 0, 4.5, dt);
+    const targetPush =
+      this.phase === "reveal" ? 0.3 : this.phase === "boom" ? 0.16 : heat * 0.14;
+    this.camPush = damp(this.camPush, targetPush, 2.4, dt);
+
+    const sway = new THREE.Vector3(
+      Math.sin(elapsed * 0.31) * 0.035,
+      Math.sin(elapsed * 0.23 + 1) * 0.02,
+      Math.cos(elapsed * 0.19) * 0.025,
+    );
+    const shakeVec = new THREE.Vector3(
+      (Math.random() - 0.5) * this.shake * 0.16,
+      (Math.random() - 0.5) * this.shake * 0.13,
+      (Math.random() - 0.5) * this.shake * 0.1,
+    );
+    const dolly = this.camBase.clone().lerp(this.camLook, this.camPush * 0.16);
+    this.stage.camera.position.copy(dolly).add(sway).add(shakeVec);
+    this.stage.camera.lookAt(
+      this.camLook.x + shakeVec.x * 0.4,
+      this.camLook.y + shakeVec.y * 0.4,
+      this.camLook.z,
+    );
+    this.stage.setFlash(this.flash * 0.85);
+
+    /* -------------------------------------------------------------- hud */
+    this.hud.update(state, dt, this.phase);
+  }
+
+  private beatFuseMultiplier(): number {
+    if (this.phase === "resolve" || this.phase === "reveal") {
+      return this.resolution?.fuseMultiplier ?? 1;
+    }
+    return 1;
+  }
+
+  /** Walk the bomb along the resolved path, one hop at a time. */
+  private advanceTravel(): void {
+    const res = this.resolution;
+    if (!res) return;
+    if (res.held) {
+      if (this.phaseTime > 0.5) this.settleBeat();
+      return;
+    }
+    if (this.bombT >= 1) {
+      this.travelIndex++;
+      if (this.travelIndex >= res.travel.length) {
+        if (this.phaseTime > 0.28) this.settleBeat();
+        return;
+      }
+      const to = res.travel[this.travelIndex]!;
+      this.bombFrom.copy(this.bomb.group.position);
+      this.bombTo.copy(bombRest(to));
+      this.bombT = 0;
+      this.bombSpin.set(
+        (Math.random() - 0.5) * 7,
+        (Math.random() - 0.5) * 5,
+        (Math.random() - 0.5) * 7,
+      );
+      if (this.travelIndex > 1) this.sound.brace();
+      else this.sound.whoosh();
+    }
+  }
+}

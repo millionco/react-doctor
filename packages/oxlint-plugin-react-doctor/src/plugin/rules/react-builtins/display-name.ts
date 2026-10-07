@@ -1,3 +1,5 @@
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -8,6 +10,73 @@ import { isEs5Component } from "../../utils/is-es5-component.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
+import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
+import { functionReturnsDisplayNameRenderOutput } from "../../utils/function-returns-display-name-render-output.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
+import { walkAst } from "../../utils/walk-ast.js";
+
+const hasOnlyNullArgumentRenderPaths = (
+  functionNode: EsTreeNodeOfType<"ArrowFunctionExpression" | "FunctionExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const parameter = functionNode.params[0];
+  if (!isNodeOfType(parameter, "Identifier")) return false;
+  const parameterSymbol = scopes.symbolFor(parameter);
+  if (!parameterSymbol || parameterSymbol.references.some((reference) => reference.flag !== "read"))
+    return false;
+  const requiresNullArgument = (expression: EsTreeNode): boolean => {
+    const test = stripParenExpression(expression);
+    if (isNodeOfType(test, "LogicalExpression")) {
+      if (test.operator === "&&")
+        return requiresNullArgument(test.left) || requiresNullArgument(test.right);
+      if (test.operator === "||")
+        return requiresNullArgument(test.left) && requiresNullArgument(test.right);
+    }
+    if (!isNodeOfType(test, "BinaryExpression") || test.operator !== "===") return false;
+    const left = stripParenExpression(test.left);
+    const right = stripParenExpression(test.right);
+    return (
+      (isNodeOfType(left, "Identifier") &&
+        scopes.symbolFor(left)?.id === parameterSymbol.id &&
+        isNodeOfType(right, "Literal") &&
+        right.value === null) ||
+      (isNodeOfType(right, "Identifier") &&
+        scopes.symbolFor(right)?.id === parameterSymbol.id &&
+        isNodeOfType(left, "Literal") &&
+        left.value === null)
+    );
+  };
+  let foundRender = false;
+  let allRendersRequireNull = true;
+  walkAst(functionNode.body, (node) => {
+    if (!allRendersRequireNull) return false;
+    if (
+      !isNodeOfType(node, "JSXElement") &&
+      !isNodeOfType(node, "JSXFragment") &&
+      !isCreateElementCall(node)
+    )
+      return;
+    foundRender = true;
+    let current: EsTreeNode = node;
+    while (current.parent && current.parent !== functionNode) {
+      const parent = current.parent;
+      if (
+        ((isNodeOfType(parent, "IfStatement") || isNodeOfType(parent, "ConditionalExpression")) &&
+          parent.consequent === current &&
+          requiresNullArgument(parent.test)) ||
+        (isNodeOfType(parent, "LogicalExpression") &&
+          parent.operator === "&&" &&
+          parent.right === current &&
+          requiresNullArgument(parent.left))
+      )
+        return false;
+      current = parent;
+    }
+    allRendersRequireNull = false;
+    return false;
+  });
+  return foundRender && allRendersRequireNull;
+};
 
 const MESSAGE =
   "This component shows up as Anonymous in React DevTools because it has no `displayName`.";
@@ -91,6 +160,21 @@ const containsJsx = (root: EsTreeNode): boolean => {
   visit(root);
   containsJsxCache.set(root, found);
   return found;
+};
+
+const containsBareCreateElementCall = (root: EsTreeNode): boolean => {
+  let didFindCreateElementCall = false;
+  walkAst(root, (node) => {
+    if (
+      isNodeOfType(node, "CallExpression") &&
+      isNodeOfType(node.callee, "Identifier") &&
+      node.callee.name === "createElement"
+    ) {
+      didFindCreateElementCall = true;
+      return false;
+    }
+  });
+  return didFindCreateElementCall;
 };
 
 const getStaticMemberName = (node: EsTreeNode): string | null => {
@@ -377,6 +461,7 @@ export const displayName = defineRule({
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const ignoreNamed = !settings.ignoreTranspilerName;
 
     const reportAt = (node: EsTreeNode): void => {
@@ -406,6 +491,23 @@ export const displayName = defineRule({
       },
       FunctionExpression(node: EsTreeNodeOfType<"FunctionExpression">) {
         if (!containsJsx(node)) return;
+        if (
+          shouldUseCuratedBehavior &&
+          !functionReturnsDisplayNameRenderOutput(node, context.scopes, context.cfg)
+        ) {
+          return;
+        }
+        if (!shouldUseCuratedBehavior && !node.id && isModuleExportsAssignment(node)) {
+          reportAt(node);
+          return;
+        }
+        if (
+          !shouldUseCuratedBehavior &&
+          !functionContainsReactRenderOutput(node, context.scopes, context.cfg) &&
+          !containsBareCreateElementCall(node)
+        ) {
+          return;
+        }
         if (node.id && isReactComponentName(node.id.name) && ignoreNamed) return;
         if (isNodeOfType(node.parent, "Property") && node.parent.method) {
           const key = node.parent.key as EsTreeNode;
@@ -432,11 +534,39 @@ export const displayName = defineRule({
           return;
         }
         if (isNodeOfType(node.parent, "ReturnStatement") && !node.id) {
+          if (shouldUseCuratedBehavior && hasOnlyNullArgumentRenderPaths(node, context.scopes))
+            return;
           reportAt(node as EsTreeNode);
         }
       },
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
-        if (!containsJsx(node)) return;
+        if (
+          shouldUseCuratedBehavior &&
+          (isNodeOfType(node.parent, "ReturnStatement") ||
+            isNodeOfType(node.parent, "ArrowFunctionExpression")) &&
+          hasOnlyNullArgumentRenderPaths(node, context.scopes)
+        )
+          return;
+        const isDefaultExport = isNodeOfType(node.parent, "ExportDefaultDeclaration");
+        const containsCreateElementCall = containsJsx(node);
+        if (!containsCreateElementCall && !isDefaultExport) return;
+        if (
+          shouldUseCuratedBehavior &&
+          !functionReturnsDisplayNameRenderOutput(node, context.scopes, context.cfg)
+        ) {
+          return;
+        }
+        if (!shouldUseCuratedBehavior && isModuleExportsAssignment(node)) {
+          reportAt(node);
+          return;
+        }
+        if (
+          !shouldUseCuratedBehavior &&
+          !functionContainsReactRenderOutput(node, context.scopes, context.cfg) &&
+          !containsBareCreateElementCall(node)
+        ) {
+          return;
+        }
         if (
           isNodeOfType(node.parent, "ArrowFunctionExpression") ||
           isNodeOfType(node.parent, "ReturnStatement")
@@ -472,6 +602,16 @@ export const displayName = defineRule({
           }
           parent = parent.parent ?? null;
         }
+      },
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
+        if (shouldUseCuratedBehavior) return;
+        if (!isNodeOfType(node.parent, "ExportDefaultDeclaration")) return;
+        if (!functionContainsReactRenderOutput(node, context.scopes, context.cfg)) return;
+        if (node.id) {
+          const programRoot = findProgramRoot(node);
+          if (programRoot && hasDisplayNameAssignment(node.id.name, programRoot)) return;
+        }
+        reportAt(node.id ?? node);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (

@@ -51,6 +51,7 @@ export const resolveInspectOptions = (
     concurrentScan: inputOptions.concurrentScan ?? false,
     concurrency: inputOptions.concurrency,
     maxDurationMs: inputOptions.maxDurationMs ?? null,
+    baselineReport: inputOptions.baselineReport ?? null,
     baseline: inputOptions.baseline ?? null,
     changedLineRanges: inputOptions.changedLineRanges ?? null,
     supplyChainManifestChanged: inputOptions.supplyChainManifestChanged ?? false,
@@ -58,5 +59,6 @@ export const resolveInspectOptions = (
     retainExcludedProjectDeadCodeDiagnostics:
       inputOptions.retainExcludedProjectDeadCodeDiagnostics ?? false,
     precomputedSourceFileCount: inputOptions.precomputedSourceFileCount,
+    precomputedSourceFiles: inputOptions.precomputedSourceFiles,
   };
 };

@@ -140,6 +140,7 @@ const isMemoIdentityUnused = (
 
 export const noUsememoSimpleExpression = defineRule({
   id: "no-usememo-simple-expression",
+  defaultEnabled: false,
   title: "useMemo on a cheap value",
   tags: ["test-noise"],
   severity: "warn",

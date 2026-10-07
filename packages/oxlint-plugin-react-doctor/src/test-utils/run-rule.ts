@@ -8,6 +8,8 @@ import type { ReportDescriptor } from "../plugin/utils/report-descriptor.js";
 import type { Rule } from "../plugin/utils/rule.js";
 import type { RuleContext } from "../plugin/utils/rule-context.js";
 import type { RuleVisitors } from "../plugin/utils/rule-visitors.js";
+import { getNodeEndIndex } from "../plugin/utils/get-node-end-index.js";
+import { getNodeStartIndex } from "../plugin/utils/get-node-start-index.js";
 import { analyzeScopes } from "../plugin/semantic/scope-analysis.js";
 import type { ScopeAnalysis } from "../plugin/semantic/scope-analysis.js";
 import { analyzeControlFlow } from "../plugin/semantic/control-flow-graph.js";
@@ -34,6 +36,20 @@ export interface RunRuleResult {
   diagnostics: RuleDiagnostic[];
   parseErrors: ReadonlyArray<{ message: string }>;
 }
+
+const withCuratedPortBehavior = (
+  settings: Readonly<Record<string, unknown>> | undefined,
+): Readonly<Record<string, unknown>> => {
+  const reactDoctorSettings = settings?.["react-doctor"];
+  const mergedReactDoctorSettings =
+    typeof reactDoctorSettings === "object" && reactDoctorSettings !== null
+      ? {
+          portedRuleMode: Reflect.get(reactDoctorSettings, "portedRuleMode") ?? "curated",
+          ...reactDoctorSettings,
+        }
+      : { portedRuleMode: "curated" };
+  return { ...settings, "react-doctor": mergedReactDoctorSettings };
+};
 
 const dispatchTreeWalk = (root: EsTreeNode, visitors: RuleVisitors): void => {
   const visit = (node: EsTreeNode): void => {
@@ -92,7 +108,16 @@ export const runRuleOnParsedFixture = (
     // `in` (not `?? "fixture.tsx"`) so a test can pass `{ filename: undefined }`
     // to exercise a host with no filename.
     filename: "filename" in options ? options.filename : "fixture.tsx",
-    settings: options.settings,
+    settings: withCuratedPortBehavior(options.settings),
+    sourceCode: {
+      ast: parsed.program,
+      getText: (node) => {
+        if (!node) return code;
+        const startIndex = getNodeStartIndex(node);
+        const endIndex = getNodeEndIndex(node);
+        return startIndex === -1 || endIndex === -1 ? code : code.slice(startIndex, endIndex);
+      },
+    },
     get scopes() {
       scopes ??= analyzeScopes(parsed.program);
       return scopes;

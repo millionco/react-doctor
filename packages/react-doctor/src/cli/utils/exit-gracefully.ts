@@ -5,7 +5,7 @@ import { preserveActiveTuiRendererOutput } from "./active-tui-renderer.js";
 import { buildFooterLinkLines } from "./build-footer-link-lines.js";
 import { buildSectionDivider } from "./build-section-divider.js";
 import { SIGINT_EXIT_CODE } from "./constants.js";
-import { isJsonModeActive, writeJsonErrorReport } from "./json-mode.js";
+import { isJsonModeActive, writeJsonCancellationReport } from "./json-mode.js";
 
 let didStartExiting = false;
 
@@ -14,15 +14,16 @@ export const exitGracefully = (): void => {
   // of printing the cancellation footer twice.
   if (didStartExiting) return process.exit(SIGINT_EXIT_CODE);
   didStartExiting = true;
+  let activeScanCleanup = Promise.resolve();
   try {
-    activeScanAbortRegistry.abortAll();
+    activeScanCleanup = activeScanAbortRegistry.abortAll();
   } catch {}
   try {
     preserveActiveTuiRendererOutput();
   } catch {}
   try {
     if (isJsonModeActive()) {
-      writeJsonErrorReport(new Error("Scan cancelled by user (SIGINT/SIGTERM)"));
+      writeJsonCancellationReport();
     } else {
       // HACK: use raw console.log instead of the Effect-based cliLogger
       // because Effect.runSync throws when called from a SIGINT handler
@@ -41,7 +42,7 @@ export const exitGracefully = (): void => {
   } catch {}
   // HACK: process.exit drops buffered telemetry (e.g. tui.cancelled), so run
   // one bounded flush of both backends after printing and before terminating.
-  void Promise.all([flushSentry(), shutdownTelemetry()]).finally(() =>
+  void Promise.all([activeScanCleanup, flushSentry(), shutdownTelemetry()]).finally(() =>
     process.exit(SIGINT_EXIT_CODE),
   );
 };

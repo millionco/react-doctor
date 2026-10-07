@@ -1,0 +1,166 @@
+// rule: js-set-map-lookups
+// file-path: src/world/level.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit ffeb64ceef39d52b565a014865f26a4e5005e3511da43255debfbcb93ad585a3
+import * as THREE from "three";
+import { STRUCTURES, WORLD } from "../config";
+import { Building } from "./building";
+import { DebrisField } from "./debris";
+import { ParticleField } from "../gfx/dust";
+import { AudioDirector } from "../audio/audio";
+import { getMaterial } from "../gfx/materials";
+import { makeRng, rngRange } from "../core/rng";
+
+function buildLamp(seed: number): THREE.Group {
+  const group = new THREE.Group();
+  const poleMat = getMaterial("metal", seed, 1, 2);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3.2, 8), poleMat);
+  pole.position.y = 1.6;
+  pole.castShadow = true;
+  group.add(pole);
+  const glassMat = getMaterial("glass", seed + 1, 1, 1);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), glassMat);
+  lamp.position.y = 3.25;
+  group.add(lamp);
+  const light = new THREE.PointLight(0xffcf8a, 1.1, 9, 2);
+  light.position.y = 3.25;
+  group.add(light);
+  return group;
+}
+
+function buildCorridorMarker(seed: number): THREE.Mesh {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, -1.1);
+  shape.lineTo(0.55, 0);
+  shape.lineTo(0.2, 0);
+  shape.lineTo(0.2, 1.1);
+  shape.lineTo(-0.2, 1.1);
+  shape.lineTo(-0.2, 0);
+  shape.lineTo(-0.55, 0);
+  shape.closePath();
+  const geo = new THREE.ShapeGeometry(shape);
+  geo.rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x6be6ff,
+    transparent: true,
+    opacity: 0.55,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.y = 0.05;
+  mesh.scale.setScalar(1.8);
+  void seed;
+  return mesh;
+}
+
+export class Level {
+  readonly buildings: Building[] = [];
+  readonly hunterSpawnPoints: THREE.Vector3[] = [];
+  readonly corridorMarkers: { mesh: THREE.Mesh; corridor: "north" | "south" }[] = [];
+  corridorNorthOpen = false;
+  corridorSouthOpen = false;
+
+  constructor(
+    private readonly scene: THREE.Scene,
+    debris: DebrisField,
+    dust: ParticleField,
+    audio: AudioDirector,
+  ) {
+    const groundMat = getMaterial("pavement", 1, WORLD.groundSize / 4, WORLD.groundSize / 4);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(WORLD.groundSize, WORLD.groundSize), groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    let seed = 100;
+    for (const spec of STRUCTURES) {
+      const building = new Building(scene, debris, dust, audio, spec, seed);
+      this.buildings.push(building);
+      seed += 2000;
+      if (spec.corridor) {
+        const marker = buildCorridorMarker(seed);
+        const dir = new THREE.Vector2(spec.position[0], spec.position[2]).normalize();
+        const yaw = Math.atan2(dir.x, dir.y);
+        marker.position.set(spec.position[0] * 0.55, 0.05, spec.position[2] * 0.55);
+        marker.rotation.y = yaw + Math.PI;
+        scene.add(marker);
+        this.corridorMarkers.push({ mesh: marker, corridor: spec.corridor });
+      }
+    }
+
+    const rng = makeRng(777);
+    const lampSpots: [number, number][] = [
+      [-10, -6],
+      [10, -6],
+      [-10, 10],
+      [10, 10],
+      [0, -2],
+      [0, 14],
+      [-30, 0],
+      [30, 0],
+    ];
+    for (const [x, z] of lampSpots) {
+      const lamp = buildLamp(300 + Math.floor(rng() * 900));
+      lamp.position.set(x, 0, z);
+      scene.add(lamp);
+    }
+
+    const bound = WORLD.groundSize / 2 - 6;
+    for (let i = 0; i < 10; i++) {
+      this.hunterSpawnPoints.push(new THREE.Vector3(rngRange(rng, -bound, bound), 0, rngRange(rng, -bound, bound)));
+    }
+  }
+
+  footprints(): THREE.Box3[] {
+    const boxes: THREE.Box3[] = [];
+    for (const b of this.buildings) if (b.footprint) boxes.push(b.footprint);
+    return boxes;
+  }
+
+  raycastTargets(): THREE.Object3D[] {
+    const list: THREE.Object3D[] = [];
+    for (const b of this.buildings) {
+      list.push(...b.getSupportMeshes());
+      list.push(...b.getGlassMeshes());
+    }
+    return list;
+  }
+
+  buildingForMesh(mesh: THREE.Object3D): Building | null {
+    for (const b of this.buildings) {
+      if (b.getSupportMeshes().includes(mesh) || b.getGlassMeshes().includes(mesh)) return b;
+    }
+    return null;
+  }
+
+  destroyedCount(): number {
+    return this.buildings.filter((b) => b.destroyed).length;
+  }
+
+  updateCorridors(): { northJustOpened: boolean; southJustOpened: boolean } {
+    let northJustOpened = false;
+    let southJustOpened = false;
+    for (const b of this.buildings) {
+      if (b.corridor === "north" && b.destroyed && !this.corridorNorthOpen) {
+        this.corridorNorthOpen = true;
+        northJustOpened = true;
+      }
+      if (b.corridor === "south" && b.destroyed && !this.corridorSouthOpen) {
+        this.corridorSouthOpen = true;
+        southJustOpened = true;
+      }
+    }
+    for (const marker of this.corridorMarkers) {
+      const open = marker.corridor === "north" ? this.corridorNorthOpen : this.corridorSouthOpen;
+      const mat = marker.mesh.material as THREE.MeshBasicMaterial;
+      mat.color.set(open ? 0x7dffb0 : 0x6be6ff);
+    }
+    return { northJustOpened, southJustOpened };
+  }
+
+  update(dt: number): void {
+    for (const b of this.buildings) b.update(dt);
+  }
+}

@@ -4,9 +4,8 @@ import { VERSION } from "./version.js";
 /**
  * Shared Sentry configuration resolution — release, environment, and tracing
  * sample rate — derived from `VERSION` and the standard `SENTRY_*` env
- * overrides. Lives apart from `instrument.ts` (the CLI's run-context-aware
- * init) so both the CLI and the editor language server can resolve identical
- * release/environment values without the LSP pulling in CLI run-context code.
+ * overrides. Lives apart from `instrument.ts` so this resolution remains
+ * independently testable.
  */
 
 /**

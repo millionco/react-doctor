@@ -141,6 +141,15 @@ describe("security-scan/postmessage-origin-risk — regressions", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it("stays silent on a short receiver with an explicit Worker parameter type", () => {
+    const findings = runScanRule(postmessageOriginRisk, {
+      relativePath: "src/textures.ts",
+      content:
+        "const connect = (w: Worker) => {\n  w.onmessage = (event) => applyTexture(event.data);\n};\n",
+    });
+    expect(findings).toHaveLength(0);
+  });
+
   it("stays silent on the _self worker-global polyfill handler (prism shape)", () => {
     const findings = runScanRule(postmessageOriginRisk, {
       relativePath: "src/lib/prism-runtime.js",

@@ -4,10 +4,15 @@ import * as Layer from "effect/Layer";
 import {
   AmbiguousProjectError,
   discoverProject as discoverProjectSync,
+  isProjectInfoCached,
   NoReactDependencyError,
   PackageJsonNotFoundError,
   ProjectNotFoundError,
 } from "../project-info/index.js";
+import {
+  takeReactCompilerDetection,
+  warmReactCompilerDetection,
+} from "../project-info/react-compiler-detection-client.js";
 import type { ProjectInfo } from "../types/index.js";
 import {
   AmbiguousProject,
@@ -46,6 +51,7 @@ export interface ProjectDiscoveryInput {
 export class Project extends Context.Service<
   Project,
   {
+    readonly warm: (directory: string) => Effect.Effect<void>;
     readonly discover: (
       input: ProjectDiscoveryInput,
     ) => Effect.Effect<ProjectInfo, ReactDoctorError>;
@@ -54,11 +60,22 @@ export class Project extends Context.Service<
   static readonly layerNode = Layer.succeed(
     Project,
     Project.of({
+      warm: (directory) => Effect.sync(() => warmReactCompilerDetection(directory)),
       discover: Effect.fn("Project.discover")((input: ProjectDiscoveryInput) =>
-        Effect.try({
-          try: () =>
-            discoverProjectSync(input.directory, { sourceFileCount: input.sourceFileCount }),
-          catch: (cause) => translateProjectInfoError(cause, input.directory),
+        Effect.gen(function* () {
+          const pendingDetection = takeReactCompilerDetection(input.directory);
+          const hasReactCompiler =
+            pendingDetection === null || isProjectInfoCached(input.directory)
+              ? undefined
+              : ((yield* Effect.promise(() => pendingDetection)) ?? undefined);
+          return yield* Effect.try({
+            try: () =>
+              discoverProjectSync(input.directory, {
+                sourceFileCount: input.sourceFileCount,
+                hasReactCompiler,
+              }),
+            catch: (cause) => translateProjectInfoError(cause, input.directory),
+          });
         }),
       ),
     }),
@@ -68,6 +85,7 @@ export class Project extends Context.Service<
     Layer.succeed(
       Project,
       Project.of({
+        warm: () => Effect.void,
         discover: () => Effect.succeed(projectInfo),
       }),
     );

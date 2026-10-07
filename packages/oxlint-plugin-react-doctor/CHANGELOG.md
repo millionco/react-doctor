@@ -1,5 +1,156 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.17
+
+## 0.9.16
+
+### Patch Changes
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid sequential-await warnings when local helpers read the same cache entry or delegate to the same imported operation with matching stable arguments. Follow bounded imported helpers to guarded, module-owned Map/WeakMap caches keyed by unchanged function parameters, with dependency fingerprints for cache invalidation. Preserve warnings for distinct imported operations sharing an input, and bound the diagnostic's parallelization advice.
+
+  Keep diagnostics when a helper computes a cache key with an unknown call or property read. These values can change between calls.
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize convergent last-item equality guards in no-self-updating-effect, including literal tail replacements and appends with tail-preserving deferred trims.
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid no-derived-state false positives when custom hooks return draft state setters through immutable aliases.
+
+- [#1846](https://github.com/millionco/react-doctor/pull/1846) [`6313667`](https://github.com/millionco/react-doctor/commit/631366777e01637f3c36b8a8c2ae8f19ba1060e8) Thanks [@aidenybai](https://github.com/aidenybai)! - Disable `require-pnpm-hardening` by default; enable it explicitly through `rules` when wanted. Describe await parallelization as a conditional opportunity, preserving ordering, resource limits, and error semantics. Recognize local Promise.all/allSettled collectors and stop describing async array callbacks as sequential.
+
+- [#1811](https://github.com/millionco/react-doctor/pull/1811) [`3242a81`](https://github.com/millionco/react-doctor/commit/3242a81b1596055da3207f735e873b4ce81fae13) Thanks [@skoshx](https://github.com/skoshx)! - Fix cache/navigation binding resolution and unsafe mutation parallelization (issue [#1810](https://github.com/millionco/react-doctor/issues/1810))
+
+  - **server-cache-with-object-literal**: Properly resolve React.cache imports through aliases and check all argument positions for fresh objects/arrays. Shadowed or non-React cache functions no longer trigger false positives.
+
+  - **nextjs-no-redirect-in-try-catch**: Recognize Next.js `unstable_rethrow(error)` as a valid error forwarding pattern, suppressing the diagnostic when the caught error is correctly rethrown.
+
+  - **server-sequential-independent-await** and **async-parallel**: Detect mutating HTTP requests (POST, PUT, PATCH, DELETE) and preserve their ordering, preventing incorrect parallelization suggestions for operations that must run sequentially.
+
+- [#1832](https://github.com/millionco/react-doctor/pull/1832) [`8a950f0`](https://github.com/millionco/react-doctor/commit/8a950f04477696e1dee1a509b3c25780f2837389) Thanks [@skoshx](https://github.com/skoshx)! - Fix `effect-needs-cleanup` false positive for React 19 callback ref cleanup returns. React 19 callback refs can return cleanup functions with the signature `(node: T | null) => void | (() => void)`. The rule now correctly handles cases where cleanup is only returned after resource usage (e.g., after `ResizeObserver.observe()`), allowing `void` returns on the null branch.
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Resolve local Hook-shaped object methods before applying React Hook namespace heuristics, including inspection dispatchers and useEffectEvent.
+  Preserve Hook diagnostics for unresolved invoked callbacks and bound Hook aliases, while resolving proven local callbacks at each call site.
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid display-name diagnostics for data factories that return descriptors containing JSX icons.
+
+  Preserve anonymous-component diagnostics for proven array maps and React useMemo callbacks that return render output.
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize effect-owned timer replacements that clear the previous handle before assignment and release the final timer during teardown.
+
+- [#1855](https://github.com/millionco/react-doctor/pull/1855) [`23d6160`](https://github.com/millionco/react-doctor/commit/23d6160174fb92e9a66583eec51562ebd6554147) Thanks [@aidenybai](https://github.com/aidenybai)! - Respect Solid JSX applicability in handler naming, DOM property, and module-scope helper advice while preserving React diagnostics in mixed-runtime files.
+
+## 0.9.15
+
+### Patch Changes
+
+- [#1837](https://github.com/millionco/react-doctor/pull/1837) [`83466a8`](https://github.com/millionco/react-doctor/commit/83466a8faae436c902e8f602e7363ea3e23354d5) Thanks [@skoshx](https://github.com/skoshx)! - Fix a stack overflow in `no-hydration-branch-on-browser-global` when resolving arguments across files. Track parameters and visited bindings by symbol identity so file-local numeric IDs cannot collide, and preserve cycle tracking across imported helpers.
+
+- [#1814](https://github.com/millionco/react-doctor/pull/1814) [`499a020`](https://github.com/millionco/react-doctor/commit/499a0208fca5c0422b713bdedf2b83fcc8e29d20) Thanks [@aidenybai](https://github.com/aidenybai)! - Stop `no-impure-state-updater` reporting callbacks handed to a helper that merely runs them (`run(async () => setValue("x"))`). Only a wrapper that forwards its parameter into a React setter's updater slot still counts as an updater.
+
+  Stop `nextjs-no-side-effect-in-get-handler` reporting `.set()` on a `Headers` object the helper constructs itself; mutations on stores the helper did not create still report.
+
+  Treat a ternary between static values (`hasHeader ? 0 : 16`) as static spacing in `rn-scrollview-dynamic-padding`, and reword its recommendation to name the matching `contentInset` edge and its iOS-only scope.
+
+  Accept a Zustand `store.setState(awaitedValue)` re-sync as a cache update in `query-mutation-missing-invalidation`; plain UI-state writes and non-store bindings still report.
+
+- [#1803](https://github.com/millionco/react-doctor/pull/1803) [`922616f`](https://github.com/millionco/react-doctor/commit/922616f08db7d48463b1495e4dbdb699fc3d7c34) Thanks [@aidenybai](https://github.com/aidenybai)! - Speed up scans without changing any diagnostic: lint batches are planned for every pooled oxlint worker, sidecar cache probes are interned into a per-bucket table (a 27 MB cache file becomes about 2.5 MB) and collected by the idle pool workers instead of the parent thread, source files are listed once per scan and shared with the duplicate-JSX pass, workers import the rule plugin while they boot, cross-file targets are parsed with oxc raw transfer, the whole-repo cache identity resolves its git calls concurrently, and TypeScript, conf, prompts and agent-install load on first use instead of at startup. The CLI now also starts the scan's git commands, the oxlint worker processes, and a React Compiler detection worker thread before its bundle finishes loading (only when no whole-repo cache can replay), parses tsconfig files as JSONC, and skips parsing build configs that cannot reference unplugin-auto-import, so the TypeScript compiler stays off the main thread's path to the first lint batch.
+
+## 0.9.14
+
+### Patch Changes
+
+- [#1783](https://github.com/millionco/react-doctor/pull/1783) [`1239043`](https://github.com/millionco/react-doctor/commit/1239043c65a55c1e1755087536fdb3f3f18c5734) Thanks [@aidenybai](https://github.com/aidenybai)! - Upgrade oxlint to 1.81 and oxc-parser to 0.148.
+
+- [#1762](https://github.com/millionco/react-doctor/pull/1762) [`ff7dd67`](https://github.com/millionco/react-doctor/commit/ff7dd679e8b9939a7dd8f828a530559a275836f7) Thanks [@skoshx](https://github.com/skoshx)! - Avoid `effect-needs-cleanup` diagnostics for owned chained timers, guarded post-await timers, and listeners released through an abort handler.
+
+- [#1763](https://github.com/millionco/react-doctor/pull/1763) [`0fbef9b`](https://github.com/millionco/react-doctor/commit/0fbef9b01162d301167be6ca6b5263714610f4e5) Thanks [@skoshx](https://github.com/skoshx)! - Fix an `async-defer-await` false positive on exact `live` and `isLive` liveness guards without exempting unrelated names that only contain the same text.
+
+- [#1761](https://github.com/millionco/react-doctor/pull/1761) [`6ac8b71`](https://github.com/millionco/react-doctor/commit/6ac8b71985123ce43f7219965e188bdecf11f7b8) Thanks [@skoshx](https://github.com/skoshx)! - Fix false positive in `nextjs-no-side-effect-in-get-handler` when locally-built `Headers` object is passed to a same-file helper that mutates it.
+
+  The rule now transfers locally-created response object safety through the exact same-file helper call. Calls that pass external state to the same helper remain reportable.
+
+  Fixes [#1757](https://github.com/millionco/react-doctor/issues/1757)
+
+- [#1781](https://github.com/millionco/react-doctor/pull/1781) [`dfcde10`](https://github.com/millionco/react-doctor/commit/dfcde1035aca34e7bb8fbeea8da78cead7cc20e9) Thanks [@aidenybai](https://github.com/aidenybai)! - Speed up large-repository scans: reuse warm oxlint worker processes across projects, overlap project discovery with linting, and trim rule hot paths (2.4–5.5x faster wall-clock on the large-repo corpus).
+
+- [#1801](https://github.com/millionco/react-doctor/pull/1801) [`fd64d26`](https://github.com/millionco/react-doctor/commit/fd64d2605481e241ada5561b01a635f2cd923b6a) Thanks [@aidenybai](https://github.com/aidenybai)! - Stop reporting local service `.use()` methods as React hooks. Preserve diagnostics for React namespace calls, including aliases and CommonJS imports.
+
+  Only recommend `setAnimationLoop` when a recursive animation frame callback renders through a known Three.js renderer. Leave independent 2D canvas and DOM loops alone, including files that also import Three.js.
+
+- [#1750](https://github.com/millionco/react-doctor/pull/1750) [`576d756`](https://github.com/millionco/react-doctor/commit/576d7563ffc7a6208cd77d3e3ec81d7f91bf6143) Thanks [@skoshx](https://github.com/skoshx)! - fix: respect "use no memo" directive in react-compiler-no-manual-memoization rule
+
+  When a function or module has a React Compiler opt-out directive, the compiler skips optimization, so manual memoization can still be necessary. The rule now respects `"use no memo"`, its `"use no forget"` alias, and local components passed to `memo`.
+
+  Fixes [#1749](https://github.com/millionco/react-doctor/issues/1749)
+
+- [#1760](https://github.com/millionco/react-doctor/pull/1760) [`2e3f6eb`](https://github.com/millionco/react-doctor/commit/2e3f6eb98a0eec411b3adf87d8205d3d654538ac) Thanks [@skoshx](https://github.com/skoshx)! - Exempt magic-link delivery mutations from `query-mutation-missing-invalidation` while keeping generic send, notification, and email mutations reportable.
+
+- [#1802](https://github.com/millionco/react-doctor/pull/1802) [`c9e3e15`](https://github.com/millionco/react-doctor/commit/c9e3e1590e06ed3b776af5f21dda38a060b9eef9) Thanks [@aidenybai](https://github.com/aidenybai)! - Retire 33 low-value rule IDs while keeping them registered as silent compatibility entries. Make 26 cleanup, migration, performance, and security-review rules opt-in. Existing rule configurations still load; default scans no longer report these recommendations as defects.
+
+## 0.9.13
+
+### Patch Changes
+
+- [#1651](https://github.com/millionco/react-doctor/pull/1651) [`ffc2d14`](https://github.com/millionco/react-doctor/commit/ffc2d142545167107b11908f004d764ac4e31399) Thanks [@aidenybai](https://github.com/aidenybai)! - Upgrade the Oxc parser and Oxlint runtime while preserving hard failures for broken JS plugins.
+
+- [#1652](https://github.com/millionco/react-doctor/pull/1652) [`f7efb7d`](https://github.com/millionco/react-doctor/commit/f7efb7d1c4fc564fa647a0dc26c48867da9166c9) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep ESLint presets on React Doctor's curated low-noise rule behavior and honor configured capabilities when a rule declares `disabledWhen`, including suppressing manual-memoization diagnostics for React Compiler projects.
+
+- [#1646](https://github.com/millionco/react-doctor/pull/1646) [`05ef989`](https://github.com/millionco/react-doctor/commit/05ef98926de787b01e817c8853101d6c31e2071a) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep the interactive score header intact in narrow split views and invalidate locally stale scan results when rule implementations change.
+
+  Report standalone Three.js render loops that use `requestAnimationFrame` instead of the renderer-managed `setAnimationLoop` API.
+
+  Include standalone Three.js, supported React framework, Remotion, and React Three Fiber ecosystem packages in automatic workspace project discovery.
+
+- [#1739](https://github.com/millionco/react-doctor/pull/1739) [`a04b933`](https://github.com/millionco/react-doctor/commit/a04b933c027f6addf4161ba0df1c11eb8922b879) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid `artifact-env-leak` false positives from vendored source-map content and intentionally public token names.
+
+- [#1730](https://github.com/millionco/react-doctor/pull/1730) [`adc3a91`](https://github.com/millionco/react-doctor/commit/adc3a9129190315263a5fa92bda7ea3e3e2ba94a) Thanks [@skoshx](https://github.com/skoshx)! - Fix `rn-no-raw-text` false positives in components that return only direct `<fbt>` or `<fbs>` elements.
+
+- [#1732](https://github.com/millionco/react-doctor/pull/1732) [`2c4560f`](https://github.com/millionco/react-doctor/commit/2c4560fc0abbf70f1574fe847402d320347d061e) Thanks [@skoshx](https://github.com/skoshx)! - Classify fragment returns that contain only translation elements and static text as text-producing components.
+
+- [#1723](https://github.com/millionco/react-doctor/pull/1723) [`e1d4c51`](https://github.com/millionco/react-doctor/commit/e1d4c51abfd9d15ec96f5001259c3e8f332f7d50) Thanks [@skoshx](https://github.com/skoshx)! - Prevent `rn-no-raw-text` reports for `<fbt>` content passed through verified React Native text wrappers.
+
+- [#1658](https://github.com/millionco/react-doctor/pull/1658) [`905607f`](https://github.com/millionco/react-doctor/commit/905607f7fc2240304cbad5f41d3ad496eab06b17) Thanks [@skoshx](https://github.com/skoshx)! - Prevent stack overflows while resolving deeply nested local function references. React Doctor now stops following a reference chain after a bounded number of steps instead of aborting the lint scan.
+
+- [#1717](https://github.com/millionco/react-doctor/pull/1717) [`17eeeb5`](https://github.com/millionco/react-doctor/commit/17eeeb5367177e6a3ba814ca8d107d009addc9dc) Thanks [@skoshx](https://github.com/skoshx)! - Fix a `rerender-state-only-in-handlers` false positive when a member hook consumes state.
+
+- [#1706](https://github.com/millionco/react-doctor/pull/1706) [`afa1780`](https://github.com/millionco/react-doctor/commit/afa1780254bfd72175e6d0025841560582d32ad1) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid false positives for loading resets in `finally`, animation duration utilities, and string message substring searches.
+
+- [#1734](https://github.com/millionco/react-doctor/pull/1734) [`025d69d`](https://github.com/millionco/react-doctor/commit/025d69d701581092632caa87ea59e5a719094ab9) Thanks [@skoshx](https://github.com/skoshx)! - Fix `js-set-map-lookups` false positives for substring checks on values returned by the global `String` constructor.
+
+- [#1725](https://github.com/millionco/react-doctor/pull/1725) [`0f59a3b`](https://github.com/millionco/react-doctor/commit/0f59a3b84dd5233f6bcf5e4a621da6699c432405) Thanks [@aidenybai](https://github.com/aidenybai)! - Run `test-noise` rules in ambiguous product-named directories such as `tools`, `demo`, and `migrations` when they are below a recognized application source root. Explicit test surfaces and root-level tooling or example directories remain excluded.
+
+- [#1668](https://github.com/millionco/react-doctor/pull/1668) [`5bc88ae`](https://github.com/millionco/react-doctor/commit/5bc88ae6a0cd7518ffa8c6348f9176868d00ea77) Thanks [@skoshx](https://github.com/skoshx)! - Ignore browser-global names in TypeScript-only positions so interface and type property keys are not reported as unsafe module-scope runtime access.
+
+- [#1673](https://github.com/millionco/react-doctor/pull/1673) [`4bf7aff`](https://github.com/millionco/react-doctor/commit/4bf7aff4398383adb6b3dace48f72050dfd195a6) Thanks [@aidenybai](https://github.com/aidenybai)! - Use the nearest workspace root when detecting Fast Refresh ownership so nested checkouts keep the correct rule coverage.
+
+- [#1671](https://github.com/millionco/react-doctor/pull/1671) [`bd08406`](https://github.com/millionco/react-doctor/commit/bd08406381618785181aedf8bee956047ad107d3) Thanks [@aidenybai](https://github.com/aidenybai)! - Stop recommending `flatMap` as a guaranteed performance improvement for `.map().filter(Boolean)`. The rule now suggests a single-pass `reduce` or `for...of` rewrite only for measured hot paths.
+
+- [#1663](https://github.com/millionco/react-doctor/pull/1663) [`2b0f06e`](https://github.com/millionco/react-doctor/commit/2b0f06ec70943f083d8893f8a1b989eba2ae40c6) Thanks [@aidenybai](https://github.com/aidenybai)! - Improve repeated effect analysis and deeply nested JSX performance, preserve derived-state detection through transparent TypeScript wrappers, and upgrade Oxc parser and linter dependencies.
+
+- [#1624](https://github.com/millionco/react-doctor/pull/1624) [`8c2f03a`](https://github.com/millionco/react-doctor/commit/8c2f03aea9885f24da8f2002e85a32ac186bf5bf) Thanks [@aidenybai](https://github.com/aidenybai)! - Make React cleanup a first-class part of React Doctor with diagnostics for complex React functions and repeated JSX composition. Keep whole-project unused file, export, type, dependency, and import-cycle analysis as explicit opt-in rules while removing the separate Deslop packages, experimental language server, and IDE extensions.
+
+- [#1654](https://github.com/millionco/react-doctor/pull/1654) [`6416370`](https://github.com/millionco/react-doctor/commit/6416370836deaa0a09189343a8579fb3f5d13494) Thanks [@aidenybai](https://github.com/aidenybai)! - Add component-composition and correctness rules for shadcn, Radix UI, Base UI, React Aria, TanStack Table, and TanStack Virtual behind six new project capabilities (`shadcn` from `components.json`; the rest from their package dependencies). Dialog surfaces that render no title part and carry no accessible name are reported across all three libraries (shadcn DialogContent/SheetContent/AlertDialogContent/DrawerContent, Radix Dialog.Content and AlertDialog.Content, Base UI Dialog.Popup and AlertDialog.Popup). Icon-sized shadcn Buttons with no accessible name, shadcn FormItem fields wrapping a FormControl without a FormLabel, and Base UI Field.Root controls without a Field.Label are reported as unlabeled. Raw Input, Textarea, and Button controls placed directly inside shadcn InputGroup are reported in favor of its InputGroupInput, InputGroupTextarea, and InputGroupAddon parts, and presence-only `data-[selected]:` / `data-[disabled]:` Tailwind variants on command items are reported because cmdk renders both attributes as `"true"` or `"false"`. TanStack Form submit handlers that call the form's `handleSubmit` without `event.preventDefault()` are reported because the browser still performs a native full-page submission. Tabs triggers provably inside the root without the list part are reported for shadcn, Radix, and Base UI; the existing `shadcn-tabs-trigger-requires-list` rule is now enabled by default for shadcn projects through the capability gate and no longer risks false positives on extracted trigger subcomponents. React Aria Dialogs without a Heading or aria-label are reported as unnamed. TanStack Table `data`/`columns` options that provably get a new array identity every render (inline literals, render-scoped const arrays, fresh `?? []` fallbacks, inline `.filter()`/`.map()` transforms) are reported for rebuilding row and column models each render and looping auto-reset features, and elements measured by TanStack Virtual's `measureElement` without a `data-index` attribute are reported because the virtualizer drops the measurement.
+
+- [#1742](https://github.com/millionco/react-doctor/pull/1742) [`28d4343`](https://github.com/millionco/react-doctor/commit/28d4343e4d90a8d80c0fdb5eac0173bdd8826866) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid cleanup false positives for callback refs, observer iteration, and effect-local stored disposers.
+
+## 0.9.12
+
+### Patch Changes
+
+- [#1634](https://github.com/millionco/react-doctor/pull/1634) [`f1899d2`](https://github.com/millionco/react-doctor/commit/f1899d2e57ad35f016323e77592e000dce293439) Thanks [@aidenybai](https://github.com/aidenybai)! - Reduce false positives across Three.js, JavaScript performance, security, and async rules by recognizing stable lifecycle guards, intentional sequencing, non-escaping values, renderer aliases, and safe DOM data flows.
+
+- [#1642](https://github.com/millionco/react-doctor/pull/1642) [`7b7bfe7`](https://github.com/millionco/react-doctor/commit/7b7bfe7c1ecc1d31a5fb591756ef34060fd916f1) Thanks [@aidenybai](https://github.com/aidenybai)! - Make every ported React and accessibility rule match its pinned upstream test contract while preserving React Doctor's lower-noise curated defaults.
+
+- [#1644](https://github.com/millionco/react-doctor/pull/1644) [`d908bb1`](https://github.com/millionco/react-doctor/commit/d908bb115210e3b412a83ae66780d8596125f838) Thanks [@aidenybai](https://github.com/aidenybai)! - Trace hydration decisions through imported browser helpers, report passive media-capability branch flicker, preserve committed-DOM state synchronization through local helpers, and exclude test-only dependency stubs from production diagnostics.
+
+- [#1617](https://github.com/millionco/react-doctor/pull/1617) [`51e198d`](https://github.com/millionco/react-doctor/commit/51e198db8bcbd61ad896098bb4985376641a0f69) Thanks [@aidenybai](https://github.com/aidenybai)! - Upgrade the Oxc toolchain to the latest releases.
+
+- [#1643](https://github.com/millionco/react-doctor/pull/1643) [`0f3995b`](https://github.com/millionco/react-doctor/commit/0f3995b822ad9fdbd355eda05c8568f67643a31c) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize every detected framework and library capability as a supported scan target, including plain Three.js projects and React-backed frameworks without direct React declarations, and anchor remote-installer diagnostics on the executable download command.
+
+- [#1633](https://github.com/millionco/react-doctor/pull/1633) [`bea01b8`](https://github.com/millionco/react-doctor/commit/bea01b8cf5e6d29db7793f86ce6a13f0b3c7823e) Thanks [@aidenybai](https://github.com/aidenybai)! - Add precise Three.js and React Three Fiber diagnostics for missing custom-geometry UVs, normal-mapped geometry without normals, unlit PBR materials, and strongly metallic materials without environment lighting.
+
+- [#1629](https://github.com/millionco/react-doctor/pull/1629) [`8dfb013`](https://github.com/millionco/react-doctor/commit/8dfb01306772760201e75ea1478368390eddf58f) Thanks [@aidenybai](https://github.com/aidenybai)! - Add comprehensive React Three Fiber, Three.js, WebGPU, GLSL, postprocessing, and GPU-computation diagnostics covering scene and camera setup, renderer lifecycle, resize behavior, loading, animation, controls, materials, uniforms, textures, lighting, shadows, render targets, buffer uploads, instancing, cleanup, and GPU-oriented performance patterns.
+
+- [#1641](https://github.com/millionco/react-doctor/pull/1641) [`b49f499`](https://github.com/millionco/react-doctor/commit/b49f49984055a505b80de2bb1530efe7e7286619) Thanks [@aidenybai](https://github.com/aidenybai)! - Make `react-doctor/no-multi-comp` faithfully enforce Oxlint's one-component-per-file contract, and preserve React Doctor's lower-noise default behavior under `react-doctor/no-multi-component-file`.
+
 ## 0.9.11
 
 ### Patch Changes

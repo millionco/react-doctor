@@ -1,6 +1,6 @@
-import type { Sandbox } from "@daytona/sdk";
+import type { Sandbox } from "@vercel/sandbox";
 
-import { SUCCESS_EXIT_CODE } from "./constants.js";
+import { SUCCESS_EXIT_CODE, MILLISECONDS_PER_SECOND } from "./constants.js";
 
 export interface ExecuteSandboxCommandInput {
   sandbox: Sandbox;
@@ -24,17 +24,19 @@ export const executeSandboxCommand = async ({
   description,
   acceptNonZeroExitCode = false,
 }: ExecuteSandboxCommandInput): Promise<ExecuteSandboxCommandResult> => {
-  const response = await sandbox.process.executeCommand(
-    command,
-    undefined,
-    environment,
-    timeoutSeconds,
-  );
+  const response = await sandbox.runCommand({
+    cmd: "timeout",
+    args: ["--signal=KILL", `${timeoutSeconds}s`, "bash", "-c", command],
+    env: environment,
+    signal: AbortSignal.timeout(timeoutSeconds * MILLISECONDS_PER_SECOND),
+  });
+  const [stdout, stderr] = await Promise.all([response.stdout(), response.stderr()]);
+  const result = stdout + stderr;
   if (response.exitCode !== SUCCESS_EXIT_CODE && !acceptNonZeroExitCode) {
-    const output = response.result.trim();
+    const output = result.trim();
     throw new Error(
       output === "" ? `${description} failed with exit code ${response.exitCode}` : output,
     );
   }
-  return { exitCode: response.exitCode, output: response.result };
+  return { exitCode: response.exitCode, output: result };
 };

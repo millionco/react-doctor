@@ -6,8 +6,8 @@ const makeInput = (overrides: Partial<ShouldUseTuiInput> = {}): ShouldUseTuiInpu
   flags: {},
   isNonInteractiveEnvironment: false,
   nodeMajorVersion: 22,
+  outputIsTty: true,
   stdinIsTty: true,
-  stdoutIsTty: true,
   supportsRawMode: true,
   terminalName: "xterm-256color",
   ...overrides,
@@ -21,7 +21,7 @@ describe("shouldUseTui", () => {
   it.each([
     ["non-interactive environment", { isNonInteractiveEnvironment: true }],
     ["stdin without a TTY", { stdinIsTty: false }],
-    ["stdout without a TTY", { stdoutIsTty: false }],
+    ["output without a TTY", { outputIsTty: false }],
     ["stdin without raw mode", { supportsRawMode: false }],
     ["Node 21", { nodeMajorVersion: 21 }],
     ["dumb terminal", { terminalName: "dumb" }],

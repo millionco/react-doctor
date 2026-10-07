@@ -1,0 +1,802 @@
+// rule: dangerous-html-sink
+// file-path: src/app/ui.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 8e6a5cc61ba9974b5ea5e1396fe6d3754b97f0f031a2a700d2ba9c6ec4b15415
+/**
+ * HTML overlay. Owns no simulation state — it renders what `main.ts` hands it
+ * and calls back on every interaction.
+ */
+
+import { CATALOG, costPerAm2, dipoleMoment, validRadiusCm, type MagnetMaterial, type MagnetSpec } from "../data/catalog";
+import { PRESETS } from "./presets";
+import { formatField, EARTH_FIELD_T, type ArrangementMetrics, type Magnet } from "../sim/field";
+import { rampCss } from "../lib/ramp";
+import type { FieldOptions, Filters, RepeatOptions, SliceOptions, Tool, DragMode } from "./types";
+import type { SliceAxis } from "../scene/slicePlane";
+import type { Probe } from "../scene/probes";
+
+export interface UIHandlers {
+  addMagnet(specId: string): void;
+  filtersChanged(): void;
+  fieldChanged(): void;
+  sliceChanged(): void;
+  setTool(tool: Tool): void;
+  setDragMode(mode: DragMode): void;
+  flipSelected(): void;
+  duplicateSelected(): void;
+  deleteSelected(): void;
+  clearAll(): void;
+  selectAll(): void;
+  repeat(opts: RepeatOptions): void;
+  loadPreset(id: string): void;
+  capture(slot: "A" | "B"): void;
+  restore(slot: "A" | "B"): void;
+  setGhost(on: boolean): void;
+  clearProbes(): void;
+  resetView(): void;
+}
+
+const MATERIALS: MagnetMaterial[] = ["Ferrite", "Neodymium", "SmCo", "AlNiCo"];
+
+const SWATCH: Record<string, string> = {
+  "raw-ceramic": "#3b3b41",
+  nickel: "#c8ccd2",
+  "black-epoxy": "#17171b",
+  "bare-metal": "#8b9098",
+};
+
+function q<T extends HTMLElement>(root: ParentNode, sel: string): T {
+  const el = root.querySelector(sel);
+  if (!el) throw new Error(`missing element ${sel}`);
+  return el as T;
+}
+
+const MARKUP = /* html */ `
+<div id="hud">
+  <div id="topbar" class="panel">
+    <h1>Magnetic&nbsp;Buttons</h1>
+    <div class="sub">Drag button magnets anywhere in three dimensions. Every line, arrow and probe re-solves as you move.</div>
+    <div class="spacer"></div>
+    <span class="badge model">Point-dipole superposition</span>
+    <span class="badge">Educational approximation — not a solver</span>
+  </div>
+
+  <section id="left" class="panel">
+    <h2>Bench catalogue <span class="count" id="cat-count"></span></h2>
+    <div class="sect">
+      <div class="lbl">Filter by material</div>
+      <div class="chips" id="mat-chips"></div>
+    </div>
+    <div class="sect">
+      <label class="field">Max unit price <span class="val" id="cost-val"></span>
+        <input type="range" id="f-cost" min="0.15" max="7" step="0.05" value="7">
+      </label>
+      <label class="field">Must survive <span class="val" id="temp-val"></span>
+        <input type="range" id="f-temp" min="0" max="520" step="10" value="0">
+      </label>
+      <label class="check"><input type="checkbox" id="f-solo"> Solo: only the selection contributes</label>
+      <p class="note" id="filter-note"></p>
+    </div>
+    <div class="sect"><div class="lbl">Click a row to place it</div></div>
+    <div id="catalogue" class="scroll" style="flex:1"></div>
+  </section>
+
+  <section id="right" class="panel">
+    <div id="tabs">
+      <button data-tab="inspect" class="on">Inspect</button>
+      <button data-tab="field">Field</button>
+      <button data-tab="depth">Depth</button>
+      <button data-tab="compare">Compare</button>
+      <button data-tab="method">Method</button>
+    </div>
+    <div class="scroll" style="flex:1;min-height:0">
+      <div class="tabpage on" data-page="inspect" id="page-inspect"></div>
+
+      <div class="tabpage" data-page="field">
+        <div class="sect">
+          <div class="lbl">Layers</div>
+          <label class="check"><input type="checkbox" id="o-tubes" checked> Field-line tubes</label>
+          <label class="check"><input type="checkbox" id="o-arrows" checked> Sampled vector arrows</label>
+          <label class="check"><input type="checkbox" id="o-pips" checked> Sampling markers (where we looked)</label>
+          <label class="check"><input type="checkbox" id="o-shells"> Near-field shells (model validity)</label>
+          <label class="check"><input type="checkbox" id="o-flow" checked> Animate flux direction</label>
+        </div>
+        <div class="sect">
+          <div class="lbl">Field lines</div>
+          <label class="field">Seed rings per magnet <span class="val" id="o-density-val"></span>
+            <input type="range" id="o-density" min="1" max="5" step="1" value="3">
+          </label>
+          <label class="check"><input type="checkbox" id="o-linked"> Only lines that land on another magnet</label>
+          <label class="check"><input type="checkbox" id="o-seedsel"> Seed from the selection only</label>
+          <p class="note" id="line-note"></p>
+        </div>
+        <div class="sect">
+          <div class="lbl">Sampling lattice</div>
+          <label class="field">Samples per axis <span class="val" id="o-res-val"></span>
+            <input type="range" id="o-res" min="3" max="13" step="2" value="7">
+          </label>
+          <label class="field">Arrow size <span class="val" id="o-scale-val"></span>
+            <input type="range" id="o-scale" min="0.4" max="2.4" step="0.05" value="0.8">
+          </label>
+          <label class="field">Hide below <span class="val" id="o-min-val"></span>
+            <input type="range" id="o-min" min="0" max="100" step="1" value="50">
+          </label>
+          <label class="check"><input type="checkbox" id="o-nearfield" checked> Hide samples inside near-field shells</label>
+          <p class="note" id="lattice-note"></p>
+        </div>
+      </div>
+
+      <div class="tabpage" data-page="depth">
+        <div class="sect">
+          <label class="check"><input type="checkbox" id="s-on"> Cutting plane on</label>
+          <label class="field">Plane normal
+            <select id="s-axis">
+              <option value="1">Y — horizontal slice</option>
+              <option value="2">Z — front/back slice</option>
+              <option value="0">X — left/right slice</option>
+            </select>
+          </label>
+          <label class="field">Offset <span class="val" id="s-off-val"></span>
+            <input type="range" id="s-off" min="-16" max="16" step="0.25" value="4">
+          </label>
+          <label class="field">Sheet opacity <span class="val" id="s-op-val"></span>
+            <input type="range" id="s-op" min="0.2" max="1" step="0.05" value="0.85">
+          </label>
+          <label class="check"><input type="checkbox" id="s-contours" checked> Draw contours (one band per 1/12 decade)</label>
+        </div>
+        <div class="sect">
+          <div class="lbl">Restrict the arrows</div>
+          <label class="check"><input type="checkbox" id="s-slab"> Show arrows only near the plane</label>
+          <label class="field">Slab half-width <span class="val" id="s-slabw-val"></span>
+            <input type="range" id="s-slabw" min="0.5" max="6" step="0.25" value="1.75">
+          </label>
+        </div>
+        <div class="sect">
+          <p class="note"><strong>What this shows that the other views cannot.</strong>
+          The arrows are a volume sample and the tubes are a topology sample; both average
+          over depth when you look at them. The cutting plane reads |B| on one flat sheet, so
+          a hot region that looks solid from outside can turn out to be a shell with a hole
+          through it. Slide the plane up through a flat ring versus a vertical stack: the ring's
+          core empties out within a centimetre, the stack's does not.</p>
+          <p class="note">Stippled areas are inside a near-field shell — the model is clamped there and the
+          value is not quoted. Cross-hatching marks where B points out of the sheet, which is
+          the part a 2-D field diagram silently drops.</p>
+        </div>
+      </div>
+
+      <div class="tabpage" data-page="compare">
+        <div class="sect">
+          <div class="lbl">Snapshots</div>
+          <div class="chips">
+            <button class="btn slot-a" id="cap-a">Capture A</button>
+            <button class="btn slot-b" id="cap-b">Capture B</button>
+            <button class="btn" id="res-a">Restore A</button>
+            <button class="btn" id="res-b">Restore B</button>
+          </div>
+          <label class="check" style="margin-top:8px"><input type="checkbox" id="ghost" checked> Draw the other snapshot as a ghost outline</label>
+        </div>
+        <div class="sect" id="cmp-body"></div>
+      </div>
+
+      <div class="tabpage" data-page="method">
+        <div class="sect">
+          <div class="lbl">The question this dataset can answer</div>
+          <p class="q">For a fixed budget and a fixed working temperature, can a group of cheap
+          ferrite buttons reproduce the reach <em>and</em> the shape of the field around one
+          neodymium button — and does it matter whether you stack them into a column or
+          spread them flat?</p>
+          <p class="note">Every row carries what the model needs (remanence, diameter, thickness)
+          and what the decision needs (price, mass, temperature ceiling). Load
+          <strong>1 × NEO-12</strong>, capture it as A, load <strong>6 × FER-20 flat ring</strong>,
+          capture as B, then load the stack and watch the anisotropy row move.</p>
+        </div>
+        <div class="sect">
+          <div class="lbl">Dataset provenance</div>
+          <p class="note">Ten rows, written for this activity. Each is a plausible, internally
+          consistent stand-in for a class of hobby button magnet; remanences sit inside the ranges
+          normally quoted for those grades, and prices/masses are typical of a school order form.
+          <strong>They are not measurements of any real product</strong> and must not be used to
+          specify hardware. Pull force is carried for context and is never fed to the model.</p>
+          <p class="note"><strong>What it cannot answer:</strong> nothing here records coercivity or
+          ageing, so questions about a magnet demagnetising its neighbour, or drifting over years,
+          are out of scope. AlNiCo's real weakness is a note on its row, not a simulated effect.</p>
+        </div>
+        <div class="sect">
+          <div class="lbl">Assumptions in the simulation</div>
+          <ol class="assume">
+            <li><strong>Point dipole.</strong> Each button is one dipole at its centre with
+            <code>m = B_r·V/μ0</code> from its catalogue row. Volume is the ring volume of the disc;
+            the countersink is ignored.</li>
+            <li><strong>Linear superposition.</strong> Fields add. Magnets do not magnetise,
+            demagnetise or re-orient each other, and nothing moves under the forces it feels —
+            an arrangement that would fly apart on a real bench sits still here.</li>
+            <li><strong>Validity shell.</strong> Values are only quoted outside
+            <code>r = 2 × (largest dimension)</code>. Inside, the sample is clamped to the shell
+            value and flagged. Turn the shells on in the Field tab to see where that is.</li>
+            <li><strong>Vacuum everywhere.</strong> No iron, no shielding, no eddy currents, no
+            hysteresis. μ = μ0 at every point including inside the magnets.</li>
+            <li><strong>Earth's field ignored</strong> (~50 µT). It is drawn on the colour scale
+            for reference so you can see which arrows are actually below it.</li>
+            <li><strong>Field lines are streamlines of the modelled B</strong>, seeded so equal flux
+            passes between neighbouring seeds. They are a fair density map of the model, not of
+            reality — and they inherit every assumption above.</li>
+          </ol>
+        </div>
+        <div class="sect">
+          <div class="lbl">Reading the scene</div>
+          <p class="note"><strong>Red band = north, blue band = south.</strong> Tube ribs point the way
+          B does. Stems and their contact shadows show height above the mat; the mat's engraved
+          grid is a true 1 cm rule. Metrics use a fixed evaluation lattice centred on the bench, so
+          two arrangements are always scored on the same points.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div id="legend" class="panel">
+    <div class="cap">Field magnitude |B| — log scale</div>
+    <div class="bar" id="legend-bar"></div>
+    <div class="ticks" id="legend-ticks"></div>
+    <div class="earth" id="legend-earth"></div>
+  </div>
+
+  <div id="bottom" class="panel">
+    <div class="group">
+      <span class="lbl">Tool</span>
+      <button class="chip on" id="t-select">Select &amp; drag</button>
+      <button class="chip" id="t-probe">Drop probe</button>
+    </div>
+    <div class="div"></div>
+    <div class="group">
+      <span class="lbl">Drag</span>
+      <button class="chip on" id="d-plane">Slide on bench</button>
+      <button class="chip" id="d-height">Lift (shift)</button>
+    </div>
+    <div class="div"></div>
+    <div class="group">
+      <span class="lbl">Selection</span>
+      <button class="btn" id="b-flip">Flip poles</button>
+      <button class="btn" id="b-dup">Duplicate</button>
+      <button class="btn" id="b-del">Delete</button>
+      <button class="btn" id="b-all">Select all</button>
+    </div>
+    <div class="div"></div>
+    <div class="group">
+      <span class="lbl">Repeat</span>
+      <select id="r-mode">
+        <option value="linear">Line</option>
+        <option value="ring">Ring</option>
+        <option value="stack">Stack (up the axis)</option>
+      </select>
+      <input type="number" id="r-count" min="2" max="12" step="1" value="4" style="width:44px" title="copies">
+      <input type="number" id="r-space" min="0.4" max="12" step="0.2" value="3.4" style="width:52px" title="spacing / radius, cm">
+      <label class="check" style="margin:0"><input type="checkbox" id="r-alt"> alternate poles</label>
+      <button class="btn primary" id="r-go">Repeat</button>
+    </div>
+    <div class="div"></div>
+    <div class="group">
+      <span class="lbl">Arrangement</span>
+      <select id="p-list"></select>
+      <button class="btn" id="p-go">Load</button>
+      <button class="btn" id="b-clear">Clear bench</button>
+      <button class="btn" id="b-view">Reset view</button>
+    </div>
+    <div id="status"></div>
+  </div>
+</div>
+<div id="loading">Baking procedural surfaces…</div>
+`;
+
+export interface UIState {
+  magnets: Magnet[];
+  selection: Set<number>;
+  filters: Filters;
+  field: FieldOptions;
+  slice: SliceOptions;
+  probes: Probe[];
+  metrics: ArrangementMetrics | null;
+  snapshots: { A: SnapshotInfo | null; B: SnapshotInfo | null };
+  rampMinT: number;
+  rampMaxT: number;
+  lineCount: number;
+  lineCapped: boolean;
+  linkedFraction: number;
+  latticeVisible: number;
+  latticeTotal: number;
+  latticeClipped: number;
+  latticeNear: number;
+  excludedByFilter: number;
+}
+
+export interface SnapshotInfo {
+  label: string;
+  metrics: ArrangementMetrics;
+  count: number;
+}
+
+export class UI {
+  private root: HTMLElement;
+  private h: UIHandlers;
+  filters: Filters;
+  field: FieldOptions;
+  slice: SliceOptions;
+  tool: Tool = "select";
+  dragMode: DragMode = "plane";
+  ghost = true;
+  /** Last rendered markup per panel, so a 10 Hz refresh does not thrash the DOM. */
+  private lastHtml = new Map<string, string>();
+
+  constructor(handlers: UIHandlers, filters: Filters, field: FieldOptions, slice: SliceOptions) {
+    this.h = handlers;
+    this.filters = filters;
+    this.field = field;
+    this.slice = slice;
+    const holder = document.createElement("div");
+    holder.innerHTML = MARKUP;
+    while (holder.firstChild) document.body.appendChild(holder.firstChild);
+    this.root = document.body;
+    this.wire();
+    this.buildLegend(1e-6, 1e-2);
+    this.renderCatalogue();
+  }
+
+  private wire(): void {
+    const r = this.root;
+
+    // tabs
+    r.querySelectorAll<HTMLButtonElement>("#tabs button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        r.querySelectorAll("#tabs button").forEach((b) => b.classList.remove("on"));
+        r.querySelectorAll(".tabpage").forEach((p) => p.classList.remove("on"));
+        btn.classList.add("on");
+        q(r, `.tabpage[data-page="${btn.dataset.tab}"]`).classList.add("on");
+      });
+    });
+
+    // material chips
+    const chips = q(r, "#mat-chips");
+    for (const m of MATERIALS) {
+      const b = document.createElement("button");
+      b.className = "chip on";
+      b.textContent = m;
+      b.addEventListener("click", () => {
+        if (this.filters.materials.has(m)) this.filters.materials.delete(m);
+        else this.filters.materials.add(m);
+        if (this.filters.materials.size === 0) this.filters.materials.add(m);
+        b.classList.toggle("on", this.filters.materials.has(m));
+        chips.querySelectorAll("button").forEach((cb, i) => {
+          cb.classList.toggle("on", this.filters.materials.has(MATERIALS[i] as MagnetMaterial));
+        });
+        this.renderCatalogue();
+        this.h.filtersChanged();
+      });
+      chips.appendChild(b);
+    }
+
+    const cost = q<HTMLInputElement>(r, "#f-cost");
+    cost.addEventListener("input", () => {
+      this.filters.maxUnitCost = parseFloat(cost.value);
+      this.renderCatalogue();
+      this.h.filtersChanged();
+    });
+    const temp = q<HTMLInputElement>(r, "#f-temp");
+    temp.addEventListener("input", () => {
+      this.filters.minTempCeiling = parseFloat(temp.value);
+      this.renderCatalogue();
+      this.h.filtersChanged();
+    });
+    const solo = q<HTMLInputElement>(r, "#f-solo");
+    solo.addEventListener("change", () => {
+      this.filters.soloSelection = solo.checked;
+      this.h.filtersChanged();
+    });
+
+    // field options
+    const bindCheck = (sel: string, apply: (v: boolean) => void) => {
+      const el = q<HTMLInputElement>(r, sel);
+      el.addEventListener("change", () => {
+        apply(el.checked);
+        this.h.fieldChanged();
+      });
+    };
+    const bindRange = (sel: string, apply: (v: number) => void) => {
+      const el = q<HTMLInputElement>(r, sel);
+      el.addEventListener("input", () => {
+        apply(parseFloat(el.value));
+        this.h.fieldChanged();
+      });
+    };
+
+    bindCheck("#o-tubes", (v) => (this.field.showTubes = v));
+    bindCheck("#o-arrows", (v) => (this.field.showArrows = v));
+    bindCheck("#o-pips", (v) => (this.field.showPips = v));
+    bindCheck("#o-shells", (v) => (this.field.showShells = v));
+    bindCheck("#o-flow", (v) => (this.field.flow = v));
+    bindCheck("#o-linked", (v) => (this.field.onlyLinked = v));
+    bindCheck("#o-seedsel", (v) => (this.field.seedFrom = v ? "selected" : "all"));
+    bindCheck("#o-nearfield", (v) => (this.field.hideNearField = v));
+    bindRange("#o-density", (v) => (this.field.lineDensity = v));
+    bindRange("#o-res", (v) => (this.field.latticeRes = v));
+    bindRange("#o-scale", (v) => (this.field.arrowScale = v));
+    bindRange("#o-min", (v) => {
+      // 0..100 maps log-wise onto 0.1 µT .. 5 mT
+      this.field.minArrowT = v <= 0 ? 0 : Math.pow(10, -7 + (v / 100) * 4.7);
+    });
+
+    // slice
+    const bindSliceCheck = (sel: string, apply: (v: boolean) => void) => {
+      const el = q<HTMLInputElement>(r, sel);
+      el.addEventListener("change", () => {
+        apply(el.checked);
+        this.h.sliceChanged();
+      });
+    };
+    bindSliceCheck("#s-on", (v) => (this.slice.enabled = v));
+    bindSliceCheck("#s-contours", (v) => (this.slice.contours = v));
+    bindSliceCheck("#s-slab", (v) => (this.slice.slabOnly = v));
+    const sAxis = q<HTMLSelectElement>(r, "#s-axis");
+    sAxis.addEventListener("change", () => {
+      this.slice.axis = parseInt(sAxis.value, 10) as SliceAxis;
+      this.h.sliceChanged();
+    });
+    for (const [sel, apply] of [
+      ["#s-off", (v: number) => (this.slice.offset = v)],
+      ["#s-op", (v: number) => (this.slice.opacity = v)],
+      ["#s-slabw", (v: number) => (this.slice.slabHalf = v)],
+    ] as const) {
+      const el = q<HTMLInputElement>(r, sel);
+      el.addEventListener("input", () => {
+        apply(parseFloat(el.value));
+        this.h.sliceChanged();
+      });
+    }
+
+    // bottom bar
+    const tSel = q<HTMLButtonElement>(r, "#t-select");
+    const tProbe = q<HTMLButtonElement>(r, "#t-probe");
+    tSel.addEventListener("click", () => this.setTool("select"));
+    tProbe.addEventListener("click", () => this.setTool("probe"));
+    const dPlane = q<HTMLButtonElement>(r, "#d-plane");
+    const dHeight = q<HTMLButtonElement>(r, "#d-height");
+    dPlane.addEventListener("click", () => this.setDragMode("plane"));
+    dHeight.addEventListener("click", () => this.setDragMode("height"));
+
+    q(r, "#b-flip").addEventListener("click", () => this.h.flipSelected());
+    q(r, "#b-dup").addEventListener("click", () => this.h.duplicateSelected());
+    q(r, "#b-del").addEventListener("click", () => this.h.deleteSelected());
+    q(r, "#b-all").addEventListener("click", () => this.h.selectAll());
+    q(r, "#b-clear").addEventListener("click", () => this.h.clearAll());
+    q(r, "#b-view").addEventListener("click", () => this.h.resetView());
+
+    q(r, "#r-go").addEventListener("click", () => {
+      this.h.repeat({
+        mode: q<HTMLSelectElement>(r, "#r-mode").value as RepeatOptions["mode"],
+        count: parseInt(q<HTMLInputElement>(r, "#r-count").value, 10),
+        spacing: parseFloat(q<HTMLInputElement>(r, "#r-space").value),
+        alternate: q<HTMLInputElement>(r, "#r-alt").checked,
+      });
+    });
+
+    const plist = q<HTMLSelectElement>(r, "#p-list");
+    for (const p of PRESETS) {
+      const o = document.createElement("option");
+      o.value = p.id;
+      o.textContent = p.label;
+      plist.appendChild(o);
+    }
+    q(r, "#p-go").addEventListener("click", () => this.h.loadPreset(plist.value));
+
+    q(r, "#cap-a").addEventListener("click", () => this.h.capture("A"));
+    q(r, "#cap-b").addEventListener("click", () => this.h.capture("B"));
+    q(r, "#res-a").addEventListener("click", () => this.h.restore("A"));
+    q(r, "#res-b").addEventListener("click", () => this.h.restore("B"));
+    const ghost = q<HTMLInputElement>(r, "#ghost");
+    ghost.addEventListener("change", () => {
+      this.ghost = ghost.checked;
+      this.h.setGhost(ghost.checked);
+    });
+  }
+
+  setTool(tool: Tool): void {
+    this.tool = tool;
+    q(this.root, "#t-select").classList.toggle("on", tool === "select");
+    q(this.root, "#t-probe").classList.toggle("on", tool === "probe");
+    this.h.setTool(tool);
+  }
+
+  setDragMode(mode: DragMode): void {
+    this.dragMode = mode;
+    q(this.root, "#d-plane").classList.toggle("on", mode === "plane");
+    q(this.root, "#d-height").classList.toggle("on", mode === "height");
+    this.h.setDragMode(mode);
+  }
+
+  specPassesFilter(spec: MagnetSpec): boolean {
+    return (
+      this.filters.materials.has(spec.material) &&
+      spec.unitCostUsd <= this.filters.maxUnitCost + 1e-9 &&
+      spec.maxTempC >= this.filters.minTempCeiling
+    );
+  }
+
+  renderCatalogue(): void {
+    const list = q(this.root, "#catalogue");
+    list.innerHTML = "";
+    let shown = 0;
+    for (const spec of CATALOG) {
+      const ok = this.specPassesFilter(spec);
+      if (ok) shown++;
+      const row = document.createElement("div");
+      row.className = `row${ok ? "" : " disabled"}`;
+      const m = dipoleMoment(spec);
+      row.innerHTML = `
+        <div class="name"><span class="swatch" style="background:${SWATCH[spec.finish] ?? "#555"}"></span>${spec.label}</div>
+        <div class="id">${spec.id}</div>
+        <div class="meta">
+          <span><b>${spec.grade}</b></span>
+          <span>Br <b>${spec.remanenceT.toFixed(2)} T</b></span>
+          <span>m <b>${m.toFixed(2)} A·m²</b></span>
+          <span>$<b>${spec.unitCostUsd.toFixed(2)}</b></span>
+          <span>≤<b>${spec.maxTempC}°C</b></span>
+          <span>$/A·m² <b>${costPerAm2(spec).toFixed(2)}</b></span>
+        </div>`;
+      row.title = spec.note;
+      if (ok) row.addEventListener("click", () => this.h.addMagnet(spec.id));
+      list.appendChild(row);
+    }
+    q(this.root, "#cat-count").textContent = `${shown}/${CATALOG.length}`;
+    q<HTMLElement>(this.root, "#cost-val").textContent = `$${this.filters.maxUnitCost.toFixed(2)}`;
+    q<HTMLElement>(this.root, "#temp-val").textContent =
+      this.filters.minTempCeiling <= 0 ? "any temperature" : `${this.filters.minTempCeiling}°C`;
+  }
+
+  buildLegend(minT: number, maxT: number): void {
+    const stops: string[] = [];
+    for (let i = 0; i <= 24; i++) stops.push(`${rampCss(i / 24)} ${(i / 24) * 100}%`);
+    q(this.root, "#legend-bar").setAttribute("style", `background:linear-gradient(90deg, ${stops.join(",")})`);
+    const ticks = q(this.root, "#legend-ticks");
+    ticks.innerHTML = "";
+    const lo = Math.log10(minT);
+    const hi = Math.log10(maxT);
+    for (let i = 0; i <= 4; i++) {
+      const s = document.createElement("span");
+      s.textContent = formatField(Math.pow(10, lo + ((hi - lo) * i) / 4));
+      ticks.appendChild(s);
+    }
+    const frac = (Math.log10(EARTH_FIELD_T) - lo) / (hi - lo);
+    q(this.root, "#legend-earth").textContent =
+      frac > 0 && frac < 1
+        ? `↑ Earth's field ≈ 50 µT sits at ${(frac * 100).toFixed(0)}% along this scale — anything left of it is weaker than the room you are in.`
+        : "Earth's field ≈ 50 µT is off this scale.";
+  }
+
+  setStatus(html: string): void {
+    q(this.root, "#status").innerHTML = html;
+  }
+
+  renderInspect(state: UIState): void {
+    const page = q(this.root, "#page-inspect");
+    const sel = state.magnets.filter((m) => state.selection.has(m.uid));
+    const parts: string[] = [];
+
+    if (sel.length === 0) {
+      parts.push(`<div class="sect"><div class="lbl">Nothing selected</div>
+        <p class="note">Click a magnet to select it, drag to move it on the bench, hold
+        <strong>Shift</strong> while dragging to lift it off the mat. Shift-click adds to the
+        selection. Selecting a magnet shows its catalogue row, its modelled moment and the shell
+        inside which the model is not quoted.</p></div>`);
+    } else if (sel.length === 1) {
+      const m = sel[0] as Magnet;
+      const s = m.spec;
+      parts.push(`<div class="sect">
+        <div class="lbl">${s.id} — selected</div>
+        <dl class="kv">
+          <dt>Label</dt><dd>${s.label}</dd>
+          <dt>Material / grade</dt><dd>${s.material} ${s.grade}</dd>
+          <dt>Geometry</dt><dd>⌀${s.diameterMm} × ${s.thicknessMm} mm${s.boreMm ? `, ⌀${s.boreMm} bore` : ""}</dd>
+          <dt>Remanence B<sub>r</sub></dt><dd>${s.remanenceT.toFixed(2)} T</dd>
+          <dt class="hot">Modelled moment</dt><dd class="hot">${dipoleMoment(s).toFixed(3)} A·m²</dd>
+          <dt>Model valid beyond</dt><dd>${validRadiusCm(s).toFixed(1)} cm</dd>
+          <dt>Catalogue pull</dt><dd>${s.pullN.toFixed(1)} N <span class="hint">(not simulated)</span></dd>
+          <dt>Mass / price</dt><dd>${s.massG.toFixed(1)} g · $${s.unitCostUsd.toFixed(2)}</dd>
+          <dt>Temperature ceiling</dt><dd>${s.maxTempC} °C</dd>
+        </dl>
+        <p class="note">${s.note}</p>
+      </div>
+      <div class="sect">
+        <div class="lbl">Placement</div>
+        <dl class="kv">
+          <dt>Position (x, y, z)</dt><dd>${m.position.x.toFixed(2)}, ${m.position.y.toFixed(2)}, ${m.position.z.toFixed(2)} cm</dd>
+          <dt class="hot">Height above mat</dt><dd class="hot">${m.position.y.toFixed(2)} cm</dd>
+          <dt>Moment axis</dt><dd>${m.axis.x.toFixed(2)}, ${m.axis.y.toFixed(2)}, ${m.axis.z.toFixed(2)}</dd>
+          <dt>In the field sum</dt><dd>${m.active ? "yes" : '<span class="nf">no — filtered out</span>'}</dd>
+        </dl>
+      </div>`);
+    } else {
+      let moment = 0;
+      let cost = 0;
+      let mass = 0;
+      for (const m of sel) {
+        moment += m.moment;
+        cost += m.spec.unitCostUsd;
+        mass += m.spec.massG;
+      }
+      parts.push(`<div class="sect">
+        <div class="lbl">${sel.length} magnets selected</div>
+        <dl class="kv">
+          <dt class="hot">Summed moment</dt><dd class="hot">${moment.toFixed(3)} A·m²</dd>
+          <dt>Total price</dt><dd>$${cost.toFixed(2)}</dd>
+          <dt>Total mass</dt><dd>${mass.toFixed(1)} g</dd>
+          <dt>Rows used</dt><dd>${[...new Set(sel.map((m) => m.spec.id))].join(", ")}</dd>
+        </dl>
+        <p class="note">Summed moment is <em>not</em> the arrangement's strength: it ignores how the
+        moments point. Compare it with the reach figures below — six aligned buttons and six
+        alternating buttons have the same summed moment and very different reach.</p>
+      </div>`);
+    }
+
+    const met = state.metrics;
+    if (met) {
+      parts.push(`<div class="sect">
+        <div class="lbl">Live arrangement</div>
+        <dl class="kv">
+          <dt>Contributing magnets</dt><dd>${met.magnetCount}${state.excludedByFilter ? ` <span class="nf">(${state.excludedByFilter} filtered out)</span>` : ""}</dd>
+          <dt>Total moment</dt><dd>${met.totalMomentAm2.toFixed(3)} A·m²</dd>
+          <dt>Total price</dt><dd>$${met.totalCostUsd.toFixed(2)}</dd>
+          <dt>Mean |B| on lattice</dt><dd>${formatField(met.meanFieldT)}</dd>
+          <dt>Peak |B| on lattice</dt><dd>${formatField(met.maxFieldT)}</dd>
+          <dt class="hot">1 mT reach X / Y / Z</dt><dd class="hot">${met.reachXCm.toFixed(1)} / ${met.reachYCm.toFixed(1)} / ${met.reachZCm.toFixed(1)} cm</dd>
+          <dt>Anisotropy</dt><dd>${met.anisotropy > 0 ? `${met.anisotropy.toFixed(2)}×` : "—"}</dd>
+          <dt>Linked field lines</dt><dd>${(state.linkedFraction * 100).toFixed(0)}%</dd>
+        </dl>
+      </div>`);
+    }
+
+    parts.push(`<div class="sect">
+      <div class="lbl">Sampling markers <span class="hint">${state.probes.length}</span></div>
+      ${
+        state.probes.length === 0
+          ? `<p class="note">Switch to <strong>Drop probe</strong> and click anywhere on the bench to
+             leave a marker. Each one reports the modelled B at its needle pivot, 6 mm up.</p>`
+          : state.probes
+              .map((p) => {
+                const b = p.reading;
+                return `<div class="probe-row">
+                  <span class="dot" style="background:${rampCss(
+                    Math.max(0, Math.min(1, (Math.log10(Math.max(b.magnitude, 1e-12)) - Math.log10(state.rampMinT)) / (Math.log10(state.rampMaxT) - Math.log10(state.rampMinT)))),
+                  )}"></span>
+                  <span class="pos">P${p.id} · ${p.position.x.toFixed(1)}, ${p.position.y.toFixed(1)}, ${p.position.z.toFixed(1)}</span>
+                  <span class="mag">${b.nearField ? '<span class="nf">near field</span> ' : ""}${formatField(b.magnitude)}</span>
+                </div>`;
+              })
+              .join("")
+      }
+      ${state.probes.length ? '<button class="btn" id="probe-clear" style="margin-top:7px">Clear probes</button>' : ""}
+    </div>`);
+
+    const html = parts.join("");
+    if (this.lastHtml.get("inspect") === html) return;
+    this.lastHtml.set("inspect", html);
+    page.innerHTML = html;
+    const pc = page.querySelector("#probe-clear");
+    if (pc) pc.addEventListener("click", () => this.h.clearProbes());
+  }
+
+  renderCompare(state: UIState): void {
+    const body = q(this.root, "#cmp-body");
+    const A = state.snapshots.A;
+    const B = state.snapshots.B;
+    q<HTMLButtonElement>(this.root, "#cap-a").classList.toggle("on", !!A);
+    q<HTMLButtonElement>(this.root, "#cap-b").classList.toggle("on", !!B);
+    (q<HTMLButtonElement>(this.root, "#res-a")).disabled = !A;
+    (q<HTMLButtonElement>(this.root, "#res-b")).disabled = !B;
+
+    if (!A && !B) {
+      this.setHtml(body, "cmp", `<p class="note">Build an arrangement, hit <strong>Capture A</strong>, build another,
+        hit <strong>Capture B</strong>. The table then scores both on the same fixed evaluation
+        lattice, so the comparison does not depend on where the camera is or what is filtered.
+        Try 1 × NEO-12 against 6 × FER-20 flat, then against 6 × FER-20 stacked.</p>`);
+      return;
+    }
+
+    const rows: [string, (m: ArrangementMetrics) => string, (m: ArrangementMetrics) => number, boolean][] = [
+      ["Magnets", (m) => `${m.magnetCount}`, (m) => m.magnetCount, false],
+      ["Total moment", (m) => `${m.totalMomentAm2.toFixed(2)}`, (m) => m.totalMomentAm2, true],
+      ["Price", (m) => `$${m.totalCostUsd.toFixed(2)}`, (m) => m.totalCostUsd, false],
+      ["Mass", (m) => `${m.totalMassG.toFixed(0)} g`, (m) => m.totalMassG, false],
+      ["Temp ceiling", (m) => `${m.minTempCeilingC.toFixed(0)}°C`, (m) => m.minTempCeilingC, true],
+      ["Mean |B|", (m) => formatField(m.meanFieldT), (m) => m.meanFieldT, true],
+      ["Peak |B|", (m) => formatField(m.maxFieldT), (m) => m.maxFieldT, true],
+      ["Reach X", (m) => `${m.reachXCm.toFixed(1)} cm`, (m) => m.reachXCm, true],
+      ["Reach Y", (m) => `${m.reachYCm.toFixed(1)} cm`, (m) => m.reachYCm, true],
+      ["Reach Z", (m) => `${m.reachZCm.toFixed(1)} cm`, (m) => m.reachZCm, true],
+      ["Anisotropy", (m) => (m.anisotropy > 0 ? `${m.anisotropy.toFixed(2)}×` : "—"), (m) => m.anisotropy, false],
+      ["Linked lines", (m) => `${(m.linkedFraction * 100).toFixed(0)}%`, (m) => m.linkedFraction, false],
+    ];
+
+    const cell = (s: SnapshotInfo | null, fmt: (m: ArrangementMetrics) => string) =>
+      s ? fmt(s.metrics) : "—";
+
+    let html = `<table class="cmp"><thead><tr>
+      <th>Metric</th><th class="col-a">A</th><th class="col-b">B</th><th>B − A</th>
+      </tr></thead><tbody>`;
+    for (const [label, fmt, num, higherBetter] of rows) {
+      let delta = "—";
+      let cls = "delta";
+      if (A && B) {
+        const a = num(A.metrics);
+        const b = num(B.metrics);
+        const d = b - a;
+        if (Math.abs(a) > 1e-9) {
+          const pct = (d / Math.abs(a)) * 100;
+          delta = `${d >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
+          if (Math.abs(pct) > 1.5) cls += (d > 0) === higherBetter ? " up" : " down";
+        } else if (Math.abs(d) > 1e-9) {
+          // A is zero, so a ratio is meaningless — quote the absolute step.
+          delta = `0 → ${fmt(B.metrics)}`;
+          cls += higherBetter ? " up" : " down";
+        }
+      }
+      html += `<tr><td>${label}</td><td class="col-a">${cell(A, fmt)}</td><td class="col-b">${cell(B, fmt)}</td><td class="${cls}">${delta}</td></tr>`;
+    }
+    html += "</tbody></table>";
+
+    html += `<p class="note"><strong>A:</strong> ${A ? `${A.label} (${A.count} magnets)` : "empty"} &nbsp;·&nbsp;
+      <strong>B:</strong> ${B ? `${B.label} (${B.count} magnets)` : "empty"}</p>`;
+
+    if (A && B) {
+      const ma = A.metrics;
+      const mb = B.metrics;
+      const reachRatio = ma.reachYCm > 0 ? mb.reachYCm / ma.reachYCm : 0;
+      const costRatio = ma.totalCostUsd > 0 ? mb.totalCostUsd / ma.totalCostUsd : 0;
+      html += `<p class="note"><strong>Reading it.</strong> B spends
+        ${costRatio.toFixed(2)}× A's money and gets ${reachRatio > 0 ? `${reachRatio.toFixed(2)}×` : "—"} of A's
+        vertical reach. Anisotropy ${ma.anisotropy.toFixed(2)}× → ${mb.anisotropy.toFixed(2)}×: values near 1
+        mean the field is round, larger values mean it is stretched along one axis — which is the part
+        the price column cannot tell you and the Depth tab can.</p>`;
+    }
+
+    this.setHtml(body, "cmp", html);
+  }
+
+  private setHtml(el: HTMLElement, key: string, html: string): void {
+    if (this.lastHtml.get(key) === html) return;
+    this.lastHtml.set(key, html);
+    el.innerHTML = html;
+  }
+
+  renderFieldNotes(state: UIState): void {
+    q(this.root, "#o-density-val").textContent = `${state.field.lineDensity}`;
+    q(this.root, "#o-res-val").textContent = `${state.field.latticeRes}³ = ${state.latticeTotal}`;
+    q(this.root, "#o-scale-val").textContent = `${state.field.arrowScale.toFixed(2)}×`;
+    q(this.root, "#o-min-val").textContent = state.field.minArrowT <= 0 ? "no floor" : formatField(state.field.minArrowT);
+    q(this.root, "#line-note").innerHTML = `Drawing <strong>${state.lineCount}</strong> streamlines${
+      state.lineCapped ? ' — <span class="nf">capped</span>, seed rings reduced to fit the budget' : ""
+    }. <strong>${(state.linkedFraction * 100).toFixed(0)}%</strong> of them land on another magnet rather than escaping;
+      that fraction is the cleanest single number for "are these magnets working together?".`;
+    q(this.root, "#lattice-note").innerHTML = `<strong>${state.latticeVisible}</strong> of
+      <strong>${state.latticeTotal}</strong> samples drawn ·
+      ${state.latticeClipped} below the floor · ${state.latticeNear} inside a near-field shell.
+      Sampling markers stay put when an arrow is hidden, so a gap means "measured and weak",
+      not "never looked".`;
+    q(this.root, "#s-off-val").textContent = `${state.slice.offset.toFixed(2)} cm`;
+    q(this.root, "#s-op-val").textContent = state.slice.opacity.toFixed(2);
+    q(this.root, "#s-slabw-val").textContent = `±${state.slice.slabHalf.toFixed(2)} cm`;
+    const excl = state.excludedByFilter;
+    q(this.root, "#filter-note").innerHTML = excl
+      ? `<span class="nf">${excl} magnet${excl > 1 ? "s" : ""} on the bench fail the current filter</span> —
+         they are greyed out and removed from the field sum, so the lines and arrows you see are the
+         field of the surviving set only.`
+      : `Filters strike rows from the catalogue <em>and</em> drop matching magnets already on the
+         bench out of the field sum, so tightening a filter is an experiment, not just a view change.`;
+  }
+
+  finishLoading(): void {
+    const l = document.getElementById("loading");
+    if (l) {
+      l.classList.add("done");
+      setTimeout(() => l.remove(), 800);
+    }
+  }
+}

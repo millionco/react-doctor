@@ -29,6 +29,12 @@ let isolatedDerivedStateEffectDiagnostics: Diagnostic[];
 describe("namespace hook detection (React.useEffect, React.useState, etc.)", () => {
   it("loads diagnostics from namespace-hooks fixture", async () => {
     diagnostics = await runOxlint({
+      userConfig: {
+        rules: {
+          "react-doctor/no-usememo-simple-expression": "warn",
+          "react-doctor/prefer-useReducer": "warn",
+        },
+      },
       rootDirectory: BASIC_REACT_DIRECTORY,
       project: buildTestProject({
         rootDirectory: BASIC_REACT_DIRECTORY,

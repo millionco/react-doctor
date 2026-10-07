@@ -10,10 +10,13 @@ import {
   extractDependencyInfo,
   getDependencyDeclaration,
   getDependencySpec,
+  REACT_THREE_FIBER_DEPENDENCY_NAMES,
+  REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES,
   REACT_SECTIONS,
   resolveCatalogBackedDependencyVersion,
   resolveCatalogVersion,
   TAILWIND_ZOD_SECTIONS,
+  THREE_DEPENDENCY_NAMES,
 } from "./dependencies.js";
 import { isFile } from "./fs-utils.js";
 import { findMonorepoRoot } from "./monorepo-root.js";
@@ -31,6 +34,15 @@ import {
   parseThreeRelease,
 } from "./version.js";
 import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
+import { hasAnyDependency } from "./has-any-dependency.js";
+import { hasBaseUiDependency } from "./has-base-ui-dependency.js";
+import { hasRadixUiDependency } from "./has-radix-ui-dependency.js";
+import { detectShadcnUi } from "./detect-shadcn-ui.js";
+
+const REACT_ARIA_COMPONENT_PACKAGES = ["react-aria-components"];
+const TANSTACK_TABLE_PACKAGES = ["@tanstack/react-table"];
+const TANSTACK_VIRTUAL_PACKAGES = ["@tanstack/react-virtual"];
+const TANSTACK_FORM_PACKAGES = ["@tanstack/react-form"];
 import { getStyledComponentsVersion } from "./get-styled-components-version.js";
 import { hasI18nDependency } from "./has-i18n-dependency.js";
 
@@ -39,7 +51,6 @@ const MOBX_REACT_PACKAGE_NAME = "mobx-react";
 const MOBX_REACT_LITE_PACKAGE_NAME = "mobx-react-lite";
 const MOBX_STATE_TREE_PACKAGE_NAME = "mobx-state-tree";
 const MOBX_REACT_OBSERVER_PACKAGE_NAME = "mobx-react-observer";
-const REACT_THREE_FIBER_DEPENDENCY_NAMES = ["@react-three/fiber", "react-three-fiber"] as const;
 const REACT_THREE_FIBER_SECTIONS = [
   "dependencies",
   "peerDependencies",
@@ -52,11 +63,6 @@ const THREE_DEPENDENCY_SECTIONS = [
   "optionalDependencies",
   "devDependencies",
 ] as const;
-const REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES = [
-  ...REACT_THREE_FIBER_DEPENDENCY_NAMES,
-  "@react-three/drei",
-] as const;
-const THREE_DEPENDENCY_NAMES = [...REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES, "three"] as const;
 const REACT_ROUTER_DEPENDENCY_NAMES: readonly string[] = [
   "@react-router/dev",
   "react-router-dom",
@@ -112,6 +118,13 @@ export interface WorkspaceFacts {
   styledComponentsVersion: string | null;
   // Any-of predicates over the scan root + every workspace manifest.
   hasI18nLibrary: boolean;
+  hasShadcnUi: boolean;
+  hasRadixUi: boolean;
+  hasBaseUi: boolean;
+  hasReactAriaComponents: boolean;
+  hasTanstackTable: boolean;
+  hasTanstackVirtual: boolean;
+  hasTanstackForm: boolean;
   hasReactNativeAwarePackage: boolean;
   hasReanimatedAwarePackage: boolean;
   hasSsrDependency: boolean;
@@ -396,6 +409,17 @@ const evaluateManifestFacts = (
     facts.styledComponentsVersion = styledComponentsVersion;
   }
   facts.hasI18nLibrary = facts.hasI18nLibrary || hasI18nDependency(packageJson);
+  facts.hasShadcnUi = facts.hasShadcnUi || detectShadcnUi(directory);
+  facts.hasRadixUi = facts.hasRadixUi || hasRadixUiDependency(packageJson);
+  facts.hasBaseUi = facts.hasBaseUi || hasBaseUiDependency(packageJson);
+  facts.hasReactAriaComponents =
+    facts.hasReactAriaComponents || hasAnyDependency(packageJson, REACT_ARIA_COMPONENT_PACKAGES);
+  facts.hasTanstackTable =
+    facts.hasTanstackTable || hasAnyDependency(packageJson, TANSTACK_TABLE_PACKAGES);
+  facts.hasTanstackVirtual =
+    facts.hasTanstackVirtual || hasAnyDependency(packageJson, TANSTACK_VIRTUAL_PACKAGES);
+  facts.hasTanstackForm =
+    facts.hasTanstackForm || hasAnyDependency(packageJson, TANSTACK_FORM_PACKAGES);
   for (const packageName of REACT_THREE_FIBER_DEPENDENCY_NAMES) {
     const dependencyDeclaration = getDependencyDeclaration({
       packageName,
@@ -520,6 +544,13 @@ export const collectWorkspaceFacts = (
     tanstackQueryVersion: null,
     styledComponentsVersion: null,
     hasI18nLibrary: false,
+    hasShadcnUi: false,
+    hasRadixUi: false,
+    hasBaseUi: false,
+    hasReactAriaComponents: false,
+    hasTanstackTable: false,
+    hasTanstackVirtual: false,
+    hasTanstackForm: false,
     hasReactNativeAwarePackage: false,
     hasReanimatedAwarePackage: false,
     hasSsrDependency: false,

@@ -120,6 +120,10 @@ const isImportedExternalDomSyncCall = (
   return didFindExternalDomSync;
 };
 
+export const isExternalDomSyncCall = (callExpression: EsTreeNode, context: RuleContext): boolean =>
+  isExternalDomSyncMemberCall(callExpression, context.scopes) ||
+  isImportedExternalDomSyncCall(callExpression, context);
+
 const resolveInvokedFunction = (
   analysis: ProgramAnalysis,
   callee: EsTreeNode,
@@ -514,11 +518,10 @@ export const hasDeferredOrExternalEffectWork = (
         : null;
       const localFunction = resolveInvokedFunction(analysis, callee, scopes);
       const timerOperationName = resolveTimerOperationName(callee, scopes);
-      const isExternalDomSyncCall =
-        isExternalDomSyncMemberCall(child, scopes) || isImportedExternalDomSyncCall(child, context);
+      const isExternalDomSync = isExternalDomSyncCall(child, context);
       const isExternalWork =
         isFetchCall(child) ||
-        isExternalDomSyncCall ||
+        isExternalDomSync ||
         isSubscribeOrObserveCallExpression(child) ||
         timerOperationName !== null ||
         Boolean(memberName && DEFERRED_MEMBER_NAMES.has(memberName)) ||
@@ -536,7 +539,7 @@ export const hasDeferredOrExternalEffectWork = (
           writeStateSymbolId,
           context,
           Boolean(timerOperationName && TIMER_CLEANUP_CALLEE_NAMES.has(timerOperationName)),
-          isExternalDomSyncCall,
+          isExternalDomSync,
         )
       ) {
         didFindRelatedWork = true;

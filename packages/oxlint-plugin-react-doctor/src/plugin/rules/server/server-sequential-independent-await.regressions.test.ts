@@ -56,6 +56,45 @@ describe("server-sequential-independent-await — regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("keeps named loading stages sequential", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `async function buildScene() {
+        const terrain = await runStage(buildTerrain());
+        const props = await runStage(buildProps());
+        return { terrain, props };
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps asset builds with observable progress callbacks sequential", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `async function buildScene() {
+        const terrain = await buildTerrain((label, fraction) => hud.setProgress(label, fraction));
+        const props = await buildProps(async (label) => await advanceProgress(label));
+        return { terrain, props };
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags independent awaits with ordinary side-effect callbacks", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `async function loadData() {
+        const profile = await loadProfile((error) => console.error(error));
+        const preferences = await loadPreferences((value) => cache.set("preferences", value));
+        return { profile, preferences };
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags an independent visible helper even when its name starts with initialize", () => {
     const result = runRule(
       serverSequentialIndependentAwait,
@@ -284,4 +323,109 @@ export default async function Page() {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("stays silent when the first await is a POST mutation", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `export default async function handler() {
+  const created = await fetch("/api/users", { method: "POST", body: data });
+  const users = await fetch("/api/users");
+  return { created, users };
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the first await is a PUT mutation", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `export default async function handler() {
+  const updated = await fetch("/api/users/1", { method: "PUT", body: data });
+  const users = await fetch("/api/users");
+  return { updated, users };
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the first await is a PATCH mutation", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `export default async function handler() {
+  const patched = await fetch("/api/users/1", { method: "PATCH", body: data });
+  const users = await fetch("/api/users");
+  return { patched, users };
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the first await is a DELETE mutation", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `export default async function handler() {
+  const deleted = await fetch("/api/users/1", { method: "DELETE" });
+  const users = await fetch("/api/users");
+  return { deleted, users };
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for lowercase mutating method names", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `export default async function handler() {
+  const created = await fetch("/api/users", { method: "post", body: data });
+  const users = await fetch("/api/users");
+  return { created, users };
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags two GET fetches", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `export default async function handler() {
+  const user = await fetch("/api/user", { method: "GET" });
+  const posts = await fetch("/api/posts", { method: "GET" });
+  return { user, posts };
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when the second await mutates data read by the first", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `export default async function handler() {
+  const users = await fetch("/api/users");
+  const created = await fetch("/api/users", { method: "POST", body: data });
+  return { users, created };
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+});
+
+it("limits advice for reads that share a queue", () => {
+  const result = runRule(
+    serverSequentialIndependentAwait,
+    `class Repository { tail = Promise.resolve(); serialize(operation) { const result = this.tail.then(operation, operation); this.tail = result.then(() => undefined, () => undefined); return result; } runSqliteRead(kind) { return this.serialize(async () => [kind]); } async readSnapshot() { const collections = await this.runSqliteRead('collections'); const binders = await this.runSqliteRead('binders'); return [...collections, ...binders]; } }`,
+  );
+  expect(result.parseErrors).toEqual([]);
+  expect(result.diagnostics).toHaveLength(1);
+  expect(result.diagnostics[0].message).toContain("may overlap");
+  expect(result.diagnostics[0].message).not.toContain("twice as long");
+  expect(serverSequentialIndependentAwait.recommendation).toContain(
+    "Shared queues or synchronous work may not benefit",
+  );
 });

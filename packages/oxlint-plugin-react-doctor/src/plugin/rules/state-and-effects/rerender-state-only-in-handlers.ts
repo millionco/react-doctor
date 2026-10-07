@@ -74,14 +74,23 @@ const collectComponentStateUsageInfo = (
   const effectInfos: EffectDependencyInfo[] = [];
   walkAst(componentBody, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "CallExpression")) return;
-    if (isNodeOfType(child.callee, "Identifier")) {
-      const calleeName = child.callee.name;
-      if (setterNames.has(calleeName)) calledSetterNames.add(calleeName);
+    const directCalleeName = isNodeOfType(child.callee, "Identifier") ? child.callee.name : null;
+    if (directCalleeName !== null && setterNames.has(directCalleeName)) {
+      calledSetterNames.add(directCalleeName);
+    }
+    const customHookCalleeName =
+      directCalleeName ??
+      (isNodeOfType(child.callee, "MemberExpression") &&
+      !child.callee.computed &&
+      isNodeOfType(child.callee.property, "Identifier")
+        ? child.callee.property.name
+        : null);
+    if (customHookCalleeName !== null) {
       if (
-        isReactHookName(calleeName) &&
+        isReactHookName(customHookCalleeName) &&
         !isReactHookCall(child, BUILTIN_HOOK_NAMES, scopes) &&
-        !BUILTIN_HOOK_NAMES.has(calleeName) &&
-        !EFFECT_HOOK_NAMES.has(calleeName)
+        !BUILTIN_HOOK_NAMES.has(customHookCalleeName) &&
+        !EFFECT_HOOK_NAMES.has(customHookCalleeName)
       ) {
         for (const argument of child.arguments ?? []) {
           walkAst(argument as EsTreeNode, (argumentNode: EsTreeNode) => {

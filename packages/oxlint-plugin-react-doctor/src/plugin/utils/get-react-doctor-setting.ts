@@ -49,17 +49,40 @@ export const getReactDoctorNumberSetting = (
     : undefined;
 };
 
+// Every rule reads the same string-array settings (`capabilities`, ...) for
+// every file, so the filtered copy is memoized per settings bag. The bag is
+// treated as immutable once oxlint hands it to the plugin.
+const stringArraySettingsByBag = new WeakMap<
+  object,
+  Map<string, ReadonlyArray<string> | undefined>
+>();
+
+const readStringArraySetting = (
+  bag: object,
+  settingName: string,
+): ReadonlyArray<string> | undefined => {
+  const settingValue = readOwnPropertyValue(bag, settingName);
+  if (!Array.isArray(settingValue)) return undefined;
+  return settingValue.filter(
+    (entry): entry is string => typeof entry === "string" && entry.length > 0,
+  );
+};
+
 export const getReactDoctorOptionalStringArraySetting = (
   settings: RuleContext["settings"],
   settingName: string,
 ): ReadonlyArray<string> | undefined => {
   const bag = readReactDoctorSettingsBag(settings);
   if (!bag) return undefined;
-  const settingValue = readOwnPropertyValue(bag, settingName);
-  if (!Array.isArray(settingValue)) return undefined;
-  return settingValue.filter(
-    (entry): entry is string => typeof entry === "string" && entry.length > 0,
-  );
+  let settingsByName = stringArraySettingsByBag.get(bag);
+  if (!settingsByName) {
+    settingsByName = new Map();
+    stringArraySettingsByBag.set(bag, settingsByName);
+  }
+  if (settingsByName.has(settingName)) return settingsByName.get(settingName);
+  const settingValue = readStringArraySetting(bag, settingName);
+  settingsByName.set(settingName, settingValue);
+  return settingValue;
 };
 
 export const getReactDoctorStringArraySetting = (

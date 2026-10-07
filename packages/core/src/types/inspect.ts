@@ -4,6 +4,7 @@ import type { ProjectInfo } from "./project-info.js";
 import type { ScoreResult } from "./score.js";
 
 export interface InspectResult {
+  sourceFilterConfigHash?: string;
   diagnostics: Diagnostic[];
   score: ScoreResult | null;
   skippedChecks: string[];
@@ -62,23 +63,11 @@ export interface InspectResult {
    */
   lintSidecarReplayedFileCount?: number | null;
   lintSidecarTotalFileCount?: number | null;
-  /**
-   * Dead-code result cache outcome: `true` when the pass replayed a cached
-   * result (the analysis never ran), `false` on a fresh analysis. Absent when
-   * the pass never consulted the cache — dead-code skipped, the cache
-   * disabled, or a whole-repo cache replay where no analysis ran. The CLI
-   * projects it onto the Sentry wide event as `deadCode.cacheHit`.
-   */
+  /** @deprecated Retained for report compatibility. */
   deadCodeCacheHit?: boolean | null;
-  /**
-   * deslop's incremental summary-cache outcome for the dead-code analysis:
-   * collected files served from cached parse summaries vs freshly parsed.
-   * Both absent whenever no analysis consulted the incremental store — a
-   * whole-result cache hit, the cache disabled, or dead-code skipped. The CLI
-   * projects them onto the Sentry wide event as `deadCode.summaryCacheHits` /
-   * `deadCode.summaryCacheMisses`.
-   */
+  /** @deprecated Retained for report compatibility. */
   deadCodeSummaryCacheHits?: number | null;
+  /** @deprecated Retained for report compatibility. */
   deadCodeSummaryCacheMisses?: number | null;
   /**
    * Present only for a baseline run (`InspectOptions.baseline` set). The
@@ -86,14 +75,18 @@ export interface InspectResult {
    * carries the comparison totals for Codecov-style delta reporting.
    */
   baselineDelta?: {
-    /** The commit the base content was read from (resolved merge-base). */
+    /** Git ref or saved report path used for comparison. */
     baseRef: string;
+    source?: "base" | "baseline";
+    baselineFile?: string;
+    matchedCount?: number;
     /** Findings present at base but gone at head — resolved by the change. */
     fixedCount: number;
     /** Total findings at base (over the same files), for context. */
     baseTotalCount: number;
     /** Pre-existing findings matched after moving to a different file. */
     crossFileMatchCount?: number;
+    ruleCountMatchCount?: number;
   };
 }
 
@@ -101,7 +94,7 @@ export interface InspectResult {
  * Options accepted by `inspect()`. Mixes two concern groups; ordered
  * here in the source to make the split visible to future readers:
  *
- *   - **Engine inputs** (`lint`, `deadCode`, `includePaths`,
+ *   - **Engine inputs** (`lint`, `includePaths`,
  *     `configOverride`, `respectInlineDisables`) — flow into
  *     `runInspect`'s `InspectInput` and shape what the engine
  *     actually does.
@@ -118,7 +111,7 @@ export interface InspectResult {
 export interface InspectOptions {
   // ── Engine inputs ────────────────────────────────────────────────
   lint?: boolean;
-  /** See `ReactDoctorConfig.deadCode`. Ignored in diff / staged mode. */
+  /** @deprecated Compatibility alias for React maintainability analysis. */
   deadCode?: boolean;
   /**
    * Whether to run the Socket.dev supply-chain scan. Resolves against
@@ -163,6 +156,13 @@ export interface InspectOptions {
     baseFiles?: ReadonlyArray<string>;
     headFiles?: ReadonlyArray<string>;
   };
+  baselineReport?: {
+    file: string;
+    sourceRevision?: string;
+    sourceFilterConfigHash?: string;
+    diagnostics: ReadonlyArray<Diagnostic>;
+    renamedFiles?: Readonly<Record<string, string>>;
+  };
   /**
    * Restrict reported diagnostics to those whose source spans intersect the
    * lines the change touched (`--scope lines`). Each entry is one changed file with the
@@ -189,7 +189,7 @@ export interface InspectOptions {
    * seconds). When the budget runs out mid-scan, the run degrades
    * gracefully instead of failing: lint batches that haven't started are
    * skipped (listed in `skippedCheckReasons["lint:partial"]`) and the
-   * dead-code phase is skipped or capped to the remaining budget, so
+   * maintainability phase is skipped or capped to the remaining budget, so
    * partial results are still reported. In-flight work is allowed to
    * finish, so the wall clock can overshoot the budget by up to one
    * lint batch. A programmatic `inspect()` call applies the budget to that
@@ -293,7 +293,10 @@ export interface DiffInfo {
 export type JsonReportMode = "full" | "diff" | "staged" | "baseline";
 
 export interface JsonReportBaselineInfo {
-  /** Resolved base commit (merge-base) the head was compared against. */
+  source?: "base" | "baseline";
+  baselineFile?: string;
+  matchedCount?: number;
+  /** Git ref or saved report path used for comparison. */
   baseRef: string;
   /** Count of introduced findings (equals `summary.totalDiagnosticCount`). */
   newCount: number;
@@ -344,6 +347,7 @@ export interface JsonReportDiagnosticV3 extends Diagnostic {
 }
 
 export interface JsonReportProjectEntryV3 {
+  sourceFilterConfigHash?: string;
   directory: string;
   packageRoot: string;
   framework: ProjectInfo["framework"];
@@ -389,14 +393,13 @@ export interface JsonReportV1 {
   mode: JsonReportMode;
   baselineDegraded?: boolean;
   /**
-   * Whether any scanned project resolved a React-compatible runtime (React
-   * or Preact). `false` means every React-runtime rule family was gated off,
-   * so an empty `diagnostics` array is vacuous — NOT the same as a clean
-   * React scan. Consumers gating on the report (CI, verifiers, hooks) should
-   * treat `reactDetected === false` as "wrong scan target", not "all clear"
-   * (per project, `projects[].project.reactVersion` / `preactVersion` say
-   * which roots were non-React). Absent when nothing was scanned (`projects`
-   * is empty), on error reports, and on reports from older CLI versions.
+   * Whether any scanned project resolved a React-compatible runtime directly
+   * or through a React-backed framework. `false` means every React-runtime
+   * rule family was gated off, not that the scan target was unsupported:
+   * other detected framework and library rule families still run, as do
+   * framework-neutral rules on any analyzable project. Absent when
+   * nothing was scanned (`projects` is empty), on error reports, and on
+   * reports from older CLI versions.
    */
   reactDetected?: boolean;
   diff: JsonReportDiffInfo | null;
@@ -431,6 +434,7 @@ export interface JsonReportV3 extends Omit<
   "schemaVersion" | "projects" | "diagnostics"
 > {
   schemaVersion: 3;
+  sourceRevision?: string;
   baseline?: JsonReportBaselineInfo;
   projects: JsonReportProjectEntryV3[];
   diagnostics: JsonReportDiagnosticV3[];

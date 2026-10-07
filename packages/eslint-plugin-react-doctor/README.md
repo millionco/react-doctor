@@ -44,6 +44,24 @@ export default [
 
 Pick only the configs that match your stack. `recommended` is framework-agnostic; the others layer on framework-specific rules.
 
+If React Compiler is enabled, declare that capability once so React Doctor can disable compiler-redundant manual-memoization rules:
+
+```js
+export default [
+  reactDoctor.configs.recommended,
+  reactDoctor.configs["react-native"],
+  {
+    settings: {
+      "react-doctor": {
+        capabilities: ["react-compiler"],
+      },
+    },
+  },
+];
+```
+
+React Doctor's CLI discovers this automatically. ESLint flat configs are static, so standalone ESLint users declare the capability explicitly.
+
 ## Available configs
 
 | Config           | What it adds                                                  |

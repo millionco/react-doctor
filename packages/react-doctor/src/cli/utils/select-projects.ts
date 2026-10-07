@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import type { WorkspacePackage } from "@react-doctor/core";
 import {
-  discoverReactSubprojects,
+  discoverSupportedSubprojects,
   highlighter,
   isDirectory,
   isFile,
@@ -18,7 +18,7 @@ export const discoverWorkspacePackages = (rootDirectory: string): WorkspacePacka
   const hasRootPackageJson = isFile(path.join(rootDirectory, "package.json"));
   const packages = listWorkspacePackages(rootDirectory);
   if (packages.length === 0 && (!hasRootPackageJson || isMonorepoRoot(rootDirectory))) {
-    return discoverReactSubprojects(rootDirectory);
+    return discoverSupportedSubprojects(rootDirectory);
   }
   return packages;
 };

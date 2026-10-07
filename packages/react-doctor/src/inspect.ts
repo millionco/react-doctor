@@ -1,20 +1,28 @@
+import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
+  computeDiagnosticDelta,
+  mergeAndFilterDiagnostics,
+  getRuleMetadata,
+  createInvocationCaches,
   createOxlintSpawnSlots,
   type Diagnostic,
   highlighter,
   type InspectResult,
   OXLINT_NODE_REQUIREMENT,
-  OxlintConcurrency,
   type ReactDoctorConfig,
   resolveScanTarget,
-  resolveScanConcurrency,
   restoreLegacyThrow,
   runInspect as runInspectEffect,
+  shouldUseMaintainabilityLayer,
+  warmDuplicateJsxWorker,
+  warmOxlintWorkerPool,
   yieldToEventLoop,
 } from "@react-doctor/core";
+import { CliInputError } from "./cli/utils/cli-input-error.js";
+import { computeSourceFilterConfigHash } from "./cli/utils/compute-source-filter-config-hash.js";
 import { activeScanAbortRegistry } from "./cli/utils/active-scan-abort-registry.js";
 import { applyObservability } from "./cli/utils/apply-observability.js";
 import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
@@ -29,6 +37,7 @@ import { recordCount } from "./cli/utils/record-metric.js";
 import { recordRunEvent } from "./cli/utils/build-run-event.js";
 import { filterDiagnosticsByChangedLines } from "./cli/utils/filter-diagnostics-by-changed-lines.js";
 import { makeNoopConsole } from "./cli/utils/noop-console.js";
+import { resolveInvocationOxlintConcurrency } from "./cli/utils/resolve-invocation-oxlint-concurrency.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { resolveInspectOptions } from "./cli/utils/resolve-inspect-options.js";
 import { buildRunEventConfig } from "./cli/utils/render-and-record-scan.js";
@@ -42,6 +51,8 @@ import { createScanResultCacheLifecycle } from "./cli/utils/scan-result-cache-li
 import type { CachedScanPayload } from "./cli/utils/scan-result-cache-payload.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
+import { readBaselineLineMap } from "./cli/utils/read-baseline-line-map.js";
+import { withDiagnosticFingerprints } from "./cli/utils/with-diagnostic-fingerprints.js";
 import type { ReactDoctorInspectOptions, ResolvedInspectOptions } from "./inspect-options.js";
 import type { OxlintInvocationRuntime } from "./inspect-runtime.js";
 
@@ -106,7 +117,30 @@ const inspectWithOxlintRuntime = async (
     configSourceDirectory = scanTarget.configSourceDirectory;
   }
 
-  const options = resolveInspectOptions(inputOptions, userConfig);
+  // Precomputed entries are relative to the requested directory, so they are
+  // only valid when scan-target resolution did not redirect the scan root.
+  const canReusePrecomputedSourceFiles = path.resolve(directory) === path.resolve(scanDirectory);
+  const options = resolveInspectOptions(
+    canReusePrecomputedSourceFiles
+      ? inputOptions
+      : { ...inputOptions, precomputedSourceFiles: undefined },
+    userConfig,
+  );
+
+  const sourceFilterConfigHash = computeSourceFilterConfigHash({
+    userConfig,
+    respectInlineDisables: options.respectInlineDisables,
+  });
+  if (
+    options.baselineReport &&
+    (options.baselineReport.sourceFilterConfigHash !== undefined ||
+      options.baselineReport.diagnostics.length > 0) &&
+    options.baselineReport.sourceFilterConfigHash !== sourceFilterConfigHash
+  ) {
+    throw new CliInputError(
+      "The baseline uses different or unknown source-dependent filters. Regenerate the base --json report with the current textComponents, rawTextWrapperComponents, and respectInlineDisables settings, or use --scope changed --base <ref>.",
+    );
+  }
 
   // HACK: spinner.ts still has module-level silent state for imperative CLI
   // helpers. Concurrent batch members never touch the shared flag — overlapping
@@ -134,7 +168,7 @@ const inspectWithOxlintRuntime = async (
         } catch (error) {
           // Emit the canonical wide event on the failure path too: the scan threw
           // before finalizing, so there's no `result` — just the error taxonomy
-          // plus the config it ran with. The lint/dead-code outcome isn't known
+          // plus the config it ran with. The lint/maintainability outcome isn't known
           // here, so it's omitted rather than asserted as a benign default.
           // Rethrow so error handling is unchanged.
           recordRunEvent(rootSpan, {
@@ -155,7 +189,7 @@ const inspectWithOxlintRuntime = async (
     // link the crash before the process exits. Concurrent batch members never
     // wrote this state, so they have nothing to clear.
     if (!isConcurrentScan) resetSentryRunState();
-    return result;
+    return { ...result, sourceFilterConfigHash };
   } finally {
     if (ownsSpinnerSilence) setSpinnerSilent(wasSpinnerSilent);
   }
@@ -164,11 +198,10 @@ const inspectWithOxlintRuntime = async (
 export const createInvocationInspect = (
   requestedOxlintConcurrency?: number,
 ): ((directory: string, inputOptions?: ReactDoctorInspectOptions) => Promise<InspectResult>) => {
-  const concurrency = resolveScanConcurrency(
-    requestedOxlintConcurrency ?? Effect.runSync(OxlintConcurrency),
-  );
+  const concurrency = resolveInvocationOxlintConcurrency(requestedOxlintConcurrency);
   const spawnSlots = createOxlintSpawnSlots(concurrency);
   const scanResultCacheInvocationState = createScanResultCacheInvocationState();
+  const invocationCaches = createInvocationCaches();
   return async (directory, inputOptions = {}) => {
     const abortController = new AbortController();
     const unregisterAbortController = activeScanAbortRegistry.register(abortController);
@@ -178,6 +211,7 @@ export const createInvocationInspect = (
         spawnSlots,
         abortSignal: abortController.signal,
         scanResultCacheInvocationState,
+        invocationCaches,
       };
       return await inspectWithOxlintRuntime(directory, inputOptions, oxlintRuntime);
     } finally {
@@ -215,7 +249,7 @@ const runInspectWithRuntime = async (
   );
   const lintBindingMissing = options.lint && !resolvedNodeBinaryPath;
   await yieldToEventLoop();
-  const scanResultCacheLifecycle = createScanResultCacheLifecycle({
+  const scanResultCacheLifecycle = await createScanResultCacheLifecycle({
     directory,
     options,
     userConfig,
@@ -228,8 +262,20 @@ const runInspectWithRuntime = async (
   });
   const cachedResult = scanResultCacheLifecycle.replay();
   if (cachedResult !== null) return cachedResult;
+  if (options.lint && resolvedNodeBinaryPath) {
+    warmOxlintWorkerPool(resolvedNodeBinaryPath, oxlintRuntime.concurrency);
+  }
+  // The duplicate-JSX thread parses with TypeScript; booting it now hides
+  // that load behind discovery. Skipped when the config disables the pass
+  // (`--ignore-tags project-analysis` still warms it: a rare, harmless waste).
+  if (
+    options.deadCode &&
+    shouldUseMaintainabilityLayer({ shouldRunDuplicateJsx: options.deadCode, userConfig })
+  ) {
+    warmDuplicateJsxWorker();
+  }
 
-  // Suppress the orchestrator-owned lint + dead-code spinners when
+  // Suppress the orchestrator-owned lint + maintainability spinners when
   // the CLI is in score-only / silent / suppressed-rendering mode (or
   // when lint is skipped entirely) — suppressed-rendering scans run
   // concurrently in multi-project batches, where interleaved spinners
@@ -255,6 +301,7 @@ const runInspectWithRuntime = async (
     shouldShowProgressSpinners,
     oxlintConcurrency: oxlintRuntime.concurrency,
     oxlintSpawnSlots: oxlintRuntime.spawnSlots,
+    invocationCaches: oxlintRuntime.invocationCaches,
     reporterLayer: options.uiLayers?.reporter,
     progressLayer: options.uiLayers?.progress,
   });
@@ -263,7 +310,9 @@ const runInspectWithRuntime = async (
     {
       directory,
       precomputedSourceFileCount: options.precomputedSourceFileCount,
+      precomputedSourceFiles: options.precomputedSourceFiles,
       includePaths: options.includePaths,
+      changedLineRanges: options.changedLineRanges ?? undefined,
       customRulesOnly: options.customRulesOnly,
       respectInlineDisables: options.respectInlineDisables,
       warnings: options.warnings,
@@ -355,15 +404,57 @@ const runInspectWithRuntime = async (
   // the full head findings visible and emit no delta. The CLI then reports
   // `mode: "diff"` and skips the gate rather than hiding real findings or
   // blaming the PR for pre-existing ones.
-  let inspectDiagnostics: ReadonlyArray<Diagnostic> = output.diagnostics;
+  const headDiagnostics = withDiagnosticFingerprints(directory, output.diagnostics);
+  let inspectDiagnostics: ReadonlyArray<Diagnostic> = headDiagnostics;
   let baselineDelta: InspectResult["baselineDelta"];
   // A head lint that dropped or deadline-skipped files is incomplete, so the
   // delta would silently miss findings in the unlinted files — degrade to a
   // plain diff exactly like a failed head lint.
   if (
+    options.baselineReport &&
+    !didLintFail &&
+    !output.didDeadCodeFail &&
+    countIncompleteLintFiles(output.lintPartialFailures) === 0
+  ) {
+    const baseDiagnostics = mergeAndFilterDiagnostics(
+      options.baselineReport.diagnostics.filter((diagnostic) => {
+        const metadata = getRuleMetadata(diagnostic.plugin, diagnostic.rule);
+        if (!metadata) return true;
+        if (metadata.tags.some((tag) => options.ignoredTags.has(tag))) return false;
+        return (
+          options.includedTags.size === 0 ||
+          metadata.tags.some((tag) => options.includedTags.has(tag))
+        );
+      }),
+      directory,
+      userConfig,
+      () => null,
+      { respectInlineDisables: false, warnings: options.warnings },
+    );
+    const delta = computeDiagnosticDelta({
+      headDiagnostics,
+      baseDiagnostics,
+      renamedFiles: options.baselineReport.renamedFiles ?? {},
+      mapBaseLine: readBaselineLineMap(directory, options.baselineReport.sourceRevision),
+      readHeadLine: () => null,
+      readBaseLine: () => null,
+    });
+    inspectDiagnostics = delta.newDiagnostics;
+    baselineDelta = {
+      baseRef: options.baselineReport.file,
+      source: "baseline",
+      baselineFile: options.baselineReport.file,
+      matchedCount: baseDiagnostics.length - delta.fixedCount,
+      baseTotalCount: baseDiagnostics.length,
+      fixedCount: delta.fixedCount,
+      crossFileMatchCount: delta.crossFileMatchCount,
+      ruleCountMatchCount: delta.ruleCountMatchCount,
+    };
+  } else if (
     options.baseline &&
     isDiffMode &&
     !didLintFail &&
+    !output.didDeadCodeFail &&
     countIncompleteLintFiles(output.lintPartialFailures) === 0
   ) {
     const comparison = await runBaselineComparison({
@@ -372,7 +463,7 @@ const runInspectWithRuntime = async (
       userConfig,
       configSourceDirectory,
       headProjectInfo: output.project,
-      headDiagnostics: output.diagnostics,
+      headDiagnostics,
       resolvedNodeBinaryPath,
       baselineRef: options.baseline.ref,
       baseFiles: options.baseline.baseFiles,
@@ -392,13 +483,15 @@ const runInspectWithRuntime = async (
     // comments all narrow together.
     inspectDiagnostics = filterDiagnosticsByChangedLines({
       directory,
-      diagnostics: output.diagnostics,
+      diagnostics: headDiagnostics,
       changedLineRanges: options.changedLineRanges,
     });
   }
   // Baseline was requested but no delta was produced (head/base lint failed) —
   // the run degrades to a plain diff and must not gate on the full head set.
-  const baselineDegraded = Boolean(options.baseline) && isDiffMode && baselineDelta === undefined;
+  const baselineDegraded =
+    (Boolean(options.baselineReport) || (Boolean(options.baseline) && isDiffMode)) &&
+    baselineDelta === undefined;
   // The orchestrator already surface-filters scoring input through
   // `scoreSurface: "score"` and computes the real score in-band, so
   // we just consume `output.score`. `--no-score` opts out before the

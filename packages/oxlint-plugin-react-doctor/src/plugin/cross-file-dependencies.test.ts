@@ -82,6 +82,28 @@ describe("collectCrossFileDependencyProbes — driver", () => {
   });
 });
 
+describe("no-hydration-branch-on-browser-global collector", () => {
+  it("records both imported helpers and the nearest manifest", () => {
+    const manifestPath = writeFixtureFile(
+      "package.json",
+      JSON.stringify({ dependencies: { react: "19.1.0" } }),
+    );
+    const helperPath = writeFixtureFile(
+      "src/environment.ts",
+      `export const isBrowser = () => typeof window !== "undefined";\n`,
+    );
+    const componentPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { isBrowser } from "./environment";\nexport const App = () => isBrowser() ? <main /> : null;\n`,
+    );
+
+    const trace = collectFor(componentPath, ["no-hydration-branch-on-browser-global"]);
+
+    expect(trace?.contentPaths.has(manifestPath)).toBe(true);
+    expect(trace?.contentPaths.has(helperPath)).toBe(true);
+  });
+});
+
 describe("no-barrel-import collector", () => {
   const setupBarrelFixture = (): string => {
     writeFixtureFile("src/components/Button.tsx", "export const Button = () => null;\n");
@@ -855,5 +877,22 @@ describe("collector registry", () => {
     expect(
       [...CROSS_FILE_DEPENDENCY_COLLECTORS.keys(), ...UNBOUNDED_CROSS_FILE_RULE_IDS].sort(),
     ).toEqual([...CROSS_FILE_RULE_IDS].sort());
+  });
+});
+
+describe("React Native export version dependencies", () => {
+  it("records the installed native manifest on cold and warm collection", () => {
+    writeFixtureFile("package.json", `{ "dependencies": { "react-native": "0.40.0" } }`);
+    writeFixtureFile(
+      "node_modules/react-native/package.json",
+      `{ "name": "react-native", "version": "0.71.0" }`,
+    );
+    const appPath = writeFixtureFile("src/App.tsx", `import { AsyncStorage } from 'react-native';`);
+    const coldTrace = collectFor(appPath, ["rn-no-deprecated-modules"]);
+    const warmTrace = collectFor(appPath, ["rn-no-deprecated-modules"]);
+    expect(coldTrace?.contentPaths.has(fixturePath("node_modules/react-native/package.json"))).toBe(
+      true,
+    );
+    expect(warmTrace?.contentPaths).toEqual(coldTrace?.contentPaths);
   });
 });

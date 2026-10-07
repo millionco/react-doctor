@@ -2,6 +2,7 @@ import { performance } from "node:perf_hooks";
 import {
   buildJsonReport,
   type DiffInfo,
+  type InspectResult,
   type JsonReportMode,
   type JsonReportSkippedProject,
   type ReactDoctorConfig,
@@ -15,6 +16,7 @@ import { writeJsonReport } from "./json-mode.js";
 import { recordCount } from "./record-metric.js";
 import { resolveBlockingLevel } from "./resolve-blocking-level.js";
 import { shouldFailScanGate } from "./should-fail-scan-gate.js";
+import { runGit } from "./git-hook-shared.js";
 import { VERSION } from "./version.js";
 
 export type { CompletedScan } from "./build-final-cli-scan-outcome.js";
@@ -25,6 +27,7 @@ interface FinalizeCliScansInput {
   readonly mode: JsonReportMode;
   readonly diff: DiffInfo | null;
   readonly baselineIntended: boolean;
+  readonly emptyComparison?: InspectResult["baselineDelta"];
   readonly isJsonMode: boolean;
   readonly isScoreOnly: boolean;
   readonly flags: InspectFlags;
@@ -58,19 +61,21 @@ export const finalizeCliScans = (input: FinalizeCliScansInput): void => {
     skippedProjects: input.skippedProjects,
     mode: input.mode,
     baselineIntended: input.baselineIntended,
+    emptyComparison: input.emptyComparison,
     categoryFilters: input.categoryFilters,
   });
 
-  if (outcome.shouldWarnNoReactDetected) {
+  if (outcome.shouldWarnNoSupportedLibraryDetected) {
     recordCount(METRIC.scanNoReactDetected, 1);
     logger.warn(
-      `No React project detected at ${input.resolvedDirectory} — React rules were gated off; this is not the same as a clean scan.`,
+      `No supported framework or library detected at ${input.resolvedDirectory} — library-specific rules were gated off; framework-neutral rules still ran.`,
     );
   }
 
   if (input.isJsonMode) {
     writeJsonReport(
       buildJsonReport({
+        sourceRevision: runGit(input.resolvedDirectory, ["rev-parse", "HEAD"]) ?? undefined,
         version: VERSION,
         directory: input.resolvedDirectory,
         mode: outcome.mode,

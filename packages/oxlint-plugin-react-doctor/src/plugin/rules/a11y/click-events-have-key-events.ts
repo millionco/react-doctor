@@ -19,6 +19,7 @@ import { isPureEventBlockerHandler } from "../../utils/is-pure-event-blocker-han
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
 
 const MESSAGE =
@@ -279,6 +280,7 @@ export const clickEventsHaveKeyEvents = defineRule({
   recommendation: "Pair `onClick` with a key handler so keyboard users can trigger it.",
   category: "Accessibility",
   create: (context) => {
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const isTestlikeFile = isTestlikeFilename(context.filename);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
@@ -293,12 +295,13 @@ export const clickEventsHaveKeyEvents = defineRule({
         // `onClickCapture` is the same click affordance on the capture
         // phase — equally unreachable from the keyboard.
         const spreadEventValues = getTransparentSpreadEventValues(node.attributes, context.scopes);
-        if (!spreadEventValues) return;
+        if (!spreadEventValues && shouldUseCuratedBehavior) return;
+        const resolvedSpreadEventValues = spreadEventValues ?? new Map<string, EsTreeNode>();
         const onClick =
           hasJsxPropIgnoreCase(node.attributes, "onClick") ??
           hasJsxPropIgnoreCase(node.attributes, "onClickCapture");
         const spreadOnClickExpression = CLICK_HANDLERS.map((name) =>
-          spreadEventValues.get(name.toLowerCase()),
+          resolvedSpreadEventValues.get(name.toLowerCase()),
         ).find((expression) => expression !== undefined);
         if (!onClick && !spreadOnClickExpression) {
           return;
@@ -341,7 +344,7 @@ export const clickEventsHaveKeyEvents = defineRule({
         const hasKeyHandler = KEY_HANDLERS.some(
           (handler) =>
             hasJsxPropIgnoreCase(node.attributes, handler) ||
-            spreadEventValues.has(handler.toLowerCase()),
+            resolvedSpreadEventValues.has(handler.toLowerCase()),
         );
         if (hasKeyHandler) return;
 

@@ -35,3 +35,20 @@ Header format:
 ```
 
 Files may use `.ts`, `.tsx`, `.js`, or `.jsx` and must parse cleanly (`pnpm test` enforces it).
+
+## Exact audit corpora
+
+`react-bench-0.9.7-audit/` and `dummy-threejs-v14-audit/` preserve complete source files from
+exhaustive production-corpus reviews. Their manifests pin the source-report hashes, audited
+callsites, source-line hashes, expected verdict counts, and fixture mappings. Regression files use
+`// audit-verdict: pass` because the exact source can contain unrelated valid findings; they remain
+mutation seeds instead of claiming the entire file must be diagnostic-free. True-positive files use
+`// verdict: fail` and are replayed deterministically.
+
+Regenerate the Dummy corpus from its archived scan artifacts with:
+
+```sh
+node scripts/import-dummy-threejs-audit-corpus.mjs \
+  <before-diagnostics.tsv> <after-diagnostics.tsv> <selected-roots.txt> \
+  corpus/dummy-threejs-v14-audit corpus/dummy-threejs-v14-audit.json
+```

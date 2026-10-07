@@ -2,6 +2,7 @@ import type * as Effect from "effect/Effect";
 import type { OxlintUnavailable, ReactDoctorErrorReason } from "../errors.js";
 import type { DiagnosticSurface, ReactDoctorConfig } from "./config.js";
 import type { Diagnostic, SourceFileEntry, SuppressedRuleCount } from "./diagnostic.js";
+import type { ChangedFileLineRanges } from "./inspect.js";
 import type { ProjectInfo } from "./project-info.js";
 import type { ScoreRequestMetadata, ScoreResult } from "./score.js";
 
@@ -10,6 +11,8 @@ export interface InspectInput {
   readonly precomputedSourceFileCount?: number;
   readonly precomputedSourceFiles?: ReadonlyArray<SourceFileEntry>;
   readonly includePaths: ReadonlyArray<string>;
+  readonly maintainabilityFocusPaths?: ReadonlyArray<string>;
+  readonly changedLineRanges?: ReadonlyArray<ChangedFileLineRanges>;
   readonly customRulesOnly: boolean;
   readonly respectInlineDisables: boolean;
   /**
@@ -24,7 +27,7 @@ export interface InspectInput {
   readonly includedTags?: ReadonlySet<string>;
   readonly includeTagDefaults?: boolean;
   readonly nodeBinaryPath?: string;
-  /** Whether dead-code analysis runs. Gated also on `!isDiffMode`. */
+  /** Compatibility switch for the built-in React maintainability analysis. */
   readonly runDeadCode: boolean;
   /** Marks the run as CI-originated for the Score API. */
   readonly isCi: boolean;
@@ -52,16 +55,10 @@ export interface InspectInput {
    * CLI sets this when scanning multiple projects so it can render a
    * single aggregate "Scanned N files" line in their place — the
    * per-project file count + scan duration are surfaced on
-   * `InspectOutput` for that summary. Lint / dead-code failures still
+   * `InspectOutput` for that summary. Lint / maintainability failures still
    * surface their own spinner state regardless of this flag.
    */
   readonly suppressScanSummary?: boolean;
-  /**
-   * When `true`, `includePaths` is linted verbatim instead of being filtered
-   * to React Doctor's supported source-file set. Editor scans use this for the
-   * exact buffer supplied by the language server.
-   */
-  readonly skipExplicitIncludePathFilter?: boolean;
   /**
    * Whether the scanned project's `package.json` is among the changed files
    * in a diff / staged scan. Dependency health is a whole-project property
@@ -77,13 +74,13 @@ export interface InspectInput {
    * `--max-duration` budget resolved against the scan start). Past it the
    * scan degrades gracefully: un-started lint batches are skipped (surfaced
    * via `skippedCheckReasons["lint:partial"]` with the file list) and the
-   * dead-code phase is skipped or capped to the remaining budget.
+   * maintainability phase is skipped or capped to the remaining budget.
    */
   readonly deadlineEpochMs?: number;
   readonly signal?: AbortSignal;
   /** Descendant project roots covered by sibling scans in a workspace batch. */
   readonly excludedProjectDirectories?: ReadonlyArray<string>;
-  /** Keep descendant dead-code findings when this scan owns the workspace-wide pass. */
+  /** Keep descendant maintainability findings when this scan owns the workspace-wide pass. */
   readonly retainExcludedProjectDeadCodeDiagnostics?: boolean;
 }
 
@@ -112,16 +109,10 @@ export interface InspectOutput {
    */
   readonly lintFailureReasonKind: OxlintUnavailable["kind"] | null;
   readonly lintPartialFailures: ReadonlyArray<string>;
-  /** `false` when run-dead-code was disabled, diff/staged mode, or analysis crashed. */
+  /** Compatibility field reporting whether maintainability analysis failed. */
   readonly didDeadCodeFail: boolean;
   readonly deadCodeFailureReason: string | null;
-  /**
-   * Whether the dead-code pass actually ran concurrently with lint this scan.
-   * Only `REACT_DOCTOR_DEAD_CODE_OVERLAP=on` overlaps; the default `"auto"`
-   * and explicit `"off"` paths stay sequential. Internal telemetry only
-   * (rides the per-scan wide event); NOT part of the public `inspect()`
-   * `InspectResult`.
-   */
+  /** @deprecated Compatibility field that is always `false`. */
   readonly deadCodeOverlapped: boolean;
   /**
    * Number of files the scan reported (lint progress total, falling
@@ -185,26 +176,11 @@ export interface InspectOutput {
    */
   readonly lintSidecarReplayedFileCount: number | null;
   readonly lintSidecarTotalFileCount: number | null;
-  /**
-   * Dead-code result cache outcome for this scan's dead-code pass: `true`
-   * when the cached result was replayed (the analysis worker never spawned),
-   * `false` on a miss (fresh analysis). `null` when the pass never consulted
-   * the cache — dead-code skipped/disabled, the cache off
-   * (`REACT_DOCTOR_NO_CACHE` / `REACT_DOCTOR_NO_DEAD_CODE_CACHE`), or the
-   * pass discarded by a lint failure. Fed to the Sentry wide event as
-   * `deadCode.cacheHit`.
-   */
+  /** @deprecated Compatibility field that is always `null`. */
   readonly deadCodeCacheHit: boolean | null;
-  /**
-   * deslop's incremental summary-cache outcome for this scan's dead-code
-   * ANALYSIS: collected files served from cached parse summaries vs freshly
-   * parsed. Both `null` whenever no analysis consulted the incremental store —
-   * a whole-result cache hit (no analysis ran), the cache off, dead-code
-   * skipped/disabled, or the pass discarded by a lint failure. Fed to the
-   * Sentry wide event as `deadCode.summaryCacheHits` /
-   * `deadCode.summaryCacheMisses`.
-   */
+  /** @deprecated Compatibility field that is always `null`. */
   readonly deadCodeSummaryCacheHits: number | null;
+  /** @deprecated Compatibility field that is always `null`. */
   readonly deadCodeSummaryCacheMisses: number | null;
   /**
    * Per-rule tallies of diagnostics the pipeline dropped because the user

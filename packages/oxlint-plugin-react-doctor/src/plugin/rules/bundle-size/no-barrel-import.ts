@@ -158,6 +158,7 @@ const buildReportMessage = (
 // bundle.
 export const noBarrelImport = defineRule({
   id: "no-barrel-import",
+  defaultEnabled: false,
   title: "Import from a barrel file",
   tags: ["test-noise"],
   severity: "warn",

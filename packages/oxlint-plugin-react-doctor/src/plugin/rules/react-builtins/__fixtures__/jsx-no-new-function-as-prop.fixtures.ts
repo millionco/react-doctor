@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/jsx_no_new_function_as_prop.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/react_perf/jsx_no_new_function_as_prop.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -63,6 +63,14 @@ export const passCases: ReadonlyArray<OxcFixture> = [
         }
         `,
   },
+  {
+    code: `const Foo = () => <button onClick={() => true} />`,
+    oxcOptions: [{ nativeAllowList: "all" }],
+  },
+  {
+    code: `const Foo = () => <button onClick={() => true} />`,
+    oxcOptions: [{ nativeAllowList: ["onClick"] }],
+  },
 ];
 
 export const failCases: ReadonlyArray<OxcFixture> = [
@@ -117,5 +125,9 @@ export const failCases: ReadonlyArray<OxcFixture> = [
             return <a onClick={onClick} />
         }
         `,
+  },
+  {
+    code: `const Foo = () => <button onClick={() => true} />`,
+    oxcOptions: [{ nativeAllowList: ["onChange"] }],
   },
 ];

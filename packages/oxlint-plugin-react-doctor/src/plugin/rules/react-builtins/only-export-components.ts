@@ -14,8 +14,11 @@ import { getFastRefreshFileStatus } from "../../utils/get-fast-refresh-file-stat
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { ControlFlowAnalysis } from "../../semantic/control-flow-graph.js";
@@ -39,6 +42,8 @@ const REACT_CONTEXT_MESSAGE =
   "This file exports a context with components, so Fast Refresh can't safely preserve component state.";
 const NAMESPACE_OBJECT_MESSAGE =
   "This export bundles components inside an object, so Fast Refresh can't track them and falls back to a full reload.";
+const LOCAL_COMPONENT_MESSAGE =
+  "This file has local components but no component export, so Fast Refresh can't preserve them.";
 
 interface OnlyExportComponentsSettings {
   allowExportNames?: ReadonlyArray<string>;
@@ -54,6 +59,7 @@ const TEST_SUPPORT_FILE_PATTERN =
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
+  shouldUseCuratedBehavior: boolean,
 ): Required<OnlyExportComponentsSettings> => {
   const reactDoctor = settings?.["react-doctor"];
   const ruleSettings =
@@ -63,11 +69,9 @@ const resolveSettings = (
       : {};
   return {
     allowExportNames: ruleSettings.allowExportNames ?? [],
-    // Default `true` because exported constants are stable references —
-    // Fast Refresh can hot-swap them without forcing a full reload.
-    // Matches the recommended configuration in
-    // `eslint-plugin-react-refresh` for Vite projects.
-    allowConstantExport: ruleSettings.allowConstantExport ?? true,
+    // React Doctor's curated mode follows Vite's recommended Fast Refresh
+    // configuration. Direct plugin use keeps the upstream `false` default.
+    allowConstantExport: ruleSettings.allowConstantExport ?? shouldUseCuratedBehavior,
     customHOCs: ruleSettings.customHOCs ?? [],
     checkJS: ruleSettings.checkJS ?? false,
   };
@@ -158,6 +162,7 @@ interface AnalyzerState {
   localComponentNames: ReadonlySet<string>;
   scopes: ScopeAnalysis;
   controlFlow: ControlFlowAnalysis;
+  shouldUseCuratedBehavior: boolean;
 }
 
 interface RouteFactoryBindings {
@@ -208,7 +213,9 @@ const canBeReactFunctionComponent = (
     isNodeOfType(expression, "ArrowFunctionExpression") ||
     isNodeOfType(expression, "FunctionExpression")
   ) {
-    return functionHasReactRenderSemantics(expression, state);
+    return state.shouldUseCuratedBehavior
+      ? functionHasReactRenderSemantics(expression, state)
+      : isNodeOfType(expression, "ArrowFunctionExpression");
   }
   if (isNodeOfType(expression, "CallExpression")) {
     return isHocCallee(expression.callee as EsTreeNode, state);
@@ -333,6 +340,18 @@ const isProvenComponentValue = (
   );
 };
 
+const functionReturnsProvenComponent = (expression: EsTreeNode, state: AnalyzerState): boolean => {
+  const functionNode = skipTsExpression(expression);
+  if (!isFunctionLike(functionNode) || functionNode.async || functionNode.generator) return false;
+  if (!isNodeOfType(functionNode.body, "BlockStatement")) {
+    return isProvenComponentValue(functionNode.body, state);
+  }
+  if (!isNodeOfType(functionNode.body.body.at(-1), "ReturnStatement")) return false;
+  return collectFunctionReturnStatements(functionNode).every((returnStatement) =>
+    Boolean(returnStatement.argument && isProvenComponentValue(returnStatement.argument, state)),
+  );
+};
+
 const isDirectRefreshWrapperCall = (
   call: EsTreeNodeOfType<"CallExpression">,
   state: AnalyzerState,
@@ -343,6 +362,21 @@ const isDirectRefreshWrapperCall = (
     return false;
   }
   return call.arguments.some((argument) => isProvenComponentValue(argument as EsTreeNode, state));
+};
+
+const isUpstreamHocCallExpression = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  state: AnalyzerState,
+): boolean => {
+  if (!isHocCallee(call.callee as EsTreeNode, state)) return false;
+  const firstArgument = call.arguments[0] as EsTreeNode | undefined;
+  if (!firstArgument) return false;
+  const expression = skipTsExpression(firstArgument);
+  if (isNodeOfType(expression, "Identifier")) return true;
+  if (isNodeOfType(expression, "FunctionExpression")) return Boolean(expression.id);
+  return (
+    isNodeOfType(expression, "CallExpression") && isUpstreamHocCallExpression(expression, state)
+  );
 };
 
 // The real Fast-Refresh breaker react-refresh checks for: a module whose
@@ -447,7 +481,7 @@ const classifyExport = (
   // component re-renders cleanly. Flagging these is unactionable
   // noise in current toolchains. The user can still opt out by
   // listing the hook in `allowExportNames` if their setup is older.
-  if (/^use[A-Z]/.test(name)) return { kind: "allowed" };
+  if (state.shouldUseCuratedBehavior && /^use[A-Z]/.test(name)) return { kind: "allowed" };
   if (state.allowConstantExport && initializer) {
     const expression = skipTsExpression(initializer);
     if (
@@ -479,12 +513,12 @@ const classifyExport = (
     ) {
       return { kind: "namespace-object", reportNode };
     }
-    if (isNodeOfType(stripped, "MemberExpression")) {
+    if (state.shouldUseCuratedBehavior && isNodeOfType(stripped, "MemberExpression")) {
       return isProvenComponentValue(stripped, state)
         ? { kind: "react-component" }
         : { kind: "non-component", reportNode };
     }
-    if (isNodeOfType(stripped, "Identifier")) {
+    if (state.shouldUseCuratedBehavior && isNodeOfType(stripped, "Identifier")) {
       return isProvenComponentValue(stripped, state)
         ? { kind: "react-component" }
         : { kind: "non-component", reportNode };
@@ -493,8 +527,9 @@ const classifyExport = (
       return { kind: "non-component", reportNode };
     }
     if (
-      isNodeOfType(stripped, "ArrowFunctionExpression") ||
-      isNodeOfType(stripped, "FunctionExpression")
+      state.shouldUseCuratedBehavior &&
+      (isNodeOfType(stripped, "ArrowFunctionExpression") ||
+        isNodeOfType(stripped, "FunctionExpression"))
     ) {
       return { kind: "non-component", reportNode };
     }
@@ -533,11 +568,30 @@ const isFileNameAllowed = (filename: string | undefined, checkJS: boolean): bool
   return false;
 };
 
-// Port of `oxc_linter::rules::react::only_export_components`. Defaults
-// are tuned for Fast Refresh: only fires in `.tsx`/`.jsx` (and `.js`
-// when `checkJS` is on) — pure `.ts` files don't participate in HMR
-// and can't break it. `allowConstantExport: true` by default because
-// stable constants alongside components don't break Fast Refresh.
+const isUpstreamFileNameAllowed = (filename: string, checkJS: boolean): boolean => {
+  if (!filename) return true;
+  const basename = filename.slice(
+    Math.max(filename.lastIndexOf("/"), filename.lastIndexOf("\\")) + 1,
+  );
+  if (
+    basename.includes(".test.") ||
+    basename.includes(".spec.") ||
+    basename.includes(".cy.") ||
+    basename.includes(".stories.")
+  ) {
+    return false;
+  }
+  const lowercaseFilename = filename.toLowerCase();
+  return (
+    lowercaseFilename.endsWith(".tsx") ||
+    lowercaseFilename.endsWith(".jsx") ||
+    (checkJS && lowercaseFilename.endsWith(".js"))
+  );
+};
+
+// Port of `oxc_linter::rules::react::only_export_components`. Direct plugin
+// use preserves upstream defaults; React Doctor's curated mode retains its
+// framework-aware Fast Refresh behavior.
 export const onlyExportComponents = defineRule({
   id: "only-export-components",
   title: "Non-component export in component file",
@@ -546,10 +600,11 @@ export const onlyExportComponents = defineRule({
     "Move non-component exports out of component files so Fast Refresh can preserve component state instead of full-reloading.",
   category: "Architecture",
   create: (context): RuleVisitors => {
-    const settings = resolveSettings(context.settings);
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
+    const settings = resolveSettings(context.settings, shouldUseCuratedBehavior);
     const filename = normalizeFilename(context.filename ?? "");
     const fastRefreshStatus = getFastRefreshFileStatus(context);
-    if (!fastRefreshStatus.isActive) return EMPTY_RULE_VISITORS;
+    if (shouldUseCuratedBehavior && !fastRefreshStatus.isActive) return EMPTY_RULE_VISITORS;
     const reactRouterModuleKind =
       fastRefreshStatus.runtime === "react-router" || fastRefreshStatus.runtime === "remix"
         ? getReactRouterFrameworkModuleKind(context)
@@ -559,22 +614,29 @@ export const onlyExportComponents = defineRule({
     const isFrameworkFileExempt =
       !isReactRouterRouteModule &&
       isFrameworkRouteOrSpecialFilename(context, fastRefreshStatus.runtime);
-    if (isFrameworkFileExempt) return EMPTY_RULE_VISITORS;
-    if (!isFileNameAllowed(filename, settings.checkJS)) return EMPTY_RULE_VISITORS;
-    const allowedRouteExportNames =
-      fastRefreshStatus.runtime === "next"
-        ? NEXT_ALLOWED_EXPORT_NAMES
-        : fastRefreshStatus.runtime === "expo"
-          ? EXPO_ALLOWED_EXPORT_NAMES
-          : isReactRouterRouteModule
-            ? REACT_ROUTER_ALLOWED_EXPORT_NAMES
-            : EMPTY_NAME_SET;
-    const routeFactoryMemberNames =
-      fastRefreshStatus.runtime === "tanstack"
-        ? TANSTACK_ROUTE_FACTORY_CALLEE_NAMES
-        : fastRefreshStatus.runtime === "react-router" || fastRefreshStatus.runtime === "remix"
-          ? REACT_ROUTER_FACTORY_CALLEE_NAMES
-          : EMPTY_NAME_SET;
+    if (shouldUseCuratedBehavior && isFrameworkFileExempt) return EMPTY_RULE_VISITORS;
+    const isAllowedFilename = shouldUseCuratedBehavior
+      ? isFileNameAllowed(filename, settings.checkJS)
+      : isUpstreamFileNameAllowed(filename, settings.checkJS);
+    if (!isAllowedFilename) return EMPTY_RULE_VISITORS;
+    let allowedRouteExportNames = EMPTY_NAME_SET;
+    let routeFactoryMemberNames = EMPTY_NAME_SET;
+    if (shouldUseCuratedBehavior) {
+      if (fastRefreshStatus.runtime === "next") allowedRouteExportNames = NEXT_ALLOWED_EXPORT_NAMES;
+      else if (fastRefreshStatus.runtime === "expo") {
+        allowedRouteExportNames = EXPO_ALLOWED_EXPORT_NAMES;
+      } else if (isReactRouterRouteModule) {
+        allowedRouteExportNames = REACT_ROUTER_ALLOWED_EXPORT_NAMES;
+      }
+      if (fastRefreshStatus.runtime === "tanstack") {
+        routeFactoryMemberNames = TANSTACK_ROUTE_FACTORY_CALLEE_NAMES;
+      } else if (
+        fastRefreshStatus.runtime === "react-router" ||
+        fastRefreshStatus.runtime === "remix"
+      ) {
+        routeFactoryMemberNames = REACT_ROUTER_FACTORY_CALLEE_NAMES;
+      }
+    }
     const routeFactoryLocalNames = new Set<string>();
     const routeFactoryNamespaceNames = new Set<string>();
     const nextDynamicImportSymbolIds = new Set<number>();
@@ -592,6 +654,7 @@ export const onlyExportComponents = defineRule({
     const reactDomNamespaceNames = new Set<string>();
     const rootNames = new Set<string>();
     let hasRootMount = false;
+    let hasReactImport = false;
     const isCreateRootCall = (node: EsTreeNode): boolean => {
       if (!isNodeOfType(node, "CallExpression")) return false;
       if (isNodeOfType(node.callee, "Identifier")) {
@@ -608,6 +671,7 @@ export const onlyExportComponents = defineRule({
     const visitImportDeclaration = (node: EsTreeNode): void => {
       if (!isNodeOfType(node, "ImportDeclaration")) return;
       const source = node.source.value;
+      if (source === "react") hasReactImport = true;
       for (const specifier of node.specifiers) {
         const symbol = context.scopes.symbolFor(specifier.local);
         if (symbol) importSymbolIds.add(symbol.id);
@@ -721,10 +785,12 @@ export const onlyExportComponents = defineRule({
       ExportDefaultDeclaration: pushExportNode,
       ExportNamedDeclaration: pushExportNode,
       FunctionDeclaration: pushComponentCandidate,
+      FunctionExpression: pushComponentCandidate,
       VariableDeclarator: pushComponentCandidate,
       ClassDeclaration: pushComponentCandidate,
       "Program:exit"() {
-        if (hasRootMount) return;
+        if (shouldUseCuratedBehavior && hasRootMount) return;
+        if (!shouldUseCuratedBehavior && settings.checkJS && !hasReactImport) return;
         // Module-scope component bindings (exported or not) — a component
         // declared inside another function is never a Fast Refresh
         // boundary, so only top-level names participate.
@@ -770,7 +836,27 @@ export const onlyExportComponents = defineRule({
           localComponentNames,
           scopes: context.scopes,
           controlFlow: context.cfg,
+          shouldUseCuratedBehavior,
         };
+        if (shouldUseCuratedBehavior) {
+          for (const child of componentCandidates) {
+            if (isInsideFunctionScope(child)) continue;
+            const binding =
+              isNodeOfType(child, "VariableDeclarator") ||
+              isNodeOfType(child, "FunctionDeclaration")
+                ? child.id
+                : null;
+            const value = isNodeOfType(child, "VariableDeclarator") ? child.init : child;
+            if (!isNodeOfType(binding, "Identifier") || !value) continue;
+            const symbol = context.scopes.symbolFor(binding);
+            if (
+              symbol?.references.every((reference) => reference.flag === "read") &&
+              functionReturnsProvenComponent(value, state)
+            ) {
+              componentFactorySymbolIds.add(symbol.id);
+            }
+          }
+        }
         // A PascalCase name alone is a heuristic (`const FormatDate =
         // (d) => d.toISOString()` is a formatter, not a component), so a
         // directly-inspectable function body must show render output
@@ -782,7 +868,7 @@ export const onlyExportComponents = defineRule({
             if (
               isReactComponentName(child.id.name) &&
               !isInsideFunctionScope(child) &&
-              functionHasReactRenderSemantics(child, state)
+              (!shouldUseCuratedBehavior || functionHasReactRenderSemantics(child, state))
             ) {
               localComponentNames.add(child.id.name);
             }
@@ -809,9 +895,52 @@ export const onlyExportComponents = defineRule({
                 (expression ? isEs6Component(expression) : false)) &&
               !isInsideFunctionScope(child)
             ) {
-              if (!isDirectFunction || functionHasReactRenderSemantics(expression, state)) {
+              if (
+                !isDirectFunction ||
+                !shouldUseCuratedBehavior ||
+                functionHasReactRenderSemantics(expression, state)
+              ) {
                 localComponentNames.add(child.id.name);
               }
+            }
+          }
+        }
+
+        const isInsideExport = (node: EsTreeNode): boolean => {
+          let ancestor = node.parent;
+          while (ancestor) {
+            if (
+              isNodeOfType(ancestor, "ExportNamedDeclaration") ||
+              isNodeOfType(ancestor, "ExportDefaultDeclaration") ||
+              isNodeOfType(ancestor, "ExportAllDeclaration")
+            ) {
+              return true;
+            }
+            ancestor = ancestor.parent ?? null;
+          }
+          return false;
+        };
+        const upstreamLocalComponents: EsTreeNode[] = [];
+        if (!shouldUseCuratedBehavior) {
+          for (const child of componentCandidates) {
+            if (
+              (isNodeOfType(child, "FunctionDeclaration") ||
+                isNodeOfType(child, "FunctionExpression")) &&
+              child.id &&
+              isReactComponentName(child.id.name) &&
+              !isInsideExport(child)
+            ) {
+              upstreamLocalComponents.push(child.id);
+              continue;
+            }
+            if (
+              isNodeOfType(child, "VariableDeclarator") &&
+              isNodeOfType(child.id, "Identifier") &&
+              isReactComponentName(child.id.name) &&
+              canBeReactFunctionComponent(child.init as EsTreeNode | null | undefined, state) &&
+              !isInsideExport(child)
+            ) {
+              upstreamLocalComponents.push(child.id);
             }
           }
         }
@@ -828,6 +957,10 @@ export const onlyExportComponents = defineRule({
             // `export type * from '…'` is TS-type-only; skip.
             if ((child as { exportKind?: string }).exportKind === "type") continue;
             hasAnyExports = true;
+            if (!shouldUseCuratedBehavior) {
+              context.report({ node: child, message: EXPORT_ALL_MESSAGE });
+              continue;
+            }
             const source = child.source.value;
             if (typeof source !== "string" || exportAllAddsRuntimeValues(filename, source)) {
               exportAllNodes.push(child);
@@ -842,16 +975,19 @@ export const onlyExportComponents = defineRule({
               isNodeOfType(stripped, "FunctionDeclaration") ||
               isNodeOfType(stripped, "FunctionExpression")
             ) {
-              const hasRenderOutput = functionHasReactRenderSemantics(stripped, state);
               if ((stripped as EsTreeNodeOfType<"FunctionDeclaration">).id) {
                 const idNode = (stripped as EsTreeNodeOfType<"FunctionDeclaration">).id!;
                 isExportedNodeIds.add(stripped);
+                const classifiedExport = classifyExport(idNode.name, idNode, true, null, state);
                 exports.push(
-                  hasRenderOutput
-                    ? classifyExport(idNode.name, idNode, true, null, state)
+                  !shouldUseCuratedBehavior || functionHasReactRenderSemantics(stripped, state)
+                    ? classifiedExport
                     : { kind: "non-component", reportNode: idNode },
                 );
-              } else if (hasRenderOutput) {
+              } else if (
+                !shouldUseCuratedBehavior ||
+                functionHasReactRenderSemantics(stripped, state)
+              ) {
                 context.report({ node: stripped, message: ANONYMOUS_MESSAGE });
                 hasReactExport = true; // anonymous default counts as a react export attempt
               } else {
@@ -877,6 +1013,10 @@ export const onlyExportComponents = defineRule({
               continue;
             }
             if (isNodeOfType(stripped, "Identifier")) {
+              if (!shouldUseCuratedBehavior) {
+                exports.push(classifyExport(stripped.name, stripped, false, null, state));
+                continue;
+              }
               exports.push(
                 isProvenComponentValue(stripped, state)
                   ? { kind: "react-component" }
@@ -885,11 +1025,18 @@ export const onlyExportComponents = defineRule({
               continue;
             }
             if (isNodeOfType(stripped, "MemberExpression")) {
-              if (isProvenComponentValue(stripped, state)) hasReactExport = true;
+              if (!shouldUseCuratedBehavior) {
+                context.report({ node: stripped, message: ANONYMOUS_MESSAGE });
+              } else if (isProvenComponentValue(stripped, state)) hasReactExport = true;
               else exports.push({ kind: "non-component", reportNode: stripped });
               continue;
             }
             if (isNodeOfType(stripped, "CallExpression")) {
+              if (!shouldUseCuratedBehavior) {
+                if (isUpstreamHocCallExpression(stripped, state)) hasReactExport = true;
+                else context.report({ node: stripped, message: ANONYMOUS_MESSAGE });
+                continue;
+              }
               if (isRouteFactoryCall(stripped, state.routeFactoryBindings)) {
                 hasReactExport = true;
                 continue;
@@ -914,6 +1061,10 @@ export const onlyExportComponents = defineRule({
               continue;
             }
             if (isNodeOfType(stripped, "ObjectExpression")) {
+              if (!shouldUseCuratedBehavior) {
+                context.report({ node: stripped, message: ANONYMOUS_MESSAGE });
+                continue;
+              }
               exports.push(
                 objectExpressionBundlesComponents(stripped, state)
                   ? { kind: "namespace-object", reportNode: stripped }
@@ -922,7 +1073,7 @@ export const onlyExportComponents = defineRule({
               continue;
             }
             if (isNodeOfType(stripped, "ArrowFunctionExpression")) {
-              if (functionHasReactRenderSemantics(stripped, state)) {
+              if (!shouldUseCuratedBehavior || functionHasReactRenderSemantics(stripped, state)) {
                 context.report({ node: stripped, message: ANONYMOUS_MESSAGE });
                 hasReactExport = true;
               } else {
@@ -931,7 +1082,11 @@ export const onlyExportComponents = defineRule({
               continue;
             }
             if (isNodeOfType(stripped, "Literal") || isNodeOfType(stripped, "NewExpression")) {
-              exports.push({ kind: "non-component", reportNode: stripped });
+              if (shouldUseCuratedBehavior) {
+                exports.push({ kind: "non-component", reportNode: stripped });
+              } else {
+                context.report({ node: stripped, message: ANONYMOUS_MESSAGE });
+              }
               continue;
             }
             // Other shapes — flag anonymous.
@@ -954,7 +1109,8 @@ export const onlyExportComponents = defineRule({
                   state,
                 );
                 exports.push(
-                  functionHasReactRenderSemantics(declaration, state) ||
+                  !shouldUseCuratedBehavior ||
+                    functionHasReactRenderSemantics(declaration, state) ||
                     localComponentNames.has(declaration.id.name) ||
                     classifiedExport.kind === "allowed"
                     ? classifiedExport
@@ -1022,7 +1178,11 @@ export const onlyExportComponents = defineRule({
               const localName = local && isNodeOfType(local, "Identifier") ? local.name : null;
               const reportNode = specifier as EsTreeNode;
               let entry: ExportType;
-              if (localName && localComponentNames.has(localName)) {
+              if (
+                localName &&
+                localComponentNames.has(localName) &&
+                (shouldUseCuratedBehavior || exportedName !== null)
+              ) {
                 entry = { kind: "react-component" };
               } else if (
                 !isReExportFromSource &&
@@ -1053,7 +1213,13 @@ export const onlyExportComponents = defineRule({
                   exports.push({ kind: "react-component" });
                 }
               }
-              if (isReExportFromSource && entry.kind !== "react-component") continue;
+              if (
+                shouldUseCuratedBehavior &&
+                isReExportFromSource &&
+                entry.kind !== "react-component"
+              ) {
+                continue;
+              }
               exports.push(entry);
             }
           }
@@ -1090,6 +1256,10 @@ export const onlyExportComponents = defineRule({
             if (entry.kind === "react-context") {
               context.report({ node: entry.reportNode, message: REACT_CONTEXT_MESSAGE });
             }
+          }
+        } else if (!shouldUseCuratedBehavior && upstreamLocalComponents.length > 0) {
+          for (const localComponent of upstreamLocalComponents) {
+            context.report({ node: localComponent, message: LOCAL_COMPONENT_MESSAGE });
           }
         }
       },

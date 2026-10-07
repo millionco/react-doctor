@@ -771,4 +771,75 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag type-only property names in interfaces", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `interface TweetSearchCoverageStrategyMetadata {
+         readonly window: { readonly sinceTime: string; readonly untilTime: string } | undefined;
+       }`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag type-only property names in type aliases", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `type Config = {
+         window: number;
+         navigator: string;
+       };`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags runtime window property access", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `interface Config {
+         window: number;
+       }
+       const w = window.innerWidth;`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag type parameters that happen to be named window", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `type MapState<window> = (state: window) => window;`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag type-only intersection/union member keys", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `type Config = { window: number } | { navigator: string } & { localStorage: boolean };`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag method signature return types", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `interface API {
+         getWindow(): window;
+       }
+       type window = { width: number };`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

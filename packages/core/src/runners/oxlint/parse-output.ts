@@ -237,7 +237,10 @@ const resolveCleanedDiagnostic = (
   };
 };
 
-const parseRuleCode = (code: string): { plugin: string; rule: string } => {
+const parseRuleCode = (code: unknown): { plugin: string; rule: string } => {
+  if (typeof code !== "string" || code.length === 0) {
+    return { plugin: "unknown", rule: "unknown" };
+  }
   const match = code.match(/^(.+)\((.+)\)$/);
   if (!match) return { plugin: "unknown", rule: code };
   return { plugin: match[1].replace(/^eslint-plugin-/, ""), rule: match[2] };
@@ -314,13 +317,19 @@ const isMappableOxlintDiagnostic = (value: unknown): boolean =>
   Array.isArray(value.labels) &&
   value.labels.every(isOxlintLabel);
 
-// oxlint attributes every routine diagnostic — including code-less parse
-// errors and unused-directive warnings — to a file. A diagnostic without a
-// filename is the engine reporting its own failure (e.g. "Error running JS
-// plugin." from a throwing configured plugin), which means the lint results
-// are incomplete and a clean report would be a false clean.
+// Oxlint 1.78 attributes JS-plugin runtime failures to the file being linted,
+// but unlike routine diagnostics the failure has no rule code or source label.
+// Older releases omitted the filename. Both shapes mean the lint results are
+// incomplete and a clean report would be a false clean.
 const isEngineFailureDiagnostic = (value: unknown): boolean =>
-  !isRecord(value) || typeof value.filename !== "string" || value.filename.length === 0;
+  !isRecord(value) ||
+  typeof value.filename !== "string" ||
+  value.filename.length === 0 ||
+  (typeof value.message === "string" &&
+    value.message.startsWith("Error running JS plugin.") &&
+    (typeof value.code !== "string" || value.code.length === 0) &&
+    Array.isArray(value.labels) &&
+    value.labels.length === 0);
 
 const isOxlintOutput = (value: unknown): value is OxlintOutput =>
   isRecord(value) && Array.isArray(value.diagnostics);
@@ -480,10 +489,9 @@ export const parseOxlintOutput = (
         "\\",
         "/",
       );
-      // Carry oxlint's UTF-8 byte span through to the Diagnostic so
-      // editor integrations (LSP) can resolve a precise range from the
-      // in-memory document. `line` / `column` stay the source of truth
-      // for everything else; offset / length are additive.
+      // Carry oxlint's UTF-8 byte span through to the Diagnostic so consumers
+      // can resolve a precise range. `line` / `column` stay the source of truth;
+      // offset / length are additive.
       const primarySpan = primaryLabel?.span;
       const sourceBuffer = primarySpan ? readSourceBuffer(diagnostic.filename) : null;
       const relatedLocations = buildRelatedLocations(

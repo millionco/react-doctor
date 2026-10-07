@@ -1,0 +1,314 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 6ee120943ca93c051685d875edfbcfec5839bffd83f4f4a9195420eff00dc6bc
+import type { FoodId } from "../world/layout";
+import { clamp01 } from "../util/math";
+
+/** Flat, high-contrast glyphs that stay legible at 19px in the platter list. */
+const ICONS: Record<FoodId, string> = {
+  roast: `<svg class="icon" viewBox="0 0 24 24"><ellipse cx="13.5" cy="10.5" rx="7.5" ry="6.2" fill="#9c3b21"/><ellipse cx="12.4" cy="9.2" rx="4.6" ry="3.4" fill="#c25b33"/><path d="M8 15.5 4.2 19.3" stroke="#efe4cd" stroke-width="2.6" stroke-linecap="round"/><circle cx="3.6" cy="19.9" r="2" fill="#efe4cd"/></svg>`,
+  loaf: `<svg class="icon" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="10.5" rx="5" fill="#c98a3e"/><rect x="2.5" y="7" width="19" height="4.6" rx="3.4" fill="#e0a55b"/><g stroke="#7d4c17" stroke-width="1.5" stroke-linecap="round"><path d="M7.5 9.6 6 12.4"/><path d="M12 9.4 10.5 12.2"/><path d="M16.5 9.6 15 12.4"/></g></svg>`,
+  fish: `<svg class="icon" viewBox="0 0 24 24"><ellipse cx="12.8" cy="12" rx="8.4" ry="4.6" fill="#8fa9bd"/><path d="M3.4 12 .8 8.2v7.6z" fill="#6d8698"/><path d="M12.6 7.6 10.5 4.6h4.4z" fill="#6d8698"/><circle cx="18" cy="11" r="1.2" fill="#17131a"/><path d="M9 9.4a12 12 0 0 0 0 5.2" stroke="#cfe0ec" stroke-width="1.2" fill="none"/></svg>`,
+  cheese: `<svg class="icon" viewBox="0 0 24 24"><path d="M3 17.5 20.5 6.5v7.6L6.5 20.5z" fill="#d6a544"/><path d="M3 17.5 20.5 6.5 8 6 3 12.6z" fill="#f0c76a"/><circle cx="12" cy="12.6" r="1.5" fill="#b7862c"/><circle cx="7.4" cy="15.2" r="1" fill="#b7862c"/><circle cx="16.4" cy="10.6" r="1.1" fill="#b7862c"/></svg>`,
+  comb: `<svg class="icon" viewBox="0 0 24 24"><path d="M12 2.4 20.6 7v10L12 21.6 3.4 17V7z" fill="#e0a52a"/><g fill="#a9720d"><path d="M12 7.2 15.4 9.2v4L12 15.2 8.6 13.2v-4z"/></g><g fill="#f6cd6a"><path d="M12 8.6 14.2 9.9v2.6L12 13.8l-2.2-1.3V9.9z"/></g></svg>`,
+  tart: `<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.4" fill="#c08348"/><circle cx="12" cy="12" r="7" fill="#6d1526"/><g stroke="#d59a5c" stroke-width="1.7" stroke-linecap="round"><path d="M6.4 9.6h11.2"/><path d="M6.4 14.4h11.2"/><path d="M9.6 6.4v11.2"/><path d="M14.4 6.4v11.2"/></g></svg>`,
+};
+
+export const FOOD_NAMES: Record<FoodId, string> = {
+  roast: "Roast Haunch",
+  loaf: "Hearth Loaf",
+  fish: "Salt Fish",
+  cheese: "Cheese Wheel",
+  comb: "Honeycomb",
+  tart: "Berry Tart",
+};
+
+export type ScreenName = "loading" | "title" | "win" | "lose" | null;
+
+export interface EndStats {
+  title: string;
+  blurb: string;
+  rows: Array<[string, string]>;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  props: Partial<HTMLElementTagNameMap[K]> & { className?: string },
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  Object.assign(node, props);
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+export class Hud {
+  private readonly root: HTMLDivElement;
+  private readonly patienceFill: HTMLElement;
+  private readonly mood: HTMLElement;
+  private readonly courseName: HTMLElement;
+  private readonly chips: HTMLElement;
+  private readonly dots: HTMLElement;
+  private readonly slots: HTMLElement;
+  private readonly balanceTrack: HTMLElement;
+  private readonly balanceFill: HTMLElement;
+  private readonly prompt: HTMLElement;
+  private readonly warning: HTMLElement;
+  private readonly toasts: HTMLElement;
+  private readonly flashEl: HTMLElement;
+  private readonly screens: Record<Exclude<ScreenName, null>, HTMLElement>;
+  private readonly loadingFill: HTMLElement;
+  private readonly loadingNote: HTMLElement;
+  private readonly endTitle: HTMLElement;
+  private readonly endBlurb: HTMLElement;
+  private readonly endStats: HTMLElement;
+  private readonly muteBtn: HTMLButtonElement;
+  private readonly hudLayer: HTMLElement;
+  private flashLevel = 0;
+
+  onStart: () => void = () => {};
+  onRestart: () => void = () => {};
+
+  constructor() {
+    this.root = el("div", { id: "ui" });
+    document.body.appendChild(this.root);
+
+    this.hudLayer = el("div", {});
+    this.root.appendChild(this.hudLayer);
+
+    // ---- patience ----------------------------------------------------------
+    const pw = el("div", { id: "patience-wrap", className: "panel" });
+    pw.appendChild(el("div", { id: "patience-label" }, "Dragon's Patience"));
+    const track = el("div", { id: "patience-track" });
+    this.patienceFill = el("div", { id: "patience-fill" });
+    track.appendChild(this.patienceFill);
+    track.appendChild(el("div", { id: "patience-ticks" }, "<span></span>".repeat(10)));
+    pw.appendChild(track);
+    this.mood = el("div", { id: "mood" }, "");
+    pw.appendChild(this.mood);
+    this.hudLayer.appendChild(pw);
+
+    // ---- order -------------------------------------------------------------
+    const order = el("div", { id: "order", className: "panel" });
+    order.appendChild(el("h2", {}, "Tonight's Supper"));
+    this.courseName = el("div", { id: "course-name" }, "");
+    order.appendChild(this.courseName);
+    this.chips = el("div", { className: "chip-row" });
+    order.appendChild(this.chips);
+    this.dots = el("div", { id: "progress-dots" });
+    order.appendChild(this.dots);
+    this.hudLayer.appendChild(order);
+
+    // ---- platter -----------------------------------------------------------
+    const platter = el("div", { id: "platter", className: "panel" });
+    platter.appendChild(el("h2", {}, "Platter"));
+    this.slots = el("div", {});
+    platter.appendChild(this.slots);
+    const bal = el("div", { id: "balance" });
+    bal.appendChild(el("div", { id: "balance-label" }, "Balance"));
+    this.balanceTrack = el("div", { id: "balance-track" });
+    this.balanceFill = el("div", { id: "balance-fill" });
+    this.balanceTrack.appendChild(this.balanceFill);
+    bal.appendChild(this.balanceTrack);
+    platter.appendChild(bal);
+    this.hudLayer.appendChild(platter);
+
+    // ---- prompts -----------------------------------------------------------
+    this.prompt = el("div", { id: "prompt", className: "panel" });
+    this.hudLayer.appendChild(this.prompt);
+    this.warning = el("div", { id: "warning" });
+    this.hudLayer.appendChild(this.warning);
+    this.toasts = el("div", { id: "toasts" });
+    this.hudLayer.appendChild(this.toasts);
+    this.flashEl = el("div", { id: "vignette-flash" });
+    this.hudLayer.appendChild(this.flashEl);
+
+    const hint = el(
+      "div",
+      { id: "hint", className: "panel" },
+      `<b>WASD</b> move &nbsp; <b>Shift</b> steady walk<br/>
+       <b>Space</b> take / serve &nbsp; <b>Q E</b> turn view<br/>
+       <b>Wheel</b> zoom &nbsp; <b>Drag</b> orbit`,
+    );
+    this.hudLayer.appendChild(hint);
+
+    this.muteBtn = el("button", { id: "mute", title: "Mute" }, "&#9834;");
+    this.muteBtn.addEventListener("click", () => {
+      const on = this.muteBtn.dataset.muted === "1";
+      this.muteBtn.dataset.muted = on ? "0" : "1";
+      this.muteBtn.innerHTML = on ? "&#9834;" : "&#10005;";
+      this.onMute(!on);
+    });
+    this.hudLayer.appendChild(this.muteBtn);
+
+    // ---- screens -----------------------------------------------------------
+    const loading = el("div", { className: "screen" });
+    loading.appendChild(el("h1", {}, "Dragon's Supper"));
+    loading.appendChild(el("div", { id: "loading-note" }, "Carving the lair"));
+    const lt = el("div", { id: "loading-track" });
+    this.loadingFill = el("div", { id: "loading-fill" });
+    lt.appendChild(this.loadingFill);
+    loading.appendChild(lt);
+    this.loadingNote = loading.querySelector("#loading-note")!;
+    this.root.appendChild(loading);
+
+    const title = el("div", { className: "screen hidden" });
+    title.appendChild(el("h1", {}, "Dragon's Supper"));
+    title.appendChild(
+      el(
+        "p",
+        {},
+        `You are the last steward of Emberhold. The wyrm below wants three courses, and it is
+         not a patient diner. Gather from the larder, carry a laden platter across the fire
+         chasm, and fill the great bowl before its patience burns out — but a tall stack sways,
+         a narrow bridge forgives nothing, and when the wyrm rears back, only stone will save you.`,
+      ),
+    );
+    const controls = el("div", { className: "controls" });
+    controls.innerHTML = [
+      ["W A S D", "walk the lair"],
+      ["Shift", "steady walk — slower, far less sway"],
+      ["Space", "take a dish · serve the bowl · gather a spill"],
+      ["Q / E · drag", "swing the camera"],
+      ["Wheel · + / −", "zoom (bounded)"],
+    ]
+      .map(([k, d]) => `<b>${k}</b><span>${d}</span>`)
+      .join("");
+    title.appendChild(controls);
+    const startBtn = el("button", { className: "action" }, "Serve the Wyrm");
+    startBtn.addEventListener("click", () => this.onStart());
+    title.appendChild(startBtn);
+    this.root.appendChild(title);
+
+    const end = el("div", { className: "screen hidden" });
+    this.endTitle = el("h1", {}, "");
+    end.appendChild(this.endTitle);
+    this.endBlurb = el("p", {}, "");
+    end.appendChild(this.endBlurb);
+    this.endStats = el("div", { className: "stats" });
+    end.appendChild(this.endStats);
+    const againBtn = el("button", { className: "action" }, "Serve Again");
+    againBtn.addEventListener("click", () => this.onRestart());
+    end.appendChild(againBtn);
+    this.root.appendChild(end);
+
+    this.screens = { loading, title, win: end, lose: end };
+    this.setHudVisible(false);
+  }
+
+  onMute: (muted: boolean) => void = () => {};
+
+  setHudVisible(v: boolean): void {
+    this.hudLayer.style.display = v ? "" : "none";
+  }
+
+  showScreen(name: ScreenName): void {
+    for (const key of ["loading", "title", "win"] as const) {
+      this.screens[key].classList.add("hidden");
+    }
+    if (name) this.screens[name].classList.remove("hidden");
+  }
+
+  setLoading(progress: number, note: string): void {
+    this.loadingFill.style.width = `${Math.round(clamp01(progress) * 100)}%`;
+    this.loadingNote.textContent = note;
+  }
+
+  setPatience(value01: number, mood: string): void {
+    const p = clamp01(value01);
+    this.patienceFill.style.width = `${p * 100}%`;
+    const hue = p > 0.5 ? "linear-gradient(90deg,#ffce6b,#ff9430 60%,#ff5a2b)" : p > 0.25 ? "linear-gradient(90deg,#ff9c46,#ff6a2a)" : "linear-gradient(90deg,#ff6b4a,#e8241a)";
+    this.patienceFill.style.background = hue;
+    this.mood.textContent = mood;
+  }
+
+  setCourse(index: number, total: number, needed: FoodId[], delivered: FoodId[]): void {
+    this.courseName.textContent = `Course ${index + 1} of ${total}`;
+    const remaining = delivered.slice();
+    this.chips.innerHTML = needed
+      .map((id) => {
+        const i = remaining.indexOf(id);
+        const done = i >= 0;
+        if (done) remaining.splice(i, 1);
+        return `<div class="chip${done ? " done" : ""}">${ICONS[id]}<span>${FOOD_NAMES[id]}</span></div>`;
+      })
+      .join("");
+    this.dots.innerHTML = Array.from({ length: total }, (_, i) => {
+      const cls = i < index ? "done" : i === index ? "active" : "";
+      return `<i class="${cls}"></i>`;
+    }).join("");
+  }
+
+  setPlatter(items: Array<{ id: FoodId; warmth: number }>, capacity: number): void {
+    let html = "";
+    for (let i = 0; i < capacity; i++) {
+      const item = items[i];
+      if (item) {
+        html += `<div class="slot filled">${ICONS[item.id]}<span class="name">${FOOD_NAMES[item.id]}</span>
+          <span class="warmth"><i style="width:${Math.round(clamp01(item.warmth) * 100)}%"></i></span></div>`;
+      } else {
+        html += `<div class="slot"><span class="name" style="opacity:.35">empty</span></div>`;
+      }
+    }
+    this.slots.innerHTML = html;
+  }
+
+  setBalance(signed: number, severity: number): void {
+    const t = Math.max(-1, Math.min(1, signed));
+    this.balanceFill.style.left = `${50 + t * 48}%`;
+    this.balanceTrack.classList.toggle("warn", severity > 0.55 && severity <= 0.82);
+    this.balanceTrack.classList.toggle("crit", severity > 0.82);
+  }
+
+  setPrompt(html: string | null): void {
+    if (html) {
+      this.prompt.innerHTML = html;
+      this.prompt.classList.add("show");
+    } else {
+      this.prompt.classList.remove("show");
+    }
+  }
+
+  setWarning(text: string | null): void {
+    if (text) {
+      this.warning.textContent = text;
+      this.warning.classList.add("show");
+    } else {
+      this.warning.classList.remove("show");
+    }
+  }
+
+  toast(text: string, kind: "good" | "bad" | "" = ""): void {
+    const node = el("div", { className: `toast ${kind}` }, text);
+    this.toasts.appendChild(node);
+    setTimeout(() => {
+      node.style.transition = "opacity .4s, transform .4s";
+      node.style.opacity = "0";
+      node.style.transform = "translateY(-10px)";
+      setTimeout(() => node.remove(), 420);
+    }, 1500);
+    while (this.toasts.children.length > 4) this.toasts.firstElementChild?.remove();
+  }
+
+  flash(amount: number): void {
+    this.flashLevel = Math.max(this.flashLevel, amount);
+  }
+
+  tickFlash(dt: number): void {
+    this.flashLevel = Math.max(0, this.flashLevel - dt * 1.9);
+    this.flashEl.style.opacity = String(this.flashLevel);
+  }
+
+  get isEndVisible(): boolean {
+    return !this.screens.win.classList.contains("hidden");
+  }
+
+  showEnd(stats: EndStats): void {
+    this.endTitle.textContent = stats.title;
+    this.endBlurb.textContent = stats.blurb;
+    this.endStats.innerHTML = stats.rows.map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join("");
+    this.showScreen("win");
+  }
+}

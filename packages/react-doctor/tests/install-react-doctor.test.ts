@@ -667,9 +667,9 @@ describe("runInstallReactDoctor", () => {
     ).toBe(true);
     expect(
       fs.readFileSync(path.join(fixture.projectRoot, ".claude/settings.json"), "utf8"),
-    ).toContain("PostToolBatch");
+    ).toContain('"Stop"');
     expect(fs.readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
-      "postToolUse",
+      '"stop"',
     );
     expect(fs.existsSync(path.join(fixture.projectRoot, ".codex/hooks.json"))).toBe(false);
   });
@@ -888,11 +888,11 @@ describe("runInstallReactDoctor", () => {
       false,
     );
     expect(fs.readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
-      "postToolUse",
+      '"stop"',
     );
     expect(
       fs.readFileSync(path.join(fixture.projectRoot, ".claude/settings.json"), "utf8"),
-    ).toContain("PostToolBatch");
+    ).toContain('"Stop"');
   });
 
   it("--yes upgrades an existing @v1 workflow to @v2 in place", async () => {
@@ -1112,7 +1112,7 @@ describe("runInstallReactDoctor", () => {
       fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md")),
     ).toBe(true);
     expect(fs.readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
-      "postToolUse",
+      '"stop"',
     );
     expect(fs.existsSync(path.join(fixture.projectRoot, ".git/hooks/pre-commit"))).toBe(false);
     expect(fs.existsSync(path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit"))).toBe(

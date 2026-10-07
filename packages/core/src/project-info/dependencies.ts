@@ -340,7 +340,30 @@ export const getDependencyDeclaration = ({
   };
 };
 
-const REACT_DEPENDENCY_NAMES = new Set(["react", "react-native", "next", "preact"]);
+const REACT_PROJECT_DEPENDENCY_NAMES = new Set([
+  "react",
+  "react-dom",
+  "react-native",
+  "next",
+  "preact",
+  "expo",
+  "expo-router",
+  "gatsby",
+  "@remix-run/react",
+  "@tanstack/react-start",
+  "react-scripts",
+  "@astrojs/react",
+]);
+export const REACT_THREE_FIBER_DEPENDENCY_NAMES = ["@react-three/fiber", "react-three-fiber"];
+export const REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES = [
+  ...REACT_THREE_FIBER_DEPENDENCY_NAMES,
+  "@react-three/drei",
+  "@react-three/rapier",
+  "@react-three/postprocessing",
+  "@react-three/xr",
+  "@react-three/cannon",
+];
+export const THREE_DEPENDENCY_NAMES = ["three", ...REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES];
 
 export const hasReactDependency = (packageJson: PackageJson): boolean => {
   const allDependencies = {
@@ -349,9 +372,16 @@ export const hasReactDependency = (packageJson: PackageJson): boolean => {
     ...packageJson.devDependencies,
   };
   return Object.keys(allDependencies).some((packageName) =>
-    REACT_DEPENDENCY_NAMES.has(packageName),
+    REACT_PROJECT_DEPENDENCY_NAMES.has(packageName),
   );
 };
+
+export const hasSupportedProjectDependency = (packageJson: PackageJson): boolean =>
+  hasReactDependency(packageJson) ||
+  getDependencySpec(packageJson, "remotion") !== null ||
+  THREE_DEPENDENCY_NAMES.some(
+    (packageName) => getDependencySpec(packageJson, packageName) !== null,
+  );
 
 export const getPreactVersion = (packageJson: PackageJson): string | null =>
   getDependencySpec(packageJson, "preact");

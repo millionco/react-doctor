@@ -38,7 +38,7 @@ Use `rde-eval` for bounded local inspection of the target rule. Inspect all hits
 
 Run `run-parity` for every new rule or detector behavior change after the pull request head is pushed. Skip it for documentation-only or test-only changes. If parity cannot run, report the exact blocker.
 
-Do not claim parity unless both Daytona runs complete. Compare repository and project-root counts separately. Inspect target-rule deltas before classifying them.
+Do not claim parity unless both Vercel Sandbox runs complete. Compare repository and project-root counts separately. Inspect target-rule deltas before classifying them.
 
 ## Prepare release artifacts
 

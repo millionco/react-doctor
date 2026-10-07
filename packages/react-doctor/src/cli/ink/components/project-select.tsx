@@ -1,5 +1,4 @@
 import path from "node:path";
-import figures from "figures";
 import { Box, Text, useInput } from "ink";
 import type { ReactNode } from "react";
 import type { WorkspacePackage } from "@react-doctor/core";
@@ -15,6 +14,7 @@ import { clampNumber } from "../../utils/clamp-number.js";
 import { isPrintableInput } from "../../utils/is-printable-input.js";
 import { recordCount } from "../../utils/record-metric.js";
 import { resolveVisibleStart } from "../../utils/resolve-visible-start.js";
+import { terminalSymbols } from "../../utils/terminal-symbols.js";
 import { useExitOnCtrlC } from "../hooks/use-exit-on-ctrl-c.js";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
 import { fuzzyMatch } from "../lib/fuzzy-match.js";
@@ -269,10 +269,10 @@ export const ProjectSelect = ({ packages, rootDirectory, onSubmit }: ProjectSele
             return (
               <Text key={matchedPackage.workspacePackage.directory} wrap="truncate-end">
                 <Text color={isSelected ? "cyan" : undefined}>
-                  {isSelected ? `${figures.pointer} ` : "  "}
+                  {isSelected ? `${terminalSymbols.pointer} ` : "  "}
                 </Text>
                 <Text color={isChecked ? "green" : undefined}>
-                  {isChecked ? `${figures.radioOn} ` : `${figures.radioOff} `}
+                  {isChecked ? `${terminalSymbols.radioOn} ` : `${terminalSymbols.radioOff} `}
                 </Text>
                 <MatchedName
                   name={matchedPackage.workspacePackage.name}

@@ -71,6 +71,7 @@ describe("mixed RN + web monorepo: rn-* rules respect package boundaries", () =>
 
   beforeAll(async () => {
     allDiagnostics = await runOxlint({
+      userConfig: { rules: { "react-doctor/nextjs-no-img-element": "warn" } },
       rootDirectory: MIXED_MONOREPO_FIXTURE,
       project: {
         ...buildTestProject({

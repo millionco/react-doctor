@@ -30,7 +30,7 @@ export interface RenderAndRecordScanInput {
 const silentConsole = makeNoopConsole();
 
 const deriveScope = (options: ResolvedInspectOptions): string => {
-  if (options.baseline) return "changed";
+  if (options.baseline || options.baselineReport) return "changed";
   if (options.changedLineRanges !== null) return "lines";
   return options.includePaths.length > 0 ? "files" : "full";
 };
@@ -120,7 +120,6 @@ export const renderAndRecordScan = async (
     didDeadCodeFail: input.payload.didDeadCodeFail,
     supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
     securityScanFailed: input.payload.securityScanFailed,
-    deadCodeOverlapped: input.payload.deadCodeOverlapped,
     suppressedRuleCounts: input.payload.suppressedRuleCounts ?? [],
   });
   return result;

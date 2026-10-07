@@ -1,3 +1,5 @@
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { isBooleanResultExpression } from "../../utils/is-boolean-result-expression.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -83,6 +85,10 @@ export const renderingConditionalRender = defineRule({
         left.property.name === "length";
 
       const isNumericIdentifier = isNodeOfType(left, "Identifier") && isNumericName(left.name);
+      if (isNumericIdentifier) {
+        const symbol = context.scopes.symbolFor(left);
+        if (symbol && isBooleanResultExpression(getDirectConstInitializer(symbol))) return;
+      }
 
       if (isLengthMemberAccess || isNumericIdentifier) {
         context.report({

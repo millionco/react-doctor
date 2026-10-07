@@ -3,7 +3,9 @@ import {
   MILLISECONDS_PER_SECOND,
   MIN_SCAN_CONCURRENCY,
   OXLINT_OOM_RESCUE_BUDGET_MS,
+  OXLINT_OUTPUT_MAX_BYTES,
   OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT,
+  OXLINT_SPAWN_TIMEOUT_MS,
   OXLINT_SPLIT_MAX_DEPTH,
   OXLINT_SPLIT_TOTAL_BUDGET_MS,
   PROGRESS_TICK_INTERVAL_MS,
@@ -15,9 +17,9 @@ import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
 import { mapWithConcurrency } from "../../utils/map-with-concurrency.js";
 import { remainingDeadlineBudgetMs } from "../../utils/remaining-deadline-budget-ms.js";
 import { resolveScanConcurrency } from "../../utils/resolve-scan-concurrency.js";
-import type { WorkerSlots } from "../../utils/create-worker-slots.js";
+import type { OxlintSpawnSlotsHandle } from "../../utils/create-oxlint-spawn-slots.js";
 import { parseOxlintOutput } from "./parse-output.js";
-import { spawnOxlint } from "./spawn-oxlint.js";
+import { runOxlintJob } from "./run-oxlint-job.js";
 
 // OS-level `spawn` failures that mean "the system can't accommodate ANOTHER
 // concurrent subprocess right now": fork ran out of process slots (EAGAIN),
@@ -52,6 +54,13 @@ export interface SpawnLintBatchesInput {
   readonly sourceMapByLintPath?: ReadonlyMap<string, PreparedSourceMap>;
   readonly onPartialFailure?: (reason: string) => void;
   readonly onAnalyzedFiles?: (filePaths: ReadonlyArray<string>) => void;
+  /**
+   * Fires once, when every top-level batch of the first pass has been handed
+   * to a worker (or skipped for the deadline): from here on a worker that
+   * finishes has no lint batch left to pick up, so other pool work can fill
+   * it without extending the lint wave.
+   */
+  readonly onAllBatchesStarted?: () => void;
   readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
   /** Per-batch wall-clock budget (from `OxlintSpawnTimeoutMs`). */
   readonly spawnTimeoutMs?: number;
@@ -93,7 +102,7 @@ export interface SpawnLintBatchesInput {
    * resource error replays once with a single worker.
    */
   readonly concurrency?: number;
-  readonly spawnSlots?: WorkerSlots;
+  readonly spawnSlots?: OxlintSpawnSlotsHandle;
 }
 
 interface BatchPassOutcome {
@@ -164,6 +173,14 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     signal,
     deadlineEpochMs,
   } = input;
+  let didReportAllBatchesStarted = false;
+  let startedTopLevelBatchCount = 0;
+  const reportBatchStarted = (topLevelBatchCount: number): void => {
+    startedTopLevelBatchCount += 1;
+    if (didReportAllBatchesStarted || startedTopLevelBatchCount < topLevelBatchCount) return;
+    didReportAllBatchesStarted = true;
+    input.onAllBatchesStarted?.();
+  };
   const resolveSourcePath = (filePath: string): string => {
     const absoluteFilePath = path.isAbsolute(filePath)
       ? filePath
@@ -256,19 +273,22 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
             batchState.deadlineSkippedFileCount += batch.length;
             return Promise.resolve(null);
           }
-          return spawnOxlint(
-            batchArgs,
+          return runOxlintJob({
+            argumentsList: batchArgs,
             rootDirectory,
             nodeBinaryPath,
-            effectiveSpawnTimeoutMs,
-            outputMaxBytes,
-            signal,
-            () => {
+            spawnTimeoutMs: effectiveSpawnTimeoutMs ?? OXLINT_SPAWN_TIMEOUT_MS,
+            outputMaxBytes: outputMaxBytes ?? OXLINT_OUTPUT_MAX_BYTES,
+            maxWorkers: requestedConcurrency,
+            filesystemCacheEpoch: input.spawnSlots?.filesystemCacheEpoch ?? null,
+            abortSignal: signal,
+            onStart: () => {
               if (batchState.didStart) return;
               batchState.didStart = true;
               startedFileCount += batchState.initialFileCount;
+              reportBatchStarted(passBatches.length);
             },
-          );
+          });
         };
         const stdout =
           input.spawnSlots === undefined
@@ -345,6 +365,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
       const batchResults = await mapWithConcurrency(passBatches, concurrency, async (batch) => {
         if (isPastDeadline()) {
           deadlineSkippedFiles.push(...batch);
+          reportBatchStarted(passBatches.length);
           return [];
         }
         const batchState: BatchState = {

@@ -1,4 +1,0 @@
-{
-  "name": "re-export-cycle",
-  "main": "src/index.ts"
-}

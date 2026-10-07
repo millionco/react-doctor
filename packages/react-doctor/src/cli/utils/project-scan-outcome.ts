@@ -24,11 +24,15 @@ interface PartitionedProjectScanOutcomes<Scan, SkippedScan> {
 
 export const partitionProjectScanOutcomes = <Scan, SkippedScan>(
   outcomes: ReadonlyArray<ProjectScanOutcome<Scan, SkippedScan>>,
-): PartitionedProjectScanOutcomes<Scan, SkippedScan> => ({
-  completedScans: outcomes.flatMap((outcome) =>
-    outcome.status === "completed" ? [outcome.value] : [],
-  ),
-  skippedScans: outcomes.flatMap((outcome) =>
-    outcome.status === "skipped" ? [outcome.value] : [],
-  ),
-});
+): PartitionedProjectScanOutcomes<Scan, SkippedScan> => {
+  const completedScans: Scan[] = [];
+  const skippedScans: SkippedScan[] = [];
+  for (const outcome of outcomes) {
+    if (outcome.status === "completed") {
+      completedScans.push(outcome.value);
+      continue;
+    }
+    if (outcome.status === "skipped") skippedScans.push(outcome.value);
+  }
+  return { completedScans, skippedScans };
+};

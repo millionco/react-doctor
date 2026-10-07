@@ -1,0 +1,297 @@
+// rule: dangerous-html-sink
+// file-path: src/app/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 8ffa369b5c1a4cdb803b61ddcfeb79a409342f811c0007a0bd8c7ce4032759b1
+import { LANDMARKS, OCCLUDED } from "../data/layout";
+import type { EvidenceCard } from "../build/cards";
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+const hex = (c: number): string => `#${c.toString(16).padStart(6, "0")}`;
+
+export interface HudState {
+  focus: string | null;
+  visited: Set<string>;
+  peel: number;
+  lost: boolean;
+  pinned: EvidenceCard[];
+  cards: EvidenceCard[];
+  complete: boolean;
+}
+
+interface RowRefs {
+  root: HTMLElement;
+  state: HTMLElement;
+}
+
+interface SlotRefs {
+  root: HTMLElement;
+  bar: HTMLElement;
+  name: HTMLElement;
+  desc: HTMLElement;
+}
+
+/**
+ * Every node is created once and mutated in place. Nothing is rebuilt from
+ * innerHTML during play, so a button can never be detached under a click.
+ */
+export class Hud {
+  readonly root = el("div", "hud");
+  onBegin: () => void = () => {};
+  onFocus: (id: string) => void = () => {};
+  onPin: (cardId: string) => void = () => {};
+  onPeel: (v: number) => void = () => {};
+  onReacquire: () => void = () => {};
+  onRestart: () => void = () => {};
+
+  private readonly intro = el("div", "intro");
+  private readonly rail = el("div", "rail");
+  private readonly evidence = el("div", "evidence");
+  private readonly evHead = el("div", "ev-head");
+  private readonly tray = el("div", "tray");
+  private readonly status = el("div", "status");
+  private readonly lost = el("div", "lost");
+  private readonly banner = el("div", "banner");
+  private readonly peelSlider = el("input", "peel-slider") as HTMLInputElement;
+  private readonly peelValue = el("span", "peel-value", "0%");
+  private readonly progressValue = el("b", undefined, "0 / 3");
+  private readonly railButtons = new Map<string, HTMLElement>();
+  private readonly groups = new Map<string, HTMLElement>();
+  private readonly rows = new Map<string, RowRefs>();
+  private readonly slots: SlotRefs[] = [];
+
+  constructor(parent: HTMLElement, cards: EvidenceCard[]) {
+    parent.appendChild(this.root);
+    this.buildIntro();
+    this.buildChrome(cards);
+  }
+
+  private buildIntro(): void {
+    this.intro.innerHTML = `
+      <div class="intro-card">
+        <div class="kicker">INTERACTIVE PORTFOLIO · HARDWARE</div>
+        <h1>CIRCUIT<span>AUTOPSY</span></h1>
+        <p>
+          Three embedded projects are soldered into one board. Peel the laminate
+          stack apart, select the hardware that carries each project, and pull the
+          evidence out of the layers it is buried in.
+        </p>
+        <ul class="keys">
+          <li><b>Drag</b> orbit the bench</li>
+          <li><b>Scroll</b> peel the layer stack</li>
+          <li><b>Shift + drag</b> slide the bench</li>
+          <li><b>Shift + scroll</b> zoom</li>
+          <li><b>Click</b> a ringed component</li>
+          <li><b>Click</b> a panel to pin it</li>
+          <li><b>1 2 3</b> jump to a landmark</li>
+          <li><b>F</b> re-acquire route · <b>R</b> restart</li>
+        </ul>
+        <button class="primary">BEGIN AUTOPSY</button>
+      </div>`;
+    this.intro.querySelector("button")!.addEventListener("click", () => {
+      this.intro.classList.add("gone");
+      this.onBegin();
+    });
+    this.root.appendChild(this.intro);
+  }
+
+  private buildChrome(cards: EvidenceCard[]): void {
+    const top = el("div", "topbar");
+    top.appendChild(
+      el("div", "brand", `<b>CIRCUIT AUTOPSY</b><span>AUTOPSY-01 · REV C · three landmarks</span>`),
+    );
+    const progress = el("div", "progress", `<span>EVIDENCE PINNED</span>`);
+    progress.appendChild(this.progressValue);
+    top.appendChild(progress);
+    this.root.appendChild(top);
+
+    for (const lm of LANDMARKS) {
+      const b = el("button", "rail-item");
+      b.innerHTML = `
+        <i style="--c:${hex(lm.colour)}"></i>
+        <span class="code">${lm.code}</span>
+        <span class="title">${lm.title}</span>
+        <span class="role">${lm.role}</span>
+        <span class="chip">UNVISITED</span>`;
+      b.addEventListener("click", () => this.onFocus(lm.id));
+      this.rail.appendChild(b);
+      this.railButtons.set(lm.id, b);
+    }
+    this.root.appendChild(this.rail);
+
+    const peel = el("div", "peel");
+    const head = el("div", "peel-head", "LAYER SEPARATION ");
+    head.appendChild(this.peelValue);
+    peel.appendChild(head);
+    this.peelSlider.type = "range";
+    this.peelSlider.min = "0";
+    this.peelSlider.max = "1000";
+    this.peelSlider.value = "0";
+    this.peelSlider.addEventListener("input", () =>
+      this.onPeel(Number(this.peelSlider.value) / 1000),
+    );
+    peel.appendChild(this.peelSlider);
+    peel.appendChild(
+      el(
+        "div",
+        "peel-legend",
+        `<span>L1 COMPONENT</span><span>L2 PLANE</span><span>L3 SOLDER</span>`,
+      ),
+    );
+    this.root.appendChild(peel);
+
+    this.evidence.appendChild(this.evHead);
+    for (const lm of LANDMARKS) {
+      const group = el("div", "ev-group");
+      group.style.display = "none";
+      for (const card of cards.filter((c) => c.landmarkId === lm.id)) {
+        const row = el("button", "ev-row");
+        const stateEl = el("span", "ev-state", "READABLE");
+        row.appendChild(el("span", "ev-type", card.spec.type));
+        row.appendChild(el("span", "ev-title", card.spec.title));
+        row.appendChild(stateEl);
+        row.addEventListener("click", () => this.onPin(card.id));
+        group.appendChild(row);
+        this.rows.set(card.id, { root: row, state: stateEl });
+      }
+      this.evidence.appendChild(group);
+      this.groups.set(lm.id, group);
+    }
+    this.evidence.appendChild(
+      el(
+        "div",
+        "ev-foot",
+        "Panels are filed in the gaps between layers. Peel further or swing round to clear an occlusion — or pin a panel to lift it out of the stack.",
+      ),
+    );
+    this.root.appendChild(this.evidence);
+
+    this.tray.appendChild(el("div", "tray-head", "COMPARE TRAY"));
+    for (let i = 0; i < 3; i++) {
+      const slot = el("div", "tray-slot");
+      const bar = el("i");
+      const name = el("b", undefined, "EMPTY");
+      const desc = el("span", undefined, "pin an evidence panel");
+      slot.appendChild(bar);
+      slot.appendChild(name);
+      slot.appendChild(desc);
+      slot.addEventListener("click", () => {
+        const id = slot.dataset.cardId;
+        if (id) this.onPin(id);
+      });
+      this.tray.appendChild(slot);
+      this.slots.push({ root: slot, bar, name, desc });
+    }
+    this.root.appendChild(this.tray);
+    this.root.appendChild(this.status);
+
+    this.lost.innerHTML = `<b>ROUTE LOST</b><span>The bench has drifted off the traced route.</span><button>RE-ACQUIRE  ·  F</button>`;
+    this.lost.querySelector("button")!.addEventListener("click", () => this.onReacquire());
+    this.root.appendChild(this.lost);
+
+    this.banner.innerHTML = `<b>AUTOPSY COMPLETE</b><span>Three landmarks, three pinned exhibits. The board is fully energised and the stitching vias now show which layers each project actually crosses.</span>`;
+    this.root.appendChild(this.banner);
+
+    const tools = el("div", "tools");
+    const reacq = el("button", "ghost", "RE-ACQUIRE ROUTE · F");
+    reacq.addEventListener("click", () => this.onReacquire());
+    const restart = el("button", "ghost", "RESTART · R");
+    restart.addEventListener("click", () => this.onRestart());
+    tools.appendChild(reacq);
+    tools.appendChild(restart);
+    this.root.appendChild(tools);
+  }
+
+  setPeel(v: number): void {
+    const n = String(Math.round(v * 1000));
+    if (this.peelSlider.value !== n) this.peelSlider.value = n;
+    const label = `${Math.round(v * 100)}%`;
+    if (this.peelValue.textContent !== label) this.peelValue.textContent = label;
+  }
+
+  update(s: HudState): void {
+    for (const lm of LANDMARKS) {
+      const b = this.railButtons.get(lm.id)!;
+      b.classList.toggle("active", s.focus === lm.id);
+      b.classList.toggle("visited", s.visited.has(lm.id));
+      const pinnedHere = s.pinned.filter((c) => c.landmarkId === lm.id).length;
+      const chipText = pinnedHere
+        ? `${pinnedHere} PINNED`
+        : s.visited.has(lm.id)
+          ? "VISITED"
+          : "UNVISITED";
+      const chip = b.querySelector(".chip")!;
+      if (chip.textContent !== chipText) chip.textContent = chipText;
+      this.groups.get(lm.id)!.style.display = s.focus === lm.id ? "" : "none";
+    }
+
+    const lm = LANDMARKS.find((l) => l.id === s.focus);
+    this.evidence.classList.toggle("open", !!lm);
+    if (lm) {
+      const headText = `<b>${lm.title}</b><span>${lm.role}</span>`;
+      if (this.evHead.innerHTML !== headText) this.evHead.innerHTML = headText;
+    }
+
+    for (const card of s.cards) {
+      const row = this.rows.get(card.id);
+      if (!row) continue;
+      const occluded = card.occlusion > OCCLUDED;
+      row.root.classList.toggle("pinned", card.pinned);
+      row.root.classList.toggle("occluded", !card.pinned && occluded);
+      const text = card.pinned
+        ? "PINNED · LIFTED CLEAR"
+        : occluded
+          ? `OCCLUDED ${Math.round(card.occlusion * 100)}% — PEEL OR ORBIT`
+          : "READABLE";
+      if (row.state.textContent !== text) row.state.textContent = text;
+    }
+
+    for (let i = 0; i < this.slots.length; i++) {
+      const slot = this.slots[i]!;
+      const card = s.pinned[i];
+      slot.root.classList.toggle("full", !!card);
+      if (card) {
+        slot.root.dataset.cardId = card.id;
+        slot.bar.style.setProperty("--c", hex(card.landmark.colour));
+        const name = `${card.landmark.code} ${card.spec.type}`;
+        if (slot.name.textContent !== name) slot.name.textContent = name;
+        if (slot.desc.textContent !== card.spec.title) slot.desc.textContent = card.spec.title;
+      } else {
+        delete slot.root.dataset.cardId;
+        if (slot.name.textContent !== "EMPTY") slot.name.textContent = "EMPTY";
+        if (slot.desc.textContent !== "pin an evidence panel")
+          slot.desc.textContent = "pin an evidence panel";
+      }
+    }
+
+    const progress = `${s.pinned.length} / 3`;
+    if (this.progressValue.textContent !== progress) this.progressValue.textContent = progress;
+    this.lost.classList.toggle("show", s.lost);
+    this.banner.classList.toggle("show", s.complete);
+
+    if (s.lost) this.setStatus("Route lost. Press F to re-acquire the traced route.");
+    else if (s.complete) this.setStatus("Compare the tray, or press R to restart the autopsy.");
+    else if (!s.focus) this.setStatus("Click a ringed component to open a landmark.");
+    else if (s.peel < 0.4)
+      this.setStatus("Scroll to peel: the evidence panels are filed between the layers.");
+    else this.setStatus("Click an evidence panel to pin it. Esc closes the landmark.");
+  }
+
+  setStatus(text: string): void {
+    if (this.status.textContent !== text) this.status.textContent = text;
+  }
+
+  showIntro(): void {
+    this.intro.classList.remove("gone");
+  }
+}

@@ -1,4 +1,3 @@
-import * as path from "node:path";
 import type {
   Diagnostic,
   DiffInfo,
@@ -16,8 +15,10 @@ import { summarizeDiagnostics } from "./summarize-diagnostics.js";
 import { hasReactRuntime } from "./utils/has-react-runtime.js";
 import { isScanComplete } from "./utils/is-scan-complete.js";
 import { toNormalizedRelativePath } from "./utils/to-normalized-relative-path.js";
+import { resolveCandidateReadPath } from "./utils/resolve-candidate-read-path.js";
 
 interface BuildJsonReportInput {
+  sourceRevision?: string;
   version: string;
   directory: string;
   mode: JsonReportMode;
@@ -30,7 +31,7 @@ interface BuildJsonReportInput {
    * introduced findings only. Emits a `schemaVersion: 3` report with the
    * delta totals and `mode: "baseline"`.
    */
-  baseline?: { baseRef: string; fixedCount: number; baseTotalCount: number };
+  baseline?: InspectResult["baselineDelta"];
   /**
    * True when a `changed` run was intended but its baseline delta couldn't be
    * computed (no merge base — usually a shallow CI checkout — or a failed
@@ -72,11 +73,9 @@ const toJsonReportDiagnostic = (
   projectRoot: string,
   reportRoot: string,
 ): JsonReportDiagnosticV3 => {
-  const normalizedFilePath = toNormalizedRelativePath(diagnostic.filePath, projectRoot);
-  const reportRelativeFilePath = toNormalizedRelativePath(
-    path.resolve(projectRoot, diagnostic.filePath),
-    reportRoot,
-  );
+  const resolvedFilePath = resolveCandidateReadPath(projectRoot, diagnostic.filePath);
+  const normalizedFilePath = toNormalizedRelativePath(resolvedFilePath, projectRoot);
+  const reportRelativeFilePath = toNormalizedRelativePath(resolvedFilePath, reportRoot);
   const ruleIdentity = getDiagnosticRuleIdentity(diagnostic);
   return {
     ...diagnostic,
@@ -109,6 +108,9 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReportV3 => {
     return {
       directory,
       packageRoot: result.project.rootDirectory,
+      ...(result.sourceFilterConfigHash
+        ? { sourceFilterConfigHash: result.sourceFilterConfigHash }
+        : {}),
       framework: result.project.framework,
       project: result.project,
       diagnostics: result.diagnostics.map((diagnostic) =>
@@ -148,6 +150,7 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReportV3 => {
 
   return {
     schemaVersion: 3,
+    ...(input.sourceRevision ? { sourceRevision: input.sourceRevision } : {}),
     mode:
       input.baseline !== undefined
         ? "baseline"
@@ -158,6 +161,11 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReportV3 => {
       ? {
           baseline: {
             baseRef: input.baseline.baseRef,
+            source: input.baseline.source ?? "base",
+            baselineFile: input.baseline.baselineFile,
+            matchedCount:
+              input.baseline.matchedCount ??
+              input.baseline.baseTotalCount - input.baseline.fixedCount,
             newCount: summary.totalDiagnosticCount,
             fixedCount: input.baseline.fixedCount,
             baseTotalCount: input.baseline.baseTotalCount,

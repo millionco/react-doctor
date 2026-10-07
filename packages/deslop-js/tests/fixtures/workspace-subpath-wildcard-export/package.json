@@ -1,8 +1,0 @@
-{
-  "name": "workspace-subpath-wildcard-export",
-  "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ]
-}

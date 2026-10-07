@@ -14,9 +14,11 @@ const expectDiagnosticCount = (code: string, diagnosticCount: number): void => {
 };
 
 describe("derived-state AppFlowy selection repair", () => {
-  it("reports the authentic render-known collection membership repair", () => {
-    expectDiagnosticCount(
-      `import { useEffect, useMemo, useState } from "react";
+  it.each(["visibleVersions", "(visibleVersions as any)", "visibleVersions!"])(
+    "reports the authentic render-known collection membership repair through %s",
+    (membershipReceiver) => {
+      expectDiagnosticCount(
+        `import { useEffect, useMemo, useState } from "react";
       function DocumentHistoryModal({ initialVersions }) {
         const [versions, setVersions] = useState(initialVersions);
         const [selectedVersionId, setSelectedVersionId] = useState("");
@@ -35,7 +37,7 @@ describe("derived-state AppFlowy selection repair", () => {
             }
             return;
           }
-          if (!visibleVersions.some((version) => version.versionId === selectedVersionId)) {
+          if (!${membershipReceiver}.some((version) => version.versionId === selectedVersionId)) {
             setSelectedVersionId(visibleVersions[0].versionId);
           }
         }, [visibleVersions, selectedVersionId]);
@@ -49,9 +51,10 @@ describe("derived-state AppFlowy selection repair", () => {
           />
         );
       }`,
-      1,
-    );
-  });
+        1,
+      );
+    },
+  );
 
   it("reports a state-backed selection repair expressed as a functional updater", () => {
     expectDiagnosticCount(

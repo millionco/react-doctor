@@ -146,12 +146,22 @@ const splitNullSeparated = (value: string): ReadonlyArray<string> =>
 
 const parseBaselineDiffPlan = (value: string): GitBaselineDiffPlan | null => {
   const entries = splitNullSeparated(value);
+  const renamedFiles: Record<string, string> = {};
   const baseFiles = new Set<string>();
   const headFiles = new Set<string>();
   for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 2) {
     const status = entries[entryIndex];
     const filePath = entries[entryIndex + 1];
-    if (status === undefined || filePath === undefined || status.length !== 1) return null;
+    if (status === undefined || filePath === undefined) return null;
+    if (/^R\d+$/.test(status)) {
+      const headPath = entries[entryIndex + 2];
+      if (headPath === undefined) return null;
+      baseFiles.add(filePath);
+      headFiles.add(headPath);
+      renamedFiles[filePath] = headPath;
+      entryIndex += 1;
+      continue;
+    }
     if (status === "A") {
       headFiles.add(filePath);
       continue;
@@ -167,7 +177,12 @@ const parseBaselineDiffPlan = (value: string): GitBaselineDiffPlan | null => {
     }
     return null;
   }
-  return { baseFiles: [...baseFiles], headFiles: [...headFiles], untrackedFiles: [] };
+  return {
+    baseFiles: [...baseFiles],
+    headFiles: [...headFiles],
+    untrackedFiles: [],
+    ...(Object.keys(renamedFiles).length > 0 ? { renamedFiles } : {}),
+  };
 };
 
 // An untracked file has no base to diff against, so `--scope lines` treats
@@ -473,7 +488,12 @@ export class Git extends Context.Service<
           const symref = yield* runGit(directory, ["symbolic-ref", "refs/remotes/origin/HEAD"]);
           if (symref.status === 0) {
             const trimmed = trimOrNull(symref.stdout);
-            if (trimmed !== null) return trimmed.replace("refs/remotes/origin/", "");
+            if (trimmed !== null) {
+              const branchName = trimmed.replace("refs/remotes/origin/", "");
+              const remoteBranch = `origin/${branchName}`;
+              const doesRemoteBranchExist = yield* branchExists(directory, remoteBranch);
+              return doesRemoteBranchExist ? remoteBranch : branchName;
+            }
           }
           const candidateRefs = DEFAULT_BRANCH_CANDIDATES.map(
             (candidate) => `refs/heads/${candidate}`,
@@ -484,7 +504,11 @@ export class Git extends Context.Service<
             ...candidateRefs,
           ]);
           if (candidates.status !== 0) return null;
-          return trimOrNull(candidates.stdout.split("\n")[0] ?? "");
+          const localBranch = trimOrNull(candidates.stdout.split("\n")[0] ?? "");
+          if (localBranch === null) return null;
+          const remoteBranch = `origin/${localBranch}`;
+          const doesRemoteBranchExist = yield* branchExists(directory, remoteBranch);
+          return doesRemoteBranchExist ? remoteBranch : localBranch;
         }).pipe(Effect.withSpan("Git.defaultBranch"));
 
       const branchExists = (
@@ -674,7 +698,7 @@ export class Git extends Context.Service<
               "diff",
               "--no-ext-diff",
               "--no-textconv",
-              "--no-renames",
+              "--find-renames",
               "-z",
               "--name-status",
               "--relative",
@@ -691,6 +715,7 @@ export class Git extends Context.Service<
             ]);
             if (untracked.status !== 0) return null;
             return {
+              ...plan,
               baseFiles: plan.baseFiles,
               headFiles: plan.headFiles,
               untrackedFiles: splitNullSeparated(untracked.stdout),

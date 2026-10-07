@@ -2,7 +2,7 @@
   "name": "@react-doctor/evals",
   "version": "0.0.0",
   "private": true,
-  "description": "Minimal Daytona evaluation runner for React Doctor.",
+  "description": "Minimal Vercel Sandbox evaluation runner for React Doctor.",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "sideEffects": false,
@@ -11,17 +11,22 @@
     "matrix-corpus-identity": "tsx src/print-matrix-corpus-identity.ts",
     "source-hash": "tsx src/print-evaluator-source-hash.ts",
     "test": "vp test run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "classify": "tsx src/classification-cli.ts",
+    "mine": "tsx src/classification-mining-cli.ts",
+    "audit-sol": "tsx src/sol-audit-cli.ts"
   },
   "dependencies": {
-    "@daytona/sdk": "^0.196.0",
-    "p-limit": "^3.1.0"
+    "@ai-sdk/gateway": "4.0.85",
+    "@vercel/sandbox": "^3.5.1",
+    "ai": "7.0.105",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
     "tsx": "^4.22.4"
   },
   "engines": {
-    "node": "^20.19.0 || >=22.13.0"
+    "node": ">=22.13.0"
   }
 }

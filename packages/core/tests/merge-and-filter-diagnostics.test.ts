@@ -416,6 +416,24 @@ describe("buildDiagnosticPipeline — summarizeSuppressions", () => {
     ]);
   });
 
+  it("matches `ignore.overrides` when oxlint reports a file URL", () => {
+    const projectDirectory = setupCase("file-url-override", `const value = 1;\n`);
+    const pipeline = buildPipeline(
+      {
+        ignore: {
+          overrides: [{ files: ["src/app.tsx"], rules: ["react-doctor/no-derived-state-effect"] }],
+        },
+      },
+      projectDirectory,
+    );
+    const fileUrl = pathToFileURL(path.join(projectDirectory, "src", "app.tsx")).href;
+
+    expect(pipeline.apply(baseDiagnostic({ filePath: fileUrl }))).toBeNull();
+    expect(pipeline.summarizeSuppressions()).toEqual([
+      { rule: "react-doctor/no-derived-state-effect", source: "override", count: 1 },
+    ]);
+  });
+
   it("tallies inline disable comments as `inline`", () => {
     const projectDir = setupCase(
       "suppression-summary-inline",

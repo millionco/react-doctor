@@ -5,6 +5,7 @@ import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import { buildSortedRuleGroups } from "./diagnostic-grouping.js";
 import { formatDiagnosticSite } from "./format-diagnostic-site.js";
 import { formatElapsedTime } from "./format-elapsed-time.js";
+import { formatSkippedCheckLabel } from "./format-skipped-check-label.js";
 import { pluralize } from "./pluralize.js";
 
 interface PrintHeadlessReportInput {
@@ -85,7 +86,7 @@ export const printHeadlessReport = (input: PrintHeadlessReportInput): Effect.Eff
       yield* Console.log("");
       yield* Console.warn(
         highlighter.warn(
-          `Results are incomplete: ${input.skippedChecks.join(" and ")} checks failed.`,
+          `Results are incomplete: ${input.skippedChecks.map(formatSkippedCheckLabel).join(" and ")} checks failed.`,
         ),
       );
     }

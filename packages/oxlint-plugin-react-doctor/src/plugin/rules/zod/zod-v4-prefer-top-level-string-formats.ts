@@ -32,6 +32,7 @@ const STRING_FORMAT_METHODS = new Set([
 
 export const zodV4PreferTopLevelStringFormats = defineRule({
   id: "zod-v4-prefer-top-level-string-formats",
+  defaultEnabled: false,
   title: "Format method on z.string()",
   requires: ["zod:4"],
   tags: ["migration-hint"],

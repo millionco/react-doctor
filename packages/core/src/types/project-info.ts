@@ -36,6 +36,28 @@ export interface ProjectInfo {
   remotionVersion?: string | null;
   remotionMajorVersion?: number | null;
   hasI18nLibrary?: boolean;
+  /**
+   * `true` when the project (or a workspace package) declares the unified
+   * `radix-ui` package or any `@radix-ui/react-*` primitive (icons excluded).
+   * Drives the `radix-ui` capability, which gates the `radix-*` composition
+   * rules for apps that assemble Radix parts directly.
+   */
+  hasRadixUi?: boolean;
+  /**
+   * `true` when the project (or a workspace package) declares Base UI
+   * (`@base-ui-components/react` or its 1.0 rename `@base-ui/react`).
+   * Drives the `base-ui` capability, which gates the `base-ui-*`
+   * composition rules.
+   */
+  hasBaseUi?: boolean;
+  /** `true` when `react-aria-components` is declared. Drives the `react-aria` capability. */
+  hasReactAriaComponents?: boolean;
+  /** `true` when `@tanstack/react-table` is declared. Drives the `tanstack-table` capability. */
+  hasTanstackTable?: boolean;
+  /** `true` when `@tanstack/react-virtual` is declared. Drives the `tanstack-virtual` capability. */
+  hasTanstackVirtual?: boolean;
+  /** `true` when `@tanstack/react-form` is declared. Drives the `tanstack-form` capability. */
+  hasTanstackForm?: boolean;
   tanstackQueryVersion?: string | null;
   styledComponentsVersion?: string | null;
   /** Whether the project or one of its workspaces declares Three.js, Fiber, or Drei. */
@@ -135,6 +157,16 @@ export interface ProjectInfo {
    * recommend them to projects pinned below that.
    */
   reanimatedVersion: string | null;
+  /**
+   * `true` when the project (or an ancestor up to the repository boundary)
+   * carries a shadcn `components.json` config. Drives the `shadcn`
+   * capability, which gates the `shadcn-*` component-composition rules —
+   * their part names (`DialogTitle`, `InputGroupInput`, `TabsList`, …) only
+   * carry shadcn's contract in a project that actually generated those
+   * files. Optional so existing `ProjectInfo` consumers remain
+   * source-compatible.
+   */
+  hasShadcnUi?: boolean;
   /**
    * `true` when the project's `tsconfig.json` `compilerOptions.target` or
    * `compilerOptions.lib` indicates the output environment predates ES2023

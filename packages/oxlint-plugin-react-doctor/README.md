@@ -61,9 +61,54 @@ the package's root entry.
 
 ## Available rules
 
-The full rule list lives in [`rule-registry.ts`](https://github.com/millionco/react-doctor/blob/main/packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.ts). All rules are namespaced under `react-doctor/*`.
+The full rule list lives in [`rule-registry.ts`](https://github.com/millionco/react-doctor/blob/main/packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.ts). Rules exported by this package use the `react-doctor/*` namespace.
 
-Rules in the `security-scan` bucket are project-level project-wide file scans (leaked artifact secrets, permissive Firebase/Supabase rules, committed key material, …). They register metadata here but are no-ops under plain oxlint or ESLint — the [React Doctor CLI](https://npmjs.com/package/react-doctor) executes them over a whole-tree file walk during its scan.
+### Choose a runner for each diagnostic
+
+Standalone Oxlint runs rules that inspect one source file. The React Doctor CLI also runs whole-project and package analyzers.
+
+| Diagnostic source                                                                             | Standalone Oxlint | Runner                                                           |
+| --------------------------------------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------- |
+| `react-doctor/*` rules with per-file visitors                                                 | Yes               | Configure them under `rules` as shown above                      |
+| Project rules such as `react-doctor/circular-dependency` and `react-doctor/unused-dependency` | No                | Run the React Doctor CLI                                         |
+| `deslop/*` diagnostics                                                                        | No                | Run the React Doctor CLI                                         |
+| `socket/*` diagnostics                                                                        | No                | Run the React Doctor CLI                                         |
+| `react-hooks-js/*` React Compiler diagnostics                                                 | Separate plugin   | Register `eslint-plugin-react-hooks` or run the React Doctor CLI |
+
+The `deslop/*` names are CLI output aliases for project rules. These rules need the complete dependency graph, so their plugin entries have no per-file visitors. The `socket/*` diagnostics need package and supply-chain data. Neither prefix names an Oxlint plugin exported by this package.
+
+Rules in the `security-scan` bucket also require a project-wide file scan. They register metadata here but do nothing under standalone Oxlint or ESLint. The [React Doctor CLI](https://npmjs.com/package/react-doctor) executes them during its whole-tree scan.
+
+### Run React Compiler diagnostics in standalone Oxlint
+
+React Doctor loads React Compiler diagnostics from `eslint-plugin-react-hooks` when it detects the compiler. To use them in standalone Oxlint, install and register that plugin:
+
+```bash
+npm install --save-dev eslint-plugin-react-hooks
+```
+
+Add both plugins to `.oxlintrc.json`. The `react-compiler` capability enables compiler-specific React Doctor cleanup rules:
+
+```jsonc
+{
+  "jsPlugins": [
+    { "name": "react-doctor", "specifier": "oxlint-plugin-react-doctor" },
+    { "name": "react-hooks-js", "specifier": "eslint-plugin-react-hooks" },
+  ],
+  "settings": {
+    "react-doctor": {
+      "capabilities": ["react-compiler"],
+    },
+  },
+  "rules": {
+    "react-doctor/react-compiler-no-manual-memoization": "warn",
+    "react-hooks-js/immutability": "error",
+    "react-hooks-js/refs": "error",
+  },
+}
+```
+
+The `react-hooks-js` namespace is the alias React Doctor uses for the external plugin. It is not exported by `oxlint-plugin-react-doctor`.
 
 Each rule can be set to `"error"`, `"warn"`, or `"off"`:
 

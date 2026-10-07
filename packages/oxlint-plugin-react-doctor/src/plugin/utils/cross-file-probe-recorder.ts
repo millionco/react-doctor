@@ -80,5 +80,17 @@ export const captureCrossFileProbes = <Value>(
   }
 };
 
+// Memoized multi-file helpers call this on a memo hit so the outer trace stays
+// as complete as a cold computation would have left it.
+export const replayCrossFileProbes = (trace: CrossFileProbeTrace): void => {
+  if (activeProbeTrace === null) return;
+  for (const existencePath of trace.existencePaths) {
+    activeProbeTrace.existencePaths.add(existencePath);
+  }
+  for (const contentPath of trace.contentPaths) {
+    activeProbeTrace.contentPaths.add(contentPath);
+  }
+};
+
 export const collectCrossFileProbes = (collect: () => void): CrossFileProbeTrace =>
   captureCrossFileProbes(collect).trace;

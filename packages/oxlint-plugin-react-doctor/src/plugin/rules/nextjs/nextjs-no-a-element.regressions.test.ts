@@ -23,6 +23,30 @@ describe("nextjs/nextjs-no-a-element — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it.each([
+    "src/components/tools/widget.tsx",
+    "src/components/demo/widget.tsx",
+    "src/migrations/widget.tsx",
+  ])("still flags an internal route in application code at %s", (filename) => {
+    const result = runRule(
+      nextjsNoAElement,
+      `export default function C() { return <a href="/about">About</a>; }`,
+      { filename },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent for an internal route in a root-level tooling directory", () => {
+    const result = runRule(
+      nextjsNoAElement,
+      `export default function C() { return <a href="/about">About</a>; }`,
+      { filename: "tools/widget.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on a download anchor", () => {
     const result = runRule(
       nextjsNoAElement,

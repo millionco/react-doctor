@@ -23,7 +23,7 @@ import type {
   CpuProfileProcessSummary,
 } from "./types.ts";
 
-interface AnalyzedProfile {
+export interface AnalyzedCpuProfile {
   processSummary: CpuProfileProcessSummary;
   timings: Map<string, MutableFrameValue>;
 }
@@ -46,7 +46,7 @@ const isCpuProfile = (value: unknown): value is CpuProfile =>
     (Array.isArray(value.timeDeltas) &&
       value.timeDeltas.every((delta) => typeof delta === "number")));
 
-const toFrameSummaries = (
+export const toCpuProfileFrameSummaries = (
   timings: Map<string, MutableFrameValue>,
   sampledMicroseconds: number,
 ): CpuProfileFrameSummary[] =>
@@ -56,7 +56,7 @@ const toFrameSummaries = (
     totalMicroseconds: total,
   }));
 
-const analyzeProfile = (profilePath: string): AnalyzedProfile => {
+const analyzeProfile = (profilePath: string): AnalyzedCpuProfile => {
   const parsedProfile: unknown = JSON.parse(fs.readFileSync(profilePath, "utf8"));
   if (!isCpuProfile(parsedProfile)) throw new Error(`Invalid CPU profile: ${profilePath}`);
   const nodesById = new Map(parsedProfile.nodes.map((node) => [node.id, node]));
@@ -106,7 +106,10 @@ const analyzeProfile = (profilePath: string): AnalyzedProfile => {
       file: profilePath,
       role: resolveProfileProcessRole(parsedProfile.nodes.map((node) => node.callFrame)),
       sampledMicroseconds,
-      topFrames: toFrameSummaries(timings, sampledMicroseconds).slice(0, PROFILE_TOP_FRAME_COUNT),
+      topFrames: toCpuProfileFrameSummaries(timings, sampledMicroseconds).slice(
+        0,
+        PROFILE_TOP_FRAME_COUNT,
+      ),
     },
     timings,
   };
@@ -139,11 +142,13 @@ const renderAnalysisMarkdown = (analysis: CpuProfileAnalysis): string => {
   return `${lines.join("\n")}\n`;
 };
 
+export const analyzeCpuProfileDirectory = (profileDirectory: string): AnalyzedCpuProfile[] =>
+  collectProfilePaths({ directory: profileDirectory, extension: ".cpuprofile" }).map(
+    analyzeProfile,
+  );
+
 export const analyzeCpuProfiles = (profileDirectory: string): CpuProfileAnalysis => {
-  const analyzedProfiles = collectProfilePaths({
-    directory: profileDirectory,
-    extension: ".cpuprofile",
-  }).map(analyzeProfile);
+  const analyzedProfiles = analyzeCpuProfileDirectory(profileDirectory);
   if (analyzedProfiles.length === 0) {
     throw new Error(`No .cpuprofile files found in ${profileDirectory}`);
   }
@@ -159,7 +164,7 @@ export const analyzeCpuProfiles = (profileDirectory: string): CpuProfileAnalysis
     profileDirectory,
     sampledMicroseconds,
     processes: analyzedProfiles.map((analyzedProfile) => analyzedProfile.processSummary),
-    aggregateTopFrames: toFrameSummaries(aggregateTimings, sampledMicroseconds).slice(
+    aggregateTopFrames: toCpuProfileFrameSummaries(aggregateTimings, sampledMicroseconds).slice(
       0,
       PROFILE_TOP_FRAME_COUNT,
     ),

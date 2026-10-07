@@ -1,8 +1,10 @@
-import { execFile, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { SourceFileEntry } from "../types/index.js";
 import { COOPERATIVE_YIELD_BUDGET_MS, GIT_LS_FILES_MAX_BUFFER_BYTES } from "../constants.js";
+import { buildGitSourceListingRequest, resolveGitCommand } from "../git-prefetch.js";
+import { GIT_SOURCE_LISTING_ARGUMENTS } from "../project-info/constants.js";
 import {
   collectGitLinguistIgnoredPaths,
   collectGitLinguistIgnoredPathsCooperative,
@@ -11,6 +13,7 @@ import { collectTypeScriptEmitDuplicateJsPaths } from "./collect-typescript-emit
 import { hasIgnoredPathSegment } from "./has-ignored-path-segment.js";
 import { isLintableSourceFile } from "./is-lintable-source-file.js";
 import { isLargeMinifiedFile, statSourceFileSize } from "./is-large-minified-file.js";
+import { isMissingPath } from "./is-missing-path.js";
 import { walkSourceTreeFiles } from "./walk-source-tree-files.js";
 import { yieldToEventLoop } from "./yield-to-event-loop.js";
 
@@ -18,19 +21,29 @@ import { yieldToEventLoop } from "./yield-to-event-loop.js";
 // drops files that sniff as large minified bundles, and keeps the size so the
 // lint pass can order batches largest-first. `countSourceFiles` delegates to
 // `listSourceFilesWithSize`, so the scanned set and the reported source-file
-// count can never diverge. A file that can't be stat'd is KEPT (parity with
-// `isLargeMinifiedFile`'s keep-on-error) with size `0`, so it sorts to the
-// cheap tail.
+// count can never diverge. A file that can't be stat'd but still exists is
+// KEPT (parity with `isLargeMinifiedFile`'s keep-on-error) with size `0`, so
+// it sorts to the cheap tail. A missing path is dropped: `git ls-files --stage`
+// still lists index entries whose working-tree copy was deleted.
+const toSizedSourceFileEntry = (
+  rootDirectory: string,
+  relativePath: string,
+): SourceFileEntry | null => {
+  const absolutePath = path.resolve(rootDirectory, relativePath);
+  const sizeBytes = statSourceFileSize(absolutePath);
+  if (sizeBytes === null && isMissingPath(absolutePath)) return null;
+  if (isLargeMinifiedFile(absolutePath, sizeBytes)) return null;
+  return { path: relativePath, sizeBytes: sizeBytes ?? 0 };
+};
+
 const collectSizedSourceFiles = (
   rootDirectory: string,
   relativePaths: ReadonlyArray<string>,
 ): SourceFileEntry[] => {
   const entries: SourceFileEntry[] = [];
   for (const relativePath of relativePaths) {
-    const absolutePath = path.resolve(rootDirectory, relativePath);
-    const sizeBytes = statSourceFileSize(absolutePath);
-    if (isLargeMinifiedFile(absolutePath, sizeBytes)) continue;
-    entries.push({ path: relativePath, sizeBytes: sizeBytes ?? 0 });
+    const entry = toSizedSourceFileEntry(rootDirectory, relativePath);
+    if (entry !== null) entries.push(entry);
   }
   return entries;
 };
@@ -44,11 +57,8 @@ const collectSizedSourceFilesCooperative = async (
   let sliceStartedAt = performance.now();
   for (const relativePath of relativePaths) {
     signal?.throwIfAborted();
-    const absolutePath = path.resolve(rootDirectory, relativePath);
-    const sizeBytes = statSourceFileSize(absolutePath);
-    if (!isLargeMinifiedFile(absolutePath, sizeBytes)) {
-      entries.push({ path: relativePath, sizeBytes: sizeBytes ?? 0 });
-    }
+    const entry = toSizedSourceFileEntry(rootDirectory, relativePath);
+    if (entry !== null) entries.push(entry);
     if (performance.now() - sliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
       await yieldToEventLoop();
       sliceStartedAt = performance.now();
@@ -78,7 +88,7 @@ const parseGitSourceFilePaths = (output: string): GitSourceFilePaths => {
 };
 
 const listGitSourceFilePaths = (rootDirectory: string): GitSourceFilePaths | null => {
-  const result = spawnSync("git", ["ls-files", "-z", "--stage", "--others", "--exclude-standard"], {
+  const result = spawnSync("git", [...GIT_SOURCE_LISTING_ARGUMENTS], {
     cwd: rootDirectory,
     encoding: "utf-8",
     maxBuffer: GIT_LS_FILES_MAX_BUFFER_BYTES,
@@ -123,27 +133,10 @@ const listSourceFilesViaGitCooperative = async (
   rootDirectory: string,
   signal?: AbortSignal,
 ): Promise<string[] | null> => {
-  const paths = await new Promise<GitSourceFilePaths | null>((resolve, reject) => {
-    signal?.throwIfAborted();
-    execFile(
-      "git",
-      ["ls-files", "-z", "--stage", "--others", "--exclude-standard"],
-      {
-        cwd: rootDirectory,
-        encoding: "utf-8",
-        killSignal: "SIGKILL",
-        maxBuffer: GIT_LS_FILES_MAX_BUFFER_BYTES,
-        signal,
-      },
-      (error, stdout) => {
-        if (signal?.aborted) {
-          reject(signal.reason);
-          return;
-        }
-        resolve(error ? null : parseGitSourceFilePaths(stdout));
-      },
-    );
-  });
+  signal?.throwIfAborted();
+  const output = await resolveGitCommand(buildGitSourceListingRequest(rootDirectory), signal);
+  if (signal?.aborted) throw signal.reason;
+  const paths = output === null ? null : parseGitSourceFilePaths(output);
   if (paths === null) return null;
   const candidatePaths = collectGitCandidateSourceFilePaths(rootDirectory, paths);
   const linguistIgnoredPaths = await collectGitLinguistIgnoredPathsCooperative(

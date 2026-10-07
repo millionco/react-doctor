@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 describe("runCorpusEvaluation", () => {
-  it("refuses to overwrite an existing paired baseline before creating Daytona resources", async () => {
+  it("refuses to overwrite an existing paired baseline before creating Vercel resources", async () => {
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-pair-"));
     temporaryDirectories.push(temporaryDirectory);
     const baselineOutputPath = path.join(temporaryDirectory, "baseline.ndjson");

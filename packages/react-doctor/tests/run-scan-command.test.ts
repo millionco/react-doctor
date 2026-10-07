@@ -34,6 +34,7 @@ vi.mock("../src/cli/utils/resolve-scope.js", () => ({
 }));
 
 vi.mock("../src/cli/utils/validate-mode-flags.js", () => ({
+  validateFilePathSelectionFlags: vi.fn(),
   validateModeFlags: vi.fn(),
 }));
 
@@ -129,6 +130,21 @@ describe("runScanCommand", () => {
     expect(runScanApp).not.toHaveBeenCalled();
     expect(runProjectMigrations).not.toHaveBeenCalled();
     expect(recordCount).not.toHaveBeenCalled();
+  });
+
+  it("uses headless output for an explicit file selection", async () => {
+    const flags = { scope: "files" };
+    const filePaths = ["src/a.tsx", "src/b.tsx"];
+
+    await runScanCommand({
+      directory: "/tmp/project",
+      filePaths,
+      flags,
+      invocationCommand: "inspect",
+    });
+
+    expect(inspectAction).toHaveBeenCalledWith("/tmp/project", flags, "inspect", filePaths);
+    expect(runScanApp).not.toHaveBeenCalled();
   });
 
   it("preserves the TUI scan exit code", async () => {

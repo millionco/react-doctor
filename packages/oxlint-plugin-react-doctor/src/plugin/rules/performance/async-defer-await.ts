@@ -119,6 +119,8 @@ const CANCELLATION_GUARD_NAMES: ReadonlySet<string> = new Set([
   "isActive",
   "stale",
   "isStale",
+  "live",
+  "isLive",
   "ignore",
   "signal",
   "abortSignal",
@@ -202,7 +204,7 @@ const isCancellationGuardTest = (test: EsTreeNode | null): boolean => {
   // `controller.signal.aborted`, `this._destroyed`, `batch.aborted`,
   // `seq !== getSeq.current`, `token !== runToken`.
   for (const name of collectAllTestNames(test)) {
-    if (isCancellationLikeName(name)) return true;
+    if (CANCELLATION_GUARD_NAMES.has(name) || isCancellationLikeName(name)) return true;
   }
   return testReadsRefCurrent(test);
 };
@@ -257,7 +259,7 @@ const isNonLiteralComparisonTest = (test: EsTreeNode | null): boolean => {
   return !isLiteralOperand(unwrappedTest.left) && !isLiteralOperand(unwrappedTest.right);
 };
 
-const isLocalConstSnapshotOperand = (
+const isLocalSnapshotOperand = (
   operand: EsTreeNode,
   scopes: ScopeAnalysis,
   functionScope: ScopeDescriptor,
@@ -267,8 +269,7 @@ const isLocalConstSnapshotOperand = (
   const symbol = scopes.symbolFor(unwrappedOperand);
   return Boolean(
     symbol &&
-    symbol.kind === "const" &&
-    symbol.initializer &&
+    (symbol.kind === "parameter" || (symbol.kind === "const" && symbol.initializer)) &&
     isDescendantScope(symbol.scope, functionScope),
   );
 };
@@ -298,9 +299,9 @@ const isProvenFreshnessComparison = (
   if (!isNonLiteralComparisonTest(unwrappedTest)) return false;
   if (!isNodeOfType(unwrappedTest, "BinaryExpression")) return false;
   return (
-    (isLocalConstSnapshotOperand(unwrappedTest.left, scopes, functionScope) &&
+    (isLocalSnapshotOperand(unwrappedTest.left, scopes, functionScope) &&
       isLiveFreshnessOperand(unwrappedTest.right, scopes, functionScope)) ||
-    (isLocalConstSnapshotOperand(unwrappedTest.right, scopes, functionScope) &&
+    (isLocalSnapshotOperand(unwrappedTest.right, scopes, functionScope) &&
       isLiveFreshnessOperand(unwrappedTest.left, scopes, functionScope))
   );
 };

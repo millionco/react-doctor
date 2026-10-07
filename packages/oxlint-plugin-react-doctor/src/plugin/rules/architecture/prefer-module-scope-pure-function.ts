@@ -73,8 +73,9 @@ const hasComponentLocalCaptures = (
 //     to detect any binding from inside the component's body scope.
 export const preferModuleScopePureFunction = defineRule({
   id: "prefer-module-scope-pure-function",
+  defaultEnabled: false,
   title: "Pure function rebuilt every render",
-  tags: ["test-noise"],
+  tags: ["test-noise", "react-jsx-only"],
   severity: "warn",
   category: "Architecture",
   // React Compiler caches per-render function allocations itself, so both

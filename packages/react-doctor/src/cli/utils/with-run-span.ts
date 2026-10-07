@@ -11,6 +11,11 @@ import { toSpanAttributes } from "./to-span-attributes.js";
 
 export type RunRootSpan = Tracer.Span | undefined;
 
+export interface WithRunSpanOptions {
+  readonly concurrentScan?: boolean;
+  readonly mapErrorForSpan?: (error: unknown) => unknown;
+}
+
 /**
  * Ends the run span without letting a telemetry failure change the run's
  * outcome — the invariant every other emit site here already holds.
@@ -69,7 +74,7 @@ export const resetSentryRunState = (): void => {
  */
 export const withRunSpan = async <T>(
   run: (rootSpan: RunRootSpan) => Promise<T>,
-  options: { concurrentScan?: boolean } = {},
+  options: WithRunSpanOptions = {},
 ): Promise<T> => {
   const telemetryContext = getTelemetryContext();
   if (telemetryContext === null) return run(undefined);
@@ -103,7 +108,7 @@ export const withRunSpan = async <T>(
     endSpanSafely(rootSpan, Exit.void);
     return result;
   } catch (error) {
-    endSpanSafely(rootSpan, Exit.fail(error));
+    endSpanSafely(rootSpan, Exit.fail(options.mapErrorForSpan?.(error) ?? error));
     throw error;
   }
 };

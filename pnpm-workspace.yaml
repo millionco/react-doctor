@@ -2,6 +2,8 @@ packages:
   - "packages/*"
 
 minimumReleaseAge: 7200
+minimumReleaseAgeExclude:
+  - agent-install
 trustPolicy: no-downgrade
 blockExoticSubdeps: true
 

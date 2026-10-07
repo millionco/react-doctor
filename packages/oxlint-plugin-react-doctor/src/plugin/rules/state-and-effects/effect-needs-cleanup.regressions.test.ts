@@ -4242,7 +4242,7 @@ export const Pollers = ({ items, previousTimerIds }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("rejects the wrong clear verb for a mapped interval collection", () => {
+  it("accepts either clear verb for a mapped interval collection", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useEffect } from "react";
@@ -4258,7 +4258,7 @@ export const Pollers = ({ items }) => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("rejects a local mapped timer that is not returned", () => {

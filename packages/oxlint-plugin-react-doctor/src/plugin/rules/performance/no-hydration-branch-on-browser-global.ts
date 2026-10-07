@@ -1,10 +1,13 @@
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { REACT_RUNTIME_MODULE_SOURCES } from "../../constants/react.js";
+import { analyzeControlFlow, type ControlFlowAnalysis } from "../../semantic/control-flow-graph.js";
+import { analyzeScopes } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findEnclosingJsxOpeningElement } from "../../utils/find-enclosing-jsx-opening-element.js";
+import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getDirectFunctionBindingIdentifier } from "../../utils/get-direct-function-binding-identifier.js";
@@ -27,6 +30,7 @@ import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { readInitialStateBoolean } from "../../utils/read-initial-state-boolean.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -47,10 +51,15 @@ interface HydrationConditionMatch {
   readonly predicateNode: EsTreeNode;
 }
 
+interface HydrationArgumentValue {
+  readonly context: RuleContext;
+  readonly expression: EsTreeNode;
+}
+
 interface HydrationResolutionState {
-  readonly parameterValuesBySymbolId: Map<number, EsTreeNode>;
+  readonly parameterValuesBySymbol: Map<SymbolDescriptor, HydrationArgumentValue>;
   readonly visitedFunctionNodes: Set<EsTreeNode>;
-  readonly visitedSymbolIds: Set<number>;
+  readonly visitedSymbols: Set<SymbolDescriptor>;
 }
 
 interface HydrationStatementResult {
@@ -67,6 +76,69 @@ interface ReturnedStatePath {
   readonly kind: "direct" | "index" | "property";
   readonly key: string | null;
 }
+
+interface ImportedHydrationFunction {
+  readonly context: RuleContext;
+  readonly functionNode: EsTreeNode;
+}
+
+const importedScopeAnalysisByProgram = new WeakMap<EsTreeNode, ScopeAnalysis>();
+const importedControlFlowByProgram = new WeakMap<EsTreeNode, ControlFlowAnalysis>();
+
+const resolveImportedHydrationFunction = (
+  callee: EsTreeNode,
+  context: RuleContext,
+): ImportedHydrationFunction | null => {
+  if (!isNodeOfType(callee, "Identifier") || !context.filename) return null;
+  const symbol = context.scopes.symbolFor(callee);
+  if (!symbol || symbol.kind !== "import") return null;
+  const importBinding = getImportBindingForName(callee, callee.name);
+  if (!importBinding || importBinding.isNamespace || !importBinding.exportedName) return null;
+  const resolvedExport = resolveCrossFileExport(
+    context.filename,
+    importBinding.source,
+    importBinding.exportedName,
+  );
+  if (!resolvedExport || resolvedExport.kind !== "function") return null;
+  let scopes = importedScopeAnalysisByProgram.get(resolvedExport.programNode);
+  if (!scopes) {
+    scopes = analyzeScopes(resolvedExport.programNode);
+    importedScopeAnalysisByProgram.set(resolvedExport.programNode, scopes);
+  }
+  let cfg = importedControlFlowByProgram.get(resolvedExport.programNode);
+  if (!cfg) {
+    cfg = analyzeControlFlow(resolvedExport.programNode);
+    importedControlFlowByProgram.set(resolvedExport.programNode, cfg);
+  }
+  return {
+    context: { ...context, filename: resolvedExport.filePath, scopes, cfg },
+    functionNode: resolvedExport.node,
+  };
+};
+
+const resolveImmutableHydrationArgument = (
+  argument: EsTreeNode,
+  context: RuleContext,
+  visitedSymbolIds: ReadonlySet<number> = new Set(),
+): EsTreeNode => {
+  const unwrappedArgument = stripParenExpression(argument);
+  if (!isNodeOfType(unwrappedArgument, "Identifier")) return unwrappedArgument;
+  const symbol = context.scopes.symbolFor(unwrappedArgument);
+  if (
+    !symbol ||
+    symbol.kind !== "const" ||
+    !symbol.initializer ||
+    symbol.references.some((reference) => reference.flag !== "read") ||
+    visitedSymbolIds.has(symbol.id)
+  ) {
+    return unwrappedArgument;
+  }
+  return resolveImmutableHydrationArgument(
+    symbol.initializer,
+    context,
+    new Set(visitedSymbolIds).add(symbol.id),
+  );
+};
 
 const findGuardingIfStatements = (
   node: EsTreeNode,
@@ -413,11 +485,16 @@ const readHydrationPrimitiveResult = (
   }
   if (isNodeOfType(unwrappedExpression, "Identifier")) {
     const symbol = context.scopes.symbolFor(unwrappedExpression);
-    const parameterValue = symbol ? state.parameterValuesBySymbolId.get(symbol.id) : null;
-    if (symbol && parameterValue && !state.visitedSymbolIds.has(symbol.id)) {
-      state.visitedSymbolIds.add(symbol.id);
-      const result = readHydrationPrimitiveResult(parameterValue, context, runtime, state);
-      state.visitedSymbolIds.delete(symbol.id);
+    const parameterValue = symbol ? state.parameterValuesBySymbol.get(symbol) : null;
+    if (symbol && parameterValue && !state.visitedSymbols.has(symbol)) {
+      state.visitedSymbols.add(symbol);
+      const result = readHydrationPrimitiveResult(
+        parameterValue.expression,
+        parameterValue.context,
+        runtime,
+        state,
+      );
+      state.visitedSymbols.delete(symbol);
       return result;
     }
     if (
@@ -425,11 +502,11 @@ const readHydrationPrimitiveResult = (
       symbol.kind === "const" &&
       symbol.initializer &&
       symbol.references.every((reference) => reference.flag === "read") &&
-      !state.visitedSymbolIds.has(symbol.id)
+      !state.visitedSymbols.has(symbol)
     ) {
-      state.visitedSymbolIds.add(symbol.id);
+      state.visitedSymbols.add(symbol);
       const result = readHydrationPrimitiveResult(symbol.initializer, context, runtime, state);
-      state.visitedSymbolIds.delete(symbol.id);
+      state.visitedSymbols.delete(symbol);
       return result;
     }
   }
@@ -512,12 +589,17 @@ const readHydrationConditionResult = (
     ? context.scopes.symbolFor(unwrappedExpression)
     : null;
   const parameterValue = expressionSymbol
-    ? state.parameterValuesBySymbolId.get(expressionSymbol.id)
+    ? state.parameterValuesBySymbol.get(expressionSymbol)
     : null;
-  if (expressionSymbol && parameterValue && !state.visitedSymbolIds.has(expressionSymbol.id)) {
-    state.visitedSymbolIds.add(expressionSymbol.id);
-    const result = readHydrationConditionResult(parameterValue, context, runtime, state);
-    state.visitedSymbolIds.delete(expressionSymbol.id);
+  if (expressionSymbol && parameterValue && !state.visitedSymbols.has(expressionSymbol)) {
+    state.visitedSymbols.add(expressionSymbol);
+    const result = readHydrationConditionResult(
+      parameterValue.expression,
+      parameterValue.context,
+      runtime,
+      state,
+    );
+    state.visitedSymbols.delete(expressionSymbol);
     return result;
   }
   if (
@@ -525,16 +607,16 @@ const readHydrationConditionResult = (
     expressionSymbol.kind === "const" &&
     expressionSymbol.initializer &&
     expressionSymbol.references.every((reference) => reference.flag === "read") &&
-    !state.visitedSymbolIds.has(expressionSymbol.id)
+    !state.visitedSymbols.has(expressionSymbol)
   ) {
-    state.visitedSymbolIds.add(expressionSymbol.id);
+    state.visitedSymbols.add(expressionSymbol);
     const result = readHydrationConditionResult(
       expressionSymbol.initializer,
       context,
       runtime,
       state,
     );
-    state.visitedSymbolIds.delete(expressionSymbol.id);
+    state.visitedSymbols.delete(expressionSymbol);
     return result;
   }
   if (isNodeOfType(unwrappedExpression, "CallExpression")) {
@@ -562,7 +644,15 @@ const readHydrationConditionResult = (
     ) {
       return readHydrationConditionResult(callArguments[0], context, runtime, state);
     }
-    const helperFunction = resolveExactLocalFunction(callee, context.scopes);
+    let helperContext = context;
+    let helperFunction = resolveExactLocalFunction(callee, context.scopes);
+    const importedHelper = helperFunction
+      ? null
+      : resolveImportedHydrationFunction(callee, context);
+    if (importedHelper) {
+      helperContext = importedHelper.context;
+      helperFunction = importedHelper.functionNode;
+    }
     if (
       !isFunctionLike(helperFunction) ||
       helperFunction.async ||
@@ -573,17 +663,23 @@ const readHydrationConditionResult = (
     ) {
       return null;
     }
-    const parameterValuesBySymbolId = new Map(state.parameterValuesBySymbolId);
+    const parameterValuesBySymbol = new Map(state.parameterValuesBySymbol);
     for (let parameterIndex = 0; parameterIndex < helperFunction.params.length; parameterIndex++) {
       const parameter = helperFunction.params[parameterIndex];
       const argument = callArguments[parameterIndex];
       if (!argument || !isNodeOfType(parameter, "Identifier")) continue;
-      const parameterSymbol = context.scopes.symbolFor(parameter);
-      if (parameterSymbol) parameterValuesBySymbolId.set(parameterSymbol.id, argument);
+      const parameterSymbol = helperContext.scopes.symbolFor(parameter);
+      if (parameterSymbol) {
+        parameterValuesBySymbol.set(parameterSymbol, {
+          context,
+          expression: resolveImmutableHydrationArgument(argument, context),
+        });
+      }
     }
-    return readHydrationFunctionResult(helperFunction, context, runtime, {
-      ...state,
-      parameterValuesBySymbolId,
+    return readHydrationFunctionResult(helperFunction, helperContext, runtime, {
+      parameterValuesBySymbol,
+      visitedFunctionNodes: state.visitedFunctionNodes,
+      visitedSymbols: state.visitedSymbols,
     });
   }
   if (isNodeOfType(unwrappedExpression, "BinaryExpression")) {
@@ -908,22 +1004,26 @@ const matchHydrationConditionInternal = (
   if (predicateMatch) return { predicateMatch, predicateNode: unwrappedExpression };
   if (isNodeOfType(unwrappedExpression, "Identifier")) {
     const symbol = context.scopes.symbolFor(unwrappedExpression);
-    const parameterValue = symbol ? state.parameterValuesBySymbolId.get(symbol.id) : null;
-    if (symbol && parameterValue && !state.visitedSymbolIds.has(symbol.id)) {
-      state.visitedSymbolIds.add(symbol.id);
-      const match = matchHydrationConditionInternal(parameterValue, context, state);
-      state.visitedSymbolIds.delete(symbol.id);
+    const parameterValue = symbol ? state.parameterValuesBySymbol.get(symbol) : null;
+    if (symbol && parameterValue && !state.visitedSymbols.has(symbol)) {
+      state.visitedSymbols.add(symbol);
+      const match = matchHydrationConditionInternal(
+        parameterValue.expression,
+        parameterValue.context,
+        state,
+      );
+      state.visitedSymbols.delete(symbol);
       return match;
     }
     if (
       symbol &&
       (symbol.kind === "let" || symbol.kind === "var") &&
-      !state.visitedSymbolIds.has(symbol.id)
+      !state.visitedSymbols.has(symbol)
     ) {
-      state.visitedSymbolIds.add(symbol.id);
+      state.visitedSymbols.add(symbol);
       if (symbol.initializer && symbol.references.every((reference) => reference.flag === "read")) {
         const match = matchHydrationConditionInternal(symbol.initializer, context, state);
-        state.visitedSymbolIds.delete(symbol.id);
+        state.visitedSymbols.delete(symbol);
         return match;
       }
       for (const reference of symbol.references) {
@@ -949,7 +1049,7 @@ const matchHydrationConditionInternal = (
           }
           const match = matchHydrationConditionInternal(guardingIfStatement.test, context, state);
           if (match) {
-            state.visitedSymbolIds.delete(symbol.id);
+            state.visitedSymbols.delete(symbol);
             return match;
           }
         }
@@ -1011,26 +1111,26 @@ const matchHydrationConditionInternal = (
             }
             const match = matchHydrationConditionInternal(guardingIfStatement.test, context, state);
             if (match) {
-              state.visitedSymbolIds.delete(symbol.id);
+              state.visitedSymbols.delete(symbol);
               return match;
             }
           }
         }
       }
-      state.visitedSymbolIds.delete(symbol.id);
+      state.visitedSymbols.delete(symbol);
     }
     if (
       !symbol ||
       symbol.kind !== "const" ||
       !symbol.initializer ||
       symbol.references.some((reference) => reference.flag !== "read") ||
-      state.visitedSymbolIds.has(symbol.id)
+      state.visitedSymbols.has(symbol)
     ) {
       return null;
     }
-    state.visitedSymbolIds.add(symbol.id);
+    state.visitedSymbols.add(symbol);
     const match = matchHydrationConditionInternal(symbol.initializer, context, state);
-    state.visitedSymbolIds.delete(symbol.id);
+    state.visitedSymbols.delete(symbol);
     return match;
   }
   if (isNodeOfType(unwrappedExpression, "MemberExpression")) {
@@ -1099,7 +1199,15 @@ const matchHydrationConditionInternal = (
     ) {
       return matchHydrationConditionInternal(callArguments[0], context, state);
     }
-    const helperFunction = resolveExactLocalFunction(callee, context.scopes);
+    let helperContext = context;
+    let helperFunction = resolveExactLocalFunction(callee, context.scopes);
+    const importedHelper = helperFunction
+      ? null
+      : resolveImportedHydrationFunction(callee, context);
+    if (importedHelper) {
+      helperContext = importedHelper.context;
+      helperFunction = importedHelper.functionNode;
+    }
     if (
       !isFunctionLike(helperFunction) ||
       helperFunction.async ||
@@ -1110,18 +1218,27 @@ const matchHydrationConditionInternal = (
     ) {
       return null;
     }
-    const parameterValuesBySymbolId = new Map(state.parameterValuesBySymbolId);
+    const parameterValuesBySymbol = new Map(state.parameterValuesBySymbol);
     for (let parameterIndex = 0; parameterIndex < helperFunction.params.length; parameterIndex++) {
       const parameter = helperFunction.params[parameterIndex];
       const argument = callArguments[parameterIndex];
       if (!argument || !isNodeOfType(parameter, "Identifier")) continue;
-      const parameterSymbol = context.scopes.symbolFor(parameter);
-      if (parameterSymbol) parameterValuesBySymbolId.set(parameterSymbol.id, argument);
+      const parameterSymbol = helperContext.scopes.symbolFor(parameter);
+      if (parameterSymbol) {
+        parameterValuesBySymbol.set(parameterSymbol, {
+          context,
+          expression: resolveImmutableHydrationArgument(argument, context),
+        });
+      }
     }
-    return matchHydrationFunctionResult(helperFunction, context, {
-      ...state,
-      parameterValuesBySymbolId,
+    const match = matchHydrationFunctionResult(helperFunction, helperContext, {
+      parameterValuesBySymbol,
+      visitedFunctionNodes: state.visitedFunctionNodes,
+      visitedSymbols: state.visitedSymbols,
     });
+    return match && importedHelper
+      ? { predicateMatch: match.predicateMatch, predicateNode: unwrappedExpression }
+      : match;
   }
   if (
     isNodeOfType(unwrappedExpression, "UnaryExpression") &&
@@ -1287,9 +1404,9 @@ const matchHydrationCondition = (
   context: RuleContext,
 ): HydrationConditionMatch | null =>
   matchHydrationConditionInternal(expression, context, {
-    parameterValuesBySymbolId: new Map(),
+    parameterValuesBySymbol: new Map(),
     visitedFunctionNodes: new Set(),
-    visitedSymbolIds: new Set(),
+    visitedSymbols: new Set(),
   });
 
 const areNodeArraysEquivalent = (

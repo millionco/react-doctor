@@ -1,6 +1,7 @@
-import { parseSync } from "oxc-parser";
+import { resolvePackageVersion } from "./utils/resolve-package-version.js";
 import type { StaticImport } from "oxc-parser";
 import { analyzeScopes } from "./semantic/scope-analysis.js";
+import { awaitedStatementsMayShareWork } from "./utils/awaited-statements-may-share-work.js";
 import {
   INTERNAL_PAGE_PATH_PATTERN,
   PAGE_FILE_PATTERN,
@@ -29,7 +30,7 @@ import { resolveInkVersion } from "./utils/resolve-ink-version.js";
 import { isNodeOfType } from "./utils/is-node-of-type.js";
 import { isReactApiCall } from "./utils/is-react-api-call.js";
 import { normalizeFilename } from "./utils/normalize-filename.js";
-import { parseSourceFile, resolveLang } from "./utils/parse-source-file.js";
+import { parseCrossFileSource, parseSourceFile } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
 import { resolveCrossFileExport } from "./utils/resolve-cross-file-export.js";
 import {
@@ -341,6 +342,24 @@ const collectFunctionExportDependencies = (
   }
 };
 
+const collectSequentialAwaitDependencies: CrossFileDependencyCollector = (input) => {
+  const program = input.getProgram();
+  attachParentReferences(program);
+  const scopes = analyzeScopes(program);
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "BlockStatement")) return;
+    for (const [index, statement] of node.body.entries()) {
+      const next = node.body[index + 1];
+      if (
+        !isNodeOfType(statement, "VariableDeclaration") ||
+        !isNodeOfType(next, "VariableDeclaration")
+      )
+        continue;
+      awaitedStatementsMayShareWork(statement, next, scopes, input.absoluteFilePath);
+    }
+  });
+};
+
 const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) => {
   collectFunctionExportDependencies(input, CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH);
 };
@@ -489,6 +508,11 @@ const collectNearestManifestDependencies: CrossFileDependencyCollector = ({ abso
   classifyPackagePlatform(absoluteFilePath);
 };
 
+const collectHydrationBrowserGuardDependencies: CrossFileDependencyCollector = (input) => {
+  collectNearestManifestDependencies(input);
+  collectBrowserGuardDependencies(input);
+};
+
 const collectBrowserRenderGuardDependencies: CrossFileDependencyCollector = (input) => {
   collectNearestManifestDependencies(input);
   collectFunctionExportDependencies(
@@ -506,6 +530,12 @@ const collectBrowserRenderGuardDependencies: CrossFileDependencyCollector = (inp
 // the exact dependency collection.
 const collectLegacyArchDependencies: CrossFileDependencyCollector = ({ absoluteFilePath }) => {
   isLegacyArchReactNativeFile(absoluteFilePath);
+};
+
+const collectReactNativeVersionDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+}) => {
+  resolvePackageVersion(absoluteFilePath, "react-native");
 };
 
 const collectInkVersionDependencies: CrossFileDependencyCollector = ({ absoluteFilePath }) => {
@@ -539,7 +569,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],
     ["no-dynamic-import-path", collectNearestManifestDependencies],
     ["no-full-lodash-import", collectNearestManifestDependencies],
-    ["no-hydration-branch-on-browser-global", collectNearestManifestDependencies],
+    ["no-hydration-branch-on-browser-global", collectHydrationBrowserGuardDependencies],
     ["no-indeterminate-attribute", collectNearestManifestDependencies],
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
@@ -556,7 +586,10 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-unguarded-browser-global-in-render-or-hook-init", collectBrowserRenderGuardDependencies],
     ["prefer-dynamic-import", collectNearestManifestDependencies],
     ["rendering-hydration-mismatch-time", collectNearestManifestDependencies],
+    ["rendering-hydration-no-flicker", collectEffectValueHelperDependencies],
     ["rerender-memo-with-default-value", collectForwardedHookDependencies],
+    ["server-sequential-independent-await", collectSequentialAwaitDependencies],
+    ["rn-no-deprecated-modules", collectReactNativeVersionDependencies],
     ["rn-no-legacy-shadow-styles", collectLegacyArchDependencies],
     ["rn-no-raw-text", collectRnNoRawTextDependencies],
     ["rn-prefer-expo-image", collectNearestManifestDependencies],
@@ -614,10 +647,7 @@ export const collectCrossFileDependencyProbes = (input: {
   let staticImports: ReadonlyArray<StaticImport>;
   let getProgram: () => EsTreeNode;
   try {
-    const parseResult = parseSync(absoluteFilePath, input.sourceText, {
-      astType: "ts",
-      lang: resolveLang(absoluteFilePath),
-    });
+    const parseResult = parseCrossFileSource(absoluteFilePath, input.sourceText);
     if (parseResult.errors.some((parseError) => parseError.severity === "Error")) return null;
     staticImports = parseResult.module.staticImports;
     let program: EsTreeNode | undefined;

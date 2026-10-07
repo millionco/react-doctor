@@ -240,11 +240,14 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "remotion-no-native-media-elements",
       "remotion-no-next-image",
       "rendering-hydration-mismatch-time",
+      "rendering-hydration-no-flicker",
       "rerender-memo-with-default-value",
+      "rn-no-deprecated-modules",
       "rn-no-legacy-shadow-styles",
       "rn-no-raw-text",
       "rn-prefer-expo-image",
       "rn-style-prefer-boxshadow",
+      "server-sequential-independent-await",
       "window-open-without-noopener",
     ]);
   });

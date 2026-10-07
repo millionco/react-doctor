@@ -10,6 +10,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNonSourceFilename } from "../../utils/is-non-source-filename.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { isTypeScriptTypePosition } from "../../utils/is-typescript-type-position.js";
 import { readBrowserGlobalAvailability } from "../../utils/read-browser-global-availability.js";
 import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -628,6 +629,7 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
       Identifier(node: EsTreeNodeOfType<"Identifier">) {
         if (!BROWSER_GLOBAL_NAMES.has(node.name)) return;
         if (!context.scopes.isGlobalReference(node)) return;
+        if (isTypeScriptTypePosition(node)) return;
         const expressionRoot = findTransparentExpressionRoot(node);
         if (
           expressionRoot.parent &&

@@ -1,5 +1,5 @@
 // GENERATED FROM OXC — do not edit by hand. Run `pnpm gen:fixtures` to regenerate.
-// Source: oxc-project/oxc `crates/oxc_linter/src/rules/no_noninteractive_element_to_interactive_role.rs`
+// Source: oxc-project/oxc `crates/oxc_linter/src/rules/jsx_a11y/no_noninteractive_element_to_interactive_role.rs`
 // Each entry is a verbatim port of an OXC `pass`/`fail` vec entry.
 // `oxcOptions` (optional) is OXC's first config arg (`Some(json!([…]))`),
 // preserved as JS for tests that want to translate it. `oxcSettings`
@@ -108,6 +108,14 @@ export const passCases: ReadonlyArray<OxcFixture> = [
   { code: `<li role="treeitem" />` },
   { code: `<fieldset role="radiogroup" />` },
   { code: `<fieldset role="presentation" />` },
+  {
+    code: `<table role="grid" />`,
+    oxcOptions: [
+      {
+        table: ["grid"],
+      },
+    ],
+  },
 ];
 
 export const failCases: ReadonlyArray<OxcFixture> = [
@@ -188,4 +196,12 @@ export const failCases: ReadonlyArray<OxcFixture> = [
   { code: `<tbody role="menuitem" />` },
   { code: `<tfoot role="menuitem" />` },
   { code: `<thead role="menuitem" />` },
+  {
+    code: `<table role="button" />`,
+    oxcOptions: [
+      {
+        table: ["grid"],
+      },
+    ],
+  },
 ];

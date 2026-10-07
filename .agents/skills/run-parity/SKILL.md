@@ -1,6 +1,6 @@
 ---
 name: run-parity
-description: Compare React Doctor diagnostics for a GitHub pull request (PR) with Daytona. Use when asked to run parity, check a PR for diagnostic regressions, compare a PR with its base, or report added and removed diagnostics.
+description: Compare React Doctor diagnostics for a GitHub pull request (PR) with Vercel Sandbox. Use when asked to run parity, check a PR for diagnostic regressions, compare a PR with its base, or report added and removed diagnostics.
 ---
 
 # Run pull request parity
@@ -9,7 +9,7 @@ Run the pull request base and head against the same repository commits. Write de
 
 ## Prepare the run
 
-Require `DAYTONA_API_KEY`, authenticated `gh`, and a pushed pull request head. Do not push changes without permission. Use `ni` and `nr` in this repository.
+Require `VERCEL_OIDC_TOKEN` or `VERCEL_TOKEN` with `VERCEL_TEAM_ID` (or `VERCEL_ORG_ID`) and `VERCEL_PROJECT_ID`, authenticated `gh`, and a pushed pull request head. Do not push changes without permission. Use `ni` and `nr` in this repository.
 
 Resolve the pull request:
 
@@ -24,7 +24,7 @@ Create `tmp/parity-pr-<number>-<head-short-sha>` and preserve it after the run. 
 
 ## Run both revisions
 
-Run from `packages/evals`. The default corpus contains the 2,000 highest-ranked repositories, and the initial concurrency is 200. Sandbox creation is capped at 20 to avoid overloading Daytona. The evaluator cleans up resources and retries failed projects at concurrency 50, then 10.
+Run from `packages/evals`. The default corpus contains the 2,000 highest-ranked repositories, and the initial concurrency is 200. Sandbox creation is capped at 20 to avoid overloading Vercel Sandbox. The evaluator cleans up resources and retries failed projects at concurrency 50, then 10.
 
 ```sh
 nr --silent eval \
@@ -65,12 +65,12 @@ Verification streams the raw NDJSON bytes, requires full-baseline `ruleKeys: []`
 checks every record's producer, and independently requires the exact pinned
 corpus project set to match its manifest. Any mismatch is a cache miss.
 
-On a cache hit, keep the base out of Daytona: run the normal candidate-only
+On a cache hit, keep the base out of Vercel Sandbox: run the normal candidate-only
 command above against the validated cached baseline and do not pass any
 `--paired-*` option.
 
 On a cache miss, or for a required full-versus-scoped shadow run, evaluate both
-detectors in the same Daytona sandbox:
+detectors in the same Vercel sandbox:
 
 ```sh
 nr --silent eval \
@@ -107,7 +107,7 @@ only when the sandbox has at least four CPU cores. Use
 the performance comparison below. Use `auto` or `parallel` only for
 diagnostic-only parity where timing evidence will be discarded. Paired
 evaluations default to 50 sandboxes, below the observed capacity ceiling for
-four-core sandboxes; pass `--concurrency` only when the Daytona allocation
+four-core sandboxes; pass `--concurrency` only when the Vercel Sandbox allocation
 supports a different envelope.
 Both modes share the same hard attempt deadline and exact evaluation-label
 cleanup. Each paired scan has a five-minute command cap so a small number of
@@ -155,7 +155,7 @@ Each descriptor is an immutable JSON file with this exact shape:
 
 The referenced impact manifest must be the exact output from
 `find-impacted-rules.mjs`; its hash, base commit, head commit, mode, and candidate
-rule keys are revalidated. Before Daytona starts, the matrix runner fetches the
+rule keys are revalidated. Before Vercel Sandbox starts, the matrix runner fetches the
 pinned base and head commits, reruns the current generator, and requires
 byte-identical manifest output. Every repeated descriptor must have the exact
 same group object, a unique safe id, and a distinct artifact directory.
@@ -167,7 +167,7 @@ nr --silent eval \
   --matrix-wave-width 2
 ```
 
-A validated full cache hit keeps the base out of Daytona. Otherwise, the matrix
+A validated full cache hit keeps the base out of Vercel Sandbox. Otherwise, the matrix
 scans one full base when any treatment requires full parity, or one sorted union
 of incremental rule scopes. One target bare clone feeds isolated lane worktrees.
 The default two-lane wave uses four CPU cores and eight GiB per sandbox; the
@@ -279,7 +279,7 @@ The comparator streams both NDJSON inputs, stages baseline records in the system
 
 The performance comparator requires complete v3 reports, identical project
 coverage, rule scope, config contract, and evaluator source. Run it only on a
-paired sequential evaluation so base and candidate share the same Daytona
+paired sequential evaluation so base and candidate share the same Vercel Sandbox
 sandbox without competing for CPU. Exit `0` means timings stayed within the
 fixed noise-tolerant thresholds, `1` means a material project or aggregate
 regression, and `2` means the evidence is invalid. It ignores projects whose

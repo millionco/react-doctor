@@ -19,6 +19,7 @@ import { resolveImportedComponentForwarding } from "../../utils/resolve-imported
 import { isExpoUiComponentElement } from "./utils/is-expo-ui-component-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
 
 const truncateText = (text: string): string => {
   const collapsedText = text.replace(/\s+/g, " ");
@@ -80,25 +81,6 @@ const isTextHandlingComponent = (elementName: string): boolean => {
 const isTransparentTextWrapper = (elementName: string | null): boolean =>
   elementName !== null && REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS.has(elementName);
 
-// Walks ancestors to a real text component, stepping through transparent
-// wrappers. Returns false as soon as a non-transparent, non-text element
-// breaks the chain — so the text boundary is only honored when every link
-// up to the <Text> is itself transparent.
-const isInsideTextHandlingComponent = (node: EsTreeNodeOfType<"JSXElement">): boolean => {
-  let parentNode = node.parent;
-  while (parentNode) {
-    if (!isNodeOfType(parentNode, "JSXElement")) {
-      parentNode = parentNode.parent;
-      continue;
-    }
-    const parentName = resolveTextBoundaryName(parentNode.openingElement);
-    if (parentName && isTextHandlingComponent(parentName)) return true;
-    if (!isTransparentTextWrapper(parentName)) return false;
-    parentNode = parentNode.parent;
-  }
-  return false;
-};
-
 export const rnNoRawText = defineRule({
   id: "rn-no-raw-text",
   title: "Raw text outside a Text component",
@@ -124,6 +106,7 @@ export const rnNoRawText = defineRule({
     // the rest (`node_modules` and anything the resolver can't follow).
     let autoDetectedTextWrappers: ReadonlySet<string> = new Set();
     let autoDetectedNonTextWrappers: ReadonlySet<string> = new Set();
+    let autoDetectedTranslationTextReturnComponents: ReadonlySet<string> = new Set();
 
     // A built-in crash host: a React Native host primitive, or a lowercase
     // intrinsic that is NOT a known HTML/SVG tag (`fbt`, a typo'd primitive).
@@ -148,17 +131,11 @@ export const rnNoRawText = defineRule({
       elementName !== null &&
       (isNonTextHostName(elementName) || autoDetectedNonTextWrappers.has(elementName));
 
-    // Resolve an imported component cross-file: "nonText" (renders children into
-    // a host) → reported; "text" or unresolvable (`node_modules`, namespace
-    // imports, shadowed bindings, unanalyzable exports) → left alone.
-    const isImportedNonTextWrapper = (
-      elementName: string | null,
-      contextNode: EsTreeNode,
-    ): boolean => {
-      if (elementName === null || !isReactComponentName(elementName)) return false;
+    const resolveImportedWrapper = (elementName: string | null, contextNode: EsTreeNode) => {
+      if (elementName === null || !isReactComponentName(elementName)) return null;
       const { filename } = context;
-      if (filename === undefined) return false;
-      const forwardingKind = resolveImportedComponentForwarding(
+      if (filename === undefined) return null;
+      return resolveImportedComponentForwarding(
         contextNode,
         context.scopes,
         filename,
@@ -166,7 +143,33 @@ export const rnNoRawText = defineRule({
         isTextHandlingComponent,
         isNonTextHostName,
       );
-      return forwardingKind === "nonText";
+    };
+
+    const isImportedNonTextWrapper = (
+      elementName: string | null,
+      contextNode: EsTreeNode,
+    ): boolean => resolveImportedWrapper(elementName, contextNode) === "nonText";
+
+    const isInsideTextHandlingComponent = (node: EsTreeNodeOfType<"JSXElement">): boolean => {
+      let parentNode = node.parent;
+      while (parentNode) {
+        if (!isNodeOfType(parentNode, "JSXElement")) {
+          parentNode = parentNode.parent;
+          continue;
+        }
+        const parentName = resolveTextBoundaryName(parentNode.openingElement);
+        if (
+          parentName &&
+          (isTextHandlingComponent(parentName) ||
+            autoDetectedTextWrappers.has(parentName) ||
+            resolveImportedWrapper(parentName, parentNode) === "text")
+        ) {
+          return true;
+        }
+        if (!isTransparentTextWrapper(parentName)) return false;
+        parentNode = parentNode.parent;
+      }
+      return false;
     };
 
     return {
@@ -179,6 +182,8 @@ export const rnNoRawText = defineRule({
         );
         autoDetectedTextWrappers = childrenForwarding.textWrappers;
         autoDetectedNonTextWrappers = childrenForwarding.nonTextWrappers;
+        autoDetectedTranslationTextReturnComponents =
+          childrenForwarding.translationTextReturnComponents;
       },
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         if (isDomComponentFile) return;
@@ -213,6 +218,13 @@ export const rnNoRawText = defineRule({
         if (isInsidePlatformOsWebBranch(node)) return;
 
         if (isTransparentTextWrapper(elementName) && isInsideTextHandlingComponent(node)) {
+          return;
+        }
+
+        if (
+          isTransparentTextWrapper(elementName) &&
+          autoDetectedTranslationTextReturnComponents.has(enclosingComponentOrHookName(node) ?? "")
+        ) {
           return;
         }
 

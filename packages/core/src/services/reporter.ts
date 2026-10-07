@@ -23,8 +23,8 @@ export class ReporterCapture extends Context.Service<
  * `Reporter` consumes the diagnostic stream a single element at a
  * time. Production uses `layerNoop` since the orchestrator already
  * returns the diagnostic array via `Stream.runCollect` — Reporter
- * is the *side-channel* for an LSP host's `publishDiagnostics`, an
- * NDJSON cache, or a SARIF reporter to plug into without changing
+ * is the side channel for an NDJSON cache or a SARIF reporter to plug
+ * into without changing
  * the orchestrator. Partial failures live in `LintPartialFailures`,
  * not here, so the production noop layer doesn't accidentally drop
  * them.

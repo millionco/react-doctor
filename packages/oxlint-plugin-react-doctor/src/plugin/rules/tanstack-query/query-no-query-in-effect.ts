@@ -12,7 +12,7 @@ import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-wit
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
-import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
+import { getStaticStringExpression } from "../../utils/get-static-string-expression.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -248,17 +248,6 @@ const isWriteExecutedBefore = (
   );
 };
 
-const getStaticStringValue = (node: EsTreeNode): string | null => {
-  const unwrappedNode = stripParenExpression(node);
-  if (isNodeOfType(unwrappedNode, "Literal") && typeof unwrappedNode.value === "string") {
-    return unwrappedNode.value;
-  }
-  if (isNodeOfType(unwrappedNode, "TemplateLiteral") && unwrappedNode.expressions.length === 0) {
-    return getStaticTemplateLiteralValue(unwrappedNode);
-  }
-  return null;
-};
-
 const isSameRefetchMember = (
   target: EsTreeNode,
   candidate: EsTreeNode,
@@ -312,7 +301,7 @@ const getRefetchMutationTarget = (node: EsTreeNode, context: RuleContext): EsTre
   if (!target || isNodeOfType(target, "SpreadElement")) return null;
   if (methodName === "defineProperty") {
     const propertyKey = node.arguments[1];
-    if (!propertyKey || getStaticStringValue(propertyKey) !== "refetch") return null;
+    if (!propertyKey || getStaticStringExpression(propertyKey) !== "refetch") return null;
     const descriptor = node.arguments[2];
     if (isNodeOfType(descriptor, "ObjectExpression")) {
       const valueProperty = descriptor.properties.find(

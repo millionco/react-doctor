@@ -1,9 +1,10 @@
 import { findLegacyConfig, toRelativePath } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import { type CliStateOptions } from "./cli-state-store.js";
+import { discardPrefetchedGitCommands } from "@react-doctor/core/scan-preamble";
 import { type Migration, type MigrationResult, runMigrations } from "./cli-lifecycle.js";
 import {
-  findAgentsWithLegacyShellHooks,
+  findAgentsWithOutdatedReactDoctorHooks,
   installReactDoctorAgentHooks,
 } from "./install-agent-hooks.js";
 import { migrateActionPin } from "./migrate-action-pin.js";
@@ -66,28 +67,22 @@ const actionPinMainToMajor: Migration = {
   },
 };
 
-// Replaces the ≤0.5.8 `react-doctor.sh` shell agent hooks with the current
-// Node hook by re-running the installer for exactly the agents that still
-// carry a legacy entry (the installer strips the legacy entry, writes the
-// `.mjs` hook, and deletes the orphaned script). A re-install migrates in
-// place already; this covers everyone who never re-runs
-// `install --agent-hooks`. With no legacy hooks it's a no-op that returns
-// `false` (stays pending, so a legacy hook restored from an old branch later
-// is still migrated).
-const agentHooksShellToNode: Migration = {
+// Re-runs the installer for managed hooks that predate end-of-turn scanning.
+// Version 2 also moves previously installed Node hooks from per-tool events to
+// Stop events; version 1 only replaced the ≤0.5.8 shell scripts.
+const agentHooksToStop: Migration = {
   id: "agent-hooks-sh-to-mjs",
+  version: 2,
   scope: "project",
   run: ({ projectRoot }) => {
     if (projectRoot === undefined) return false;
-    const agents = findAgentsWithLegacyShellHooks(projectRoot);
+    const agents = findAgentsWithOutdatedReactDoctorHooks(projectRoot);
     if (agents.length === 0) return false;
 
     installReactDoctorAgentHooks({ projectRoot, agents });
-    logger.success(
-      `Upgraded the legacy react-doctor.sh agent hook to the Node hook (${agents.join(", ")})`,
-    );
+    logger.success(`Moved React Doctor agent hooks to end-of-turn checks (${agents.join(", ")})`);
     logger.dim(
-      "  The shell hook can't run on Windows and would double-scan next to the current hook. Review and commit the change.",
+      "  Hooks now scan changed and untracked files once when the agent stops. Review and commit the change.",
     );
     logger.break();
     return true;
@@ -97,12 +92,18 @@ const agentHooksShellToNode: Migration = {
 const PROJECT_MIGRATIONS: ReadonlyArray<Migration> = [
   legacyConfigToTypescript,
   actionPinMainToMajor,
-  agentHooksShellToNode,
+  agentHooksToStop,
 ];
 
 // Runs every pending per-repo migration for `projectRoot` once, recording the
 // ones that apply. Safe to call on every scan — recorded migrations are skipped.
-export const runProjectMigrations = (
+export const runProjectMigrations = async (
   projectRoot: string,
   options: CliStateOptions = {},
-): Promise<MigrationResult[]> => runMigrations(PROJECT_MIGRATIONS, { projectRoot }, options);
+): Promise<MigrationResult[]> => {
+  const results = await runMigrations(PROJECT_MIGRATIONS, { projectRoot }, options);
+  // A migration that rewrote project files invalidates git output captured
+  // before it ran.
+  if (results.some((result) => result.ran && result.applied)) discardPrefetchedGitCommands();
+  return results;
+};

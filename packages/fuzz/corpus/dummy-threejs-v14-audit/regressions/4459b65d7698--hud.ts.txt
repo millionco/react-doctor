@@ -1,0 +1,307 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 4459b65d769825e34edf29cd98e3bac86d24480ae2f04a160eddddd450a0e1d6
+/**
+ * DOM head-up display: progress, objective markers, charge/stamina, and the
+ * title / pause / result screens that close the replay loop.
+ */
+import * as THREE from "three";
+import { clamp } from "./noise";
+
+export type Phase = "title" | "playing" | "paused" | "result";
+
+export interface Hud {
+  root: HTMLDivElement;
+  setPhase(p: Phase): void;
+  setScore(score: number, target: number): void;
+  setTime(sec: number, total: number): void;
+  setGoals(n: number): void;
+  setBank(bank: number, primed: boolean): void;
+  setStamina(v: number): void;
+  setCharge(v: number, lob: boolean): void;
+  setReach(v: boolean): void;
+  toast(text: string, sub: string, tone: "good" | "great" | "info"): void;
+  banner(text: string, tone: "good" | "bad"): void;
+  showResult(win: boolean, stats: { score: number; target: number; goals: number; best: number; bestBank: number; timeLeft: number }): void;
+  updateMarkers(
+    camera: THREE.PerspectiveCamera,
+    entries: { pos: THREE.Vector3; kind: "ball" | "band" | "primed"; label: string }[],
+  ): void;
+  setAlert(a: number): void;
+  setMuted(m: boolean): void;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+const SCIENCE_NOTE =
+  "Gravity Goal models a uniform-density shell where pull grows with radius, so shots curve into long orbital arcs. " +
+  "It is a <b>playful learning metaphor</b> for thinking about gravity, rebound angles and momentum &mdash; not validated physics instruction.";
+
+export function createHud(): Hud {
+  const root = el("div", "hud");
+  document.body.appendChild(root);
+
+  /* --- in-game ------------------------------------------------------- */
+  const game = el("div", "layer game");
+  root.appendChild(game);
+
+  const topBar = el("div", "topbar");
+  const scoreBox = el("div", "chip score");
+  scoreBox.innerHTML = `<span class="k">SCORE</span><span class="v" id="gg-score">0</span><span class="t">/ 0</span>`;
+  const timeBox = el("div", "chip time");
+  timeBox.innerHTML = `<span class="k">TIME</span><span class="v" id="gg-time">0:00</span>`;
+  const goalBox = el("div", "chip goals");
+  goalBox.innerHTML = `<span class="k">GOALS</span><span class="v" id="gg-goals">0</span>`;
+  topBar.append(scoreBox, timeBox, goalBox);
+  game.appendChild(topBar);
+
+  const progWrap = el("div", "progress");
+  const progFill = el("div", "fill");
+  const progTicks = el("div", "ticks");
+  progWrap.append(progFill, progTicks);
+  game.appendChild(progWrap);
+
+  const bankChip = el("div", "bank");
+  bankChip.innerHTML = `<span class="mult">&times;1</span><span class="lbl">BANK</span>`;
+  game.appendChild(bankChip);
+
+  const reticle = el("div", "reticle");
+  reticle.innerHTML = `
+    <svg viewBox="0 0 120 120" aria-hidden="true">
+      <circle class="ring-bg" cx="60" cy="60" r="46" />
+      <circle class="ring-fill" cx="60" cy="60" r="46" />
+      <circle class="dot" cx="60" cy="60" r="3.4" />
+      <path class="tick" d="M60 6 L60 18 M60 102 L60 114 M6 60 L18 60 M102 60 L114 60" />
+    </svg>
+    <div class="mode">STRIKE</div>`;
+  game.appendChild(reticle);
+
+  const staminaWrap = el("div", "stamina");
+  const staminaFill = el("div", "fill");
+  staminaWrap.append(staminaFill, el("span", "lbl", "SURGE"));
+  game.appendChild(staminaWrap);
+
+  const toastWrap = el("div", "toasts");
+  game.appendChild(toastWrap);
+
+  const bannerEl = el("div", "banner");
+  game.appendChild(bannerEl);
+
+  const markerWrap = el("div", "markers");
+  game.appendChild(markerWrap);
+
+  const vignette = el("div", "vignette");
+  root.appendChild(vignette);
+
+  const footer = el("div", "footer");
+  footer.innerHTML = `<b>Learning metaphor</b> &mdash; stylised gravity, not validated instruction.`;
+  game.appendChild(footer);
+
+  /* --- title --------------------------------------------------------- */
+  const title = el("div", "layer title");
+  title.innerHTML = `
+    <div class="panel">
+      <div class="eyebrow">SPHERE LEAGUE &mdash; MATCH 01</div>
+      <h1>GRAVITY<span>GOAL</span></h1>
+      <p class="tag">One footballer. One hollow stadium. Gravity points outward, so the pitch curves back over your head and every shot returns to the wall. Bank the ball into sweeping bands of light.</p>
+      <div class="cols">
+        <div>
+          <h3>MOVE</h3>
+          <ul>
+            <li><b>W A S D</b> run across the inner surface</li>
+            <li><b>Shift</b> surge (drains stamina)</li>
+            <li><b>Space</b> gravity leap &mdash; vault the curve, volley in mid-air</li>
+            <li><b>Mouse</b> look &middot; camera recentres itself</li>
+          </ul>
+        </div>
+        <div>
+          <h3>SCORE</h3>
+          <ul>
+            <li><b>Hold LMB</b> charge a flat drive &mdash; fast, and it banks off the wall</li>
+            <li><b>Hold RMB</b> charge a steep lob &mdash; the only shot that crosses the sphere</li>
+            <li>Every rebound before a goal raises your <b>BANK</b> multiplier</li>
+            <li>The <b>gold</b> band is primed: double value. Hit its hot node for a bonus</li>
+          </ul>
+        </div>
+      </div>
+      <button class="cta" id="gg-start">KICK OFF</button>
+      <p class="note">${SCIENCE_NOTE}</p>
+    </div>`;
+  root.appendChild(title);
+
+  /* --- pause --------------------------------------------------------- */
+  const pause = el("div", "layer pause");
+  pause.innerHTML = `
+    <div class="panel small">
+      <h2>PAUSED</h2>
+      <p>Click to resume. <b>M</b> mutes audio, <b>R</b> restarts the match.</p>
+      <p class="note">${SCIENCE_NOTE}</p>
+    </div>`;
+  root.appendChild(pause);
+
+  /* --- result -------------------------------------------------------- */
+  const result = el("div", "layer result");
+  result.innerHTML = `
+    <div class="panel small">
+      <div class="verdict" id="gg-verdict">FULL TIME</div>
+      <h2 id="gg-result-title">TARGET REACHED</h2>
+      <div class="stats" id="gg-stats"></div>
+      <button class="cta" id="gg-replay">PLAY AGAIN &nbsp;<span>R</span></button>
+      <p class="note">${SCIENCE_NOTE}</p>
+    </div>`;
+  root.appendChild(result);
+
+  const scoreV = root.querySelector("#gg-score") as HTMLSpanElement;
+  const scoreT = scoreBox.querySelector(".t") as HTMLSpanElement;
+  const timeV = root.querySelector("#gg-time") as HTMLSpanElement;
+  const goalsV = root.querySelector("#gg-goals") as HTMLSpanElement;
+  const bankMult = bankChip.querySelector(".mult") as HTMLSpanElement;
+  const ringFill = reticle.querySelector(".ring-fill") as SVGCircleElement;
+  const modeLbl = reticle.querySelector(".mode") as HTMLDivElement;
+  const CIRC = 2 * Math.PI * 46;
+  ringFill.style.strokeDasharray = `${CIRC}`;
+
+  const markerPool: HTMLDivElement[] = [];
+  const ndc = new THREE.Vector3();
+
+  let phase: Phase = "title";
+
+  const hud: Hud = {
+    root,
+    setPhase(p) {
+      phase = p;
+      root.dataset.phase = p;
+    },
+    setScore(score, target) {
+      scoreV.textContent = `${Math.round(score)}`;
+      scoreT.textContent = `/ ${target}`;
+      const f = clamp(score / target, 0, 1);
+      progFill.style.width = `${f * 100}%`;
+      progWrap.classList.toggle("full", f >= 1);
+    },
+    setTime(sec, total) {
+      const s = Math.max(0, Math.ceil(sec));
+      timeV.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+      timeBox.classList.toggle("low", sec <= 15);
+      progTicks.style.setProperty("--t", `${clamp(sec / total, 0, 1)}`);
+    },
+    setGoals(n) {
+      goalsV.textContent = `${n}`;
+    },
+    setBank(bank, primed) {
+      bankMult.textContent = `×${bank}`;
+      bankChip.classList.toggle("hot", bank > 1);
+      bankChip.classList.toggle("primed", primed);
+    },
+    setStamina(v) {
+      staminaFill.style.width = `${clamp(v, 0, 1) * 100}%`;
+      staminaWrap.classList.toggle("low", v < 0.32);
+    },
+    setCharge(v, lob) {
+      ringFill.style.strokeDashoffset = `${CIRC * (1 - clamp(v, 0, 1))}`;
+      reticle.classList.toggle("charging", v > 0.01);
+      reticle.classList.toggle("lob", lob);
+      modeLbl.textContent = lob ? "LOB" : "STRIKE";
+    },
+    setReach(v) {
+      reticle.classList.toggle("inreach", v);
+    },
+    toast(text, sub, tone) {
+      const t = el("div", `toast ${tone}`);
+      t.innerHTML = `<b>${text}</b><span>${sub}</span>`;
+      toastWrap.prepend(t);
+      requestAnimationFrame(() => t.classList.add("in"));
+      setTimeout(() => {
+        t.classList.remove("in");
+        setTimeout(() => t.remove(), 420);
+      }, 1500);
+      while (toastWrap.children.length > 5) toastWrap.lastChild?.remove();
+    },
+    banner(text, tone) {
+      bannerEl.textContent = text;
+      bannerEl.className = `banner show ${tone}`;
+      setTimeout(() => {
+        bannerEl.className = "banner";
+      }, 1600);
+    },
+    showResult(win, stats) {
+      (root.querySelector("#gg-verdict") as HTMLDivElement).textContent = win ? "FULL TIME" : "FULL TIME";
+      const t = root.querySelector("#gg-result-title") as HTMLHeadingElement;
+      t.textContent = win ? "TARGET REACHED" : "SHORT OF TARGET";
+      t.className = win ? "win" : "lose";
+      const rows: [string, string][] = [
+        ["Score", `${Math.round(stats.score)}`],
+        ["Target", `${stats.target}`],
+        ["Goals", `${stats.goals}`],
+        ["Best bank", `×${stats.bestBank}`],
+        ["Personal best", `${Math.round(stats.best)}`],
+      ];
+      if (win) rows.push(["Time to spare", `${stats.timeLeft.toFixed(1)}s`]);
+      (root.querySelector("#gg-stats") as HTMLDivElement).innerHTML = rows
+        .map(([k, v]) => `<div class="row"><span>${k}</span><b>${v}</b></div>`)
+        .join("");
+    },
+    updateMarkers(camera, entries) {
+      while (markerPool.length < entries.length) {
+        const m = el("div", "marker");
+        m.innerHTML = `<i></i><span></span>`;
+        markerWrap.appendChild(m);
+        markerPool.push(m);
+      }
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const cx = w / 2;
+      const cy = h / 2;
+      const pad = 74;
+      for (let i = 0; i < markerPool.length; i++) {
+        const m = markerPool[i]!;
+        const e = entries[i];
+        if (!e || phase !== "playing") {
+          m.style.display = "none";
+          continue;
+        }
+        ndc.copy(e.pos).project(camera);
+        let x = (ndc.x * 0.5 + 0.5) * w;
+        let y = (-ndc.y * 0.5 + 0.5) * h;
+        const behind = ndc.z > 1;
+        let off = behind || x < pad || x > w - pad || y < pad || y > h - pad;
+        if (behind) {
+          x = cx - (x - cx);
+          y = cy - (y - cy);
+        }
+        if (off) {
+          const dx = x - cx;
+          const dy = y - cy;
+          const len = Math.hypot(dx, dy) || 1;
+          const maxX = (w / 2 - pad) / (Math.abs(dx) / len || 1e-4);
+          const maxY = (h / 2 - pad) / (Math.abs(dy) / len || 1e-4);
+          const k = Math.min(maxX, maxY);
+          x = cx + (dx / len) * k;
+          y = cy + (dy / len) * k;
+        }
+        m.style.display = "block";
+        m.style.transform = `translate(${x.toFixed(1)}px, ${(y + (i % 2) * 20).toFixed(1)}px)`;
+        m.className = `marker ${e.kind}${off ? " edge" : ""}`;
+        const arrow = m.firstElementChild as HTMLElement;
+        arrow.style.transform = off ? `rotate(${Math.atan2(y - cy, x - cx) + Math.PI / 2}rad)` : "";
+        (m.lastElementChild as HTMLElement).textContent = e.label;
+      }
+    },
+    setAlert(a) {
+      vignette.style.setProperty("--alert", `${clamp(a, 0, 1)}`);
+    },
+    setMuted(m) {
+      root.classList.toggle("muted", m);
+    },
+  };
+
+  hud.setPhase("title");
+  return hud;
+}

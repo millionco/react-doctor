@@ -38,10 +38,10 @@ interface ScanResultCacheLifecycle {
   readonly complete: (input: CompleteScanResultCacheInput) => Promise<InspectResult>;
 }
 
-export const createScanResultCacheLifecycle = (
+export const createScanResultCacheLifecycle = async (
   input: CreateScanResultCacheLifecycleInput,
-): ScanResultCacheLifecycle => {
-  const cacheKey = buildScanResultCacheKey({
+): Promise<ScanResultCacheLifecycle> => {
+  const cacheKey = await buildScanResultCacheKey({
     projectDirectory: input.directory,
     version: VERSION,
     nodeBinaryPath: input.resolvedNodeBinaryPath,
@@ -65,7 +65,9 @@ export const createScanResultCacheLifecycle = (
       recordCount(METRIC.projectDetected, 1);
       const isDiffMode = input.options.includePaths.length > 0;
       const baselineDegraded =
-        Boolean(input.options.baseline) && isDiffMode && cachedPayload.baselineDelta === undefined;
+        (Boolean(input.options.baselineReport) ||
+          (Boolean(input.options.baseline) && isDiffMode)) &&
+        cachedPayload.baselineDelta === undefined;
       return renderAndRecordScan({
         payload: cachedPayload,
         options: input.options,

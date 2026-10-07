@@ -7,7 +7,7 @@ import { REACT_COMPILER_CONFIG_IMPORT_MAX_DEPTH } from "../constants.js";
 import type { PackageJson } from "../types/index.js";
 import { isProjectBoundary } from "../utils/is-project-boundary.js";
 import { unwrapTypescriptExpression } from "../utils/unwrap-typescript-expression.js";
-import { isFile, isPlainObject } from "./fs-utils.js";
+import { isFile, isPlainObject, readDirectoryEntries } from "./fs-utils.js";
 import { isLocalModuleSpecifier } from "./is-local-module-specifier.js";
 import { NEXT_CONFIG_FILENAMES } from "./detect-nextjs-static-export.js";
 import { readPackageJson } from "./package-json.js";
@@ -1491,6 +1491,53 @@ const analyzeConfigIdentifier = (
   );
 };
 
+const hasReactCompilerConfigInSentryWrapperArgument = (
+  callExpression: ts.CallExpression,
+  analysis: ConfigExpressionAnalysis,
+  moduleSpecifier: string,
+  exportName: string,
+): boolean => {
+  if (moduleSpecifier !== "@sentry/nextjs" || exportName !== "withSentryConfig") return false;
+  const [configArgument] = callExpression.arguments;
+  return Boolean(configArgument && analyzeConfigNode(configArgument, analysis, false));
+};
+
+const hasEnabledCompilerOptionInVitePluginArgument = (
+  callExpression: ts.CallExpression,
+  analysis: ConfigExpressionAnalysis,
+  moduleSpecifier: string,
+  exportName: string,
+): boolean => {
+  if (moduleSpecifier !== "@vitejs/plugin-react" || exportName !== "default") return false;
+  const [optionsArgument] = callExpression.arguments;
+  if (!optionsArgument) return false;
+  const compilerProperty = getSelectedObjectProperty(optionsArgument, "compiler", analysis);
+  if (compilerProperty === null) return false;
+  return (
+    !ts.isExpression(compilerProperty.node) ||
+    !isStaticallyDisabledConfigExpression(compilerProperty.node, compilerProperty.analysis)
+  );
+};
+
+const hasReactCompilerConfigInCallArguments = (
+  callExpression: ts.CallExpression,
+  analysis: ConfigExpressionAnalysis,
+  moduleSpecifier: string,
+  exportName: string,
+): boolean =>
+  hasReactCompilerConfigInSentryWrapperArgument(
+    callExpression,
+    analysis,
+    moduleSpecifier,
+    exportName,
+  ) ||
+  hasEnabledCompilerOptionInVitePluginArgument(
+    callExpression,
+    analysis,
+    moduleSpecifier,
+    exportName,
+  );
+
 const analyzeConfigCallTarget = (
   callExpression: ts.CallExpression,
   analysis: ConfigExpressionAnalysis,
@@ -1509,6 +1556,16 @@ const analyzeConfigCallTarget = (
     if (
       allowCompilerTransform &&
       isCompilerTransformModule(callableRequiredModuleSpecifier, "default")
+    ) {
+      return true;
+    }
+    if (
+      hasReactCompilerConfigInCallArguments(
+        callExpression,
+        analysis,
+        callableRequiredModuleSpecifier,
+        "default",
+      )
     ) {
       return true;
     }
@@ -1543,6 +1600,16 @@ const analyzeConfigCallTarget = (
     ) {
       return true;
     }
+    if (
+      hasReactCompilerConfigInCallArguments(
+        callExpression,
+        analysis,
+        requiredModuleSpecifier,
+        propertyName,
+      )
+    ) {
+      return true;
+    }
     const hasCompilerTransform = analyzeImportedConfig({
       analysis,
       moduleSpecifier: requiredModuleSpecifier,
@@ -1567,6 +1634,16 @@ const analyzeConfigCallTarget = (
     if (
       allowCompilerTransform &&
       isCompilerTransformModule(importBinding.moduleSpecifier, propertyName)
+    ) {
+      return true;
+    }
+    if (
+      hasReactCompilerConfigInCallArguments(
+        callExpression,
+        analysis,
+        importBinding.moduleSpecifier,
+        propertyName,
+      )
     ) {
       return true;
     }
@@ -1865,6 +1942,16 @@ const analyzeConfigNode = (
             return true;
           }
           if (
+            hasReactCompilerConfigInCallArguments(
+              node,
+              analysis,
+              importBinding.moduleSpecifier,
+              importBinding.exportName,
+            )
+          ) {
+            return true;
+          }
+          if (
             allowCompilerTransform &&
             importBinding.moduleSpecifier === "@rolldown/plugin-babel" &&
             importBinding.exportName === "default" &&
@@ -2084,8 +2171,16 @@ const analyzeConfigNode = (
 const hasCompilerInConfigFile = (filePath: string): boolean =>
   analyzeConfigModuleExport(filePath, "default", false, 0, new Set<string>());
 
-const hasCompilerInConfigFiles = (directory: string, filenames: string[]): boolean =>
-  filenames.some((filename) => hasCompilerInConfigFile(path.join(directory, filename)));
+const hasCompilerInConfigFiles = (directory: string, filenames: string[]): boolean => {
+  const presentEntryNames = new Set(
+    readDirectoryEntries(directory).map((entry) => entry.name.toLowerCase()),
+  );
+  return filenames.some(
+    (filename) =>
+      presentEntryNames.has(filename.toLowerCase()) &&
+      hasCompilerInConfigFile(path.join(directory, filename)),
+  );
+};
 
 const hasCompilerInPackageJsonConfig = (directory: string, packageJson: PackageJson): boolean => {
   if (!isPlainObject(packageJson.babel)) return false;

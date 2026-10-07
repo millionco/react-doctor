@@ -30,11 +30,12 @@ export const attachParentReferences = (root: EsTreeNode): void => {
       writableNode.range = [writableNode.start, writableNode.end];
     }
     const nodeRecord = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(nodeRecord)) {
-      if (key === "parent") continue;
+    for (const key in nodeRecord) {
+      if (key === "parent" || !Object.hasOwn(nodeRecord, key)) continue;
       const child = nodeRecord[key];
       if (Array.isArray(child)) {
-        for (const item of child) {
+        for (let itemIndex = 0; itemIndex < child.length; itemIndex += 1) {
+          const item: unknown = child[itemIndex];
           if (isAstNode(item)) visit(item, node);
         }
       } else if (isAstNode(child)) {

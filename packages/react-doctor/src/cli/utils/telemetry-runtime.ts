@@ -37,13 +37,8 @@ let pendingShutdown: Promise<void> | null = null;
  *
  * Returns `null` when telemetry is disabled or unconfigured, which is what keeps
  * `--no-telemetry` and unconfigured builds from opening a scope at all.
- *
- * `exportIntervalMs` lets a long-running process (the language server) ship
- * telemetry periodically instead of only at shutdown.
  */
-export const getTelemetryContext = (
-  overrides: { exportIntervalMs?: number } = {},
-): Context.Context<never> | null => {
+export const getTelemetryContext = (): Context.Context<never> | null => {
   if (isBuilt) return telemetryContext;
   isBuilt = true;
   if (!isTelemetryEnabled()) return null;
@@ -57,10 +52,9 @@ export const getTelemetryContext = (
   try {
     const scope = Scope.makeUnsafe();
     telemetryContext = Effect.runSync(
-      Layer.buildWithScope(
-        layerObservability(options === null ? null : { ...options, ...overrides }),
-        scope,
-      ) as Effect.Effect<Context.Context<never>>,
+      Layer.buildWithScope(layerObservability(options), scope) as Effect.Effect<
+        Context.Context<never>
+      >,
     );
     telemetryScope = scope;
   } catch {

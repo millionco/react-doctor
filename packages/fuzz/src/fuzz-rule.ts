@@ -52,6 +52,8 @@ export interface FuzzRuleStats {
   firedProgramCount: number;
   executedProgramCount: number;
   skippedParseErrorCount: number;
+  totalElapsedMs: number;
+  maximumElapsedMs: number;
 }
 
 export interface FuzzRuleResult {
@@ -66,6 +68,7 @@ export interface FuzzRuleOptions {
   checkInvariants?: boolean;
   corpus?: ReadonlyArray<FuzzCorpusEntry>;
   priorityCorpusEntry?: FuzzCorpusEntry;
+  settings?: Readonly<Record<string, unknown>>;
 }
 
 interface RunOutcome {
@@ -75,7 +78,12 @@ interface RunOutcome {
   hasParseErrors?: boolean;
 }
 
-const runRuleOnCode = (rule: Rule, code: string, filename: string): RunOutcome => {
+const runRuleOnCode = (
+  rule: Rule,
+  code: string,
+  filename: string,
+  settings?: Readonly<Record<string, unknown>>,
+): RunOutcome => {
   if (typeof rule.scan === "function") {
     const startedAt = performance.now();
     try {
@@ -102,7 +110,11 @@ const runRuleOnCode = (rule: Rule, code: string, filename: string): RunOutcome =
 
   const startedAt = performance.now();
   try {
-    const result = runRuleOnParsedFixture(rule, code, parsed, { filename, forceJsx: true });
+    const result = runRuleOnParsedFixture(rule, code, parsed, {
+      filename,
+      forceJsx: true,
+      settings,
+    });
     return {
       diagnosticSignature: result.diagnostics
         .map((diagnostic) => `${diagnostic.nodeType}: ${diagnostic.message}`)
@@ -135,11 +147,14 @@ export const fuzzRuleWithStats = (
   const baseSeed = options.seed ?? 1;
   const slowThresholdMs = options.slowThresholdMs ?? SLOW_RULE_THRESHOLD_MS;
   const corpus = options.corpus ?? [];
+  const settings = options.settings;
   const findings: FuzzFinding[] = [];
   const stats: FuzzRuleStats = {
     firedProgramCount: 0,
     executedProgramCount: 0,
     skippedParseErrorCount: 0,
+    totalElapsedMs: 0,
+    maximumElapsedMs: 0,
   };
   const isScanRule = typeof rule.scan === "function";
   const targetFilePrefix = `${ruleId.replaceAll("/", "__")}--`;
@@ -156,12 +171,14 @@ export const fuzzRuleWithStats = (
     iteration: number,
     variantLabel?: string,
   ): RunOutcome | null => {
-    const outcome = runRuleOnCode(rule, code, filename);
+    const outcome = runRuleOnCode(rule, code, filename, settings);
     if (!isScanRule && outcome.hasParseErrors === true) {
       stats.skippedParseErrorCount += 1;
       return null;
     }
     stats.executedProgramCount += 1;
+    stats.totalElapsedMs += outcome.elapsedMs;
+    stats.maximumElapsedMs = Math.max(stats.maximumElapsedMs, outcome.elapsedMs);
     if (outcome.crashDetail !== undefined) {
       findings.push({
         ruleId,
@@ -182,7 +199,7 @@ export const fuzzRuleWithStats = (
       // slow on every run, while a descheduled one drops to milliseconds.
       let fastestElapsedMs = outcome.elapsedMs;
       for (let retry = 0; retry < SLOW_VERIFY_RERUN_COUNT; retry += 1) {
-        const rerun = runRuleOnCode(rule, code, filename);
+        const rerun = runRuleOnCode(rule, code, filename, settings);
         if (rerun.elapsedMs < fastestElapsedMs) fastestElapsedMs = rerun.elapsedMs;
         if (fastestElapsedMs <= slowThresholdMs) break;
       }
@@ -314,20 +331,14 @@ export const fuzzRuleWithStats = (
     if (didFire) {
       for (const variant of buildVerdictPreservingVariants(code, filename)) {
         if (!variant.mustPreserveVerdict) continue;
-        const variantOutcome = runRuleOnCode(rule, variant.code, filename);
-        if (variantOutcome.hasParseErrors === true) continue;
-        if (variantOutcome.crashDetail !== undefined) {
-          findings.push({
-            ruleId,
-            kind: "crash",
-            seed: iterationSeed,
-            iteration,
-            detail: variantOutcome.crashDetail,
-            code: variant.code,
-            variantLabel: variant.label,
-          });
-          continue;
-        }
+        const variantOutcome = checkProgram(
+          variant.code,
+          filename,
+          iterationSeed,
+          iteration,
+          variant.label,
+        );
+        if (variantOutcome === null || variantOutcome.crashDetail !== undefined) continue;
         if ((variantOutcome.diagnosticSignature?.length ?? 0) === 0) {
           findings.push({
             ruleId,
@@ -351,20 +362,14 @@ export const fuzzRuleWithStats = (
         CLEANUP_CALL_ALIAS_RULE_IDS.has(ruleId),
       ),
     ]) {
-      const variantOutcome = runRuleOnCode(rule, variant.code, filename);
-      if (variantOutcome.hasParseErrors === true) continue;
-      if (variantOutcome.crashDetail !== undefined) {
-        findings.push({
-          ruleId,
-          kind: "crash",
-          seed: iterationSeed,
-          iteration,
-          detail: variantOutcome.crashDetail,
-          code: variant.code,
-          variantLabel: variant.label,
-        });
-        continue;
-      }
+      const variantOutcome = checkProgram(
+        variant.code,
+        filename,
+        iterationSeed,
+        iteration,
+        variant.label,
+      );
+      if (variantOutcome === null || variantOutcome.crashDetail !== undefined) continue;
       const baseSignature = JSON.stringify(outcome.diagnosticSignature);
       const variantSignature = JSON.stringify(variantOutcome.diagnosticSignature);
       if (baseSignature !== variantSignature) {

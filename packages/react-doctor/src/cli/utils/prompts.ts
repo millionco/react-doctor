@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import basePrompts, { type PromptObject, type Answers } from "prompts";
+import type { PromptObject, Answers } from "prompts";
 import type { PromptMultiselectContext } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import { shouldAutoSelectCurrentChoice } from "./should-auto-select-current-choice.js";
@@ -63,10 +63,13 @@ const patchMultiselectSubmit = (): void => {
   };
 };
 
-export const prompts = <T extends string = string>(
+// `prompts` is loaded on the first interactive question rather than at scan
+// startup: `--json` / CI runs never ask one.
+export const prompts = async <T extends string = string>(
   questions: PromptObject<T> | PromptObject<T>[],
   options: CliPromptOptions = {},
 ): Promise<Answers<T>> => {
+  const { default: basePrompts } = await import("prompts");
   patchMultiselectToggleAll();
   patchMultiselectSubmit();
   // HACK: each prompt re-refs stdin and never unrefs it on close, so re-unref

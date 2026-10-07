@@ -34,9 +34,10 @@ describe("listSourceFilesWithSize", () => {
     const entries = listSourceFilesWithSize(temporaryDirectory);
     const appEntry = entries.find((entry) => entry.path === "App.tsx");
 
-    expect(appEntry).toBeDefined();
-    expect(appEntry!.path).toBe("App.tsx");
-    expect(appEntry!.sizeBytes).toBe(fs.statSync(absolutePath).size);
+    expect(appEntry).toEqual({
+      path: "App.tsx",
+      sizeBytes: fs.statSync(absolutePath).size,
+    });
   });
 
   it("excludes a large minified bundle (parity with listSourceFiles)", () => {
@@ -249,6 +250,34 @@ describe("listSourceFilesWithSize", () => {
     expect(
       listSourceFiles(temporaryDirectory).filter((filePath) => filePath === "src/app.tsx"),
     ).toHaveLength(1);
+  });
+
+  // Issue #1770: a TanStack Start app committed `index.html`, then deleted
+  // it from the working tree. `git ls-files --stage` still listed the index
+  // entry, so `prepareLintSources` hit ENOENT reading it and the scan died.
+  it("git discovery drops tracked files deleted from the working tree", async () => {
+    writeNestedFile("index.html", '<script type="module" src="/src/app.tsx"></script>\n');
+    writeNestedFile("src/app.tsx", "export const App = () => null;\n");
+    writeNestedFile("src/removed.tsx", "export const Removed = () => null;\n");
+    runGit("init", "--quiet");
+    commitAll();
+    fs.rmSync(path.join(temporaryDirectory, "index.html"));
+    fs.rmSync(path.join(temporaryDirectory, "src/removed.tsx"));
+    fs.symlinkSync(
+      path.join(temporaryDirectory, "src/removed.tsx"),
+      path.join(temporaryDirectory, "src/dangling.tsx"),
+    );
+
+    const filePaths = listSourceFiles(temporaryDirectory);
+
+    expect(filePaths).toEqual(["src/app.tsx"]);
+    expect(listSourceFilesWithSize(temporaryDirectory)).toEqual([
+      {
+        path: "src/app.tsx",
+        sizeBytes: fs.statSync(path.join(temporaryDirectory, "src/app.tsx")).size,
+      },
+    ]);
+    await expect(listSourceFilesCooperative(temporaryDirectory)).resolves.toEqual(filePaths);
   });
 
   const writeEmitQuartet = (): void => {

@@ -30,6 +30,14 @@ describe("eslint-plugin-react-doctor", () => {
     }
   });
 
+  it("keeps every preset on React Doctor's curated rule behavior", () => {
+    for (const flatConfig of Object.values(eslintPlugin.configs)) {
+      expect(flatConfig.settings).toEqual({
+        "react-doctor": { portedRuleMode: "curated" },
+      });
+    }
+  });
+
   it("mirrors oxlint preset rule maps", () => {
     expect(eslintPlugin.configs.recommended.rules).toEqual(RECOMMENDED_RULES);
     expect(eslintPlugin.configs.next.rules).toEqual(NEXTJS_RULES);

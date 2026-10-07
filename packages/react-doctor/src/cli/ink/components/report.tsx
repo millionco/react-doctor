@@ -218,9 +218,8 @@ export const Report = ({
       />
     ) : null;
 
-  let activeScreenContent: ReactNode;
-  if (activeReportScreen === "ci") {
-    activeScreenContent = (
+  const screenContent: Record<ReportScreen, ReactNode> = {
+    ci: (
       <CiSetup
         feedback={ciSetupFeedback}
         onConfirm={() => {
@@ -244,9 +243,8 @@ export const Report = ({
         }}
         onQuit={onQuit}
       />
-    );
-  } else if (activeReportScreen === "handoff") {
-    activeScreenContent = (
+    ),
+    handoff: (
       <AgentHandoff
         agents={launchableAgents}
         onSelect={completeHandoff}
@@ -254,9 +252,8 @@ export const Report = ({
         onBack={() => setActiveReportScreen("landing")}
         onQuit={onQuit}
       />
-    );
-  } else if (activeReportScreen === "handoff-ci") {
-    activeScreenContent = (
+    ),
+    "handoff-ci": (
       <HandoffCiRecommendation
         onAddToCi={() => {
           onAddToCi?.();
@@ -266,9 +263,8 @@ export const Report = ({
         onContinue={() => setActiveReportScreen("handoff")}
         onQuit={onQuit}
       />
-    );
-  } else if (activeReportScreen === "landing") {
-    activeScreenContent = (
+    ),
+    landing: (
       <ReportLanding
         header={<ScoreHeader variant="landing" {...scoreHeaderProps} />}
         phase={reportReveal.phase}
@@ -282,9 +278,8 @@ export const Report = ({
         onSelectionChange={setLandingSelectedIndex}
         onQuit={onQuit}
       />
-    );
-  } else {
-    activeScreenContent = (
+    ),
+    issues: (
       <DiagnosticList
         header={
           reportLayout.showsViewerScoreHeader ? (
@@ -312,13 +307,13 @@ export const Report = ({
         }}
         exitHint={`esc back · ${exitHint}`}
       />
-    );
-  }
+    ),
+  };
 
   return (
     <>
       {activeReportScreen === "landing" && shouldShowIssueStream ? issueStream : null}
-      {activeScreenContent}
+      {screenContent[activeReportScreen]}
     </>
   );
 };

@@ -985,14 +985,20 @@ export const noSpreadPropsOverDefaultsClobbersWithUndefined = defineRule({
       number,
       WeakMap<EsTreeNode, Map<string, RepairWrite[]>>
     >();
-    const symbolById = new Map<number, SymbolDescriptor>();
-    const pendingScopes = [context.scopes.rootScope];
-    while (pendingScopes.length > 0) {
-      const scope = pendingScopes.pop();
-      if (!scope) break;
-      for (const symbol of scope.symbols) symbolById.set(symbol.id, symbol);
-      pendingScopes.push(...scope.children);
-    }
+    let symbolById: ReadonlyMap<number, SymbolDescriptor> | null = null;
+    const getSymbolById = (): ReadonlyMap<number, SymbolDescriptor> => {
+      if (symbolById) return symbolById;
+      const collectedSymbolById = new Map<number, SymbolDescriptor>();
+      const pendingScopes = [context.scopes.rootScope];
+      while (pendingScopes.length > 0) {
+        const scope = pendingScopes.pop();
+        if (!scope) break;
+        for (const symbol of scope.symbols) collectedSymbolById.set(symbol.id, symbol);
+        pendingScopes.push(...scope.children);
+      }
+      symbolById = collectedSymbolById;
+      return collectedSymbolById;
+    };
     return {
       ObjectExpression(node: EsTreeNodeOfType<"ObjectExpression">) {
         const spreadProperties = node.properties.filter((property) =>
@@ -1079,7 +1085,7 @@ export const noSpreadPropsOverDefaultsClobbersWithUndefined = defineRule({
               candidateKeys,
               parameterType,
               context,
-              symbolById,
+              getSymbolById(),
               repairStartsBySymbolAndBlock,
             )
           ) {

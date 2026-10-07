@@ -3453,8 +3453,30 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     );
     expect(catchBefore.diagnostics).toHaveLength(1);
     expect(catchAfter.diagnostics).toHaveLength(0);
-    expect(finallyBefore.diagnostics).toHaveLength(1);
+    expect(finallyBefore.diagnostics).toHaveLength(0);
     expect(finallyAfter.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a latest-request guard in finally", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const mounted = useRef(true);
+         const requestId = useRef(0);
+         useEffect(() => () => { mounted.current = false; }, []);
+         const load = async () => {
+           const id = ++requestId.current;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (mounted.current && id === requestId.current) setIsLoading(false);
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag the reported formatting calls from issue #1421", () => {

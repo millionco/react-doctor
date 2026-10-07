@@ -533,7 +533,22 @@ export const createDiagnosticEvidenceReader = (
     const sourceLines = record.sourceText.split(/\r?\n/);
     const startLineIndex = Math.max(0, diagnostic.line - 1);
     const endLineIndex = Math.max(startLineIndex, (diagnostic.endLine ?? diagnostic.line) - 1);
-    const evidence = sourceLines.slice(startLineIndex, endLineIndex + 1).join("\n");
+    const evidence =
+      diagnostic.offset !== undefined && diagnostic.length !== undefined && diagnostic.length > 0
+        ? Buffer.from(record.sourceText)
+            .subarray(diagnostic.offset, diagnostic.offset + diagnostic.length)
+            .toString("utf-8")
+        : sourceLines
+            .slice(startLineIndex, endLineIndex + 1)
+            .map((line, index, lines) => {
+              const start = index === 0 ? Math.max(0, diagnostic.column - 1) : 0;
+              const end =
+                index === lines.length - 1 && diagnostic.endColumn !== undefined
+                  ? diagnostic.endColumn - 1
+                  : undefined;
+              return line.slice(start, end);
+            })
+            .join("\n");
     if (!options.resolveForwardedHandlers) return evidence;
     const propNames = new Set(evidence.match(/\bon[A-Z]\w*\b/g) ?? []);
     if (propNames.size === 0) return evidence;

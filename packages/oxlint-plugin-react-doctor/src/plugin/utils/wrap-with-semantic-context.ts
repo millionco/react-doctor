@@ -56,49 +56,68 @@ const FALLBACK_CFG: ControlFlowAnalysis = {
 const scopesByProgram = new WeakMap<EsTreeNode, ScopeAnalysis>();
 const cfgByProgram = new WeakMap<EsTreeNode, ControlFlowAnalysis>();
 
+// One instance per (rule × file); the accessors live on the prototype so an
+// instance is a handful of fields rather than a fresh set of getter closures.
+class SemanticRuleContext implements RuleContext {
+  readonly report: BaseRuleContext["report"];
+  readonly settings: BaseRuleContext["settings"];
+  programRoot: EsTreeNode | null;
+  private readonly baseContext: BaseRuleContext;
+  private resolvedScopes: ScopeAnalysis | undefined;
+  private resolvedControlFlow: ControlFlowAnalysis | undefined;
+
+  constructor(baseContext: BaseRuleContext) {
+    this.baseContext = baseContext;
+    this.report = baseContext.report;
+    this.settings = baseContext.settings;
+    this.programRoot = baseContext.sourceCode?.ast ?? null;
+  }
+
+  // Resolve from the host's modern `filename` property, falling back to
+  // its deprecated `getFilename()` invoked ON the host (so a `this`-bound
+  // class method keeps its binding — forwarding a bare reference dropped
+  // `this` and returned `undefined` under ESLint 9, crashing rules).
+  get filename(): string | undefined {
+    return this.baseContext.filename ?? this.baseContext.getFilename?.();
+  }
+
+  get scopes(): ScopeAnalysis {
+    const programRoot = this.programRoot;
+    if (!programRoot) return buildFallbackScopes();
+    let resolvedScopes = this.resolvedScopes;
+    if (!resolvedScopes) {
+      resolvedScopes = scopesByProgram.get(programRoot);
+      if (!resolvedScopes) {
+        resolvedScopes = analyzeScopes(programRoot);
+        scopesByProgram.set(programRoot, resolvedScopes);
+      }
+      this.resolvedScopes = resolvedScopes;
+    }
+    return resolvedScopes;
+  }
+
+  get cfg(): ControlFlowAnalysis {
+    const programRoot = this.programRoot;
+    if (!programRoot) return FALLBACK_CFG;
+    let resolvedControlFlow = this.resolvedControlFlow;
+    if (!resolvedControlFlow) {
+      resolvedControlFlow = cfgByProgram.get(programRoot);
+      if (!resolvedControlFlow) {
+        resolvedControlFlow = analyzeControlFlow(programRoot);
+        cfgByProgram.set(programRoot, resolvedControlFlow);
+      }
+      this.resolvedControlFlow = resolvedControlFlow;
+    }
+    return resolvedControlFlow;
+  }
+}
+
 export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
   ...rule,
   create: (baseContext: BaseRuleContext): RuleVisitors => {
-    let programRoot: EsTreeNode | null = baseContext.sourceCode?.ast ?? null;
-    let resolvedScopes: ScopeAnalysis | undefined;
-    let resolvedControlFlow: ControlFlowAnalysis | undefined;
-
-    // Resolve from the host's modern `filename` property, falling back to
-    // its deprecated `getFilename()` invoked ON the host (so a `this`-bound
-    // class method keeps its binding — forwarding a bare reference dropped
-    // `this` and returned `undefined` under ESLint 9, crashing rules).
-    const enrichedContext: RuleContext = {
-      report: baseContext.report,
-      get filename() {
-        return baseContext.filename ?? baseContext.getFilename?.();
-      },
-      settings: baseContext.settings,
-      get scopes() {
-        if (!programRoot) return buildFallbackScopes();
-        if (!resolvedScopes) {
-          resolvedScopes = scopesByProgram.get(programRoot);
-          if (!resolvedScopes) {
-            resolvedScopes = analyzeScopes(programRoot);
-            scopesByProgram.set(programRoot, resolvedScopes);
-          }
-        }
-        return resolvedScopes;
-      },
-      get cfg() {
-        if (!programRoot) return FALLBACK_CFG;
-        if (!resolvedControlFlow) {
-          resolvedControlFlow = cfgByProgram.get(programRoot);
-          if (!resolvedControlFlow) {
-            resolvedControlFlow = analyzeControlFlow(programRoot);
-            cfgByProgram.set(programRoot, resolvedControlFlow);
-          }
-        }
-        return resolvedControlFlow;
-      },
-    };
-
+    const enrichedContext = new SemanticRuleContext(baseContext);
     const visitors = rule.create(enrichedContext);
-    if (visitors === EMPTY_RULE_VISITORS || programRoot) return visitors;
+    if (visitors === EMPTY_RULE_VISITORS || enrichedContext.programRoot) return visitors;
     // Program enter fires before every other visitor, so capturing the root
     // there is enough — wrapping every visitor of every rule in a
     // capture-then-forward closure added a call per (node × rule) for
@@ -113,7 +132,7 @@ export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
     return {
       ...visitors,
       Program: ((node: EsTreeNode) => {
-        programRoot = node;
+        enrichedContext.programRoot = node;
         if (innerProgramHandler) innerProgramHandler(node);
       }) as RuleVisitors[string],
     };

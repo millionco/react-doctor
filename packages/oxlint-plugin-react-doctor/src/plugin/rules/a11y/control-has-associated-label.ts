@@ -19,6 +19,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { splitTailwindClassName } from "../../utils/split-tailwind-class-name.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
 
 const MESSAGE =
   "Blind users can't tell what this control does because its name is missing or only a symbol, so add visible text, `aria-label`, or `aria-labelledby`.";
@@ -551,6 +552,7 @@ const getAttributeMatchKeys = (
 };
 
 interface CheckChildContext {
+  scopes: ScopeAnalysis;
   depth: number;
   customAttributes: ReadonlyArray<string>;
   controlComponents: ReadonlyArray<string>;
@@ -656,6 +658,16 @@ const hasAccessibleLabelText = (
 ): boolean => {
   if (
     hasLabellingProp(element.openingElement.attributes as EsTreeNode[], context.customAttributes)
+  ) {
+    return true;
+  }
+  if (
+    isNodeOfType(element.openingElement.name, "JSXIdentifier") &&
+    element.openingElement.name.name === LABEL_ELEMENT &&
+    hasNonEmptyNativeTitle(
+      hasJsxPropIgnoreCase(element.openingElement.attributes, "title"),
+      context.scopes,
+    )
   ) {
     return true;
   }
@@ -847,6 +859,7 @@ export const controlHasAssociatedLabel = defineRule({
   recommendation: "Give every interactive control a label screen readers can read.",
   category: "Accessibility",
   create: (context) => {
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(context.settings);
     const settings = resolveSettings(context.settings);
     const isTestlikeFile = isTestlikeFilename(context.filename);
     const iconComponentNames = new Set<string>();
@@ -855,6 +868,7 @@ export const controlHasAssociatedLabel = defineRule({
     const labelEmbeddedNames = new Set<string>();
     const deferredCandidates: DeferredControlCandidate[] = [];
     const checkContext: CheckChildContext = {
+      scopes: context.scopes,
       depth: settings.depth,
       customAttributes: settings.labelAttributes,
       controlComponents: settings.controlComponents,
@@ -911,9 +925,12 @@ export const controlHasAssociatedLabel = defineRule({
 
         const isDomElement = HTML_TAGS.has(tagName);
         const isInteractiveEl =
-          !NON_OPERABLE_ELEMENTS.has(tagName) && isInteractiveElement(tagName, opening);
+          (!shouldUseCuratedBehavior || !NON_OPERABLE_ELEMENTS.has(tagName)) &&
+          isInteractiveElement(tagName, opening);
         const isNonFocusableSeparator =
-          role === SEPARATOR_ROLE && !hasJsxPropIgnoreCase(opening.attributes, "tabIndex");
+          shouldUseCuratedBehavior &&
+          role === SEPARATOR_ROLE &&
+          !hasJsxPropIgnoreCase(opening.attributes, "tabIndex");
         const isInteractiveRoleEl =
           role !== null && isInteractiveRole(role) && !isNonFocusableSeparator;
         const isControlComponent = settings.controlComponents.includes(tagName);

@@ -1,0 +1,258 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit e2823221e63b0b0e336f6bfb9f9bf55601631563975119353088112ebece9949
+/**
+ * DOM overlay. Deliberately spare -- the readouts that matter (elevation,
+ * cover, bust odds) are the ones that explain the geometry, so those get a
+ * live panel while you are holding a die.
+ */
+
+/** Treasure that has to reach the strongbox to win. */
+export const GOAL = 12;
+
+export interface HudCounters {
+  banked: number;
+  haul: number;
+  diceLeft: number;
+  diceTotal: number;
+  charms: number;
+  wrath: number;
+  escapes: number;
+}
+
+export interface HudPreview {
+  socket: string;
+  elevation: number;
+  cover: number;
+  dragon: number;
+  expected: number;
+  bold: number;
+  taxed: boolean;
+  blockedBy: string[];
+  /** Socket already holds a die; the readout collapses to a refusal. */
+  occupied?: boolean;
+}
+
+export interface HudInspect {
+  title: string;
+  subtitle: string;
+  body: string;
+  rows: [string, string][];
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html !== undefined) n.innerHTML = html;
+  return n;
+}
+
+export class Hud {
+  readonly root = el("div", "hud");
+  private readonly bankFill: HTMLElement;
+  private readonly bankText: HTMLElement;
+  private readonly haulText: HTMLElement;
+  private readonly statRow: HTMLElement;
+  private readonly prompt: HTMLElement;
+  private readonly fleeBtn: HTMLButtonElement;
+  private readonly previewBox: HTMLElement;
+  private readonly inspectBox: HTMLElement;
+  private readonly banner: HTMLElement;
+  private readonly loader: HTMLElement;
+  private readonly loaderText: HTMLElement;
+  private readonly loaderFill: HTMLElement;
+  private readonly vignette: HTMLElement;
+  private bannerTimer = 0;
+
+  onFlee: (() => void) | null = null;
+  onRestart: (() => void) | null = null;
+
+  constructor(parent: HTMLElement) {
+    /* --- loading ---------------------------------------------------- */
+    this.loader = el("div", "loader");
+    const lTitle = el("div", "loader-title", "HOARD <span>or</span> HATCH");
+    this.loaderText = el("div", "loader-step", "waking the forge");
+    const bar = el("div", "loader-bar");
+    this.loaderFill = el("div", "loader-fill");
+    bar.appendChild(this.loaderFill);
+    this.loader.append(lTitle, bar, this.loaderText);
+
+    /* --- counters --------------------------------------------------- */
+    const panel = el("div", "panel panel-tl");
+    panel.appendChild(el("div", "panel-head", "VAULT"));
+    const bankWrap = el("div", "bank");
+    this.bankFill = el("div", "bank-fill");
+    const bankBar = el("div", "bank-bar");
+    bankBar.appendChild(this.bankFill);
+    this.bankText = el("div", "bank-text", `0 / ${GOAL}`);
+    bankWrap.append(bankBar, this.bankText);
+    panel.appendChild(bankWrap);
+    this.haulText = el("div", "haul", "carrying <b>0</b>");
+    panel.appendChild(this.haulText);
+    this.statRow = el("div", "stats");
+    panel.appendChild(this.statRow);
+
+    /* --- live placement readout ------------------------------------- */
+    this.previewBox = el("div", "panel panel-tr preview hidden");
+
+    /* --- inspect card ----------------------------------------------- */
+    this.inspectBox = el("div", "panel inspect hidden");
+
+    /* --- bottom bar -------------------------------------------------- */
+    const bottom = el("div", "bottom");
+    this.prompt = el("div", "prompt", "");
+    this.fleeBtn = el("button", "flee") as HTMLButtonElement;
+    this.fleeBtn.innerHTML = "<span>FLEE</span><em>F</em>";
+    this.fleeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.onFlee?.();
+    });
+    bottom.append(this.prompt, this.fleeBtn);
+
+    const legend = el(
+      "div",
+      "legend",
+      [
+        "<b>drag</b> a die or a blocker",
+        "<b>click</b> to inspect",
+        "<b>Q</b>/<b>E</b> turn the board",
+        "<b>drag table</b> to orbit &middot; <b>wheel</b> zoom",
+        "<b>F</b> flee &middot; <b>Esc</b> back",
+      ].join("<i></i>"),
+    );
+
+    this.banner = el("div", "banner hidden");
+    this.vignette = el("div", "vignette");
+
+    this.root.append(this.vignette, panel, this.previewBox, this.inspectBox, bottom, legend, this.banner, this.loader);
+    parent.appendChild(this.root);
+  }
+
+  /* --- loading ------------------------------------------------------ */
+  setLoading(step: string, done: number, total: number) {
+    this.loaderText.textContent = step;
+    this.loaderFill.style.width = `${Math.round((done / total) * 100)}%`;
+  }
+
+  finishLoading() {
+    this.loader.classList.add("gone");
+    window.setTimeout(() => this.loader.remove(), 900);
+  }
+
+  /* --- counters ------------------------------------------------------ */
+  setCounters(c: HudCounters) {
+    this.bankFill.style.width = `${Math.min(100, (c.banked / GOAL) * 100)}%`;
+    this.bankText.textContent = `${c.banked} / ${GOAL}`;
+    this.haulText.innerHTML = `carrying <b class="${c.haul > 0 ? "hot" : ""}">${c.haul}</b>`;
+    const chip = (label: string, value: string, cls = "") =>
+      `<div class="chip ${cls}"><span>${label}</span><b>${value}</b></div>`;
+    this.statRow.innerHTML = [
+      chip("dice", `${c.diceLeft}/${c.diceTotal}`),
+      chip("charms", `${c.charms}`, c.charms > 0 ? "good" : ""),
+      chip("escapes", c.escapes > 0 ? `\u2713 ${c.escapes}` : "0/1", c.escapes > 0 ? "good" : "need"),
+      chip("wrath", `${c.wrath}`, c.wrath > 0 ? "bad" : ""),
+    ].join("");
+  }
+
+  setPrompt(text: string) {
+    this.prompt.innerHTML = text;
+  }
+
+  setFleeEnabled(on: boolean, label = "FLEE") {
+    this.fleeBtn.disabled = !on;
+    this.fleeBtn.querySelector("span")!.textContent = label;
+  }
+
+  /* --- placement preview --------------------------------------------- */
+  showPreview(p: HudPreview | null) {
+    if (!p) {
+      this.previewBox.classList.add("hidden");
+      return;
+    }
+    this.previewBox.classList.remove("hidden");
+    if (p.occupied) {
+      this.previewBox.innerHTML = `<div class="panel-head">${p.socket}</div><div class="note bad">One die per socket. Try another.</div>`;
+      return;
+    }
+    const pct = (v: number) => `${Math.round(v * 100)}%`;
+    const risk = p.dragon > 0.28 ? "bad" : p.dragon > 0.16 ? "warn" : "good";
+    this.previewBox.innerHTML = `
+      <div class="panel-head">${p.socket}</div>
+      <div class="meter"><span>elevation</span><i style="--v:${pct(p.elevation)}"></i><b>${pct(p.elevation)}</b></div>
+      <div class="meter cover"><span>cover</span><i style="--v:${pct(p.cover)}"></i><b>${pct(p.cover)}</b></div>
+      <div class="odds ${risk}"><span>wyrm's eye</span><b>${pct(p.dragon)}</b></div>
+      <div class="odds"><span>avg take</span><b>+${p.expected.toFixed(1)}</b></div>
+      ${p.bold > 0 ? `<div class="note good">bold ground &nbsp;+${p.bold} per treasure</div>` : ""}
+      ${p.taxed ? `<div class="note warn">deep shade &nbsp;&minus;1 on rich faces</div>` : ""}
+      ${p.blockedBy.length ? `<div class="note">shaded by ${p.blockedBy.join(", ")}</div>` : `<div class="note bad">no cover</div>`}
+    `;
+  }
+
+  /* --- inspect -------------------------------------------------------- */
+  showInspect(info: HudInspect | null) {
+    if (!info) {
+      this.inspectBox.classList.add("hidden");
+      return;
+    }
+    this.inspectBox.classList.remove("hidden");
+    this.inspectBox.innerHTML = `
+      <div class="panel-head">${info.title}</div>
+      <div class="sub">${info.subtitle}</div>
+      <p>${info.body}</p>
+      ${info.rows.map(([k, v]) => `<div class="row"><span>${k}</span><b>${v}</b></div>`).join("")}
+      <div class="hint">click anywhere or press Esc</div>
+    `;
+  }
+
+  /* --- banners -------------------------------------------------------- */
+  banner_(title: string, sub: string, cls: string, ms: number) {
+    this.banner.className = `banner ${cls}`;
+    this.banner.innerHTML = `<h1>${title}</h1><p>${sub}</p>`;
+    this.bannerTimer = ms / 1000;
+  }
+
+  showBanner(title: string, sub: string, cls = "", ms = 2600) {
+    this.banner_(title, sub, cls, ms);
+  }
+
+  showVictory(banked: number, escapes: number, wrath: number) {
+    this.banner.className = "banner win persist";
+    this.banner.innerHTML = `
+      <h1>YOU GOT OUT</h1>
+      <p>${banked} treasure banked across ${escapes} clean escape${escapes === 1 ? "" : "s"}${
+        wrath > 0 ? `, and ${wrath} time${wrath === 1 ? "" : "s"} the wyrm took it all back` : " without ever being caught"
+      }.</p>
+      <button class="again">DELVE AGAIN</button>`;
+    this.bannerTimer = 0;
+    this.banner.querySelector(".again")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.onRestart?.();
+    });
+  }
+
+  flash(strength: number, color: string) {
+    this.vignette.style.setProperty("--flash", String(strength));
+    this.vignette.style.setProperty("--flash-color", color);
+  }
+
+  update(dt: number) {
+    if (this.bannerTimer > 0) {
+      this.bannerTimer -= dt;
+      this.banner.classList.remove("hidden");
+      if (this.bannerTimer <= 0 && !this.banner.classList.contains("persist")) {
+        this.banner.classList.add("hidden");
+      }
+    } else if (!this.banner.classList.contains("persist")) {
+      this.banner.classList.add("hidden");
+    }
+    const f = parseFloat(this.vignette.style.getPropertyValue("--flash") || "0");
+    if (f > 0.001) this.vignette.style.setProperty("--flash", String(Math.max(0, f - dt * 1.1)));
+  }
+
+  clearPersistentBanner() {
+    this.banner.classList.remove("persist");
+    this.banner.classList.add("hidden");
+  }
+}

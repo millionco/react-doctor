@@ -7,6 +7,7 @@ import {
 } from "oxlint-plugin-react-doctor/core";
 import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor/core";
 import type { ProjectInfo, RuleSeverityControls } from "../../types/index.js";
+import type { AdoptedLintConfigSettings } from "../../read-adopted-lint-config-settings.js";
 import { resolveRuleSeverityOverride } from "../../resolve-rule-severity-override.js";
 import { COMPILER_CLEANUP_BUCKET, COMPILER_CLEANUP_RULE_KEYS } from "../../constants.js";
 import { getCapabilities, shouldEnableRule } from "../../project-info/capabilities.js";
@@ -28,6 +29,7 @@ export interface OxlintConfigOptions {
   serverAuthFunctionNames?: ReadonlyArray<string>;
   projectIndexModuleSources?: ReadonlyArray<string>;
   severityControls?: RuleSeverityControls;
+  adoptedSettings?: AdoptedLintConfigSettings;
   /**
    * User-declared plugins from `react-doctor.config.json`'s
    * `plugins: [...]`, already resolved + introspected via
@@ -134,6 +136,7 @@ export const createOxlintConfig = ({
   serverAuthFunctionNames,
   projectIndexModuleSources,
   severityControls,
+  adoptedSettings = {},
   userPlugins = [],
   disableReactHooksJsPlugin = false,
   ruleSelection,
@@ -165,6 +168,16 @@ export const createOxlintConfig = ({
 
   const capabilities = getCapabilities(project);
   const settingsRootDirectory = resolveSettingsRootDirectory(project.rootDirectory);
+  const noMultiCompOverride = resolveRuleSeverityOverride(
+    { ruleKey: "react-doctor/no-multi-comp" },
+    severityControls,
+  );
+  const multiComponentFileOverride = resolveRuleSeverityOverride(
+    { ruleKey: "react-doctor/no-multi-component-file" },
+    severityControls,
+  );
+  const shouldUseExplicitNoMultiCompPolicy =
+    noMultiCompOverride !== undefined && multiComponentFileOverride === undefined;
 
   const enabledReactDoctorRules: Record<string, OxlintRuleSeverity> = {};
   for (const registryEntry of REACT_DOCTOR_RULES) {
@@ -184,7 +197,9 @@ export const createOxlintConfig = ({
     }
     // Scan rules run via core's check-security-scan environment
     // check, not oxlint — registering them would only add dead visitors.
-    if (rule.isScanRule) continue;
+    if (rule.isScanRule || rule.isProjectRule === true) continue;
+    if (registryEntry.id === "no-multi-component-file" && shouldUseExplicitNoMultiCompPolicy)
+      continue;
     // `customRulesOnly` mirrors the historical behavior of the pre-port
     // builtin-react / builtin-a11y gate — skip everything ported 1:1
     // from upstream OXC plugins.
@@ -251,6 +266,7 @@ export const createOxlintConfig = ({
 
   return {
     ...(extendsPaths.length > 0 ? { extends: extendsPaths } : {}),
+    options: { typeAware: false },
     categories: {
       correctness: "off",
       suspicious: "off",
@@ -269,7 +285,9 @@ export const createOxlintConfig = ({
     plugins: [],
     jsPlugins: [...jsPlugins, pluginPath],
     settings: {
+      ...adoptedSettings,
       "react-doctor": {
+        portedRuleMode: "curated",
         framework: project.framework,
         rootDirectory: settingsRootDirectory,
         // The framework-capability vocabulary, available to any rule via

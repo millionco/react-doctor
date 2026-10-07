@@ -83,6 +83,16 @@ describe("security-scan/plugin-update-trust-risk — regressions", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("anchors a Docker installer finding on the download command instead of a package-list curl", () => {
+    const findings = runScanRule(pluginUpdateTrustRisk, {
+      relativePath: "Dockerfile",
+      content: `FROM oven/bun:1.3.14-debian\n\n# tmux is required by the agent harness.\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    ca-certificates bash curl git \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Native installer.\nRUN curl -fsSL https://claude.ai/install.sh | bash\n`,
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.line).toBe(9);
+    expect(findings[0]?.column).toBe(5);
+  });
+
   it("stays silent on healthcheck wget near unrelated chmod (outline Dockerfile shape)", () => {
     const findings = runScanRule(pluginUpdateTrustRisk, {
       relativePath: "Dockerfile",

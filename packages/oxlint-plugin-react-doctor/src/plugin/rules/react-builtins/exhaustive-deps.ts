@@ -21,6 +21,8 @@ import { isReactComponentOrHookName } from "../../utils/is-react-component-or-ho
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-port-behavior.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { EFFECT_HOOK_NAMES, REACT_HOC_NAMES } from "../../constants/react.js";
 import {
   getHookName,
@@ -1672,6 +1674,40 @@ const findRenderChangingStateSetterName = (
   return setterName;
 };
 
+const findStateSetterReferenceName = (node: EsTreeNode, scopes: ScopeAnalysis): string | null => {
+  let setterName: string | null = null;
+  const visit = (current: EsTreeNode): void => {
+    if (setterName) return;
+    if (
+      current !== node &&
+      (isNodeOfType(current, "FunctionDeclaration") ||
+        isNodeOfType(current, "FunctionExpression") ||
+        isNodeOfType(current, "ArrowFunctionExpression"))
+    ) {
+      return;
+    }
+    if (isNodeOfType(current, "Identifier")) {
+      const descriptor = getStateSetterDescriptor(current, scopes);
+      if (descriptor) {
+        setterName = descriptor.setterSymbol.name;
+        return;
+      }
+    }
+    const record = current as unknown as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (key === "parent") continue;
+      const child = record[key];
+      if (Array.isArray(child)) {
+        for (const item of child) if (isAstNode(item)) visit(item);
+      } else if (isAstNode(child)) {
+        visit(child);
+      }
+    }
+  };
+  visit(node);
+  return setterName;
+};
+
 const collectOuterAssignments = (
   callback: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -1896,8 +1932,8 @@ const hasMemberCallForRoot = (
       ?.resolvedSymbol ?? null;
   if (!rootSymbol) return false;
   let didFindMemberCall = false;
-  const visit = (current: EsTreeNode): void => {
-    if (didFindMemberCall) return;
+  walkAst(node, (current) => {
+    if (didFindMemberCall) return false;
     if (isNodeOfType(current, "CallExpression")) {
       const callee = unwrapExpression(current.callee);
       if (isNodeOfType(callee, "MemberExpression")) {
@@ -1921,22 +1957,11 @@ const hasMemberCallForRoot = (
           scopes.symbolFor(chainObject) === rootSymbol
         ) {
           didFindMemberCall = true;
-          return;
+          return false;
         }
       }
     }
-    const record = current as unknown as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      if (key === "parent") continue;
-      const child = record[key];
-      if (Array.isArray(child)) {
-        for (const item of child) if (isAstNode(item)) visit(item);
-      } else if (isAstNode(child)) {
-        visit(child);
-      }
-    }
-  };
-  visit(node);
+  });
   return didFindMemberCall;
 };
 
@@ -1945,6 +1970,7 @@ const addAggregatePropsDependency = (
   declaredKeys: ReadonlySet<string>,
   callback: EsTreeNode,
   scopes: ScopeAnalysis,
+  shouldUseCuratedBehavior: boolean,
 ): void => {
   const propsCaptureKeys = [...captureKeys].filter((captureKey) => captureKey.startsWith("props."));
   const propsCaptureCount = propsCaptureKeys.length;
@@ -1952,7 +1978,7 @@ const addAggregatePropsDependency = (
   const areAllPropsCapturesCovered = propsCaptureKeys.every((captureKey) =>
     [...declaredKeys].some((declaredKey) => isMatchingDepOrPrefix(declaredKey, captureKey)),
   );
-  if (areAllPropsCapturesCovered) return;
+  if (shouldUseCuratedBehavior && areAllPropsCapturesCovered) return;
   if (hasMemberCallForRoot(callback, "props", scopes)) captureKeys.add("props");
 };
 
@@ -1976,6 +2002,7 @@ useEffect(() => {
 If the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.`,
   category: "Correctness",
   create: (hostContext) => {
+    const shouldUseCuratedBehavior = shouldUseCuratedPortBehavior(hostContext.settings);
     const nodeStartOffset = (node: EsTreeNode): number | null => {
       const nodeWithOffsets = node as { start?: number; range?: [number, number] };
       if (typeof nodeWithOffsets.start === "number") return nodeWithOffsets.start;
@@ -2140,7 +2167,9 @@ If the missing value is recreated every render, move it inside the hook or stabi
 
         if (!depsArgumentRaw) {
           if (callbackToAnalyze && EFFECT_HOOKS_ALLOWING_EXTRA_REACTIVE_DEPS.has(hookName)) {
-            const setterName = findRenderChangingStateSetterName(callbackToAnalyze, context.scopes);
+            const setterName = shouldUseCuratedBehavior
+              ? findRenderChangingStateSetterName(callbackToAnalyze, context.scopes)
+              : findStateSetterReferenceName(callbackToAnalyze, context.scopes);
             if (setterName) {
               context.report({
                 node: callbackToAnalyze,
@@ -2326,6 +2355,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           declaredKeys,
           callbackToAnalyze ?? callbackArgument,
           context.scopes,
+          shouldUseCuratedBehavior,
         );
 
         const missingCaptureKeys: string[] = [];

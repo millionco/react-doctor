@@ -1,3 +1,4 @@
+import "./start-scan-preamble.js";
 import { Command, Option } from "commander";
 import { CANONICAL_GITHUB_URL, CI_URL, highlighter } from "@react-doctor/core";
 import { flushSentry, initializeSentry } from "../instrument.js";
@@ -15,6 +16,7 @@ import { normalizeHelpInvocation } from "./utils/normalize-help-command.js";
 import { printDebugTrace } from "./utils/print-debug-trace.js";
 import { assertNoRemovedFlags } from "./utils/removed-cli-flags.js";
 import { reportErrorToSentry } from "./utils/report-error.js";
+import { resolvePositionalScanInput } from "./utils/resolve-positional-scan-input.js";
 import { stripUnknownCliFlags } from "./utils/strip-unknown-cli-flags.js";
 import { unrefStdin } from "./utils/unref-stdin.js";
 import { VERSION } from "./utils/version.js";
@@ -58,6 +60,8 @@ ${highlighter.dim("Examples:")}
 ${formatExampleLines([
   ["react-doctor", "scan the current project"],
   ["react-doctor ./apps/web", "scan a specific directory"],
+  ["react-doctor src/a.tsx src/b.tsx", "scan only selected files"],
+  ["react-doctor scan http://localhost:3000", "profile one interaction in a running React app"],
   ["react-doctor --scope changed --base main", "scan only new issues vs. main"],
   ["react-doctor --project modules/a,modules/b", "score each module separately (names or paths)"],
   ["react-doctor --staged", "scan staged files (pre-commit hook)"],
@@ -108,12 +112,48 @@ ${formatExampleLines([
 
 ${highlighter.dim("Scope:")}
   Runs every rule tagged ${highlighter.info("design")}; all design rules stay opt-in during a general health scan.
-  Dead-code, supply-chain, external lint-config, custom-plugin, and health-score passes are skipped.
+  Whole-project maintainability, supply-chain, external lint-config, custom-plugin, and health-score passes are skipped.
   Standard scan flags such as ${highlighter.info("--scope")}, ${highlighter.info("--project")}, ${highlighter.info("--verbose")}, and ${highlighter.info("--json")} still work.
 `;
 
+const renderRuntimeScanHelpEpilog = (): string => `
+${highlighter.dim("Examples:")}
+${formatExampleLines([
+  ["react-doctor scan", "choose a detected local app or enter its URL"],
+  ["react-doctor scan http://localhost:3000", "scan one interaction in isolated Chrome"],
+  [
+    "react-doctor scan http://localhost:3000 --format json",
+    "print a structured report for an agent",
+  ],
+  [
+    "react-doctor scan http://localhost:3000 --trace-out ./trace.json.gz",
+    "choose where the private trace is saved",
+  ],
+  [
+    "react-doctor scan https://app.example.com --cdp http://127.0.0.1:9222",
+    "reuse a dedicated debug-enabled Chrome profile",
+  ],
+])}
+
+${highlighter.dim("How scanning works:")}
+  1. Start the app. Prefer a production build for representative timings.
+  2. Run this command. If you omit the URL, React Doctor suggests running localhost apps.
+  3. Reproduce one slow interaction within five minutes. Purple labels show component renders.
+  4. Return here and press Enter. React Doctor prints the report and trace path.
+
+${highlighter.dim("Authenticated apps:")}
+  The default temporary profile starts signed out. Start a separate Chrome profile with remote
+  debugging, sign in there, close its non-blank tabs, then pass ${highlighter.info("--cdp <url>")}.
+  React Doctor closes blank startup tabs and its scan tab. The attached browser stays open.
+
+${highlighter.dim("Output and privacy:")}
+  ${highlighter.info("text")} summarizes the evidence for people. ${highlighter.info("json")} returns one report; ${highlighter.info("jsonl")} returns one record per line.
+  Chrome tracing is browser-wide, so ${highlighter.info("--cdp")} rejects profiles with open pages. The compressed
+  ${highlighter.info(".json.gz")} trace stays local and can contain page URLs, source paths, and profiling data.
+`;
+
 const MAX_DURATION_OPTION_DESCRIPTION =
-  "scan time budget for the whole run, shared across workspace projects: past it, queued projects, remaining lint batches, and dead-code are skipped and partial results are reported (skipped files and projects are listed in the JSON report)";
+  "scan time budget for the whole run, shared across workspace projects: past it, queued projects, remaining lint batches, and maintainability analysis are skipped and partial results are reported (skipped files and projects are listed in the JSON report)";
 
 const renderCiHelpEpilog = (): string => `
 ${highlighter.dim("Examples:")}
@@ -143,14 +183,11 @@ const program = new Command()
   .name("react-doctor")
   .description("Diagnose React codebase health")
   .version(VERSION, "-v, --version", "display the version number")
-  .argument("[directory]", "project directory to scan", ".")
+  .argument("[paths...]", "one project directory or source file paths to scan")
   .option("--lint", "enable linting")
   .option("--no-lint", "skip linting")
-  .option("--dead-code", "enable dead-code analysis (default)")
-  .option(
-    "--no-dead-code",
-    "skip dead-code analysis (unused files / exports / dependencies, circular imports)",
-  )
+  .addOption(new Option("--dead-code").hideHelp())
+  .addOption(new Option("--no-dead-code").hideHelp())
   .option("--supply-chain", "enable the dependency supply-chain scan (default)")
   .option(
     "--no-supply-chain",
@@ -180,6 +217,7 @@ const program = new Command()
     "--scope <value>",
     "how much supported JS/TS and inline HTML script source to scan/report: full (default), files, changed (only new issues vs base), or lines (issues whose source spans touch changed lines)",
   )
+  .option("--baseline <report.json>", "report only new issues compared with a saved JSON report")
   .option("--base <ref>", "base git ref for files/changed/lines scope (auto-detected when omitted)")
   .option(
     "--include-untracked",
@@ -239,10 +277,11 @@ const program = new Command()
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .addHelpText("after", renderRootHelpEpilog);
 
-program.action(async (directory = ".", flags: InspectFlags) => {
+program.action(async (positionalPaths: string[] = [], flags: InspectFlags) => {
   const { runScanCommand } = await import("./commands/scan.js");
+  const scanInput = resolvePositionalScanInput(positionalPaths);
   return runScanCommand({
-    directory,
+    ...scanInput,
     flags,
     invocationCommand: "inspect",
   });
@@ -255,6 +294,19 @@ program
   .action(async (directory, _options, command) => {
     const { designAction } = await import("./commands/design.js");
     return designAction(directory ?? ".", command.optsWithGlobals());
+  });
+
+program
+  .command("scan")
+  .description("Scan a React interaction in Chrome until you press Enter")
+  .argument("[url]", "HTTP(S) URL of the running React app; detects local apps when omitted")
+  .option("-f, --format <format>", "report format: text, json, or jsonl", "text")
+  .option("--cdp <url>", "reuse Chrome at this remote-debugging endpoint")
+  .option("--trace-out <path>", "save the compressed .json.gz DevTools trace at this path")
+  .addHelpText("after", renderRuntimeScanHelpEpilog)
+  .action(async (url, options) => {
+    const { runtimeScanAction } = await import("./commands/runtime-scan.js");
+    return runtimeScanAction(url, options);
   });
 
 program
@@ -278,7 +330,7 @@ program
   .description("Install the react-doctor skill into your coding agents and optional git hook")
   .option("-y, --yes", "skip prompts, install for all detected agents")
   .option("--dry-run", "show what would be installed without writing files")
-  .option("--agent-hooks", "install native non-blocking agent hooks for Claude Code and Cursor")
+  .option("--agent-hooks", "install end-of-turn agent hooks for Claude Code and Cursor")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
@@ -462,19 +514,6 @@ rules
     return rulesUnignoreTagAction(tag, command.optsWithGlobals());
   });
 
-// NOTE: `react-doctor experimental-lsp` is intentionally NOT wired through
-// commander. The bin shim (bin/react-doctor.js) fast-paths it to a dedicated
-// server entry so the CLI layer (commander / prompts / ora) never touches
-// process.stdin before the LSP stdio transport attaches. This command is
-// registered only so `--help` lists it; its body never runs in practice.
-// It's gated behind the `experimental-` prefix because the editor language
-// server is still unstable (protocol, caching, and diagnostics may change).
-program
-  .command("experimental-lsp", { hidden: false })
-  .description("[experimental] run the React Doctor language server over stdio (for editors)")
-  .allowUnknownOption()
-  .action(() => {});
-
 program
   .command("experimental-tui [directory]", { hidden: true })
   .description("[experimental] interactive, scrollable scan report")
@@ -484,7 +523,7 @@ program
   )
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
-  .option("--no-dead-code", "skip dead-code analysis")
+  .addOption(new Option("--no-dead-code").hideHelp())
   .option("--no-supply-chain", "skip the dependency supply-chain scan")
   .option("--score", "only print the numeric score (for scripts and CI)")
   .option("--no-score", "skip the score API, the share URL, and crash reporting")
@@ -556,7 +595,8 @@ Promise.resolve()
       process.exit(1);
     }
     if (isUserError) {
-      handleUserError(error);
+      handleUserError(error, { shouldExit: false });
+      await Promise.all([flushSentry(), shutdownTelemetry()]);
       return;
     }
     handleError(error, { sentryEventId });

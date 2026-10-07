@@ -7,7 +7,6 @@ import {
   createOxlintSpawnSlots,
   DEFAULT_PROJECT_SCAN_CONCURRENCY,
   DEFAULT_SHOW_WARNINGS,
-  DeadCode,
   detectAiTrainingEnvironment,
   Files,
   Git,
@@ -15,6 +14,7 @@ import {
   layerUserOtlp,
   Linter,
   LintPartialFailures,
+  Maintainability,
   mapWithConcurrency,
   mergeReactDoctorConfigs,
   OxlintConcurrency,
@@ -26,11 +26,12 @@ import {
   restoreLegacyThrow,
   runInspect,
   Score,
+  shouldUseMaintainabilityLayer,
   SupplyChain,
   type InspectOutput,
   type ResolvedScanTarget,
   type SourceFileEntry,
-  type WorkerSlots,
+  type OxlintSpawnSlotsHandle,
 } from "@react-doctor/core";
 import type {
   DiagnoseOptions,
@@ -61,7 +62,7 @@ interface DiagnoseLayerInput {
   readonly shouldRunLint: boolean;
   readonly shouldRunDeadCode: boolean;
   readonly oxlintConcurrency: number;
-  readonly oxlintSpawnSlots: WorkerSlots;
+  readonly oxlintSpawnSlots: OxlintSpawnSlotsHandle;
   readonly configOverrideTarget?: Pick<
     ResolvedScanTarget,
     "resolvedDirectory" | "configSourceDirectory"
@@ -90,7 +91,12 @@ const buildDiagnoseLayer = (input: DiagnoseLayerInput) => {
   return Layer.mergeAll(
     Project.layerNode,
     configLayer,
-    input.shouldRunDeadCode ? DeadCode.layerNode : DeadCode.layerOf([]),
+    shouldUseMaintainabilityLayer({
+      shouldRunDuplicateJsx: input.shouldRunDeadCode,
+      userConfig: input.config,
+    })
+      ? Maintainability.layerNode
+      : Maintainability.layerOf([]),
     Files.layerNode,
     Git.layerNode,
     input.shouldRunLint ? Linter.layerOxlint : Linter.layerOf([]),
@@ -208,7 +214,7 @@ const diagnoseProject = async (
   baseOptions: DiagnoseOptions,
   batchConfig: ReactDoctorConfig | undefined,
   oxlintConcurrency: number,
-  oxlintSpawnSlots: WorkerSlots,
+  oxlintSpawnSlots: OxlintSpawnSlotsHandle,
   precomputedSourceFiles: ReadonlyArray<SourceFileEntry> | undefined,
 ): Promise<ProjectResult> => {
   const startTime = globalThis.performance.now();

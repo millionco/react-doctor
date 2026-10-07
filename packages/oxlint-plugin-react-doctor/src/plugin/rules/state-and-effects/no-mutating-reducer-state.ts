@@ -128,6 +128,36 @@ const isReactNamespaceOrDefaultImportSpecifier = (node: EsTreeNode): boolean =>
   isSpecifierImportedFromReact(node) &&
   (isNodeOfType(node, "ImportNamespaceSpecifier") || isNodeOfType(node, "ImportDefaultSpecifier"));
 
+const collectReactUseReducerLocalNames = (program: EsTreeNodeOfType<"Program">): Set<string> => {
+  const localNames = new Set<string>();
+  for (const statement of program.body) {
+    if (!isNodeOfType(statement, "ImportDeclaration") || statement.source.value !== "react") {
+      continue;
+    }
+    for (const specifier of statement.specifiers) {
+      if (
+        isReactNamespaceOrDefaultImportSpecifier(specifier) ||
+        isNamedReactUseReducerImportSpecifier(specifier)
+      ) {
+        localNames.add(specifier.local.name);
+      }
+    }
+  }
+  return localNames;
+};
+
+const mayBeReactUseReducerCall = (
+  callee: EsTreeNode,
+  reactUseReducerLocalNames: Set<string>,
+): boolean => {
+  if (isNodeOfType(callee, "Identifier")) return reactUseReducerLocalNames.has(callee.name);
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.object, "Identifier") &&
+    reactUseReducerLocalNames.has(callee.object.name)
+  );
+};
+
 // Verifies that a call expression is wired to React's useReducer import rather
 // than a local helper, another library's hook, or Array.prototype.reduce.
 const isCallToImportedReactUseReducer = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
@@ -559,9 +589,19 @@ export const noMutatingReducerState = defineRule({
     const analyzedReducers = new WeakSet<EsTreeNode>();
     const reportedNodes = new WeakSet<EsTreeNode>();
     const currentFilename = context.filename;
+    let reactUseReducerLocalNames = new Set<string>();
 
     return {
+      Program(node: EsTreeNodeOfType<"Program">) {
+        reactUseReducerLocalNames = collectReactUseReducerLocalNames(node);
+      },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (
+          reactUseReducerLocalNames.size === 0 ||
+          !mayBeReactUseReducerCall(node.callee, reactUseReducerLocalNames)
+        ) {
+          return;
+        }
         // Pipeline:
         // 1. accept only calls proven to be React's imported useReducer;
         // 2. resolve the reducer body — local to this file OR imported

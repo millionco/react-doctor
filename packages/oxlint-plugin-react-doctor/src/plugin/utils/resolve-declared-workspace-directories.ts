@@ -48,16 +48,25 @@ const readPackageWorkspacePatterns = (manifest: PackageManifest): string[] | nul
   );
 };
 
+const buildExclusionMatcher = (exclusionPattern: string): RegExp | null => {
+  const normalizedPattern = exclusionPattern
+    .replace(/^\.\//, "")
+    .replace(/\/\*\*$/, "/*")
+    .replace(/\/+$/, "");
+  if (/[?[\]{}]/.test(normalizedPattern) || normalizedPattern.includes("**")) return null;
+  const source = normalizedPattern
+    .split("*")
+    .map((literalSegment) => literalSegment.replace(/[.+^$()|\\]/g, "\\$&"))
+    .join("[^/]*");
+  return new RegExp(`^${source}$`);
+};
+
 const resolvePatternDirectories = (
   workspaceRoot: string,
   workspacePattern: string,
 ): string[] | null => {
   const normalizedPattern = workspacePattern.replace(/\/\*\*$/, "/*");
-  if (
-    normalizedPattern.startsWith("!") ||
-    /[?[\]{}]/.test(normalizedPattern) ||
-    (normalizedPattern.match(/\*/g)?.length ?? 0) > 1
-  ) {
+  if (/[?[\]{}]/.test(normalizedPattern) || (normalizedPattern.match(/\*/g)?.length ?? 0) > 1) {
     return null;
   }
 
@@ -99,10 +108,21 @@ export const resolveDeclaredWorkspaceDirectories = (
   if (patterns === null || patterns.length === 0) return null;
 
   const directories = new Set<string>();
+  const exclusionMatchers: RegExp[] = [];
   for (const workspacePattern of patterns) {
+    if (workspacePattern.startsWith("!")) {
+      const exclusionMatcher = buildExclusionMatcher(workspacePattern.slice(1));
+      if (exclusionMatcher === null) return null;
+      exclusionMatchers.push(exclusionMatcher);
+      continue;
+    }
     const resolvedDirectories = resolvePatternDirectories(workspaceRoot, workspacePattern);
     if (resolvedDirectories === null) return null;
     for (const directory of resolvedDirectories) directories.add(directory);
   }
-  return [...directories];
+  if (exclusionMatchers.length === 0) return [...directories];
+  return [...directories].filter((directory) => {
+    const relativeDirectory = path.relative(workspaceRoot, directory).split(path.sep).join("/");
+    return !exclusionMatchers.some((exclusionMatcher) => exclusionMatcher.test(relativeDirectory));
+  });
 };

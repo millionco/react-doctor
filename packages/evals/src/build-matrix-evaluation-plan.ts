@@ -1,8 +1,6 @@
 import {
   MATRIX_BASE_LANE_ID,
   MATRIX_CPU_CORES_PER_LANE,
-  MATRIX_DISK_GIB_PER_DETECTOR,
-  MATRIX_MEMORY_GIB_PER_LANE,
   MATRIX_PROVENANCE_DIRECTORY,
   MATRIX_REACT_DOCTOR_DIRECTORY,
   MATRIX_REPORT_DIRECTORY,
@@ -33,8 +31,6 @@ export interface MatrixEvaluationPlan {
   waveWidth: number;
   resources: {
     cpu: number;
-    memory: number;
-    disk: number;
   };
   hasVerifiedFullBaseline: boolean;
 }
@@ -90,8 +86,6 @@ export const buildMatrixEvaluationPlan = ({
     waveWidth,
     resources: {
       cpu: waveWidth * MATRIX_CPU_CORES_PER_LANE,
-      memory: waveWidth * MATRIX_MEMORY_GIB_PER_LANE,
-      disk: lanes.length * MATRIX_DISK_GIB_PER_DETECTOR,
     },
     hasVerifiedFullBaseline,
   };

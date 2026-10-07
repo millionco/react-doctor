@@ -108,6 +108,17 @@ describe("isExpectedUserError", () => {
     ).toBe(true);
   });
 
+  it("classifies incomplete npx installs as expected user errors", () => {
+    const cacheError = Object.assign(new Error("Cannot find module './meta/unevaluated.json'"), {
+      code: "MODULE_NOT_FOUND",
+      requireStack: [
+        "/home/user/.npm/_npx/81e833f6d16d6127/node_modules/ajv/dist/refs/json-schema-2020-12/index.js",
+      ],
+    });
+
+    expect(isExpectedUserError(cacheError)).toBe(true);
+  });
+
   it("does not mask genuine bugs (those stay reportable)", () => {
     expect(isExpectedUserError(new Error("boom"))).toBe(false);
     expect(isExpectedUserError(undefined)).toBe(false);

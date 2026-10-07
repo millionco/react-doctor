@@ -1,3 +1,4 @@
+import { isBooleanResultExpression } from "../../utils/is-boolean-result-expression.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
 import { SVG_TAGS } from "../../constants/svg-tags.js";
@@ -14,16 +15,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 
-const COMPARISON_OPERATORS = new Set(["===", "!==", "==", "!=", "<", "<=", ">", ">="]);
-
 // An expression that always evaluates to a boolean — never the numeric `0`
 // that crashes when rendered bare. `{flag && <X/>}` on such a value is safe.
 const isBooleanExpression = (node: EsTreeNode | null | undefined): boolean => {
   if (!node) return false;
-  if (isNodeOfType(node, "Literal") && typeof node.value === "boolean") return true;
-  if (isNodeOfType(node, "UnaryExpression") && node.operator === "!") return true;
-  if (isNodeOfType(node, "BinaryExpression") && COMPARISON_OPERATORS.has(node.operator))
-    return true;
+  if (isBooleanResultExpression(node)) return true;
   if (isNodeOfType(node, "CallExpression") && isNodeOfType(node.callee, "Identifier")) {
     return node.callee.name === "Boolean";
   }

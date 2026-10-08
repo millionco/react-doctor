@@ -1534,6 +1534,50 @@ export const api = axios.create({
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    "declare function dispatch(handlers: unknown): void;",
+    "declare function dispatch(handlers: unknown): object;",
+    'import { dispatch } from "./callbacks";',
+    "const dispatch = (handlers) => ({ handlers });",
+    'import type { ReactNode } from "react"; function dispatch<ReactNode>(handlers): ReactNode { return handlers; }',
+    'import type { ReactNode } from "react"; function dispatch(handlers): ReactNode | object { return handlers; }',
+    "type ReactNode = object; declare function dispatch(handlers: unknown): ReactNode;",
+    'import type { ReactNode } from "react"; declare function dispatch(handlers: unknown): ReactNode | object;',
+  ])("rejects JSX callback objects without a render-return contract: %s", (declaration) => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+      ${declaration}
+      export function Register() {
+        return dispatch({ render: () => <div /> });
+      }
+      export function Card() { return <div />; }
+    `,
+      { filename: "src/register.tsx", settings: settingsForFramework("vite") },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ['import type { ReactNode as Output } from "react";', "Output"],
+    ['import type * as React from "react";', "React.ReactNode"],
+    ['import type { ReactElement } from "react";', "ReactElement | null"],
+  ])("accepts dispatcher return type %s %s", (imports, returnType) => {
+    const result = runRule(
+      onlyExportComponents,
+      `
+      ${imports}
+      function dispatch(handlers): ${returnType} { return handlers.ready(); }
+      export function Gate() { return dispatch({ ready: () => <div /> }); }
+      export function Card() { return <Gate />; }
+    `,
+      { filename: "src/gate.tsx", settings: settingsForFramework("vite") },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("recognizes a component returning an exhaustive matcher without explicit return type (#1858)", () => {
     const code = `
       import { ReactNode } from 'react';
@@ -1561,23 +1605,23 @@ export const api = axios.create({
         return <SeasonRecordGate />;
       }
     `;
-    
+
     const result = runRule(onlyExportComponents, code, {
       filename: "src/season-record-gate.tsx",
       settings: settingsForFramework("vite"),
     });
-    
+
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
-  
-  it("recognizes components with JSX nested in object properties passed to calls (#1858)", () => {
+
+  it("recognizes components returning a locally typed React dispatcher (#1858)", () => {
     const code = `
       import { ReactNode } from 'react';
 
-      declare function dispatch(handlers: {
+      function dispatch(handlers: {
         [key: string]: () => ReactNode;
-      }): ReactNode;
+      }): ReactNode { return handlers.success(); }
 
       export function NotificationHandler() {
         return dispatch({
@@ -1587,16 +1631,16 @@ export const api = axios.create({
         });
       }
     `;
-    
+
     const result = runRule(onlyExportComponents, code, {
       filename: "src/notification-handler.tsx",
       settings: settingsForFramework("vite"),
     });
-    
+
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
-  
+
   it("still reports non-rendering functions in object properties", () => {
     const code = `
       import { ReactNode } from 'react';
@@ -1614,12 +1658,12 @@ export const api = axios.create({
         return <div />;
       }
     `;
-    
+
     const result = runRule(onlyExportComponents, code, {
       filename: "src/formatter.tsx",
       settings: settingsForFramework("vite"),
     });
-    
+
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });

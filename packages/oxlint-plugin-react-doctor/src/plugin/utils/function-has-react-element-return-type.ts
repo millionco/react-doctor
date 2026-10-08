@@ -4,10 +4,12 @@ import {
   getImportedNameFromModule,
 } from "./find-import-source-for-name.js";
 import { findProgramRoot } from "./find-program-root.js";
+import { hasEnclosingTypeParameterNamed } from "./has-enclosing-type-parameter-named.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
 const isReactNamespaceBinding = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "Identifier")) return false;
+  if (hasEnclosingTypeParameterNamed(node, node.name)) return false;
   const binding = getImportBindingForName(node, node.name);
   return Boolean(
     binding &&
@@ -27,15 +29,21 @@ const hasLocalJsxNamespace = (node: EsTreeNode): boolean => {
   );
 };
 
-const isReactElementTypeReference = (node: EsTreeNode): boolean => {
+const isReactElementTypeReference = (node: EsTreeNode, includeReactNode: boolean): boolean => {
   if (!isNodeOfType(node, "TSTypeReference")) return false;
   const typeName = node.typeName;
   if (isNodeOfType(typeName, "Identifier")) {
-    return getImportedNameFromModule(typeName, typeName.name, "react") === "ReactElement";
+    if (hasEnclosingTypeParameterNamed(typeName, typeName.name)) return false;
+    const importedName = getImportedNameFromModule(typeName, typeName.name, "react");
+    return importedName === "ReactElement" || (includeReactNode && importedName === "ReactNode");
   }
   if (!isNodeOfType(typeName, "TSQualifiedName")) return false;
   if (!isNodeOfType(typeName.right, "Identifier")) return false;
-  if (typeName.right.name === "ReactElement" && isReactNamespaceBinding(typeName.left)) {
+  if (
+    (typeName.right.name === "ReactElement" ||
+      (includeReactNode && typeName.right.name === "ReactNode")) &&
+    isReactNamespaceBinding(typeName.left)
+  ) {
     return true;
   }
   if (typeName.right.name !== "Element") return false;
@@ -53,15 +61,25 @@ const isReactElementTypeReference = (node: EsTreeNode): boolean => {
   );
 };
 
-const containsReactElementType = (node: EsTreeNode): boolean => {
+const containsReactElementType = (node: EsTreeNode, includeReactNode: boolean): boolean => {
   if (isNodeOfType(node, "TSUnionType")) {
-    return node.types.some((member) => containsReactElementType(member));
+    return includeReactNode
+      ? node.types.every(
+          (member) =>
+            isNodeOfType(member, "TSNullKeyword") ||
+            isNodeOfType(member, "TSUndefinedKeyword") ||
+            containsReactElementType(member, includeReactNode),
+        )
+      : node.types.some((member) => containsReactElementType(member, includeReactNode));
   }
-  return isReactElementTypeReference(node);
+  return isReactElementTypeReference(node, includeReactNode);
 };
 
-export const functionHasReactElementReturnType = (functionNode: EsTreeNode): boolean => {
+export const functionHasReactElementReturnType = (
+  functionNode: EsTreeNode,
+  includeReactNode = false,
+): boolean => {
   const returnType = Reflect.get(functionNode, "returnType");
   if (!isNodeOfType(returnType, "TSTypeAnnotation")) return false;
-  return containsReactElementType(returnType.typeAnnotation);
+  return containsReactElementType(returnType.typeAnnotation, includeReactNode);
 };

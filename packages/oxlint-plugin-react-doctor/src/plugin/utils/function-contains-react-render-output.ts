@@ -128,17 +128,29 @@ export const isRenderPreservingCallArgumentFunction = (
     return false;
   }
   const parent = node.parent;
-  if (!isNodeOfType(parent, "CallExpression")) return false;
-  if (
-    isReactApiCall(parent, "useMemo", scopes, { resolveNamedAliases: true }) &&
-    hasStableCallTarget(parent, scopes)
-  ) {
-    return parent.arguments[0] === node;
+  
+  if (isNodeOfType(parent, "CallExpression")) {
+    if (
+      isReactApiCall(parent, "useMemo", scopes, { resolveNamedAliases: true }) &&
+      hasStableCallTarget(parent, scopes)
+    ) {
+      return parent.arguments[0] === node;
+    }
+    return (
+      parent.arguments.some((argumentNode) => argumentNode === node) &&
+      isProvenArrayMapCall(parent, scopes)
+    );
   }
-  return (
-    parent.arguments.some((argumentNode) => argumentNode === node) &&
-    isProvenArrayMapCall(parent, scopes)
-  );
+  
+  if (isNodeOfType(parent, "Property")) {
+    const grandparent = parent.parent;
+    if (!isNodeOfType(grandparent, "ObjectExpression")) return false;
+    const greatGrandparent = grandparent.parent;
+    if (!isNodeOfType(greatGrandparent, "CallExpression")) return false;
+    return greatGrandparent.arguments.some((argumentNode) => argumentNode === grandparent);
+  }
+  
+  return false;
 };
 
 const isNestedRenderEvidenceBoundary = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>

@@ -3,6 +3,112 @@ import { effectNeedsCleanup } from "./effect-needs-cleanup.js";
 import { runRule } from "../../../test-utils/run-rule.js";
 
 describe("effect-needs-cleanup issue-1856", () => {
+  it.each([
+    [
+      "conditional cleanup",
+      `const observer = new ResizeObserver(() => {}); observer.observe(first); if (enabled) return () => observer.disconnect();`,
+    ],
+    [
+      "conditional disconnect",
+      `const observer = new ResizeObserver(() => {}); observer.observe(first); return () => { if (enabled) observer.disconnect(); };`,
+    ],
+    [
+      "wrong unobserve target",
+      `const observer = new ResizeObserver(() => {}); observer.observe(first); return () => observer.unobserve(second);`,
+    ],
+    [
+      "partial unobserve",
+      `const observer = new ResizeObserver(() => {}); observer.observe(first); observer.observe(second); return () => observer.unobserve(first);`,
+    ],
+    [
+      "loop with one unobserve",
+      `const observer = new ResizeObserver(() => {}); for (const target of targets) { if (!target) continue; observer.observe(target); } return () => observer.unobserve(first);`,
+    ],
+    [
+      "loop with conditional cleanup",
+      `const observer = new ResizeObserver(() => {}); for (const target of targets) { if (!target) continue; observer.observe(target); } if (enabled) return () => observer.disconnect();`,
+    ],
+    [
+      "escaping helper",
+      `let observer = null; const start = () => { observer = new ResizeObserver(() => {}); observer.observe(first); }; start(); register({start}); return () => observer?.disconnect();`,
+    ],
+  ])("reports %s", (_, effectBody) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      import { useEffect } from "react";
+      export function Example({ first, second, targets, enabled, register }) {
+        useEffect(() => { ${effectBody} }, []);
+        return null;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["missing cancellation", "", "", "", "start();"],
+    ["wrong cancellation handle", "cancelAnimationFrame(otherFrame);", "", "", "start();"],
+    ["conditional cancellation", "if (enabled) cancelAnimationFrame(frame);", "", "", "start();"],
+    [
+      "conditional cleanup return",
+      "cancelAnimationFrame(frame);",
+      "if (enabled) return;",
+      "",
+      "start();",
+    ],
+    ["two initial calls", "cancelAnimationFrame(frame);", "", "", "start(); start();"],
+    [
+      "initial call in a loop",
+      "cancelAnimationFrame(frame);",
+      "",
+      "",
+      "for (const target of targets) start();",
+    ],
+    ["escaping callback", "cancelAnimationFrame(frame);", "", "", "start(); register({ start });"],
+    [
+      "retry after observing",
+      "cancelAnimationFrame(frame);",
+      "",
+      "frame = requestAnimationFrame(start);",
+      "start();",
+    ],
+  ])(
+    "reports observer retry with %s",
+    (_, cancellation, beforeReturn, afterObserve, initialCall) => {
+      const result = runRule(
+        effectNeedsCleanup,
+        `
+      import { useEffect } from "react";
+      export function Example({ enabled, otherFrame, targets, register }) {
+        useEffect(() => {
+          let observer = null;
+          let frame = 0;
+          const start = () => {
+            frame = 0;
+            const target = document.getElementById("target");
+            if (!target) {
+              frame = requestAnimationFrame(start);
+              return;
+            }
+            observer = new ResizeObserver(() => {});
+            observer.observe(target);
+            ${afterObserve}
+          };
+          ${initialCall}
+          ${beforeReturn}
+          return () => { observer?.disconnect(); ${cancellation} };
+        }, []);
+        return null;
+      }
+    `,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("accepts observer with observe calls in for-of loop over tuple array", () => {
     const result = runRule(
       effectNeedsCleanup,

@@ -1046,6 +1046,7 @@ interface PositionalIndexBinding {
   // the index isn't a direct parameter (entries tuples, counters).
   indexParameterPosition: number | null;
   isDataIndexedLoopCounter?: boolean;
+  loopCounter?: EsTreeNodeOfType<"Identifier">;
 }
 
 interface PositionalIndexUse {
@@ -1140,7 +1141,12 @@ const resolvePositionalIndexBinding = (
     if (isNodeOfType(initializer, "Literal") && typeof initializer.value === "number") {
       if (!INDEX_PARAMETER_NAMES.has(identifierNode.name)) return null;
       return isLoopCounterDeclarator(declarator, identifierNode, identifierNode.name)
-        ? { iteratorCall: null, bindingFunction: null, indexParameterPosition: null }
+        ? {
+            iteratorCall: null,
+            bindingFunction: null,
+            indexParameterPosition: null,
+            loopCounter: identifierNode,
+          }
         : null;
     }
     return findPositionalIndexUse(initializer, depth + 1)?.binding ?? null;
@@ -1548,8 +1554,11 @@ const findBareItemNamesReferencedByTemplate = (
 // `for (let i = 0; i < count; i++) { children.push(<Col key={i} />) }` is
 // the imperative twin of the exempt `Array.from({length: count}).map(…)`
 // placeholder — the counter has no identity beyond its position.
-const isNumericPlaceholderLoopCounter = (attributeNode: EsTreeNode, indexName: string): boolean => {
-  const binding = findVariableInitializer(attributeNode, indexName);
+const isNumericPlaceholderLoopCounter = (
+  indexIdentifier: EsTreeNodeOfType<"Identifier">,
+): boolean => {
+  const indexName = indexIdentifier.name;
+  const binding = findVariableInitializer(indexIdentifier, indexName);
   if (!binding) return false;
   const declarator = binding.bindingIdentifier.parent;
   if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
@@ -1573,7 +1582,7 @@ const isNumericPlaceholderLoopCounter = (attributeNode: EsTreeNode, indexName: s
       loopTestBoundsCounterByLength(forStatement.test, indexName, binding.bindingIdentifier)
     );
   }
-  const whileLoop = findEnclosingWhileLoop(attributeNode);
+  const whileLoop = findEnclosingWhileLoop(indexIdentifier);
   if (!whileLoop) return false;
   // `for (let i = 0; i < items.length; i++)` walks real list data — the
   // items carry identity, so an index key there still breaks on reorder.
@@ -1742,7 +1751,8 @@ const hasAriaHiddenAncestor = (attributeNode: EsTreeNode): boolean => {
 const getReportableIndexUse = (key: EsTreeNode, node: EsTreeNode): PositionalIndexUse | null => {
   const indexUse = findPositionalIndexUse(key, 0);
   if (!indexUse || methodReceivesOnlyPlaceholderIndices(indexUse.binding)) return null;
-  if (isNumericPlaceholderLoopCounter(node, indexUse.identifier.name)) return null;
+  if (isNumericPlaceholderLoopCounter(indexUse.binding.loopCounter ?? indexUse.identifier))
+    return null;
   if (indexUse.binding.iteratorCall && iteratorCallExemptsIndexKey(indexUse.binding.iteratorCall))
     return null;
   const keyTemplate = resolveKeyTemplateLiteral(key);

@@ -2142,3 +2142,68 @@ describe("placeholder indices passed to class render methods", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("numeric placeholder key aliases", () => {
+  it.each(["index", "`slot-${index}`", "String(index)"])(
+    "accepts a count-loop key alias: %s",
+    (key) => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `
+      const Slots = ({ count }) => {
+        const slots = [];
+        for (let index = 0; index < count; index++) {
+          const slotKey = ${key};
+          slots.push(<Placeholder key={slotKey} />);
+        }
+        return slots;
+      };
+    `,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("accepts an alias of a count-only while-loop counter", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `
+      const Slots = ({ count }) => {
+        const slots = [];
+        let index = 0;
+        while (index < count) {
+          const slotKey = String(index);
+          slots.push(<Placeholder key={slotKey} />);
+          index++;
+        }
+        return slots;
+      };
+    `,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["for", "while"])("still reports a data-indexed %s loop through an alias", (loopKind) => {
+    const loop =
+      loopKind === "for"
+        ? "for (let index = 0; index < items.length; index++)"
+        : "let index = 0; while (index < items.length)";
+    const result = runRule(
+      noArrayIndexAsKey,
+      `
+      const Rows = ({ items }) => {
+        const rows = [];
+        ${loop} {
+          const rowKey = String(index);
+          rows.push(<Row key={rowKey} item={items[index]} />);
+          ${loopKind === "while" ? "index++;" : ""}
+        }
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

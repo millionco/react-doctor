@@ -1768,3 +1768,137 @@ describe("fresh mapped elements in helper loops", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 });
+
+describe("conditional fresh updater containers", () => {
+  it.each([
+    "reset ? new Set() : new Set(previous)",
+    "reset ? new Set() : (other ? new Set(previous) : new Set())",
+  ])("accepts a fresh collection on every branch: %s", (initializer) => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `
+      import { useState } from "react";
+      const Panel = ({ reset, other }) => {
+        const [, setItems] = useState(new Set());
+        setItems(previous => {
+          const next = ${initializer};
+          next.add("item");
+          return next;
+        });
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "reset ? new Set() : previous",
+    "reset ? previous : new Set()",
+    "reset ? new Set() : shared",
+  ])("still reports a branch that returns shared state: %s", (initializer) => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `
+      import { useState } from "react";
+      const shared = new Set();
+      const Panel = ({ reset }) => {
+        const [, setItems] = useState(new Set());
+        setItems(previous => {
+          const next = ${initializer};
+          next.add("item");
+          return next;
+        });
+      };
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports shared mutation even when both constructors are fresh", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `
+      import { useState } from "react";
+      const shared = new Set();
+      const Panel = () => {
+        const [, setItems] = useState(new Set());
+        setItems(previous => {
+          const next = shared.delete("old") ? new Set() : new Set(previous);
+          next.add("item");
+          return next;
+        });
+      };
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not exempt a shadowed Set constructor", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `
+      import { useState } from "react";
+      const Panel = ({ Set, reset }) => {
+        const [, setItems] = useState(null);
+        setItems(previous => {
+          const next = reset ? new Set() : new Set(previous);
+          next.add("item");
+          return next;
+        });
+      };
+    `,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+describe("copy-on-write updater containers", () => {
+  it.each([
+    ["next === previous.entries", "", "", 0],
+    ["!copied", "let copied = false;", "copied = true;", 0],
+    ["ready", "", "", 1],
+    ["next !== previous.entries", "", "", 1],
+    ["!copied", "let copied = true;", "copied = true;", 1],
+  ])("checks guard %s with %s and %s", (guard, declaration, update, expected) => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `
+      import { useState } from "react";
+      const View = ({ rows, ready }) => {
+        const [, setValue] = useState({ entries: {} });
+        setValue(previous => {
+          ${declaration}
+          let next = previous.entries;
+          for (const row of rows) {
+            if (row.skip) continue;
+            if (${guard}) next = { ...next };
+            next[row.key] = { label: row.label };
+            ${update}
+          }
+          return { ...previous, entries: next };
+        });
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+  it.each([
+    "if (next === previous.entries) next = { ...next }; next = previous.entries; next.key = 1;",
+    "if (next === previous.entries) next = { ...next }; next.child.value = 1;",
+    "if (next === previous.entries && ready) next = { ...next }; next.key = 1;",
+    "next.key = 1; if (next === previous.entries) next = { ...next };",
+    "if (next === previous.entries) next = { ...next }; previous.entries = {}; next.key = 1;",
+  ])("keeps unsafe writes visible: %s", (body) => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `
+      const View = ({ ready }) => { const [, setValue] = useState({});
+      setValue(previous => { let next = previous.entries; ${body} return next; }); };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});

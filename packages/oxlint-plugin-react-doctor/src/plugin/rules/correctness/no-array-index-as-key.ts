@@ -1843,14 +1843,15 @@ export const noArrayIndexAsKey = defineRule({
             const jsxElement = openingElement.parent;
             if (jsxElement && isNodeOfType(jsxElement, "JSXElement")) {
               const isInlineTextRun = INLINE_TEXT_LEAF_TAGS.has(elementName.name);
-              const primitiveItemNames =
+              let primitiveItemNames = EMPTY_NAME_SET;
+              if (
                 iteratorCallee &&
                 isNodeOfType(iteratorCallee, "MemberExpression") &&
                 isPlainStringTokenReceiver(iteratorCallee.object)
-                  ? itemNames
-                  : keyTemplate
-                    ? findBareItemNamesReferencedByTemplate(keyTemplate, itemNames)
-                    : EMPTY_NAME_SET;
+              )
+                primitiveItemNames = itemNames;
+              else if (keyTemplate)
+                primitiveItemNames = findBareItemNamesReferencedByTemplate(keyTemplate, itemNames);
               const isStateful =
                 (hasDynamicReactChildren && elementHasDirectItemChild(openingElement, itemNames)) ||
                 containsStatefulDescendant(jsxElement, {

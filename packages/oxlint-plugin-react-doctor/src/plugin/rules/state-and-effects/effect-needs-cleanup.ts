@@ -2443,11 +2443,7 @@ const resolveDirectResourcePushCollectionSymbol = (
   const initializer = collectionSymbol?.initializer
     ? stripParenExpression(collectionSymbol.initializer)
     : null;
-  return collectionSymbol &&
-    isNodeOfType(initializer, "ArrayExpression") &&
-    (initializer.elements?.length ?? 0) === 0
-    ? collectionSymbol
-    : null;
+  return collectionSymbol && isNodeOfType(initializer, "ArrayExpression") ? collectionSymbol : null;
 };
 
 const findContainingCollectionKey = (

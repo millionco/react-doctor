@@ -9058,3 +9058,35 @@ export const JitsiMeeting = ({ api }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("subscriptions appended to initialized arrays", () => {
+  it.each([
+    ["", "subscriptions.forEach((subscription) => subscription.remove());", 0],
+    ["subscriptions.pop();", "subscriptions.forEach((subscription) => subscription.remove());", 1],
+    ["", "subscriptions.slice(1).forEach((subscription) => subscription.remove());", 1],
+    [
+      "",
+      "subscriptions.forEach((subscription) => { if (skip) return; subscription.remove(); });",
+      1,
+    ],
+  ])("checks retained entries %s %s", (mutation, cleanup, expected) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      import { useEffect } from "react";
+      import { Keyboard } from "react-native";
+      function Panel({ enabled, extra, skip }) {
+        useEffect(() => {
+          if (!enabled) return;
+          const subscriptions = [Keyboard.addListener('keyboardDidShow', () => {})];
+          if (extra) subscriptions.push(Keyboard.addListener('keyboardWillShow', () => {}));
+          ${mutation}
+          return () => { ${cleanup} };
+        }, [enabled, extra, skip]);
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

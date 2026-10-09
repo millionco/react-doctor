@@ -315,3 +315,9 @@ export const NAVIGATION_RECEIVER_NAMES = new Set([
   "history",
   "location",
 ]);
+
+export const FOCUS_EFFECT_MODULE_SOURCES: ReadonlySet<string> = new Set([
+  "expo-router",
+  "@react-navigation/native",
+  "@react-navigation/core",
+]);

@@ -2142,3 +2142,48 @@ describe("placeholder indices passed to class render methods", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("identical literal placeholder values", () => {
+  it.each(["['*', '*', '*']", "[0, 0, 0]", "[null, null]"])(
+    "accepts indistinguishable fixed slots: %s",
+    (items) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `${items}.map((value, index) => <Glyph key={index} value={value} delay={index * 0.1}/>);`,
+        ).diagnostics,
+      ).toEqual([]);
+    },
+  );
+  it.each(["['a', 'b']", "[0, 1]", "[{}, {}]", "[record, record]", "['*', ...values]"])(
+    "keeps distinct or unknown records checked: %s",
+    (items) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `${items}.map((value, index) => <Row key={index} value={value}/>);`,
+        ).diagnostics,
+      ).toHaveLength(1);
+    },
+  );
+  it("keeps changed placeholder bindings checked", () => {
+    expect(
+      runRule(
+        noArrayIndexAsKey,
+        `const values = ['*', '*']; values.push(record); values.map((value, index) => <Row key={index} value={value}/>);`,
+      ).diagnostics,
+    ).toHaveLength(1);
+  });
+});
+
+it.each(["records[index]", "records.at(index)", "getRecord(index)"])(
+  "keeps external indexed records checked: %s",
+  (record) => {
+    expect(
+      runRule(
+        noArrayIndexAsKey,
+        `['*', '*'].map((_, index) => <Row key={index} record={${record}}/>);`,
+      ).diagnostics,
+    ).toHaveLength(1);
+  },
+);

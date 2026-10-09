@@ -1165,11 +1165,38 @@ const findPositionalIndexUse = (
   return null;
 };
 
-// Receiver-level exemptions applied to the exact iterator call whose
-// callback binds the index (not a walk-up guess): placeholder arrays,
-// string-character slices, fixed useMemo lists, and static default
-// literals all have position as the entry's identity. Plain array
-// literals are deliberately NOT exempt — their rows carry identity.
+const isRepeatedLiteralPlaceholderIterator = (
+  iteratorCall: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  if (!isNodeOfType(iteratorCall.callee, "MemberExpression")) return false;
+  const receiver = iteratorCall.callee.object;
+  if (!isNodeOfType(receiver, "ArrayExpression")) return false;
+  const firstElement = receiver.elements[0];
+  if (
+    !isNodeOfType(firstElement, "Literal") ||
+    !receiver.elements.every(
+      (element) => isNodeOfType(element, "Literal") && element.value === firstElement.value,
+    )
+  )
+    return false;
+  const callback = iteratorCall.arguments[0];
+  if (!callback || !isFunctionLike(callback)) return false;
+  let readsIndexedData = false;
+  walkAst(callback.body, (node) => {
+    if (readsIndexedData) return false;
+    const candidates =
+      isNodeOfType(node, "MemberExpression") && node.computed
+        ? [node.property]
+        : isNodeOfType(node, "CallExpression")
+          ? node.arguments
+          : [];
+    readsIndexedData = candidates.some(
+      (candidate) => findPositionalIndexUse(candidate, 0)?.binding.bindingFunction === callback,
+    );
+  });
+  return !readsIndexedData;
+};
+
 const iteratorCallExemptsIndexKey = (iteratorCall: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (isArrayFromCall(iteratorCall)) {
     return (
@@ -1179,6 +1206,7 @@ const iteratorCallExemptsIndexKey = (iteratorCall: EsTreeNodeOfType<"CallExpress
   if (!isNodeOfType(iteratorCall.callee, "MemberExpression")) return false;
   const receiver = iteratorCall.callee.object;
   return (
+    isRepeatedLiteralPlaceholderIterator(iteratorCall) ||
     isStaticPlaceholderReceiver(receiver) ||
     isFixedMemoReceiver(receiver) ||
     isStaticDefaultLiteralReceiver(receiver) ||

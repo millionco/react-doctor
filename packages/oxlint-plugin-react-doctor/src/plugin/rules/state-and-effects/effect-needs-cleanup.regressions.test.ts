@@ -9058,3 +9058,32 @@ export const JitsiMeeting = ({ api }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("retained listener cleanup helpers", () => {
+  it.each([
+    ["release();", "", "", 0],
+    ["if (enabled) release();", "", "", 1],
+    ["release();", "async", "await pause();", 1],
+    ["release();", "", "cleanup.current = null;", 1],
+    ["release();", "", "if (enabled) return;", 1],
+  ])("checks unmount invocation %s", (unmount, asyncKeyword, beforeRelease, expected) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      import { useRef, useCallback, useEffect } from "react";
+      function Resizer({ enabled }) {
+        const cleanup = useRef(null);
+        const release = useCallback(${asyncKeyword} () => { ${beforeRelease} cleanup.current?.(); cleanup.current = null; }, []);
+        useEffect(() => () => { ${unmount} }, [release]);
+        const start = useCallback(() => {
+          release(); const move = () => update();
+          window.addEventListener("pointermove", move, true);
+          cleanup.current = () => window.removeEventListener("pointermove", move, true);
+        }, [release]);
+        return <div onPointerDown={start} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

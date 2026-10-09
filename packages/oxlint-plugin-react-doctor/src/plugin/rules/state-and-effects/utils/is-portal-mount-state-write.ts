@@ -78,15 +78,18 @@ export const isPortalMountStateWrite = (write: EsTreeNode, context: RuleContext)
     if (!ref || !discoveredRefs.has(ref)) return;
     let ancestor = node.parent;
     while (ancestor && ancestor !== component) {
-      const guard =
+      let guard: EsTreeNode | null = null;
+      if (
         isNodeOfType(ancestor, "ConditionalExpression") &&
         isAstDescendant(node, ancestor.consequent)
-          ? ancestor.test
-          : isNodeOfType(ancestor, "LogicalExpression") &&
-              ancestor.operator === "&&" &&
-              isAstDescendant(node, ancestor.right)
-            ? ancestor.left
-            : null;
+      )
+        guard = ancestor.test;
+      else if (
+        isNodeOfType(ancestor, "LogicalExpression") &&
+        ancestor.operator === "&&" &&
+        isAstDescendant(node, ancestor.right)
+      )
+        guard = ancestor.left;
       if (guard && requiresMountedState(guard, state, context)) {
         hasGuardedPortal = true;
         return false;

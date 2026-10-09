@@ -3578,3 +3578,134 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     }
   });
 });
+
+describe("local request ownership predicates", () => {
+  it("accepts a predicate declared before the request suspends", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `
+      import {useRef, useState} from 'react';
+      const Panel = () => {
+        const request = useRef(0);
+        const [loading, setLoading] = useState(false);
+        const run = async () => {
+          const token = ++request.current;
+          const isCurrent = () => request.current === token;
+          setLoading(true);
+          try { await fetchData(); } finally { if (isCurrent()) setLoading(false); }
+        };
+        return null;
+      };
+    `,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "const isCurrent = () => request.current === token; if (isCurrent()) setLoading(false);",
+    "const isCurrent = () => request.current === token && request.current === token; if (isCurrent()) setLoading(false);",
+    "const isCurrent = () => { return request.current === token; }; if (isCurrent()) setLoading(false);",
+    "const isStale = () => request.current !== token; if (isStale()) return; setLoading(false);",
+    "const isCurrent = () => request.current === token; if (!isCurrent()) return; setLoading(false);",
+  ])("accepts a current request reset through a predicate: %s", (finalizer) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `
+      import {useRef, useState} from 'react';
+      const Panel = () => {
+        const request = useRef(0);
+        const [loading, setLoading] = useState(false);
+        const run = async () => {
+          const token = ++request.current;
+          setLoading(true);
+          try { await fetchData(); } finally { ${finalizer} }
+        };
+        return null;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "const isCurrent = () => enabled; if (isCurrent()) setLoading(false);",
+    "const isCurrent = () => request.current === token && enabled; if (isCurrent()) setLoading(false);",
+    "const isCurrent = () => request.current === token && enabled; if (!isCurrent()) return; setLoading(false);",
+    "const isCurrent = () => { risky(); return request.current === token; }; if (isCurrent()) setLoading(false);",
+    "const isCurrent = async () => request.current === token; if (isCurrent()) setLoading(false);",
+    "let isCurrent = () => request.current === token; isCurrent = other; if (isCurrent()) setLoading(false);",
+    "const isCurrent = () => isCurrent(); if (isCurrent()) setLoading(false);",
+  ])("does not trust an unproven predicate: %s", (finalizer) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `
+      import {useRef, useState} from 'react';
+      const Panel = () => {
+        const request = useRef(0);
+        const [loading, setLoading] = useState(false);
+        const run = async () => {
+          const token = ++request.current;
+          setLoading(true);
+          try { await fetchData(); } finally { ${finalizer} }
+        };
+        return null;
+      };
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("effect cleanup request ownership", () => {
+  it.each([
+    ["useEffect(() => () => { request.current++; }, []);", 0],
+    ["useEffect(() => () => { request.current++; }, [enabled]);", 1],
+    ["useEffect(() => { run(); return () => { request.current++; }; }, [run]);", 0],
+    [
+      "useEffect(() => { if (!enabled) return; run(); return () => { request.current++; }; }, [enabled, run]);",
+      1,
+    ],
+    [
+      "useEffect(() => { setLoading(enabled); }, [enabled]); useEffect(() => { if (!enabled) return; run(); return () => { request.current++; }; }, [enabled, run]);",
+      0,
+    ],
+    [
+      "useEffect(() => { if (condition) setLoading(enabled); }, [enabled]); useEffect(() => { if (!enabled) return; run(); return () => { request.current++; }; }, [enabled, run]);",
+      1,
+    ],
+    [
+      "useEffect(() => { setLoading(enabled); }, []); useEffect(() => { if (!enabled) return; run(); return () => { request.current++; }; }, [enabled, run]);",
+      1,
+    ],
+    [
+      "const release = useCallback(() => {}, []); useEffect(() => () => { request.current++; release(); }, [release]);",
+      0,
+    ],
+    [
+      "const release = useCallback(() => {}, [enabled]); useEffect(() => () => { request.current++; release(); }, [release]);",
+      1,
+    ],
+  ])("checks cleanup transfer: %s", (effects, expectedCount) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `
+      import {useRef, useState, useCallback, useEffect} from 'react';
+      const Panel = ({enabled, load}) => {
+        const request = useRef(0);
+        const [loading, setLoading] = useState(false);
+        const run = useCallback(async () => {
+          const token = ++request.current;
+          const isCurrent = () => request.current === token;
+          setLoading(true);
+          try { await load(); } finally { if (isCurrent()) setLoading(false); }
+        }, [load]);
+        ${effects}
+        return null;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+});

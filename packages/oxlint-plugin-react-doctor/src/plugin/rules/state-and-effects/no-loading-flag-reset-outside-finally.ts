@@ -10,6 +10,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import {
   chainCarriesRejectionHandler,
@@ -2250,6 +2253,82 @@ const findSingleFlightSnapshotClaim = (
   return didFindUnsafeWrite ? null : claim;
 };
 
+const isCleanupInvalidationPairedWithRestart = (
+  writeNode: EsTreeNode,
+  functionNode: EsTreeNode,
+  truthySets: ReadonlyArray<SetterCall>,
+  context: RuleContext,
+): boolean => {
+  const cleanup = findEnclosingFunction(writeNode);
+  const effect = cleanup && findEnclosingFunction(cleanup);
+  if (!cleanup || !effect || !isEffectCallback(effect, context)) return false;
+  if (!collectReturnedCleanupFunctions(effect, context.scopes).includes(cleanup)) return false;
+  const effectCall = findTransparentExpressionRoot(effect).parent;
+  if (!isNodeOfType(effectCall, "CallExpression")) return false;
+  const dependencies = effectCall.arguments[1];
+  if (!isNodeOfType(dependencies, "ArrayExpression")) return false;
+  const hasStableDependencies = dependencies.elements.every((dependency) => {
+    if (!dependency) return false;
+    if (isNodeOfType(dependency, "Literal")) return true;
+    const callback = getReactUseCallbackCall(dependency, context.scopes);
+    const callbackDependencies = callback?.arguments[1];
+    return Boolean(
+      callbackDependencies &&
+      isNodeOfType(callbackDependencies, "ArrayExpression") &&
+      callbackDependencies.elements.length === 0,
+    );
+  });
+  if (hasStableDependencies) return true;
+  const truthyCall = truthySets[0]?.node;
+  if (!isNodeOfType(truthyCall, "CallExpression")) return false;
+  const loadingSetterKey = resolveExpressionKey(truthyCall.callee, context);
+  const resetValues = new Set<string>();
+  walkAst(getOwningFunction(functionNode), (candidate) => {
+    if (!isNodeOfType(candidate, "CallExpression")) return;
+    if (resolveExpressionKey(candidate.callee, context) !== loadingSetterKey) return;
+    const value = candidate.arguments[0];
+    const owner = findEnclosingFunction(candidate);
+    if (!value || !owner || !isEffectCallback(owner, context)) return;
+    if (!isUnconditionallyExecutedWithinFunction(candidate, owner, context)) return;
+    const ownerCall = findTransparentExpressionRoot(owner).parent;
+    const ownerDependencies = isNodeOfType(ownerCall, "CallExpression")
+      ? ownerCall.arguments[1]
+      : null;
+    if (!isNodeOfType(ownerDependencies, "ArrayExpression")) return;
+    const valueKey = serializeReferenceKey({ node: value, scopes: context.scopes });
+    if (
+      valueKey &&
+      ownerDependencies.elements.some(
+        (dependency) =>
+          dependency &&
+          serializeReferenceKey({ node: dependency, scopes: context.scopes }) === valueKey,
+      )
+    )
+      resetValues.add(valueKey);
+  });
+  const coveredNodes: EsTreeNode[] = [];
+  walkOwnFunctionScope(effect, (candidate) => {
+    if (
+      isNodeOfType(candidate, "CallExpression") &&
+      resolveSameFileHelperFunction(candidate, context.scopes) === functionNode
+    )
+      coveredNodes.push(candidate);
+    if (
+      !isNodeOfType(candidate, "IfStatement") ||
+      candidate.alternate ||
+      !isUnconditionalReturnBranch(candidate.consequent)
+    )
+      return;
+    const test = stripParenExpression(candidate.test);
+    if (!isNodeOfType(test, "UnaryExpression") || test.operator !== "!") return;
+    const guardKey = serializeReferenceKey({ node: test.argument, scopes: context.scopes });
+    if (guardKey && resetValues.has(guardKey)) coveredNodes.push(candidate.consequent);
+  });
+  return doNodesCoverEveryPathFromFunctionEntry(effect, coveredNodes, context, {
+    ignoreThrowEdges: true,
+  });
+};
+
 const findOwnershipClaim = (
   comparison: AsyncOwnershipComparison,
   functionNode: EsTreeNode,
@@ -2350,7 +2429,8 @@ const findOwnershipClaim = (
           writeTarget &&
           serializeReferenceKey({ node: writeTarget, scopes: context.scopes }) === generationKey &&
           !isPairedOwnershipTransfer(candidate) &&
-          !isEffectInvalidationPairedWithReset(candidate, truthySets, context)
+          !isEffectInvalidationPairedWithReset(candidate, truthySets, context) &&
+          !isCleanupInvalidationPairedWithRestart(candidate, functionNode, truthySets, context)
         ) {
           didFindOtherGenerationWrite = true;
         }
@@ -2386,7 +2466,8 @@ const findOwnershipClaim = (
       writeTarget &&
       serializeReferenceKey({ node: writeTarget, scopes: context.scopes }) === refKey &&
       !isPairedOwnershipTransfer(candidate) &&
-      !isEffectInvalidationPairedWithReset(candidate, truthySets, context)
+      !isEffectInvalidationPairedWithReset(candidate, truthySets, context) &&
+      !isCleanupInvalidationPairedWithRestart(candidate, functionNode, truthySets, context)
     ) {
       didFindOtherWrite = true;
     }
@@ -2547,12 +2628,35 @@ interface FinalizerGuardExpressions {
   negative: EsTreeNode[];
 }
 
-const collectLogicalOperands = (expression: EsTreeNode, operator: "&&" | "||"): EsTreeNode[] => {
-  const stripped = stripParenExpression(expression);
+const collectLogicalOperands = (
+  expression: EsTreeNode,
+  operator: "&&" | "||",
+  context: RuleContext,
+  visitedPredicates = new Set<EsTreeNode>(),
+): EsTreeNode[] => {
+  let stripped = stripParenExpression(expression);
+  while (isNodeOfType(stripped, "CallExpression")) {
+    if (stripped.arguments.length > 0 || !isNodeOfType(stripped.callee, "Identifier"))
+      return [expression];
+    const predicate = resolveExactLocalFunction(stripped.callee, context.scopes);
+    if (
+      !isFunctionLike(predicate) ||
+      predicate.async ||
+      predicate.generator ||
+      predicate.params.length > 0 ||
+      visitedPredicates.has(predicate)
+    )
+      return [expression];
+    visitedPredicates.add(predicate);
+    const returnedExpression = getSingleReturnExpression(predicate);
+    if (!returnedExpression) return [expression];
+    stripped = stripParenExpression(returnedExpression);
+  }
+
   if (isNodeOfType(stripped, "LogicalExpression") && stripped.operator === operator) {
     return [
-      ...collectLogicalOperands(stripped.left, operator),
-      ...collectLogicalOperands(stripped.right, operator),
+      ...collectLogicalOperands(stripped.left, operator, context, new Set(visitedPredicates)),
+      ...collectLogicalOperands(stripped.right, operator, context, new Set(visitedPredicates)),
     ];
   }
   return [stripped];
@@ -2561,6 +2665,7 @@ const collectLogicalOperands = (expression: EsTreeNode, operator: "&&" | "||"): 
 const collectFinalizerGuardExpressions = (
   resetNode: EsTreeNode,
   protectingTry: EsTreeNodeOfType<"TryStatement">,
+  context: RuleContext,
 ): FinalizerGuardExpressions | null => {
   const positive: EsTreeNode[] = [];
   const negative: EsTreeNode[] = [];
@@ -2569,10 +2674,10 @@ const collectFinalizerGuardExpressions = (
   while (cursor && cursor !== protectingTry) {
     if (isNodeOfType(cursor, "IfStatement")) {
       if (cursor.consequent !== child || cursor.alternate !== null) return null;
-      positive.push(...collectLogicalOperands(cursor.test, "&&"));
+      positive.push(...collectLogicalOperands(cursor.test, "&&", context));
     } else if (isNodeOfType(cursor, "LogicalExpression")) {
       if (cursor.operator !== "&&" || cursor.right !== child) return null;
-      positive.push(...collectLogicalOperands(cursor.left, "&&"));
+      positive.push(...collectLogicalOperands(cursor.left, "&&", context));
     } else if (isNodeOfType(cursor, "BlockStatement")) {
       const childIndex = cursor.body.findIndex((statement) => statement === child);
       if (childIndex !== -1) {
@@ -2584,7 +2689,7 @@ const collectFinalizerGuardExpressions = (
           ) {
             continue;
           }
-          negative.push(...collectLogicalOperands(statement.test, "||"));
+          negative.push(...collectLogicalOperands(statement.test, "||", context));
         }
       }
     } else if (
@@ -2636,13 +2741,15 @@ const isNegativeFinalizerGuard = (
 ): boolean => {
   const stripped = stripParenExpression(expression);
   if (isNodeOfType(stripped, "UnaryExpression") && stripped.operator === "!") {
-    return isPositiveFinalizerGuard(
-      stripped.argument,
-      resetNode,
-      functionNode,
-      truthySets,
-      firstRiskyAwait,
-      context,
+    return collectLogicalOperands(stripped.argument, "&&", context).every((guard) =>
+      isPositiveFinalizerGuard(
+        guard,
+        resetNode,
+        functionNode,
+        truthySets,
+        firstRiskyAwait,
+        context,
+      ),
     );
   }
   return (
@@ -2666,7 +2773,7 @@ const isFinalizerResetProvablyGuarded = (
   firstRiskyAwait: AwaitSite,
   context: RuleContext,
 ): boolean => {
-  const guards = collectFinalizerGuardExpressions(resetNode, protectingTry);
+  const guards = collectFinalizerGuardExpressions(resetNode, protectingTry, context);
   return Boolean(
     guards &&
     guards.positive.every((guard) =>

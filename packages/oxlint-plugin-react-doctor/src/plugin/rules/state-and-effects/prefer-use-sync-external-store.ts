@@ -400,7 +400,9 @@ const getModuleStoreSnapshotName = (
   storeIndex: ModuleScopeStoreIndex,
 ): string | null => {
   if (!isNodeOfType(useStateCall, "CallExpression")) return null;
-  let initialArgument = stripParenExpression(useStateCall.arguments?.[0]);
+  const initializerArgument = useStateCall.arguments[0];
+  if (!initializerArgument) return null;
+  let initialArgument = stripParenExpression(initializerArgument);
   if (
     initialArgument &&
     isFunctionLike(initialArgument) &&

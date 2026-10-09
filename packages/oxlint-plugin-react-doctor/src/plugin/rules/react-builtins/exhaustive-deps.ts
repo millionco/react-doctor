@@ -1187,9 +1187,18 @@ const getReactStateInitializer = (node: EsTreeNode, scopes: ScopeAnalysis): EsTr
     return null;
   }
   const stateInitializer = declarator.init.arguments[0];
-  return isAstNode(stateInitializer) && !isNodeOfType(stateInitializer, "SpreadElement")
-    ? stateInitializer
-    : null;
+  if (!isAstNode(stateInitializer) || isNodeOfType(stateInitializer, "SpreadElement")) {
+    return null;
+  }
+  const candidateInitializer = unwrapExpression(stateInitializer);
+  if (
+    isNodeOfType(candidateInitializer, "ArrowFunctionExpression") &&
+    !candidateInitializer.async &&
+    !isNodeOfType(candidateInitializer.body, "BlockStatement")
+  ) {
+    return candidateInitializer.body;
+  }
+  return stateInitializer;
 };
 
 const isControlledStateSelection = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {

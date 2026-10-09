@@ -2708,3 +2708,25 @@ describe("guarded dependency fallbacks", () => {
     expect(result.diagnostics).toHaveLength(expected);
   });
 });
+
+describe("guarded fallbacks with lazy state", () => {
+  it.each([
+    ["() => initial ?? []", 0],
+    ["() => null", 1],
+    ["() => initial", 1],
+  ])("checks the lazy initializer %s", (initializer, expected) => {
+    const result = runRule(
+      exhaustiveDeps,
+      `import React, {useState, useMemo} from "react";
+ interface Props { value?: string[]; initial?: string[]; }
+ const View: React.FC<Props> = ({value, initial}) => {
+ const [internal] = useState<string[]>(${initializer});
+ const controlled = value !== undefined;
+ const selected = controlled ? value ?? [] : internal;
+ return useMemo(() => selected.join(), [selected]);
+ };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

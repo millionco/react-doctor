@@ -5,7 +5,7 @@ interface Props {
   value?: string[];
 }
 export const View = ({ value }: Props) => {
-  const [internal] = useState<string[]>([]);
+  const [internal] = useState<string[]>(() => []);
   const controlled = value !== undefined;
   const selected = controlled ? (value ?? []) : internal;
   return useMemo(() => selected.join(), [selected]);

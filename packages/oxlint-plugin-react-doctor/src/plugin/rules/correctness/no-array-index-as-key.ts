@@ -1,3 +1,5 @@
+import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { INDEX_PARAMETER_NAMES } from "../../constants/react.js";
@@ -1737,120 +1739,133 @@ const hasAriaHiddenAncestor = (attributeNode: EsTreeNode): boolean => {
   return false;
 };
 
+const getReportableIndexUse = (key: EsTreeNode, node: EsTreeNode): PositionalIndexUse | null => {
+  const indexUse = findPositionalIndexUse(key, 0);
+  if (!indexUse || methodReceivesOnlyPlaceholderIndices(indexUse.binding)) return null;
+  if (isNumericPlaceholderLoopCounter(node, indexUse.identifier.name)) return null;
+  if (indexUse.binding.iteratorCall && iteratorCallExemptsIndexKey(indexUse.binding.iteratorCall))
+    return null;
+  const keyTemplate = resolveKeyTemplateLiteral(key);
+  if (keyTemplate && templateHasOuterMemberIdentity(keyTemplate, indexUse.binding.bindingFunction))
+    return null;
+  if (hasAriaHiddenAncestor(node) && !indexUse.binding.isDataIndexedLoopCounter) return null;
+  return indexUse;
+};
+
 export const noArrayIndexAsKey = defineRule({
   id: "no-array-index-as-key",
   title: "Array index used as a key",
   severity: "warn",
   recommendation:
     "Use a stable id from the item, like `key={item.id}` or `key={item.slug}`. Index keys break when the list reorders or filters.",
-  create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;
-      if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
-
-      const indexUse = findPositionalIndexUse(node.value.expression, 0);
-      if (!indexUse) return;
-      const indexName = indexUse.identifier.name;
-      if (isNumericPlaceholderLoopCounter(node, indexName)) return;
-      if (methodReceivesOnlyPlaceholderIndices(indexUse.binding)) return;
-      if (
-        indexUse.binding.iteratorCall &&
-        iteratorCallExemptsIndexKey(indexUse.binding.iteratorCall)
-      ) {
-        return;
-      }
-      const keyTemplate = resolveKeyTemplateLiteral(node.value.expression);
-      if (
-        keyTemplate &&
-        templateHasOuterMemberIdentity(keyTemplate, indexUse.binding.bindingFunction)
-      ) {
-        return;
-      }
-      if (hasAriaHiddenAncestor(node) && !indexUse.binding.isDataIndexedLoopCounter) {
-        return;
-      }
-
-      const itemNames = findIteratorItemNamesOfBinding(indexUse.binding);
-      const derivedNames = collectDerivedRowContentNames(
-        indexUse.binding.bindingFunction,
-        itemNames,
-      );
-      const iteratorCallee = indexUse.binding.iteratorCall?.callee;
-      const hasDynamicReactChildren = Boolean(
-        iteratorCallee &&
-        isNodeOfType(iteratorCallee, "MemberExpression") &&
-        isDynamicReactChildrenExpression(iteratorCallee.object, 0),
-      );
-
-      const openingElement = node.parent;
-      if (openingElement && isNodeOfType(openingElement, "JSXOpeningElement")) {
-        const elementName = openingElement.name as EsTreeNode;
-        if (isNodeOfType(elementName, "JSXIdentifier")) {
-          if (elementName.name === "Fragment") {
-            if (
-              !fragmentHasStatefulChildren(
-                openingElement,
-                itemNames,
-                derivedNames,
-                hasDynamicReactChildren,
-              )
-            ) {
-              return;
-            }
-          } else if (PURE_SVG_PRIMITIVE_TAGS.has(elementName.name)) {
-            // Pure SVG primitives (`<g>`, `<path>`, …) only re-diff
-            // attributes on reorder — no observable consequence, UNLESS
-            // the callback filters rows out (positions shift with data).
-            if (!callbackFiltersRows(indexUse.binding.bindingFunction)) return;
-          } else if (STATELESS_HTML_LEAF_TAGS.has(elementName.name)) {
-            // Stateless HTML leaf element whose subtree contains no
-            // form controls, no media, no custom components, no
-            // function-call children — reorder hazard doesn't apply.
-            // For inline text runs (`<span key={i}>{token.text}</span>`),
-            // member reads of the iteration item are the text itself, not
-            // stateful UI; block rows keep the conservative treatment,
-            // exempting only locals DERIVED from the item (recursive
-            // renderer `children`).
-            const jsxElement = openingElement.parent;
-            if (jsxElement && isNodeOfType(jsxElement, "JSXElement")) {
-              const isInlineTextRun = INLINE_TEXT_LEAF_TAGS.has(elementName.name);
-              const primitiveItemNames = keyTemplate
-                ? findBareItemNamesReferencedByTemplate(keyTemplate, itemNames)
-                : EMPTY_NAME_SET;
-              const isStateful =
-                (hasDynamicReactChildren && elementHasDirectItemChild(openingElement, itemNames)) ||
-                containsStatefulDescendant(jsxElement, {
-                  memberRootNames: isInlineTextRun ? itemNames : EMPTY_NAME_SET,
-                  bareIdentifierNames:
-                    primitiveItemNames.size > 0
-                      ? new Set([...derivedNames, ...primitiveItemNames])
-                      : derivedNames,
-                });
-              if (!isStateful) return;
-            }
-          }
-        }
-        if (
-          isNodeOfType(elementName, "JSXMemberExpression") &&
-          isNodeOfType(elementName.object, "JSXIdentifier") &&
-          isNodeOfType(elementName.property, "JSXIdentifier") &&
-          elementName.object.name === "React" &&
-          elementName.property.name === "Fragment" &&
-          !fragmentHasStatefulChildren(
-            openingElement,
-            itemNames,
-            derivedNames,
-            hasDynamicReactChildren,
-          )
-        ) {
-          return;
-        }
-      }
-
+  create: (context: RuleContext) => {
+    const reportIndexKey = (node: EsTreeNode, indexName: string): void => {
       context.report({
         node,
         message: `Your users can see & submit the wrong data when this list reorders or filters, so use a stable id like \`key={item.id}\`, not the array index "${indexName}".`,
       });
-    },
-  }),
+    };
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isReactApiCall(node, "cloneElement", context.scopes, { resolveNamedAliases: true }))
+          return;
+        const overrides = node.arguments[1];
+        if (!overrides) return;
+        const key = getStaticObjectPropertyValue(overrides, "key");
+        if (!key) return;
+        const indexUse = getReportableIndexUse(key, node);
+        if (!indexUse) return;
+        reportIndexKey(key, indexUse.identifier.name);
+      },
+      JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
+        if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;
+        if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
+
+        const indexUse = getReportableIndexUse(node.value.expression, node);
+        if (!indexUse) return;
+        const indexName = indexUse.identifier.name;
+        const keyTemplate = resolveKeyTemplateLiteral(node.value.expression);
+
+        const itemNames = findIteratorItemNamesOfBinding(indexUse.binding);
+        const derivedNames = collectDerivedRowContentNames(
+          indexUse.binding.bindingFunction,
+          itemNames,
+        );
+        const iteratorCallee = indexUse.binding.iteratorCall?.callee;
+        const hasDynamicReactChildren = Boolean(
+          iteratorCallee &&
+          isNodeOfType(iteratorCallee, "MemberExpression") &&
+          isDynamicReactChildrenExpression(iteratorCallee.object, 0),
+        );
+
+        const openingElement = node.parent;
+        if (openingElement && isNodeOfType(openingElement, "JSXOpeningElement")) {
+          const elementName = openingElement.name as EsTreeNode;
+          if (isNodeOfType(elementName, "JSXIdentifier")) {
+            if (elementName.name === "Fragment") {
+              if (
+                !fragmentHasStatefulChildren(
+                  openingElement,
+                  itemNames,
+                  derivedNames,
+                  hasDynamicReactChildren,
+                )
+              ) {
+                return;
+              }
+            } else if (PURE_SVG_PRIMITIVE_TAGS.has(elementName.name)) {
+              // Pure SVG primitives (`<g>`, `<path>`, …) only re-diff
+              // attributes on reorder — no observable consequence, UNLESS
+              // the callback filters rows out (positions shift with data).
+              if (!callbackFiltersRows(indexUse.binding.bindingFunction)) return;
+            } else if (STATELESS_HTML_LEAF_TAGS.has(elementName.name)) {
+              // Stateless HTML leaf element whose subtree contains no
+              // form controls, no media, no custom components, no
+              // function-call children — reorder hazard doesn't apply.
+              // For inline text runs (`<span key={i}>{token.text}</span>`),
+              // member reads of the iteration item are the text itself, not
+              // stateful UI; block rows keep the conservative treatment,
+              // exempting only locals DERIVED from the item (recursive
+              // renderer `children`).
+              const jsxElement = openingElement.parent;
+              if (jsxElement && isNodeOfType(jsxElement, "JSXElement")) {
+                const isInlineTextRun = INLINE_TEXT_LEAF_TAGS.has(elementName.name);
+                const primitiveItemNames = keyTemplate
+                  ? findBareItemNamesReferencedByTemplate(keyTemplate, itemNames)
+                  : EMPTY_NAME_SET;
+                const isStateful =
+                  (hasDynamicReactChildren &&
+                    elementHasDirectItemChild(openingElement, itemNames)) ||
+                  containsStatefulDescendant(jsxElement, {
+                    memberRootNames: isInlineTextRun ? itemNames : EMPTY_NAME_SET,
+                    bareIdentifierNames:
+                      primitiveItemNames.size > 0
+                        ? new Set([...derivedNames, ...primitiveItemNames])
+                        : derivedNames,
+                  });
+                if (!isStateful) return;
+              }
+            }
+          }
+          if (
+            isNodeOfType(elementName, "JSXMemberExpression") &&
+            isNodeOfType(elementName.object, "JSXIdentifier") &&
+            isNodeOfType(elementName.property, "JSXIdentifier") &&
+            elementName.object.name === "React" &&
+            elementName.property.name === "Fragment" &&
+            !fragmentHasStatefulChildren(
+              openingElement,
+              itemNames,
+              derivedNames,
+              hasDynamicReactChildren,
+            )
+          ) {
+            return;
+          }
+        }
+
+        reportIndexKey(node, indexName);
+      },
+    };
+  },
 });

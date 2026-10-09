@@ -39,11 +39,9 @@ export const resolveImportedDomListenerCall = (
   const body = helper.body;
   const statement =
     isNodeOfType(body, "BlockStatement") && body.body.length === 1 ? body.body[0] : body;
-  const expression = isNodeOfType(statement, "ExpressionStatement")
-    ? statement.expression
-    : isNodeOfType(statement, "ReturnStatement")
-      ? statement.argument
-      : statement;
+  let expression: EsTreeNode | null = statement;
+  if (isNodeOfType(statement, "ExpressionStatement")) expression = statement.expression;
+  else if (isNodeOfType(statement, "ReturnStatement")) expression = statement.argument;
   if (!expression) return null;
   const operation = stripParenExpression(expression);
   if (

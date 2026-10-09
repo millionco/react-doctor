@@ -9109,3 +9109,154 @@ describe("extracted listener replay cleanup", () => {
     expect(runRule(effectNeedsCleanup, code).diagnostics).toHaveLength(expectedCount);
   });
 });
+
+describe("API Platform provider subscription keys", () => {
+  it.each([
+    ["@api-platform/admin", "ids", "resource", 0],
+    ["custom-provider", "ids", "resource", 1],
+    ["@api-platform/admin", "otherIds", "resource", 1],
+    ["@api-platform/admin", "ids", "enabled", 1],
+  ])("checks %s with %s and guard %s", (source, releasedIds, guard, expected) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react"; import { useDataProvider } from "react-admin";
+   import type { ApiPlatformAdminDataProvider } from "${source}";
+   function useRecords(resource, ids, otherIds, enabled) {
+    const provider: ApiPlatformAdminDataProvider = useDataProvider();
+    useEffect(() => { if (!resource || !ids) return; provider.subscribe(ids, () => update()); return () => { if (${guard}) provider.unsubscribe(resource, ${releasedIds}); }; }, [resource, ids, provider, otherIds, enabled]);
+   }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});
+
+it.each([
+  "if (enabled) return; provider.unsubscribe(resource, ids);",
+  "enabled && provider.unsubscribe(resource, ids);",
+])("rejects conditional provider release %s", (cleanup) => {
+  const result = runRule(
+    effectNeedsCleanup,
+    `import { useEffect } from "react"; import { useDataProvider } from "react-admin"; import type { ApiPlatformAdminDataProvider } from "@api-platform/admin";
+  function useRecords(resource, ids, enabled) { const provider: ApiPlatformAdminDataProvider = useDataProvider(); useEffect(() => { if (!resource || !ids) return; provider.subscribe(ids, () => update()); return () => { ${cleanup} }; }, [resource, ids, enabled, provider]); }`,
+  );
+  expect(result.diagnostics).toHaveLength(1);
+});
+
+it.each([
+  ["react-admin", 0],
+  ["custom-admin", 1],
+])("resolves aliased provider imports from %s", (hookSource, expected) => {
+  const result = runRule(
+    effectNeedsCleanup,
+    `
+    import {useEffect} from 'react';
+    import {useDataProvider as useProvider} from '${hookSource}';
+    import type {ApiPlatformAdminDataProvider as Provider} from '@api-platform/admin';
+    const useRecords = (resource, ids) => {
+      const provider: Provider = useProvider();
+      useEffect(() => {
+        if (!resource || !ids) return;
+        provider.subscribe(ids, () => update());
+        return () => provider.unsubscribe(resource, ids);
+      }, [provider, resource, ids]);
+    };
+  `,
+  );
+  expect(result.parseErrors).toEqual([]);
+  expect(result.diagnostics).toHaveLength(expected);
+});
+
+describe("cleanup after resource allocation", () => {
+  it.each([
+    ["if (!enabled) return;", "", 0],
+    ["if (!enabled) return;", "if (skipCleanup) return;", 1],
+    ["", "if (skipCleanup) return;", 1],
+  ])("checks only paths that allocate %s %s", (before, after, expected) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      import { useEffect } from "react";
+      function Panel({ enabled, skipCleanup }) {
+        useEffect(() => {
+          ${before}
+          const changes = window.matchMedia("(pointer: fine)");
+          const listener = () => {};
+          changes.addEventListener("change", listener);
+          ${after}
+          return () => changes.removeEventListener("change", listener);
+        }, [enabled, skipCleanup]);
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});
+
+describe("observer helpers owned by media listeners", () => {
+  it.each([
+    [
+      "if (!media.matches || observer) return;",
+      "observer?.disconnect(); observer = null;",
+      "media.removeEventListener('change', onChange);",
+      "",
+      0,
+    ],
+    [
+      "if (!media.matches) return;",
+      "observer?.disconnect(); observer = null;",
+      "media.removeEventListener('change', onChange);",
+      "",
+      1,
+    ],
+    [
+      "if (!media.matches || observer) return;",
+      "observer = null;",
+      "media.removeEventListener('change', onChange);",
+      "",
+      1,
+    ],
+    [
+      "if (!media.matches || observer) return;",
+      "observer?.disconnect(); observer = null;",
+      "",
+      "",
+      1,
+    ],
+    [
+      "if (!media.matches || observer) return;",
+      "observer?.disconnect(); observer = null;",
+      "media.removeEventListener('change', onChange);",
+      "publish(setup);",
+      1,
+    ],
+  ])("checks observer lifecycle %s %s %s %s", (guard, release, remove, escape, expected) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      import { useEffect } from "react";
+      function Panel({ target }) {
+        useEffect(() => {
+          if (!target) return;
+          const media = window.matchMedia('(pointer: fine)');
+          let observer = null;
+          const setup = () => {
+            ${guard}
+            observer = new IntersectionObserver(() => {});
+            observer.observe(target);
+          };
+          const teardown = () => { ${release} };
+          const onChange = () => { if (media.matches) setup(); else teardown(); };
+          media.addEventListener('change', onChange);
+          setup();
+          ${escape}
+          return () => { ${remove} teardown(); };
+        }, [target]);
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

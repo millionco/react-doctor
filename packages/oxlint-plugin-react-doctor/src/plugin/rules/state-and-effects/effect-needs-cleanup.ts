@@ -1,3 +1,5 @@
+import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
+import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
 import { isNativeTimerIdentifier } from "../../utils/is-native-timer-identifier.js";
 import {
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
@@ -6404,6 +6406,114 @@ const oneShotTimerHasUnmountGuard = (usage: SubscribeLikeUsage, context: RuleCon
   return hasUnmountInvalidation;
 };
 
+const hasOwnedObserverHelperCleanup = (
+  callback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  allUsages: ReadonlyArray<SubscribeLikeUsage>,
+  cleanupReturns: ReadonlyArray<EsTreeNode>,
+  context: RuleContext,
+): boolean => {
+  if (
+    usage.registrationVerbName !== "observe" ||
+    !isNodeOfType(usage.node, "CallExpression") ||
+    !isNodeOfType(usage.node.callee, "MemberExpression")
+  )
+    return false;
+  const receiver = stripParenExpression(usage.node.callee.object);
+  const storage = isNodeOfType(receiver, "Identifier") ? context.scopes.symbolFor(receiver) : null;
+  const owner = findEnclosingFunction(usage.node);
+  if (
+    !storage ||
+    !owner ||
+    !isFunctionLike(owner) ||
+    owner === callback ||
+    owner.async ||
+    owner.generator ||
+    findEnclosingFunction(storage.declarationNode) !== callback ||
+    !isNullishObserverInitializer(storage.initializer, context) ||
+    !cleanupReturnsExhaustivelyReleaseUsage(cleanupReturns, usage, context)
+  )
+    return false;
+  const constructions = storage.references.flatMap((reference) => {
+    const assignment = reference.identifier.parent;
+    return isNodeOfType(assignment, "AssignmentExpression") &&
+      assignment.left === reference.identifier &&
+      assignment.operator === "=" &&
+      isGlobalObserverConstruction(stripParenExpression(assignment.right), context)
+      ? [assignment]
+      : [];
+  });
+  if (constructions.length !== 1) return false;
+  const assignment = constructions[0];
+  if (
+    !assignment ||
+    findEnclosingFunction(assignment) !== owner ||
+    !nodeDominatesNode(assignment, usage.node, context)
+  )
+    return false;
+  const allocationUsage: SubscribeLikeUsage = {
+    ...usage,
+    node: assignment.right,
+    handleKey: usage.receiverKey,
+  };
+  if (
+    !hasOnlySafeHandleStorageAssignments(allocationUsage, storage, assignment, allUsages, context)
+  )
+    return false;
+  const isLiveGuard = (test: EsTreeNode): boolean =>
+    isNodeOfType(test, "LogicalExpression") && test.operator === "||"
+      ? isLiveGuard(test.left) || isLiveGuard(test.right)
+      : resolveExpressionKey(test, context) === usage.receiverKey;
+  let hasReplacementGuard = false;
+  walkAst(owner.body, (child) => {
+    if (child !== owner.body && isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "IfStatement") &&
+      isLiveGuard(stripParenExpression(child.test)) &&
+      !canNodeReachLaterNodeWithinFunction(child.consequent, assignment, owner, context) &&
+      nodeDominatesNode(child, assignment, context)
+    )
+      hasReplacementGuard = true;
+  });
+  if (!hasReplacementGuard) return false;
+  const binding = getFunctionBindingIdentifier(owner);
+  const helper = binding ? context.scopes.symbolFor(binding) : null;
+  if (!helper || helper.references.length === 0) return false;
+  return helper.references.every((reference) => {
+    const call = findDirectCallForReference(reference.identifier);
+    const caller = call ? findEnclosingFunction(call) : null;
+    if (!call || !caller || !isFunctionLike(caller) || caller.async || caller.generator)
+      return false;
+    if (caller === callback)
+      return doMatchingNodesCoverEveryPathAfterUsage(call, cleanupReturns, context);
+    const callerBinding = getFunctionBindingIdentifier(caller);
+    const listener = callerBinding ? context.scopes.symbolFor(callerBinding) : null;
+    if (!listener || listener.references.length === 0) return false;
+    const listenerKey = resolveExpressionKey(callerBinding, context);
+    const registrations = allUsages.filter(
+      (candidate) =>
+        candidate !== usage &&
+        candidate.handlerKey === listenerKey &&
+        candidate.registrationVerbName === "addEventListener" &&
+        findEnclosingFunction(candidate.node) === callback,
+    );
+    return (
+      registrations.length > 0 &&
+      registrations.every((registration) =>
+        doesCleanupOwnUsageAfterRegistration(callback, registration, cleanupReturns, context),
+      ) &&
+      listener.references.every((listenerReference) => {
+        const listenerCall = listenerReference.identifier.parent;
+        return registrations.some(
+          (registration) =>
+            registration.node === listenerCall ||
+            (listenerCall && doesReleaseCallMatchUsage(listenerCall, registration, context)),
+        );
+      })
+    );
+  });
+};
+
 const hasReturnedObserverDisconnect = (
   callback: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -6665,7 +6775,10 @@ const effectHasCleanupForUsage = (
       matchingCleanupReturns.push(child);
     }
   });
-  if (hasGuardedDeferredCleanup(callback, usage, matchingCleanupReturns, context)) {
+  if (
+    hasOwnedObserverHelperCleanup(callback, usage, allUsages, matchingCleanupReturns, context) ||
+    hasGuardedDeferredCleanup(callback, usage, matchingCleanupReturns, context)
+  ) {
     return true;
   }
   if (
@@ -7817,7 +7930,67 @@ const doesReleaseCallMatchUsage = (
     return false;
   }
   const releaseReceiverKey = resolveResourceIdentityKey(callee.object, context);
-  const releaseEventKey = resolveResourceIdentityKey(callNode.arguments?.[0], context);
+  let releaseEventArgument = callNode.arguments[0];
+  if (
+    releaseVerbName === "unsubscribe" &&
+    usage.registrationVerbName === "subscribe" &&
+    callNode.arguments.length === 2 &&
+    isApiPlatformDataProvider(callee.object, context)
+  ) {
+    const usageFunction = findEnclosingFunction(usage.node);
+    const releaseFunction = findEnclosingFunction(callNode);
+    if (usageFunction && releaseFunction) {
+      const registrationGuards = collectDeferredUsageGuardStates(
+        usageFunction,
+        usage.node,
+        context,
+      );
+      const releaseGuards = collectDeferredUsageGuardStates(
+        releaseFunction,
+        callNode,
+        context,
+      ).filter((guard) => !isAstDescendant(callNode, guard.guardNode));
+      let descendant: EsTreeNode = callNode;
+      let ancestor = callNode.parent;
+      while (ancestor && ancestor !== releaseFunction) {
+        if (
+          isNodeOfType(ancestor, "LogicalExpression") ||
+          isNodeOfType(ancestor, "ConditionalExpression") ||
+          isNodeOfType(ancestor, "SwitchCase") ||
+          isNodeOfType(ancestor, "ForStatement") ||
+          isNodeOfType(ancestor, "ForOfStatement") ||
+          isNodeOfType(ancestor, "ForInStatement") ||
+          isNodeOfType(ancestor, "WhileStatement")
+        )
+          return false;
+        if (isNodeOfType(ancestor, "IfStatement"))
+          releaseGuards.push(
+            ...collectBlockingBooleanStates(
+              ancestor.test,
+              ancestor.alternate === descendant,
+              ancestor,
+              context,
+            ),
+          );
+        descendant = ancestor;
+        ancestor = ancestor.parent;
+      }
+      const guardsMatch = releaseGuards.every(
+        (guard) =>
+          registrationGuards.some(
+            (registration) => registration.key === guard.key && registration.value === guard.value,
+          ) &&
+          Boolean(
+            guard.bindingIdentifier &&
+            context.scopes
+              .symbolFor(guard.bindingIdentifier)
+              ?.references.every((reference) => reference.flag === "read"),
+          ),
+      );
+      if (guardsMatch) releaseEventArgument = callNode.arguments[1];
+    }
+  }
+  const releaseEventKey = resolveResourceIdentityKey(releaseEventArgument, context);
   const pairedReleaseVerbNames = usage.registrationVerbName
     ? PAIRED_RELEASE_VERB_NAMES_BY_REGISTRATION_VERB.get(usage.registrationVerbName)
     : null;
@@ -7974,7 +8147,6 @@ const doesReleaseCallMatchUsage = (
   const usageEventArgument = isNodeOfType(usage.node, "CallExpression")
     ? usage.node.arguments?.[0]
     : null;
-  const releaseEventArgument = callNode.arguments?.[0];
   const hasAssignmentFormLoopIterator =
     isAssignmentFormForOfIteratorReference(usageEventArgument, context) ||
     isAssignmentFormForOfIteratorReference(releaseEventArgument, context);

@@ -38,6 +38,7 @@ import { getSymbolMutationInspector } from "../../utils/get-symbol-mutation-insp
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import { hasPossibleStaticPropertyMutationOrEscape } from "../../utils/has-static-property-write-before.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
+import { isCopyOnWriteContainer } from "../../utils/is-copy-on-write-container.js";
 import { isCpuTypedArray } from "../../utils/is-cpu-typed-array.js";
 import { isDefinitelyFalsyExpression } from "../../utils/is-definitely-falsy-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -1545,6 +1546,7 @@ const receiverIsUpdaterLocal = (
     return true;
   const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
   if (identifierIsAssignedOnlyFreshContainers(baseIdentifier, context)) return true;
+  if (isCopyOnWriteContainer(baseIdentifier, context.scopes)) return true;
   if (!initializer) return false;
   if (expressionIsFreshContainer(initializer, context)) return true;
   if (isNodeOfType(initializer, "CallExpression")) {

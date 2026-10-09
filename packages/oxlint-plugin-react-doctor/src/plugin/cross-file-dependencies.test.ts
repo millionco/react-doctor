@@ -896,3 +896,12 @@ describe("React Native export version dependencies", () => {
     expect(warmTrace?.contentPaths).toEqual(coldTrace?.contentPaths);
   });
 });
+
+it("records the API Platform provider manifest", () => {
+  const manifest = writeFixtureFile(
+    "package.json",
+    JSON.stringify({ name: "@api-platform/admin" }),
+  );
+  const entry = writeFixtureFile("src/view.tsx", "export const View = () => null;");
+  expect(collectFor(entry, ["effect-needs-cleanup"])?.contentPaths.has(manifest)).toBe(true);
+});

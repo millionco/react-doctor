@@ -1,3 +1,4 @@
+import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
 import type { StaticImport } from "oxc-parser";
 import { analyzeScopes } from "./semantic/scope-analysis.js";
@@ -190,6 +191,7 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   staticImports,
 }) => {
+  readNearestPackageManifest(absoluteFilePath);
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }

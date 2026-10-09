@@ -9109,3 +9109,36 @@ describe("extracted listener replay cleanup", () => {
     expect(runRule(effectNeedsCleanup, code).diagnostics).toHaveLength(expectedCount);
   });
 });
+
+describe("API Platform provider subscription keys", () => {
+  it.each([
+    ["@api-platform/admin", "ids", "resource", 0],
+    ["custom-provider", "ids", "resource", 1],
+    ["@api-platform/admin", "otherIds", "resource", 1],
+    ["@api-platform/admin", "ids", "enabled", 1],
+  ])("checks %s with %s and guard %s", (source, releasedIds, guard, expected) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react"; import { useDataProvider } from "react-admin";
+   import type { ApiPlatformAdminDataProvider } from "${source}";
+   function useRecords(resource, ids, otherIds, enabled) {
+    const provider: ApiPlatformAdminDataProvider = useDataProvider();
+    useEffect(() => { if (!resource || !ids) return; provider.subscribe(ids, () => update()); return () => { if (${guard}) provider.unsubscribe(resource, ${releasedIds}); }; }, [resource, ids, provider, otherIds, enabled]);
+   }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});
+
+it.each([
+  "if (enabled) return; provider.unsubscribe(resource, ids);",
+  "enabled && provider.unsubscribe(resource, ids);",
+])("rejects conditional provider release %s", (cleanup) => {
+  const result = runRule(
+    effectNeedsCleanup,
+    `import { useEffect } from "react"; import { useDataProvider } from "react-admin"; import type { ApiPlatformAdminDataProvider } from "@api-platform/admin";
+  function useRecords(resource, ids, enabled) { const provider: ApiPlatformAdminDataProvider = useDataProvider(); useEffect(() => { if (!resource || !ids) return; provider.subscribe(ids, () => update()); return () => { ${cleanup} }; }, [resource, ids, enabled, provider]); }`,
+  );
+  expect(result.diagnostics).toHaveLength(1);
+});

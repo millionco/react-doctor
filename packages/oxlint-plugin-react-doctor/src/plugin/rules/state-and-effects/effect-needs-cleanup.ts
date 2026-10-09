@@ -1,3 +1,4 @@
+import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
 import {
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
   SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP,
@@ -7817,7 +7818,67 @@ const doesReleaseCallMatchUsage = (
     return false;
   }
   const releaseReceiverKey = resolveResourceIdentityKey(callee.object, context);
-  const releaseEventKey = resolveResourceIdentityKey(callNode.arguments?.[0], context);
+  let releaseEventArgument = callNode.arguments[0];
+  if (
+    releaseVerbName === "unsubscribe" &&
+    usage.registrationVerbName === "subscribe" &&
+    callNode.arguments.length === 2 &&
+    isApiPlatformDataProvider(callee.object, context)
+  ) {
+    const usageFunction = findEnclosingFunction(usage.node);
+    const releaseFunction = findEnclosingFunction(callNode);
+    if (usageFunction && releaseFunction) {
+      const registrationGuards = collectDeferredUsageGuardStates(
+        usageFunction,
+        usage.node,
+        context,
+      );
+      const releaseGuards = collectDeferredUsageGuardStates(
+        releaseFunction,
+        callNode,
+        context,
+      ).filter((guard) => !isAstDescendant(callNode, guard.guardNode));
+      let descendant: EsTreeNode = callNode;
+      let ancestor = callNode.parent;
+      while (ancestor && ancestor !== releaseFunction) {
+        if (
+          isNodeOfType(ancestor, "LogicalExpression") ||
+          isNodeOfType(ancestor, "ConditionalExpression") ||
+          isNodeOfType(ancestor, "SwitchCase") ||
+          isNodeOfType(ancestor, "ForStatement") ||
+          isNodeOfType(ancestor, "ForOfStatement") ||
+          isNodeOfType(ancestor, "ForInStatement") ||
+          isNodeOfType(ancestor, "WhileStatement")
+        )
+          return false;
+        if (isNodeOfType(ancestor, "IfStatement"))
+          releaseGuards.push(
+            ...collectBlockingBooleanStates(
+              ancestor.test,
+              ancestor.alternate === descendant,
+              ancestor,
+              context,
+            ),
+          );
+        descendant = ancestor;
+        ancestor = ancestor.parent;
+      }
+      const guardsMatch = releaseGuards.every(
+        (guard) =>
+          registrationGuards.some(
+            (registration) => registration.key === guard.key && registration.value === guard.value,
+          ) &&
+          Boolean(
+            guard.bindingIdentifier &&
+            context.scopes
+              .symbolFor(guard.bindingIdentifier)
+              ?.references.every((reference) => reference.flag === "read"),
+          ),
+      );
+      if (guardsMatch) releaseEventArgument = callNode.arguments[1];
+    }
+  }
+  const releaseEventKey = resolveResourceIdentityKey(releaseEventArgument, context);
   const pairedReleaseVerbNames = usage.registrationVerbName
     ? PAIRED_RELEASE_VERB_NAMES_BY_REGISTRATION_VERB.get(usage.registrationVerbName)
     : null;
@@ -7974,7 +8035,6 @@ const doesReleaseCallMatchUsage = (
   const usageEventArgument = isNodeOfType(usage.node, "CallExpression")
     ? usage.node.arguments?.[0]
     : null;
-  const releaseEventArgument = callNode.arguments?.[0];
   const hasAssignmentFormLoopIterator =
     isAssignmentFormForOfIteratorReference(usageEventArgument, context) ||
     isAssignmentFormForOfIteratorReference(releaseEventArgument, context);

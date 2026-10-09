@@ -2723,3 +2723,44 @@ it("keeps object dependencies after an unknown argument spread", () => {
   );
   expect(result.diagnostics).toHaveLength(1);
 });
+
+describe("guarded dependency fallbacks", () => {
+  it.each([
+    ["string[]", "value !== undefined", "controlled ? value ?? [] : internal", 0],
+    ["string[] | null", "value !== undefined", "controlled ? value ?? [] : internal", 1],
+    ["string[]", "value === undefined", "controlled ? value ?? [] : internal", 1],
+    ["string[]", "value !== undefined", "controlled ? [] : internal", 1],
+    ["string[]", "value !== undefined", "controlled ? value : []", 1],
+  ])("checks %s with %s and %s", (valueType, guard, selected, expected) => {
+    const result = runRule(
+      exhaustiveDeps,
+      `import { useState, useMemo } from "react";
+   interface Props { value?: ${valueType}; }
+   function View({ value }: Props) { const [internal] = useState<string[]>([]); const controlled = ${guard}; const selected = ${selected}; return useMemo(() => selected.join(), [selected]); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});
+
+describe("guarded fallbacks with lazy state", () => {
+  it.each([
+    ["() => initial ?? []", 0],
+    ["() => null", 1],
+    ["() => initial", 1],
+  ])("checks the lazy initializer %s", (initializer, expected) => {
+    const result = runRule(
+      exhaustiveDeps,
+      `import React, {useState, useMemo} from "react";
+ interface Props { value?: string[]; initial?: string[]; }
+ const View: React.FC<Props> = ({value, initial}) => {
+ const [internal] = useState<string[]>(${initializer});
+ const controlled = value !== undefined;
+ const selected = controlled ? value ?? [] : internal;
+ return useMemo(() => selected.join(), [selected]);
+ };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

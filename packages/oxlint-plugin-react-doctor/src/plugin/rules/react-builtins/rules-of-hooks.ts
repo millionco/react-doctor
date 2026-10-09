@@ -787,12 +787,11 @@ const isPackageImportedNonReactHookMemberCallee = (
   const importedReceiver = resolveImportedApiReference(receiver, scopes);
   const initializer =
     receiverSymbol.initializer && stripParenExpression(receiverSymbol.initializer);
-  const registrationSource =
-    importedReceiver?.isNamespace || importedReceiver?.importedName === "default"
-      ? importedReceiver.source
-      : initializer && isNodeOfType(initializer, "CallExpression")
-        ? getGlobalRequireModuleSource(initializer, scopes)
-        : null;
+  let registrationSource: string | null = null;
+  if (importedReceiver?.isNamespace || importedReceiver?.importedName === "default")
+    registrationSource = importedReceiver.source;
+  else if (initializer && isNodeOfType(initializer, "CallExpression"))
+    registrationSource = getGlobalRequireModuleSource(initializer, scopes);
   if (registrationSource && NON_HOOK_REGISTRATION_APIS.get(registrationSource)?.has(propertyName))
     return true;
   if (!importedReceiver) return false;

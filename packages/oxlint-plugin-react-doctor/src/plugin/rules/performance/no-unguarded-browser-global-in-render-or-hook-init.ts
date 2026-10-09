@@ -11,6 +11,7 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
 import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-early-return.js";
 import { isAfterFalsyServerSnapshotEarlyReturn } from "../../utils/is-after-falsy-server-snapshot-early-return.js";
+import { isEffectCallbackReference } from "../../utils/is-effect-callback-reference.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGatedByFalsyServerSnapshot } from "../../utils/is-gated-by-falsy-server-snapshot.js";
@@ -288,6 +289,11 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
       if (reportedNodes.has(node) || isTypeofProbe(node)) return;
       const componentOrHookNode = findRenderPhaseComponentOrHook(node, context.scopes);
       if (!componentOrHookNode) return;
+      let enclosingFunction: EsTreeNode | null = componentOrHookNode;
+      while (enclosingFunction) {
+        if (isEffectCallbackReference(enclosingFunction, context.scopes)) return;
+        enclosingFunction = findEnclosingFunction(enclosingFunction);
+      }
       if (fileIsEmailTemplate) return;
       if (moduleExitsOnServer || clientOnlyDynamicTargets.has(componentOrHookNode)) return;
       if (isGeneratedImageRenderContext(context, findEnclosingJsxOpeningElement(node) ?? node)) {

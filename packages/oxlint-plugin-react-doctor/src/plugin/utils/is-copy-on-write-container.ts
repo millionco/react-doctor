@@ -79,12 +79,9 @@ export const isCopyOnWriteContainer = (identifier: EsTreeNode, scopes: ScopeAnal
   if (isNodeOfType(test, "BinaryExpression") && test.operator === "===") {
     const left = stripParenExpression(test.left);
     const right = stripParenExpression(test.right);
-    const original =
-      scopes.symbolFor(left)?.id === symbol.id
-        ? right
-        : scopes.symbolFor(right)?.id === symbol.id
-          ? left
-          : null;
+    let original: EsTreeNode | null = null;
+    if (scopes.symbolFor(left)?.id === symbol.id) original = right;
+    else if (scopes.symbolFor(right)?.id === symbol.id) original = left;
     return Boolean(
       original &&
       areExpressionsStructurallyEqual(original, initializer, {

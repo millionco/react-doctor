@@ -896,3 +896,20 @@ describe("React Native export version dependencies", () => {
     expect(warmTrace?.contentPaths).toEqual(coldTrace?.contentPaths);
   });
 });
+
+describe("imported hook getter dependencies", () => {
+  it.each([
+    "import { useRecord } from './barrel'; useRecord();",
+    "import * as data from './barrel'; data.useRecord();",
+  ])("tracks getter implementations through barrels: %s", (source) => {
+    const appPath = writeFixtureFile("App.tsx", source);
+    const barrelPath = writeFixtureFile("barrel.ts", "export {useRecord} from './record';");
+    const recordPath = writeFixtureFile(
+      "record.ts",
+      "export const useRecord = () => ({label: 'Ready'});",
+    );
+    const trace = collectFor(appPath, ["rules-of-hooks"]);
+    expect(trace?.contentPaths).toContain(barrelPath);
+    expect(trace?.contentPaths).toContain(recordPath);
+  });
+});

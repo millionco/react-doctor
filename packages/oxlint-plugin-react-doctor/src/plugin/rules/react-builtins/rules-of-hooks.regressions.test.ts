@@ -1397,3 +1397,33 @@ describe("react-builtins/rules-of-hooks — local member use bindings", () => {
     expect(diagnostics[0]?.message).toContain("async function");
   });
 });
+
+describe("imported static data getters", () => {
+  it.each([
+    ["const script = `print records`; export const useData = () => ({script});", 0],
+    ['export function useData() { return {label: "Ready", values: [1, 2]}; }', 0],
+    ['import {useState} from "react"; export const useData = () => useState(0);', 1],
+    ["export const useData = () => object.current;", 1],
+    ["export const useData = () => other();", 1],
+    ["export const useData = (value = useOther()) => ({value});", 1],
+    ['export function useData() { return "ready"; } useData = other;', 1],
+    ["export const useData = () => ({get value() { return useOther(); }});", 1],
+  ])("checks the resolved getter body: %s", (helper, expectedCount) => {
+    const directory = mkdtempSync(join(tmpdir(), "hook-data-getter-"));
+    try {
+      writeFileSync(join(directory, "data.ts"), helper);
+      const result = runRule(
+        rulesOfHooks,
+        `
+        import {useData} from './data';
+        export class Repository { read() { return useData(); } }
+      `,
+        { filename: join(directory, "repository.ts") },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(expectedCount);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

@@ -8142,7 +8142,7 @@ export const Component = ({ load, reactivate }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not apply the guarded timer proof to a shadowed allocator", () => {
+  it("does not classify an unknown callback prop as a native timer", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useEffect } from "react";
@@ -8163,7 +8163,7 @@ export const Component = ({ load, setTimeout }) => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not apply the guarded timer proof to a shadowed release", () => {
@@ -9056,5 +9056,56 @@ export const JitsiMeeting = ({ api }) => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
+describe("conditional listener capture options", () => {
+  it.each([
+    ["supportsPassive() ? {passive: false} : false", "false", 0],
+    ["supportsPassive() ? {capture: true, passive: false} : true", "true", 0],
+    ["ready ? {capture: false} : {passive: true}", "false", 0],
+    ["ready ? {capture: true} : false", "false", 1],
+    ["ready ? {capture: true} : false", "true", 1],
+    ["ready ? {capture: false} : unknown", "false", 1],
+  ])("matches only a proven shared capture value: %s", (options, cleanupOptions, count) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import {useEffect} from 'react'; const Panel = () => { useEffect(() => { const handle = event => { if (!event.target) return; update(event); }; const options = ${options}; document.addEventListener('move', handle, options); return () => document.removeEventListener('move', handle, ${cleanupOptions}); }, []); return null; };`,
+    );
+    expect(result.diagnostics).toHaveLength(count);
+  });
+});
+
+it.each(["options.capture = true;", "mutate(options);"])(
+  "does not trust changed conditional options: %s",
+  (mutation) => {
+    expect(
+      runRule(
+        effectNeedsCleanup,
+        `import {useEffect} from 'react'; const Panel = () => { useEffect(() => { const handle = () => {}; const options = ready ? {passive: false} : {capture: false}; ${mutation} document.addEventListener('move', handle, options); return () => document.removeEventListener('move', handle, false); }, []); return null; };`,
+      ).diagnostics,
+    ).toHaveLength(1);
+  },
+);
+it("still reports an unreleased listener with conditional options", () => {
+  expect(
+    runRule(
+      effectNeedsCleanup,
+      `import {useEffect} from 'react'; const Panel = () => { useEffect(() => { const handle = () => {}; document.addEventListener('move', handle, ready ? {passive: false} : false); }, []); return null; };`,
+    ).diagnostics,
+  ).toHaveLength(1);
+});
+
+describe("extracted listener replay cleanup", () => {
+  it.each([
+    ["releaseAll();", "", "", 0],
+    ["if (ready) releaseAll();", "", "", 1],
+    ["", "", "", 1],
+    ["releaseAll();", "async", "await pause();", 1],
+    ["releaseAll();", "", "entries.pop();", 1],
+    ["entries.pop(); releaseAll();", "", "", 1],
+  ])("requires a complete synchronous helper: %s", (cleanup, modifier, prefix, expectedCount) => {
+    const code = `import {useEffect} from 'react'; const Panel = () => { useEffect(() => { const handler = () => {}; const entries = [{event: 'resize', handler, capture: true}]; entries.forEach(({event, handler, capture = false}) => { window.addEventListener(event, handler, capture); }); const releaseAll = ${modifier} () => { ${prefix} entries.forEach(({event, handler, capture = false}) => { window.removeEventListener(event, handler, capture); }); }; return () => {${cleanup}}; }, []); return null; };`;
+    expect(runRule(effectNeedsCleanup, code).diagnostics).toHaveLength(expectedCount);
   });
 });

@@ -1,3 +1,4 @@
+import { resolveImportedDomListenerCall } from "../../utils/resolve-imported-dom-listener-call.js";
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
@@ -161,6 +162,17 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
 
       walkSynchronousCallbackFlow(callback, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "CallExpression")) return;
+        const imported = resolveImportedDomListenerCall(child, context);
+        if (imported?.method === "addEventListener" && isFunctionLiteral(imported.handlerNode)) {
+          registerUsages.push({
+            method: imported.method,
+            receiverKey: imported.receiverKey,
+            eventKey: serializeEventKey(imported.eventNode, context.scopes),
+            usesHandlerOnlyForm: false,
+            handlerNode: imported.handlerNode,
+          });
+          return;
+        }
         const callee = stripParenExpression(child.callee);
         if (!isNodeOfType(callee, "MemberExpression")) return;
         const method = getStaticPropertyName(callee);
@@ -182,6 +194,20 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
       for (const cleanupFunction of collectReturnedCleanupFunctions(callback)) {
         walkSynchronousCallbackFlow(cleanupFunction, (child: EsTreeNode) => {
           if (!isNodeOfType(child, "CallExpression")) return;
+          const imported = resolveImportedDomListenerCall(child, context);
+          if (
+            imported?.method === "removeEventListener" &&
+            isFunctionLiteral(imported.handlerNode)
+          ) {
+            releaseUsages.push({
+              method: imported.method,
+              receiverKey: imported.receiverKey,
+              eventKey: serializeEventKey(imported.eventNode, context.scopes),
+              usesHandlerOnlyForm: false,
+              handlerNode: imported.handlerNode,
+            });
+            return;
+          }
           const callee = stripParenExpression(child.callee);
           if (!isNodeOfType(callee, "MemberExpression")) return;
           const method = getStaticPropertyName(callee);

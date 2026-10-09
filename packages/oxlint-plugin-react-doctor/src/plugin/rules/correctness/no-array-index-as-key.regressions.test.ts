@@ -2143,6 +2143,112 @@ describe("placeholder indices passed to class render methods", () => {
   });
 });
 
+describe("numeric placeholder key aliases", () => {
+  it.each(["index", "`slot-${index}`", "String(index)"])(
+    "accepts a count-loop key alias: %s",
+    (key) => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `
+      const Slots = ({ count }) => {
+        const slots = [];
+        for (let index = 0; index < count; index++) {
+          const slotKey = ${key};
+          slots.push(<Placeholder key={slotKey} />);
+        }
+        return slots;
+      };
+    `,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("accepts an alias of a count-only while-loop counter", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `
+      const Slots = ({ count }) => {
+        const slots = [];
+        let index = 0;
+        while (index < count) {
+          const slotKey = String(index);
+          slots.push(<Placeholder key={slotKey} />);
+          index++;
+        }
+        return slots;
+      };
+    `,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each(["for", "while"])("still reports a data-indexed %s loop through an alias", (loopKind) => {
+    const loop =
+      loopKind === "for"
+        ? "for (let index = 0; index < items.length; index++)"
+        : "let index = 0; while (index < items.length)";
+    const result = runRule(
+      noArrayIndexAsKey,
+      `
+      const Rows = ({ items }) => {
+        const rows = [];
+        ${loop} {
+          const rowKey = String(index);
+          rows.push(<Row key={rowKey} item={items[index]} />);
+          ${loopKind === "while" ? "index++;" : ""}
+        }
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("property-based placeholder counts", () => {
+  it.each(["settings.rows", "settings['rows']", "settings.rows + 1"])(
+    "accepts count-generated slots: %s",
+    (count) => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const View = ({settings, value}) => Array.from({length: ${count}}, (_, index) => <span key={index}>{value}</span>);`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+  it.each([
+    "{length: settings.rows, 0: record}",
+    "{length: settings.rows, ...records}",
+    "{length: settings.rows, [Symbol.iterator]: iterateRecords}",
+  ])("keeps real array-like records checked: %s", (source) => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `Array.from(${source}, (record, index) => <Row key={index} record={record}/>);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+it("keeps indexed records behind a property count checked", () => {
+  expect(
+    runRule(
+      noArrayIndexAsKey,
+      `Array.from({length: settings.rows}, (_, index) => <Row key={index} record={rows[index]}/>);`,
+    ).diagnostics,
+  ).toHaveLength(1);
+});
+it("does not trust a shadowed Array factory", () => {
+  expect(
+    runRule(
+      noArrayIndexAsKey,
+      `const View = ({Array, settings}) => Array.from({length: settings.rows}, (record, index) => <Row key={index} record={record}/>);`,
+    ).diagnostics,
+  ).toHaveLength(1);
+});
+
 describe("identical literal placeholder values", () => {
   it.each(["['*', '*', '*']", "[0, 0, 0]", "[null, null]"])(
     "accepts indistinguishable fixed slots: %s",

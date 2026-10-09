@@ -2151,6 +2151,18 @@ describe("count-built placeholder arrays", () => {
     ["count", "<span key={slot}>{records[slot]}</span>", "", 1],
     ["count", "<span key={slot}>...</span>", "elements.reverse();", 1],
     ["count", "<span key={slot}>...</span>", "elements.push(extra);", 1],
+    [
+      "count",
+      "<span key={slot}>...</span>",
+      "const expose = () => { return elements; }; expose().push(...records);",
+      1,
+    ],
+    [
+      "count",
+      "<span key={slot}>...</span>",
+      "const expose = () => { return count ? elements : []; }; expose().push(extra);",
+      1,
+    ],
   ])("checks placeholder provenance %s %s %s", (bound, content, mutation, expected) => {
     const result = runRule(
       noArrayIndexAsKey,

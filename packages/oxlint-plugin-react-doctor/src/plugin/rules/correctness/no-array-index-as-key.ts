@@ -1,3 +1,4 @@
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
@@ -1599,6 +1600,7 @@ const isCountBuiltPlaceholderArray = (
     symbol.initializer.elements.length !== 0
   )
     return false;
+  const owningFunction = findEnclosingFunction(symbol.initializer);
   let builderLoop: EsTreeNode | null = null;
   let hasPush = false;
   const isPlaceholder = (expression: EsTreeNode, depth = 0): boolean => {
@@ -1635,6 +1637,7 @@ const isCountBuiltPlaceholderArray = (
     return node.children.every((child) => isPlaceholder(child, depth + 1));
   };
   const hasOnlyOwnedReads = symbol.references.every((reference) => {
+    if (findEnclosingFunction(reference.identifier) !== owningFunction) return false;
     const member = reference.identifier.parent;
     if (member === iterator.callee) return true;
     let readParent = member;

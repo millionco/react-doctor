@@ -9058,3 +9058,25 @@ export const JitsiMeeting = ({ api }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("layer lifecycle callbacks", () => {
+  it.each([
+    ["leaflet.Layer.extend", 0],
+    ["registerEvents", 1],
+    ["other.extend", 1],
+  ])("checks ownership by %s", (factory, expected) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function BuildLayer(leaflet) {
+        return ${factory}({
+          onAdd: function(map) { leaflet.DomEvent.on(map._proxy, 'move', this.update, this); },
+          onRemove: function(map) { leaflet.DomEvent.off(this._map._proxy, 'move', this.update, this); },
+        });
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

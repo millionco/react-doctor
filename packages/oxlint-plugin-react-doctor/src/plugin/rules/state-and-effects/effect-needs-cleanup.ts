@@ -1,3 +1,4 @@
+import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import {
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
   SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP,
@@ -10536,7 +10537,7 @@ const isInlineRetainedHandlerFunction = (
   functionNode: EsTreeNode,
   context: RuleContext,
 ): boolean => {
-  if (!isFunctionLike(functionNode)) return false;
+  if (!isFunctionLike(functionNode) || isLayerLifecycleCallback(functionNode)) return false;
   const functionRoot = findTransparentExpressionRoot(functionNode);
   const callbackCall = functionRoot.parent;
   if (

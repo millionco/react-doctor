@@ -2698,29 +2698,44 @@ describe("stable XState service send", () => {
     ["1.0.3", "other-library", "", "service", 1],
     ["1.0.3", "@xstate/react", "const local = interpret({});", "local", 1],
     ["1.0.3", "@xstate/react", "", "incoming", 1],
-  ])("checks %s %s with %s", (version, library, local, serviceArgument, expected) => {
-    const directory = mkdtempSync(join(tmpdir(), "rd-xstate-send-"));
-    try {
-      writeFileSync(
-        join(directory, "package.json"),
-        JSON.stringify({ dependencies: { "@xstate/react": version } }),
-      );
-      writeFileSync(
-        join(directory, "service.ts"),
-        `import { interpret } from "xstate"; export const service = interpret({}); service.start();`,
-      );
-      const source = `import { useCallback } from "react"; import { interpret } from "xstate"; import { useService as useActorState } from "${library}"; import { service } from "./service";
+    ["1.0.3", "@xstate/react", "const alias = service; alias.send = incoming;", "service", 1],
+    ["1.0.3", "@xstate/react", "let alias; alias = service; alias.send = incoming;", "service", 1],
+    ["1.0.3", "@xstate/react", "const alias = service; delete alias.send;", "service", 1],
+    ["1.0.3", "@xstate/react", "const alias = service; alias[incoming] = incoming;", "service", 1],
+    [
+      "1.0.3",
+      "@xstate/react",
+      "",
+      "service",
+      1,
+      "export const replace = (value) => { const alias = service; alias.send = value; };",
+    ],
+  ])(
+    "checks %s %s with %s",
+    (version, library, local, serviceArgument, expected, serviceMutation = "") => {
+      const directory = mkdtempSync(join(tmpdir(), "rd-xstate-send-"));
+      try {
+        writeFileSync(
+          join(directory, "package.json"),
+          JSON.stringify({ dependencies: { "@xstate/react": version } }),
+        );
+        writeFileSync(
+          join(directory, "service.ts"),
+          `import { interpret } from "xstate"; export const service = interpret({}); service.start(); ${serviceMutation}`,
+        );
+        const source = `import { useCallback } from "react"; import { interpret } from "xstate"; import { useService as useActorState } from "${library}"; import { service } from "./service";
     function View({ incoming }) { ${local} const [state, send] = useActorState(${serviceArgument}); return useCallback(() => send("PING"), []); }`;
-      const result = runRule(exhaustiveDeps, source, { filename: join(directory, "view.tsx") });
-      expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toHaveLength(expected);
-      expect(
-        runRule(exhaustiveDeps, source.replace('send("PING")', "state.value"), {
-          filename: join(directory, "state.tsx"),
-        }).diagnostics,
-      ).toHaveLength(1);
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
+        const result = runRule(exhaustiveDeps, source, { filename: join(directory, "view.tsx") });
+        expect(result.parseErrors).toEqual([]);
+        expect(result.diagnostics).toHaveLength(expected);
+        expect(
+          runRule(exhaustiveDeps, source.replace('send("PING")', "state.value"), {
+            filename: join(directory, "state.tsx"),
+          }).diagnostics,
+        ).toHaveLength(1);
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
 });

@@ -1,3 +1,4 @@
+import { hasPossibleStaticPropertyWrite } from "./has-static-property-write-before.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
@@ -34,6 +35,7 @@ export const isStableXstateServiceSend = (
     return false;
   const argument = declaration.init.arguments[0];
   if (!isNodeOfType(argument, "Identifier")) return false;
+  if (hasPossibleStaticPropertyWrite(argument, "send", scopes)) return false;
   let service = resolveConstIdentifierAlias(argument, scopes);
   let serviceScopes = scopes;
   if (service?.kind === "import") {
@@ -62,6 +64,8 @@ export const isStableXstateServiceSend = (
     return false;
   const factory = resolveImportedApiReference(service.initializer.callee, serviceScopes);
   if (factory?.source !== "xstate" || factory.importedName !== "interpret") return false;
+  if (hasPossibleStaticPropertyWrite(service.bindingIdentifier, "send", serviceScopes))
+    return false;
   return service.references.every((usage) => {
     const member = usage.identifier.parent;
     if (!isNodeOfType(member, "MemberExpression")) return true;

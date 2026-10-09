@@ -1397,3 +1397,19 @@ describe("react-builtins/rules-of-hooks — local member use bindings", () => {
     expect(diagnostics[0]?.message).toContain("async function");
   });
 });
+
+describe("non-React runtime hook names", () => {
+  it.each([
+    `import {createSignal} from 'solid-js'; import {useData} from './store'; export const useSelection = (enabled) => { if (enabled) return useData(); };`,
+    `import {component$} from '@builder.io/qwik'; import {useData} from './store'; const create = async () => useData();`,
+  ])("does not apply React hook ordering to another runtime: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toEqual([]);
+  });
+  it.each([
+    `import {createSignal} from 'solid-js'; import {useState} from 'react'; const Panel = ({enabled}) => { if (enabled) useState(0); return null; };`,
+    `import type {Accessor} from 'solid-js'; import {useData} from './store'; const Panel = ({enabled}) => { if (enabled) useData(); return null; };`,
+    `import {useData} from './store'; const Panel = ({enabled}) => { if (enabled) useData(); return null; };`,
+  ])("retains React and unproven hook checks: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toHaveLength(1);
+  });
+});

@@ -46,7 +46,7 @@ export const collectRenderPropChangeKeys = (
     if (!setter) continue;
     const pair = resolveReactUseStatePair(setter, scopes);
     if (
-      pair?.stateSymbol?.id !== state?.id ||
+      pair?.stateSymbol?.id !== state.id ||
       !isNodeOfType(pair?.declarator.init, "CallExpression")
     )
       continue;

@@ -2889,12 +2889,13 @@ const isResetBackedMirroredGuard = (
   let synchronized = false;
   let invalidWrite = false;
   walkAst(owner, (candidate) => {
-    const target = isNodeOfType(candidate, "AssignmentExpression")
-      ? candidate.left
-      : isNodeOfType(candidate, "UpdateExpression") ||
-          (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "delete")
-        ? candidate.argument
-        : null;
+    let target: EsTreeNode | null = null;
+    if (isNodeOfType(candidate, "AssignmentExpression")) target = candidate.left;
+    else if (
+      isNodeOfType(candidate, "UpdateExpression") ||
+      (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "delete")
+    )
+      target = candidate.argument;
     if (!target || serializeReferenceKey({ node: target, scopes: context.scopes }) !== refKey)
       return;
     const boundary = findEnclosingFunction(candidate);

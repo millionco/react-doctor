@@ -1,3 +1,4 @@
+import { getUninterruptedConstInitializer } from "../../utils/get-uninterrupted-const-initializer.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
 import { areNodesOnContradictoryGuardBranches } from "../../utils/are-nodes-on-contradictory-guard-branches.js";
@@ -677,6 +678,28 @@ const doesBooleanExpressionForceValue = (
   visitedPredicates = new Set<EsTreeNode>(),
 ): boolean => {
   const candidate = stripParenExpression(expression);
+  const aliasInitializer = getUninterruptedConstInitializer(candidate, context);
+  const booleanArgument =
+    isNodeOfType(candidate, "CallExpression") &&
+    isNodeOfType(candidate.callee, "Identifier") &&
+    candidate.callee.name === "Boolean" &&
+    context.scopes.isGlobalReference(candidate.callee) &&
+    candidate.arguments.length === 1
+      ? candidate.arguments[0]
+      : null;
+  const transparentExpression = aliasInitializer ?? booleanArgument;
+  if (transparentExpression && !visitedPredicates.has(transparentExpression)) {
+    visitedPredicates.add(transparentExpression);
+    const doesValueForceGuard = doesBooleanExpressionForceValue(
+      transparentExpression,
+      expectedValue,
+      resolveAtomicValue,
+      context,
+      visitedPredicates,
+    );
+    visitedPredicates.delete(transparentExpression);
+    return doesValueForceGuard;
+  }
   if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!") {
     return doesBooleanExpressionForceValue(
       candidate.argument,

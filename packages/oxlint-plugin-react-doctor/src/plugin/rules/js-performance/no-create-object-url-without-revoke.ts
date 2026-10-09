@@ -2,6 +2,7 @@ import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { FUNCTION_LIKE_TYPES } from "../../constants/js.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
@@ -421,6 +422,7 @@ const analyzeContainingExpression = (node: EsTreeNode): ContainingExpressionAnal
 
 const bindingIsReturnedFromBoundary = (
   binding: EsTreeNode,
+  createCall: EsTreeNode,
   executionBoundary: EsTreeNode | null,
   context: RuleContext,
   visitedSymbolIds = new Set<number>(),
@@ -436,7 +438,7 @@ const bindingIsReturnedFromBoundary = (
       isNodeOfType(consumer, "ReturnStatement") &&
       context.cfg.enclosingFunction(consumer) === executionBoundary
     ) {
-      return context.cfg.isUnconditionalFromEntry(consumer);
+      return doNodesCoverEveryPathAfterNode(createCall, [consumer], context);
     }
     if (
       isNodeOfType(consumer, "VariableDeclarator") &&
@@ -448,6 +450,7 @@ const bindingIsReturnedFromBoundary = (
     ) {
       return bindingIsReturnedFromBoundary(
         consumer.id,
+        createCall,
         executionBoundary,
         context,
         nextVisitedSymbolIds,
@@ -459,8 +462,10 @@ const bindingIsReturnedFromBoundary = (
 
 const isReturnedCleanupFromBoundary = (
   candidate: EsTreeNode,
+  createCall: EsTreeNode,
   executionBoundary: EsTreeNode | null,
   context: RuleContext,
+  hasPositiveResultGuard: boolean,
 ): boolean => {
   const cleanupFunction = findEnclosingFunction(candidate);
   if (!cleanupFunction || cleanupFunction === executionBoundary) return false;
@@ -470,7 +475,10 @@ const isReturnedCleanupFromBoundary = (
     isNodeOfType(cleanupConsumer, "ReturnStatement") &&
     context.cfg.enclosingFunction(cleanupConsumer) === executionBoundary
   ) {
-    return context.cfg.isUnconditionalFromEntry(cleanupConsumer);
+    return (
+      hasPositiveResultGuard ||
+      doNodesCoverEveryPathAfterNode(createCall, [cleanupConsumer], context)
+    );
   }
   if (
     isNodeOfType(executionBoundary, "ArrowFunctionExpression") &&
@@ -485,7 +493,7 @@ const isReturnedCleanupFromBoundary = (
   ) {
     return false;
   }
-  return bindingIsReturnedFromBoundary(cleanupConsumer.id, executionBoundary, context);
+  return bindingIsReturnedFromBoundary(cleanupConsumer.id, createCall, executionBoundary, context);
 };
 
 const statementContainsBypassingControlFlow = (statement: EsTreeNode): boolean => {
@@ -672,7 +680,15 @@ const consumerIsGuaranteedAfterResult = (
     consumer,
     executionBoundary,
   );
-  if (isReturnedCleanupFromBoundary(consumer, executionBoundary, context)) {
+  if (
+    isReturnedCleanupFromBoundary(
+      consumer,
+      resultCall,
+      executionBoundary,
+      context,
+      hasPositiveResultGuard,
+    )
+  ) {
     if (hasPositiveResultGuard) return true;
     if (isConditionallyEvaluated) return false;
     return context.cfg.isUnconditionalFromEntry(consumer);

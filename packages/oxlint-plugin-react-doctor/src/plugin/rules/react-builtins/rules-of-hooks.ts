@@ -1,4 +1,5 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { isAngularComponentClass } from "../../utils/is-angular-component-class.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -7,6 +8,7 @@ import { isReactComponentOrHookName } from "../../utils/is-react-component-or-ho
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import {
   REACT_ECOSYSTEM_PACKAGE_NAMES,
+  NON_HOOK_REGISTRATION_APIS,
   REACT_HOC_NAMES,
   REACT_RUNTIME_MODULE_SOURCES,
 } from "../../constants/react.js";
@@ -19,6 +21,7 @@ import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-eve
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { symbolHasReactUseEffectEventOrigin } from "../../utils/symbol-has-react-use-effect-event-origin.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
+import { getGlobalRequireModuleSource } from "../../utils/get-global-require-module-source.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -783,6 +786,15 @@ const isPackageImportedNonReactHookMemberCallee = (
   if (!receiverSymbol || hasSymbolWriteBefore(receiverSymbol, call, scopes)) return false;
   if (hasPossibleStaticPropertyWriteBefore(receiver, propertyName, call, scopes)) return false;
   const importedReceiver = resolveImportedApiReference(receiver, scopes);
+  const initializer =
+    receiverSymbol.initializer && stripParenExpression(receiverSymbol.initializer);
+  let registrationSource: string | null = null;
+  if (importedReceiver?.isNamespace || importedReceiver?.importedName === "default")
+    registrationSource = importedReceiver.source;
+  else if (initializer && isNodeOfType(initializer, "CallExpression"))
+    registrationSource = getGlobalRequireModuleSource(initializer, scopes);
+  if (registrationSource && NON_HOOK_REGISTRATION_APIS.get(registrationSource)?.has(propertyName))
+    return true;
   if (!importedReceiver) return false;
   if (importedReceiver.source.startsWith(".")) return false;
   if (PATH_ALIAS_IMPORT_PATTERN.test(importedReceiver.source)) return false;
@@ -985,7 +997,7 @@ export const rulesOfHooks = defineRule({
   id: "rules-of-hooks",
   title: "Hook called conditionally",
   severity: "error",
-  tags: ["test-noise"],
+  tags: ["test-noise", "react-jsx-only"],
   recommendation:
     "Call hooks at the top level of a React function component or custom Hook so React sees the same hook order on every render.",
   category: "Correctness",
@@ -1042,6 +1054,12 @@ export const rulesOfHooks = defineRule({
         if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
 
         if (isProjectOwnedMdxComponentsGetter(node)) return;
+
+        if (isAngularComponentClass(node, context.scopes)) {
+          const imported = resolveImportedApiReference(node.callee, context.scopes);
+          if (imported?.source.startsWith(".") && !isReactEcosystemImportSource(imported.source))
+            return;
+        }
 
         const enclosing = findEnclosingFunctionInfo(node, context.scopes);
 

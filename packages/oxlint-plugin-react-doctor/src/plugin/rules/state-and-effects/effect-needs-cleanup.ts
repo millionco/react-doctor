@@ -605,7 +605,10 @@ const resolveReadOnlyEventListenerOptions = (
   if (!optionsSymbol || !initializer) {
     return resolveStableValue(unwrappedOptions, context);
   }
-  if (!isNodeOfType(initializer, "ObjectExpression")) {
+  if (
+    !isNodeOfType(initializer, "ObjectExpression") &&
+    !isNodeOfType(initializer, "ConditionalExpression")
+  ) {
     if (isNodeOfType(initializer, "Identifier") || isNodeOfType(initializer, "MemberExpression")) {
       return null;
     }
@@ -7462,10 +7465,22 @@ const findDirectExhaustiveForEachCleanupFunction = (
     }
     const forEachCall = findEnclosingForEachCall(ownerFunction);
     if (!forEachCall) {
-      return replayedCollectionKeys.size === requiredCollectionKeys.size &&
-        isReturnedEffectCleanupFunction(ownerFunction, context)
-        ? ownerFunction
-        : null;
+      if (
+        replayedCollectionKeys.size !== requiredCollectionKeys.size ||
+        ownerFunction.async ||
+        ownerFunction.generator
+      )
+        return null;
+      if (isReturnedEffectCleanupFunction(ownerFunction, context)) return ownerFunction;
+      const bindingIdentifier = getFunctionBindingIdentifier(ownerFunction);
+      const symbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
+      const reference = symbol?.references[0];
+      const caller = reference ? findEnclosingFunction(reference.identifier) : null;
+      const invocation = caller ? findSingleDirectInvocation(ownerFunction, caller, context) : null;
+      if (!invocation || !caller || !isFunctionLike(caller)) return null;
+      if (isNodeOfType(caller.body, "BlockStatement") && caller.body.body.length !== 1) return null;
+      currentNode = findTransparentExpressionRoot(invocation);
+      continue;
     }
     const forEachCallee = stripParenExpression(forEachCall.callee);
     if (!isNodeOfType(forEachCallee, "MemberExpression")) return null;

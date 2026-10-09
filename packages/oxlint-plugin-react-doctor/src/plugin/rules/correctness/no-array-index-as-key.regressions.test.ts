@@ -2293,3 +2293,92 @@ it.each(["records[index]", "records.at(index)", "getRecord(index)"])(
     ).toHaveLength(1);
   },
 );
+
+describe("plain string token rows", () => {
+  it.each(["path.split('/')", "path.split('/').filter(Boolean)"])(
+    "accepts plain token text: %s",
+    (items) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `const View = () => { const path = '/guide/start'; const parts = ${items}; return parts.map((part, index) => <span key={index}><span>{part}</span></span>); };`,
+        ).diagnostics,
+      ).toEqual([]);
+    },
+  );
+  it.each(["<input defaultValue={part}/>", "<Row value={part}/>", "<video src={part}/>"])(
+    "keeps stateful token rows checked: %s",
+    (children) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `const View = () => { const path = '/guide/start'; return path.split('/').filter(Boolean).map((part, index) => <span key={index}>${children}</span>); };`,
+        ).diagnostics,
+      ).toHaveLength(1);
+    },
+  );
+  it("keeps unknown split methods checked", () => {
+    expect(
+      runRule(
+        noArrayIndexAsKey,
+        `const View = ({source}) => source.split('/').map((part, index) => <span key={index}><span>{part}</span></span>);`,
+      ).diagnostics,
+    ).toHaveLength(1);
+  });
+});
+
+it("keeps changed token arrays checked", () => {
+  expect(
+    runRule(
+      noArrayIndexAsKey,
+      `const parts = 'one/two'.split('/'); parts.push(<Row/>); parts.map((part, index) => <span key={index}>{part}</span>);`,
+    ).diagnostics,
+  ).toHaveLength(1);
+});
+
+describe("position-only map output", () => {
+  it.each(["values.map", "values?.map"])(
+    "accepts identical slots that ignore item values: %s",
+    (map) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `const Slider = ({values, label}) => ${map}((_, index) => <Thumb key={index} aria-label={label}/>);`,
+        ).diagnostics,
+      ).toEqual([]);
+    },
+  );
+  it.each([
+    "(item, index) => <Row key={index} item={item}/>",
+    "(_, index) => <Row key={index} item={items[index]}/>",
+    "(_, index, items) => <Row key={index} item={items.at(index)}/>",
+    "(_, index) => <Row key={index} item={getItem(index)}/>",
+  ])("keeps record-dependent output checked: %s", (callback) => {
+    expect(runRule(noArrayIndexAsKey, `values.map(${callback});`).diagnostics).toHaveLength(1);
+  });
+});
+
+describe("primitive cumulative labels", () => {
+  it.each([
+    ["total += amount", "<span>{total}</span>", 0],
+    ["total += amount", "<input defaultValue={total} />", 1],
+    ["total = amount", "<span>{total}</span>", 1],
+    ["total ||= amount", "<span>{total}</span>", 1],
+    ["total += amount", "<Label value={total} />", 1],
+  ])("checks %s with %s", (update, content, expected) => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `
+      function Scale({ amounts }) {
+        let total = 0;
+        return amounts.map((amount, index) => {
+          ${update};
+          return <div key={index}>${content}</div>;
+        });
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

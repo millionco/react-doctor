@@ -1,3 +1,4 @@
+import { isLayerLifecycleCallback } from "../../utils/is-layer-lifecycle-callback.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { isApiPlatformDataProvider } from "../../utils/is-api-platform-data-provider.js";
 import { isNativeTimerIdentifier } from "../../utils/is-native-timer-identifier.js";
@@ -10746,7 +10747,7 @@ const isInlineRetainedHandlerFunction = (
   functionNode: EsTreeNode,
   context: RuleContext,
 ): boolean => {
-  if (!isFunctionLike(functionNode)) return false;
+  if (!isFunctionLike(functionNode) || isLayerLifecycleCallback(functionNode)) return false;
   const functionRoot = findTransparentExpressionRoot(functionNode);
   const callbackCall = functionRoot.parent;
   if (

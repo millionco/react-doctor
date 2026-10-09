@@ -1,3 +1,5 @@
+import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
+import { isPositionOnlyMap } from "../../utils/is-position-only-map.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -687,6 +689,35 @@ const isProvablyStringValued = (expression: EsTreeNode, depth: number): boolean 
     return isDestructuredFromStringTypedPattern(binding.bindingIdentifier);
   }
   return false;
+};
+
+const isPlainStringTokenReceiver = (receiver: EsTreeNode, depth = 0): boolean => {
+  if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return false;
+  const candidate = stripParenExpression(receiver);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const binding = findVariableInitializer(candidate, candidate.name);
+    return Boolean(
+      binding?.initializer &&
+      isConstDeclaredBinding(binding) &&
+      !isBindingReassignedOrMutated(candidate, candidate.name) &&
+      isPlainStringTokenReceiver(binding.initializer, depth + 1),
+    );
+  }
+  if (
+    !isNodeOfType(candidate, "CallExpression") ||
+    !isNodeOfType(candidate.callee, "MemberExpression")
+  )
+    return false;
+  const method = getStaticPropertyName(candidate.callee);
+  if (method === "split") return isProvablyStringValued(candidate.callee.object, 0);
+  const predicate = candidate.arguments[0];
+  return (
+    method === "filter" &&
+    isNodeOfType(predicate, "Identifier") &&
+    predicate.name === "Boolean" &&
+    !findVariableInitializer(predicate, "Boolean") &&
+    isPlainStringTokenReceiver(candidate.callee.object, depth + 1)
+  );
 };
 
 const hasProvablyStringFirstArgument = (callNode: EsTreeNode): boolean => {
@@ -1655,6 +1686,7 @@ const DERIVED_NAME_SCAN_BUDGET = 200;
 const collectDerivedRowContentNames = (
   bindingFunction: EsTreeNode | null,
   itemNames: ReadonlySet<string>,
+  context: RuleContext,
 ): Set<string> => {
   const names = new Set<string>();
   if (!bindingFunction || itemNames.size === 0) return names;
@@ -1663,6 +1695,9 @@ const collectDerivedRowContentNames = (
     if (budget <= 0) return false;
     budget -= 1;
     if (isFunctionLike(child) && child !== bindingFunction) return false;
+    if (isNodeOfType(child, "Identifier") && isPrimitiveAccumulator(child, context.scopes)) {
+      names.add(child.name);
+    }
     if (
       isNodeOfType(child, "VariableDeclarator") &&
       isNodeOfType(child.id, "Identifier") &&
@@ -1836,6 +1871,11 @@ export const noArrayIndexAsKey = defineRule({
 
         const indexUse = getReportableIndexUse(node.value.expression, node);
         if (!indexUse) return;
+        if (
+          indexUse.binding.iteratorCall &&
+          isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes)
+        )
+          return;
         const indexName = indexUse.identifier.name;
         const keyTemplate = resolveKeyTemplateLiteral(node.value.expression);
 
@@ -1843,6 +1883,7 @@ export const noArrayIndexAsKey = defineRule({
         const derivedNames = collectDerivedRowContentNames(
           indexUse.binding.bindingFunction,
           itemNames,
+          context,
         );
         const iteratorCallee = indexUse.binding.iteratorCall?.callee;
         const hasDynamicReactChildren = Boolean(
@@ -1883,9 +1924,18 @@ export const noArrayIndexAsKey = defineRule({
               const jsxElement = openingElement.parent;
               if (jsxElement && isNodeOfType(jsxElement, "JSXElement")) {
                 const isInlineTextRun = INLINE_TEXT_LEAF_TAGS.has(elementName.name);
-                const primitiveItemNames = keyTemplate
-                  ? findBareItemNamesReferencedByTemplate(keyTemplate, itemNames)
-                  : EMPTY_NAME_SET;
+                let primitiveItemNames = EMPTY_NAME_SET;
+                if (
+                  iteratorCallee &&
+                  isNodeOfType(iteratorCallee, "MemberExpression") &&
+                  isPlainStringTokenReceiver(iteratorCallee.object)
+                )
+                  primitiveItemNames = itemNames;
+                else if (keyTemplate)
+                  primitiveItemNames = findBareItemNamesReferencedByTemplate(
+                    keyTemplate,
+                    itemNames,
+                  );
                 const isStateful =
                   (hasDynamicReactChildren &&
                     elementHasDirectItemChild(openingElement, itemNames)) ||

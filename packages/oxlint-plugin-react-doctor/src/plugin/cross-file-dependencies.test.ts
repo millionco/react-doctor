@@ -898,6 +898,25 @@ describe("React Native export version dependencies", () => {
   });
 });
 
+it("records XState service values and installed hook versions", () => {
+  writeFixtureFile("package.json", JSON.stringify({ dependencies: { "@xstate/react": "^1.0.3" } }));
+  const installed = writeFixtureFile(
+    "node_modules/@xstate/react/package.json",
+    JSON.stringify({ version: "1.0.3" }),
+  );
+  const service = writeFixtureFile(
+    "src/service.ts",
+    `import { interpret } from "xstate"; export const service = interpret({});`,
+  );
+  const entry = writeFixtureFile(
+    "src/view.tsx",
+    `import { useService } from "@xstate/react"; import { service } from "./service"; export const View = () => useService(service);`,
+  );
+  const trace = collectFor(entry, ["exhaustive-deps"]);
+  expect(trace?.contentPaths.has(installed)).toBe(true);
+  expect(trace?.contentPaths.has(service)).toBe(true);
+});
+
 describe("imported hook getter dependencies", () => {
   it.each([
     "import { useRecord } from './barrel'; useRecord();",

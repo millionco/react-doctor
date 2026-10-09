@@ -1,3 +1,8 @@
+import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
+import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
+import { getFunctionBindingSymbols } from "./get-function-binding-symbols.js";
+import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
+import { isReactApiCall } from "./is-react-api-call.js";
 import { REACT_HOC_NAMES } from "../constants/react.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -22,10 +27,26 @@ const reactHocCalleeName = (callee: EsTreeNode): string | null => {
 // ends up under (`const _Wrapped = forwardRef((props, ref) => …)`).
 // Later arguments are not render callbacks (`memo`'s second argument
 // is the props comparator), so they are never promoted.
-export const isReactHocCallbackArgument = (functionNode: EsTreeNode): boolean => {
+export const isReactHocCallbackArgument = (
+  functionNode: EsTreeNode,
+  scopes?: ScopeAnalysis,
+): boolean => {
   const parent = functionNode.parent;
-  if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
-  if (parent.arguments[0] !== functionNode) return false;
-  const calleeName = reactHocCalleeName(parent.callee);
-  return calleeName !== null && REACT_HOC_NAMES.has(calleeName);
+  if (isNodeOfType(parent, "CallExpression") && parent.arguments[0] === functionNode) {
+    const calleeName = reactHocCalleeName(parent.callee);
+    if (calleeName !== null && REACT_HOC_NAMES.has(calleeName)) return true;
+  }
+  if (!scopes) return false;
+  return getFunctionBindingSymbols(functionNode, scopes).some((symbol) =>
+    symbol.references.some((reference) => {
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const call = referenceRoot.parent;
+      return Boolean(
+        isNodeOfType(call, "CallExpression") &&
+        call.arguments[0] === referenceRoot &&
+        !hasSymbolWriteBefore(symbol, reference.identifier, scopes) &&
+        isReactApiCall(call, REACT_HOC_NAMES, scopes, { resolveNamedAliases: true }),
+      );
+    }),
+  );
 };

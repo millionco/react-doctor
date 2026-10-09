@@ -896,6 +896,32 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
   });
 });
 
+describe("callback-only prop dependencies", () => {
+  it.each(["notify(null)", "notify?.(null)"])(
+    "does not treat local state as a prop reset: %s",
+    (notification) => {
+      expect(
+        runRule(
+          noAdjustStateOnPropChange,
+          `import {useState, useEffect} from 'react'; const Panel = ({notify}) => { const [shown, setShown] = useState(false); const [ready, setReady] = useState(false); useEffect(() => { if (ready && !shown) { ${notification}; setShown(true); } }, [ready, shown, notify]); return null; };`,
+        ).diagnostics,
+      ).toEqual([]);
+    },
+  );
+  it.each([
+    `if (ready && !shown) { notify(null); setShown(true); }`,
+    `if (notify) setShown(true);`,
+    `if (notify()) setShown(true);`,
+  ])("retains real prop-driven adjustments: %s", (body) => {
+    expect(
+      runRule(
+        noAdjustStateOnPropChange,
+        `import {useState, useEffect} from 'react'; const Panel = ({notify, ready}) => { const [shown, setShown] = useState(false); useEffect(() => { ${body} }, [ready, shown, notify]); return null; };`,
+      ).diagnostics,
+    ).toHaveLength(1);
+  });
+});
+
 describe("released object URL state", () => {
   it.each([
     ["URL.revokeObjectURL(preview);", "setPreview(null);", 0],

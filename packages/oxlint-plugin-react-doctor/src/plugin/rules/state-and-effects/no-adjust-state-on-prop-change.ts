@@ -1,4 +1,5 @@
 import { isReleasedObjectUrlStateWrite } from "./utils/is-released-object-url-state-write.js";
+import { isOnlyCalledInEffect } from "./utils/is-only-called-in-effect.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -86,7 +87,10 @@ export const noAdjustStateOnPropChange = defineRule({
         .flatMap((reference) =>
           isState(analysis, reference) ? [] : getUpstreamRefs(analysis, reference),
         )
-        .some((reference) => isProp(analysis, reference));
+        .some(
+          (reference) =>
+            isProp(analysis, reference) && !isOnlyCalledInEffect(reference, node, analysis),
+        );
       if (!hasPropDependency) return;
       const facts = collectEffectStateWriteFacts(analysis, context, node, context.filename);
       if (hasCleanup(analysis, node)) return;

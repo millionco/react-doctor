@@ -1,3 +1,4 @@
+import { isOwnedRequestMapReset } from "./utils/is-owned-request-map-reset.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -92,6 +93,7 @@ export const noAdjustStateOnPropChange = defineRule({
       for (const fact of facts) {
         if (
           fact.isDeferred ||
+          isOwnedRequestMapReset(fact.callExpression, context) ||
           hasDeferredOrExternalEffectWork(analysis, node, context, fact.callExpression)
         ) {
           continue;

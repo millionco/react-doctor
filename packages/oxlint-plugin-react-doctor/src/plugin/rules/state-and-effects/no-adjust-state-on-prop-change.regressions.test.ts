@@ -895,3 +895,39 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     });
   });
 });
+
+describe("request-map cancellation bookkeeping", () => {
+  it.each([
+    ["request.controller.abort()", "pending.current.clear();", "setLoading(new Set());", 0],
+    ["request.controller.inspect()", "pending.current.clear();", "setLoading(new Set());", 1],
+    ["request.controller.abort()", "", "setLoading(new Set());", 1],
+    ["request.controller.abort()", "pending.current.clear();", "setDraft(new Set());", 1],
+  ])("checks request ownership %s %s %s", (release, clear, reset, expected) => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `
+      import { useEffect, useCallback, useRef, useState } from "react";
+      function Downloads({ query }) {
+        const pending = useRef(new Map());
+        const [loading, setLoading] = useState(new Set());
+        const [draft, setDraft] = useState(new Set());
+        const cancel = useCallback(() => {
+          if (pending.current.size === 0) return;
+          pending.current.forEach((request) => ${release});
+          ${clear}
+          ${reset}
+        }, []);
+        useEffect(() => { cancel(); }, [query]);
+        const start = (id) => {
+          const request = { controller: new AbortController() };
+          pending.current.set(id, request);
+          setLoading((previous) => new Set(previous).add(id));
+        };
+        return <button onClick={() => start('row')}>{loading.size + draft.size}</button>;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

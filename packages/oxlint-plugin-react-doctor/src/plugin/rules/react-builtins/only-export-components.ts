@@ -7,6 +7,8 @@ import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
+import { functionIsReferencedAsJsxElement } from "../../utils/function-is-referenced-as-jsx-element.js";
+import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { functionHasReactElementReturnType } from "../../utils/function-has-react-element-return-type.js";
 import { functionReturnsOnlyNull } from "../../utils/function-returns-only-null.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
@@ -226,7 +228,11 @@ const canBeReactFunctionComponent = (
 const functionHasReactRenderSemantics = (functionNode: EsTreeNode, state: AnalyzerState): boolean =>
   functionContainsReactRenderOutput(functionNode, state.scopes, state.controlFlow) ||
   functionHasReactElementReturnType(functionNode) ||
-  functionReturnsOnlyNull(functionNode);
+  functionReturnsOnlyNull(functionNode) ||
+  (functionIsReferencedAsJsxElement(functionNode, state.scopes) &&
+    getFunctionBindingSymbols(functionNode, state.scopes).every((symbol) =>
+      symbol.references.every((reference) => reference.flag === "read"),
+    ));
 
 const isReactComponentInitializer = (expression: EsTreeNode, state: AnalyzerState): boolean => {
   const stripped = skipTsExpression(expression);

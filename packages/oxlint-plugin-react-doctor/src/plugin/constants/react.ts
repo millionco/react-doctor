@@ -315,3 +315,7 @@ export const NAVIGATION_RECEIVER_NAMES = new Set([
   "history",
   "location",
 ]);
+
+export const NON_HOOK_REGISTRATION_APIS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["react_ujs", new Set(["useContext", "useContexts"])],
+]);

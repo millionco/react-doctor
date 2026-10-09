@@ -1,4 +1,8 @@
 import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { closureCaptures } from "../../semantic/closure-captures.js";
 import type {
   ReferenceDescriptor,
@@ -380,8 +384,53 @@ interface CaptureCollection {
   outerFunctionCapturedNames: Set<string>;
 }
 
-// Walks captures grouping by "dep key" (the canonical name of the
-// outermost member-expression chain).
+const resolveCalledArgumentPropertyKeys = (
+  reference: ReferenceDescriptor,
+  scopes: ScopeAnalysis,
+): Set<string> | null => {
+  const argument = findTransparentExpressionRoot(reference.identifier);
+  const call = argument.parent;
+  if (!isNodeOfType(call, "CallExpression") || call.callee === argument) return null;
+  const position = call.arguments.findIndex((candidate) => candidate === argument);
+  const helper = resolveExactLocalFunction(call.callee, scopes);
+  if (
+    position < 0 ||
+    call.arguments
+      .slice(0, position)
+      .some((candidate) => isNodeOfType(candidate, "SpreadElement")) ||
+    !helper ||
+    !isFunctionLike(helper) ||
+    helper.async ||
+    helper.generator
+  )
+    return null;
+  const parameter = helper.params[position];
+  if (!isNodeOfType(parameter, "Identifier")) return null;
+  const symbol = scopes.symbolFor(parameter);
+  if (!symbol || symbol.references.length === 0) return null;
+  const keys = new Set<string>();
+  for (const usage of symbol.references) {
+    const member = usage.identifier.parent;
+    if (
+      usage.flag !== "read" ||
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== usage.identifier
+    )
+      return null;
+    const property = getStaticPropertyName(member);
+    const memberRoot = findTransparentExpressionRoot(member);
+    if (
+      !property ||
+      (isNodeOfType(memberRoot.parent, "CallExpression") &&
+        memberRoot.parent.callee === memberRoot) ||
+      isWithinAssignmentTarget(member)
+    )
+      return null;
+    keys.add(`${flattenReferenceRootName(reference)}.${property}`);
+  }
+  return keys;
+};
+
 const collectCaptureDepKeys = (
   callback: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -446,6 +495,7 @@ const collectCaptureDepKeys = (
         continue;
       }
       const identitySourceKeys =
+        resolveCalledArgumentPropertyKeys(reference, scopes) ??
         resolvePureCalledFunctionSourceKeys(reference, symbol, scopes) ??
         resolveRenderDerivedMutableSourceKeys(reference, symbol, scopes) ??
         resolveReactiveIdentitySourceKeys(symbol, scopes);
@@ -1192,9 +1242,18 @@ const getReactStateInitializer = (node: EsTreeNode, scopes: ScopeAnalysis): EsTr
     return null;
   }
   const stateInitializer = declarator.init.arguments[0];
-  return isAstNode(stateInitializer) && !isNodeOfType(stateInitializer, "SpreadElement")
-    ? stateInitializer
-    : null;
+  if (!isAstNode(stateInitializer) || isNodeOfType(stateInitializer, "SpreadElement")) {
+    return null;
+  }
+  const candidateInitializer = unwrapExpression(stateInitializer);
+  if (
+    isNodeOfType(candidateInitializer, "ArrowFunctionExpression") &&
+    !candidateInitializer.async &&
+    !isNodeOfType(candidateInitializer.body, "BlockStatement")
+  ) {
+    return candidateInitializer.body;
+  }
+  return stateInitializer;
 };
 
 const isControlledStateSelection = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
@@ -1218,7 +1277,12 @@ const isControlledStateSelection = (node: EsTreeNode, scopes: ScopeAnalysis): bo
   } else if (isUndefinedExpression(comparison.left, scopes)) {
     controlledValue = comparison.right;
   }
-  if (!controlledValue || !isSameSymbol(candidate.consequent, controlledValue, scopes)) {
+  const consequent = unwrapExpression(candidate.consequent);
+  const selectedValue =
+    isNodeOfType(consequent, "LogicalExpression") && consequent.operator === "??"
+      ? consequent.left
+      : consequent;
+  if (!controlledValue || !isSameSymbol(selectedValue, controlledValue, scopes)) {
     return false;
   }
   const stateInitializer = getReactStateInitializer(candidate.alternate, scopes);
@@ -1238,6 +1302,7 @@ const isUnstableInitializer = (
   const stripped = unwrapExpression(node);
   if (isRegExpLiteral(stripped)) return true;
   if (isNodeOfType(stripped, "ConditionalExpression")) {
+    if (isControlledStateSelection(stripped, scopes)) return false;
     return (
       isUnstableInitializer(stripped.consequent, scopes, true) ||
       isUnstableInitializer(stripped.alternate, scopes, true)

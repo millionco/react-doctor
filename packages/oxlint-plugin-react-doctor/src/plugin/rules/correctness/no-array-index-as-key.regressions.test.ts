@@ -2142,3 +2142,45 @@ describe("placeholder indices passed to class render methods", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("plain string token rows", () => {
+  it.each(["path.split('/')", "path.split('/').filter(Boolean)"])(
+    "accepts plain token text: %s",
+    (items) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `const View = () => { const path = '/guide/start'; const parts = ${items}; return parts.map((part, index) => <span key={index}><span>{part}</span></span>); };`,
+        ).diagnostics,
+      ).toEqual([]);
+    },
+  );
+  it.each(["<input defaultValue={part}/>", "<Row value={part}/>", "<video src={part}/>"])(
+    "keeps stateful token rows checked: %s",
+    (children) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `const View = () => { const path = '/guide/start'; return path.split('/').filter(Boolean).map((part, index) => <span key={index}>${children}</span>); };`,
+        ).diagnostics,
+      ).toHaveLength(1);
+    },
+  );
+  it("keeps unknown split methods checked", () => {
+    expect(
+      runRule(
+        noArrayIndexAsKey,
+        `const View = ({source}) => source.split('/').map((part, index) => <span key={index}><span>{part}</span></span>);`,
+      ).diagnostics,
+    ).toHaveLength(1);
+  });
+});
+
+it("keeps changed token arrays checked", () => {
+  expect(
+    runRule(
+      noArrayIndexAsKey,
+      `const parts = 'one/two'.split('/'); parts.push(<Row/>); parts.map((part, index) => <span key={index}>{part}</span>);`,
+    ).diagnostics,
+  ).toHaveLength(1);
+});

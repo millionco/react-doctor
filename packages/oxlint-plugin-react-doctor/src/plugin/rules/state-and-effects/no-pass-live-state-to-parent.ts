@@ -320,6 +320,7 @@ const getTransparentWrapperPropReference = (
       ),
     );
     if (callbackReference) return callbackReference;
+    if (isFunctionLike(stripParenExpression(callbackArgument))) continue;
     const propReference = callbackReferences.find(
       (candidateReference) =>
         isProp(analysis, candidateReference) &&

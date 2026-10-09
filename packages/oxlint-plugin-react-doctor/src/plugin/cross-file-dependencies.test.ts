@@ -243,6 +243,7 @@ describe("effect value helper collectors", () => {
   const affectedRuleIds = [
     "client-passive-event-listeners",
     "effect-needs-cleanup",
+    "effect-listener-cleanup-reference-mismatch",
     "no-adjust-state-on-prop-change",
     "no-derived-state",
     "no-derived-state-effect",

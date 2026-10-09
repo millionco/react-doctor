@@ -4,6 +4,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+  PROMPT_PROBE_OBSERVATION_WINDOW_MS,
+  PROMPT_PROBE_STARTUP_TIMEOUT_MS,
+  PROMPT_PROBE_SLOW_START_MS,
+} from "./constants.js";
 
 // Live smoke test: spawn a real Node process that runs the actual
 // `unrefStdin()` against a real OS stdin pipe handle, then mimics exactly
@@ -18,9 +23,6 @@ import * as path from "node:path";
 // both are libuv stream handles, and whether the handle is ref'd is the only
 // thing that decides if the loop stays alive.
 
-// If the prompt is still running this long after it rendered, the event loop
-// is being held open correctly. The regression exits within ~70ms of render.
-const STAY_ALIVE_WINDOW_MS = 750;
 const PROMPT_OPEN_MARKER = "PROMPT_OPEN";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -38,6 +40,8 @@ const probeScript = `
 import * as readline from "node:readline";
 import { unrefStdin } from ${JSON.stringify(unrefStdinSourceUrl)};
 
+const startupDelay = Number(process.argv[3]);
+if (startupDelay > 0) await new Promise((resolve) => setTimeout(resolve, startupDelay));
 const wantInteractiveTty = process.argv[2] === "tty";
 Object.defineProperty(process.stdin, "isTTY", { value: wantInteractiveTty, configurable: true });
 
@@ -58,30 +62,47 @@ interface LiveProbeResult {
 let probeDirectory: string;
 let probeScriptPath: string;
 
-const runPromptProbe = (stdinMode: "tty" | "pipe"): Promise<LiveProbeResult> =>
-  new Promise((resolve) => {
-    const child = spawn(process.execPath, [probeScriptPath, stdinMode], {
+const runPromptProbe = (stdinMode: "tty" | "pipe", startupDelayMs = 0): Promise<LiveProbeResult> =>
+  new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [probeScriptPath, stdinMode, String(startupDelayMs)], {
       stdio: ["pipe", "pipe", "pipe"],
     });
-
     let stdout = "";
+    let stderr = "";
+    let didSettle = false;
+    let didReachObservationWindow = false;
+    let observationTimer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (error?: Error): void => {
+      if (didSettle) return;
+      didSettle = true;
+      clearTimeout(startupTimer);
+      clearTimeout(observationTimer);
+      if (error) reject(error);
+      else resolve({ didExitByItself: !didReachObservationWindow, stdout });
+    };
+    const startupTimer = setTimeout(() => {
+      child.kill();
+      finish(new Error(`Prompt probe did not become ready: ${stderr}`));
+    }, PROMPT_PROBE_STARTUP_TIMEOUT_MS);
     child.stdout.on("data", (chunk) => {
       stdout += String(chunk);
+      if (observationTimer || !stdout.includes(PROMPT_OPEN_MARKER)) return;
+      clearTimeout(startupTimer);
+      observationTimer = setTimeout(() => {
+        didReachObservationWindow = true;
+        child.kill();
+      }, PROMPT_PROBE_OBSERVATION_WINDOW_MS);
     });
-
-    let didSettle = false;
-    const stayAliveTimer = setTimeout(() => {
-      if (didSettle) return;
-      didSettle = true;
-      child.kill();
-      resolve({ didExitByItself: false, stdout });
-    }, STAY_ALIVE_WINDOW_MS);
-
-    child.on("exit", () => {
-      if (didSettle) return;
-      didSettle = true;
-      clearTimeout(stayAliveTimer);
-      resolve({ didExitByItself: true, stdout });
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", finish);
+    child.on("close", (exitCode) => {
+      finish(
+        exitCode && !didReachObservationWindow
+          ? new Error(`Prompt probe failed (${exitCode}): ${stderr}`)
+          : undefined,
+      );
     });
   });
 
@@ -105,11 +126,14 @@ describe.skipIf(!canRunTypeScriptEntrypoint)("unrefStdin (live)", () => {
     expect(result.didExitByItself).toBe(false);
   });
 
-  it("still exits on its own when stdin is a non-interactive pipe (one-shot runs)", async () => {
-    const result = await runPromptProbe("pipe");
-    expect(result.stdout).toContain(PROMPT_OPEN_MARKER);
-    // Preserves the original #576 fix: a parent-held stdin pipe must not keep
-    // a finished one-shot run (e.g. `--json` from an eval runner) alive.
-    expect(result.didExitByItself).toBe(true);
-  });
+  it.each([0, PROMPT_PROBE_SLOW_START_MS])(
+    "still exits with piped stdin after a %i ms startup delay",
+    async (startupDelayMs) => {
+      const result = await runPromptProbe("pipe", startupDelayMs);
+      expect(result.stdout).toContain(PROMPT_OPEN_MARKER);
+      // Preserves the original #576 fix: a parent-held stdin pipe must not keep
+      // a finished one-shot run (e.g. `--json` from an eval runner) alive.
+      expect(result.didExitByItself).toBe(true);
+    },
+  );
 });

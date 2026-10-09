@@ -1,5 +1,5 @@
 // rule: no-loading-flag-reset-outside-finally
-// verdict: safe
+// verdict: pass
 import { useState, useRef, useEffect, useCallback } from "react";
 export const View = ({ viewId, open }) => {
   const [, setLoading] = useState(open);

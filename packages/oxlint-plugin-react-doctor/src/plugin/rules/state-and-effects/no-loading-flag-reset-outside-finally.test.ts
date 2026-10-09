@@ -3636,6 +3636,8 @@ describe("local request ownership predicates", () => {
     "const isCurrent = async () => request.current === token; if (isCurrent()) setLoading(false);",
     "let isCurrent = () => request.current === token; isCurrent = other; if (isCurrent()) setLoading(false);",
     "const isCurrent = () => isCurrent(); if (isCurrent()) setLoading(false);",
+    "const isCurrent = () => !isCurrent(); if (isCurrent()) setLoading(false);",
+    "const isCurrent = () => !isStale(); const isStale = () => !isCurrent(); if (!isCurrent()) return; setLoading(false);",
   ])("does not trust an unproven predicate: %s", (finalizer) => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,

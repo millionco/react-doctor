@@ -2963,7 +2963,10 @@ const isPositiveFinalizerGuard = (
   truthySets: ReadonlyArray<SetterCall>,
   firstRiskyAwait: AwaitSite,
   context: RuleContext,
+  visitedGuards = new Set<EsTreeNode>(),
 ): boolean => {
+  if (visitedGuards.has(expression)) return false;
+  visitedGuards.add(expression);
   const candidate = stripParenExpression(expression);
   if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!") {
     return collectLogicalOperands(candidate.argument, "||", context).every((guard) =>
@@ -2974,6 +2977,7 @@ const isPositiveFinalizerGuard = (
         truthySets,
         firstRiskyAwait,
         context,
+        new Set(visitedGuards),
       ),
     );
   }
@@ -3000,7 +3004,10 @@ const isNegativeFinalizerGuard = (
   truthySets: ReadonlyArray<SetterCall>,
   firstRiskyAwait: AwaitSite,
   context: RuleContext,
+  visitedGuards = new Set<EsTreeNode>(),
 ): boolean => {
+  if (visitedGuards.has(expression)) return false;
+  visitedGuards.add(expression);
   const stripped = stripParenExpression(expression);
   if (isNodeOfType(stripped, "UnaryExpression") && stripped.operator === "!") {
     return collectLogicalOperands(stripped.argument, "&&", context).every((guard) =>
@@ -3011,6 +3018,7 @@ const isNegativeFinalizerGuard = (
         truthySets,
         firstRiskyAwait,
         context,
+        new Set(visitedGuards),
       ),
     );
   }

@@ -2099,18 +2099,21 @@ const refOwnedCreationIsDisposed = (
       isNodeOfType(store, "CallExpression") &&
       isNodeOfType(store.callee, "MemberExpression") &&
       getStaticPropertyName(store.callee) === "push";
-    const reference =
+    let reference: EsTreeNode | null = null;
+    if (
       isNodeOfType(store, "AssignmentExpression") &&
       store.operator === "=" &&
       refOwnershipValuesMatch(store.right, nextValue, context.scopes)
-        ? store.left
-        : isArray &&
-            isNodeOfType(store, "CallExpression") &&
-            isNodeOfType(store.callee, "MemberExpression") &&
-            store.arguments.length === 1 &&
-            refOwnershipValuesMatch(store.arguments[0], nextValue, context.scopes)
-          ? store.callee.object
-          : null;
+    )
+      reference = store.left;
+    else if (
+      isArray &&
+      isNodeOfType(store, "CallExpression") &&
+      isNodeOfType(store.callee, "MemberExpression") &&
+      store.arguments.length === 1 &&
+      refOwnershipValuesMatch(store.arguments[0], nextValue, context.scopes)
+    )
+      reference = store.callee.object;
     return Boolean(
       reference &&
       refStoreHasReplacementCleanup(store, reference, nextValue, isArray, context.scopes) &&

@@ -12213,7 +12213,7 @@
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],
-      "tags": ["test-noise"],
+      "tags": ["test-noise", "react-jsx-only"],
       "isScanRule": false
     }
   },

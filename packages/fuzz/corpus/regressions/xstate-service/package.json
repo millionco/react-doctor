@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@xstate/react": "1.0.3",
+    "xstate": "4.14.1"
+  }
+}

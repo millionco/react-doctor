@@ -144,6 +144,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
     expect([...CROSS_FILE_RULE_IDS].sort()).toEqual([
       "anchor-target-exists",
       "client-passive-event-listeners",
+      "effect-listener-cleanup-reference-mismatch",
       "effect-needs-cleanup",
       "exhaustive-deps",
       "ink-ctrl-c-handler-requires-exit-option",
@@ -247,6 +248,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "rn-no-raw-text",
       "rn-prefer-expo-image",
       "rn-style-prefer-boxshadow",
+      "rules-of-hooks",
       "server-sequential-independent-await",
       "window-open-without-noopener",
     ]);

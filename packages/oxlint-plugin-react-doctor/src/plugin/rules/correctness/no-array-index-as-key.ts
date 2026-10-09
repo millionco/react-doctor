@@ -1,3 +1,5 @@
+import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
+import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { INDEX_PARAMETER_NAMES } from "../../constants/react.js";
@@ -1578,6 +1580,103 @@ const isNumericPlaceholderLoopCounter = (attributeNode: EsTreeNode, indexName: s
   return !loopTestBoundsCounterByLength(whileLoop.test, indexName, binding.bindingIdentifier);
 };
 
+const isCountBuiltPlaceholderArray = (
+  iterator: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  if (
+    !isNodeOfType(iterator.callee, "MemberExpression") ||
+    !iterator.arguments[0] ||
+    !hasOnlyJsxKeyIndexReads(iterator.arguments[0])
+  )
+    return false;
+  const receiver = stripParenExpression(iterator.callee.object);
+  const symbol = isNodeOfType(receiver, "Identifier") ? context.scopes.symbolFor(receiver) : null;
+  if (
+    !symbol ||
+    symbol.kind !== "const" ||
+    !isNodeOfType(symbol.initializer, "ArrayExpression") ||
+    symbol.initializer.elements.length !== 0
+  )
+    return false;
+  let builderLoop: EsTreeNode | null = null;
+  let hasPush = false;
+  const isPlaceholder = (expression: EsTreeNode, depth = 0): boolean => {
+    if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return false;
+    const node = stripParenExpression(expression);
+    if (isNodeOfType(node, "Identifier")) {
+      const binding = context.scopes.symbolFor(node);
+      return Boolean(
+        binding?.kind === "const" &&
+        binding.initializer &&
+        binding.references.every((reference) => reference.flag === "read") &&
+        isPlaceholder(binding.initializer, depth + 1),
+      );
+    }
+    if (isNodeOfType(node, "JSXExpressionContainer"))
+      return isPlaceholder(node.expression, depth + 1);
+    if (isNodeOfType(node, "JSXText") || isNodeOfType(node, "Literal")) return true;
+    if (!isNodeOfType(node, "JSXElement") && !isNodeOfType(node, "JSXFragment")) return false;
+    if (
+      isNodeOfType(node, "JSXElement") &&
+      !isJsxFragmentElement(node.openingElement, context.scopes)
+    ) {
+      const contentNames = new Set<string>();
+      for (const child of node.children) {
+        if (
+          isNodeOfType(child, "JSXExpressionContainer") &&
+          isNodeOfType(child.expression, "Identifier") &&
+          isPlaceholder(child.expression, depth + 1)
+        )
+          contentNames.add(child.expression.name);
+      }
+      if (containsStatefulDescendant(node, { bareIdentifierNames: contentNames })) return false;
+    }
+    return node.children.every((child) => isPlaceholder(child, depth + 1));
+  };
+  const hasOnlyOwnedReads = symbol.references.every((reference) => {
+    const member = reference.identifier.parent;
+    if (member === iterator.callee) return true;
+    let readParent = member;
+    while (isNodeOfType(readParent, "ConditionalExpression")) readParent = readParent.parent;
+    if (
+      isNodeOfType(readParent, "JSXExpressionContainer") ||
+      isNodeOfType(readParent, "ReturnStatement")
+    )
+      return true;
+    const call = member?.parent;
+    if (
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== reference.identifier ||
+      getStaticPropertyName(member) !== "push" ||
+      !isNodeOfType(call, "CallExpression") ||
+      call.callee !== member ||
+      call.arguments.length === 0 ||
+      !call.arguments.every((argument) => isPlaceholder(argument))
+    )
+      return false;
+    let ancestor = call.parent;
+    while (ancestor && !isNodeOfType(ancestor, "ForStatement") && !isFunctionLike(ancestor))
+      ancestor = ancestor.parent;
+    if (
+      !isNodeOfType(ancestor, "ForStatement") ||
+      !isNodeOfType(ancestor.init, "VariableDeclaration")
+    )
+      return false;
+    const counter = ancestor.init.declarations[0]?.id;
+    if (
+      !isNodeOfType(counter, "Identifier") ||
+      !isNumericPlaceholderLoopCounter(call, counter.name)
+    )
+      return false;
+    if (builderLoop && builderLoop !== ancestor) return false;
+    builderLoop = ancestor;
+    hasPush = true;
+    return true;
+  });
+  return hasOnlyOwnedReads && hasPush;
+};
+
 const EMPTY_NAME_SET: ReadonlySet<string> = new Set();
 
 // The first-parameter names of the function binding the index — `token`
@@ -1755,7 +1854,8 @@ export const noArrayIndexAsKey = defineRule({
       if (methodReceivesOnlyPlaceholderIndices(indexUse.binding)) return;
       if (
         indexUse.binding.iteratorCall &&
-        iteratorCallExemptsIndexKey(indexUse.binding.iteratorCall)
+        (iteratorCallExemptsIndexKey(indexUse.binding.iteratorCall) ||
+          isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
       ) {
         return;
       }

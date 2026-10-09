@@ -2142,3 +2142,31 @@ describe("placeholder indices passed to class render methods", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("count-built placeholder arrays", () => {
+  it.each([
+    ["count", "<span key={slot}>...</span>", "", 0],
+    ["count", "<input key={slot} defaultValue={slot} />", "", 1],
+    ["records.length", "<span key={slot}>...</span>", "", 1],
+    ["count", "<span key={slot}>{records[slot]}</span>", "", 1],
+    ["count", "<span key={slot}>...</span>", "elements.reverse();", 1],
+    ["count", "<span key={slot}>...</span>", "elements.push(extra);", 1],
+  ])("checks placeholder provenance %s %s %s", (bound, content, mutation, expected) => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `
+      function Skeleton({ count, records, extra, Wrapper }) {
+        const elements = [];
+        for (let slot = 0; slot < ${bound}; slot++) {
+          const placeholder = ${content};
+          elements.push(placeholder);
+        }
+        ${mutation}
+        return elements.map((element, index) => <Wrapper key={index}>{element}</Wrapper>);
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

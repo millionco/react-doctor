@@ -2248,3 +2248,90 @@ it("does not trust a shadowed Array factory", () => {
     ).diagnostics,
   ).toHaveLength(1);
 });
+
+describe("identical literal placeholder values", () => {
+  it.each(["['*', '*', '*']", "[0, 0, 0]", "[null, null]"])(
+    "accepts indistinguishable fixed slots: %s",
+    (items) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `${items}.map((value, index) => <Glyph key={index} value={value} delay={index * 0.1}/>);`,
+        ).diagnostics,
+      ).toEqual([]);
+    },
+  );
+  it.each(["['a', 'b']", "[0, 1]", "[{}, {}]", "[record, record]", "['*', ...values]"])(
+    "keeps distinct or unknown records checked: %s",
+    (items) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `${items}.map((value, index) => <Row key={index} value={value}/>);`,
+        ).diagnostics,
+      ).toHaveLength(1);
+    },
+  );
+  it("keeps changed placeholder bindings checked", () => {
+    expect(
+      runRule(
+        noArrayIndexAsKey,
+        `const values = ['*', '*']; values.push(record); values.map((value, index) => <Row key={index} value={value}/>);`,
+      ).diagnostics,
+    ).toHaveLength(1);
+  });
+});
+
+it.each(["records[index]", "records.at(index)", "getRecord(index)"])(
+  "keeps external indexed records checked: %s",
+  (record) => {
+    expect(
+      runRule(
+        noArrayIndexAsKey,
+        `['*', '*'].map((_, index) => <Row key={index} record={${record}}/>);`,
+      ).diagnostics,
+    ).toHaveLength(1);
+  },
+);
+
+describe("plain string token rows", () => {
+  it.each(["path.split('/')", "path.split('/').filter(Boolean)"])(
+    "accepts plain token text: %s",
+    (items) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `const View = () => { const path = '/guide/start'; const parts = ${items}; return parts.map((part, index) => <span key={index}><span>{part}</span></span>); };`,
+        ).diagnostics,
+      ).toEqual([]);
+    },
+  );
+  it.each(["<input defaultValue={part}/>", "<Row value={part}/>", "<video src={part}/>"])(
+    "keeps stateful token rows checked: %s",
+    (children) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `const View = () => { const path = '/guide/start'; return path.split('/').filter(Boolean).map((part, index) => <span key={index}>${children}</span>); };`,
+        ).diagnostics,
+      ).toHaveLength(1);
+    },
+  );
+  it("keeps unknown split methods checked", () => {
+    expect(
+      runRule(
+        noArrayIndexAsKey,
+        `const View = ({source}) => source.split('/').map((part, index) => <span key={index}><span>{part}</span></span>);`,
+      ).diagnostics,
+    ).toHaveLength(1);
+  });
+});
+
+it("keeps changed token arrays checked", () => {
+  expect(
+    runRule(
+      noArrayIndexAsKey,
+      `const parts = 'one/two'.split('/'); parts.push(<Row/>); parts.map((part, index) => <span key={index}>{part}</span>);`,
+    ).diagnostics,
+  ).toHaveLength(1);
+});

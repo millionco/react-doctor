@@ -38,6 +38,16 @@ const parseFunctionFixture = (code: string, functionName: string): FunctionFixtu
 };
 
 describe("functionContainsReactRenderOutput", () => {
+  it("does not execute a directly returned render function", () => {
+    const { functionNode, scopes, program } = parseFunctionFixture(
+      `function Fabric() { return () => <div />; }`,
+      "Fabric",
+    );
+    expect(
+      functionContainsReactRenderOutput(functionNode, scopes, analyzeControlFlow(program)),
+    ).toBe(false);
+  });
+
   it("detects JSX render output, stable across repeated calls", () => {
     const { functionNode, scopes } = parseFunctionFixture(
       `function Card() { return <div>hi</div>; }`,

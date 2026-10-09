@@ -1847,3 +1847,65 @@ describe("conditionally created URLs with returned cleanup", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("ref-owned object URL lifetime", () => {
+  const direct = `if (owned.current) URL.revokeObjectURL(owned.current); owned.current = url;`;
+  const scalarCleanup = `if (owned.current) { URL.revokeObjectURL(owned.current); owned.current = undefined; }`;
+  const arrayStore = `const previous = owned.current.pop(); if (previous) URL.revokeObjectURL(previous); owned.current.push(url);`;
+  const arrayCleanup = `owned.current.forEach((value) => URL.revokeObjectURL(value)); owned.current = [];`;
+  it.each([
+    [direct, scalarCleanup, "", "", 0],
+    [direct, `if (owned.current) URL.revokeObjectURL(owned.current);`, "", "", 0],
+    [
+      "replace(url);",
+      scalarCleanup,
+      "",
+      `const replace = useCallback((next) => { if (owned.current && owned.current !== next) URL.revokeObjectURL(owned.current); owned.current = next; setPreview(next); }, []);`,
+      0,
+    ],
+    [arrayStore, arrayCleanup, "[]", "", 0],
+    ["owned.current = url;", scalarCleanup, "", "", 1],
+    [direct, "", "", "", 1],
+    ["if (enabled) { " + direct + " }", scalarCleanup, "", "", 1],
+    [direct, scalarCleanup, "", "owned.current = undefined;", 1],
+    [
+      direct,
+      scalarCleanup,
+      "",
+      `const clear = () => { if (owned.current) { URL.revokeObjectURL(owned.current); owned.current = undefined; } };`,
+      0,
+    ],
+    [
+      direct,
+      scalarCleanup,
+      "",
+      `const replace = (next) => { if (owned.current) URL.revokeObjectURL(owned.current); owned.current = next; };`,
+      0,
+    ],
+    [arrayStore, arrayCleanup, "[]", "const lose = () => owned.current.pop();", 1],
+    [arrayStore, "owned.current = [];", "[]", "", 1],
+    ["owned.current.push(url);", arrayCleanup, "[]", "", 1],
+    [
+      "replace(url);",
+      scalarCleanup,
+      "",
+      `const replace = useCallback(async (next) => { await tick(); if (owned.current) URL.revokeObjectURL(owned.current); owned.current = next; }, []);`,
+      1,
+    ],
+  ])("checks storage %s and cleanup %s", (storage, cleanup, initialValue, helper, expected) => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `
+      import { useRef, useEffect, useState, useCallback } from "react";
+      function Preview({ data, enabled }) {
+        const owned = useRef(${initialValue}); const [preview, setPreview] = useState();
+        ${helper}
+        useEffect(() => () => { ${cleanup} }, []);
+        useEffect(() => { const url = data && URL.createObjectURL(data); if (url) { ${storage} setPreview(url); } }, [data]);
+        return <img src={preview} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

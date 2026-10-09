@@ -921,3 +921,30 @@ describe("callback-only prop dependencies", () => {
     ).toHaveLength(1);
   });
 });
+
+describe("released object URL state", () => {
+  it.each([
+    ["URL.revokeObjectURL(preview);", "setPreview(null);", 0],
+    ["URL.revokeObjectURL(other);", "setPreview(null);", 1],
+    ["", "setPreview(null); URL.revokeObjectURL(preview);", 1],
+    ["if (shouldRelease) URL.revokeObjectURL(preview);", "setPreview(null);", 1],
+    ["URL.revokeObjectURL(preview);", "setDraft(null);", 1],
+  ])("checks release before handle reset %s %s", (release, reset, expected) => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `
+      import { useEffect, useState } from "react";
+      function Preview({ open, other, shouldRelease }) {
+        const [preview, setPreview] = useState(null);
+        const [draft, setDraft] = useState(null);
+        useEffect(() => {
+          if (!open && preview) { ${release} ${reset} }
+        }, [open, preview, other, shouldRelease]);
+        return preview || draft;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

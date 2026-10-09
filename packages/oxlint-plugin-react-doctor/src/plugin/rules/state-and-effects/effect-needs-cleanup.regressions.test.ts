@@ -9260,3 +9260,64 @@ describe("observer helpers owned by media listeners", () => {
     expect(result.diagnostics).toHaveLength(expected);
   });
 });
+
+describe("subscriptions appended to initialized arrays", () => {
+  it.each([
+    ["", "subscriptions.forEach((subscription) => subscription.remove());", 0],
+    ["subscriptions.pop();", "subscriptions.forEach((subscription) => subscription.remove());", 1],
+    ["", "subscriptions.slice(1).forEach((subscription) => subscription.remove());", 1],
+    [
+      "",
+      "subscriptions.forEach((subscription) => { if (skip) return; subscription.remove(); });",
+      1,
+    ],
+  ])("checks retained entries %s %s", (mutation, cleanup, expected) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      import { useEffect } from "react";
+      import { Keyboard } from "react-native";
+      function Panel({ enabled, extra, skip }) {
+        useEffect(() => {
+          if (!enabled) return;
+          const subscriptions = [Keyboard.addListener('keyboardDidShow', () => {})];
+          if (extra) subscriptions.push(Keyboard.addListener('keyboardWillShow', () => {}));
+          ${mutation}
+          return () => { ${cleanup} };
+        }, [enabled, extra, skip]);
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});
+
+describe("retained listener cleanup helpers", () => {
+  it.each([
+    ["release();", "", "", 0],
+    ["if (enabled) release();", "", "", 1],
+    ["release();", "async", "await pause();", 1],
+    ["release();", "", "cleanup.current = null;", 1],
+    ["release();", "", "if (enabled) return;", 1],
+  ])("checks unmount invocation %s", (unmount, asyncKeyword, beforeRelease, expected) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      import { useRef, useCallback, useEffect } from "react";
+      function Resizer({ enabled }) {
+        const cleanup = useRef(null);
+        const release = useCallback(${asyncKeyword} () => { ${beforeRelease} cleanup.current?.(); cleanup.current = null; }, []);
+        useEffect(() => () => { ${unmount} }, [release]);
+        const start = useCallback(() => {
+          release(); const move = () => update();
+          window.addEventListener("pointermove", move, true);
+          cleanup.current = () => window.removeEventListener("pointermove", move, true);
+        }, [release]);
+        return <div onPointerDown={start} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

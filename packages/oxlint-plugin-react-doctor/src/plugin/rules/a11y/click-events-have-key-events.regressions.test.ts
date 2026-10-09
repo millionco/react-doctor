@@ -642,3 +642,67 @@ describe("a11y/click-events-have-key-events regressions", () => {
     },
   );
 });
+
+describe("keyboard click propagation", () => {
+  it.each([
+    `<tr onClick={open}><td onClick={event => event.stopPropagation()}><input type="checkbox" aria-label="Select" onChange={select}/></td></tr>`,
+    `<div onClick={open}><button onClick={event => event.stopPropagation()}>Select</button></div>`,
+    `<div onClick={open}><div onClick={event => { event.stopPropagation(); select(); }}><button>Select</button></div></div>`,
+  ])("reports an action blocked from keyboard descendants: %s", (element) => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `const Panel = ({open, select}) => (${element});`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `<div onClick={open}><button>Select</button></div>`,
+    `<div onClick={open}><div onClick={event => { if (event.detail === 0) return; event.stopPropagation(); }}><button>Select</button></div></div>`,
+    `<div onClickCapture={open}><div onClick={event => event.stopPropagation()}><button>Select</button></div></div>`,
+    `<div onClick={open}><div onClick={event => event.preventDefault()}><button>Select</button></div></div>`,
+    `<div onClick={open}><div onClick={event => unrelated.stopPropagation()}><button>Select</button></div></div>`,
+    `<div onClick={open}><div onClick={event => event.stopPropagation()}><button onClick={open}>Open</button></div></div>`,
+    `<div onClick={open}><div onClick={event => event.stopPropagation()}><button>Select</button></div><button>Open</button></div>`,
+  ])("preserves a reachable or equivalent keyboard action: %s", (element) => {
+    expect(
+      runRule(clickEventsHaveKeyEvents, `const Panel = ({open}) => (${element});`).diagnostics,
+    ).toEqual([]);
+  });
+});
+
+describe("delegated keyboard event blockers", () => {
+  it.each([
+    [
+      "const stop = (record, event) => { event.stopPropagation(); select(record); };",
+      "stop(record, event)",
+      1,
+    ],
+    ["const stop = (record, event) => { event.stopPropagation(); };", "stop(event, record)", 0],
+    [
+      "const stop = (record, event) => { if (event.detail === 0) return; event.stopPropagation(); };",
+      "stop(record, event)",
+      0,
+    ],
+    [
+      "const stop = async (record, event) => { await pause(); event.stopPropagation(); };",
+      "stop(record, event)",
+      0,
+    ],
+    ["const stop = (record, event) => stop(record, event);", "stop(record, event)", 0],
+    ["function* stop(record, event) { event.stopPropagation(); }", "stop(record, event)", 0],
+    ["const stop = (record, event) => event.stopPropagation?.();", "stop(record, event)", 0],
+  ])("tracks the forwarded event: %s", (helper, action, expectedCount) => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `
+      const Panel = ({open, record}) => {
+        ${helper}
+        return <div onClick={open}><button onClick={event => ${action}}>Select</button></div>;
+      };
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+});

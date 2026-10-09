@@ -20,6 +20,12 @@ export const resolveEventListenerCapture = (
   if (isNodeOfType(unwrappedOptions, "Literal")) {
     return typeof unwrappedOptions.value === "boolean" ? unwrappedOptions.value : null;
   }
+  if (isNodeOfType(unwrappedOptions, "ConditionalExpression")) {
+    const options = { allowComputedString, allowIndeterminateEntries };
+    const consequent = resolveEventListenerCapture(unwrappedOptions.consequent, options);
+    const alternate = resolveEventListenerCapture(unwrappedOptions.alternate, options);
+    return consequent === alternate ? consequent : null;
+  }
   if (!isNodeOfType(unwrappedOptions, "ObjectExpression")) return null;
 
   let capture: boolean | null = false;

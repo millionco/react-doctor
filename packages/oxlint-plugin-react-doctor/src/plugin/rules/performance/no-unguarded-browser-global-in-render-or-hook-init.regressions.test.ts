@@ -569,3 +569,68 @@ describe("no-unguarded-browser-global-in-render-or-hook-init — imported server
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("helpers defined inside an effect", () => {
+  it.each([
+    ['import { useEffect } from "react";', "useEffect"],
+    ['import { useLayoutEffect as later } from "react";', "later"],
+    ['import * as React from "react";', "React.useEffect"],
+  ])("accepts browser reads in a helper owned by %s %s", (imports, hook) => {
+    const result = run(`
+      ${imports}
+      export const Panel = () => {
+        ${hook}(() => {
+          const ReadSize = () => window.innerWidth;
+          ReadSize();
+          return () => { const Cleanup = () => document.title; Cleanup(); };
+        }, []);
+        return null;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts a named inline effect callback", () => {
+    expect(
+      run(`
+      import { useEffect } from "react";
+      export const Panel = () => {
+        useEffect(function Initialize() { window.innerWidth; }, []);
+        return null;
+      };
+    `).diagnostics,
+    ).toEqual([]);
+  });
+
+  it.each([
+    'import { useMemo as useEffect } from "react";',
+    "const useEffect = callback => callback();",
+  ])("preserves render-time reads through %s", (declaration) => {
+    expect(
+      run(`
+      ${declaration}
+      export const Panel = () => {
+        useEffect(() => {
+          const ReadSize = () => window.innerWidth;
+          return ReadSize();
+        }, []);
+        return null;
+      };
+    `).diagnostics,
+    ).toHaveLength(1);
+  });
+
+  it("does not exempt a render component merely because an effect also calls it", () => {
+    expect(
+      run(`
+      import { useEffect } from "react";
+      const Child = () => <span>{window.innerWidth}</span>;
+      export const Panel = () => {
+        useEffect(() => { Child(); }, []);
+        return <Child />;
+      };
+    `).diagnostics,
+    ).toHaveLength(1);
+  });
+});

@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { effectListenerCleanupReferenceMismatch } from "./effect-listener-cleanup-reference-mismatch.js";
@@ -302,5 +305,52 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
        }, [store]);`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("imported DOM listener wrappers", () => {
+  it.each([
+    ["document", "removeEventListener", "pulse", "() => update()", 1],
+    ["window", "removeEventListener", "pulse", "() => update()", 0],
+    ["document", "removeEventListener", "other", "() => update()", 0],
+    ["document", "dispatchEvent", "pulse", "() => update()", 0],
+  ])("checks %s.%s for %s", (target, method, event, releasedHandler, expected) => {
+    const directory = mkdtempSync(join(tmpdir(), "rd-listener-wrapper-"));
+    try {
+      writeFileSync(
+        join(directory, "events.ts"),
+        `export const subscribe = (event, handler) => document.addEventListener(event, handler); export const unsubscribe = (event, handler) => ${target}.${method}(event, handler);`,
+      );
+      writeFileSync(
+        join(directory, "index.ts"),
+        `export { subscribe, unsubscribe } from "./events";`,
+      );
+      const source = `import { useEffect } from "react"; import { subscribe as attach, unsubscribe as detach } from "./index"; function View() { useEffect(() => { attach("pulse", () => update()); return () => detach("${event}", ${releasedHandler}); }, []); }`;
+      writeFileSync(
+        join(directory, "tsconfig.json"),
+        JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "#events": ["./index"] } } }),
+      );
+      const aliased = runRule(
+        effectListenerCleanupReferenceMismatch,
+        source.replace('"./index"', '"#events"'),
+        { filename: join(directory, "alias.tsx") },
+      );
+      expect(aliased.diagnostics).toHaveLength(expected);
+      const result = runRule(effectListenerCleanupReferenceMismatch, source, {
+        filename: join(directory, "view.tsx"),
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(expected);
+      const shared = source
+        .replaceAll("() => update()", "handler")
+        .replace("function View() {", "function View() { const handler = () => update();");
+      expect(
+        runRule(effectListenerCleanupReferenceMismatch, shared, {
+          filename: join(directory, "shared.tsx"),
+        }).diagnostics,
+      ).toHaveLength(0);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

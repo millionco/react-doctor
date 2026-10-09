@@ -565,3 +565,76 @@ describe("no-ref-current-in-render — predictable initialization proofs", () =>
     expect(result.diagnostics).toHaveLength(2);
   });
 });
+
+describe("lazy ref initialization through a local assignment", () => {
+  it("accepts a fresh object assigned immediately before the guarded ref write", () => {
+    const result = run(`
+      import { useRef } from "react";
+      const Panel = () => {
+        const cache = useRef(null);
+        let instance;
+        if (cache.current === null) {
+          instance = { ready: false, value: null };
+          cache.current = instance;
+        } else {
+          instance = cache.current;
+        }
+        return null;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "instance = { value: prop };",
+    "instance = { value: Math.random() };",
+    "instance = { value: 1 }; mutate(instance);",
+    "if (prop) instance = { value: 1 };",
+  ])("keeps unsafe or unproven initialization visible: %s", (assignment) => {
+    const result = run(`
+      import { useRef } from "react";
+      const Panel = ({ prop }) => {
+        const cache = useRef(null);
+        let instance;
+        if (cache.current === null) {
+          ${assignment}
+          cache.current = instance;
+        }
+        return null;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not accept a module binding as an initialization alias", () => {
+    const result = run(`
+      import { useRef } from "react";
+      let instance;
+      const Panel = () => {
+        const cache = useRef(null);
+        if (cache.current === null) {
+          instance = { value: 1 };
+          cache.current = instance;
+        }
+        return null;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects non-deterministic values hidden by a const alias", () => {
+    const result = run(`
+      import { useRef } from "react";
+      const Panel = () => {
+        const cache = useRef(null);
+        if (cache.current === null) {
+          const instance = { value: Math.random() };
+          cache.current = instance;
+        }
+        return null;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

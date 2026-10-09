@@ -208,3 +208,48 @@ describe("react-builtins/no-call-component-as-function — regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("component factories", () => {
+  it.each([
+    "() => <div />",
+    "function Child() { return <div />; }",
+    "(props: { label: string }) => React.createElement('div', props)",
+  ])("does not treat a returned component as an executed render: %s", (returnedFunction) => {
+    const result = runRule(
+      noCallComponentAsFunction,
+      `
+      import React from "react";
+      const Fabric = () => ${returnedFunction};
+      const Child = Fabric();
+      export const Parent = () => <Child />;
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still detects a component that calls a local render function", () => {
+    const result = runRule(
+      noCallComponentAsFunction,
+      `
+      const Component = () => {
+        const render = () => <div />;
+        return render();
+      };
+      Component();
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still detects JSX returned from a mapped render callback", () => {
+    const result = runRule(
+      noCallComponentAsFunction,
+      `
+      const Component = () => [1, 2].map(value => <span key={value}>{value}</span>);
+      Component();
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

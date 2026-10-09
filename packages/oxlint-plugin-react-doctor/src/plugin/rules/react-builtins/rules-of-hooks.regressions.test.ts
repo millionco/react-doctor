@@ -1481,3 +1481,47 @@ describe("Angular component ownership", () => {
     expect(runRule(rulesOfHooks, code).diagnostics).toHaveLength(1);
   });
 });
+
+describe("imported static data getters", () => {
+  it.each([
+    ['const value = "ready"; const alias = value; export const useData = () => `${alias}`;', 0],
+    ["const value = null; export const useData = () => `${value}`;", 0],
+    [
+      'import {useState} from "react"; const value = {}; value.toString = () => useState(0)[0]; export const useData = () => `${value}`;',
+      1,
+    ],
+    [
+      'import {useState} from "react"; const value = []; const alias = value; value.toString = () => useState(0)[0]; export const useData = () => `${alias}`;',
+      1,
+    ],
+    [
+      'import {useState} from "react"; const value = /ready/; value.toString = () => useState(0)[0]; export const useData = () => `${value}`;',
+      1,
+    ],
+    ["const script = `print records`; export const useData = () => ({script});", 0],
+    ['export function useData() { return {label: "Ready", values: [1, 2]}; }', 0],
+    ['import {useState} from "react"; export const useData = () => useState(0);', 1],
+    ["export const useData = () => object.current;", 1],
+    ["export const useData = () => other();", 1],
+    ["export const useData = (value = useOther()) => ({value});", 1],
+    ['export function useData() { return "ready"; } useData = other;', 1],
+    ["export const useData = () => ({get value() { return useOther(); }});", 1],
+  ])("checks the resolved getter body: %s", (helper, expectedCount) => {
+    const directory = mkdtempSync(join(tmpdir(), "hook-data-getter-"));
+    try {
+      writeFileSync(join(directory, "data.ts"), helper);
+      const result = runRule(
+        rulesOfHooks,
+        `
+        import {useData} from './data';
+        export class Repository { read() { return useData(); } }
+      `,
+        { filename: join(directory, "repository.ts") },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(expectedCount);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

@@ -4,4 +4,4 @@
 "react-doctor": patch
 ---
 
-Accept synchronous local request-ownership predicates when they protect loading resets in finally blocks.
+Recognize request ownership predicates and loading resets on proven view, close, and unmount paths. Keep warnings when an invalidated request can leave the loading flag set.

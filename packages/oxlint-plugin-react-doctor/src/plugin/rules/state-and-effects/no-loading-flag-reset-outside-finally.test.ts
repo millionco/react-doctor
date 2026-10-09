@@ -3709,3 +3709,166 @@ describe("effect cleanup request ownership", () => {
     expect(result.diagnostics).toHaveLength(expectedCount);
   });
 });
+
+describe("request invalidation and mirrored view guards", () => {
+  it.each([
+    ["request.current++; setLoading(false);", 0],
+    ["request.current++;", 1],
+    ["request.current++; if (condition) setLoading(false);", 1],
+  ])("checks invalidation before starting a request: %s", (invalidate, expected) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `
+      import {useRef, useState} from 'react';
+      const View = ({enabled, condition}) => {
+        const request = useRef(0); const [, setLoading] = useState(false);
+        const run = async () => {
+          if (!enabled) { ${invalidate} return; }
+          const token = ++request.current; setLoading(true);
+          try { await load(); } finally { if (request.current === token) setLoading(false); }
+        };
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+  it.each([
+    ["currentView.current === savedView", "setLoading(open)", "[viewId, open]", 0],
+    [
+      "openRef.current && currentView.current === savedView",
+      "setLoading(open)",
+      "[viewId, open]",
+      0,
+    ],
+    ["openRef.current && currentView.current === savedView", "setLoading(open)", "[]", 1],
+    [
+      "openRef.current && currentView.current === savedView",
+      "if (condition) setLoading(open)",
+      "[viewId, open]",
+      1,
+    ],
+    ["openRef.current && currentView.current === savedView", "setOther(open)", "[viewId, open]", 1],
+  ])("checks synchronized ownership %s", (guard, reset, dependencies, expected) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `
+      import {useRef, useState, useEffect, useCallback} from 'react';
+      const View = ({viewId, open, condition}) => {
+        const currentView = useRef(viewId); const openRef = useRef(open);
+        const [, setLoading] = useState(false);
+        const run = useCallback(async () => {
+          const savedView = viewId; setLoading(true);
+          try { await load(); } finally { if (${guard}) setLoading(false); }
+        }, [viewId]);
+        useEffect(() => { currentView.current = viewId; openRef.current = open; });
+        useEffect(() => { ${reset}; }, ${dependencies});
+        useEffect(() => { if (!open) return; run(); }, [run, open]);
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+  it("accepts a negated stale-request predicate", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `
+      const View = () => { const request = useRef(0); const [,setLoading] = useState(false);
+        const run = async () => { const token = ++request.current;
+          const stale = () => request.current !== token;
+          setLoading(true); try { await load(); } finally { if (!stale()) setLoading(false); }
+        };
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
+describe("render lifecycle resets", () => {
+  it.each([
+    [
+      "identity.viewId !== viewId || identity.open !== open",
+      "setIdentity({viewId, open});",
+      "[viewId]",
+      0,
+    ],
+    [
+      "identity.viewId !== viewId && identity.open !== open",
+      "setIdentity({viewId, open});",
+      "[viewId]",
+      1,
+    ],
+    ["identity.viewId !== viewId || identity.open !== open", "", "[viewId]", 1],
+    [
+      "identity.viewId !== viewId || identity.open !== open",
+      "setIdentity({viewId, open});",
+      "[]",
+      1,
+    ],
+  ])("checks reset guard %s", (guard, advance, dependencies, expected) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `
+      import {useState, useRef, useEffect, useCallback} from 'react';
+      const View = ({viewId, open}) => {
+        const [,setLoading] = useState(open); const [identity, setIdentity] = useState({viewId, open});
+        const request = useRef(0); const currentView = useRef(viewId); const openRef = useRef(open);
+        if (${guard}) { ${advance} setLoading(open); request.current++; }
+        currentView.current = viewId; openRef.current = open;
+        const run = useCallback(async () => { const token = ++request.current; const savedView = viewId;
+          setLoading(true); try { await load(); } finally {
+            if (token === request.current && currentView.current === savedView && openRef.current) setLoading(false);
+          }
+        }, ${dependencies});
+        useEffect(() => { if (!open) return; run(); }, [open, run]);
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+
+  it("keeps a reset that invalidates a just-started request visible", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `
+      import {useState, useRef, useEffect, useCallback} from 'react';
+      const View = ({open, viewId}) => {
+        const [,setLoading] = useState(open); const request = useRef(0);
+        const run = useCallback(async () => { const token = ++request.current;
+          setLoading(true); try { await load(viewId); } finally { if (token === request.current) setLoading(false); }
+        }, [viewId]);
+        useEffect(() => { if (open) run(); }, [open, run]);
+        useEffect(() => { request.current++; setLoading(open); }, [open, viewId]);
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each(["[]", "[other]", "[viewId]"])(
+    "requires the ref mirror to follow its value: %s",
+    (dependencies) => {
+      const result = runRule(
+        noLoadingFlagResetOutsideFinally,
+        `
+      import {useState, useRef, useEffect, useCallback} from 'react';
+      const View = ({viewId, other}) => {
+        const [,setLoading] = useState(false); const currentView = useRef(viewId);
+        const run = useCallback(async () => { const savedView = viewId;
+          setLoading(true); try { await load(); } finally { if (currentView.current === savedView) setLoading(false); }
+        }, [viewId]);
+        useEffect(() => { currentView.current = viewId; }, ${dependencies});
+        useEffect(() => { setLoading(false); }, [viewId]);
+      };
+    `,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(dependencies === "[viewId]" ? 0 : 1);
+    },
+  );
+});

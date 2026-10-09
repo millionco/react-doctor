@@ -2689,3 +2689,37 @@ describe("react-builtins/exhaustive-deps — upstream disable-comment suppressio
     });
   });
 });
+
+describe("local helper argument property dependencies", () => {
+  it.each([
+    ["(settings.items || []).map((item) => item.name)", "config.items", 0],
+    ["settings.items", "config.items", 0],
+    ["settings.items + settings.prefix", "config.items", 1],
+    ["Object.keys(settings)", "config.items", 1],
+    ["settings.read()", "config.read", 1],
+    ["settings[field]", "config.items", 1],
+  ])("checks helper reads %s with %s", (body, dependencies, expected) => {
+    const result = runRule(
+      exhaustiveDeps,
+      `
+      import { useMemo } from "react";
+      const buildItems = (settings) => ${body};
+      function View({ config }) {
+        return useMemo(() => buildItems(config), [${dependencies}]);
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});
+
+it("keeps object dependencies after an unknown argument spread", () => {
+  const result = runRule(
+    exhaustiveDeps,
+    `import { useMemo } from "react";
+ const helper = (first, settings) => settings.items;
+ function View({ config, args }) { return useMemo(() => helper(...args, config), [args, config.items]); }`,
+  );
+  expect(result.diagnostics).toHaveLength(1);
+});

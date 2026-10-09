@@ -1770,3 +1770,47 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("cleanup after an allocation guard", () => {
+  it.each([
+    "return () => { if (url) URL.revokeObjectURL(url); };",
+    "const dispose = () => { if (url) URL.revokeObjectURL(url); }; return dispose;",
+    "const dispose = () => { if (url) URL.revokeObjectURL(url); }; const cleanup = dispose; return cleanup;",
+  ])("accepts cleanup reached on every allocation path: %s", (cleanup) => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `
+      useEffect(() => {
+        if (pending) return;
+        if (error) { setError(error); return; }
+        const url = blob && URL.createObjectURL(blob);
+        setPreview(url);
+        ${cleanup}
+      }, [blob, pending, error]);
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "if (skip) return; return () => { if (url) URL.revokeObjectURL(url); };",
+    "if (enabled) return () => { if (url) URL.revokeObjectURL(url); };",
+    "return () => { if (enabled && url) URL.revokeObjectURL(url); };",
+    "const dispose = () => { if (url) URL.revokeObjectURL(url); }; if (enabled) return dispose;",
+    "return () => URL.revokeObjectURL(otherUrl);",
+  ])("retains warnings when cleanup is not guaranteed: %s", (cleanup) => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `
+      useEffect(() => {
+        if (pending) return;
+        const url = blob && URL.createObjectURL(blob);
+        setPreview(url);
+        ${cleanup}
+      }, [blob, pending]);
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

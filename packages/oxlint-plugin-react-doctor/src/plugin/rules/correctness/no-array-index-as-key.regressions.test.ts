@@ -2207,3 +2207,89 @@ describe("numeric placeholder key aliases", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("property-based placeholder counts", () => {
+  it.each(["settings.rows", "settings['rows']", "settings.rows + 1"])(
+    "accepts count-generated slots: %s",
+    (count) => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const View = ({settings, value}) => Array.from({length: ${count}}, (_, index) => <span key={index}>{value}</span>);`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+  it.each([
+    "{length: settings.rows, 0: record}",
+    "{length: settings.rows, ...records}",
+    "{length: settings.rows, [Symbol.iterator]: iterateRecords}",
+  ])("keeps real array-like records checked: %s", (source) => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `Array.from(${source}, (record, index) => <Row key={index} record={record}/>);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+it("keeps indexed records behind a property count checked", () => {
+  expect(
+    runRule(
+      noArrayIndexAsKey,
+      `Array.from({length: settings.rows}, (_, index) => <Row key={index} record={rows[index]}/>);`,
+    ).diagnostics,
+  ).toHaveLength(1);
+});
+it("does not trust a shadowed Array factory", () => {
+  expect(
+    runRule(
+      noArrayIndexAsKey,
+      `const View = ({Array, settings}) => Array.from({length: settings.rows}, (record, index) => <Row key={index} record={record}/>);`,
+    ).diagnostics,
+  ).toHaveLength(1);
+});
+
+describe("identical literal placeholder values", () => {
+  it.each(["['*', '*', '*']", "[0, 0, 0]", "[null, null]"])(
+    "accepts indistinguishable fixed slots: %s",
+    (items) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `${items}.map((value, index) => <Glyph key={index} value={value} delay={index * 0.1}/>);`,
+        ).diagnostics,
+      ).toEqual([]);
+    },
+  );
+  it.each(["['a', 'b']", "[0, 1]", "[{}, {}]", "[record, record]", "['*', ...values]"])(
+    "keeps distinct or unknown records checked: %s",
+    (items) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `${items}.map((value, index) => <Row key={index} value={value}/>);`,
+        ).diagnostics,
+      ).toHaveLength(1);
+    },
+  );
+  it("keeps changed placeholder bindings checked", () => {
+    expect(
+      runRule(
+        noArrayIndexAsKey,
+        `const values = ['*', '*']; values.push(record); values.map((value, index) => <Row key={index} value={value}/>);`,
+      ).diagnostics,
+    ).toHaveLength(1);
+  });
+});
+
+it.each(["records[index]", "records.at(index)", "getRecord(index)"])(
+  "keeps external indexed records checked: %s",
+  (record) => {
+    expect(
+      runRule(
+        noArrayIndexAsKey,
+        `['*', '*'].map((_, index) => <Row key={index} record={${record}}/>);`,
+      ).diagnostics,
+    ).toHaveLength(1);
+  },
+);

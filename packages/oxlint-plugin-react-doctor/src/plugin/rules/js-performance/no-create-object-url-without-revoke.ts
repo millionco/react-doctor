@@ -461,6 +461,7 @@ const isReturnedCleanupFromBoundary = (
   createCall: EsTreeNode,
   executionBoundary: EsTreeNode | null,
   context: RuleContext,
+  hasPositiveResultGuard: boolean,
 ): boolean => {
   const cleanupFunction = findEnclosingFunction(candidate);
   if (!cleanupFunction || cleanupFunction === executionBoundary) return false;
@@ -470,7 +471,10 @@ const isReturnedCleanupFromBoundary = (
     isNodeOfType(cleanupConsumer, "ReturnStatement") &&
     context.cfg.enclosingFunction(cleanupConsumer) === executionBoundary
   ) {
-    return doNodesCoverEveryPathAfterNode(createCall, [cleanupConsumer], context);
+    return (
+      hasPositiveResultGuard ||
+      doNodesCoverEveryPathAfterNode(createCall, [cleanupConsumer], context)
+    );
   }
   if (
     isNodeOfType(executionBoundary, "ArrowFunctionExpression") &&
@@ -672,7 +676,15 @@ const consumerIsGuaranteedAfterResult = (
     consumer,
     executionBoundary,
   );
-  if (isReturnedCleanupFromBoundary(consumer, resultCall, executionBoundary, context)) {
+  if (
+    isReturnedCleanupFromBoundary(
+      consumer,
+      resultCall,
+      executionBoundary,
+      context,
+      hasPositiveResultGuard,
+    )
+  ) {
     if (hasPositiveResultGuard) return true;
     if (isConditionallyEvaluated) return false;
     return context.cfg.isUnconditionalFromEntry(consumer);

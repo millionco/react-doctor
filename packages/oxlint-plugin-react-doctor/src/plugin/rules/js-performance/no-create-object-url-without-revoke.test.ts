@@ -1814,3 +1814,36 @@ describe("cleanup after an allocation guard", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("conditionally created URLs with returned cleanup", () => {
+  it.each([
+    "if (!url) return; return () => URL.revokeObjectURL(url);",
+    "if (url) { display(url); return () => URL.revokeObjectURL(url); } return;",
+  ])("accepts cleanup guarded by the created URL: %s", (body) => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `
+      import { useEffect } from 'react';
+      const View = ({ data, pending }) => {
+        useEffect(() => { if (pending) return; const url = data && URL.createObjectURL(data); ${body} }, [data, pending]);
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+  it.each([
+    "if (!url) return; if (ready) return () => URL.revokeObjectURL(url);",
+    "if (url) { if (ready) return; return () => URL.revokeObjectURL(url); }",
+    "if (url) { return () => { if (ready) URL.revokeObjectURL(url); }; }",
+  ])("keeps an independent cleanup condition visible: %s", (body) => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `
+      const View = ({data, ready}) => { useEffect(() => { const url = data && URL.createObjectURL(data); ${body} }, [data, ready]); };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

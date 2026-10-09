@@ -1397,3 +1397,25 @@ describe("react-builtins/rules-of-hooks — local member use bindings", () => {
     expect(diagnostics[0]?.message).toContain("async function");
   });
 });
+
+describe("CommonJS component registration APIs", () => {
+  it.each([
+    `var Registry = require('react_ujs'); Registry.useContext(context);`,
+    `const Registry = require('react_ujs'); Registry.useContexts(contexts);`,
+    `import Registry from 'react_ujs'; Registry.useContext(context);`,
+    `import * as Registry from 'react_ujs'; Registry.useContexts(contexts);`,
+  ])("accepts framework registration: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toEqual([]);
+  });
+  it.each([
+    `const React = require('react'); React.useContext(context);`,
+    `var Registry = require('react_ujs'); Registry = React; Registry.useContext(context);`,
+    `const Registry = require('react_ujs'); Registry.useContext = useContext; Registry.useContext(context);`,
+    `const require = load; const Registry = require('react_ujs'); Registry.useContext(context);`,
+    `const Registry = require('./hooks'); Registry.useContext(context);`,
+    `const Registry = require('react_ujs').Hooks; Registry.useContext(context);`,
+    `const Registry = require('react_ujs'); Registry.useState(0);`,
+  ])("retains hook enforcement without proven registration: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toHaveLength(1);
+  });
+});

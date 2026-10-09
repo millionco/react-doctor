@@ -7,6 +7,7 @@ import { isReactComponentOrHookName } from "../../utils/is-react-component-or-ho
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import {
   REACT_ECOSYSTEM_PACKAGE_NAMES,
+  NON_HOOK_REGISTRATION_APIS,
   REACT_HOC_NAMES,
   REACT_RUNTIME_MODULE_SOURCES,
 } from "../../constants/react.js";
@@ -19,6 +20,7 @@ import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-eve
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { symbolHasReactUseEffectEventOrigin } from "../../utils/symbol-has-react-use-effect-event-origin.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
+import { getGlobalRequireModuleSource } from "../../utils/get-global-require-module-source.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -783,6 +785,16 @@ const isPackageImportedNonReactHookMemberCallee = (
   if (!receiverSymbol || hasSymbolWriteBefore(receiverSymbol, call, scopes)) return false;
   if (hasPossibleStaticPropertyWriteBefore(receiver, propertyName, call, scopes)) return false;
   const importedReceiver = resolveImportedApiReference(receiver, scopes);
+  const initializer =
+    receiverSymbol.initializer && stripParenExpression(receiverSymbol.initializer);
+  const registrationSource =
+    importedReceiver?.isNamespace || importedReceiver?.importedName === "default"
+      ? importedReceiver.source
+      : initializer && isNodeOfType(initializer, "CallExpression")
+        ? getGlobalRequireModuleSource(initializer, scopes)
+        : null;
+  if (registrationSource && NON_HOOK_REGISTRATION_APIS.get(registrationSource)?.has(propertyName))
+    return true;
   if (!importedReceiver) return false;
   if (importedReceiver.source.startsWith(".")) return false;
   if (PATH_ALIAS_IMPORT_PATTERN.test(importedReceiver.source)) return false;

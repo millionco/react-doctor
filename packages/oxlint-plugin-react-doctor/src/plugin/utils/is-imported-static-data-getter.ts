@@ -16,20 +16,25 @@ const isStaticDataExpression = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbols = new Set<number>(),
+  requirePrimitive = false,
 ): boolean => {
   const candidate = stripParenExpression(expression);
-  if (isNodeOfType(candidate, "Literal")) return true;
+  if (isNodeOfType(candidate, "Literal")) {
+    return !requirePrimitive || candidate.value === null || typeof candidate.value !== "object";
+  }
   if (isNodeOfType(candidate, "TemplateLiteral")) {
     return candidate.expressions.every((value) =>
-      isStaticDataExpression(value, scopes, visitedSymbols),
+      isStaticDataExpression(value, scopes, visitedSymbols, true),
     );
   }
   if (isNodeOfType(candidate, "ArrayExpression")) {
+    if (requirePrimitive) return false;
     return candidate.elements.every(
       (value) => !value || isStaticDataExpression(value, scopes, visitedSymbols),
     );
   }
   if (isNodeOfType(candidate, "ObjectExpression")) {
+    if (requirePrimitive) return false;
     return candidate.properties.every(
       (property) =>
         isNodeOfType(property, "Property") &&
@@ -42,7 +47,12 @@ const isStaticDataExpression = (
   const symbol = scopes.symbolFor(candidate);
   if (symbol?.kind !== "const" || !symbol.initializer || visitedSymbols.has(symbol.id))
     return false;
-  return isStaticDataExpression(symbol.initializer, scopes, new Set(visitedSymbols).add(symbol.id));
+  return isStaticDataExpression(
+    symbol.initializer,
+    scopes,
+    new Set(visitedSymbols).add(symbol.id),
+    requirePrimitive,
+  );
 };
 
 export const isImportedStaticDataGetter = (callee: EsTreeNode, context: RuleContext): boolean => {

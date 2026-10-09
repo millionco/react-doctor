@@ -1400,6 +1400,20 @@ describe("react-builtins/rules-of-hooks — local member use bindings", () => {
 
 describe("imported static data getters", () => {
   it.each([
+    ['const value = "ready"; const alias = value; export const useData = () => `${alias}`;', 0],
+    ["const value = null; export const useData = () => `${value}`;", 0],
+    [
+      'import {useState} from "react"; const value = {}; value.toString = () => useState(0)[0]; export const useData = () => `${value}`;',
+      1,
+    ],
+    [
+      'import {useState} from "react"; const value = []; const alias = value; value.toString = () => useState(0)[0]; export const useData = () => `${alias}`;',
+      1,
+    ],
+    [
+      'import {useState} from "react"; const value = /ready/; value.toString = () => useState(0)[0]; export const useData = () => `${value}`;',
+      1,
+    ],
     ["const script = `print records`; export const useData = () => ({script});", 0],
     ['export function useData() { return {label: "Ready", values: [1, 2]}; }', 0],
     ['import {useState} from "react"; export const useData = () => useState(0);', 1],

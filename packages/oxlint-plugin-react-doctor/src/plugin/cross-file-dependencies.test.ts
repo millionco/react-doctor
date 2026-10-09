@@ -933,3 +933,12 @@ describe("imported hook getter dependencies", () => {
     expect(trace?.contentPaths).toContain(recordPath);
   });
 });
+
+it("records the API Platform provider manifest", () => {
+  const manifest = writeFixtureFile(
+    "package.json",
+    JSON.stringify({ name: "@api-platform/admin" }),
+  );
+  const entry = writeFixtureFile("src/view.tsx", "export const View = () => null;");
+  expect(collectFor(entry, ["effect-needs-cleanup"])?.contentPaths.has(manifest)).toBe(true);
+});

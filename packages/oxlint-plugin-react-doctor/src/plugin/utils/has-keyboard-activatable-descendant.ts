@@ -1,3 +1,4 @@
+import { handlerStopsEventPropagation } from "./handler-stops-event-propagation.js";
 import { HTML_TAGS } from "../constants/html-tags.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import { areExpressionsStructurallyEqual } from "./are-expressions-structurally-equal.js";
@@ -222,10 +223,26 @@ const findKeyboardActivatableDescendant = (
   expectedAction: EsTreeNode | null,
   scopes: ScopeAnalysis,
   settings: Readonly<Record<string, unknown>> | undefined,
+  requiresClickBubbling: boolean,
 ): boolean => {
   const walk = (descendant: EsTreeNode): boolean =>
-    findKeyboardActivatableDescendant(descendant, expectedAction, scopes, settings);
+    findKeyboardActivatableDescendant(
+      descendant,
+      expectedAction,
+      scopes,
+      settings,
+      requiresClickBubbling,
+    );
   if (isNodeOfType(node, "JSXElement")) {
+    if (requiresClickBubbling) {
+      const click = hasJsxPropIgnoreCase(node.openingElement.attributes, "onClick");
+      const capture = hasJsxPropIgnoreCase(node.openingElement.attributes, "onClickCapture");
+      if (
+        (click && handlerStopsEventPropagation(click, scopes)) ||
+        (capture && handlerStopsEventPropagation(capture, scopes))
+      )
+        return false;
+    }
     if (expectedAction && isHiddenSubtreeRoot(node.openingElement, settings)) return false;
     if (isKeyboardActivatableElement(node, expectedAction !== null)) {
       if (!expectedAction) return true;
@@ -254,6 +271,7 @@ export const hasKeyboardActivatableDescendant = (
   interactionAttribute: EsTreeNodeOfType<"JSXAttribute"> | null,
   scopes: ScopeAnalysis,
   settings: Readonly<Record<string, unknown>> | undefined,
+  requiresClickBubbling = false,
 ): boolean => {
   if (!element || !isNodeOfType(element, "JSXElement")) return false;
   const expectedAction = interactionAttribute
@@ -261,6 +279,12 @@ export const hasKeyboardActivatableDescendant = (
     : null;
   if (interactionAttribute && !expectedAction) return false;
   return element.children.some((child) =>
-    findKeyboardActivatableDescendant(child as EsTreeNode, expectedAction, scopes, settings),
+    findKeyboardActivatableDescendant(
+      child as EsTreeNode,
+      expectedAction,
+      scopes,
+      settings,
+      requiresClickBubbling,
+    ),
   );
 };

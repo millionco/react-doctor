@@ -646,3 +646,26 @@ describe("no-prop-callback-in-effect — external synchronization", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("notifications without state payloads", () => {
+  it.each([`if (active && phase === 'idle') { setPhase('running'); onStart?.(); }`, `onStart();`])(
+    "does not classify a zero-payload event as a state mirror: %s",
+    (body) => {
+      const result = runRule(
+        noPropCallbackInEffect,
+        `import {useState, useEffect} from 'react'; const Panel = ({active, onStart}) => { const [phase, setPhase] = useState('idle'); useEffect(() => {${body}}, [active, phase, onStart]); return null; };`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+  it.each(["onChange(value)", "onChange({value})", "onChange(...[value])"])(
+    "retains state payload warnings: %s",
+    (body) => {
+      const result = runRule(
+        noPropCallbackInEffect,
+        `import {useState, useEffect} from 'react'; const Panel = ({onChange}) => { const [value, setValue] = useState(''); useEffect(() => {${body}}, [value, onChange]); return null; };`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+});

@@ -1,3 +1,4 @@
+import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { INDEX_PARAMETER_NAMES } from "../../constants/react.js";
@@ -1601,6 +1602,7 @@ const DERIVED_NAME_SCAN_BUDGET = 200;
 const collectDerivedRowContentNames = (
   bindingFunction: EsTreeNode | null,
   itemNames: ReadonlySet<string>,
+  context: RuleContext,
 ): Set<string> => {
   const names = new Set<string>();
   if (!bindingFunction || itemNames.size === 0) return names;
@@ -1609,6 +1611,9 @@ const collectDerivedRowContentNames = (
     if (budget <= 0) return false;
     budget -= 1;
     if (isFunctionLike(child) && child !== bindingFunction) return false;
+    if (isNodeOfType(child, "Identifier") && isPrimitiveAccumulator(child, context.scopes)) {
+      names.add(child.name);
+    }
     if (
       isNodeOfType(child, "VariableDeclarator") &&
       isNodeOfType(child.id, "Identifier") &&
@@ -1774,6 +1779,7 @@ export const noArrayIndexAsKey = defineRule({
       const derivedNames = collectDerivedRowContentNames(
         indexUse.binding.bindingFunction,
         itemNames,
+        context,
       );
       const iteratorCallee = indexUse.binding.iteratorCall?.callee;
       const hasDynamicReactChildren = Boolean(

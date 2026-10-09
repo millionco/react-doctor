@@ -2142,3 +2142,28 @@ describe("placeholder indices passed to class render methods", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("primitive cumulative labels", () => {
+  it.each([
+    ["total += amount", "<span>{total}</span>", 0],
+    ["total += amount", "<input defaultValue={total} />", 1],
+    ["total = amount", "<span>{total}</span>", 1],
+    ["total ||= amount", "<span>{total}</span>", 1],
+    ["total += amount", "<Label value={total} />", 1],
+  ])("checks %s with %s", (update, content, expected) => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `
+      function Scale({ amounts }) {
+        let total = 0;
+        return amounts.map((amount, index) => {
+          ${update};
+          return <div key={index}>${content}</div>;
+        });
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

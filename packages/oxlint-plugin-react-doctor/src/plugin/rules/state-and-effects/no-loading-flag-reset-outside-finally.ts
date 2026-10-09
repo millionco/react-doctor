@@ -1,3 +1,7 @@
+import { collectLoadingLifecycleResets } from "../../utils/collect-loading-lifecycle-resets.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
+import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { analyzeScopes, type ScopeAnalysis } from "../../semantic/scope-analysis.js";
@@ -10,6 +14,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import {
   chainCarriesRejectionHandler,
@@ -2250,6 +2257,200 @@ const findSingleFlightSnapshotClaim = (
   return didFindUnsafeWrite ? null : claim;
 };
 
+const isCleanupInvalidationPairedWithRestart = (
+  writeNode: EsTreeNode,
+  functionNode: EsTreeNode,
+  truthySets: ReadonlyArray<SetterCall>,
+  context: RuleContext,
+): boolean => {
+  const cleanup = findEnclosingFunction(writeNode);
+  const effect = cleanup && findEnclosingFunction(cleanup);
+  if (!cleanup || !effect || !isEffectCallback(effect, context)) return false;
+  if (!collectReturnedCleanupFunctions(effect, context.scopes).includes(cleanup)) return false;
+  const effectCall = findTransparentExpressionRoot(effect).parent;
+  if (!isNodeOfType(effectCall, "CallExpression")) return false;
+  const dependencies = effectCall.arguments[1];
+  if (!isNodeOfType(dependencies, "ArrayExpression")) return false;
+  const hasStableDependencies = dependencies.elements.every((dependency) => {
+    if (!dependency) return false;
+    if (isNodeOfType(dependency, "Literal")) return true;
+    const callback = getReactUseCallbackCall(dependency, context.scopes);
+    const callbackDependencies = callback?.arguments[1];
+    return Boolean(
+      callbackDependencies &&
+      isNodeOfType(callbackDependencies, "ArrayExpression") &&
+      callbackDependencies.elements.length === 0,
+    );
+  });
+  if (hasStableDependencies) return true;
+  return doesEffectRestartLoadingRequest(effect, functionNode, truthySets, context);
+};
+
+const doesEffectRestartLoadingRequest = (
+  effect: EsTreeNode,
+  functionNode: EsTreeNode,
+  truthySets: ReadonlyArray<SetterCall>,
+  context: RuleContext,
+): boolean => {
+  const truthyCall = truthySets[0]?.node;
+  if (!isNodeOfType(truthyCall, "CallExpression")) return false;
+  const resets = collectLoadingLifecycleResets(
+    getOwningFunction(functionNode),
+    truthyCall.callee,
+    context,
+  );
+  const resetValues = new Set(
+    resets.flatMap((reset) => [...reset.inactiveKeys].filter((key) => reset.dependencies.has(key))),
+  );
+  const coveredNodes: EsTreeNode[] = [];
+  walkOwnFunctionScope(effect, (candidate) => {
+    if (
+      isNodeOfType(candidate, "CallExpression") &&
+      resolveSameFileHelperFunction(candidate, context.scopes) === functionNode
+    )
+      coveredNodes.push(candidate);
+    if (
+      !isNodeOfType(candidate, "IfStatement") ||
+      candidate.alternate ||
+      !(
+        isUnconditionalReturnBranch(candidate.consequent) ||
+        (isNodeOfType(candidate.consequent, "BlockStatement") &&
+          isNodeOfType(candidate.consequent.body.at(-1), "ReturnStatement") &&
+          candidate.consequent.body
+            .slice(0, -1)
+            .every((statement) => isNodeOfType(statement, "ExpressionStatement")))
+      )
+    )
+      return;
+    const test = stripParenExpression(candidate.test);
+    if (!isNodeOfType(test, "UnaryExpression") || test.operator !== "!") return;
+    const guardKey = serializeReferenceKey({ node: test.argument, scopes: context.scopes });
+    if (guardKey && resetValues.has(guardKey)) coveredNodes.push(candidate.consequent);
+  });
+  return doNodesCoverEveryPathFromFunctionEntry(effect, coveredNodes, context, {
+    ignoreThrowEdges: true,
+  });
+};
+
+const hasLoadingRequestRestartOnKeys = (
+  functionNode: EsTreeNode,
+  truthySets: ReadonlyArray<SetterCall>,
+  requiredKeys: ReadonlySet<string>,
+  context: RuleContext,
+): boolean => {
+  const callbackCall = findTransparentExpressionRoot(functionNode).parent;
+  const callbackDependencies = isNodeOfType(callbackCall, "CallExpression")
+    ? callbackCall.arguments[1]
+    : null;
+  if (!isNodeOfType(callbackDependencies, "ArrayExpression")) return false;
+  const callbackKeys = callbackDependencies.elements.flatMap((dependency) => {
+    const key = dependency && serializeReferenceKey({ node: dependency, scopes: context.scopes });
+    return key ? [key] : [];
+  });
+  let restarts = false;
+  walkOwnFunctionScope(getOwningFunction(functionNode), (candidate) => {
+    if (
+      !isNodeOfType(candidate, "CallExpression") ||
+      !isReactApiCall(candidate, EFFECT_HOOK_NAMES, context.scopes, {
+        allowUnboundBareCalls: true,
+        allowGlobalReactNamespace: true,
+      })
+    )
+      return;
+    const effect = candidate.arguments[0];
+    const dependencies = candidate.arguments[1];
+    if (!isFunctionLike(effect) || !isNodeOfType(dependencies, "ArrayExpression")) return;
+    const followsCallback = dependencies.elements.some(
+      (dependency) =>
+        dependency && getReactUseCallbackCall(dependency, context.scopes) === callbackCall,
+    );
+    const coveredKeys = new Set(
+      dependencies.elements.flatMap((dependency) => {
+        const key =
+          dependency && serializeReferenceKey({ node: dependency, scopes: context.scopes });
+        return key ? [key] : [];
+      }),
+    );
+    if (followsCallback) for (const key of callbackKeys) coveredKeys.add(key);
+    if (
+      [...requiredKeys].every((key) => coveredKeys.has(key)) &&
+      doesEffectRestartLoadingRequest(effect, functionNode, truthySets, context)
+    )
+      restarts = true;
+  });
+  return restarts;
+};
+
+const isLifecycleResetPairedInvalidation = (
+  write: EsTreeNode,
+  functionNode: EsTreeNode,
+  truthySets: ReadonlyArray<SetterCall>,
+  context: RuleContext,
+): boolean => {
+  const truthyCall = truthySets[0]?.node;
+  if (!isNodeOfType(truthyCall, "CallExpression")) return false;
+  const owner = getOwningFunction(functionNode);
+  const effect = findEnclosingFunction(write);
+  if (effect && isEffectCallback(effect, context)) {
+    const calls: EsTreeNode[] = [];
+    walkOwnFunctionScope(effect, (candidate) => {
+      if (
+        isNodeOfType(candidate, "CallExpression") &&
+        resolveSameFileHelperFunction(candidate, context.scopes) === functionNode
+      )
+        calls.push(candidate);
+    });
+    if (doNodesCoverEveryPathAfterNode(write, calls, context)) return true;
+  }
+  return collectLoadingLifecycleResets(owner, truthyCall.callee, context).some(
+    (reset) =>
+      isNodeOfType(reset.boundary, "BlockStatement") &&
+      isNodeOnUnconditionalPath(write, reset.boundary) &&
+      hasLoadingRequestRestartOnKeys(functionNode, truthySets, reset.dependencies, context),
+  );
+};
+
+const isInactiveResetBackedInvalidation = (
+  write: EsTreeNode,
+  functionNode: EsTreeNode,
+  truthySets: ReadonlyArray<SetterCall>,
+  context: RuleContext,
+): boolean => {
+  const effect = findEnclosingFunction(write);
+  const truthyCall = truthySets[0]?.node;
+  if (!effect || !isEffectCallback(effect, context) || !isNodeOfType(truthyCall, "CallExpression"))
+    return false;
+  const effectCall = findTransparentExpressionRoot(effect).parent;
+  const dependencies = isNodeOfType(effectCall, "CallExpression") ? effectCall.arguments[1] : null;
+  if (!isNodeOfType(dependencies, "ArrayExpression")) return false;
+  const resets = collectLoadingLifecycleResets(
+    getOwningFunction(functionNode),
+    truthyCall.callee,
+    context,
+  );
+  let branch = write;
+  while (branch.parent && branch.parent !== effect) {
+    const parent = branch.parent;
+    if (isNodeOfType(parent, "IfStatement") && parent.consequent === branch && !parent.alternate) {
+      const guard = stripParenExpression(parent.test);
+      if (isNodeOfType(guard, "UnaryExpression") && guard.operator === "!") {
+        const key = serializeReferenceKey({ node: guard.argument, scopes: context.scopes });
+        return Boolean(
+          key &&
+          dependencies.elements.some(
+            (dependency) =>
+              dependency &&
+              serializeReferenceKey({ node: dependency, scopes: context.scopes }) === key,
+          ) &&
+          resets.some((reset) => reset.dependencies.has(key) && reset.inactiveKeys.has(key)),
+        );
+      }
+    }
+    branch = parent;
+  }
+  return false;
+};
+
 const findOwnershipClaim = (
   comparison: AsyncOwnershipComparison,
   functionNode: EsTreeNode,
@@ -2287,9 +2488,14 @@ const findOwnershipClaim = (
     walkOwnFunctionScope(writeFunction, (child) => {
       if (isPaired || !isNodeOfType(child, "CallExpression")) return;
       const setter = getSetterBooleanValue(child, context);
-      if (setter?.setterKey !== loadingSetterKey || !setter.value) return;
+      if (setter?.setterKey !== loadingSetterKey) return;
       const setterEntry = getDirectBlockEntry(child, writeFunction);
-      if (!setterEntry || setterEntry.block !== writeEntry.block) return;
+      if (
+        !setterEntry ||
+        setterEntry.block !== writeEntry.block ||
+        !isNodeOnUnconditionalPath(child, setterEntry.block)
+      )
+        return;
       const writeIndex = writeEntry.block.body.findIndex(
         (statement) => statement === writeEntry.entry,
       );
@@ -2350,7 +2556,10 @@ const findOwnershipClaim = (
           writeTarget &&
           serializeReferenceKey({ node: writeTarget, scopes: context.scopes }) === generationKey &&
           !isPairedOwnershipTransfer(candidate) &&
-          !isEffectInvalidationPairedWithReset(candidate, truthySets, context)
+          !isEffectInvalidationPairedWithReset(candidate, truthySets, context) &&
+          !isInactiveResetBackedInvalidation(candidate, functionNode, truthySets, context) &&
+          !isLifecycleResetPairedInvalidation(candidate, functionNode, truthySets, context) &&
+          !isCleanupInvalidationPairedWithRestart(candidate, functionNode, truthySets, context)
         ) {
           didFindOtherGenerationWrite = true;
         }
@@ -2386,7 +2595,10 @@ const findOwnershipClaim = (
       writeTarget &&
       serializeReferenceKey({ node: writeTarget, scopes: context.scopes }) === refKey &&
       !isPairedOwnershipTransfer(candidate) &&
-      !isEffectInvalidationPairedWithReset(candidate, truthySets, context)
+      !isEffectInvalidationPairedWithReset(candidate, truthySets, context) &&
+      !isInactiveResetBackedInvalidation(candidate, functionNode, truthySets, context) &&
+      !isLifecycleResetPairedInvalidation(candidate, functionNode, truthySets, context) &&
+      !isCleanupInvalidationPairedWithRestart(candidate, functionNode, truthySets, context)
     ) {
       didFindOtherWrite = true;
     }
@@ -2547,12 +2759,35 @@ interface FinalizerGuardExpressions {
   negative: EsTreeNode[];
 }
 
-const collectLogicalOperands = (expression: EsTreeNode, operator: "&&" | "||"): EsTreeNode[] => {
-  const stripped = stripParenExpression(expression);
+const collectLogicalOperands = (
+  expression: EsTreeNode,
+  operator: "&&" | "||",
+  context: RuleContext,
+  visitedPredicates = new Set<EsTreeNode>(),
+): EsTreeNode[] => {
+  let stripped = stripParenExpression(expression);
+  while (isNodeOfType(stripped, "CallExpression")) {
+    if (stripped.arguments.length > 0 || !isNodeOfType(stripped.callee, "Identifier"))
+      return [expression];
+    const predicate = resolveExactLocalFunction(stripped.callee, context.scopes);
+    if (
+      !isFunctionLike(predicate) ||
+      predicate.async ||
+      predicate.generator ||
+      predicate.params.length > 0 ||
+      visitedPredicates.has(predicate)
+    )
+      return [expression];
+    visitedPredicates.add(predicate);
+    const returnedExpression = getSingleReturnExpression(predicate);
+    if (!returnedExpression) return [expression];
+    stripped = stripParenExpression(returnedExpression);
+  }
+
   if (isNodeOfType(stripped, "LogicalExpression") && stripped.operator === operator) {
     return [
-      ...collectLogicalOperands(stripped.left, operator),
-      ...collectLogicalOperands(stripped.right, operator),
+      ...collectLogicalOperands(stripped.left, operator, context, new Set(visitedPredicates)),
+      ...collectLogicalOperands(stripped.right, operator, context, new Set(visitedPredicates)),
     ];
   }
   return [stripped];
@@ -2561,6 +2796,7 @@ const collectLogicalOperands = (expression: EsTreeNode, operator: "&&" | "||"): 
 const collectFinalizerGuardExpressions = (
   resetNode: EsTreeNode,
   protectingTry: EsTreeNodeOfType<"TryStatement">,
+  context: RuleContext,
 ): FinalizerGuardExpressions | null => {
   const positive: EsTreeNode[] = [];
   const negative: EsTreeNode[] = [];
@@ -2569,10 +2805,10 @@ const collectFinalizerGuardExpressions = (
   while (cursor && cursor !== protectingTry) {
     if (isNodeOfType(cursor, "IfStatement")) {
       if (cursor.consequent !== child || cursor.alternate !== null) return null;
-      positive.push(...collectLogicalOperands(cursor.test, "&&"));
+      positive.push(...collectLogicalOperands(cursor.test, "&&", context));
     } else if (isNodeOfType(cursor, "LogicalExpression")) {
       if (cursor.operator !== "&&" || cursor.right !== child) return null;
-      positive.push(...collectLogicalOperands(cursor.left, "&&"));
+      positive.push(...collectLogicalOperands(cursor.left, "&&", context));
     } else if (isNodeOfType(cursor, "BlockStatement")) {
       const childIndex = cursor.body.findIndex((statement) => statement === child);
       if (childIndex !== -1) {
@@ -2584,7 +2820,7 @@ const collectFinalizerGuardExpressions = (
           ) {
             continue;
           }
-          negative.push(...collectLogicalOperands(statement.test, "||"));
+          negative.push(...collectLogicalOperands(statement.test, "||", context));
         }
       }
     } else if (
@@ -2606,6 +2842,121 @@ const collectFinalizerGuardExpressions = (
     : null;
 };
 
+const isResetBackedMirroredGuard = (
+  expression: EsTreeNode,
+  functionNode: EsTreeNode,
+  truthySets: ReadonlyArray<SetterCall>,
+  context: RuleContext,
+): boolean => {
+  const guard = stripParenExpression(expression);
+  const comparison =
+    isNodeOfType(guard, "BinaryExpression") && guard.operator === "===" ? guard : null;
+  const ref = comparison
+    ? (getReactRefCurrent(comparison.left, context) ??
+      getReactRefCurrent(comparison.right, context))
+    : getReactRefCurrent(guard, context);
+  const token = comparison && (ref === comparison.left ? comparison.right : comparison.left);
+  if (!ref || !isNodeOfType(ref.object, "Identifier")) return false;
+  const referenceSymbol = context.scopes.symbolFor(ref.object);
+  const hook = referenceSymbol?.initializer && stripParenExpression(referenceSymbol.initializer);
+  if (!isNodeOfType(hook, "CallExpression")) return false;
+  const initial = hook.arguments[0];
+  if (!isNodeOfType(initial, "Identifier")) return false;
+  if (
+    !referenceSymbol ||
+    referenceSymbol.references.some((reference) => {
+      const member = findTransparentExpressionRoot(reference.identifier).parent;
+      return (
+        reference.flag !== "read" ||
+        !isNodeOfType(member, "MemberExpression") ||
+        member.object !== reference.identifier ||
+        getStaticPropertyName(member) !== "current"
+      );
+    })
+  )
+    return false;
+  const valueSymbol = resolveConstIdentifierAlias(initial, context.scopes);
+  if (
+    !valueSymbol ||
+    valueSymbol.kind !== "parameter" ||
+    valueSymbol.references.some((reference) => reference.flag !== "read")
+  )
+    return false;
+  if (token && resolveConstIdentifierAlias(token, context.scopes)?.id !== valueSymbol.id)
+    return false;
+  const owner = getOwningFunction(functionNode);
+  const refKey = serializeReferenceKey({ node: ref, scopes: context.scopes });
+  let synchronized = false;
+  let invalidWrite = false;
+  walkAst(owner, (candidate) => {
+    let target: EsTreeNode | null = null;
+    if (isNodeOfType(candidate, "AssignmentExpression")) target = candidate.left;
+    else if (
+      isNodeOfType(candidate, "UpdateExpression") ||
+      (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "delete")
+    )
+      target = candidate.argument;
+    if (!target || serializeReferenceKey({ node: target, scopes: context.scopes }) !== refKey)
+      return;
+    const boundary = findEnclosingFunction(candidate);
+    const value =
+      isNodeOfType(candidate, "AssignmentExpression") && candidate.operator === "="
+        ? stripParenExpression(candidate.right)
+        : null;
+    if (
+      !isNodeOfType(value, "Identifier") ||
+      resolveConstIdentifierAlias(value, context.scopes)?.id !== valueSymbol.id ||
+      (boundary !== owner && (!boundary || !isEffectCallback(boundary, context))) ||
+      !context.cfg.isUnconditionalFromEntry(candidate)
+    ) {
+      invalidWrite = true;
+    } else {
+      if (boundary !== owner) {
+        if (!isFunctionLike(boundary) || boundary.async || boundary.generator) {
+          invalidWrite = true;
+          return;
+        }
+        const call = findTransparentExpressionRoot(boundary).parent;
+        const dependencies = isNodeOfType(call, "CallExpression") ? call.arguments[1] : null;
+        if (
+          dependencies &&
+          (!isNodeOfType(dependencies, "ArrayExpression") ||
+            !dependencies.elements.some(
+              (dependency) =>
+                dependency &&
+                resolveConstIdentifierAlias(dependency, context.scopes)?.id === valueSymbol.id,
+            ))
+        ) {
+          invalidWrite = true;
+          return;
+        }
+      }
+      synchronized = true;
+    }
+  });
+  if (!synchronized || invalidWrite) return false;
+  const truthyCall = truthySets[0]?.node;
+  if (!isNodeOfType(truthyCall, "CallExpression")) return false;
+  const valueKey = serializeReferenceKey({
+    node: valueSymbol.bindingIdentifier,
+    scopes: context.scopes,
+  });
+  return Boolean(
+    valueKey &&
+    collectLoadingLifecycleResets(owner, truthyCall.callee, context).some((reset) => {
+      if (!reset.dependencies.has(valueKey)) return false;
+      if (!comparison) return reset.inactiveKeys.has(valueKey);
+      if (
+        isNodeOfType(reset.value, "Literal") &&
+        reset.value.value === false &&
+        !reset.onlyInactive
+      )
+        return true;
+      return hasLoadingRequestRestartOnKeys(functionNode, truthySets, new Set([valueKey]), context);
+    }),
+  );
+};
+
 const isPositiveFinalizerGuard = (
   expression: EsTreeNode,
   resetNode: EsTreeNode,
@@ -2613,18 +2964,39 @@ const isPositiveFinalizerGuard = (
   truthySets: ReadonlyArray<SetterCall>,
   firstRiskyAwait: AwaitSite,
   context: RuleContext,
-): boolean =>
-  isCleanupBackedLifecycleGuard(expression, functionNode, context) ||
-  isStableAsyncOwnershipGuard(expression, "owns", functionNode, context) ||
-  isClaimedOwnershipComparison(
-    expression,
-    "owns",
-    functionNode,
-    truthySets,
-    firstRiskyAwait,
-    resetNode,
-    context,
+  visitedGuards = new Set<EsTreeNode>(),
+): boolean => {
+  if (visitedGuards.has(expression)) return false;
+  visitedGuards.add(expression);
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!") {
+    return collectLogicalOperands(candidate.argument, "||", context).every((guard) =>
+      isNegativeFinalizerGuard(
+        guard,
+        resetNode,
+        functionNode,
+        truthySets,
+        firstRiskyAwait,
+        context,
+        new Set(visitedGuards),
+      ),
+    );
+  }
+  return (
+    isResetBackedMirroredGuard(expression, functionNode, truthySets, context) ||
+    isCleanupBackedLifecycleGuard(expression, functionNode, context) ||
+    isStableAsyncOwnershipGuard(expression, "owns", functionNode, context) ||
+    isClaimedOwnershipComparison(
+      expression,
+      "owns",
+      functionNode,
+      truthySets,
+      firstRiskyAwait,
+      resetNode,
+      context,
+    )
   );
+};
 
 const isNegativeFinalizerGuard = (
   expression: EsTreeNode,
@@ -2633,16 +3005,22 @@ const isNegativeFinalizerGuard = (
   truthySets: ReadonlyArray<SetterCall>,
   firstRiskyAwait: AwaitSite,
   context: RuleContext,
+  visitedGuards = new Set<EsTreeNode>(),
 ): boolean => {
+  if (visitedGuards.has(expression)) return false;
+  visitedGuards.add(expression);
   const stripped = stripParenExpression(expression);
   if (isNodeOfType(stripped, "UnaryExpression") && stripped.operator === "!") {
-    return isPositiveFinalizerGuard(
-      stripped.argument,
-      resetNode,
-      functionNode,
-      truthySets,
-      firstRiskyAwait,
-      context,
+    return collectLogicalOperands(stripped.argument, "&&", context).every((guard) =>
+      isPositiveFinalizerGuard(
+        guard,
+        resetNode,
+        functionNode,
+        truthySets,
+        firstRiskyAwait,
+        context,
+        new Set(visitedGuards),
+      ),
     );
   }
   return (
@@ -2666,7 +3044,7 @@ const isFinalizerResetProvablyGuarded = (
   firstRiskyAwait: AwaitSite,
   context: RuleContext,
 ): boolean => {
-  const guards = collectFinalizerGuardExpressions(resetNode, protectingTry);
+  const guards = collectFinalizerGuardExpressions(resetNode, protectingTry, context);
   return Boolean(
     guards &&
     guards.positive.every((guard) =>

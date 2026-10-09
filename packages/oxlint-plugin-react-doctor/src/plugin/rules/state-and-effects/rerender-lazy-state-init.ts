@@ -1,3 +1,4 @@
+import { isCheapPrimitiveValue } from "../../utils/is-cheap-primitive-value.js";
 import { TRIVIAL_INITIALIZER_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -97,6 +98,14 @@ export const rerenderLazyStateInit = defineRule({
       const calleeName = calleeIsIdentifier ? callee.name : (memberPropertyName ?? "fn");
 
       if (TRIVIAL_INITIALIZER_NAMES.has(calleeName)) return;
+      if (
+        isNodeOfType(callee, "MemberExpression") &&
+        !callee.computed &&
+        memberPropertyName === "toString" &&
+        initializer.arguments.length === 0 &&
+        isCheapPrimitiveValue(callee.object, context.scopes, EAGER_CALL_RESOLUTION_DEPTH_LIMIT)
+      )
+        return;
       if (
         memberPropertyName &&
         (initializer.arguments ?? []).length === 0 &&

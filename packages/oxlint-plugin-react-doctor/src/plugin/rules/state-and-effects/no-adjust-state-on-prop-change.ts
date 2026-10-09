@@ -1,3 +1,4 @@
+import { isReleasedObjectUrlStateWrite } from "./utils/is-released-object-url-state-write.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -92,6 +93,7 @@ export const noAdjustStateOnPropChange = defineRule({
       for (const fact of facts) {
         if (
           fact.isDeferred ||
+          isReleasedObjectUrlStateWrite(fact.callExpression, context) ||
           hasDeferredOrExternalEffectWork(analysis, node, context, fact.callExpression)
         ) {
           continue;

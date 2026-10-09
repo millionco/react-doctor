@@ -1,7 +1,7 @@
+import { isNativeTimerIdentifier } from "../../utils/is-native-timer-identifier.js";
 import {
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
   SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP,
-  TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
   TIMER_CLEANUP_CALLEE_NAMES,
 } from "../../constants/dom.js";
 import {
@@ -605,7 +605,10 @@ const resolveReadOnlyEventListenerOptions = (
   if (!optionsSymbol || !initializer) {
     return resolveStableValue(unwrappedOptions, context);
   }
-  if (!isNodeOfType(initializer, "ObjectExpression")) {
+  if (
+    !isNodeOfType(initializer, "ObjectExpression") &&
+    !isNodeOfType(initializer, "ConditionalExpression")
+  ) {
     if (isNodeOfType(initializer, "Identifier") || isNodeOfType(initializer, "MemberExpression")) {
       return null;
     }
@@ -1529,7 +1532,7 @@ const collectEffectOwnedResourceCallbackFunctions = (
       let callbackArgument: EsTreeNode | null = null;
       if (
         isNodeOfType(child.callee, "Identifier") &&
-        TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(child.callee.name)
+        isNativeTimerIdentifier(child.callee, context.scopes)
       ) {
         const timerCallback = child.arguments?.[0];
         callbackArgument = timerCallback && isAstNode(timerCallback) ? timerCallback : null;
@@ -1608,7 +1611,7 @@ const findSubscribeLikeUsages = (
 
     if (
       isNodeOfType(child.callee, "Identifier") &&
-      TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(child.callee.name)
+      isNativeTimerIdentifier(child.callee, context.scopes)
     ) {
       if (
         child.callee.name === "setTimeout" &&
@@ -7462,10 +7465,22 @@ const findDirectExhaustiveForEachCleanupFunction = (
     }
     const forEachCall = findEnclosingForEachCall(ownerFunction);
     if (!forEachCall) {
-      return replayedCollectionKeys.size === requiredCollectionKeys.size &&
-        isReturnedEffectCleanupFunction(ownerFunction, context)
-        ? ownerFunction
-        : null;
+      if (
+        replayedCollectionKeys.size !== requiredCollectionKeys.size ||
+        ownerFunction.async ||
+        ownerFunction.generator
+      )
+        return null;
+      if (isReturnedEffectCleanupFunction(ownerFunction, context)) return ownerFunction;
+      const bindingIdentifier = getFunctionBindingIdentifier(ownerFunction);
+      const symbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
+      const reference = symbol?.references[0];
+      const caller = reference ? findEnclosingFunction(reference.identifier) : null;
+      const invocation = caller ? findSingleDirectInvocation(ownerFunction, caller, context) : null;
+      if (!invocation || !caller || !isFunctionLike(caller)) return null;
+      if (isNodeOfType(caller.body, "BlockStatement") && caller.body.body.length !== 1) return null;
+      currentNode = findTransparentExpressionRoot(invocation);
+      continue;
     }
     const forEachCallee = stripParenExpression(forEachCall.callee);
     if (!isNodeOfType(forEachCallee, "MemberExpression")) return null;
@@ -10100,10 +10115,8 @@ const findRetainedFunctionLeak = (
 
     if (
       isNodeOfType(child.callee, "Identifier") &&
-      (child.callee.name === "setInterval" ||
-        (options?.includeOneShotTimers === true &&
-          child.callee.name === "setTimeout" &&
-          context.scopes.isGlobalReference(child.callee))) &&
+      isNativeTimerIdentifier(child.callee, context.scopes) &&
+      (child.callee.name === "setInterval" || options?.includeOneShotTimers === true) &&
       (options?.allowReturnedTimerEscape === false ||
         !doesResourceResultEscape(child, true, allowReturnedResourceEscape, context)) &&
       !isDeferredTeardownTimer(child) &&

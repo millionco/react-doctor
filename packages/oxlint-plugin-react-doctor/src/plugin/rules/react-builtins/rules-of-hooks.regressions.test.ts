@@ -1398,6 +1398,90 @@ describe("react-builtins/rules-of-hooks — local member use bindings", () => {
   });
 });
 
+describe("CommonJS component registration APIs", () => {
+  it.each([
+    `var Registry = require('react_ujs'); Registry.useContext(context);`,
+    `const Registry = require('react_ujs'); Registry.useContexts(contexts);`,
+    `import Registry from 'react_ujs'; Registry.useContext(context);`,
+    `import * as Registry from 'react_ujs'; Registry.useContexts(contexts);`,
+  ])("accepts framework registration: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toEqual([]);
+  });
+  it.each([
+    `const React = require('react'); React.useContext(context);`,
+    `var Registry = require('react_ujs'); Registry = React; Registry.useContext(context);`,
+    `const Registry = require('react_ujs'); Registry.useContext = useContext; Registry.useContext(context);`,
+    `const require = load; const Registry = require('react_ujs'); Registry.useContext(context);`,
+    `const Registry = require('./hooks'); Registry.useContext(context);`,
+    `const Registry = require('react_ujs').Hooks; Registry.useContext(context);`,
+    `const Registry = require('react_ujs'); Registry.useState(0);`,
+  ])("retains hook enforcement without proven registration: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toHaveLength(1);
+  });
+});
+describe("non-React runtime hook names", () => {
+  it.each([
+    `import {createSignal} from 'solid-js'; import {useData} from './store'; export const useSelection = (enabled) => { if (enabled) return useData(); };`,
+    `import {component$} from '@builder.io/qwik'; import {useData} from './store'; const create = async () => useData();`,
+  ])("does not apply React hook ordering to another runtime: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toEqual([]);
+  });
+  it.each([
+    `import {createSignal} from 'solid-js'; import {useState} from 'react'; const Panel = ({enabled}) => { if (enabled) useState(0); return null; };`,
+    `import type {Accessor} from 'solid-js'; import {useData} from './store'; const Panel = ({enabled}) => { if (enabled) useData(); return null; };`,
+    `import {useData} from './store'; const Panel = ({enabled}) => { if (enabled) useData(); return null; };`,
+  ])("retains React and unproven hook checks: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toHaveLength(1);
+  });
+});
+
+describe("named render functions passed to React wrappers", () => {
+  it.each([
+    "function $Panel(props, ref) { useState(false); return null; } const Panel = React.forwardRef($Panel);",
+    "const renderPanel = (props, ref) => { useState(false); return null; }; const Panel = React.forwardRef(renderPanel);",
+    "function $Panel() { useState(false); return null; } const Panel = wrap($Panel);",
+    "function $Panel() { useState(false); return null; } const Panel = React.memo($Panel);",
+  ])("accepts a named render callback: %s", (code) => {
+    const result = runRule(
+      rulesOfHooks,
+      `import React, {useState, forwardRef as wrap} from 'react'; ${code}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "function $Panel() { if (enabled) useState(false); return null; } const Panel = React.forwardRef($Panel);",
+    "function $Panel() { useState(false); return null; } const Panel = React.memo(Component, $Panel);",
+    "function $Panel() { useState(false); return null; } const forwardRef = createUtility(); const Panel = forwardRef($Panel);",
+    "function $Panel() { useState(false); return null; } const Panel = unrelated($Panel);",
+    "function $Panel() { useState(false); return null; } $Panel = replacement; const Panel = React.forwardRef($Panel);",
+    "function $Panel() { const handler = () => useState(false); return null; } const Panel = React.forwardRef($Panel);",
+  ])("keeps conditional, nested, and non-render callback warnings: %s", (code) => {
+    const result = runRule(rulesOfHooks, `import React, {useState} from 'react'; ${code}`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("Angular component ownership", () => {
+  it.each([
+    `import {Component} from '@angular/core'; import {useLocale} from './locale'; @Component({}) class Sidebar { locale = useLocale(); }`,
+    `import {Component as View} from '@angular/core'; import {useLocale} from './locale'; @View({}) class Sidebar { locale = useLocale(); }`,
+    `import * as Angular from '@angular/core'; import {useLocale} from './locale'; @Angular.Component({}) class Sidebar { locale = useLocale(); }`,
+  ])("does not infer React hooks for an Angular-owned helper: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toEqual([]);
+  });
+  it.each([
+    `import {Component} from '@angular/core'; import {useState} from 'react'; @Component({}) class Sidebar { value = useState(0); }`,
+    `import {Component} from '@angular/core'; import {useSelector} from 'react-redux'; @Component({}) class Sidebar { value = useSelector(select); }`,
+    `const Component = decorate; import {useLocale} from './locale'; @Component({}) class Sidebar { value = useLocale(); }`,
+    `import {Component} from '@angular/core'; import {useLocale} from './locale'; class Sidebar { value = useLocale(); }`,
+    `import {Component} from '@angular/core'; import {useLocale} from './react-locale'; @Component({}) class Sidebar { value = useLocale(); }`,
+  ])("keeps React or unproven class hook checks: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toHaveLength(1);
+  });
+});
+
 describe("imported static data getters", () => {
   it.each([
     ['const value = "ready"; const alias = value; export const useData = () => `${alias}`;', 0],

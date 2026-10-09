@@ -1184,12 +1184,9 @@ const isRepeatedLiteralPlaceholderIterator = (
   let readsIndexedData = false;
   walkAst(callback.body, (node) => {
     if (readsIndexedData) return false;
-    const candidates =
-      isNodeOfType(node, "MemberExpression") && node.computed
-        ? [node.property]
-        : isNodeOfType(node, "CallExpression")
-          ? node.arguments
-          : [];
+    let candidates: EsTreeNode[] = [];
+    if (isNodeOfType(node, "MemberExpression") && node.computed) candidates = [node.property];
+    else if (isNodeOfType(node, "CallExpression")) candidates = node.arguments;
     readsIndexedData = candidates.some(
       (candidate) => findPositionalIndexUse(candidate, 0)?.binding.bindingFunction === callback,
     );

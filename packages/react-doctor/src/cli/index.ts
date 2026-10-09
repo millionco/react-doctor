@@ -13,6 +13,7 @@ import { isExpectedUserError } from "./utils/is-expected-user-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
 import type { InspectFlags } from "./utils/inspect-flags.js";
 import { normalizeHelpInvocation } from "./utils/normalize-help-command.js";
+import { parseWarningExitCode } from "./utils/parse-warning-exit-code.js";
 import { printDebugTrace } from "./utils/print-debug-trace.js";
 import { assertNoRemovedFlags } from "./utils/removed-cli-flags.js";
 import { reportErrorToSentry } from "./utils/report-error.js";
@@ -260,6 +261,11 @@ const program = new Command()
   .option(
     "--blocking <level>",
     "severity that fails CI: error (default), warning, or none (advisory)",
+  )
+  .option(
+    "--warning-exit-code <code>",
+    "exit code for non-blocking warnings (2-255). Ignored with --blocking none or --score",
+    parseWarningExitCode,
   )
   .addOption(
     // Deprecated alias for --blocking (warns at runtime). Hidden from --help but
@@ -520,6 +526,11 @@ program
   .option(
     "--blocking <level>",
     "severity that fails CI: error (default), warning, or none (advisory)",
+  )
+  .option(
+    "--warning-exit-code <code>",
+    "exit code for non-blocking warnings (2-255). Ignored with --blocking none or --score",
+    parseWarningExitCode,
   )
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")

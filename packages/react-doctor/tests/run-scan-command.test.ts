@@ -10,7 +10,7 @@ vi.mock("../src/cli/utils/cli-migrations.js", () => ({
 }));
 
 vi.mock("../src/cli/ink/run-scan-app.js", () => ({
-  runScanApp: vi.fn(async () => ({ shouldFail: false })),
+  runScanApp: vi.fn(async () => ({ exitCode: 0 })),
 }));
 
 vi.mock("../src/cli/utils/is-non-interactive-environment.js", () => ({
@@ -72,7 +72,7 @@ describe("runScanCommand", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(shouldUseTui).mockReturnValue(true);
-    vi.mocked(runScanApp).mockResolvedValue({ shouldFail: false });
+    vi.mocked(runScanApp).mockResolvedValue({ exitCode: 0 });
     process.exitCode = undefined;
   });
 
@@ -85,6 +85,7 @@ describe("runScanCommand", () => {
   it("runs the interactive report with the root scan flags", async () => {
     const flags = {
       blocking: undefined,
+      warningExitCode: 123,
       diff: false,
       failOn: "warning",
       project: "app",
@@ -109,6 +110,7 @@ describe("runScanCommand", () => {
       projectFlag: "app",
       skipPrompts: true,
       blocking: "warning",
+      warningExitCode: 123,
       flags,
     });
     expect(recordCount).toHaveBeenCalledWith(METRIC.cliInvoked, 1, { command: "inspect" });
@@ -147,12 +149,12 @@ describe("runScanCommand", () => {
     expect(runScanApp).not.toHaveBeenCalled();
   });
 
-  it("preserves the TUI scan exit code", async () => {
-    vi.mocked(runScanApp).mockResolvedValue({ shouldFail: true });
+  it.each([1, 123])("preserves the TUI scan exit code %i", async (exitCode) => {
+    vi.mocked(runScanApp).mockResolvedValue({ exitCode });
 
     await runScanCommand({ directory: "/tmp/project", flags: {}, invocationCommand: "inspect" });
 
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(exitCode);
   });
 
   it("disables every scan cache when requested", async () => {

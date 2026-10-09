@@ -2,7 +2,7 @@ import path from "node:path";
 import { resolveScanTarget } from "@react-doctor/core";
 import { inspectAction } from "./inspect.js";
 import { runProjectMigrations } from "../utils/cli-migrations.js";
-import { METRIC } from "../utils/constants.js";
+import { METRIC, SCAN_SUCCESS_EXIT_CODE } from "../utils/constants.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";
 import { recordCount } from "../utils/record-metric.js";
 import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
@@ -44,7 +44,7 @@ export const runScanCommand = async (input: RunScanCommandInput): Promise<void> 
   warnDeprecatedDiff(input.flags, scanTarget.userConfig);
   recordCount(METRIC.cliInvoked, 1, { command: input.invocationCommand });
   const { runScanApp } = await import("../ink/run-scan-app.js");
-  const { shouldFail } = await runScanApp({
+  const { exitCode } = await runScanApp({
     directory: input.directory,
     scanTarget,
     options: resolveCliInspectOptions(input.flags, null),
@@ -52,6 +52,7 @@ export const runScanCommand = async (input: RunScanCommandInput): Promise<void> 
     skipPrompts: input.flags.yes ?? false,
     blocking: input.flags.blocking ?? input.flags.failOn,
     flags: input.flags,
+    warningExitCode: input.flags.warningExitCode,
   });
-  if (shouldFail) process.exitCode = 1;
+  if (exitCode !== SCAN_SUCCESS_EXIT_CODE) process.exitCode = exitCode;
 };

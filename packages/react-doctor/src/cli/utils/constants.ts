@@ -1,3 +1,7 @@
+export const SCAN_SUCCESS_EXIT_CODE = 0;
+export const SCAN_FAILURE_EXIT_CODE = 1;
+export const MAX_WARNING_EXIT_CODE = 255;
+
 // Exit code for processes terminated by SIGINT (Ctrl-C), per POSIX
 // (128 + signal number). Used by exit-gracefully.ts on SIGINT/SIGTERM.
 export const SIGINT_EXIT_CODE = 130;
@@ -302,6 +306,7 @@ export const METRIC = {
   projectPathSelected: "project.path_selected",
   projectConfigSelected: "project.config_selected",
   scanCompleted: "scan.completed",
+  scanWarningExitCodeConfigured: "scan.warning_exit_code.configured",
   scanDuration: "scan.duration",
   scanFeedbackDelay: "scan.feedback_delay",
   scanPhaseDuration: "scan.phase_duration",

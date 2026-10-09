@@ -670,7 +670,7 @@ describe("runScanApp", () => {
     expect(firstOptions?.deadlineEpochMs).toBe(secondOptions?.deadlineEpochMs);
     expect(firstOptions?.deadlineEpochMs).toBeTypeOf("number");
     expect(mockState.lifecycleEvents).toEqual(["footer", "handoff"]);
-    expect(result.shouldFail).toBe(true);
+    expect(result.exitCode).toBe(1);
   });
 
   it("copies the full handoff prompt after exiting the report", async () => {
@@ -742,7 +742,7 @@ describe("runScanApp", () => {
       { directory: adminDirectory, reason: "max-duration" },
       { directory: webDirectory, reason: "max-duration" },
     ]);
-    expect(result.shouldFail).toBe(false);
+    expect(result.exitCode).toBe(0);
   });
 
   it("uses the configured blocking level and ciFailure surface for the exit gate", async () => {
@@ -761,14 +761,14 @@ describe("runScanApp", () => {
     });
 
     const advisoryResult = await runScanApp({ directory: rootDirectory, skipPrompts: true });
-    expect(advisoryResult.shouldFail).toBe(false);
+    expect(advisoryResult.exitCode).toBe(0);
 
     const flagOverrideResult = await runScanApp({
       directory: rootDirectory,
       skipPrompts: true,
       blocking: "warning",
     });
-    expect(flagOverrideResult.shouldFail).toBe(true);
+    expect(flagOverrideResult.exitCode).toBe(1);
     expect(vi.mocked(inspect).mock.calls.at(-1)?.[1]?.warnings).toBe(true);
 
     mockState.scanTargets.set(
@@ -792,7 +792,29 @@ describe("runScanApp", () => {
       directory: rootDirectory,
       skipPrompts: true,
     });
-    expect(surfaceExcludedResult.shouldFail).toBe(false);
+    expect(surfaceExcludedResult.exitCode).toBe(0);
+  });
+
+  it("returns the custom warning exit code from the interactive report", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, {
+      ...buildInspectResult(rootDirectory),
+      diagnostics: [buildDiagnostic({ severity: "warning" })],
+    });
+
+    const result = await runScanApp({
+      directory: rootDirectory,
+      skipPrompts: true,
+      warningExitCode: 123,
+    });
+
+    expect(result.exitCode).toBe(123);
   });
 
   it("keeps diagnostics advisory when an intended baseline cannot be computed", async () => {
@@ -814,16 +836,20 @@ describe("runScanApp", () => {
     );
     mockState.inspectResults.set(rootDirectory, {
       ...buildInspectResult(rootDirectory),
-      diagnostics: [buildDiagnostic({ severity: "error" })],
+      diagnostics: [
+        buildDiagnostic({ severity: "error" }),
+        buildDiagnostic({ severity: "warning" }),
+      ],
     });
 
     const result = await runScanApp({
       directory: rootDirectory,
       flags: { scope: "changed" },
+      warningExitCode: 123,
       skipPrompts: true,
     });
 
-    expect(result.shouldFail).toBe(false);
+    expect(result.exitCode).toBe(0);
   });
 
   it("applies the CLI surface and category filter to the TUI report", async () => {

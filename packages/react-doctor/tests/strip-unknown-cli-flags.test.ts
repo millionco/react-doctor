@@ -5,6 +5,23 @@ const stripUserArguments = (userArguments: ReadonlyArray<string>): string[] =>
   stripUnknownCliFlags(["node", "react-doctor", ...userArguments]).slice(2);
 
 describe("stripUnknownCliFlags", () => {
+  it.each([[], ["design"], ["experimental-tui"]])(
+    "keeps both warning exit code forms for command %j",
+    (...command) => {
+      expect(stripUserArguments([...command, "--warning-exit-code", "123", "."])).toEqual([
+        ...command,
+        "--warning-exit-code",
+        "123",
+        ".",
+      ]);
+      expect(stripUserArguments([...command, "--warning-exit-code=123", "."])).toEqual([
+        ...command,
+        "--warning-exit-code=123",
+        ".",
+      ]);
+    },
+  );
+
   it("drops unknown root flags before Commander can treat them as directory arguments", () => {
     expect(stripUserArguments(["--offline", "."])).toEqual(["."]);
     expect(stripUserArguments([".", "--offline"])).toEqual(["."]);

@@ -64,3 +64,7 @@ npx react-doctor@latest --verbose --scope changed
 ### Reuse a base scan
 
 Save a complete `--json` scan, then pass `--baseline base-report.json` to report only new findings. This also works with `--scope changed`. Use the same version and rules for both scans. Findings are grouped by rule and file path, following Git renames. Only increases in each group's count are reported; groups without an increase skip location matching. Fingerprints, message similarity, and Git-adjusted line distance select the added findings. Formatting and edits that keep the same counts report no new findings. Saved reports must use the same `textComponents`, `rawTextWrapperComponents`, and `respectInlineDisables` settings. Regenerate the base report after changing these settings, or use a Git comparison. Older reports without fingerprints or `sourceFilterConfigHash` must be regenerated.
+
+### GitLab warning status
+
+For GitLab CI, `--warning-exit-code 123` returns `123` for non-blocking warnings. Pair it with `allow_failure: { exit_codes: 123 }`. Errors still return `1`. Accepts integers from `2` to `255`. `--blocking warning` still returns `1`. `--blocking none` or `--score` skips this warning signal.

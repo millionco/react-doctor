@@ -48,7 +48,7 @@ import { setUpGitHubActions } from "../utils/set-up-github-actions.js";
 import { recordCount, recordDistribution } from "../utils/record-metric.js";
 import { resolveWorkspaceDeadCodeOwner } from "../utils/resolve-workspace-dead-code-owner.js";
 import { retryMissingProjectScores } from "../utils/retry-missing-project-scores.js";
-import { METRIC } from "../utils/constants.js";
+import { METRIC, SCAN_SUCCESS_EXIT_CODE } from "../utils/constants.js";
 import {
   filterScansForSurface,
   type SurfaceFilterableScan,
@@ -64,7 +64,10 @@ import {
   type ProjectScanOutcome,
 } from "../utils/project-scan-outcome.js";
 import { selectReportDiagnostics } from "../utils/select-report-diagnostics.js";
-import { shouldFailScanGate } from "../utils/should-fail-scan-gate.js";
+import {
+  resolveScanExitCode,
+  type ResolveScanExitCodeInput,
+} from "../utils/resolve-scan-exit-code.js";
 import { ProjectSelect } from "./components/project-select.js";
 import { registerMountedTuiRenderer } from "./register-mounted-tui-renderer.js";
 import { ScanApp } from "./scan-app.js";
@@ -87,10 +90,11 @@ export interface RunScanAppInput {
   readonly configProjects?: readonly string[];
   readonly share?: boolean;
   readonly blocking?: string;
+  readonly warningExitCode?: number;
 }
 
 export interface RunScanAppResult {
-  readonly shouldFail: boolean;
+  readonly exitCode: number;
 }
 
 interface ScanPresentation {
@@ -447,7 +451,7 @@ interface ExecuteTuiScan {
 const runMountedScan = async (
   rootDirectory: string,
   presentation: ScanPresentation,
-  blockingLevel: BlockingLevel,
+  gateOptions: Omit<ResolveScanExitCodeInput, "scans">,
   executeScan: ExecuteTuiScan,
 ): Promise<RunScanAppResult> => {
   const { store, pendingActions, mountRenderer, executePendingActions } = await mountScanApp(
@@ -493,9 +497,9 @@ const runMountedScan = async (
     }
     await executePendingActions();
     return {
-      shouldFail: shouldFailScanGate({
+      exitCode: resolveScanExitCode({
+        ...gateOptions,
         scans: completedScan.scans,
-        blockingLevel,
         diagnosticsAreGateExempt: completedScan.diagnosticsAreGateExempt,
       }),
     };
@@ -527,14 +531,15 @@ const runSingleProjectScan = async (
   });
   if (scopeOptions === null) {
     process.stdout.write("No changed source files in the selected project.\n");
-    return { shouldFail: false };
+    return { exitCode: SCAN_SUCCESS_EXIT_CODE };
   }
   const presentation = resolveScanPresentation(
     input,
     [projectScan],
     rootScanTarget.resolvedDirectory,
   );
-  return runMountedScan(projectScan.directory, presentation, blockingLevel, async (context) => {
+  const gateOptions = { blockingLevel, warningExitCode: input.warningExitCode };
+  return runMountedScan(projectScan.directory, presentation, gateOptions, async (context) => {
     const result = await inspectProject(projectScan.directory, {
       ...resolveTuiInspectOptions(input, projectScan.config),
       ...scopeOptions,
@@ -625,7 +630,7 @@ const runMultiProjectScan = async (
   });
   if (projectScans.length === 0) {
     process.stdout.write("No changed source files in the selected projects.\n");
-    return { shouldFail: false };
+    return { exitCode: SCAN_SUCCESS_EXIT_CODE };
   }
   const projectCount = projectScans.length;
   const rootProjectScan = discoveredProjectScans.find(
@@ -646,7 +651,8 @@ const runMultiProjectScan = async (
     projectScans.map(({ projectScan }) => projectScan),
     rootDirectory,
   );
-  return runMountedScan(rootDirectory, presentation, blockingLevel, async (context) => {
+  const gateOptions = { blockingLevel, warningExitCode: input.warningExitCode };
+  return runMountedScan(rootDirectory, presentation, gateOptions, async (context) => {
     const startTime = performance.now();
     let finishedCount = 0;
     recordDistribution(METRIC.scanFeedbackDelay, performance.now() - feedbackStartTime, {
@@ -852,6 +858,9 @@ export const runScanApp = async (input: RunScanAppInput): Promise<RunScanAppResu
     configProjects: input.configProjects ?? scanTarget.userConfig?.projects,
     share: input.share ?? scanTarget.userConfig?.share ?? true,
   };
+  if (input.warningExitCode !== undefined) {
+    recordCount(METRIC.scanWarningExitCodeConfigured);
+  }
   const { selectedDirectories, workspaceProjectDirectories } = await resolveProjectSelection(
     rootDirectory,
     resolvedInput,
@@ -863,7 +872,7 @@ export const runScanApp = async (input: RunScanAppInput): Promise<RunScanAppResu
   );
 
   if (selectedDirectories.length === 0) {
-    return { shouldFail: false };
+    return { exitCode: SCAN_SUCCESS_EXIT_CODE };
   }
   if (selectedDirectories.length === 1) {
     return runSingleProjectScan(

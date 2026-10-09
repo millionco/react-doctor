@@ -9,13 +9,13 @@ import {
 } from "@react-doctor/core";
 import { buildFinalCliScanOutcome, type CompletedScan } from "./build-final-cli-scan-outcome.js";
 import { cliLogger as logger } from "./cli-logger.js";
-import { METRIC } from "./constants.js";
+import { METRIC, SCAN_SUCCESS_EXIT_CODE } from "./constants.js";
 import { formatSkippedProjectsMessage } from "./format-skipped-projects-message.js";
 import type { InspectFlags } from "./inspect-flags.js";
 import { writeJsonReport } from "./json-mode.js";
 import { recordCount } from "./record-metric.js";
 import { resolveBlockingLevel } from "./resolve-blocking-level.js";
-import { shouldFailScanGate } from "./should-fail-scan-gate.js";
+import { resolveScanExitCode } from "./resolve-scan-exit-code.js";
 import { runGit } from "./git-hook-shared.js";
 import { VERSION } from "./version.js";
 
@@ -89,13 +89,14 @@ export const finalizeCliScans = (input: FinalizeCliScansInput): void => {
     );
   }
 
-  if (
-    shouldFailScanGate({
-      scans: input.completedScans,
-      blockingLevel: resolveBlockingLevel(input.flags, input.userConfig),
-      diagnosticsAreGateExempt: input.isScoreOnly || outcome.baselineDegraded,
-    })
-  ) {
-    process.exitCode = 1;
+  const exitCode = resolveScanExitCode({
+    scans: input.completedScans,
+    blockingLevel: resolveBlockingLevel(input.flags, input.userConfig),
+    diagnosticsAreGateExempt: input.isScoreOnly || outcome.baselineDegraded,
+    warningExitCode: input.flags.warningExitCode,
+  });
+  if (input.flags.warningExitCode !== undefined) {
+    recordCount(METRIC.scanWarningExitCodeConfigured);
   }
+  if (exitCode !== SCAN_SUCCESS_EXIT_CODE) process.exitCode = exitCode;
 };

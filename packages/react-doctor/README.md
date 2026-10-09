@@ -57,6 +57,20 @@ Set `comment-on-clean: false` in the Action inputs to create comments only when 
 
 With the default `version: latest`, the Action uses an installed `react-doctor` dependency when available. Set another `version` value to override the installed version. Install your project dependencies before the Action to use this path.
 
+For a GitLab warning status without blocking a merge, use a separate warning exit code:
+
+```yaml
+react-doctor:
+  script:
+    - npx react-doctor@latest . --warning-exit-code 123
+  allow_failure:
+    exit_codes: 123
+```
+
+With the default `--blocking error`, errors and hard lint failures exit with `1`. Warnings exit with `123`. Clean scans exit with `0`. The warning code must be an integer from `2` to `255`. Without this option, warnings still exit with `0`.
+
+`--blocking warning` takes priority and exits with `1` for warnings. `--blocking none` disables the warning exit code. Score-only mode and degraded baseline comparisons also skip the warning exit code. The existing warning filters and `ciFailure` surface settings still apply.
+
 [CI docs →](https://react.doctor/ci)
 
 ### 4. Configure rules

@@ -48,6 +48,7 @@ export interface InspectFlags {
   // `resolveMaxDurationFlag`.
   maxDuration?: string;
   blocking?: string;
+  warningExitCode?: number;
   /**
    * @deprecated Renamed to `blocking`. Still parsed as an alias when
    * `blocking` is unset, but triggers a one-time deprecation warning.

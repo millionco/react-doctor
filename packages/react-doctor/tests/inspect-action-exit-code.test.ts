@@ -219,6 +219,53 @@ describe("inspectAction exit-code gate", () => {
     expect(process.exitCode).toBeUndefined();
   });
 
+  it.each([{}, { json: true }, { json: true, jsonCompact: true }])(
+    "returns the custom warning exit code with output flags %j",
+    async (flags) => {
+      await runInspectAction(
+        { diagnostics: [buildDiagnostic({ severity: "warning" })] },
+        { ...flags, warningExitCode: 123 },
+      );
+      expect(process.exitCode).toBe(123);
+      if (flags.json) expect(mockState.jsonReports).toHaveLength(1);
+    },
+  );
+
+  it("keeps errors blocking when a warning exit code is set", async () => {
+    await runInspectAction(
+      {
+        diagnostics: [
+          buildDiagnostic({ severity: "warning" }),
+          buildDiagnostic({ severity: "error" }),
+        ],
+      },
+      { warningExitCode: 123 },
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("does not signal warnings excluded from the CI surface", async () => {
+    mockState.userConfig = {
+      surfaces: { ciFailure: { excludeRules: ["react-doctor/test-rule"] } },
+    };
+    await runInspectAction(
+      { diagnostics: [buildDiagnostic({ severity: "warning" })] },
+      { warningExitCode: 123 },
+    );
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it.each([{ score: true }, { blocking: "none" }])(
+    "does not signal warnings with exempt flags %j",
+    async (flags) => {
+      await runInspectAction(
+        { diagnostics: [buildDiagnostic({ severity: "warning" })] },
+        { ...flags, warningExitCode: 123 },
+      );
+      expect(process.exitCode).toBeUndefined();
+    },
+  );
+
   it("exits 0 on a complete clean scan", async () => {
     await runInspectAction({});
     expect(process.exitCode).toBeUndefined();

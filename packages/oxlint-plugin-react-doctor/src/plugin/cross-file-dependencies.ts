@@ -362,6 +362,8 @@ const collectSequentialAwaitDependencies: CrossFileDependencyCollector = (input)
 
 const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) => {
   collectFunctionExportDependencies(input, CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH);
+  collectImportedValueDependencies(input);
+  resolvePackageVersion(input.absoluteFilePath, "@xstate/react");
 };
 
 const collectCreateRefDependencies: CrossFileDependencyCollector = ({

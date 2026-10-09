@@ -2689,3 +2689,38 @@ describe("react-builtins/exhaustive-deps — upstream disable-comment suppressio
     });
   });
 });
+
+describe("stable XState service send", () => {
+  it.each([
+    ["^1.0.3", "@xstate/react", "", "service", 0],
+    ["1.6.3", "@xstate/react", "", "service", 0],
+    ["2.0.0", "@xstate/react", "", "service", 1],
+    ["1.0.3", "other-library", "", "service", 1],
+    ["1.0.3", "@xstate/react", "const local = interpret({});", "local", 1],
+    ["1.0.3", "@xstate/react", "", "incoming", 1],
+  ])("checks %s %s with %s", (version, library, local, serviceArgument, expected) => {
+    const directory = mkdtempSync(join(tmpdir(), "rd-xstate-send-"));
+    try {
+      writeFileSync(
+        join(directory, "package.json"),
+        JSON.stringify({ dependencies: { "@xstate/react": version } }),
+      );
+      writeFileSync(
+        join(directory, "service.ts"),
+        `import { interpret } from "xstate"; export const service = interpret({}); service.start();`,
+      );
+      const source = `import { useCallback } from "react"; import { interpret } from "xstate"; import { useService as useActorState } from "${library}"; import { service } from "./service";
+    function View({ incoming }) { ${local} const [state, send] = useActorState(${serviceArgument}); return useCallback(() => send("PING"), []); }`;
+      const result = runRule(exhaustiveDeps, source, { filename: join(directory, "view.tsx") });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(expected);
+      expect(
+        runRule(exhaustiveDeps, source.replace('send("PING")', "state.value"), {
+          filename: join(directory, "state.tsx"),
+        }).diagnostics,
+      ).toHaveLength(1);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

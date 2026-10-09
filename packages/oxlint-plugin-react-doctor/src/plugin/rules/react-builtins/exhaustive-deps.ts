@@ -1,3 +1,4 @@
+import { isStableXstateServiceSend } from "../../utils/is-stable-xstate-service-send.js";
 import { closureCaptures } from "../../semantic/closure-captures.js";
 import type {
   ReferenceDescriptor,
@@ -387,6 +388,7 @@ const collectCaptureDepKeys = (
   declaredExactBindingKeys?: ReadonlySet<string>,
   declaredKeys?: ReadonlySet<string>,
   allowSoleWriterEffectGuards = false,
+  filename?: string,
 ): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
@@ -404,7 +406,10 @@ const collectCaptureDepKeys = (
       stableCapturedNames.add(symbol.name);
       continue;
     }
-    if (symbolHasStableValue(symbol, scopes)) {
+    if (
+      symbolHasStableValue(symbol, scopes) ||
+      isStableXstateServiceSend(symbol, scopes, filename)
+    ) {
       stableCapturedNames.add(symbol.name);
       continue;
     }
@@ -2226,7 +2231,16 @@ If the missing value is recreated every render, move it inside the hook or stabi
           context.report({ node: depsArgument, message: buildNonArrayDepsMessage(hookName) });
           const nonArrayCaptureKeys =
             callbackToAnalyze !== null
-              ? new Set(collectCaptureDepKeys(callbackToAnalyze, context.scopes).keys)
+              ? new Set(
+                  collectCaptureDepKeys(
+                    callbackToAnalyze,
+                    context.scopes,
+                    undefined,
+                    undefined,
+                    false,
+                    context.filename,
+                  ).keys,
+                )
               : new Set<string>();
           for (const forcedCaptureKey of forcedCaptureKeys)
             nonArrayCaptureKeys.add(forcedCaptureKey);
@@ -2348,6 +2362,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           declaredExactBindingKeys,
           declaredKeys,
           SOLE_WRITER_GUARD_HOOKS.has(hookName),
+          context.filename,
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
         addAggregatePropsDependency(

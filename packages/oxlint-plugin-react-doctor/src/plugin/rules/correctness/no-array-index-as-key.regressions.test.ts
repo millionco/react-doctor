@@ -2142,3 +2142,25 @@ describe("placeholder indices passed to class render methods", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("position-only map output", () => {
+  it.each(["values.map", "values?.map"])(
+    "accepts identical slots that ignore item values: %s",
+    (map) => {
+      expect(
+        runRule(
+          noArrayIndexAsKey,
+          `const Slider = ({values, label}) => ${map}((_, index) => <Thumb key={index} aria-label={label}/>);`,
+        ).diagnostics,
+      ).toEqual([]);
+    },
+  );
+  it.each([
+    "(item, index) => <Row key={index} item={item}/>",
+    "(_, index) => <Row key={index} item={items[index]}/>",
+    "(_, index, items) => <Row key={index} item={items.at(index)}/>",
+    "(_, index) => <Row key={index} item={getItem(index)}/>",
+  ])("keeps record-dependent output checked: %s", (callback) => {
+    expect(runRule(noArrayIndexAsKey, `values.map(${callback});`).diagnostics).toHaveLength(1);
+  });
+});

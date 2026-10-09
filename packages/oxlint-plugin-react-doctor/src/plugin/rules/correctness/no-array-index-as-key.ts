@@ -1,3 +1,4 @@
+import { isPositionOnlyMap } from "../../utils/is-position-only-map.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { INDEX_PARAMETER_NAMES } from "../../constants/react.js";
@@ -1753,6 +1754,11 @@ export const noArrayIndexAsKey = defineRule({
       const indexName = indexUse.identifier.name;
       if (isNumericPlaceholderLoopCounter(node, indexName)) return;
       if (methodReceivesOnlyPlaceholderIndices(indexUse.binding)) return;
+      if (
+        indexUse.binding.iteratorCall &&
+        isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes)
+      )
+        return;
       if (
         indexUse.binding.iteratorCall &&
         iteratorCallExemptsIndexKey(indexUse.binding.iteratorCall)

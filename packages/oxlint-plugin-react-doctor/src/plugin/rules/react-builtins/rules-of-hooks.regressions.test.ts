@@ -1398,6 +1398,43 @@ describe("react-builtins/rules-of-hooks — local member use bindings", () => {
   });
 });
 
+describe("CommonJS component registration APIs", () => {
+  it.each([
+    `var Registry = require('react_ujs'); Registry.useContext(context);`,
+    `const Registry = require('react_ujs'); Registry.useContexts(contexts);`,
+    `import Registry from 'react_ujs'; Registry.useContext(context);`,
+    `import * as Registry from 'react_ujs'; Registry.useContexts(contexts);`,
+  ])("accepts framework registration: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toEqual([]);
+  });
+  it.each([
+    `const React = require('react'); React.useContext(context);`,
+    `var Registry = require('react_ujs'); Registry = React; Registry.useContext(context);`,
+    `const Registry = require('react_ujs'); Registry.useContext = useContext; Registry.useContext(context);`,
+    `const require = load; const Registry = require('react_ujs'); Registry.useContext(context);`,
+    `const Registry = require('./hooks'); Registry.useContext(context);`,
+    `const Registry = require('react_ujs').Hooks; Registry.useContext(context);`,
+    `const Registry = require('react_ujs'); Registry.useState(0);`,
+  ])("retains hook enforcement without proven registration: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toHaveLength(1);
+  });
+});
+describe("non-React runtime hook names", () => {
+  it.each([
+    `import {createSignal} from 'solid-js'; import {useData} from './store'; export const useSelection = (enabled) => { if (enabled) return useData(); };`,
+    `import {component$} from '@builder.io/qwik'; import {useData} from './store'; const create = async () => useData();`,
+  ])("does not apply React hook ordering to another runtime: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toEqual([]);
+  });
+  it.each([
+    `import {createSignal} from 'solid-js'; import {useState} from 'react'; const Panel = ({enabled}) => { if (enabled) useState(0); return null; };`,
+    `import type {Accessor} from 'solid-js'; import {useData} from './store'; const Panel = ({enabled}) => { if (enabled) useData(); return null; };`,
+    `import {useData} from './store'; const Panel = ({enabled}) => { if (enabled) useData(); return null; };`,
+  ])("retains React and unproven hook checks: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toHaveLength(1);
+  });
+});
+
 describe("named render functions passed to React wrappers", () => {
   it.each([
     "function $Panel(props, ref) { useState(false); return null; } const Panel = React.forwardRef($Panel);",
@@ -1423,5 +1460,68 @@ describe("named render functions passed to React wrappers", () => {
   ])("keeps conditional, nested, and non-render callback warnings: %s", (code) => {
     const result = runRule(rulesOfHooks, `import React, {useState} from 'react'; ${code}`);
     expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("Angular component ownership", () => {
+  it.each([
+    `import {Component} from '@angular/core'; import {useLocale} from './locale'; @Component({}) class Sidebar { locale = useLocale(); }`,
+    `import {Component as View} from '@angular/core'; import {useLocale} from './locale'; @View({}) class Sidebar { locale = useLocale(); }`,
+    `import * as Angular from '@angular/core'; import {useLocale} from './locale'; @Angular.Component({}) class Sidebar { locale = useLocale(); }`,
+  ])("does not infer React hooks for an Angular-owned helper: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toEqual([]);
+  });
+  it.each([
+    `import {Component} from '@angular/core'; import {useState} from 'react'; @Component({}) class Sidebar { value = useState(0); }`,
+    `import {Component} from '@angular/core'; import {useSelector} from 'react-redux'; @Component({}) class Sidebar { value = useSelector(select); }`,
+    `const Component = decorate; import {useLocale} from './locale'; @Component({}) class Sidebar { value = useLocale(); }`,
+    `import {Component} from '@angular/core'; import {useLocale} from './locale'; class Sidebar { value = useLocale(); }`,
+    `import {Component} from '@angular/core'; import {useLocale} from './react-locale'; @Component({}) class Sidebar { value = useLocale(); }`,
+  ])("keeps React or unproven class hook checks: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toHaveLength(1);
+  });
+});
+
+describe("imported static data getters", () => {
+  it.each([
+    ['const value = "ready"; const alias = value; export const useData = () => `${alias}`;', 0],
+    ["const value = null; export const useData = () => `${value}`;", 0],
+    [
+      'import {useState} from "react"; const value = {}; value.toString = () => useState(0)[0]; export const useData = () => `${value}`;',
+      1,
+    ],
+    [
+      'import {useState} from "react"; const value = []; const alias = value; value.toString = () => useState(0)[0]; export const useData = () => `${alias}`;',
+      1,
+    ],
+    [
+      'import {useState} from "react"; const value = /ready/; value.toString = () => useState(0)[0]; export const useData = () => `${value}`;',
+      1,
+    ],
+    ["const script = `print records`; export const useData = () => ({script});", 0],
+    ['export function useData() { return {label: "Ready", values: [1, 2]}; }', 0],
+    ['import {useState} from "react"; export const useData = () => useState(0);', 1],
+    ["export const useData = () => object.current;", 1],
+    ["export const useData = () => other();", 1],
+    ["export const useData = (value = useOther()) => ({value});", 1],
+    ['export function useData() { return "ready"; } useData = other;', 1],
+    ["export const useData = () => ({get value() { return useOther(); }});", 1],
+  ])("checks the resolved getter body: %s", (helper, expectedCount) => {
+    const directory = mkdtempSync(join(tmpdir(), "hook-data-getter-"));
+    try {
+      writeFileSync(join(directory, "data.ts"), helper);
+      const result = runRule(
+        rulesOfHooks,
+        `
+        import {useData} from './data';
+        export class Repository { read() { return useData(); } }
+      `,
+        { filename: join(directory, "repository.ts") },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(expectedCount);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

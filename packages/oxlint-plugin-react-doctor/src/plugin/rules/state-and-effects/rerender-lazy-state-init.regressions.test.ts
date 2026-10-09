@@ -276,3 +276,37 @@ describe("rerender-lazy-state-init — regressions", () => {
     });
   });
 });
+
+describe("cheap primitive string conversion", () => {
+  it.each([
+    "const width = 320; useState((width - 20).toString());",
+    "useState((42).toString());",
+    'useState("ready".toString());',
+    "const width: number = readWidth(); useState(width.toString());",
+    'const {width, height} = Dimensions.get("window"); useState((width - 20).toString()); useState(height.toString());',
+    'const {height: size} = Dimensions.get("screen"); useState(size.toString());',
+  ])("accepts cheap primitive conversion: %s", (body) => {
+    const result = runRule(
+      rerenderLazyStateInit,
+      `import {useState} from 'react'; import {Dimensions} from 'react-native'; const Panel = () => { ${body} return null; };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "useState(buildModel().toString());",
+    "const model = {toString: expensive}; useState(model.toString());",
+    "const width = input; useState(width.toString());",
+    'const Dimensions = custom; const {height} = Dimensions.get("window"); useState(height.toString());',
+    "const width = 320; useState((width - expensive()).toString());",
+    "let width = 320; width = model; useState(width.toString());",
+    'Dimensions.get = custom; const {height} = Dimensions.get("window"); useState(height.toString());',
+  ])("keeps warnings for unproven or expensive conversion: %s", (body) => {
+    const result = runRule(
+      rerenderLazyStateInit,
+      `import {useState} from 'react'; import {Dimensions} from 'react-native'; const Panel = () => { ${body} return null; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

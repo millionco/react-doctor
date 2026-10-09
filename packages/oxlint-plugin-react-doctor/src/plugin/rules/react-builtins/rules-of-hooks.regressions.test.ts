@@ -1419,3 +1419,46 @@ describe("CommonJS component registration APIs", () => {
     expect(runRule(rulesOfHooks, code).diagnostics).toHaveLength(1);
   });
 });
+describe("non-React runtime hook names", () => {
+  it.each([
+    `import {createSignal} from 'solid-js'; import {useData} from './store'; export const useSelection = (enabled) => { if (enabled) return useData(); };`,
+    `import {component$} from '@builder.io/qwik'; import {useData} from './store'; const create = async () => useData();`,
+  ])("does not apply React hook ordering to another runtime: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toEqual([]);
+  });
+  it.each([
+    `import {createSignal} from 'solid-js'; import {useState} from 'react'; const Panel = ({enabled}) => { if (enabled) useState(0); return null; };`,
+    `import type {Accessor} from 'solid-js'; import {useData} from './store'; const Panel = ({enabled}) => { if (enabled) useData(); return null; };`,
+    `import {useData} from './store'; const Panel = ({enabled}) => { if (enabled) useData(); return null; };`,
+  ])("retains React and unproven hook checks: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toHaveLength(1);
+  });
+});
+
+describe("named render functions passed to React wrappers", () => {
+  it.each([
+    "function $Panel(props, ref) { useState(false); return null; } const Panel = React.forwardRef($Panel);",
+    "const renderPanel = (props, ref) => { useState(false); return null; }; const Panel = React.forwardRef(renderPanel);",
+    "function $Panel() { useState(false); return null; } const Panel = wrap($Panel);",
+    "function $Panel() { useState(false); return null; } const Panel = React.memo($Panel);",
+  ])("accepts a named render callback: %s", (code) => {
+    const result = runRule(
+      rulesOfHooks,
+      `import React, {useState, forwardRef as wrap} from 'react'; ${code}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "function $Panel() { if (enabled) useState(false); return null; } const Panel = React.forwardRef($Panel);",
+    "function $Panel() { useState(false); return null; } const Panel = React.memo(Component, $Panel);",
+    "function $Panel() { useState(false); return null; } const forwardRef = createUtility(); const Panel = forwardRef($Panel);",
+    "function $Panel() { useState(false); return null; } const Panel = unrelated($Panel);",
+    "function $Panel() { useState(false); return null; } $Panel = replacement; const Panel = React.forwardRef($Panel);",
+    "function $Panel() { const handler = () => useState(false); return null; } const Panel = React.forwardRef($Panel);",
+  ])("keeps conditional, nested, and non-render callback warnings: %s", (code) => {
+    const result = runRule(rulesOfHooks, `import React, {useState} from 'react'; ${code}`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

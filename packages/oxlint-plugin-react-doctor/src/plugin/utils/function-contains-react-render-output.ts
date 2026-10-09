@@ -200,6 +200,7 @@ export const isReactDomCreatePortalCall = (node: EsTreeNode, scopes: ScopeAnalys
 };
 
 const containsRenderOutput = (rootNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (isNestedRenderEvidenceBoundary(rootNode, scopes)) return false;
   let hasRenderOutput = false;
   walkAst(rootNode, (node: EsTreeNode): boolean | void => {
     if (hasRenderOutput) return false;

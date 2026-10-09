@@ -2619,3 +2619,58 @@ describe("no-set-state-after-await-in-effect audit regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("fresh cancellation guard aliases", () => {
+  it.each([
+    "const stale = cancelled; if (stale) return;",
+    "const stale = Boolean(cancelled); if (stale) return;",
+    "const stale = cancelled || invalid; if (stale) return;",
+    "const stale = cancelled; const shouldStop = stale; if (shouldStop) return;",
+    "const active = !cancelled; if (!active) return;",
+  ])("accepts a guard read after suspension: %s", (guard) => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      import {useEffect, useState} from 'react';
+      const Panel = ({load, invalid}) => {
+        const [value, setValue] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => { const data = await load(); ${guard} setValue(data); };
+          run();
+          return () => { cancelled = true; };
+        }, [load]);
+        return null;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "const stale = cancelled; const data = await load(); if (stale) return; setValue(data);",
+    "const data = await load(); const stale = cancelled; await load(); if (stale) return; setValue(data);",
+    "const data = await load(); const stale = cancelled && invalid; if (stale) return; setValue(data);",
+    "const data = await load(); const Boolean = custom; const stale = Boolean(cancelled); if (stale) return; setValue(data);",
+    "const data = await load(); let stale = cancelled; stale = false; if (stale) return; setValue(data);",
+  ])("rejects stale snapshots and incomplete guards: %s", (body) => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      import {useEffect, useState} from 'react';
+      const Panel = ({load, invalid}) => {
+        const [value, setValue] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => { ${body} };
+          run();
+          return () => { cancelled = true; };
+        }, [load]);
+        return null;
+      };
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

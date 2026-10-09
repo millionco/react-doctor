@@ -1,6 +1,10 @@
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
+import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
+import { isPositionOnlyMap } from "../../utils/is-position-only-map.js";
+import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { INDEX_PARAMETER_NAMES } from "../../constants/react.js";
@@ -557,6 +561,23 @@ const isArrayFromLengthObjectCall = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
   const first = node.arguments?.[0];
   if (!first || !isNodeOfType(first, "ObjectExpression")) return false;
+  const callback = node.arguments[1];
+  if (
+    first.properties.length === 1 &&
+    callback &&
+    hasOnlyJsxKeyIndexReads(callback) &&
+    !findVariableInitializer(node, "Array")
+  ) {
+    const property = first.properties[0];
+    if (
+      isNodeOfType(property, "Property") &&
+      !property.computed &&
+      property.kind === "init" &&
+      isNodeOfType(property.key, "Identifier") &&
+      property.key.name === "length"
+    )
+      return true;
+  }
   for (const prop of first.properties ?? []) {
     if (!isNodeOfType(prop, "Property")) continue;
     const key = prop.key;
@@ -670,6 +691,35 @@ const isProvablyStringValued = (expression: EsTreeNode, depth: number): boolean 
     return isDestructuredFromStringTypedPattern(binding.bindingIdentifier);
   }
   return false;
+};
+
+const isPlainStringTokenReceiver = (receiver: EsTreeNode, depth = 0): boolean => {
+  if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return false;
+  const candidate = stripParenExpression(receiver);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const binding = findVariableInitializer(candidate, candidate.name);
+    return Boolean(
+      binding?.initializer &&
+      isConstDeclaredBinding(binding) &&
+      !isBindingReassignedOrMutated(candidate, candidate.name) &&
+      isPlainStringTokenReceiver(binding.initializer, depth + 1),
+    );
+  }
+  if (
+    !isNodeOfType(candidate, "CallExpression") ||
+    !isNodeOfType(candidate.callee, "MemberExpression")
+  )
+    return false;
+  const method = getStaticPropertyName(candidate.callee);
+  if (method === "split") return isProvablyStringValued(candidate.callee.object, 0);
+  const predicate = candidate.arguments[0];
+  return (
+    method === "filter" &&
+    isNodeOfType(predicate, "Identifier") &&
+    predicate.name === "Boolean" &&
+    !findVariableInitializer(predicate, "Boolean") &&
+    isPlainStringTokenReceiver(candidate.callee.object, depth + 1)
+  );
 };
 
 const hasProvablyStringFirstArgument = (callNode: EsTreeNode): boolean => {
@@ -1047,6 +1097,7 @@ interface PositionalIndexBinding {
   // the index isn't a direct parameter (entries tuples, counters).
   indexParameterPosition: number | null;
   isDataIndexedLoopCounter?: boolean;
+  loopCounter?: EsTreeNodeOfType<"Identifier">;
 }
 
 interface PositionalIndexUse {
@@ -1141,7 +1192,12 @@ const resolvePositionalIndexBinding = (
     if (isNodeOfType(initializer, "Literal") && typeof initializer.value === "number") {
       if (!INDEX_PARAMETER_NAMES.has(identifierNode.name)) return null;
       return isLoopCounterDeclarator(declarator, identifierNode, identifierNode.name)
-        ? { iteratorCall: null, bindingFunction: null, indexParameterPosition: null }
+        ? {
+            iteratorCall: null,
+            bindingFunction: null,
+            indexParameterPosition: null,
+            loopCounter: identifierNode,
+          }
         : null;
     }
     return findPositionalIndexUse(initializer, depth + 1)?.binding ?? null;
@@ -1168,11 +1224,35 @@ const findPositionalIndexUse = (
   return null;
 };
 
-// Receiver-level exemptions applied to the exact iterator call whose
-// callback binds the index (not a walk-up guess): placeholder arrays,
-// string-character slices, fixed useMemo lists, and static default
-// literals all have position as the entry's identity. Plain array
-// literals are deliberately NOT exempt — their rows carry identity.
+const isRepeatedLiteralPlaceholderIterator = (
+  iteratorCall: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  if (!isNodeOfType(iteratorCall.callee, "MemberExpression")) return false;
+  const receiver = iteratorCall.callee.object;
+  if (!isNodeOfType(receiver, "ArrayExpression")) return false;
+  const firstElement = receiver.elements[0];
+  if (
+    !isNodeOfType(firstElement, "Literal") ||
+    !receiver.elements.every(
+      (element) => isNodeOfType(element, "Literal") && element.value === firstElement.value,
+    )
+  )
+    return false;
+  const callback = iteratorCall.arguments[0];
+  if (!callback || !isFunctionLike(callback)) return false;
+  let readsIndexedData = false;
+  walkAst(callback.body, (node) => {
+    if (readsIndexedData) return false;
+    let candidates: EsTreeNode[] = [];
+    if (isNodeOfType(node, "MemberExpression") && node.computed) candidates = [node.property];
+    else if (isNodeOfType(node, "CallExpression")) candidates = node.arguments;
+    readsIndexedData = candidates.some(
+      (candidate) => findPositionalIndexUse(candidate, 0)?.binding.bindingFunction === callback,
+    );
+  });
+  return !readsIndexedData;
+};
+
 const iteratorCallExemptsIndexKey = (iteratorCall: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (isArrayFromCall(iteratorCall)) {
     return (
@@ -1182,6 +1262,7 @@ const iteratorCallExemptsIndexKey = (iteratorCall: EsTreeNodeOfType<"CallExpress
   if (!isNodeOfType(iteratorCall.callee, "MemberExpression")) return false;
   const receiver = iteratorCall.callee.object;
   return (
+    isRepeatedLiteralPlaceholderIterator(iteratorCall) ||
     isStaticPlaceholderReceiver(receiver) ||
     isFixedMemoReceiver(receiver) ||
     isStaticDefaultLiteralReceiver(receiver) ||
@@ -1549,8 +1630,11 @@ const findBareItemNamesReferencedByTemplate = (
 // `for (let i = 0; i < count; i++) { children.push(<Col key={i} />) }` is
 // the imperative twin of the exempt `Array.from({length: count}).map(…)`
 // placeholder — the counter has no identity beyond its position.
-const isNumericPlaceholderLoopCounter = (attributeNode: EsTreeNode, indexName: string): boolean => {
-  const binding = findVariableInitializer(attributeNode, indexName);
+const isNumericPlaceholderLoopCounter = (
+  indexIdentifier: EsTreeNodeOfType<"Identifier">,
+): boolean => {
+  const indexName = indexIdentifier.name;
+  const binding = findVariableInitializer(indexIdentifier, indexName);
   if (!binding) return false;
   const declarator = binding.bindingIdentifier.parent;
   if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
@@ -1574,7 +1658,7 @@ const isNumericPlaceholderLoopCounter = (attributeNode: EsTreeNode, indexName: s
       loopTestBoundsCounterByLength(forStatement.test, indexName, binding.bindingIdentifier)
     );
   }
-  const whileLoop = findEnclosingWhileLoop(attributeNode);
+  const whileLoop = findEnclosingWhileLoop(indexIdentifier);
   if (!whileLoop) return false;
   // `for (let i = 0; i < items.length; i++)` walks real list data — the
   // items carry identity, so an index key there still breaks on reorder.
@@ -1667,10 +1751,7 @@ const isCountBuiltPlaceholderArray = (
     )
       return false;
     const counter = ancestor.init.declarations[0]?.id;
-    if (
-      !isNodeOfType(counter, "Identifier") ||
-      !isNumericPlaceholderLoopCounter(call, counter.name)
-    )
+    if (!isNodeOfType(counter, "Identifier") || !isNumericPlaceholderLoopCounter(counter))
       return false;
     if (builderLoop && builderLoop !== ancestor) return false;
     builderLoop = ancestor;
@@ -1703,6 +1784,7 @@ const DERIVED_NAME_SCAN_BUDGET = 200;
 const collectDerivedRowContentNames = (
   bindingFunction: EsTreeNode | null,
   itemNames: ReadonlySet<string>,
+  context: RuleContext,
 ): Set<string> => {
   const names = new Set<string>();
   if (!bindingFunction || itemNames.size === 0) return names;
@@ -1711,6 +1793,9 @@ const collectDerivedRowContentNames = (
     if (budget <= 0) return false;
     budget -= 1;
     if (isFunctionLike(child) && child !== bindingFunction) return false;
+    if (isNodeOfType(child, "Identifier") && isPrimitiveAccumulator(child, context.scopes)) {
+      names.add(child.name);
+    }
     if (
       isNodeOfType(child, "VariableDeclarator") &&
       isNodeOfType(child.id, "Identifier") &&
@@ -1839,121 +1924,150 @@ const hasAriaHiddenAncestor = (attributeNode: EsTreeNode): boolean => {
   return false;
 };
 
+const getReportableIndexUse = (key: EsTreeNode, node: EsTreeNode): PositionalIndexUse | null => {
+  const indexUse = findPositionalIndexUse(key, 0);
+  if (!indexUse || methodReceivesOnlyPlaceholderIndices(indexUse.binding)) return null;
+  if (isNumericPlaceholderLoopCounter(indexUse.binding.loopCounter ?? indexUse.identifier))
+    return null;
+  if (indexUse.binding.iteratorCall && iteratorCallExemptsIndexKey(indexUse.binding.iteratorCall))
+    return null;
+  const keyTemplate = resolveKeyTemplateLiteral(key);
+  if (keyTemplate && templateHasOuterMemberIdentity(keyTemplate, indexUse.binding.bindingFunction))
+    return null;
+  if (hasAriaHiddenAncestor(node) && !indexUse.binding.isDataIndexedLoopCounter) return null;
+  return indexUse;
+};
+
 export const noArrayIndexAsKey = defineRule({
   id: "no-array-index-as-key",
   title: "Array index used as a key",
   severity: "warn",
   recommendation:
     "Use a stable id from the item, like `key={item.id}` or `key={item.slug}`. Index keys break when the list reorders or filters.",
-  create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;
-      if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
-
-      const indexUse = findPositionalIndexUse(node.value.expression, 0);
-      if (!indexUse) return;
-      const indexName = indexUse.identifier.name;
-      if (isNumericPlaceholderLoopCounter(node, indexName)) return;
-      if (methodReceivesOnlyPlaceholderIndices(indexUse.binding)) return;
-      if (
-        indexUse.binding.iteratorCall &&
-        (iteratorCallExemptsIndexKey(indexUse.binding.iteratorCall) ||
-          isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
-      ) {
-        return;
-      }
-      const keyTemplate = resolveKeyTemplateLiteral(node.value.expression);
-      if (
-        keyTemplate &&
-        templateHasOuterMemberIdentity(keyTemplate, indexUse.binding.bindingFunction)
-      ) {
-        return;
-      }
-      if (hasAriaHiddenAncestor(node) && !indexUse.binding.isDataIndexedLoopCounter) {
-        return;
-      }
-
-      const itemNames = findIteratorItemNamesOfBinding(indexUse.binding);
-      const derivedNames = collectDerivedRowContentNames(
-        indexUse.binding.bindingFunction,
-        itemNames,
-      );
-      const iteratorCallee = indexUse.binding.iteratorCall?.callee;
-      const hasDynamicReactChildren = Boolean(
-        iteratorCallee &&
-        isNodeOfType(iteratorCallee, "MemberExpression") &&
-        isDynamicReactChildrenExpression(iteratorCallee.object, 0),
-      );
-
-      const openingElement = node.parent;
-      if (openingElement && isNodeOfType(openingElement, "JSXOpeningElement")) {
-        const elementName = openingElement.name as EsTreeNode;
-        if (isNodeOfType(elementName, "JSXIdentifier")) {
-          if (elementName.name === "Fragment") {
-            if (
-              !fragmentHasStatefulChildren(
-                openingElement,
-                itemNames,
-                derivedNames,
-                hasDynamicReactChildren,
-              )
-            ) {
-              return;
-            }
-          } else if (PURE_SVG_PRIMITIVE_TAGS.has(elementName.name)) {
-            // Pure SVG primitives (`<g>`, `<path>`, …) only re-diff
-            // attributes on reorder — no observable consequence, UNLESS
-            // the callback filters rows out (positions shift with data).
-            if (!callbackFiltersRows(indexUse.binding.bindingFunction)) return;
-          } else if (STATELESS_HTML_LEAF_TAGS.has(elementName.name)) {
-            // Stateless HTML leaf element whose subtree contains no
-            // form controls, no media, no custom components, no
-            // function-call children — reorder hazard doesn't apply.
-            // For inline text runs (`<span key={i}>{token.text}</span>`),
-            // member reads of the iteration item are the text itself, not
-            // stateful UI; block rows keep the conservative treatment,
-            // exempting only locals DERIVED from the item (recursive
-            // renderer `children`).
-            const jsxElement = openingElement.parent;
-            if (jsxElement && isNodeOfType(jsxElement, "JSXElement")) {
-              const isInlineTextRun = INLINE_TEXT_LEAF_TAGS.has(elementName.name);
-              const primitiveItemNames = keyTemplate
-                ? findBareItemNamesReferencedByTemplate(keyTemplate, itemNames)
-                : EMPTY_NAME_SET;
-              const isStateful =
-                (hasDynamicReactChildren && elementHasDirectItemChild(openingElement, itemNames)) ||
-                containsStatefulDescendant(jsxElement, {
-                  memberRootNames: isInlineTextRun ? itemNames : EMPTY_NAME_SET,
-                  bareIdentifierNames:
-                    primitiveItemNames.size > 0
-                      ? new Set([...derivedNames, ...primitiveItemNames])
-                      : derivedNames,
-                });
-              if (!isStateful) return;
-            }
-          }
-        }
-        if (
-          isNodeOfType(elementName, "JSXMemberExpression") &&
-          isNodeOfType(elementName.object, "JSXIdentifier") &&
-          isNodeOfType(elementName.property, "JSXIdentifier") &&
-          elementName.object.name === "React" &&
-          elementName.property.name === "Fragment" &&
-          !fragmentHasStatefulChildren(
-            openingElement,
-            itemNames,
-            derivedNames,
-            hasDynamicReactChildren,
-          )
-        ) {
-          return;
-        }
-      }
-
+  create: (context: RuleContext) => {
+    const reportIndexKey = (node: EsTreeNode, indexName: string): void => {
       context.report({
         node,
         message: `Your users can see & submit the wrong data when this list reorders or filters, so use a stable id like \`key={item.id}\`, not the array index "${indexName}".`,
       });
-    },
-  }),
+    };
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isReactApiCall(node, "cloneElement", context.scopes, { resolveNamedAliases: true }))
+          return;
+        const overrides = node.arguments[1];
+        if (!overrides) return;
+        const key = getStaticObjectPropertyValue(overrides, "key");
+        if (!key) return;
+        const indexUse = getReportableIndexUse(key, node);
+        if (!indexUse) return;
+        reportIndexKey(key, indexUse.identifier.name);
+      },
+      JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
+        if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;
+        if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
+
+        const indexUse = getReportableIndexUse(node.value.expression, node);
+        if (!indexUse) return;
+        if (
+          indexUse.binding.iteratorCall &&
+          (isPositionOnlyMap(indexUse.binding.iteratorCall, context.scopes) ||
+            isCountBuiltPlaceholderArray(indexUse.binding.iteratorCall, context))
+        )
+          return;
+        const indexName = indexUse.identifier.name;
+        const keyTemplate = resolveKeyTemplateLiteral(node.value.expression);
+
+        const itemNames = findIteratorItemNamesOfBinding(indexUse.binding);
+        const derivedNames = collectDerivedRowContentNames(
+          indexUse.binding.bindingFunction,
+          itemNames,
+          context,
+        );
+        const iteratorCallee = indexUse.binding.iteratorCall?.callee;
+        const hasDynamicReactChildren = Boolean(
+          iteratorCallee &&
+          isNodeOfType(iteratorCallee, "MemberExpression") &&
+          isDynamicReactChildrenExpression(iteratorCallee.object, 0),
+        );
+
+        const openingElement = node.parent;
+        if (openingElement && isNodeOfType(openingElement, "JSXOpeningElement")) {
+          const elementName = openingElement.name as EsTreeNode;
+          if (isNodeOfType(elementName, "JSXIdentifier")) {
+            if (elementName.name === "Fragment") {
+              if (
+                !fragmentHasStatefulChildren(
+                  openingElement,
+                  itemNames,
+                  derivedNames,
+                  hasDynamicReactChildren,
+                )
+              ) {
+                return;
+              }
+            } else if (PURE_SVG_PRIMITIVE_TAGS.has(elementName.name)) {
+              // Pure SVG primitives (`<g>`, `<path>`, …) only re-diff
+              // attributes on reorder — no observable consequence, UNLESS
+              // the callback filters rows out (positions shift with data).
+              if (!callbackFiltersRows(indexUse.binding.bindingFunction)) return;
+            } else if (STATELESS_HTML_LEAF_TAGS.has(elementName.name)) {
+              // Stateless HTML leaf element whose subtree contains no
+              // form controls, no media, no custom components, no
+              // function-call children — reorder hazard doesn't apply.
+              // For inline text runs (`<span key={i}>{token.text}</span>`),
+              // member reads of the iteration item are the text itself, not
+              // stateful UI; block rows keep the conservative treatment,
+              // exempting only locals DERIVED from the item (recursive
+              // renderer `children`).
+              const jsxElement = openingElement.parent;
+              if (jsxElement && isNodeOfType(jsxElement, "JSXElement")) {
+                const isInlineTextRun = INLINE_TEXT_LEAF_TAGS.has(elementName.name);
+                let primitiveItemNames = EMPTY_NAME_SET;
+                if (
+                  iteratorCallee &&
+                  isNodeOfType(iteratorCallee, "MemberExpression") &&
+                  isPlainStringTokenReceiver(iteratorCallee.object)
+                )
+                  primitiveItemNames = itemNames;
+                else if (keyTemplate)
+                  primitiveItemNames = findBareItemNamesReferencedByTemplate(
+                    keyTemplate,
+                    itemNames,
+                  );
+                const isStateful =
+                  (hasDynamicReactChildren &&
+                    elementHasDirectItemChild(openingElement, itemNames)) ||
+                  containsStatefulDescendant(jsxElement, {
+                    memberRootNames: isInlineTextRun ? itemNames : EMPTY_NAME_SET,
+                    bareIdentifierNames:
+                      primitiveItemNames.size > 0
+                        ? new Set([...derivedNames, ...primitiveItemNames])
+                        : derivedNames,
+                  });
+                if (!isStateful) return;
+              }
+            }
+          }
+          if (
+            isNodeOfType(elementName, "JSXMemberExpression") &&
+            isNodeOfType(elementName.object, "JSXIdentifier") &&
+            isNodeOfType(elementName.property, "JSXIdentifier") &&
+            elementName.object.name === "React" &&
+            elementName.property.name === "Fragment" &&
+            !fragmentHasStatefulChildren(
+              openingElement,
+              itemNames,
+              derivedNames,
+              hasDynamicReactChildren,
+            )
+          ) {
+            return;
+          }
+        }
+
+        reportIndexKey(node, indexName);
+      },
+    };
+  },
 });

@@ -1237,9 +1237,18 @@ const getReactStateInitializer = (node: EsTreeNode, scopes: ScopeAnalysis): EsTr
     return null;
   }
   const stateInitializer = declarator.init.arguments[0];
-  return isAstNode(stateInitializer) && !isNodeOfType(stateInitializer, "SpreadElement")
-    ? stateInitializer
-    : null;
+  if (!isAstNode(stateInitializer) || isNodeOfType(stateInitializer, "SpreadElement")) {
+    return null;
+  }
+  const candidateInitializer = unwrapExpression(stateInitializer);
+  if (
+    isNodeOfType(candidateInitializer, "ArrowFunctionExpression") &&
+    !candidateInitializer.async &&
+    !isNodeOfType(candidateInitializer.body, "BlockStatement")
+  ) {
+    return candidateInitializer.body;
+  }
+  return stateInitializer;
 };
 
 const isControlledStateSelection = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
@@ -1263,7 +1272,12 @@ const isControlledStateSelection = (node: EsTreeNode, scopes: ScopeAnalysis): bo
   } else if (isUndefinedExpression(comparison.left, scopes)) {
     controlledValue = comparison.right;
   }
-  if (!controlledValue || !isSameSymbol(candidate.consequent, controlledValue, scopes)) {
+  const consequent = unwrapExpression(candidate.consequent);
+  const selectedValue =
+    isNodeOfType(consequent, "LogicalExpression") && consequent.operator === "??"
+      ? consequent.left
+      : consequent;
+  if (!controlledValue || !isSameSymbol(selectedValue, controlledValue, scopes)) {
     return false;
   }
   const stateInitializer = getReactStateInitializer(candidate.alternate, scopes);
@@ -1283,6 +1297,7 @@ const isUnstableInitializer = (
   const stripped = unwrapExpression(node);
   if (isRegExpLiteral(stripped)) return true;
   if (isNodeOfType(stripped, "ConditionalExpression")) {
+    if (isControlledStateSelection(stripped, scopes)) return false;
     return (
       isUnstableInitializer(stripped.consequent, scopes, true) ||
       isUnstableInitializer(stripped.alternate, scopes, true)

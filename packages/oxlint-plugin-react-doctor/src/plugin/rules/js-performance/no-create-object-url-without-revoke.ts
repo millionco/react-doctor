@@ -1,3 +1,7 @@
+import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { FUNCTION_LIKE_TYPES } from "../../constants/js.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
@@ -1810,6 +1814,311 @@ const boundValueHasHardEscape = (
   });
 };
 
+const refOwnershipValuesMatch = (
+  first: EsTreeNode,
+  second: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (expressionsReferToSameValue(first, second, scopes)) return true;
+  const firstRef = resolveReactRefSymbol(first, scopes);
+  return Boolean(firstRef && resolveReactRefSymbol(second, scopes)?.id === firstRef.id);
+};
+
+const refValueIsRevoked = (
+  statement: EsTreeNode,
+  reference: EsTreeNode,
+  nextValue: EsTreeNode | null,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (isNodeOfType(statement, "BlockStatement"))
+    return Boolean(
+      statement.body[0] && refValueIsRevoked(statement.body[0], reference, nextValue, scopes),
+    );
+  if (isNodeOfType(statement, "IfStatement")) {
+    const test = stripParenExpression(statement.test);
+    const guard =
+      isNodeOfType(test, "LogicalExpression") && test.operator === "&&" ? test.left : test;
+    if (!refOwnershipValuesMatch(guard, reference, scopes)) return false;
+    if (guard !== test) {
+      if (
+        !isNodeOfType(test, "LogicalExpression") ||
+        !isNodeOfType(test.right, "BinaryExpression") ||
+        test.right.operator !== "!==" ||
+        !nextValue ||
+        !refOwnershipValuesMatch(test.right.left, reference, scopes) ||
+        !refOwnershipValuesMatch(test.right.right, nextValue, scopes)
+      )
+        return false;
+    }
+    return refValueIsRevoked(statement.consequent, reference, nextValue, scopes);
+  }
+  return (
+    isNodeOfType(statement, "ExpressionStatement") &&
+    isNodeOfType(statement.expression, "CallExpression") &&
+    isUrlMethodCall(statement.expression, "revokeObjectURL", scopes) &&
+    Boolean(
+      statement.expression.arguments[0] &&
+      refOwnershipValuesMatch(statement.expression.arguments[0], reference, scopes),
+    )
+  );
+};
+
+const refStoreHasReplacementCleanup = (
+  store: EsTreeNode,
+  reference: EsTreeNode,
+  nextValue: EsTreeNode,
+  isArray: boolean,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const statement = store.parent;
+  const block = statement?.parent;
+  if (!isNodeOfType(statement, "ExpressionStatement") || !isNodeOfType(block, "BlockStatement"))
+    return false;
+  const position = block.body.findIndex((child) => child === statement);
+  const previous = block.body[position - 1];
+  if (!previous) return false;
+  if (!isArray) return refValueIsRevoked(previous, reference, nextValue, scopes);
+  const declaration = block.body[position - 2];
+  if (
+    !isNodeOfType(declaration, "VariableDeclaration") ||
+    declaration.kind !== "const" ||
+    declaration.declarations.length !== 1
+  )
+    return false;
+  const item = declaration.declarations[0];
+  const pop = item.init;
+  return (
+    isNodeOfType(item.id, "Identifier") &&
+    isNodeOfType(pop, "CallExpression") &&
+    isNodeOfType(pop.callee, "MemberExpression") &&
+    getStaticPropertyName(pop.callee) === "pop" &&
+    refOwnershipValuesMatch(pop.callee.object, reference, scopes) &&
+    refValueIsRevoked(previous, item.id, null, scopes)
+  );
+};
+
+const refStoreHasUnmountCleanup = (
+  reference: EsTreeNode,
+  store: EsTreeNode,
+  isArray: boolean,
+  index: ProgramDisposalIndex,
+  context: RuleContext,
+): boolean => {
+  const ref = resolveReactRefSymbol(reference, context.scopes);
+  if (!ref || ref.references.some((usage) => usage.flag !== "read")) return false;
+  const initializer = ref.initializer;
+  if (!isNodeOfType(initializer, "CallExpression")) return false;
+  const initialValue = initializer.arguments[0];
+  if (
+    isArray
+      ? !isNodeOfType(initialValue, "ArrayExpression") || initialValue.elements.length !== 0
+      : Boolean(
+          initialValue &&
+          !(isNodeOfType(initialValue, "Literal") && initialValue.value === null) &&
+          !(
+            isNodeOfType(initialValue, "Identifier") &&
+            initialValue.name === "undefined" &&
+            !context.scopes.symbolFor(initialValue)
+          ),
+        )
+  )
+    return false;
+  const cleanup = index.callExpressions.flatMap((call) => {
+    if (
+      !isReactApiCall(call, "useEffect", context.scopes) ||
+      !isNodeOfType(call.arguments[1], "ArrayExpression") ||
+      call.arguments[1].elements.length !== 0
+    )
+      return [];
+    const effect = getEffectCallback(call, context.scopes);
+    if (
+      !effect ||
+      !isFunctionLike(effect) ||
+      effect.async ||
+      effect.generator ||
+      findEnclosingFunction(call) !== findEnclosingFunction(initializer)
+    )
+      return [];
+    const returned =
+      isNodeOfType(effect.body, "BlockStatement") &&
+      effect.body.body.length === 1 &&
+      isNodeOfType(effect.body.body[0], "ReturnStatement")
+        ? effect.body.body[0].argument
+        : effect.body;
+    if (!returned || !isFunctionLike(returned) || returned.async || returned.generator) return [];
+    const body = returned.body;
+    const first = isNodeOfType(body, "BlockStatement") ? body.body[0] : body;
+    if (!first) return [];
+    if (!isArray)
+      return refValueIsRevoked(first, reference, null, context.scopes) ? [returned] : [];
+    const expression = isNodeOfType(first, "ExpressionStatement") ? first.expression : first;
+    if (
+      !isNodeOfType(expression, "CallExpression") ||
+      !isNodeOfType(expression.callee, "MemberExpression") ||
+      getStaticPropertyName(expression.callee) !== "forEach" ||
+      !refOwnershipValuesMatch(expression.callee.object, reference, context.scopes)
+    )
+      return [];
+    const callback = expression.arguments[0];
+    return callback &&
+      callbackAlwaysRevokesRetention(
+        callback,
+        { kind: "set-element", propertyPath: [] },
+        context.scopes,
+      )
+      ? [returned]
+      : [];
+  })[0];
+  if (!cleanup) return false;
+  return ref.references.every((usage) => {
+    const member = usage.identifier.parent;
+    if (
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== usage.identifier ||
+      getStaticPropertyName(member) !== "current"
+    )
+      return false;
+    const consumer = member.parent;
+    if (isNodeOfType(consumer, "AssignmentExpression") && consumer.left === member) {
+      if (consumer === store) return consumer.operator === "=";
+      if (consumer.operator !== "=") return false;
+      if (
+        !isArray &&
+        refStoreHasReplacementCleanup(consumer, member, consumer.right, false, context.scopes)
+      )
+        return true;
+      const previousStatement = consumer.parent?.parent;
+      if (
+        !isAstDescendant(consumer, cleanup) &&
+        !(
+          isNodeOfType(previousStatement, "BlockStatement") &&
+          refValueIsRevoked(previousStatement, member, null, context.scopes)
+        )
+      )
+        return false;
+      const value = consumer.right;
+      return isArray
+        ? isNodeOfType(value, "ArrayExpression") && value.elements.length === 0
+        : (isNodeOfType(value, "Literal") && value.value === null) ||
+            (isNodeOfType(value, "Identifier") &&
+              value.name === "undefined" &&
+              !context.scopes.symbolFor(value));
+    }
+    if (
+      isNodeOfType(consumer, "UpdateExpression") ||
+      (isNodeOfType(consumer, "UnaryExpression") && consumer.operator === "delete")
+    )
+      return false;
+    if (isArray && isNodeOfType(consumer, "MemberExpression")) {
+      const call = consumer.parent;
+      if (!isNodeOfType(call, "CallExpression") || call.callee !== consumer) return false;
+      if (call === store) return true;
+      if (getStaticPropertyName(consumer) === "push")
+        return Boolean(
+          call.arguments.length === 1 &&
+          refStoreHasReplacementCleanup(call, member, call.arguments[0], true, context.scopes),
+        );
+      if (getStaticPropertyName(consumer) === "forEach") return isAstDescendant(call, cleanup);
+      if (getStaticPropertyName(consumer) === "pop") {
+        const declaration = call.parent?.parent;
+        const block = declaration?.parent;
+        if (!isNodeOfType(block, "BlockStatement")) return false;
+        const following = block.body[block.body.findIndex((child) => child === declaration) + 2];
+        const push = isNodeOfType(following, "ExpressionStatement") ? following.expression : null;
+        return Boolean(
+          isNodeOfType(push, "CallExpression") &&
+          isNodeOfType(push.callee, "MemberExpression") &&
+          getStaticPropertyName(push.callee) === "push" &&
+          refOwnershipValuesMatch(push.callee.object, reference, context.scopes) &&
+          push.arguments.length === 1 &&
+          refStoreHasReplacementCleanup(push, reference, push.arguments[0], true, context.scopes),
+        );
+      }
+      return false;
+    }
+    if (isNodeOfType(consumer, "CallExpression"))
+      return isUrlMethodCall(consumer, "revokeObjectURL", context.scopes);
+    return (
+      (isNodeOfType(consumer, "IfStatement") && consumer.test === member) ||
+      isNodeOfType(consumer, "LogicalExpression") ||
+      isNodeOfType(consumer, "BinaryExpression")
+    );
+  });
+};
+
+const refOwnedCreationIsDisposed = (
+  createCall: EsTreeNodeOfType<"CallExpression">,
+  index: ProgramDisposalIndex,
+  context: RuleContext,
+): boolean => {
+  const binding = findBoundCallResult(createCall);
+  const symbol = binding ? context.scopes.symbolFor(binding) : null;
+  if (!binding || !symbol) return false;
+  const producedValue = { binding, acquiredAt: createCall.range[1] };
+  return symbol.references.some((usage) => {
+    const consumer = usage.identifier.parent;
+    if (
+      !consumer ||
+      !bindingValueRemainsCurrentAtConsumer(producedValue, createCall, consumer, context.scopes) ||
+      !consumerIsGuaranteedAfterResult(
+        consumer,
+        createCall,
+        producedValue,
+        context.cfg.enclosingFunction(createCall),
+        context,
+      )
+    )
+      return false;
+    let store = consumer;
+    let nextValue: EsTreeNode = usage.identifier;
+    if (isNodeOfType(consumer, "CallExpression") && isNodeOfType(consumer.callee, "Identifier")) {
+      const helperSymbol = context.scopes.symbolFor(consumer.callee);
+      if (helperSymbol?.references.some((reference) => reference.flag !== "read")) return false;
+      const helperInitializer = helperSymbol?.initializer;
+      const helper =
+        isNodeOfType(helperInitializer, "CallExpression") &&
+        isReactApiCall(helperInitializer, "useCallback", context.scopes)
+          ? getEffectCallback(helperInitializer, context.scopes)
+          : resolveStaticLocalCallFunction(consumer, context.scopes);
+      if (
+        !helper ||
+        !isFunctionLike(helper) ||
+        helper.async ||
+        helper.generator ||
+        !isNodeOfType(helper.body, "BlockStatement") ||
+        consumer.arguments.length !== 1 ||
+        !isNodeOfType(helper.params[0], "Identifier")
+      )
+        return false;
+      nextValue = helper.params[0];
+      const assignment = helper.body.body[1];
+      if (!isNodeOfType(assignment, "ExpressionStatement")) return false;
+      store = assignment.expression;
+    }
+    const isArray =
+      isNodeOfType(store, "CallExpression") &&
+      isNodeOfType(store.callee, "MemberExpression") &&
+      getStaticPropertyName(store.callee) === "push";
+    const reference =
+      isNodeOfType(store, "AssignmentExpression") &&
+      store.operator === "=" &&
+      refOwnershipValuesMatch(store.right, nextValue, context.scopes)
+        ? store.left
+        : isArray &&
+            isNodeOfType(store, "CallExpression") &&
+            isNodeOfType(store.callee, "MemberExpression") &&
+            store.arguments.length === 1 &&
+            refOwnershipValuesMatch(store.arguments[0], nextValue, context.scopes)
+          ? store.callee.object
+          : null;
+    return Boolean(
+      reference &&
+      refStoreHasReplacementCleanup(store, reference, nextValue, isArray, context.scopes) &&
+      refStoreHasUnmountCleanup(reference, store, isArray, index, context),
+    );
+  });
+};
+
 const escapeIsLeaky = (callNode: EsTreeNode, context: RuleContext): boolean => {
   const containingExpression = analyzeContainingExpression(callNode);
   const topNode = containingExpression.expressionRoot;
@@ -1906,6 +2215,7 @@ export const noCreateObjectUrlWithoutRevoke = defineRule({
         if (boundCreationIsDisposed(node, context)) return;
         if (programRoot) {
           programDisposalIndex ??= buildProgramDisposalIndex(programRoot, context);
+          if (refOwnedCreationIsDisposed(node, programDisposalIndex, context)) return;
           if (directCacheStoreHasSafeOwnership(node, programDisposalIndex, context)) return;
           if (moduleDisposesEveryReturnedResult(node, programDisposalIndex, context)) return;
         }

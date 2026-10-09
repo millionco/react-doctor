@@ -67,6 +67,32 @@ describe("only-export-components JSX binding evidence", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    [
+      'import React, { useMemo } from "react";',
+      "useMemo(() => React.Children.map(children, (child) => React.cloneElement(child)), [children])",
+    ],
+    [
+      'import { useRender } from "@base-ui/react/use-render";',
+      'useRender({ defaultTagName: "div", props: { children } })',
+    ],
+    ['import React from "react";', 'React.cloneElement(children, { title: "layer" })'],
+    [
+      'import { match } from "ts-pattern";',
+      "match(children).with({ ready: true }, () => <main />).otherwise(() => <aside />)",
+    ],
+  ])("accepts JSX-used library render output: %s %s", (imports, expression) => {
+    const result = runRule(
+      onlyExportComponents,
+      `${imports}
+       export const Gate = ({ children }) => ${expression};
+       export const Card = () => <Gate>{content}</Gate>;`,
+      { filename: "src/gate.tsx", settings },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not transfer JSX evidence across a reassignment", () => {
     const result = runRule(
       onlyExportComponents,

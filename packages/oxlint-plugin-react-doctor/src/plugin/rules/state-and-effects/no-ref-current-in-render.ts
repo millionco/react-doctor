@@ -57,7 +57,7 @@ const isSameRefCurrentAlias = (
   );
 };
 
-const resolveImmutableInitializationValue = (
+const resolveInitializationValue = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds: Set<number> = new Set(),
@@ -65,6 +65,36 @@ const resolveImmutableInitializationValue = (
   const expression = stripParenExpression(node);
   if (!isNodeOfType(expression, "Identifier")) return expression;
   const symbol = scopes.symbolFor(expression);
+  if (symbol?.kind === "let" && !visitedSymbolIds.has(symbol.id)) {
+    const assignment = findTransparentExpressionRoot(expression).parent;
+    const statement = assignment?.parent;
+    const block = statement?.parent;
+    if (
+      assignment?.type === "AssignmentExpression" &&
+      assignment.right === findTransparentExpressionRoot(expression) &&
+      statement?.type === "ExpressionStatement" &&
+      block?.type === "BlockStatement" &&
+      findDeferredExecutionBoundary(symbol.bindingIdentifier) ===
+        findDeferredExecutionBoundary(expression)
+    ) {
+      const previousStatement =
+        block.body[block.body.findIndex((candidate) => candidate === statement) - 1];
+      const previousAssignment =
+        previousStatement?.type === "ExpressionStatement"
+          ? stripParenExpression(previousStatement.expression)
+          : null;
+      if (
+        previousAssignment?.type === "AssignmentExpression" &&
+        previousAssignment.operator === "=" &&
+        previousAssignment.left.type === "Identifier" &&
+        scopes.symbolFor(previousAssignment.left)?.id === symbol.id
+      ) {
+        visitedSymbolIds.add(symbol.id);
+        return resolveInitializationValue(previousAssignment.right, scopes, visitedSymbolIds);
+      }
+    }
+    return null;
+  }
   if (
     !symbol ||
     symbol.kind !== "const" ||
@@ -75,11 +105,11 @@ const resolveImmutableInitializationValue = (
     return null;
   }
   visitedSymbolIds.add(symbol.id);
-  return resolveImmutableInitializationValue(symbol.initializer, scopes, visitedSymbolIds);
+  return resolveInitializationValue(symbol.initializer, scopes, visitedSymbolIds);
 };
 
 const isProvablyTruthyInitializationValue = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  const expression = resolveImmutableInitializationValue(node, scopes);
+  const expression = resolveInitializationValue(node, scopes);
   if (!expression) return false;
   if (isNodeOfType(expression, "CallExpression")) {
     const callee = stripParenExpression(expression.callee);
@@ -96,7 +126,7 @@ const isProvablyTruthyInitializationValue = (node: EsTreeNode, scopes: ScopeAnal
 };
 
 const getInitializationValueName = (node: EsTreeNode, scopes: ScopeAnalysis): string | null => {
-  const expression = resolveImmutableInitializationValue(node, scopes);
+  const expression = resolveInitializationValue(node, scopes);
   if (!expression) return null;
   if (isNodeOfType(expression, "NewExpression") || isNodeOfType(expression, "CallExpression")) {
     const callee = stripParenExpression(expression.callee);
@@ -345,12 +375,17 @@ const isPredictableInitializationValue = (
   renderOwner: EsTreeNode,
   scopes: ScopeAnalysis,
   requiresClosedTruthyDomain: boolean,
-): boolean =>
-  isInitializationInputIndependent(node, renderOwner, scopes) &&
-  !containsNonDeterministicSource(node) &&
-  ((isProvablyTruthyInitializationValue(node, scopes) &&
-    (!requiresClosedTruthyDomain || !refHasDeclaredType(refSymbol))) ||
-    refHasClosedFalsySentinelDomain(refSymbol, node, scopes));
+): boolean => {
+  const value = resolveInitializationValue(node, scopes);
+  return Boolean(
+    value &&
+    isInitializationInputIndependent(value, renderOwner, scopes) &&
+    !containsNonDeterministicSource(value) &&
+    ((isProvablyTruthyInitializationValue(value, scopes) &&
+      (!requiresClosedTruthyDomain || !refHasDeclaredType(refSymbol))) ||
+      refHasClosedFalsySentinelDomain(refSymbol, value, scopes)),
+  );
+};
 
 const hasRepeatedExecutionAncestor = (node: EsTreeNode, stop: EsTreeNode): boolean => {
   let ancestor = node.parent;
@@ -419,7 +454,7 @@ const hasNoCoExecutableCompetingWrite = (
     const deferredExecutionBoundary = findDeferredExecutionBoundary(child);
     const deferredWriteValue =
       isNodeOfType(child, "AssignmentExpression") && child.operator === "="
-        ? resolveImmutableInitializationValue(child.right, scopes)
+        ? resolveInitializationValue(child.right, scopes)
         : null;
     const isDeferredTruthyWrite =
       deferredExecutionBoundary !== null &&

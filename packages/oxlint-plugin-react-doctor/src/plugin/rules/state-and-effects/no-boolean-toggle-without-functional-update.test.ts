@@ -575,3 +575,45 @@ describe("no-boolean-toggle-without-functional-update", () => {
     expect(renderFreshRef.diagnostics).toHaveLength(0);
   });
 });
+
+describe("effects without a dependency array", () => {
+  it.each(["", ", undefined", ", null"])(
+    "does not crash when dependencies are absent: %s",
+    (dependencies) => {
+      const result = runRule(
+        noBooleanToggleWithoutFunctionalUpdate,
+        `
+      import { useEffect, useState } from "react";
+      const Panel = () => {
+        const [open, setOpen] = useState(false);
+        useEffect(() => {
+          const timer = setInterval(() => setOpen(!open), 100);
+          return () => clearInterval(timer);
+        }${dependencies});
+        return null;
+      };
+    `,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("accepts a functional toggle in an effect with omitted dependencies", () => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `
+      import { useEffect, useState } from "react";
+      const Panel = () => {
+        const [open, setOpen] = useState(false);
+        useEffect(() => {
+          const timer = setInterval(() => setOpen(previous => !previous), 100);
+          return () => clearInterval(timer);
+        });
+        return null;
+      };
+    `,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+});

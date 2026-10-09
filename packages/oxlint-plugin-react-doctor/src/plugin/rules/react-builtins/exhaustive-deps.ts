@@ -1213,7 +1213,12 @@ const isControlledStateSelection = (node: EsTreeNode, scopes: ScopeAnalysis): bo
   } else if (isUndefinedExpression(comparison.left, scopes)) {
     controlledValue = comparison.right;
   }
-  if (!controlledValue || !isSameSymbol(candidate.consequent, controlledValue, scopes)) {
+  const consequent = unwrapExpression(candidate.consequent);
+  const selectedValue =
+    isNodeOfType(consequent, "LogicalExpression") && consequent.operator === "??"
+      ? consequent.left
+      : consequent;
+  if (!controlledValue || !isSameSymbol(selectedValue, controlledValue, scopes)) {
     return false;
   }
   const stateInitializer = getReactStateInitializer(candidate.alternate, scopes);
@@ -1233,6 +1238,7 @@ const isUnstableInitializer = (
   const stripped = unwrapExpression(node);
   if (isRegExpLiteral(stripped)) return true;
   if (isNodeOfType(stripped, "ConditionalExpression")) {
+    if (isControlledStateSelection(stripped, scopes)) return false;
     return (
       isUnstableInitializer(stripped.consequent, scopes, true) ||
       isUnstableInitializer(stripped.alternate, scopes, true)

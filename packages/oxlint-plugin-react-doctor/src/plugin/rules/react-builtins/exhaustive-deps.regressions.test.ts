@@ -2689,3 +2689,22 @@ describe("react-builtins/exhaustive-deps — upstream disable-comment suppressio
     });
   });
 });
+
+describe("guarded dependency fallbacks", () => {
+  it.each([
+    ["string[]", "value !== undefined", "controlled ? value ?? [] : internal", 0],
+    ["string[] | null", "value !== undefined", "controlled ? value ?? [] : internal", 1],
+    ["string[]", "value === undefined", "controlled ? value ?? [] : internal", 1],
+    ["string[]", "value !== undefined", "controlled ? [] : internal", 1],
+    ["string[]", "value !== undefined", "controlled ? value : []", 1],
+  ])("checks %s with %s and %s", (valueType, guard, selected, expected) => {
+    const result = runRule(
+      exhaustiveDeps,
+      `import { useState, useMemo } from "react";
+   interface Props { value?: ${valueType}; }
+   function View({ value }: Props) { const [internal] = useState<string[]>([]); const controlled = ${guard}; const selected = ${selected}; return useMemo(() => selected.join(), [selected]); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});

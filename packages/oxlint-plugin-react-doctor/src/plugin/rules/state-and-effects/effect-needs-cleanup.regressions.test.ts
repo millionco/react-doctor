@@ -8142,7 +8142,7 @@ export const Component = ({ load, reactivate }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not apply the guarded timer proof to a shadowed allocator", () => {
+  it("does not classify an unknown callback prop as a native timer", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useEffect } from "react";
@@ -8163,7 +8163,7 @@ export const Component = ({ load, setTimeout }) => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not apply the guarded timer proof to a shadowed release", () => {

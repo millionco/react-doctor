@@ -328,7 +328,16 @@ export const clickEventsHaveKeyEvents = defineRule({
         if (hasCompositeItemRole(node)) return;
         if (isHoverSelectionListItem(tag, node)) return;
         if (onClick && isBackdropDismissHandler(onClick)) return;
-        if (hasKeyboardActivatableDescendant(node.parent, null, context.scopes, context.settings)) {
+        if (
+          hasKeyboardActivatableDescendant(
+            node.parent,
+            null,
+            context.scopes,
+            context.settings,
+            !hasJsxPropIgnoreCase(node.attributes, "onClickCapture") &&
+              !resolvedSpreadEventValues.has("onclickcapture"),
+          )
+        ) {
           return;
         }
         if (

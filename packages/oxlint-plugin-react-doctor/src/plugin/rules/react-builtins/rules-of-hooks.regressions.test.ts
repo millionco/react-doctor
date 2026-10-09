@@ -1397,3 +1397,22 @@ describe("react-builtins/rules-of-hooks — local member use bindings", () => {
     expect(diagnostics[0]?.message).toContain("async function");
   });
 });
+
+describe("Angular component ownership", () => {
+  it.each([
+    `import {Component} from '@angular/core'; import {useLocale} from './locale'; @Component({}) class Sidebar { locale = useLocale(); }`,
+    `import {Component as View} from '@angular/core'; import {useLocale} from './locale'; @View({}) class Sidebar { locale = useLocale(); }`,
+    `import * as Angular from '@angular/core'; import {useLocale} from './locale'; @Angular.Component({}) class Sidebar { locale = useLocale(); }`,
+  ])("does not infer React hooks for an Angular-owned helper: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toEqual([]);
+  });
+  it.each([
+    `import {Component} from '@angular/core'; import {useState} from 'react'; @Component({}) class Sidebar { value = useState(0); }`,
+    `import {Component} from '@angular/core'; import {useSelector} from 'react-redux'; @Component({}) class Sidebar { value = useSelector(select); }`,
+    `const Component = decorate; import {useLocale} from './locale'; @Component({}) class Sidebar { value = useLocale(); }`,
+    `import {Component} from '@angular/core'; import {useLocale} from './locale'; class Sidebar { value = useLocale(); }`,
+    `import {Component} from '@angular/core'; import {useLocale} from './react-locale'; @Component({}) class Sidebar { value = useLocale(); }`,
+  ])("keeps React or unproven class hook checks: %s", (code) => {
+    expect(runRule(rulesOfHooks, code).diagnostics).toHaveLength(1);
+  });
+});

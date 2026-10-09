@@ -1,4 +1,5 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { isAngularComponentClass } from "../../utils/is-angular-component-class.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -1032,6 +1033,12 @@ export const rulesOfHooks = defineRule({
         if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
 
         if (isProjectOwnedMdxComponentsGetter(node)) return;
+
+        if (isAngularComponentClass(node, context.scopes)) {
+          const imported = resolveImportedApiReference(node.callee, context.scopes);
+          if (imported?.source.startsWith(".") && !isReactEcosystemImportSource(imported.source))
+            return;
+        }
 
         const enclosing = findEnclosingFunctionInfo(node);
 

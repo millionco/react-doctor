@@ -1120,6 +1120,12 @@ const expressionIsDirectFreshContainer = (
   context: RuleContext,
 ): boolean => {
   const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "ConditionalExpression")) {
+    return (
+      expressionIsDirectFreshContainer(candidate.consequent, context) &&
+      expressionIsDirectFreshContainer(candidate.alternate, context)
+    );
+  }
   if (isNodeOfType(candidate, "ObjectExpression") || isNodeOfType(candidate, "ArrayExpression")) {
     return true;
   }

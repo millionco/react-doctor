@@ -1768,3 +1768,87 @@ describe("fresh mapped elements in helper loops", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 });
+
+describe("conditional fresh updater containers", () => {
+  it.each([
+    "reset ? new Set() : new Set(previous)",
+    "reset ? new Set() : (other ? new Set(previous) : new Set())",
+  ])("accepts a fresh collection on every branch: %s", (initializer) => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `
+      import { useState } from "react";
+      const Panel = ({ reset, other }) => {
+        const [, setItems] = useState(new Set());
+        setItems(previous => {
+          const next = ${initializer};
+          next.add("item");
+          return next;
+        });
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "reset ? new Set() : previous",
+    "reset ? previous : new Set()",
+    "reset ? new Set() : shared",
+  ])("still reports a branch that returns shared state: %s", (initializer) => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `
+      import { useState } from "react";
+      const shared = new Set();
+      const Panel = ({ reset }) => {
+        const [, setItems] = useState(new Set());
+        setItems(previous => {
+          const next = ${initializer};
+          next.add("item");
+          return next;
+        });
+      };
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports shared mutation even when both constructors are fresh", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `
+      import { useState } from "react";
+      const shared = new Set();
+      const Panel = () => {
+        const [, setItems] = useState(new Set());
+        setItems(previous => {
+          const next = shared.delete("old") ? new Set() : new Set(previous);
+          next.add("item");
+          return next;
+        });
+      };
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not exempt a shadowed Set constructor", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `
+      import { useState } from "react";
+      const Panel = ({ Set, reset }) => {
+        const [, setItems] = useState(null);
+        setItems(previous => {
+          const next = reset ? new Set() : new Set(previous);
+          next.add("item");
+          return next;
+        });
+      };
+    `,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});

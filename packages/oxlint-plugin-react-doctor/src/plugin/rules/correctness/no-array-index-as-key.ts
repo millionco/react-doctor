@@ -1,3 +1,4 @@
+import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { INDEX_PARAMETER_NAMES } from "../../constants/react.js";
@@ -554,6 +555,23 @@ const isArrayFromLengthObjectCall = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
   const first = node.arguments?.[0];
   if (!first || !isNodeOfType(first, "ObjectExpression")) return false;
+  const callback = node.arguments[1];
+  if (
+    first.properties.length === 1 &&
+    callback &&
+    hasOnlyJsxKeyIndexReads(callback) &&
+    !findVariableInitializer(node, "Array")
+  ) {
+    const property = first.properties[0];
+    if (
+      isNodeOfType(property, "Property") &&
+      !property.computed &&
+      property.kind === "init" &&
+      isNodeOfType(property.key, "Identifier") &&
+      property.key.name === "length"
+    )
+      return true;
+  }
   for (const prop of first.properties ?? []) {
     if (!isNodeOfType(prop, "Property")) continue;
     const key = prop.key;

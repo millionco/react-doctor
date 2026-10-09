@@ -2142,3 +2142,44 @@ describe("placeholder indices passed to class render methods", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("property-based placeholder counts", () => {
+  it.each(["settings.rows", "settings['rows']", "settings.rows + 1"])(
+    "accepts count-generated slots: %s",
+    (count) => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const View = ({settings, value}) => Array.from({length: ${count}}, (_, index) => <span key={index}>{value}</span>);`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+  it.each([
+    "{length: settings.rows, 0: record}",
+    "{length: settings.rows, ...records}",
+    "{length: settings.rows, [Symbol.iterator]: iterateRecords}",
+  ])("keeps real array-like records checked: %s", (source) => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `Array.from(${source}, (record, index) => <Row key={index} record={record}/>);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+it("keeps indexed records behind a property count checked", () => {
+  expect(
+    runRule(
+      noArrayIndexAsKey,
+      `Array.from({length: settings.rows}, (_, index) => <Row key={index} record={rows[index]}/>);`,
+    ).diagnostics,
+  ).toHaveLength(1);
+});
+it("does not trust a shadowed Array factory", () => {
+  expect(
+    runRule(
+      noArrayIndexAsKey,
+      `const View = ({Array, settings}) => Array.from({length: settings.rows}, (record, index) => <Row key={index} record={record}/>);`,
+    ).diagnostics,
+  ).toHaveLength(1);
+});

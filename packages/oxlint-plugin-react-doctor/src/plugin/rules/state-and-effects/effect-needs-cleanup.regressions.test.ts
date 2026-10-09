@@ -9142,3 +9142,27 @@ it.each([
   );
   expect(result.diagnostics).toHaveLength(1);
 });
+
+it.each([
+  ["react-admin", 0],
+  ["custom-admin", 1],
+])("resolves aliased provider imports from %s", (hookSource, expected) => {
+  const result = runRule(
+    effectNeedsCleanup,
+    `
+    import {useEffect} from 'react';
+    import {useDataProvider as useProvider} from '${hookSource}';
+    import type {ApiPlatformAdminDataProvider as Provider} from '@api-platform/admin';
+    const useRecords = (resource, ids) => {
+      const provider: Provider = useProvider();
+      useEffect(() => {
+        if (!resource || !ids) return;
+        provider.subscribe(ids, () => update());
+        return () => provider.unsubscribe(resource, ids);
+      }, [provider, resource, ids]);
+    };
+  `,
+  );
+  expect(result.parseErrors).toEqual([]);
+  expect(result.diagnostics).toHaveLength(expected);
+});

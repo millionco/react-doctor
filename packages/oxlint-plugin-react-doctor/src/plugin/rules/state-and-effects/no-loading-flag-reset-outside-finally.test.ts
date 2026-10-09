@@ -3831,6 +3831,30 @@ describe("render lifecycle resets", () => {
     expect(result.diagnostics).toHaveLength(expected);
   });
 
+  it("does not trust a mutated previous-prop snapshot", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `
+      import {useState, useRef, useEffect, useCallback} from 'react';
+      const View = ({viewId, open}) => {
+        const [,setLoading] = useState(open); const [identity, setIdentity] = useState({viewId, open});
+        const currentView = useRef(viewId); const openRef = useRef(open);
+        identity.viewId = viewId; identity.open = open;
+        if (identity.viewId !== viewId || identity.open !== open) { setIdentity({viewId, open}); setLoading(open); }
+        currentView.current = viewId; openRef.current = open;
+        const run = useCallback(async () => { const savedView = viewId;
+          setLoading(true); try { await load(); } finally {
+            if (currentView.current === savedView && openRef.current) setLoading(false);
+          }
+        }, [viewId]);
+        useEffect(() => { if (!open) return; run(); }, [open, run]);
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("keeps a reset that invalidates a just-started request visible", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,

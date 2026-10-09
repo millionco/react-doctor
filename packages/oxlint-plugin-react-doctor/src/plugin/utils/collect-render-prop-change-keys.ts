@@ -35,7 +35,8 @@ export const collectRenderPropChangeKeys = (
       continue;
     const previousRoot = isNodeOfType(previous, "MemberExpression") ? previous.object : previous;
     const state = scopes.symbolFor(previousRoot);
-    const declarator = state?.declarationNode;
+    if (!state || state.references.some((reference) => reference.flag !== "read")) continue;
+    const declarator = state.declarationNode;
     if (
       !isNodeOfType(declarator, "VariableDeclarator") ||
       !isNodeOfType(declarator.id, "ArrayPattern")
@@ -53,6 +54,20 @@ export const collectRenderPropChangeKeys = (
       ? getStaticPropertyName(previous)
       : null;
     if (isNodeOfType(previous, "MemberExpression") && !property) continue;
+    if (
+      property &&
+      !state.references.every((reference) => {
+        const member = reference.identifier.parent;
+        const comparison = member?.parent;
+        return (
+          isNodeOfType(member, "MemberExpression") &&
+          member.object === reference.identifier &&
+          isNodeOfType(comparison, "BinaryExpression") &&
+          ["===", "!=="].includes(comparison.operator)
+        );
+      })
+    )
+      continue;
     const selectsProp = (value: EsTreeNode | null | undefined): boolean => {
       const selected = value && property ? getStaticObjectPropertyValue(value, property) : value;
       return Boolean(selected && resolveConstIdentifierAlias(selected, scopes)?.id === prop.id);

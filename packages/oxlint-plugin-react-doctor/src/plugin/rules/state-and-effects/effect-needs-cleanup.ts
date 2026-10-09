@@ -2449,11 +2449,7 @@ const resolveDirectResourcePushCollectionSymbol = (
   const initializer = collectionSymbol?.initializer
     ? stripParenExpression(collectionSymbol.initializer)
     : null;
-  return collectionSymbol &&
-    isNodeOfType(initializer, "ArrayExpression") &&
-    (initializer.elements?.length ?? 0) === 0
-    ? collectionSymbol
-    : null;
+  return collectionSymbol && isNodeOfType(initializer, "ArrayExpression") ? collectionSymbol : null;
 };
 
 const findContainingCollectionKey = (
@@ -8459,16 +8455,45 @@ const hasEffectCleanupInvocation = (
 ): boolean => {
   const componentFunction = findEnclosingFunction(storage.retainedFunction);
   if (!componentFunction || !isFunctionLike(componentFunction)) return false;
-  const cleanupFunctionInvokesRef = (cleanupFunction: EsTreeNode): boolean => {
-    if (!isFunctionLike(cleanupFunction)) return false;
+  const cleanupFunctionInvokesRef = (
+    cleanupFunction: EsTreeNode,
+    visitedFunctions = new Set<EsTreeNode>(),
+  ): boolean => {
+    if (
+      !isFunctionLike(cleanupFunction) ||
+      cleanupFunction.async ||
+      cleanupFunction.generator ||
+      visitedFunctions.has(cleanupFunction)
+    )
+      return false;
+    const nextVisitedFunctions = new Set(visitedFunctions);
+    nextVisitedFunctions.add(cleanupFunction);
     let didFindCleanupCall = false;
     walkAst(cleanupFunction.body, (child: EsTreeNode) => {
       if (didFindCleanupCall) return false;
       if (child !== cleanupFunction.body && isFunctionLike(child)) return false;
-      if (
-        isNodeOfType(child, "CallExpression") &&
-        resolveExpressionKey(child.callee, context) === storage.refCurrentKey
-      ) {
+      if (isNodeOfType(child, "CallExpression")) {
+        const isDirectRefCall =
+          resolveExpressionKey(child.callee, context) === storage.refCurrentKey;
+        const helper = isDirectRefCall
+          ? null
+          : resolveRefOwnedCleanupFunction(child.callee, context);
+        if (
+          !isDirectRefCall &&
+          (!helper || !cleanupFunctionInvokesRef(helper, nextVisitedFunctions))
+        )
+          return;
+        let hasEarlierStorageWrite = false;
+        walkAst(cleanupFunction.body, (candidate: EsTreeNode) => {
+          if (candidate !== cleanupFunction.body && isFunctionLike(candidate)) return false;
+          if (
+            isNodeOfType(candidate, "AssignmentExpression") &&
+            candidate.range[0] < child.range[0] &&
+            resolveExpressionKey(candidate.left, context) === storage.refCurrentKey
+          )
+            hasEarlierStorageWrite = true;
+        });
+        if (hasEarlierStorageWrite) return;
         const callRoot = findTransparentExpressionRoot(child);
         const callStatement = callRoot.parent;
         const isDirectBlockStatement =

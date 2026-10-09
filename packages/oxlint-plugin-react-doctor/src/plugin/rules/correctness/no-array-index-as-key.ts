@@ -689,6 +689,35 @@ const isProvablyStringValued = (expression: EsTreeNode, depth: number): boolean 
   return false;
 };
 
+const isPlainStringTokenReceiver = (receiver: EsTreeNode, depth = 0): boolean => {
+  if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return false;
+  const candidate = stripParenExpression(receiver);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const binding = findVariableInitializer(candidate, candidate.name);
+    return Boolean(
+      binding?.initializer &&
+      isConstDeclaredBinding(binding) &&
+      !isBindingReassignedOrMutated(candidate, candidate.name) &&
+      isPlainStringTokenReceiver(binding.initializer, depth + 1),
+    );
+  }
+  if (
+    !isNodeOfType(candidate, "CallExpression") ||
+    !isNodeOfType(candidate.callee, "MemberExpression")
+  )
+    return false;
+  const method = getStaticPropertyName(candidate.callee);
+  if (method === "split") return isProvablyStringValued(candidate.callee.object, 0);
+  const predicate = candidate.arguments[0];
+  return (
+    method === "filter" &&
+    isNodeOfType(predicate, "Identifier") &&
+    predicate.name === "Boolean" &&
+    !findVariableInitializer(predicate, "Boolean") &&
+    isPlainStringTokenReceiver(candidate.callee.object, depth + 1)
+  );
+};
+
 const hasProvablyStringFirstArgument = (callNode: EsTreeNode): boolean => {
   if (!isNodeOfType(callNode, "CallExpression")) return false;
   const source = callNode.arguments?.[0];
@@ -1191,11 +1220,35 @@ const findPositionalIndexUse = (
   return null;
 };
 
-// Receiver-level exemptions applied to the exact iterator call whose
-// callback binds the index (not a walk-up guess): placeholder arrays,
-// string-character slices, fixed useMemo lists, and static default
-// literals all have position as the entry's identity. Plain array
-// literals are deliberately NOT exempt — their rows carry identity.
+const isRepeatedLiteralPlaceholderIterator = (
+  iteratorCall: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  if (!isNodeOfType(iteratorCall.callee, "MemberExpression")) return false;
+  const receiver = iteratorCall.callee.object;
+  if (!isNodeOfType(receiver, "ArrayExpression")) return false;
+  const firstElement = receiver.elements[0];
+  if (
+    !isNodeOfType(firstElement, "Literal") ||
+    !receiver.elements.every(
+      (element) => isNodeOfType(element, "Literal") && element.value === firstElement.value,
+    )
+  )
+    return false;
+  const callback = iteratorCall.arguments[0];
+  if (!callback || !isFunctionLike(callback)) return false;
+  let readsIndexedData = false;
+  walkAst(callback.body, (node) => {
+    if (readsIndexedData) return false;
+    let candidates: EsTreeNode[] = [];
+    if (isNodeOfType(node, "MemberExpression") && node.computed) candidates = [node.property];
+    else if (isNodeOfType(node, "CallExpression")) candidates = node.arguments;
+    readsIndexedData = candidates.some(
+      (candidate) => findPositionalIndexUse(candidate, 0)?.binding.bindingFunction === callback,
+    );
+  });
+  return !readsIndexedData;
+};
+
 const iteratorCallExemptsIndexKey = (iteratorCall: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (isArrayFromCall(iteratorCall)) {
     return (
@@ -1205,6 +1258,7 @@ const iteratorCallExemptsIndexKey = (iteratorCall: EsTreeNodeOfType<"CallExpress
   if (!isNodeOfType(iteratorCall.callee, "MemberExpression")) return false;
   const receiver = iteratorCall.callee.object;
   return (
+    isRepeatedLiteralPlaceholderIterator(iteratorCall) ||
     isStaticPlaceholderReceiver(receiver) ||
     isFixedMemoReceiver(receiver) ||
     isStaticDefaultLiteralReceiver(receiver) ||
@@ -1858,9 +1912,18 @@ export const noArrayIndexAsKey = defineRule({
               const jsxElement = openingElement.parent;
               if (jsxElement && isNodeOfType(jsxElement, "JSXElement")) {
                 const isInlineTextRun = INLINE_TEXT_LEAF_TAGS.has(elementName.name);
-                const primitiveItemNames = keyTemplate
-                  ? findBareItemNamesReferencedByTemplate(keyTemplate, itemNames)
-                  : EMPTY_NAME_SET;
+                let primitiveItemNames = EMPTY_NAME_SET;
+                if (
+                  iteratorCallee &&
+                  isNodeOfType(iteratorCallee, "MemberExpression") &&
+                  isPlainStringTokenReceiver(iteratorCallee.object)
+                )
+                  primitiveItemNames = itemNames;
+                else if (keyTemplate)
+                  primitiveItemNames = findBareItemNamesReferencedByTemplate(
+                    keyTemplate,
+                    itemNames,
+                  );
                 const isStateful =
                   (hasDynamicReactChildren &&
                     elementHasDirectItemChild(openingElement, itemNames)) ||

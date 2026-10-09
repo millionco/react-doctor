@@ -295,3 +295,27 @@ const MatchedName = ({ name, matchedIndices, isSelected }: MatchedNameProps) => 
     });
   });
 });
+
+describe("cloned element keys", () => {
+  it.each([
+    `import {cloneElement} from 'react'; const Rows = ({children}) => children.map((child, index) => cloneElement(child, {key: index}));`,
+    `import {cloneElement as clone} from 'react'; const Rows = ({children}) => children.map((child, index) => clone(child, {key: String(index)}));`,
+    `import React from 'react'; const Rows = ({children}) => children.map((child, index) => React.cloneElement(child, {['key']: index}));`,
+    `import {cloneElement} from 'react'; const Rows = ({children}) => children.map((child, index) => cloneElement(child, {...props, key: index}));`,
+  ])("reports a positional clone override: %s", (code) => {
+    const result = runRule(noArrayIndexAsKey, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `import {cloneElement} from 'react'; const Rows = ({children}) => children.map((child, index) => cloneElement(child, {key: child.key}));`,
+    `import {cloneElement} from 'react'; const Rows = ({children}) => children.map((child, index) => cloneElement(child, {}));`,
+    `import {cloneElement} from 'other'; const Rows = ({children}) => children.map((child, index) => cloneElement(child, {key: index}));`,
+    `const Rows = ({children, React}) => children.map((child, index) => React.cloneElement(child, {key: index}));`,
+    `import {cloneElement} from 'react'; const Rows = ({children}) => children.map((child, index) => cloneElement(child, {key: index, ...props}));`,
+    `import {cloneElement} from 'react'; const Rows = () => Array.from({length: 3}).map((child, index) => cloneElement(template, {key: index}));`,
+  ])("leaves stable or unproven clone keys alone: %s", (code) => {
+    expect(runRule(noArrayIndexAsKey, code).diagnostics).toEqual([]);
+  });
+});

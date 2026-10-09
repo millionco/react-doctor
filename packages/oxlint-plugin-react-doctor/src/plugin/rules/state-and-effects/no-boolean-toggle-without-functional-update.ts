@@ -525,7 +525,9 @@ const effectResubscribesWithCleanup = (
   const effectRegistration = findEnclosingReactEffectRegistration(deferredFunction, context);
   if (!effectRegistration) return false;
   const { callback: effectCallback, call: effectCall } = effectRegistration;
-  const dependencyArray = stripParenExpression(effectCall.arguments?.[1]);
+  const dependencyArgument = effectCall.arguments[1];
+  if (!dependencyArgument) return false;
+  const dependencyArray = stripParenExpression(dependencyArgument);
   if (!isNodeOfType(dependencyArray, "ArrayExpression")) return false;
   const hasStateDependency = dependencyArray.elements.some((element) => {
     if (!element || !isNodeOfType(stripParenExpression(element), "Identifier")) return false;

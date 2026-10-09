@@ -896,6 +896,122 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
   });
 });
 
+describe("callback-only prop dependencies", () => {
+  it.each(["notify(null)", "notify?.(null)"])(
+    "does not treat local state as a prop reset: %s",
+    (notification) => {
+      expect(
+        runRule(
+          noAdjustStateOnPropChange,
+          `import {useState, useEffect} from 'react'; const Panel = ({notify}) => { const [shown, setShown] = useState(false); const [ready, setReady] = useState(false); useEffect(() => { if (ready && !shown) { ${notification}; setShown(true); } }, [ready, shown, notify]); return null; };`,
+        ).diagnostics,
+      ).toEqual([]);
+    },
+  );
+  it.each([
+    `if (ready && !shown) { notify(null); setShown(true); }`,
+    `if (notify) setShown(true);`,
+    `if (notify()) setShown(true);`,
+  ])("retains real prop-driven adjustments: %s", (body) => {
+    expect(
+      runRule(
+        noAdjustStateOnPropChange,
+        `import {useState, useEffect} from 'react'; const Panel = ({notify, ready}) => { const [shown, setShown] = useState(false); useEffect(() => { ${body} }, [ready, shown, notify]); return null; };`,
+      ).diagnostics,
+    ).toHaveLength(1);
+  });
+});
+
+describe("released object URL state", () => {
+  it.each([
+    ["URL.revokeObjectURL(preview);", "setPreview(null);", 0],
+    ["URL.revokeObjectURL(other);", "setPreview(null);", 1],
+    ["", "setPreview(null); URL.revokeObjectURL(preview);", 1],
+    ["if (shouldRelease) URL.revokeObjectURL(preview);", "setPreview(null);", 1],
+    ["URL.revokeObjectURL(preview);", "setDraft(null);", 1],
+  ])("checks release before handle reset %s %s", (release, reset, expected) => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `
+      import { useEffect, useState } from "react";
+      function Preview({ open, other, shouldRelease }) {
+        const [preview, setPreview] = useState(null);
+        const [draft, setDraft] = useState(null);
+        useEffect(() => {
+          if (!open && preview) { ${release} ${reset} }
+        }, [open, preview, other, shouldRelease]);
+        return preview || draft;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+});
+
+describe("portal mount readiness", () => {
+  it.each([
+    [
+      "mounted && target.current ? createPortal(children, target.current) : null",
+      "target.current = document.querySelector(selector);",
+      0,
+    ],
+    [
+      "mounted && createPortal(children, target.current)",
+      "target.current = document.querySelector(selector);",
+      0,
+    ],
+    [
+      "mounted && target.current ? createPortal(children, target.current) : null",
+      "document.querySelector(selector);",
+      1,
+    ],
+    [
+      "mounted && target.current ? createPortal(children, other.current) : null",
+      "target.current = document.querySelector(selector);",
+      1,
+    ],
+    [
+      "!mounted ? createPortal(children, target.current) : null",
+      "target.current = document.querySelector(selector);",
+      1,
+    ],
+    ["mounted ? children : null", "target.current = document.querySelector(selector);", 1],
+  ])("checks portal ownership %s %s", (render, discovery, expected) => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `
+      import { useEffect, useRef, useState } from "react";
+      import { createPortal } from "react-dom";
+      function Layer({ selector, children }) {
+        const target = useRef(null);
+        const other = useRef(null);
+        const [mounted, setMounted] = useState(false);
+        useEffect(() => { ${discovery} setMounted(true); }, [selector]);
+        return ${render};
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+  it("keeps an ordinary reset after an unrelated DOM read", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `
+      import { useEffect, useState } from "react";
+      function Editor({ selector }) {
+        const [draft, setDraft] = useState("");
+        useEffect(() => { document.querySelector(selector); setDraft(""); }, [selector]);
+        return draft;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
 describe("request-map cancellation bookkeeping", () => {
   it.each([
     ["request.controller.abort()", "pending.current.clear();", "setLoading(new Set());", 0],

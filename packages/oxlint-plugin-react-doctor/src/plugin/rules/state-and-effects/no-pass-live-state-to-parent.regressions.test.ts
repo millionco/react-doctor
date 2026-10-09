@@ -1048,3 +1048,46 @@ describe("no-pass-live-state-to-parent — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 });
+
+describe("local loaders that read props", () => {
+  it.each([
+    "async (key) => { if (Object.keys(initialValues).length) return; const response = await fetch(`/items/${key}`); setValues(await response.json()); }",
+    "(key) => { if (initialValues.length) return; setValues(key); }",
+  ])("does not treat a prop read as a parent notification: %s", (callback) => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `
+      import {useState, useCallback, useEffect} from 'react';
+      const Panel = ({initialValues}) => {
+        const [key] = useState('default');
+        const [values, setValues] = useState([]);
+        const loadValues = useCallback(${callback}, [initialValues]);
+        useEffect(() => { loadValues(key); }, []);
+        return null;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    "(key) => onChange(key)",
+    "async (key) => { await fetch(`/items/${key}`); onChange(key); }",
+    "onChange",
+  ])("still reports a wrapped parent notification: %s", (callback) => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `
+      import {useState, useCallback, useEffect} from 'react';
+      const Panel = ({onChange}) => {
+        const [key] = useState('default');
+        const notify = useCallback(${callback}, [onChange]);
+        useEffect(() => { notify(key); }, [key]);
+        return null;
+      };
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

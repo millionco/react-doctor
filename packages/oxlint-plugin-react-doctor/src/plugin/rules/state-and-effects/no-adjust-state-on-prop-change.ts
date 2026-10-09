@@ -1,4 +1,6 @@
 import { isOwnedRequestMapReset } from "./utils/is-owned-request-map-reset.js";
+import { isReleasedObjectUrlStateWrite } from "./utils/is-released-object-url-state-write.js";
+import { isOnlyCalledInEffect } from "./utils/is-only-called-in-effect.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -18,6 +20,8 @@ import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { getEffectDepsRefs, hasCleanup, isProp, isState } from "./utils/effect/react.js";
 import { hasDeferredOrExternalEffectWork } from "./utils/has-deferred-or-external-effect-work.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
+
+import { isPortalMountStateWrite } from "./utils/is-portal-mount-state-write.js";
 
 const writesPropDerivedValue = (analysis: ProgramAnalysis, fact: EffectStateWriteFact): boolean => {
   if (fact.writesPropDerivedMemberValue) return true;
@@ -86,7 +90,10 @@ export const noAdjustStateOnPropChange = defineRule({
         .flatMap((reference) =>
           isState(analysis, reference) ? [] : getUpstreamRefs(analysis, reference),
         )
-        .some((reference) => isProp(analysis, reference));
+        .some(
+          (reference) =>
+            isProp(analysis, reference) && !isOnlyCalledInEffect(reference, node, analysis),
+        );
       if (!hasPropDependency) return;
       const facts = collectEffectStateWriteFacts(analysis, context, node, context.filename);
       if (hasCleanup(analysis, node)) return;
@@ -94,6 +101,8 @@ export const noAdjustStateOnPropChange = defineRule({
         if (
           fact.isDeferred ||
           isOwnedRequestMapReset(fact.callExpression, context) ||
+          isPortalMountStateWrite(fact.callExpression, context) ||
+          isReleasedObjectUrlStateWrite(fact.callExpression, context) ||
           hasDeferredOrExternalEffectWork(analysis, node, context, fact.callExpression)
         ) {
           continue;

@@ -1,3 +1,4 @@
+import { readNearestPackageManifest } from "./utils/read-nearest-package-manifest.js";
 import { resolvePackageVersion } from "./utils/resolve-package-version.js";
 import type { StaticImport } from "oxc-parser";
 import { analyzeScopes } from "./semantic/scope-analysis.js";
@@ -190,6 +191,7 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   staticImports,
 }) => {
+  readNearestPackageManifest(absoluteFilePath);
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
@@ -562,6 +564,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["ink-no-raw-text", collectInkNoRawTextDependencies],
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
     ["effect-needs-cleanup", collectEffectValueHelperDependencies],
+    ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],

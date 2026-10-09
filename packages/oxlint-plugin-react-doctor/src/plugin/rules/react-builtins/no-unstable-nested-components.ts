@@ -1,5 +1,6 @@
 import { compileGlob } from "../../utils/compile-glob.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -126,6 +127,7 @@ const hasEnclosingFunctionOrClass = (node: EsTreeNode): boolean => {
 // Walk up to find the FIRST enclosing function/class component.
 const findEnclosingComponent = (
   node: EsTreeNode,
+  scopes: ScopeAnalysis,
   functionContainsComponentOutput: (functionNode: EsTreeNode) => boolean,
   classIsReactComponent: (classNode: EsTreeNode) => boolean,
 ): { component: EsTreeNode; name: string | null } | null => {
@@ -136,6 +138,17 @@ const findEnclosingComponent = (
       if (
         componentName &&
         isReactComponentName(componentName) &&
+        functionContainsComponentOutput(walker)
+      ) {
+        return { component: walker, name: componentName };
+      }
+      const callback = findTransparentExpressionRoot(walker);
+      const wrapper = callback.parent;
+      if (
+        wrapper?.type === "CallExpression" &&
+        wrapper.arguments[0] === callback &&
+        (isReactApiCall(wrapper, "forwardRef", scopes, { resolveNamedAliases: true }) ||
+          isReactApiCall(wrapper, "memo", scopes, { resolveNamedAliases: true })) &&
         functionContainsComponentOutput(walker)
       ) {
         return { component: walker, name: componentName };
@@ -599,6 +612,7 @@ export const noUnstableNestedComponents = defineRule({
     ): void => {
       const enclosing = findEnclosingComponent(
         candidateNode,
+        context.scopes,
         functionContainsComponentOutput,
         classIsReactComponent,
       );

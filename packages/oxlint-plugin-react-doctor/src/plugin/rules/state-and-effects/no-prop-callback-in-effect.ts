@@ -389,6 +389,7 @@ export const noPropCallbackInEffect = defineRule({
         const reportedNodes = new Set<EsTreeNode>();
         walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
           if (!isNodeOfType(child, "CallExpression")) return;
+          if (child.arguments.length === 0) return;
           const calleeName = getPropCallbackName(child);
           if (!calleeName) return;
           if (analysis) {

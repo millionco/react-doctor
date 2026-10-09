@@ -582,3 +582,71 @@ describe("react-builtins/no-unstable-nested-components — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 });
+
+describe("nested components in React render wrappers", () => {
+  it.each([
+    ['import React from "react";', "React.forwardRef"],
+    ['import { forwardRef as wrap } from "react";', "wrap"],
+    ['import * as React from "react";', 'React["forwardRef"]'],
+    ['import { memo as wrap } from "react";', "wrap"],
+  ])("reports a recreated child in %s %s", (imports, wrapper) => {
+    const result = run(`
+      ${imports}
+      const Parent = ${wrapper}((props) => {
+        const Child = () => <input defaultValue={props.value} />;
+        return <Child />;
+      });
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes a render callback through TypeScript wrappers", () => {
+    const result = run(`
+      import { forwardRef } from "react";
+      const Parent = forwardRef((() => {
+        const Child = () => <input />;
+        return <Child />;
+      }) satisfies RenderCallback);
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "const forwardRef = callback => callback;",
+    'import { forwardRef } from "other-library";',
+  ])("does not infer React ownership from %s", (declaration) => {
+    const result = run(`
+      ${declaration}
+      const factory = forwardRef(() => {
+        const Child = () => <input />;
+        return <Child />;
+      });
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat a memo comparator as a render callback", () => {
+    const result = run(`
+      import { memo } from "react";
+      const Parent = memo(() => <input />, () => {
+        const Child = () => <input />;
+        return Boolean(<Child />);
+      });
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps module components and unused nested helpers clear", () => {
+    const result = run(`
+      import { forwardRef } from "react";
+      const Child = () => <input />;
+      const Parent = forwardRef(() => {
+        const Unused = () => <input />;
+        return <Child />;
+      });
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+});

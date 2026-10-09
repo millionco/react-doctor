@@ -1,4 +1,5 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { isAngularComponentClass } from "../../utils/is-angular-component-class.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -7,6 +8,7 @@ import { isReactComponentOrHookName } from "../../utils/is-react-component-or-ho
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import {
   REACT_ECOSYSTEM_PACKAGE_NAMES,
+  NON_HOOK_REGISTRATION_APIS,
   REACT_HOC_NAMES,
   REACT_RUNTIME_MODULE_SOURCES,
 } from "../../constants/react.js";
@@ -14,11 +16,13 @@ import {
   getImportBindingForName,
   getImportSourceForName,
 } from "../../utils/find-import-source-for-name.js";
+import { isImportedStaticDataGetter } from "../../utils/is-imported-static-data-getter.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-event-callee.js";
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { symbolHasReactUseEffectEventOrigin } from "../../utils/symbol-has-react-use-effect-event-origin.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
+import { getGlobalRequireModuleSource } from "../../utils/get-global-require-module-source.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -783,6 +787,15 @@ const isPackageImportedNonReactHookMemberCallee = (
   if (!receiverSymbol || hasSymbolWriteBefore(receiverSymbol, call, scopes)) return false;
   if (hasPossibleStaticPropertyWriteBefore(receiver, propertyName, call, scopes)) return false;
   const importedReceiver = resolveImportedApiReference(receiver, scopes);
+  const initializer =
+    receiverSymbol.initializer && stripParenExpression(receiverSymbol.initializer);
+  let registrationSource: string | null = null;
+  if (importedReceiver?.isNamespace || importedReceiver?.importedName === "default")
+    registrationSource = importedReceiver.source;
+  else if (initializer && isNodeOfType(initializer, "CallExpression"))
+    registrationSource = getGlobalRequireModuleSource(initializer, scopes);
+  if (registrationSource && NON_HOOK_REGISTRATION_APIS.get(registrationSource)?.has(propertyName))
+    return true;
   if (!importedReceiver) return false;
   if (importedReceiver.source.startsWith(".")) return false;
   if (PATH_ALIAS_IMPORT_PATTERN.test(importedReceiver.source)) return false;
@@ -815,7 +828,10 @@ const isProjectOwnedMdxComponentsGetter = (call: EsTreeNodeOfType<"CallExpressio
   return importSource.startsWith(".") || PATH_ALIAS_IMPORT_PATTERN.test(importSource);
 };
 
-const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {
+const findEnclosingFunctionInfo = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+): FunctionInfo | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
     if (
@@ -831,7 +847,7 @@ const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {
         hasResolvedName: resolvedName !== null,
         isAsync: Boolean(current.async),
         isComponentOrHook:
-          isReactHocCallbackArgument(current) ||
+          isReactHocCallbackArgument(current, scopes) ||
           (resolvedName === null ? false : isComponentOrHookDisplayName(displayName, current)),
       };
     }
@@ -894,11 +910,14 @@ const isInsideLoop = (descendant: EsTreeNode, ancestor: EsTreeNode): boolean => 
   return false;
 };
 
-const findEnclosingComponentOrHookFunction = (node: EsTreeNode): EsTreeNode | null => {
+const findEnclosingComponentOrHookFunction = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
     if (isFunctionLike(current)) {
-      if (isReactHocCallbackArgument(current)) return current;
+      if (isReactHocCallbackArgument(current, scopes)) return current;
       const resolvedName = inferFunctionName(current);
       if (resolvedName !== null && isComponentOrHookDisplayName(resolvedName, current)) {
         return current;
@@ -909,9 +928,13 @@ const findEnclosingComponentOrHookFunction = (node: EsTreeNode): EsTreeNode | nu
   return null;
 };
 
-const isSameComponentOrHookScope = (symbol: SymbolDescriptor, referenceNode: EsTreeNode): boolean =>
-  findEnclosingComponentOrHookFunction(symbol.declarationNode) ===
-  findEnclosingComponentOrHookFunction(referenceNode);
+const isSameComponentOrHookScope = (
+  symbol: SymbolDescriptor,
+  referenceNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean =>
+  findEnclosingComponentOrHookFunction(symbol.declarationNode, scopes) ===
+  findEnclosingComponentOrHookFunction(referenceNode, scopes);
 
 const isAllowedEffectEventHook = (
   hookName: string,
@@ -975,7 +998,7 @@ export const rulesOfHooks = defineRule({
   id: "rules-of-hooks",
   title: "Hook called conditionally",
   severity: "error",
-  tags: ["test-noise"],
+  tags: ["test-noise", "react-jsx-only"],
   recommendation:
     "Call hooks at the top level of a React function component or custom Hook so React sees the same hook order on every render.",
   category: "Correctness",
@@ -1030,10 +1053,17 @@ export const rulesOfHooks = defineRule({
         // async apply helpers, `usePromptExample` event handlers) — none of
         // the ordering rules apply to it.
         if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
+        if (isImportedStaticDataGetter(node.callee, context)) return;
 
         if (isProjectOwnedMdxComponentsGetter(node)) return;
 
-        const enclosing = findEnclosingFunctionInfo(node);
+        if (isAngularComponentClass(node, context.scopes)) {
+          const imported = resolveImportedApiReference(node.callee, context.scopes);
+          if (imported?.source.startsWith(".") && !isReactEcosystemImportSource(imported.source))
+            return;
+        }
+
+        const enclosing = findEnclosingFunctionInfo(node, context.scopes);
 
         if (!enclosing) {
           if (isPackageImportedNonReactHookCallee(node)) return;
@@ -1070,7 +1100,7 @@ export const rulesOfHooks = defineRule({
           !enclosing.isComponentOrHook &&
           enclosing.hasResolvedName &&
           RENDER_SCOPE_FACTORY_NAME_PATTERN.test(enclosing.name) &&
-          findEnclosingComponentOrHookFunction(enclosing.node) === null &&
+          findEnclosingComponentOrHookFunction(enclosing.node, context.scopes) === null &&
           countOwnScopeHookCalls(enclosing.node, context.scopes, settings) >=
             MIN_HOOK_CALLS_FOR_RENDER_SCOPE;
 
@@ -1083,7 +1113,7 @@ export const rulesOfHooks = defineRule({
           let outerWalker: EsTreeNode | null = enclosing.node;
           let isInsideComponentOrHook = enclosing.isComponentOrHook || isLikelyRenderScope;
           while (!isInsideComponentOrHook && outerWalker) {
-            const parentInfo = findEnclosingFunctionInfo(outerWalker);
+            const parentInfo = findEnclosingFunctionInfo(outerWalker, context.scopes);
             if (!parentInfo) break;
             outerWalker = parentInfo.node;
             if (parentInfo.isComponentOrHook) isInsideComponentOrHook = true;
@@ -1116,7 +1146,7 @@ export const rulesOfHooks = defineRule({
             let outerWalker: EsTreeNode | null = enclosing.node;
             let outerIsComponentOrHook = false;
             while (outerWalker) {
-              const outerInfo = findEnclosingFunctionInfo(outerWalker);
+              const outerInfo = findEnclosingFunctionInfo(outerWalker, context.scopes);
               if (!outerInfo) break;
               if (outerInfo.isComponentOrHook) {
                 outerIsComponentOrHook = true;
@@ -1166,7 +1196,7 @@ export const rulesOfHooks = defineRule({
         const reference = context.scopes.referenceFor(node);
         const symbol = reference?.resolvedSymbol;
         if (!symbol || !symbolHasReactUseEffectEventOrigin(symbol, context.scopes)) return;
-        if (!isSameComponentOrHookScope(symbol, node)) return;
+        if (!isSameComponentOrHookScope(symbol, node, context.scopes)) return;
         if (isInsideAllowedEffectEventCallback(node, additionalEffectHooksRegex)) return;
 
         context.report({

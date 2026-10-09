@@ -895,3 +895,66 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     });
   });
 });
+
+describe("portal mount readiness", () => {
+  it.each([
+    [
+      "mounted && target.current ? createPortal(children, target.current) : null",
+      "target.current = document.querySelector(selector);",
+      0,
+    ],
+    [
+      "mounted && createPortal(children, target.current)",
+      "target.current = document.querySelector(selector);",
+      0,
+    ],
+    [
+      "mounted && target.current ? createPortal(children, target.current) : null",
+      "document.querySelector(selector);",
+      1,
+    ],
+    [
+      "mounted && target.current ? createPortal(children, other.current) : null",
+      "target.current = document.querySelector(selector);",
+      1,
+    ],
+    [
+      "!mounted ? createPortal(children, target.current) : null",
+      "target.current = document.querySelector(selector);",
+      1,
+    ],
+    ["mounted ? children : null", "target.current = document.querySelector(selector);", 1],
+  ])("checks portal ownership %s %s", (render, discovery, expected) => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `
+      import { useEffect, useRef, useState } from "react";
+      import { createPortal } from "react-dom";
+      function Layer({ selector, children }) {
+        const target = useRef(null);
+        const other = useRef(null);
+        const [mounted, setMounted] = useState(false);
+        useEffect(() => { ${discovery} setMounted(true); }, [selector]);
+        return ${render};
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expected);
+  });
+  it("keeps an ordinary reset after an unrelated DOM read", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `
+      import { useEffect, useState } from "react";
+      function Editor({ selector }) {
+        const [draft, setDraft] = useState("");
+        useEffect(() => { document.querySelector(selector); setDraft(""); }, [selector]);
+        return draft;
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

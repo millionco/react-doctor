@@ -18,6 +18,8 @@ import { getEffectDepsRefs, hasCleanup, isProp, isState } from "./utils/effect/r
 import { hasDeferredOrExternalEffectWork } from "./utils/has-deferred-or-external-effect-work.js";
 import { hasResourceLifecycleSetterWriter } from "./utils/has-resource-lifecycle-setter-writer.js";
 
+import { isPortalMountStateWrite } from "./utils/is-portal-mount-state-write.js";
+
 const writesPropDerivedValue = (analysis: ProgramAnalysis, fact: EffectStateWriteFact): boolean => {
   if (fact.writesPropDerivedMemberValue) return true;
   if (
@@ -92,6 +94,7 @@ export const noAdjustStateOnPropChange = defineRule({
       for (const fact of facts) {
         if (
           fact.isDeferred ||
+          isPortalMountStateWrite(fact.callExpression, context) ||
           hasDeferredOrExternalEffectWork(analysis, node, context, fact.callExpression)
         ) {
           continue;

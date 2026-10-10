@@ -1,3 +1,4 @@
+import { createDeferred } from "../../core/src/utils/create-deferred.js";
 import { once } from "node:events";
 import type { Server } from "node:http";
 import { request as httpRequest } from "node:http";
@@ -64,8 +65,8 @@ describe("code grading HTTP API", () => {
   });
 
   it("aborts model work when the HTTP client disconnects", async () => {
-    const started = Promise.withResolvers<void>();
-    const cancelled = Promise.withResolvers<void>();
+    const started = createDeferred<void>();
+    const cancelled = createDeferred<void>();
     const { url } = await startServer({
       evaluator: {
         id: "test",
@@ -106,8 +107,8 @@ describe("code grading HTTP API", () => {
   });
 
   it("caps active batches before accepting more grading work", async () => {
-    const started = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<Awaited<ReturnType<CodeGradingEvaluator["evaluate"]>>>();
+    const started = createDeferred<void>();
+    const release = createDeferred<Awaited<ReturnType<CodeGradingEvaluator["evaluate"]>>>();
     const evaluate = vi.fn(async () => {
       started.resolve();
       return release.promise;

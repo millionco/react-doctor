@@ -1,3 +1,4 @@
+import { createDeferred } from "../../core/src/utils/create-deferred.js";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type {
@@ -72,7 +73,7 @@ describe("grading resource controls", () => {
 
   it("shares one model call across requests and cancels it only after the last client leaves", async () => {
     let modelSignal: AbortSignal | undefined;
-    const started = Promise.withResolvers<void>();
+    const started = createDeferred<void>();
     const evaluate = vi.fn(async (_context: ClassificationContext, signal?: AbortSignal) => {
       modelSignal = signal;
       started.resolve();
@@ -108,8 +109,8 @@ describe("grading resource controls", () => {
   });
 
   it("enforces model concurrency across batches and never starts cancelled queued work", async () => {
-    const release = Promise.withResolvers<ClassificationAssessment>();
-    const started = Promise.withResolvers<void>();
+    const release = createDeferred<ClassificationAssessment>();
+    const started = createDeferred<void>();
     const evaluate = vi.fn(async () => {
       started.resolve();
       return release.promise;
@@ -140,7 +141,7 @@ describe("grading resource controls", () => {
   it("times out a stalled evaluator and does not cache a late result", async () => {
     vi.useFakeTimers();
     try {
-      const release = Promise.withResolvers<ClassificationAssessment>();
+      const release = createDeferred<ClassificationAssessment>();
       const cache = createCodeGradingCache();
       const runtime = createCodeGradingRuntime({
         cache,

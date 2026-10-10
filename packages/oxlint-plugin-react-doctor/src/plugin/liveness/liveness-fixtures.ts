@@ -228,6 +228,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "expo-no-non-inlined-env": {
     code: 'const url = process.env["EXPO_PUBLIC_API_URL"];',
   },
+  "fbtee-scoped-jsx-compiler-bailout": {
+    code: 'import { useFbt } from "fbtee";\nexport const Example = () => {\n  const { fbt } = useFbt();\n  return <fbt desc="test">Save</fbt>;\n};',
+    settings: { "react-doctor": { capabilities: ["react-compiler"] } },
+  },
   "firebase-client-owned-authz-field": {
     code: 'import { addDoc, collection } from "firebase/firestore";\nexport const createProject = (name: string, userId: string) =>\n  addDoc(collection(db, "projects"), { name, ownerId: userId, role: "admin" });\n',
     filePath: "src/features/projects/create-project.ts",

@@ -146,6 +146,15 @@ export const isOwnedRequestMapReset = (write: EsTreeNode, context: RuleContext):
         value = candidate.arguments[1];
       }
       if (!key || !value) return;
+      if (isRecordReset) {
+        if (!isNodeOfType(key, "Identifier")) return;
+        const requestKeySymbol = context.scopes.symbolFor(key);
+        if (
+          !requestKeySymbol ||
+          requestKeySymbol.references.some((reference) => reference.flag !== "read")
+        )
+          return;
+      }
       const record = isNodeOfType(value, "Identifier")
         ? resolveConstIdentifierAlias(value, context.scopes)?.initializer
         : value;
@@ -172,6 +181,7 @@ export const isOwnedRequestMapReset = (write: EsTreeNode, context: RuleContext):
           return;
         const updater = stateWrite.arguments[0];
         if (!updater || !isFunctionLike(updater)) return;
+        if (isRecordReset && (updater.async || updater.generator)) return;
         const updatedCollection = stripParenExpression(updater.body);
         if (isRecordReset) {
           if (

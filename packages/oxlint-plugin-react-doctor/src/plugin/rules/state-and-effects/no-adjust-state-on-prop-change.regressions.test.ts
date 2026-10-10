@@ -1182,3 +1182,35 @@ describe("request-record cancellation bookkeeping", () => {
     expect(result.diagnostics).toHaveLength(expected);
   });
 });
+
+describe("request-record stable identity", () => {
+  it.each(["entryId += '-other';", "entryId = query;"])(
+    "retains reset warnings after key reassignment %s",
+    (mutation) => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `
+      import { useEffect, useRef, useState } from "react";
+      const Downloads = ({ query }) => {
+        const requests = useRef({});
+        const [loading, setLoading] = useState({});
+        useEffect(() => {
+          Object.values(requests.current).forEach((controller) => controller.abort());
+          requests.current = {};
+          setLoading({});
+        }, [query]);
+        const start = (entryId) => {
+          const controller = new AbortController();
+          requests.current[entryId] = controller;
+          ${mutation}
+          setLoading((previous) => ({ ...previous, [entryId]: true }));
+        };
+        return <button onClick={() => start("file")}>{Object.keys(loading).length}</button>;
+      };
+    `,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+});

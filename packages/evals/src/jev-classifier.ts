@@ -3,7 +3,7 @@ import { experimental_evaluate as evaluate } from "ai";
 import type { z } from "zod";
 
 import { assessmentSchema } from "./classification-schema.js";
-import type { ClassificationCandidate, ClassificationEvaluator } from "./classification-schema.js";
+import type { ClassificationContext, ClassificationAssessment } from "./classification-schema.js";
 import { ClassificationResponseError } from "./classification-response-error.js";
 import { sanitizeClassificationEvidence } from "./utils/sanitize-classification-evidence.js";
 import {
@@ -47,7 +47,7 @@ export const classificationQuestions = {
 } as const;
 
 export const classificationState = (
-  candidate: ClassificationCandidate,
+  candidate: ClassificationContext,
 ): Record<string, z.core.util.JSONType> => ({
   rule: { ...candidate.rule },
   filePath: candidate.filePath,
@@ -60,13 +60,18 @@ export const classificationState = (
   code: candidate.code,
 });
 
-export const evaluateWithJev: ClassificationEvaluator = async (candidate) => {
+export const evaluateWithJev = async (
+  candidate: ClassificationContext,
+  signal?: AbortSignal,
+): Promise<ClassificationAssessment> => {
   const result = await evaluate({
     model: gateway.evaluationModel(CLASSIFICATION_MODEL),
     state: classificationState(candidate),
     questions: classificationQuestions,
     maxRetries: CLASSIFICATION_MAX_RETRIES,
-    abortSignal: AbortSignal.timeout(CLASSIFICATION_TIMEOUT_MS),
+    abortSignal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(CLASSIFICATION_TIMEOUT_MS)])
+      : AbortSignal.timeout(CLASSIFICATION_TIMEOUT_MS),
     providerOptions: { gateway: { zeroDataRetention: true } },
   });
   const answer = {

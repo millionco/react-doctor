@@ -54,7 +54,7 @@ export interface ClassificationSummary {
 }
 
 export const classifyAssessment = (
-  candidate: ClassificationCandidate,
+  candidate: Pick<ClassificationCandidate, "contextComplete" | "detected">,
   assessment: ClassificationAssessment,
   threshold: number,
 ): ClassificationResult["verdict"] => {

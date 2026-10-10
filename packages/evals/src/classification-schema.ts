@@ -203,3 +203,16 @@ export interface ClassificationResult extends Infer<typeof classificationResultS
 export interface ClassificationEvaluator {
   (candidate: ClassificationCandidate): Promise<ClassificationAssessment>;
 }
+
+export interface ClassificationContext extends Pick<
+  ClassificationCandidate,
+  | "rule"
+  | "filePath"
+  | "sourceKind"
+  | "framework"
+  | "project"
+  | "buildEvidence"
+  | "line"
+  | "column"
+  | "code"
+> {}

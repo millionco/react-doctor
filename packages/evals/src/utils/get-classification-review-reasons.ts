@@ -5,7 +5,7 @@ import type {
 } from "../classification-schema.js";
 
 export interface ClassificationReviewInput {
-  candidate: ClassificationCandidate;
+  candidate: Pick<ClassificationCandidate, "contextComplete">;
   assessment: ClassificationAssessment | null;
   threshold: number;
 }

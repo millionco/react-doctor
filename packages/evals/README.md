@@ -165,3 +165,7 @@ Vercel Sandbox uses the managed Node 22 image. Each sandbox has an explicit run 
 This migration changes private evaluation tooling only. Published CLI commands, diagnostics, scores, and report schemas are unchanged. Existing evaluator hashes change, so old baseline caches must be revalidated.
 
 Each restored scan sandbox sets `vm.overcommit_memory=1` before it starts Oxlint. Oxlint's JavaScript plugin allocator reserves large virtual-memory regions. The default Vercel VM policy rejected those reservations in the live validation run. The setting changes memory reservation in the temporary VM; it does not change the detector or its rules.
+
+## Grade code snippets
+
+Use the [code grading API](./CODE-GRADING.md) to batch code and rule contracts with Typesafe Jev. It supports optional detector results, offline cache replay, a local HTTP endpoint, and a manual GitHub workflow.

@@ -187,6 +187,9 @@ importers:
       '@ai-sdk/gateway':
         specifier: 4.0.85
         version: 4.0.85(zod@4.3.6)
+      '@vercel/firewall':
+        specifier: 1.2.5
+        version: 1.2.5
       '@vercel/sandbox':
         specifier: ^3.5.1
         version: 3.5.1
@@ -2083,6 +2086,10 @@ packages:
     resolution: {integrity: sha512-0krENrjuitlW8s6TJu0MlqCevyCU7K7JK63jZAf7xZ6n17tx+vUEwzHT3sTxawtwZxaW21hu+oFUpoOrm49FsQ==}
     engines: {node: '>=14'}
 
+  '@vercel/firewall@1.2.5':
+    resolution: {integrity: sha512-rylXD6sfUgJMtYGuILXZZPy1af2aLQbRIAQf5nr2vI84PdGNaPEu19VvMG05KOXZ2qwfwf99OsM8brO9VzN8Gg==}
+    engines: {node: '>= 20'}
+
   '@vercel/oidc@3.2.0':
     resolution: {integrity: sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug==}
     engines: {node: '>= 20'}
@@ -2655,6 +2662,7 @@ packages:
   eslint@9.39.2:
     resolution: {integrity: sha512-LEyamqS7W5HB3ujJyvi0HQK/dtVINZvd5mAAp9eT5S/ujByGjiZLCzPcHVzuXbpJDJF/cxwHlfceVUDZ2lnSTw==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -5324,6 +5332,8 @@ snapshots:
   '@typescript-eslint/types@8.59.3': {}
 
   '@vercel/detect-agent@1.2.5': {}
+
+  '@vercel/firewall@1.2.5': {}
 
   '@vercel/oidc@3.2.0': {}
 

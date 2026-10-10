@@ -1,0 +1,51 @@
+name: Grade code with Jev
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: JSON batch with code and rule contracts. Do not include secrets.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: code-grading
+  cancel-in-progress: false
+
+jobs:
+  grade:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm --package=@antfu/ni@30.0.0 dlx ni --frozen-lockfile
+      - name: Save input
+        env:
+          CODE_GRADING_BATCH: ${{ inputs.batch }}
+        run: |
+          node -e 'require("node:fs").writeFileSync("grading-input.json", process.env.CODE_GRADING_BATCH, {mode: 0o600})'
+      - name: Grade batch
+        working-directory: packages/evals
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+        run: pnpm --package=@antfu/ni@30.0.0 dlx nr grade --input ../../grading-input.json --output ../../grading-results.json
+      - name: Save results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: code-grading-results
+          path: grading-results.json
+          if-no-files-found: warn
+          retention-days: 7

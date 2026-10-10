@@ -14,10 +14,13 @@
     "typecheck": "tsc --noEmit",
     "classify": "tsx src/classification-cli.ts",
     "mine": "tsx src/classification-mining-cli.ts",
-    "audit-sol": "tsx src/sol-audit-cli.ts"
+    "audit-sol": "tsx src/sol-audit-cli.ts",
+    "grade": "tsx src/code-grading-cli.ts",
+    "grade:serve": "tsx src/serve-code-grading.ts"
   },
   "dependencies": {
     "@ai-sdk/gateway": "4.0.85",
+    "@vercel/firewall": "1.2.5",
     "@vercel/sandbox": "^3.5.1",
     "ai": "7.0.105",
     "zod": "4.3.6"

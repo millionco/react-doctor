@@ -1022,6 +1022,23 @@
     }
   },
   {
+    "key": "react-doctor/fbtee-scoped-jsx-compiler-bailout",
+    "id": "fbtee-scoped-jsx-compiler-bailout",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "fbtee-scoped-jsx-compiler-bailout",
+      "title": "fbtee scoped JSX will bail out React Compiler",
+      "severity": "error",
+      "recommendation": "fbtee's scoped `useFbt()` / `useFbs()` bindings cause React Compiler to bail out when used in JSX. After fbtee's transform converts `<fbt>` to `fbt._()`, the compiler sees a local variable named `fbt` and cannot optimize. Either use fbtee's global import (`import fbt from 'fbtee'`) instead of the scoped hook, or suppress this diagnostic if the bailout is acceptable.",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["react", "react-compiler"],
+      "tags": ["i18n"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/fieldset-requires-legend",
     "id": "fieldset-requires-legend",
     "source": "react-doctor",

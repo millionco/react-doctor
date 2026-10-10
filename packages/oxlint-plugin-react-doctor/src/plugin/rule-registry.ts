@@ -70,6 +70,7 @@ import { effectRemoveListenerInlineHandler } from "./rules/state-and-effects/eff
 import { emptyTableHeader } from "./rules/a11y/empty-table-header.js";
 import { exhaustiveDeps } from "./rules/react-builtins/exhaustive-deps.js";
 import { expoNoNonInlinedEnv } from "./rules/react-native/expo-no-non-inlined-env.js";
+import { fbteeScopedJsxCompilerBailout } from "./rules/performance/fbtee-scoped-jsx-compiler-bailout.js";
 import { fieldsetRequiresLegend } from "./rules/a11y/fieldset-requires-legend.js";
 import { firebaseClientOwnedAuthzField } from "./rules/security-scan/firebase-client-owned-authz-field.js";
 import { firebasePermissiveRules } from "./rules/security-scan/firebase-permissive-rules.js";
@@ -1678,6 +1679,20 @@ export const reactDoctorRules = [
       framework: "react-native",
       category: "Bugs",
       tags: [...new Set(["react-native", ...(expoNoNonInlinedEnv.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/fbtee-scoped-jsx-compiler-bailout",
+    id: "fbtee-scoped-jsx-compiler-bailout",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...fbteeScopedJsxCompilerBailout,
+      framework: "global",
+      category: "Performance",
+      requires: [
+        ...new Set<Capability>(["react", ...(fbteeScopedJsxCompilerBailout.requires ?? [])]),
+      ],
     },
   },
   {

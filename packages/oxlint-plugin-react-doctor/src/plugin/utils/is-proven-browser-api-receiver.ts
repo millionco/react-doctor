@@ -486,7 +486,8 @@ export const isProvenBrowserApiReceiver = (
   if (
     propertyName === "document" &&
     (isGlobalIdentifier(object, "window", scopes) ||
-      isGlobalIdentifier(object, "globalThis", scopes))
+      isGlobalIdentifier(object, "globalThis", scopes) ||
+      isGlobalIdentifier(object, "global", scopes))
   ) {
     return true;
   }

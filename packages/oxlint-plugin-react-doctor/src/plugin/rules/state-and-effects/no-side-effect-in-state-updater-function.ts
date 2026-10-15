@@ -44,6 +44,7 @@ import { isDefinitelyFalsyExpression } from "../../utils/is-definitely-falsy-exp
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isUnmodifiedArrayFromResult } from "../../utils/is-unmodified-array-from-result.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { parseSourceFile } from "../../utils/parse-source-file.js";
@@ -1939,6 +1940,7 @@ const receiverIsKnownSynchronousCollection = (
 ): boolean => {
   const receiver = stripParenExpression(expression);
   if (isNodeOfType(receiver, "ArrayExpression")) return true;
+  if (isUnmodifiedArrayFromResult(receiver, context.scopes)) return true;
   if (!isNodeOfType(receiver, "Identifier")) return false;
   const symbol = context.scopes.symbolFor(receiver);
   if (!symbol) return false;

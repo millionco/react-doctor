@@ -1,0 +1,19 @@
+// rule: no-side-effect-in-state-updater-function
+// verdict: pass
+// weakness: Array.from result callback provenance
+// source: synthetic
+import { useState } from "react";
+
+export const Preview = ({ source, consume }) => {
+  const [items, setItems] = useState([]);
+  const incoming = Array.from(source);
+  consume(incoming);
+  const update = () =>
+    setItems(() =>
+      incoming.map((item) => {
+        localStorage.setItem("entry", item);
+        return item;
+      }),
+    );
+  return <button onClick={update}>{items.length}</button>;
+};

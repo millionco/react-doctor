@@ -47,7 +47,6 @@ import { dedupeDiagnostics } from "./utils/dedupe-diagnostics.js";
 import { collectProjectIndexModuleSources } from "./utils/collect-project-index-module-sources.js";
 import { hashFileContents } from "./utils/hash-file-contents.js";
 import { listSourceFilesWithSize } from "./utils/list-source-files.js";
-import { mapWithConcurrency } from "./utils/map-with-concurrency.js";
 import { planLintBatches } from "./utils/plan-lint-batches.js";
 import { resolvePooledBatchCount } from "./utils/resolve-pooled-batch-count.js";
 import { createDeferred } from "./utils/create-deferred.js";

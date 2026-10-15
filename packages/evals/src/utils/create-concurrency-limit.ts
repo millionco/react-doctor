@@ -8,12 +8,18 @@ export const createConcurrencyLimit = (concurrency: number): ConcurrencyLimit =>
   }
 
   const pendingOperations: Array<() => void> = [];
+  let nextPendingOperationIndex = 0;
   let activeOperationCount = 0;
 
   const startNextOperations = (): void => {
     while (activeOperationCount < concurrency) {
-      const startOperation = pendingOperations.shift();
-      if (!startOperation) return;
+      const startOperation = pendingOperations[nextPendingOperationIndex];
+      if (!startOperation) {
+        pendingOperations.length = 0;
+        nextPendingOperationIndex = 0;
+        return;
+      }
+      nextPendingOperationIndex += 1;
       activeOperationCount += 1;
       startOperation();
     }

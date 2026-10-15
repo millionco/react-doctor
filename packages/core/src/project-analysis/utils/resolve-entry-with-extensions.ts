@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const RESOLVABLE_EXTENSIONS = [
@@ -13,17 +13,25 @@ const RESOLVABLE_EXTENSIONS = [
   ".es6",
 ];
 
+const isFile = (filePath: string): boolean => {
+  try {
+    return statSync(filePath, { throwIfNoEntry: false })?.isFile() ?? false;
+  } catch {
+    return false;
+  }
+};
+
 export const resolveEntryWithExtensions = (basePath: string): string | undefined => {
-  if (existsSync(basePath)) return basePath;
+  if (isFile(basePath)) return basePath;
 
   for (const extension of RESOLVABLE_EXTENSIONS) {
     const withExtension = basePath + extension;
-    if (existsSync(withExtension)) return withExtension;
+    if (isFile(withExtension)) return withExtension;
   }
 
   for (const extension of RESOLVABLE_EXTENSIONS) {
     const indexCandidate = join(basePath, `index${extension}`);
-    if (existsSync(indexCandidate)) return indexCandidate;
+    if (isFile(indexCandidate)) return indexCandidate;
   }
 
   return undefined;

@@ -19,7 +19,7 @@ import {
 } from "../utils/collect-override-mappings-from-record.js";
 import { collectPnpmWorkspaceOverrideMappings } from "../utils/parse-pnpm-workspace-overrides.js";
 import { collectPackageLockPackageMetadata } from "../utils/collect-package-lock-package-metadata.js";
-import { collectPackageImportNames } from "../utils/matches-package-import-reference.js";
+import { collectPackageImportNames } from "../utils/collect-package-import-names.js";
 import { collectPackageConfigReferences } from "../utils/matches-package-config-reference.js";
 import { extractScriptBinaryNames } from "../utils/extract-script-binary-names.js";
 import { extractLocalScriptFileReference } from "../utils/extract-local-script-file-reference.js";

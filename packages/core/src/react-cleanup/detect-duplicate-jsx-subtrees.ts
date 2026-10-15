@@ -10,6 +10,7 @@ import {
   JSX_DUPLICATION_DEFAULT_MINIMUM_NODE_COUNT,
   JSX_DUPLICATION_DEFAULT_MINIMUM_OCCURRENCES,
   JSX_DUPLICATION_FAMILY_PROCESSING_MULTIPLIER,
+  JSX_DUPLICATION_JSX_NODES_PER_FILE_MULTIPLIER,
   JSX_DUPLICATION_MAX_COMPOSITION_PATH_DEPTH,
   JSX_DUPLICATION_SOURCE_FILE_PATTERN,
 } from "../constants.js";
@@ -155,8 +156,15 @@ type JsxSubtreeNode = ts.JsxElement | ts.JsxSelfClosingElement | ts.JsxFragment;
 const isJsxSubtreeNode = (node: ts.Node): node is JsxSubtreeNode =>
   ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node);
 
+const computeScaledJsxNodeBudget = (sourceFileCount: number, explicitBudget?: number): number => {
+  if (explicitBudget !== undefined) return explicitBudget;
+  const scaledBudget = sourceFileCount * JSX_DUPLICATION_JSX_NODES_PER_FILE_MULTIPLIER;
+  return Math.max(JSX_DUPLICATION_DEFAULT_MAX_JSX_NODES, scaledBudget);
+};
+
 const resolveOptions = (
   options: DetectDuplicateJsxSubtreesOptions,
+  sourceFileCount: number,
 ): ResolvedJsxDuplicationOptions => ({
   minimumNodeCount: options.minimumNodeCount ?? JSX_DUPLICATION_DEFAULT_MINIMUM_NODE_COUNT,
   minimumDepth: options.minimumDepth ?? JSX_DUPLICATION_DEFAULT_MINIMUM_DEPTH,
@@ -166,7 +174,7 @@ const resolveOptions = (
   maxSourceFiles: options.budget?.maxSourceFiles ?? JSX_DUPLICATION_DEFAULT_MAX_SOURCE_FILES,
   maxSourceLengthChars:
     options.budget?.maxSourceLengthChars ?? JSX_DUPLICATION_DEFAULT_MAX_SOURCE_LENGTH_CHARS,
-  maxJsxNodes: options.budget?.maxJsxNodes ?? JSX_DUPLICATION_DEFAULT_MAX_JSX_NODES,
+  maxJsxNodes: computeScaledJsxNodeBudget(sourceFileCount, options.budget?.maxJsxNodes),
   maxFamilies: options.budget?.maxFamilies ?? JSX_DUPLICATION_DEFAULT_MAX_FAMILIES,
 });
 
@@ -563,7 +571,7 @@ const scanSource = (input: ScanJsxDuplicationSourceInput): ScannedJsxDuplication
       incompleteReason: {
         kind: "jsx-node-limit",
         limit: input.options.maxJsxNodes,
-        observed: input.options.maxJsxNodes + 1,
+        observed: input.scannedJsxNodeCount,
         path: input.source.path,
       },
       didAbort: false,
@@ -710,11 +718,11 @@ export const detectDuplicateJsxSubtrees = (
   sources: JsxDuplicationSource[],
   options: DetectDuplicateJsxSubtreesOptions = {},
 ): DuplicateJsxSubtreesResult => {
-  const resolvedOptions = resolveOptions(options);
-  const incompleteReasons: JsxDuplicationIncompleteReason[] = [];
   const sortedSources = sources
     .filter((source) => JSX_DUPLICATION_SOURCE_FILE_PATTERN.test(source.path))
     .sort((left, right) => left.path.localeCompare(right.path));
+  const resolvedOptions = resolveOptions(options, sortedSources.length);
+  const incompleteReasons: JsxDuplicationIncompleteReason[] = [];
   if (sortedSources.length > resolvedOptions.maxSourceFiles) {
     incompleteReasons.push({
       kind: "source-file-limit",
@@ -726,6 +734,8 @@ export const detectDuplicateJsxSubtrees = (
   const candidates: JsxSubtreeCandidate[] = [];
   let scannedSourceFileCount = 0;
   let scannedJsxNodeCount = 0;
+  let budgetExhaustedFileCount = 0;
+  let didPushBudgetExhaustedReason = false;
   for (const source of sortedSources.slice(0, resolvedOptions.maxSourceFiles)) {
     if (options.signal?.aborted) {
       incompleteReasons.push({ kind: "aborted", observed: scannedSourceFileCount });
@@ -739,7 +749,19 @@ export const detectDuplicateJsxSubtrees = (
       scannedJsxNodeCount,
     });
     if (scannedSource.incompleteReason !== null) {
-      incompleteReasons.push(scannedSource.incompleteReason);
+      if (scannedSource.incompleteReason.kind === "jsx-node-limit") {
+        budgetExhaustedFileCount += 1;
+        if (!didPushBudgetExhaustedReason) {
+          incompleteReasons.push({
+            kind: "jsx-node-limit",
+            limit: resolvedOptions.maxJsxNodes,
+            observed: scannedJsxNodeCount,
+          });
+          didPushBudgetExhaustedReason = true;
+        }
+      } else {
+        incompleteReasons.push(scannedSource.incompleteReason);
+      }
     }
     if (scannedSource.didAbort) break;
     if (!scannedSource.didScan) continue;
@@ -760,11 +782,11 @@ export const detectDuplicateJsxSubtreesCooperative = async (
   sourceReader: JsxDuplicationSourceReader,
   options: DetectDuplicateJsxSubtreesOptions = {},
 ): Promise<DuplicateJsxSubtreesResult> => {
-  const resolvedOptions = resolveOptions(options);
-  const incompleteReasons: JsxDuplicationIncompleteReason[] = [];
   const sortedPaths = sourceReader.paths
     .filter((sourcePath) => JSX_DUPLICATION_SOURCE_FILE_PATTERN.test(sourcePath))
     .sort((left, right) => left.localeCompare(right));
+  const resolvedOptions = resolveOptions(options, sortedPaths.length);
+  const incompleteReasons: JsxDuplicationIncompleteReason[] = [];
   if (sortedPaths.length > resolvedOptions.maxSourceFiles) {
     incompleteReasons.push({
       kind: "source-file-limit",
@@ -776,6 +798,8 @@ export const detectDuplicateJsxSubtreesCooperative = async (
   const candidates: JsxSubtreeCandidate[] = [];
   let scannedSourceFileCount = 0;
   let scannedJsxNodeCount = 0;
+  let budgetExhaustedFileCount = 0;
+  let didPushBudgetExhaustedReason = false;
   const scannedPaths = sortedPaths.slice(0, resolvedOptions.maxSourceFiles);
   const readAhead = (pathIndex: number): Promise<string | null> | null => {
     if (pathIndex >= scannedPaths.length) return null;
@@ -804,7 +828,19 @@ export const detectDuplicateJsxSubtreesCooperative = async (
       scannedJsxNodeCount,
     });
     if (scannedSource.incompleteReason !== null) {
-      incompleteReasons.push(scannedSource.incompleteReason);
+      if (scannedSource.incompleteReason.kind === "jsx-node-limit") {
+        budgetExhaustedFileCount += 1;
+        if (!didPushBudgetExhaustedReason) {
+          incompleteReasons.push({
+            kind: "jsx-node-limit",
+            limit: resolvedOptions.maxJsxNodes,
+            observed: scannedJsxNodeCount,
+          });
+          didPushBudgetExhaustedReason = true;
+        }
+      } else {
+        incompleteReasons.push(scannedSource.incompleteReason);
+      }
     }
     if (scannedSource.didScan) {
       candidates.push(...scannedSource.candidates);

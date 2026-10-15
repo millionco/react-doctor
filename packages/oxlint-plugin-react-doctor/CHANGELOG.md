@@ -1,5 +1,21 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.19
+
+### Patch Changes
+
+- [#2000](https://github.com/millionco/react-doctor/pull/2000) [`9a79847`](https://github.com/millionco/react-doctor/commit/9a79847f0e4086ac06edb552afe9ed754e4b0000) Thanks [@aidenybai](https://github.com/aidenybai)! - Let rules declare the code that owns a finding separately from its diagnostic location. With `--scope contextual`, `exhaustive-deps` now reports existing dependency findings when their hook call or resolved local callback changes. Ownership survives lint-cache replay and stays out of public JSON reports and score requests.
+
+  Add JSX element scope for `alt-text` and `click-events-have-key-events`, and function scope for `rules-of-hooks`. Existing scan defaults and other scopes are unchanged.
+
+- [#2011](https://github.com/millionco/react-doctor/pull/2011) [`84ad0c8`](https://github.com/millionco/react-doctor/commit/84ad0c8d0df7a3ab7d26946367fae3bc39c100d0) Thanks [@skoshx](https://github.com/skoshx)! - Fix `unsafe-json-in-html` false positive for `JSON.stringify().replaceAll("<", "\\u003c")`
+
+  The `unsafe-json-in-html` rule now recognizes `.replaceAll("<", "\\u003c")` as a safe escape pattern, equivalent to the already-recognized `.replace(/</g, "\\u003c")` form. This resolves false positives when developers use the more explicit `.replaceAll` method to escape less-than characters in JSON-LD or other JSON embedded in HTML/script tags.
+
+- [#1983](https://github.com/millionco/react-doctor/pull/1983) [`a1df4e5`](https://github.com/millionco/react-doctor/commit/a1df4e54f13073acaa1fe72f945f226bb4a75451) Thanks [@skoshx](https://github.com/skoshx)! - Skip .open-next build output in security scan
+
+  The security scan now skips `.open-next/` directories (OpenNext build output) the same way it skips `.next/` and `.vercel/`, preventing false positive security findings from bundled library code.
+
 ## 0.9.18
 
 ### Patch Changes

@@ -28,6 +28,7 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
+import { getGlobalObjectUrlOperation } from "../../utils/get-global-object-url-operation.js";
 import { getFiniteStaticStringValues } from "../../utils/get-finite-static-string-values.js";
 import { getPropertyDescriptorValue } from "../../utils/get-property-descriptor-value.js";
 import { getRuntimeStaticDependencySource } from "../../utils/get-runtime-static-dependency-source.js";
@@ -1970,7 +1971,10 @@ const callHasSideEffectName = (
   invocationReferenceNode: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean => {
-  if (isGlobalHistoryMutationCall(call, context)) {
+  if (
+    isGlobalHistoryMutationCall(call, context) ||
+    getGlobalObjectUrlOperation(call, context.scopes) !== null
+  ) {
     return true;
   }
   const callName = getCallName(call);

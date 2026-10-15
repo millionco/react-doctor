@@ -1,5 +1,6 @@
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { hasOnlyJsxKeyIndexReads } from "../../utils/has-only-jsx-key-index-reads.js";
+import { isIndexQuantityOption } from "../../utils/is-index-quantity-option.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import { isPrimitiveAccumulator } from "../../utils/is-primitive-accumulator.js";
 import { isPositionOnlyMap } from "../../utils/is-position-only-map.js";
@@ -565,7 +566,7 @@ const isArrayFromLengthObjectCall = (node: EsTreeNode): boolean => {
   if (
     first.properties.length === 1 &&
     callback &&
-    hasOnlyJsxKeyIndexReads(callback) &&
+    (hasOnlyJsxKeyIndexReads(callback) || isIndexQuantityOption(callback)) &&
     !findVariableInitializer(node, "Array")
   ) {
     const property = first.properties[0];

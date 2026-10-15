@@ -12,6 +12,7 @@ import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProtectedRefValueAliasWrite } from "../../utils/is-protected-ref-value-alias-write.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
@@ -610,8 +611,9 @@ export const noRefCurrentInRender = defineRule({
   recommendation:
     "Move ref writes into an event handler or effect. Render must stay pure because React can replay or discard it. The predictable null-guarded lazy initialization pattern remains supported.",
   create: (context) => {
-    const report = (memberExpression: EsTreeNode) => {
-      if (!resolveReactRefSymbol(memberExpression, context.scopes)) return;
+    const report = (memberExpression: EsTreeNode, hasProtectedAliasTarget = false) => {
+      if (!hasProtectedAliasTarget && !resolveReactRefSymbol(memberExpression, context.scopes))
+        return;
       if (!findRenderPhaseComponentOrHook(memberExpression, context.scopes)) return;
       context.report({
         node: memberExpression,
@@ -623,9 +625,8 @@ export const noRefCurrentInRender = defineRule({
     return {
       AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
         const refSymbol = resolveReactRefSymbol(node.left, context.scopes);
-        if (!refSymbol) return;
-        if (isDocumentedLazyInitialization(node, refSymbol, context.scopes)) return;
-        report(node.left);
+        if (refSymbol && isDocumentedLazyInitialization(node, refSymbol, context.scopes)) return;
+        report(node.left, !refSymbol && isProtectedRefValueAliasWrite(node, context));
       },
       UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {
         report(node.argument);

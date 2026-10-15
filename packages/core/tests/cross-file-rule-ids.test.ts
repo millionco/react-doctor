@@ -183,6 +183,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-full-lodash-import",
       "no-hydration-branch-on-browser-global",
       "no-img-without-dimensions",
+      "no-impure-state-updater",
       "no-indeterminate-attribute",
       "no-initialize-state",
       "no-loading-flag-reset-outside-finally",

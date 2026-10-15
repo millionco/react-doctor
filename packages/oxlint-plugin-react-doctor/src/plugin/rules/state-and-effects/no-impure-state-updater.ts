@@ -5,9 +5,14 @@ import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { getRootIdentifier } from "../../utils/get-root-identifier.js";
+import { isImportedControlledStateSetter } from "../../utils/is-imported-controlled-state-setter.js";
+import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -292,17 +297,37 @@ const isUpdaterConsumingSetterCall = (
   );
 };
 
-const findImpureUpdaterOperation = (updater: EsTreeNode, scopes: ScopeAnalysis): string | null => {
+const findImpureUpdaterOperation = (
+  updater: EsTreeNode,
+  scopes: ScopeAnalysis,
+  importedContext?: RuleContext,
+): string | null => {
   const analysis = getProgramAnalysis(updater);
   let operation: string | null = null;
-  walkAst(updater, (child: EsTreeNode): boolean | void => {
+  const operationRoot = importedContext && isFunctionLike(updater) ? updater.body : updater;
+  walkAst(operationRoot, (child: EsTreeNode): boolean | void => {
     if (operation) return false;
+    if (
+      importedContext &&
+      (isNodeOfType(child, "ClassDeclaration") || isNodeOfType(child, "ClassExpression"))
+    ) {
+      return false;
+    }
     if (
       child !== updater &&
       isFunctionLike(child) &&
-      !isDefinitelySynchronousCallback(child, scopes)
+      (importedContext !== undefined || !isDefinitelySynchronousCallback(child, scopes))
     ) {
       return false;
+    }
+    if (
+      importedContext &&
+      (!isNodeOnUnconditionalPath(child, updater) ||
+        !isNodeReachableWithinFunction(child, importedContext, {
+          evaluatePrimitiveLiteralTruthiness: true,
+        }))
+    ) {
+      return;
     }
     if (isNodeOfType(child, "CallExpression")) {
       if (isNodeOfType(child.callee, "Identifier") && analysis) {
@@ -337,6 +362,12 @@ export const noImpureStateUpdater = defineRule({
   recommendation:
     "Keep state updater callbacks pure and return only the next state. Move notifications, storage, timers, ref writes, and other external work into the event or effect that queues the update.",
   create: (context) => {
+    const reportOperation = (updaterArgument: EsTreeNode, operation: string): void => {
+      context.report({
+        node: updaterArgument,
+        message: `This state updater performs ${operation}. React may run updater functions more than once, so side effects here can repeat or observe inconsistent external state.`,
+      });
+    };
     let programHasUseStateCall: boolean | undefined;
     const programContainsUseStateCall = (node: EsTreeNode): boolean => {
       if (programHasUseStateCall !== undefined) return programHasUseStateCall;
@@ -360,6 +391,29 @@ export const noImpureStateUpdater = defineRule({
         const updaterArgument = node.arguments?.[0];
         if (!updaterArgument || !isNodeOfType(node.callee, "Identifier")) return;
         if (!isFunctionLike(updaterArgument) && !isNodeOfType(updaterArgument, "Identifier")) {
+          return;
+        }
+        if (
+          isFunctionLike(updaterArgument) &&
+          !updaterArgument.async &&
+          !updaterArgument.generator &&
+          !node.optional &&
+          !node.arguments.some((argument) => isNodeOfType(argument, "SpreadElement")) &&
+          isImportedControlledStateSetter(node.callee, context.scopes, context.filename)
+        ) {
+          const caller = findEnclosingFunction(node);
+          if (
+            caller &&
+            isNodeOnUnconditionalPath(node, caller) &&
+            isNodeReachableWithinFunction(node, context, {
+              evaluatePrimitiveLiteralTruthiness: true,
+            })
+          ) {
+            const operation = findImpureUpdaterOperation(updaterArgument, context.scopes, context);
+            if (operation) {
+              reportOperation(updaterArgument, operation);
+            }
+          }
           return;
         }
         if (!programContainsUseStateCall(node)) return;
@@ -392,10 +446,7 @@ export const noImpureStateUpdater = defineRule({
         if (!updater) return;
         const operation = findImpureUpdaterOperation(updater, context.scopes);
         if (!operation) return;
-        context.report({
-          node: updaterArgument,
-          message: `This state updater performs ${operation}. React may run updater functions more than once, so side effects here can repeat or observe inconsistent external state.`,
-        });
+        reportOperation(updaterArgument, operation);
       },
     };
   },

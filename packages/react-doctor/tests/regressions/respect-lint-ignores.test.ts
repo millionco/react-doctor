@@ -20,6 +20,7 @@ import { clearIgnorePatternsCache, collectIgnorePatterns, runOxlint } from "@rea
 import {
   buildIsolatedDerivedStateRuleConfig,
   buildTestProject,
+  initGitRepo,
   setupReactProject,
 } from "./_helpers.js";
 
@@ -181,6 +182,78 @@ describe("default behavior: respect additional ignore-file sources", () => {
     expect(filesWithIssues.has("src/vendored.tsx")).toBe(false);
     expect(filesWithIssues.has("src/generated.tsx")).toBe(false);
     expect(filesWithIssues.has("src/normal.tsx")).toBe(true);
+  });
+
+  it.each([
+    { useGit: false, absolutePaths: false },
+    { useGit: true, absolutePaths: false },
+    { useGit: false, absolutePaths: true },
+    { useGit: true, absolutePaths: true },
+  ])(
+    "honors ordered Linguist overrides (Git: $useGit, absolute paths: $absolutePaths)",
+    async ({ useGit, absolutePaths }) => {
+      const projectDir = setupCase(`gitattributes-overrides-${useGit}-${absolutePaths}`, {
+        "src/normal.tsx": DERIVED_STATE_SOURCE,
+        "src/unset.tsx": DERIVED_STATE_SOURCE,
+        "src/unspecified.tsx": DERIVED_STATE_SOURCE,
+        "src/generated.tsx": DERIVED_STATE_SOURCE,
+        "src/vendored.tsx": DERIVED_STATE_SOURCE,
+        ".gitattributes": [
+          "src/** linguist-generated linguist-vendored",
+          "src/** linguist-generated=false",
+          "src/normal.tsx linguist-vendored=false",
+          "src/unset.tsx -linguist-vendored",
+          "src/unspecified.tsx !linguist-vendored",
+          "src/generated.tsx linguist-generated=true linguist-vendored=false",
+        ].join("\n"),
+      });
+      if (useGit) initGitRepo(projectDir);
+
+      const diagnostics = await runOxlint({
+        rootDirectory: projectDir,
+        project: buildTestProject({ rootDirectory: projectDir }),
+        includePaths: [
+          "src/normal.tsx",
+          "src/unset.tsx",
+          "src/unspecified.tsx",
+          "src/generated.tsx",
+          "src/vendored.tsx",
+        ].map((filePath) => (absolutePaths ? path.join(projectDir, filePath) : filePath)),
+        userConfig: { rules: buildIsolatedDerivedStateRuleConfig("no-derived-state-effect") },
+      });
+
+      const diagnosticPaths = diagnostics.map((diagnostic) =>
+        path
+          .relative(projectDir, path.resolve(projectDir, diagnostic.filePath))
+          .replaceAll("\\", "/"),
+      );
+      expect([...new Set(diagnosticPaths)].sort()).toEqual([
+        "src/normal.tsx",
+        "src/unset.tsx",
+        "src/unspecified.tsx",
+      ]);
+    },
+  );
+
+  it("uses nested Git attributes without undoing separate ignore files", async () => {
+    const projectDir = setupCase("nested-gitattributes", {
+      "src/normal.tsx": DERIVED_STATE_SOURCE,
+      "src/ignored.tsx": DERIVED_STATE_SOURCE,
+      "src/vendored.tsx": DERIVED_STATE_SOURCE,
+      ".gitattributes": "*.tsx linguist-generated\n",
+      "src/.gitattributes": "*.tsx -linguist-generated\nvendored.tsx linguist-vendored\n",
+      ".eslintignore": "src/ignored.tsx\n",
+    });
+    initGitRepo(projectDir);
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+      includePaths: ["src/normal.tsx", "src/ignored.tsx", "src/vendored.tsx"],
+      userConfig: { rules: buildIsolatedDerivedStateRuleConfig("no-derived-state-effect") },
+    });
+    expect([...new Set(diagnostics.map((diagnostic) => diagnostic.filePath))]).toEqual([
+      "src/normal.tsx",
+    ]);
   });
 
   it("does NOT skip files marked `linguist-vendored=false` (explicit opt-in to linting)", async () => {

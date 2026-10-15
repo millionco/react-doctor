@@ -19,6 +19,8 @@ import {
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
+import { collectGitLinguistIgnoredPathsCooperative } from "./utils/collect-git-linguist-ignored-paths.js";
+import { toRelativePath } from "./utils/to-relative-path.js";
 import { detectUserLintConfigPaths } from "./detect-user-lint-config.js";
 import { readAdoptedLintConfigSettings } from "./read-adopted-lint-config-settings.js";
 import { ReactDoctorError } from "./errors.js";
@@ -544,7 +546,18 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       rootDirectory,
       candidateFiles,
     });
-    const preparedLintSources = prepareLintSources(rootDirectory, configDirectory, candidateFiles);
+    const linguistIgnoredPaths = await collectGitLinguistIgnoredPathsCooperative(
+      rootDirectory,
+      candidateFiles.map((filePath) => toRelativePath(filePath, rootDirectory)),
+      options.signal,
+    );
+    const preparedLintSources = prepareLintSources(
+      rootDirectory,
+      configDirectory,
+      candidateFiles.filter(
+        (filePath) => !linguistIgnoredPaths.has(toRelativePath(filePath, rootDirectory)),
+      ),
+    );
     const lintFiles = preparedLintSources.lintFiles;
     const hasPreparedFiles = preparedLintSources.sourcePathByLintPath.size > 0;
     const lintProject =

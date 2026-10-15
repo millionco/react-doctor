@@ -1,8 +1,12 @@
 import { execFile, spawnSync } from "node:child_process";
-import { GIT_CHECK_ATTR_MAX_BUFFER_BYTES } from "../constants.js";
+import * as path from "node:path";
+import { parseGitattributesLinguistPaths } from "../parse-gitattributes-linguist.js";
+import {
+  DISABLED_LINGUIST_ATTRIBUTE_VALUES,
+  GIT_CHECK_ATTR_MAX_BUFFER_BYTES,
+} from "../constants.js";
 
 const LINGUIST_ATTRIBUTES = ["linguist-generated", "linguist-vendored"];
-const DISABLED_ATTRIBUTE_VALUES = new Set(["unspecified", "unset", "false", "0", "off", "no"]);
 
 const buildInput = (relativePaths: ReadonlyArray<string>): string =>
   `${relativePaths.join("\0")}\0`;
@@ -13,7 +17,7 @@ const parseIgnoredPaths = (output: string): ReadonlySet<string> => {
   for (let fieldIndex = 0; fieldIndex + 2 < fields.length; fieldIndex += 3) {
     const filePath = fields[fieldIndex];
     const value = fields[fieldIndex + 2]?.toLowerCase();
-    if (filePath && value && !DISABLED_ATTRIBUTE_VALUES.has(value)) {
+    if (filePath && value && !DISABLED_LINGUIST_ATTRIBUTE_VALUES.has(value)) {
       ignoredPaths.add(filePath);
     }
   }
@@ -31,7 +35,11 @@ export const collectGitLinguistIgnoredPaths = (
     input: buildInput(relativePaths),
     maxBuffer: GIT_CHECK_ATTR_MAX_BUFFER_BYTES,
   });
-  if (result.error || result.status !== 0) return new Set();
+  if (result.error || result.status !== 0) {
+    return new Set(
+      parseGitattributesLinguistPaths(path.join(rootDirectory, ".gitattributes"), relativePaths),
+    );
+  }
   return parseIgnoredPaths(result.stdout);
 };
 
@@ -58,9 +66,20 @@ export const collectGitLinguistIgnoredPathsCooperative = (
           reject(signal.reason);
           return;
         }
-        resolve(error ? new Set() : parseIgnoredPaths(stdout));
+        resolve(
+          error
+            ? new Set(
+                parseGitattributesLinguistPaths(
+                  path.join(rootDirectory, ".gitattributes"),
+                  relativePaths,
+                ),
+              )
+            : parseIgnoredPaths(stdout),
+        );
       },
     );
+    // HACK: Git can close stdin before reading outside a repository; its callback handles the exit.
+    child.stdin?.on("error", () => undefined);
     child.stdin?.end(buildInput(relativePaths));
   });
 };

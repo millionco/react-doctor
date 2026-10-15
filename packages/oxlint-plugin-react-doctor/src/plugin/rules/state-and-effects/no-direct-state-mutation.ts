@@ -9,6 +9,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
+import { collectShallowCopyStateRecordWrites } from "./utils/collect-shallow-copy-state-record-writes.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -247,6 +248,12 @@ export const noDirectStateMutation = defineRule({
 
       for (const binding of bindings) {
         if (!plainStateValueNames.has(binding.valueName)) continue;
+        for (const assignment of collectShallowCopyStateRecordWrites(binding, context)) {
+          context.report({
+            node: assignment,
+            message: `Copying the array still shares its records with "${binding.valueName}". Replace the changed record instead of changing it in place.`,
+          });
+        }
         if (!isNodeOfType(binding.declarator.id, "ArrayPattern")) continue;
         const stateIdentifier = binding.declarator.id.elements?.[0];
         if (!isNodeOfType(stateIdentifier, "Identifier")) continue;

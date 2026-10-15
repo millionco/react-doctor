@@ -9,10 +9,12 @@ import { findDeferredExecutionBoundary } from "../../utils/find-deferred-executi
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isOutsideAllFunctions } from "../../utils/is-outside-all-functions.js";
+import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -611,7 +613,51 @@ export const noRefCurrentInRender = defineRule({
     "Move ref writes into an event handler or effect. Render must stay pure because React can replay or discard it. The predictable null-guarded lazy initialization pattern remains supported.",
   create: (context) => {
     const report = (memberExpression: EsTreeNode) => {
-      if (!resolveReactRefSymbol(memberExpression, context.scopes)) return;
+      const target = stripParenExpression(memberExpression);
+      const directRefSymbol = resolveReactRefSymbol(target, context.scopes);
+      const refSymbol =
+        directRefSymbol ??
+        (isNodeOfType(target, "MemberExpression")
+          ? resolveReactRefSymbol(stripParenExpression(target.object), context.scopes)
+          : null);
+      if (!refSymbol) return;
+      if (!directRefSymbol) {
+        if (
+          refSymbol.references.some(
+            (reference) =>
+              reference.flag !== "read" ||
+              (isWithinAssignmentTarget(reference.identifier) &&
+                !isNodeOfType(
+                  findTransparentExpressionRoot(reference.identifier).parent,
+                  "MemberExpression",
+                )),
+          )
+        )
+          return;
+        const initializer = refSymbol.initializer
+          ? stripParenExpression(refSymbol.initializer)
+          : null;
+        const initialValue = isNodeOfType(initializer, "CallExpression")
+          ? initializer.arguments[0]
+          : null;
+        if (!initialValue || isNodeOfType(initialValue, "SpreadElement")) return;
+        const initialContainer = stripParenExpression(initialValue);
+        if (
+          !isNodeOfType(initialContainer, "ObjectExpression") &&
+          !isNodeOfType(initialContainer, "ArrayExpression")
+        )
+          return;
+        if (
+          isNodeOfType(initialContainer, "ObjectExpression") &&
+          initialContainer.properties.some(
+            (property) =>
+              isNodeOfType(property, "Property") &&
+              (property.kind !== "init" ||
+                getStaticPropertyKeyName(property, { allowComputedString: true }) === "__proto__"),
+          )
+        )
+          return;
+      }
       if (!findRenderPhaseComponentOrHook(memberExpression, context.scopes)) return;
       context.report({
         node: memberExpression,
@@ -623,8 +669,7 @@ export const noRefCurrentInRender = defineRule({
     return {
       AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
         const refSymbol = resolveReactRefSymbol(node.left, context.scopes);
-        if (!refSymbol) return;
-        if (isDocumentedLazyInitialization(node, refSymbol, context.scopes)) return;
+        if (refSymbol && isDocumentedLazyInitialization(node, refSymbol, context.scopes)) return;
         report(node.left);
       },
       UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {

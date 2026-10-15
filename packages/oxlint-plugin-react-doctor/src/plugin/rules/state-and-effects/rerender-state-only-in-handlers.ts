@@ -1,7 +1,9 @@
 import { BUILTIN_HOOK_NAMES, EFFECT_HOOK_NAMES } from "../../constants/react.js";
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { createReachableNodeChecker } from "../../utils/create-reachable-node-checker.js";
+import { isBindingAssignmentTarget } from "../../utils/is-binding-assignment-target.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
+import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
@@ -21,7 +23,9 @@ import { getComponentRenderDependencyAnalysis } from "./utils/get-component-rend
 
 interface EffectDependencyInfo {
   dependencyNames: Set<string>;
+  dependencySymbols: Set<SymbolDescriptor>;
   synchronouslyCalledFunctionNames: Set<string>;
+  synchronouslyCalledFunctionSymbols: Set<SymbolDescriptor>;
   payloadReadNames: Set<string>;
   nestedCallbackCalledFunctionNames: Set<string>;
 }
@@ -68,6 +72,7 @@ const collectComponentStateUsageInfo = (
   componentBody: EsTreeNode,
   setterNames: ReadonlySet<string>,
   scopes: ScopeAnalysis,
+  isReachableNode: (node: EsTreeNode) => boolean,
 ): ComponentStateUsageInfo => {
   const calledSetterNames = new Set<string>();
   const customHookArgumentNames = new Set<string>();
@@ -103,15 +108,20 @@ const collectComponentStateUsageInfo = (
     }
     if (!isReactHookCall(child, EFFECT_HOOK_NAMES, scopes)) return;
     const dependencyNames = new Set<string>();
+    const dependencySymbols = new Set<SymbolDescriptor>();
     for (const argument of child.arguments ?? []) {
       if (!isNodeOfType(argument, "ArrayExpression")) continue;
       for (const element of argument.elements ?? []) {
         if (!element) continue;
-        const rootName = getRootIdentifierName(element);
-        if (rootName) dependencyNames.add(rootName);
+        const rootIdentifier = getRootIdentifier(element);
+        if (!rootIdentifier) continue;
+        dependencyNames.add(rootIdentifier.name);
+        const dependencySymbol = scopes.symbolFor(rootIdentifier);
+        if (dependencySymbol) dependencySymbols.add(dependencySymbol);
       }
     }
     const synchronouslyCalledFunctionNames = new Set<string>();
+    const synchronouslyCalledFunctionSymbols = new Set<SymbolDescriptor>();
     const payloadReadNames = new Set<string>();
     const nestedCallbackCalledFunctionNames = new Set<string>();
     const effectCallback = child.arguments?.[0];
@@ -135,6 +145,10 @@ const collectComponentStateUsageInfo = (
           }
           if (bodyNode === effectCallback.body || !isNestedCallbackCall) {
             synchronouslyCalledFunctionNames.add(bodyNode.callee.name);
+            const calleeSymbol = scopes.symbolFor(bodyNode.callee);
+            if (calleeSymbol && isReachableNode(bodyNode)) {
+              synchronouslyCalledFunctionSymbols.add(calleeSymbol);
+            }
           }
           if (isNestedCallbackCall) {
             nestedCallbackCalledFunctionNames.add(bodyNode.callee.name);
@@ -162,7 +176,9 @@ const collectComponentStateUsageInfo = (
     }
     effectInfos.push({
       dependencyNames,
+      dependencySymbols,
       synchronouslyCalledFunctionNames,
+      synchronouslyCalledFunctionSymbols,
       payloadReadNames,
       nestedCallbackCalledFunctionNames,
     });
@@ -263,7 +279,12 @@ export const rerenderStateOnlyInHandlers = defineRule({
       // all) would work. An effect that consumes the PAYLOAD (member reads,
       // call arguments) before clearing is a handoff, not an echo.
       const { calledSetterNames, customHookArgumentNames, effectInfos } =
-        collectComponentStateUsageInfo(componentBody, setterNames, context.scopes);
+        collectComponentStateUsageInfo(
+          componentBody,
+          setterNames,
+          context.scopes,
+          createReachableNodeChecker(context.cfg),
+        );
       const selfEchoValueNames = new Set<string>();
       for (const binding of bindings) {
         // A setter also invoked from a NESTED callback of the same effect
@@ -280,10 +301,42 @@ export const rerenderStateOnlyInHandlers = defineRule({
         );
         if (hasGuardOnlySynchronousSelfWrite) selfEchoValueNames.add(binding.valueName);
       }
+      const renderedStateSetterSymbols = new Set<SymbolDescriptor>();
+      const stateValueSymbolsByName = new Map<string, SymbolDescriptor>();
+      for (const binding of bindings) {
+        const valueIdentifier = isNodeOfType(binding.declarator.id, "ArrayPattern")
+          ? binding.declarator.id.elements[0]
+          : null;
+        const valueSymbol = valueIdentifier ? context.scopes.symbolFor(valueIdentifier) : null;
+        if (valueSymbol) stateValueSymbolsByName.set(binding.valueName, valueSymbol);
+        if (!renderReachableNames.has(binding.valueName)) continue;
+        const setterIdentifier = isNodeOfType(binding.declarator.id, "ArrayPattern")
+          ? binding.declarator.id.elements[1]
+          : null;
+        const setterSymbol = setterIdentifier ? context.scopes.symbolFor(setterIdentifier) : null;
+        if (
+          setterSymbol &&
+          !setterSymbol.references.some(
+            (reference) =>
+              reference.flag !== "read" || isBindingAssignmentTarget(reference.identifier),
+          )
+        ) {
+          renderedStateSetterSymbols.add(setterSymbol);
+        }
+      }
       const effectConsumedNames = new Set<string>();
       for (const effectInfo of effectInfos) {
+        const writesRenderedState = Array.from(effectInfo.synchronouslyCalledFunctionSymbols).some(
+          (calleeSymbol) => renderedStateSetterSymbols.has(calleeSymbol),
+        );
         for (const dependencyName of effectInfo.dependencyNames) {
-          if (!selfEchoValueNames.has(dependencyName)) effectConsumedNames.add(dependencyName);
+          const valueSymbol = stateValueSymbolsByName.get(dependencyName);
+          const publishesRenderedState =
+            writesRenderedState &&
+            Boolean(valueSymbol && effectInfo.dependencySymbols.has(valueSymbol));
+          if (!selfEchoValueNames.has(dependencyName) || publishesRenderedState) {
+            effectConsumedNames.add(dependencyName);
+          }
         }
       }
       for (const hookArgumentName of customHookArgumentNames) {

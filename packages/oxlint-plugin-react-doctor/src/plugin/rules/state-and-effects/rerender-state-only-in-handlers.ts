@@ -1,7 +1,9 @@
 import { BUILTIN_HOOK_NAMES, EFFECT_HOOK_NAMES } from "../../constants/react.js";
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
+import { getRootIdentifier } from "../../utils/get-root-identifier.js";
+import { isBindingAssignmentTarget } from "../../utils/is-binding-assignment-target.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
@@ -21,6 +23,8 @@ import { getComponentRenderDependencyAnalysis } from "./utils/get-component-rend
 
 interface EffectDependencyInfo {
   dependencyNames: Set<string>;
+  dependencySymbols: Set<SymbolDescriptor>;
+  payloadReadSymbols: Set<SymbolDescriptor>;
   synchronouslyCalledFunctionNames: Set<string>;
   payloadReadNames: Set<string>;
   nestedCallbackCalledFunctionNames: Set<string>;
@@ -67,8 +71,10 @@ const isInsideConditionTest = (identifier: EsTreeNode, stopAt: EsTreeNode): bool
 const collectComponentStateUsageInfo = (
   componentBody: EsTreeNode,
   setterNames: ReadonlySet<string>,
-  scopes: ScopeAnalysis,
+  context: RuleContext,
 ): ComponentStateUsageInfo => {
+  const { scopes } = context;
+  const componentFunction = context.cfg.enclosingFunction(componentBody);
   const calledSetterNames = new Set<string>();
   const customHookArgumentNames = new Set<string>();
   const effectInfos: EffectDependencyInfo[] = [];
@@ -103,12 +109,17 @@ const collectComponentStateUsageInfo = (
     }
     if (!isReactHookCall(child, EFFECT_HOOK_NAMES, scopes)) return;
     const dependencyNames = new Set<string>();
+    const dependencySymbols = new Set<SymbolDescriptor>();
+    const payloadReadSymbols = new Set<SymbolDescriptor>();
     for (const argument of child.arguments ?? []) {
       if (!isNodeOfType(argument, "ArrayExpression")) continue;
       for (const element of argument.elements ?? []) {
         if (!element) continue;
-        const rootName = getRootIdentifierName(element);
-        if (rootName) dependencyNames.add(rootName);
+        const rootIdentifier = getRootIdentifier(element);
+        if (!rootIdentifier) continue;
+        dependencyNames.add(rootIdentifier.name);
+        const dependencySymbol = scopes.symbolFor(rootIdentifier);
+        if (dependencySymbol) dependencySymbols.add(dependencySymbol);
       }
     }
     const synchronouslyCalledFunctionNames = new Set<string>();
@@ -119,7 +130,20 @@ const collectComponentStateUsageInfo = (
       isNodeOfType(effectCallback, "ArrowFunctionExpression") ||
       isNodeOfType(effectCallback, "FunctionExpression")
     ) {
+      const hasSupportedPayloadConsumer =
+        !effectCallback.async &&
+        !effectCallback.generator &&
+        effectCallback.params.length === 0 &&
+        context.cfg.enclosingFunction(child) === componentFunction &&
+        isNodeReachableWithinFunction(child, context, { evaluatePrimitiveLiteralTruthiness: true });
+      let hasOpaqueCallbackInputs = false;
       walkAst(effectCallback.body, (bodyNode: EsTreeNode): void => {
+        if (
+          isNodeOfType(bodyNode, "ThisExpression") ||
+          (isNodeOfType(bodyNode, "Identifier") && bodyNode.name === "arguments")
+        ) {
+          hasOpaqueCallbackInputs = true;
+        }
         if (
           isNodeOfType(bodyNode, "CallExpression") &&
           isNodeOfType(bodyNode.callee, "Identifier")
@@ -144,11 +168,9 @@ const collectComponentStateUsageInfo = (
         const parent = bodyNode.parent;
         if (!parent) return;
         if (isNodeOfType(parent, "MemberExpression") && parent.object === bodyNode) {
-          if (isInsideConditionTest(bodyNode, effectCallback.body as EsTreeNode)) return;
+          if (isInsideConditionTest(bodyNode, effectCallback.body)) return;
           payloadReadNames.add(bodyNode.name);
-          return;
-        }
-        if (
+        } else if (
           isNodeOfType(parent, "CallExpression") &&
           (parent.arguments ?? []).some((argument) => argument === bodyNode)
         ) {
@@ -157,11 +179,28 @@ const collectComponentStateUsageInfo = (
           const calleeName = isNodeOfType(parent.callee, "Identifier") ? parent.callee.name : null;
           if (calleeName !== null && setterNames.has(calleeName)) return;
           payloadReadNames.add(bodyNode.name);
+        } else {
+          return;
         }
+        if (
+          !hasSupportedPayloadConsumer ||
+          isInsideConditionTest(bodyNode, effectCallback.body) ||
+          context.cfg.enclosingFunction(bodyNode) !== effectCallback ||
+          !isNodeReachableWithinFunction(bodyNode, context, {
+            evaluatePrimitiveLiteralTruthiness: true,
+          })
+        ) {
+          return;
+        }
+        const payloadSymbol = scopes.symbolFor(bodyNode);
+        if (payloadSymbol) payloadReadSymbols.add(payloadSymbol);
       });
+      if (hasOpaqueCallbackInputs) payloadReadSymbols.clear();
     }
     effectInfos.push({
       dependencyNames,
+      dependencySymbols,
+      payloadReadSymbols,
       synchronouslyCalledFunctionNames,
       payloadReadNames,
       nestedCallbackCalledFunctionNames,
@@ -263,7 +302,7 @@ export const rerenderStateOnlyInHandlers = defineRule({
       // all) would work. An effect that consumes the PAYLOAD (member reads,
       // call arguments) before clearing is a handoff, not an echo.
       const { calledSetterNames, customHookArgumentNames, effectInfos } =
-        collectComponentStateUsageInfo(componentBody, setterNames, context.scopes);
+        collectComponentStateUsageInfo(componentBody, setterNames, context);
       const selfEchoValueNames = new Set<string>();
       for (const binding of bindings) {
         // A setter also invoked from a NESTED callback of the same effect
@@ -280,10 +319,40 @@ export const rerenderStateOnlyInHandlers = defineRule({
         );
         if (hasGuardOnlySynchronousSelfWrite) selfEchoValueNames.add(binding.valueName);
       }
+      const stateValueSymbolsByName = new Map<string, SymbolDescriptor>();
+      for (const binding of bindings) {
+        if (!selfEchoValueNames.has(binding.valueName)) continue;
+        if (!isNodeOfType(binding.declarator.id, "ArrayPattern")) continue;
+        const [valueIdentifier, setterIdentifier] = binding.declarator.id.elements;
+        const valueSymbol = valueIdentifier ? context.scopes.symbolFor(valueIdentifier) : null;
+        const setterSymbol = setterIdentifier ? context.scopes.symbolFor(setterIdentifier) : null;
+        if (
+          !valueSymbol ||
+          !setterSymbol ||
+          valueSymbol.kind !== "const" ||
+          setterSymbol.kind !== "const" ||
+          [valueSymbol, setterSymbol].some((symbol) =>
+            symbol.references.some(
+              (reference) =>
+                reference.flag !== "read" || isBindingAssignmentTarget(reference.identifier),
+            ),
+          )
+        ) {
+          continue;
+        }
+        stateValueSymbolsByName.set(binding.valueName, valueSymbol);
+      }
       const effectConsumedNames = new Set<string>();
       for (const effectInfo of effectInfos) {
         for (const dependencyName of effectInfo.dependencyNames) {
-          if (!selfEchoValueNames.has(dependencyName)) effectConsumedNames.add(dependencyName);
+          const valueSymbol = stateValueSymbolsByName.get(dependencyName);
+          const consumesStatePayload =
+            valueSymbol &&
+            effectInfo.dependencySymbols.has(valueSymbol) &&
+            effectInfo.payloadReadSymbols.has(valueSymbol);
+          if (!selfEchoValueNames.has(dependencyName) || consumesStatePayload) {
+            effectConsumedNames.add(dependencyName);
+          }
         }
       }
       for (const hookArgumentName of customHookArgumentNames) {

@@ -319,3 +319,11 @@ export const NAVIGATION_RECEIVER_NAMES = new Set([
 export const NON_HOOK_REGISTRATION_APIS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["react_ujs", new Set(["useContext", "useContexts"])],
 ]);
+
+export const ARRAY_APPLY_ARGUMENT_COUNT = 2;
+export const ARRAY_APPLY_SLOTS_ARGUMENT_INDEX = 1;
+export const ARRAY_CONSTRUCTOR_COUNT_ARGUMENT_COUNT = 1;
+export const ARRAY_MAP_COLLECTION_PARAMETER_INDEX = 2;
+export const ARRAY_MAP_INDEX_PARAMETER_INDEX = 1;
+export const ARRAY_MAP_PARAMETER_COUNT = 3;
+export const ARRAY_MAP_CALLBACK_ARGUMENT_COUNT = 1;

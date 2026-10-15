@@ -1,6 +1,7 @@
 import { BUILTIN_HOOK_NAMES, EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -217,7 +218,15 @@ export const rerenderStateOnlyInHandlers = defineRule({
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
-      const bindings = collectUseStateBindings(componentBody, context.scopes);
+      const firstRenderExit = componentBody.body.find(
+        (statement) =>
+          isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement"),
+      );
+      const bindings = collectUseStateBindings(componentBody, context.scopes).filter(
+        (binding) =>
+          !firstRenderExit ||
+          getNodeStartIndex(binding.declarator) < getNodeStartIndex(firstRenderExit),
+      );
       if (bindings.length === 0) return;
       const {
         dependencyGraph,

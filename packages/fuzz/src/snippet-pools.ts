@@ -650,6 +650,8 @@ export const JSX_LEAF_POOL = [
   `<button onClick={handleClick}>Click here…</button>`,
   `<div onClick={condition ? undefined : () => setIsOpen(true)}>{!condition && <Button aria-label="Open" onPress={() => setIsOpen(true)}>Open</Button>}</div>`,
   `<button>Submit — now...</button>`,
+  `<button children={"Continue"} />`,
+  `<button children={""} />`,
   `<h2></h2>`,
   `<img src={url} onError={(event) => { event.currentTarget.src = "/fallback.png"; }} />`,
   `<div role="button" onClick={handleClick}>{state}</div>`,

@@ -1,3 +1,5 @@
+import { hasSupportedComponentCallbackProgram } from "./utils/has-supported-component-callback-program.js";
+import { isReadonlyInlineCallbackParameter } from "./utils/is-readonly-inline-callback-parameter.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
@@ -149,6 +151,10 @@ export const noCallComponentAsFunction = defineRule({
     // the symbol id) is the key because scope analysis can register a
     // hoisted declaration under two symbol records sharing one binding.
     const renderedComponentBindings = new Set<EsTreeNode>();
+    const jsxComponentBindings = new Set<EsTreeNode>();
+    const supportsCallbackParameters = hasSupportedComponentCallbackProgram(
+      context.scopes.rootScope.node,
+    );
     const candidateCalls: Array<{
       node: EsTreeNode;
       callee: EsTreeNode;
@@ -164,6 +170,8 @@ export const noCallComponentAsFunction = defineRule({
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (isNodeOfType(node.name, "JSXIdentifier") && isUppercaseName(node.name.name)) {
           recordRenderedComponent(node.name as EsTreeNode);
+          const symbol = context.scopes.symbolFor(node.name as EsTreeNode);
+          if (symbol) jsxComponentBindings.add(symbol.bindingIdentifier);
         }
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
@@ -192,7 +200,14 @@ export const noCallComponentAsFunction = defineRule({
             (isModuleScopeDeclaration(symbol.declarationNode) ||
               isRendered ||
               declarationBodyContainsHookCall(symbol));
-          const isComponent = isLocalComponent || (symbol.kind === "import" && isRendered);
+          const isRenderedCallbackParameter =
+            supportsCallbackParameters &&
+            jsxComponentBindings.has(symbol.bindingIdentifier) &&
+            isReadonlyInlineCallbackParameter(symbol);
+          const isComponent =
+            isLocalComponent ||
+            (symbol.kind === "import" && isRendered) ||
+            isRenderedCallbackParameter;
           if (!isComponent) continue;
           if (declarationTakesMultiplePositionalArguments(symbol)) continue;
           if (declarationIsAsyncFunction(symbol)) continue;

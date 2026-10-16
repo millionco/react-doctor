@@ -1,3 +1,4 @@
+import { isStableViteEnvironmentDependency } from "./utils/is-stable-vite-environment-dependency.js";
 import { getUninterruptedConstInitializer } from "../../utils/get-uninterrupted-const-initializer.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
@@ -133,6 +134,7 @@ const hasOnlyStableIdentityDependencies = ({
       isReactHookResultReference(dependencyElement, STATE_DISPATCHER_HOOKS, 1, context.scopes) ||
       isReactHookResultReference(dependencyElement, REF_HOOKS, null, context.scopes) ||
       isModuleScopeConstBinding(dependencyArray, dependencyElement.name) ||
+      isStableViteEnvironmentDependency(dependencyElement, context) ||
       (isNodeOfType(useCallbackDependencies, "ArrayExpression") &&
         useCallbackDependencies.elements.length === 0)
     );

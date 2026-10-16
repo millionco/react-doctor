@@ -1219,6 +1219,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     forceJsx: true,
   },
   "no-set-state-after-await-in-effect": {
+    settings: { "react-doctor": { capabilities: ["react", "react:18", "vite"] } },
     code: 'import { useEffect, useState } from "react"; const C = ({ id }) => { const [, setUser] = useState(); useEffect(() => { const run = async () => { const user = await load(id); setUser(user); }; run(); }, [id]); };',
   },
   "no-side-effect-in-state-updater-function": {

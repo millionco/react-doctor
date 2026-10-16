@@ -256,6 +256,8 @@ export const HANDLER_SNIPPET_POOL = [
 // Guards / nullability — find/match/get derefs, optional chains, splits,
 // alias-then-guard, canUseDOM aliases, JSON.parse.
 export const GUARD_SNIPPET_POOL = [
+  `const fuzzFormatQuantity = (value) => value < 0 ? undefined : value; const FuzzNumericQuantity = () => { const itemCount = fuzzFormatQuantity(count); return <div>{itemCount && <span>Ready</span>}</div>; }; const fuzzNumericQuantity = <FuzzNumericQuantity />;`,
+  `const fuzzLabelQuantity = (value) => { if (value < 0) return undefined; return value + " pieces"; }; const FuzzLabeledQuantity = () => { const itemCount = fuzzLabelQuantity(count); return <div>{itemCount && <span>Ready</span>}</div>; }; const fuzzLabeledQuantity = <FuzzLabeledQuantity />;`,
   `if (!useState || !useRef || !useEffect) return null;`,
   `const found = items.find((item) => item.id === value); if (!found) return null;`,
   `const label = items.find((item) => item.active)?.name ?? "none";`,

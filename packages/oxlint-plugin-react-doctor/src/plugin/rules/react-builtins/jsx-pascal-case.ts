@@ -6,8 +6,8 @@ import { shouldUseCuratedPortBehavior } from "../../utils/should-use-curated-por
 
 const buildMessage = (componentName: string, allowAllCaps: boolean): string =>
   allowAllCaps
-    ? `React can mistake \`${componentName}\` for an HTML tag unless it's PascalCase or SCREAMING_SNAKE_CASE.`
-    : `React can mistake \`${componentName}\` for an HTML tag unless it's PascalCase.`;
+    ? `Component \`${componentName}\` does not follow the configured PascalCase or SCREAMING_SNAKE_CASE naming convention.`
+    : `Component \`${componentName}\` does not follow the configured PascalCase naming convention.`;
 
 interface JsxPascalCaseSettings {
   allowAllCaps?: boolean;
@@ -148,7 +148,7 @@ export const jsxPascalCase = defineRule({
   defaultEnabled: false,
   tags: ["test-noise"],
   recommendation:
-    "Rename custom JSX components to PascalCase so React treats them as components, not intrinsic DOM tags.",
+    "Use PascalCase for custom JSX component names, or configure the rule's naming exceptions.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

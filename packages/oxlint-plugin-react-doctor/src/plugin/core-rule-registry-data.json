@@ -2462,7 +2462,7 @@
       "id": "jsx-pascal-case",
       "title": "Component name not PascalCase",
       "severity": "warn",
-      "recommendation": "Rename custom JSX components to PascalCase so React treats them as components, not intrinsic DOM tags.",
+      "recommendation": "Use PascalCase for custom JSX component names, or configure the rule's naming exceptions.",
       "category": "Maintainability",
       "framework": "global",
       "requires": ["react"],

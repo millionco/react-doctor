@@ -1,4 +1,5 @@
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
+import { isClosedEnclosingRafCleanupHelper } from "./utils/is-closed-enclosing-raf-cleanup-helper.js";
 import { collectBindingAliases } from "../../utils/collect-binding-aliases.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -938,8 +939,15 @@ export const effectRafLoopNeedsCancel = defineRule({
         const handleKey = cancellableHandleKey(rafLoop, callback, context.scopes);
         if (
           handleKey &&
-          cleanupFunctions.some((cleanupFunction) =>
-            cleanupCancelsHandle(cleanupFunction, handleKey, context.scopes),
+          cleanupFunctions.some(
+            (cleanupFunction) =>
+              cleanupCancelsHandle(cleanupFunction, handleKey, context.scopes) ||
+              isClosedEnclosingRafCleanupHelper({
+                cleanupFunction,
+                effectCallback: callback,
+                schedulingCalls: collectLoopSchedulingCalls(rafLoop, context.scopes),
+                scopes: context.scopes,
+              }),
           )
         ) {
           continue;

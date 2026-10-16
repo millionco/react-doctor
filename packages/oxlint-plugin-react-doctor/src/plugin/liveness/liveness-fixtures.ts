@@ -1772,8 +1772,8 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { headers } from "./my-io.js";\nexport default async function Page() {\n  const headersList = await headers();\n  const rows = await fetchRows();\n  return rows;\n}',
   },
   "state-in-constructor": {
-    code: "\n                    class Foo extends React.Component {\n                      constructor(props) {\n                        super(props)\n                        this.state = { bar: 0 }\n                      }\n                      render() {\n                        return <div>Foo</div>\n                      }\n                    }\n                  ",
-    settings: { "react-doctor": { stateInConstructor: { mode: "never" } } },
+    code: "class ExplicitStateInitializer extends React.Component { state = undefined; }",
+    settings: { "react-doctor": { stateInConstructor: { mode: "always" } } },
     forceJsx: true,
   },
   "style-prop-object": {

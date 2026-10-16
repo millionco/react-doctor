@@ -204,6 +204,8 @@ export const STATE_SNIPPET_POOL = [
 // Handlers — async submits with loading flags, keyboard commit paths,
 // numeric input parsing, window.open, clipboard, toggles.
 export const HANDLER_SNIPPET_POOL = [
+  `const FuzzOpaqueCallbackResult = ({ value }) => { const { prepare } = useFuzzOpaqueAdapter(value); prepare(value); return <div />; }; const fuzzOpaqueCallbackResultNode = <FuzzOpaqueCallbackResult value={value} />;`,
+  `const FuzzDirectCallbackProp = ({ onSave }) => { onSave(); return <div />; }; const fuzzDirectCallbackPropNode = <FuzzDirectCallbackProp onSave={handle} />;`,
   `const latestRequest = { current: 0 }; const latestReview = { current: 0 }; const handleFreshRequest = async () => { const requestId = latestRequest.current; const reviewVersion = latestReview.current; const response = await fetch(url); if (requestId !== latestRequest.current || reviewVersion !== latestReview.current) return; setState(await response.json()); };`,
   `const handleSyncRequest = () => { const request = new XMLHttpRequest(); request.open("GET", String(url), false); request.send(); };`,
   `const handleSubmit = async () => { setLoading(true); try { await fetch(url, { method: "POST", body: JSON.stringify(values) }); setState(true); } catch (submitError) { setError(submitError); } finally { setLoading(false); } };`,
@@ -778,6 +780,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
 ] as const;
 
 export const IMPORT_LINE_POOL = [
+  `import { useFuzzOpaqueAdapter } from "fuzz-adapter";`,
   `import { compile as compileFuzzMdx } from "@mdx-js/mdx"; const fuzzCompiledMdx = await compileFuzzMdx(tenantContent);`,
   `import { proxy as createFuzzValtioProxy, useSnapshot as useFuzzValtioSnapshot } from "valtio"; const fuzzValtioState = createFuzzValtioProxy({ count: 0 });`,
   `import fetch from "node-fetch";`,

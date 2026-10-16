@@ -1,0 +1,2 @@
+export const FIRST_SPLIT_PART_INDEX = 0;
+export const FIRST_OPTIONAL_SPLIT_PART_INDEX = 1;

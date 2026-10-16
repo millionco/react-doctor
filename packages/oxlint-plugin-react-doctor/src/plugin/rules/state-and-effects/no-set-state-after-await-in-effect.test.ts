@@ -2674,3 +2674,242 @@ describe("fresh cancellation guard aliases", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+interface CancellationShortCircuitCase {
+  name: string;
+  code: string;
+  expectedCount: number;
+}
+
+const cancellationShortCircuitCases: CancellationShortCircuitCase[] = [
+  {
+    name: "local-live-and-opaque",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "negated-cancelled-and-opaque",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let cancelled = false;\n    const load = async () => {\n      await pending;\n      if (!cancelled && readReady()) setCount(1);\n    };\n    load();\n    return () => { cancelled = true; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "cancelled-or-opaque-return",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let cancelled = false;\n    const load = async () => {\n      await pending;\n      if (cancelled || readReady()) return;\n      setCount(1);\n    };\n    load();\n    return () => { cancelled = true; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "native-ref-and-opaque",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  const active = useRef(true);\n  useEffect(() => {\n    const load = async () => {\n      await pending;\n      if (active.current && readReady()) setCount(1);\n    };\n    load();\n    return () => { active.current = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "legacy-pure-live-guard",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "reversed-mutating-prefix",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const resetAlive = () => { alive = true; return true; };\n    const load = async () => {\n      await pending;\n      if (resetAlive() && alive) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "mixed-or-allows-opaque",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive || readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "nullish-conservatively-unsupported",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive ?? readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "snapshot-before-suspension",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      const liveSnapshot = alive;\n      await pending;\n      if (liveSnapshot && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "and-true-does-not-force-return",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let cancelled = false;\n    const load = async () => {\n      await pending;\n      if (cancelled && readReady()) return;\n      setCount(1);\n    };\n    load();\n    return () => { cancelled = true; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "getter-setter-member-guard",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    const guard = { get active() { return true; }, set active(nextValue) {} };\n    const load = async () => {\n      await pending;\n      if (guard.active && readReady()) setCount(1);\n    };\n    load();\n    return () => { guard.active = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "nested-left-opaque-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if ((alive && readReady()) && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "shared-ref-reset-on-new-effect-run",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  const active = useRef(true);\n  useEffect(() => {\n    active.current = true;\n    const load = async () => {\n      await pending;\n      if (active.current && readReady()) setCount(1);\n    };\n    load();\n    return () => { active.current = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "module-flag-reset-on-new-effect-run",
+    code: "import { useEffect, useState, useRef } from 'react';\nlet active = true;\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    active = true;\n    const load = async () => {\n      await pending;\n      if (active && readReady()) setCount(1);\n    };\n    load();\n    return () => { active = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "var-local-positive",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    var alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "concise-cleanup-positive",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => alive = false;\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "wrapped-left-positive",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (((alive) as boolean) && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 0,
+  },
+  {
+    name: "additional-direct-write",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "nested-reset-closure",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    publish(() => { alive = true; });\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "array-pattern-reset",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    publish(() => { [alive] = [true]; });\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "object-pattern-reset",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    publish(() => { ({ alive } = { alive: true }); });\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "loop-target-reset",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    publish(() => { for (alive of [true]) {} });\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "direct-eval",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    eval(\"alive = true\");\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "nested-wrapped-eval",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    publish(() => { (eval)(\"alive = true\"); });\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "cleanup-same-value",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = true; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "cleanup-multiple-statements",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; log(); };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "cleanup-alias-return",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    const cleanup = () => { alive = false; };\n    return cleanup;\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "conditional-cleanup-value",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = readReady(); };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "destructured-local",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let [alive] = [true];\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "local-function-left-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const isActive = () => alive;\n    const load = async () => {\n      await pending;\n      if (isActive() && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "identifier-alias-left-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      const isActive = alive;\n      if (isActive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "comparison-left-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if ((alive === true) && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "shadow-cleanup-binding",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { let alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "post-await-reset",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      alive = true;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "async-cleanup-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return async () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "generator-cleanup-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return function* () { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "parameter-cleanup-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return (unused = reset()) => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "module-ordinary-no-reset-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nlet alive = true;\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    const load = async () => {\n      await pending;\n      if (alive && readReady()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "boolean-wrapper-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (Boolean(alive && readReady())) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "replaced-boolean-wrapper-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nglobalThis.Boolean = () => true;\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      if (Boolean(alive && readReady())) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "reassigned-local-predicate-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    function isActive() { return alive && readReady(); }\n    const load = async () => {\n      await pending;\n      [isActive] = [() => true];\n      if (isActive()) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "post-await-logical-alias-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      await pending;\n      const canWrite = alive && readReady();\n      if (canWrite) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+  {
+    name: "before-await-logical-snapshot-deferred",
+    code: "import { useEffect, useState, useRef } from 'react';\nexport const Counter = ({ pending, readReady }) => {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    let alive = true;\n    const load = async () => {\n      const canWrite = alive && readReady();\n      await pending;\n      if (canWrite) setCount(1);\n    };\n    load();\n    return () => { alive = false; };\n  }, [pending, readReady]);\n  return <output>{count}</output>;\n};\n",
+    expectedCount: 1,
+  },
+];
+
+describe("effect-local cancellation short circuits", () => {
+  it.each(cancellationShortCircuitCases)("$name", ({ code, expectedCount }) => {
+    const result = runRule(noSetStateAfterAwaitInEffect, code, {
+      filename: "synthetic.tsx",
+      forceJsx: true,
+      includeLocations: true,
+      settings: {
+        "react-doctor": { portedRuleMode: "curated", capabilities: ["react", "react:19"] },
+      },
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(expectedCount);
+  });
+});

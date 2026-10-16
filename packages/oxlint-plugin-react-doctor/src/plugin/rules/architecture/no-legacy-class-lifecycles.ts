@@ -4,14 +4,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// HACK: the three legacy class lifecycles `componentWillMount`,
-// `componentWillReceiveProps`, and `componentWillUpdate` are unsafe
-// under concurrent rendering because the renderer can call them, throw
-// the work away, and call them again. React 18.3.1 emits a warning;
-// React 19 REMOVES them entirely (the `UNSAFE_` prefix included). We
-// flag both forms so the prefix doesn't get treated as a permanent fix.
-//
-// Stored as a Map (not a plain object) because plain-object lookups inherit
+// HACK: Stored as a Map (not a plain object) because plain-object lookups inherit
 // from `Object.prototype` — `LEGACY_LIFECYCLE_REPLACEMENTS["constructor"]`
 // returns the native `Object` function (truthy), which previously made the
 // rule false-positive on every class with a constructor (Lexical nodes,
@@ -48,10 +41,10 @@ const buildLegacyLifecycleMessage = (originalName: string): string | null => {
   const { baseName, hasUnsafePrefix } = stripUnsafePrefix(originalName);
   const replacement = LEGACY_LIFECYCLE_REPLACEMENTS.get(baseName);
   if (!replacement) return null;
-  const removalNote = hasUnsafePrefix
-    ? `\`${originalName}\` breaks under concurrent rendering & is gone in React 19, & the UNSAFE_ prefix only hides the warning.`
-    : `\`${originalName}\` breaks under concurrent rendering, warns in React 18 & is gone in React 19.`;
-  return `${removalNote} ${replacement}.`;
+  const migrationNote = hasUnsafePrefix
+    ? `\`${originalName}\` is a historical lifecycle with concurrent-rendering risks; the UNSAFE_ prefix does not make its work concurrent-safe.`
+    : `\`${originalName}\` is a legacy pre-commit lifecycle with concurrent-rendering risks. Review its work before choosing a migration.`;
+  return `${migrationNote} ${replacement}.`;
 };
 
 export const noLegacyClassLifecycles = defineRule({
@@ -66,7 +59,7 @@ export const noLegacyClassLifecycles = defineRule({
   requires: ["react"],
   tags: ["migration-hint"],
   recommendation:
-    "Move `componentWillMount` work to `componentDidMount`, `componentWillReceiveProps` to `componentDidUpdate` or the static `getDerivedStateFromProps`, and `componentWillUpdate` to `getSnapshotBeforeUpdate` plus `componentDidUpdate`. The `UNSAFE_` prefix only hides the warning. React 19 removes both.",
+    "Choose a replacement for the lifecycle's intent: constructor or class fields for pure initial setup, `componentDidMount` for mount side effects, render-time derivation or guarded `componentDidUpdate` for prop-driven work, and `getSnapshotBeforeUpdate` for pre-update DOM reads. The documented `UNSAFE_` aliases do not make pre-commit work concurrent-safe.",
   create: (context: RuleContext) => {
     const checkMember = (memberNode: EsTreeNode | undefined): void => {
       if (!memberNode) return;

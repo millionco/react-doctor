@@ -5645,7 +5645,7 @@
       "id": "no-legacy-class-lifecycles",
       "title": "Legacy class lifecycle methods",
       "severity": "error",
-      "recommendation": "Move `componentWillMount` work to `componentDidMount`, `componentWillReceiveProps` to `componentDidUpdate` or the static `getDerivedStateFromProps`, and `componentWillUpdate` to `getSnapshotBeforeUpdate` plus `componentDidUpdate`. The `UNSAFE_` prefix only hides the warning. React 19 removes both.",
+      "recommendation": "Choose a replacement for the lifecycle's intent: constructor or class fields for pure initial setup, `componentDidMount` for mount side effects, render-time derivation or guarded `componentDidUpdate` for prop-driven work, and `getSnapshotBeforeUpdate` for pre-update DOM reads. The documented `UNSAFE_` aliases do not make pre-commit work concurrent-safe.",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],

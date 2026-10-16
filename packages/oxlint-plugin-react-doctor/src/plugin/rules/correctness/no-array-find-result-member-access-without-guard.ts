@@ -3,6 +3,9 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
+import { getClosedFindResultAliasReads } from "./utils/get-closed-find-result-alias-reads.js";
+import { isFindResultAliasGuarded } from "./utils/is-find-result-alias-guarded.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -434,6 +437,23 @@ export const noArrayFindResultMemberAccessWithoutGuard = defineRule({
         consumer = consumer.parent ?? null;
       }
       if (!consumer) return;
+      if (
+        isNodeOfType(consumer, "VariableDeclarator") &&
+        consumer.init === consumed &&
+        isNodeOfType(consumer.id, "Identifier")
+      ) {
+        const symbol = context.scopes.symbolFor(consumer.id);
+        if (!symbol || getDirectConstInitializer(symbol) !== consumer.init) return;
+        if (isBooleanFindOverTruthyArrayLiteral(node) || isGuardedByRepeatedFindTest(node)) return;
+        const reads = getClosedFindResultAliasReads(symbol, context.scopes);
+        if (!reads) return;
+        for (const access of reads) {
+          if (!isFindResultAliasGuarded(access, symbol, context.scopes)) {
+            context.report({ node: access, message: MESSAGE });
+          }
+        }
+        return;
+      }
 
       // An intervening `!` token (TSNonNullExpression) hands the finding to
       // the existing no-non-null-assertion rule, so only a bare, non-optional

@@ -10,6 +10,8 @@
 // Effects — listener pairs (matched and mismatched), observers, rAF loops,
 // timers, async IIFEs with and without cancellation, body mutations.
 export const EFFECT_SNIPPET_POOL = [
+  'interface require {} require("react").useTransition = () => [false, () => {}];',
+  `const FuzzTransitionEffect = ({ selected }) => { const [result, writeResult] = useState(null); const [pending, begin] = useTransition(); useEffect(() => { begin(async () => { const next = await Promise.resolve(selected); writeResult(next); }); }, [selected]); return <output>{pending ? "waiting" : result}</output>; }; const fuzzTransitionNode = <FuzzTransitionEffect selected={value} />;`,
   'interface require {} require("react").useRef = () => ({current:0});',
   `const useFuzzEscapedDraftSetter = (selectedValue) => { const [draft, setDraft] = useState(selectedValue); useEffect(() => setDraft(selectedValue), [selectedValue]); const edit = setDraft; const update = edit; return { draft, update }; }; const { draft: fuzzEscapedDraft, update: updateFuzzEscapedDraft } = useFuzzEscapedDraftSetter(value); const fuzzEscapedDraftInput = <input value={fuzzEscapedDraft} onChange={(event) => updateFuzzEscapedDraft(event.target.value)} />;`,
   `const FuzzPostSuspensionLocationRemoval = () => { const [revision, setRevision] = useState(0); const onPopState = () => setRevision((previous) => previous + 1); const unregister = () => window.removeEventListener("popstate", onPopState); const registerTemporarily = async () => { window.addEventListener("popstate", onPopState); await Promise.resolve(); unregister(); }; useEffect(() => { void registerTemporarily(); }, []); return <output>{location.pathname}</output>; }; const fuzzPostSuspensionLocationRemovalNode = <FuzzPostSuspensionLocationRemoval />;`,

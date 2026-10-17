@@ -1,3 +1,4 @@
+import { getNativeTransitionActionCallback } from "./utils/get-native-transition-action-callback.js";
 import { getUninterruptedConstInitializer } from "../../utils/get-uninterrupted-const-initializer.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
@@ -253,6 +254,8 @@ const collectDirectlyInvokedFunctions = (
       functions.add(callback);
     }
   }
+  const transitionCallback = getNativeTransitionActionCallback(call, context);
+  if (transitionCallback) functions.add(transitionCallback);
   return [...functions];
 };
 

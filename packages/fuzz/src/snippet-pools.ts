@@ -10,6 +10,8 @@
 // Effects — listener pairs (matched and mismatched), observers, rAF loops,
 // timers, async IIFEs with and without cancellation, body mutations.
 export const EFFECT_SNIPPET_POOL = [
+  `const FuzzMergedObservedRefs = () => { const refs = [1,2].map(() => createRef()); useEffect(() => { interface refs {} void refs[0].current; }, [refs]); return <div ref={refs[0]}/>; }; const fuzzMergedObservedRefsNode = <FuzzMergedObservedRefs />;`,
+  `const FuzzReplacedObservedRefs = () => { const refs = [1,2].map(() => createRef()); refs.fill({current:null}); useEffect(() => { void refs[0].current; }, [refs]); return <div ref={refs[0]}/>; }; const fuzzReplacedObservedRefsNode = <FuzzReplacedObservedRefs />;`,
   `const useFuzzEscapedDraftSetter = (selectedValue) => { const [draft, setDraft] = useState(selectedValue); useEffect(() => setDraft(selectedValue), [selectedValue]); const edit = setDraft; const update = edit; return { draft, update }; }; const { draft: fuzzEscapedDraft, update: updateFuzzEscapedDraft } = useFuzzEscapedDraftSetter(value); const fuzzEscapedDraftInput = <input value={fuzzEscapedDraft} onChange={(event) => updateFuzzEscapedDraft(event.target.value)} />;`,
   `const FuzzPostSuspensionLocationRemoval = () => { const [revision, setRevision] = useState(0); const onPopState = () => setRevision((previous) => previous + 1); const unregister = () => window.removeEventListener("popstate", onPopState); const registerTemporarily = async () => { window.addEventListener("popstate", onPopState); await Promise.resolve(); unregister(); }; useEffect(() => { void registerTemporarily(); }, []); return <output>{location.pathname}</output>; }; const fuzzPostSuspensionLocationRemovalNode = <FuzzPostSuspensionLocationRemoval />;`,
   `const FuzzIndeterminateLocationListener = ({ shouldCapture }) => { const [revision, setRevision] = useState(0); useEffect(() => { const onPopState = () => setRevision((previous) => previous + 1); window.addEventListener("popstate", onPopState, { capture: true }); window.removeEventListener("popstate", onPopState, { capture: shouldCapture }); }, [shouldCapture]); return <output>{location.pathname}</output>; }; const fuzzIndeterminateLocationListenerNode = <FuzzIndeterminateLocationListener shouldCapture={condition} />;`,
@@ -185,6 +187,7 @@ export const STATE_SNIPPET_POOL = [
   `const lazyMapRef = useRef<Map<string, string> | undefined>(undefined); if (!lazyMapRef.current) lazyMapRef.current = new Map(); const lazyMapSize = lazyMapRef.current.size;`,
   `const fuzzWriteOnlyFocusControl = { refs: { toggle: createRef(), close: createRef(), slider: createRef() }, setFocus: () => {}, loseFocus: () => {} }; const fuzzWriteOnlyFocusNode = <button ref={fuzzWriteOnlyFocusControl.refs.toggle}>Open</button>;`,
   `const fuzzObservedTarget = createRef(); useEffect(() => handle(fuzzObservedTarget), [fuzzObservedTarget]);`,
+  `const fuzzMappedRefs = [1, 2].map(() => createRef()); useEffect(() => { void fuzzMappedRefs[0].current; }, [fuzzMappedRefs]); const fuzzMappedRefNode = <div ref={fuzzMappedRefs[0]} />;`,
   `const handleRef = useRef(handle); handleRef.current = handle;`,
   `const [copied, setCopied] = useState(false);`,
   `const [cache] = useState(new Map());`,

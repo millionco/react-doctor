@@ -153,6 +153,7 @@ export const EFFECT_SNIPPET_POOL = [
 // State — lazy initializers (incl. SSR-hazardous localStorage/matchMedia),
 // toggles, loading triples, prop mirrors, reducers, ref-sync.
 export const STATE_SNIPPET_POOL = [
+  `const FuzzForwardedCleanupHost = () => { const createFuzzNodeCleanup = useCallback((node) => { if (!node) return; return () => node.removeAttribute("data-active"); }, []); const bindFuzzCleanupNode = useCallback((node) => { const cleanup = createFuzzNodeCleanup(node); return cleanup; }, [createFuzzNodeCleanup]); return <div ref={bindFuzzCleanupNode} />; };`,
   `const fuzzValtioState = fuzzValtioProxy({ count: 0 }); const fuzzValtioSnapshot = useFuzzValtioSnapshot(fuzzValtioState); const handleFuzzValtioRead = () => console.log(fuzzValtioSnapshot.count); const fuzzValtioButton = <button onClick={handleFuzzValtioRead}>Read</button>;`,
   `const FuzzArrayConsumer = memo(() => null); const FuzzArrayHost = () => <FuzzArrayConsumer payload={[value]} />;`,
   `const FuzzEffectEventHost = ({ delay, onSearch }) => { useEffect(() => { const timeoutId = setTimeout(() => onSearch("done"), delay); return () => clearTimeout(timeoutId); }, [delay, onSearch]); return null; }; function FuzzTransitionHost() { const [isLoading, setIsLoading] = useState(false); const toggleLoading = () => setIsLoading(true); return <button onClick={toggleLoading}>{isLoading ? "Loading" : "Go"}</button>; } function FuzzMemoEarlyReturnHost({ loading }) { const content = useMemo(() => <Heavy />, []); if (loading) return null; return <div>{content}</div>; }`,

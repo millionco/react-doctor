@@ -1,3 +1,4 @@
+import { isNativeLocationQuestionSplitPart } from "./utils/is-native-location-question-split-part.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -685,6 +686,7 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
           const partIndex = Number((index as EsTreeNodeOfType<"Literal">).value);
           if (isStaticallyPresentSplitPart(base, partIndex)) return;
           if (isKnownFormatSplitPart(base, partIndex, context)) return;
+          if (isNativeLocationQuestionSplitPart(base, partIndex, context)) return;
           if (isSplitPartDerefGuarded(node, base)) return;
           if (isInsideFilteredIterationCallback(node, base)) return;
           context.report({ node, message: MESSAGE });

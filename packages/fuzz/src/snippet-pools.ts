@@ -257,6 +257,7 @@ export const HANDLER_SNIPPET_POOL = [
 // Guards / nullability — find/match/get derefs, optional chains, splits,
 // alias-then-guard, canUseDOM aliases, JSON.parse.
 export const GUARD_SNIPPET_POOL = [
+  `const TouchSurface = () => <div onTouchEnd={(event) => console.log(event.changedTouches[0].clientX)} />; const touchSurface = <TouchSurface />;`,
   `if (!useState || !useRef || !useEffect) return null;`,
   `const found = items.find((item) => item.id === value); if (!found) return null;`,
   `const label = items.find((item) => item.active)?.name ?? "none";`,

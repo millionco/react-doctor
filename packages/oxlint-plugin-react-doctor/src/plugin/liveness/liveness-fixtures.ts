@@ -676,6 +676,21 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-array-index-deref-without-bounds-or-empty-guard": {
     code: "const version = /v(\\d+)/.exec(input)[1].trim();",
+    settings: {
+      "react-doctor": {
+        portedRuleMode: "curated",
+        framework: "nextjs",
+        capabilities: [
+          "nextjs",
+          "nextjs:15",
+          "nextjs:16",
+          "react",
+          "react:17",
+          "react:18",
+          "react:19",
+        ],
+      },
+    },
   },
   "no-array-index-key": {
     code: "const rows = things.map((thing, index) => React.cloneElement(thing, { key: index }));",

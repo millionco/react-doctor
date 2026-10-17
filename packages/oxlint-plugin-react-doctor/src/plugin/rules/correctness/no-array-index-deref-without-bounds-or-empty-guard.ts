@@ -1,4 +1,5 @@
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
+import { isNativeTouchendChangedTouchRead } from "./utils/is-native-touchend-changed-touch-read.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -696,6 +697,7 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
         // (`e.touches.length`, a repeated `e.touches[0]` check), which is the
         // message's own remediation.
         if (isTouchListAccess(base) && isInsideTouchEndHandler(node, context)) {
+          if (isNativeTouchendChangedTouchRead(node, context)) return;
           if (isTouchDerefGuarded(node, base)) return;
           context.report({ node, message: MESSAGE });
         }

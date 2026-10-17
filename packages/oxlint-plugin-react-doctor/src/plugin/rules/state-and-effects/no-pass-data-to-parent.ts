@@ -59,6 +59,8 @@ import {
 } from "./utils/resolve-parent-callback-provenance.js";
 import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
 import { isComparisonMemoizerHookName } from "./utils/is-comparison-memoizer-hook-name.js";
+import { isProvenUnmodifiedBooleanCall } from "./utils/is-proven-unmodified-boolean-call.js";
+import { FIRST_ARGUMENT_INDEX, SINGLE_PAYLOAD_DEFINITION_COUNT } from "./utils/effect/constants.js";
 
 // 1:1 port of upstream `src/rules/no-pass-data-to-parent.js`, narrowed to
 // DIRECT parent-callback call sites. The verification run showed the
@@ -1577,6 +1579,120 @@ const isCalleePosition = (identifier: EsTreeNode): boolean => {
   );
 };
 
+const hasProvenPrimitiveParentOrExternalPayload = (
+  analysis: ProgramAnalysis,
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedVariables: Set<NonNullable<Reference["resolved"]>> = new Set(),
+  isBooleanInput = false,
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Literal")) {
+    return candidate.value === null || typeof candidate.value !== "object";
+  }
+  if (isNodeOfType(candidate, "LogicalExpression") && candidate.operator === "&&") {
+    return (
+      hasProvenPrimitiveParentOrExternalPayload(
+        analysis,
+        candidate.left,
+        scopes,
+        new Set(visitedVariables),
+      ) &&
+      hasProvenPrimitiveParentOrExternalPayload(
+        analysis,
+        candidate.right,
+        scopes,
+        new Set(visitedVariables),
+      )
+    );
+  }
+  if (
+    isProvenUnmodifiedBooleanCall(candidate, scopes) &&
+    isNodeOfType(candidate, "CallExpression")
+  ) {
+    const argument = candidate.arguments[FIRST_ARGUMENT_INDEX];
+    return Boolean(
+      argument &&
+      hasProvenPrimitiveParentOrExternalPayload(analysis, argument, scopes, visitedVariables, true),
+    );
+  }
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const reference = getRef(analysis, candidate);
+  const variable = reference?.resolved;
+  if (
+    !reference ||
+    !variable ||
+    visitedVariables.has(variable) ||
+    hasMutableBindingWrite(reference)
+  ) {
+    return false;
+  }
+  const upstreamReferences = getUpstreamRefs(analysis, reference);
+  if (
+    upstreamReferences.some(
+      (upstreamReference) =>
+        hasMutableBindingWrite(upstreamReference) ||
+        isState(analysis, upstreamReference) ||
+        isReducerState(analysis, upstreamReference) ||
+        isCustomHookStateResultReference(analysis, upstreamReference, scopes),
+    )
+  ) {
+    return false;
+  }
+  if (isProp(analysis, reference) && !isWholePropsObjectReference(analysis, reference)) {
+    const definition = variable.defs.find(
+      (candidateDefinition) => candidateDefinition.type === "Parameter",
+    );
+    if (!isBooleanInput || !definition) return false;
+    let binding: EsTreeNode | null = definition.name as unknown as EsTreeNode;
+    const parameterOwner = definition.node as unknown as EsTreeNode;
+    while (binding && binding !== parameterOwner) {
+      if (
+        isNodeOfType(binding, "AssignmentPattern") ||
+        isNodeOfType(binding, "RestElement") ||
+        (isNodeOfType(binding, "Property") && binding.computed)
+      ) {
+        return false;
+      }
+      binding = binding.parent ?? null;
+    }
+    return binding === parameterOwner;
+  }
+  const definitions = variable.defs;
+  if (definitions.length !== SINGLE_PAYLOAD_DEFINITION_COUNT) return false;
+  const declarator = definitions[FIRST_ARGUMENT_INDEX]?.node as unknown as EsTreeNode | undefined;
+  if (
+    !declarator ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    !isNodeOfType(declarator.id, "Identifier") ||
+    getDeclarationKind(declarator) !== "const" ||
+    !declarator.init
+  ) {
+    return false;
+  }
+  const initializer = stripParenExpression(declarator.init as EsTreeNode);
+  if (
+    isExternalSubscriptionHookResultRef(analysis, reference) &&
+    isNodeOfType(initializer, "CallExpression") &&
+    hasImmutableExternalSubscriptionCallResult(
+      analysis,
+      initializer.callee,
+      upstreamReferences,
+      true,
+    )
+  ) {
+    return true;
+  }
+  visitedVariables.add(variable);
+  return hasProvenPrimitiveParentOrExternalPayload(
+    analysis,
+    initializer,
+    scopes,
+    visitedVariables,
+    isBooleanInput,
+  );
+};
+
 export const noPassDataToParent = defineRule({
   id: "no-pass-data-to-parent",
   title: "Data passed to parent via effect",
@@ -1792,10 +1908,9 @@ export const noPassDataToParent = defineRule({
           // A wrapper-hook callee hides the hand-off in its wrapped body, so
           // its data refs live on the eventual call chain, not the direct
           // call's arguments.
-          if (
-            calleeNode === identifier &&
-            isWrapperHookCallbackRef(analysis, ref, context.scopes)
-          ) {
+          const hasWrapperDataExpansion =
+            calleeNode === identifier && isWrapperHookCallbackRef(analysis, ref, context.scopes);
+          if (hasWrapperDataExpansion) {
             const wrapperUpstreamRefs = getArgsUpstreamRefs(analysis, ref);
             argsUpstreamRefs.push(
               ...wrapperUpstreamRefs.filter(
@@ -1816,10 +1931,27 @@ export const noPassDataToParent = defineRule({
             );
           }
 
+          let hasSafeBooleanPayload: boolean | undefined;
           const isSomeArgsData = argsUpstreamRefs.some((argRef) => {
             const argIdentifier = argRef.identifier as unknown as EsTreeNode;
             if (isTypeScriptTypePosition(argIdentifier)) return false;
             if (isReducerState(analysis, argRef)) return true;
+            const argumentRoot = findTransparentExpressionRoot(argIdentifier);
+            const argumentCall = argumentRoot.parent;
+            if (
+              !hasWrapperDataExpansion &&
+              isNodeOfType(argumentCall, "CallExpression") &&
+              argumentCall.callee === argumentRoot &&
+              isProvenUnmodifiedBooleanCall(argumentCall, context.scopes)
+            ) {
+              hasSafeBooleanPayload ??=
+                Boolean(directDataArguments.length) &&
+                directDataArguments.length === callExpr.arguments.length &&
+                directDataArguments.every((argument) =>
+                  hasProvenPrimitiveParentOrExternalPayload(analysis, argument, context.scopes),
+                );
+              if (hasSafeBooleanPayload) return false;
+            }
             if (
               isNodeOfType(argIdentifier, "Identifier") &&
               argIdentifier.name === "JSON" &&

@@ -1,5 +1,6 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getDirectConstInitializer } from "./get-direct-const-initializer.js";
+import { isFiniteEffectCallbackBooleanInput } from "./is-finite-effect-callback-boolean-input.js";
 import { isBindingAssignmentTarget } from "./is-binding-assignment-target.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { readInitialStateBoolean } from "./read-initial-state-boolean.js";
@@ -112,6 +113,11 @@ export const isSupportedUseCallbackExecutionPath = (
       if (isNodeOfType(predicateRoot, "Literal") && "regex" in predicateRoot) {
         if (!options.allowTruthyRegexGuard || !requiredTruthiness) return false;
       } else {
+        if (isFiniteEffectCallbackBooleanInput(predicate, context)) {
+          child = parent;
+          parent = child.parent;
+          continue;
+        }
         const classification = classifyCallbackPredicate(predicate, context);
         if (classification.isUnsupported) return false;
         if (classification.isStaticPrimitive) {

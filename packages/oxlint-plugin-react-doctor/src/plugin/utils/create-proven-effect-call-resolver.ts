@@ -13,6 +13,7 @@ import { getReactUseCallbackCall } from "./get-react-use-callback-call.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { getTransparentReactCallbackWrapperArgument } from "./get-transparent-react-callback-wrapper-argument.js";
 import { isBindingAssignmentTarget } from "./is-binding-assignment-target.js";
+import { isFiniteEffectCallbackBooleanInput } from "./is-finite-effect-callback-boolean-input.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isMemberMutationTarget } from "./is-member-mutation-target.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -291,6 +292,10 @@ export const createProvenEffectCallResolver = (
     );
   };
 
+  const isSupportedExecutionCondition = (expression: EsTreeNode): boolean =>
+    isFiniteEffectCallbackBooleanInput(expression, context) ||
+    isSupportedExecutionPredicate(expression);
+
   const hasExecutionBranch = (expression: EsTreeNode): boolean => {
     let hasExecution = false;
     walkAst(expression, (node) => {
@@ -428,18 +433,18 @@ export const createProvenEffectCallResolver = (
       let hasDispatcher = false;
       let isProven = true;
       walkOwnFunctionScope(functionNode, (node) => {
-        if (isNodeOfType(node, "IfStatement") && !isSupportedExecutionPredicate(node.test))
+        if (isNodeOfType(node, "IfStatement") && !isSupportedExecutionCondition(node.test))
           isProven = false;
         if (
           isNodeOfType(node, "ConditionalExpression") &&
           (hasExecutionBranch(node.consequent) || hasExecutionBranch(node.alternate)) &&
-          !isSupportedExecutionPredicate(node.test)
+          !isSupportedExecutionCondition(node.test)
         )
           isProven = false;
         if (
           isNodeOfType(node, "LogicalExpression") &&
           hasExecutionBranch(node.right) &&
-          !isSupportedExecutionPredicate(node.left)
+          !isSupportedExecutionCondition(node.left)
         )
           isProven = false;
         if (isNodeOfType(node, "AwaitExpression") && hasNativeRejectionOrigin(node.argument))

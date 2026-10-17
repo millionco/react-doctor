@@ -10,6 +10,7 @@
 // Effects — listener pairs (matched and mismatched), observers, rAF loops,
 // timers, async IIFEs with and without cancellation, body mutations.
 export const EFFECT_SNIPPET_POOL = [
+  'interface require {} require("react").useState = () => [0, () => {}];',
   `const useFuzzEscapedDraftSetter = (selectedValue) => { const [draft, setDraft] = useState(selectedValue); useEffect(() => setDraft(selectedValue), [selectedValue]); const edit = setDraft; const update = edit; return { draft, update }; }; const { draft: fuzzEscapedDraft, update: updateFuzzEscapedDraft } = useFuzzEscapedDraftSetter(value); const fuzzEscapedDraftInput = <input value={fuzzEscapedDraft} onChange={(event) => updateFuzzEscapedDraft(event.target.value)} />;`,
   `const FuzzPostSuspensionLocationRemoval = () => { const [revision, setRevision] = useState(0); const onPopState = () => setRevision((previous) => previous + 1); const unregister = () => window.removeEventListener("popstate", onPopState); const registerTemporarily = async () => { window.addEventListener("popstate", onPopState); await Promise.resolve(); unregister(); }; useEffect(() => { void registerTemporarily(); }, []); return <output>{location.pathname}</output>; }; const fuzzPostSuspensionLocationRemovalNode = <FuzzPostSuspensionLocationRemoval />;`,
   `const FuzzIndeterminateLocationListener = ({ shouldCapture }) => { const [revision, setRevision] = useState(0); useEffect(() => { const onPopState = () => setRevision((previous) => previous + 1); window.addEventListener("popstate", onPopState, { capture: true }); window.removeEventListener("popstate", onPopState, { capture: shouldCapture }); }, [shouldCapture]); return <output>{location.pathname}</output>; }; const fuzzIndeterminateLocationListenerNode = <FuzzIndeterminateLocationListener shouldCapture={condition} />;`,
@@ -256,6 +257,7 @@ export const HANDLER_SNIPPET_POOL = [
 // Guards / nullability — find/match/get derefs, optional chains, splits,
 // alias-then-guard, canUseDOM aliases, JSON.parse.
 export const GUARD_SNIPPET_POOL = [
+  `const FuzzStringState = () => { const [itemCount, setItemCount] = useState(""); return <button onClick={() => setItemCount(count + " items")}>{itemCount && <span>Ready</span>}</button>; }; const fuzzStringState = <FuzzStringState />;`,
   `if (!useState || !useRef || !useEffect) return null;`,
   `const found = items.find((item) => item.id === value); if (!found) return null;`,
   `const label = items.find((item) => item.active)?.name ?? "none";`,

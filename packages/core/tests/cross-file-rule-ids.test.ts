@@ -147,6 +147,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "effect-listener-cleanup-reference-mismatch",
       "effect-needs-cleanup",
       "exhaustive-deps",
+      "html-label-has-single-control",
       "ink-ctrl-c-handler-requires-exit-option",
       "ink-newline-inside-text",
       "ink-no-bare-process-exit",

@@ -573,6 +573,18 @@ const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) =>
   });
 };
 
+const collectLabelControlDependencies: CrossFileDependencyCollector = (input) => {
+  for (const staticImport of input.staticImports) {
+    if (staticImport.moduleRequest.value.startsWith("."))
+      resolveModulePath(input.absoluteFilePath, staticImport.moduleRequest.value);
+  }
+  collectImportedJsxComponentDependencies({
+    absoluteFilePath: input.absoluteFilePath,
+    staticImports: input.staticImports,
+    program: input.getProgram(),
+  });
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -585,6 +597,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["effect-listener-cleanup-reference-mismatch", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["rules-of-hooks", collectImportedHookDependencies],
+    ["html-label-has-single-control", collectLabelControlDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],

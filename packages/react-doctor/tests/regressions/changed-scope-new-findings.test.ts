@@ -5,6 +5,7 @@ import path from "node:path";
 import * as Schema from "effect/Schema";
 import { JsonReport } from "@react-doctor/core/schemas";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { CHANGED_SCOPE_COMPARISON_TEST_TIMEOUT_MS } from "../constants.js";
 import { commitAll, initGitRepo, writeFile, writeJson } from "./_helpers.js";
 
 const CLI = path.resolve(import.meta.dirname, "../../bin/react-doctor.js");
@@ -248,35 +249,39 @@ describe("changed scope compares findings through the CLI", () => {
     }
   });
 
-  it("keeps the HostedCart findings after reformatting and reports only an added derived state", () => {
-    const sourcePath = path.join(directory, "src/HostedCart.tsx");
-    writeFile(sourcePath, HOSTED_CART);
-    commitAll(directory, "base cart findings");
-    const base = scan(directory);
-    expect(base.report.diagnostics.some((finding) => finding.rule === "exhaustive-deps")).toBe(
-      true,
-    );
-    expect(
-      base.report.diagnostics.some(
-        (finding) => finding.rule === "no-set-state-after-await-in-effect",
-      ),
-    ).toBe(true);
-    writeJson(reportFile, base.report);
-    for (const appended of ["", NEW_DERIVED_STATE]) {
-      writeFile(sourcePath, REFORMATTED_HOSTED_CART + appended);
-      const gitResult = scan(directory, ["--scope", "changed", "--base", "HEAD"]);
-      const savedResult = scan(directory, ["--scope", "changed", "--baseline", reportFile]);
-      const fullSavedResult = scan(directory, ["--baseline", reportFile]);
-      for (const result of [gitResult, savedResult, fullSavedResult]) {
-        expect(result.report.diagnostics.map((finding) => finding.rule)).toEqual(
-          appended ? ["no-derived-state"] : [],
-        );
-        expect(result.report.summary.totalDiagnosticCount).toBe(appended ? 1 : 0);
-        expect(result.status).toBe(appended ? 1 : 0);
-        if (appended) expect(result.report.diagnostics[0]?.line).toBe(15);
+  it(
+    "keeps the HostedCart findings after reformatting and reports only an added derived state",
+    () => {
+      const sourcePath = path.join(directory, "src/HostedCart.tsx");
+      writeFile(sourcePath, HOSTED_CART);
+      commitAll(directory, "base cart findings");
+      const base = scan(directory);
+      expect(base.report.diagnostics.some((finding) => finding.rule === "exhaustive-deps")).toBe(
+        true,
+      );
+      expect(
+        base.report.diagnostics.some(
+          (finding) => finding.rule === "no-set-state-after-await-in-effect",
+        ),
+      ).toBe(true);
+      writeJson(reportFile, base.report);
+      for (const appended of ["", NEW_DERIVED_STATE]) {
+        writeFile(sourcePath, REFORMATTED_HOSTED_CART + appended);
+        const gitResult = scan(directory, ["--scope", "changed", "--base", "HEAD"]);
+        const savedResult = scan(directory, ["--scope", "changed", "--baseline", reportFile]);
+        const fullSavedResult = scan(directory, ["--baseline", reportFile]);
+        for (const result of [gitResult, savedResult, fullSavedResult]) {
+          expect(result.report.diagnostics.map((finding) => finding.rule)).toEqual(
+            appended ? ["no-derived-state"] : [],
+          );
+          expect(result.report.summary.totalDiagnosticCount).toBe(appended ? 1 : 0);
+          expect(result.status).toBe(appended ? 1 : 0);
+          if (appended) expect(result.report.diagnostics[0]?.line).toBe(15);
+        }
       }
-    }
-  });
+    },
+    CHANGED_SCOPE_COMPARISON_TEST_TIMEOUT_MS,
+  );
 
   it.each([
     { ignore: { rules: ["react-hooks/exhaustive-deps"] } },

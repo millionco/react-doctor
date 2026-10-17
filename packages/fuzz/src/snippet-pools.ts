@@ -599,6 +599,7 @@ export const JSX_ATTRIBUTE_POOL = [
 // JSX leaves — conditional renders (incl. the leaked-0 shape), controlled
 // inputs, radios, providers, portals, list keys.
 export const JSX_LEAF_POOL = [
+  `{(() => { const slotCount = 4; const fixedSlots = Array(slotCount).fill(null).map((_item, position) => position); return fixedSlots.map((_item, index) => <input key={index} aria-label={String(index)} />); })()}`,
   `{state}`,
   `{items.map((item, index) => <li key={index}>{item}</li>)}`,
   `{items.map((item, index) => <Row key={item.id ?? index} item={item} />)}`,

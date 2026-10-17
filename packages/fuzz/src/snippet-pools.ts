@@ -314,6 +314,58 @@ export const LIBRARY_SNIPPET_POOL = [
 
 // Module scope — SSR hazards, guard aliases, contexts, caches, styled.
 export const MODULE_SCOPE_SNIPPET_POOL = [
+  `import { useCallback as useFuzzControllerCallback, useEffect as useFuzzControllerEffect, useRef as useFuzzControllerRef, useState as useFuzzControllerState } from "react";
+interface FuzzControllerProps { category: string; }
+interface FuzzControllerEntry { controller: AbortController; attempt: number; }
+const fuzzControllerRequest = async (signal: AbortSignal): Promise<string> => signal.aborted ? "stopped" : "ready";
+export const FuzzOwnedControllerPanel = ({ category }: FuzzControllerProps) => {
+  const requests = useFuzzControllerRef<Map<string, FuzzControllerEntry>>(new Map());
+  const counter = useFuzzControllerRef(0);
+  const [busy, setBusy] = useFuzzControllerState<Set<string>>(new Set());
+  const stopAll = useFuzzControllerCallback(() => {
+    if (requests.current.size === 0) return;
+    requests.current.forEach(({ controller }) => controller.abort());
+    requests.current.clear();
+    setBusy(new Set());
+  }, []);
+  useFuzzControllerEffect(() => { stopAll(); }, [category, stopAll]);
+  useFuzzControllerEffect(() => stopAll, [stopAll]);
+  const clearBusy = (resourceKey: string, attempt: number) => {
+    const active = requests.current.get(resourceKey);
+    if (!active || active.attempt !== attempt) return;
+    requests.current.delete(resourceKey);
+    setBusy(previous => {
+      if (!previous.has(resourceKey)) return previous;
+      const next = new Set(previous);
+      next.delete(resourceKey);
+      return next;
+    });
+  };
+  const cancel = (resourceKey: string) => {
+    const active = requests.current.get(resourceKey);
+    if (!active) return;
+    const { controller, attempt } = active;
+    controller.abort();
+    clearBusy(resourceKey, attempt);
+  };
+  const start = async (resourceKey: string) => {
+    if (requests.current.has(resourceKey)) return;
+    const controller = new AbortController();
+    const attempt = ++counter.current;
+    requests.current.set(resourceKey, { controller, attempt });
+    setBusy(previous => new Set(previous).add(resourceKey));
+    try {
+      await fuzzControllerRequest(controller.signal);
+      if (requests.current.get(resourceKey)?.attempt !== attempt) return;
+    } catch {
+      if (requests.current.get(resourceKey)?.attempt !== attempt) return;
+    } finally {
+      clearBusy(resourceKey, attempt);
+    }
+  };
+  return <button onClick={() => { if (busy.has("entry")) cancel("entry"); else void start("entry"); }}>{busy.has("entry") ? "Cancel" : "Start"}</button>;
+};
+`,
   `import { create as createFuzzZustandStore } from "zustand"; export const useFuzzZustandStore = createFuzzZustandStore(() => ({ items: [] })); export const fuzzZustandSelection = useFuzzZustandStore((state) => ({ items: state.items }));`,
   `import { create as createFuzzZustandTarget } from "zustand"; const useFuzzZustandTarget = createFuzzZustandTarget(() => ({ value: 0, other: 0 })); export const FuzzZustandWholeStoreTarget = () => { const { value: fuzzZustandValue } = useFuzzZustandTarget(); return <output>{fuzzZustandValue}</output>; };`,
   `import { create as createFuzzZustandGetStore } from "zustand"; const useFuzzZustandGetStore = createFuzzZustandGetStore((_set, get) => ({ count: get().count }));`,

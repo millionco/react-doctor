@@ -2215,6 +2215,7 @@ export const collectEffectStateWriteFacts = (
           effectNode,
           effectFunction: frame.functionNode,
           stateDeclarator,
+          executionNode: callExpression,
         });
         if (
           mediaPredicate &&

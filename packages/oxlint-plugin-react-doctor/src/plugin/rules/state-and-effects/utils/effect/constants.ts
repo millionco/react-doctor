@@ -16,3 +16,32 @@ export const NATIVE_MEDIA_PROVIDER_NAMES: ReadonlySet<string> = new Set([
   "HTMLVideoElement",
   "HTMLAudioElement",
 ]);
+
+export const IMPORTED_MEDIA_SINGLE_RETURN_STATEMENT_COUNT = 1;
+export const IMPORTED_MEDIA_SSR_BODY_STATEMENT_COUNT = 2;
+export const IMPORTED_MEDIA_PROVIDER_NAMES: ReadonlySet<string> = new Set([
+  "document",
+  "event",
+  "Set",
+  "eval",
+  "Function",
+  "Object",
+  "Reflect",
+  "require",
+  "module",
+  "process",
+  "window",
+  "self",
+  "global",
+  "globalThis",
+]);
+export const IMPORTED_MEDIA_PROTOTYPE_KEYS: ReadonlySet<string> = new Set([
+  "prototype",
+  "__proto__",
+  "constructor",
+]);
+export const IMPORTED_MEDIA_REACT_API_NAMES: ReadonlySet<string> = new Set([
+  "useRef",
+  "useEffect",
+  "useState",
+]);

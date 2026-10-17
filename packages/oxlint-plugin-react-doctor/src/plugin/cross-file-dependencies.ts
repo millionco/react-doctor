@@ -573,6 +573,14 @@ const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) =>
   });
 };
 
+const collectExpoImageDependencies: CrossFileDependencyCollector = (input) => {
+  collectNearestManifestDependencies(input);
+  for (const staticImport of input.staticImports) {
+    resolveModulePath(input.absoluteFilePath, staticImport.moduleRequest.value);
+  }
+  collectImportedValueDependencies(input);
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
@@ -614,7 +622,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["rn-no-deprecated-modules", collectReactNativeVersionDependencies],
     ["rn-no-legacy-shadow-styles", collectLegacyArchDependencies],
     ["rn-no-raw-text", collectRnNoRawTextDependencies],
-    ["rn-prefer-expo-image", collectNearestManifestDependencies],
+    ["rn-prefer-expo-image", collectExpoImageDependencies],
     ["rn-style-prefer-boxshadow", collectLegacyArchDependencies],
     ...REACT_ROUTER_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
       ruleId,

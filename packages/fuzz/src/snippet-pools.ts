@@ -10,6 +10,7 @@
 // Effects — listener pairs (matched and mismatched), observers, rAF loops,
 // timers, async IIFEs with and without cancellation, body mutations.
 export const EFFECT_SNIPPET_POOL = [
+  'interface require {} require("react-markdown").default = () => null;',
   `const useFuzzEscapedDraftSetter = (selectedValue) => { const [draft, setDraft] = useState(selectedValue); useEffect(() => setDraft(selectedValue), [selectedValue]); const edit = setDraft; const update = edit; return { draft, update }; }; const { draft: fuzzEscapedDraft, update: updateFuzzEscapedDraft } = useFuzzEscapedDraftSetter(value); const fuzzEscapedDraftInput = <input value={fuzzEscapedDraft} onChange={(event) => updateFuzzEscapedDraft(event.target.value)} />;`,
   `const FuzzPostSuspensionLocationRemoval = () => { const [revision, setRevision] = useState(0); const onPopState = () => setRevision((previous) => previous + 1); const unregister = () => window.removeEventListener("popstate", onPopState); const registerTemporarily = async () => { window.addEventListener("popstate", onPopState); await Promise.resolve(); unregister(); }; useEffect(() => { void registerTemporarily(); }, []); return <output>{location.pathname}</output>; }; const fuzzPostSuspensionLocationRemovalNode = <FuzzPostSuspensionLocationRemoval />;`,
   `const FuzzIndeterminateLocationListener = ({ shouldCapture }) => { const [revision, setRevision] = useState(0); useEffect(() => { const onPopState = () => setRevision((previous) => previous + 1); window.addEventListener("popstate", onPopState, { capture: true }); window.removeEventListener("popstate", onPopState, { capture: shouldCapture }); }, [shouldCapture]); return <output>{location.pathname}</output>; }; const fuzzIndeterminateLocationListenerNode = <FuzzIndeterminateLocationListener shouldCapture={condition} />;`,
@@ -293,6 +294,7 @@ export const GUARD_SNIPPET_POOL = [
 
 // Library idioms — tanstack, mobx, styled-components, next/dynamic, redux.
 export const LIBRARY_SNIPPET_POOL = [
+  `import FuzzCountMarkdown from "react-markdown"; import { useState as useFuzzCountState } from "react"; export const FuzzCountPreview = () => <FuzzCountMarkdown components={{ "count-item": () => { const [count] = useFuzzCountState(0); return <span>{count}</span>; } }}>{"count"}</FuzzCountMarkdown>;`,
   `const fuzzValtioSnapshot = useFuzzValtioSnapshot(fuzzValtioState); const fuzzValtioCount = fuzzValtioState.count;`,
   `const zodSchema = z.object({ value: z.string() }).strict();`,
   `const subscribeStore = useCallback((onStoreChange) => { store.on("change", onStoreChange); return () => store.off("change", onStoreChange); }, [store]); const snapshot = useSyncExternalStore(subscribeStore, getSnapshot);`,

@@ -9,6 +9,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
+import { isLocalLiteralStateInitializer } from "./utils/is-local-literal-state-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -106,7 +107,7 @@ const producesPlainStateValue = (expression: EsTreeNode): boolean => {
 //     render data by convention
 //   - lazy initializers whose top-level return produces any of the above — a
 //     return nested inside another function belongs to that inner scope
-// Everything else (`new TrackQueue()`, `createEditor(el)`, another binding)
+// Everything else (`new TrackQueue()`, `createEditor(el)`, an unresolved binding)
 // is treated as an opaque instance whose fields and methods are its
 // imperative API, not render state. That exemption also skips plain data
 // flowing in from helper calls (`useState(getDefaultFilters())`) — a
@@ -227,11 +228,16 @@ export const noDirectStateMutation = defineRule({
       // boundary between plain data and opaque third-party instances.
       const setterValueObservations = collectSetterValueObservations(bindings, scopes);
       const plainStateValueNames = new Set<string>();
+      const localLiteralStateValueNames = new Set<string>();
       for (const binding of bindings) {
         if (setterValueObservations.callbackRefSetterNames.has(binding.setterName)) continue;
         if (!isNodeOfType(binding.declarator.init, "CallExpression")) continue;
         const initializerArgument = binding.declarator.init.arguments?.[0];
-        if (!initializerMarksPlainState(initializerArgument)) continue;
+        if (!initializerMarksPlainState(initializerArgument)) {
+          if (!isLocalLiteralStateInitializer(initializerArgument, componentBody, bindings, scopes))
+            continue;
+          localLiteralStateValueNames.add(binding.valueName);
+        }
         const isNullishInitializer =
           !initializerArgument ||
           isNullOrUndefinedExpression(stripParenExpression(initializerArgument));
@@ -272,6 +278,7 @@ export const noDirectStateMutation = defineRule({
             });
             continue;
           }
+          if (localLiteralStateValueNames.has(binding.valueName)) continue;
           if (
             !isNodeOfType(parent, "CallExpression") ||
             parent.callee !== expressionRoot ||

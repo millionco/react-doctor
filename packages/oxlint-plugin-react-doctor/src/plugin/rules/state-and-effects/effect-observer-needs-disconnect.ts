@@ -25,6 +25,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
+import { doesReturnedCleanupReleaseMappedObserver } from "./utils/does-returned-cleanup-release-mapped-observer.js";
 
 const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "self"]);
 const COLLECTION_MUTATION_METHOD_NAMES = new Set([
@@ -860,6 +861,15 @@ export const effectObserverNeedsDisconnect = defineRule({
             retainedCollectionKey,
             context,
           )
+        ) {
+          continue;
+        }
+        if (
+          doesReturnedCleanupReleaseMappedObserver({
+            effectCallback: callback,
+            construction: tracked.construction,
+            context,
+          })
         ) {
           continue;
         }

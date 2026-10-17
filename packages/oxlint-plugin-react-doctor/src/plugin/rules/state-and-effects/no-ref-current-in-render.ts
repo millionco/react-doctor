@@ -1,3 +1,4 @@
+import { isKnownThreeRefRenderMutation } from "./utils/is-known-three-ref-render-mutation.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { collectSynchronouslyEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { containsNonDeterministicSource } from "../../utils/contains-non-deterministic-source.js";
@@ -621,6 +622,14 @@ export const noRefCurrentInRender = defineRule({
     };
 
     return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isKnownThreeRefRenderMutation(node, context)) return;
+        context.report({
+          node,
+          message:
+            "This ref is mutated during render. React can replay or discard render work, so the mutation can leak from UI that never commits.",
+        });
+      },
       AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
         const refSymbol = resolveReactRefSymbol(node.left, context.scopes);
         if (!refSymbol) return;

@@ -1,3 +1,4 @@
+import { collectProvenRefReadSequenceSnapshots } from "../../utils/collect-proven-ref-read-sequence-snapshots.js";
 import { getUninterruptedConstInitializer } from "../../utils/get-uninterrupted-const-initializer.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
@@ -1338,6 +1339,13 @@ const hasUnsafePostAwaitSetter = (
     ...collectSequenceSnapshots(effectCallback, firstSuspensionStart, context),
     ...collectSequenceSnapshots(asyncFunction, firstSuspensionStart, context),
   ]);
+  for (const [snapshotKey, counterKey] of collectProvenRefReadSequenceSnapshots({
+    asyncFunction,
+    effectCallback,
+    context,
+  })) {
+    sequenceSnapshots.set(snapshotKey, { counterKey });
+  }
   for (const [snapshotKey, snapshot] of sequenceSnapshots) {
     if (doesPostSuspensionWriteReference(snapshot.counterKey, postSuspensionWrites)) {
       sequenceSnapshots.delete(snapshotKey);

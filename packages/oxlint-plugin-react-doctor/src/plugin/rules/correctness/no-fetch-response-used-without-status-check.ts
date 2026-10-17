@@ -525,8 +525,10 @@ const localValidatorChecksResponseStatus = (
       }
     });
   }
-  const statusAwareReturns = returnedExpressions.filter((returnedExpression) =>
-    expressionReadsStatusProperty(returnedExpression, parameterSymbol.id, context),
+  const statusAwareReturns = new Set(
+    returnedExpressions.filter((returnedExpression) =>
+      expressionReadsStatusProperty(returnedExpression, parameterSymbol.id, context),
+    ),
   );
   const booleanReturnIsStatusGuarded = (returnedExpression: EsTreeNode): boolean => {
     const fallback = stripGroupingParens(returnedExpression);
@@ -545,9 +547,9 @@ const localValidatorChecksResponseStatus = (
     return false;
   };
   return (
-    statusAwareReturns.length > 0 &&
+    statusAwareReturns.size > 0 &&
     returnedExpressions.every((returnedExpression) => {
-      if (statusAwareReturns.includes(returnedExpression)) return true;
+      if (statusAwareReturns.has(returnedExpression)) return true;
       const fallback = stripGroupingParens(returnedExpression);
       return (
         booleanReturnIsStatusGuarded(returnedExpression) ||

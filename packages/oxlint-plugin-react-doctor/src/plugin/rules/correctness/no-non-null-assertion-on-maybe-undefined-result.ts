@@ -1,3 +1,4 @@
+import { isImmediatelyGuardedMapGet } from "./utils/is-immediately-guarded-map-get.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -1935,6 +1936,7 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
           if (!scopeDeclaresEmptyMap(receiver, context)) return;
           if (scopeProvesKeyPresence(node, receiver, key, context)) return;
           if (isEnsureThenMapGet(node, receiver, key, context)) return;
+          if (isImmediatelyGuardedMapGet(node, context)) return;
         }
 
         context.report({ node, message });

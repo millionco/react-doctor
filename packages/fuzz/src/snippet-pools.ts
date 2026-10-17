@@ -256,6 +256,7 @@ export const HANDLER_SNIPPET_POOL = [
 // Guards / nullability — find/match/get derefs, optional chains, splits,
 // alias-then-guard, canUseDOM aliases, JSON.parse.
 export const GUARD_SNIPPET_POOL = [
+  `const fuzzGuardedMap = new Map(); const fuzzMapKey = "group"; const fuzzGuardedMapValue = fuzzGuardedMap.get(fuzzMapKey) ? fuzzGuardedMap.get(fuzzMapKey)!.value : null; const fuzzUnprotectedMapValue = fuzzGuardedMap.get("other")!.value;`,
   `if (!useState || !useRef || !useEffect) return null;`,
   `const found = items.find((item) => item.id === value); if (!found) return null;`,
   `const label = items.find((item) => item.active)?.name ?? "none";`,

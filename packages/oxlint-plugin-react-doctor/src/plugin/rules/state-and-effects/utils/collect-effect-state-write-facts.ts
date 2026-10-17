@@ -31,6 +31,7 @@ import {
   isState,
   isStateSetter,
 } from "./effect/react.js";
+import { isConsumedStateAccumulator } from "./is-consumed-state-accumulator.js";
 import { hasReturnedStateSetter } from "./has-returned-state-setter.js";
 import { hasUserInputSetterWriter } from "./has-user-input-setter-writer.js";
 import { readsPostMountValueThroughLocals } from "./reads-post-mount-through-locals.js";
@@ -78,6 +79,7 @@ interface HelperControlFlowSummary {
 
 interface CollectedEffectStateWriteFact extends EffectStateWriteFact {
   executionNode: EsTreeNode;
+  executionFrame: EffectExecutionFrame;
 }
 
 export interface EffectStateWriteFact {
@@ -94,6 +96,7 @@ export interface EffectStateWriteFact {
   resetsSourceState: boolean;
   writtenIndexedMemberRootReference: Reference | null;
   writesPropDerivedMemberValue: boolean;
+  hasConsumedStateAccumulator?: boolean;
 }
 
 const SYNCHRONOUS_ITERATOR_METHOD_NAMES: ReadonlySet<string> = new Set([
@@ -2155,21 +2158,54 @@ const areInMutuallyExclusiveBranches = (leftNode: EsTreeNode, rightNode: EsTreeN
   return false;
 };
 
-const effectStateWriteFactsByNode = new WeakMap<EsTreeNode, ReadonlyArray<EffectStateWriteFact>>();
+interface EffectStateWriteFactBundle {
+  baselineFacts: ReadonlyArray<EffectStateWriteFact>;
+  framesByFact: ReadonlyMap<EffectStateWriteFact, EffectExecutionFrame>;
+  enrichedFacts?: ReadonlyArray<EffectStateWriteFact>;
+}
+
+export interface EffectStateWriteFactOptions {
+  includeConsumedStateAccumulator?: boolean;
+}
+
+const effectStateWriteFactsByNode = new WeakMap<EsTreeNode, EffectStateWriteFactBundle>();
+
+const getFactView = (
+  bundle: EffectStateWriteFactBundle,
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  effectNode: EsTreeNode,
+  options?: EffectStateWriteFactOptions,
+): ReadonlyArray<EffectStateWriteFact> => {
+  if (!options?.includeConsumedStateAccumulator) return bundle.baselineFacts;
+  if (bundle.enrichedFacts) return bundle.enrichedFacts;
+  bundle.enrichedFacts = bundle.baselineFacts.map((fact) => {
+    const frame = bundle.framesByFact.get(fact);
+    return {
+      ...fact,
+      hasConsumedStateAccumulator: Boolean(
+        frame && isConsumedStateAccumulator(analysis, context, fact, frame, effectNode),
+      ),
+    };
+  });
+  return bundle.enrichedFacts;
+};
 
 export const collectEffectStateWriteFacts = (
   analysis: ProgramAnalysis,
   context: RuleContext,
   effectNode: EsTreeNode,
   currentFilename?: string,
+  options?: EffectStateWriteFactOptions,
 ): ReadonlyArray<EffectStateWriteFact> => {
   const cachedFacts = effectStateWriteFactsByNode.get(effectNode);
-  if (cachedFacts) return cachedFacts;
+  if (cachedFacts) return getFactView(cachedFacts, analysis, context, effectNode, options);
   const frames = collectBoundedEffectExecutionFrames(analysis, effectNode, currentFilename);
   if (frames.length === 0) {
     const emptyFacts: ReadonlyArray<EffectStateWriteFact> = [];
-    effectStateWriteFactsByNode.set(effectNode, emptyFacts);
-    return emptyFacts;
+    const bundle = { baselineFacts: emptyFacts, framesByFact: new Map() };
+    effectStateWriteFactsByNode.set(effectNode, bundle);
+    return getFactView(bundle, analysis, context, effectNode, options);
   }
   const frameByFunctionNode = new Map<EsTreeNode, EffectExecutionFrame>();
   for (const frame of frames) {
@@ -2252,6 +2288,7 @@ export const collectEffectStateWriteFacts = (
       facts.push({
         callExpression,
         executionNode: frame.invocation ?? callExpression,
+        executionFrame: frame,
         setterReference,
         stateDeclarator,
         sourceReferences,
@@ -2281,6 +2318,7 @@ export const collectEffectStateWriteFacts = (
     }
   }
 
+  const framesByFact = new Map<EffectStateWriteFact, EffectExecutionFrame>();
   const collectedFacts = facts.map((fact) => {
     const sourceStateDeclarators = fact.sourceReferences
       .filter((sourceReference) => isState(analysis, sourceReference))
@@ -2294,8 +2332,8 @@ export const collectEffectStateWriteFacts = (
           !areInMutuallyExclusiveBranches(fact.executionNode, candidateFact.executionNode),
       ),
     );
-    const { executionNode: _executionNode, ...publicFact } = fact;
-    return {
+    const { executionNode: _executionNode, executionFrame, ...publicFact } = fact;
+    const baselineFact = {
       ...publicFact,
       resetsSourceState,
       isRenderKnownCopy:
@@ -2303,7 +2341,10 @@ export const collectEffectStateWriteFacts = (
         !cleanupManagedStateDeclarators.has(fact.stateDeclarator) &&
         !resetsSourceState,
     };
+    framesByFact.set(baselineFact, executionFrame);
+    return baselineFact;
   });
-  effectStateWriteFactsByNode.set(effectNode, collectedFacts);
-  return collectedFacts;
+  const bundle = { baselineFacts: collectedFacts, framesByFact };
+  effectStateWriteFactsByNode.set(effectNode, bundle);
+  return getFactView(bundle, analysis, context, effectNode, options);
 };

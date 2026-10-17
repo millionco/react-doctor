@@ -1,2 +1,4 @@
 export const FIRST_ARGUMENT_INDEX = 0;
 export const SECOND_ARGUMENT_INDEX = 1;
+export const NATIVE_DOM_CALL_ARGUMENT_COUNT = 1;
+export const NATIVE_DOM_STATE_TUPLE_LENGTH = 2;

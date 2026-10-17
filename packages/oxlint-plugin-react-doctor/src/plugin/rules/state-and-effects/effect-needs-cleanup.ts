@@ -294,7 +294,9 @@ const resolveExpressionKey = (
     if (
       symbol.kind === "const" &&
       initializer &&
-      (isNodeOfType(initializer, "Identifier") || isNodeOfType(initializer, "MemberExpression"))
+      (isNodeOfType(initializer, "Identifier") ||
+        isNodeOfType(initializer, "MemberExpression") ||
+        isNodeOfType(initializer, "LogicalExpression"))
     ) {
       return (
         resolveExpressionKey(initializer, context, visitedSymbolIds, parameterSubstitutions) ??
@@ -312,6 +314,23 @@ const resolveExpressionKey = (
       parameterSubstitutions,
     );
     return objectKey ? `${objectKey}.${unwrappedExpression.property.name}` : null;
+  }
+  if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
+    const leftKey = resolveExpressionKey(
+      unwrappedExpression.left,
+      context,
+      visitedSymbolIds,
+      parameterSubstitutions,
+    );
+    const rightKey = resolveExpressionKey(
+      unwrappedExpression.right,
+      context,
+      visitedSymbolIds,
+      parameterSubstitutions,
+    );
+    return leftKey && rightKey
+      ? `logical:${unwrappedExpression.operator}:${leftKey}:${rightKey}`
+      : null;
   }
   if (isNodeOfType(unwrappedExpression, "ThisExpression")) return "this";
   if (
@@ -1193,6 +1212,12 @@ const isKnownReactNavigationReceiver = (
     return Boolean(
       receiverInitializer &&
       isKnownReactNavigationReceiver(receiverInitializer, context, visitedSymbolIds),
+    );
+  }
+  if (isNodeOfType(receiver, "LogicalExpression")) {
+    return (
+      isKnownReactNavigationReceiver(receiver.left, context, visitedSymbolIds) ||
+      isKnownReactNavigationReceiver(receiver.right, context, visitedSymbolIds)
     );
   }
   if (!isNodeOfType(receiver, "CallExpression")) return false;

@@ -40,6 +40,7 @@ import { hasPossibleStaticPropertyMutationOrEscape } from "../../utils/has-stati
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isCopyOnWriteContainer } from "../../utils/is-copy-on-write-container.js";
 import { isCpuTypedArray } from "../../utils/is-cpu-typed-array.js";
+import { isPrimitiveArraySliceCopyWrite } from "./utils/is-primitive-array-slice-copy-write.js";
 import { isDefinitelyFalsyExpression } from "../../utils/is-definitely-falsy-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
@@ -2274,6 +2275,8 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
               context,
             );
             if (propertyWrite) {
+              if (isPrimitiveArraySliceCopyWrite(propertyWrite, updaterFunction, node, context))
+                return;
               if (!reportedSideEffectNodes.has(propertyWrite)) {
                 reportedSideEffectNodes.add(propertyWrite);
                 context.report({ node: propertyWrite, message: MESSAGE });

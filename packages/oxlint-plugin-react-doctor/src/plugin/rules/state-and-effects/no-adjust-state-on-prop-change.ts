@@ -1,3 +1,4 @@
+import { isPrivateInitializationLatchWrite } from "./utils/is-private-initialization-latch-write.js";
 import { isOwnedRequestMapReset } from "./utils/is-owned-request-map-reset.js";
 import { isReleasedObjectUrlStateWrite } from "./utils/is-released-object-url-state-write.js";
 import { isOnlyCalledInEffect } from "./utils/is-only-called-in-effect.js";
@@ -100,6 +101,7 @@ export const noAdjustStateOnPropChange = defineRule({
       for (const fact of facts) {
         if (
           fact.isDeferred ||
+          isPrivateInitializationLatchWrite(fact.callExpression, context) ||
           isOwnedRequestMapReset(fact.callExpression, context) ||
           isPortalMountStateWrite(fact.callExpression, context) ||
           isReleasedObjectUrlStateWrite(fact.callExpression, context) ||

@@ -256,6 +256,9 @@ export const HANDLER_SNIPPET_POOL = [
 // Guards / nullability — find/match/get derefs, optional chains, splits,
 // alias-then-guard, canUseDOM aliases, JSON.parse.
 export const GUARD_SNIPPET_POOL = [
+  `globalThis.eval("JSON.parse = () => ({ settings: 1 })"); const readFuzzRewrittenSettings = (raw) => { const parsed = JSON.parse(raw); return parsed.settings; }; readFuzzRewrittenSettings(String(value));`,
+  `const evaluateFuzzProvider = globalThis.eval; evaluateFuzzProvider("JSON.parse = () => ({ settings: 1 })"); const readFuzzRewrittenSettings = (raw) => { const parsed = JSON.parse(raw); return parsed.settings; }; readFuzzRewrittenSettings(String(value));`,
+  `const readFuzzLocalSettings = (raw) => { const parsed = JSON.parse(raw); return parsed.settings; }; readFuzzLocalSettings(String(value));`,
   `if (!useState || !useRef || !useEffect) return null;`,
   `const found = items.find((item) => item.id === value); if (!found) return null;`,
   `const label = items.find((item) => item.active)?.name ?? "none";`,

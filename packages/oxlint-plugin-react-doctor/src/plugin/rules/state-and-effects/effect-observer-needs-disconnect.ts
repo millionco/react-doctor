@@ -6,6 +6,7 @@ import {
 } from "../../utils/collect-returned-cleanup-functions.js";
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { doesImportedCollectorReleaseObserver } from "../../utils/does-imported-collector-release-observer.js";
 import { doesEffectInvokeStoredDisposer } from "../../utils/does-effect-invoke-stored-disposer.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
@@ -847,7 +848,13 @@ export const effectObserverNeedsDisconnect = defineRule({
           tracked.didReleaseAll ||
           tracked.didReleaseAllViaCallbackParameter ||
           didReleaseEveryActiveTarget ||
-          doesEffectInvokeStoredObserverDisposer(callback, tracked, context)
+          doesEffectInvokeStoredObserverDisposer(callback, tracked, context) ||
+          doesImportedCollectorReleaseObserver({
+            effectCallback: callback,
+            observerBinding: tracked.bindingIdentifier,
+            observationCalls: tracked.observationCalls,
+            context,
+          })
         ) {
           continue;
         }

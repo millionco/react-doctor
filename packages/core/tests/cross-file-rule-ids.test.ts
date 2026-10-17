@@ -146,6 +146,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "client-passive-event-listeners",
       "effect-listener-cleanup-reference-mismatch",
       "effect-needs-cleanup",
+      "effect-observer-needs-disconnect",
       "exhaustive-deps",
       "ink-ctrl-c-handler-requires-exit-option",
       "ink-newline-inside-text",

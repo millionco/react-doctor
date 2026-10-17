@@ -43,6 +43,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   ...INK_RULE_IDS,
   "client-passive-event-listeners",
   "effect-needs-cleanup",
+  "effect-observer-needs-disconnect",
   "effect-listener-cleanup-reference-mismatch",
   "anchor-target-exists",
   "exhaustive-deps",

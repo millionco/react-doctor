@@ -399,6 +399,7 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
   `const StyledButton = styled.button\`color: \${(styledProps) => (styledProps.$active ? "red" : "gray")};\`;`,
   `const StyledInput = styled.input<{ $error: boolean }>\`border: 1px solid \${(styledProps) => (styledProps.$error ? "red" : "gray")}; border: 2px dashed blue;\`;`,
   `const SECRET_KEY = "sk-live-abc123def456ghi789jkl012mno345";`,
+  `const fuzzValidationSecret = "SECRET_DO_NOT_PASS_THIS_OR_YOU_WILL_BE_FIRED";`,
   `const FUZZ_DATABASE_URL = process.env.DATABASE_URL;`,
   `/** process.env.DATABASE_URL */ const FuzzGeneratedDatabaseClient = {};`,
   `const FuzzProcessName = "process"; const FuzzDatabaseKeyName = "DATABASE_URL"; const FuzzDocumentationUrl = "https://example.com";`,
